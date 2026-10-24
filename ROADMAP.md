@@ -1,10 +1,13 @@
 # inklkunn — Roadmap
 
-**Status.** **PROPOSED by the architect, 2026-10-24**, as the Phase 0 planning package (workflow §5,
-Phase 0: roadmap and milestone definition). **Nothing below is agreed until the owner authorizes it.**
-The decision requests in §8 are the owner's to rule; the architect's recommendation is stated under
-each so that disagreement has something to push against. No RFC, design or code starts from this file
-before that authorization.
+**Status.** **AUTHORIZED by the owner, 2026-10-24** (*"Accepted. Proceed on the next."*), as proposed the same
+day by the architect (Phase 0: roadmap and milestone definition, workflow §5). The eight decision
+requests in §8 are **ruled as recommended**: DR-1 wiki-first; DR-2 own service, embedded presentation;
+DR-3 subprocess over the CLI; DR-4 the wiki service signs as itself; DR-5 a wiki repository is a Portable
+Wiki Bundle; DR-6 real-time co-editing deferred; DR-7 English and Japanese; DR-8 CC BY-SA 4.0 as the
+default content license. The open input in §8 was not answered, so Phase 1 proceeds on the **assumption
+that the four kickoff documents are not available**; the architect amends the requirements if they appear.
+This roadmap is the planning baseline for the RFC portfolio; a material change to it goes back to the owner.
 
 How inklkunn gets from two requirements-analysis transcripts to a wiki engine people can use. This is a
 **direction with milestones**, not a dated schedule: work ships when it is correct, tested, secure and
@@ -163,6 +166,9 @@ handoff; the dev team implements against it; the owner authorizes.
 | **010** | Upstream tracking and supply-chain maintenance: re-baseline procedure, floors, gates at project events, pinned build chain | all | with M0 |
 
 ## 8. Decisions requested from the owner
+
+**All eight were ruled by the owner on 2026-10-24, each as recommended** (*"Accepted. Proceed on the next."*).
+The requests are kept as written so the alternatives considered stay on record.
 
 Each request states the decision, the options with their trade-offs, the architect's recommendation and
 what deferring costs (workflow §9.3). **The roadmap above is drawn on the recommended options**; a

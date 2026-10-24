@@ -1,0 +1,8 @@
+[book]
+title = "inklkunn"
+authors = ["nabbisen"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
