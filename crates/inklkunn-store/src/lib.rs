@@ -1,4 +1,86 @@
 #![forbid(unsafe_code)]
-//! `inklkunn-store` — inklkunn's service store: wiki records, proposals and review state, audit, and the derived cache, behind traits (SQLite first).
+//! `inklkunn-store` — inklkunn's service store behind traits, SQLite first (RFC 001 D-8; internal design
+//! DM-1, IQ-5). M0 holds the **wiki record** and the **on-disk root layout**; proposals, review state,
+//! audit and the derived cache arrive with RFCs 004 and 003.
 //!
-//! RFC 001 D-1 places this crate in the workspace; the task that fills it names its decisions.
+//! - [`record`]: the wiki record and its vocabulary; slugs; the opaque id.
+//! - [`root`]: `<root>/<shard>/<wiki id>/`, never the wiki's name, so renames move no bytes.
+//! - [`WikiStore`]: the trait; [`MemoryStore`] for tests and [`SqliteStore`] for service.
+//!
+//! The store never holds a key seed (threat model INV-2 for this crate's part): key *ids* only.
+
+pub mod memory;
+pub mod record;
+pub mod root;
+pub mod sqlite;
+
+pub use memory::MemoryStore;
+pub use record::{
+    NewWiki, Slug, SlugError, Verification, VerificationState, Visibility, WikiId, WikiRecord,
+};
+pub use root::RootLayout;
+pub use sqlite::SqliteStore;
+
+/// Why a store call failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StoreError {
+    /// No wiki has this id or slug.
+    NotFound,
+    /// Another wiki already has this slug.
+    SlugTaken(String),
+    /// The slug is not valid (see [`Slug`]).
+    InvalidSlug(SlugError),
+    /// The backing store failed; the text is the backend's, without content.
+    Backend(String),
+}
+
+impl std::fmt::Display for StoreError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StoreError::NotFound => write!(f, "no such wiki"),
+            StoreError::SlugTaken(s) => write!(f, "the slug `{s}` is taken"),
+            StoreError::InvalidSlug(e) => write!(f, "invalid slug: {e}"),
+            StoreError::Backend(e) => write!(f, "store backend: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for StoreError {}
+
+impl From<SlugError> for StoreError {
+    fn from(e: SlugError) -> Self {
+        StoreError::InvalidSlug(e)
+    }
+}
+
+/// The crate's result type.
+pub type Result<T> = std::result::Result<T, StoreError>;
+
+/// The wiki record store. Every implementation passes the same invariant tests (`tests/invariants.rs`).
+pub trait WikiStore: Send + Sync {
+    /// Create a wiki record with a fresh id. The slug must be free.
+    fn create(&self, new: NewWiki) -> Result<WikiRecord>;
+    /// The record with this id.
+    fn get(&self, id: &WikiId) -> Result<WikiRecord>;
+    /// The record with this slug.
+    fn by_slug(&self, slug: &Slug) -> Result<WikiRecord>;
+    /// Every record, by creation order.
+    fn list(&self) -> Result<Vec<WikiRecord>>;
+    /// Change the slug and/or the display name. The id, and so the on-disk path, never change.
+    fn rename(
+        &self,
+        id: &WikiId,
+        slug: Option<Slug>,
+        display_name: Option<String>,
+    ) -> Result<WikiRecord>;
+    /// Record the outcome of a verification.
+    fn set_verification(&self, id: &WikiId, verification: Verification) -> Result<WikiRecord>;
+    /// Record the wiki's key ids (never seeds) and prikk format version after the signer created them.
+    fn set_keys(
+        &self,
+        id: &WikiId,
+        author_key_id: Option<String>,
+        maintainer_key_id: Option<String>,
+        prikk_format_version: Option<String>,
+    ) -> Result<WikiRecord>;
+}
