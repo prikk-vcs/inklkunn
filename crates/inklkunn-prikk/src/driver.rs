@@ -210,10 +210,17 @@ impl PrikkCli {
         }
         let stderr = String::from_utf8_lossy(&run.stderr).trim().to_owned();
         if let Some(bytes) = ceiling {
-            let aborted = run.status.code() == Some(134) || run.status.signal() == Some(6);
+            // How a process dies under RLIMIT_DATA depends on where the first refused allocation lands:
+            // Rust's allocator aborts (134 / SIGABRT, "memory allocation of … failed"); the dynamic loader
+            // exits 127 with "Cannot allocate memory" or "cannot allocate TLS"; glibc's early TLS setup can
+            // also fault (SIGSEGV) before any message, which is what GitHub's runners showed. prikk itself
+            // never dies by a signal and the server's own kill is `timed_out`, so under a ceiling *any*
+            // death by signal is read as the ceiling.
+            let aborted = run.status.code() == Some(134) || run.status.signal().is_some();
             let alloc_failed = stderr.contains("memory allocation of") && stderr.contains("failed");
-            let loader_failed =
-                run.status.code() == Some(127) && stderr.contains("Cannot allocate memory");
+            let loader_failed = run.status.code() == Some(127)
+                && (stderr.contains("Cannot allocate memory")
+                    || stderr.contains("cannot allocate"));
             let partial_verify =
                 run.status.code() == Some(1) && stderr.contains("did not complete every stage");
             if aborted || alloc_failed || loader_failed || partial_verify {
@@ -248,7 +255,10 @@ impl PrikkCli {
                 verb: name,
                 detail: format!(
                     "exit {}: {message}",
-                    code.map_or("by signal".to_owned(), |c| c.to_string())
+                    code.map_or_else(
+                        || format!("by signal {}", run.status.signal().unwrap_or(0)),
+                        |c| c.to_string()
+                    )
                 ),
             },
         }
