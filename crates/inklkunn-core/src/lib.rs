@@ -1,4 +1,25 @@
 #![forbid(unsafe_code)]
-//! `inklkunn-core` — inklkunn's domain: wikis and views, pages, proposals and review, acceptance orchestration, the single default-deny authorize(), honesty, merge, export.
+//! `inklkunn-core` — inklkunn's domain. M0 (RFC 001 D-5, D-9) establishes the **seams** later RFCs fill
+//! and creates a wiki on disk as a Portable Wiki Bundle:
 //!
-//! RFC 001 D-1 places this crate in the workspace; the task that fills it names its decisions.
+//! - [`authorize`](mod@authorize): the one default-deny decision function (RFC 002 D-2 fixes the signature; roles come
+//!   with RFC 002's handoff).
+//! - [`accept`]: the `Accept` trait (RFC 002 D-4's signature; the signer implements it; nothing else may).
+//! - [`assurance`]: the honesty view-model values (RFC 002 D-6).
+//! - [`egress`]: the one egress guard for every outbound fetch (threat model C-8).
+//! - [`bundle`] and [`wiki`]: the repository layout (external design CT-02) and *create wiki*.
+
+pub mod accept;
+pub mod assurance;
+pub mod authorize;
+pub mod bundle;
+pub mod egress;
+pub mod wiki;
+
+pub use accept::{
+    Accept, AcceptError, AcceptanceToken, PreparedChange, PreparedFile, SealedChange,
+};
+pub use assurance::Assurance;
+pub use authorize::{Action, Decision, Principal, Resource, authorize};
+pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, StdEgressGuard};
+pub use wiki::{CreateWikiError, CreatedWiki, RepositoryBootstrap, create_wiki};

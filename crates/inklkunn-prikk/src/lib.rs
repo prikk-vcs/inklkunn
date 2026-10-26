@@ -20,7 +20,7 @@ pub mod storage;
 pub use admission::{Admission, Permit, Refusal};
 pub use cost::ReadVerb;
 pub use driver::{PrikkCli, parse_report, parse_version, schema};
-pub use sandbox::{BwrapConfig, CallLimits, Sandbox};
+pub use sandbox::{BwrapConfig, CallLimits, Mounts, Run, Sandbox};
 pub use storage::{
     Change, Diff, DiffEntry, Entry, ExtractBounds, FileMeta, History, HistoryBlock, Materialized,
     Operation, Patch, PatchMessage, Point, Result, Storage, StorageError, Tree, Unavailable,

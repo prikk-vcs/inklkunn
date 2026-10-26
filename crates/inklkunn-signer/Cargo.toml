@@ -9,6 +9,7 @@ repository.workspace = true
 description = "inklkunn's signer: the per-wiki key store and the only path to prikk's write verbs (commit, seal, branch create). Nothing else reaches key material."
 
 [dependencies]
+inklkunn-prikk = { path = "../inklkunn-prikk" }
 
 [lints]
 workspace = true

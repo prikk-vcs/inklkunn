@@ -9,6 +9,10 @@ repository.workspace = true
 description = "inklkunn's domain: wikis and views, pages, proposals and review, acceptance orchestration, the single default-deny authorize(), honesty, merge, export."
 
 [dependencies]
+inklkunn-markup = { path = "../inklkunn-markup" }
+inklkunn-prikk = { path = "../inklkunn-prikk" }
+inklkunn-signer = { path = "../inklkunn-signer" }
+inklkunn-store = { path = "../inklkunn-store" }
 
 [lints]
 workspace = true

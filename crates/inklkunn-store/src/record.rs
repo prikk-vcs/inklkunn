@@ -170,7 +170,7 @@ impl fmt::Display for Slug {
 }
 
 /// Who may read (requirements ID-4 … ID-7; META-13 is the page-level advisory signal, this is the wiki's rule).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Visibility {
     /// Anyone, signed in or not.

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | The dated brief a new session reads **first**: where the project is, what is pending on whom, and the issue register. Updated at every milestone, RFC disposition and owner ruling. |
-| As of | 2026-10-27 — **RFCs 001, 002 and 010 accepted**; **M0 under construction by the architect at the owner's request** (T1 workspace and gates, T2 `inklkunn-markup`, T3 `inklkunn-prikk` committed; T4–T7 open); RFC 003 proposed |
+| As of | 2026-10-27 — **RFCs 001, 002 and 010 accepted**; **M0 under construction by the architect at the owner's request** (T1 gates, T2 markup, T3 prikk driver, T4 store, T5 core seams and *create wiki* committed; T6 spikes and T7 conventions open); RFC 003 proposed |
 | Read next | [`src/inklkunn-00-project-charter.md`](src/inklkunn-00-project-charter.md) → [`../ROADMAP.md`](../ROADMAP.md) → [`src/inklkunn-01-requirements-spec.md`](src/inklkunn-01-requirements-spec.md) → [`src/inklkunn-02-external-design.md`](src/inklkunn-02-external-design.md) → [`src/inklkunn-03-threat-model.md`](src/inklkunn-03-threat-model.md) → [`src/inklkunn-04-internal-design.md`](src/inklkunn-04-internal-design.md) → [`../rfcs/README.md`](../rfcs/README.md) |
 
 ## Where we are
@@ -31,7 +31,16 @@
   writable, the server-kept deadline, the `prlimit` ceiling from a provisional cost table (planeter's 0.52
   multiples, re-measured by spike (a)), the light/heavy admission gate; tested against a committed two-block
   fixture repository under both policies, with shims for an older prikk and a doctored schema and a ceiling
-  that fails before the loader. No binary runs yet; `inklkunn-store`, the core seams and the spikes are T4–T6.
+  that fails before the loader. **T4**: `inklkunn-store` — the wiki record (DM-1), validated slugs with a
+  reserved list, opaque time-ordered ids, the `<root>/<shard>/<id>/` layout, in-memory and SQLite stores
+  passing one invariant suite, reopen persistence. **T5**: `inklkunn-core` seams — `authorize()` (RFC 002
+  D-2's signature, default deny, no grants yet), the `Accept` trait, the `Assurance` values, the egress
+  guard (HTTPS only, public unicast only, pinned addresses, 24 refused literal ranges under test); the CT-02
+  bundle layout and *create wiki*, which creates the repository, adopts the maintainer key, writes the
+  manifest and a help page, seals the system change and verifies — through `inklkunn-signer`'s **bootstrap
+  signer** (plain-text key directory; RFC 002 D-3 replaces it) over the sandbox with the repository
+  writable and the key directory read-only; the empty private `key_store` module gives the gate its target.
+  No binary runs yet; the spikes and the conventions are T6 and T7.
 
 ## Pending on the owner
 

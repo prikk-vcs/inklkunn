@@ -98,3 +98,41 @@ fn resolve_binary_passes_paths_through() {
         PathBuf::from("/opt/prikk")
     );
 }
+
+#[test]
+fn write_mounts_bind_the_repo_rw_the_keys_ro_and_set_the_variables() {
+    let m = Mounts::write(
+        Path::new("/repo"),
+        Path::new("/keys"),
+        vec![(
+            "PRIKK_AUTHOR_SEED_FILE".to_owned(),
+            "/keys/author.seed".to_owned(),
+        )],
+    );
+    assert!(m.validate().is_ok());
+    let c = Sandbox::default().command_mounts(
+        OsStr::new("prikk"),
+        &m,
+        &["log", "--format", "json"],
+        CallLimits::default(),
+    );
+    let a = args_of(&c);
+    assert!(
+        a.windows(3).any(|w| w == ["--bind", "/repo", "/repo"]),
+        "{a:?}"
+    );
+    assert!(
+        a.windows(3).any(|w| w == ["--ro-bind", "/keys", "/keys"]),
+        "{a:?}"
+    );
+    assert!(
+        a.windows(3)
+            .any(|w| w == ["--setenv", "PRIKK_AUTHOR_SEED_FILE", "/keys/author.seed"]),
+        "{a:?}"
+    );
+    let overlapping = Mounts::write(Path::new("/repo"), Path::new("/repo/keys"), Vec::new());
+    assert!(matches!(
+        overlapping.validate(),
+        Err(MountError::Overlap(..))
+    ));
+}

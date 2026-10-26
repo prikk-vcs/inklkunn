@@ -200,6 +200,12 @@ version = "0.0.0"
 [[package]]
 name = "inklkunn-core"
 version = "0.0.0"
+dependencies = [
+ "inklkunn-markup",
+ "inklkunn-prikk",
+ "inklkunn-signer",
+ "inklkunn-store",
+]
 
 [[package]]
 name = "inklkunn-floor-check"
@@ -231,6 +237,9 @@ dependencies = [
 [[package]]
 name = "inklkunn-signer"
 version = "0.0.0"
+dependencies = [
+ "inklkunn-prikk",
+]
 
 [[package]]
 name = "inklkunn-store"
