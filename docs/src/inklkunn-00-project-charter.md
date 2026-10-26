@@ -117,6 +117,7 @@ The workflow, the RFC lifecycle and the handoff conventions are `.git-exclude/ro
 |---|---|
 | 2026-10-24 | Startup review of the requirements analysis, the rules, the roles and the three sibling projects; RFC 000 adopted; the roadmap proposed and **authorized the same day** with DR-1 … DR-8 ruled as recommended; this charter begun |
 | 2026-10-25 | This charter and the requirements specification v0.1 written for Phase 1 approval |
+| 2026-10-27 | Requirements v0.1 **approved by the owner** and baselined; Phase 2 (the design set) begins |
 
 ## 8. Where to read next
 

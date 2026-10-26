@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | inklkunn Requirements: what the wiki engine must do, must never do, and what remains to decide. The contract every design must satisfy. |
-| Version | v0.1 — written for the owner's Phase 1 approval (workflow §5, Phase 1: the owner approves major requirements and scope; the architect then baselines them) |
+| Version | v0.1 — **approved by the owner 2026-10-27 ("Approved.") and baselined**; the open questions of §16 carry the architect's recommendations as the working answers unless the owner rules otherwise (workflow §5, Phase 1) |
 | Date | 2026-10-25 |
 | Basis | The requirements analysis (`.git-exclude/specs/requirements-analysis/`): the main transcript (the five principles, the sixteen architectural constraints, the twenty-item issues register, the phased integration with a forge) and the sub transcript (why people give up on wikis; embeddability; a live layer over a durable layer). The roadmap (`ROADMAP.md`) and the owner's rulings DR-1 … DR-8 of 2026-10-24. wiki-commons 0.4 (the pattern language and Part III, cited by identifier). prikk 0.54.1 as its reference pages document it. planeter 0.4.0's design set as the embedding target and the house precedent. The project rules (`.git-exclude/rules/`). |
 | Not | a design, an API, a schema, or code. Where a decision belongs to the owner, it is named in §16 and left there. |
