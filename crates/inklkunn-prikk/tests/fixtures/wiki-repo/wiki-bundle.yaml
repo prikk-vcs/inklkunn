@@ -1,0 +1,6 @@
+# Portable Wiki Bundle manifest (wiki-commons chapter 10) — the inklkunn-prikk test fixture.
+bundle_version: "0.4"
+name: Fixture Wiki
+pages_prefix: pages
+default_language: en
+license: CC-BY-SA-4.0

@@ -161,6 +161,10 @@ fn prikk_spawn_gate_catches_planted_violations() {
         vec![(1, "seal".to_owned())]
     );
     assert!(write_verb_literals("repo.run(&[\"log\", \"--format\", \"json\"])\n").is_empty());
+    assert!(
+        write_verb_literals("    #[serde(rename = \"ref\")]\n    pub view: String,\n").is_empty(),
+        "a serde field attribute names a report key, not a spawn argument"
+    );
 }
 
 #[test]

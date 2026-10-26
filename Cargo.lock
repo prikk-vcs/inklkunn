@@ -195,6 +195,10 @@ version = "0.0.0"
 [[package]]
 name = "inklkunn-prikk"
 version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "inklkunn-signer"

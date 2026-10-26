@@ -201,7 +201,9 @@ pub fn write_verb_literals(source: &str) -> Vec<(usize, String)> {
     let mut out = Vec::new();
     for (i, line) in source.lines().enumerate() {
         let t = line.trim_start();
-        if t.starts_with("//") {
+        // Comments, and serde attributes naming a JSON field (`#[serde(rename = "ref")]` is a report key,
+        // not an argument vector), are not spawn sites.
+        if t.starts_with("//") || t.contains("serde(") {
             continue;
         }
         for verb in PRIKK_WRITE_VERBS {

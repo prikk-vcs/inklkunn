@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | The dated brief a new session reads **first**: where the project is, what is pending on whom, and the issue register. Updated at every milestone, RFC disposition and owner ruling. |
-| As of | 2026-10-27 — **RFCs 001, 002 and 010 accepted**; **M0 under construction by the architect at the owner's request** (T1 workspace and gates, T2 `inklkunn-markup` committed; T3–T7 open); RFC 003 proposed |
+| As of | 2026-10-27 — **RFCs 001, 002 and 010 accepted**; **M0 under construction by the architect at the owner's request** (T1 workspace and gates, T2 `inklkunn-markup`, T3 `inklkunn-prikk` committed; T4–T7 open); RFC 003 proposed |
 | Read next | [`src/inklkunn-00-project-charter.md`](src/inklkunn-00-project-charter.md) → [`../ROADMAP.md`](../ROADMAP.md) → [`src/inklkunn-01-requirements-spec.md`](src/inklkunn-01-requirements-spec.md) → [`src/inklkunn-02-external-design.md`](src/inklkunn-02-external-design.md) → [`src/inklkunn-03-threat-model.md`](src/inklkunn-03-threat-model.md) → [`src/inklkunn-04-internal-design.md`](src/inklkunn-04-internal-design.md) → [`../rfcs/README.md`](../rfcs/README.md) |
 
 ## Where we are
@@ -25,7 +25,13 @@
   parser (anchors and tags refused), the Layer 2 scanner, the MKUP-5 resolver, the HTML renderer with the
   MKUP-12 conventions, the advisory lint, and `title_to_path` with its property tests; the wiki-commons
   conformance corpus passes 34/34 (24 scan, 10 resolution) on the first run against the reference rules.
-  No binary runs yet; `inklkunn-prikk`, `inklkunn-store`, the core seams and the spikes are T3–T6.
+  **T3**: `inklkunn-prikk` — the `Storage` trait in inklkunn's words, `PrikkCli` over the eight read verbs with
+  pinned `schema_version`s and typed outcomes (refused / unavailable / too large / damaged / unsupported
+  schema or version / driver), bubblewrap with the repository bound **read-only** and only `extract`'s scratch
+  writable, the server-kept deadline, the `prlimit` ceiling from a provisional cost table (planeter's 0.52
+  multiples, re-measured by spike (a)), the light/heavy admission gate; tested against a committed two-block
+  fixture repository under both policies, with shims for an older prikk and a doctored schema and a ceiling
+  that fails before the loader. No binary runs yet; `inklkunn-store`, the core seams and the spikes are T4–T6.
 
 ## Pending on the owner
 
@@ -48,8 +54,7 @@
 ## Next
 
 The architect continues M0 from `rfcs/handoffs/001-foundations/foundations-handoff-v1.md` and
-`rfcs/handoffs/010-upstream-and-supply-chain-maintenance/upstream-and-supply-chain-handoff-v1.md`: T3
-`inklkunn-prikk` (the `Storage` trait and the sandboxed read driver), T4 `inklkunn-store`, T5 the core seams
+`rfcs/handoffs/010-upstream-and-supply-chain-maintenance/upstream-and-supply-chain-handoff-v1.md`: T4 `inklkunn-store`, T5 the core seams
 and the bundle layout, T6 the two spikes, T7 the conventions (README, CHANGELOG, SECURITY, ledgers, book),
 then writes the review request with the gate runs, the dependency deltas and the author-review gap, and the
 owner (or a fresh reviewing session) reviews. RFC 002's handoff follows 001's approval. RFC 004 (proposals) is
