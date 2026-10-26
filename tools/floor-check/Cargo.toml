@@ -1,0 +1,15 @@
+[package]
+name = "inklkunn-floor-check"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "RFC 010 gate (floor-check). A std-only test crate, not a product crate."
+publish = false
+
+[dependencies]
+
+[lints]
+workspace = true

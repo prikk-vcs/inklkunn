@@ -1,0 +1,14 @@
+[package]
+name = "inklkunn-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "inklkunn's HTTP surface: the server-rendered UI, the read and write API, feeds, the message catalog, the sanitizer and the content origin."
+
+[dependencies]
+
+[lints]
+workspace = true

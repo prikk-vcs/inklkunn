@@ -1,0 +1,26 @@
+# RFC 010 D-4 (d): a durable record of the supply-chain gates at an RFC disposition checkpoint, run on a
+# freshly fetched advisory database. Manual dispatch only: no schedule, no secrets, read-only contents.
+name: Supply-chain checkpoint
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checkpoint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain (pinned, one compiler for CI and release)
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.99.0 --profile minimal --no-self-update
+          rustup default 1.99.0
+      - name: Install cargo-deny and cargo-audit
+        run: cargo install cargo-deny cargo-audit --locked
+      - name: cargo-deny (fresh database)
+        run: cargo deny check
+      - name: cargo-audit (fresh database)
+        run: cargo audit

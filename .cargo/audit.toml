@@ -1,0 +1,3 @@
+# cargo-audit configuration (the CI `supply-chain` job runs `cargo audit`). Keep in step with deny.toml.
+[advisories]
+ignore = []

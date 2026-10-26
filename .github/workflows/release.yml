@@ -1,0 +1,205 @@
+# RFC 010 D-10: a release is a signed bare-version tag plus attested artifacts. On a tag push the gates run
+# on the tagged commit, the Linux binaries are built, the container image is built natively per architecture,
+# everything is attested, the GitHub release is created from the CHANGELOG section, and the crates are
+# published in dependency order. The `rehearsal` dispatch mode exercises every step against a throwaway
+# package (ghcr.io/prikk-vcs/inklkunn-rehearsal) and can never publish anything real (pin-check enforces
+# the shape). Tagging and the real publish are the owner's acts, or the architect's when delegated.
+name: Release
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "rehearsal: build, attest and push only to the throwaway package; publish nothing real"
+        required: true
+        default: rehearsal
+        type: choice
+        options: [rehearsal]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  PRIKK_VERSION: "0.54.0"
+
+jobs:
+  gates:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain (pinned, one compiler for CI and release)
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy --no-self-update
+          rustup default 1.99.0
+      - name: Tag equals the workspace version
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          V="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          test "$TAG" = "$V" || { echo "tag $TAG != workspace version $V" >&2; exit 1; }
+      - name: Install cargo-deny and cargo-audit
+        run: cargo install cargo-deny cargo-audit --locked
+      - name: Gates
+        run: |
+          set -euo pipefail
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo test --workspace --locked
+          cargo deny check
+          cargo audit
+          RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
+
+  binaries:
+    needs: gates
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain (pinned, one compiler for CI and release)
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.99.0 --profile minimal --no-self-update
+          rustup default 1.99.0
+      - name: Build
+        run: cargo build --release --locked -p inklkunn
+      - name: Package
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          NAME="inklkunn-${{ matrix.target }}"
+          tar -C target/release -czf "dist/${NAME}.tar.gz" inklkunn
+          (cd dist && sha256sum "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256")
+          {
+            echo "commit: ${GITHUB_SHA}"
+            echo "ref: ${GITHUB_REF_NAME}"
+            echo "requires: prikk >= ${PRIKK_VERSION}, bubblewrap, prlimit (util-linux)"
+          } > "dist/${NAME}.build-info.txt"
+      - name: Attest the tarball
+        if: github.event_name == 'push'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/*.tar.gz
+          predicate-type: https://slsa.dev/provenance/v1
+          predicate: '{"buildType":"https://github.com/prikk-vcs/inklkunn/release"}'
+      - name: Attest the tarball (rehearsal: the subject is renamed so the record is labelled)
+        if: inputs.mode == 'rehearsal'
+        run: |
+          set -euo pipefail
+          for f in dist/*.tar.gz; do cp "$f" "dist/rehearsal-$(basename "$f")"; done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/
+
+  image:
+    needs: binaries
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: amd64
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            target: aarch64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/
+      - name: Stage the binary for the image
+        run: |
+          set -euo pipefail
+          mkdir -p "ctx/${{ matrix.arch }}"
+          tar -xzf "dist/inklkunn-${{ matrix.target }}.tar.gz" -C "ctx/${{ matrix.arch }}" inklkunn
+      - name: Log in to ghcr.io
+        if: github.event_name == 'push' || inputs.mode == 'rehearsal'
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Build and push the image (tag push)
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          docker build --build-arg "PRIKK_VERSION=${PRIKK_VERSION}" --build-arg "TARGETARCH=${{ matrix.arch }}" \
+            -t "ghcr.io/prikk-vcs/inklkunn:${GITHUB_REF_NAME}-${{ matrix.arch }}" .
+          docker push "ghcr.io/prikk-vcs/inklkunn:${GITHUB_REF_NAME}-${{ matrix.arch }}"
+      - name: Build and push the image (rehearsal: the throwaway package only)
+        if: inputs.mode == 'rehearsal'
+        run: |
+          set -euo pipefail
+          docker build --build-arg "PRIKK_VERSION=${PRIKK_VERSION}" --build-arg "TARGETARCH=${{ matrix.arch }}" \
+            -t "ghcr.io/prikk-vcs/inklkunn-rehearsal:rehearsal-${{ matrix.arch }}" .
+          docker push "ghcr.io/prikk-vcs/inklkunn-rehearsal:rehearsal-${{ matrix.arch }}"
+
+  release:
+    needs: image
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: dist-*
+          path: dist/
+          merge-multiple: true
+      - name: Release notes from the CHANGELOG section
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          awk -v tag="${GITHUB_REF_NAME}" '
+            $0 ~ "^## \\[" tag "\\]" {p=1; next}
+            p && /^## \[/ {exit}
+            p {print}' CHANGELOG.md > release-notes.md
+          test -s release-notes.md || { echo "no CHANGELOG section for ${GITHUB_REF_NAME}" >&2; exit 1; }
+          printf '\n---\n**Runtime prerequisites:** prikk >= %s, bubblewrap, prlimit (util-linux) on the host, or the container image `ghcr.io/prikk-vcs/inklkunn:%s`.\n' "$PRIKK_VERSION" "$GITHUB_REF_NAME" >> release-notes.md
+      - name: Create the GitHub release (tag push)
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/* --title "inklkunn ${GITHUB_REF_NAME}" --notes-file release-notes.md
+
+  crates:
+    needs: release
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain (pinned, one compiler for CI and release)
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.99.0 --profile minimal --no-self-update
+          rustup default 1.99.0
+      - name: Publish the crates in dependency order (tag push; the token is the owner's, supplied as a secret)
+        if: github.event_name == 'push'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          for c in inklkunn-markup inklkunn-prikk inklkunn-store inklkunn-signer inklkunn-auth inklkunn-core inklkunn-web inklkunn; do
+            cargo publish --locked -p "$c"
+          done

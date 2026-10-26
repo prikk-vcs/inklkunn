@@ -1,0 +1,15 @@
+[package]
+name = "inklkunn-boundary-check"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "The gates of RFC 001 D-2: layering, key reachability, prikk spawn, markup purity. A std-only test crate, not a product crate."
+publish = false
+
+[dependencies]
+
+[lints]
+workspace = true

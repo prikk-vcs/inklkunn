@@ -1,0 +1,14 @@
+[package]
+name = "inklkunn-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "inklkunn's domain: wikis and views, pages, proposals and review, acceptance orchestration, the single default-deny authorize(), honesty, merge, export."
+
+[dependencies]
+
+[lints]
+workspace = true

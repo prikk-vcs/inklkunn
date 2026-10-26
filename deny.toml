@@ -1,0 +1,32 @@
+# cargo-deny configuration (RFC 010 D-4, D-5, D-6). No advisory is ignored; an ignore, if one ever becomes
+# necessary, is scoped, carries a `reason`, is mirrored in .cargo/audit.toml, and is re-examined at every
+# change that touches its path (the triage ladder, rung 3).
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = []
+
+[licenses]
+version = 2
+# The allow-list of RFC 010 D-6. Adding a license is a decision request to the owner with the crate, the
+# path by which it enters, and the compatibility argument with Apache-2.0.
+allow = [
+    "Apache-2.0",
+    "MIT",
+    "Apache-2.0 WITH LLVM-exception",
+    "Unicode-3.0",
+    "BSD-3-Clause",
+    "ISC",
+    "MPL-2.0",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Intra-workspace path dependencies carry a version in [workspace.dependencies]; this allows the path form.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

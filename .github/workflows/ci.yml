@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  # RFC 010 D-3: the prikk floor, one value with the driver constant and the Dockerfile (floor-check).
+  PRIKK_VERSION: "0.54.0"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain (pinned, one compiler for CI and release)
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy --no-self-update
+          rustup default 1.99.0
+          rustc --version && cargo --version
+      - name: Install prikk at the floor (checksum-verified release asset) and the sandbox tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends bubblewrap util-linux
+          T=x86_64-unknown-linux-gnu
+          curl -fsSLO "https://github.com/prikk-vcs/prikk/releases/download/${PRIKK_VERSION}/prikk-${T}.tar.gz"
+          curl -fsSLO "https://github.com/prikk-vcs/prikk/releases/download/${PRIKK_VERSION}/prikk-${T}.tar.gz.sha256"
+          sha256sum -c "prikk-${T}.tar.gz.sha256"
+          mkdir -p "$HOME/.local/bin" && tar -xzf "prikk-${T}.tar.gz" -C "$HOME/.local/bin" prikk
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/prikk" --version
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy (-D warnings)
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test with prikk on PATH (includes the gates)
+        run: cargo test --workspace --locked
+      - name: Test with prikk shimmed off PATH (the self-skips must be visible)
+        run: |
+          set -euo pipefail
+          SHIM="$(mktemp -d)"
+          ln -s "$(rustup which cargo)" "$SHIM/cargo"
+          ln -s "$(rustup which rustc)" "$SHIM/rustc"
+          ln -s "$(command -v rustup)" "$SHIM/rustup"
+          PATH="$SHIM" cargo test --workspace --locked -- --nocapture 2>&1 | tee shimmed.log
+          grep -q "skipping: prikk not on PATH" shimmed.log || echo "note: no self-skip line yet (no prikk-dependent test exists)"
+      - name: Rustdoc (-D warnings)
+        run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
+
+  msrv:
+    # RFC 001 D-1 / RFC 010 D-9: the declared minimum compiler is built with. This job's toolchain must
+    # equal `rust-version` in Cargo.toml (pin-check enforces it); it is the one exception to "one compiler".
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain (the declared minimum)
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.88.0 --profile minimal --no-self-update
+          rustup default 1.88.0
+          rustc --version
+      - name: Check the workspace at the declared minimum
+        run: cargo check --workspace --all-targets --locked
+
+  supply-chain:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain (pinned, one compiler for CI and release)
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.99.0 --profile minimal --no-self-update
+          rustup default 1.99.0
+      - name: Install cargo-deny and cargo-audit
+        run: cargo install cargo-deny cargo-audit --locked
+      - name: cargo-deny
+        run: cargo deny check
+      - name: cargo-audit
+        run: cargo audit

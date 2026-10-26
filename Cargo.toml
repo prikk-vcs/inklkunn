@@ -1,0 +1,60 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/inklkunn-prikk",
+    "crates/inklkunn-signer",
+    "crates/inklkunn-store",
+    "crates/inklkunn-markup",
+    "crates/inklkunn-core",
+    "crates/inklkunn-auth",
+    "crates/inklkunn-web",
+    "crates/inklkunn",
+    "tools/boundary-check",
+    "tools/floor-check",
+    "tools/pin-check",
+]
+default-members = [
+    "crates/inklkunn-prikk",
+    "crates/inklkunn-signer",
+    "crates/inklkunn-store",
+    "crates/inklkunn-markup",
+    "crates/inklkunn-core",
+    "crates/inklkunn-auth",
+    "crates/inklkunn-web",
+    "crates/inklkunn",
+]
+
+# Shared metadata every crate inherits (RFC 001 D-1). One version for the whole workspace; nothing is
+# tagged until M1 (ROADMAP §5), so the version stays 0.0.0 through M0.
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.88.0"
+license = "Apache-2.0"
+authors = ["nabbisen"]
+repository = "https://github.com/prikk-vcs/inklkunn"
+
+[workspace.dependencies]
+inklkunn-prikk  = { version = "0.0.0", path = "crates/inklkunn-prikk" }
+inklkunn-signer = { version = "0.0.0", path = "crates/inklkunn-signer" }
+inklkunn-store  = { version = "0.0.0", path = "crates/inklkunn-store" }
+inklkunn-markup = { version = "0.0.0", path = "crates/inklkunn-markup" }
+inklkunn-core   = { version = "0.0.0", path = "crates/inklkunn-core" }
+inklkunn-auth   = { version = "0.0.0", path = "crates/inklkunn-auth" }
+inklkunn-web    = { version = "0.0.0", path = "crates/inklkunn-web" }
+
+# Third-party dependencies are added by the task that needs them, each measured first
+# (RFC 010 D-6; docs/dependency-policy.md records the delta).
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# RFC 001 D-1: the lints every crate inherits. `unsafe_code` is forbidden workspace-wide; a crate
+# cannot opt out without failing the boundary gate.
+[workspace.lints.rust]
+unsafe_code  = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+unwrap_used      = "deny"
+expect_used      = "deny"
+indexing_slicing = "deny"

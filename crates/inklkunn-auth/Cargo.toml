@@ -1,0 +1,14 @@
+[package]
+name = "inklkunn-auth"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "inklkunn's authentication: accounts, sessions, tokens, OpenID Connect, throttles and hashing. Its output is a principal; authorize() is inklkunn-core's."
+
+[dependencies]
+
+[lints]
+workspace = true
