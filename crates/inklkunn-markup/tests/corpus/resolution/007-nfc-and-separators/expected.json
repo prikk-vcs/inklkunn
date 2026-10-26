@@ -1,0 +1,47 @@
+{
+  "from_path": "Home.md",
+  "links": [
+    {
+      "raw": "[[Café]]",
+      "target": "Café",
+      "path": "Café.md",
+      "via": "exact"
+    },
+    {
+      "raw": "[[CAFÉ]]",
+      "target": "CAFÉ",
+      "path": "Café.md",
+      "via": "case"
+    },
+    {
+      "raw": "[[getting_started]]",
+      "target": "getting_started",
+      "path": "Guides/Getting Started.md",
+      "via": "normalized"
+    },
+    {
+      "raw": "[[GETTING-STARTED]]",
+      "target": "GETTING-STARTED",
+      "path": "Guides/Getting Started.md",
+      "via": "normalized"
+    },
+    {
+      "raw": "[[ Getting   Started ]]",
+      "target": "Getting   Started",
+      "path": "Guides/Getting Started.md",
+      "via": "normalized"
+    },
+    {
+      "raw": "[[編集の競合]]",
+      "target": "編集の競合",
+      "path": "編集の競合.md",
+      "via": "exact"
+    },
+    {
+      "raw": "[[編集の競合 ]]",
+      "target": "編集の競合",
+      "path": "編集の競合.md",
+      "via": "exact"
+    }
+  ]
+}

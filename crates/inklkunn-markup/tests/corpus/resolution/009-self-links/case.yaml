@@ -1,0 +1,4 @@
+from_path: X.md
+pages:
+- path: X.md
+  title: X

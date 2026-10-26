@@ -1,0 +1,5 @@
+Text with <!--an inline comment--> and a block:
+<!--
+hidden block
+-->
+![diagram.png](diagram.png) ![photo.jpg](photo.jpg) [[Note|Alias text]] ==highlight== [[Note#^blk]]

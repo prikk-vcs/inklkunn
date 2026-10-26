@@ -1,0 +1,6 @@
+convert:
+- static
+from_path: Exists.md
+pages:
+- path: Exists.md
+  title: Exists

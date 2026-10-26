@@ -9,6 +9,13 @@ repository.workspace = true
 description = "The Portable Wiki Markdown profile for inklkunn: frontmatter, free links, block identifiers, resolution, rendering and lint. Pure: no I/O."
 
 [dependencies]
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+unicode-normalization = "0.1"
+
+[dev-dependencies]
+proptest = "1"
 
 [lints]
 workspace = true

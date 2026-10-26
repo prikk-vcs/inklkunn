@@ -1,0 +1,42 @@
+{
+  "frontmatter": null,
+  "headings": [
+    {
+      "line": 13,
+      "level": 2,
+      "text": "Heading ^not-a-block-id",
+      "anchor": "heading-not-a-block-id"
+    }
+  ],
+  "links": [],
+  "block_ids": [
+    {
+      "line": 1,
+      "id": "para-1"
+    },
+    {
+      "line": 3,
+      "id": "item-1"
+    },
+    {
+      "line": 6,
+      "id": "quote-1"
+    },
+    {
+      "line": 11,
+      "id": "table-1"
+    },
+    {
+      "line": 20,
+      "id": "spaced"
+    }
+  ],
+  "tags": {
+    "frontmatter": [],
+    "inline": []
+  },
+  "callouts": [],
+  "directives": [],
+  "envelopes": [],
+  "props": []
+}

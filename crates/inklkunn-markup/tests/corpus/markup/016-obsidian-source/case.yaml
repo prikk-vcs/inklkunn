@@ -1,0 +1,8 @@
+dialect: obsidian
+convert:
+- portable
+- static
+from_path: Here.md
+pages:
+- path: Note.md
+  title: Note

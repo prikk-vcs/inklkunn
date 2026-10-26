@@ -1,0 +1,75 @@
+{
+  "frontmatter": null,
+  "headings": [],
+  "links": [
+    {
+      "raw": "![[Glossary]]",
+      "target": "Glossary",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": true,
+      "line": 1
+    },
+    {
+      "raw": "![[Glossary#Terms]]",
+      "target": "Glossary",
+      "label": null,
+      "fragment": "Terms",
+      "fragment_kind": "heading",
+      "prefix": null,
+      "embed": true,
+      "line": 3
+    },
+    {
+      "raw": "![[Glossary#^opt]]",
+      "target": "Glossary",
+      "label": null,
+      "fragment": "opt",
+      "fragment_kind": "block",
+      "prefix": null,
+      "embed": true,
+      "line": 5
+    },
+    {
+      "raw": "![[diagram.png|300]]",
+      "target": "diagram.png",
+      "label": "300",
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": true,
+      "line": 7
+    },
+    {
+      "raw": "![[photo.jpg]]",
+      "target": "photo.jpg",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": true,
+      "line": 7
+    },
+    {
+      "raw": "![[Edit Conflicts|see this]]",
+      "target": "Edit Conflicts",
+      "label": "see this",
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": true,
+      "line": 7
+    }
+  ],
+  "block_ids": [],
+  "tags": {
+    "frontmatter": [],
+    "inline": []
+  },
+  "callouts": [],
+  "directives": [],
+  "envelopes": [],
+  "props": []
+}

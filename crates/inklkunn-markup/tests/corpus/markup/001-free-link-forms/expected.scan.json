@@ -1,0 +1,108 @@
+{
+  "frontmatter": null,
+  "headings": [
+    {
+      "line": 1,
+      "level": 1,
+      "text": "Free link forms",
+      "anchor": "free-link-forms"
+    },
+    {
+      "line": 7,
+      "level": 2,
+      "text": "Local heading",
+      "anchor": "local-heading"
+    }
+  ],
+  "links": [
+    {
+      "raw": "[[Target]]",
+      "target": "Target",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 3
+    },
+    {
+      "raw": "[[Target|shown text]]",
+      "target": "Target",
+      "label": "shown text",
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 3
+    },
+    {
+      "raw": "[[Target#Section heading]]",
+      "target": "Target",
+      "label": null,
+      "fragment": "Section heading",
+      "fragment_kind": "heading",
+      "prefix": null,
+      "embed": false,
+      "line": 3
+    },
+    {
+      "raw": "[[Target#^blk-1]]",
+      "target": "Target",
+      "label": null,
+      "fragment": "blk-1",
+      "fragment_kind": "block",
+      "prefix": null,
+      "embed": false,
+      "line": 4
+    },
+    {
+      "raw": "[[#Local heading]]",
+      "target": "",
+      "label": null,
+      "fragment": "Local heading",
+      "fragment_kind": "heading",
+      "prefix": null,
+      "embed": false,
+      "line": 4
+    },
+    {
+      "raw": "[[ns/Sub/Target]]",
+      "target": "ns/Sub/Target",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 4
+    },
+    {
+      "raw": "[[ns/Sub/Target|deep]]",
+      "target": "ns/Sub/Target",
+      "label": "deep",
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 5
+    },
+    {
+      "raw": "[[/Target]]",
+      "target": "/Target",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 5
+    }
+  ],
+  "block_ids": [],
+  "tags": {
+    "frontmatter": [],
+    "inline": []
+  },
+  "callouts": [],
+  "directives": [],
+  "envelopes": [],
+  "props": []
+}

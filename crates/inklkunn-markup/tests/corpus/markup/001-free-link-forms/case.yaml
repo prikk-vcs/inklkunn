@@ -1,0 +1,10 @@
+convert:
+- gollum
+- dendron
+- static
+from_path: Guides/Here.md
+pages:
+- path: Target.md
+  title: Target
+- path: ns/Sub/Target.md
+  title: Deep Target

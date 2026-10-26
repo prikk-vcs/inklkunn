@@ -1,0 +1,9 @@
+from_path: Home.md
+pages:
+- path: A/B/Deep Page.md
+  title: A deep page with a different title
+- path: Edit Conflicts.md
+  title: Edit Conflicts
+  aliases:
+  - Edit conflict
+  - Editing collisions

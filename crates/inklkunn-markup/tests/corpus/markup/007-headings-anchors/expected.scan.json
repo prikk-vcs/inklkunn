@@ -1,0 +1,74 @@
+{
+  "frontmatter": null,
+  "headings": [
+    {
+      "line": 1,
+      "level": 1,
+      "text": "Title with `code` and *emphasis*",
+      "anchor": "title-with-code-and-emphasis"
+    },
+    {
+      "line": 3,
+      "level": 2,
+      "text": "2.1 Numbered heading",
+      "anchor": "21-numbered-heading"
+    },
+    {
+      "line": 5,
+      "level": 2,
+      "text": "Cunningham's Law & more",
+      "anchor": "cunninghams-law--more"
+    },
+    {
+      "line": 7,
+      "level": 2,
+      "text": "Merging",
+      "anchor": "merging"
+    },
+    {
+      "line": 9,
+      "level": 2,
+      "text": "Merging",
+      "anchor": "merging-1"
+    },
+    {
+      "line": 11,
+      "level": 2,
+      "text": "編集の競合",
+      "anchor": "編集の競合"
+    },
+    {
+      "line": 13,
+      "level": 3,
+      "text": "Heading with [[Link]] and [md](x.md)",
+      "anchor": "heading-with-link-and-md"
+    },
+    {
+      "line": 15,
+      "level": 4,
+      "text": "Trailing hashes",
+      "anchor": "trailing-hashes"
+    }
+  ],
+  "links": [
+    {
+      "raw": "[[Link]]",
+      "target": "Link",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 13
+    }
+  ],
+  "block_ids": [],
+  "tags": {
+    "frontmatter": [],
+    "inline": []
+  },
+  "callouts": [],
+  "directives": [],
+  "envelopes": [],
+  "props": []
+}

@@ -1,0 +1,55 @@
+{
+  "frontmatter": null,
+  "headings": [],
+  "links": [
+    {
+      "raw": "![[diagram.png|300]]",
+      "target": "diagram.png",
+      "label": "300",
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": true,
+      "line": 5
+    },
+    {
+      "raw": "![[photo.jpg]]",
+      "target": "photo.jpg",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": true,
+      "line": 5
+    },
+    {
+      "raw": "[[Note|Alias text]]",
+      "target": "Note",
+      "label": "Alias text",
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 5
+    },
+    {
+      "raw": "[[Note#^blk]]",
+      "target": "Note",
+      "label": null,
+      "fragment": "blk",
+      "fragment_kind": "block",
+      "prefix": null,
+      "embed": false,
+      "line": 5
+    }
+  ],
+  "block_ids": [],
+  "tags": {
+    "frontmatter": [],
+    "inline": []
+  },
+  "callouts": [],
+  "directives": [],
+  "envelopes": [],
+  "props": []
+}

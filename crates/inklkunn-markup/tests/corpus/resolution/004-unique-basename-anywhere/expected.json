@@ -1,0 +1,23 @@
+{
+  "from_path": "Home.md",
+  "links": [
+    {
+      "raw": "[[Deep Page]]",
+      "target": "Deep Page",
+      "path": "A/B/Deep Page.md",
+      "via": "hierarchy"
+    },
+    {
+      "raw": "[[deep-page]]",
+      "target": "deep-page",
+      "path": "A/B/Deep Page.md",
+      "via": "hierarchy"
+    },
+    {
+      "raw": "[[Other/Deep Page]]",
+      "target": "Other/Deep Page",
+      "path": null,
+      "via": "dangling"
+    }
+  ]
+}

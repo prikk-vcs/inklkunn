@@ -1,0 +1,8 @@
+from_path: Home.md
+pages:
+- path: Café.md
+  title: Café
+- path: Guides/Getting Started.md
+  title: Getting Started
+- path: 編集の競合.md
+  title: 編集の競合

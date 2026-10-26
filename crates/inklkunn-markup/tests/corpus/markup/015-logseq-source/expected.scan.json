@@ -1,0 +1,35 @@
+{
+  "frontmatter": null,
+  "headings": [],
+  "links": [
+    {
+      "raw": "[[Page B]]",
+      "target": "Page B",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 3
+    },
+    {
+      "raw": "[[Page B]]",
+      "target": "Page B",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 4
+    }
+  ],
+  "block_ids": [],
+  "tags": {
+    "frontmatter": [],
+    "inline": []
+  },
+  "callouts": [],
+  "directives": [],
+  "envelopes": [],
+  "props": []
+}

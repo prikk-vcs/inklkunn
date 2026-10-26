@@ -1,0 +1,9 @@
+from_path: Home.md
+pages:
+- path: Edit Conflicts.md
+  title: Edit Conflicts
+  aliases:
+  - Edit conflict
+  - Editing collisions
+- path: Guides/Getting Started.md
+  title: Getting Started

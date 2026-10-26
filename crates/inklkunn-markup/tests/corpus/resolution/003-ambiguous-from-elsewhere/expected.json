@@ -1,0 +1,15 @@
+{
+  "from_path": "Home.md",
+  "links": [
+    {
+      "raw": "[[Getting Started]]",
+      "target": "Getting Started",
+      "path": "Guides/Getting Started.md",
+      "via": "ambiguous",
+      "candidates": [
+        "Guides/Getting Started.md",
+        "Admin/Getting Started.md"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "from_path": "Guides/Intro.md",
+  "links": [
+    {
+      "raw": "[[../Edit Conflicts]]",
+      "target": "../Edit Conflicts",
+      "path": "Edit Conflicts.md",
+      "via": "relative"
+    },
+    {
+      "raw": "[[./Getting Started]]",
+      "target": "./Getting Started",
+      "path": "Guides/Getting Started.md",
+      "via": "relative"
+    },
+    {
+      "raw": "[[../Missing/Thing]]",
+      "target": "../Missing/Thing",
+      "path": null,
+      "via": "dangling"
+    },
+    {
+      "raw": "[[../Admin/Getting Started]]",
+      "target": "../Admin/Getting Started",
+      "path": "Admin/Getting Started.md",
+      "via": "relative"
+    }
+  ]
+}

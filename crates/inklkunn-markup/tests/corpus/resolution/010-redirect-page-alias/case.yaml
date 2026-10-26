@@ -1,0 +1,10 @@
+from_path: Home.md
+pages:
+- path: Edit Conflicts.md
+  title: Edit Conflicts
+  aliases:
+  - Edit conflict
+  - Editing collisions
+- path: Editing Collisions.md
+  title: Editing Collisions
+  kind: redirect

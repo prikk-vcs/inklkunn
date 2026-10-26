@@ -98,7 +98,7 @@ jobs:
           subject-path: dist/*.tar.gz
           predicate-type: https://slsa.dev/provenance/v1
           predicate: '{"buildType":"https://github.com/prikk-vcs/inklkunn/release"}'
-      - name: Attest the tarball (rehearsal: the subject is renamed so the record is labelled)
+      - name: "Attest the tarball (rehearsal: the subject is renamed so the record is labelled)"
         if: inputs.mode == 'rehearsal'
         run: |
           set -euo pipefail
@@ -146,7 +146,7 @@ jobs:
           docker build --build-arg "PRIKK_VERSION=${PRIKK_VERSION}" --build-arg "TARGETARCH=${{ matrix.arch }}" \
             -t "ghcr.io/prikk-vcs/inklkunn:${GITHUB_REF_NAME}-${{ matrix.arch }}" .
           docker push "ghcr.io/prikk-vcs/inklkunn:${GITHUB_REF_NAME}-${{ matrix.arch }}"
-      - name: Build and push the image (rehearsal: the throwaway package only)
+      - name: "Build and push the image (rehearsal: the throwaway package only)"
         if: inputs.mode == 'rehearsal'
         run: |
           set -euo pipefail

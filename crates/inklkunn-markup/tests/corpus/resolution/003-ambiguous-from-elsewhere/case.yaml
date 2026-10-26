@@ -1,0 +1,6 @@
+from_path: Home.md
+pages:
+- path: Guides/Getting Started.md
+  title: Getting Started
+- path: Admin/Getting Started.md
+  title: Getting Started

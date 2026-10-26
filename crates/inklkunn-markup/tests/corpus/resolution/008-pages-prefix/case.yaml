@@ -1,0 +1,5 @@
+from_path: pages/Home.md
+pages_prefix: pages
+pages:
+- path: pages/Guides/Getting Started.md
+  title: Getting Started

@@ -1,0 +1,61 @@
+{
+  "frontmatter": null,
+  "headings": [],
+  "links": [
+    {
+      "raw": "[[Decisions/ADR-001]]",
+      "target": "Decisions/ADR-001",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 6
+    }
+  ],
+  "block_ids": [],
+  "tags": {
+    "frontmatter": [],
+    "inline": []
+  },
+  "callouts": [],
+  "directives": [
+    {
+      "line": 1,
+      "name": "toc",
+      "attrs": {
+        "depth": "2",
+        "style": "compact"
+      },
+      "inline": false
+    },
+    {
+      "line": 4,
+      "name": "children",
+      "attrs": {
+        "path": "Decisions",
+        "depth": "1"
+      },
+      "inline": false
+    },
+    {
+      "line": 9,
+      "name": "mention",
+      "text": "Aiko",
+      "attrs": {
+        "user": "aiko",
+        "role": "author"
+      },
+      "inline": true
+    },
+    {
+      "line": 9,
+      "name": "kbd",
+      "text": "Ctrl",
+      "attrs": {},
+      "inline": true
+    }
+  ],
+  "envelopes": [],
+  "props": []
+}

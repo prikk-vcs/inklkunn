@@ -1,0 +1,29 @@
+{
+  "from_path": "pages/Home.md",
+  "links": [
+    {
+      "raw": "[[Guides/Getting Started]]",
+      "target": "Guides/Getting Started",
+      "path": "pages/Guides/Getting Started.md",
+      "via": "exact"
+    },
+    {
+      "raw": "[[pages/Guides/Getting Started]]",
+      "target": "pages/Guides/Getting Started",
+      "path": "pages/Guides/Getting Started.md",
+      "via": "exact"
+    },
+    {
+      "raw": "[[Getting Started]]",
+      "target": "Getting Started",
+      "path": "pages/Guides/Getting Started.md",
+      "via": "exact"
+    },
+    {
+      "raw": "[[/Guides/Getting Started]]",
+      "target": "/Guides/Getting Started",
+      "path": "pages/Guides/Getting Started.md",
+      "via": "exact"
+    }
+  ]
+}

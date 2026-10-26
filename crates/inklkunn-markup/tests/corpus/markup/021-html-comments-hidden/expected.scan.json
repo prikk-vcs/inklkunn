@@ -1,0 +1,25 @@
+{
+  "frontmatter": null,
+  "headings": [],
+  "links": [
+    {
+      "raw": "[[Link]]",
+      "target": "Link",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    }
+  ],
+  "block_ids": [],
+  "tags": {
+    "frontmatter": [],
+    "inline": []
+  },
+  "callouts": [],
+  "directives": [],
+  "envelopes": [],
+  "props": []
+}

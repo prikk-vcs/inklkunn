@@ -1,0 +1,55 @@
+{
+  "frontmatter": null,
+  "headings": [],
+  "links": [
+    {
+      "raw": "[[shown text|Target]]",
+      "target": "Target",
+      "label": "shown text",
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "[[Target]]",
+      "target": "Target",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "[[deep|Folder/Target#Section]]",
+      "target": "Folder/Target",
+      "label": "deep",
+      "fragment": "Section",
+      "fragment_kind": "heading",
+      "prefix": null,
+      "embed": false,
+      "line": 2
+    },
+    {
+      "raw": "[[image.png]]",
+      "target": "image.png",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 2
+    }
+  ],
+  "block_ids": [],
+  "tags": {
+    "frontmatter": [],
+    "inline": []
+  },
+  "callouts": [],
+  "directives": [],
+  "envelopes": [],
+  "props": []
+}

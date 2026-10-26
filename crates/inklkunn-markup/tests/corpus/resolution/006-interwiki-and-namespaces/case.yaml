@@ -1,0 +1,15 @@
+from_path: Home.md
+namespaces:
+- Talk
+interwiki:
+  wp: https://en.wikipedia.org/wiki/{title}
+  wikipedia: https://en.wikipedia.org/wiki/{title}
+pages:
+- path: Edit Conflicts.md
+  title: Edit Conflicts
+  aliases:
+  - Edit conflict
+  - Editing collisions
+- path: Talk:Edit Conflicts.md
+  title: Talk:Edit Conflicts
+  kind: discussion

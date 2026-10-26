@@ -1,0 +1,55 @@
+{
+  "frontmatter": null,
+  "headings": [],
+  "links": [
+    {
+      "raw": "[[編集の競合]]",
+      "target": "編集の競合",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "[[Café|café]]",
+      "target": "Café",
+      "label": "café",
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "[[Café]]",
+      "target": "Café",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "[[編集の競合#マージ]]",
+      "target": "編集の競合",
+      "label": null,
+      "fragment": "マージ",
+      "fragment_kind": "heading",
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    }
+  ],
+  "block_ids": [],
+  "tags": {
+    "frontmatter": [],
+    "inline": []
+  },
+  "callouts": [],
+  "directives": [],
+  "envelopes": [],
+  "props": []
+}

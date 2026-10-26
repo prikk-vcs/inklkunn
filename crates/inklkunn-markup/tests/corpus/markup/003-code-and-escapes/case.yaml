@@ -1,0 +1,6 @@
+convert:
+- static
+pages:
+- path: Real.md
+  title: Real
+from_path: Here.md

@@ -1,0 +1,11 @@
+dialect: obsidian
+convert:
+- portable
+- static
+- gollum
+from_path: Edit Conflicts.md
+pages:
+- path: Glossary.md
+  title: Glossary
+- path: Edit Conflicts.md
+  title: Edit Conflicts

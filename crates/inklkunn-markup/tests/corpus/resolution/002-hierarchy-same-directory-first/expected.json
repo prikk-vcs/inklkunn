@@ -1,0 +1,23 @@
+{
+  "from_path": "Guides/Intro.md",
+  "links": [
+    {
+      "raw": "[[Getting Started]]",
+      "target": "Getting Started",
+      "path": "Guides/Getting Started.md",
+      "via": "exact"
+    },
+    {
+      "raw": "[[Admin/Getting Started]]",
+      "target": "Admin/Getting Started",
+      "path": "Admin/Getting Started.md",
+      "via": "exact"
+    },
+    {
+      "raw": "[[Guides/Getting Started]]",
+      "target": "Guides/Getting Started",
+      "path": "Guides/Getting Started.md",
+      "via": "exact"
+    }
+  ]
+}

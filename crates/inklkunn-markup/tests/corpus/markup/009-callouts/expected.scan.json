@@ -1,0 +1,39 @@
+{
+  "frontmatter": null,
+  "headings": [],
+  "links": [],
+  "block_ids": [],
+  "tags": {
+    "frontmatter": [],
+    "inline": []
+  },
+  "callouts": [
+    {
+      "line": 1,
+      "type": "NOTE",
+      "fold": null,
+      "title": null
+    },
+    {
+      "line": 4,
+      "type": "TIP",
+      "fold": "+",
+      "title": "Open title"
+    },
+    {
+      "line": 7,
+      "type": "WARNING",
+      "fold": "-",
+      "title": "Folded"
+    },
+    {
+      "line": 10,
+      "type": "CUSTOM",
+      "fold": null,
+      "title": "Something else"
+    }
+  ],
+  "directives": [],
+  "envelopes": [],
+  "props": []
+}

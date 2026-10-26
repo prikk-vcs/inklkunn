@@ -1,0 +1,107 @@
+{
+  "frontmatter": null,
+  "headings": [
+    {
+      "line": 3,
+      "level": 2,
+      "text": "Heading here",
+      "anchor": "heading-here"
+    }
+  ],
+  "links": [
+    {
+      "raw": "[[Exists]]",
+      "target": "Exists",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "[[Missing]]",
+      "target": "Missing",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "[[Missing|with label]]",
+      "target": "Missing",
+      "label": "with label",
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "[[#Heading here]]",
+      "target": "",
+      "label": null,
+      "fragment": "Heading here",
+      "fragment_kind": "heading",
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "[[#^blk]]",
+      "target": "",
+      "label": null,
+      "fragment": "blk",
+      "fragment_kind": "block",
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "![[Missing]]",
+      "target": "Missing",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": true,
+      "line": 1
+    },
+    {
+      "raw": "[[Exists#^blk]]",
+      "target": "Exists",
+      "label": null,
+      "fragment": "blk",
+      "fragment_kind": "block",
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "[[Exists#Heading here|labelled heading]]",
+      "target": "Exists",
+      "label": "labelled heading",
+      "fragment": "Heading here",
+      "fragment_kind": "heading",
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    }
+  ],
+  "block_ids": [
+    {
+      "line": 5,
+      "id": "blk"
+    }
+  ],
+  "tags": {
+    "frontmatter": [],
+    "inline": []
+  },
+  "callouts": [],
+  "directives": [],
+  "envelopes": [],
+  "props": []
+}

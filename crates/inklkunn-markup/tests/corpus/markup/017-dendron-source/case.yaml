@@ -1,0 +1,4 @@
+dialect: dendron
+convert:
+- portable
+- obsidian

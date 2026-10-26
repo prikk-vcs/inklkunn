@@ -1,0 +1,37 @@
+{
+  "from_path": "Home.md",
+  "links": [
+    {
+      "raw": "[[wp:Wiki]]",
+      "target": "wp:Wiki",
+      "path": null,
+      "via": "interwiki",
+      "url": "https://en.wikipedia.org/wiki/Wiki"
+    },
+    {
+      "raw": "[[wikipedia:Edit conflict|article]]",
+      "target": "wikipedia:Edit conflict",
+      "path": null,
+      "via": "interwiki",
+      "url": "https://en.wikipedia.org/wiki/Edit%20conflict"
+    },
+    {
+      "raw": "[[Talk:Edit Conflicts]]",
+      "target": "Talk:Edit Conflicts",
+      "path": "Talk:Edit Conflicts.md",
+      "via": "exact"
+    },
+    {
+      "raw": "[[Unknown:Thing]]",
+      "target": "Unknown:Thing",
+      "path": null,
+      "via": "dangling"
+    },
+    {
+      "raw": "[[Edit Conflicts]]",
+      "target": "Edit Conflicts",
+      "path": "Edit Conflicts.md",
+      "via": "exact"
+    }
+  ]
+}

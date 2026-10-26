@@ -1,0 +1,45 @@
+{
+  "frontmatter": {
+    "title": "Tags",
+    "tags": "alpha, beta"
+  },
+  "headings": [
+    {
+      "line": 9,
+      "level": 1,
+      "text": "Heading not a tag",
+      "anchor": "heading-not-a-tag"
+    }
+  ],
+  "links": [
+    {
+      "raw": "[[Page#Heading]]",
+      "target": "Page",
+      "label": null,
+      "fragment": "Heading",
+      "fragment_kind": "heading",
+      "prefix": null,
+      "embed": false,
+      "line": 7
+    }
+  ],
+  "block_ids": [],
+  "tags": {
+    "frontmatter": [
+      "alpha",
+      "beta"
+    ],
+    "inline": [
+      "one",
+      "two-three",
+      "漢字タグ",
+      "nested/child",
+      "last",
+      "paren"
+    ]
+  },
+  "callouts": [],
+  "directives": [],
+  "envelopes": [],
+  "props": []
+}

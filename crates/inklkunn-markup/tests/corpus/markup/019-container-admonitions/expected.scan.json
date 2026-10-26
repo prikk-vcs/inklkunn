@@ -1,0 +1,35 @@
+{
+  "frontmatter": null,
+  "headings": [],
+  "links": [],
+  "block_ids": [],
+  "tags": {
+    "frontmatter": [],
+    "inline": []
+  },
+  "callouts": [],
+  "directives": [
+    {
+      "line": 1,
+      "name": "note",
+      "attrs": {},
+      "inline": false
+    },
+    {
+      "line": 5,
+      "name": "warning",
+      "attrs": {},
+      "inline": false
+    },
+    {
+      "line": 9,
+      "name": "toc",
+      "attrs": {
+        "depth": "2"
+      },
+      "inline": false
+    }
+  ],
+  "envelopes": [],
+  "props": []
+}

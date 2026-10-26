@@ -1,0 +1,95 @@
+{
+  "frontmatter": null,
+  "headings": [],
+  "links": [
+    {
+      "raw": "[[Target|]]",
+      "target": "Target",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "[[|Label]]",
+      "target": "",
+      "label": "Label",
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "[[A|B|C]]",
+      "target": "A",
+      "label": "B|C",
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "[[ spaced target | spaced label ]]",
+      "target": "spaced target",
+      "label": "spaced label",
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "[[Target#]]",
+      "target": "Target",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "[[Target#^]]",
+      "target": "Target",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "[[a]]",
+      "target": "a",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "[[b]]",
+      "target": "b",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 1
+    }
+  ],
+  "block_ids": [],
+  "tags": {
+    "frontmatter": [],
+    "inline": []
+  },
+  "callouts": [],
+  "directives": [],
+  "envelopes": [],
+  "props": []
+}

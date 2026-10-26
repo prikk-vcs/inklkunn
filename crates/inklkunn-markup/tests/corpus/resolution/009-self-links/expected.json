@@ -1,0 +1,17 @@
+{
+  "from_path": "X.md",
+  "links": [
+    {
+      "raw": "[[#Heading]]",
+      "target": "",
+      "path": "X.md",
+      "via": "self"
+    },
+    {
+      "raw": "[[#^blk]]",
+      "target": "",
+      "path": "X.md",
+      "via": "self"
+    }
+  ]
+}

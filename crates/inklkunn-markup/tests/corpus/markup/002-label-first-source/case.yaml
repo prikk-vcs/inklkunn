@@ -1,0 +1,5 @@
+dialect: gollum
+label_order: label-first
+convert:
+- portable
+- obsidian

@@ -1,0 +1,14 @@
+convert:
+- static
+- gollum
+from_path: Home.md
+interwiki:
+  wikipedia: https://en.wikipedia.org/wiki/{title}
+  wp: https://en.wikipedia.org/wiki/{title}
+namespaces:
+- Talk
+pages:
+- path: Talk:Edit Conflicts.md
+  title: Talk:Edit Conflicts
+- path: Edit Conflicts.md
+  title: Edit Conflicts

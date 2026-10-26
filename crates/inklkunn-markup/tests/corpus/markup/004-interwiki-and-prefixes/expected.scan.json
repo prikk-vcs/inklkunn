@@ -1,0 +1,65 @@
+{
+  "frontmatter": null,
+  "headings": [],
+  "links": [
+    {
+      "raw": "[[wikipedia:Edit conflict]]",
+      "target": "wikipedia:Edit conflict",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": "wikipedia",
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "[[wp:Wiki|the article]]",
+      "target": "wp:Wiki",
+      "label": "the article",
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": "wp",
+      "embed": false,
+      "line": 1
+    },
+    {
+      "raw": "[[Talk:Edit Conflicts]]",
+      "target": "Talk:Edit Conflicts",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": "Talk",
+      "embed": false,
+      "line": 2
+    },
+    {
+      "raw": "[[Unknown:Thing]]",
+      "target": "Unknown:Thing",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": "Unknown",
+      "embed": false,
+      "line": 2
+    },
+    {
+      "raw": "[[Edit Conflicts]]",
+      "target": "Edit Conflicts",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 2
+    }
+  ],
+  "block_ids": [],
+  "tags": {
+    "frontmatter": [],
+    "inline": []
+  },
+  "callouts": [],
+  "directives": [],
+  "envelopes": [],
+  "props": []
+}

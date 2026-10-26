@@ -46,10 +46,13 @@ jobs:
         run: |
           set -euo pipefail
           SHIM="$(mktemp -d)"
-          ln -s "$(rustup which cargo)" "$SHIM/cargo"
-          ln -s "$(rustup which rustc)" "$SHIM/rustc"
+          # Everything the build needs stays reachable (compiler, rustdoc for doctests, the system
+          # linker and shell); only prikk's directory is left out, so the driver's self-skip is exercised.
+          for tool in cargo rustc rustdoc; do ln -s "$(rustup which "$tool")" "$SHIM/$tool"; done
           ln -s "$(command -v rustup)" "$SHIM/rustup"
-          PATH="$SHIM" cargo test --workspace --locked -- --nocapture 2>&1 | tee shimmed.log
+          SYSTEM_PATH="$(echo "$PATH" | tr ':' '\n' | grep -v -x "$HOME/.local/bin" | paste -sd:)"
+          ! PATH="$SHIM:$SYSTEM_PATH" command -v prikk >/dev/null || { echo "prikk is still on PATH"; exit 1; }
+          PATH="$SHIM:$SYSTEM_PATH" cargo test --workspace --locked -- --nocapture 2>&1 | tee shimmed.log
           grep -q "skipping: prikk not on PATH" shimmed.log || echo "note: no self-skip line yet (no prikk-dependent test exists)"
       - name: Rustdoc (-D warnings)
         run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked

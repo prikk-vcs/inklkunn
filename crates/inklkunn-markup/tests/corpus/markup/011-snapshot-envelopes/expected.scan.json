@@ -1,0 +1,107 @@
+{
+  "frontmatter": null,
+  "headings": [],
+  "links": [
+    {
+      "raw": "[[Decisions/ADR-001]]",
+      "target": "Decisions/ADR-001",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 2
+    }
+  ],
+  "block_ids": [],
+  "tags": {
+    "frontmatter": [],
+    "inline": []
+  },
+  "callouts": [
+    {
+      "line": 6,
+      "type": "WARNING",
+      "fold": null,
+      "title": null
+    }
+  ],
+  "directives": [],
+  "envelopes": [
+    {
+      "line": 1,
+      "kind": "macro",
+      "name": "children",
+      "engine": "examplewiki",
+      "src": "{{children path=\"Decisions\"}}",
+      "params": null,
+      "at": "2026-10-04T02:00:00Z",
+      "target": null,
+      "id": null,
+      "depth": 0,
+      "body": "- [[Decisions/ADR-001]]"
+    },
+    {
+      "line": 5,
+      "kind": "template",
+      "name": "Warning",
+      "engine": null,
+      "src": null,
+      "params": {
+        "text": "Be careful"
+      },
+      "at": null,
+      "target": null,
+      "id": null,
+      "depth": 0,
+      "body": "> [!WARNING]\n> Be careful"
+    },
+    {
+      "line": 10,
+      "kind": "macro",
+      "name": "inner",
+      "engine": null,
+      "src": null,
+      "params": null,
+      "at": null,
+      "target": null,
+      "id": null,
+      "depth": 1,
+      "body": "inner"
+    },
+    {
+      "line": 10,
+      "kind": "macro",
+      "name": "outer",
+      "engine": null,
+      "src": null,
+      "params": null,
+      "at": null,
+      "target": null,
+      "id": null,
+      "depth": 0,
+      "body": "outer <!-- wiki:snapshot kind=\"macro\" name=\"inner\" -->inner<!-- /wiki:snapshot --> text"
+    },
+    {
+      "line": 12,
+      "kind": "macro",
+      "name": "pagecount",
+      "engine": null,
+      "src": null,
+      "params": null,
+      "at": null,
+      "target": null,
+      "id": null,
+      "depth": 0,
+      "body": "1,248"
+    },
+    {
+      "line": 14,
+      "kind": "query",
+      "name": "unclosed",
+      "engine": null,
+      "unclosed": true
+    }
+  ],
+  "props": []
+}

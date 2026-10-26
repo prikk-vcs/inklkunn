@@ -1,0 +1,8 @@
+convert:
+- static
+from_path: Home.md
+pages:
+- path: 編集の競合.md
+  title: 編集の競合
+- path: Café.md
+  title: Café

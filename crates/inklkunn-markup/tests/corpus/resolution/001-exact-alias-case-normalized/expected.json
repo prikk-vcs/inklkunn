@@ -1,0 +1,65 @@
+{
+  "from_path": "Home.md",
+  "links": [
+    {
+      "raw": "[[Edit Conflicts]]",
+      "target": "Edit Conflicts",
+      "path": "Edit Conflicts.md",
+      "via": "exact"
+    },
+    {
+      "raw": "[[edit conflicts]]",
+      "target": "edit conflicts",
+      "path": "Edit Conflicts.md",
+      "via": "case"
+    },
+    {
+      "raw": "[[Edit_Conflicts]]",
+      "target": "Edit_Conflicts",
+      "path": "Edit Conflicts.md",
+      "via": "normalized"
+    },
+    {
+      "raw": "[[edit-conflicts]]",
+      "target": "edit-conflicts",
+      "path": "Edit Conflicts.md",
+      "via": "normalized"
+    },
+    {
+      "raw": "[[Editing collisions]]",
+      "target": "Editing collisions",
+      "path": "Edit Conflicts.md",
+      "via": "alias"
+    },
+    {
+      "raw": "[[EDITING  COLLISIONS]]",
+      "target": "EDITING  COLLISIONS",
+      "path": "Edit Conflicts.md",
+      "via": "normalized"
+    },
+    {
+      "raw": "[[Guides/Getting Started]]",
+      "target": "Guides/Getting Started",
+      "path": "Guides/Getting Started.md",
+      "via": "exact"
+    },
+    {
+      "raw": "[[Getting Started]]",
+      "target": "Getting Started",
+      "path": "Guides/Getting Started.md",
+      "via": "exact"
+    },
+    {
+      "raw": "[[guides/getting-started]]",
+      "target": "guides/getting-started",
+      "path": "Guides/Getting Started.md",
+      "via": "normalized"
+    },
+    {
+      "raw": "[[Nope]]",
+      "target": "Nope",
+      "path": null,
+      "via": "dangling"
+    }
+  ]
+}

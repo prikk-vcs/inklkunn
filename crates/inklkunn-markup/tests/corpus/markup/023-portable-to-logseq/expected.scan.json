@@ -1,0 +1,62 @@
+{
+  "frontmatter": null,
+  "headings": [],
+  "links": [
+    {
+      "raw": "[[Page A|label]]",
+      "target": "Page A",
+      "label": "label",
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": false,
+      "line": 4
+    },
+    {
+      "raw": "[[Page A#^64f1a2b3-0000-4000-8000-000000000001]]",
+      "target": "Page A",
+      "label": null,
+      "fragment": "64f1a2b3-0000-4000-8000-000000000001",
+      "fragment_kind": "block",
+      "prefix": null,
+      "embed": false,
+      "line": 4
+    },
+    {
+      "raw": "![[Page B]]",
+      "target": "Page B",
+      "label": null,
+      "fragment": null,
+      "fragment_kind": null,
+      "prefix": null,
+      "embed": true,
+      "line": 4
+    },
+    {
+      "raw": "[[Page C#Heading]]",
+      "target": "Page C",
+      "label": null,
+      "fragment": "Heading",
+      "fragment_kind": "heading",
+      "prefix": null,
+      "embed": false,
+      "line": 4
+    }
+  ],
+  "block_ids": [],
+  "tags": {
+    "frontmatter": [],
+    "inline": []
+  },
+  "callouts": [
+    {
+      "line": 1,
+      "type": "TIP",
+      "fold": null,
+      "title": "Title"
+    }
+  ],
+  "directives": [],
+  "envelopes": [],
+  "props": []
+}

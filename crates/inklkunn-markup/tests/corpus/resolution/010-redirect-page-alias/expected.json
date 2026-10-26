@@ -1,0 +1,17 @@
+{
+  "from_path": "Home.md",
+  "links": [
+    {
+      "raw": "[[Editing Collisions]]",
+      "target": "Editing Collisions",
+      "path": "Editing Collisions.md",
+      "via": "exact"
+    },
+    {
+      "raw": "[[editing collisions]]",
+      "target": "editing collisions",
+      "path": "Editing Collisions.md",
+      "via": "case"
+    }
+  ]
+}
