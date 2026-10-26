@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | The dated brief a new session reads **first**: where the project is, what is pending on whom, and the issue register. Updated at every milestone, RFC disposition and owner ruling. |
-| As of | 2026-10-27 — requirements v0.1 **approved and baselined**; the design set v0.1 (external design, threat model, internal design) is written; **next: RFCs 001, 002 and 010 with their handoffs** |
+| As of | 2026-10-27 — requirements v0.1 approved and baselined; the design set v0.1 written; **RFCs 001, 002 and 010 proposed with their handoffs — awaiting the owner's acceptance** |
 | Read next | [`src/inklkunn-00-project-charter.md`](src/inklkunn-00-project-charter.md) → [`../ROADMAP.md`](../ROADMAP.md) → [`src/inklkunn-01-requirements-spec.md`](src/inklkunn-01-requirements-spec.md) → [`src/inklkunn-02-external-design.md`](src/inklkunn-02-external-design.md) → [`src/inklkunn-03-threat-model.md`](src/inklkunn-03-threat-model.md) → [`src/inklkunn-04-internal-design.md`](src/inklkunn-04-internal-design.md) → [`../rfcs/README.md`](../rfcs/README.md) |
 
 ## Where we are
@@ -22,8 +22,10 @@
 
 ## Pending on the owner
 
-- Nothing blocks. The design set is the architect's deliverable under the approved requirements; the owner
-  approves strategically significant decisions as RFCs raise them (the next ones: RFCs 001, 002, 010).
+- **Accept RFCs 001, 002 and 010** (`rfcs/proposed/`), or name what to change. Acceptance moves them to
+  `accepted/` and makes their handoffs assignable; the dev team is then organized and M0 begins. One small
+  question rides with RFC 010: whether the first release publishes a container image as well as binaries
+  (recommended: both).
 - Name the Japanese reviewers before the first catalog ships (DR-7).
 - Say whether the four kickoff documents the requirements transcript links exist anywhere; the work so far
   assumes they do not.
@@ -38,10 +40,9 @@
 
 ## Next
 
-RFC 001 (foundations: workspace, gates, the storage driver, the bundle layout and page model), RFC 002
-(identity, keys and signing: the signer, the key store, `authorize()`, the patch-message contract) and
-RFC 010 (upstream tracking and supply chain), each with a handoff; then the owner's acceptance, the dev team
-is organized, and M0 begins.
+On acceptance: the dev team is organized (`.git-exclude/tasks/dev-team/`), RFC 001's and RFC 010's handoffs are
+assigned together, RFC 002's follows when 001 has landed; M0 begins. The architect drafts RFC 003 (read path
+and rendering) meanwhile.
 
 ## Issue register
 
