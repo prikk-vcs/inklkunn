@@ -1,8 +1,8 @@
 # RFC 001 — Foundations: the workspace and its gates, the storage driver, and the wiki repository layout
 
-**Status.** **Proposed** (2026-10-27, by the architect) — the first inklkunn RFC and the substrate every later
-one sits on. The implementer must not start until the owner accepts it and it moves to `accepted/`.
-Handoff (not startable until then): [`../handoffs/001-foundations/foundations-handoff-v1.md`](../handoffs/001-foundations/foundations-handoff-v1.md).
+**Status.** **Accepted by the owner 2026-10-27** (*"Accepted."*); proposed the same day by the architect. The
+first inklkunn RFC and the substrate every later one sits on. **The implementer may start** per the handoff,
+which is assignable now: [`../handoffs/001-foundations/foundations-handoff-v1.md`](../handoffs/001-foundations/foundations-handoff-v1.md).
 **Tracks.** ROADMAP M0 → M1, theme T1. Requirements `PU-3`, `PU-7`, `CM-1 … CM-5`, `CM-7`, `INT-1 … INT-3`,
 `INT-10`, `SEC-5`, `SEC-7`, `SEC-8`, `OPS-1`, `OPS-5`; external design `BD-03 … BD-05`, `PK-01`, `PK-02`,
 `PK-04`, `CT-01`, `CT-02`; internal design `CR-*`, `LAY-*`, `STO-*`, `MK-*`, `DM-1`, `DM-2`, `ENF-1`,

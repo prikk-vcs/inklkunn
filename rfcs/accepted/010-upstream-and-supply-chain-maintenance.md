@@ -1,8 +1,10 @@
 # RFC 010 — Upstream tracking and supply-chain maintenance: two fast upstreams, one checked floor, gates at every project event
 
-**Status.** **Proposed** (2026-10-27, by the architect). Numbered 010 by the roadmap's plan so that 003–009 keep
+**Status.** **Accepted by the owner 2026-10-27** (*"Accepted."*; the open question on the container image is taken
+as the recommendation: binaries and an image from the first release). Proposed the same day by the architect.
+Numbered 010 by the roadmap's plan so that 003–009 keep
 their reserved subjects; it is written with RFC 001 because M0's workspace must carry its gates from the
-first commit. Handoff (not startable until accepted):
+first commit. Handoff, assignable now together with RFC 001's:
 [`../handoffs/010-upstream-and-supply-chain-maintenance/upstream-and-supply-chain-handoff-v1.md`](../handoffs/010-upstream-and-supply-chain-maintenance/upstream-and-supply-chain-handoff-v1.md).
 **Tracks.** ROADMAP theme T10 and §5 (release cycles); requirements `SEC-8`, `SEC-10`,
 `DUR-3`, `OPS-4`, `OPS-6`, `INT-1`, `INT-9`, `UD-1 … UD-10`, `BN-4`, `BN-5`; threat model `T-11`,

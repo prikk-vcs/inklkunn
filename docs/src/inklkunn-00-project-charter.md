@@ -119,6 +119,7 @@ The workflow, the RFC lifecycle and the handoff conventions are `.git-exclude/ro
 | 2026-10-25 | This charter and the requirements specification v0.1 written for Phase 1 approval |
 | 2026-10-27 | Requirements v0.1 **approved by the owner** and baselined; Phase 2 (the design set) begins |
 | 2026-10-27 | The design set v0.1 written; RFCs 001, 002 and 010 proposed with their handoffs |
+| 2026-10-27 | RFCs 001, 002 and 010 **accepted by the owner**; handoffs assigned; M0 begins; RFC 003 proposed |
 
 ## 8. Where to read next
 

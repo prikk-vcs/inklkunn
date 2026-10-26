@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | The implementation package for RFC 010: the gates, the workflows and the ledgers that land with M0. |
-| Status | Inherits RFC 010's: **proposed — not startable** until accepted; T1 and T2 are built together with RFC 001's T1 (the same commits). |
+| Status | Inherits RFC 010's: **accepted 2026-10-27 — assignable now**. |
 | Basis | RFC 010 (D-1 … D-10); RFC 001 D-2, D-11; planeter's `tools/pin-check`, `tools/floor-check`, `docs/dependency-policy.md`, `docs/UPSTREAM.md` and `.github/workflows/` as the house precedent (re-derived for inklkunn, not copied blindly). |
 | Audience | The dev team. |
 | Scope | `tools/floor-check`, `tools/pin-check`, `.github/workflows/{ci,supply-chain,release}.yml`, `deny.toml`, `.cargo/audit.toml`, `docs/dependency-policy.md`, `docs/src/inklkunn-upstream-dependency-ledger.md`, `docs/UPSTREAM.md`, `docs/RELEASING.md`. **Not** any product crate. |

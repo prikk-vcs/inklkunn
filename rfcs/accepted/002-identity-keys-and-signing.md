@@ -1,7 +1,7 @@
 # RFC 002 — Identity, keys and signing: who a principal is, what they may do, and how the wiki service signs on their behalf
 
-**Status.** **Proposed** (2026-10-27, by the architect). The implementer must not start until the owner accepts
-it. Handoff (not startable until then):
+**Status.** **Accepted by the owner 2026-10-27** (*"Accepted."*); proposed the same day by the architect. The
+implementer may start per the handoff **once RFC 001's tasks T1–T5 have landed and been approved**:
 [`../handoffs/002-identity-keys-and-signing/identity-keys-and-signing-handoff-v1.md`](../handoffs/002-identity-keys-and-signing/identity-keys-and-signing-handoff-v1.md).
 **Tracks.** ROADMAP M0 → M2, theme T2; the owner's ruling **DR-4**. Requirements `ID-1 … ID-9`, `PR-4`,
 `PR-12`, `GV-2` (the bootstrap role set), `SEC-1`, `SEC-3`, `SEC-4`, `SEC-6`, `PRV-2`, `INT-2`, `INT-4`;

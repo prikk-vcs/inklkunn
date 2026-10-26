@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | The implementation package for RFC 002: tasks in build order, the QA checklist from the RFC's acceptance criteria, and the definition of done and handback. A handoff never redefines its RFC. |
-| Status | Inherits RFC 002's: **proposed — not startable** until the RFC is accepted **and** RFC 001's T1–T5 have landed and been approved. |
+| Status | Inherits RFC 002's: **accepted 2026-10-27**; assignable once RFC 001's T1–T5 have landed and been approved. |
 | Basis | RFC 002 (D-1 … D-10); RFC 001 (the crates, the gates, `Storage`, the seams); internal design `SGN-*`, `AZ-*`, `DM-3 … DM-5`, `ENF-1`, `ENF-2`; external design `CT-03`, `OP-07`; threat model `T-1`, `T-2`, `T-3`, `T-12`, `INV-1`, `INV-2`, `INV-4`, `INV-10`, §7; RFC 010 D-6 (every new crate is measured). |
 | Audience | The dev team. |
 | Scope | `inklkunn-auth`, `authorize()` in `inklkunn-core`, the key store and `Accept` in `inklkunn-signer`, the message composer and parser, the reconciliation, the audit log, the key-lifecycle commands. **Not** the proposal records or the acceptance orchestration (RFC 004: this handoff builds `Accept` against a test double of the acceptance record), **not** any web page beyond what tests need. |

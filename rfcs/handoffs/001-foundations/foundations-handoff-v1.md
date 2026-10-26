@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | The implementation package for RFC 001: tasks in build order, the QA checklist drawn from the RFC's acceptance criteria, and the definition of done and handback. A handoff directs implementation and never redefines its RFC; a design conflict goes back to the RFC first. |
-| Status | Inherits RFC 001's: **proposed — not startable** until the RFC moves to `accepted/`. |
+| Status | Inherits RFC 001's: **accepted 2026-10-27 — assignable now**. |
 | Basis | RFC 001 (D-1 … D-11); internal design v0.1 (`CR-*`, `LAY-*`, `STO-*`, `MK-*`, `DM-1`, `DM-2`, `ENF-1`, `ENF-4`, `ENF-7`); external design `CT-01`, `CT-02`; threat model `C-4a`, `C-4b`, `C-9a`; RFC 010 (the gates and workflows that land with M0); the project rules (Rust 2024, tests apart from implementation, README structure, mdBook). |
 | Audience | The dev team (the mid-capability model). Read `.git-exclude/roles/mid-capability-model-operating-instructions.md` first, then `docs/STATUS.md`, then this. |
 | Scope | M0's foundation: the workspace and gates, `inklkunn-markup`, `inklkunn-prikk`, `inklkunn-store`'s wiki record, `inklkunn-core`'s seams, the two spikes, the repository conventions. **Not** the key store or signing (RFC 002), **not** any web route (RFC 003), **not** proposals (RFC 004). |

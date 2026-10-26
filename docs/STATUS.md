@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | The dated brief a new session reads **first**: where the project is, what is pending on whom, and the issue register. Updated at every milestone, RFC disposition and owner ruling. |
-| As of | 2026-10-27 — requirements v0.1 approved and baselined; the design set v0.1 written; **RFCs 001, 002 and 010 proposed with their handoffs — awaiting the owner's acceptance** |
+| As of | 2026-10-27 — **RFCs 001, 002 and 010 accepted**; handoffs 001 and 010 assigned to the dev team, 002 follows 001; M0 begins; RFC 003 proposed |
 | Read next | [`src/inklkunn-00-project-charter.md`](src/inklkunn-00-project-charter.md) → [`../ROADMAP.md`](../ROADMAP.md) → [`src/inklkunn-01-requirements-spec.md`](src/inklkunn-01-requirements-spec.md) → [`src/inklkunn-02-external-design.md`](src/inklkunn-02-external-design.md) → [`src/inklkunn-03-threat-model.md`](src/inklkunn-03-threat-model.md) → [`src/inklkunn-04-internal-design.md`](src/inklkunn-04-internal-design.md) → [`../rfcs/README.md`](../rfcs/README.md) |
 
 ## Where we are
@@ -22,10 +22,10 @@
 
 ## Pending on the owner
 
-- **Accept RFCs 001, 002 and 010** (`rfcs/proposed/`), or name what to change. Acceptance moves them to
-  `accepted/` and makes their handoffs assignable; the dev team is then organized and M0 begins. One small
-  question rides with RFC 010: whether the first release publishes a container image as well as binaries
-  (recommended: both).
+- **Accept RFC 003** (read path and rendering, `rfcs/proposed/`), or name what to change; it serves M1 and
+  can be accepted while M0 is built.
+- Start the dev team: its prepare task is `.git-exclude/tasks/dev-team/inklkunn-001-prepare.md` (a fresh
+  architect session has `.git-exclude/tasks/architect/inklkunn-001-prepare.md`).
 - Name the Japanese reviewers before the first catalog ships (DR-7).
 - Say whether the four kickoff documents the requirements transcript links exist anywhere; the work so far
   assumes they do not.
@@ -40,9 +40,10 @@
 
 ## Next
 
-On acceptance: the dev team is organized (`.git-exclude/tasks/dev-team/`), RFC 001's and RFC 010's handoffs are
-assigned together, RFC 002's follows when 001 has landed; M0 begins. The architect drafts RFC 003 (read path
-and rendering) meanwhile.
+The dev team builds M0 from `rfcs/handoffs/001-foundations/foundations-handoff-v1.md` and
+`rfcs/handoffs/010-upstream-and-supply-chain-maintenance/upstream-and-supply-chain-handoff-v1.md` (the same
+commits for the gates and workflows), returns a review request, and the architect reviews. RFC 002's handoff is
+assigned when 001's T1–T5 are approved. The architect drafts RFC 004 (proposals) next.
 
 ## Issue register
 
