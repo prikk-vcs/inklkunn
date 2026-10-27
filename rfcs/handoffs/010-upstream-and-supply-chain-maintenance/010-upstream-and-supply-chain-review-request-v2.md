@@ -93,8 +93,13 @@ mdbook 0. The pin, floor and ledger tests pass on the real workflows and each ca
 ## Release rehearsal
 
 v1's rehearsal (run 40423716043) ran the old workflow. The reworked `release.yml` (prikk in the gates job,
-the counted shimmed pass, the manifest job, image attestation) is dispatched in rehearsal mode after this
-request lands on `main`; its run id is appended to `docs/STATUS.md`.
+the counted shimmed pass, the manifest job, image attestation) was dispatched in rehearsal mode on `d90f901`
+([run 40490072717](https://github.com/prikk-vcs/inklkunn/actions/runs/40490072717)): **success** — `gates` ✓
+(both test passes, 13 self-skips counted), `binaries` ✓ for x86_64 and aarch64, `image` ✓ for amd64 and
+arm64 (the throwaway package only), `manifest` ✓ (`ghcr.io/prikk-vcs/inklkunn-rehearsal:rehearsal`), `release`
+and `crates` skipped. Two earlier dispatches failed at the gates on the robustness tests' wall-clock bound,
+which a shared runner cannot promise; the tests now bound scaling against input length instead (commits
+`d0a8307`, `d90f901`). CI: [run 40489623629](https://github.com/prikk-vcs/inklkunn/actions/runs/40489623629).
 
 ## Dependency-tree deltas
 

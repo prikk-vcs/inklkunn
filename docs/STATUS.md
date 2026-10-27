@@ -88,7 +88,10 @@
 M0's two handoffs are implemented, reviewed and corrected; their review requests **v2** are filed. On the
 owner's disposition: RFC 002's handoff is assigned (the real signer and key store, the roles; its "Notes from
 M0's review" are binding), RFC 003's handoff T1–T3 are startable, and RFC 004 (proposals, with the block-aware
-merge the spike justified) is drafted. The reworked `release.yml` is rehearsed once this lands on `main`.
+merge the spike justified) is drafted. The reworked `release.yml` was rehearsed on `d90f901`
+([run 40490072717](https://github.com/prikk-vcs/inklkunn/actions/runs/40490072717)): gates with both test
+passes, binaries for both architectures, images for both, the manifest list; release and crates skipped as
+the mode requires. CI is green from `d0a8307` on ([run 40489623629](https://github.com/prikk-vcs/inklkunn/actions/runs/40489623629)).
 
 ## Issue register
 
