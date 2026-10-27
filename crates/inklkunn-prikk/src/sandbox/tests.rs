@@ -46,7 +46,11 @@ fn unconfined_runs_the_binary_directly_with_a_cleared_environment() {
             ..CallLimits::default()
         },
     );
-    assert_eq!(c.get_program(), OsStr::new("prikk"));
+    // The name is resolved to a path before the environment is cleared (a bare name would not be found).
+    assert_eq!(
+        Path::new(c.get_program()).file_name(),
+        Some(OsStr::new("prikk"))
+    );
     assert_eq!(args_of(&c), ["branch"]);
     assert!(c.get_envs().len() == 1, "only PATH: {:?}", envs_of(&c));
 }

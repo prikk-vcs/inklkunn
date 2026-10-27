@@ -30,13 +30,15 @@ fn prikk_on_path() -> bool {
         .unwrap_or(false)
 }
 
-fn sandbox() -> Sandbox {
+/// Both policies when bubblewrap works (so the unconfined path, which GitHub's runners take, is always
+/// exercised), else the unconfined one with a visible note.
+fn policies() -> Vec<Sandbox> {
     if probe_bwrap(std::ffi::OsStr::new("bwrap")).is_ok() {
-        println!("policy: confined (bubblewrap)");
-        Sandbox::default()
+        println!("policies: confined (bubblewrap) and unconfined");
+        vec![Sandbox::default(), Sandbox::Unconfined]
     } else {
         println!("skipping: bubblewrap cannot confine a process here; running unconfined");
-        Sandbox::Unconfined
+        vec![Sandbox::Unconfined]
     }
 }
 
@@ -71,34 +73,36 @@ fn the_key_directory_is_private_and_the_constructor_checks_the_path() {
         println!("skipping: prikk not on PATH");
         return;
     }
-    let tmp = temp("keys");
-    let keys = tmp.0.join("keys");
-    let signer = BootstrapSigner::new("prikk", sandbox(), &keys).expect("signer");
-    let ids = signer.ensure_keys().expect("keys");
-    assert!(ids.author.starts_with("ed25519-"));
-    assert!(ids.maintainer.starts_with("ed25519-"));
-    assert_eq!(ids.maintainer_public_key.len(), 64);
-    let mode = std::fs::metadata(&keys).expect("dir").permissions().mode() & 0o777;
-    assert_eq!(mode, 0o700, "the key directory is private");
-    for s in seeds(&keys) {
-        assert_eq!(s.len(), 64);
-        assert_ne!(
-            s, ids.maintainer_public_key,
-            "the public key is not the seed"
-        );
-        assert!(
-            !format!("{signer:?}{ids:?}").contains(&s),
-            "a seed leaked into a debug output"
-        );
+    for (n, sandbox) in policies().into_iter().enumerate() {
+        let tmp = temp(&format!("keys-{n}"));
+        let keys = tmp.0.join("keys");
+        let signer = BootstrapSigner::new("prikk", sandbox, &keys).expect("signer");
+        let ids = signer.ensure_keys().expect("keys");
+        assert!(ids.author.starts_with("ed25519-"));
+        assert!(ids.maintainer.starts_with("ed25519-"));
+        assert_eq!(ids.maintainer_public_key.len(), 64);
+        let mode = std::fs::metadata(&keys).expect("dir").permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700, "the key directory is private");
+        for s in seeds(&keys) {
+            assert_eq!(s.len(), 64);
+            assert_ne!(
+                s, ids.maintainer_public_key,
+                "the public key is not the seed"
+            );
+            assert!(
+                !format!("{signer:?}{ids:?}").contains(&s),
+                "a seed leaked into a debug output"
+            );
+        }
+        let seed_mode = std::fs::metadata(keys.join("author.seed"))
+            .expect("seed")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(seed_mode, 0o600);
+        // Idempotent: the same ids the second time.
+        assert_eq!(signer.ensure_keys().expect("again"), ids);
     }
-    let seed_mode = std::fs::metadata(keys.join("author.seed"))
-        .expect("seed")
-        .permissions()
-        .mode()
-        & 0o777;
-    assert_eq!(seed_mode, 0o600);
-    // Idempotent: the same ids the second time.
-    assert_eq!(signer.ensure_keys().expect("again"), ids);
 }
 
 #[test]
@@ -107,13 +111,15 @@ fn a_seed_without_its_key_id_is_damaged_not_guessed() {
         println!("skipping: prikk not on PATH");
         return;
     }
-    let tmp = temp("noid");
-    let keys = tmp.0.join("keys");
-    let signer = BootstrapSigner::new("prikk", sandbox(), &keys).expect("signer");
-    signer.ensure_keys().expect("keys");
-    std::fs::remove_file(keys.join("author.seed.key-id")).expect("remove");
-    let r = signer.ensure_keys();
-    assert!(matches!(r, Err(SignerError::Damaged(_))), "{r:?}");
+    for (n, sandbox) in policies().into_iter().enumerate() {
+        let tmp = temp(&format!("noid-{n}"));
+        let keys = tmp.0.join("keys");
+        let signer = BootstrapSigner::new("prikk", sandbox, &keys).expect("signer");
+        signer.ensure_keys().expect("keys");
+        std::fs::remove_file(keys.join("author.seed.key-id")).expect("remove");
+        let r = signer.ensure_keys();
+        assert!(matches!(r, Err(SignerError::Damaged(_))), "{r:?}");
+    }
 }
 
 #[test]
@@ -122,53 +128,56 @@ fn refused_incomplete_and_sealed_are_told_apart_and_no_seed_enters_the_repositor
         println!("skipping: prikk not on PATH");
         return;
     }
-    let tmp = temp("seq");
-    let keys = tmp.0.join("keys");
-    let repo = tmp.0.join("repo");
-    std::fs::create_dir_all(&repo).expect("repo");
-    let signer = BootstrapSigner::new("prikk", sandbox(), &keys).expect("signer");
-    signer.create_repository(&repo).expect("init and trust");
+    for (n, sandbox) in policies().into_iter().enumerate() {
+        let tmp = temp(&format!("seq-{n}"));
+        let keys = tmp.0.join("keys");
+        let repo = tmp.0.join("repo");
+        std::fs::create_dir_all(&repo).expect("repo");
+        let signer = BootstrapSigner::new("prikk", sandbox, &keys).expect("signer");
+        signer.create_repository(&repo).expect("init and trust");
 
-    // Nothing to commit: prikk refuses, and the text is prikk's.
-    let empty = signer.commit_and_seal(&repo, "Nothing");
-    assert!(matches!(empty, Err(SignerError::Refused(_))), "{empty:?}");
+        // Nothing to commit: prikk refuses, and the text is prikk's.
+        let empty = signer.commit_and_seal(&repo, "Nothing");
+        assert!(matches!(empty, Err(SignerError::Refused(_))), "{empty:?}");
 
-    // A change the maintainer cannot seal (its seed unreadable): committed, not sealed, typed as such.
-    std::fs::write(repo.join("a.md"), "# A\n").expect("write");
-    let seed = keys.join("maintainer.seed");
-    let saved = std::fs::read(&seed).expect("seed");
-    std::fs::set_permissions(&seed, std::fs::Permissions::from_mode(0o000)).expect("chmod");
-    let incomplete = signer.commit_and_seal(&repo, "Add A");
-    std::fs::set_permissions(&seed, std::fs::Permissions::from_mode(0o600)).expect("chmod back");
-    assert_eq!(
-        std::fs::read(&seed).expect("seed"),
-        saved,
-        "the seed is untouched"
-    );
-    match &incomplete {
-        Err(SignerError::Incomplete {
-            step: "seal",
-            detail,
-        }) => {
-            for s in seeds(&keys) {
-                assert!(!detail.contains(&s), "a seed in an error text");
+        // A change the maintainer cannot seal (its seed unreadable): committed, not sealed, typed as such.
+        std::fs::write(repo.join("a.md"), "# A\n").expect("write");
+        let seed = keys.join("maintainer.seed");
+        let saved = std::fs::read(&seed).expect("seed");
+        std::fs::set_permissions(&seed, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+        let incomplete = signer.commit_and_seal(&repo, "Add A");
+        std::fs::set_permissions(&seed, std::fs::Permissions::from_mode(0o600))
+            .expect("chmod back");
+        assert_eq!(
+            std::fs::read(&seed).expect("seed"),
+            saved,
+            "the seed is untouched"
+        );
+        match &incomplete {
+            Err(SignerError::Incomplete {
+                step: "seal",
+                detail,
+            }) => {
+                for s in seeds(&keys) {
+                    assert!(!detail.contains(&s), "a seed in an error text");
+                }
             }
+            other => panic!("expected Incomplete at seal, got {other:?}"),
         }
-        other => panic!("expected Incomplete at seal, got {other:?}"),
-    }
 
-    // The queued patch can be sealed by a later change; the ids come back.
-    std::fs::write(repo.join("b.md"), "# B\n").expect("write");
-    let sealed = signer.commit_and_seal(&repo, "Add B").expect("sealed");
-    assert_eq!(sealed.block_id.len(), 64);
-    assert!(!sealed.patch_ids.is_empty());
+        // The queued patch can be sealed by a later change; the ids come back.
+        std::fs::write(repo.join("b.md"), "# B\n").expect("write");
+        let sealed = signer.commit_and_seal(&repo, "Add B").expect("sealed");
+        assert_eq!(sealed.block_id.len(), 64);
+        assert!(!sealed.patch_ids.is_empty());
 
-    // No seed anywhere in the repository, in any error text, or in the ids.
-    let mut all = Vec::new();
-    bytes_under(&repo, &mut all);
-    let all = String::from_utf8_lossy(&all);
-    for s in seeds(&keys) {
-        assert!(!all.contains(&s), "a seed inside the repository");
-        assert!(!format!("{empty:?}{incomplete:?}{sealed:?}").contains(&s));
+        // No seed anywhere in the repository, in any error text, or in the ids.
+        let mut all = Vec::new();
+        bytes_under(&repo, &mut all);
+        let all = String::from_utf8_lossy(&all);
+        for s in seeds(&keys) {
+            assert!(!all.contains(&s), "a seed inside the repository");
+            assert!(!format!("{empty:?}{incomplete:?}{sealed:?}").contains(&s));
+        }
     }
 }

@@ -36,13 +36,14 @@ fn prikk_on_path() -> bool {
         .unwrap_or(false)
 }
 
-fn sandbox() -> Sandbox {
+/// Both policies when bubblewrap works (GitHub's runners cannot confine and take the unconfined one).
+fn policies() -> Vec<Sandbox> {
     if probe_bwrap(std::ffi::OsStr::new("bwrap")).is_ok() {
-        println!("policy: confined (bubblewrap)");
-        Sandbox::default()
+        println!("policies: confined (bubblewrap) and unconfined");
+        vec![Sandbox::default(), Sandbox::Unconfined]
     } else {
         println!("skipping: bubblewrap cannot confine a process here; running unconfined");
-        Sandbox::Unconfined
+        vec![Sandbox::Unconfined]
     }
 }
 
@@ -65,151 +66,152 @@ fn a_created_wiki_verifies_and_has_the_bundle_layout() {
         println!("skipping: prikk not on PATH");
         return;
     }
-    let tmp = temp("create");
-    let sandbox = sandbox();
-    let layout = RootLayout::new(tmp.0.join("root"));
-    let signer =
-        BootstrapSigner::new("prikk", sandbox.clone(), tmp.0.join("keys")).expect("signer");
-    let storage = storage(sandbox);
-    let store = MemoryStore::new();
+    for (n, sandbox) in policies().into_iter().enumerate() {
+        let tmp = temp(&format!("create-{n}"));
+        let layout = RootLayout::new(tmp.0.join("root"));
+        let signer =
+            BootstrapSigner::new("prikk", sandbox.clone(), tmp.0.join("keys")).expect("signer");
+        let storage = storage(sandbox);
+        let store = MemoryStore::new();
 
-    let slug = Slug::new("first-wiki").expect("slug");
-    let created = create_wiki(
-        &store,
-        &layout,
-        &signer,
-        &storage,
-        NewWiki::new(slug.clone(), name("First Wiki")),
-        "0.0.0",
-    )
-    .unwrap_or_else(|e| panic!("{e}"));
+        let slug = Slug::new("first-wiki").expect("slug");
+        let created = create_wiki(
+            &store,
+            &layout,
+            &signer,
+            &storage,
+            NewWiki::new(slug.clone(), name("First Wiki")),
+            "0.0.0",
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
 
-    // CT-02 layout, and nothing of ours inside .prikk.
-    check_layout(&created.repo).unwrap_or_else(|e| panic!("{e}"));
-    assert!(created.repo.join(".prikk").is_dir());
-    assert!(created.repo.starts_with(layout.root()));
-    assert!(
-        !created.repo.to_string_lossy().contains("first-wiki"),
-        "the directory is the id's"
-    );
-
-    // The record carries key ids (never seeds) and the verification.
-    let record = store.by_slug(&slug).expect("record");
-    assert!(
-        record
-            .author_key_id
-            .as_deref()
-            .is_some_and(|k| k.starts_with("ed25519-"))
-    );
-    assert!(
-        record
-            .maintainer_key_id
-            .as_deref()
-            .is_some_and(|k| k.starts_with("ed25519-"))
-    );
-    assert_eq!(record.verification.state, VerificationState::Verified);
-    assert!(record.verification.at.is_some());
-    assert_eq!(record, created.record);
-
-    // The repository verifies through the read driver, and the first change is the help page.
-    let v = storage.verify(&created.repo).expect("verify");
-    assert!(v.verdict.ok);
-    let main = Point::View(record.default_view.clone());
-    let tree = storage.tree(&created.repo, &main, None).expect("tree");
-    let paths: Vec<&str> = tree.entries.iter().map(|e| e.path.as_str()).collect();
-    for expected in [
-        HELP_PAGE,
-        "wiki-bundle.yaml",
-        ".prikkignore",
-        "attachments/.keep",
-        "knowledge/.keep",
-        "governance/.keep",
-    ] {
-        assert!(paths.contains(&expected), "{expected} in {paths:?}");
-    }
-    let history = storage
-        .history(&created.repo, &main, None)
-        .expect("history");
-    assert_eq!(history.blocks.len(), 1);
-    assert_eq!(
-        history.blocks.first().map(|b| b.block_id.as_str()),
-        Some(created.first_block_id.as_str())
-    );
-    let message = &history
-        .blocks
-        .first()
-        .expect("block")
-        .patch_messages
-        .first()
-        .expect("patch")
-        .message;
-    let lines: Vec<&str> = message.lines().collect();
-    assert_eq!(lines.first().copied(), Some("Create the wiki First Wiki"));
-    assert_eq!(lines.get(1).copied(), Some(""));
-    assert_eq!(
-        lines.get(2..),
-        Some(
-            &[
-                "Proposed-By: system (inklkunn)",
-                "Accepted-By: system (inklkunn)",
-                "Kind: system"
-            ][..]
-        ),
-        "{message}"
-    );
-    let help = storage
-        .read(&created.repo, &main, HELP_PAGE, 1 << 20)
-        .expect("help");
-    let page = inklkunn_markup::Page::parse(&String::from_utf8_lossy(&help)).expect("parses");
-    assert_eq!(page.metadata.title.as_deref(), Some("Help"));
-    let id = page
-        .metadata
-        .id
-        .as_deref()
-        .expect("the help page has an id");
-    assert!(inklkunn_store::WikiId::parse(id).is_some(), "a UUID: {id}");
-
-    // No seed anywhere in the repository or the record.
-    let seeds: Vec<String> = ["author", "maintainer"]
-        .iter()
-        .map(|r| {
-            std::fs::read_to_string(tmp.0.join("keys").join(format!("{r}.seed")))
-                .expect("seed")
-                .trim()
-                .to_owned()
-        })
-        .collect();
-    let mut repo_bytes = Vec::new();
-    bytes_under(&created.repo, &mut repo_bytes);
-    let repo_text = String::from_utf8_lossy(&repo_bytes);
-    for seed in &seeds {
-        assert_eq!(seed.len(), 64);
-        let dump = format!("{record:?}{created:?}");
-        assert!(!dump.contains(seed.as_str()), "a seed leaked into a record");
+        // CT-02 layout, and nothing of ours inside .prikk.
+        check_layout(&created.repo).unwrap_or_else(|e| panic!("{e}"));
+        assert!(created.repo.join(".prikk").is_dir());
+        assert!(created.repo.starts_with(layout.root()));
         assert!(
-            !repo_text.contains(seed.as_str()),
-            "a seed inside the repository"
+            !created.repo.to_string_lossy().contains("first-wiki"),
+            "the directory is the id's"
+        );
+
+        // The record carries key ids (never seeds) and the verification.
+        let record = store.by_slug(&slug).expect("record");
+        assert!(
+            record
+                .author_key_id
+                .as_deref()
+                .is_some_and(|k| k.starts_with("ed25519-"))
+        );
+        assert!(
+            record
+                .maintainer_key_id
+                .as_deref()
+                .is_some_and(|k| k.starts_with("ed25519-"))
+        );
+        assert_eq!(record.verification.state, VerificationState::Verified);
+        assert!(record.verification.at.is_some());
+        assert_eq!(record, created.record);
+
+        // The repository verifies through the read driver, and the first change is the help page.
+        let v = storage.verify(&created.repo).expect("verify");
+        assert!(v.verdict.ok);
+        let main = Point::View(record.default_view.clone());
+        let tree = storage.tree(&created.repo, &main, None).expect("tree");
+        let paths: Vec<&str> = tree.entries.iter().map(|e| e.path.as_str()).collect();
+        for expected in [
+            HELP_PAGE,
+            "wiki-bundle.yaml",
+            ".prikkignore",
+            "attachments/.keep",
+            "knowledge/.keep",
+            "governance/.keep",
+        ] {
+            assert!(paths.contains(&expected), "{expected} in {paths:?}");
+        }
+        let history = storage
+            .history(&created.repo, &main, None)
+            .expect("history");
+        assert_eq!(history.blocks.len(), 1);
+        assert_eq!(
+            history.blocks.first().map(|b| b.block_id.as_str()),
+            Some(created.first_block_id.as_str())
+        );
+        let message = &history
+            .blocks
+            .first()
+            .expect("block")
+            .patch_messages
+            .first()
+            .expect("patch")
+            .message;
+        let lines: Vec<&str> = message.lines().collect();
+        assert_eq!(lines.first().copied(), Some("Create the wiki First Wiki"));
+        assert_eq!(lines.get(1).copied(), Some(""));
+        assert_eq!(
+            lines.get(2..),
+            Some(
+                &[
+                    "Proposed-By: system (inklkunn)",
+                    "Accepted-By: system (inklkunn)",
+                    "Kind: system"
+                ][..]
+            ),
+            "{message}"
+        );
+        let help = storage
+            .read(&created.repo, &main, HELP_PAGE, 1 << 20)
+            .expect("help");
+        let page = inklkunn_markup::Page::parse(&String::from_utf8_lossy(&help)).expect("parses");
+        assert_eq!(page.metadata.title.as_deref(), Some("Help"));
+        let id = page
+            .metadata
+            .id
+            .as_deref()
+            .expect("the help page has an id");
+        assert!(inklkunn_store::WikiId::parse(id).is_some(), "a UUID: {id}");
+
+        // No seed anywhere in the repository or the record.
+        let seeds: Vec<String> = ["author", "maintainer"]
+            .iter()
+            .map(|r| {
+                std::fs::read_to_string(tmp.0.join("keys").join(format!("{r}.seed")))
+                    .expect("seed")
+                    .trim()
+                    .to_owned()
+            })
+            .collect();
+        let mut repo_bytes = Vec::new();
+        bytes_under(&created.repo, &mut repo_bytes);
+        let repo_text = String::from_utf8_lossy(&repo_bytes);
+        for seed in &seeds {
+            assert_eq!(seed.len(), 64);
+            let dump = format!("{record:?}{created:?}");
+            assert!(!dump.contains(seed.as_str()), "a seed leaked into a record");
+            assert!(
+                !repo_text.contains(seed.as_str()),
+                "a seed inside the repository"
+            );
+        }
+
+        // A second wiki with the same slug is refused before anything is written.
+        let before = std::fs::read_dir(layout.root()).expect("root").count();
+        let again = create_wiki(
+            &store,
+            &layout,
+            &signer,
+            &storage,
+            NewWiki::new(slug, name("Again")),
+            "0.0.0",
+        );
+        assert!(
+            matches!(again, Err(CreateWikiError::Store(StoreError::SlugTaken(_)))),
+            "{again:?}"
+        );
+        assert_eq!(
+            std::fs::read_dir(layout.root()).expect("root").count(),
+            before
         );
     }
-
-    // A second wiki with the same slug is refused before anything is written.
-    let before = std::fs::read_dir(layout.root()).expect("root").count();
-    let again = create_wiki(
-        &store,
-        &layout,
-        &signer,
-        &storage,
-        NewWiki::new(slug, name("Again")),
-        "0.0.0",
-    );
-    assert!(
-        matches!(again, Err(CreateWikiError::Store(StoreError::SlugTaken(_)))),
-        "{again:?}"
-    );
-    assert_eq!(
-        std::fs::read_dir(layout.root()).expect("root").count(),
-        before
-    );
 }
 
 fn bytes_under(dir: &Path, out: &mut Vec<u8>) {
@@ -245,53 +247,55 @@ fn a_failed_creation_leaves_no_record_and_no_directories() {
         println!("skipping: prikk not on PATH");
         return;
     }
-    let tmp = temp("fail");
-    let sandbox = sandbox();
-    let layout = RootLayout::new(tmp.0.join("root"));
-    let signer = FailsAtSeal(
-        BootstrapSigner::new("prikk", sandbox.clone(), tmp.0.join("keys")).expect("signer"),
-    );
-    let storage = storage(sandbox.clone());
-    let store = MemoryStore::new();
-    let slug = Slug::new("doomed").expect("slug");
-    let r = create_wiki(
-        &store,
-        &layout,
-        &signer,
-        &storage,
-        NewWiki::new(slug.clone(), name("Doomed")),
-        "0.0.0",
-    );
-    match r {
-        Err(CreateWikiError::Signer {
-            step: "seal",
-            error: SignerError::Refused(_),
-            cleanup: Cleanup::Removed,
-        }) => {}
-        other => panic!("expected a seal failure with the attempt removed, got {other:?}"),
+    for (n, sandbox) in policies().into_iter().enumerate() {
+        let tmp = temp(&format!("fail-{n}"));
+        let layout = RootLayout::new(tmp.0.join("root"));
+        let signer = FailsAtSeal(
+            BootstrapSigner::new("prikk", sandbox.clone(), tmp.0.join("keys")).expect("signer"),
+        );
+        let storage = storage(sandbox.clone());
+        let store = MemoryStore::new();
+        let slug = Slug::new("doomed").expect("slug");
+        let r = create_wiki(
+            &store,
+            &layout,
+            &signer,
+            &storage,
+            NewWiki::new(slug.clone(), name("Doomed")),
+            "0.0.0",
+        );
+        match r {
+            Err(CreateWikiError::Signer {
+                step: "seal",
+                error: SignerError::Refused(_),
+                cleanup: Cleanup::Removed,
+            }) => {}
+            other => panic!("expected a seal failure with the attempt removed, got {other:?}"),
+        }
+        assert_eq!(store.by_slug(&slug).err(), Some(StoreError::NotFound));
+        assert!(store.list().expect("list").is_empty());
+        // The root holds no shard directory with anything in it.
+        for shard in std::fs::read_dir(layout.root())
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            assert_eq!(entries(&shard.path()), 0, "{:?}", shard.path());
+        }
+        // And the slug is free for a real creation afterwards.
+        let good =
+            BootstrapSigner::new("prikk", sandbox.clone(), tmp.0.join("keys")).expect("signer");
+        let created = create_wiki(
+            &store,
+            &layout,
+            &good,
+            &storage,
+            NewWiki::new(slug, name("Doomed")),
+            "0.0.0",
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(created.record.slug.as_str(), "doomed");
     }
-    assert_eq!(store.by_slug(&slug).err(), Some(StoreError::NotFound));
-    assert!(store.list().expect("list").is_empty());
-    // The root holds no shard directory with anything in it.
-    for shard in std::fs::read_dir(layout.root())
-        .into_iter()
-        .flatten()
-        .flatten()
-    {
-        assert_eq!(entries(&shard.path()), 0, "{:?}", shard.path());
-    }
-    // And the slug is free for a real creation afterwards.
-    let good = BootstrapSigner::new("prikk", sandbox.clone(), tmp.0.join("keys")).expect("signer");
-    let created = create_wiki(
-        &store,
-        &layout,
-        &good,
-        &storage,
-        NewWiki::new(slug, name("Doomed")),
-        "0.0.0",
-    )
-    .unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(created.record.slug.as_str(), "doomed");
 }
 
 #[test]

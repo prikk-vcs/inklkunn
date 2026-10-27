@@ -262,7 +262,8 @@ impl Sandbox {
     ) -> Command {
         let (inner, prlimit) = match self {
             Sandbox::Unconfined => {
-                let mut c = Command::new(prikk_binary);
+                // The environment is cleared, so a bare name must be resolved here, not by the shell's PATH.
+                let mut c = Command::new(resolve_binary(prikk_binary));
                 c.current_dir(&mounts.repo).args(args);
                 c.env_clear().env("PATH", "/usr/bin:/bin");
                 for (k, v) in &mounts.env {

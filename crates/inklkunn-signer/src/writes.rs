@@ -121,7 +121,8 @@ impl Writes {
     /// A runner for `binary` under `sandbox`.
     pub(crate) fn new(binary: impl Into<std::ffi::OsString>, sandbox: Sandbox) -> Self {
         Writes {
-            binary: binary.into(),
+            // Resolved once, like the driver does at `open`: the sandbox clears the environment.
+            binary: inklkunn_prikk::sandbox::resolve_binary(&binary.into()).into_os_string(),
             sandbox,
         }
     }
