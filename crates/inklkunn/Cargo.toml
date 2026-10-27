@@ -13,6 +13,7 @@ name = "inklkunn"
 path = "src/main.rs"
 
 [dependencies]
+inklkunn-prikk = { path = "../inklkunn-prikk", version = "0.0.0" }
 
 [lints]
 workspace = true

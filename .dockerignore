@@ -1,0 +1,4 @@
+# The image is built from the staged release binaries only (release.yml); nothing else is context.
+*
+!ctx/
+!Dockerfile

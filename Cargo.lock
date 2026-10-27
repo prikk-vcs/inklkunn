@@ -188,6 +188,9 @@ dependencies = [
 [[package]]
 name = "inklkunn"
 version = "0.0.0"
+dependencies = [
+ "inklkunn-prikk",
+]
 
 [[package]]
 name = "inklkunn-auth"
@@ -238,6 +241,7 @@ version = "0.0.0"
 name = "inklkunn-prikk"
 version = "0.0.0"
 dependencies = [
+ "inklkunn-prikk",
  "serde",
  "serde_json",
 ]
@@ -247,6 +251,7 @@ name = "inklkunn-signer"
 version = "0.0.0"
 dependencies = [
  "inklkunn-prikk",
+ "inklkunn-signer",
 ]
 
 [[package]]

@@ -1,118 +1,112 @@
-//! *Create wiki* (RFC 001 D-5, D-8, D-9): the store record, the root layout, the repository, the bundle
-//! files, the first page sealed as a system change, and the first verification. The write steps go through
-//! a [`RepositoryBootstrap`], the seam the signer fills; in M0 that is `inklkunn-signer`'s bootstrap
-//! signer, which this crate adapts here so that the signer never depends upward.
+//! *Create wiki* (RFC 001 D-5, D-8, D-9): the record, the root layout, the repository, the bundle files,
+//! the first page sealed as a system change, and the first verification. **All or nothing**: the record is
+//! built first but stored last, after the repository exists, is sealed and verifies; a failure anywhere
+//! before that removes the directories the attempt made (the id was fresh and nothing referenced them) and
+//! says so. The write steps go through [`RepositoryBootstrap`], the signer's seam.
 
 use std::path::{Path, PathBuf};
 
 use inklkunn_prikk::{Storage, StorageError};
+pub use inklkunn_signer::RepositoryBootstrap;
 use inklkunn_store::{
-    NewWiki, RootLayout, StoreError, Verification, VerificationState, WikiRecord, WikiStore,
+    NewWiki, RootLayout, StoreError, Verification, VerificationState, WikiId, WikiRecord, WikiStore,
 };
 
 use crate::bundle;
 
-/// The wiki-creating writes, in the signer's hands.
-pub trait RepositoryBootstrap {
-    /// Create the repository in `repo` and adopt the wiki's maintainer key; return the key ids.
-    fn create_repository(
-        &self,
-        repo: &Path,
-    ) -> Result<inklkunn_signer::KeyIds, inklkunn_signer::SignerError>;
-    /// Commit the worktree with `message` and seal it.
-    fn commit_and_seal(
-        &self,
-        repo: &Path,
-        message: &str,
-    ) -> Result<inklkunn_signer::SealedIds, inklkunn_signer::SignerError>;
+/// What happened to the directories of a failed creation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Cleanup {
+    /// The repository and scratch directories were removed; nothing is left of the attempt.
+    Removed,
+    /// Removal failed; the directory (the id's, never the name's) and the error, for the operator.
+    LeftBehind {
+        /// The repository directory.
+        repo: PathBuf,
+        /// Why it could not be removed.
+        error: String,
+    },
 }
 
-impl RepositoryBootstrap for inklkunn_signer::BootstrapSigner {
-    fn create_repository(
-        &self,
-        repo: &Path,
-    ) -> Result<inklkunn_signer::KeyIds, inklkunn_signer::SignerError> {
-        inklkunn_signer::BootstrapSigner::create_repository(self, repo)
-    }
-
-    fn commit_and_seal(
-        &self,
-        repo: &Path,
-        message: &str,
-    ) -> Result<inklkunn_signer::SealedIds, inklkunn_signer::SignerError> {
-        inklkunn_signer::BootstrapSigner::commit_and_seal(self, repo, message)
+impl std::fmt::Display for Cleanup {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Cleanup::Removed => write!(f, "nothing was left on disk"),
+            Cleanup::LeftBehind { repo, error } => write!(
+                f,
+                "the unfinished repository at {} could not be removed ({error}); remove it by hand",
+                repo.display()
+            ),
+        }
     }
 }
 
-/// Why a wiki was not created. Every variant says which step; a repository left behind is reported, never
-/// hidden, so an operator can remove or finish it.
+/// Why a wiki was not created. No variant leaves a record behind; the ones that touched the disk say what
+/// became of it.
 #[derive(Debug)]
 pub enum CreateWikiError {
-    /// The record could not be stored (slug taken, invalid, backend).
+    /// The request was refused before anything was made: the slug is taken or invalid, a field is
+    /// invalid, or the store failed.
     Store(StoreError),
     /// The root directories could not be made.
     Layout(std::io::Error),
-    /// The repository could not be created or the first change not sealed.
+    /// The signer could not create the repository or seal the first change.
     Signer {
-        /// Where the repository is, for the operator.
-        repo: PathBuf,
+        /// `create` (init and trust) or `seal` (commit and seal).
+        step: &'static str,
         /// What the signer said.
         error: inklkunn_signer::SignerError,
+        /// What became of the directories.
+        cleanup: Cleanup,
     },
     /// The bundle files could not be written.
     Files {
-        /// Where the repository is.
-        repo: PathBuf,
         /// The I/O error.
         error: std::io::Error,
+        /// What became of the directories.
+        cleanup: Cleanup,
     },
-    /// The new repository did not verify, or verification could not run.
+    /// The new repository did not verify (`None`), or verification could not run (`Some`).
     Verification {
-        /// Where the repository is.
-        repo: PathBuf,
         /// The storage error, when the call did not complete.
         error: Option<StorageError>,
+        /// What became of the directories.
+        cleanup: Cleanup,
     },
 }
 
 impl std::fmt::Display for CreateWikiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CreateWikiError::Store(e) => write!(f, "the wiki record could not be stored: {e}"),
+            CreateWikiError::Store(e) => write!(f, "the wiki was not created: {e}"),
             CreateWikiError::Layout(e) => {
                 write!(f, "the wiki's directories could not be created: {e}")
             }
-            CreateWikiError::Signer { repo, error } => {
+            CreateWikiError::Signer {
+                step,
+                error,
+                cleanup,
+            } => write!(
+                f,
+                "the repository's `{step}` step failed: {error}; {cleanup}"
+            ),
+            CreateWikiError::Files { error, cleanup } => {
                 write!(
                     f,
-                    "the repository at {} could not be created or sealed: {error}",
-                    repo.display()
-                )
-            }
-            CreateWikiError::Files { repo, error } => {
-                write!(
-                    f,
-                    "the bundle files at {} could not be written: {error}",
-                    repo.display()
+                    "the bundle files could not be written: {error}; {cleanup}"
                 )
             }
             CreateWikiError::Verification {
-                repo,
                 error: Some(e),
-            } => {
-                write!(
-                    f,
-                    "the new repository at {} could not be verified: {e}",
-                    repo.display()
-                )
-            }
-            CreateWikiError::Verification { repo, error: None } => {
-                write!(
-                    f,
-                    "the new repository at {} failed verification",
-                    repo.display()
-                )
-            }
+                cleanup,
+            } => write!(
+                f,
+                "the new repository could not be verified: {e}; {cleanup}"
+            ),
+            CreateWikiError::Verification {
+                error: None,
+                cleanup,
+            } => write!(f, "the new repository failed verification; {cleanup}"),
         }
     }
 }
@@ -130,16 +124,45 @@ pub struct CreatedWiki {
     pub first_block_id: String,
 }
 
-/// The CT-03 message of the creating change.
-pub fn creation_message(record: &WikiRecord) -> String {
+/// The longest summary line CT-03 allows (RFC 002 D-5).
+pub const SUMMARY_MAX_CHARS: usize = 120;
+
+/// A CT-03 message for a change the service itself makes (`Kind: system`): the summary line (cut to
+/// [`SUMMARY_MAX_CHARS`] characters, never containing a line break), an empty line, then the trailers in
+/// RFC 002 D-5's order. A system change has no proposal and no base, so those trailers are absent; the
+/// composer for proposals is RFC 002's handoff (T5), which this function will then call.
+pub fn system_message(summary: &str) -> String {
+    let one_line: String = summary
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    let mut cut: String = one_line.chars().take(SUMMARY_MAX_CHARS).collect();
+    if cut.chars().count() < one_line.chars().count() {
+        cut.pop();
+        cut.push('…');
+    }
     format!(
-        "Create the wiki {name}\n\nProposed-By: system (inklkunn)\nAccepted-By: system (inklkunn)\nKind: system\nWiki: {id}\n",
-        name = record.display_name,
-        id = record.id
+        "{cut}\n\nProposed-By: system (inklkunn)\nAccepted-By: system (inklkunn)\nKind: system\n"
     )
 }
 
-/// Create a wiki: record, directories, repository, bundle files, first sealed change, verification.
+/// The message of the change that creates a wiki.
+pub fn creation_message(record: &WikiRecord) -> String {
+    system_message(&format!("Create the wiki {}", record.display_name))
+}
+
+fn discard(layout: &RootLayout, id: &WikiId) -> Cleanup {
+    match layout.discard_unfinished(id) {
+        Ok(()) => Cleanup::Removed,
+        Err(e) => Cleanup::LeftBehind {
+            repo: layout.repo_dir(id),
+            error: e.to_string(),
+        },
+    }
+}
+
+/// Create a wiki: check the slug, build the record, make the directories, create the repository, write the
+/// bundle files, seal the first change, verify, and only then store the record.
 pub fn create_wiki(
     store: &dyn WikiStore,
     layout: &RootLayout,
@@ -148,57 +171,95 @@ pub fn create_wiki(
     new: NewWiki,
     inklkunn_version: &str,
 ) -> Result<CreatedWiki, CreateWikiError> {
-    let record = store.create(new).map_err(CreateWikiError::Store)?;
-    let repo = layout
-        .prepare(&record.id)
-        .map_err(CreateWikiError::Layout)?;
-    let keys = signer
-        .create_repository(&repo)
-        .map_err(|error| CreateWikiError::Signer {
-            repo: repo.clone(),
-            error,
-        })?;
-    bundle::write_layout(&repo, &record, inklkunn_version).map_err(|error| {
-        CreateWikiError::Files {
-            repo: repo.clone(),
-            error,
+    // 1. A taken slug is refused before anything touches the disk (the insert at the end is the guarantee
+    //    against a race; this is the early, cheap answer).
+    match store.by_slug(&new.slug) {
+        Ok(_) => {
+            return Err(CreateWikiError::Store(StoreError::SlugTaken(
+                new.slug.to_string(),
+            )));
         }
-    })?;
-    let sealed = signer
-        .commit_and_seal(&repo, &creation_message(&record))
-        .map_err(|error| CreateWikiError::Signer {
-            repo: repo.clone(),
-            error,
-        })?;
-    let verification = storage
-        .verify(&repo)
-        .map_err(|e| CreateWikiError::Verification {
-            repo: repo.clone(),
-            error: Some(e),
-        })?;
-    let state = if verification.verdict.ok {
-        VerificationState::Verified
-    } else {
-        VerificationState::Failed
-    };
-    let record = store
-        .set_keys(&record.id, Some(keys.author), Some(keys.maintainer), None)
-        .and_then(|_| {
-            store.set_verification(
-                &record.id,
-                Verification {
-                    state,
-                    at: Some(inklkunn_store::record::now_secs()),
-                },
-            )
-        })
-        .map_err(CreateWikiError::Store)?;
-    if !verification.verdict.ok {
-        return Err(CreateWikiError::Verification { repo, error: None });
+        Err(StoreError::NotFound) => {}
+        Err(e) => return Err(CreateWikiError::Store(e)),
     }
+    // 2. The record, validated, with a fresh id; not stored yet.
+    let mut record = WikiRecord::from_new(WikiId::new(), new, inklkunn_store::record::now_secs())
+        .map_err(|e| CreateWikiError::Store(StoreError::InvalidRequest(e)))?;
+    let id = record.id.clone();
+    // 3. The directories.
+    let repo = layout.prepare(&id).map_err(CreateWikiError::Layout)?;
+    // 4. The repository and the keys.
+    let keys = match signer.create_repository(&repo) {
+        Ok(k) => k,
+        Err(error) => {
+            return Err(CreateWikiError::Signer {
+                step: "create",
+                error,
+                cleanup: discard(layout, &id),
+            });
+        }
+    };
+    record.author_key_id = Some(keys.author);
+    record.maintainer_key_id = Some(keys.maintainer);
+    // 5. The bundle files.
+    if let Err(error) = bundle::write_layout(&repo, &record, inklkunn_version) {
+        return Err(CreateWikiError::Files {
+            error,
+            cleanup: discard(layout, &id),
+        });
+    }
+    // 6. The first change, sealed.
+    let sealed = match signer.commit_and_seal(&repo, &creation_message(&record)) {
+        Ok(s) => s,
+        Err(error) => {
+            return Err(CreateWikiError::Signer {
+                step: "seal",
+                error,
+                cleanup: discard(layout, &id),
+            });
+        }
+    };
+    // 7. Verification: a fresh repository that does not verify is not a wiki.
+    let verification = match storage.verify(&repo) {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(CreateWikiError::Verification {
+                error: Some(e),
+                cleanup: discard(layout, &id),
+            });
+        }
+    };
+    if !verification.verdict.ok {
+        return Err(CreateWikiError::Verification {
+            error: None,
+            cleanup: discard(layout, &id),
+        });
+    }
+    record.verification = Verification {
+        state: VerificationState::Verified,
+        at: Some(inklkunn_store::record::now_secs()),
+    };
+    // 8. The record, last. A lost slug race is reported as the slug being taken, and the attempt removed.
+    let record = match store.insert(record) {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = discard(layout, &id);
+            return Err(CreateWikiError::Store(e));
+        }
+    };
     Ok(CreatedWiki {
         record,
         repo,
         first_block_id: sealed.block_id,
     })
+}
+
+/// The repository directory of a wiki, for callers that hold a record.
+pub fn repo_of(layout: &RootLayout, record: &WikiRecord) -> PathBuf {
+    layout.repo_dir(&record.id)
+}
+
+/// Is `p` the repository directory of `record` under `layout`?
+pub fn is_repo_of(layout: &RootLayout, record: &WikiRecord, p: &Path) -> bool {
+    layout.repo_dir(&record.id) == p
 }

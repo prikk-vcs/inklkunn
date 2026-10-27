@@ -8,11 +8,20 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
-  # RFC 010 D-3: the prikk floor, one value with the driver constant and the Dockerfile (floor-check).
+  # RFC 010 D-3: the prikk floor, one value with the driver constant, release.yml and the Dockerfile
+  # (floor-check), and the checksum of the release asset inklkunn measured against (not fetched beside it).
   PRIKK_VERSION: "0.54.0"
+  PRIKK_SHA256_X86_64: "e998909328e4d1216c0e5ccf4b00141b32c6109498f04ba94a65cc61124ab687"
+  # The number of prikk-dependent tests: each prints `skipping: prikk not on PATH` when prikk is shimmed
+  # off, and the shimmed run fails unless exactly this many do (a new such test updates this number).
+  EXPECTED_SKIPS: "13"
 
 jobs:
   build:
@@ -25,14 +34,13 @@ jobs:
           rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy --no-self-update
           rustup default 1.99.0
           rustc --version && cargo --version
-      - name: Install prikk at the floor (checksum-verified release asset) and the sandbox tools
+      - name: Install prikk at the floor (checksum recorded in this file) and the sandbox tools
         run: |
           set -euo pipefail
           sudo apt-get update && sudo apt-get install -y --no-install-recommends bubblewrap util-linux
           T=x86_64-unknown-linux-gnu
           curl -fsSLO "https://github.com/prikk-vcs/prikk/releases/download/${PRIKK_VERSION}/prikk-${T}.tar.gz"
-          curl -fsSLO "https://github.com/prikk-vcs/prikk/releases/download/${PRIKK_VERSION}/prikk-${T}.tar.gz.sha256"
-          sha256sum -c "prikk-${T}.tar.gz.sha256"
+          echo "${PRIKK_SHA256_X86_64}  prikk-${T}.tar.gz" | sha256sum -c -
           mkdir -p "$HOME/.local/bin" && tar -xzf "prikk-${T}.tar.gz" -C "$HOME/.local/bin" prikk
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/prikk" --version
@@ -42,7 +50,7 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Test with prikk on PATH (includes the gates)
         run: cargo test --workspace --locked
-      - name: Test with prikk shimmed off PATH (the self-skips must be visible)
+      - name: Test with prikk shimmed off PATH (every self-skip must be visible, and counted)
         run: |
           set -euo pipefail
           SHIM="$(mktemp -d)"
@@ -53,7 +61,8 @@ jobs:
           SYSTEM_PATH="$(echo "$PATH" | tr ':' '\n' | grep -v -x "$HOME/.local/bin" | paste -sd:)"
           ! PATH="$SHIM:$SYSTEM_PATH" command -v prikk >/dev/null || { echo "prikk is still on PATH"; exit 1; }
           PATH="$SHIM:$SYSTEM_PATH" cargo test --workspace --locked -- --nocapture 2>&1 | tee shimmed.log
-          grep -q "skipping: prikk not on PATH" shimmed.log || echo "note: no self-skip line yet (no prikk-dependent test exists)"
+          SKIPS="$(grep -c 'skipping: prikk not on PATH' shimmed.log || true)"
+          test "$SKIPS" = "$EXPECTED_SKIPS" || { echo "expected $EXPECTED_SKIPS self-skip lines, saw $SKIPS (update EXPECTED_SKIPS when a prikk-dependent test is added or removed)"; exit 1; }
       - name: Rustdoc (-D warnings)
         run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
 
@@ -81,8 +90,8 @@ jobs:
           set -euo pipefail
           rustup toolchain install 1.99.0 --profile minimal --no-self-update
           rustup default 1.99.0
-      - name: Install cargo-deny and cargo-audit
-        run: cargo install cargo-deny cargo-audit --locked
+      - name: Install cargo-deny and cargo-audit (pinned)
+        run: cargo install cargo-deny@0.20.2 cargo-audit@0.22.2 --locked
       - name: cargo-deny
         run: cargo deny check
       - name: cargo-audit

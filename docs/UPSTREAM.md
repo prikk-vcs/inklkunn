@@ -28,10 +28,14 @@ staying true to all three (RFC 010 D-1, D-2, D-8). The record of what each upstr
   upstream ledger (status, evidence, the letter named in the version line), ROADMAP's dependency notes and
   milestone table when a schedule or ruling moved, and a hold note in the affected handoff. The letters are
   the source; the ledger is what a reader relies on.
-- Open asks as of 2026-10-27 (drafts to write): **PK-8** (the exit code of a failing `verify` verdict under
-  `--format json`, so the driver's reading of the report is confirmed against prikk's intent) and **PK-11**
-  (the 1024-byte path limit: whether it is a stable rule inklkunn should surface as a lint, and whether
-  deeper hierarchies are wanted anywhere).
+- **Open asks as of 2026-10-27: one.** `send/draft/2026-10-27-non-ascii-repository-paths.md` asks whether
+  NFC path support is scheduled (PK-21), because the answer decides whether inklkunn stores percent-encoded
+  or native paths from its first release. The first two candidates were answered by prikk's own reference
+  before a letter was drafted: PK-8 by `reference/commands.md` ("Exit codes": graded verification results are in the
+  JSON report, not the exit code) and PK-11 by `reference/path-safety.md` ("Length Caps", RFC 125 §3: 1024
+  bytes total, 255 per component, a stable platform-derived rule). PK-16's apparent run-to-run variation did
+  not reproduce (three runs agree). **Read the upstream's reference before drafting**: a letter costs the
+  owner's time; the ledger row cites the page that answered instead.
 
 ## Re-baseline procedure, per prikk release (RFC 010 D-1)
 
@@ -41,11 +45,15 @@ staying true to all three (RFC 010 D-1, D-2, D-8). The record of what each upstr
    owner's act) and record `prikk --version`.
 3. **Run the version-pinned suites with it on `PATH`** (`cargo test --workspace --locked`): the driver
    refuses an unexpected `schema_version`, so drift fails loudly. Then run once more with prikk **shimmed off
-   `PATH`** (what CI's second run sees): every prikk-dependent test must print its `skipping:` line.
+   `PATH`** (what CI's second run sees): every prikk-dependent test must print its `skipping:` line, and
+   CI fails unless exactly `EXPECTED_SKIPS` of them do (`ci.yml`, `release.yml`); a new prikk-dependent
+   test updates that number in both files.
 4. **Decide the floor.** Bump `MIN_PRIKK_VERSION` only for a verb inklkunn needs or a security or correctness
-   fix a wiki depends on. The three floors move together — `crates/inklkunn-prikk/src/lib.rs`,
-   `.github/workflows/ci.yml` (`PRIKK_VERSION`), `Dockerfile` (`ARG PRIKK_VERSION`) — and `floor-check`
-   fails until they do; every "≥ x.y.z" mention follows (README, RELEASING, ROADMAP, STATUS). A floor bump
+   fix a wiki depends on. The four floors move together — `crates/inklkunn-prikk/src/lib.rs`,
+   `.github/workflows/ci.yml` and `release.yml` (`PRIKK_VERSION`), `Dockerfile` (`ARG PRIKK_VERSION`) —
+   **with the recorded checksums of the release assets** (`PRIKK_SHA256_X86_64`, `PRIKK_SHA256_AARCH64` in
+   the workflows and the Dockerfile: download the new assets, `sha256sum` them, record the values) — and
+   `floor-check` fails until they all agree; every "≥ x.y.z" mention follows (README, RELEASING, ROADMAP, STATUS). A floor bump
    is release-relevant: the review request says so; the owner decides the version.
 5. **Re-measure the cost table** (`crates/inklkunn-prikk/src/cost.rs`): `BOUND_TO` must equal the floor
    (a test fails otherwise). Method: `cargo run --release -p inklkunn-corpus -- wiki …` for the 1 / 16 / 64 /
@@ -84,7 +92,8 @@ inklkunn links no planeter code in v1. The check is narrower:
 
 ## Supply-chain gates at project events (RFC 010 D-4)
 
-`cargo deny check` and `cargo audit` run on every push and pull request (`ci.yml`), on a weekly schedule and
-on demand (`supply-chain.yml`), in the release gate (`release.yml`), at every re-baseline, and at every RFC
-disposition checkpoint by the architect against a freshly fetched advisory database. Red becomes an
+`cargo deny check` and `cargo audit` run on every push and pull request (`ci.yml`), on demand
+(`supply-chain.yml`: RFC 010 chose checkpoints over a schedule, so that each run has a reader), in the release
+gate (`release.yml`), at every re-baseline, and at every RFC disposition checkpoint by the architect against a
+freshly fetched advisory database. Red becomes an
 issue-register entry the same day and is triaged on the ladder in `dependency-policy.md`.

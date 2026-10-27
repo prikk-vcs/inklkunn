@@ -1,8 +1,8 @@
 //! The in-memory store: tests, and the reference the SQLite store must agree with.
 
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 
-use crate::record::{NewWiki, Slug, Verification, WikiId, WikiRecord, now_secs};
+use crate::record::{DisplayName, Slug, Verification, WikiId, WikiRecord};
 use crate::{Result, StoreError, WikiStore};
 
 /// Records in a mutex.
@@ -22,10 +22,7 @@ impl MemoryStore {
         id: &WikiId,
         f: impl FnOnce(&mut WikiRecord) -> Result<()>,
     ) -> Result<WikiRecord> {
-        let mut records = self
-            .records
-            .lock()
-            .map_err(|e| StoreError::Backend(e.to_string()))?;
+        let mut records = self.records.lock().unwrap_or_else(PoisonError::into_inner);
         let Some(r) = records.iter_mut().find(|r| r.id == *id) else {
             return Err(StoreError::NotFound);
         };
@@ -35,24 +32,20 @@ impl MemoryStore {
 }
 
 impl WikiStore for MemoryStore {
-    fn create(&self, new: NewWiki) -> Result<WikiRecord> {
-        let mut records = self
-            .records
-            .lock()
-            .map_err(|e| StoreError::Backend(e.to_string()))?;
-        if records.iter().any(|r| r.slug == new.slug) {
-            return Err(StoreError::SlugTaken(new.slug.to_string()));
+    fn insert(&self, record: WikiRecord) -> Result<WikiRecord> {
+        let mut records = self.records.lock().unwrap_or_else(PoisonError::into_inner);
+        if records.iter().any(|r| r.id == record.id) {
+            return Err(StoreError::IdTaken(record.id.to_string()));
         }
-        let record = WikiRecord::from_new(WikiId::new(), new, now_secs());
+        if records.iter().any(|r| r.slug == record.slug) {
+            return Err(StoreError::SlugTaken(record.slug.to_string()));
+        }
         records.push(record.clone());
         Ok(record)
     }
 
     fn get(&self, id: &WikiId) -> Result<WikiRecord> {
-        let records = self
-            .records
-            .lock()
-            .map_err(|e| StoreError::Backend(e.to_string()))?;
+        let records = self.records.lock().unwrap_or_else(PoisonError::into_inner);
         records
             .iter()
             .find(|r| r.id == *id)
@@ -61,10 +54,7 @@ impl WikiStore for MemoryStore {
     }
 
     fn by_slug(&self, slug: &Slug) -> Result<WikiRecord> {
-        let records = self
-            .records
-            .lock()
-            .map_err(|e| StoreError::Backend(e.to_string()))?;
+        let records = self.records.lock().unwrap_or_else(PoisonError::into_inner);
         records
             .iter()
             .find(|r| r.slug == *slug)
@@ -73,10 +63,7 @@ impl WikiStore for MemoryStore {
     }
 
     fn list(&self) -> Result<Vec<WikiRecord>> {
-        let records = self
-            .records
-            .lock()
-            .map_err(|e| StoreError::Backend(e.to_string()))?;
+        let records = self.records.lock().unwrap_or_else(PoisonError::into_inner);
         Ok(records.clone())
     }
 
@@ -84,26 +71,24 @@ impl WikiStore for MemoryStore {
         &self,
         id: &WikiId,
         slug: Option<Slug>,
-        display_name: Option<String>,
+        display_name: Option<DisplayName>,
     ) -> Result<WikiRecord> {
-        if let Some(s) = &slug {
-            let records = self
-                .records
-                .lock()
-                .map_err(|e| StoreError::Backend(e.to_string()))?;
-            if records.iter().any(|r| r.slug == *s && r.id != *id) {
-                return Err(StoreError::SlugTaken(s.to_string()));
-            }
+        let mut records = self.records.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(s) = &slug
+            && records.iter().any(|r| r.slug == *s && r.id != *id)
+        {
+            return Err(StoreError::SlugTaken(s.to_string()));
         }
-        self.update(id, |r| {
-            if let Some(s) = slug {
-                r.slug = s;
-            }
-            if let Some(d) = display_name {
-                r.display_name = d;
-            }
-            Ok(())
-        })
+        let Some(r) = records.iter_mut().find(|r| r.id == *id) else {
+            return Err(StoreError::NotFound);
+        };
+        if let Some(s) = slug {
+            r.slug = s;
+        }
+        if let Some(d) = display_name {
+            r.display_name = d;
+        }
+        Ok(r.clone())
     }
 
     fn set_verification(&self, id: &WikiId, verification: Verification) -> Result<WikiRecord> {

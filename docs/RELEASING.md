@@ -1,6 +1,8 @@
 # Releasing inklkunn
 
-Releases are **bare version tags** (`X.Y.Z`) pushed by the owner; `release.yml` does the rest. Until 1.0 the
+Releases are **bare version tags** (`X.Y.Z`) pushed by the owner; `release.yml` does the rest. (Tag
+signing: the workflow verifies no signature yet; it starts to once the owner names a signing key, an open
+owner decision in `docs/STATUS.md`.) Until 1.0 the
 minor version moves at each milestone (roadmap §milestones) and the patch version for fixes. Nothing is
 released from M0; this document exists so that the first release is a rehearsed act, not a first attempt.
 
@@ -10,8 +12,9 @@ released from M0; this document exists so that the first release is a rehearsed 
    gates as tests (`cargo test --workspace --locked`), with prikk on `PATH` and shimmed off.
 2. **A fresh advisory database on the exact commit**: `cargo audit` and `cargo deny check` locally after
    `cargo audit fetch`; the result goes into the release notes' supply-chain line.
-3. **The pins reviewed**: `pin-check` passes (actions by SHA, images by digest, the toolchain pinned, the
-   MSRV job equal to `rust-version`); `floor-check` passes (one prikk floor; the corpus digest).
+3. **The pins reviewed**: `pin-check` passes (actions by SHA, images by digest, runners named, the
+   toolchain and the supply-chain tools pinned, the MSRV job equal to `rust-version`, the rehearsal guard
+   exact); `floor-check` passes (one prikk floor and one set of asset checksums; the corpus digest).
 4. **`CHANGELOG.md`**: the `[Unreleased]` section becomes `## X.Y.Z — YYYY-MM-DD` with the notes a reader
    needs; the runtime prerequisites line names the prikk floor.
 5. **Versions**: `Cargo.toml`'s workspace version is `X.Y.Z`, and so is the `version = "…"` beside every
@@ -32,12 +35,14 @@ The architect prepares; **only the owner tags** (RFC 010 D-10; the project rules
 
 ## What the workflow does
 
-`release.yml` on a tag: the gates job (fmt, clippy, tests, deny, audit, pin-check, floor-check) → the
-binaries (Linux x86_64 and aarch64, `--locked`, the pinned toolchain) with a build-info file naming the
-commit, the toolchain and the prikk floor → the container image (`ghcr.io/prikk-vcs/inklkunn:X.Y.Z`, from a
-digest-pinned base, carrying prikk at the floor, bubblewrap and prlimit) → provenance attestations for the
-tarballs and the image → the GitHub release with the `CHANGELOG.md` section and the checksums → `cargo
-publish` of the crates in dependency order (after the release run is green).
+`release.yml` on a tag: the gates job (fmt, clippy, the tests **with prikk at the floor on PATH and shimmed
+off**, deny, audit, pin-check, floor-check) → the binaries (Linux x86_64 and aarch64, `--locked`, the pinned
+toolchain) with a build-info file naming the commit, the toolchain and the prikk floor → the container image
+per architecture (`…:X.Y.Z-amd64`, `…:X.Y.Z-arm64`, from a digest-pinned base, carrying prikk at the floor
+checked against the recorded checksum, bubblewrap and prlimit) → provenance attestations for the tarballs and
+for each image digest → a manifest list under `ghcr.io/prikk-vcs/inklkunn:X.Y.Z` → the GitHub release with the
+`CHANGELOG.md` section and the checksums → `cargo publish` of the crates in dependency order (after the
+release run is green).
 
 ## Verifying a release
 
@@ -45,6 +50,7 @@ publish` of the crates in dependency order (after the release run is green).
 sha256sum -c inklkunn-x86_64-unknown-linux-gnu.tar.gz.sha256
 gh attestation verify inklkunn-x86_64-unknown-linux-gnu.tar.gz --repo prikk-vcs/inklkunn
 ./inklkunn --version   # names the commit and the prikk floor it was built for
+gh attestation verify oci://ghcr.io/prikk-vcs/inklkunn:X.Y.Z-amd64 --repo prikk-vcs/inklkunn
 ```
 
 ## If a job fails

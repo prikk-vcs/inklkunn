@@ -139,9 +139,10 @@ crate, lints as prikk's: `unwrap_used`, `expect_used` and `indexing_slicing` den
   address used only transiently (anchors that must persist are given a `^id` by the acceptance that
   attaches something to them, CM-5).
 - **MK-6 — Lint** produces suggestions with the guideline they come from (AUTH-13).
-- **MK-7 — Title ↔ path** (CT-01): a pure function and its inverse under test and fuzz: NFC, the forbidden
-  characters replaced by a documented substitute, `/` as hierarchy, case-collision suffixes, reserved names
-  refused, never escaping `pages/`.
+- **MK-7 — Title ↔ path** (CT-01): a pure function and its **exact** inverse under test and fuzz: NFC, `/`
+  as hierarchy, every non-ASCII or forbidden character percent-encoded per component (prikk's repository
+  paths are ASCII-only, ledger PK-21), a leading `.`, a trailing `.` and Windows device names encoded,
+  prikk's length caps refused, case-collision suffixes, `.`/`..` refused, never escaping `pages/`.
 
 ## 6. Data model (DM-…)
 

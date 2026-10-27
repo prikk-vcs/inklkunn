@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | The dated brief a new session reads **first**: where the project is, what is pending on whom, and the issue register. Updated at every milestone, RFC disposition and owner ruling. |
-| As of | 2026-10-27 — **RFCs 001, 002 and 010 accepted**; **M0 under construction by the architect at the owner's request** (**T1–T7 done**; review requests filed for handoffs 001 and 010; the owner or a fresh reviewing session reviews); RFC 003 proposed |
+| As of | 2026-10-27 — **RFCs 001, 002, 003 and 010 accepted**; **M0 built, reviewed and corrected** (the owner read the review requests and asked the architect to review them itself against the owner's two principles; four independent reviewing agents plus the architect's own read produced about eighty findings, all corrected on `main`; review requests **v2** filed); RFC 003's handoff v1 written; one letter to prikk drafted |
 | Read next | [`src/inklkunn-00-project-charter.md`](src/inklkunn-00-project-charter.md) → [`../ROADMAP.md`](../ROADMAP.md) → [`src/inklkunn-01-requirements-spec.md`](src/inklkunn-01-requirements-spec.md) → [`src/inklkunn-02-external-design.md`](src/inklkunn-02-external-design.md) → [`src/inklkunn-03-threat-model.md`](src/inklkunn-03-threat-model.md) → [`src/inklkunn-04-internal-design.md`](src/inklkunn-04-internal-design.md) → [`../rfcs/README.md`](../rfcs/README.md) |
 
 ## Where we are
@@ -47,11 +47,28 @@
   MRG-4 is the right place** (RFC 004). **T7**: README (IS-1 closed), CHANGELOG, SECURITY.md (RR-1), the two
   ledgers with a lock-inventory test, `UPSTREAM.md`, `RELEASING.md`, the book. No binary serves pages yet; that
   is M1 (RFC 003).
+- **2026-10-27 — M0 reviewed and corrected.** The owner stated the two principles every review applies
+  (*finally clean, safe and secure, robust and sophisticated design*; *APIs and UI/UX that cannot confuse or
+  mislead*) and asked the architect to review M0 itself. Four fresh reviewing agents (driver; signer and core;
+  store, gates and workflows; markup) and the architect's own read found about eighty issues, among them five
+  that would have reached users or operators: a ceiling hit under bubblewrap misreported as a damaged
+  repository or prikk's refusal; the 1.5 × ceiling headroom lost to a clamp; `materialize` binding an arbitrary
+  parent directory read-write; a display name able to inject trailers into a signed message; a failed
+  creation leaving a slug taken. All are corrected and each has a test that fails on the old behaviour; the
+  review requests **v2** list them (`rfcs/handoffs/001-foundations/001-foundations-review-request-v2.md`,
+  `…/010-upstream-and-supply-chain-review-request-v2.md`). Two upstream facts surfaced: **prikk refuses
+  non-ASCII repository paths** (PK-21; `title_to_path` now percent-encodes, exactly reversibly; one letter
+  drafted) and bubblewrap's own "Out of memory" exit under a ceiling (PK-9). RFC 003 was accepted and its
+  handoff v1 written (`rfcs/handoffs/003-read-path-and-rendering/`).
 
 ## Pending on the owner
 
-- **Accept RFC 003** (read path and rendering, `rfcs/proposed/`), or name what to change; it serves M1 and
-  can be accepted while M0 is built.
+- **Convey the one prikk letter** (`.git-exclude/upstream/prikk/send/draft/2026-10-27-non-ascii-repository-paths.md`):
+  is NFC path support scheduled? Its answer decides whether M1's first wikis store percent-encoded or native
+  paths (PK-21). The two earlier candidates (PK-8, PK-11) were answered by prikk's reference; no letter.
+- **Name a tag-signing key**, or confirm that releases stay unsigned tags for now (`RELEASING.md` withdrew
+  the "signed" claim; `release.yml` verifies a signature once a fingerprint is named).
+- **Dispose of the review requests v2** (Approved / Conditionally Approved / …), or ask a fresh session to.
 - Start the dev team when M0 is reviewed: its prepare task is `.git-exclude/tasks/dev-team/inklkunn-001-prepare.md`
   (a fresh architect session has `.git-exclude/tasks/architect/inklkunn-001-prepare.md`).
 - Name the Japanese reviewers before the first catalog ships (DR-7).
@@ -68,12 +85,10 @@
 
 ## Next
 
-M0's two handoffs are implemented and their review requests filed (`rfcs/handoffs/001-foundations/
-001-foundations-review-request.md`, `rfcs/handoffs/010-upstream-and-supply-chain-maintenance/
-010-upstream-and-supply-chain-review-request.md`). Because the architect implemented them, **the review should
-be the owner's or a fresh session's**, reading only `main` and the requests. On approval: RFC 002's handoff is
-assigned (the real signer and key store, the roles), RFC 003 is accepted or amended by the owner, and RFC 004
-(proposals, with the block-aware merge the spike justified) is drafted.
+M0's two handoffs are implemented, reviewed and corrected; their review requests **v2** are filed. On the
+owner's disposition: RFC 002's handoff is assigned (the real signer and key store, the roles; its "Notes from
+M0's review" are binding), RFC 003's handoff T1–T3 are startable, and RFC 004 (proposals, with the block-aware
+merge the spike justified) is drafted. The reworked `release.yml` is rehearsed once this lands on `main`.
 
 ## Issue register
 
@@ -81,10 +96,18 @@ assigned (the real signer and key store, the roles), RFC 003 is accepted or amen
 |---|---|---|---|
 | IS-1 | `README.md` is a one-line placeholder with a typo ("powerd") and does not follow the project's README structure | startup review 2026-10-24 | **closed 2026-10-27** (M0 T7): rewritten in the rules' structure |
 | IS-2 | The M0 spike on content-level merge (internal design MRG-4, roadmap R2) has no corpus yet | internal design 2026-10-27 | **closed 2026-10-27** (M0 T6): `tools/corpus` generates the histories deterministically from a seed; the spikes report carries the numbers |
-| IS-3 | prikk refuses repository paths over 1024 bytes, so the requirements' "depth 1,000" hierarchy target is unattainable and a deep title must be refused before `commit` | spike A generator 2026-10-27 | ledger PK-11; a lint and a refusal in RFC 004's handoff; an ask to prikk by letter (UD-10) |
+| IS-3 | prikk refuses repository paths over 1024 bytes (and components over 255), so the requirements' "depth 1,000" hierarchy target is unattainable and a deep title must be refused before `commit` | spike A generator 2026-10-27 | **a documented, stable prikk rule** (`reference/path-safety.md`, RFC 125 §3), so no letter: ledger PK-11; `title_to_path` refuses over either cap (RFC 003's handoff T3); a lint before the refusal (RFC 004's handoff) |
 | IS-4 | The cost table's first multiples were planeter's 0.52.0 guesses | T3 2026-10-27 | **closed** by spike A's measurement on 0.54.1 (ledger PK-20; `cost.rs` `PROVISIONAL = false`) |
+| IS-5 | prikk refuses non-ASCII repository paths ("deferred until Unicode NFC normalization is implemented"), so a title in another script has no native path | M0 review 2026-10-27 | ledger PK-21; `title_to_path` percent-encodes per component, exactly reversibly (M0); a letter to prikk asks whether NFC paths are scheduled; the answer decides M1's rule |
+| IS-6 | The release tags were called signed but no signature was verified | M0 review 2026-10-27 | the claim is withdrawn (`RELEASING.md`); an owner decision names a key, then `release.yml` verifies it |
 
 ## Process lessons (keep)
 
 - The git-excluded material under `.git-exclude/` is the specification input and is not in history; a new
   session reads it, and this file, before acting.
+- **Read the upstream's reference before drafting a letter**: two of three planned asks to prikk were
+  answered by its `reference/` pages; a letter costs the owner's time.
+- **An author's review is not a review.** Four fresh agents reading only `main` found what the author's
+  own pass had not (the bubblewrap exit shapes, the clamped headroom, the quadratic passes); the gates and
+  the corpus caught none of them. Robustness tests with time bounds and planted-violation tests for every
+  gate rule are now part of the suite so the next review starts higher.

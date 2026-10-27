@@ -1,30 +1,40 @@
-//! The Layer 2 scanner: every Portable Wiki Markdown construct in a page, with the file line it is on.
+//! The Layer 2 scanner: every Portable Wiki Markdown construct in a page, with the file line it is on
+//! and, for the constructs the renderer replaces, the byte span it occupies.
 //!
 //! The rules are the wiki-commons reference scanner's (`tools/pwb/markup.py`, corpus commit in
 //! `tests/corpus/CORPUS-SOURCE.md`), restated here so the corpus is the acceptance test:
 //!
-//! - Constructs are recognized **outside** fenced code blocks, inline code spans, the frontmatter and
-//!   HTML comments; the hidden regions are masked, never removed, so offsets and line numbers hold.
+//! - Constructs are recognized **outside** code (fenced and indented blocks, inline spans, as the
+//!   CommonMark parser itself delimits them), the frontmatter and HTML comments; the hidden regions are
+//!   masked, never removed, so offsets and line numbers hold. The frontmatter is masked first, so a
+//!   fence-looking line inside it hides nothing.
 //! - **Free links** `[[...]]` and embeds `![[...]]`: the inner text has no `[`, `]` or newline; a
-//!   preceding backslash escapes the form. Target first, label second (MKUP-6) unless the caller
-//!   declares label-first. `#fragment` is a heading text, `#^id` a block identifier. A prefix is the text
-//!   before the first `:` when it has no space and the target does not start with `/` or `.`.
-//! - **Headings** are ATX only (MKUP-8), with GitHub-style anchors and `-1`, `-2` for duplicates.
+//!   preceding backslash escapes the form (an escaped backslash does not). Target first, label second
+//!   (MKUP-6) unless the caller declares label-first. `#fragment` is a heading text, `#^id` a block
+//!   identifier. A prefix is the text before the first `:` when it has no space and the target does not
+//!   start with `/` or `.`.
+//! - **Headings** are ATX only (MKUP-8), with GitHub-style anchors and `-1`, `-2` for duplicates; the
+//!   anchor is the one reduction the renderer also uses ([`crate::anchor::github_anchor`]).
 //! - **Block identifiers** are a trailing `^id` token, `[A-Za-z0-9][A-Za-z0-9_-]*`, preceded by a space or
 //!   at the start of the line, not on a heading line (MKUP-9).
 //! - **Inline tags** `#tag` start after whitespace or `(`, begin with a word character, and are not all
-//!   digits (MKUP-14); frontmatter `tags` may be a list or a comma/space-separated string.
+//!   digits (MKUP-14); frontmatter `tags` may be a list or a comma/space-separated string. Markdown links
+//!   and bare URLs are not tags.
 //! - **Callouts** `> [!TYPE]±  Title` (MKUP-15); the type is reported upper-case.
-//! - **Directives** `::: name key=value` ... `:::` and inline `:name[text]{key=value}` (MKUP-16).
+//! - **Directives** `::: name key=value` ... `:::` and inline `:name[text]{key=value}` (MKUP-16), the
+//!   inline form on one line.
 //! - **Snapshot envelopes** `<!-- wiki:snapshot ... -->` ... `<!-- /wiki:snapshot -->` and **props**
 //!   `<!-- wiki:props {json} -->` (chapter 12); they are HTML comments and so hidden from everything else,
 //!   while their bodies are ordinary content.
+//!
+//! Every pass is linear in the text (or in a line, for the constructs that live on one line).
 
 use serde::Serialize;
 
 use crate::anchor::Anchors;
 use crate::frontmatter;
-use crate::text::{byte, from, is_word, line_of, sl};
+use crate::structure::Structure;
+use crate::text::{LineIndex, byte, from, is_word, sl};
 
 /// How to read `[[a|b]]`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -52,10 +62,10 @@ pub struct Link {
     pub embed: bool,
     /// 1-based file line.
     pub line: usize,
-    /// Byte offset of `raw` in the scanned text (not serialized).
+    /// Byte offset of `raw` in the text that was scanned (not serialized).
     #[serde(skip)]
     pub start: usize,
-    /// Byte offset just past `raw` (not serialized).
+    /// Byte offset just past `raw` in the text that was scanned (not serialized).
     #[serde(skip)]
     pub end: usize,
 }
@@ -79,7 +89,7 @@ pub struct Heading {
     pub level: u8,
     /// The heading text as written (Markdown kept).
     pub text: String,
-    /// The GitHub-style anchor, unique within the page.
+    /// The GitHub-style anchor, unique within the page; the renderer writes the same value as the `id`.
     pub anchor: String,
 }
 
@@ -90,6 +100,12 @@ pub struct BlockId {
     pub line: usize,
     /// The identifier without `^`.
     pub id: String,
+    /// Byte offset of the token (with its separating space) in the scanned text (not serialized).
+    #[serde(skip)]
+    pub start: usize,
+    /// Byte offset just past the token (not serialized).
+    #[serde(skip)]
+    pub end: usize,
 }
 
 /// Tags from both locations.
@@ -129,6 +145,12 @@ pub struct Directive {
     pub attrs: Attrs,
     /// `true` for `:name[text]{...}`, `false` for `::: name`.
     pub inline: bool,
+    /// Inline directives: byte offset of `:name[` in the scanned text (not serialized); 0 for containers.
+    #[serde(skip)]
+    pub start: usize,
+    /// Inline directives: byte offset just past the closing `}` (not serialized); 0 for containers.
+    #[serde(skip)]
+    pub end: usize,
 }
 
 /// Ordered `key=value` attributes.
@@ -203,7 +225,8 @@ pub struct Props {
     pub props: serde_json::Value,
 }
 
-/// Everything the scanner found, in the shape of the corpus's `expected.scan.json`.
+/// Everything the scanner found, in the shape of the corpus's `expected.scan.json` (plus the byte spans
+/// the renderer needs, which are not serialized).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ScanReport {
     /// The frontmatter as JSON (dates marked `{"$type": "date", "iso": ...}`), `null` when absent;
@@ -226,6 +249,9 @@ pub struct ScanReport {
     pub envelopes: Vec<Envelope>,
     /// Props envelopes in order.
     pub props: Vec<Props>,
+    /// The byte span of each inline tag, in the order of `tags.inline` (not serialized).
+    #[serde(skip)]
+    pub tag_spans: Vec<(usize, usize)>,
 }
 
 fn serialize_directives<S: serde::Serializer>(d: &[Directive], s: S) -> Result<S::Ok, S::Error> {
@@ -282,8 +308,8 @@ fn frontmatter_tags(fm: Option<&serde_json::Value>) -> Vec<String> {
     }
 }
 
-/// A text with a byte mask: masked bytes read as spaces.
-struct Masked<'a> {
+/// A text with a byte mask: masked bytes read as spaces (newlines are never masked).
+pub(crate) struct Masked<'a> {
     text: &'a str,
     mask: Vec<bool>,
 }
@@ -340,123 +366,25 @@ impl<'a> Masked<'a> {
         pat.bytes().enumerate().all(|(k, b)| self.at(i + k) == b)
     }
 
+    /// The first position at or after `start` where `pat` begins.
     fn find_from(&self, start: usize, pat: &str) -> Option<usize> {
         (start..self.text.len()).find(|&i| self.starts_with_at(i, pat))
     }
 }
 
-/// Byte ranges of the lines of `text` (without the `\n`, with any `\r` kept).
-fn line_ranges(text: &str) -> Vec<(usize, usize)> {
-    let mut out = Vec::new();
-    let mut start = 0;
-    for (i, b) in text.bytes().enumerate() {
-        if b == b'\n' {
-            out.push((start, i));
-            start = i + 1;
-        }
+/// Is the construct at `i` escaped by a backslash: an odd number of backslashes directly before it?
+fn escaped(m: &Masked<'_>, i: usize) -> bool {
+    let mut n = 0;
+    let mut k = i;
+    while k > 0 && m.at(k - 1) == b'\\' {
+        n += 1;
+        k -= 1;
     }
-    out.push((start, text.len()));
-    out
+    n % 2 == 1
 }
 
-/// Mask fenced code blocks and inline code spans.
-fn mask_code(m: &mut Masked<'_>) {
-    let mut fence: Option<u8> = None;
-    for (s, e) in line_ranges(m.text) {
-        let line = sl(m.text, s, e);
-        let f = fence_marker(line);
-        match fence {
-            None => {
-                if let Some((ch, _)) = f {
-                    fence = Some(ch);
-                    m.mask_range(s, e);
-                } else {
-                    mask_inline_code(m, s, e);
-                }
-            }
-            Some(ch) => {
-                m.mask_range(s, e);
-                if let Some((fch, _)) = f
-                    && fch == ch
-                    && line.trim().bytes().all(|b| b == ch)
-                {
-                    fence = None;
-                }
-            }
-        }
-    }
-}
-
-/// `^\s{0,3}(`{3,}|~{3,})` → the fence character and its run length.
-fn fence_marker(line: &str) -> Option<(u8, usize)> {
-    let b = line.as_bytes();
-    let mut i = 0;
-    while i < 3 && matches!(b.get(i), Some(b' ') | Some(b'\t')) {
-        i += 1;
-    }
-    let ch = *b.get(i)?;
-    if ch != b'`' && ch != b'~' {
-        return None;
-    }
-    let run = b
-        .get(i..)
-        .map_or(0, |rest| rest.iter().take_while(|&&c| c == ch).count());
-    (run >= 3).then_some((ch, run))
-}
-
-/// Mask `` `code` `` spans on one line: an opening run of n backticks, content that neither starts nor
-/// ends with a backtick, and a closing run of exactly n; a run with no closer is retried shorter.
-fn mask_inline_code(m: &mut Masked<'_>, s: usize, e: usize) {
-    let mut i = s;
-    while i < e {
-        if m.at(i) != b'`' {
-            i += 1;
-            continue;
-        }
-        let run_end = (i..e).find(|&k| m.at(k) != b'`').unwrap_or(e);
-        let n = run_end - i;
-        // Try the maximal run first, then the shorter suffixes (what a backtracking regex does).
-        let mut matched = None;
-        for len in (1..=n).rev() {
-            let open_start = run_end - len;
-            if let Some(close) = find_backtick_run(m, run_end, e, len) {
-                matched = Some((open_start, close + len));
-                break;
-            }
-        }
-        match matched {
-            Some((a, b)) => {
-                m.mask_range(a, b);
-                i = b;
-            }
-            None => i = run_end,
-        }
-    }
-}
-
-/// The start of the first run of exactly `len` backticks in `[from, to)` that is preceded by at least one
-/// non-backtick byte after `from`.
-fn find_backtick_run(m: &Masked<'_>, from: usize, to: usize, len: usize) -> Option<usize> {
-    let mut i = from;
-    let mut seen_content = false;
-    while i < to {
-        if m.at(i) == b'`' {
-            let run_end = (i..to).find(|&k| m.at(k) != b'`').unwrap_or(to);
-            if run_end - i == len && seen_content {
-                return Some(i);
-            }
-            i = run_end;
-            seen_content = true;
-        } else {
-            seen_content = true;
-            i += 1;
-        }
-    }
-    None
-}
-
-/// `key=value` pairs anywhere in `s`, values unquoted and entity-decoded.
-pub fn parse_attrs(s: &str) -> Attrs {
+/// `key=value` pairs anywhere in `s`, values unquoted and entity-decoded. Linear in `s`.
+pub(crate) fn parse_attrs(s: &str) -> Attrs {
     let mut out = Attrs::new();
     let mut i = 0;
     while i < s.len() {
@@ -479,7 +407,8 @@ pub fn parse_attrs(s: &str) -> Attrs {
         let key_end = j;
         let mut k = skip_ws(s, j);
         if byte(s, k) != b'=' {
-            i += c.len_utf8();
+            // Not a key: skip the whole word, never restart inside it.
+            i = key_end.max(i + c.len_utf8());
             continue;
         }
         k = skip_ws(s, k + 1);
@@ -487,7 +416,7 @@ pub fn parse_attrs(s: &str) -> Attrs {
             q @ (b'"' | b'\'') => match quoted_value(s, k + 1, q) {
                 Some(v) => v,
                 None => {
-                    i += c.len_utf8();
+                    i = k + 1;
                     continue;
                 }
             },
@@ -497,7 +426,7 @@ pub fn parse_attrs(s: &str) -> Attrs {
                     .find(|(_, ch)| ch.is_whitespace() || *ch == '"' || *ch == '\'')
                     .map_or(s.len(), |(off, _)| k + off);
                 if end == k {
-                    i += c.len_utf8();
+                    i = key_end.max(i + c.len_utf8());
                     continue;
                 }
                 (sl(s, k, end).to_owned(), end)
@@ -552,7 +481,7 @@ fn decode_entities(v: &str) -> String {
 }
 
 /// Parse the inside of `[[...]]`.
-pub fn parse_link_inner(
+pub(crate) fn parse_link_inner(
     inner: &str,
     options: ScanOptions,
     embed: bool,
@@ -607,15 +536,15 @@ pub fn parse_link_inner(
     }
 }
 
-/// Find free links in a masked text.
-fn find_links(m: &Masked<'_>, options: ScanOptions) -> Vec<Link> {
+/// Find free links in a masked text. Linear: every byte is visited at most twice.
+fn find_links(m: &Masked<'_>, lines: &LineIndex, options: ScanOptions) -> Vec<Link> {
     let mut links = Vec::new();
     let text = m.text;
     let mut i = 0;
     while i + 1 < text.len() {
         let embed = m.at(i) == b'!' && m.at(i + 1) == b'[' && m.at(i + 2) == b'[';
         let plain = m.at(i) == b'[' && m.at(i + 1) == b'[';
-        if !(embed || plain) || m.char_before(i) == Some('\\') {
+        if !(embed || plain) || escaped(m, i) {
             i += 1;
             continue;
         }
@@ -633,13 +562,18 @@ fn find_links(m: &Masked<'_>, options: ScanOptions) -> Vec<Link> {
             }
         }
         if !ok {
-            i += 1;
+            // Nothing between here and `j` can start a link that ends later than `j`: resume after it.
+            i = if embed || j <= inner_start {
+                i + 1
+            } else {
+                j.max(i + 1)
+            };
             continue;
         }
         let end = j + 2;
         let raw = sl(text, i, end);
         let inner = sl(text, inner_start, j);
-        let mut link = parse_link_inner(inner, options, embed, raw, line_of(text, i));
+        let mut link = parse_link_inner(inner, options, embed, raw, lines.line_of(i));
         link.start = i;
         link.end = end;
         links.push(link);
@@ -671,8 +605,8 @@ fn heading_parts(line: &str) -> Option<(u8, &str)> {
     Some((level, t))
 }
 
-/// The masked heading text with `#` positions of code spans restored from the raw line is what the
-/// reference does; here the raw line is re-parsed, and the masked line only decides *whether* it is one.
+/// The masked line decides *whether* this is a heading (a `#` inside code is not); the raw line gives the
+/// text as written.
 fn heading_text<'a>(masked_line: &str, raw_line: &'a str) -> Option<(u8, &'a str)> {
     let (level, _) = heading_parts(masked_line)?;
     match heading_parts(raw_line) {
@@ -681,8 +615,8 @@ fn heading_text<'a>(masked_line: &str, raw_line: &'a str) -> Option<(u8, &'a str
     }
 }
 
-/// `(?:^|(?<=[ \t]))\^([A-Za-z0-9][A-Za-z0-9_-]*)[ \t]*$`.
-fn block_id(line: &str) -> Option<&str> {
+/// `(?:^|(?<=[ \t]))\^([A-Za-z0-9][A-Za-z0-9_-]*)[ \t]*$` → the id and the byte offset of the `^`.
+fn block_id(line: &str) -> Option<(&str, usize)> {
     let trimmed = line.trim_end_matches([' ', '\t']);
     let caret = trimmed.rfind('^')?;
     if caret > 0 && !matches!(byte(trimmed, caret - 1), b' ' | b'\t') {
@@ -697,11 +631,11 @@ fn block_id(line: &str) -> Option<&str> {
     if !chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
         return None;
     }
-    Some(id)
+    Some((id, caret))
 }
 
 /// `^[ \t]{0,3}>[ \t]*\[!([A-Za-z][\w-]*)\]([+-]?)[ \t]*(.*)$`.
-fn callout_parts(line: &str) -> Option<(String, Option<String>, Option<String>)> {
+pub(crate) fn callout_parts(line: &str) -> Option<(String, Option<String>, Option<String>)> {
     let mut i = 0;
     while i < 3 && matches!(byte(line, i), b' ' | b'\t') {
         i += 1;
@@ -710,28 +644,60 @@ fn callout_parts(line: &str) -> Option<(String, Option<String>, Option<String>)>
         return None;
     }
     i = skip_ws(line, i + 1);
-    if !from(line, i).starts_with("[!") {
+    callout_marker(from(line, i))
+}
+
+/// The byte length of the `[!TYPE]±` marker at the start of `text`, if there is one.
+pub(crate) fn callout_marker_len(text: &str) -> Option<usize> {
+    if !text.starts_with("[!") {
         return None;
     }
-    i += 2;
-    let name_start = i;
-    let first = from(line, i).chars().next()?;
+    let mut i = 2;
+    let first = from(text, i).chars().next()?;
     if !first.is_ascii_alphabetic() {
         return None;
     }
-    for c in from(line, i).chars() {
+    for c in from(text, i).chars() {
         if is_word(c) || c == '-' {
             i += c.len_utf8();
         } else {
             break;
         }
     }
-    let kind = sl(line, name_start, i).to_uppercase();
-    if byte(line, i) != b']' {
+    if byte(text, i) != b']' {
         return None;
     }
     i += 1;
-    let fold = match byte(line, i) {
+    if matches!(byte(text, i), b'+' | b'-') {
+        i += 1;
+    }
+    Some(i)
+}
+
+/// `[!TYPE]± Title` → (TYPE, fold, title).
+pub(crate) fn callout_marker(text: &str) -> Option<(String, Option<String>, Option<String>)> {
+    if !text.starts_with("[!") {
+        return None;
+    }
+    let mut i = 2;
+    let name_start = i;
+    let first = from(text, i).chars().next()?;
+    if !first.is_ascii_alphabetic() {
+        return None;
+    }
+    for c in from(text, i).chars() {
+        if is_word(c) || c == '-' {
+            i += c.len_utf8();
+        } else {
+            break;
+        }
+    }
+    let kind = sl(text, name_start, i).to_uppercase();
+    if byte(text, i) != b']' {
+        return None;
+    }
+    i += 1;
+    let fold = match byte(text, i) {
         b'+' => Some("+".to_owned()),
         b'-' => Some("-".to_owned()),
         _ => None,
@@ -739,12 +705,12 @@ fn callout_parts(line: &str) -> Option<(String, Option<String>, Option<String>)>
     if fold.is_some() {
         i += 1;
     }
-    let title = from(line, i).trim();
+    let title = from(text, i).trim();
     Some((kind, fold, (!title.is_empty()).then(|| title.to_owned())))
 }
 
 /// `^:::[ \t]*([A-Za-z][\w-]*)[ \t]*(.*)$` → (name, rest).
-fn directive_open(line: &str) -> Option<(&str, &str)> {
+pub(crate) fn directive_open(line: &str) -> Option<(&str, &str)> {
     let rest = line.strip_prefix(":::")?;
     let rest = rest.trim_start_matches([' ', '\t']);
     let first = rest.chars().next()?;
@@ -765,15 +731,37 @@ fn directive_open(line: &str) -> Option<(&str, &str)> {
     ))
 }
 
-fn directive_close(line: &str) -> bool {
+pub(crate) fn directive_close(line: &str) -> bool {
     line.strip_prefix(":::")
         .is_some_and(|r| r.trim_matches([' ', '\t']).is_empty())
 }
 
-/// `(?<![:\w]):([A-Za-z][\w-]*)\[([^\]]*)\]\{([^}]*)\}`.
-fn find_inline_directives(m: &Masked<'_>) -> Vec<Directive> {
+/// For every byte offset, the offset of the next unmasked `needle` byte at or after it (`text.len()`
+/// when none), so that a closer is found in constant time however many openers a line has.
+fn next_positions(m: &Masked<'_>, needle: u8) -> Vec<usize> {
+    let n = m.text.len();
+    let mut next = vec![n; n + 1];
+    let mut following = n;
+    for i in (0..n).rev() {
+        if m.at(i) == needle {
+            following = i;
+        }
+        if let Some(slot) = next.get_mut(i) {
+            *slot = following;
+        }
+    }
+    next
+}
+
+/// `(?<![:\w]):([A-Za-z][\w-]*)\[([^\]]*)\]\{([^}]*)\}`, on one line.
+fn find_inline_directives(m: &Masked<'_>, lines: &LineIndex) -> Vec<Directive> {
     let mut out = Vec::new();
     let text = m.text;
+    if !text.contains(':') {
+        return out;
+    }
+    let next_bracket = next_positions(m, b']');
+    let next_brace = next_positions(m, b'}');
     let mut i = 0;
     while i < text.len() {
         if m.at(i) != b':' {
@@ -802,27 +790,33 @@ fn find_inline_directives(m: &Masked<'_>) -> Vec<Directive> {
             }
         }
         if m.at(j) != b'[' {
-            i += 1;
+            i = j.max(i + 1);
             continue;
         }
-        let Some(close) = m.find_from(j + 1, "]") else {
-            i += 1;
+        let line_no = lines.line_of(i);
+        let line_end = lines.range(line_no).map_or(text.len(), |(_, e)| e);
+        let close = next_bracket.get(j + 1).copied().unwrap_or(text.len());
+        if close >= line_end {
+            i = j + 1;
             continue;
-        };
+        }
         if m.at(close + 1) != b'{' {
-            i += 1;
+            i = j + 1;
             continue;
         }
-        let Some(brace_end) = m.find_from(close + 2, "}") else {
-            i += 1;
+        let brace_end = next_brace.get(close + 2).copied().unwrap_or(text.len());
+        if brace_end >= line_end {
+            i = close + 2;
             continue;
-        };
+        }
         out.push(Directive {
-            line: line_of(text, i),
+            line: line_no,
             name: sl(text, name_start, j).to_owned(),
             text: Some(sl(text, j + 1, close).to_owned()),
             attrs: parse_attrs(sl(text, close + 2, brace_end)),
             inline: true,
+            start: i,
+            end: brace_end + 1,
         });
         i = brace_end + 1;
     }
@@ -830,9 +824,10 @@ fn find_inline_directives(m: &Masked<'_>) -> Vec<Directive> {
 }
 
 /// Inline tags: `#` after whitespace, `(` or the start, then a word character and tag characters.
-fn find_tags(m: &Masked<'_>) -> Vec<String> {
+fn find_tags(m: &Masked<'_>) -> (Vec<String>, Vec<(usize, usize)>) {
     const STOP: &str = "#[]()<>{},.!?;:\"'`|\\";
     let mut out = Vec::new();
+    let mut spans = Vec::new();
     let text = m.text;
     let mut i = 0;
     while i < text.len() {
@@ -865,51 +860,19 @@ fn find_tags(m: &Masked<'_>) -> Vec<String> {
         let tag = sl(text, i + 1, j).trim_end_matches('/');
         if !tag.is_empty() && !tag.chars().all(|c| c.is_numeric()) && !tag.starts_with('^') {
             out.push(tag.to_owned());
+            spans.push((i, i + 1 + tag.len()));
         }
         i = j.max(i + 1);
     }
-    out
+    (out, spans)
 }
 
-/// Mask `[text](url "title")` and `![alt](url)` spans and bare `http(s)://` URLs before tag scanning.
-fn mask_markdown_links_and_urls(m: &mut Masked<'_>) {
+/// Mask bare `http(s)://` URLs before tag scanning (Markdown links come from the parser's ranges).
+fn mask_bare_urls(m: &mut Masked<'_>) {
     let text = m.text;
     let mut spans = Vec::new();
     let mut i = 0;
     while i < text.len() {
-        if m.at(i) == b'[' {
-            let mut j = i + 1;
-            while j < text.len() && m.at(j) != b']' {
-                j += 1;
-            }
-            if m.at(j) == b']' && m.at(j + 1) == b'(' {
-                let mut k = j + 2;
-                while k < text.len() && m.at(k) != b')' && !m.at(k).is_ascii_whitespace() {
-                    k += 1;
-                }
-                if k > j + 2 {
-                    let mut end = k;
-                    if m.at(end).is_ascii_whitespace() {
-                        let t = skip_ws(text, end);
-                        if m.at(t) == b'"'
-                            && let Some(q) = m.find_from(t + 1, "\"")
-                        {
-                            end = q + 1;
-                        }
-                    }
-                    if m.at(end) == b')' {
-                        let start = if i > 0 && m.at(i - 1) == b'!' {
-                            i - 1
-                        } else {
-                            i
-                        };
-                        spans.push((start, end + 1));
-                        i = end + 1;
-                        continue;
-                    }
-                }
-            }
-        }
         if (m.starts_with_at(i, "http://") || m.starts_with_at(i, "https://"))
             && !m.char_before(i).is_some_and(is_word)
         {
@@ -918,7 +881,7 @@ fn mask_markdown_links_and_urls(m: &mut Masked<'_>) {
                 j += m.char_at(j).len_utf8();
             }
             spans.push((i, j));
-            i = j;
+            i = j.max(i + 1);
             continue;
         }
         i += 1;
@@ -928,8 +891,11 @@ fn mask_markdown_links_and_urls(m: &mut Masked<'_>) {
     }
 }
 
-/// Snapshot envelopes and props envelopes, and the ranges of all HTML comments.
-fn find_envelopes(m: &Masked<'_>) -> (Vec<Envelope>, Vec<Props>, Vec<(usize, usize)>) {
+/// Snapshot envelopes and props envelopes, and the ranges of all HTML comments outside code.
+fn find_envelopes(
+    m: &Masked<'_>,
+    lines: &LineIndex,
+) -> (Vec<Envelope>, Vec<Props>, Vec<(usize, usize)>) {
     let text = m.text;
     let mut comments = Vec::new();
     let mut opens: Vec<(usize, usize, Attrs)> = Vec::new();
@@ -961,7 +927,7 @@ fn find_envelopes(m: &Masked<'_>) -> (Vec<Envelope>, Vec<Props>, Vec<(usize, usi
                 let data = serde_json::from_str::<serde_json::Value>(json_text)
                     .unwrap_or_else(|_| serde_json::json!({"_raw": json_text}));
                 props.push(Props {
-                    line: line_of(text, s),
+                    line: lines.line_of(s),
                     props: data,
                 });
             }
@@ -990,7 +956,7 @@ fn find_envelopes(m: &Masked<'_>) -> (Vec<Envelope>, Vec<Props>, Vec<(usize, usi
                         None => serde_json::Value::Null,
                     };
                     envelopes.push(Envelope::Closed(ClosedEnvelope {
-                        line: line_of(text, os),
+                        line: lines.line_of(os),
                         kind: get("kind"),
                         name: get("name"),
                         engine: get("engine"),
@@ -1009,7 +975,7 @@ fn find_envelopes(m: &Masked<'_>) -> (Vec<Envelope>, Vec<Props>, Vec<(usize, usi
     for (os, _, oa) in stack {
         let get = |k: &str| oa.iter().find(|(key, _)| key == k).map(|(_, v)| v.clone());
         envelopes.push(Envelope::Unclosed(UnclosedEnvelope {
-            line: line_of(text, os),
+            line: lines.line_of(os),
             kind: get("kind"),
             name: get("name"),
             engine: get("engine"),
@@ -1024,18 +990,26 @@ fn find_envelopes(m: &Masked<'_>) -> (Vec<Envelope>, Vec<Props>, Vec<(usize, usi
 }
 
 /// Scan a page whose frontmatter occupies `text[..body_start]`; the frontmatter is masked and the body is
-/// scanned with file line numbers. The frontmatter fields of the report are left empty.
-pub fn scan_body(text: &str, body_start: usize, options: ScanOptions) -> ScanReport {
+/// scanned with file line numbers. The frontmatter fields of the report are left empty (the public
+/// [`scan_with`] fills them).
+pub(crate) fn scan_body(text: &str, body_start: usize, options: ScanOptions) -> ScanReport {
+    let lines = LineIndex::new(text);
     let mut m = Masked::new(text);
-    mask_code(&mut m);
+    // 1. The frontmatter first, so nothing inside it can open a code region over the body.
     m.mask_range(0, body_start);
-
-    let (envelopes, props, comments) = find_envelopes(&m);
+    // 2. Code, as the CommonMark parser delimits it.
+    let body = from(text, body_start);
+    let structure = Structure::of(body);
+    for r in &structure.code {
+        m.mask_range(body_start + r.start, body_start + r.end);
+    }
+    // 3. HTML comments outside code; envelopes are read from them before they are masked.
+    let (envelopes, props, comments) = find_envelopes(&m, &lines);
     for (a, b) in comments {
         m.mask_range(a, b);
     }
 
-    let links = find_links(&m, options);
+    let links = find_links(&m, &lines, options);
 
     let mut headings = Vec::new();
     let mut block_ids = Vec::new();
@@ -1043,9 +1017,13 @@ pub fn scan_body(text: &str, body_start: usize, options: ScanOptions) -> ScanRep
     let mut directives = Vec::new();
     let mut anchors = Anchors::new();
     let mut depth = 0usize;
-    for (s, e) in line_ranges(text) {
-        let line_no = line_of(text, s);
-        let raw_line = sl(text, s, e).strip_suffix('\r').unwrap_or(sl(text, s, e));
+    for (s, e) in lines.ranges() {
+        if e <= body_start {
+            continue;
+        }
+        let line_no = lines.line_of(s);
+        let raw_full = sl(text, s, e);
+        let raw_line = raw_full.strip_suffix('\r').unwrap_or(raw_full);
         let masked_line = masked_line_str(&m, s, s + raw_line.len());
         if let Some((level, text_)) = heading_text(&masked_line, raw_line) {
             let anchor = anchors.next(text_);
@@ -1056,11 +1034,15 @@ pub fn scan_body(text: &str, body_start: usize, options: ScanOptions) -> ScanRep
                 anchor,
             });
         } else if !masked_line.trim().is_empty()
-            && let Some(id) = block_id(&masked_line)
+            && let Some((id, caret)) = block_id(&masked_line)
         {
+            let token_end = s + raw_line.trim_end_matches([' ', '\t']).len();
+            let start = if caret > 0 { s + caret - 1 } else { s + caret };
             block_ids.push(BlockId {
                 line: line_no,
                 id: id.to_owned(),
+                start,
+                end: token_end,
             });
         }
         if let Some((kind, fold, _)) = callout_parts(&masked_line) {
@@ -1083,14 +1065,16 @@ pub fn scan_body(text: &str, body_start: usize, options: ScanOptions) -> ScanRep
                 text: None,
                 attrs: parse_attrs(raw_rest),
                 inline: false,
+                start: 0,
+                end: 0,
             });
             depth += 1;
         }
     }
-    directives.extend(find_inline_directives(&m));
+    directives.extend(find_inline_directives(&m, &lines));
     directives.sort_by_key(|d| d.line);
 
-    // Tags: hide links, Markdown links and URLs first.
+    // Tags: hide free links, Markdown links (the parser's ranges) and bare URLs first.
     let mut tag_mask = Masked {
         text,
         mask: m.mask.clone(),
@@ -1098,8 +1082,11 @@ pub fn scan_body(text: &str, body_start: usize, options: ScanOptions) -> ScanRep
     for l in &links {
         tag_mask.mask_range(l.start, l.end);
     }
-    mask_markdown_links_and_urls(&mut tag_mask);
-    let inline_tags = find_tags(&tag_mask);
+    for r in &structure.links {
+        tag_mask.mask_range(body_start + r.start, body_start + r.end);
+    }
+    mask_bare_urls(&mut tag_mask);
+    let (inline_tags, tag_spans) = find_tags(&tag_mask);
 
     ScanReport {
         frontmatter: None,
@@ -1114,12 +1101,13 @@ pub fn scan_body(text: &str, body_start: usize, options: ScanOptions) -> ScanRep
         directives,
         envelopes,
         props,
+        tag_spans,
     }
 }
 
 /// The masked view of `text[s..e]` as a string: masked characters become spaces, others are kept.
 fn masked_line_str(m: &Masked<'_>, s: usize, e: usize) -> String {
-    let mut out = String::with_capacity(e - s);
+    let mut out = String::with_capacity(e.saturating_sub(s));
     let mut i = s;
     while i < e {
         let c = from(m.text, i).chars().next().unwrap_or(' ');

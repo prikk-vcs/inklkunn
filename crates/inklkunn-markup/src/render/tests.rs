@@ -29,7 +29,7 @@ fn wikilink_classes_and_targets() {
         "[[Exists]] [[Missing|label]] [[Exists#Heading here]] [[#Local]] [[wp:Wiki]] ![[d.png|300]]",
         &Fake,
     );
-    let h = &r.html;
+    let h = &r.unsanitized_html;
     assert!(
         h.contains(
             r#"<a class="wikilink" href="/wiki/Exists" data-wiki-target="Exists">Exists</a>"#
@@ -55,9 +55,13 @@ fn code_comments_and_escapes_stay_literal() {
         "`[[Code]]` and \\[[Esc]] <!-- [[Hidden]] -->\n\n```\n[[Fence]]\n```\n",
         &Fake,
     );
-    assert!(!r.html.contains("wikilink"), "{}", r.html);
-    assert!(r.html.contains("<code>[[Code]]</code>"));
-    assert!(r.html.contains("[[Esc]]"));
+    assert!(
+        !r.unsanitized_html.contains("wikilink"),
+        "{}",
+        r.unsanitized_html
+    );
+    assert!(r.unsanitized_html.contains("<code>[[Code]]</code>"));
+    assert!(r.unsanitized_html.contains("[[Esc]]"));
 }
 
 #[test]
@@ -66,7 +70,11 @@ fn headings_get_ids_and_toc() {
         "# Title with `code`\n\n## Merging\n\n## Merging\n\n### With [[Exists]]\n",
         &Fake,
     );
-    assert!(r.html.contains(r#"<h2 id="merging-1">"#), "{}", r.html);
+    assert!(
+        r.unsanitized_html.contains(r#"<h2 id="merging-1">"#),
+        "{}",
+        r.unsanitized_html
+    );
     assert_eq!(
         r.toc.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
         ["title-with-code", "merging", "merging-1", "with-exists"]
@@ -79,7 +87,7 @@ fn callouts_tags_directives_and_block_ids() {
         "> [!TIP]+ Open title\n> body\n\n> [!NOTE]\n> only\n\nPara #one. ^p1\n\n::: toc depth=2\n:::\n\n:::note Heads up\nInside.\n:::\n\nPress :kbd[Ctrl]{} now.\n",
         &Fake,
     );
-    let h = &r.html;
+    let h = &r.unsanitized_html;
     assert!(h.contains(r#"<aside class="callout callout-tip" data-callout="TIP" data-fold="+"><p class="callout-title">Open title</p>"#), "{h}");
     assert!(h.contains("<p>body</p>\n</aside>"), "{h}");
     assert!(
@@ -113,15 +121,15 @@ fn callouts_tags_directives_and_block_ids() {
 fn external_markdown_links_carry_rel() {
     let r = render_html("[site](https://example.org) and [local](./x.md)", &Fake);
     assert!(
-        r.html.contains(
+        r.unsanitized_html.contains(
             r#"<a class="external" href="https://example.org" rel="nofollow ugc">site</a>"#
         ),
         "{}",
-        r.html
+        r.unsanitized_html
     );
     assert!(
-        r.html.contains(r#"<a href="./x.md">local</a>"#),
+        r.unsanitized_html.contains(r#"<a href="./x.md">local</a>"#),
         "{}",
-        r.html
+        r.unsanitized_html
     );
 }

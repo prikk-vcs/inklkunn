@@ -3,6 +3,12 @@
 //! denied**; the one exception a reader would expect, public read, arrives with RFC 002's handoff together
 //! with the visibility rule and the route-enumeration test. The contract is fixed now so every surface is
 //! written against it from its first route.
+//!
+//! Two things the signature leaves to RFC 002's handoff (T2), recorded here so no caller builds on the
+//! gap: a [`Principal::System`] can be constructed by any code today, and must become mintable only by
+//! core's own import and recovery entry points (the route-enumeration harness flags a handler that
+//! constructs one); and the visibility in [`Resource::Wiki`] is the caller's statement, so the handoff
+//! puts the wiki lookup inside the authorization layer rather than trusting a handler's value.
 
 use inklkunn_store::{Visibility, WikiId};
 
@@ -13,7 +19,8 @@ pub enum Principal {
     Anonymous,
     /// An account, by id.
     Account(String),
-    /// The service itself (import, recovery), with the acting operator or job named.
+    /// The service itself (import, recovery), with the acting operator or job named. Never reached from
+    /// the network (RFC 002 D-1); see the module docs for the constraint RFC 002's handoff adds.
     System(String),
 }
 
@@ -89,7 +96,7 @@ pub enum Resource {
     Wiki {
         /// The wiki.
         wiki: WikiId,
-        /// Its visibility.
+        /// Its visibility, **as the caller states it** (RFC 002's handoff moves the lookup inside).
         visibility: Visibility,
     },
     /// A namespace (hierarchy prefix) in a wiki.

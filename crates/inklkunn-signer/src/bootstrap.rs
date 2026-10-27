@@ -1,11 +1,17 @@
 //! The bootstrap signer (RFC 001 D-9, handoff T5's "test-only signer"): the write sequence over a
-//! plain-text [`KeyDir`]. It creates a wiki's repository and seals system changes; it has **no acceptance
-//! guard** and so must never be reachable from a request path. RFC 002 D-3/D-4 supersede it for service.
+//! plain-text key directory. **Behind the `bootstrap` cargo feature; never in a product binary.** It
+//! creates a wiki's repository and seals system changes; it has **no acceptance guard**, so it must never
+//! be reachable from a request path. RFC 002 D-3/D-4 supersede it for service.
+//!
+//! One directory, one key pair: every wiki a bootstrap signer creates is signed by the same pair, which is
+//! fine for a developer's machine and tests and is one of the reasons it is not a service signer (C-1d
+//! wants per-wiki keys).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use inklkunn_prikk::sandbox::Sandbox;
 
+use crate::RepositoryBootstrap;
 use crate::keys::{KeyDir, KeyIds};
 use crate::writes::{SealedIds, SignerError, Writes};
 
@@ -17,26 +23,40 @@ pub struct BootstrapSigner {
 }
 
 impl BootstrapSigner {
-    /// A signer over `keys` (which may be empty: [`BootstrapSigner::ensure_keys`] fills it).
-    pub fn new(binary: impl Into<std::ffi::OsString>, sandbox: Sandbox, keys: KeyDir) -> Self {
-        BootstrapSigner {
+    /// A signer over the key directory `key_dir` (absolute, UTF-8; it may be empty:
+    /// [`BootstrapSigner::ensure_keys`] fills it with mode 0700).
+    pub fn new(
+        binary: impl Into<std::ffi::OsString>,
+        sandbox: Sandbox,
+        key_dir: impl Into<PathBuf>,
+    ) -> Result<Self, SignerError> {
+        Ok(BootstrapSigner {
             writes: Writes::new(binary, sandbox),
-            keys,
-        }
+            keys: KeyDir::new(key_dir)?,
+        })
     }
 
-    /// The key directory.
-    pub fn keys(&self) -> &KeyDir {
-        &self.keys
-    }
-
-    /// Generate the author and maintainer keys when the directory has none, and return their ids.
+    /// Generate the author and maintainer keys when the directory has none, and return their ids. The
+    /// directory is created with mode 0700; prikk writes the seeds with mode 0600.
     pub fn ensure_keys(&self) -> Result<KeyIds, SignerError> {
-        std::fs::create_dir_all(self.keys.path())
-            .map_err(|e| SignerError::Unavailable(e.to_string()))?;
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            std::fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(self.keys.path())
+                .map_err(|e| SignerError::Unavailable(e.to_string()))?;
+        }
         for role in ["author", "maintainer"] {
             if !self.keys.seed_file(role).is_file() {
-                self.writes.generate_key(&self.keys, role)?;
+                match self.writes.generate_key(&self.keys, role) {
+                    Ok(()) => {}
+                    // Two creations racing: the other one wrote the pair between our check and our
+                    // generate; prikk refuses to overwrite, and the files are now there.
+                    Err(SignerError::Refused(m))
+                        if m.contains("overwrite") && self.keys.seed_file(role).is_file() => {}
+                    Err(e) => return Err(e),
+                }
             }
         }
         let author = self.keys.key_id("author").ok_or_else(|| {
@@ -52,9 +72,10 @@ impl BootstrapSigner {
             maintainer_public_key,
         })
     }
+}
 
-    /// Create a repository in `repo` (an existing, otherwise empty directory) and adopt the maintainer key.
-    pub fn create_repository(&self, repo: &Path) -> Result<KeyIds, SignerError> {
+impl RepositoryBootstrap for BootstrapSigner {
+    fn create_repository(&self, repo: &Path) -> Result<KeyIds, SignerError> {
         let ids = self.ensure_keys()?;
         self.writes.init(repo, &self.keys)?;
         self.writes.trust_maintainer(
@@ -66,8 +87,7 @@ impl BootstrapSigner {
         Ok(ids)
     }
 
-    /// Commit the worktree as one patch with `message` and seal it.
-    pub fn commit_and_seal(&self, repo: &Path, message: &str) -> Result<SealedIds, SignerError> {
+    fn commit_and_seal(&self, repo: &Path, message: &str) -> Result<SealedIds, SignerError> {
         self.writes.commit_and_seal(repo, &self.keys, message)
     }
 }

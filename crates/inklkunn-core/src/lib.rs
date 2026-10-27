@@ -18,8 +18,12 @@ pub mod wiki;
 
 pub use accept::{
     Accept, AcceptError, AcceptanceToken, PreparedChange, PreparedFile, SealedChange,
+    ViewCreationAct,
 };
 pub use assurance::Assurance;
 pub use authorize::{Action, Decision, Principal, Resource, authorize};
-pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, StdEgressGuard};
-pub use wiki::{CreateWikiError, CreatedWiki, RepositoryBootstrap, create_wiki};
+pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, Resolver, StdEgressGuard, StdResolver};
+pub use wiki::{
+    Cleanup, CreateWikiError, CreatedWiki, RepositoryBootstrap, create_wiki, creation_message,
+    system_message,
+};

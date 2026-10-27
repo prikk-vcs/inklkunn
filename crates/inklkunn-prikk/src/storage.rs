@@ -54,7 +54,7 @@ pub struct View {
 pub struct Views {
     /// Pinned schema name.
     pub schema_version: String,
-    /// Open views (closed ones are listed only when asked).
+    /// Open views (prikk lists closed ones only with `--all`, which the driver never passes).
     #[serde(rename = "branches")]
     pub views: Vec<View>,
 }
@@ -337,23 +337,36 @@ pub enum Unavailable {
     },
     /// The admission gate's pool was full for longer than the bounded wait.
     Busy,
-    /// A runtime prerequisite is missing (`bwrap`, `prlimit`).
+    /// A runtime prerequisite is missing or failed (`bwrap`, `prlimit`): the tool's own first line.
     Prerequisite(String),
+    /// The call wrote more than the server's output bound and was stopped; nothing of it is kept.
+    OutputExceeded,
 }
 
 /// Every way a storage call ends other than with its value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StorageError {
     /// prikk refused, and said why (its exit 1, "precondition not met"): a missing path or view, a bound
-    /// exceeded, no repository. The text is prikk's.
+    /// exceeded. **`message` is operator text** (prikk's own words, which may name paths); a surface shows
+    /// the user its own words chosen by `kind`, never `message`.
     Refused {
         /// The prikk verb.
         verb: &'static str,
-        /// prikk's message, `error: ` prefix removed.
+        /// prikk's message, `error: ` prefix removed; for operators and logs.
         message: String,
-        /// prikk's refusal code when it reported one on stdout (`refusal-v1`: `io-failure`,
-        /// `precondition-not-met`, …), for callers that branch on it.
+        /// prikk's refusal code when it reported one on stdout (`refusal-v1`: `destination-exists`,
+        /// `precondition-not-met`, …), or one of the driver's own, prefixed `driver:` (`driver:no-repository`),
+        /// for callers that branch on it.
         kind: Option<String>,
+    },
+    /// An argument did not have the shape the trait requires (a view name, a block id, a repository path,
+    /// a target name); refused before anything ran. `what` states the rule in one sentence and never
+    /// echoes the value.
+    InvalidArgument {
+        /// The prikk verb.
+        verb: &'static str,
+        /// The rule the argument broke.
+        what: &'static str,
     },
     /// The call could not run to completion; try again later or fix the deployment. Never a verdict.
     Unavailable {
@@ -362,14 +375,14 @@ pub enum StorageError {
         /// Why.
         reason: Unavailable,
     },
-    /// The read would cost more than the whole budget allows.
+    /// The read's ceiling is larger than the pool it would have to fit in; it can never be admitted here.
     TooLarge {
         /// The prikk verb.
         verb: &'static str,
-        /// Estimated cost, in bytes.
-        cost: u64,
+        /// The ceiling the read would need, in bytes.
+        needed: u64,
         /// The pool it would have to fit in, in bytes.
-        budget: u64,
+        pool: u64,
     },
     /// prikk's output could not be read: not UTF-8, not JSON, not the pinned shape, or an unexpected exit.
     Damaged {
@@ -409,6 +422,9 @@ impl std::fmt::Display for StorageError {
             StorageError::Refused { verb, message, .. } => {
                 write!(f, "prikk {verb} refused: {message}")
             }
+            StorageError::InvalidArgument { verb, what } => {
+                write!(f, "prikk {verb} was not called: {what}")
+            }
             StorageError::Unavailable { verb, reason } => match reason {
                 Unavailable::Spawn(e) => write!(f, "prikk {verb} could not start: {e}"),
                 Unavailable::TimedOut { seconds } => {
@@ -425,11 +441,17 @@ impl std::fmt::Display for StorageError {
                 }
                 Unavailable::Busy => write!(f, "prikk {verb} was not admitted: the server is busy"),
                 Unavailable::Prerequisite(p) => write!(f, "prikk {verb} cannot run: {p}"),
+                Unavailable::OutputExceeded => {
+                    write!(
+                        f,
+                        "prikk {verb} produced more output than the server keeps and was stopped"
+                    )
+                }
             },
-            StorageError::TooLarge { verb, cost, budget } => {
+            StorageError::TooLarge { verb, needed, pool } => {
                 write!(
                     f,
-                    "prikk {verb} would need {cost} bytes, more than the {budget}-byte pool"
+                    "prikk {verb} would need a {needed}-byte ceiling, more than the {pool}-byte pool"
                 )
             }
             StorageError::Damaged { verb, detail } => {
@@ -461,7 +483,13 @@ impl std::error::Error for StorageError {}
 pub type Result<T> = std::result::Result<T, StorageError>;
 
 /// What inklkunn needs of a repository. Every method is a read; nothing here takes a write lock (STO-5).
-pub trait Storage {
+///
+/// **Every method blocks the calling thread** for up to the admission wait plus the verb's deadline (five
+/// minutes for `verify`); an async caller runs it on a blocking thread. Arguments are checked for shape
+/// before anything runs ([`StorageError::InvalidArgument`]): a view is `heads/<name>` (or `tags/`,
+/// `remotes/`), a block id is 64 lower-case hex characters, a path is repository-relative without `.` or
+/// `..` components.
+pub trait Storage: Send + Sync {
     /// The open views and their state ids.
     fn views(&self, repo: &Path) -> Result<Views>;
     /// The files at a point, optionally under a path prefix (whole components).
@@ -470,21 +498,24 @@ pub trait Storage {
     fn stat(&self, repo: &Path, point: &Point, path: &str) -> Result<FileMeta>;
     /// One file's bytes at a point, refused when larger than `max_bytes`.
     fn read(&self, repo: &Path, point: &Point, path: &str, max_bytes: u64) -> Result<Vec<u8>>;
-    /// The sealed history of a view, newest first, at most `limit` blocks.
-    fn history(&self, repo: &Path, view: &str, limit: Option<u64>) -> Result<History>;
+    /// The sealed history at a point (a view, or a block to read the history that led to it), newest first,
+    /// at most `limit` blocks (the implementation's default when `None`).
+    fn history(&self, repo: &Path, view: &Point, limit: Option<u64>) -> Result<History>;
     /// What one block or patch changed.
     fn change(&self, repo: &Path, id: &str) -> Result<Change>;
     /// What changed between two points, restricted to `paths` when given.
     fn diff(&self, repo: &Path, from: &Point, to: &Point, paths: &[&str]) -> Result<Diff>;
     /// The size of a point without writing it.
     fn plan(&self, repo: &Path, point: &Point) -> Result<Materialized>;
-    /// Write the files at a point into `into`, a directory that must not exist yet whose parent is the
-    /// call's scratch directory.
+    /// Write the files at a point into `<scratch>/<name>`. **`scratch` is the one directory the call may
+    /// write** (it is what the sandbox binds read-write; it must exist and must not overlap the
+    /// repository); `name` is one plain path component that does not exist there yet.
     fn materialize(
         &self,
         repo: &Path,
         point: &Point,
-        into: &Path,
+        scratch: &Path,
+        name: &str,
         bounds: ExtractBounds,
     ) -> Result<Materialized>;
     /// Verify the repository. A failed verdict is `Ok(Verification { verdict.ok: false, .. })`.

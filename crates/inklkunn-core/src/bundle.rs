@@ -1,11 +1,12 @@
 //! The repository layout (external design CT-02; RFC 001 D-5): a Portable Wiki Bundle. `wiki-bundle.yaml`,
 //! `pages/`, `attachments/` with `<name>.meta.yaml` sidecars, `knowledge/` and `governance/` (reserved;
-//! schemas by RFCs 005 and 006), `.prikkignore` for the service's scratch paths. Nothing of inklkunn's
-//! inside `.prikk/`.
+//! schemas by RFCs 005 and 006), `.prikkignore` for service-local paths. Nothing of inklkunn's inside
+//! `.prikk/`. Every value that came from a person is quoted or escaped for the file it enters.
 
 use std::path::Path;
 
 use inklkunn_store::WikiRecord;
+use inklkunn_store::record::uuid_v7;
 
 /// The manifest file name.
 pub const MANIFEST: &str = "wiki-bundle.yaml";
@@ -17,12 +18,22 @@ pub const KEEP: &str = ".keep";
 pub const PRIKKIGNORE: &str = ".prikkignore";
 /// The first page of every wiki.
 pub const HELP_PAGE: &str = "pages/Help.md";
+/// The worktree prefix reserved for files the service may keep beside the content and that must never
+/// enter history. Nothing lives there yet (the scratch directory is a sibling of the repository, not
+/// inside it); the reservation is made now so no page can ever take the name.
+pub const SERVICE_PREFIX: &str = ".inklkunn/";
 
 /// The bundle manifest for a new wiki (wiki-commons chapter 10). `pages_prefix` is `pages`; fidelity is
-/// level 3 with nothing degraded, since nothing was converted.
+/// level 3 with nothing degraded, since nothing was converted. The `contents` counts are those at creation
+/// and say so; an export rewrites them.
 pub fn manifest(record: &WikiRecord, inklkunn_version: &str) -> String {
     let lang = record.languages.first().map_or("en", String::as_str);
-    let langs = record.languages.join(", ");
+    let langs = record
+        .languages
+        .iter()
+        .map(|l| yaml_quote(l))
+        .collect::<Vec<_>>()
+        .join(", ");
     let lines = [
         "format: portable-wiki-bundle".to_owned(),
         "version: '0.4'".to_owned(),
@@ -30,11 +41,11 @@ pub fn manifest(record: &WikiRecord, inklkunn_version: &str) -> String {
         "  name: inklkunn".to_owned(),
         format!("  version: {}", yaml_quote(inklkunn_version)),
         "source:".to_owned(),
-        format!("  name: {}", yaml_quote(&record.display_name)),
+        format!("  name: {}", yaml_quote(record.display_name.as_str())),
         "  engine: inklkunn".to_owned(),
-        format!("lang: {lang}"),
+        format!("lang: {}", yaml_quote(lang)),
         format!("languages: [{langs}]"),
-        format!("license: {}", record.default_license),
+        format!("license: {}", yaml_quote(&record.default_license)),
         format!("visibility_default: {}", record.visibility.as_str()),
         "markup:".to_owned(),
         "  profile: portable-wiki-markdown/2".to_owned(),
@@ -45,6 +56,7 @@ pub fn manifest(record: &WikiRecord, inklkunn_version: &str) -> String {
         "  directives: [toc, children]".to_owned(),
         "  html_subset: []".to_owned(),
         "contents:".to_owned(),
+        "  # Counts at creation; the export rewrites them.".to_owned(),
         "  pages: 1".to_owned(),
         "  attachments: 0".to_owned(),
         "  history: true".to_owned(),
@@ -57,23 +69,29 @@ pub fn manifest(record: &WikiRecord, inklkunn_version: &str) -> String {
         "  dropped: []".to_owned(),
         "  note: native; nothing was converted".to_owned(),
         "inklkunn:".to_owned(),
-        format!("  default_view: {}", record.default_view),
-        format!("  policy_bootstrap: {}", record.policy_bootstrap),
+        format!("  default_view: {}", yaml_quote(&record.default_view)),
+        format!(
+            "  policy_bootstrap: {}",
+            yaml_quote(&record.policy_bootstrap)
+        ),
     ];
     let mut out = lines.join("\n");
     out.push('\n');
     out
 }
 
-/// Quote a YAML scalar when it needs it.
+/// Quote a YAML scalar when it needs it (always, when it could be read as anything but a string).
 fn yaml_quote(s: &str) -> String {
     let plain = !s.is_empty()
-        && !s.contains([
-            ':', '#', '\'', '"', '\n', '[', ']', '{', '}', ',', '&', '*', '!', '|', '>', '%', '@',
-            '`',
-        ])
-        && !s.starts_with(['-', '?', ' '])
-        && !s.ends_with(' ');
+        && s.len() <= 200
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-' | b'/' | b'+'))
+        && !s.starts_with(['-', '.', '+'])
+        && !matches!(
+            s.to_ascii_lowercase().as_str(),
+            "true" | "false" | "yes" | "no" | "on" | "off" | "null" | "~"
+        )
+        && !s.bytes().all(|b| b.is_ascii_digit() || b == b'.');
     if plain {
         s.to_owned()
     } else {
@@ -81,21 +99,56 @@ fn yaml_quote(s: &str) -> String {
     }
 }
 
-/// The first help page: what a reader needs to start, in the profile's own constructs.
-pub fn help_page(record: &WikiRecord) -> String {
+/// Escape text for a Markdown heading or paragraph so that it reads as itself, not as markup.
+fn md_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if matches!(
+            c,
+            '\\' | '`'
+                | '*'
+                | '_'
+                | '{'
+                | '}'
+                | '['
+                | ']'
+                | '<'
+                | '>'
+                | '('
+                | ')'
+                | '#'
+                | '+'
+                | '-'
+                | '!'
+                | '|'
+                | '~'
+                | ':'
+                | '^'
+                | '='
+        ) {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// The first help page: what a reader needs to start, in the profile's own constructs. `page_id` is the
+/// page's own UUID (fresh per wiki).
+pub fn help_page(record: &WikiRecord, page_id: &str) -> String {
     let lang = record.languages.first().map_or("en", String::as_str);
     let lines = [
         "---".to_owned(),
         "title: Help".to_owned(),
-        "id: 019a0000-0000-7000-8000-0000000he1p0".to_owned(),
+        format!("id: {page_id}"),
         "kind: page".to_owned(),
         "status: stable".to_owned(),
-        format!("lang: {lang}"),
+        format!("lang: {}", yaml_quote(lang)),
         "tags: [help]".to_owned(),
         "description: How this wiki works, in a page.".to_owned(),
         "---".to_owned(),
         String::new(),
-        format!("## Welcome to {}", record.display_name),
+        format!("## Welcome to {}", md_escape(record.display_name.as_str())),
         String::new(),
         "This wiki keeps every page in a signed, verifiable history. Anyone who may read can see what changed,".to_owned(),
         "when, and who proposed and accepted it.".to_owned(),
@@ -117,19 +170,23 @@ pub fn help_page(record: &WikiRecord) -> String {
         String::new(),
         "## License".to_owned(),
         String::new(),
-        format!("Unless a page says otherwise, contributions are licensed {}.", record.default_license),
+        format!(
+            "Unless a page says otherwise, contributions are licensed {}.",
+            md_escape(&record.default_license)
+        ),
     ];
     let mut out = lines.join("\n");
     out.push('\n');
     out
 }
 
-/// The ignore file: the service never commits its own scratch.
+/// The ignore file: the service's reserved prefix, so nothing of the service's ever enters history.
 pub fn prikkignore() -> String {
-    ".inklkunn/\n".to_owned()
+    format!("{SERVICE_PREFIX}\n")
 }
 
-/// Write the bundle files into `repo`'s worktree (the repository already exists).
+/// Write the bundle files into `repo`'s worktree (the repository already exists). The help page gets a
+/// fresh id.
 pub fn write_layout(
     repo: &Path,
     record: &WikiRecord,
@@ -144,7 +201,7 @@ pub fn write_layout(
     }
     std::fs::write(repo.join(MANIFEST), manifest(record, inklkunn_version))?;
     std::fs::write(repo.join(PRIKKIGNORE), prikkignore())?;
-    std::fs::write(repo.join(HELP_PAGE), help_page(record))?;
+    std::fs::write(repo.join(HELP_PAGE), help_page(record, &uuid_v7()))?;
     Ok(())
 }
 
@@ -171,7 +228,8 @@ impl std::fmt::Display for LayoutError {
 
 impl std::error::Error for LayoutError {}
 
-/// Check a worktree against CT-02.
+/// Check a worktree against CT-02: the directories and files exist, and none of the names inklkunn writes
+/// (its manifest, its service prefix, anything named `inklkunn`) appears inside `.prikk/`.
 pub fn check_layout(repo: &Path) -> Result<(), LayoutError> {
     for d in DIRECTORIES {
         if !repo.join(d).is_dir() {
@@ -183,9 +241,14 @@ pub fn check_layout(repo: &Path) -> Result<(), LayoutError> {
             return Err(LayoutError::Missing(f.to_owned()));
         }
     }
-    for name in ["inklkunn", ".inklkunn", MANIFEST] {
-        if repo.join(".prikk").join(name).exists() {
-            return Err(LayoutError::InsidePrikk(name.to_owned()));
+    if let Ok(entries) = std::fs::read_dir(repo.join(".prikk")) {
+        for e in entries.flatten() {
+            let name = e.file_name().to_string_lossy().to_ascii_lowercase();
+            if name.contains("inklkunn") || name == MANIFEST {
+                return Err(LayoutError::InsidePrikk(
+                    e.file_name().to_string_lossy().into_owned(),
+                ));
+            }
         }
     }
     Ok(())

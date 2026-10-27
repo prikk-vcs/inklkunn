@@ -18,6 +18,22 @@
   (`jsonwebtoken` with the RustCrypto backend, as planeter), and the outbound HTTPS question of IQ-3 (a
   confined `curl` through the egress guard first; an in-process client only if measured and justified).
 
+## Notes from M0's review (2026-10-27), binding on the tasks below
+
+- **T2.** `Principal::System` is constructible by any code today; make it mintable only by core's own import
+  and recovery entry points, and have the route-enumeration harness flag a handler that constructs one. The
+  visibility in `Resource::Wiki` is the caller's statement; put the wiki lookup inside the authorization
+  layer so a handler cannot assert `Public`.
+- **T3.** The bootstrap signer is behind the `bootstrap` cargo feature and stays there; the real store
+  creates the key directory on a private tmpfs and uses the same private `KeyDir`/write sequence. No public
+  item may return a seed path or seed bytes (add that rule to the boundary gate when the store lands).
+- **T4.** The write verbs run under a fixed 1 GiB `RLIMIT_DATA` ceiling (`WRITE_CEILING`); measure them (a
+  spike like RFC 001's spike A) and replace the constant with a costed table. `create_view` takes a
+  `ViewCreationAct` (the recorded act) as `accept` takes its token.
+- **T5.** The system-kind message exists (`inklkunn_core::system_message`): summary cut to 120 characters,
+  no `Proposal:`/`Base:` trailers, `Proposed-By`/`Accepted-By` as `system (inklkunn)`, `Kind: system`. The
+  composer defines the proposal form around it and the parser reads both.
+
 ## Task breakdown, in build order
 
 ### T1 — Principals and credentials (`inklkunn-auth`; RFC 002 D-1)

@@ -20,9 +20,27 @@ fn github_style_anchors() {
 }
 
 #[test]
-fn duplicates_are_suffixed() {
+fn duplicates_are_suffixed_and_every_id_is_unique() {
     let mut a = Anchors::new();
     assert_eq!(a.next("Merging"), "merging");
     assert_eq!(a.next("Merging"), "merging-1");
     assert_eq!(a.next("Merging"), "merging-2");
+    // GitHub's rule: `a`, `a-1`, `a` → `a`, `a-1`, `a-2`, never two `a-1`s.
+    let mut b = Anchors::new();
+    assert_eq!(b.next("a"), "a");
+    assert_eq!(b.next("a-1"), "a-1");
+    assert_eq!(b.next("a"), "a-2");
+    let mut c = Anchors::new();
+    c.reserve("merging");
+    assert_eq!(c.next("Merging"), "merging-1");
+}
+
+#[test]
+fn the_reduction_matches_what_the_renderer_shows() {
+    assert_eq!(github_anchor("_em_"), "em");
+    assert_eq!(github_anchor("snake_case stays"), "snake_case-stays");
+    assert_eq!(github_anchor("A <b>b</b>"), "a-b");
+    assert_eq!(github_anchor("[[T#Sec]]"), "t");
+    assert_eq!(github_anchor("[[Guides/Deep|shown]]"), "shown");
+    assert_eq!(github_anchor("![[i.png]]"), "ipng");
 }

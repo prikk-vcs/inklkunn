@@ -194,8 +194,9 @@ language (INC-2), pass the structural accessibility checks (INC-1), and consult 
 
 - **CT-01 — The page file** (CM-2): Portable Wiki Markdown Layer 2 with YAML frontmatter; UTF-8, LF, NFC;
   the path under `pages/` derived from the title by the bundle's file-name rules (XFER-3), with `title`
-  and `id` in frontmatter authoritative. Title-to-path mapping is deterministic, documented, and refuses
-  characters that cannot be a safe path component.
+  and `id` in frontmatter authoritative. Title-to-path mapping is deterministic, documented, ASCII-only
+  (non-ASCII and unsafe characters percent-encoded, exactly reversible; prikk refuses non-ASCII paths,
+  ledger PK-21) and refuses what cannot be a path component at all (`.`, `..`, over-long).
 - **CT-02 — The repository layout** (CM-1, CM-7): `wiki-bundle.yaml`, `pages/`, `attachments/` with
   `<name>.meta.yaml` sidecars, `knowledge/` and `governance/` (schemas fixed by RFCs 005 and 006). Nothing
   of inklkunn's inside `.prikk/` (INT-10).

@@ -69,7 +69,7 @@ pub enum Via {
     /// A `./` or `../` path from the linking page.
     Relative,
     /// An empty target: the page itself.
-    Self_,
+    SamePage,
     /// Several pages match; `path` is the first and `candidates` lists them all.
     Ambiguous,
     /// No page.
@@ -87,7 +87,7 @@ impl Via {
             Via::Normalized => "normalized",
             Via::Hierarchy => "hierarchy",
             Via::Relative => "relative",
-            Via::Self_ => "self",
+            Via::SamePage => "self",
             Via::Ambiguous => "ambiguous",
             Via::Dangling => "dangling",
         }
@@ -116,9 +116,10 @@ pub struct Resolution {
 }
 
 impl Resolution {
-    /// Does the link lead anywhere?
+    /// Does the link lead to exactly one place: a page or a URL, with no ambiguity? An ambiguous link has
+    /// a `path` (the first candidate) but is **not** resolved; callers show its candidates (NAV-15).
     pub fn resolved(&self) -> bool {
-        self.path.is_some() || self.url.is_some()
+        self.via != Via::Ambiguous && (self.path.is_some() || self.url.is_some())
     }
 
     fn page(path: &str, via: Via) -> Self {
@@ -144,11 +145,16 @@ impl Resolution {
 #[derive(Debug, Clone, Default)]
 pub struct Index {
     pages: Vec<PageEntry>,
-    /// MediaWiki-style namespace prefixes that are titles, not interwiki (MKUP-7).
+    /// MediaWiki-style namespace prefixes that are titles, not interwiki (MKUP-7). **Used by the lint**
+    /// (an undeclared prefix is reported) and not by `resolve`, which reads `ns:Title` as a title; a
+    /// prefix declared both here and in `interwiki` resolves as interwiki.
     pub namespaces: BTreeSet<String>,
-    /// Interwiki prefix → URL template with `{title}` (MKUP-13).
+    /// Interwiki prefix → URL template with `{title}` (MKUP-13); a template without `{title}` has the
+    /// encoded title appended.
     pub interwiki: BTreeMap<String, String>,
     pages_prefix: String,
+    /// Paths (with `.md`, without `.md`, and logical) → page index, for `by_path` and relative links.
+    by_path: BTreeMap<String, usize>,
     exact: BTreeMap<String, Vec<usize>>,
     alias: BTreeMap<String, Vec<usize>>,
     case: BTreeMap<String, Vec<usize>>,
@@ -189,6 +195,13 @@ impl Index {
     /// Add a page.
     pub fn add(&mut self, page: PageEntry) {
         let i = self.pages.len();
+        self.by_path.entry(page.path.clone()).or_insert(i);
+        self.by_path
+            .entry(strip_md(&page.path).to_owned())
+            .or_insert(i);
+        self.by_path
+            .entry(self.logical_path(&page.path).to_owned())
+            .or_insert(i);
         let mut keys: Vec<String> = vec![
             nfc_trim(&page.title),
             nfc_trim(self.logical_path(&page.path)),
@@ -212,9 +225,12 @@ impl Index {
         self.pages.push(page);
     }
 
-    /// The page at `path`.
+    /// The page at `path` (with its `.md`).
     pub fn by_path(&self, path: &str) -> Option<&PageEntry> {
-        self.pages.iter().find(|p| p.path == path)
+        self.by_path
+            .get(path)
+            .and_then(|i| self.pages.get(*i))
+            .filter(|p| p.path == path)
     }
 
     /// Resolve `target` as written in a link on `from_path`.
@@ -223,7 +239,7 @@ impl Index {
         if target.is_empty() {
             return Resolution {
                 path: from_path.map(str::to_owned),
-                via: Via::Self_,
+                via: Via::SamePage,
                 url: None,
                 candidates: Vec::new(),
             };
@@ -233,10 +249,16 @@ impl Index {
             && let Some((prefix, rest)) = target.split_once(':')
             && let Some(template) = self.interwiki.get(prefix)
         {
+            let encoded = percent_encode(rest.trim());
+            let url = if template.contains("{title}") {
+                template.replace("{title}", &encoded)
+            } else {
+                format!("{template}{encoded}")
+            };
             return Resolution {
                 path: None,
                 via: Via::Interwiki,
-                url: Some(template.replace("{title}", &percent_encode(rest.trim()))),
+                url: Some(url),
                 candidates: Vec::new(),
             };
         }
@@ -244,11 +266,7 @@ impl Index {
             && let Some(from) = from_path
         {
             let cand = relative_target(from, &target);
-            return match self
-                .pages
-                .iter()
-                .find(|p| strip_md(&p.path) == cand || self.logical_path(&p.path) == cand)
-            {
+            return match self.by_path.get(&cand).and_then(|i| self.pages.get(*i)) {
                 Some(p) => Resolution::page(&p.path, Via::Relative),
                 None => Resolution::dangling(),
             };

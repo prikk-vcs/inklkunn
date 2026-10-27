@@ -69,6 +69,60 @@ fn inventory() -> BTreeSet<String> {
     out
 }
 
+/// The direct dependencies the appendix names ("`crate` via `member`"), i.e. what a manifest declares.
+fn direct_dependencies() -> BTreeSet<String> {
+    let policy = fs::read_to_string(root().join("docs/dependency-policy.md")).expect("policy");
+    let section = policy
+        .split("## Appendix — lock inventory")
+        .nth(1)
+        .expect("the lock inventory appendix");
+    let mut out = BTreeSet::new();
+    for line in section.lines() {
+        if !line.starts_with("| `") {
+            continue;
+        }
+        let Some(enters) = line.split('|').nth(3) else {
+            continue;
+        };
+        for part in enters.split(';') {
+            if let Some((direct, _)) = part.trim().split_once(" via ")
+                && let Some(name) = direct
+                    .trim()
+                    .strip_prefix('`')
+                    .and_then(|d| d.strip_suffix('`'))
+            {
+                out.insert(name.to_owned());
+            }
+        }
+    }
+    out
+}
+
+/// The accepted table's text: every direct dependency must be named in it, in backticks.
+fn accepted_table() -> String {
+    let policy = fs::read_to_string(root().join("docs/dependency-policy.md")).expect("policy");
+    policy
+        .split("## Ledger — accepted")
+        .nth(1)
+        .and_then(|rest| rest.split("## Ledger — rejected").next())
+        .expect("the accepted table")
+        .to_owned()
+}
+
+#[test]
+fn every_direct_dependency_has_a_measured_accepted_row() {
+    let accepted = accepted_table();
+    let missing: Vec<String> = direct_dependencies()
+        .into_iter()
+        .filter(|d| !accepted.contains(&format!("`{d}`")))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "direct dependencies without a row in the accepted table of docs/dependency-policy.md: {missing:?}\n\
+         Measure the change (RFC 010 D-6) and record it before the commit that adopts it."
+    );
+}
+
 #[test]
 fn every_locked_crate_has_a_ledger_row_and_no_row_is_stale() {
     let members = workspace_members();

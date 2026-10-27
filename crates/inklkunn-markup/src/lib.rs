@@ -24,15 +24,18 @@ pub mod path;
 pub mod render;
 pub mod resolve;
 pub mod scan;
+pub(crate) mod structure;
 pub(crate) mod text;
 
 pub use frontmatter::{Metadata, Value, YamlError};
-pub use lint::{Finding, Level, lint};
-pub use path::{PathError, path_to_title, title_to_path};
+pub use lint::{Context as LintContext, Finding, Level, lint};
+pub use path::{PathError, collision_key, path_to_title, title_to_path, with_suffix};
 pub use render::{LinkHref, NoLinks, RenderLinks, Rendered, TocEntry, render_html, render_with};
 pub use resolve::{Index, PageEntry, Resolution, Via, resolve};
 pub use scan::{Link, ScanOptions, ScanReport, scan, scan_with};
-pub use text::{escape_href, escape_html, nfc_trim, normalize, percent_encode};
+pub use text::{
+    ALLOWED_SCHEMES, escape_href, escape_html, href_is_allowed, nfc_trim, normalize, percent_encode,
+};
 
 /// A page: its frontmatter (if any), its typed metadata, its body and the scan of its constructs.
 #[derive(Debug, Clone)]
@@ -77,7 +80,8 @@ impl Page {
             None => None,
         };
         let metadata = Metadata::from_value(frontmatter.as_ref());
-        let scan = scan::scan_body(text, text.len() - body.len(), ScanOptions::default());
+        // The same scan a caller gets from `scan()`: frontmatter fields included.
+        let scan = scan::scan_with(text, ScanOptions::default());
         Ok(Page {
             frontmatter,
             metadata,

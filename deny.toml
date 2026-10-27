@@ -2,6 +2,11 @@
 # necessary, is scoped, carries a `reason`, is mirrored in .cargo/audit.toml, and is re-examined at every
 # change that touches its path (the triage ladder, rung 3).
 
+# Every optional dependency of a dependency is in the graph deny checks, so "locked but never built" crates
+# are scanned, as docs/dependency-policy.md says.
+[graph]
+all-features = true
+
 [advisories]
 version = 2
 yanked = "deny"

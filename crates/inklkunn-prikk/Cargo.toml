@@ -8,9 +8,17 @@ authors.workspace = true
 repository.workspace = true
 description = "inklkunn's storage boundary: the Storage trait and the sandboxed, version-pinned prikk CLI driver for the read verbs, with typed --format json output."
 
+[features]
+# Knobs the crate's own tests turn (a fixed ceiling, deadline or output cap). Never enabled by a product
+# crate; the boundary gate fails if one does.
+test-knobs = []
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+inklkunn-prikk = { path = ".", version = "0.0.0", features = ["test-knobs"] }
 
 [lints]
 workspace = true

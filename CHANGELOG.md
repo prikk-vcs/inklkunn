@@ -32,6 +32,23 @@ M0 — foundations (RFC 001, RFC 010). Nothing serves pages yet.
   justification for inklkunn's own merge in RFC 004. `tools/corpus` generates both corpora from a seed;
   `tools/spikes/` holds the harnesses. prikk refuses repository paths over 1024 bytes, which bounds a wiki's
   hierarchy depth (about 500 one-character levels).
+- **The M0 review's corrections** (2026-10-27; review requests v2). The driver reads a ceiling hit through
+  bubblewrap (exit 128 + n, or bwrap's "Out of memory") as a ceiling, charges the admission gate the real 1.5 ×
+  ceiling, checks every argument's shape before prikk runs, binds exactly the caller's scratch directory for
+  `materialize` and resolves every mount against symlinks, bounds a call's output, and refuses bubblewrap's own
+  failures as prerequisites rather than prikk's refusals. The store validates ids, slugs and display names on
+  every path including deserialization, refuses a newer schema before touching the file, and runs each change
+  in a transaction. *Create wiki* stores its record last and removes a failed attempt's directories. The signer
+  exposes only named operations; the bootstrap signer is behind the `bootstrap` feature. The egress guard
+  refuses control characters, port 0, Teredo, ORCHID and more, and resolves through a seam. The markup crate
+  bounds frontmatter nesting, takes code and heading ranges from CommonMark's parser, replaces constructs at
+  their scanned spans, writes the scanner's anchors as ids, never emits a `javascript:` or `data:` href, and
+  is linear on every pathological input in a bounded test. `title_to_path` percent-encodes non-ASCII titles
+  (prikk refuses non-ASCII paths) exactly reversibly. The gates read manifests in every spelling, scan tests
+  and nested files, require the lints and `forbid(unsafe_code)` in every crate, and keep test features out of
+  product crates; `pin-check` understands job-level guards and pins `cargo install`; `floor-check` records
+  the prikk assets' checksums; CI counts the shimmed self-skips; the release gates run both test passes, join
+  the images under one tag and attest them.
 - **Conventions and ledgers** (RFC 001 D-11; RFC 010): README, this changelog, `SECURITY.md` stating RR-1, the
   dependency policy with a generated lock inventory that a test keeps equal to `Cargo.lock`, the upstream
   dependency ledger (PK/PL/WC rows), `docs/UPSTREAM.md`, `docs/RELEASING.md`, the mdBook.

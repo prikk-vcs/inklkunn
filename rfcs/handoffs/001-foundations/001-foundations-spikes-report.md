@@ -117,9 +117,11 @@ $B histories --out /scratch/histories --keys $K --trials 120 --seed 7 --report s
   and MRG-4 is the right place for it.**
 - The block model and prikk agree perfectly where both can decide (53 confluent = 53 clean; 21 same-paragraph
   = 21 unclean); the 46 in between are exactly inklkunn's margin over prikk.
-- The **kind** of refusal differed between two runs of the same edit pairs on freshly built repositories (the
-  first run reported every one-page pair as `Conflict`; the second split them into `Deferred` and `Conflict`).
-  Nothing in inklkunn depends on the kind, but the variation is worth a question to prikk (ledger PK-16).
+- The **kind** of refusal (`Conflict` or `Deferred`) is deterministic for a given edit pair: on 2026-10-27 two
+  further runs of this harness with seed 7 agreed with the committed data on all 120 kinds. The variation the
+  first draft of this report noted came from a harness change between its two runs (the block model's
+  leading-newline fix altered the generated edits), not from prikk; no question to prikk is needed (ledger
+  PK-16). Nothing in inklkunn depends on the kind.
 
 **Base movement** (fraction of proposals whose base moved before acceptance, 20,000 simulated proposals each):
 

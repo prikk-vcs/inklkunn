@@ -66,11 +66,11 @@ fn headings_block_ids_and_tags() {
         Some("heading-not-id")
     );
     assert_eq!(
-        r.block_ids,
-        vec![BlockId {
-            line: 3,
-            id: "p1".into()
-        }]
+        r.block_ids
+            .iter()
+            .map(|b| (b.line, b.id.as_str(), b.start, b.end))
+            .collect::<Vec<_>>(),
+        vec![(3, "p1", 13, 17)]
     );
     assert_eq!(r.tags.inline, vec!["one", "paren"]);
 }

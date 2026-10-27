@@ -25,8 +25,8 @@ rfcs/
 ## Pipeline (from the roadmap)
 
 The planned order is `../ROADMAP.md` §7. **RFCs 001, 002 and 010 were accepted by the owner on 2026-10-27**; their handoffs are assignable (002's once
-001 has landed). RFC 003 is proposed. RFCs 003–009 are
-reserved subjects not yet written: 003 read path and rendering (M1), 004 proposals (M2), 005 knowledge layer
+001 has landed). **RFC 003 was accepted on 2026-10-27**. RFCs 004–009 are
+reserved subjects not yet written: 004 proposals (M2), 005 knowledge layer
 (M3), 006 governance and moderation (M4), 007 interchange and API (M5), 008 the planeter module (joint),
 009 real-time co-editing (deferred).
 
@@ -34,14 +34,14 @@ reserved subjects not yet written: 003 read path and rendering (M1), 004 proposa
 |---|---|---|---|
 | 001 | [Foundations: the workspace and its gates, the storage driver, and the wiki repository layout](accepted/001-foundations.md) | M0 → M1 | **accepted** 2026-10-27; handoff v1 assignable |
 | 002 | [Identity, keys and signing](accepted/002-identity-keys-and-signing.md) | M0 → M2 (DR-4) | **accepted** 2026-10-27; handoff v1 assignable after 001 lands |
-| 003 | [Read path and rendering](proposed/003-read-path-and-rendering.md) | M1 | **proposed** 2026-10-27 |
+| 003 | [Read path and rendering](accepted/003-read-path-and-rendering.md) | M1 | **accepted** 2026-10-27; handoff v1 assignable after 001's review and 002's T2 |
 | 010 | [Upstream tracking and supply-chain maintenance](accepted/010-upstream-and-supply-chain-maintenance.md) | all | **accepted** 2026-10-27; handoff v1 assignable with 001's |
 
 ## Current state
 
 | State | RFCs |
 |---|---|
-| Proposed | [003](proposed/003-read-path-and-rendering.md) — awaiting the owner's acceptance |
-| Accepted | [001](accepted/001-foundations.md), [002](accepted/002-identity-keys-and-signing.md), [010](accepted/010-upstream-and-supply-chain-maintenance.md) — accepted 2026-10-27 |
+| Proposed | *(none)* |
+| Accepted | [001](accepted/001-foundations.md), [002](accepted/002-identity-keys-and-signing.md), [003](accepted/003-read-path-and-rendering.md), [010](accepted/010-upstream-and-supply-chain-maintenance.md) — accepted 2026-10-27 |
 | Done | [000 — RFC lifecycle policy](done/000-rfc-lifecycle-policy.md) (adopted 2026-10-24) |
 | Archived | *(none yet)* |

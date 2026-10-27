@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use inklkunn_prikk::sandbox::probe_bwrap;
+use inklkunn_prikk::sandbox::{BwrapConfig, probe_bwrap};
 use inklkunn_prikk::{
     Admission, ExtractBounds, MIN_PRIKK_VERSION, Point, PrikkCli, Sandbox, Storage, StorageError,
     Unavailable,
@@ -80,6 +80,17 @@ fn driver(sandbox: Sandbox) -> PrikkCli {
     PrikkCli::open("prikk", sandbox, gate()).expect("a prikk at the floor")
 }
 
+fn main_view() -> Point {
+    Point::View("heads/main".into())
+}
+
+fn no_bounds() -> ExtractBounds {
+    ExtractBounds {
+        max_bytes: None,
+        max_files: None,
+    }
+}
+
 /// Both policies when bubblewrap works, else the unconfined one with a visible note.
 fn policies() -> Vec<Sandbox> {
     if bwrap_ok() {
@@ -122,7 +133,7 @@ fn views_tree_stat_and_read_return_typed_values() {
             "{views:?}"
         );
 
-        let main = Point::View("heads/main".into());
+        let main = main_view();
         let tree = d.tree(&repo, &main, None).expect("tree");
         let paths: Vec<&str> = tree.entries.iter().map(|e| e.path.as_str()).collect();
         for expected in [
@@ -164,7 +175,8 @@ fn history_change_and_diff() {
         let tmp = TempDir::new("history");
         let (repo, _) = fixture(&tmp);
         let d = driver(sandbox);
-        let history = d.history(&repo, "heads/main", None).expect("history");
+        let main = main_view();
+        let history = d.history(&repo, &main, None).expect("history");
         assert_eq!(history.blocks.len(), 2, "{history:?}");
         let newest = history.blocks.first().expect("tip");
         let root = history.blocks.get(1).expect("root");
@@ -173,7 +185,7 @@ fn history_change_and_diff() {
         let message = &newest.patch_messages.first().expect("message").message;
         assert!(message.starts_with("Proposal: 019a0000"), "{message}");
 
-        let one = d.history(&repo, "heads/main", Some(1)).expect("limited");
+        let one = d.history(&repo, &main, Some(1)).expect("limited");
         assert_eq!(one.blocks.len(), 1);
 
         let change = d.change(&repo, &newest.block_id).expect("change");
@@ -236,90 +248,103 @@ fn plan_and_materialize_write_only_into_the_scratch_mount() {
         let tmp = TempDir::new("extract");
         let (repo, scratch) = fixture(&tmp);
         let d = driver(sandbox);
-        let main = Point::View("heads/main".into());
+        let main = main_view();
         let plan = d.plan(&repo, &main).expect("plan");
         assert!(!plan.written);
         assert_eq!(plan.file_count, 6, "{plan:?}");
 
-        let into = scratch.join("out");
         let done = d
-            .materialize(
-                &repo,
-                &main,
-                &into,
-                ExtractBounds {
-                    max_bytes: None,
-                    max_files: None,
-                },
-            )
+            .materialize(&repo, &main, &scratch, "out", no_bounds())
             .expect("materialize");
         assert!(done.written);
+        let into = scratch.join("out");
         assert!(into.join("pages/Home.md").is_file());
         assert!(into.join("attachments/diagram.svg").is_file());
 
-        // The bound refuses before the first byte.
+        // The bound refuses before the first byte, with prikk's words and code.
         let bounded = d.materialize(
             &repo,
             &main,
-            &scratch.join("bounded"),
+            &scratch,
+            "bounded",
             ExtractBounds {
                 max_bytes: Some(10),
                 max_files: None,
             },
         );
         assert!(
-            matches!(bounded, Err(StorageError::Refused { .. })),
+            matches!(
+                bounded,
+                Err(StorageError::Refused {
+                    verb: "extract",
+                    ..
+                })
+            ),
             "{bounded:?}"
         );
         assert!(!scratch.join("bounded").exists());
 
-        // An existing target is refused by the driver itself.
-        let exists = d.materialize(
-            &repo,
-            &main,
-            &into,
-            ExtractBounds {
-                max_bytes: None,
-                max_files: None,
-            },
+        // An existing target, a bad name, a missing scratch: refused by the driver before anything runs.
+        let exists = d.materialize(&repo, &main, &scratch, "out", no_bounds());
+        assert!(
+            matches!(
+                exists,
+                Err(StorageError::InvalidArgument {
+                    verb: "extract",
+                    ..
+                })
+            ),
+            "{exists:?}"
         );
-        assert!(matches!(exists, Err(StorageError::Refused { .. })));
-
-        // Confined: a directory outside the mounts does not exist inside the sandbox, so nothing is written there.
-        if confined {
-            let elsewhere = TempDir::new("elsewhere");
-            let outside = elsewhere.0.join("out");
-            // The driver mounts `into.parent()` as the scratch; make the parent a sibling the sandbox never sees
-            // by pointing the call at a nested path whose parent exists on the host but is not mounted.
-            let nested_parent = elsewhere.0.join("deeper");
-            fs::create_dir_all(&nested_parent).unwrap();
-            let r = d.materialize(
-                &repo,
-                &main,
-                &nested_parent.join("x"),
-                ExtractBounds {
-                    max_bytes: None,
-                    max_files: None,
-                },
-            );
-            // `nested_parent` *is* mounted (it is the scratch), so this succeeds; the real check is that the
-            // repository itself stayed read-only:
-            assert!(r.is_ok(), "{r:?}");
-            let into_repo = d.materialize(
-                &repo,
-                &main,
-                &repo.join("inside"),
-                ExtractBounds {
-                    max_bytes: None,
-                    max_files: None,
-                },
-            );
+        for bad in ["", "../x", "a/b", ".hidden", "-x"] {
+            let r = d.materialize(&repo, &main, &scratch, bad, no_bounds());
             assert!(
-                into_repo.is_err(),
-                "writing into the repository must fail: {into_repo:?}"
+                matches!(r, Err(StorageError::InvalidArgument { .. })),
+                "{bad}: {r:?}"
             );
-            assert!(!repo.join("inside").exists());
-            drop(outside);
+        }
+        let r = d.materialize(&repo, &main, &tmp.0.join("nope"), "x", no_bounds());
+        assert!(
+            matches!(r, Err(StorageError::InvalidArgument { .. })),
+            "{r:?}"
+        );
+
+        // The scratch may not be the repository or anything inside it, nor a symlink into it.
+        let inside = d.materialize(&repo, &main, &repo, "inside", no_bounds());
+        assert!(
+            matches!(
+                inside,
+                Err(StorageError::Unavailable {
+                    reason: Unavailable::Spawn(_),
+                    ..
+                })
+            ),
+            "{inside:?}"
+        );
+        assert!(!repo.join("inside").exists());
+        let link = tmp.0.join("link-into-repo");
+        std::os::unix::fs::symlink(repo.join("pages"), &link).unwrap();
+        let through = d.materialize(&repo, &main, &link, "x", no_bounds());
+        assert!(
+            matches!(
+                through,
+                Err(StorageError::Unavailable {
+                    reason: Unavailable::Spawn(_),
+                    ..
+                })
+            ),
+            "{through:?}"
+        );
+        assert!(!repo.join("pages/x").exists());
+
+        if confined {
+            // The repository is read-only inside the sandbox: a second scratch beside it is the only place
+            // bytes can land, and they do.
+            let other = tmp.0.join("other");
+            fs::create_dir_all(&other).unwrap();
+            let r = d.materialize(&repo, &main, &other, "x", no_bounds());
+            assert!(r.is_ok(), "{r:?}");
+            assert!(other.join("x/pages/Home.md").is_file());
         }
     }
 }
@@ -349,7 +374,7 @@ fn refusals_carry_prikks_text_and_a_missing_repository_is_refused() {
     let tmp = TempDir::new("refuse");
     let (repo, _) = fixture(&tmp);
     let d = driver(Sandbox::Unconfined);
-    let main = Point::View("heads/main".into());
+    let main = main_view();
     let missing = d.stat(&repo, &main, "pages/Nope.md");
     assert!(
         matches!(&missing, Err(StorageError::Refused { verb: "cat", message, .. }) if message.contains("pages/Nope.md")),
@@ -362,10 +387,7 @@ fn refusals_carry_prikks_text_and_a_missing_repository_is_refused() {
     );
     let not_a_repo = d.views(&tmp.0);
     assert!(
-        matches!(
-            not_a_repo,
-            Err(StorageError::Refused { verb: "branch", .. })
-        ),
+        matches!(&not_a_repo, Err(StorageError::Refused { verb: "branch", kind: Some(k), message }) if k == "driver:no-repository" && !message.contains(&*tmp.0.to_string_lossy())),
         "{not_a_repo:?}"
     );
     let too_big = d.read(&repo, &main, "pages/Home.md", 4);
@@ -373,6 +395,45 @@ fn refusals_carry_prikks_text_and_a_missing_repository_is_refused() {
         matches!(too_big, Err(StorageError::Refused { verb: "cat", .. })),
         "{too_big:?}"
     );
+}
+
+#[test]
+fn malformed_arguments_are_refused_before_prikk_runs() {
+    // No prikk is needed: the shim counts its invocations, and must see none.
+    let tmp = TempDir::new("args");
+    let marker = tmp.0.join("called");
+    let fake = shim(
+        &tmp.0,
+        &format!(
+            "case \"$1\" in --version) echo 'prikk 0.54.0' ;; *) touch '{}'; exit 2 ;; esac",
+            marker.display()
+        ),
+    );
+    let d = open_shim(&fake).expect("open");
+    let repo = tmp.0.join("repo");
+    fs::create_dir_all(repo.join(".prikk")).unwrap();
+    let cases: Vec<Result<(), StorageError>> = vec![
+        d.tree(&repo, &Point::View("main".into()), None).map(|_| ()),
+        d.tree(&repo, &main_view(), Some("../x")).map(|_| ()),
+        d.stat(&repo, &main_view(), "/etc/passwd").map(|_| ()),
+        d.read(&repo, &Point::Block("deadbeef".into()), "pages/x", 10)
+            .map(|_| ()),
+        d.history(&repo, &Point::View("heads/".into()), None)
+            .map(|_| ()),
+        d.change(&repo, "--help").map(|_| ()),
+        d.diff(&repo, &main_view(), &Point::View("-x".into()), &[])
+            .map(|_| ()),
+        d.diff(&repo, &main_view(), &main_view(), &["a/./b"])
+            .map(|_| ()),
+        d.plan(&repo, &Point::Block("X".repeat(64))).map(|_| ()),
+    ];
+    for c in &cases {
+        assert!(
+            matches!(c, Err(StorageError::InvalidArgument { .. })),
+            "{c:?}"
+        );
+    }
+    assert!(!marker.exists(), "prikk must not have been called");
 }
 
 /// Open a driver on a freshly written shim, retrying the one failure a parallel test binary can cause: a
@@ -401,11 +462,35 @@ fn open_shim(binary: &Path) -> Result<PrikkCli, StorageError> {
 
 /// A shell script standing in for prikk.
 fn shim(dir: &Path, body: &str) -> PathBuf {
+    shim_named(dir, "prikk", body)
+}
+
+fn shim_named(dir: &Path, name: &str, body: &str) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;
-    let p = dir.join("prikk");
+    let p = dir.join(name);
     fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
     fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
     p
+}
+
+/// Retry a read against a fresh shim across the fork–exec race (see `open_shim`).
+fn retry<T: std::fmt::Debug>(
+    mut f: impl FnMut() -> Result<T, StorageError>,
+) -> Result<T, StorageError> {
+    let mut r = f();
+    for _ in 0..50 {
+        match &r {
+            Err(StorageError::Unavailable {
+                reason: Unavailable::Spawn(m),
+                ..
+            }) if m.contains("Text file busy") => {
+                std::thread::sleep(Duration::from_millis(10));
+                r = f();
+            }
+            _ => break,
+        }
+    }
+    r
 }
 
 #[test]
@@ -422,6 +507,18 @@ fn an_older_prikk_is_refused_at_open() {
         open_shim(&garbage),
         Err(StorageError::UnsupportedVersion { .. })
     ));
+    // A probe that fails or hangs is unavailable, never "older than the floor".
+    let failing = shim(&tmp.0, "exit 1");
+    assert!(
+        matches!(
+            open_shim(&failing),
+            Err(StorageError::Unavailable {
+                verb: "--version",
+                ..
+            })
+        ),
+        "a failing probe"
+    );
 }
 
 #[test]
@@ -438,26 +535,117 @@ fn a_doctored_schema_version_is_refused() {
 esac"#,
     );
     let d = open_shim(&fake).expect("open");
-    let mut r = d.views(&repo);
-    for _ in 0..50 {
-        match &r {
-            Err(StorageError::Unavailable {
-                reason: Unavailable::Spawn(m),
-                ..
-            }) if m.contains("Text file busy") => {
-                std::thread::sleep(Duration::from_millis(10));
-                r = d.views(&repo);
-            }
-            _ => break,
-        }
-    }
+    let r = retry(|| d.views(&repo));
     assert!(
         matches!(&r, Err(StorageError::UnsupportedSchema { found, .. }) if found == "branch-list-v9"),
         "{r:?}"
     );
     // The right schema name with the wrong shape is damaged output, not a schema refusal.
-    let t = d.tree(&repo, &Point::View("heads/main".into()), None);
+    let t = retry(|| d.tree(&repo, &main_view(), None));
     assert!(matches!(t, Err(StorageError::Damaged { .. })), "{t:?}");
+}
+
+#[test]
+fn sandbox_tool_failures_and_deadlines_and_output_bounds_are_typed() {
+    let tmp = TempDir::new("tools");
+    let repo = tmp.0.join("repo");
+    fs::create_dir_all(repo.join(".prikk")).unwrap();
+    // A prikk that answers the probe and otherwise sleeps or floods.
+    let fake = shim(
+        &tmp.0,
+        r#"case "$1" in
+  --version) echo 'prikk 0.54.0' ;;
+  branch) sleep 5 ;;
+  tree) yes '{"schema_version": "tree-listing-v1"}' | head -c 300000 ;;
+  log) echo "error: something prikk said" >&2; exit 1 ;;
+  show) exit 139 ;;
+esac"#,
+    );
+    let d = open_shim(&fake).expect("open");
+    let slow = retry(|| {
+        d.clone()
+            .with_fixed_deadline(Duration::from_millis(300))
+            .views(&repo)
+    });
+    assert!(
+        matches!(
+            slow,
+            Err(StorageError::Unavailable {
+                verb: "branch",
+                reason: Unavailable::TimedOut { .. }
+            })
+        ),
+        "{slow:?}"
+    );
+    let flood = retry(|| {
+        d.clone()
+            .with_output_cap(10_000)
+            .tree(&repo, &main_view(), None)
+    });
+    assert!(
+        matches!(
+            flood,
+            Err(StorageError::Unavailable {
+                verb: "tree",
+                reason: Unavailable::OutputExceeded
+            })
+        ),
+        "{flood:?}"
+    );
+    let refused = retry(|| d.history(&repo, &main_view(), None));
+    assert!(
+        matches!(&refused, Err(StorageError::Refused { verb: "log", message, kind: None }) if message == "something prikk said"),
+        "{refused:?}"
+    );
+    // Without a ceiling in play (the knob is off, so a costed one applies; the shim ignores it), a 139 is
+    // read as the ceiling, because the ceiling is always set in production. Say so in the detail otherwise.
+    let seg = retry(|| d.change(&repo, &"a".repeat(64)));
+    assert!(
+        matches!(
+            seg,
+            Err(StorageError::Unavailable {
+                reason: Unavailable::CeilingExceeded { .. },
+                ..
+            })
+        ),
+        "{seg:?}"
+    );
+
+    // bwrap's own failure (the binary gone, a path missing) is a prerequisite problem, not prikk's refusal.
+    let failing_bwrap = shim_named(
+        &tmp.0,
+        "bwrap",
+        "case \"$*\" in *true*) exit 0 ;; *) echo \"bwrap: Can't find source path /nope: No such file or directory\" >&2; exit 1 ;; esac",
+    );
+    let prlimit = shim_named(
+        &tmp.0,
+        "prlimit",
+        "case \"$1\" in --version) exit 0 ;; *) shift; shift; exec \"$@\" ;; esac",
+    );
+    let sandbox = Sandbox::Bwrap(BwrapConfig {
+        bwrap: failing_bwrap.into_os_string(),
+        prlimit: prlimit.into_os_string(),
+    });
+    let d = (0..50)
+        .find_map(
+            |_| match PrikkCli::open(fake.as_os_str().to_owned(), sandbox.clone(), gate()) {
+                Err(StorageError::Unavailable {
+                    reason: Unavailable::Spawn(m),
+                    ..
+                }) if m.contains("Text file busy") => {
+                    std::thread::sleep(Duration::from_millis(10));
+                    None
+                }
+                other => Some(other),
+            },
+        )
+        .expect("opened")
+        .expect("a confined driver over the shims");
+    let r = retry(|| d.views(&repo));
+    assert!(
+        matches!(&r, Err(StorageError::Unavailable { verb: "branch", reason: Unavailable::Prerequisite(m) }) if m.starts_with("bwrap:")),
+        "{r:?}"
+    );
 }
 
 #[test]
@@ -468,13 +656,38 @@ fn a_too_small_ceiling_is_unavailable_never_a_verdict() {
     }
     let tmp = TempDir::new("ceiling");
     let (repo, _) = fixture(&tmp);
-    // 64 KiB of data: not even the dynamic loader gets through. Unconfined, so the ceiling hits prikk itself.
+    // Unconfined, 64 KiB of data: not even the dynamic loader gets through; the ceiling hits prikk itself.
     let d = driver(Sandbox::Unconfined).with_fixed_ceiling(64 * 1024);
     let r = d.verify(&repo);
     assert!(
         matches!(r, Err(StorageError::Unavailable { verb: "verify", reason: Unavailable::CeilingExceeded { bytes } }) if bytes == 64 * 1024),
         "{r:?}"
     );
+    // Confined: the death shapes change with the ceiling (measured on bubblewrap 0.13.1: bwrap's own loader
+    // fails at 64 KiB with exit 127; prikk faults inside the namespace at 80–96 KiB, which bwrap reports as
+    // exit 139; bwrap runs short while setting up at 112–192 KiB and says "Out of memory" with exit 1; the
+    // tiny fixture verifies from about 224 KiB). Whatever the shape, a ceiling hit is `CeilingExceeded`
+    // and never a refusal, a damaged repository or a verdict.
+    if bwrap_ok() {
+        let mut hits = 0;
+        for kib in [64u64, 96, 128, 192, 4096] {
+            let d = driver(Sandbox::default()).with_fixed_ceiling(kib << 10);
+            match d.verify(&repo) {
+                Err(StorageError::Unavailable {
+                    verb: "verify",
+                    reason: Unavailable::CeilingExceeded { bytes },
+                }) => {
+                    assert_eq!(bytes, kib << 10);
+                    hits += 1;
+                }
+                Ok(v) => assert!(v.verdict.ok, "{kib} KiB: {v:?}"),
+                other => panic!("{kib} KiB: a ceiling hit must be typed as one, got {other:?}"),
+            }
+        }
+        assert!(hits >= 1, "no ceiling fired in the confined policy");
+    } else {
+        println!("{SKIP_BWRAP}");
+    }
 }
 
 #[test]
@@ -485,7 +698,7 @@ fn admission_refusals_are_typed() {
     }
     let tmp = TempDir::new("admission");
     let (repo, _) = fixture(&tmp);
-    // A budget below any cost: every read is too large.
+    // A budget below any ceiling: every read is too large, and the answer names the pool.
     let tiny = PrikkCli::open(
         "prikk",
         Sandbox::Unconfined,
@@ -494,7 +707,7 @@ fn admission_refusals_are_typed() {
     .expect("open");
     let r = tiny.views(&repo);
     assert!(
-        matches!(r, Err(StorageError::TooLarge { verb: "branch", .. })),
+        matches!(r, Err(StorageError::TooLarge { verb: "branch", needed, pool }) if needed > pool),
         "{r:?}"
     );
 }

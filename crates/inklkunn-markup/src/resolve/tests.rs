@@ -31,7 +31,12 @@ fn the_mkup5_order() {
     assert_eq!(r("edit conflicts").via, Via::Case);
     assert_eq!(r("EDITING  COLLISIONS").via, Via::Normalized);
     assert_eq!(r("Nope").via, Via::Dangling);
-    assert_eq!(r("").via, Via::Self_);
+    assert_eq!(r("").via, Via::SamePage);
+    assert!(
+        !ix.resolve("Getting Started", Some("Home.md")).resolved(),
+        "ambiguous is not resolved"
+    );
+    assert!(r("Edit Conflicts").resolved());
     assert_eq!(
         r("wp:Edit conflict").url.as_deref(),
         Some("https://en.wikipedia.org/wiki/Edit%20conflict")

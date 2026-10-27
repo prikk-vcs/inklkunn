@@ -2,6 +2,8 @@
 //! look the reason up. The rule set is the portable subset of the wiki-commons reference linter that
 //! needs only the page (and, when given, the index); bundle-level rules belong to a later RFC.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use serde::Serialize;
 
 use crate::Page;
@@ -217,9 +219,9 @@ pub fn lint(page: &Page, source: &str, ctx: Context<'_>) -> Vec<Finding> {
     let scan = &page.scan;
 
     // Block identifiers (MKUP-9).
-    let mut seen_ids: Vec<(&str, usize)> = Vec::new();
+    let mut seen_ids: BTreeMap<&str, usize> = BTreeMap::new();
     for b in &scan.block_ids {
-        if let Some((_, first)) = seen_ids.iter().find(|(id, _)| *id == b.id) {
+        if let Some(first) = seen_ids.get(b.id.as_str()) {
             add(
                 Level::Warning,
                 "MKUP-9-duplicate",
@@ -231,7 +233,7 @@ pub fn lint(page: &Page, source: &str, ctx: Context<'_>) -> Vec<Finding> {
                 Some(b.line),
             );
         } else {
-            seen_ids.push((&b.id, b.line));
+            seen_ids.insert(&b.id, b.line);
         }
     }
 
@@ -311,12 +313,15 @@ pub fn lint(page: &Page, source: &str, ctx: Context<'_>) -> Vec<Finding> {
             prev = h.level;
         }
     }
-    let mut reported: Vec<&str> = Vec::new();
+    let mut heading_counts: BTreeMap<&str, usize> = BTreeMap::new();
     for h in &scan.headings {
-        if scan.headings.iter().filter(|o| o.text == h.text).count() > 1
-            && !reported.contains(&h.text.as_str())
+        *heading_counts.entry(h.text.as_str()).or_insert(0) += 1;
+    }
+    let mut reported: BTreeSet<&str> = BTreeSet::new();
+    for h in &scan.headings {
+        if heading_counts.get(h.text.as_str()).copied().unwrap_or(0) > 1
+            && reported.insert(h.text.as_str())
         {
-            reported.push(&h.text);
             add(
                 Level::Info,
                 "MKUP-8-duplicate-heading",
@@ -331,9 +336,11 @@ pub fn lint(page: &Page, source: &str, ctx: Context<'_>) -> Vec<Finding> {
     }
 
     // Tags (MKUP-14).
+    let declared: BTreeSet<&str> = scan.tags.frontmatter.iter().map(String::as_str).collect();
     let mut missing: Vec<&str> = Vec::new();
+    let mut missing_set: BTreeSet<&str> = BTreeSet::new();
     for t in &scan.tags.inline {
-        if !scan.tags.frontmatter.iter().any(|f| f == t) && !missing.contains(&t.as_str()) {
+        if !declared.contains(t.as_str()) && missing_set.insert(t.as_str()) {
             missing.push(t);
         }
     }
@@ -373,7 +380,7 @@ pub fn lint(page: &Page, source: &str, ctx: Context<'_>) -> Vec<Finding> {
         if l.fragment_kind == Some(FragmentKind::Block)
             && l.target.is_empty()
             && let Some(f) = &l.fragment
-            && !seen_ids.iter().any(|(id, _)| id == f)
+            && !seen_ids.contains_key(f.as_str())
         {
             add(
                 Level::Warning,

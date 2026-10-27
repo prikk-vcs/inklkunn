@@ -31,6 +31,9 @@ pub const LIGHT_CLASS_MAX_COST: u64 = 2 * COST_FLOOR;
 pub const CEILING_TENTHS: u64 = 15;
 /// The most entries a store walk visits before refusing.
 pub const MAX_STORE_ENTRIES: usize = 100_000;
+/// The most bytes of a JSON report the server keeps from one call; past it the call is stopped and
+/// reported as exceeding its output bound (`cat` is bounded by the caller's `max_bytes` instead).
+pub const MAX_REPORT_BYTES: u64 = 64 * MIB;
 /// The prikk version this table is bound to: the floor.
 pub const BOUND_TO: (u64, u64, u64) = (0, 54, 0);
 /// `false` since spike A measured the multiples on the floor (2026-10-27); `true` again whenever a
@@ -146,14 +149,15 @@ impl ReadVerb {
     }
 }
 
-/// The memory ceiling for a call of `cost`: `cost × 1.5`, never above `budget`, never below `cost`.
-pub fn ceiling_for(cost: u64, budget: Option<u64>) -> u64 {
-    let ceiling =
-        u64::try_from(u128::from(cost) * u128::from(CEILING_TENTHS) / 10).unwrap_or(u64::MAX);
-    match budget {
-        Some(b) => ceiling.min(b).max(cost.min(b)),
-        None => ceiling,
-    }
+/// The memory ceiling for a call of `cost`: `cost × 1.5` (saturating). The ceiling, not the cost, is what
+/// the admission gate is charged, so the headroom is real and the pool's arithmetic matches `RLIMIT_DATA`.
+pub fn ceiling_for(cost: u64) -> u64 {
+    u64::try_from(u128::from(cost) * u128::from(CEILING_TENTHS) / 10).unwrap_or(u64::MAX)
+}
+
+/// The inverse of [`ceiling_for`]: the cost a ceiling was derived from (for classing a call).
+pub fn cost_of_ceiling(ceiling: u64) -> u64 {
+    u64::try_from(u128::from(ceiling) * 10 / u128::from(CEILING_TENTHS)).unwrap_or(u64::MAX)
 }
 
 /// Why the store could not be sized.

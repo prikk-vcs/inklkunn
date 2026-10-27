@@ -1,7 +1,7 @@
 # RFC 003 — Read path and rendering: re-derive from prikk, render the profile safely, show the truth
 
-**Status.** **Proposed** (2026-10-27, by the architect). The implementer must not start until the owner accepts
-it. Handoff: written on acceptance, as `../handoffs/003-read-path-and-rendering/`.
+**Status.** **Accepted** by the owner on 2026-10-27 ("RFC 003 is accepted."); proposed the same day by the
+architect. Handoff: `../handoffs/003-read-path-and-rendering/read-path-and-rendering-handoff-v1.md`.
 **Tracks.** ROADMAP M1 (0.1.0), theme T3. Requirements `RD-1 … RD-11`, `RD-14`, `CM-3 … CM-5`, `CM-9`,
 `INC-1 … INC-8`, `IX-1`, `IX-2`, `IX-5`, `IX-6`, `IX-8`, `SEC-2`, `PRV-1`, `PRV-4`, `PERF-1`, `OPS-5`;
 external design `WEB-01`, `WEB-02`, `WEB-06`, `WEB-09`, `WEB-10`, `API-01`, `API-02`, `API-06`, `API-07`,

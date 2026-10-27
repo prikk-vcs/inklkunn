@@ -1,4 +1,6 @@
-//! The wiki record (DM-1) and its vocabulary.
+//! The wiki record (DM-1) and its vocabulary. Every value a caller supplies is a validated type or is
+//! validated by [`WikiRecord::from_new`]: nothing user-shaped reaches a path, a signed message or a YAML
+//! file unchecked.
 
 use std::fmt;
 use std::hash::{BuildHasher, Hasher};
@@ -6,50 +8,73 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
+/// A fresh UUID in the version-7 layout, rendered lower-case with hyphens: 48 bits of Unix milliseconds,
+/// the version and variant bits, then 74 random bits. The bits come from the operating system
+/// (`/dev/urandom`); when that cannot be read, from the standard library's randomly seeded hasher state.
+/// An id is an opaque name, not a secret.
+pub fn uuid_v7() -> String {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let millis = u64::try_from(millis).unwrap_or(u64::MAX) & 0x0000_FFFF_FFFF_FFFF;
+    let (r1, r2) = entropy();
+    let time_high = u32::try_from(millis >> 16).unwrap_or(0);
+    let time_low = u16::try_from(millis & 0xFFFF).unwrap_or(0);
+    let ver_rand = 0x7000 | u16::try_from(r1 & 0x0FFF).unwrap_or(0);
+    let var_rand = 0x8000 | u16::try_from((r1 >> 16) & 0x3FFF).unwrap_or(0);
+    let tail = r2 & 0x0000_FFFF_FFFF_FFFF;
+    format!("{time_high:08x}-{time_low:04x}-{ver_rand:04x}-{var_rand:04x}-{tail:012x}")
+}
+
+/// Two random words: the operating system's, else the hasher's.
+fn entropy() -> (u64, u64) {
+    use std::io::Read;
+    if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
+        let mut buf = [0u8; 16];
+        if f.read_exact(&mut buf).is_ok() {
+            let (a, b) = buf.split_at(8);
+            let a = u64::from_le_bytes(a.try_into().unwrap_or([0; 8]));
+            let b = u64::from_le_bytes(b.try_into().unwrap_or([0; 8]));
+            if a != 0 || b != 0 {
+                return (a, b);
+            }
+        }
+    }
+    let h = || {
+        std::collections::hash_map::RandomState::new()
+            .build_hasher()
+            .finish()
+    };
+    (h(), h())
+}
+
+/// Is `s` 36 lower-case hex-and-hyphen characters in UUID layout?
+fn is_uuid_shape(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == 36
+        && b.iter().enumerate().all(|(i, c)| match i {
+            8 | 13 | 18 | 23 => *c == b'-',
+            _ => c.is_ascii_hexdigit() && !c.is_ascii_uppercase(),
+        })
+}
+
 /// The opaque wiki id: a UUID in the version-7 layout (time-ordered), rendered lower-case with hyphens. It
-/// names the directory the repository lives in and never changes.
+/// names the directory the repository lives in and never changes. Deserialization goes through
+/// [`WikiId::parse`], so a malformed id is refused wherever it arrives.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(transparent)]
+#[serde(try_from = "String", into = "String")]
 pub struct WikiId(String);
 
 impl WikiId {
-    /// A fresh id: 48 bits of Unix milliseconds, then version and variant bits, then 74 bits drawn from
-    /// the standard library's randomly seeded hasher state (OS entropy, not a cryptographic generator;
-    /// the id is an opaque name, not a secret, and the slug is unique by the store's rule).
+    /// A fresh id.
     pub fn new() -> Self {
-        let millis = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
-        let millis = u64::try_from(millis).unwrap_or(u64::MAX) & 0x0000_FFFF_FFFF_FFFF;
-        let r1 = entropy();
-        let r2 = entropy();
-        let time_high = u32::try_from(millis >> 16).unwrap_or(0);
-        let time_low = u16::try_from(millis & 0xFFFF).unwrap_or(0);
-        let ver_rand = 0x7000 | u16::try_from(r1 & 0x0FFF).unwrap_or(0);
-        let var_rand = 0x8000 | u16::try_from((r1 >> 16) & 0x3FFF).unwrap_or(0);
-        let tail = r2 & 0x0000_FFFF_FFFF_FFFF;
-        WikiId(format!(
-            "{time_high:08x}-{time_low:04x}-{ver_rand:04x}-{var_rand:04x}-{tail:012x}"
-        ))
+        WikiId(uuid_v7())
     }
 
     /// Parse a stored id; refused unless it is 36 lower-case hex-and-hyphen characters in UUID layout.
     pub fn parse(s: &str) -> Option<Self> {
-        let b = s.as_bytes();
-        if b.len() != 36 {
-            return None;
-        }
-        for (i, c) in b.iter().enumerate() {
-            let ok = match i {
-                8 | 13 | 18 | 23 => *c == b'-',
-                _ => c.is_ascii_hexdigit() && !c.is_ascii_uppercase(),
-            };
-            if !ok {
-                return None;
-            }
-        }
-        Some(WikiId(s.to_owned()))
+        is_uuid_shape(s).then(|| WikiId(s.to_owned()))
     }
 
     /// The text form.
@@ -75,10 +100,18 @@ impl fmt::Display for WikiId {
     }
 }
 
-fn entropy() -> u64 {
-    std::collections::hash_map::RandomState::new()
-        .build_hasher()
-        .finish()
+impl TryFrom<String> for WikiId {
+    type Error = String;
+    fn try_from(s: String) -> Result<Self, String> {
+        WikiId::parse(&s)
+            .ok_or_else(|| "not a wiki id (36 lower-case hex-and-hyphen characters)".to_owned())
+    }
+}
+
+impl From<WikiId> for String {
+    fn from(id: WikiId) -> String {
+        id.0
+    }
 }
 
 /// Why a slug was refused.
@@ -90,6 +123,8 @@ pub enum SlugError {
     Characters,
     /// One of the names the service keeps for its own routes.
     Reserved,
+    /// Shaped like a wiki id, which a route accepting either must not be able to confuse.
+    LooksLikeId,
 }
 
 impl fmt::Display for SlugError {
@@ -101,44 +136,45 @@ impl fmt::Display for SlugError {
                 "a slug is lower-case letters, digits and single inner hyphens"
             ),
             SlugError::Reserved => write!(f, "that name is reserved for the service"),
+            SlugError::LooksLikeId => write!(f, "a slug may not have the shape of a wiki id"),
         }
     }
 }
 
 impl std::error::Error for SlugError {}
 
-/// Names no wiki may take: the service's own first path segments (external design WEB-01).
+/// Names no wiki may take: the service's own first path segments (external design WEB-01). RFC 003 D-1
+/// puts the wiki's own surfaces under `-/`, which no slug can spell; this list keeps the instance-level
+/// words that a reader would expect to mean the service.
 pub const RESERVED_SLUGS: &[&str] = &[
-    "api",
-    "admin",
-    "static",
-    "assets",
-    "auth",
-    "login",
-    "logout",
-    "new",
-    "wikis",
-    "health",
-    "metrics",
-    "w",
-    "u",
-    "users",
-    "search",
-    "about",
-    "help",
-    "docs",
-    "robots.txt",
-    "favicon.ico",
+    "api", "admin", "static", "assets", "auth", "login", "logout", "new", "wikis", "health",
+    "metrics", "w", "u", "users", "search", "about", "help", "docs", "feed", "feeds", "sitemap",
+    "robots",
 ];
 
-/// A URL slug: 1–64 of `a-z`, `0-9`, `-`; no leading, trailing or double hyphen; not reserved.
+/// A URL slug: 1–64 of `a-z`, `0-9`, `-`; no leading, trailing or double hyphen; not reserved; not shaped
+/// like a wiki id. Deserialization goes through [`Slug::new`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(transparent)]
+#[serde(try_from = "String", into = "String")]
 pub struct Slug(String);
 
 impl Slug {
-    /// Validate a slug.
+    /// Validate a slug a caller supplies (creation and rename).
     pub fn new(s: &str) -> Result<Self, SlugError> {
+        if RESERVED_SLUGS.contains(&s) {
+            return Err(SlugError::Reserved);
+        }
+        let slug = Self::from_stored(s)?;
+        if is_uuid_shape(s) {
+            return Err(SlugError::LooksLikeId);
+        }
+        Ok(slug)
+    }
+
+    /// Read a slug back from a store: the character and length rules only. The reserved list is a rule
+    /// for new names; a wiki that holds a name later added to it stays readable (and is reported by the
+    /// store's own listing, not made to vanish).
+    pub fn from_stored(s: &str) -> Result<Self, SlugError> {
         if s.is_empty() || s.len() > 64 {
             return Err(SlugError::Length);
         }
@@ -150,9 +186,6 @@ impl Slug {
             || s.contains("--")
         {
             return Err(SlugError::Characters);
-        }
-        if RESERVED_SLUGS.contains(&s) {
-            return Err(SlugError::Reserved);
         }
         Ok(Slug(s.to_owned()))
     }
@@ -166,6 +199,94 @@ impl Slug {
 impl fmt::Display for Slug {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
+    }
+}
+
+impl TryFrom<String> for Slug {
+    type Error = SlugError;
+    fn try_from(s: String) -> Result<Self, SlugError> {
+        Slug::new(&s)
+    }
+}
+
+impl From<Slug> for String {
+    fn from(s: Slug) -> String {
+        s.0
+    }
+}
+
+/// Why a display name was refused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DisplayNameError {
+    /// Empty, or longer than 120 characters.
+    Length,
+    /// A control character (a newline, a tab, an escape) is in the name.
+    Control,
+    /// Leading or trailing whitespace.
+    Whitespace,
+}
+
+impl fmt::Display for DisplayNameError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DisplayNameError::Length => write!(f, "a display name has 1 to 120 characters"),
+            DisplayNameError::Control => {
+                write!(f, "a display name has no control characters or line breaks")
+            }
+            DisplayNameError::Whitespace => {
+                write!(f, "a display name does not start or end with whitespace")
+            }
+        }
+    }
+}
+
+impl std::error::Error for DisplayNameError {}
+
+/// A wiki's display name: one free-text field in any script (RFC 002 D-1), 1–120 characters, no control
+/// characters, trimmed. It enters the signed creation message's first line and the bundle manifest, so
+/// the type is the guarantee that neither can be broken by a name.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct DisplayName(String);
+
+impl DisplayName {
+    /// Validate a display name.
+    pub fn new(s: &str) -> Result<Self, DisplayNameError> {
+        let n = s.chars().count();
+        if n == 0 || n > 120 {
+            return Err(DisplayNameError::Length);
+        }
+        if s.chars().any(char::is_control) {
+            return Err(DisplayNameError::Control);
+        }
+        if s.trim() != s {
+            return Err(DisplayNameError::Whitespace);
+        }
+        Ok(DisplayName(s.to_owned()))
+    }
+
+    /// The text form.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for DisplayName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl TryFrom<String> for DisplayName {
+    type Error = DisplayNameError;
+    fn try_from(s: String) -> Result<Self, DisplayNameError> {
+        DisplayName::new(&s)
+    }
+}
+
+impl From<DisplayName> for String {
+    fn from(d: DisplayName) -> String {
+        d.0
     }
 }
 
@@ -257,16 +378,17 @@ impl Default for Verification {
     }
 }
 
-/// What a caller supplies to create a wiki.
+/// What a caller supplies to create a wiki. The free-text fields are validated by
+/// [`WikiRecord::from_new`]; the typed ones by their types.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewWiki {
     /// The URL slug.
     pub slug: Slug,
     /// The display name.
-    pub display_name: String,
-    /// The view readers see by default; `heads/main` when `None`.
+    pub display_name: DisplayName,
+    /// The view readers see by default; `heads/main` when `None`. Shape: `heads/<name>`.
     pub default_view: Option<String>,
-    /// SPDX id; `CC-BY-SA-4.0` when `None` (roadmap DR-8).
+    /// SPDX license expression; `CC-BY-SA-4.0` when `None` (roadmap DR-8).
     pub default_license: Option<String>,
     /// BCP 47 tags; `["en"]` when empty.
     pub languages: Vec<String>,
@@ -278,10 +400,10 @@ pub struct NewWiki {
 
 impl NewWiki {
     /// A public wiki with the defaults.
-    pub fn new(slug: Slug, display_name: impl Into<String>) -> Self {
+    pub fn new(slug: Slug, display_name: DisplayName) -> Self {
         NewWiki {
             slug,
-            display_name: display_name.into(),
+            display_name,
             default_view: None,
             default_license: None,
             languages: Vec::new(),
@@ -289,6 +411,81 @@ impl NewWiki {
             policy_bootstrap: None,
         }
     }
+}
+
+/// Why a creation request was refused before anything was stored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NewWikiError {
+    /// `default_view` is not `heads/<name>` with a plain name.
+    DefaultView,
+    /// `default_license` is not an SPDX expression shape.
+    License,
+    /// A language tag is not a BCP 47 shape.
+    Language(String),
+    /// `policy_bootstrap` is not a plain lower-case name.
+    PolicyBootstrap,
+}
+
+impl fmt::Display for NewWikiError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NewWikiError::DefaultView => write!(
+                f,
+                "the default view is `heads/<name>`, the name in letters, digits, `.`, `_` and `-`"
+            ),
+            NewWikiError::License => write!(
+                f,
+                "the license is an SPDX expression (letters, digits, `.`, `+`, `-`, spaces and parentheses)"
+            ),
+            NewWikiError::Language(t) => write!(f, "`{t}` is not a BCP 47 language tag"),
+            NewWikiError::PolicyBootstrap => write!(
+                f,
+                "the policy bootstrap is a plain name: lower-case letters, digits and hyphens"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for NewWikiError {}
+
+fn is_view_name(s: &str) -> bool {
+    let Some(name) = s.strip_prefix("heads/") else {
+        return false;
+    };
+    !name.is_empty()
+        && name.len() <= 128
+        && !name.starts_with(['.', '-'])
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
+fn is_spdx_shape(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 128
+        && s.trim() == s
+        && s.bytes().all(|b| {
+            b.is_ascii_alphanumeric() || matches!(b, b'.' | b'+' | b'-' | b'(' | b')' | b' ')
+        })
+}
+
+fn is_bcp47_shape(s: &str) -> bool {
+    let mut parts = s.split('-');
+    let Some(primary) = parts.next() else {
+        return false;
+    };
+    (2..=8).contains(&primary.len())
+        && primary.bytes().all(|b| b.is_ascii_alphabetic())
+        && parts.all(|p| (1..=8).contains(&p.len()) && p.bytes().all(|b| b.is_ascii_alphanumeric()))
+}
+
+fn is_plain_name(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 64
+        && s.bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && !s.starts_with('-')
+        && !s.ends_with('-')
 }
 
 /// The wiki record (DM-1).
@@ -299,10 +496,10 @@ pub struct WikiRecord {
     /// The URL slug.
     pub slug: Slug,
     /// The display name.
-    pub display_name: String,
+    pub display_name: DisplayName,
     /// The default view.
     pub default_view: String,
-    /// SPDX id of the default license.
+    /// SPDX expression of the default license.
     pub default_license: String,
     /// BCP 47 tags.
     pub languages: Vec<String>,
@@ -310,7 +507,7 @@ pub struct WikiRecord {
     pub visibility: Visibility,
     /// The named policy bootstrap.
     pub policy_bootstrap: String,
-    /// prikk's repository format version, once the repository exists.
+    /// prikk's repository format version, once known.
     pub prikk_format_version: Option<String>,
     /// The latest verification.
     pub verification: Verification,
@@ -323,29 +520,46 @@ pub struct WikiRecord {
 }
 
 impl WikiRecord {
-    /// Build a record from a creation request with the defaults filled in.
-    pub fn from_new(id: WikiId, new: NewWiki, created_at: i64) -> Self {
-        WikiRecord {
+    /// Build a record from a creation request with the defaults filled in and the free-text fields
+    /// validated.
+    pub fn from_new(id: WikiId, new: NewWiki, created_at: i64) -> Result<Self, NewWikiError> {
+        let default_view = new.default_view.unwrap_or_else(|| "heads/main".to_owned());
+        if !is_view_name(&default_view) {
+            return Err(NewWikiError::DefaultView);
+        }
+        let default_license = new
+            .default_license
+            .unwrap_or_else(|| "CC-BY-SA-4.0".to_owned());
+        if !is_spdx_shape(&default_license) {
+            return Err(NewWikiError::License);
+        }
+        let languages = if new.languages.is_empty() {
+            vec!["en".to_owned()]
+        } else {
+            new.languages
+        };
+        if let Some(bad) = languages.iter().find(|t| !is_bcp47_shape(t)) {
+            return Err(NewWikiError::Language(bad.clone()));
+        }
+        let policy_bootstrap = new.policy_bootstrap.unwrap_or_else(|| "default".to_owned());
+        if !is_plain_name(&policy_bootstrap) {
+            return Err(NewWikiError::PolicyBootstrap);
+        }
+        Ok(WikiRecord {
             id,
             slug: new.slug,
             display_name: new.display_name,
-            default_view: new.default_view.unwrap_or_else(|| "heads/main".to_owned()),
-            default_license: new
-                .default_license
-                .unwrap_or_else(|| "CC-BY-SA-4.0".to_owned()),
-            languages: if new.languages.is_empty() {
-                vec!["en".to_owned()]
-            } else {
-                new.languages
-            },
+            default_view,
+            default_license,
+            languages,
             visibility: new.visibility,
-            policy_bootstrap: new.policy_bootstrap.unwrap_or_else(|| "default".to_owned()),
+            policy_bootstrap,
             prikk_format_version: None,
             verification: Verification::default(),
             author_key_id: None,
             maintainer_key_id: None,
             created_at,
-        }
+        })
     }
 }
 

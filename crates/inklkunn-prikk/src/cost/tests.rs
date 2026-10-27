@@ -32,8 +32,16 @@ fn costs_have_floors_and_multiples() {
 }
 
 #[test]
-fn ceilings_scale_and_clamp() {
-    assert_eq!(ceiling_for(100, None), 150);
-    assert_eq!(ceiling_for(100, Some(120)), 120);
-    assert_eq!(ceiling_for(100, Some(50)), 50);
+fn ceilings_carry_real_headroom() {
+    assert_eq!(ceiling_for(100), 150);
+    assert_eq!(ceiling_for(COST_FLOOR), COST_FLOOR + COST_FLOOR / 2);
+    assert!(ceiling_for(u64::MAX) == u64::MAX, "saturates");
+    for v in ReadVerb::ALL {
+        let c = v.cost(100 * MIB);
+        assert!(
+            ceiling_for(c) > c,
+            "{}: the ceiling is above the cost",
+            v.name()
+        );
+    }
 }

@@ -2,11 +2,15 @@
 //! split into a **light pool** for floor-cost reads and a **heavy pool** for the rest, so a cheap read never
 //! queues behind a large one. A read that does not fit its pool at all is `TooLarge`; one that would fit
 //! but finds the pool full waits a bounded time and is then `Busy`. Both are answers, never silence.
+//!
+//! The gate is charged the call's **ceiling** (`cost × 1.5`), the bytes the process may really take. The
+//! light pool is never smaller than one light-class ceiling when the budget allows it, so a light read is
+//! never `TooLarge` merely because the budget was split.
 
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use crate::cost::ReadVerb;
+use crate::cost::{LIGHT_CLASS_MAX_COST, ReadVerb};
 
 /// Why a read was not admitted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,7 +55,12 @@ pub struct Permit {
 
 impl Drop for Permit {
     fn drop(&mut self) {
-        if let Ok(mut p) = self.inner.state.lock() {
+        {
+            let mut p = self
+                .inner
+                .state
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
             if self.light {
                 p.light_free = p
                     .light_free
@@ -76,10 +85,19 @@ impl Permit {
 }
 
 impl Admission {
-    /// A gate over `budget` bytes: a quarter (at least `min_light`, at most the budget) is the light pool,
-    /// the rest the heavy pool. `max_wait` bounds how long a read waits for room.
+    /// A gate over `budget` bytes: a quarter (at least `min_light` and, when the budget allows, at least one
+    /// light-class ceiling; at most the budget) is the light pool, the rest the heavy pool. `max_wait`
+    /// bounds how long a read waits for room.
     pub fn new(budget: u64, min_light: u64, max_wait: Duration) -> Self {
-        let light_pool = (budget / 4).max(min_light).min(budget);
+        let light_floor = crate::cost::ceiling_for(LIGHT_CLASS_MAX_COST);
+        let light_pool = (budget / 4)
+            .max(min_light)
+            .max(if budget >= 2 * light_floor {
+                light_floor
+            } else {
+                0
+            })
+            .min(budget);
         let heavy_pool = budget.saturating_sub(light_pool);
         Admission {
             inner: Arc::new(Inner {
@@ -105,9 +123,11 @@ impl Admission {
         self.inner.heavy_pool
     }
 
-    /// Admit a read of `cost` bytes, waiting at most the gate's bound for room.
-    pub fn admit(&self, cost: u64) -> Result<Permit, Refusal> {
-        let light = ReadVerb::is_light(cost);
+    /// Admit a read whose ceiling is `bytes`, waiting at most the gate's bound for room. The class is the
+    /// cost's (`bytes / 1.5`), so a floor-cost read stays light.
+    pub fn admit(&self, bytes: u64) -> Result<Permit, Refusal> {
+        let cost = bytes;
+        let light = ReadVerb::is_light(crate::cost::cost_of_ceiling(bytes));
         let pool = if light {
             self.inner.light_pool
         } else {
@@ -117,9 +137,11 @@ impl Admission {
             return Err(Refusal::TooLarge { pool });
         }
         let deadline = Instant::now() + self.inner.max_wait;
-        let Ok(mut state) = self.inner.state.lock() else {
-            return Err(Refusal::Busy);
-        };
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         loop {
             let free = if light {
                 state.light_free
@@ -142,10 +164,12 @@ impl Admission {
             if now >= deadline {
                 return Err(Refusal::Busy);
             }
-            match self.inner.changed.wait_timeout(state, deadline - now) {
-                Ok((s, _)) => state = s,
-                Err(_) => return Err(Refusal::Busy),
-            }
+            state = self
+                .inner
+                .changed
+                .wait_timeout(state, deadline - now)
+                .unwrap_or_else(PoisonError::into_inner)
+                .0;
         }
     }
 }

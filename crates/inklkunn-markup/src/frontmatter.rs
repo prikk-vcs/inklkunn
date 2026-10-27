@@ -5,7 +5,13 @@
 //! an unquoted `no` is `false`, so that the pitfall is visible rather than silently flattened
 //! (wiki-commons corpus case 013).
 
+use std::collections::BTreeSet;
+
 use serde_json::json;
+
+/// The deepest nesting the parser follows (flow collections and blocks together); a page's metadata
+/// never needs more, and a bound keeps a hostile value from exhausting the stack.
+pub const MAX_DEPTH: usize = 32;
 
 /// A frontmatter value.
 #[derive(Debug, Clone, PartialEq)]
@@ -66,7 +72,27 @@ impl Value {
         }
     }
 
-    /// A list of strings: a sequence of strings, or one string split on commas (META-5 tolerates both).
+    /// Tags: a sequence of strings, or one string split on commas and whitespace (MKUP-14 tolerates
+    /// both); non-string items are kept as their text.
+    pub fn as_tag_list(&self) -> Vec<String> {
+        match self {
+            Value::Seq(items) => items
+                .iter()
+                .map(|v| match v {
+                    Value::Str(s) | Value::Date(s) => s.clone(),
+                    other => other.to_json().to_string(),
+                })
+                .collect(),
+            Value::Str(s) => s
+                .split(|c: char| c == ',' || c.is_whitespace())
+                .filter(|t| !t.is_empty())
+                .map(str::to_owned)
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// A list of strings: a sequence of strings, or one string split on commas (META-4 tolerates both).
     pub fn as_string_list(&self) -> Vec<String> {
         match self {
             Value::Seq(items) => items
@@ -116,6 +142,11 @@ pub enum YamlError {
         /// 1-based line within the frontmatter.
         line: usize,
     },
+    /// Nesting deeper than [`MAX_DEPTH`].
+    TooDeep {
+        /// 1-based line within the frontmatter.
+        line: usize,
+    },
 }
 
 impl std::fmt::Display for YamlError {
@@ -130,6 +161,9 @@ impl std::fmt::Display for YamlError {
             }
             YamlError::Indentation { line } => write!(f, "line {line}: bad indentation"),
             YamlError::UnterminatedQuote { line } => write!(f, "line {line}: unterminated quote"),
+            YamlError::TooDeep { line } => {
+                write!(f, "line {line}: nested deeper than {MAX_DEPTH} levels")
+            }
         }
     }
 }
@@ -139,6 +173,8 @@ impl std::error::Error for YamlError {}
 /// Split a page into its frontmatter (the text between the opening and closing `---` lines, when the
 /// file begins with one), its body, and the 1-based line the body starts on.
 pub fn split(text: &str) -> (Option<&str>, &str, usize) {
+    // A byte-order mark does not hide the frontmatter (the lint still reports it).
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
     let mut lines = text.split_inclusive('\n');
     let Some(first) = lines.next() else {
         return (None, text, 1);
@@ -193,7 +229,7 @@ pub fn parse_yaml(yaml: &str) -> Result<Value, YamlError> {
         return Ok(Value::Map(Vec::new()));
     }
     let mut pos = 0;
-    let v = parse_block(&lines, &mut pos, lines.first().map_or(0, |l| l.indent))?;
+    let v = parse_block(&lines, &mut pos, lines.first().map_or(0, |l| l.indent), 0)?;
     if pos < lines.len() {
         return Err(YamlError::Malformed {
             line: lines.get(pos).map_or(0, |l| l.no),
@@ -223,26 +259,39 @@ fn strip_comment(line: &str) -> &str {
     line.get(..cut).unwrap_or(line)
 }
 
-fn parse_block(lines: &[Line<'_>], pos: &mut usize, indent: usize) -> Result<Value, YamlError> {
+fn parse_block(
+    lines: &[Line<'_>],
+    pos: &mut usize,
+    indent: usize,
+    depth: usize,
+) -> Result<Value, YamlError> {
     let Some(first) = lines.get(*pos) else {
         return Ok(Value::Null);
     };
+    if depth > MAX_DEPTH {
+        return Err(YamlError::TooDeep { line: first.no });
+    }
     if first.indent != indent {
         return Err(YamlError::Indentation { line: first.no });
     }
     let body = first.text.trim_start();
     if body == "-" || body.starts_with("- ") {
-        parse_sequence(lines, pos, indent)
+        parse_sequence(lines, pos, indent, depth)
     } else if key_split(body).is_some() {
-        parse_mapping(lines, pos, indent)
+        parse_mapping(lines, pos, indent, depth)
     } else {
         // A lone scalar at the top level.
         *pos += 1;
-        parse_scalar(body, first.no)
+        parse_scalar(body, first.no, depth)
     }
 }
 
-fn parse_sequence(lines: &[Line<'_>], pos: &mut usize, indent: usize) -> Result<Value, YamlError> {
+fn parse_sequence(
+    lines: &[Line<'_>],
+    pos: &mut usize,
+    indent: usize,
+    depth: usize,
+) -> Result<Value, YamlError> {
     let mut items = Vec::new();
     while let Some(line) = lines.get(*pos) {
         if line.indent < indent {
@@ -261,16 +310,19 @@ fn parse_sequence(lines: &[Line<'_>], pos: &mut usize, indent: usize) -> Result<
             // The item is the nested block on the following lines.
             match lines.get(*pos) {
                 Some(next) if next.indent > indent => {
-                    items.push(parse_block(lines, pos, next.indent)?);
+                    items.push(parse_block(lines, pos, next.indent, depth + 1)?);
                 }
                 _ => items.push(Value::Null),
             }
         } else if let Some((k, v)) = key_split(rest) {
             // `- key: value` begins an inline mapping whose further keys are indented past the dash.
             let item_indent = indent + 2;
+            let first_key = unquote_key(k);
+            let mut seen: BTreeSet<String> = BTreeSet::new();
+            seen.insert(first_key.clone());
             let mut map = vec![(
-                unquote_key(k),
-                inline_value(lines, pos, v, line.no, item_indent)?,
+                first_key,
+                inline_value(lines, pos, v, line.no, item_indent, depth + 1)?,
             )];
             while let Some(next) = lines.get(*pos) {
                 if next.indent != item_indent {
@@ -282,22 +334,28 @@ fn parse_sequence(lines: &[Line<'_>], pos: &mut usize, indent: usize) -> Result<
                 };
                 *pos += 1;
                 let key = unquote_key(nk);
-                if map.iter().any(|(existing, _)| *existing == key) {
+                if !seen.insert(key.clone()) {
                     return Err(YamlError::DuplicateKey { line: next.no, key });
                 }
-                let val = inline_value(lines, pos, nv, next.no, item_indent)?;
+                let val = inline_value(lines, pos, nv, next.no, item_indent, depth + 1)?;
                 map.push((key, val));
             }
             items.push(Value::Map(map));
         } else {
-            items.push(parse_scalar(rest, line.no)?);
+            items.push(parse_scalar(rest, line.no, depth + 1)?);
         }
     }
     Ok(Value::Seq(items))
 }
 
-fn parse_mapping(lines: &[Line<'_>], pos: &mut usize, indent: usize) -> Result<Value, YamlError> {
+fn parse_mapping(
+    lines: &[Line<'_>],
+    pos: &mut usize,
+    indent: usize,
+    depth: usize,
+) -> Result<Value, YamlError> {
     let mut map: Vec<(String, Value)> = Vec::new();
+    let mut seen: BTreeSet<String> = BTreeSet::new();
     while let Some(line) = lines.get(*pos) {
         if line.indent < indent {
             break;
@@ -311,10 +369,10 @@ fn parse_mapping(lines: &[Line<'_>], pos: &mut usize, indent: usize) -> Result<V
         };
         *pos += 1;
         let key = unquote_key(k);
-        if map.iter().any(|(existing, _)| *existing == key) {
+        if !seen.insert(key.clone()) {
             return Err(YamlError::DuplicateKey { line: line.no, key });
         }
-        let val = inline_value(lines, pos, v, line.no, indent)?;
+        let val = inline_value(lines, pos, v, line.no, indent, depth + 1)?;
         map.push((key, val));
     }
     Ok(Value::Map(map))
@@ -327,14 +385,15 @@ fn inline_value(
     v: &str,
     line_no: usize,
     indent: usize,
+    depth: usize,
 ) -> Result<Value, YamlError> {
     let v = v.trim();
     if v.is_empty() {
         return match lines.get(*pos) {
-            Some(next) if next.indent > indent => parse_block(lines, pos, next.indent),
+            Some(next) if next.indent > indent => parse_block(lines, pos, next.indent, depth),
             // `key:` followed by a sequence at the same indentation is YAML's usual shape for a list.
             Some(next) if next.indent == indent && next.text.trim_start().starts_with("- ") => {
-                parse_sequence(lines, pos, indent)
+                parse_sequence(lines, pos, indent, depth)
             }
             _ => Ok(Value::Null),
         };
@@ -368,7 +427,7 @@ fn inline_value(
         };
         return Ok(Value::Str(s));
     }
-    parse_scalar(v, line_no)
+    parse_scalar(v, line_no, depth)
 }
 
 /// Split `key: value` at the first unquoted `: ` (or a trailing `:`). Returns `None` if the text is not
@@ -411,15 +470,18 @@ fn unquote_key(k: &str) -> String {
     if (k.starts_with('"') && k.ends_with('"') || k.starts_with('\'') && k.ends_with('\''))
         && k.len() >= 2
     {
-        k[1..k.len() - 1].to_owned()
+        k.get(1..k.len() - 1).unwrap_or("").to_owned()
     } else {
         k.to_owned()
     }
 }
 
-/// Parse one scalar or flow collection.
-fn parse_scalar(v: &str, line_no: usize) -> Result<Value, YamlError> {
+/// Parse one scalar or flow collection, `depth` levels down.
+fn parse_scalar(v: &str, line_no: usize, depth: usize) -> Result<Value, YamlError> {
     let v = v.trim();
+    if depth > MAX_DEPTH {
+        return Err(YamlError::TooDeep { line: line_no });
+    }
     if let Some(first) = v.chars().next() {
         match first {
             '&' | '*' => {
@@ -443,7 +505,7 @@ fn parse_scalar(v: &str, line_no: usize) -> Result<Value, YamlError> {
         for part in split_flow(inner, line_no)? {
             let part = part.trim();
             if !part.is_empty() {
-                items.push(parse_scalar(part, line_no)?);
+                items.push(parse_scalar(part, line_no, depth + 1)?);
             }
         }
         return Ok(Value::Seq(items));
@@ -459,7 +521,7 @@ fn parse_scalar(v: &str, line_no: usize) -> Result<Value, YamlError> {
             let Some((k, val)) = key_split(part) else {
                 return Err(YamlError::Malformed { line: line_no });
             };
-            map.push((unquote_key(k), parse_scalar(val, line_no)?));
+            map.push((unquote_key(k), parse_scalar(val, line_no, depth + 1)?));
         }
         return Ok(Value::Map(map));
     }
@@ -660,7 +722,7 @@ impl Metadata {
                 "title" => m.title = val.as_str().map(str::to_owned),
                 "id" => m.id = val.as_str().map(str::to_owned),
                 "aliases" => m.aliases = val.as_string_list(),
-                "tags" => m.tags = val.as_string_list(),
+                "tags" => m.tags = val.as_tag_list(),
                 "kind" => {
                     if let Some(s) = val.as_str() {
                         m.kind = s.to_owned();

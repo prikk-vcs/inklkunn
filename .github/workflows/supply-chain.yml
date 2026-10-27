@@ -18,8 +18,8 @@ jobs:
           set -euo pipefail
           rustup toolchain install 1.99.0 --profile minimal --no-self-update
           rustup default 1.99.0
-      - name: Install cargo-deny and cargo-audit
-        run: cargo install cargo-deny cargo-audit --locked
+      - name: Install cargo-deny and cargo-audit (pinned)
+        run: cargo install cargo-deny@0.20.2 cargo-audit@0.22.2 --locked
       - name: cargo-deny (fresh database)
         run: cargo deny check
       - name: cargo-audit (fresh database)

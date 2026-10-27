@@ -1,7 +1,8 @@
 //! `PrikkCli`: the `Storage` implementation over prikk's read verbs with `--format json` (RFC 001 D-3,
-//! D-4). Every call: size the store, cost the verb, pass the admission gate, set the ceiling, run confined
-//! under the server-kept deadline, map the exit to a typed outcome, check the report's `schema_version`
-//! against the pinned name, deserialize.
+//! D-4). Every call: **check the arguments' shapes** (nothing user-shaped reaches prikk's parser), size the
+//! store, cost the verb, derive the ceiling, pass the admission gate with the ceiling, run confined under
+//! the server-kept deadline and output bound, map the exit to a typed outcome, check the report's
+//! `schema_version` against the pinned name, deserialize.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -11,8 +12,10 @@ use serde::de::DeserializeOwned;
 
 use crate::MIN_PRIKK_VERSION;
 use crate::admission::{Admission, Refusal};
-use crate::cost::{ReadVerb, StoreSizeError, ceiling_for, store_size};
-use crate::sandbox::{CallLimits, Run, Sandbox, probe_bwrap, probe_prlimit, resolve_binary};
+use crate::cost::{MAX_REPORT_BYTES, ReadVerb, StoreSizeError, ceiling_for, store_size};
+use crate::sandbox::{
+    CallLimits, Mounts, Run, Sandbox, probe_bwrap, probe_prlimit, resolve_binary,
+};
 use crate::storage::{
     Change, Diff, ExtractBounds, FileMeta, History, Materialized, Point, Result, Storage,
     StorageError, Tree, Unavailable, Verification, Views,
@@ -38,17 +41,27 @@ pub mod schema {
     pub const VERIFY_REPORT: &str = "verify-report-v1";
 }
 
+/// `history` lists this many blocks when the caller gives no limit.
+pub const DEFAULT_HISTORY_LIMIT: u64 = 100;
+/// The wall-time bound of the version probe at open.
+const PROBE_DEADLINE: Duration = Duration::from_secs(10);
+
 /// The driver.
 #[derive(Debug, Clone)]
 pub struct PrikkCli {
     binary: PathBuf,
     sandbox: Sandbox,
     admission: Admission,
-    /// A fixed ceiling for every call (tests; the ceiling test needs one small enough to fire).
-    fixed_ceiling: Option<u64>,
-    /// `false` turns the ceiling off (never in production).
-    ceilings: bool,
     version: String,
+    knobs: Knobs,
+}
+
+/// Test knobs: every field `None` in a production build (the `test-knobs` feature is never enabled there).
+#[derive(Debug, Clone, Copy, Default)]
+struct Knobs {
+    fixed_ceiling: Option<u64>,
+    fixed_deadline: Option<Duration>,
+    output_cap: Option<u64>,
 }
 
 /// `prikk --version` → `(major, minor, patch)`.
@@ -58,35 +71,55 @@ pub fn parse_version(text: &str) -> Option<(u64, u64, u64)> {
     Some((it.next()??, it.next()??, it.next()??))
 }
 
-fn floor() -> (u64, u64, u64) {
-    parse_version(&format!("prikk {MIN_PRIKK_VERSION}")).unwrap_or((u64::MAX, 0, 0))
-}
+/// The floor as a tuple; `floor-check` keeps the string in step with the workflows.
+pub const FLOOR: (u64, u64, u64) = crate::cost::BOUND_TO;
+
+const _: () = assert!(
+    FLOOR.0 == 0 && FLOOR.1 == 54 && FLOOR.2 == 0,
+    "the floor tuple must equal MIN_PRIKK_VERSION"
+);
 
 impl PrikkCli {
     /// Open the driver: check the binary's version against the floor and the sandbox prerequisites. Nothing
-    /// here touches a repository.
+    /// here touches a repository. The version probe runs bounded and with a cleared environment.
     pub fn open(
         binary: impl Into<OsString>,
         sandbox: Sandbox,
         admission: Admission,
     ) -> Result<Self> {
         let binary = resolve_binary(&binary.into());
-        let output = std::process::Command::new(&binary)
-            .arg("--version")
-            .stdin(std::process::Stdio::null())
-            .output()
-            .map_err(|e| StorageError::Unavailable {
+        let mut cmd = std::process::Command::new(&binary);
+        cmd.arg("--version")
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin");
+        let run = crate::sandbox::run_probe(cmd, PROBE_DEADLINE).map_err(|e| {
+            StorageError::Unavailable {
                 verb: "--version",
                 reason: Unavailable::Spawn(format!("{}: {e}", binary.display())),
-            })?;
-        let text = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            }
+        })?;
+        if run.timed_out || !run.status.success() {
+            return Err(StorageError::Unavailable {
+                verb: "--version",
+                reason: Unavailable::Spawn(format!(
+                    "`{} --version` did not succeed ({})",
+                    binary.display(),
+                    if run.timed_out {
+                        "no answer within the probe's bound".to_owned()
+                    } else {
+                        run.status.to_string()
+                    }
+                )),
+            });
+        }
+        let text = String::from_utf8_lossy(&run.stdout).trim().to_owned();
         let Some(found) = parse_version(&text) else {
             return Err(StorageError::UnsupportedVersion {
                 found: text,
                 required: MIN_PRIKK_VERSION,
             });
         };
-        if found < floor() {
+        if found < FLOOR {
             return Err(StorageError::UnsupportedVersion {
                 found: text,
                 required: MIN_PRIKK_VERSION,
@@ -106,9 +139,8 @@ impl PrikkCli {
             binary,
             sandbox,
             admission,
-            fixed_ceiling: None,
-            ceilings: true,
             version: text,
+            knobs: Knobs::default(),
         })
     }
 
@@ -117,17 +149,27 @@ impl PrikkCli {
         &self.version
     }
 
-    /// Every call gets this ceiling instead of the costed one (for tests of the ceiling path).
+    /// Every call gets this ceiling instead of the costed one (tests of the ceiling path).
+    #[cfg(feature = "test-knobs")]
     #[must_use]
     pub fn with_fixed_ceiling(mut self, bytes: u64) -> Self {
-        self.fixed_ceiling = Some(bytes);
+        self.knobs.fixed_ceiling = Some(bytes);
         self
     }
 
-    /// Turn ceilings off (tests on hosts where `prlimit` misbehaves; never in production).
+    /// Every call gets this deadline instead of the verb's (tests of the deadline path).
+    #[cfg(feature = "test-knobs")]
     #[must_use]
-    pub fn without_ceilings(mut self) -> Self {
-        self.ceilings = false;
+    pub fn with_fixed_deadline(mut self, deadline: Duration) -> Self {
+        self.knobs.fixed_deadline = Some(deadline);
+        self
+    }
+
+    /// Every call gets this output cap instead of the verb's (tests of the output bound).
+    #[cfg(feature = "test-knobs")]
+    #[must_use]
+    pub fn with_output_cap(mut self, bytes: u64) -> Self {
+        self.knobs.output_cap = Some(bytes);
         self
     }
 
@@ -137,6 +179,7 @@ impl PrikkCli {
         repo: &Path,
         scratch: Option<&Path>,
         args: &[&str],
+        max_output: u64,
     ) -> Result<(Run, Option<u64>)> {
         let name = verb.name();
         let store = match store_size(repo) {
@@ -144,8 +187,8 @@ impl PrikkCli {
             Err(StoreSizeError::NoRepository) => {
                 return Err(StorageError::Refused {
                     verb: name,
-                    message: format!("no prikk repository at {}", repo.display()),
-                    kind: Some("no-repository".to_owned()),
+                    message: "no prikk repository at the wiki's directory".to_owned(),
+                    kind: Some("driver:no-repository".to_owned()),
                 });
             }
             Err(e) => {
@@ -156,34 +199,35 @@ impl PrikkCli {
             }
         };
         let cost = verb.cost(store);
-        let permit = self.admission.admit(cost).map_err(|r| match r {
+        // The ceiling is what the process may really take, so the ceiling is what the pool is charged.
+        let ceiling = self
+            .knobs
+            .fixed_ceiling
+            .unwrap_or_else(|| ceiling_for(cost));
+        let permit = self.admission.admit(ceiling).map_err(|r| match r {
             Refusal::Busy => StorageError::Unavailable {
                 verb: name,
                 reason: Unavailable::Busy,
             },
             Refusal::TooLarge { pool } => StorageError::TooLarge {
                 verb: name,
-                cost,
-                budget: pool,
+                needed: ceiling,
+                pool,
             },
         })?;
-        let ceiling = if !self.ceilings {
-            None
-        } else if let Some(fixed) = self.fixed_ceiling {
-            Some(fixed)
-        } else {
-            Some(ceiling_for(cost, Some(permit.bytes())))
-        };
         let limits = CallLimits {
-            data_ceiling: ceiling,
+            data_ceiling: Some(ceiling),
+            max_output: self.knobs.output_cap.unwrap_or(max_output),
         };
-        let deadline = Duration::from_secs(verb.deadline_secs());
+        let deadline = self
+            .knobs
+            .fixed_deadline
+            .unwrap_or_else(|| Duration::from_secs(verb.deadline_secs()));
         let run = self
             .sandbox
-            .run(
+            .run_mounts(
                 self.binary.as_os_str(),
-                repo,
-                scratch,
+                &Mounts::read(repo, scratch),
                 args,
                 limits,
                 Some(deadline),
@@ -193,44 +237,75 @@ impl PrikkCli {
                 reason: Unavailable::Spawn(e.to_string()),
             })?;
         drop(permit);
-        Ok((run, ceiling))
+        Ok((run, Some(ceiling)))
     }
 
     /// Map a non-success run to the typed outcome.
-    fn failure(verb: ReadVerb, run: &Run, ceiling: Option<u64>) -> StorageError {
+    fn failure(
+        verb: ReadVerb,
+        run: &Run,
+        ceiling: Option<u64>,
+        deadline: Duration,
+    ) -> StorageError {
         use std::os::unix::process::ExitStatusExt;
         let name = verb.name();
+        if run.output_exceeded {
+            return StorageError::Unavailable {
+                verb: name,
+                reason: Unavailable::OutputExceeded,
+            };
+        }
         if run.timed_out {
             return StorageError::Unavailable {
                 verb: name,
                 reason: Unavailable::TimedOut {
-                    seconds: verb.deadline_secs(),
+                    seconds: deadline.as_secs(),
                 },
             };
         }
         let stderr = String::from_utf8_lossy(&run.stderr).trim().to_owned();
+        // A death by signal: on the direct child as a signal, through bwrap (pid 1 of its namespace) as exit
+        // 128 + n. Rust's allocator abort is SIGABRT (134).
+        let signal = run
+            .status
+            .signal()
+            .map(|s| u8::try_from(s).unwrap_or(0))
+            .or_else(|| match run.status.code() {
+                Some(c @ 129..=192) => u8::try_from(c - 128).ok(),
+                _ => None,
+            });
         if let Some(bytes) = ceiling {
             // How a process dies under RLIMIT_DATA depends on where the first refused allocation lands:
-            // Rust's allocator aborts (134 / SIGABRT, "memory allocation of … failed"); the dynamic loader
-            // exits 127 with "Cannot allocate memory" or "cannot allocate TLS"; glibc's early TLS setup can
-            // also fault (SIGSEGV) before any message, which is what GitHub's runners showed. prikk itself
-            // never dies by a signal and the server's own kill is `timed_out`, so under a ceiling *any*
-            // death by signal is read as the ceiling.
-            let aborted = run.status.code() == Some(134) || run.status.signal().is_some();
+            // Rust's allocator aborts ("memory allocation of … failed"); the dynamic loader exits 127 with
+            // "Cannot allocate memory", "cannot allocate TLS" or "cannot map zero-fill pages"; glibc's early
+            // TLS setup can fault (SIGSEGV) before any message, which is what GitHub's runners showed and
+            // what bwrap reports as exit 139. prikk itself never dies by a signal and the server's own kill
+            // is `timed_out`, so under a ceiling *any* death by signal is read as the ceiling.
             let alloc_failed = stderr.contains("memory allocation of") && stderr.contains("failed");
             let loader_failed = run.status.code() == Some(127)
                 && (stderr.contains("Cannot allocate memory")
-                    || stderr.contains("cannot allocate"));
-            let partial_verify =
-                run.status.code() == Some(1) && stderr.contains("did not complete every stage");
-            if aborted || alloc_failed || loader_failed || partial_verify {
+                    || stderr.contains("cannot allocate")
+                    || stderr.contains("cannot map"));
+            // bwrap itself, short of memory while setting the namespace up, says only "Out of memory" and
+            // exits 1 (measured on 0.13.1 at 112–192 KiB): the same ceiling, never a refusal.
+            let sandbox_oom = run.status.code() == Some(1) && stderr.starts_with("Out of memory");
+            if signal.is_some() || alloc_failed || loader_failed || sandbox_oom {
                 return StorageError::Unavailable {
                     verb: name,
                     reason: Unavailable::CeilingExceeded { bytes },
                 };
             }
         }
-        // Since 0.54 a refusal under `--format json` also comes as a `refusal-v1` report on stdout.
+        // The sandbox tools' own failures are not prikk's refusals: bwrap and prlimit name themselves.
+        if let Some(first) = stderr.lines().next()
+            && (first.starts_with("bwrap:") || first.starts_with("prlimit:"))
+        {
+            return StorageError::Unavailable {
+                verb: name,
+                reason: Unavailable::Prerequisite(first.to_owned()),
+            };
+        }
+        // Since 0.54 a refusal under `--format json` may also come as a `refusal-v1` report on stdout.
         let refusal: Option<RefusalReport> = serde_json::from_slice(&run.stdout)
             .ok()
             .filter(|r: &RefusalReport| r.schema_version == "refusal-v1");
@@ -240,6 +315,11 @@ impl PrikkCli {
                 .strip_prefix("error:")
                 .map_or(stderr.as_str(), str::trim)
                 .to_owned(),
+        };
+        let message = if message.is_empty() {
+            "prikk gave no reason".to_owned()
+        } else {
+            message
         };
         match run.status.code() {
             Some(1) => StorageError::Refused {
@@ -253,15 +333,22 @@ impl PrikkCli {
             },
             code => StorageError::Damaged {
                 verb: name,
-                detail: format!(
-                    "exit {}: {message}",
-                    code.map_or_else(
-                        || format!("by signal {}", run.status.signal().unwrap_or(0)),
-                        |c| c.to_string()
-                    )
-                ),
+                detail: match (code, signal) {
+                    (Some(c), Some(s)) => {
+                        format!("exit {c} (signal {s} inside the sandbox): {message}")
+                    }
+                    (Some(c), None) => format!("exit {c}: {message}"),
+                    (None, Some(s)) => format!("killed by signal {s}: {message}"),
+                    (None, None) => format!("no exit status: {message}"),
+                },
             },
         }
+    }
+
+    fn deadline_for(&self, verb: ReadVerb) -> Duration {
+        self.knobs
+            .fixed_deadline
+            .unwrap_or_else(|| Duration::from_secs(verb.deadline_secs()))
     }
 
     fn run_json<T: DeserializeOwned>(
@@ -272,19 +359,11 @@ impl PrikkCli {
         args: &[&str],
         pinned: &'static str,
     ) -> Result<T> {
-        let (run, ceiling) = self.execute(verb, repo, scratch, args)?;
-        if !run.status.success() || run.timed_out {
-            return Err(Self::failure(verb, &run, ceiling));
+        let (run, ceiling) = self.execute(verb, repo, scratch, args, MAX_REPORT_BYTES)?;
+        if !run.status.success() || run.timed_out || run.output_exceeded {
+            return Err(Self::failure(verb, &run, ceiling, self.deadline_for(verb)));
         }
         parse_report(verb.name(), &run.stdout, pinned)
-    }
-
-    fn run_bytes(&self, verb: ReadVerb, repo: &Path, args: &[&str]) -> Result<Vec<u8>> {
-        let (run, ceiling) = self.execute(verb, repo, None, args)?;
-        if !run.status.success() || run.timed_out {
-            return Err(Self::failure(verb, &run, ceiling));
-        }
-        Ok(run.stdout)
     }
 }
 
@@ -326,27 +405,93 @@ pub fn parse_report<T: DeserializeOwned>(
     })
 }
 
-fn into_check(into: &Path) -> Result<&Path> {
-    if into.exists() {
-        return Err(StorageError::Refused {
-            verb: "extract",
-            message: format!(
-                "{} already exists; extract writes into a new directory",
-                into.display()
-            ),
-            kind: Some("target-exists".to_owned()),
-        });
-    }
-    into.parent()
-        .filter(|p| p.is_dir())
-        .ok_or_else(|| StorageError::Refused {
-            verb: "extract",
-            message: format!(
-                "{} has no existing parent directory to mount as scratch",
-                into.display()
-            ),
-            kind: Some("no-scratch".to_owned()),
+// ---- argument shapes: checked here so that nothing user-shaped reaches prikk's parser ----
+
+fn is_ref_name(s: &str) -> bool {
+    let Some((kind, name)) = s.split_once('/') else {
+        return false;
+    };
+    matches!(kind, "heads" | "tags" | "remotes")
+        && !name.is_empty()
+        && name.len() <= 128
+        && !name.starts_with(['.', '-'])
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-' | b'/'))
+        && !name.contains("//")
+        && !name.contains("/.")
+}
+
+fn is_hex_id(s: &str) -> bool {
+    s.len() == 64
+        && s.bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+}
+
+/// A repository-relative path as prikk accepts it (its `path-safety` rules, checked here first): no leading
+/// `/` or `-`, no empty, `.` or `..` component, no control bytes, at most 1024 bytes.
+pub fn is_repo_path(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 1024
+        && !s.starts_with(['/', '-'])
+        && !s.bytes().any(|b| b < 0x20 || b == 0x7f)
+        && s.split('/').all(|c| !c.is_empty() && c != "." && c != "..")
+}
+
+fn check_point(verb: &'static str, p: &Point) -> Result<()> {
+    let ok = match p {
+        Point::View(v) => is_ref_name(v),
+        Point::Block(b) => is_hex_id(b),
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(StorageError::InvalidArgument {
+            verb,
+            what: match p {
+                Point::View(_) => "a view is `heads/<name>`, `tags/<name>` or `remotes/<name>`",
+                Point::Block(_) => "a block id is 64 lower-case hex characters",
+            },
         })
+    }
+}
+
+fn check_path(verb: &'static str, s: &str) -> Result<()> {
+    if is_repo_path(s) {
+        Ok(())
+    } else {
+        Err(StorageError::InvalidArgument {
+            verb,
+            what: "a repository path is relative, has no `.` or `..` components, no control characters and at most 1024 bytes",
+        })
+    }
+}
+
+fn check_id(verb: &'static str, s: &str) -> Result<()> {
+    if is_hex_id(s) {
+        Ok(())
+    } else {
+        Err(StorageError::InvalidArgument {
+            verb,
+            what: "a block or patch id is 64 lower-case hex characters",
+        })
+    }
+}
+
+fn check_name(verb: &'static str, s: &str) -> Result<()> {
+    if !s.is_empty()
+        && s.len() <= 255
+        && !s.starts_with(['.', '-'])
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+    {
+        Ok(())
+    } else {
+        Err(StorageError::InvalidArgument {
+            verb,
+            what: "a target name is one plain path component (letters, digits, `.`, `_`, `-`)",
+        })
+    }
 }
 
 impl Storage for PrikkCli {
@@ -361,6 +506,10 @@ impl Storage for PrikkCli {
     }
 
     fn tree(&self, repo: &Path, point: &Point, prefix: Option<&str>) -> Result<Tree> {
+        check_point("tree", point)?;
+        if let Some(p) = prefix {
+            check_path("tree", p)?;
+        }
         let mut args = vec!["tree", "--ref", point.as_arg()];
         if let Some(p) = prefix {
             args.extend(["--prefix", p]);
@@ -370,6 +519,8 @@ impl Storage for PrikkCli {
     }
 
     fn stat(&self, repo: &Path, point: &Point, path: &str) -> Result<FileMeta> {
+        check_point("cat", point)?;
+        check_path("cat", path)?;
         let args = [
             "cat",
             "--path",
@@ -383,6 +534,8 @@ impl Storage for PrikkCli {
     }
 
     fn read(&self, repo: &Path, point: &Point, path: &str, max_bytes: u64) -> Result<Vec<u8>> {
+        check_point("cat", point)?;
+        check_path("cat", path)?;
         let max = max_bytes.to_string();
         let args = [
             "cat",
@@ -393,20 +546,41 @@ impl Storage for PrikkCli {
             "--max-bytes",
             &max,
         ];
-        self.run_bytes(ReadVerb::Cat, repo, &args)
+        let (run, ceiling) = self.execute(
+            ReadVerb::Cat,
+            repo,
+            None,
+            &args,
+            max_bytes.saturating_add(64 << 10),
+        )?;
+        if !run.status.success() || run.timed_out || run.output_exceeded {
+            return Err(Self::failure(
+                ReadVerb::Cat,
+                &run,
+                ceiling,
+                self.deadline_for(ReadVerb::Cat),
+            ));
+        }
+        Ok(run.stdout)
     }
 
-    fn history(&self, repo: &Path, view: &str, limit: Option<u64>) -> Result<History> {
-        let limit_text = limit.map(|l| l.to_string());
-        let mut args = vec!["log", "--ref", view];
-        if let Some(l) = &limit_text {
-            args.extend(["--limit", l.as_str()]);
-        }
-        args.extend(["--format", "json"]);
+    fn history(&self, repo: &Path, view: &Point, limit: Option<u64>) -> Result<History> {
+        check_point("log", view)?;
+        let limit_text = limit.unwrap_or(DEFAULT_HISTORY_LIMIT).to_string();
+        let args = [
+            "log",
+            "--ref",
+            view.as_arg(),
+            "--limit",
+            limit_text.as_str(),
+            "--format",
+            "json",
+        ];
         self.run_json(ReadVerb::Log, repo, None, &args, schema::LOG_REPORT)
     }
 
     fn change(&self, repo: &Path, id: &str) -> Result<Change> {
+        check_id("show", id)?;
         self.run_json(
             ReadVerb::Show,
             repo,
@@ -417,6 +591,11 @@ impl Storage for PrikkCli {
     }
 
     fn diff(&self, repo: &Path, from: &Point, to: &Point, paths: &[&str]) -> Result<Diff> {
+        check_point("diff", from)?;
+        check_point("diff", to)?;
+        for p in paths {
+            check_path("diff", p)?;
+        }
         let mut args = vec!["diff", "--from", from.as_arg(), "--to", to.as_arg()];
         for p in paths {
             args.extend(["--path", p]);
@@ -426,6 +605,7 @@ impl Storage for PrikkCli {
     }
 
     fn plan(&self, repo: &Path, point: &Point) -> Result<Materialized> {
+        check_point("extract", point)?;
         // `extract` wants a directory name even for a plan; nothing is written, so no scratch is mounted
         // and the name is one that cannot exist inside the read-only view.
         let args = [
@@ -444,14 +624,29 @@ impl Storage for PrikkCli {
         &self,
         repo: &Path,
         point: &Point,
-        into: &Path,
+        scratch: &Path,
+        name: &str,
         bounds: ExtractBounds,
     ) -> Result<Materialized> {
-        let scratch = into_check(into)?;
+        check_point("extract", point)?;
+        check_name("extract", name)?;
+        if !scratch.is_dir() {
+            return Err(StorageError::InvalidArgument {
+                verb: "extract",
+                what: "the scratch directory must exist",
+            });
+        }
+        let into = scratch.join(name);
+        if into.symlink_metadata().is_ok() {
+            return Err(StorageError::InvalidArgument {
+                verb: "extract",
+                what: "the target name already exists in the scratch directory",
+            });
+        }
         let Some(into_text) = into.to_str() else {
             return Err(StorageError::Driver {
                 verb: "extract",
-                detail: "the target directory is not UTF-8".to_owned(),
+                detail: "the scratch path is not UTF-8".to_owned(),
             });
         };
         let max_bytes = bounds.max_bytes.map(|b| b.to_string());
@@ -479,20 +674,28 @@ impl Storage for PrikkCli {
             repo,
             None,
             &["verify", "--format", "json"],
+            MAX_REPORT_BYTES,
         )?;
-        // The verdict is read from the report on stdout, never from the exit code or stderr text: a failed
-        // verdict exits non-zero but is a fact about the repository, while a ceiling hit is not a verdict.
+        // The verdict is read from the report on stdout, never from the exit code or stderr text (prikk's
+        // rule: graded results are in the JSON report; exit 1 is any operational failure). A failed verdict
+        // is a fact about the repository, while a ceiling hit or a kill is not a verdict.
         if !run.timed_out
+            && !run.output_exceeded
             && let Ok(report) =
                 parse_report::<Verification>("verify", &run.stdout, schema::VERIFY_REPORT)
             && (run.status.success() || !report.verdict.ok)
         {
             return Ok(report);
         }
-        if run.status.success() && !run.timed_out {
+        if run.status.success() && !run.timed_out && !run.output_exceeded {
             return parse_report("verify", &run.stdout, schema::VERIFY_REPORT);
         }
-        Err(Self::failure(ReadVerb::Verify, &run, ceiling))
+        Err(Self::failure(
+            ReadVerb::Verify,
+            &run,
+            ceiling,
+            self.deadline_for(ReadVerb::Verify),
+        ))
     }
 }
 

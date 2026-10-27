@@ -8,7 +8,7 @@ is therefore a compromise of every hosted wiki's signing keys, in the sense that
 changes that verify. The design bounds, detects and attributes that risk rather than denying it:
 
 - keys live only in `inklkunn-signer`'s key store, reachable through one call that takes a recorded,
-  accepted proposal; a CI gate keeps every other crate away from them (RFC 001 D-2, RFC 002 D-3, D-4);
+  accepted proposal; a CI gate keeps every other crate away from them (RFC 001 D-2, RFC 002 D-3, D-4); (in M0 the gate guards the private `key_store` module, the writable sandbox mounts and the bootstrap signer by name; the real key store of RFC 002 adds the rule that no public item returns a seed path or seed bytes)
 - every sealed change carries the proposer and the acceptor in its signed message, and a reconciliation
   compares the history with the acceptance records so an unrecorded seal is reported (RFC 002 D-5, D-7);
 - keys rotate per wiki, and the surface tells readers only what was checked (*Verified*, *Verification
@@ -31,5 +31,6 @@ Until 1.0, only the latest release is supported. Security fixes are not backport
 ## Dependencies and upstream
 
 Dependency advisories are triaged on a fixed ladder (upgrade; remove the path; a scoped, reasoned ignore;
-never silence) in CI on every push and on a schedule (`docs/dependency-policy.md`). inklkunn's storage is
+never silence) in CI on every push, at every release, and at every RFC disposition checkpoint on a freshly
+fetched advisory database (`docs/dependency-policy.md`). inklkunn's storage is
 prikk; a prikk security release moves inklkunn's floor by the re-baseline procedure in `docs/UPSTREAM.md`.
