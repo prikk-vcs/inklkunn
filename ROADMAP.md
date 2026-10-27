@@ -128,6 +128,11 @@ planeter builds hosting above it, and none of it may push weight into prikk.
 - **prikk ≥ 0.54.x** carries what M1 needs: `extract` (files at a point, with `claim_parent_block_id`),
   `diff` (`diff-report-v1`), `tree`, `cat`, `log`/`show` JSON, and the `show <block-id>` fix. The pin
   starts there and moves only when a release carries a verb inklkunn needs or a security fix.
+- **prikk's repository paths are ASCII-only through 0.55** (ledger PK-21). Unicode paths have a design round
+  in prikk 0.56.0 and land in 0.57.0 at the earliest (prikk's letter, 2026-10-28). inklkunn does not wait:
+  titles in any script map to percent-encoded paths, exactly reversibly, and readers see titles. When prikk's
+  design is accepted, the switch to native paths is a migration task (a declared rename per encoded page),
+  scheduled then; it is not on M1's path.
 - **prikk RFC 170** (embedding as a library) is an unscheduled investigation and **is not assumed**;
   the storage trait keeps the door open (DR-3). **prikk RFC 112** (seal, branch and tag live in the CLI
   crate) is accepted and unscheduled: a library consumer could not seal today even if linking were

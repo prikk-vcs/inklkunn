@@ -47,6 +47,9 @@
   MRG-4 is the right place** (RFC 004). **T7**: README (IS-1 closed), CHANGELOG, SECURITY.md (RR-1), the two
   ledgers with a lock-inventory test, `UPSTREAM.md`, `RELEASING.md`, the book. No binary serves pages yet; that
   is M1 (RFC 003).
+- **2026-10-28 — prikk replied** to the non-ASCII-paths letter (the first letter from prikk to inklkunn):
+  Unicode paths get a design round in 0.56.0, implementation 0.57.0 at the earliest, no date. **Decision:**
+  M1 ships with percent-encoded paths; native paths become a planned migration (PK-21, IS-5).
 - **2026-10-27 — M0 reviewed and corrected.** The owner stated the two principles every review applies
   (*finally clean, safe and secure, robust and sophisticated design*; *APIs and UI/UX that cannot confuse or
   mislead*) and asked the architect to review M0 itself. Four fresh reviewing agents (driver; signer and core;
@@ -63,9 +66,6 @@
 
 ## Pending on the owner
 
-- **Convey the one prikk letter** (`.git-exclude/upstream/prikk/send/draft/2026-10-27-non-ascii-repository-paths.md`):
-  is NFC path support scheduled? Its answer decides whether M1's first wikis store percent-encoded or native
-  paths (PK-21). The two earlier candidates (PK-8, PK-11) were answered by prikk's reference; no letter.
 - **Name a tag-signing key**, or confirm that releases stay unsigned tags for now (`RELEASING.md` withdrew
   the "signed" claim; `release.yml` verifies a signature once a fingerprint is named).
 - **Dispose of the review requests v2** (Approved / Conditionally Approved / …), or ask a fresh session to.
@@ -79,7 +79,7 @@
 
 | Upstream | What touches inklkunn | inklkunn action |
 |---|---|---|
-| prikk 0.54.1 | the M1 floor (`extract`, `diff`, `tree`, `cat`, the `show <block-id>` fix); RFC 170 (library) and RFC 154 unscheduled | pin 0.54; re-baseline at each release (RFC 010) |
+| prikk 0.54.1 | the M1 floor (`extract`, `diff`, `tree`, `cat`, the `show <block-id>` fix); RFC 170 (library) and RFC 154 unscheduled; **non-ASCII paths: a design round in 0.56.0, implementation ≥ 0.57.0** (letter of 2026-10-28, PK-21) | pin 0.54; re-baseline at each release (RFC 010); ship with percent-encoded paths, migrate when prikk's design lands |
 | planeter 0.4.0 | no module mechanism; OQ-4 unruled; RFC 012's catalog pattern, glossary, RFC 011's admission and RFC 004's recovery reused as patterns | joint RFC 008 after M2's design; a letter through the owner then |
 | wiki-commons 0.4 | the conformance corpus is CR-markup's fixture set; identifiers may change before its 1.0 | claims versioned `@0.4` |
 
@@ -101,7 +101,7 @@ the mode requires. CI is green from `d0a8307` on ([run 40489623629](https://gith
 | IS-2 | The M0 spike on content-level merge (internal design MRG-4, roadmap R2) has no corpus yet | internal design 2026-10-27 | **closed 2026-10-27** (M0 T6): `tools/corpus` generates the histories deterministically from a seed; the spikes report carries the numbers |
 | IS-3 | prikk refuses repository paths over 1024 bytes (and components over 255), so the requirements' "depth 1,000" hierarchy target is unattainable and a deep title must be refused before `commit` | spike A generator 2026-10-27 | **a documented, stable prikk rule** (`reference/path-safety.md`, RFC 125 §3), so no letter: ledger PK-11; `title_to_path` refuses over either cap (RFC 003's handoff T3); a lint before the refusal (RFC 004's handoff) |
 | IS-4 | The cost table's first multiples were planeter's 0.52.0 guesses | T3 2026-10-27 | **closed** by spike A's measurement on 0.54.1 (ledger PK-20; `cost.rs` `PROVISIONAL = false`) |
-| IS-5 | prikk refuses non-ASCII repository paths ("deferred until Unicode NFC normalization is implemented"), so a title in another script has no native path | M0 review 2026-10-27 | ledger PK-21; `title_to_path` percent-encodes per component, exactly reversibly (M0); a letter to prikk asks whether NFC paths are scheduled; the answer decides M1's rule |
+| IS-5 | prikk refuses non-ASCII repository paths ("deferred until Unicode NFC normalization is implemented"), so a title in another script has no native path | M0 review 2026-10-27 | **decided 2026-10-28**: prikk replied (design round in 0.56.0, implementation ≥ 0.57.0, no date); inklkunn ships with percent-encoded paths (ledger PK-21) and plans native paths as a migration when prikk's design lands; stays open as a tracked migration, not as a defect |
 | IS-6 | The release tags were called signed but no signature was verified | M0 review 2026-10-27 | the claim is withdrawn (`RELEASING.md`); an owner decision names a key, then `release.yml` verifies it |
 
 ## Process lessons (keep)

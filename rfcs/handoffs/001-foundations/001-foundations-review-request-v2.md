@@ -150,7 +150,8 @@ substituting, because prikk's ASCII-only rule left no other reversible mapping.
 - `Sandbox::Unconfined` is reachable until the binary refuses it (RFC 003 T1).
 - The egress guard's OS resolver is blocking and untimed; RFC 002's handoff decides the client (IQ-3).
 - The write verbs' ceiling is a constant until RFC 002's handoff measures them.
-- Paths of non-ASCII titles are percent-encoded until prikk answers the letter (PK-21).
+- Paths of non-ASCII titles are percent-encoded; prikk answered on 2026-10-28 (design round in 0.56.0,
+  implementation ≥ 0.57.0), so this is M1's rule and native paths are a later migration (PK-21).
 
 ## Independence
 

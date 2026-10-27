@@ -28,10 +28,12 @@ staying true to all three (RFC 010 D-1, D-2, D-8). The record of what each upstr
   upstream ledger (status, evidence, the letter named in the version line), ROADMAP's dependency notes and
   milestone table when a schedule or ruling moved, and a hold note in the affected handoff. The letters are
   the source; the ledger is what a reader relies on.
-- **Open asks as of 2026-10-27: one.** `send/draft/2026-10-27-non-ascii-repository-paths.md` asks whether
-  NFC path support is scheduled (PK-21), because the answer decides whether inklkunn stores percent-encoded
-  or native paths from its first release. The first two candidates were answered by prikk's own reference
-  before a letter was drafted: PK-8 by `reference/commands.md` ("Exit codes": graded verification results are in the
+- **Open asks as of 2026-10-28: none.** `send/2026-10-27-non-ascii-repository-paths.md` (sent by the owner)
+  asked whether NFC path support is scheduled; prikk replied on 2026-10-28 (`receive/…design-round-in-0-56-0.md`):
+  a design round in 0.56.0, implementation 0.57.0 at the earliest, no date. Folded into the ledger (PK-21,
+  **RULED**), ROADMAP §6 and RFC 003's handoff: inklkunn ships with percent-encoded paths and plans the switch
+  to native paths as a migration when prikk's design lands. The first two candidates were answered by prikk's
+  own reference before a letter was drafted: PK-8 by `reference/commands.md` ("Exit codes": graded verification results are in the
   JSON report, not the exit code) and PK-11 by `reference/path-safety.md` ("Length Caps", RFC 125 §3: 1024
   bytes total, 255 per component, a stable platform-derived rule). PK-16's apparent run-to-run variation did
   not reproduce (three runs agree). **Read the upstream's reference before drafting**: a letter costs the

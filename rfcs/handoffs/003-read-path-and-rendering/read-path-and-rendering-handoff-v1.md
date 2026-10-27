@@ -20,6 +20,14 @@ read against:
    and error has one plain meaning in the glossary's words; an API shape or a page state that two readers
    could read two ways is a defect, not a nit.
 
+## Hold notes
+
+- **Paths (2026-10-28).** prikk's repository paths are ASCII-only until a design round in prikk 0.56.0 lands
+  (0.57.0 at the earliest; ledger PK-21). M1 ships with `title_to_path`'s percent-encoding; nothing in this
+  handoff waits for prikk. The URL scheme (D-1) and every surface show **titles**; a path appears only in
+  `-/raw/` responses' metadata and the export, labelled as the storage path. The switch to native paths is a
+  later migration, not this handoff's.
+
 ## Before you start
 
 - M0 is on `main` with its review closed; read `docs/STATUS.md` for the current issue register.
