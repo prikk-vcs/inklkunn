@@ -2,10 +2,11 @@
 //! review's findings C1 and M1–M6). The pathological shapes below each took 0.3–0.9 s, or overflowed the
 //! stack, before the linear passes.
 //!
-//! The bound is on **scaling, not wall-clock time**: each shape is run at a size and at twice that size, and
-//! the second run may take at most three times the first (a quadratic pass takes four times, and more as
-//! the constant factors shrink). A shared CI runner is slow and noisy, so an absolute bound would say more
-//! about the machine than about the code; a generous ceiling only guards against a hang.
+//! The bound is on **scaling, not wall-clock time**: each shape is built at a parameter `n` and at `2n`, and
+//! the time may grow at most 1.5 × as fast as the input's byte length does (for a shape whose length doubles
+//! that is 3 ×; a quadratic pass takes 4 × and more as the constant factors shrink). A shared CI runner is
+//! slow and noisy, so an absolute bound would say more about the machine than about the code; a generous
+//! ceiling only guards against a hang.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::time::{Duration, Instant};
@@ -16,8 +17,8 @@ use proptest::prelude::*;
 
 /// No single run may take longer than this, whatever the machine (a hang guard, not a performance claim).
 const CEILING: Duration = Duration::from_secs(20);
-/// Doubling the input may at most triple the time.
-const MAX_RATIO: f64 = 3.0;
+/// The time may grow this many times faster than the input length.
+const SLACK: f64 = 1.5;
 /// Runs under this are noise; the ratio is checked only when the larger run is measurable.
 const NOISE: Duration = Duration::from_millis(40);
 
@@ -40,10 +41,11 @@ fn linear(label: &str, n: usize, build: impl Fn(usize) -> String, work: impl Fn(
     let t_large = time(&|| work(&large));
     assert!(t_large < CEILING, "{label}: {t_large:?} for 2n");
     if t_large > NOISE {
-        let ratio = t_large.as_secs_f64() / t_small.as_secs_f64().max(0.000_5);
+        let time_ratio = t_large.as_secs_f64() / t_small.as_secs_f64().max(0.000_5);
+        let size_ratio = large.len() as f64 / small.len().max(1) as f64;
         assert!(
-            ratio <= MAX_RATIO,
-            "{label}: doubling the input took {ratio:.1}× the time ({t_small:?} → {t_large:?}); a linear pass stays near 2×"
+            time_ratio <= SLACK * size_ratio,
+            "{label}: the input grew {size_ratio:.1}× and the time {time_ratio:.1}× ({t_small:?} → {t_large:?}); a linear pass grows alike"
         );
     }
 }
