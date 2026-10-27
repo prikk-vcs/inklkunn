@@ -5,11 +5,17 @@
 //! table is bound to ([`BOUND_TO`]); a test fails when that is not [`crate::MIN_PRIKK_VERSION`], so the
 //! table is revisited at every re-baseline (RFC 010).
 //!
-//! **This first table is provisional** ([`PROVISIONAL`]): the multiples are planeter's worst-case
-//! measurements on prikk 0.52.0 (`tree`/`cat` 2.1 × S, `show` 3.6 × S, `verify` 4.1 × S, `log`/`branch`
-//! flat) carried over as conservative guesses, with `diff` and `extract` costed from what they replay. RFC
-//! 001's spike (a) (handoff T6) re-measures on the floor and replaces them; until then they over-reserve,
-//! never under.
+//! **Provenance of the multiples (spike A, 2026-10-27, prikk 0.54.1, `tools/spikes/spike-a.py` with
+//! `--bisect` on wiki-shaped text repositories of 3.6 / 18.6 / 76 / 212 MiB store size, 1,000 and 10,000
+//! pages, a 500-deep chain; the smallest working `RLIMIT_DATA`, which is what the ceiling counts):**
+//! `branch` and `log` are flat (7 MiB); `tree` and `cat` need 1.0 × S; `show` of a small patch is flat
+//! (10 MiB) and follows the patch's content otherwise; `diff` of the whole history needs **4.6 × S**;
+//! `extract` 0.9 × S; `verify` 2.0 × S. The table keeps the **larger** of inklkunn's measurement and
+//! planeter's single-large-file worst case on 0.52.0 (`tree`/`cat` 2.1 ×, `show` 3.6 ×, `verify` 4.1 ×),
+//! because an attachment is exactly that shape and M0 had none to measure; the single-large-attachment
+//! shape joins the re-baseline corpus when attachments arrive (M1). `diff` has no planeter precedent and
+//! takes 5.0 × from the measurement with margin. Every rule carries [`BOUND_TO`]; a test fails when that is
+//! not [`crate::MIN_PRIKK_VERSION`], so the table is revisited at every re-baseline (RFC 010).
 
 use std::path::Path;
 
@@ -27,8 +33,15 @@ pub const CEILING_TENTHS: u64 = 15;
 pub const MAX_STORE_ENTRIES: usize = 100_000;
 /// The prikk version this table is bound to: the floor.
 pub const BOUND_TO: (u64, u64, u64) = (0, 54, 0);
-/// `true` until spike (a) measures the multiples on the floor.
-pub const PROVISIONAL: bool = true;
+/// `false` since spike A measured the multiples on the floor (2026-10-27); `true` again whenever a
+/// re-baseline moves the floor before the table is re-measured.
+pub const PROVISIONAL: bool = false;
+
+// A provisional table never reaches a release: this fails to compile until the floor is re-measured.
+const _: () = assert!(
+    !PROVISIONAL,
+    "re-measure the cost table on the floor (spike A) before shipping"
+);
 
 /// A read verb of this driver, for costing. Matched exhaustively: a new verb must be given a cost.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -90,13 +103,17 @@ impl ReadVerb {
     /// The one table.
     pub const fn rule(self) -> CostRule {
         let (store_tenths, floor) = match self {
+            // Measured flat: 7 MiB of data at every size.
             ReadVerb::Branch | ReadVerb::Log => (0, COST_FLOOR),
+            // Measured 1.0 × S on many small pages; 2.1 × S is the single-large-file worst case (planeter).
             ReadVerb::Tree | ReadVerb::Cat => (21, COST_FLOOR),
+            // Measured flat for a small patch; follows the patch's content, up to 3.6 × S for large text.
             ReadVerb::Show => (36, SHOW_FLOOR),
-            // Two tree replays.
-            ReadVerb::Diff => (42, COST_FLOOR),
-            // A tree replay plus the files written.
+            // Measured 4.6 × S for a whole-history diff at 212 MiB (two replays and the hunks); 5.0 with margin.
+            ReadVerb::Diff => (50, COST_FLOOR),
+            // Measured 0.9 × S; kept at the tree worst case plus the files written.
             ReadVerb::Extract => (31, COST_FLOOR),
+            // Measured 2.0 × S on many small pages; 4.1 × S is the single-large-file worst case (planeter).
             ReadVerb::Verify => (41, COST_FLOOR),
         };
         CostRule {

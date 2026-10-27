@@ -1,0 +1,401 @@
+{
+  "prikk": "prikk 0.54.1",
+  "repos": [
+    {
+      "repo": "w-1m-1k",
+      "store_bytes": 3733265,
+      "files": 1001,
+      "blocks": 5,
+      "largest_page": "pages/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d.md",
+      "verbs": {
+        "branch": {
+          "rss_bytes": 12587008,
+          "rss_over_store": 3.37,
+          "median_secs": 0.001,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 6931584,
+          "data_over_store": 1.86
+        },
+        "tree": {
+          "rss_bytes": 12902400,
+          "rss_over_store": 3.46,
+          "median_secs": 0.0169,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 7099136,
+          "data_over_store": 1.9
+        },
+        "cat": {
+          "rss_bytes": 12873728,
+          "rss_over_store": 3.45,
+          "median_secs": 0.0155,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 7083904,
+          "data_over_store": 1.9
+        },
+        "cat-bytes": {
+          "rss_bytes": 12619776,
+          "rss_over_store": 3.38,
+          "median_secs": 0.0162,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 6948992,
+          "data_over_store": 1.86
+        },
+        "log": {
+          "rss_bytes": 12939264,
+          "rss_over_store": 3.47,
+          "median_secs": 0.0022,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 6917056,
+          "data_over_store": 1.85
+        },
+        "show": {
+          "rss_bytes": 12361728,
+          "rss_over_store": 3.31,
+          "median_secs": 0.0155,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 7004544,
+          "data_over_store": 1.88
+        },
+        "diff": {
+          "rss_bytes": 15736832,
+          "rss_over_store": 4.22,
+          "median_secs": 0.0239,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 10813312,
+          "data_over_store": 2.9
+        },
+        "extract": {
+          "rss_bytes": 12689408,
+          "rss_over_store": 3.4,
+          "median_secs": 0.0361,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 6985984,
+          "data_over_store": 1.87
+        },
+        "verify": {
+          "rss_bytes": 12959744,
+          "rss_over_store": 3.47,
+          "median_secs": 0.1249,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 6927616,
+          "data_over_store": 1.86
+        }
+      }
+    },
+    {
+      "repo": "w-16m-1k",
+      "store_bytes": 19459034,
+      "files": 1001,
+      "blocks": 5,
+      "largest_page": "pages/Page 815.md",
+      "verbs": {
+        "branch": {
+          "rss_bytes": 12906496,
+          "rss_over_store": 0.66,
+          "median_secs": 0.0057,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 7101312,
+          "data_over_store": 0.36
+        },
+        "tree": {
+          "rss_bytes": 25247744,
+          "rss_over_store": 1.3,
+          "median_secs": 0.0718,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 19567360,
+          "data_over_store": 1.01
+        },
+        "cat": {
+          "rss_bytes": 25247744,
+          "rss_over_store": 1.3,
+          "median_secs": 0.0779,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 19567360,
+          "data_over_store": 1.01
+        },
+        "cat-bytes": {
+          "rss_bytes": 25432064,
+          "rss_over_store": 1.31,
+          "median_secs": 0.0621,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 19510048,
+          "data_over_store": 1.0
+        },
+        "log": {
+          "rss_bytes": 12914688,
+          "rss_over_store": 0.66,
+          "median_secs": 0.0025,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 7105664,
+          "data_over_store": 0.37
+        },
+        "show": {
+          "rss_bytes": 12922880,
+          "rss_over_store": 0.66,
+          "median_secs": 0.0553,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 7110016,
+          "data_over_store": 0.37
+        },
+        "diff": {
+          "rss_bytes": 73551872,
+          "rss_over_store": 3.78,
+          "median_secs": 0.0963,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 71196592,
+          "data_over_store": 3.66
+        },
+        "extract": {
+          "rss_bytes": 21393408,
+          "rss_over_store": 1.1,
+          "median_secs": 0.0814,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 15114464,
+          "data_over_store": 0.78
+        },
+        "verify": {
+          "rss_bytes": 42729472,
+          "rss_over_store": 2.2,
+          "median_secs": 0.2065,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 37621760,
+          "data_over_store": 1.93
+        }
+      }
+    },
+    {
+      "repo": "w-64m-10k",
+      "store_bytes": 80013607,
+      "files": 10001,
+      "blocks": 9,
+      "largest_page": "pages/Page 3268.md",
+      "verbs": {
+        "branch": {
+          "rss_bytes": 12943360,
+          "rss_over_store": 0.16,
+          "median_secs": 0.0051,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 6919168,
+          "data_over_store": 0.09
+        },
+        "tree": {
+          "rss_bytes": 84275200,
+          "rss_over_store": 1.05,
+          "median_secs": 0.1692,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 79568496,
+          "data_over_store": 0.99
+        },
+        "cat": {
+          "rss_bytes": 84238336,
+          "rss_over_store": 1.05,
+          "median_secs": 0.1682,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 79698256,
+          "data_over_store": 1.0
+        },
+        "cat-bytes": {
+          "rss_bytes": 84537344,
+          "rss_over_store": 1.06,
+          "median_secs": 0.1797,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 79650232,
+          "data_over_store": 1.0
+        },
+        "log": {
+          "rss_bytes": 12914688,
+          "rss_over_store": 0.16,
+          "median_secs": 0.0105,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 7105664,
+          "data_over_store": 0.09
+        },
+        "show": {
+          "rss_bytes": 14622720,
+          "rss_over_store": 0.18,
+          "median_secs": 0.1556,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 10292736,
+          "data_over_store": 0.13
+        },
+        "diff": {
+          "rss_bytes": 294719488,
+          "rss_over_store": 3.68,
+          "median_secs": 0.3985,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 295380534,
+          "data_over_store": 3.69
+        },
+        "extract": {
+          "rss_bytes": 75988992,
+          "rss_over_store": 0.95,
+          "median_secs": 0.2754,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 70877696,
+          "data_over_store": 0.89
+        },
+        "verify": {
+          "rss_bytes": 162033664,
+          "rss_over_store": 2.03,
+          "median_secs": 0.8696,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 159415368,
+          "data_over_store": 1.99
+        }
+      }
+    },
+    {
+      "repo": "w-200m-10k",
+      "store_bytes": 222653264,
+      "files": 10001,
+      "blocks": 9,
+      "largest_page": "pages/Page 7075.md",
+      "verbs": {
+        "branch": {
+          "rss_bytes": 12914688,
+          "rss_over_store": 0.06,
+          "median_secs": 0.0056,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 7105664,
+          "data_over_store": 0.03
+        },
+        "tree": {
+          "rss_bytes": 227024896,
+          "rss_over_store": 1.02,
+          "median_secs": 0.4176,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 222377488,
+          "data_over_store": 1.0
+        },
+        "cat": {
+          "rss_bytes": 226885632,
+          "rss_over_store": 1.02,
+          "median_secs": 0.4156,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 222241216,
+          "data_over_store": 1.0
+        },
+        "cat-bytes": {
+          "rss_bytes": 227381248,
+          "rss_over_store": 1.02,
+          "median_secs": 0.4037,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 222282144,
+          "data_over_store": 1.0
+        },
+        "log": {
+          "rss_bytes": 12914688,
+          "rss_over_store": 0.06,
+          "median_secs": 0.016,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 7105664,
+          "data_over_store": 0.03
+        },
+        "show": {
+          "rss_bytes": 14716928,
+          "rss_over_store": 0.07,
+          "median_secs": 0.357,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 10357504,
+          "data_over_store": 0.05
+        },
+        "diff": {
+          "rss_bytes": 840667136,
+          "rss_over_store": 3.78,
+          "median_secs": 1.1607,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 1022732950,
+          "data_over_store": 4.59
+        },
+        "extract": {
+          "rss_bytes": 200863744,
+          "rss_over_store": 0.9,
+          "median_secs": 0.5793,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 195601648,
+          "data_over_store": 0.88
+        },
+        "verify": {
+          "rss_bytes": 442548224,
+          "rss_over_store": 1.99,
+          "median_secs": 1.4837,
+          "exit_codes": [
+            0
+          ],
+          "data_limit_need_bytes": 439968664,
+          "data_over_store": 1.98
+        }
+      }
+    }
+  ]
+}

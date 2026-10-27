@@ -1,0 +1,2752 @@
+{
+ "prikk_version": "prikk 0.54.1",
+ "seed": 7,
+ "pages": 40,
+ "per_scenario": {
+  "DifferentPages": {
+   "trials": 41,
+   "block_clean": 41,
+   "prikk_confluent": 41,
+   "prikk_refusals": {},
+   "agreement": {
+    "block_clean=true,prikk_confluent=true": 41
+   }
+  },
+  "FrontmatterAndBody": {
+   "trials": 14,
+   "block_clean": 14,
+   "prikk_confluent": 0,
+   "prikk_refusals": {
+    "deferred": 14
+   },
+   "agreement": {
+    "block_clean=true,prikk_confluent=false": 14
+   }
+  },
+  "RenameAndEdit": {
+   "trials": 12,
+   "block_clean": 12,
+   "prikk_confluent": 12,
+   "prikk_refusals": {},
+   "agreement": {
+    "block_clean=true,prikk_confluent=true": 12
+   }
+  },
+  "SamePageDifferentParagraphs": {
+   "trials": 32,
+   "block_clean": 32,
+   "prikk_confluent": 0,
+   "prikk_refusals": {
+    "conflict": 3,
+    "deferred": 29
+   },
+   "agreement": {
+    "block_clean=true,prikk_confluent=false": 32
+   }
+  },
+  "SameParagraph": {
+   "trials": 21,
+   "block_clean": 0,
+   "prikk_confluent": 0,
+   "prikk_refusals": {
+    "conflict": 13,
+    "deferred": 8
+   },
+   "agreement": {
+    "block_clean=false,prikk_confluent=false": 21
+   }
+  }
+ },
+ "total": {
+  "trials": 120,
+  "block_clean": 99,
+  "prikk_confluent": 53,
+  "prikk_refusals": {
+   "conflict": 16,
+   "deferred": 51
+  },
+  "agreement": {
+   "block_clean=false,prikk_confluent=false": 21,
+   "block_clean=true,prikk_confluent=false": 46,
+   "block_clean=true,prikk_confluent=true": 53
+  }
+ },
+ "latency_model": [
+  {
+   "proposals_per_day": 1.0,
+   "mean_review_hours": 1.0,
+   "base_moved_fraction": 0.00195
+  },
+  {
+   "proposals_per_day": 1.0,
+   "mean_review_hours": 24.0,
+   "base_moved_fraction": 0.25635
+  },
+  {
+   "proposals_per_day": 1.0,
+   "mean_review_hours": 168.0,
+   "base_moved_fraction": 0.77205
+  },
+  {
+   "proposals_per_day": 5.0,
+   "mean_review_hours": 1.0,
+   "base_moved_fraction": 0.03115
+  },
+  {
+   "proposals_per_day": 5.0,
+   "mean_review_hours": 24.0,
+   "base_moved_fraction": 0.6923
+  },
+  {
+   "proposals_per_day": 5.0,
+   "mean_review_hours": 168.0,
+   "base_moved_fraction": 0.9476
+  },
+  {
+   "proposals_per_day": 20.0,
+   "mean_review_hours": 1.0,
+   "base_moved_fraction": 0.20835
+  },
+  {
+   "proposals_per_day": 20.0,
+   "mean_review_hours": 24.0,
+   "base_moved_fraction": 0.90645
+  },
+  {
+   "proposals_per_day": 20.0,
+   "mean_review_hours": 168.0,
+   "base_moved_fraction": 0.9837
+  },
+  {
+   "proposals_per_day": 100.0,
+   "mean_review_hours": 1.0,
+   "base_moved_fraction": 0.66275
+  },
+  {
+   "proposals_per_day": 100.0,
+   "mean_review_hours": 24.0,
+   "base_moved_fraction": 0.97895
+  },
+  {
+   "proposals_per_day": 100.0,
+   "mean_review_hours": 168.0,
+   "base_moved_fraction": 0.9964
+  }
+ ],
+ "trials": [
+  {
+   "n": 0,
+   "scenario": "RenameAndEdit",
+   "baseline": "fb5b0df330da0cb3b650844816fd2384ea52c26338a654ec9dbd460c8bd246d4",
+   "a": {
+    "Rename": {
+     "page": 2,
+     "new_title": "Page 2 (renamed in trial 0)"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 2,
+     "index": 3,
+     "text": "Revised by B in trial 0: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p2-2"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 1,
+   "scenario": "RenameAndEdit",
+   "baseline": "49eeb0077a80388376ddf8db146c6245846eb4dcbada3a0066ff461b6c8b5f9d",
+   "a": {
+    "Rename": {
+     "page": 25,
+     "new_title": "Page 25 (renamed in trial 1)"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 25,
+     "index": 2,
+     "text": "Revised by B in trial 1: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p25-1"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 2,
+   "scenario": "DifferentPages",
+   "baseline": "63859fb85c9bfcf04efcc2976d039c2291cc9bf8656003245730807936eb2691",
+   "a": {
+    "Paragraph": {
+     "page": 26,
+     "index": 2,
+     "text": "Revised by A in trial 2: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p26-1"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 39,
+     "index": 3,
+     "text": "Revised by B in trial 2: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p39-2"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 3,
+   "scenario": "FrontmatterAndBody",
+   "baseline": "58c0454881474dd54ce0e229c254e6b9ed54075cec5450301256cfdb49f47e51",
+   "a": {
+    "Frontmatter": {
+     "page": 7,
+     "tag": "trial3"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 7,
+     "index": 12,
+     "text": "Revised by B in trial 3: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p7-9"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 58c0454881474d"
+  },
+  {
+   "n": 4,
+   "scenario": "DifferentPages",
+   "baseline": "6d4ca2ef44402e202feabe0c295e51c6b4358ce3a2dd5ce0f5ca0c9aa1f80857",
+   "a": {
+    "Paragraph": {
+     "page": 13,
+     "index": 10,
+     "text": "Revised by A in trial 4: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p13-7"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 31,
+     "index": 8,
+     "text": "Revised by B in trial 4: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p31-6"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 5,
+   "scenario": "DifferentPages",
+   "baseline": "d2dcb74b92c5e07e90bece2048441982847d8c1c68d9c48455b0dc7fb220c782",
+   "a": {
+    "Paragraph": {
+     "page": 38,
+     "index": 11,
+     "text": "Revised by A in trial 5: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p38-8"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 13,
+     "index": 10,
+     "text": "Revised by B in trial 5: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p13-7"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 6,
+   "scenario": "DifferentPages",
+   "baseline": "5116e081be53bce2de6df696c2b107a9f49eea5999ca9e17b2362e34d2fb9f34",
+   "a": {
+    "Paragraph": {
+     "page": 18,
+     "index": 4,
+     "text": "Revised by A in trial 6: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p18-3"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 16,
+     "index": 6,
+     "text": "Revised by B in trial 6: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p16-4"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 7,
+   "scenario": "DifferentPages",
+   "baseline": "a8af066b1ad3dbb57d1ba3b054a13294594ba91978e180c7a532359e0cc388b1",
+   "a": {
+    "Paragraph": {
+     "page": 8,
+     "index": 6,
+     "text": "Revised by A in trial 7: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p8-4"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 17,
+     "index": 10,
+     "text": "Revised by B in trial 7: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p17-7"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 8,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "d9b2237951f409af03caf475fd8a8cb67aa7b36fb8d9066d7ccdd7b370e2b3ee",
+   "a": {
+    "Paragraph": {
+     "page": 29,
+     "index": 10,
+     "text": "Revised by A in trial 8: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p29-7"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 29,
+     "index": 11,
+     "text": "Revised by B in trial 8: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p29-8"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "conflict",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block d9b2237951f409"
+  },
+  {
+   "n": 9,
+   "scenario": "DifferentPages",
+   "baseline": "edfd229cb84b928c93a0ca48923adddf99a00b11bd8a1b8f8e4a166230e11da6",
+   "a": {
+    "Paragraph": {
+     "page": 7,
+     "index": 11,
+     "text": "Revised by A in trial 9: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p7-8"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 3,
+     "index": 6,
+     "text": "Revised by B in trial 9: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p3-4"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 10,
+   "scenario": "SameParagraph",
+   "baseline": "7849b1e269151801eaa81fc061f715250249f387894cf4df5cae6ffbb6a512af",
+   "a": {
+    "Paragraph": {
+     "page": 39,
+     "index": 3,
+     "text": "Revised by A in trial 10: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p39-2"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 39,
+     "index": 3,
+     "text": "Revised by B in trial 10: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p39-2"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 7849b1e2691518"
+  },
+  {
+   "n": 11,
+   "scenario": "DifferentPages",
+   "baseline": "568c62a966b5910cd1085a39352c98638a0480102c379302fdbab15d08cc8094",
+   "a": {
+    "Paragraph": {
+     "page": 39,
+     "index": 6,
+     "text": "Revised by A in trial 11: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p39-4"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 30,
+     "index": 8,
+     "text": "Revised by B in trial 11: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p30-6"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 12,
+   "scenario": "SameParagraph",
+   "baseline": "b46028acb6e55a2875ab32f39e7e6d618b1fc1cdc648cd01501999c6555dfdbe",
+   "a": {
+    "Paragraph": {
+     "page": 32,
+     "index": 10,
+     "text": "Revised by A in trial 12: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p32-7"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 32,
+     "index": 10,
+     "text": "Revised by B in trial 12: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p32-7"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "conflict",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block b46028acb6e55a"
+  },
+  {
+   "n": 13,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "950c697e2ffa5365c1c63d64e1df38c54681d7b61293be28541b28f1cfae4601",
+   "a": {
+    "Paragraph": {
+     "page": 19,
+     "index": 11,
+     "text": "Revised by A in trial 13: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p19-8"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 19,
+     "index": 10,
+     "text": "Revised by B in trial 13: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p19-7"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "conflict",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 950c697e2ffa53"
+  },
+  {
+   "n": 14,
+   "scenario": "DifferentPages",
+   "baseline": "f0f6044df3858bf256e324d3c599b46b1c78132d38e8ba2eae8ef25f8c15846e",
+   "a": {
+    "Paragraph": {
+     "page": 11,
+     "index": 10,
+     "text": "Revised by A in trial 14: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p11-7"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 28,
+     "index": 11,
+     "text": "Revised by B in trial 14: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p28-8"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 15,
+   "scenario": "DifferentPages",
+   "baseline": "274570d130dc668b3e9ef03f920c057ae0eb82f6566a88d036d6c298b057458c",
+   "a": {
+    "Paragraph": {
+     "page": 31,
+     "index": 4,
+     "text": "Revised by A in trial 15: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p31-3"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 32,
+     "index": 7,
+     "text": "Revised by B in trial 15: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p32-5"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 16,
+   "scenario": "DifferentPages",
+   "baseline": "9d55eb8a2a2de53d0260a192f55dd0f6b0771edad868bdcdc4e228bd331b3722",
+   "a": {
+    "Paragraph": {
+     "page": 38,
+     "index": 2,
+     "text": "Revised by A in trial 16: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p38-1"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 20,
+     "index": 4,
+     "text": "Revised by B in trial 16: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p20-3"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 17,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "9b2d9e62e3874954ab7ee56583da2117afd49aa8e1a3bec0f85464652af26b8c",
+   "a": {
+    "Paragraph": {
+     "page": 24,
+     "index": 4,
+     "text": "Revised by A in trial 17: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p24-3"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 24,
+     "index": 3,
+     "text": "Revised by B in trial 17: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p24-2"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 9b2d9e62e38749"
+  },
+  {
+   "n": 18,
+   "scenario": "DifferentPages",
+   "baseline": "37e5fff89e3858946b6de31572e0e19a3c23a82b54432896f7e6d24ece66d6cf",
+   "a": {
+    "Paragraph": {
+     "page": 20,
+     "index": 10,
+     "text": "Revised by A in trial 18: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p20-7"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 13,
+     "index": 6,
+     "text": "Revised by B in trial 18: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p13-4"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 19,
+   "scenario": "RenameAndEdit",
+   "baseline": "c10abcabec3dc51380b8eb51575500c5158223736b25a3fce79e4ea63e9db9ca",
+   "a": {
+    "Rename": {
+     "page": 26,
+     "new_title": "Page 26 (renamed in trial 19)"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 26,
+     "index": 7,
+     "text": "Revised by B in trial 19: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p26-5"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 20,
+   "scenario": "DifferentPages",
+   "baseline": "4a08c21a11e3d6c1061bda391478efe81954e2b3895973e7133c81d681298820",
+   "a": {
+    "Paragraph": {
+     "page": 8,
+     "index": 7,
+     "text": "Revised by A in trial 20: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p8-5"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 30,
+     "index": 3,
+     "text": "Revised by B in trial 20: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p30-2"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 21,
+   "scenario": "DifferentPages",
+   "baseline": "83be297eb03bc6fe17465dbb2d5371fd9ccca1d5bd55b2d076cd7c1b1ad870ef",
+   "a": {
+    "Paragraph": {
+     "page": 3,
+     "index": 3,
+     "text": "Revised by A in trial 21: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p3-2"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 39,
+     "index": 10,
+     "text": "Revised by B in trial 21: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p39-7"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 22,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "cf37b56a4bc5cd4c68c88d3b05e707c871a37aecf700ddaa0c66e9b0b5995f3c",
+   "a": {
+    "Paragraph": {
+     "page": 12,
+     "index": 8,
+     "text": "Revised by A in trial 22: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p12-6"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 12,
+     "index": 6,
+     "text": "Revised by B in trial 22: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p12-4"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "conflict",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block cf37b56a4bc5cd"
+  },
+  {
+   "n": 23,
+   "scenario": "DifferentPages",
+   "baseline": "8340f7c0b46fa219c643dfe3c707ff5e674fd7414c7f8cf787141c1ca1e66414",
+   "a": {
+    "Paragraph": {
+     "page": 5,
+     "index": 3,
+     "text": "Revised by A in trial 23: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p5-2"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 11,
+     "index": 12,
+     "text": "Revised by B in trial 23: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p11-9"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 24,
+   "scenario": "DifferentPages",
+   "baseline": "bf07a5bb2c10b76a5837d0f54c6c16b7f50668ff22a986bd5901b65dc1680486",
+   "a": {
+    "Paragraph": {
+     "page": 29,
+     "index": 4,
+     "text": "Revised by A in trial 24: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p29-3"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 27,
+     "index": 6,
+     "text": "Revised by B in trial 24: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p27-4"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 25,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "6c488ca03198dd58d1d74ad4274f8ad62d839252e19e115e3e163fc955134a18",
+   "a": {
+    "Paragraph": {
+     "page": 20,
+     "index": 12,
+     "text": "Revised by A in trial 25: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p20-9"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 20,
+     "index": 7,
+     "text": "Revised by B in trial 25: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p20-5"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 6c488ca03198dd"
+  },
+  {
+   "n": 26,
+   "scenario": "SameParagraph",
+   "baseline": "a44640a0131959d2ee05e110d1fdf6b5356b4883b32d397e43e58a07f576d938",
+   "a": {
+    "Paragraph": {
+     "page": 30,
+     "index": 7,
+     "text": "Revised by A in trial 26: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p30-5"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 30,
+     "index": 7,
+     "text": "Revised by B in trial 26: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p30-5"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "conflict",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block a44640a0131959"
+  },
+  {
+   "n": 27,
+   "scenario": "DifferentPages",
+   "baseline": "7c9c9c3d1ccd919a7128f85937c59424f563550d690c0ad8500d45feb162e46e",
+   "a": {
+    "Paragraph": {
+     "page": 27,
+     "index": 3,
+     "text": "Revised by A in trial 27: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p27-2"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 23,
+     "index": 11,
+     "text": "Revised by B in trial 27: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p23-8"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 28,
+   "scenario": "SameParagraph",
+   "baseline": "5f6d98bcad9f285a679ac768f92a49db5149072c2257b7e1159cfda64f0d102b",
+   "a": {
+    "Paragraph": {
+     "page": 18,
+     "index": 4,
+     "text": "Revised by A in trial 28: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p18-3"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 18,
+     "index": 4,
+     "text": "Revised by B in trial 28: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p18-3"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 5f6d98bcad9f28"
+  },
+  {
+   "n": 29,
+   "scenario": "FrontmatterAndBody",
+   "baseline": "21aa438c3798e981d978f6d6cbe68b091373a499889721419c906765d60b36fb",
+   "a": {
+    "Frontmatter": {
+     "page": 22,
+     "tag": "trial29"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 22,
+     "index": 12,
+     "text": "Revised by B in trial 29: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p22-9"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 21aa438c3798e9"
+  },
+  {
+   "n": 30,
+   "scenario": "SameParagraph",
+   "baseline": "5e012f3bab440b1f4bf1693154357677b3040e4458b9d85083868a06f8525fe7",
+   "a": {
+    "Paragraph": {
+     "page": 4,
+     "index": 8,
+     "text": "Revised by A in trial 30: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p4-6"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 4,
+     "index": 8,
+     "text": "Revised by B in trial 30: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p4-6"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "conflict",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 5e012f3bab440b"
+  },
+  {
+   "n": 31,
+   "scenario": "DifferentPages",
+   "baseline": "beaa567156dcd219334df352fe978466731d6fc9eda6ac33560117754ab12c85",
+   "a": {
+    "Paragraph": {
+     "page": 5,
+     "index": 10,
+     "text": "Revised by A in trial 31: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p5-7"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 20,
+     "index": 2,
+     "text": "Revised by B in trial 31: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p20-1"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 32,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "60a15fcfd8e8640a15a29cea65cfbd3af7bbf19ba38086a7d6449eb899853c6a",
+   "a": {
+    "Paragraph": {
+     "page": 10,
+     "index": 2,
+     "text": "Revised by A in trial 32: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p10-1"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 10,
+     "index": 8,
+     "text": "Revised by B in trial 32: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p10-6"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 60a15fcfd8e864"
+  },
+  {
+   "n": 33,
+   "scenario": "SameParagraph",
+   "baseline": "3e50a6852d71f0649b0c9e83f440a1e5e87c12303883d2400a47c4a437c66cd2",
+   "a": {
+    "Paragraph": {
+     "page": 7,
+     "index": 11,
+     "text": "Revised by A in trial 33: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p7-8"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 7,
+     "index": 11,
+     "text": "Revised by B in trial 33: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p7-8"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 3e50a6852d71f0"
+  },
+  {
+   "n": 34,
+   "scenario": "DifferentPages",
+   "baseline": "819367dd6b5fc43d490bb0b62e900d57a08e5cdcd8c9b6638df5ffef7d689ae0",
+   "a": {
+    "Paragraph": {
+     "page": 38,
+     "index": 6,
+     "text": "Revised by A in trial 34: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p38-4"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 14,
+     "index": 7,
+     "text": "Revised by B in trial 34: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p14-5"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 35,
+   "scenario": "DifferentPages",
+   "baseline": "32a43fff272f9aa1aeedd4ab4f1ed50e717b825aa861173f35026e9e56223cb1",
+   "a": {
+    "Paragraph": {
+     "page": 31,
+     "index": 7,
+     "text": "Revised by A in trial 35: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p31-5"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 6,
+     "index": 6,
+     "text": "Revised by B in trial 35: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p6-4"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 36,
+   "scenario": "SameParagraph",
+   "baseline": "c65e1b9a8888619407fcea9f71fd08fb3edbd55db0fd400b0e3b73962bc1e468",
+   "a": {
+    "Paragraph": {
+     "page": 39,
+     "index": 4,
+     "text": "Revised by A in trial 36: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p39-3"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 39,
+     "index": 4,
+     "text": "Revised by B in trial 36: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p39-3"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "conflict",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block c65e1b9a888861"
+  },
+  {
+   "n": 37,
+   "scenario": "RenameAndEdit",
+   "baseline": "c89f5e115a51878924152662ae3501111b5b1bbdfaffd46786925a404331ff2e",
+   "a": {
+    "Rename": {
+     "page": 20,
+     "new_title": "Guides/Topic 20 (renamed in trial 37)"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 20,
+     "index": 12,
+     "text": "Revised by B in trial 37: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p20-9"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 38,
+   "scenario": "FrontmatterAndBody",
+   "baseline": "532e8b68baea3a26304b69f9b1e9b06e9daec303a5c63e207236e1ed5eae9476",
+   "a": {
+    "Frontmatter": {
+     "page": 14,
+     "tag": "trial38"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 14,
+     "index": 2,
+     "text": "Revised by B in trial 38: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p14-1"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 532e8b68baea3a"
+  },
+  {
+   "n": 39,
+   "scenario": "RenameAndEdit",
+   "baseline": "6d444229ab4738eafecef8f1b095acbfcbe0522d6f964063beff9e1a2a96b6cc",
+   "a": {
+    "Rename": {
+     "page": 26,
+     "new_title": "Page 26 (renamed in trial 19) (renamed in trial 39)"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 26,
+     "index": 8,
+     "text": "Revised by B in trial 39: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p26-6"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 40,
+   "scenario": "DifferentPages",
+   "baseline": "ec1dba69f8de51706e1f8d62e3036385b150a8b8a0a3fa41cf1d9ba8cde23e13",
+   "a": {
+    "Paragraph": {
+     "page": 27,
+     "index": 2,
+     "text": "Revised by A in trial 40: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p27-1"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 13,
+     "index": 8,
+     "text": "Revised by B in trial 40: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p13-6"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 41,
+   "scenario": "RenameAndEdit",
+   "baseline": "0eb3956d732dcd2e1b5c9877b1ed50c36d3526834b773fbc55cea3d57c53e031",
+   "a": {
+    "Rename": {
+     "page": 29,
+     "new_title": "Page 29 (renamed in trial 41)"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 29,
+     "index": 7,
+     "text": "Revised by B in trial 41: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p29-5"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 42,
+   "scenario": "DifferentPages",
+   "baseline": "684595364d6acf325bc6b7c1bdeca161275795051a4569b280d6d172e1d252bf",
+   "a": {
+    "Paragraph": {
+     "page": 6,
+     "index": 11,
+     "text": "Revised by A in trial 42: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p6-8"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 29,
+     "index": 7,
+     "text": "Revised by B in trial 42: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p29-5"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 43,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "ecb93dc05f0d89032b27110b6c14fbc3fb7eb1a6efd9d33cbe456e09b29a3ff3",
+   "a": {
+    "Paragraph": {
+     "page": 23,
+     "index": 3,
+     "text": "Revised by A in trial 43: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p23-2"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 23,
+     "index": 4,
+     "text": "Revised by B in trial 43: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p23-3"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block ecb93dc05f0d89"
+  },
+  {
+   "n": 44,
+   "scenario": "SameParagraph",
+   "baseline": "71c151a938bc7647ee3be762ffd8630db87cdf923e3e0b793d672713012c274e",
+   "a": {
+    "Paragraph": {
+     "page": 39,
+     "index": 3,
+     "text": "Revised by A in trial 44: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p39-2"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 39,
+     "index": 3,
+     "text": "Revised by B in trial 44: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p39-2"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 71c151a938bc76"
+  },
+  {
+   "n": 45,
+   "scenario": "FrontmatterAndBody",
+   "baseline": "408b0c054cebeeb7560aa5611cf3f2ccdb4ba54fc7bb69ced9816558a954a216",
+   "a": {
+    "Frontmatter": {
+     "page": 9,
+     "tag": "trial45"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 9,
+     "index": 7,
+     "text": "Revised by B in trial 45: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p9-5"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 408b0c054cebee"
+  },
+  {
+   "n": 46,
+   "scenario": "DifferentPages",
+   "baseline": "82f3de3f04346e1a213f35bbefec182c9f0a665ed4f096eb906c96404fe0916b",
+   "a": {
+    "Paragraph": {
+     "page": 3,
+     "index": 2,
+     "text": "Revised by A in trial 46: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p3-1"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 39,
+     "index": 4,
+     "text": "Revised by B in trial 46: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p39-3"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 47,
+   "scenario": "SameParagraph",
+   "baseline": "2aaab5c2da11d4cad806295a8f5dbcea5c003de9e16d6c7a3ef60f0ba46ab9e8",
+   "a": {
+    "Paragraph": {
+     "page": 37,
+     "index": 11,
+     "text": "Revised by A in trial 47: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p37-8"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 37,
+     "index": 11,
+     "text": "Revised by B in trial 47: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p37-8"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "conflict",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 2aaab5c2da11d4"
+  },
+  {
+   "n": 48,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "22d1723e87ab7ebc48e0bb670b0aeda69aff53dd6ce018a4ed3ad92a2d2829b6",
+   "a": {
+    "Paragraph": {
+     "page": 25,
+     "index": 8,
+     "text": "Revised by A in trial 48: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p25-6"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 25,
+     "index": 11,
+     "text": "Revised by B in trial 48: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p25-8"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 22d1723e87ab7e"
+  },
+  {
+   "n": 49,
+   "scenario": "DifferentPages",
+   "baseline": "1a0218f7558707fd639d162ca988b347c62398c51417b756384b615af01ab65e",
+   "a": {
+    "Paragraph": {
+     "page": 20,
+     "index": 3,
+     "text": "Revised by A in trial 49: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p20-2"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 17,
+     "index": 4,
+     "text": "Revised by B in trial 49: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p17-3"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 50,
+   "scenario": "DifferentPages",
+   "baseline": "06325d68cbcfc8a0325eb618ad30adb5da133dc30a0062b39874daaa48f1027a",
+   "a": {
+    "Paragraph": {
+     "page": 29,
+     "index": 6,
+     "text": "Revised by A in trial 50: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p29-4"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 13,
+     "index": 11,
+     "text": "Revised by B in trial 50: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p13-8"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 51,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "70cd474ae27479331ecef184abeb3dfcddaaf8d35e06be196deaf30d41fa0985",
+   "a": {
+    "Paragraph": {
+     "page": 19,
+     "index": 4,
+     "text": "Revised by A in trial 51: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p19-3"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 19,
+     "index": 6,
+     "text": "Revised by B in trial 51: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p19-4"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 70cd474ae27479"
+  },
+  {
+   "n": 52,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "f77aae8bf46bbddcf9dc60ea814e1bd27756aaa88ec92427e3a53be1f257bc61",
+   "a": {
+    "Paragraph": {
+     "page": 7,
+     "index": 11,
+     "text": "Revised by A in trial 52: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p7-8"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 7,
+     "index": 7,
+     "text": "Revised by B in trial 52: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p7-5"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block f77aae8bf46bbd"
+  },
+  {
+   "n": 53,
+   "scenario": "SameParagraph",
+   "baseline": "9643ac5a9cebf0deee2149abcf185767ea469dffb1938c8298e2b18184794947",
+   "a": {
+    "Paragraph": {
+     "page": 12,
+     "index": 2,
+     "text": "Revised by A in trial 53: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p12-1"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 12,
+     "index": 2,
+     "text": "Revised by B in trial 53: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p12-1"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "conflict",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 9643ac5a9cebf0"
+  },
+  {
+   "n": 54,
+   "scenario": "FrontmatterAndBody",
+   "baseline": "f13728fff057cc5d3e18c37c0804effc9ceee19bd84cabd732a8252012270c48",
+   "a": {
+    "Frontmatter": {
+     "page": 21,
+     "tag": "trial54"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 21,
+     "index": 11,
+     "text": "Revised by B in trial 54: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p21-8"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block f13728fff057cc"
+  },
+  {
+   "n": 55,
+   "scenario": "RenameAndEdit",
+   "baseline": "d788c6c990013421f334b393fc5e4fa851b64292d41cb5016941783ee8b3c610",
+   "a": {
+    "Rename": {
+     "page": 19,
+     "new_title": "Page 19 (renamed in trial 55)"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 19,
+     "index": 11,
+     "text": "Revised by B in trial 55: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p19-8"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 56,
+   "scenario": "DifferentPages",
+   "baseline": "78869eca95e45aa9591f9c4dbf6f135160691c51ad14d27294126bc810ca0fa3",
+   "a": {
+    "Paragraph": {
+     "page": 27,
+     "index": 8,
+     "text": "Revised by A in trial 56: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p27-6"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 30,
+     "index": 6,
+     "text": "Revised by B in trial 56: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p30-4"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 57,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "b3521074683b40b74db2fde9579f9bd34c23d6ef5dbde4e2db66f9bd8180a9c4",
+   "a": {
+    "Paragraph": {
+     "page": 34,
+     "index": 11,
+     "text": "Revised by A in trial 57: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p34-8"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 34,
+     "index": 3,
+     "text": "Revised by B in trial 57: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p34-2"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block b3521074683b40"
+  },
+  {
+   "n": 58,
+   "scenario": "DifferentPages",
+   "baseline": "a2d388cd54a11e2d7e8b53be94cfa49b28b0181987ba3118280d261085539817",
+   "a": {
+    "Paragraph": {
+     "page": 23,
+     "index": 8,
+     "text": "Revised by A in trial 58: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p23-6"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 34,
+     "index": 4,
+     "text": "Revised by B in trial 58: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p34-3"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 59,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "76b342fae2bd47d233e13567904cc498c0942bf024c2191e5a75dc4f9f7137db",
+   "a": {
+    "Paragraph": {
+     "page": 38,
+     "index": 11,
+     "text": "Revised by A in trial 59: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p38-8"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 38,
+     "index": 10,
+     "text": "Revised by B in trial 59: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p38-7"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 76b342fae2bd47"
+  },
+  {
+   "n": 60,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "cf498477614597b8cbf1e48a425fff80f4cfddb88a3726574d813d3bebe904d0",
+   "a": {
+    "Paragraph": {
+     "page": 7,
+     "index": 12,
+     "text": "Revised by A in trial 60: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p7-9"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 7,
+     "index": 10,
+     "text": "Revised by B in trial 60: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p7-7"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block cf498477614597"
+  },
+  {
+   "n": 61,
+   "scenario": "DifferentPages",
+   "baseline": "b65a65201ccdc81dff2dfe0fad71879756d2f768a706d4323368ea54b9c6afaf",
+   "a": {
+    "Paragraph": {
+     "page": 39,
+     "index": 4,
+     "text": "Revised by A in trial 61: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p39-3"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 37,
+     "index": 6,
+     "text": "Revised by B in trial 61: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p37-4"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 62,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "ae0c57e91a0e65109940712c1816ae891b0bf54855122ed56cf86cef57bec521",
+   "a": {
+    "Paragraph": {
+     "page": 22,
+     "index": 2,
+     "text": "Revised by A in trial 62: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p22-1"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 22,
+     "index": 6,
+     "text": "Revised by B in trial 62: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p22-4"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block ae0c57e91a0e65"
+  },
+  {
+   "n": 63,
+   "scenario": "FrontmatterAndBody",
+   "baseline": "c523827241e12f18124b7e4c58ad4d91819ca3cac80646bc25869a1fe651e7d8",
+   "a": {
+    "Frontmatter": {
+     "page": 21,
+     "tag": "trial63"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 21,
+     "index": 8,
+     "text": "Revised by B in trial 63: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p21-6"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block c523827241e12f"
+  },
+  {
+   "n": 64,
+   "scenario": "DifferentPages",
+   "baseline": "28bd8c78c169b2038022a4beb02dea7a6dbdd2b5cb29c41d7d49aaa59f23879e",
+   "a": {
+    "Paragraph": {
+     "page": 2,
+     "index": 2,
+     "text": "Revised by A in trial 64: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p2-1"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 13,
+     "index": 2,
+     "text": "Revised by B in trial 64: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p13-1"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 65,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "82dada1defb026d4a6eb52caf31dd12d84112c17e520d69ffae8639f005c4220",
+   "a": {
+    "Paragraph": {
+     "page": 5,
+     "index": 3,
+     "text": "Revised by A in trial 65: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p5-2"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 5,
+     "index": 10,
+     "text": "Revised by B in trial 65: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p5-7"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 82dada1defb026"
+  },
+  {
+   "n": 66,
+   "scenario": "RenameAndEdit",
+   "baseline": "cbeb76010626a1b74595509dc4524cc147531c315266fe7d81307cbcad3f6cc6",
+   "a": {
+    "Rename": {
+     "page": 19,
+     "new_title": "Page 19 (renamed in trial 55) (renamed in trial 66)"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 19,
+     "index": 4,
+     "text": "Revised by B in trial 66: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p19-3"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 67,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "c03ea26b913018af254612395688701a8c099b677bd6d7bba94cb59620ad88e3",
+   "a": {
+    "Paragraph": {
+     "page": 38,
+     "index": 11,
+     "text": "Revised by A in trial 67: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p38-8"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 38,
+     "index": 7,
+     "text": "Revised by B in trial 67: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p38-5"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block c03ea26b913018"
+  },
+  {
+   "n": 68,
+   "scenario": "FrontmatterAndBody",
+   "baseline": "dce1dad2b580502104732ee784b80c99b3541a8329c201e9c5e0275a13d9a077",
+   "a": {
+    "Frontmatter": {
+     "page": 22,
+     "tag": "trial68"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 22,
+     "index": 8,
+     "text": "Revised by B in trial 68: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p22-6"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block dce1dad2b58050"
+  },
+  {
+   "n": 69,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "c88f7c6be50eb05b68f2f1abf978625ba17188eebff3fa58934b24dea5e8a463",
+   "a": {
+    "Paragraph": {
+     "page": 10,
+     "index": 10,
+     "text": "Revised by A in trial 69: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p10-7"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 10,
+     "index": 2,
+     "text": "Revised by B in trial 69: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p10-1"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block c88f7c6be50eb0"
+  },
+  {
+   "n": 70,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "69c88c5b04d86e4441a913d7338eaa59b15f2cacc519d8f888025582ae3b951e",
+   "a": {
+    "Paragraph": {
+     "page": 24,
+     "index": 10,
+     "text": "Revised by A in trial 70: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p24-7"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 24,
+     "index": 11,
+     "text": "Revised by B in trial 70: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p24-8"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 69c88c5b04d86e"
+  },
+  {
+   "n": 71,
+   "scenario": "DifferentPages",
+   "baseline": "eeb575be15577089f42a568a11053e45c660ccae02f961fa3d774171eeebbb8c",
+   "a": {
+    "Paragraph": {
+     "page": 11,
+     "index": 10,
+     "text": "Revised by A in trial 71: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p11-7"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 23,
+     "index": 6,
+     "text": "Revised by B in trial 71: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p23-4"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 72,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "0e53e8f6735de5ef2ab20fb18b5a80a8e60fe4f29c24977ce8045bd6cb9c5721",
+   "a": {
+    "Paragraph": {
+     "page": 13,
+     "index": 7,
+     "text": "Revised by A in trial 72: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p13-5"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 13,
+     "index": 10,
+     "text": "Revised by B in trial 72: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p13-7"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 0e53e8f6735de5"
+  },
+  {
+   "n": 73,
+   "scenario": "DifferentPages",
+   "baseline": "da7f6730de5124c0e8972998639cce6907d402e6fa5d58e69b9a68022f90207e",
+   "a": {
+    "Paragraph": {
+     "page": 24,
+     "index": 8,
+     "text": "Revised by A in trial 73: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p24-6"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 37,
+     "index": 3,
+     "text": "Revised by B in trial 73: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p37-2"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 74,
+   "scenario": "DifferentPages",
+   "baseline": "3507fd9f557769797bf59cbf5ff21cbb0bfdda7fdbbd4dc869932fb484d028e9",
+   "a": {
+    "Paragraph": {
+     "page": 8,
+     "index": 11,
+     "text": "Revised by A in trial 74: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p8-8"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 38,
+     "index": 8,
+     "text": "Revised by B in trial 74: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p38-6"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 75,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "9dc6b4db08a4684ff879dc00ce5b13a5f51761b2bf669e2a1be34c4b6236640d",
+   "a": {
+    "Paragraph": {
+     "page": 12,
+     "index": 3,
+     "text": "Revised by A in trial 75: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p12-2"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 12,
+     "index": 4,
+     "text": "Revised by B in trial 75: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p12-3"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 9dc6b4db08a468"
+  },
+  {
+   "n": 76,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "a5188bdf716abadca4fa0cf2da1f686afe208422c226d50f896c43a6f26e267f",
+   "a": {
+    "Paragraph": {
+     "page": 38,
+     "index": 4,
+     "text": "Revised by A in trial 76: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p38-3"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 38,
+     "index": 8,
+     "text": "Revised by B in trial 76: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p38-6"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block a5188bdf716aba"
+  },
+  {
+   "n": 77,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "300099f62189689aff0a2fc6e0c19af1b31a13a81b63195591f4cc3ca7fb1cce",
+   "a": {
+    "Paragraph": {
+     "page": 12,
+     "index": 6,
+     "text": "Revised by A in trial 77: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p12-4"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 12,
+     "index": 3,
+     "text": "Revised by B in trial 77: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p12-2"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 300099f6218968"
+  },
+  {
+   "n": 78,
+   "scenario": "RenameAndEdit",
+   "baseline": "8dc5d49490c34140a1c86d19dce5646f972fff3d56e8c1adfd01396a115f4612",
+   "a": {
+    "Rename": {
+     "page": 10,
+     "new_title": "Guides/Topic 10 (renamed in trial 78)"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 10,
+     "index": 6,
+     "text": "Revised by B in trial 78: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p10-4"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 79,
+   "scenario": "RenameAndEdit",
+   "baseline": "8c41d05b51bf79da3e48fa4f8b3e625850642077f7aab401fc0e87ef6b26e1d6",
+   "a": {
+    "Rename": {
+     "page": 38,
+     "new_title": "Page 38 (renamed in trial 79)"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 38,
+     "index": 6,
+     "text": "Revised by B in trial 79: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p38-4"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 80,
+   "scenario": "SameParagraph",
+   "baseline": "4e4ad372ab0a67f80dc2e52d01e2f69eaac95800b135f6a81904d38190e5d8ae",
+   "a": {
+    "Paragraph": {
+     "page": 25,
+     "index": 2,
+     "text": "Revised by A in trial 80: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p25-1"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 25,
+     "index": 2,
+     "text": "Revised by B in trial 80: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p25-1"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 4e4ad372ab0a67"
+  },
+  {
+   "n": 81,
+   "scenario": "FrontmatterAndBody",
+   "baseline": "709316c911a22cb6e4576725df4fac541926617f2db732a393dd65d929a01374",
+   "a": {
+    "Frontmatter": {
+     "page": 21,
+     "tag": "trial81"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 21,
+     "index": 11,
+     "text": "Revised by B in trial 81: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p21-8"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 709316c911a22c"
+  },
+  {
+   "n": 82,
+   "scenario": "SameParagraph",
+   "baseline": "1fbc05dd4409e7a20492db7f87bae117d4dbb7d44469bb28d7cba81ba9d9e781",
+   "a": {
+    "Paragraph": {
+     "page": 33,
+     "index": 11,
+     "text": "Revised by A in trial 82: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p33-8"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 33,
+     "index": 11,
+     "text": "Revised by B in trial 82: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p33-8"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "conflict",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 1fbc05dd4409e7"
+  },
+  {
+   "n": 83,
+   "scenario": "FrontmatterAndBody",
+   "baseline": "c5a713cdd9c7d596bf9ed907055019c23dd0cc0d95cd882670380676df7a82b4",
+   "a": {
+    "Frontmatter": {
+     "page": 1,
+     "tag": "trial83"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 1,
+     "index": 4,
+     "text": "Revised by B in trial 83: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p1-3"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block c5a713cdd9c7d5"
+  },
+  {
+   "n": 84,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "9f3d74eb2ff56463591c321f660457ae793ad2375033825ed2156c2c883ab86c",
+   "a": {
+    "Paragraph": {
+     "page": 30,
+     "index": 8,
+     "text": "Revised by A in trial 84: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p30-6"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 30,
+     "index": 10,
+     "text": "Revised by B in trial 84: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p30-7"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 9f3d74eb2ff564"
+  },
+  {
+   "n": 85,
+   "scenario": "FrontmatterAndBody",
+   "baseline": "c5a730e92212ebc225dd082f5dd106c94027a91bdb19630d365d57cefb6f9028",
+   "a": {
+    "Frontmatter": {
+     "page": 25,
+     "tag": "trial85"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 25,
+     "index": 2,
+     "text": "Revised by B in trial 85: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p25-1"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block c5a730e92212eb"
+  },
+  {
+   "n": 86,
+   "scenario": "SameParagraph",
+   "baseline": "04723891e5c3dca08cfe598040c5446aa5aa9e5f348aa02f728d37640b4e57e0",
+   "a": {
+    "Paragraph": {
+     "page": 35,
+     "index": 2,
+     "text": "Revised by A in trial 86: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p35-1"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 35,
+     "index": 2,
+     "text": "Revised by B in trial 86: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p35-1"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "conflict",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 04723891e5c3dc"
+  },
+  {
+   "n": 87,
+   "scenario": "SameParagraph",
+   "baseline": "d5a592ef02d469222d3bb0164af7d8da22186460eb881a2860b31c99cc5f353e",
+   "a": {
+    "Paragraph": {
+     "page": 11,
+     "index": 2,
+     "text": "Revised by A in trial 87: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p11-1"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 11,
+     "index": 2,
+     "text": "Revised by B in trial 87: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p11-1"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "conflict",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block d5a592ef02d469"
+  },
+  {
+   "n": 88,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "cb35bde8b564b4eb966f06b5b2dfdd022d5ecd9cb296d4e00d054bcfc27418e6",
+   "a": {
+    "Paragraph": {
+     "page": 31,
+     "index": 4,
+     "text": "Revised by A in trial 88: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p31-3"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 31,
+     "index": 8,
+     "text": "Revised by B in trial 88: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p31-6"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block cb35bde8b564b4"
+  },
+  {
+   "n": 89,
+   "scenario": "SameParagraph",
+   "baseline": "973f851395f86558e2b65b1d29c58fd961bb61a8525b83a6c17960a4414b28a9",
+   "a": {
+    "Paragraph": {
+     "page": 16,
+     "index": 6,
+     "text": "Revised by A in trial 89: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p16-4"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 16,
+     "index": 6,
+     "text": "Revised by B in trial 89: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p16-4"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 973f851395f865"
+  },
+  {
+   "n": 90,
+   "scenario": "DifferentPages",
+   "baseline": "d47cff132620ee0e7af0b6d99a897dbb7a95ebfb131a86c13df0641db67fbec3",
+   "a": {
+    "Paragraph": {
+     "page": 4,
+     "index": 10,
+     "text": "Revised by A in trial 90: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p4-7"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 35,
+     "index": 3,
+     "text": "Revised by B in trial 90: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p35-2"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 91,
+   "scenario": "DifferentPages",
+   "baseline": "fbc6a088c2b44d3e2ca6288540913290bde5fbc5946358f724d6421a52fdf558",
+   "a": {
+    "Paragraph": {
+     "page": 22,
+     "index": 6,
+     "text": "Revised by A in trial 91: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p22-4"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 0,
+     "index": 11,
+     "text": "Revised by B in trial 91: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p0-8"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 92,
+   "scenario": "RenameAndEdit",
+   "baseline": "fbffddaf1597b3e8653472baf8817c72cd488948072b75b10d9b677b3922ae4a",
+   "a": {
+    "Rename": {
+     "page": 12,
+     "new_title": "Page 12 (renamed in trial 92)"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 12,
+     "index": 7,
+     "text": "Revised by B in trial 92: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p12-5"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 93,
+   "scenario": "FrontmatterAndBody",
+   "baseline": "3fa641633f635e228ac90c0c1e0bb38bf9ef62f3c2dc814c6399e97f8ba614cf",
+   "a": {
+    "Frontmatter": {
+     "page": 22,
+     "tag": "trial93"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 22,
+     "index": 7,
+     "text": "Revised by B in trial 93: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p22-5"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 3fa641633f635e"
+  },
+  {
+   "n": 94,
+   "scenario": "SameParagraph",
+   "baseline": "4c816299cdba8b8ce8ade5d442cbae8759fb5c0eb7aa4104894fc3b683b5dad1",
+   "a": {
+    "Paragraph": {
+     "page": 39,
+     "index": 3,
+     "text": "Revised by A in trial 94: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p39-2"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 39,
+     "index": 3,
+     "text": "Revised by B in trial 94: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p39-2"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 4c816299cdba8b"
+  },
+  {
+   "n": 95,
+   "scenario": "DifferentPages",
+   "baseline": "ec3de0e966af84f5a7f1e7fb7d886950ef88f909862a1e20e4ec716e748a0465",
+   "a": {
+    "Paragraph": {
+     "page": 16,
+     "index": 2,
+     "text": "Revised by A in trial 95: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p16-1"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 36,
+     "index": 6,
+     "text": "Revised by B in trial 95: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p36-4"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 96,
+   "scenario": "SameParagraph",
+   "baseline": "933c9d43f897ff8c4658d99500b1dc8bb646ed6d47439adf261758f08c760017",
+   "a": {
+    "Paragraph": {
+     "page": 29,
+     "index": 2,
+     "text": "Revised by A in trial 96: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p29-1"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 29,
+     "index": 2,
+     "text": "Revised by B in trial 96: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p29-1"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "conflict",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 933c9d43f897ff"
+  },
+  {
+   "n": 97,
+   "scenario": "SameParagraph",
+   "baseline": "f81488dff9d7e770e64b4b36b994936b86d9b33d2cd350c0ecc452a268f3b44a",
+   "a": {
+    "Paragraph": {
+     "page": 21,
+     "index": 6,
+     "text": "Revised by A in trial 97: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p21-4"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 21,
+     "index": 6,
+     "text": "Revised by B in trial 97: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p21-4"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "conflict",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block f81488dff9d7e7"
+  },
+  {
+   "n": 98,
+   "scenario": "DifferentPages",
+   "baseline": "45d8fad69bbbd3fa233b9d54f45454f135ca6697fff9ca0d6df8cfa53310f428",
+   "a": {
+    "Paragraph": {
+     "page": 22,
+     "index": 10,
+     "text": "Revised by A in trial 98: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p22-7"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 32,
+     "index": 2,
+     "text": "Revised by B in trial 98: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p32-1"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 99,
+   "scenario": "SameParagraph",
+   "baseline": "d5db8ac22507f8935c4ac9ababe46955cdeefb75516ee1b8ecafaf7f6857d2ce",
+   "a": {
+    "Paragraph": {
+     "page": 17,
+     "index": 8,
+     "text": "Revised by A in trial 99: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p17-6"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 17,
+     "index": 8,
+     "text": "Revised by B in trial 99: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p17-6"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "conflict",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block d5db8ac22507f8"
+  },
+  {
+   "n": 100,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "63d1d63f0c9bbd3828e55ca0668ec10927942f17af4087bc939b4dc10a61d338",
+   "a": {
+    "Paragraph": {
+     "page": 24,
+     "index": 7,
+     "text": "Revised by A in trial 100: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p24-5"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 24,
+     "index": 3,
+     "text": "Revised by B in trial 100: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p24-2"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 63d1d63f0c9bbd"
+  },
+  {
+   "n": 101,
+   "scenario": "DifferentPages",
+   "baseline": "b7a485aa5f4555cfcc380a5b11762331a401b66814ee7fe86cfd2f8416c6b223",
+   "a": {
+    "Paragraph": {
+     "page": 9,
+     "index": 11,
+     "text": "Revised by A in trial 101: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p9-8"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 37,
+     "index": 3,
+     "text": "Revised by B in trial 101: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p37-2"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 102,
+   "scenario": "DifferentPages",
+   "baseline": "cb732d18c8523c4f4eb7ac91e8d5fd5be526c70d66f30263048430288134b4da",
+   "a": {
+    "Paragraph": {
+     "page": 15,
+     "index": 7,
+     "text": "Revised by A in trial 102: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p15-5"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 30,
+     "index": 10,
+     "text": "Revised by B in trial 102: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p30-7"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 103,
+   "scenario": "FrontmatterAndBody",
+   "baseline": "755334c7c5f46c3659609a07b0e0cefd1b2f380019db363268c9cca7f8936aac",
+   "a": {
+    "Frontmatter": {
+     "page": 2,
+     "tag": "trial103"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 2,
+     "index": 6,
+     "text": "Revised by B in trial 103: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p2-4"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 755334c7c5f46c"
+  },
+  {
+   "n": 104,
+   "scenario": "FrontmatterAndBody",
+   "baseline": "1a0321d7f6202afe12cb43c011e6bcbc1c38676ba102441a247011ab1338f1eb",
+   "a": {
+    "Frontmatter": {
+     "page": 13,
+     "tag": "trial104"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 13,
+     "index": 4,
+     "text": "Revised by B in trial 104: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p13-3"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 1a0321d7f6202a"
+  },
+  {
+   "n": 105,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "2a80f575158279c32b883a121a5b43ea978c697d035fa39de6aa375da0cd0c0f",
+   "a": {
+    "Paragraph": {
+     "page": 19,
+     "index": 7,
+     "text": "Revised by A in trial 105: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p19-5"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 19,
+     "index": 6,
+     "text": "Revised by B in trial 105: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p19-4"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 2a80f575158279"
+  },
+  {
+   "n": 106,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "ed4d210872ffe8087dd7743a021b9e7efc94d1314f5bfa389770d7073c09b8b5",
+   "a": {
+    "Paragraph": {
+     "page": 13,
+     "index": 11,
+     "text": "Revised by A in trial 106: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p13-8"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 13,
+     "index": 7,
+     "text": "Revised by B in trial 106: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p13-5"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block ed4d210872ffe8"
+  },
+  {
+   "n": 107,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "c3d7d87ae431e13ce1cfc550b494c395e253f02fd70a543a6f8766692fd48d2e",
+   "a": {
+    "Paragraph": {
+     "page": 19,
+     "index": 11,
+     "text": "Revised by A in trial 107: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p19-8"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 19,
+     "index": 6,
+     "text": "Revised by B in trial 107: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p19-4"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block c3d7d87ae431e1"
+  },
+  {
+   "n": 108,
+   "scenario": "DifferentPages",
+   "baseline": "1a2cc2dbe88871d36f656887228976e6a17cbc2c3113b0878e397b3bc2e75fa8",
+   "a": {
+    "Paragraph": {
+     "page": 38,
+     "index": 11,
+     "text": "Revised by A in trial 108: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p38-8"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 25,
+     "index": 6,
+     "text": "Revised by B in trial 108: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p25-4"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 109,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "224218ac83aba8804c10374a1f60368289f91ac856560efac95c6e5e403d01c7",
+   "a": {
+    "Paragraph": {
+     "page": 29,
+     "index": 6,
+     "text": "Revised by A in trial 109: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p29-4"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 29,
+     "index": 11,
+     "text": "Revised by B in trial 109: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p29-8"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 224218ac83aba8"
+  },
+  {
+   "n": 110,
+   "scenario": "RenameAndEdit",
+   "baseline": "44416616cf9015f1ddf0fd894a328c83904738f6f03df510ef44e53ded8ca6a3",
+   "a": {
+    "Rename": {
+     "page": 4,
+     "new_title": "Page 4 (renamed in trial 110)"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 4,
+     "index": 4,
+     "text": "Revised by B in trial 110: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p4-3"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 111,
+   "scenario": "FrontmatterAndBody",
+   "baseline": "a55fb2065d71a26b5bb5f0648d1e61835ef3a26300821d9a35ff8ceb65d4df86",
+   "a": {
+    "Frontmatter": {
+     "page": 26,
+     "tag": "trial111"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 26,
+     "index": 11,
+     "text": "Revised by B in trial 111: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p26-8"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block a55fb2065d71a2"
+  },
+  {
+   "n": 112,
+   "scenario": "DifferentPages",
+   "baseline": "81a332e07a58b0be12be88905c0ae1913fad05cd21592be090359137e5130b77",
+   "a": {
+    "Paragraph": {
+     "page": 11,
+     "index": 4,
+     "text": "Revised by A in trial 112: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p11-3"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 9,
+     "index": 4,
+     "text": "Revised by B in trial 112: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p9-3"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 113,
+   "scenario": "DifferentPages",
+   "baseline": "7c00b5fe903c9b73dbbca2207f650e11b77089a838ced1658392f5a71d1fb0b7",
+   "a": {
+    "Paragraph": {
+     "page": 3,
+     "index": 2,
+     "text": "Revised by A in trial 113: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p3-1"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 33,
+     "index": 8,
+     "text": "Revised by B in trial 113: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p33-6"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  },
+  {
+   "n": 114,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "e5e86d07e8f5e3168defcd3d9a8833e627b1cec13ab4210b3886fb0383caa248",
+   "a": {
+    "Paragraph": {
+     "page": 18,
+     "index": 7,
+     "text": "Revised by A in trial 114: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p18-5"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 18,
+     "index": 6,
+     "text": "Revised by B in trial 114: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p18-4"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block e5e86d07e8f5e3"
+  },
+  {
+   "n": 115,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "f37d854d7b96d9d3b2c4522eaebb378677145b3e56b62d3a6596804a82550b91",
+   "a": {
+    "Paragraph": {
+     "page": 0,
+     "index": 2,
+     "text": "Revised by A in trial 115: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p0-1"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 0,
+     "index": 10,
+     "text": "Revised by B in trial 115: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p0-7"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block f37d854d7b96d9"
+  },
+  {
+   "n": 116,
+   "scenario": "SamePageDifferentParagraphs",
+   "baseline": "936da9b7aa537be05bb580d68d466632adce9377642d745f5f347ef5d52fcb64",
+   "a": {
+    "Paragraph": {
+     "page": 24,
+     "index": 10,
+     "text": "Revised by A in trial 116: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p24-7"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 24,
+     "index": 3,
+     "text": "Revised by B in trial 116: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p24-2"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 936da9b7aa537b"
+  },
+  {
+   "n": 117,
+   "scenario": "SameParagraph",
+   "baseline": "1c7d9b5cda229590c48b5bfc62b1a79ca1cdb12ffab9f3bbabf6f6a9453c359f",
+   "a": {
+    "Paragraph": {
+     "page": 20,
+     "index": 7,
+     "text": "Revised by A in trial 117: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p20-5"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 20,
+     "index": 7,
+     "text": "Revised by B in trial 117: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p20-5"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "conflict",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block 1c7d9b5cda2295"
+  },
+  {
+   "n": 118,
+   "scenario": "SameParagraph",
+   "baseline": "af6bdece939546adc53026540ac0ef0db5e5739d7c15013ff55f594c6b3a6bb2",
+   "a": {
+    "Paragraph": {
+     "page": 17,
+     "index": 4,
+     "text": "Revised by A in trial 118: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p17-3"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 17,
+     "index": 4,
+     "text": "Revised by B in trial 118: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared. ^p17-3"
+    }
+   },
+   "block_merge_clean": false,
+   "prikk_outcome": "deferred",
+   "prikk_detail": "prikk merge --allow-no-audit --baseline-block af6bdece939546"
+  },
+  {
+   "n": 119,
+   "scenario": "DifferentPages",
+   "baseline": "7215debe7781d41d4fd7e292e47dc7070113eb08625e629ded52a5137b11a8bc",
+   "a": {
+    "Paragraph": {
+     "page": 9,
+     "index": 11,
+     "text": "Revised by A in trial 119: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p9-8"
+    }
+   },
+   "b": {
+    "Paragraph": {
+     "page": 25,
+     "index": 11,
+     "text": "Revised by B in trial 119: knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge shared knowledge. ^p25-8"
+    }
+   },
+   "block_merge_clean": true,
+   "prikk_outcome": "confluent",
+   "prikk_detail": ""
+  }
+ ]
+}

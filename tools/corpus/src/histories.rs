@@ -115,10 +115,12 @@ fn blocks(text: &str) -> Vec<String> {
         Some((fm, body)) => (format!("---\n{fm}\n---"), body),
         None => (String::new(), text),
     };
-    let mut out = vec![fm];
+    // Blocks are compared trimmed, so the blank-line layout around a block never counts as a change.
+    let mut out = vec![fm.trim().to_owned()];
     out.extend(
         body.split("\n\n")
-            .filter(|b| !b.trim().is_empty())
+            .map(str::trim)
+            .filter(|b| !b.is_empty())
             .map(str::to_owned),
     );
     out

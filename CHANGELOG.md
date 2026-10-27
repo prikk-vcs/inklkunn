@@ -25,3 +25,13 @@ M0 — foundations (RFC 001, RFC 010). Nothing serves pages yet.
 - **`inklkunn-core` and `inklkunn-signer`.** The `authorize()` seam (default deny), the `Accept` trait, the
   `Assurance` values, the egress guard, the bundle layout, and *create wiki* end to end through a bootstrap
   signer (plain-text key directory; RFC 002 replaces it).
+- **The two spikes** (RFC 001 D-10), measured on prikk 0.54.1 and reported under `rfcs/handoffs/001-foundations/`:
+  the per-verb cost table is inklkunn's own (`diff` 4.6 × the store size is the expensive read; `tree` and `cat`
+  1.0 ×; `verify` 2.0 ×; `branch` and `log` flat), and the content-merge spike shows that prikk's merge is
+  confluent for 53 of 120 concurrent-edit pairs while a block-aware three-way merge is clean for 99 — the
+  justification for inklkunn's own merge in RFC 004. `tools/corpus` generates both corpora from a seed;
+  `tools/spikes/` holds the harnesses. prikk refuses repository paths over 1024 bytes, which bounds a wiki's
+  hierarchy depth (about 500 one-character levels).
+- **Conventions and ledgers** (RFC 001 D-11; RFC 010): README, this changelog, `SECURITY.md` stating RR-1, the
+  dependency policy with a generated lock inventory that a test keeps equal to `Cargo.lock`, the upstream
+  dependency ledger (PK/PL/WC rows), `docs/UPSTREAM.md`, `docs/RELEASING.md`, the mdBook.

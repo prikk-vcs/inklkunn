@@ -49,8 +49,10 @@ staying true to all three (RFC 010 D-1, D-2, D-8). The record of what each upstr
    is release-relevant: the review request says so; the owner decides the version.
 5. **Re-measure the cost table** (`crates/inklkunn-prikk/src/cost.rs`): `BOUND_TO` must equal the floor
    (a test fails otherwise). Method: `cargo run --release -p inklkunn-corpus -- wiki …` for the 1 / 16 / 64 /
-   200 MiB shapes, then `tools/spikes/spike-a.py --bisect`; update the multiples **only from the
-   measurement**, never to make a test pass; record the run in the spikes report and the ledger (PK-20).
+   200 MiB wiki shapes (1,000 and 10,000 pages, a 500-deep chain) **and**, once attachments exist (M1), a
+   single large attachment of 64 and 200 MiB (the shape behind planeter's worst-case multiples), then
+   `tools/spikes/spike-a.py --bisect`; update the multiples **only from the measurement**, never to make a test
+   pass; record the run in the spikes report and the ledger (PK-20).
 6. **Rebuild the driver fixture** (`crates/inklkunn-prikk/tests/fixtures/README.md`) if the on-disk format
    changed; it is otherwise left alone so that history stays comparable.
 7. **Record**: the ledger's version line and the affected rows; `docs/STATUS.md`'s upstream table; a hold

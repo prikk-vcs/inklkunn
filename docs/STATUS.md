@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | The dated brief a new session reads **first**: where the project is, what is pending on whom, and the issue register. Updated at every milestone, RFC disposition and owner ruling. |
-| As of | 2026-10-27 — **RFCs 001, 002 and 010 accepted**; **M0 under construction by the architect at the owner's request** (T1 gates, T2 markup, T3 prikk driver, T4 store, T5 core seams and *create wiki* committed; T6 spikes and T7 conventions open); RFC 003 proposed |
+| As of | 2026-10-27 — **RFCs 001, 002 and 010 accepted**; **M0 under construction by the architect at the owner's request** (**T1–T7 done**; review requests filed for handoffs 001 and 010; the owner or a fresh reviewing session reviews); RFC 003 proposed |
 | Read next | [`src/inklkunn-00-project-charter.md`](src/inklkunn-00-project-charter.md) → [`../ROADMAP.md`](../ROADMAP.md) → [`src/inklkunn-01-requirements-spec.md`](src/inklkunn-01-requirements-spec.md) → [`src/inklkunn-02-external-design.md`](src/inklkunn-02-external-design.md) → [`src/inklkunn-03-threat-model.md`](src/inklkunn-03-threat-model.md) → [`src/inklkunn-04-internal-design.md`](src/inklkunn-04-internal-design.md) → [`../rfcs/README.md`](../rfcs/README.md) |
 
 ## Where we are
@@ -40,7 +40,13 @@
   manifest and a help page, seals the system change and verifies — through `inklkunn-signer`'s **bootstrap
   signer** (plain-text key directory; RFC 002 D-3 replaces it) over the sandbox with the repository
   writable and the key directory read-only; the empty private `key_store` module gives the gate its target.
-  No binary runs yet; the spikes and the conventions are T6 and T7.
+  **T6**: the two spikes, measured on prikk 0.54.1 (`rfcs/handoffs/001-foundations/001-foundations-spikes-report.md`):
+  the cost table is now inklkunn's own measurement (`diff` is the expensive read at 4.6 × S; `tree`/`cat` 1.0 ×;
+  `verify` 2.0 ×; `branch`/`log` flat) and the content-merge spike shows prikk's confluence is per file (53 of
+  120 concurrent-edit pairs merge) while a block-aware three-way merge is clean for 99 of 120: **R2 is real and
+  MRG-4 is the right place** (RFC 004). **T7**: README (IS-1 closed), CHANGELOG, SECURITY.md (RR-1), the two
+  ledgers with a lock-inventory test, `UPSTREAM.md`, `RELEASING.md`, the book. No binary serves pages yet; that
+  is M1 (RFC 003).
 
 ## Pending on the owner
 
@@ -62,12 +68,12 @@
 
 ## Next
 
-The architect continues M0 from `rfcs/handoffs/001-foundations/foundations-handoff-v1.md` and
-`rfcs/handoffs/010-upstream-and-supply-chain-maintenance/upstream-and-supply-chain-handoff-v1.md`: T4 `inklkunn-store`, T5 the core seams
-and the bundle layout, T6 the two spikes, T7 the conventions (README, CHANGELOG, SECURITY, ledgers, book),
-then writes the review request with the gate runs, the dependency deltas and the author-review gap, and the
-owner (or a fresh reviewing session) reviews. RFC 002's handoff follows 001's approval. RFC 004 (proposals) is
-drafted next.
+M0's two handoffs are implemented and their review requests filed (`rfcs/handoffs/001-foundations/
+001-foundations-review-request.md`, `rfcs/handoffs/010-upstream-and-supply-chain-maintenance/
+010-upstream-and-supply-chain-review-request.md`). Because the architect implemented them, **the review should
+be the owner's or a fresh session's**, reading only `main` and the requests. On approval: RFC 002's handoff is
+assigned (the real signer and key store, the roles), RFC 003 is accepted or amended by the owner, and RFC 004
+(proposals, with the block-aware merge the spike justified) is drafted.
 
 ## Issue register
 

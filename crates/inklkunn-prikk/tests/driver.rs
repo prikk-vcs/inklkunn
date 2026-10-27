@@ -375,6 +375,30 @@ fn refusals_carry_prikks_text_and_a_missing_repository_is_refused() {
     );
 }
 
+/// Open a driver on a freshly written shim, retrying the one failure a parallel test binary can cause: a
+/// sibling test forks while this file is still open for writing, so its child briefly holds the descriptor
+/// and the kernel answers `ETXTBSY` to our exec (the child never execs this file; the race is in the window
+/// between its fork and its own exec).
+fn open_shim(binary: &Path) -> Result<PrikkCli, StorageError> {
+    let mut last = Err(StorageError::Unavailable {
+        verb: "--version",
+        reason: Unavailable::Busy,
+    });
+    for _ in 0..50 {
+        last = PrikkCli::open(binary.as_os_str().to_owned(), Sandbox::Unconfined, gate());
+        match &last {
+            Err(StorageError::Unavailable {
+                reason: Unavailable::Spawn(m),
+                ..
+            }) if m.contains("Text file busy") => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            _ => return last,
+        }
+    }
+    last
+}
+
 /// A shell script standing in for prikk.
 fn shim(dir: &Path, body: &str) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;
@@ -388,14 +412,14 @@ fn shim(dir: &Path, body: &str) -> PathBuf {
 fn an_older_prikk_is_refused_at_open() {
     let tmp = TempDir::new("old");
     let old = shim(&tmp.0, "echo 'prikk 0.53.9'");
-    let r = PrikkCli::open(old.as_os_str().to_owned(), Sandbox::Unconfined, gate());
+    let r = open_shim(&old);
     assert!(
         matches!(r, Err(StorageError::UnsupportedVersion { ref found, required }) if found == "prikk 0.53.9" && required == MIN_PRIKK_VERSION),
         "{r:?}"
     );
     let garbage = shim(&tmp.0, "echo 'not prikk'");
     assert!(matches!(
-        PrikkCli::open(garbage.as_os_str().to_owned(), Sandbox::Unconfined, gate()),
+        open_shim(&garbage),
         Err(StorageError::UnsupportedVersion { .. })
     ));
 }
@@ -413,8 +437,20 @@ fn a_doctored_schema_version_is_refused() {
   tree) echo '{"schema_version": "tree-listing-v1"}' ;;
 esac"#,
     );
-    let d = PrikkCli::open(fake.as_os_str().to_owned(), Sandbox::Unconfined, gate()).expect("open");
-    let r = d.views(&repo);
+    let d = open_shim(&fake).expect("open");
+    let mut r = d.views(&repo);
+    for _ in 0..50 {
+        match &r {
+            Err(StorageError::Unavailable {
+                reason: Unavailable::Spawn(m),
+                ..
+            }) if m.contains("Text file busy") => {
+                std::thread::sleep(Duration::from_millis(10));
+                r = d.views(&repo);
+            }
+            _ => break,
+        }
+    }
     assert!(
         matches!(&r, Err(StorageError::UnsupportedSchema { found, .. }) if found == "branch-list-v9"),
         "{r:?}"

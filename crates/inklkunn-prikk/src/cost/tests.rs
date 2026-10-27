@@ -23,6 +23,7 @@ fn costs_have_floors_and_multiples() {
     assert_eq!(ReadVerb::Tree.cost(100 * MIB), 210 * MIB);
     assert_eq!(ReadVerb::Show.cost(0), SHOW_FLOOR);
     assert_eq!(ReadVerb::Verify.cost(10 * MIB), 41 * MIB);
+    assert_eq!(ReadVerb::Diff.cost(100 * MIB), 500 * MIB);
     assert!(ReadVerb::is_light(COST_FLOOR));
     assert!(!ReadVerb::is_light(3 * COST_FLOOR));
     for v in ReadVerb::ALL {
