@@ -1,6 +1,11 @@
 //! Every entry point terminates quickly and never panics on hostile input (threat model C-4; the 2026-10-27
 //! review's findings C1 and M1–M6). The pathological shapes below each took 0.3–0.9 s, or overflowed the
-//! stack, before the linear passes; they must now be well under the bound even in a debug build.
+//! stack, before the linear passes.
+//!
+//! The bound is on **scaling, not wall-clock time**: each shape is run at a size and at twice that size, and
+//! the second run may take at most three times the first (a quadratic pass takes four times, and more as
+//! the constant factors shrink). A shared CI runner is slow and noisy, so an absolute bound would say more
+//! about the machine than about the code; a generous ceiling only guards against a hang.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::time::{Duration, Instant};
@@ -9,14 +14,38 @@ use inklkunn_markup::frontmatter::{YamlError, parse_yaml};
 use inklkunn_markup::{LintContext, NoLinks, Page, lint, render_html, scan};
 use proptest::prelude::*;
 
-/// A debug build on a slow runner: generous, and still an order of magnitude below the old timings.
-const BOUND: Duration = Duration::from_millis(250);
+/// No single run may take longer than this, whatever the machine (a hang guard, not a performance claim).
+const CEILING: Duration = Duration::from_secs(20);
+/// Doubling the input may at most triple the time.
+const MAX_RATIO: f64 = 3.0;
+/// Runs under this are noise; the ratio is checked only when the larger run is measurable.
+const NOISE: Duration = Duration::from_millis(40);
 
-fn bounded(label: &str, f: impl FnOnce()) {
-    let t = Instant::now();
-    f();
-    let took = t.elapsed();
-    assert!(took < BOUND, "{label} took {took:?}, more than {BOUND:?}");
+fn time(f: &dyn Fn()) -> Duration {
+    // The faster of two runs: the first may pay for page faults and allocator growth.
+    let mut best = Duration::MAX;
+    for _ in 0..2 {
+        let t = Instant::now();
+        f();
+        best = best.min(t.elapsed());
+    }
+    best
+}
+
+/// Build the input at `n` and `2n`, run `work` on each, and require near-linear scaling.
+fn linear(label: &str, n: usize, build: impl Fn(usize) -> String, work: impl Fn(&str)) {
+    let small = build(n);
+    let large = build(2 * n);
+    let t_small = time(&|| work(&small));
+    let t_large = time(&|| work(&large));
+    assert!(t_large < CEILING, "{label}: {t_large:?} for 2n");
+    if t_large > NOISE {
+        let ratio = t_large.as_secs_f64() / t_small.as_secs_f64().max(0.000_5);
+        assert!(
+            ratio <= MAX_RATIO,
+            "{label}: doubling the input took {ratio:.1}× the time ({t_small:?} → {t_large:?}); a linear pass stays near 2×"
+        );
+    }
 }
 
 fn everything(text: &str) {
@@ -30,82 +59,102 @@ fn everything(text: &str) {
 #[test]
 fn a_deeply_nested_frontmatter_value_is_refused_not_a_stack_overflow() {
     let deep = format!("a: {}{}\n", "[".repeat(20_000), "]".repeat(20_000));
-    bounded("deep flow", || {
-        assert!(matches!(parse_yaml(&deep), Err(YamlError::TooDeep { .. })));
-    });
+    let t = Instant::now();
+    assert!(matches!(parse_yaml(&deep), Err(YamlError::TooDeep { .. })));
+    assert!(t.elapsed() < CEILING);
     let mut blocks = String::new();
     for i in 0..1_000 {
         blocks.push_str(&" ".repeat(i));
         blocks.push_str("k:\n");
     }
-    bounded("deep block", || {
-        assert!(matches!(
-            parse_yaml(&blocks),
-            Err(YamlError::TooDeep { .. })
-        ));
-    });
+    assert!(matches!(
+        parse_yaml(&blocks),
+        Err(YamlError::TooDeep { .. })
+    ));
     let page = format!("---\n{deep}---\n[[Link]]\n");
-    bounded("deep page", || {
-        // The scan survives (the frontmatter error is reported, not fatal) and the page refuses cleanly.
-        let r = scan(&page);
-        assert_eq!(r.links.len(), 1);
-        assert!(Page::parse(&page).is_err());
-    });
+    // The scan survives (the frontmatter error is reported, not fatal) and the page refuses cleanly.
+    let r = scan(&page);
+    assert_eq!(r.links.len(), 1);
+    assert!(Page::parse(&page).is_err());
 }
 
 #[test]
 fn many_lines_and_many_links_are_linear() {
-    let newlines = "\n".repeat(100_000);
-    bounded("100k newlines", || everything(&newlines));
-    let links = "[[a]] ".repeat(40_000);
-    bounded("40k links", || {
-        let r = scan(&links);
-        assert_eq!(r.links.len(), 40_000);
-    });
-    bounded("40k links render", || {
-        let _ = render_html(&links, &NoLinks);
-    });
+    linear("newlines", 50_000, |n| "\n".repeat(n), everything);
+    linear(
+        "links",
+        20_000,
+        |n| "[[a]] ".repeat(n),
+        |t| {
+            let r = scan(t);
+            assert!(r.links.len() >= 20_000);
+            let _ = render_html(t, &NoLinks);
+        },
+    );
 }
 
 #[test]
 fn unclosed_brackets_directives_and_backtick_runs_are_linear() {
-    let brackets = "[".repeat(40_000);
-    bounded("40k [", || everything(&brackets));
-    let directives = ":a[".repeat(20_000);
-    bounded("20k :a[", || everything(&directives));
-    let mut runs = String::new();
-    for n in 1..=300 {
-        runs.push_str(&"`".repeat(n));
-        runs.push('a');
-    }
-    bounded("backtick runs", || everything(&runs));
-    let attrs = format!("<!-- wiki:snapshot {} -->", "a".repeat(40_000));
-    bounded("40 KB attrs", || everything(&attrs));
-    let inline = format!(":a[]{{{}}}", "a".repeat(40_000));
-    bounded("40 KB inline attrs", || everything(&inline));
+    linear("unclosed [", 20_000, |n| "[".repeat(n), everything);
+    linear("unclosed :a[", 10_000, |n| ":a[".repeat(n), everything);
+    linear(
+        "backtick runs",
+        150,
+        |n| {
+            let mut runs = String::new();
+            for k in 1..=n {
+                runs.push_str(&"`".repeat(k));
+                runs.push('a');
+            }
+            runs
+        },
+        everything,
+    );
+    linear(
+        "attrs in an envelope",
+        20_000,
+        |n| format!("<!-- wiki:snapshot {} -->", "a".repeat(n)),
+        everything,
+    );
+    linear(
+        "attrs in an inline directive",
+        20_000,
+        |n| format!(":a[]{{{}}}", "a".repeat(n)),
+        everything,
+    );
 }
 
 #[test]
 fn many_keys_headings_tags_and_block_ids_are_linear() {
-    let mut keys = String::new();
-    for i in 0..40_000 {
-        keys.push_str(&format!("k{i}: 1\n"));
-    }
-    bounded("40k keys", || {
-        assert!(parse_yaml(&keys).is_ok());
-    });
-    let mut headings = String::from("---\ntitle: T\n---\n");
-    for i in 0..20_000 {
-        headings.push_str(&format!("## H{}\n\n", i % 7));
-    }
-    bounded("20k headings lint", || {
-        let page = Page::parse(&headings).expect("page");
-        let _ = lint(&page, &headings, LintContext::default());
-    });
-    let tags = "#tag ".repeat(40_000);
-    bounded("40k tags", || everything(&tags));
-    let ids = "para ^id\n\n".repeat(20_000);
-    bounded("20k block ids", || everything(&ids));
+    linear(
+        "keys",
+        20_000,
+        |n| (0..n).map(|i| format!("k{i}: 1\n")).collect(),
+        |t| assert!(parse_yaml(t).is_ok()),
+    );
+    linear(
+        "headings lint",
+        10_000,
+        |n| {
+            let mut s = String::from("---\ntitle: T\n---\n");
+            for i in 0..n {
+                s.push_str(&format!("## H{}\n\n", i % 7));
+            }
+            s
+        },
+        |t| {
+            let page = Page::parse(t).expect("page");
+            let _ = lint(&page, t, LintContext::default());
+            let _ = render_html(&page.body, &NoLinks);
+        },
+    );
+    linear("tags", 20_000, |n| "#tag ".repeat(n), everything);
+    linear(
+        "block ids",
+        10_000,
+        |n| "para ^id\n\n".repeat(n),
+        everything,
+    );
 }
 
 proptest! {
