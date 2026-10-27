@@ -8,14 +8,20 @@ use std::fs;
 use std::path::Path;
 
 fn root() -> &'static Path {
-    Path::new(env!("CARGO_MANIFEST_DIR")).parent().and_then(Path::parent).expect("workspace root")
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("workspace root")
 }
 
 fn lock_crates() -> BTreeSet<String> {
     let lock = fs::read_to_string(root().join("Cargo.lock")).expect("Cargo.lock");
     let mut out = BTreeSet::new();
     for line in lock.lines() {
-        if let Some(name) = line.strip_prefix("name = \"").and_then(|r| r.strip_suffix('"')) {
+        if let Some(name) = line
+            .strip_prefix("name = \"")
+            .and_then(|r| r.strip_suffix('"'))
+        {
             out.insert(name.to_owned());
         }
     }
@@ -29,7 +35,11 @@ fn workspace_members() -> BTreeSet<String> {
             let manifest = entry.path().join("Cargo.toml");
             if let Ok(text) = fs::read_to_string(&manifest) {
                 for line in text.lines() {
-                    if let Some(name) = line.trim().strip_prefix("name = \"").and_then(|r| r.strip_suffix('"')) {
+                    if let Some(name) = line
+                        .trim()
+                        .strip_prefix("name = \"")
+                        .and_then(|r| r.strip_suffix('"'))
+                    {
                         out.insert(name.to_owned());
                         break;
                     }
@@ -43,7 +53,10 @@ fn workspace_members() -> BTreeSet<String> {
 /// The crate names in the appendix table: the first backticked cell of each row after the heading.
 fn inventory() -> BTreeSet<String> {
     let policy = fs::read_to_string(root().join("docs/dependency-policy.md")).expect("policy");
-    let section = policy.split("## Appendix — lock inventory").nth(1).expect("the lock inventory appendix");
+    let section = policy
+        .split("## Appendix — lock inventory")
+        .nth(1)
+        .expect("the lock inventory appendix");
     let mut out = BTreeSet::new();
     for line in section.lines() {
         let Some(rest) = line.strip_prefix("| `") else {
@@ -69,5 +82,8 @@ fn every_locked_crate_has_a_ledger_row_and_no_row_is_stale() {
          Measure the change (RFC 010 D-6), add an accepted-table row, and regenerate the appendix \
          (`python3 tools/spikes/lock-inventory.py`)."
     );
-    assert!(stale.is_empty(), "inventory rows for crates no longer in Cargo.lock: {stale:?}");
+    assert!(
+        stale.is_empty(),
+        "inventory rows for crates no longer in Cargo.lock: {stale:?}"
+    );
 }
