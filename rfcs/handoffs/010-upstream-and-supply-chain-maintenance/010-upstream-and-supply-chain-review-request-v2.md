@@ -6,7 +6,7 @@
 | Handoff | `upstream-and-supply-chain-handoff-v1.md` (RFC 010, accepted 2026-10-27) |
 | Implementer | the architect session, at the owner's request; reviewed as described in the 001 request v2 |
 | Submitted | 2026-10-27 |
-| Asks | Approved / Conditionally Approved / Corrections Required / Design Reconsideration Required / Owner Decision Required |
+| Disposition | **Approved by the owner, 2026-10-28** (*"Your recommendations are approved."*, on the architect's recommendation of *Approved*). The RFC moved to `rfcs/done/`. |
 
 ## What the review found and what changed
 

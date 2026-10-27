@@ -7,7 +7,7 @@
 | Implementer | the architect session, at the owner's request |
 | Reviewer | the owner read v1 and asked the architect to review it itself against two principles: *finally clean, safe and secure, robust and sophisticated design*; *APIs and UI/UX that cannot confuse or mislead*. The architect ran four fresh reviewing agents, one per area (driver; signer and core; store, gates and workflows; markup), each reading only `main` and the requests, and reviewed the security-critical sources itself. **Every finding below was corrected on `main` before this request**; what was deferred says to which handoff and why. |
 | Submitted | 2026-10-27 |
-| Asks | Approved / Conditionally Approved / Corrections Required / Design Reconsideration Required / Owner Decision Required |
+| Disposition | **Approved by the owner, 2026-10-28** (*"Your recommendations are approved."*, on the architect's recommendation of *Approved*). The RFC moved to `rfcs/done/`. |
 
 ## What the review found and what changed
 

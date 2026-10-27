@@ -1,6 +1,6 @@
 # RFC 010 — Upstream tracking and supply-chain maintenance: two fast upstreams, one checked floor, gates at every project event
 
-**Status.** **Accepted by the owner 2026-10-27** (*"Accepted."*; the open question on the container image is taken
+**Status.** **Done** — implemented on `main` (M0) and **approved by the owner on 2026-10-28** (review request v2 under `../handoffs/`, after the architect's independent review; *"Your recommendations are approved."*). Accepted by the owner 2026-10-27 (*"Accepted."*; the open question on the container image is taken
 as the recommendation: binaries and an image from the first release). Proposed the same day by the architect.
 Numbered 010 by the roadmap's plan so that 003–009 keep
 their reserved subjects; it is written with RFC 001 because M0's workspace must carry its gates from the
