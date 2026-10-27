@@ -1,0 +1,572 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Internal design - inklkunn</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-0512735d.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-8177b419.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">inklkunn</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="inklkunn--internal-design-specification"><a class="header" href="#inklkunn--internal-design-specification">inklkunn — Internal Design Specification</a></h1>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th></th></tr>
+</thead>
+<tbody>
+<tr><td>Document</td><td>inklkunn Internal Design (the white-box view): the crate decomposition and its gates, the storage driver and the signer, the data model, the read and write paths, the content-level merge, concurrency and recovery, and how the security invariants become properties of the build graph. Detailed enough to write RFCs and handoffs from; it stops where a subsystem’s own RFC takes over (§12).</td></tr>
+<tr><td>Version</td><td>v0.1</td></tr>
+<tr><td>Date</td><td>2026-10-27</td></tr>
+<tr><td>Inputs</td><td>Requirements v0.1, External Design v0.1 (BD/WEB/API/AUTH/PK/FL/CT/OP/GATED), Threat Model v0.1 (TB/T/C/INV/RR); the rulings DR-1 … DR-8; prikk 0.54.1 reference pages (data model, patch algebra, concurrency and locking, commands); planeter 0.4.0’s internal design, layering gate and dependency ledger as the house precedent; the project rules (Rust 2024, tests apart from implementation, mdBook docs)</td></tr>
+<tr><td>Not</td><td>code, exact schemas, or the per-subsystem RFCs.</td></tr>
+<tr><td>ID scheme</td><td><code>CR-</code> crate · <code>LAY-</code> layering rule · <code>STO-</code> storage driver · <code>SGN-</code> signer · <code>MK-</code> markup · <code>DM-</code> data model · <code>RD-</code> read path · <code>WR-</code> write path · <code>MRG-</code> merge · <code>AZ-</code> authorization and identity internals · <code>CON-</code> concurrency and recovery · <code>ENF-</code> invariant enforcement · <code>SEQ-</code> build sequence · <code>NR-</code> next RFC · <code>IQ-</code> internal question</td></tr>
+</tbody>
+</table>
+</div>
+<p>Design stance: <strong>the security invariants are properties of the build graph and the module boundaries, not
+habits of careful coding.</strong> The load-bearing result below: <strong>the only crate that can read key material is the
+one that runs prikk’s write verbs, and the only way into it from the web is a call that takes a recorded,
+accepted proposal.</strong></p>
+<hr>
+<h2 id="1-workspace-and-component-map-cr-"><a class="header" href="#1-workspace-and-component-map-cr-">1. Workspace and component map (CR-…)</a></h2>
+<p>A Cargo workspace (Rust 2024, a declared and CI-checked minimum compiler, <code>forbid(unsafe_code)</code> in every
+crate, lints as prikk’s: <code>unwrap_used</code>, <code>expect_used</code> and <code>indexing_slicing</code> denied, <code>missing_docs</code> warned).</p>
+<pre><code>                    ┌──────────── binary ────────────┐
+                    │  inklkunn (server)              │
+  ── upper ─────────┴─────────────────────────────────┴───────────────────────────────────────
+     inklkunn-web   (HTTP: UI + API + feeds; catalog; sanitizer; CSP; content origin)
+  ── core ────────────────────────────────────────────────────────────────────────────────────
+     inklkunn-core  (domain: wikis, pages, proposals, review, acceptance orchestration,
+                     authorize(), honesty, merge, export/import, metrics, egress guard)
+     inklkunn-auth  (accounts, sessions, tokens, OpenID Connect, throttles, hashing)
+     inklkunn-markup (the Portable Wiki Markdown profile: parse, resolve, render, lint — pure)
+  ── lower ───────────────────────────────────────────────────────────────────────────────────
+     inklkunn-prikk  (the Storage trait + the sandboxed prikk CLI driver, read verbs only)
+     inklkunn-signer (the key store + the write verbs: commit, seal, branch create; depends on inklkunn-prikk)
+     inklkunn-store  (service records and the derived cache, behind traits: SQLite first)
+  ── tools ─────────────────────────────────────────────────────────────────────────────────────
+     tools/boundary-check (layering + key-reachability gates), tools/floor-check (one prikk floor)
+</code></pre>
+<ul>
+<li><strong>CR-prikk</strong> (<code>inklkunn-prikk</code>): the <code>Storage</code> trait (STO-1) and its first implementation, a sandboxed
+subprocess driver for prikk’s <strong>read</strong> verbs with typed JSON. The only crate that spawns <code>prikk</code> for reads.</li>
+<li><strong>CR-signer</strong> (<code>inklkunn-signer</code>): the key store (SGN-1) and the <strong>write</strong> verbs. The only crate that
+touches key material and the only one that spawns <code>prikk commit</code>, <code>seal</code>, <code>branch create</code>, <code>trust</code>,
+<code>key</code>. Depends on CR-prikk for the sandbox and the typed JSON. Exposes one narrow trait (SGN-3).</li>
+<li><strong>CR-store</strong> (<code>inklkunn-store</code>): service-authoritative records (proposals, revisions, comments, decisions,
+intents, acceptances, roles, accounts’ link to identities, audit, metrics) and the derived cache, behind
+traits; SQLite (bundled <code>rusqlite</code>, WAL) first, a PostgreSQL path kept.</li>
+<li><strong>CR-markup</strong> (<code>inklkunn-markup</code>): pure, no I/O — frontmatter, the profile’s Layer 2 syntax, link
+resolution rules, block identifiers, the degradation ladder, rendering to a semantic HTML tree, lint
+(AUTH-13), and the title-to-path function (CT-01). Tested against wiki-commons’ conformance corpus
+(<code>corpus/</code>) as fixtures.</li>
+<li><strong>CR-core</strong> (<code>inklkunn-core</code>): the domain. Wikis and views, pages as parsed documents, proposals and
+review, the acceptance orchestration (WR), the content-level merge (MRG), <code>authorize()</code> (AZ-2), the
+honesty view-model, export and import, the inclusiveness metrics, the egress guard. Depends on markup,
+store, prikk (reads) and the signer’s trait (never its key store).</li>
+<li><strong>CR-auth</strong> (<code>inklkunn-auth</code>): principals from credentials — passwords (Argon2id), sessions, tokens,
+OpenID Connect (code + PKCE), throttles. Output: a principal; <code>authorize()</code> is CR-core’s.</li>
+<li><strong>CR-web</strong> (<code>inklkunn-web</code>): axum routes, askama templates, the message catalog with the glossary tests,
+the sanitizer, CSP and headers, the content origin host gate, the OpenAPI document generated from the
+router, feeds, the structural accessibility tests over every page state.</li>
+<li><strong>inklkunn</strong> (binary): wires the crates, reads configuration from environment variables, probes
+prerequisites (prikk at the floor, bubblewrap, <code>prlimit</code>), runs recovery at start, serves.</li>
+</ul>
+<h2 id="2-layering-and-boundary-rules-lay---enforced-not-drawn"><a class="header" href="#2-layering-and-boundary-rules-lay---enforced-not-drawn">2. Layering and boundary rules (LAY-…) — enforced, not drawn</a></h2>
+<ul>
+<li><strong>LAY-1 — Downward only.</strong> upper → core → lower. A production dependency from a lower or core crate into
+an upper crate fails <code>boundary-check</code>, naming the edge (planeter’s gate, adopted).</li>
+<li><strong>LAY-2 — <code>authorize()</code> lives in CR-core and every surface calls it</strong> (INV-4). A route-enumeration test in
+CR-web asserts every registered route and API verb either consults it or is registered public with a
+reason (planeter’s ENF-4), from the first write handler.</li>
+<li><strong>LAY-3 — Only CR-prikk and CR-signer spawn prikk</strong>; CR-signer only for writes, CR-prikk only for reads; a
+source gate fails on <code>prikk</code> invocation anywhere else.</li>
+<li><strong>LAY-4 — Only CR-signer depends on the key store</strong> (INV-2). The key store is a module inside CR-signer
+with no public export of key bytes; <code>boundary-check</code> fails if any other crate declares a dependency on
+CR-signer’s internals or names its key-store module, and a test asserts CR-web’s dependency closure
+contains the signer <em>trait</em> crate only through CR-core.</li>
+<li><strong>LAY-5 — One egress guard</strong> in CR-core for every outbound fetch (INV-3).</li>
+<li><strong>LAY-6 — CR-markup is pure.</strong> No I/O, no clock, no randomness; <code>boundary-check</code> fails on an I/O
+dependency.</li>
+</ul>
+<h2 id="3-the-storage-driver-sto---cr-prikk"><a class="header" href="#3-the-storage-driver-sto---cr-prikk">3. The storage driver (STO-…) — CR-prikk</a></h2>
+<ul>
+<li><strong>STO-1 — The <code>Storage</code> trait</strong> names what inklkunn needs of a repository, in inklkunn’s words: list views
+and their tips; the tree at a point; a file’s bytes at a point; the history of a view; one change’s
+content; a diff between two points; materialize a point into a scratch directory; verify. Points are view
+names or block ids. The trait is the seam for a future library or another backend (UD-2).</li>
+<li><strong>STO-2 — The first implementation drives the prikk CLI</strong>: <code>branch --format json</code>, <code>tree</code>, <code>cat</code>, <code>log</code>,
+<code>show</code>, <code>diff</code>, <code>extract</code>, <code>verify</code>, each parsed into typed values; the <code>schema_version</code> of every report is
+checked against the pinned set and an unknown one is a typed refusal (INT-1). The floor (<code>0.54.0</code>) is one
+constant checked by <code>floor-check</code> against the CI image and the release notes.</li>
+<li><strong>STO-3 — Sandbox.</strong> Every call runs under bubblewrap (<code>--unshare-all</code>, <code>--clearenv</code>, <code>--die-with-parent</code>),
+a read-only system view, the repository directory and the call’s scratch directory mounted, a wall-time
+bound kept by the server, and a <code>prlimit</code> data ceiling from a per-verb cost table measured on the floor
+(planeter RFC 011’s shape, with the table re-measured at each re-baseline).</li>
+<li><strong>STO-4 — Admission.</strong> A gate with a memory budget split into a light pool (floor-cost reads: <code>branch</code>,
+<code>log</code> paged) and a heavy pool (<code>extract</code>, <code>verify</code>, <code>diff</code> on large points); refusals are <code>busy</code> or
+<code>too_large</code>, never silence.</li>
+<li><strong>STO-5 — Reads never take a write lock</strong>; prikk’s read verbs create no lock files, and the driver never
+invokes a verb that does.</li>
+</ul>
+<h2 id="4-the-signer-sgn---cr-signer"><a class="header" href="#4-the-signer-sgn---cr-signer">4. The signer (SGN-…) — CR-signer</a></h2>
+<ul>
+<li><strong>SGN-1 — The key store.</strong> One record per wiki: the author and maintainer seeds encrypted with a key
+derived from the operator’s secret (supplied at start through the environment or a file, never stored
+with the records), the key ids, the created and rotated-at times. Decryption yields seed files written to
+a private, mode-0600, tmpfs-backed directory mounted into the sandbox for one write call and removed
+after (OP-07).</li>
+<li><strong>SGN-2 — Key operations:</strong> create (<code>prikk key generate</code> twice, <code>trust maintainer add</code> in the wiki’s
+repository, record), rotate (new ids, adopt, remove the old from trust, record), status (ids and dates
+only). Each is an audited admin act (ID-8).</li>
+<li><strong>SGN-3 — The one way in.</strong> A trait <code>Accept</code> with one operation: given a wiki, a view, an acceptance
+token (the id of an acceptance record in state <em>pending seal</em>, with its intent) and a prepared change
+(the files to write, renames, the CT-03 message), bring the worktree to the view, apply, <code>mv</code>, <code>commit</code>
+under the author key, <code>seal</code> under the maintainer key, <code>verify</code>, and return the sealed change’s block and
+patch ids. It refuses a change whose acceptance record is not pending or whose message does not name it
+(C-1b). It never exposes a key, a seed path or a signing primitive.</li>
+<li><strong>SGN-4 — Branch creation</strong> for a new view is the signer’s second operation (a maintainer-signed
+publication in prikk), bound to a recorded view-creation act.</li>
+<li><strong>SGN-5 — Process separation is a documented option</strong>, not v1: the trait is designed so CR-signer can run
+as a separate process on a local socket later (threat model RR-1), with no change to callers.</li>
+</ul>
+<h2 id="5-markup-mk---cr-markup"><a class="header" href="#5-markup-mk---cr-markup">5. Markup (MK-…) — CR-markup</a></h2>
+<ul>
+<li><strong>MK-1 — Parse</strong> CommonMark + GFM extensions + footnotes with a conformant parser (<code>pulldown-cmark</code>, the
+house choice), then the profile’s Layer 2 on top: free links in every form of MKUP-4, embeds, block
+identifiers, inline tags, callouts, hidden comments, the interwiki prefix form, generic directives, and
+the snapshot envelope recognized as a container.</li>
+<li><strong>MK-2 — Frontmatter</strong> in the plain YAML subset (C-4b), validated against the metadata vocabulary;
+unknown keys preserved; <code>kind</code>, <code>visibility</code> and <code>system</code> keys writable only by the service.</li>
+<li><strong>MK-3 — Resolve links</strong> by the MKUP-5 order against a view’s title index (titles, aliases, redirects,
+normalization, hierarchy fallback), producing resolved, dangling and interwiki link sets and the
+backlink edges.</li>
+<li><strong>MK-4 — Render</strong> to a semantic HTML tree with the MKUP-12 conventions, then through the sanitizer in
+CR-web; headings get deterministic ids; identified blocks get <code>id</code> attributes; dangling links get the
+marker and the accessible description.</li>
+<li><strong>MK-5 — Blocks.</strong> Every top-level block gets a stable address: the <code>^id</code> if present, else a derived
+address used only transiently (anchors that must persist are given a <code>^id</code> by the acceptance that
+attaches something to them, CM-5).</li>
+<li><strong>MK-6 — Lint</strong> produces suggestions with the guideline they come from (AUTH-13).</li>
+<li><strong>MK-7 — Title ↔ path</strong> (CT-01): a pure function and its inverse under test and fuzz: NFC, the forbidden
+characters replaced by a documented substitute, <code>/</code> as hierarchy, case-collision suffixes, reserved names
+refused, never escaping <code>pages/</code>.</li>
+</ul>
+<h2 id="6-data-model-dm-"><a class="header" href="#6-data-model-dm-">6. Data model (DM-…)</a></h2>
+<ul>
+<li><strong>DM-1 — Wiki record:</strong> opaque id → on-disk path (<code>&lt;root&gt;/&lt;shard&gt;/&lt;wiki id&gt;/.prikk</code>), display name, slug
+for URLs, default view, default license, languages, visibility, policy bootstrap, prikk format version,
+verification state and time, key ids (never seeds).</li>
+<li><strong>DM-2 — Repository content</strong> is the bundle (CT-02); inklkunn reads it through STO and writes it through
+SGN; nothing of inklkunn’s lives in <code>.prikk/</code>.</li>
+<li><strong>DM-3 — Proposal, revision, comment, decision, intent, acceptance</strong> as CT-04, append-only where the
+threat model needs it (decisions and acceptances are never updated, only added); ids are UUID v7.</li>
+<li><strong>DM-4 — Accounts, identities, roles:</strong> account {id, display name, status}, identity {account, kind:
+local | oidc(issuer, subject)}, role grant {account, wiki, role, granted by, at}, token {account, scopes,
+hash, expiry}.</li>
+<li><strong>DM-5 — Audit log</strong> {at, principal, action, resource, outcome, detail without content}.</li>
+<li><strong>DM-6 — Derived cache</strong> {wiki, view tip block id, page id or path, catalog language, rendered HTML,
+link sets, computed at}; invalidated by view tip; never holds a verification result.</li>
+<li><strong>DM-7 — Title index</strong> per view tip: title, aliases, redirect targets, page id, path — derived from the
+frontmatter of all pages at that tip, cached, rebuilt on tip change.</li>
+</ul>
+<h2 id="7-the-read-path-rd-"><a class="header" href="#7-the-read-path-rd-">7. The read path (RD-…)</a></h2>
+<ul>
+<li><strong>RD-1</strong> Resolve the wiki by slug → <code>authorize(principal, read, wiki)</code> → the view (default unless named)
+→ its tip from <code>branch</code> (cached briefly) → the title index at that tip (DM-7) → the page path → the
+cache by (tip, path, language); on a miss, <code>cat</code> the file at the tip, parse (MK-1 … MK-4), resolve against
+the index, render, store.</li>
+<li><strong>RD-2</strong> History from <code>log</code> of the view (paged) and <code>show</code> of a block; diffs from <code>diff --from --to</code>
+restricted to the page’s path, rendered word-level in inklkunn from prikk’s hunks (prikk supplies the
+line diff; the word-level refinement is a presentation step and is labelled as inklkunn’s).</li>
+<li><strong>RD-3</strong> The verification badge from the wiki record’s last <code>verify</code> (OP-06), re-run on demand when the
+page is the verification page itself; never from DM-6.</li>
+<li><strong>RD-4</strong> Search: SQLite FTS5 over titles, aliases and (from M2) bodies at the default view’s tip, with a
+trigram tokenizer for scripts without word delimiters; rebuilt on tip change incrementally by changed
+paths (from <code>diff</code>).</li>
+<li><strong>RD-5</strong> Feeds and recent changes from <code>log</code> across the wiki’s views, filtered by <code>authorize()</code>.</li>
+</ul>
+<h2 id="8-the-write-path-wr---the-centerpiece"><a class="header" href="#8-the-write-path-wr---the-centerpiece">8. The write path (WR-…) — the centerpiece</a></h2>
+<ul>
+<li><strong>WR-1 — Propose.</strong> CR-core records the proposal and its first revision (DM-3) with the base block id of
+the target view’s tip at that moment and the proposed content per page; drafts are revisions in state
+<em>draft</em>; nothing touches prikk.</li>
+<li><strong>WR-2 — Review</strong> adds comments and decisions bound to the revision (DM-3); a new revision clears the
+decisions’ applicability (they stay recorded, shown as “on revision N”).</li>
+<li><strong>WR-3 — Accept.</strong> <code>authorize(principal, accept, proposal)</code> (policy: role, required approvals, protection)
+→ take the wiki’s lease (CON-1) → re-read the view’s tip → if the tip equals the base, the change is the
+proposal’s content; else MRG-1 per page → on an unresolved overlap release the lease and move the
+proposal to <em>needs a revision</em> with both texts recorded → else write the acceptance record (<em>pending
+seal</em>) and the intent (CON-3) → call <code>Accept::accept</code> on the signer (SGN-3) → on success record the block
+and patch ids, mark accepted, complete the intent, invalidate DM-6 and DM-7 for the view, enqueue the
+verification (OP-06) and the notifications → release the lease.</li>
+<li><strong>WR-4 — Failure before the seal</strong> (merge, write, commit refused): nothing in prikk changed; the
+acceptance record is marked failed with the reason; the proposal stays open.</li>
+<li><strong>WR-5 — Failure after <code>commit</code> but before or during <code>seal</code></strong>, or a crash anywhere: the intent is open;
+the wiki is flagged <em>needs recovery</em> and refuses writes (CON-4) until the recovery completes the seal
+(prikk’s own queued patch is sealed by the recovery’s <code>seal</code>, or discarded by <code>doctor --discard-damaged-commits</code> when its witness is damaged) and reconciles the acceptance record.</li>
+<li><strong>WR-6 — The message</strong> (CT-03) is composed by CR-core and checked by the signer against the acceptance
+record before it signs anything (C-1b).</li>
+<li><strong>WR-7 — Import</strong> is a sequence of acceptances under a system principal with <code>Kind: import</code> and the import
+report’s provenance, in batches bounded by the budget.</li>
+<li><strong>WR-8 — New view</strong> (M3): a recorded view-creation act → SGN-4 → the view appears; proposals then target
+it like any other.</li>
+</ul>
+<h2 id="9-content-level-merge-mrg-"><a class="header" href="#9-content-level-merge-mrg-">9. Content-level merge (MRG-…)</a></h2>
+<ul>
+<li><strong>MRG-1 — Three-way, per page, per block.</strong> Base = the page at the proposal’s base block (<code>cat</code>); theirs =
+the page at the current tip; ours = the proposed page. Frontmatter merges key by key (a key changed on
+both sides with different values is an overlap). Bodies merge by a block-aware three-way diff: blocks are
+the units (MK-5), and within a changed block a line/word three-way merge is attempted; a block changed on
+both sides with no clean merge is an overlap.</li>
+<li><strong>MRG-2 — Overlap is never auto-resolved</strong> (INT-7, consistent with prikk). Both texts are stored on the
+proposal and shown side by side; the proposer or the acceptor revises.</li>
+<li><strong>MRG-3 — Renames and deletions</strong> merge by page id: a page renamed on one side and edited on the other
+merges (the edit lands on the renamed file); deleted on one side and edited on the other is an overlap.</li>
+<li><strong>MRG-4 — The spike (M0, roadmap R2)</strong> measures, on a corpus of wiki-shaped edit histories, how often a
+moved base merges cleanly, how often prikk’s own span anchors would have survived, and the cost; its
+numbers calibrate PERF-2 and may simplify MRG-1 (if prikk’s <code>EditText</code> anchors survive most moved bases,
+the merge can be delegated to prikk’s commit against the new tip for the clean case).</li>
+</ul>
+<h2 id="10-identity-and-authorization-internals-az-"><a class="header" href="#10-identity-and-authorization-internals-az-">10. Identity and authorization internals (AZ-…)</a></h2>
+<ul>
+<li><strong>AZ-1</strong> CR-auth produces a principal: anonymous, account (via session or token with scopes), or a
+system principal (import, recovery). OpenID Connect through the egress guard with a confined <code>curl</code>
+(planeter’s pattern) or an in-process client if the dependency policy permits one (IQ-3).</li>
+<li><strong>AZ-2</strong> <code>authorize(principal, action, resource)</code> in CR-core: pure over a snapshot of roles, policy and
+the resource’s visibility; default deny; existence-neutral; audited for consequential actions (ID-8).
+Policy in M2 is the bootstrap’s fixed role set; M4 reads the versioned policy object (GV-1).</li>
+<li><strong>AZ-3</strong> Scopes intersect roles (<code>read</code> ⊂ <code>propose</code> ⊂ <code>review</code> ⊂ <code>accept</code> ⊂ <code>admin</code>); protections
+evaluated inside <code>authorize(_, accept | propose, page)</code>.</li>
+</ul>
+<h2 id="11-concurrency-consistency-and-recovery-con-"><a class="header" href="#11-concurrency-consistency-and-recovery-con-">11. Concurrency, consistency and recovery (CON-…)</a></h2>
+<ul>
+<li><strong>CON-1 — One write lease per wiki</strong>, in-process (an async mutex keyed by wiki id) in v1, with a durable
+holder record so a crashed holder is recognized at start; readers never wait for it.</li>
+<li><strong>CON-2 — prikk’s locks are the layer beneath</strong>: a <code>lock conflict</code> from prikk is reported, the acceptance
+fails before the seal (WR-4) or flags recovery after it (WR-5); no lock is ever cleared automatically.</li>
+<li><strong>CON-3 — The intent journal</strong> (DUR-2): written before the signer is called with the acceptance id, the
+wiki, the view, the base and the message digest; completed with the block id; a crash leaves it open.</li>
+<li><strong>CON-4 — Recovery</strong> at start and after a failed acceptance: read the witnesses (open intents, the lease
+record, prikk <code>status</code>, <code>doctor</code>, <code>unlock</code> listing, foreign processes), then under the lease: complete a
+queued commit by <code>seal</code> when the witness matches the intent, or discard it by <code>doctor</code> when it does not;
+<code>unlock</code> stale locks of the kinds an acceptance leaves; <code>verify</code>; reconcile acceptance records against
+blocks (C-10b); clear the flag. Every step recorded; the administration surface shows the plan (planeter
+RFC 004 part 4, adapted).</li>
+<li><strong>CON-5 — Cache coherence</strong>: DM-6 and DM-7 keyed by view tip; a tip change invalidates; a stale read is
+labelled when prikk is unavailable (OP-03).</li>
+<li><strong>CON-6 — Idempotence</strong>: an acceptance is keyed by the proposal revision; a retried accept finds the
+record and does not seal twice; an import is keyed by the bundle digest.</li>
+</ul>
+<h2 id="12-invariant-enforcement-enf-"><a class="header" href="#12-invariant-enforcement-enf-">12. Invariant enforcement (ENF-…)</a></h2>
+<ul>
+<li><strong>ENF-1 — INV-2:</strong> <code>boundary-check</code> asserts only CR-signer names the key-store module and only CR-core
+depends on CR-signer; a test instantiates CR-web’s dependency graph and asserts no path to key bytes.</li>
+<li><strong>ENF-2 — INV-1 / INV-10:</strong> the reconciliation runs in tests with a planted unrecorded seal and a planted
+unsealed acceptance and must report both.</li>
+<li><strong>ENF-3 — INV-4:</strong> the route-enumeration test (LAY-2), from the first write route.</li>
+<li><strong>ENF-4 — INV-3:</strong> the title-to-path fuzz; a hostile bundle fixture; an SSRF fixture per fetch site;
+the sanitizer’s regression tests.</li>
+<li><strong>ENF-5 — INV-5 / INV-6:</strong> the derived store is cleared and every view rebuilt and compared; a badge is
+never read from DM-6; an open proposal’s content is rendered only on its proposal page with the
+held-for-review label.</li>
+<li><strong>ENF-6 — INV-7 / INV-8:</strong> no crate exposes an authority path to an automated actor; the removal procedure
+is a documented, rehearsed runbook, not code that rewrites history.</li>
+<li><strong>ENF-7 — INV-9:</strong> <code>cargo deny</code>, <code>cargo audit</code>, pinned CI actions, <code>forbid(unsafe_code)</code> in every crate,
+the dependency ledger (planeter’s, adopted) with measured growth per manifest change.</li>
+</ul>
+<h2 id="13-build-sequence-seq--and-the-rfc-map-nr-"><a class="header" href="#13-build-sequence-seq--and-the-rfc-map-nr-">13. Build sequence (SEQ-…) and the RFC map (NR-…)</a></h2>
+<ol>
+<li><strong>SEQ-1 (M0)</strong> CR-markup against the wiki-commons corpus; CR-prikk with the sandbox and the pin;
+CR-store; CR-core’s <code>authorize()</code> seam and honesty view-model; the gates (<code>boundary-check</code>, <code>floor-check</code>,
+the route-enumeration test harness); the two spikes (STO measurement, MRG-4).</li>
+<li><strong>SEQ-2 (M1)</strong> the read path (RD-1 … RD-5), CR-web with the catalog (EN, JA in preview), the accessibility
+tests, export (bundle, archive), the standalone binary.</li>
+<li><strong>SEQ-3 (M2)</strong> CR-auth, proposals and review (WR-1, WR-2), CR-signer with the key store and <code>Accept</code>,
+acceptance (WR-3 … WR-6), MRG-1 … MRG-3, CON-1 … CON-6, notifications, quotas, metrics; threat model v0.2.</li>
+<li><strong>SEQ-4 (M3)</strong> knowledge objects, views (WR-8), provenance — after RFC 005 part 1.</li>
+<li><strong>SEQ-5 (M4)</strong> policy as data, moderation, deletion procedure — RFC 006.</li>
+<li><strong>SEQ-6 (M5)</strong> import, the write API, discovery, conformance — RFC 007.</li>
+<li><strong>SEQ-7</strong> the planeter module (RFC 008, joint), when planeter’s OQ-4 is ruled.</li>
+</ol>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>RFC</th><th>Subsystem designed here as</th><th>Serves</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>NR-1 → RFC 001</strong> Foundations</td><td>CR-<em>, LAY-</em>, STO-*, MK-7, DM-1, DM-2, CT-01/02, the gates</td><td>M0 → M1</td></tr>
+<tr><td><strong>NR-2 → RFC 002</strong> Identity, keys and signing</td><td>SGN-<em>, AZ-</em>, DM-4, DM-5, CT-03, ENF-1/2</td><td>M0 → M2</td></tr>
+<tr><td><strong>NR-3 → RFC 003</strong> Read path and rendering</td><td>MK-1 … MK-6, RD-*, DM-6, DM-7, CR-web’s catalog and tests</td><td>M1</td></tr>
+<tr><td><strong>NR-4 → RFC 004</strong> Proposals</td><td>WR-<em>, MRG-</em>, CON-*, DM-3</td><td>M2</td></tr>
+<tr><td><strong>NR-5 → RFC 005</strong> Knowledge layer</td><td><code>knowledge/</code> schemas, views, provenance</td><td>M3</td></tr>
+<tr><td><strong>NR-6 → RFC 006</strong> Governance and moderation</td><td><code>governance/</code> schemas, policy evaluation in AZ-2, tombstones, the removal runbook</td><td>M4</td></tr>
+<tr><td><strong>NR-7 → RFC 007</strong> Interchange and API</td><td>CT-06 … CT-08, WR-7, the write API</td><td>M5</td></tr>
+<tr><td><strong>NR-8 → RFC 008</strong> planeter module (joint)</td><td>AUTH-06, MD-*, SGN-5 if separation is wanted</td><td>T8</td></tr>
+<tr><td><strong>NR-10 → RFC 010</strong> Upstream and supply chain</td><td>STO-2’s floor and re-baseline, ENF-7</td><td>all</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="14-internal-open-questions-iq-"><a class="header" href="#14-internal-open-questions-iq-">14. Internal open questions (IQ-…)</a></h2>
+<ul>
+<li><strong>IQ-1 — Merge engine.</strong> Implement the block-aware three-way merge in CR-core, or adopt a diff3 crate
+behind the dependency policy? Decided in RFC 004 after the MRG-4 spike.</li>
+<li><strong>IQ-2 — Search engine.</strong> SQLite FTS5 with a trigram tokenizer (no new crate) versus a dedicated engine;
+FTS5 first, measured against PERF-3 (RFC 003).</li>
+<li><strong>IQ-3 — Outbound HTTPS for OpenID Connect.</strong> A confined <code>curl</code> (planeter’s shape, no TLS crates) versus an
+in-process client; the dependency policy decides, measured (RFC 002).</li>
+<li><strong>IQ-4 — Signer separation.</strong> In-process module with the gate (v1) versus a separate process; revisited at
+the threat model v0.2 (RFC 002, SGN-5).</li>
+<li><strong>IQ-5 — Store backend.</strong> SQLite first; the PostgreSQL path kept by the traits; multi-replica is the
+operations RFC’s.</li>
+<li><strong>IQ-6 — How M1 gets content without proposals.</strong> M1 reads repositories prepared by an operator (an
+import from a folder or a bundle through an admin command under the system principal, WR-7), so the read
+path ships before the proposal loop.</li>
+</ul>
+<h2 id="15-traceability"><a class="header" href="#15-traceability">15. Traceability</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Internal design</th><th>Grounds in</th></tr>
+</thead>
+<tbody>
+<tr><td>CR-<em>, LAY-</em></td><td>BD-01 … 06, INT-1, SEC-4, INV-2, INV-4; planeter RFC 001</td></tr>
+<tr><td>STO-*</td><td>INT-1 … INT-3, PK-02, PK-04, SEC-7; planeter RFC 011</td></tr>
+<tr><td>SGN-*</td><td>DR-4, ID-3 … ID-5, PK-03, PK-05, OP-07, T-1, INV-1, INV-2</td></tr>
+<tr><td>MK-*</td><td>CM-2 … CM-5, RD-1, CT-01, C-4a/b, wiki-commons chapters 08–09</td></tr>
+<tr><td>DM-*</td><td>CM-7, CT-04 … CT-06, ID-8</td></tr>
+<tr><td>RD-*</td><td>RD-1 … RD-14 of the requirements, FL-01, INV-5</td></tr>
+<tr><td>WR-<em>, MRG-</em>, CON-*</td><td>PR-6 … PR-8, INT-4, INT-7, DUR-2, FL-04, FL-10, OP-01</td></tr>
+<tr><td>AZ-*</td><td>ID-1, ID-7, AUTH-01 … 05, INV-4</td></tr>
+<tr><td>ENF-*</td><td>Threat model §4 and §7</td></tr>
+<tr><td>SEQ-<em>, NR-</em></td><td>ROADMAP §3, §7</td></tr>
+</tbody>
+</table>
+</div>
+<p><em>End of Internal Design v0.1. Next: RFC 001 (foundations), RFC 002 (identity, keys and signing) and RFC 010
+(upstream tracking and supply chain), each with a handoff, in <code>rfcs/</code>.</em></p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="inklkunn-03-threat-model.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="inklkunn-upstream-dependency-ledger.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="inklkunn-03-threat-model.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="inklkunn-upstream-dependency-ledger.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-09f2665d.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-609e4cb8.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

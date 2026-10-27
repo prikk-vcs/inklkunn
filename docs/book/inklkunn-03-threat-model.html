@@ -1,0 +1,559 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Threat model - inklkunn</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-0512735d.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-8177b419.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">inklkunn</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="inklkunn--threat-model"><a class="header" href="#inklkunn--threat-model">inklkunn — Threat Model</a></h1>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th></th></tr>
+</thead>
+<tbody>
+<tr><td>Document</td><td>inklkunn Threat Model (security): what inklkunn must defend, against whom, and how, so that the design and the tests can be checked against it. A first-class release deliverable (project rules): updated by any release that touches identity, signing, the prikk boundary, rendering or inbound content; re-verified by the others.</td></tr>
+<tr><td>Version</td><td>v0.1</td></tr>
+<tr><td>Date</td><td>2026-10-27</td></tr>
+<tr><td>Basis</td><td>Requirements v0.1 (SEC/PRV/ID/GV/INT), the external design v0.1 (BD/WEB/API/AUTH/PK/FL/CT/OP), the rulings DR-2 and DR-4, prikk’s trust and threat model, planeter’s threat model v0.4 (the house precedent and the neighbour whose guarantees inklkunn must not weaken), wiki-commons chapter 14, the requirements register items 7, 8, 14, 17.</td></tr>
+<tr><td>ID scheme</td><td><code>A-</code> asset · <code>TB-</code> trust boundary · <code>T-</code> threat · <code>C-</code> control · <code>INV-</code> security invariant · <code>RR-</code> residual risk · <code>ASSUME-</code> assumption</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>The essence, in one paragraph.</strong> inklkunn differs from planeter on the axis that matters most: <strong>it holds
+history-signing keys.</strong> By the owner’s ruling (DR-4) the wiki service is the author and the maintainer of its
+own repositories, because wiki contributors hold no keys and must not need to. So the central property of a
+prikk forge, “a compromised service can deny history but never forge it”, does <strong>not</strong> hold for inklkunn as
+a whole; what inklkunn offers instead is that a forged change is <strong>detectable and attributable</strong>: every
+signature is the wiki service’s and says so, every change names the proposal and the people behind it in a
+signed message, planeter can hold the same repository read-only as an independent witness, and the keys live
+behind a boundary no web request can cross. The second signature danger is the familiar one: a service that
+renders and stores text from strangers, faces the network, and serves mutually distrusting users inherits
+every web threat a wiki has ever had, plus the social ones a wiki’s thesis invites, since the same low
+friction that makes participation inclusive makes abuse cheap (register item 7). The modern addition is AI in
+the loop, answered by keeping content as data and keeping any AI out of the authority path. <strong>The design
+consequence that follows is the signer boundary (TB-5, INV-2): keys reachable from one component only, that
+component reachable from the web tier through one narrow call, and the whole arrangement a property of the
+build graph.</strong></p>
+<hr>
+<h2 id="1-assets-a-"><a class="header" href="#1-assets-a-">1. Assets (A-…)</a></h2>
+<ul>
+<li><strong>A-HISTORY</strong> — the integrity and prikk-verifiability of each wiki’s history. Its value: anyone holding the
+repository can <code>prikk verify</code> it offline and read who accepted what.</li>
+<li><strong>A-KEYS</strong> — the per-wiki author and maintainer keys. The highest-value secret: whoever holds a wiki’s
+maintainer key can seal history that prikk accepts.</li>
+<li><strong>A-ATTRIBUTION</strong> — the truth of “who proposed, who accepted”: in the signed patch message and in the
+service records, cross-checkable.</li>
+<li><strong>A-AUTHZ</strong> — roles, policy, protections; corruption grants writes or reads to the wrong people.</li>
+<li><strong>A-CREDS</strong> — passwords, sessions, tokens.</li>
+<li><strong>A-CONTENT</strong> — private wikis’ pages and proposals; held-for-review content that is not yet public.</li>
+<li><strong>A-RECORD</strong> — the service store: review state, audit log; and the derived cache, whose corruption could
+mislead a page.</li>
+<li><strong>A-HOST</strong>, <strong>A-AVAILABILITY</strong>, <strong>A-SUPPLY</strong> — as for any service.</li>
+<li><strong>A-COMMUNITY</strong> — the social system’s health: a wiki captured by a faction or buried in spam is as lost as
+a corrupted one (register item 7, 12 of the main transcript).</li>
+</ul>
+<h2 id="2-trust-boundaries-tb-"><a class="header" href="#2-trust-boundaries-tb-">2. Trust boundaries (TB-…)</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>ID</th><th>Boundary</th><th>Direction and trust</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>TB-1</strong></td><td>anonymous internet → inklkunn</td><td>untrusted in: every byte attacker-controlled</td></tr>
+<tr><td><strong>TB-2</strong></td><td>authenticated principal → inklkunn</td><td>semi-trusted, scoped by <code>authorize()</code>; an account may be hostile or stolen</td></tr>
+<tr><td><strong>TB-3</strong></td><td>proposed and pasted content → rendering and, on acceptance, the repository</td><td>untrusted text that becomes a file: path, frontmatter, body, attachment</td></tr>
+<tr><td><strong>TB-4</strong></td><td>inklkunn → prikk subprocess</td><td>inklkunn drives; prikk verifies; the process is a containment boundary for a parser fault</td></tr>
+<tr><td><strong>TB-5</strong></td><td>web and API tier → the signer</td><td><strong>the key boundary</strong>: one narrow call in, a sealed result out; no key material crosses it</td></tr>
+<tr><td><strong>TB-6</strong></td><td>inklkunn → external services (OpenID Connect, interwiki checks, link previews, webhooks)</td><td>every user-influenced URL is an SSRF vector</td></tr>
+<tr><td><strong>TB-7</strong></td><td>inklkunn → the viewer’s browser</td><td>rendered content in a privileged origin: the XSS boundary</td></tr>
+<tr><td><strong>TB-8</strong></td><td>operator ↔ inklkunn</td><td>trusted; the operator supplies the key-store secret</td></tr>
+<tr><td><strong>TB-9</strong></td><td>planeter ↔ inklkunn</td><td>semi-trusted peer: identity assertions in, read-only hosting out</td></tr>
+<tr><td><strong>TB-10</strong></td><td>imported bundles and archives → inklkunn</td><td>untrusted archives: traversal, bombs, hostile frontmatter</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="3-threats-and-controls-t--c-"><a class="header" href="#3-threats-and-controls-t--c-">3. Threats and controls (T-…, C-…)</a></h2>
+<h3 id="t-1--forged-history-a-change-sealed-without-an-authorized-acceptance"><a class="header" href="#t-1--forged-history-a-change-sealed-without-an-authorized-acceptance">T-1 — Forged history: a change sealed without an authorized acceptance</a></h3>
+<p>The maintainer key is used by something other than FL-04’s acceptance: a compromised web tier calling the
+signer directly, a stolen key, an insider with the key store secret, a bug that seals without a proposal.
+(A-HISTORY, A-KEYS, A-ATTRIBUTION.)</p>
+<ul>
+<li><strong>C-1a — The signer is the only holder and the only user of keys</strong> (TB-5; INV-2). Key material is loaded
+by the signer component alone; the web and API tiers depend on an interface whose one operation is
+<em>accept this prepared change for this proposal</em> and whose result is the sealed change’s ids. A build gate
+fails if any other crate depends on the key store.</li>
+<li><strong>C-1b — Every seal is bound to a recorded proposal and acceptance.</strong> The signer refuses a change that
+names no proposal in an <em>accepted-pending-seal</em> state with an intent record; the patch message (CT-03)
+carries the proposal id and the acceptor; the acceptance record carries the block and patch ids. A seal
+that matches no acceptance record is detectable by a reconciliation that runs after every seal and on a
+schedule, and is reported, never hidden.</li>
+<li><strong>C-1c — Keys at rest are encrypted under the operator’s secret</strong>, decrypted for one write onto a private
+mount only the sandboxed prikk can read, removed after; never logged, never in content, never exported
+(SEC-4, OP-07). The secret is supplied at start, not stored beside the keys.</li>
+<li><strong>C-1d — Per-wiki keys and rotation.</strong> A compromise is bounded to one wiki; rotation adopts a new key id
+and removes the old from the repository’s trust store; the procedure is documented and rehearsed.</li>
+<li><strong>C-1e — Independent witness.</strong> The repository can be hosted read-only by planeter and exported as an
+archive at any time (MD-5, IX-2), so a forged change is visible to a path the wiki does not control.</li>
+<li><strong>C-1f — Honest labels.</strong> Every change is labelled <em>signed by the wiki service on behalf of …</em> (ID-5): the
+reader is never told a person signed.</li>
+</ul>
+<h3 id="t-2--authentication-and-session-attacks"><a class="header" href="#t-2--authentication-and-session-attacks">T-2 — Authentication and session attacks</a></h3>
+<p>Credential stuffing, session theft, OpenID Connect misconfiguration, token leakage (A-CREDS).</p>
+<ul>
+<li><strong>C-2a</strong> Argon2id passwords; OpenID Connect with PKCE, one-shot state, nonce-bound tokens verified against
+the provider’s keys; constant-work sign-in so account existence does not leak by timing (planeter’s IS-31
+lesson, adopted from the start).</li>
+<li><strong>C-2b</strong> Per-account and per-client-IP throttles; the client IP only from a declared trusted proxy.</li>
+<li><strong>C-2c</strong> <code>Secure</code>, <code>HttpOnly</code>, <code>SameSite</code> cookies; CSRF double-submit on every cookie write; scoped, hashed,
+expiring, revocable tokens; re-authentication for key operations and role grants.</li>
+<li><strong>C-2d</strong> A second factor is a stated gap for v1 (RR-4); an OpenID Connect provider that enforces it is the
+interim answer.</li>
+</ul>
+<h3 id="t-3--authorization-bypass-and-confused-deputy"><a class="header" href="#t-3--authorization-bypass-and-confused-deputy">T-3 — Authorization bypass and confused deputy</a></h3>
+<p>A reader reaches a private wiki, a proposer accepts their own proposal, a token with <code>read</code> proposes, a role
+is escalated through a policy edit (A-AUTHZ, A-CONTENT).</p>
+<ul>
+<li><strong>C-3a</strong> One pure default-deny <code>authorize()</code> on every path (ID-7); a test enumerates every route and verb
+and asserts the call (planeter’s ENF-4, written before the first write handler).</li>
+<li><strong>C-3b</strong> Scopes intersected with roles per endpoint; existence-neutral denials.</li>
+<li><strong>C-3c</strong> Policy changes are proposals under the constitutional layers (GV-1); the bootstrap roles cannot
+be removed by a policy edit; protections are authorization outcomes, not UI.</li>
+</ul>
+<h3 id="t-4--hostile-proposed-content"><a class="header" href="#t-4--hostile-proposed-content">T-4 — Hostile proposed content</a></h3>
+<p>Attacker-controlled text that becomes a file in a repository: a title that is a path (<code>../</code>, reserved names,
+case collisions), frontmatter that is YAML with surprises, a body that is a bomb, an attachment that lies
+about its type, a rename to a path outside <code>pages/</code> (TB-3; A-HOST, A-HISTORY).</p>
+<ul>
+<li><strong>C-4a</strong> Title-to-path mapping is a pure, documented, fuzz-tested function that refuses anything not a safe
+relative component under the wiki’s directories (CT-01); the repository root and <code>.prikk/</code> are never a
+destination; prikk’s own path safety is the second line, never the first.</li>
+<li><strong>C-4b</strong> Frontmatter is parsed with a plain YAML subset (scalars, lists, maps; no anchors, no tags) and
+validated against the metadata schema; unknown keys preserved as data; secrets and control fields
+(<code>visibility</code>, <code>kind: system</code>) are set by the service, not by the proposer, unless the role allows.</li>
+<li><strong>C-4c</strong> Sizes bounded before parsing (PERF-4); attachments type-checked by content, served as attachments
+from the content origin; SVG sanitized or served inert.</li>
+<li><strong>C-4d</strong> Pasted and proposed Markdown is data; no directive executes (NG-8); raw HTML reduced to the
+documented subset.</li>
+</ul>
+<h3 id="t-5--hostile-imports-tb-10"><a class="header" href="#t-5--hostile-imports-tb-10">T-5 — Hostile imports (TB-10)</a></h3>
+<p>Archive traversal, symbolic links, deep nesting, size bombs, a bundle whose manifest lies, a prikk archive
+carrying keys to adopt.</p>
+<ul>
+<li><strong>C-5a</strong> Imports are admin-only, dry-run first, bounded, extracted into a private scratch directory with
+every entry’s path validated; symbolic links refused; checksums verified when present (wiki-commons
+SEC-7).</li>
+<li><strong>C-5b</strong> A prikk archive import never adopts carried keys; the wiki’s own keys remain the only trusted
+signers (prikk’s own rule: carried, not adopted).</li>
+<li><strong>C-5c</strong> Imported content goes through the same sanitizer and the same path mapping as a proposal, and
+arrives as attributed changes with an import report (IX-3).</li>
+</ul>
+<h3 id="t-6--cross-site-scripting-through-rendered-content-tb-7"><a class="header" href="#t-6--cross-site-scripting-through-rendered-content-tb-7">T-6 — Cross-site scripting through rendered content (TB-7)</a></h3>
+<ul>
+<li><strong>C-6a</strong> Strict CSP, no inline script, no third-party scripts; <code>nosniff</code>, <code>frame-ancestors 'none'</code>,
+<code>Referrer-Policy</code>.</li>
+<li><strong>C-6b</strong> Allowlist sanitizer on every render, including previews and diffs (a diff renders attacker text
+twice).</li>
+<li><strong>C-6c</strong> Raw source, attachments and downloads only from the isolated content origin, as inert
+attachments; the host gate enforced, not only configured (planeter’s IS-16 lesson).</li>
+</ul>
+<h3 id="t-7--confidentiality-of-private-wikis-and-held-content"><a class="header" href="#t-7--confidentiality-of-private-wikis-and-held-content">T-7 — Confidentiality of private wikis and held content</a></h3>
+<ul>
+<li><strong>C-7a</strong> <code>authorize()</code> on reads, feeds, search, backlinks, sitemaps, link previews and the API; <code>noindex</code>;
+existence-neutral errors (PRV-4).</li>
+<li><strong>C-7b</strong> Held-for-review content is visible only to those the policy names; notifications never carry
+content the recipient could not read (PRV-5).</li>
+<li><strong>C-7c</strong> Secrets committed into pages are carried by prikk and cannot be un-leaked; the risk is stated to
+operators (SEC-9; RR-2).</li>
+</ul>
+<h3 id="t-8--server-side-request-forgery-tb-6"><a class="header" href="#t-8--server-side-request-forgery-tb-6">T-8 — Server-side request forgery (TB-6)</a></h3>
+<ul>
+<li><strong>C-8</strong> One egress guard for every outbound fetch (SEC-6): public unicast only, pinned addresses, HTTPS
+only, no redirects followed blindly; link previews and interwiki checks are click-to-load or server-side
+through the guard; webhooks the same when they come.</li>
+</ul>
+<h3 id="t-9--denial-of-service"><a class="header" href="#t-9--denial-of-service">T-9 — Denial of service</a></h3>
+<p>Expensive prikk calls on large repositories, proposal floods, huge pages, acceptance queues, import bombs
+(A-AVAILABILITY, A-HOST).</p>
+<ul>
+<li><strong>C-9a</strong> Every prikk call under a time and memory budget with weighted admission and a per-call ceiling
+(SEC-7; planeter RFC 011 pattern); a ceiling hit is <em>unavailable</em>, never a verification verdict.</li>
+<li><strong>C-9b</strong> Quotas per principal and per wiki (PR-14); rate limits with <code>Retry-After</code>; bounded page and
+attachment sizes; the acceptance queue bounded and visible.</li>
+<li><strong>C-9c</strong> Metering and alerts on disk (repositories only grow; prikk deletes nothing) and on queue depth.</li>
+</ul>
+<h3 id="t-10--the-service-store-or-the-cache-as-a-false-source-of-truth"><a class="header" href="#t-10--the-service-store-or-the-cache-as-a-false-source-of-truth">T-10 — The service store or the cache as a false source of truth</a></h3>
+<p>A corrupted record or cache shows a page that is not the history, or marks a proposal accepted that was not
+sealed (A-RECORD, A-HISTORY).</p>
+<ul>
+<li><strong>C-10a</strong> The repository is the source of truth for content and history; the cache is keyed by prikk’s
+content ids and rebuilt from prikk; a verification badge is never served from a cache (RD-4, CM-7).</li>
+<li><strong>C-10b</strong> The reconciliation of C-1b runs both ways: every acceptance record names a block that exists and
+verifies; every sealed block names an acceptance record; disagreement is reported.</li>
+<li><strong>C-10c</strong> A test rebuilds every view with the derived store cleared and compares (CM-7).</li>
+</ul>
+<h3 id="t-11--supply-chain"><a class="header" href="#t-11--supply-chain">T-11 — Supply chain</a></h3>
+<ul>
+<li><strong>C-11</strong> Pinned and locked dependencies, <code>cargo deny</code> and <code>cargo audit</code> at every project event, a license
+allow-list, <code>forbid(unsafe_code)</code>, measured growth, a preference for confined subprocesses over
+in-process protocol stacks (planeter’s dependency policy, adopted); CI actions pinned by digest.</li>
+</ul>
+<h3 id="t-12--repudiation"><a class="header" href="#t-12--repudiation">T-12 — Repudiation</a></h3>
+<p>“I never proposed that”, “I never accepted that” (A-ATTRIBUTION).</p>
+<ul>
+<li><strong>C-12a</strong> The signed patch message names the proposal, the proposer and the acceptor (CT-03); the service
+records hold the same with timestamps; the audit log is append-only and exportable (ID-8).</li>
+<li><strong>C-12b</strong> The limit is stated: prikk’s signature proves the wiki service signed, not the person; the
+person’s act is proven by the service’s records and the audit log, which the operator controls (RR-1).</li>
+</ul>
+<h3 id="t-13--the-ai-era-surface"><a class="header" href="#t-13--the-ai-era-surface">T-13 — The AI-era surface</a></h3>
+<p>Prompt injection through page text against any future assistant; AI-scaled proposal spam; dependency
+hallucination in the build (A-CONTENT, A-COMMUNITY, A-SUPPLY).</p>
+<ul>
+<li><strong>C-13a</strong> No AI holds authority: nothing can propose, accept, moderate or change policy autonomously; any
+assistance is advisory, labelled, attributed to the human who accepted it (NG-5; C-13; AUTH-14).</li>
+<li><strong>C-13b</strong> Content is data, never instructions, for inklkunn and for any integration it hosts.</li>
+<li><strong>C-13c</strong> No private content leaves to an external AI without explicit per-use opt-in.</li>
+<li><strong>C-13d</strong> AI-scaled abuse is bounded like any abuse: quotas, the ladder, review before acceptance, and the
+inclusiveness metrics that show concentration and flood.</li>
+</ul>
+<h3 id="t-14--abuse-of-the-social-system"><a class="header" href="#t-14--abuse-of-the-social-system">T-14 — Abuse of the social system</a></h3>
+<p>Astroturfing, brigading, sock puppets, source flooding, citation laundering, harassment dressed as epistemic
+discussion, strategic forks, capture of the maintainer role (register item 7; A-COMMUNITY).</p>
+<ul>
+<li><strong>C-14a</strong> Every consequential act is attributed, logged and visible: who proposed, reviewed, accepted,
+moderated, changed policy (PR-12, GV-3).</li>
+<li><strong>C-14b</strong> Soft security first, then progressive friction set by policy: quotas, new-account limits,
+protections per page, review required (GV-4, GV-7).</li>
+<li><strong>C-14c</strong> Moderation hides with a tombstone and an appeal; nothing is erased silently (GV-5, GV-8).</li>
+<li><strong>C-14d</strong> The constitutional layers keep the root roles out of reach of a captured policy (GV-1); no
+opaque reputation becomes a lever for capture (GV-2).</li>
+<li><strong>C-14e</strong> The inclusiveness metrics expose concentration and silence (GV-9).</li>
+</ul>
+<h3 id="t-15--removal-privacy-and-the-immutable-record"><a class="header" href="#t-15--removal-privacy-and-the-immutable-record">T-15 — Removal, privacy and the immutable record</a></h3>
+<p>Personal data, defamation, infringing or illegal content in a sealed change; a person’s right to be
+forgotten (register item 14; A-CONTENT).</p>
+<ul>
+<li><strong>C-15a</strong> Suppression on the view is immediate: the content, summary or author of a revision hidden behind
+a tombstone with a reason, logged, reversible (GV-5, HIST-12).</li>
+<li><strong>C-15b</strong> Permanent removal is a documented operator procedure that states its cost: prikk cannot delete an
+object, so the repository is re-created without the content and the ids of affected history change; the
+procedure exists and is rehearsed before any public deployment (GV-6).</li>
+<li><strong>C-15c</strong> Pseudonymous participation, no published addresses, account deletion replaces the name with a
+stable pseudonym (PRV-2, PRV-3).</li>
+</ul>
+<h3 id="t-16--the-planeter-boundary-tb-9"><a class="header" href="#t-16--the-planeter-boundary-tb-9">T-16 — The planeter boundary (TB-9)</a></h3>
+<p>A forged identity assertion from a fake planeter; planeter’s guarantees weakened by inklkunn.</p>
+<ul>
+<li><strong>C-16a</strong> Identity assertions are verified cryptographically (OpenID Connect tokens or signed tokens per
+RFC 008), never trusted from a header alone except behind a declared trusted proxy.</li>
+<li><strong>C-16b</strong> inklkunn never gives planeter a key, never writes to a planeter-hosted software repository, and
+planeter never writes to a wiki repository (MD-1, MD-5).</li>
+</ul>
+<h2 id="4-security-invariants-inv---a-change-that-breaks-one-is-a-security-bug"><a class="header" href="#4-security-invariants-inv---a-change-that-breaks-one-is-a-security-bug">4. Security invariants (INV-…) — a change that breaks one is a security bug</a></h2>
+<ul>
+<li><strong>INV-1 — No history without an authorized acceptance.</strong> Every sealed change names a recorded proposal and
+acceptance; the reconciliation detects any other.</li>
+<li><strong>INV-2 — Keys are reachable from the signer alone.</strong> No web, API or storage-read code path can read key
+material; the build graph enforces it; keys are encrypted at rest and never leave the host unencrypted.</li>
+<li><strong>INV-3 — All network input is untrusted; no content-provided code executes; the prikk parser runs confined;
+every user-influenced URL is SSRF-filtered.</strong></li>
+<li><strong>INV-4 — Authorization is default-deny on every access path</strong>, enforced by one function and one test.</li>
+<li><strong>INV-5 — prikk is the source of truth; the service store and the cache are never authoritative for history;
+a verification badge is never served stale.</strong></li>
+<li><strong>INV-6 — Honesty of labels:</strong> nothing says <em>verified</em> unless prikk verified it just now; nothing implies a
+person signed cryptographically; held-for-review content is never shown as the record.</li>
+<li><strong>INV-7 — Content is data, never instructions; no AI holds authority.</strong></li>
+<li><strong>INV-8 — Removal is suppression plus a documented procedure, never a silent rewrite.</strong></li>
+<li><strong>INV-9 — The supply chain is pinned, minimized and audited; every crate forbids unsafe code.</strong></li>
+<li><strong>INV-10 — Attribution survives either store:</strong> the signed message and the service records agree, and
+disagreement is reported.</li>
+</ul>
+<h2 id="5-residual-risks-and-assumptions-rr--assume-"><a class="header" href="#5-residual-risks-and-assumptions-rr--assume-">5. Residual risks and assumptions (RR-…, ASSUME-…)</a></h2>
+<ul>
+<li><strong>RR-1 — The service holds the keys.</strong> A total compromise of the host or of the key-store secret lets an
+attacker seal history that prikk accepts, in every wiki whose keys they obtained. The ruling DR-4 accepts
+this for the sake of keyless participation; the controls make it bounded (per-wiki keys), detectable
+(reconciliation, independent witness), attributable (every seal says it is the service’s) and recoverable
+(rotation). This is the central difference from planeter and must be said plainly in SECURITY.md.</li>
+<li><strong>RR-2 — Secrets committed into pages</strong> are carried faithfully; rotation in the real world is the only
+remedy.</li>
+<li><strong>RR-3 — The prikk subprocess parses attacker-influenced bytes</strong> (paths, content, imported archives); a
+prikk parser fault is confined, not eliminated.</li>
+<li><strong>RR-4 — No second factor in v1</strong> on local accounts; an OpenID Connect provider that enforces one is the
+interim answer.</li>
+<li><strong>RR-5 — Social capture is bounded, not prevented.</strong> A faction holding the admin role can govern badly in
+the open; the model makes it visible and forkable, not impossible.</li>
+<li><strong>RR-6 — Removal is lossy.</strong> A legal removal changes the ids of affected history and breaks permalinks;
+the procedure says so.</li>
+<li><strong>RR-7 — Throttles and leases are per process</strong> in v1; a multi-replica deployment needs the proxy to
+throttle and a shared lease (operations RFC before 1.0).</li>
+<li><strong>ASSUME-1</strong> The operator and the host are trusted; inklkunn defends against network actors and malicious
+users, not a hostile operator.</li>
+<li><strong>ASSUME-2</strong> prikk’s offline <code>verify</code> is correct and is the arbiter of history integrity.</li>
+<li><strong>ASSUME-3</strong> planeter, when integrated, enforces its own invariants; inklkunn does not rely on planeter for
+any of its own.</li>
+</ul>
+<h2 id="6-controls--threats"><a class="header" href="#6-controls--threats">6. Controls × threats</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Control ↓ / Threat →</th><th>T-1</th><th>T-2</th><th>T-3</th><th>T-4</th><th>T-5</th><th>T-6</th><th>T-7</th><th>T-8</th><th>T-9</th><th>T-10</th><th>T-11</th><th>T-12</th><th>T-13</th><th>T-14</th><th>T-15</th><th>T-16</th></tr>
+</thead>
+<tbody>
+<tr><td>C-1 signer boundary, bound seals, keys at rest, witness, labels</td><td>●</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>○</td><td></td><td>○</td><td></td><td></td><td></td><td>○</td></tr>
+<tr><td>C-2 authentication</td><td></td><td>●</td><td>○</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>C-3 default-deny authz, scopes, constitution</td><td></td><td>○</td><td>●</td><td></td><td></td><td></td><td>○</td><td></td><td></td><td></td><td></td><td></td><td></td><td>○</td><td></td><td></td></tr>
+<tr><td>C-4 title→path, frontmatter subset, bounds, no execution</td><td></td><td></td><td></td><td>●</td><td>○</td><td></td><td></td><td></td><td>○</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>C-5 import handling</td><td></td><td></td><td></td><td>○</td><td>●</td><td></td><td></td><td></td><td>○</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>C-6 CSP, sanitizer, content origin</td><td></td><td>○</td><td></td><td></td><td></td><td>●</td><td>○</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>C-7 confidentiality</td><td></td><td></td><td>○</td><td></td><td></td><td></td><td>●</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>○</td><td></td></tr>
+<tr><td>C-8 egress guard</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>●</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>C-9 budgets, quotas, metering</td><td></td><td></td><td></td><td>○</td><td>○</td><td></td><td></td><td></td><td>●</td><td></td><td></td><td></td><td>○</td><td>○</td><td></td><td></td></tr>
+<tr><td>C-10 source of truth, reconciliation, rebuild</td><td>○</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>●</td><td></td><td>○</td><td></td><td></td><td></td><td></td></tr>
+<tr><td>C-11 supply chain</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>●</td><td></td><td>○</td><td></td><td></td><td></td></tr>
+<tr><td>C-12 attribution, audit</td><td>○</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>●</td><td></td><td>○</td><td></td><td></td></tr>
+<tr><td>C-13 AI outside authority, content as data</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>●</td><td>○</td><td></td><td></td></tr>
+<tr><td>C-14 visibility, friction, tombstones, constitution, metrics</td><td></td><td></td><td>○</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>○</td><td>●</td><td>○</td><td></td></tr>
+<tr><td>C-15 suppression, procedure, pseudonymity</td><td></td><td></td><td></td><td></td><td></td><td></td><td>○</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>●</td><td></td></tr>
+<tr><td>C-16 verified assertions, no key sharing</td><td>○</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>●</td></tr>
+</tbody>
+</table>
+</div>
+<p>(● primary, ○ contributing.)</p>
+<h2 id="7-what-must-be-tested-from-day-one"><a class="header" href="#7-what-must-be-tested-from-day-one">7. What must be tested from day one</a></h2>
+<p>INV-2 (a build gate on key reachability and a test that the web tier cannot obtain a signer with keys);
+INV-1 and INV-10 (the reconciliation, with a planted unrecorded seal and a planted unsealed acceptance);
+INV-4 (the route enumeration test); INV-3 (the title-to-path fuzz, a hostile bundle fixture, an SSRF fixture
+per fetch site); INV-5 and INV-6 (the cache-cleared rebuild; a stale badge never served; an open proposal
+never rendered as the record).</p>
+<p><em>End of Threat Model v0.1. Its headline is RR-1, stated so no one discovers it after depending on it: inklkunn
+holds its wikis’ signing keys by the owner’s ruling, and everything in this model is built to make that
+custody bounded, detectable, attributable and recoverable rather than invisible.</em></p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="inklkunn-02-external-design.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="inklkunn-04-internal-design.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="inklkunn-02-external-design.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="inklkunn-04-internal-design.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-09f2665d.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-609e4cb8.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

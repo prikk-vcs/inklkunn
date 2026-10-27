@@ -9,3 +9,7 @@
 - [External design](inklkunn-02-external-design.md)
 - [Threat model](inklkunn-03-threat-model.md)
 - [Internal design](inklkunn-04-internal-design.md)
+
+# Living records
+
+- [Upstream dependency ledger](inklkunn-upstream-dependency-ledger.md)

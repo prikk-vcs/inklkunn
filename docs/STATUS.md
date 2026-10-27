@@ -73,8 +73,10 @@ drafted next.
 
 | ID | Issue | Origin | Disposition |
 |---|---|---|---|
-| IS-1 | `README.md` is a one-line placeholder with a typo ("powerd") and does not follow the project's README structure | startup review 2026-10-24 | rewritten in M0 with the workspace, per the project rules' README structure |
-| IS-2 | The M0 spike on content-level merge (internal design MRG-4, roadmap R2) has no corpus yet | internal design 2026-10-27 | the RFC 001 handoff names the corpus to build (wiki-shaped edit histories) |
+| IS-1 | `README.md` is a one-line placeholder with a typo ("powerd") and does not follow the project's README structure | startup review 2026-10-24 | **closed 2026-10-27** (M0 T7): rewritten in the rules' structure |
+| IS-2 | The M0 spike on content-level merge (internal design MRG-4, roadmap R2) has no corpus yet | internal design 2026-10-27 | **closed 2026-10-27** (M0 T6): `tools/corpus` generates the histories deterministically from a seed; the spikes report carries the numbers |
+| IS-3 | prikk refuses repository paths over 1024 bytes, so the requirements' "depth 1,000" hierarchy target is unattainable and a deep title must be refused before `commit` | spike A generator 2026-10-27 | ledger PK-11; a lint and a refusal in RFC 004's handoff; an ask to prikk by letter (UD-10) |
+| IS-4 | The cost table's first multiples were planeter's 0.52.0 guesses | T3 2026-10-27 | **closed** by spike A's measurement on 0.54.1 (ledger PK-20; `cost.rs` `PROVISIONAL = false`) |
 
 ## Process lessons (keep)
 

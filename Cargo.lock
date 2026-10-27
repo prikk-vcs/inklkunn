@@ -208,6 +208,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "inklkunn-corpus"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "inklkunn-floor-check"
 version = "0.0.0"
 
