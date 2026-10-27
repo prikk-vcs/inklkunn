@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | The dated brief a new session reads **first**: where the project is, what is pending on whom, and the issue register. Updated at every milestone, RFC disposition and owner ruling. |
-| As of | 2026-10-27 — **RFCs 001, 002, 003 and 010 accepted**; **M0 built, reviewed and corrected** (the owner read the review requests and asked the architect to review them itself against the owner's two principles; four independent reviewing agents plus the architect's own read produced about eighty findings, all corrected on `main`; review requests **v2** filed); RFC 003's handoff v1 written; one letter to prikk drafted |
+| As of | 2026-10-28 — **M0 done: RFCs 001 and 010 approved and moved to `done/`** (review requests v2 approved by the owner); **RFCs 002 and 003 accepted**, 002's handoff assignable and 003's T1–T3 startable; prikk's reply on Unicode paths folded (ship percent-encoded; migrate later); release tags will be SSH-signed (pending the owner's public key) |
 | Read next | [`src/inklkunn-00-project-charter.md`](src/inklkunn-00-project-charter.md) → [`../ROADMAP.md`](../ROADMAP.md) → [`src/inklkunn-01-requirements-spec.md`](src/inklkunn-01-requirements-spec.md) → [`src/inklkunn-02-external-design.md`](src/inklkunn-02-external-design.md) → [`src/inklkunn-03-threat-model.md`](src/inklkunn-03-threat-model.md) → [`src/inklkunn-04-internal-design.md`](src/inklkunn-04-internal-design.md) → [`../rfcs/README.md`](../rfcs/README.md) |
 
 ## Where we are
@@ -66,14 +66,13 @@
 
 ## Pending on the owner
 
-- **Name a tag-signing key**, or confirm that releases stay unsigned tags for now (`RELEASING.md` withdrew
-  the "signed" claim; `release.yml` verifies a signature once a fingerprint is named).
-- **Dispose of the review requests v2** (Approved / Conditionally Approved / …), or ask a fresh session to.
-- Start the dev team when M0 is reviewed: its prepare task is `.git-exclude/tasks/dev-team/inklkunn-001-prepare.md`
-  (a fresh architect session has `.git-exclude/tasks/architect/inklkunn-001-prepare.md`).
-- Name the Japanese reviewers before the first catalog ships (DR-7).
-- Say whether the four kickoff documents the requirements transcript links exist anywhere; the work so far
-  assumes they do not.
+- **Add your SSH public key line to `release-signers.toml`** (`authorized_ssh_signers`) before the first
+  release; the decision to sign tags is taken (2026-10-28), only the key is missing (IS-6).
+- **Start the dev team**: M0 is approved; RFC 002's handoff is assignable and RFC 003's T1–T3 are startable.
+  Its prepare task is `.git-exclude/tasks/dev-team/inklkunn-001-prepare.md` (a fresh architect session has
+  `.git-exclude/tasks/architect/inklkunn-001-prepare.md`).
+- Name the Japanese reviewers before the first catalog ships (DR-7; Japanese is compiled in as a preview
+  until then).
 
 ## Pending upstream
 
@@ -85,10 +84,13 @@
 
 ## Next
 
-M0's two handoffs are implemented, reviewed and corrected; their review requests **v2** are filed. On the
-owner's disposition: RFC 002's handoff is assigned (the real signer and key store, the roles; its "Notes from
-M0's review" are binding), RFC 003's handoff T1–T3 are startable, and RFC 004 (proposals, with the block-aware
-merge the spike justified) is drafted. The reworked `release.yml` was rehearsed on `d90f901`
+M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). The dev team takes RFC 002's handoff (the real
+signer and key store, the roles; its "Notes from M0's review" are binding) and RFC 003's handoff T1–T3 (the web
+skeleton and headers, the catalog and the structural tests, the read service and caches); T4 onward follows
+002's T2. The architect drafts RFC 004 (proposals, with the block-aware merge the spike justified) and prepares
+the M1 re-baseline (the single-large-attachment shape). The four kickoff documents the requirements transcript
+linked do not exist (owner, 2026-10-28): the transcripts under `.git-exclude/specs/` are the complete startup
+input, all in English. The reworked `release.yml` was rehearsed on `d90f901`
 ([run 40490072717](https://github.com/prikk-vcs/inklkunn/actions/runs/40490072717)): gates with both test
 passes, binaries for both architectures, images for both, the manifest list; release and crates skipped as
 the mode requires. CI is green from `d0a8307` on ([run 40489623629](https://github.com/prikk-vcs/inklkunn/actions/runs/40489623629)).
@@ -102,7 +104,7 @@ the mode requires. CI is green from `d0a8307` on ([run 40489623629](https://gith
 | IS-3 | prikk refuses repository paths over 1024 bytes (and components over 255), so the requirements' "depth 1,000" hierarchy target is unattainable and a deep title must be refused before `commit` | spike A generator 2026-10-27 | **a documented, stable prikk rule** (`reference/path-safety.md`, RFC 125 §3), so no letter: ledger PK-11; `title_to_path` refuses over either cap (RFC 003's handoff T3); a lint before the refusal (RFC 004's handoff) |
 | IS-4 | The cost table's first multiples were planeter's 0.52.0 guesses | T3 2026-10-27 | **closed** by spike A's measurement on 0.54.1 (ledger PK-20; `cost.rs` `PROVISIONAL = false`) |
 | IS-5 | prikk refuses non-ASCII repository paths ("deferred until Unicode NFC normalization is implemented"), so a title in another script has no native path | M0 review 2026-10-27 | **decided 2026-10-28**: prikk replied (design round in 0.56.0, implementation ≥ 0.57.0, no date); inklkunn ships with percent-encoded paths (ledger PK-21) and plans native paths as a migration when prikk's design lands; stays open as a tracked migration, not as a defect |
-| IS-6 | The release tags were called signed but no signature was verified | M0 review 2026-10-27 | the claim is withdrawn (`RELEASING.md`); an owner decision names a key, then `release.yml` verifies it |
+| IS-6 | The release tags were called signed but no signature was verified | M0 review 2026-10-27 | **decided 2026-10-28**: tags are SSH-signed by the owner's key and `release.yml` verifies them against `release-signers.toml`; the step reports *pending* until the owner adds the public key, which closes this item |
 
 ## Process lessons (keep)
 

@@ -1,8 +1,10 @@
 # Releasing inklkunn
 
-Releases are **bare version tags** (`X.Y.Z`) pushed by the owner; `release.yml` does the rest. (Tag
-signing: the workflow verifies no signature yet; it starts to once the owner names a signing key, an open
-owner decision in `docs/STATUS.md`.) Until 1.0 the
+Releases are **signed bare version tags** (`X.Y.Z`) pushed by the owner; `release.yml` does the rest. The
+signature is an SSH signature by a key the owner holds outside CI, verified against the public keys in
+`release-signers.toml` (decided 2026-10-28). Until the owner's public key is in that file the verification
+step reports *pending* and the release builds unsigned (`docs/STATUS.md`, IS-6); the first key added makes
+it mandatory. Until 1.0 the
 minor version moves at each milestone (roadmap §milestones) and the patch version for fixes. Nothing is
 released from M0; this document exists so that the first release is a rehearsed act, not a first attempt.
 
@@ -26,12 +28,16 @@ released from M0; this document exists so that the first release is a rehearsed 
 
 ## The tag (owner)
 
+Once, on the signing machine: `git config gpg.format ssh` and `git config user.signingkey ~/.ssh/<key>.pub`;
+the same public key line goes into `release-signers.toml` (`authorized_ssh_signers`) on `main` before the tag.
+
 ```sh
-git tag X.Y.Z <release-candidate commit>
+git tag -s X.Y.Z <release-candidate commit> -m "inklkunn X.Y.Z"
 git push origin X.Y.Z
 ```
 
-The architect prepares; **only the owner tags** (RFC 010 D-10; the project rules).
+The architect prepares; **only the owner tags** (RFC 010 D-10; the project rules). A lightweight or
+unauthorized tag fails the gates job before anything is built.
 
 ## What the workflow does
 
