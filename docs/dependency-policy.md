@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | The rules that produce inklkunn's dependency tree, and the record of every supply-chain decision (accepted with its measured cost, rejected with its reason), so settled battles are not refought and new ones are decided the same way. |
-| As of | 2026-10-27 (lock: 79 crates after the markup, prikk and store crates' dependencies) |
+| As of | 2026-10-28 (lock: 80 entries — 68 external crates and the 12 workspace members) |
 | Basis | RFC 010 D-5 (the triage ladder), D-6 (this policy and ledger), D-9 (the pinned build chain); threat model T-11, INV-9; planeter's dependency policy, whose settled rejections are carried in as evidence |
 
 ## Rules
@@ -34,6 +34,7 @@
 
 | Date | Crate(s) | Cost (lock) | Notes |
 |---|---|---|---|
+| 2026-10-28 | `inklkunn-store` as a runtime dependency of `inklkunn-signer`; `proptest` 1 (dev-only) in `inklkunn-signer` — handoff 002 T5 | 80 → 80 (+0: a workspace-internal edge, and a crate already locked for `inklkunn-markup`'s tests); deny: advisories, bans, licenses, sources ok (exit 0); audit: 0 vulnerabilities, 1,380 advisories, 80 crates (exit 0); new licenses: none | The signer composes and re-parses the patch message (RFC 002 D-5) and, from T3 on, names key files by wiki id: both need the validated identifiers and `DisplayName`, which live in the lower `inklkunn-store`. Both crates are lower-layer, so the layering gate allows the edge; the key-reachability gate constrains who depends on the signer and is unaffected. |
 | 2026-10-27 | `inklkunn-signer` and `inklkunn-core`: no external crate | 79 → 79 (+0) | The signer drives prikk's write verbs through the same sandbox; the egress guard parses URLs and classifies addresses with `std::net` alone (no `url` crate: the guard needs scheme, host and port, and refuses userinfo and anything it cannot read, which a lenient parser would accept). |
 | 2026-10-27 | `rusqlite` 0.40 (`bundled`, no default features) — runtime of `inklkunn-store` | 69 → 79 (+10: `rusqlite`, `libsqlite3-sys`, `fallible-iterator`, `fallible-streaming-iterator`, `smallvec`; build-time `cc`, `find-msvc-tools`, `pkg-config`, `shlex`, `vcpkg`); deny ok; audit: 0 vulnerabilities; new licenses: none (MIT, MIT OR Apache-2.0) | RFC 001 D-8, internal design IQ-5: SQLite first, the PostgreSQL path kept by the trait. `bundled` compiles SQLite from source so the floor does not depend on the host's library (planeter's choice, 2026-09-23). `rusqlite`'s own tree is 5 crates; the other 5 are the C build. |
 | 2026-10-27 | `serde` 1, `serde_json` 1 — runtime of `inklkunn-prikk` (the typed `--format json` reports) | 69 → 69 (+0: both already in the tree for `inklkunn-markup`); deny ok; audit: 0 vulnerabilities | RFC 001 D-3. No crate for the sandbox or the ceiling: `bwrap` and `prlimit` are confined subprocesses (rule 4), as in planeter. |

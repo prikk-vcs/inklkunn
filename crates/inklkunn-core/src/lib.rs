@@ -6,6 +6,8 @@
 //!   with RFC 002's handoff).
 //! - [`accept`]: the `Accept` trait (RFC 002 D-4's signature; the signer implements it; nothing else may).
 //! - [`assurance`]: the honesty view-model values (RFC 002 D-6).
+//! - [`message`]: the patch message, the attribution contract written into every signed change (CT-03;
+//!   RFC 002 D-5). The grammar lives in `inklkunn-signer`, which enforces it, and is re-exported here.
 //! - [`egress`]: the one egress guard for every outbound fetch (threat model C-8).
 //! - [`bundle`] and [`wiki`]: the repository layout (external design CT-02) and *create wiki*.
 
@@ -15,6 +17,8 @@ pub mod authorize;
 pub mod bundle;
 pub mod egress;
 pub mod wiki;
+
+pub use inklkunn_signer::message;
 
 pub use accept::{
     Accept, AcceptError, AcceptanceToken, PreparedChange, PreparedFile, SealedChange,

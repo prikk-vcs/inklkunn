@@ -128,3 +128,75 @@ fn records_fill_defaults_and_validate_free_text() {
         Some(NewWikiError::PolicyBootstrap)
     );
 }
+
+#[test]
+fn account_and_proposal_ids_follow_the_wiki_id_rules() {
+    let a = AccountId::new();
+    assert_eq!(a.as_str().len(), 36);
+    assert_eq!(a.as_str().as_bytes().get(14), Some(&b'7'), "{a}");
+    assert_eq!(AccountId::parse(a.as_str()), Some(a.clone()));
+    assert_eq!(AccountId::parse("anonymous"), None);
+    assert_eq!(AccountId::parse("system"), None);
+    assert_eq!(AccountId::parse(&a.as_str().to_uppercase()), None);
+    assert_eq!(AccountId::parse(&format!("{a} ")), None);
+    let p = ProposalId::new();
+    assert_eq!(ProposalId::parse(p.as_str()), Some(p.clone()));
+    // Fresh ids are distinct, and the two kinds are separate types: an account id is not a proposal id
+    // even when the text is the same (the compiler refuses mixing them; this checks the values differ).
+    assert_ne!(a.as_str(), p.as_str());
+    let mut seen = std::collections::BTreeSet::new();
+    for _ in 0..1000 {
+        assert!(seen.insert(AccountId::new()));
+    }
+}
+
+#[test]
+fn account_and_proposal_ids_deserialize_only_through_validation() {
+    for bad in [
+        "\"../../etc\"",
+        "\"\"",
+        "\"system\"",
+        "\"A0000000-0000-7000-8000-000000000001\"",
+    ] {
+        assert!(serde_json::from_str::<AccountId>(bad).is_err(), "{bad}");
+        assert!(serde_json::from_str::<ProposalId>(bad).is_err(), "{bad}");
+    }
+    let id: AccountId = serde_json::from_str("\"019a0000-0000-7000-8000-000000000002\"")
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        serde_json::to_string(&id).unwrap_or_default(),
+        "\"019a0000-0000-7000-8000-000000000002\""
+    );
+}
+
+#[test]
+fn a_display_name_has_no_line_break_of_any_kind() {
+    // LF, CR, NEL are controls; U+2028 and U+2029 are not, yet readers that split lines on them would see
+    // a forged trailer inside a signed message (found writing the patch-message contract, RFC 002 D-5).
+    for bad in [
+        "a\nb",
+        "a\rb",
+        "a\u{85}b",
+        "a\u{2028}b",
+        "a\u{2029}b",
+        "a\tb",
+        "a\0b",
+        "a\u{7f}b",
+    ] {
+        assert_eq!(
+            DisplayName::new(bad),
+            Err(DisplayNameError::Control),
+            "{bad:?}"
+        );
+    }
+    // Other marks stay: a display name is any script, with the punctuation people use.
+    for ok in [
+        "Aiko Tanaka",
+        "日本語 (にほんご)",
+        "قارئ",
+        "O'Brien-Smith, Jr.",
+        "a\u{200b}b",
+    ] {
+        assert!(DisplayName::new(ok).is_ok(), "{ok:?}");
+    }
+}

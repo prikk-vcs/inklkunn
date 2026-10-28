@@ -52,3 +52,15 @@ M0 — foundations (RFC 001, RFC 010). Nothing serves pages yet.
 - **Conventions and ledgers** (RFC 001 D-11; RFC 010): README, this changelog, `SECURITY.md` stating RR-1, the
   dependency policy with a generated lock inventory that a test keeps equal to `Cargo.lock`, the upstream
   dependency ledger (PK/PL/WC rows), `docs/UPSTREAM.md`, `docs/RELEASING.md`, the mdBook.
+
+RFC 002 and RFC 003 — the first handoffs after M0, in progress. Still nothing serves pages.
+
+- **The patch message** (RFC 002 D-5; handoff 002 T5). One grammar, in `inklkunn-signer::message` and
+  re-exported as `inklkunn-core::message`, writes and reads what every signed change carries: a one-line
+  summary of at most 120 characters, then `Proposal`, `Proposed-By`, `Accepted-By`, `Base`, `Kind` and
+  `Imported-From` once each in that order, for the four kinds (proposal, rollback, import, system). The parser
+  is strict and total: only canonical text parses, and an error never repeats the text it refused. A real
+  prikk returns a sealed change's message byte for byte, which a test checks for every kind. The text M0
+  wrote for a created wiki still parses.
+  *Output change:* `DisplayName` now refuses U+2028 and U+2029 as well as controls, as its error text always
+  said: a reader that splits lines on them would otherwise see a forged trailer in a signed message.

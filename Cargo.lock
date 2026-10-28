@@ -252,6 +252,8 @@ version = "0.0.0"
 dependencies = [
  "inklkunn-prikk",
  "inklkunn-signer",
+ "inklkunn-store",
+ "proptest",
 ]
 
 [[package]]

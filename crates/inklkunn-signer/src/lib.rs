@@ -24,6 +24,8 @@ mod keys;
 #[cfg_attr(not(feature = "bootstrap"), allow(dead_code))]
 mod writes;
 
+pub mod message;
+
 #[cfg(feature = "bootstrap")]
 pub mod bootstrap;
 

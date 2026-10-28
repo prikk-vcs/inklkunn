@@ -25,7 +25,8 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Lower crates: depend on nothing in the workspace except, for the signer, the driver.
+/// Lower crates: depend on nothing in the workspace above them. The signer depends on the driver (the sandbox,
+/// the typed reports) and on the store (the validated identifiers it may put in a path or a signed message).
 pub const LOWER: &[&str] = &["inklkunn-prikk", "inklkunn-signer", "inklkunn-store"];
 /// Core crates: may depend on lower crates and on each other, never on upper ones.
 pub const CORE: &[&str] = &["inklkunn-markup", "inklkunn-core", "inklkunn-auth"];

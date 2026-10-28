@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use inklkunn_prikk::{Storage, StorageError};
 pub use inklkunn_signer::RepositoryBootstrap;
+use inklkunn_signer::message::{Message, Summary, SystemLabel};
 use inklkunn_store::{
     NewWiki, RootLayout, StoreError, Verification, VerificationState, WikiId, WikiRecord, WikiStore,
 };
@@ -124,26 +125,15 @@ pub struct CreatedWiki {
     pub first_block_id: String,
 }
 
-/// The longest summary line CT-03 allows (RFC 002 D-5).
-pub const SUMMARY_MAX_CHARS: usize = 120;
+pub use inklkunn_signer::message::SUMMARY_MAX_CHARS;
 
-/// A CT-03 message for a change the service itself makes (`Kind: system`): the summary line (cut to
-/// [`SUMMARY_MAX_CHARS`] characters, never containing a line break), an empty line, then the trailers in
-/// RFC 002 D-5's order. A system change has no proposal and no base, so those trailers are absent; the
-/// composer for proposals is RFC 002's handoff (T5), which this function will then call.
+/// A CT-03 message for a change the service itself makes (`Kind: system`): the summary line (made one line
+/// and cut to [`SUMMARY_MAX_CHARS`] characters by [`Summary::from_text`]), an empty line, then the trailers
+/// in RFC 002 D-5's order. A system change has no proposal and no base, so those trailers are absent. The
+/// text is [`Message::to_text`] of a system message: one grammar writes it and reads it back.
 pub fn system_message(summary: &str) -> String {
-    let one_line: String = summary
-        .chars()
-        .map(|c| if c.is_control() { ' ' } else { c })
-        .collect();
-    let mut cut: String = one_line.chars().take(SUMMARY_MAX_CHARS).collect();
-    if cut.chars().count() < one_line.chars().count() {
-        cut.pop();
-        cut.push('…');
-    }
-    format!(
-        "{cut}\n\nProposed-By: system (inklkunn)\nAccepted-By: system (inklkunn)\nKind: system\n"
-    )
+    let summary = Summary::from_text(summary).unwrap_or_else(|_| Summary::system_change());
+    Message::system(summary, SystemLabel::inklkunn()).to_text()
 }
 
 /// The message of the change that creates a wiki.

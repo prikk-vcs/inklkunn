@@ -16,8 +16,8 @@ pub mod sqlite;
 
 pub use memory::MemoryStore;
 pub use record::{
-    DisplayName, DisplayNameError, NewWiki, NewWikiError, Slug, SlugError, Verification,
-    VerificationState, Visibility, WikiId, WikiRecord,
+    AccountId, DisplayName, DisplayNameError, NewWiki, NewWikiError, ProposalId, Slug, SlugError,
+    Verification, VerificationState, Visibility, WikiId, WikiRecord,
 };
 pub use root::RootLayout;
 pub use sqlite::SqliteStore;

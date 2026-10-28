@@ -15,9 +15,13 @@ bootstrap = []
 
 [dependencies]
 inklkunn-prikk = { path = "../inklkunn-prikk", version = "0.0.0" }
+# The validated identifiers (`WikiId`, `AccountId`, `ProposalId`) and `DisplayName`: what the signer may
+# put in a path or a signed message is exactly what these types let through (both crates are lower-layer).
+inklkunn-store = { path = "../inklkunn-store", version = "0.0.0" }
 
 [dev-dependencies]
 inklkunn-signer = { path = ".", version = "0.0.0", features = ["bootstrap"] }
+proptest = { workspace = true }
 
 [lints]
 workspace = true

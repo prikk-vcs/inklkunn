@@ -114,6 +114,76 @@ impl From<WikiId> for String {
     }
 }
 
+/// Define an opaque UUID-v7 identifier with the same rules as [`WikiId`]: drawn fresh with `new`, accepted
+/// back only through `parse` (36 lower-case hex-and-hyphen characters in UUID layout), and deserialized only
+/// through that validation, so a malformed id is refused wherever it arrives and can never reach a path, a
+/// signed message or a query unchecked.
+macro_rules! uuid_id {
+    ($(#[$meta:meta])* $name:ident) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+        #[serde(try_from = "String", into = "String")]
+        pub struct $name(String);
+
+        impl $name {
+            /// A fresh id.
+            pub fn new() -> Self {
+                $name(uuid_v7())
+            }
+
+            /// Parse a stored id; refused unless it is 36 lower-case hex-and-hyphen characters in UUID
+            /// layout.
+            pub fn parse(s: &str) -> Option<Self> {
+                is_uuid_shape(s).then(|| $name(s.to_owned()))
+            }
+
+            /// The text form.
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl Default for $name {
+            fn default() -> Self {
+                Self::new()
+            }
+        }
+
+        impl fmt::Display for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str(&self.0)
+            }
+        }
+
+        impl TryFrom<String> for $name {
+            type Error = String;
+            fn try_from(s: String) -> Result<Self, String> {
+                $name::parse(&s).ok_or_else(|| {
+                    "not an id (36 lower-case hex-and-hyphen characters)".to_owned()
+                })
+            }
+        }
+
+        impl From<$name> for String {
+            fn from(id: $name) -> String {
+                id.0
+            }
+        }
+    };
+}
+
+uuid_id! {
+    /// The opaque account id (RFC 002 D-1): stable for the life of the account, whatever its display name
+    /// becomes. It is the person's name inside signed patch messages (CT-03), so it is an identifier and
+    /// never a name, an address or anything a person chose.
+    AccountId
+}
+
+uuid_id! {
+    /// The opaque proposal id (RFC 004's records; named now because the signed patch message carries it).
+    ProposalId
+}
+
 /// Why a slug was refused.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SlugError {
@@ -242,8 +312,9 @@ impl fmt::Display for DisplayNameError {
 
 impl std::error::Error for DisplayNameError {}
 
-/// A wiki's display name: one free-text field in any script (RFC 002 D-1), 1–120 characters, no control
-/// characters, trimmed. It enters the signed creation message's first line and the bundle manifest, so
+/// A display name (a wiki's, and a person's in a signed message): one free-text field in any script
+/// (RFC 002 D-1), 1–120 characters, no control characters or line breaks (U+2028 and U+2029 included),
+/// trimmed. It enters the signed creation message's first line and the bundle manifest, so
 /// the type is the guarantee that neither can be broken by a name.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -256,7 +327,12 @@ impl DisplayName {
         if n == 0 || n > 120 {
             return Err(DisplayNameError::Length);
         }
-        if s.chars().any(char::is_control) {
+        // A line break is more than LF: U+2028 and U+2029 end a line for readers that split on them (and a
+        // name reaches a signed message that anyone may read with any tool), so they are refused with the
+        // control characters.
+        if s.chars()
+            .any(|c| c.is_control() || matches!(c, '\u{2028}' | '\u{2029}'))
+        {
             return Err(DisplayNameError::Control);
         }
         if s.trim() != s {
