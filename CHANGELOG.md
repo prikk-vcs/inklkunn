@@ -118,3 +118,27 @@ RFC 002 and RFC 003 — the first handoffs after M0, in progress. Still nothing 
   a fixed word to the audit trail (outcome *reported*), never a message, a name or a path. Tested against a
   fake storage for every finding and against a real prikk history, where it also leaves the history and the
   current view as they were.
+- **Principals and credentials** (RFC 002 D-1; handoff 002 T1; the owner's ruling DR-9). `inklkunn-auth` turns a
+  presented credential into a principal. *Local passwords* are Argon2id (19 MiB, two passes) in the PHC format,
+  NFKC-normalised, with a cost ceiling on what a stored hash may ask for; a new password has ten characters
+  and no composition rule. *Sign-in is constant-work*: past the throttles every attempt does exactly one
+  verification (against a dummy hash made at start when there is no password to check), after taking a permit
+  from a bounded gate, and unknown name, wrong password, disabled account and correct-password-for-a-disabled-account
+  are one answer. *Throttles* count failures per sign-in name as typed (so a made-up name locks exactly like a
+  real one) and per client address (an IPv4 address or an IPv6 /64), five and thirty failures lock for fifteen
+  minutes, a correct password is refused while locked, and the address comes from `X-Forwarded-For` only when
+  the peer is a declared trusted proxy. *Sessions* are opaque random ids kept only as a hash, in
+  `__Host-` cookies that are `Secure`, `HttpOnly` and `SameSite=Strict`, each with its own CSRF token (a
+  double-submit cookie for the sign-in form), a new one at every sign-in, ended by a new password or a disabling.
+  *API tokens* are `ink_` plus 256 random bits, kept as a hash, with a scope, a lifetime of at most a year and
+  a day, and a revocation; a token's principal carries its scope, which `authorize()` intersects with the
+  account's role (a test runs every scope, role, visibility and action). *OpenID Connect* is the authorization
+  code flow with PKCE: one-shot server-side state that must also be in the browser's state cookie (login CSRF),
+  ID tokens verified by `kid` against the provider's keys with `jsonwebtoken` on the `aws_lc_rs` backend (RS256,
+  ES256, ES384, EdDSA only; issuer, audience, `azp`, times and nonce checked; the provider's keys refetched
+  for an unknown `kid` at most once a minute); an identity nobody linked signs nobody in, and an e-mail
+  address is only a hint. The network is reached through one seam, `HttpsFetcher`, and the token verifier is a
+  seam with a test double. The store gains accounts, linked identities, sessions and tokens (schema version 4,
+  with `CHECK` and foreign-key rules in the database). Dependencies: `jsonwebtoken` (`aws_lc_rs`) and `sha2`
+  (+27 lock entries, measured, `rsa` and `crypto-bigint` absent, no advisory ignored; see the dependency
+  policy).

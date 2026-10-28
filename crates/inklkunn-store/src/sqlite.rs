@@ -9,6 +9,8 @@
 //! a second process (a command-line run beside the service) cannot slip between a check and a write; a
 //! slug or id already taken is reported as exactly that.
 
+mod identity;
+
 use std::path::Path;
 use std::sync::{Mutex, PoisonError};
 
@@ -22,7 +24,7 @@ use crate::record::{
 use crate::{Result, StoreError, WikiStore};
 
 /// The schema version this build writes and reads: the last of [`MIGRATIONS`].
-pub const SCHEMA_VERSION: i64 = 3;
+pub const SCHEMA_VERSION: i64 = 4;
 
 /// Version 1: M0's schema, the wiki records.
 const V1: &str = "
@@ -84,9 +86,54 @@ CREATE TRIGGER IF NOT EXISTS audit_log_no_delete BEFORE DELETE ON audit_log
 BEGIN SELECT RAISE(ABORT, 'the audit log is append-only'); END;
 ";
 
+/// Version 4: accounts, the external identities linked to them, browser sessions and API tokens (RFC 002
+/// D-1). A password is an Argon2id PHC string and a session id or a token is the SHA-256 of what the client
+/// holds, so a copy of this file opens no session and reveals no token. An account has a password and a
+/// sign-in name together or neither (`CHECK`); a name is unique; an external identity belongs to at most one
+/// account; a token's scope is one of the five (`CHECK`). Foreign keys are enforced.
+const V4: &str = "
+CREATE TABLE IF NOT EXISTS accounts (
+    id            TEXT PRIMARY KEY,
+    display_name  TEXT NOT NULL,
+    login         TEXT UNIQUE,
+    password_hash TEXT,
+    created_at    INTEGER NOT NULL,
+    disabled      INTEGER NOT NULL DEFAULT 0 CHECK (disabled IN (0, 1)),
+    CHECK ((login IS NULL) = (password_hash IS NULL))
+);
+CREATE TABLE IF NOT EXISTS account_identities (
+    issuer     TEXT NOT NULL,
+    subject    TEXT NOT NULL,
+    account_id TEXT NOT NULL REFERENCES accounts(id),
+    linked_at  INTEGER NOT NULL,
+    PRIMARY KEY (issuer, subject)
+);
+CREATE INDEX IF NOT EXISTS account_identities_account ON account_identities(account_id);
+CREATE TABLE IF NOT EXISTS sessions (
+    id_hash    TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL REFERENCES accounts(id),
+    csrf       TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sessions_account ON sessions(account_id);
+CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires_at);
+CREATE TABLE IF NOT EXISTS api_tokens (
+    id         TEXT PRIMARY KEY,
+    hash       TEXT NOT NULL UNIQUE,
+    account_id TEXT NOT NULL REFERENCES accounts(id),
+    scope      TEXT NOT NULL CHECK (scope IN ('read', 'propose', 'review', 'accept', 'admin')),
+    label      TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER,
+    revoked_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS api_tokens_account ON api_tokens(account_id);
+";
+
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and
 /// [`SCHEMA_VERSION`] moves with it (a test holds the two together).
-pub const MIGRATIONS: &[(i64, &str)] = &[(1, V1), (2, V2), (3, V3)];
+pub const MIGRATIONS: &[(i64, &str)] = &[(1, V1), (2, V2), (3, V3), (4, V4)];
 
 /// The SQLite-backed store.
 #[derive(Debug)]
@@ -210,7 +257,7 @@ impl SqliteStore {
     }
 
     fn init(mut conn: Connection, file_backed: bool) -> Result<Self> {
-        conn.execute_batch("PRAGMA busy_timeout=5000;")
+        conn.execute_batch("PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;")
             .map_err(backend)?;
         if file_backed {
             let mode: String = conn

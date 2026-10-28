@@ -184,6 +184,12 @@ uuid_id! {
     ProposalId
 }
 
+uuid_id! {
+    /// The opaque id of an API token: what a listing and a revocation name. It is not the token, which is
+    /// shown once at issue and kept only as a hash.
+    TokenId
+}
+
 /// Why a slug was refused.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SlugError {

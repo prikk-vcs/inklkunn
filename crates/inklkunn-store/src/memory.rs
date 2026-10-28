@@ -1,5 +1,7 @@
 //! The in-memory store: tests, and the reference the SQLite store must agree with.
 
+mod identity;
+
 use std::sync::{Mutex, PoisonError};
 
 use crate::access::{Role, RoleGrant, RoleStore};
@@ -11,6 +13,7 @@ use crate::{Result, StoreError, WikiStore};
 pub struct MemoryStore {
     records: Mutex<Vec<WikiRecord>>,
     grants: Mutex<Vec<RoleGrant>>,
+    identities: Mutex<identity::Identities>,
 }
 
 impl MemoryStore {

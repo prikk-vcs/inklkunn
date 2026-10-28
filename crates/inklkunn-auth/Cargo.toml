@@ -8,7 +8,32 @@ authors.workspace = true
 repository.workspace = true
 description = "inklkunn's authentication: accounts, sessions, tokens, OpenID Connect, throttles and hashing. Its output is a principal; authorize() is inklkunn-core's."
 
+[features]
+# Knobs this crate's own tests turn (a cheap password hash, a hasher double). Never enabled by a product
+# crate; the boundary gate fails if one does.
+test-knobs = []
+
 [dependencies]
+inklkunn-core = { workspace = true }
+inklkunn-store = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+unicode-normalization = { workspace = true }
+# Argon2id (RFC 9106) for local passwords, in the PHC string format; salts come from /dev/urandom (random.rs),
+# so none of password-hash's RNG features is on.
+argon2 = { version = "0.5", default-features = false, features = ["alloc", "password-hash"] }
+# SHA-256: the stored form of a session id or an API token, and the PKCE challenge (RFC 7636 S256).
+sha2 = "0.10"
+# Constant-time comparison of CSRF tokens and OpenID Connect nonces.
+subtle = "2"
+base64ct = { version = "1", features = ["alloc"] }
+# OpenID Connect ID-token verification: the aws_lc_rs backend, the owner's ruling DR-9 (2026-10-28). No
+# advisory is ignored for it, and neither `rsa` nor `crypto-bigint` is in the lock. Default features are
+# off: `use_pem` and the rust_crypto backend are not wanted (verification uses JWKs only).
+jsonwebtoken = { version = "11", default-features = false, features = ["aws_lc_rs"] }
+
+[dev-dependencies]
+inklkunn-auth = { path = ".", version = "0.0.0", features = ["test-knobs"] }
 
 [lints]
 workspace = true

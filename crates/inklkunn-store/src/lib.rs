@@ -6,6 +6,8 @@
 //! - [`record`]: the wiki record and its vocabulary; validated slugs, display names and ids.
 //! - [`root`]: `<root>/<shard>/<wiki id>/`, never the wiki's name, so renames move no bytes.
 //! - [`access`]: roles, token scopes and the role grants (RFC 002 D-1, D-2).
+//! - [`identity`]: accounts, external identities, browser sessions and API tokens, as the service keeps them
+//!   (RFC 002 D-1): hashes and ids, never a secret in the form a client holds it.
 //! - [`audit`]: the shape of the audit trail and its sink trait (RFC 002 D-9).
 //! - [`WikiStore`] and [`RoleStore`]: the traits; [`MemoryStore`] for tests and [`SqliteStore`] for service.
 //!
@@ -13,6 +15,7 @@
 
 pub mod access;
 pub mod audit;
+pub mod identity;
 pub mod memory;
 pub mod record;
 pub mod root;
@@ -22,10 +25,14 @@ pub use access::{Role, RoleGrant, RoleStore, Scope};
 pub use audit::{
     AuditEvent, AuditLog, AuditOutcome, AuditRecord, AuditSink, MemoryAudit, export_jsonl,
 };
+pub use identity::{
+    Account, AccountStore, ExternalIdentity, ExternalIdentityError, LocalCredential, LoginName,
+    LoginNameError, SessionRecord, SessionStore, TokenRecord, TokenStore,
+};
 pub use memory::MemoryStore;
 pub use record::{
     AccountId, DisplayName, DisplayNameError, NewWiki, NewWikiError, ProposalId, Slug, SlugError,
-    Verification, VerificationState, Visibility, WikiId, WikiRecord,
+    TokenId, Verification, VerificationState, Visibility, WikiId, WikiRecord,
 };
 pub use root::RootLayout;
 pub use sqlite::SqliteStore;
@@ -44,6 +51,12 @@ pub enum StoreError {
     InvalidSlug(SlugError),
     /// A creation request's free-text field is not valid (see [`NewWikiError`]).
     InvalidRequest(NewWikiError),
+    /// No account has this id.
+    AccountNotFound,
+    /// Another account already signs in with this name.
+    LoginTaken(String),
+    /// Another account is already linked to this external identity.
+    IdentityTaken,
     /// The database was written by a newer build (or holds a value this build cannot read); refused
     /// before anything is changed.
     SchemaVersion {
@@ -64,6 +77,11 @@ impl std::fmt::Display for StoreError {
             StoreError::IdTaken(s) => write!(f, "the id `{s}` is taken"),
             StoreError::InvalidSlug(e) => write!(f, "invalid slug: {e}"),
             StoreError::InvalidRequest(e) => write!(f, "invalid request: {e}"),
+            StoreError::AccountNotFound => write!(f, "no such account"),
+            StoreError::LoginTaken(s) => write!(f, "the sign-in name `{s}` is taken"),
+            StoreError::IdentityTaken => {
+                write!(f, "that external identity is linked to another account")
+            }
             StoreError::SchemaVersion { found, known } => write!(
                 f,
                 "the database has schema version `{found}`; this build knows {known} and will not touch it"
