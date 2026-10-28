@@ -99,10 +99,9 @@ fn callouts_tags_directives_and_block_ids() {
         h.contains(r#"<a class="tag" href="/tags/one" data-tag="one">#one</a>"#),
         "{h}"
     );
-    assert!(
-        h.contains(r#"<span class="block-id" id="^p1"></span>"#),
-        "{h}"
-    );
+    // MKUP-12: the identifier is an attribute of the block it ends, with no marker beside it.
+    assert!(h.contains(r#"<p id="^p1">Para "#), "{h}");
+    assert!(!h.contains("block-id"), "{h}");
     assert!(
         h.contains(
             r#"<div class="directive directive-toc" data-directive="toc" data-attr-depth="2">"#

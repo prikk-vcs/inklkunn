@@ -387,7 +387,7 @@ fn refusals_carry_prikks_text_and_a_missing_repository_is_refused() {
     );
     let not_a_repo = d.views(&tmp.0);
     assert!(
-        matches!(&not_a_repo, Err(StorageError::Refused { verb: "branch", kind: Some(k), message }) if k == "driver:no-repository" && !message.contains(&*tmp.0.to_string_lossy())),
+        matches!(&not_a_repo, Err(StorageError::Refused { verb: "branch", kind: Some(k), message, .. }) if k == "driver:no-repository" && !message.contains(&*tmp.0.to_string_lossy())),
         "{not_a_repo:?}"
     );
     let too_big = d.read(&repo, &main, "pages/Home.md", 4);
@@ -498,6 +498,102 @@ fn retry<T: std::fmt::Debug>(
 }
 
 #[test]
+fn a_size_hint_stands_in_for_the_walk_and_never_vouches_for_a_repository() {
+    let tmp = TempDir::new("hints");
+    let repo = tmp.0.join("repo");
+    fs::create_dir_all(repo.join(".prikk")).unwrap();
+    fs::write(repo.join(".prikk/blob"), vec![0u8; 1024]).unwrap();
+    let fake = shim(
+        &tmp.0,
+        r#"case "$1" in
+  --version) echo 'prikk 0.54.0' ;;
+  branch) echo '{"schema_version": "branch-list-v1", "branches": []}' ;;
+  *) echo '{}' ;;
+esac"#,
+    );
+    let hints = inklkunn_prikk::SizeHints::new();
+    let d = open_shim(&fake)
+        .expect("open")
+        .with_size_hints(hints.clone());
+
+    // No hint: the walk finds 1 KiB, a `tree` costs the floor and is admitted (the shim then answers
+    // something that is not a tree, which is damaged output and not a refusal to admit).
+    let walked = retry(|| d.tree(&repo, &main_view(), None));
+    assert!(
+        matches!(walked, Err(StorageError::Damaged { .. })),
+        "{walked:?}"
+    );
+    // A hint of 10 GiB is believed instead of the walk: the same read would cost 21 GiB, which no pool of
+    // this gate can hold, and it is answered before anything runs.
+    hints.set(&repo, 10 << 30);
+    let hinted = d.tree(&repo, &main_view(), None);
+    assert!(
+        matches!(hinted, Err(StorageError::TooLarge { verb: "tree", .. })),
+        "{hinted:?}"
+    );
+    // A verb whose cost does not follow the store needs no figure, so the hint does not touch it.
+    let flat = retry(|| d.views(&repo));
+    assert!(flat.is_ok(), "{flat:?}");
+    // Forgotten: the walk is the truth again.
+    hints.forget(&repo);
+    let again = retry(|| d.tree(&repo, &main_view(), None));
+    assert!(
+        matches!(again, Err(StorageError::Damaged { .. })),
+        "{again:?}"
+    );
+    // A hint is a figure and not a proof: a directory that is not a repository is still refused as such.
+    let elsewhere = tmp.0.join("elsewhere");
+    fs::create_dir_all(&elsewhere).unwrap();
+    hints.set(&elsewhere, 1);
+    for r in [
+        d.tree(&elsewhere, &main_view(), None).map(|_| ()),
+        d.views(&elsewhere).map(|_| ()),
+    ] {
+        assert!(
+            matches!(&r, Err(StorageError::Refused { kind: Some(k), .. }) if k == "driver:no-repository"),
+            "{r:?}"
+        );
+    }
+}
+
+#[test]
+fn a_verb_whose_cost_is_flat_does_not_walk_the_store() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = TempDir::new("flat");
+    let repo = tmp.0.join("repo");
+    let locked = repo.join(".prikk/locked");
+    fs::create_dir_all(&locked).unwrap();
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+    // A directory the walk cannot enter: running as a user for whom the mode does not bind (root) shows nothing.
+    let binds = fs::read_dir(&locked).is_err();
+    let restore = || fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+    if !binds {
+        restore();
+        println!("skipping: running as a user for whom the mode does not bind");
+        return;
+    }
+    let fake = shim(
+        &tmp.0,
+        r#"case "$1" in
+  --version) echo 'prikk 0.54.0' ;;
+  branch) echo '{"schema_version": "branch-list-v1", "branches": []}' ;;
+  *) echo '{}' ;;
+esac"#,
+    );
+    let d = open_shim(&fake).expect("open");
+    // `branch` (like `log`) costs the floor whatever the store holds, so it does not measure it.
+    let views = retry(|| d.views(&repo));
+    // A verb that follows the store measures it, and meets the directory.
+    let tree = d.tree(&repo, &main_view(), None);
+    restore();
+    assert!(views.is_ok(), "{views:?}");
+    assert!(
+        matches!(tree, Err(StorageError::Damaged { verb: "tree", .. })),
+        "{tree:?}"
+    );
+}
+
+#[test]
 fn an_older_prikk_is_refused_at_open() {
     let tmp = TempDir::new("old");
     let old = shim(&tmp.0, "echo 'prikk 0.53.9'");
@@ -598,7 +694,7 @@ esac"#,
     );
     let refused = retry(|| d.history(&repo, &main_view(), None));
     assert!(
-        matches!(&refused, Err(StorageError::Refused { verb: "log", message, kind: None }) if message == "something prikk said"),
+        matches!(&refused, Err(StorageError::Refused { verb: "log", message, kind: None, reason: None }) if message == "something prikk said"),
         "{refused:?}"
     );
     // Without a ceiling in play (the knob is off, so a costed one applies; the shim ignores it), a 139 is

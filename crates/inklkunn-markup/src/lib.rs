@@ -14,7 +14,8 @@
 //! - [`resolve`](mod@resolve): where does a free link go, by which rule?
 //! - [`anchor`]: what is the fragment of a heading?
 //! - [`path`]: where does a page with this title live under `pages/`?
-//! - [`render`]: what HTML does this page become?
+//! - [`render`]: what HTML does this page become? (Block identifiers as `id` attributes, transclusion to
+//!   depth two with cycles refused, and the vocabulary of everything it may write.)
 //! - [`lint`](mod@lint): what could be better, as a suggestion, never a blocker (AUTH-13)?
 
 pub mod anchor;
@@ -30,7 +31,11 @@ pub(crate) mod text;
 pub use frontmatter::{Metadata, Value, YamlError};
 pub use lint::{Context as LintContext, Finding, Level, lint};
 pub use path::{PathError, collision_key, path_to_title, title_to_path, with_suffix};
-pub use render::{LinkHref, NoLinks, RenderLinks, Rendered, TocEntry, render_html, render_with};
+pub use render::{
+    LinkHref, MAX_TRANSCLUDED_BYTES, MAX_TRANSCLUSION_DEPTH, MAX_TRANSCLUSIONS, NoLinks,
+    RenderLinks, Rendered, TocEntry, Transclusion, TransclusionRefusal, render_html, render_page,
+    render_with,
+};
 pub use resolve::{Index, PageEntry, Resolution, Via, resolve};
 pub use scan::{Link, ScanOptions, ScanReport, scan, scan_with};
 pub use text::{
@@ -69,6 +74,18 @@ impl std::fmt::Display for ParseError {
 }
 
 impl std::error::Error for ParseError {}
+
+/// Read only the metadata of a page file: the frontmatter parsed against the plain subset and the vocabulary
+/// read out of it, without scanning the body. What the title index needs of every page at a tip, where
+/// [`Page::parse`] would scan thousands of bodies for nothing.
+pub fn parse_metadata(text: &str) -> Result<Metadata, ParseError> {
+    let (yaml, _, _) = frontmatter::split(text);
+    let frontmatter = match yaml {
+        Some(y) => Some(frontmatter::parse_yaml(y).map_err(ParseError::Frontmatter)?),
+        None => None,
+    };
+    Ok(Metadata::from_value(frontmatter.as_ref()))
+}
 
 impl Page {
     /// Parse a page file. The frontmatter is validated against the plain subset; everything else is

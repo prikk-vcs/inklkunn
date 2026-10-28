@@ -157,6 +157,93 @@ fn many_keys_headings_tags_and_block_ids_are_linear() {
         |n| "para ^id\n\n".repeat(n),
         everything,
     );
+    // The pass that moves identifiers onto their blocks, on the shapes that make it look back.
+    linear(
+        "block ids after tables and in lists",
+        5_000,
+        |n| "| a |\n|---|\n| 1 |\n^t\n\n- item ^i\n- item\n\nlone\n\n^l\n\n".repeat(n),
+        everything,
+    );
+    linear(
+        "embeds alone on a line",
+        10_000,
+        |n| "![[Page]]\n\n".repeat(n),
+        everything,
+    );
+}
+
+/// Three pages that include each other as a generated body says.
+struct Trio(Vec<String>);
+
+impl inklkunn_markup::RenderLinks for Trio {
+    fn link(&self, _: &inklkunn_markup::Link) -> inklkunn_markup::LinkHref {
+        inklkunn_markup::LinkHref::Missing { href: None }
+    }
+
+    fn transclusion(&self, link: &inklkunn_markup::Link) -> Option<inklkunn_markup::Transclusion> {
+        matches!(link.target.as_str(), "A" | "B" | "C").then(|| inklkunn_markup::Transclusion {
+            path: format!("pages/{}.md", link.target),
+            title: link.target.clone(),
+            href: format!("/w/{}", link.target),
+            label: String::new(),
+        })
+    }
+
+    fn transclusion_body(&self, page: &inklkunn_markup::Transclusion) -> Option<String> {
+        let index = match page.title.as_str() {
+            "A" => 0,
+            "B" => 1,
+            "C" => 2,
+            _ => return None,
+        };
+        self.0.get(index).cloned()
+    }
+}
+
+fn body_soup() -> impl Strategy<Value = String> {
+    proptest::collection::vec(
+        prop_oneof![
+            Just("![[A]]\n"),
+            Just("![[B]]\n\n"),
+            Just("![[C]]\n"),
+            Just("text ![[A]] text\n"),
+            Just("- ![[B]]\n"),
+            Just("# Heading\n\n"),
+            Just("para ^id\n\n"),
+            Just("[[#Heading]]\n"),
+            Just("\u{E000}0\u{E001}\n"),
+            Just("\n"),
+        ],
+        0..14,
+    )
+    .prop_map(|parts| parts.concat())
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
+
+    /// Pages that include each other in any way a body can spell it end, never panic, include no deeper
+    /// than two, and leave no token behind.
+    #[test]
+    fn mutual_inclusion_always_ends_within_the_depth(
+        bodies in proptest::collection::vec(body_soup(), 3)
+    ) {
+        let pages = Trio(bodies.clone());
+        for (title, body) in ["A", "B", "C"].into_iter().zip(&bodies) {
+            let r = inklkunn_markup::render_page(
+                Some((&format!("pages/{title}.md"), title)),
+                body,
+                &pages,
+                inklkunn_markup::scan::ScanOptions::default(),
+            );
+            let token_left = r.unsanitized_html.contains(['\u{E000}', '\u{E001}']);
+            prop_assert!(!token_left, "a token was left in the output");
+            for depth in 3..=9 {
+                let marker = format!("data-transclusion-depth=\"{depth}\"");
+                prop_assert!(!r.unsanitized_html.contains(&marker));
+            }
+        }
+    }
 }
 
 proptest! {

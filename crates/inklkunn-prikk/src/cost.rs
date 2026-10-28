@@ -1,9 +1,9 @@
 //! The per-verb cost table and the repository size estimate (RFC 001 D-4; internal design STO-3, STO-4).
 //!
 //! A read is admitted by **estimated peak memory**, derived from the repository's store size *S* (a fresh
-//! walk of `.prikk`) and the verb, through the one table here. Every rule carries the prikk version the
-//! table is bound to ([`BOUND_TO`]); a test fails when that is not [`crate::MIN_PRIKK_VERSION`], so the
-//! table is revisited at every re-baseline (RFC 010).
+//! walk of `.prikk`, or a caller's recent [`SizeHints`] figure) and the verb, through the one table here.
+//! Every rule carries the prikk version the table is bound to ([`BOUND_TO`]); a test fails when that is not
+//! [`crate::MIN_PRIKK_VERSION`], so the table is revisited at every re-baseline (RFC 010).
 //!
 //! **Provenance of the multiples (spike A, 2026-10-27, prikk 0.54.1, `tools/spikes/spike-a.py` with
 //! `--bisect` on wiki-shaped text repositories of 3.6 / 18.6 / 76 / 212 MiB store size, 1,000 and 10,000
@@ -17,7 +17,10 @@
 //! takes 5.0 × from the measurement with margin. Every rule carries [`BOUND_TO`]; a test fails when that is
 //! not [`crate::MIN_PRIKK_VERSION`], so the table is revisited at every re-baseline (RFC 010).
 
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::{Duration, Instant};
 
 /// One mebibyte.
 pub const MIB: u64 = 1 << 20;
@@ -189,7 +192,8 @@ impl std::fmt::Display for StoreSizeError {
 impl std::error::Error for StoreSizeError {}
 
 /// The store size *S*: the apparent bytes of every regular file under `<repo>/.prikk`, by a fresh walk;
-/// `lstat` only, symlinks never followed, no cache.
+/// `lstat` only, symlinks never followed, no cache. This is the truth; [`SizeHints`] is what a caller who
+/// already walked may hand the driver so that it does not walk again.
 pub fn store_size(repo: &Path) -> Result<u64, StoreSizeError> {
     store_size_limited(repo, MAX_STORE_ENTRIES)
 }
@@ -219,6 +223,73 @@ pub fn store_size_limited(repo: &Path, max_entries: usize) -> Result<u64, StoreS
         }
     }
     Ok(total)
+}
+
+/// Recent figures for *S*, shared between the driver and whoever knows when a repository changed (the read
+/// service, which keys its figure by the view tips; RFC 003 D-2, handoff 003 T3).
+///
+/// The driver walks `.prikk` on every call whose cost follows *S* (`tree`, `cat`, `show`, `diff`, `extract`,
+/// `verify`): up to [`MAX_STORE_ENTRIES`] `lstat`s each, which on a large wiki costs more than a cheap read.
+/// With a hint for the repository the walk is skipped; **without one, or once the hint is older than its
+/// maximum age, the walk is the fallback and the truth**. A hint is a figure for the cost estimate and never
+/// a statement that the repository exists: the driver still checks that `.prikk` is a directory. The handle
+/// is cheap to clone and every clone sees the same figures.
+///
+/// A holder that learns the repository changed (a write, a moved view) calls [`SizeHints::forget`] or sets a
+/// fresh figure; the maximum age bounds the damage of a change nobody announced.
+#[derive(Debug, Clone)]
+pub struct SizeHints {
+    figures: Arc<Mutex<HashMap<PathBuf, (Instant, u64)>>>,
+    max_age: Duration,
+}
+
+impl SizeHints {
+    /// How long a figure is trusted when the holder does not say otherwise.
+    pub const DEFAULT_MAX_AGE: Duration = Duration::from_secs(15 * 60);
+
+    /// An empty set of hints with [`SizeHints::DEFAULT_MAX_AGE`].
+    pub fn new() -> Self {
+        Self::with_max_age(Self::DEFAULT_MAX_AGE)
+    }
+
+    /// An empty set of hints whose figures are trusted for `max_age`.
+    pub fn with_max_age(max_age: Duration) -> Self {
+        SizeHints {
+            figures: Arc::new(Mutex::new(HashMap::new())),
+            max_age,
+        }
+    }
+
+    /// Record that the store of `repo` measured `bytes` just now.
+    pub fn set(&self, repo: &Path, bytes: u64) {
+        self.figures
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(repo.to_path_buf(), (Instant::now(), bytes));
+    }
+
+    /// The figure for `repo`, unless there is none or it is older than the maximum age.
+    pub fn get(&self, repo: &Path) -> Option<u64> {
+        let figures = self.figures.lock().unwrap_or_else(PoisonError::into_inner);
+        figures
+            .get(repo)
+            .filter(|(at, _)| at.elapsed() <= self.max_age)
+            .map(|(_, bytes)| *bytes)
+    }
+
+    /// Drop the figure for `repo`: the next call walks (the truth after a write).
+    pub fn forget(&self, repo: &Path) {
+        self.figures
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(repo);
+    }
+}
+
+impl Default for SizeHints {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]

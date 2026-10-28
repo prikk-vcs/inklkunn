@@ -358,6 +358,10 @@ pub enum StorageError {
         /// `precondition-not-met`, …), or one of the driver's own, prefixed `driver:` (`driver:no-repository`),
         /// for callers that branch on it.
         kind: Option<String>,
+        /// The `reason` of a `refusal-v1` report, which prikk sets only for `no-checkpoint-in-reach`
+        /// (`not-recorded`, `signer-not-adopted`, `no-checkpoint`; ledger PK-24): the remedy differs by
+        /// reason, so callers branch on it as they do on `kind`.
+        reason: Option<String>,
     },
     /// An argument did not have the shape the trait requires (a view name, a block id, a repository path,
     /// a target name); refused before anything ran. `what` states the rule in one sentence and never

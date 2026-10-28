@@ -81,8 +81,9 @@ pub enum CreateWikiError {
     },
     /// The new repository did not verify (`None`), or verification could not run (`Some`).
     Verification {
-        /// The storage error, when the call did not complete.
-        error: Option<StorageError>,
+        /// The storage error, when the call did not complete (boxed: a storage error carries prikk's text,
+        /// and the result of *create wiki* is returned by value).
+        error: Option<Box<StorageError>>,
         /// What became of the directories.
         cleanup: Cleanup,
     },
@@ -234,7 +235,7 @@ pub fn create_wiki(
         Ok(v) => v,
         Err(e) => {
             return Err(CreateWikiError::Verification {
-                error: Some(e),
+                error: Some(Box::new(e)),
                 cleanup: discard(layout, signer, &id),
             });
         }

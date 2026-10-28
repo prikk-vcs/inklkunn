@@ -9,6 +9,7 @@
 //! a second process (a command-line run beside the service) cannot slip between a check and a write; a
 //! slug or id already taken is reported as exactly that.
 
+mod derived;
 mod identity;
 
 use std::path::Path;
@@ -19,12 +20,13 @@ use rusqlite::{Connection, OptionalExtension, Row, TransactionBehavior, params};
 use crate::access::{Role, RoleGrant, RoleStore};
 use crate::audit::{AuditEvent, AuditLog, AuditOutcome, AuditRecord, AuditSink};
 use crate::record::{
-    AccountId, DisplayName, Slug, Verification, VerificationState, Visibility, WikiId, WikiRecord,
+    AccountId, Checkpoint, DisplayName, PrikkVersion, Slug, Verification, VerificationState,
+    Visibility, WikiId, WikiRecord,
 };
 use crate::{Result, StoreError, WikiStore};
 
 /// The schema version this build writes and reads: the last of [`MIGRATIONS`].
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 5;
 
 /// Version 1: M0's schema, the wiki records.
 const V1: &str = "
@@ -138,9 +140,55 @@ CREATE TABLE IF NOT EXISTS api_tokens (
 CREATE INDEX IF NOT EXISTS api_tokens_account ON api_tokens(account_id);
 ";
 
+/// Version 5: the derived cache and the checkpoint columns (RFC 003 D-2; handoff 003 T3). **Everything
+/// here but the two columns can be dropped and rebuilt from the repositories** (INV-5): rendered pages, and
+/// the title index of a view's tip, keyed by prikk's ids. A tip's index is written with its entries in one
+/// transaction and counted in `title_index_tips`, which is how a reader knows it is whole. No column holds a
+/// verification result, a state or a time of a verification: the cache has nowhere to put one.
+///
+/// The two columns added to `wikis` are the service's knowledge of prikk's checkpoint record (ledger PK-24):
+/// the prikk version it was last refreshed under, and the time of the first unanswered request for a refresh.
+const V5: &str = "
+CREATE TABLE IF NOT EXISTS derived_pages (
+    wiki_id      TEXT NOT NULL,
+    tip          TEXT NOT NULL,
+    path         TEXT NOT NULL,
+    lang         TEXT NOT NULL,
+    presentation TEXT NOT NULL,
+    html         TEXT NOT NULL,
+    meta         TEXT NOT NULL,
+    links        TEXT NOT NULL,
+    toc          TEXT NOT NULL,
+    computed_at  INTEGER NOT NULL,
+    PRIMARY KEY (wiki_id, tip, path, lang, presentation)
+);
+CREATE INDEX IF NOT EXISTS derived_pages_tip ON derived_pages(wiki_id, tip);
+CREATE TABLE IF NOT EXISTS title_index_tips (
+    wiki_id  TEXT NOT NULL,
+    tip      TEXT NOT NULL,
+    entries  INTEGER NOT NULL,
+    built_at INTEGER NOT NULL,
+    PRIMARY KEY (wiki_id, tip)
+);
+CREATE TABLE IF NOT EXISTS title_index_entries (
+    wiki_id TEXT NOT NULL,
+    tip     TEXT NOT NULL,
+    path    TEXT NOT NULL,
+    title   TEXT NOT NULL,
+    aliases TEXT NOT NULL,
+    redirect TEXT,
+    page_id TEXT,
+    kind    TEXT NOT NULL,
+    problem TEXT,
+    PRIMARY KEY (wiki_id, tip, path)
+);
+ALTER TABLE wikis ADD COLUMN checkpoint_prikk_version TEXT;
+ALTER TABLE wikis ADD COLUMN checkpoint_refresh_requested_at INTEGER;
+";
+
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and
 /// [`SCHEMA_VERSION`] moves with it (a test holds the two together).
-pub const MIGRATIONS: &[(i64, &str)] = &[(1, V1), (2, V2), (3, V3), (4, V4)];
+pub const MIGRATIONS: &[(i64, &str)] = &[(1, V1), (2, V2), (3, V3), (4, V4), (5, V5)];
 
 /// The SQLite-backed store.
 #[derive(Debug)]
@@ -325,7 +373,8 @@ impl SqliteStore {
 
 const COLUMNS: &str = "id, slug, display_name, default_view, default_license, languages, visibility, \
                        policy_bootstrap, prikk_format_version, verification_state, verification_at, \
-                       author_key_id, maintainer_key_id, created_at";
+                       author_key_id, maintainer_key_id, created_at, checkpoint_prikk_version, \
+                       checkpoint_refresh_requested_at";
 
 fn row_to_record(row: &Row<'_>) -> rusqlite::Result<WikiRecord> {
     let id: String = row.get(0)?;
@@ -334,6 +383,7 @@ fn row_to_record(row: &Row<'_>) -> rusqlite::Result<WikiRecord> {
     let languages: String = row.get(5)?;
     let visibility: String = row.get(6)?;
     let state: String = row.get(9)?;
+    let checkpoint_version: Option<String> = row.get(14)?;
     let invalid = |what: &str| {
         rusqlite::Error::InvalidColumnType(0, what.to_owned(), rusqlite::types::Type::Text)
     };
@@ -353,6 +403,12 @@ fn row_to_record(row: &Row<'_>) -> rusqlite::Result<WikiRecord> {
         },
         author_key_id: row.get(11)?,
         maintainer_key_id: row.get(12)?,
+        checkpoint: Checkpoint {
+            refreshed_with: checkpoint_version
+                .map(|v| PrikkVersion::parse(&v).ok_or_else(|| invalid("checkpoint_prikk_version")))
+                .transpose()?,
+            refresh_requested_at: row.get(15)?,
+        },
         created_at: row.get(13)?,
     })
 }
@@ -368,7 +424,8 @@ impl WikiStore for SqliteStore {
             let r = tx.execute(
                 "INSERT INTO wikis (id, slug, display_name, default_view, default_license, languages, visibility, \
                  policy_bootstrap, prikk_format_version, verification_state, verification_at, author_key_id, \
-                 maintainer_key_id, created_at, seq) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, \
+                 maintainer_key_id, created_at, checkpoint_prikk_version, checkpoint_refresh_requested_at, seq) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
                  (SELECT COALESCE(MAX(seq), 0) + 1 FROM wikis))",
                 params![
                     record.id.as_str(),
@@ -385,6 +442,8 @@ impl WikiStore for SqliteStore {
                     record.author_key_id,
                     record.maintainer_key_id,
                     record.created_at,
+                    record.checkpoint.refreshed_with.as_ref().map(PrikkVersion::as_str),
+                    record.checkpoint.refresh_requested_at,
                 ],
             );
             if let Err(e) = r {
@@ -469,6 +528,38 @@ impl WikiStore for SqliteStore {
                 .execute(
                     "UPDATE wikis SET author_key_id = ?1, maintainer_key_id = ?2, prikk_format_version = ?3 WHERE id = ?4",
                     params![author_key_id, maintainer_key_id, prikk_format_version, id.as_str()],
+                )
+                .map_err(backend)?;
+            if n == 0 {
+                return Err(StoreError::NotFound);
+            }
+            Self::fetch(conn, Key::Id, id.as_str())
+        })
+    }
+
+    fn request_checkpoint_refresh(&self, id: &WikiId, at: i64) -> Result<WikiRecord> {
+        self.with(|conn| {
+            let n = conn
+                .execute(
+                    "UPDATE wikis SET checkpoint_refresh_requested_at = COALESCE(checkpoint_refresh_requested_at, ?1) \
+                     WHERE id = ?2",
+                    params![at, id.as_str()],
+                )
+                .map_err(backend)?;
+            if n == 0 {
+                return Err(StoreError::NotFound);
+            }
+            Self::fetch(conn, Key::Id, id.as_str())
+        })
+    }
+
+    fn record_checkpoint_refresh(&self, id: &WikiId, prikk: &PrikkVersion) -> Result<WikiRecord> {
+        self.with(|conn| {
+            let n = conn
+                .execute(
+                    "UPDATE wikis SET checkpoint_prikk_version = ?1, checkpoint_refresh_requested_at = NULL \
+                     WHERE id = ?2",
+                    params![prikk.as_str(), id.as_str()],
                 )
                 .map_err(backend)?;
             if n == 0 {

@@ -30,6 +30,27 @@ impl RenderLinks for Links {
 }
 
 #[test]
+fn the_metadata_alone_is_the_pages_metadata() {
+    for text in [
+        "---\ntitle: T\naliases: [a, b]\nredirect: Target\nid: 019a0000-0000-7000-8000-000000000001\n---\n\nBody [[X]] ^id\n",
+        "no frontmatter at all\n",
+        "---\n---\nempty frontmatter\n",
+        "---\ntitle: \"Quoted: yes\"\nkind: redirect\n...\nafter\n",
+    ] {
+        let alone = inklkunn_markup::parse_metadata(text).expect("metadata");
+        let page = Page::parse(text).expect("page");
+        assert_eq!(alone, page.metadata, "{text:?}");
+    }
+    // The same refusal as the page's: outside the plain subset.
+    let bad = "---\ntitle: &anchor x\n---\nbody\n";
+    assert_eq!(
+        inklkunn_markup::parse_metadata(bad).err(),
+        Page::parse(bad).err()
+    );
+    assert!(inklkunn_markup::parse_metadata(bad).is_err());
+}
+
+#[test]
 fn a_page_scan_is_the_scan() {
     let text = "---\ntitle: T\ntags: [tag, other]\n---\n\n#tag here [[L]] ^b1\n\n## H\n";
     let page = Page::parse(text).expect("page");
@@ -125,7 +146,7 @@ fn constructs_are_replaced_at_their_own_spans_not_by_text_search() {
     let h = render_html("Para `x^y` ^id\n", &Links).unsanitized_html;
     assert!(h.contains("<code>x^y</code>"), "{h}");
     assert!(
-        h.contains(r#"<span class="block-id" id="^id"></span>"#),
+        h.contains(r#"<p id="^id">Para <code>x^y</code></p>"#),
         "{h}"
     );
 }

@@ -45,3 +45,43 @@ fn ceilings_carry_real_headroom() {
         );
     }
 }
+
+#[test]
+fn a_hint_is_returned_until_forgotten_and_never_for_another_repository() {
+    let hints = SizeHints::new();
+    let a = Path::new("/srv/wikis/a");
+    let b = Path::new("/srv/wikis/b");
+    assert_eq!(hints.get(a), None, "nothing is hinted until it is set");
+    hints.set(a, 4096);
+    assert_eq!(hints.get(a), Some(4096));
+    assert_eq!(hints.get(b), None);
+    // A clone is another handle on the same figures.
+    let clone = hints.clone();
+    clone.set(b, 7);
+    assert_eq!(hints.get(b), Some(7));
+    // A new figure replaces the old; forgetting drops it, for the repository named and no other.
+    hints.set(a, 9000);
+    assert_eq!(clone.get(a), Some(9000));
+    clone.forget(a);
+    assert_eq!(hints.get(a), None);
+    assert_eq!(hints.get(b), Some(7));
+}
+
+#[test]
+fn a_hint_older_than_its_maximum_age_is_not_trusted() {
+    let hints = SizeHints::with_max_age(Duration::from_millis(20));
+    let repo = Path::new("/srv/wikis/old");
+    hints.set(repo, 1);
+    assert_eq!(hints.get(repo), Some(1));
+    std::thread::sleep(Duration::from_millis(80));
+    assert_eq!(hints.get(repo), None, "the walk is the fallback again");
+    // Setting it again makes it fresh.
+    hints.set(repo, 2);
+    assert_eq!(hints.get(repo), Some(2));
+    assert_eq!(
+        SizeHints::default().get(repo),
+        None,
+        "a default set is empty, and its maximum age is the documented one"
+    );
+    assert_eq!(SizeHints::DEFAULT_MAX_AGE, Duration::from_secs(15 * 60));
+}

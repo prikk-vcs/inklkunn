@@ -1,11 +1,12 @@
 //! The in-memory store: tests, and the reference the SQLite store must agree with.
 
+mod derived;
 mod identity;
 
 use std::sync::{Mutex, PoisonError};
 
 use crate::access::{Role, RoleGrant, RoleStore};
-use crate::record::{AccountId, DisplayName, Slug, Verification, WikiId, WikiRecord};
+use crate::record::{AccountId, DisplayName, PrikkVersion, Slug, Verification, WikiId, WikiRecord};
 use crate::{Result, StoreError, WikiStore};
 
 /// Records in a mutex.
@@ -14,6 +15,7 @@ pub struct MemoryStore {
     records: Mutex<Vec<WikiRecord>>,
     grants: Mutex<Vec<RoleGrant>>,
     identities: Mutex<identity::Identities>,
+    derived: Mutex<derived::Derived>,
 }
 
 impl MemoryStore {
@@ -114,6 +116,21 @@ impl WikiStore for MemoryStore {
             r.author_key_id = author_key_id;
             r.maintainer_key_id = maintainer_key_id;
             r.prikk_format_version = prikk_format_version;
+            Ok(())
+        })
+    }
+
+    fn request_checkpoint_refresh(&self, id: &WikiId, at: i64) -> Result<WikiRecord> {
+        self.update(id, |r| {
+            r.checkpoint.refresh_requested_at.get_or_insert(at);
+            Ok(())
+        })
+    }
+
+    fn record_checkpoint_refresh(&self, id: &WikiId, prikk: &PrikkVersion) -> Result<WikiRecord> {
+        self.update(id, |r| {
+            r.checkpoint.refreshed_with = Some(prikk.clone());
+            r.checkpoint.refresh_requested_at = None;
             Ok(())
         })
     }

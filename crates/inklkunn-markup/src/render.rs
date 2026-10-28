@@ -11,19 +11,33 @@
 //! How it works: the body goes through a line-level pre-pass (container directives become `<div>`/`<aside>`
 //! wrappers, since CommonMark has no container syntax; lines inside code or HTML comments are left alone),
 //! then the scanner finds free links, embeds, inline tags, inline directives and trailing block identifiers
-//! **with their byte spans**, which are replaced by inline HTML in the source; the result is parsed by
-//! `pulldown-cmark`, whose event stream is then rewritten for heading ids (the scanner's anchors, so links
-//! and ids agree), callouts and link attributes before `pulldown-cmark`'s own HTML writer emits the page.
+//! **with their byte spans**, which are replaced by inline HTML in the source (a transclusion by a token, see
+//! the `transclude` module); the result is parsed by `pulldown-cmark`, whose event stream is then rewritten
+//! for transclusions, heading ids (the scanner's anchors, so links and ids agree), callouts, link attributes
+//! and block identifiers (the `blocks` module: an `id` on the block, not a marker beside it) before
+//! `pulldown-cmark`'s own HTML writer emits the page.
+//!
+//! The elements, attributes and classes this module may write are named in [`vocabulary`], which the
+//! sanitizer uses as its allowlist and a test holds this module to.
 
 use std::collections::BTreeMap;
 use std::ops::Range;
 
-use pulldown_cmark::{CowStr, Event, Parser, Tag, TagEnd, html};
+use pulldown_cmark::{CowStr, Event, HeadingLevel, Parser, Tag, TagEnd, html};
 
 use crate::anchor::{Anchors, github_anchor};
 use crate::scan::{self, FragmentKind, Link, ScanOptions};
 use crate::structure::{Structure, level_u8, options};
 use crate::text::{LineIndex, escape_href, escape_html, href_is_allowed, sl};
+
+mod blocks;
+mod transclude;
+pub mod vocabulary;
+
+pub use transclude::{
+    MAX_TRANSCLUDED_BYTES, MAX_TRANSCLUSION_DEPTH, MAX_TRANSCLUSIONS, Transclusion,
+    TransclusionRefusal,
+};
 
 /// Where a link should go, decided by the caller (the web layer knows the URL scheme; this crate does not).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,6 +69,27 @@ pub trait RenderLinks {
     fn tag(&self, _tag: &str) -> Option<String> {
         None
     }
+    /// The page that an embed `![[Page]]` includes, when the embed is alone on its line, names no heading or
+    /// block and is not an image (NAV-16; see the `transclude` module): **who it is, not what it says**.
+    /// `None` (the default) means the embed is not a transclusion and renders as a link, as does an embed
+    /// anywhere but alone on its line. No page is read to answer this.
+    fn transclusion(&self, _link: &Link) -> Option<Transclusion> {
+        None
+    }
+    /// The body of a page [`RenderLinks::transclusion`] named, asked for **only when the page is going to be
+    /// included**: not for an embed that is refused because it would be a cycle or too deep, and not for
+    /// one that stays a link. Reading a page may cost the caller a call to its storage; this is how the
+    /// renderer spends none on a page it will not use. `None` (the page is unreadable as a page) leaves the
+    /// embed a link.
+    fn transclusion_body(&self, _page: &Transclusion) -> Option<String> {
+        None
+    }
+    /// The sentence that says why an embed that could have been included was not, in the reader's language:
+    /// plain text, which the renderer escapes. This crate knows no language, so the default names the pages
+    /// involved and says nothing more.
+    fn transclusion_notice(&self, refusal: &TransclusionRefusal) -> String {
+        refusal.to_string()
+    }
 }
 
 /// Every link is missing and nothing has an href: the renderer's own tests and the fallback when no
@@ -85,8 +120,13 @@ pub struct Rendered {
     /// The HTML fragment (no `<html>`/`<body>`), **not sanitized**: it must pass through the web layer's
     /// sanitizer before any browser sees it.
     pub unsanitized_html: String,
-    /// Headings in order, with the ids written into the HTML.
+    /// Headings in order, with the ids written into the HTML. The page's own: an included page's headings
+    /// are not listed.
     pub toc: Vec<TocEntry>,
+    /// The embeds that were not included, each once, in the order they were met.
+    pub refusals: Vec<TransclusionRefusal>,
+    /// The paths of the pages included (at any depth), each once, in the order they were first included.
+    pub transcluded: Vec<String>,
 }
 
 /// The five shared callout types (MKUP-15); other types render as a generic callout.
@@ -120,10 +160,100 @@ pub fn render_html(body: &str, links: &dyn RenderLinks) -> Rendered {
     render_with(body, links, ScanOptions::default())
 }
 
-/// Render with scan options.
+/// Render with scan options. The page has no identity here, so a transclusion cannot find that it includes
+/// the page being rendered; use [`render_page`] for a page that has a path.
 pub fn render_with(body: &str, links: &dyn RenderLinks, options_: ScanOptions) -> Rendered {
-    let pre = containers_pre_pass(body);
-    let (source, report) = inline_pre_pass(&pre, links, options_);
+    render_page(None, body, links, options_)
+}
+
+/// Render the body of the page `page` (its path and its title), so that a transclusion cycle that returns to
+/// this page is found and named. Everything else is as [`render_with`].
+pub fn render_page(
+    page: Option<(&str, &str)>,
+    body: &str,
+    links: &dyn RenderLinks,
+    options_: ScanOptions,
+) -> Rendered {
+    let mut ctx = Ctx {
+        links,
+        options: options_,
+        stack: page
+            .map(|(path, title)| PageRef {
+                path: path.to_owned(),
+                title: title.to_owned(),
+            })
+            .into_iter()
+            .collect(),
+        refusals: Vec::new(),
+        transcluded: Vec::new(),
+        counter: 0,
+        included: 0,
+        included_bytes: 0,
+        budget_noted: false,
+    };
+    let rendered = render_body(body, &mut ctx, &Level::root());
+    Rendered {
+        unsanitized_html: rendered.html,
+        toc: rendered.toc,
+        refusals: ctx.refusals,
+        transcluded: ctx.transcluded,
+    }
+}
+
+/// A page being rendered, outermost first in [`Ctx::stack`].
+struct PageRef {
+    path: String,
+    title: String,
+}
+
+/// What a whole render shares: the caller's knowledge, the pages being rendered (the cycle check's stack),
+/// and what was learned on the way.
+struct Ctx<'a> {
+    links: &'a dyn RenderLinks,
+    options: ScanOptions,
+    stack: Vec<PageRef>,
+    refusals: Vec<TransclusionRefusal>,
+    transcluded: Vec<String>,
+    /// How many pages have been included, for the prefix of each one's ids.
+    counter: usize,
+    /// The inclusions made so far and the bytes of source they came to: the budget of one rendered page.
+    included: usize,
+    included_bytes: usize,
+    /// The refusal for an exhausted budget has been written once.
+    budget_noted: bool,
+}
+
+/// Where in the nesting a body is rendered.
+struct Level {
+    /// How many transclusions deep: 0 for the page itself.
+    depth: usize,
+    /// Written before every `id` of the body (and every same-page link to one), so the ids of an included
+    /// page cannot meet those of the page around it.
+    id_prefix: String,
+    /// How many levels headings are moved down.
+    demote: u8,
+}
+
+impl Level {
+    fn root() -> Self {
+        Level {
+            depth: 0,
+            id_prefix: String::new(),
+            demote: 0,
+        }
+    }
+}
+
+/// One body rendered.
+struct Body {
+    html: String,
+    toc: Vec<TocEntry>,
+}
+
+fn render_body(body: &str, ctx: &mut Ctx<'_>, level: &Level) -> Body {
+    let body = transclude::strip_sentinels(body);
+    let pre = containers_pre_pass(&body);
+    let (source, report, fragments) = inline_pre_pass(&pre, ctx, level);
     let scan_anchors: BTreeMap<usize, String> = report
         .headings
         .iter()
@@ -133,15 +263,14 @@ pub fn render_with(body: &str, links: &dyn RenderLinks, options_: ScanOptions) -
     let with_ranges: Vec<(Event<'_>, Range<usize>)> = Parser::new_ext(&source, options())
         .into_offset_iter()
         .collect();
-    let (events, toc) = rewrite_headings(with_ranges, &lines, &scan_anchors);
+    let with_ranges = transclude::splice(with_ranges, &fragments, ctx, level);
+    let (events, toc) = rewrite_headings(with_ranges, &lines, &scan_anchors, level);
     let events = rewrite_callouts(events);
     let events = rewrite_links(events);
+    let events = blocks::attach(events);
     let mut out = String::with_capacity(source.len() * 2);
     html::push_html(&mut out, events.into_iter());
-    Rendered {
-        unsanitized_html: out,
-        toc,
-    }
+    Body { html: out, toc }
 }
 
 // ---------------------------------------------------------------- pre-passes
@@ -276,17 +405,31 @@ fn callout_open(kind: &str, fold: Option<&str>, title: Option<&str>) -> String {
 }
 
 /// Replace inline constructs with HTML in the source, at the byte spans the scanner reported. Returns the
-/// new source and the scan it was built from (the heading anchors come from it).
+/// new source, the scan it was built from (the heading anchors come from it) and the transclusions whose
+/// tokens the source now holds (see [`transclude`]).
 fn inline_pre_pass(
     body: &str,
-    links: &dyn RenderLinks,
-    options_: ScanOptions,
-) -> (String, scan::ScanReport) {
-    let report = scan::scan_body(body, 0, options_);
+    ctx: &mut Ctx<'_>,
+    level: &Level,
+) -> (String, scan::ScanReport, Vec<transclude::Fragment>) {
+    let links = ctx.links;
+    let report = scan::scan_body(body, 0, ctx.options);
     // (start, end, replacement) for every construct, then applied front to back.
     let mut edits: Vec<(usize, usize, String)> = Vec::new();
+    let mut fragments: Vec<transclude::Fragment> = Vec::new();
     for l in &report.links {
-        edits.push((l.start, l.end, render_link(l, links)));
+        let inline = render_link(l, links, &level.id_prefix);
+        // An embed alone on its line may be a block, which the parser's paragraphs decide; everywhere else
+        // it stays the link.
+        if transclude::is_candidate(l, body) {
+            edits.push((l.start, l.end, transclude::token(fragments.len())));
+            fragments.push(transclude::Fragment {
+                link: l.clone(),
+                inline,
+            });
+        } else {
+            edits.push((l.start, l.end, inline));
+        }
     }
     for (tag, (start, end)) in report.tags.inline.iter().zip(&report.tag_spans) {
         let inner = escape_html(&format!("#{tag}"));
@@ -320,14 +463,7 @@ fn inline_pre_pass(
         edits.push((d.start, d.end, html));
     }
     for b in &report.block_ids {
-        edits.push((
-            b.start,
-            b.end,
-            format!(
-                "<span class=\"block-id\" id=\"^{}\"></span>",
-                escape_html(&b.id)
-            ),
-        ));
+        edits.push((b.start, b.end, blocks::marker(&level.id_prefix, &b.id)));
     }
     edits.sort_by_key(|(s, _, _)| *s);
     let mut out = String::with_capacity(body.len() + 256);
@@ -341,10 +477,12 @@ fn inline_pre_pass(
         pos = e;
     }
     out.push_str(body.get(pos..).unwrap_or(""));
-    (out, report)
+    (out, report, fragments)
 }
 
-fn render_link(l: &Link, links: &dyn RenderLinks) -> String {
+/// `id_prefix` is the prefix of the ids on the page the link is on: a link to this very page points at an
+/// id of it.
+fn render_link(l: &Link, links: &dyn RenderLinks, id_prefix: &str) -> String {
     let fragment = match (&l.fragment, l.fragment_kind) {
         (Some(f), Some(FragmentKind::Heading)) => format!("#{}", github_anchor(f)),
         (Some(f), Some(FragmentKind::Block)) => format!("#^{f}"),
@@ -358,9 +496,13 @@ fn render_link(l: &Link, links: &dyn RenderLinks) -> String {
             .clone()
             .or_else(|| l.fragment.clone())
             .unwrap_or_default();
+        let href = match fragment.strip_prefix('#') {
+            Some(anchor) => format!("#{id_prefix}{anchor}"),
+            None => fragment,
+        };
         return format!(
             "<a class=\"wikilink wikilink-self\" href=\"{}\">{}</a>",
-            escape_href(&fragment),
+            escape_href(&href),
             escape_html(&label)
         );
     }
@@ -470,6 +612,7 @@ fn rewrite_headings<'a>(
     events: Vec<(Event<'a>, Range<usize>)>,
     lines: &LineIndex,
     scan_anchors: &BTreeMap<usize, String>,
+    level: &Level,
 ) -> (Vec<Event<'a>>, Vec<TocEntry>) {
     let mut out: Vec<Event<'a>> = Vec::with_capacity(events.len());
     let mut toc = Vec::new();
@@ -481,7 +624,7 @@ fn rewrite_headings<'a>(
     while i < events.len() {
         if let Some((
             Event::Start(Tag::Heading {
-                level,
+                level: heading_level,
                 id,
                 classes,
                 attrs,
@@ -510,25 +653,41 @@ fn rewrite_headings<'a>(
                 },
             };
             toc.push(TocEntry {
-                level: level_u8(*level),
-                id: anchor.clone(),
+                level: level_u8(*heading_level),
+                id: format!("{}{anchor}", level.id_prefix),
                 text: text.trim().to_owned(),
             });
             out.push(Event::Start(Tag::Heading {
-                level: *level,
-                id: Some(CowStr::from(anchor)),
+                level: demoted(*heading_level, level.demote),
+                id: Some(CowStr::from(format!("{}{anchor}", level.id_prefix))),
                 classes: classes.clone(),
                 attrs: attrs.clone(),
             }));
             i += 1;
             continue;
         }
-        if let Some((e, _)) = events.get(i) {
-            out.push(e.clone());
+        match events.get(i) {
+            Some((Event::End(TagEnd::Heading(closing)), _)) => {
+                out.push(Event::End(TagEnd::Heading(demoted(*closing, level.demote))));
+            }
+            Some((e, _)) => out.push(e.clone()),
+            None => {}
         }
         i += 1;
     }
     (out, toc)
+}
+
+/// A heading level moved down `by` levels, stopping at 6.
+fn demoted(level: HeadingLevel, by: u8) -> HeadingLevel {
+    match level_u8(level).saturating_add(by).min(6) {
+        1 => HeadingLevel::H1,
+        2 => HeadingLevel::H2,
+        3 => HeadingLevel::H3,
+        4 => HeadingLevel::H4,
+        5 => HeadingLevel::H5,
+        _ => HeadingLevel::H6,
+    }
 }
 
 /// `> [!TYPE]± Title` block quotes become `<aside class="callout">`; the title may carry inline markup.

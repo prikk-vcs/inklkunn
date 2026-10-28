@@ -88,6 +88,49 @@ fn reserved_empty_and_too_long() {
 }
 
 #[test]
+fn both_prikk_caps_hold_to_the_byte_on_the_encoded_path() {
+    // The path cap (1024 bytes, `pages/` and `.md` included): three full components, then one that lands the
+    // whole path on the cap, and one byte over it.
+    let full = "a".repeat(255);
+    let on_the_cap = format!("{full}/{full}/{full}/{}", "a".repeat(247));
+    let path = title_to_path(&on_the_cap).expect("exactly 1024 bytes is allowed");
+    assert_eq!(path.len(), MAX_PATH_BYTES);
+    let over = format!("{full}/{full}/{full}/{}", "a".repeat(248));
+    assert_eq!(
+        title_to_path(&over),
+        Err(PathError::PathTooLong(MAX_PATH_BYTES + 1))
+    );
+
+    // The component cap (255 bytes) counts what is *written*, not the characters of the title: a character
+    // outside ASCII is nine bytes in three escapes, a `%` is three.
+    assert!(title_to_path(&"編".repeat(28)).is_ok(), "252 bytes");
+    assert!(
+        matches!(title_to_path(&"編".repeat(29)), Err(PathError::TooLong(_))),
+        "261 bytes"
+    );
+    assert!(title_to_path(&"%".repeat(85)).is_ok(), "255 bytes");
+    assert!(
+        matches!(title_to_path(&"%".repeat(86)), Err(PathError::TooLong(_))),
+        "258 bytes"
+    );
+    // A title short as text and long as a path is refused on the path.
+    let deep_cjk: Vec<String> = (0..20).map(|_| "編".repeat(14)).collect();
+    assert!(
+        matches!(
+            title_to_path(&deep_cjk.join("/")),
+            Err(PathError::PathTooLong(n)) if n > MAX_PATH_BYTES
+        ),
+        "20 components of 14 characters are 280 characters and 2,500 bytes of path"
+    );
+
+    // Nothing is half-made: a refusal names which cap, and the title that is accepted decodes back whole.
+    for title in [on_the_cap.as_str(), &"編".repeat(28)] {
+        let p = title_to_path(title).expect("accepted");
+        assert_eq!(path_to_title(&p).as_deref(), Some(title));
+    }
+}
+
+#[test]
 fn inverse_suffix_and_collision_key() {
     assert_eq!(
         path_to_title("pages/Guides/Getting Started.md").as_deref(),

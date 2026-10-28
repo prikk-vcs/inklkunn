@@ -12,7 +12,7 @@ use serde::de::DeserializeOwned;
 
 use crate::MIN_PRIKK_VERSION;
 use crate::admission::{Admission, Refusal};
-use crate::cost::{MAX_REPORT_BYTES, ReadVerb, StoreSizeError, ceiling_for, store_size};
+use crate::cost::{MAX_REPORT_BYTES, ReadVerb, SizeHints, StoreSizeError, ceiling_for, store_size};
 use crate::sandbox::{
     CallLimits, Mounts, Run, Sandbox, probe_bwrap, probe_prlimit, resolve_binary,
 };
@@ -53,6 +53,7 @@ pub struct PrikkCli {
     sandbox: Sandbox,
     admission: Admission,
     version: String,
+    size_hints: Option<SizeHints>,
     knobs: Knobs,
 }
 
@@ -140,8 +141,18 @@ impl PrikkCli {
             sandbox,
             admission,
             version: text,
+            size_hints: None,
             knobs: Knobs::default(),
         })
+    }
+
+    /// Let a caller who knows when a repository changed hand the driver its store size, so that the cost
+    /// estimate does not walk `.prikk` on every call. The walk stays the fallback whenever there is no
+    /// fresh figure for the repository (see [`SizeHints`]).
+    #[must_use]
+    pub fn with_size_hints(mut self, hints: SizeHints) -> Self {
+        self.size_hints = Some(hints);
+        self
     }
 
     /// The version text the binary reported.
@@ -182,13 +193,14 @@ impl PrikkCli {
         max_output: u64,
     ) -> Result<(Run, Option<u64>)> {
         let name = verb.name();
-        let store = match store_size(repo) {
+        let store = match self.store_bytes(verb, repo) {
             Ok(s) => s,
             Err(StoreSizeError::NoRepository) => {
                 return Err(StorageError::Refused {
                     verb: name,
                     message: "no prikk repository at the wiki's directory".to_owned(),
                     kind: Some("driver:no-repository".to_owned()),
+                    reason: None,
                 });
             }
             Err(e) => {
@@ -238,6 +250,23 @@ impl PrikkCli {
             })?;
         drop(permit);
         Ok((run, Some(ceiling)))
+    }
+
+    /// The figure the cost estimate is derived from. A verb whose cost does not follow *S* (`branch`, `log`)
+    /// needs only to know that the repository is there; a hint stands in for the walk when the caller gave a
+    /// fresh one; otherwise the walk is the truth. A hint never vouches for the repository: `.prikk` is
+    /// still checked.
+    fn store_bytes(&self, verb: ReadVerb, repo: &Path) -> std::result::Result<u64, StoreSizeError> {
+        let hint = if verb.rule().store_tenths == 0 {
+            Some(0)
+        } else {
+            self.size_hints.as_ref().and_then(|h| h.get(repo))
+        };
+        match hint {
+            Some(bytes) if repo.join(".prikk").is_dir() => Ok(bytes),
+            Some(_) => Err(StoreSizeError::NoRepository),
+            None => store_size(repo),
+        }
     }
 
     /// Map a non-success run to the typed outcome.
@@ -322,11 +351,18 @@ impl PrikkCli {
             message
         };
         match run.status.code() {
-            Some(1) => StorageError::Refused {
-                verb: name,
-                message,
-                kind: refusal.and_then(|r| r.refusal),
-            },
+            Some(1) => {
+                let (kind, reason) = match refusal {
+                    Some(r) => (r.refusal, r.reason),
+                    None => (None, None),
+                };
+                StorageError::Refused {
+                    verb: name,
+                    message,
+                    kind,
+                    reason,
+                }
+            }
             Some(2) => StorageError::Driver {
                 verb: name,
                 detail: message,
@@ -378,6 +414,8 @@ struct RefusalReport {
     schema_version: String,
     #[serde(default)]
     refusal: Option<String>,
+    #[serde(default)]
+    reason: Option<String>,
     #[serde(default)]
     message: String,
 }

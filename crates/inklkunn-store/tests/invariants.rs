@@ -426,6 +426,24 @@ fn an_m0_database_is_migrated_forward_with_its_wikis_and_only_once() {
             store.role(&account, &old.id).expect("role"),
             Some(Role::Admin)
         );
+        // Version 5's additions work on the old wiki too: it has no checkpoint history, and the derived
+        // cache takes a title index for it.
+        assert_eq!(old.checkpoint, inklkunn_store::Checkpoint::default());
+        let tip = "a".repeat(64);
+        inklkunn_store::DerivedStore::put_title_index(&store, &old.id, &tip, &[], 1)
+            .expect("the derived tables exist");
+        assert_eq!(
+            inklkunn_store::DerivedStore::title_index(&store, &old.id, &tip).expect("index"),
+            Some(Vec::new())
+        );
+        assert!(
+            store
+                .request_checkpoint_refresh(&old.id, 7)
+                .expect("the checkpoint columns exist")
+                .checkpoint
+                .refresh_requested_at
+                .is_some()
+        );
     }
     assert_eq!(
         version(),

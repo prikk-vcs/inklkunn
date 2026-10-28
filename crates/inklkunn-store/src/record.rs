@@ -570,6 +570,72 @@ fn is_plain_name(s: &str) -> bool {
         && !s.ends_with('-')
 }
 
+/// The text `prikk --version` prints (`prikk 0.54.1`), as the service records it: trimmed, 1 to 64 printable
+/// ASCII characters. It names the prikk a checkpoint record was refreshed under, so a prikk upgrade is seen
+/// as the change of one value.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct PrikkVersion(String);
+
+impl PrikkVersion {
+    /// Validate a version text (surrounding whitespace is dropped); `None` when it is then empty, longer than
+    /// 64 bytes or holds anything but printable ASCII (a version is read from a program's output and goes
+    /// into a record and a log line).
+    pub fn parse(s: &str) -> Option<Self> {
+        let text = s.trim();
+        let printable = text.bytes().all(|b| (0x20..0x7f).contains(&b));
+        (printable && !text.is_empty() && text.len() <= 64).then(|| PrikkVersion(text.to_owned()))
+    }
+
+    /// The text form.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for PrikkVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl TryFrom<String> for PrikkVersion {
+    type Error = String;
+    fn try_from(s: String) -> Result<Self, String> {
+        PrikkVersion::parse(&s).ok_or_else(|| "not a prikk version text".to_owned())
+    }
+}
+
+impl From<PrikkVersion> for String {
+    fn from(v: PrikkVersion) -> String {
+        v.0
+    }
+}
+
+/// What the service knows about prikk's **checkpoint record** for a wiki (handoff 003 hold note IS-9; ledger
+/// PK-24). `extract` of a history beyond 63 blocks anchors on a record that only `seal` and a *writable*
+/// `verify` write and that is keyed to the prikk version; after an upgrade, a restore or a cleared cache it
+/// is gone, and `extract` (which builds the title index) refuses until it is refreshed.
+///
+/// Two facts, both set by someone else: the **last refresh's prikk version** (the binary compares it with the
+/// prikk it runs at start) and a **request** a reader raises when it meets the refusal.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Checkpoint {
+    /// The prikk the record was last refreshed under, `None` until a refresh has been recorded.
+    pub refreshed_with: Option<PrikkVersion>,
+    /// Unix seconds of the first unanswered request for a refresh, `None` when nobody has asked since the
+    /// last one.
+    pub refresh_requested_at: Option<i64>,
+}
+
+impl Checkpoint {
+    /// Does the record need a refresh before the title index can be built under `running`: someone asked,
+    /// or it was last refreshed under another prikk (or never)?
+    pub fn needs_refresh(&self, running: &PrikkVersion) -> bool {
+        self.refresh_requested_at.is_some() || self.refreshed_with.as_ref() != Some(running)
+    }
+}
+
 /// The wiki record (DM-1).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WikiRecord {
@@ -597,6 +663,8 @@ pub struct WikiRecord {
     pub author_key_id: Option<String>,
     /// The wiki's maintainer key id (never a seed).
     pub maintainer_key_id: Option<String>,
+    /// prikk's checkpoint record for this wiki: when it was last refreshed and whether a reader asked.
+    pub checkpoint: Checkpoint,
     /// Unix seconds.
     pub created_at: i64,
 }
@@ -640,6 +708,7 @@ impl WikiRecord {
             verification: Verification::default(),
             author_key_id: None,
             maintainer_key_id: None,
+            checkpoint: Checkpoint::default(),
             created_at,
         })
     }

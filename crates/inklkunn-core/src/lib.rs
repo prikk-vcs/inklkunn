@@ -12,6 +12,9 @@
 //! - [`message`]: the patch message, the attribution contract written into every signed change (CT-03;
 //!   RFC 002 D-5). The grammar lives in `inklkunn-signer`, which enforces it, and is re-exported here.
 //! - [`egress`]: the one egress guard for every outbound fetch (threat model C-8).
+//! - [`read`]: the read service (RFC 003 D-2): the view's tip, the title index of the tip, pages re-derived
+//!   from prikk and cached by prikk's ids, the sanitizer pass every page goes through, and the counting
+//!   harness that holds the number of prikk calls to a bound.
 //! - [`bundle`] and [`wiki`]: the repository layout (external design CT-02) and *create wiki*.
 
 pub mod accept;
@@ -19,6 +22,7 @@ pub mod assurance;
 pub mod authorize;
 pub mod bundle;
 pub mod egress;
+pub mod read;
 pub mod reconcile;
 pub mod routes;
 pub mod wiki;
@@ -37,6 +41,10 @@ pub use authorize::{
 pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, Resolver, StdEgressGuard, StdResolver};
 pub use inklkunn_signer::{
     KeyStatus, OldKey, OldKeyOutcome, Rotation, Signer, SignerConfig, SignerError,
+};
+pub use read::{
+    Calls, Cause, CountingStorage, Found, Lookup, PageOutcome, PageView, Presentation, ReadConfig,
+    ReadError, ReadService, SafeHtml, Sanitizer, Tip, TitleIndex,
 };
 pub use routes::{Guard, RouteEntry, RouteError, RouteTable};
 pub use wiki::{

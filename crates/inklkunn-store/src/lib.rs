@@ -1,20 +1,24 @@
 #![forbid(unsafe_code)]
 //! `inklkunn-store` — inklkunn's service store behind traits, SQLite first (RFC 001 D-8; internal design
-//! DM-1, IQ-5). M0 holds the **wiki record** and the **on-disk root layout**; proposals, review state,
-//! audit and the derived cache arrive with RFCs 004 and 003.
+//! DM-1, IQ-5). It holds the **wiki record**, the **on-disk root layout**, accounts and the audit trail, and
+//! the **derived cache**; proposals and review state arrive with RFC 004.
 //!
-//! - [`record`]: the wiki record and its vocabulary; validated slugs, display names and ids.
+//! - [`record`]: the wiki record and its vocabulary; validated slugs, display names and ids, and what the
+//!   service knows about prikk's checkpoint record.
 //! - [`root`]: `<root>/<shard>/<wiki id>/`, never the wiki's name, so renames move no bytes.
 //! - [`access`]: roles, token scopes and the role grants (RFC 002 D-1, D-2).
 //! - [`identity`]: accounts, external identities, browser sessions and API tokens, as the service keeps them
 //!   (RFC 002 D-1): hashes and ids, never a secret in the form a client holds it.
 //! - [`audit`]: the shape of the audit trail and its sink trait (RFC 002 D-9).
+//! - [`derived`]: the derived cache, rendered pages and the title index of a view's tip (RFC 003 D-2; DM-6,
+//!   DM-7): keyed by prikk's ids, never authoritative, with no field for a verification result.
 //! - [`WikiStore`] and [`RoleStore`]: the traits; [`MemoryStore`] for tests and [`SqliteStore`] for service.
 //!
 //! The store never holds a key seed (threat model INV-2 for this crate's part): key *ids* only.
 
 pub mod access;
 pub mod audit;
+pub mod derived;
 pub mod identity;
 pub mod memory;
 pub mod record;
@@ -25,14 +29,18 @@ pub use access::{Role, RoleGrant, RoleStore, Scope};
 pub use audit::{
     AuditEvent, AuditLog, AuditOutcome, AuditRecord, AuditSink, MemoryAudit, export_jsonl,
 };
+pub use derived::{
+    DerivedHeading, DerivedLinks, DerivedMeta, DerivedPage, DerivedStore, IndexEntry, PageKey,
+};
 pub use identity::{
     Account, AccountStore, ExternalIdentity, ExternalIdentityError, LocalCredential, LoginName,
     LoginNameError, SessionRecord, SessionStore, TokenRecord, TokenStore,
 };
 pub use memory::MemoryStore;
 pub use record::{
-    AccountId, DisplayName, DisplayNameError, NewWiki, NewWikiError, ProposalId, Slug, SlugError,
-    TokenId, Verification, VerificationState, Visibility, WikiId, WikiRecord,
+    AccountId, Checkpoint, DisplayName, DisplayNameError, NewWiki, NewWikiError, PrikkVersion,
+    ProposalId, Slug, SlugError, TokenId, Verification, VerificationState, Visibility, WikiId,
+    WikiRecord,
 };
 pub use root::RootLayout;
 pub use sqlite::SqliteStore;
@@ -148,4 +156,10 @@ pub trait WikiStore: Send + Sync {
         maintainer_key_id: Option<String>,
         prikk_format_version: Option<String>,
     ) -> Result<WikiRecord>;
+    /// A reader met `extract` refusing for want of prikk's checkpoint record (ledger PK-24): ask for a
+    /// refresh. The first unanswered request's time is kept, so asking again changes nothing.
+    fn request_checkpoint_refresh(&self, id: &WikiId, at: i64) -> Result<WikiRecord>;
+    /// The checkpoint record was refreshed under `prikk` (a writable `verify`): record it and clear the
+    /// request.
+    fn record_checkpoint_refresh(&self, id: &WikiId, prikk: &PrikkVersion) -> Result<WikiRecord>;
 }
