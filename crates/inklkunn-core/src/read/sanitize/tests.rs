@@ -57,6 +57,38 @@ fn a_script_an_event_handler_a_javascript_url_a_data_url_and_an_iframe_are_neutr
     );
 }
 
+/// The module says these elements go *with their contents*: the text inside a frame, an object or a template
+/// is a fallback for a browser that cannot show it, and a reader who saw it would be reading something no
+/// author wrote for them. (A policy that kept the text would still be safe, which is why only a test that looks
+/// for the text can tell the two policies apart.) The list is written out here and not read from
+/// `DROPPED_WHOLE`: a test that loops over the list it checks cannot notice an entry removed from it.
+#[test]
+fn an_element_dropped_whole_takes_its_contents_with_it() {
+    for tag in [
+        "iframe",
+        "math",
+        "noembed",
+        "noframes",
+        "noscript",
+        "object",
+        "plaintext",
+        "script",
+        "style",
+        "svg",
+        "template",
+        "textarea",
+        "title",
+        "xmp",
+    ] {
+        let out = clean(&format!("<p>keep</p><{tag}>GONE-{tag}</{tag}>"));
+        assert!(!out.contains("GONE"), "<{tag}> left its contents: {out}");
+        assert!(
+            out.contains("<p>keep</p>"),
+            "<{tag}> took more than itself: {out}"
+        );
+    }
+}
+
 #[test]
 fn url_schemes_are_decided_after_the_browser_would_read_them() {
     for evil in [
