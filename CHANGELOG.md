@@ -193,7 +193,8 @@ RFC 002 and RFC 003 — the first handoffs after M0, in progress. Still nothing 
   Lines. The write ceiling of the signer's prikk calls is **still the fixed 1 GiB** the handoff asked to
   measure and replace; that measurement was not done (see the review request).
 
-RFC 003 — the read path, in progress (handoff 003 T1 – T3). Still no page is served.
+RFC 003 — the read path, in progress (handoff 003 T1 – T3). Still no wiki page is served; the pages that exist
+are the language switcher and the notices.
 
 - **The web foundations** (RFC 003 D-5; handoff 003 T1). `inklkunn-web` holds what every later page inherits.
   *Two origins, one listener:* a request goes to the router of the origin its `Host` names, and a host that
@@ -212,3 +213,27 @@ RFC 003 — the read path, in progress (handoff 003 T1 – T3). Still no page is
   FILE]` reads `NAME=value` lines (a typo is refused with its line number) under the environment;
   `--version` prints the floor and the prikk found. The only route is `/-/health`. Dependencies: `axum`,
   `tokio` (1.54.1, past RUSTSEC-2026-0386) and `tower-service` (+26 lock entries, measured).
+
+- **The words, the layout and the stylesheet** (RFC 003 D-6; handoff 003 T2; no new dependency). Every sentence
+  a page says is a message in a catalog (`inklkunn-web::catalog`): stable keys, whole sentences with named
+  placeholders, plural forms, and typed slots for a link or for a name in another language, so a message cannot
+  carry markup. English is the source; Japanese is compiled in as a **preview**: the language switcher offers it
+  with the word "preview" beside it, and it is chosen only by the reader (one `HttpOnly`, `SameSite=Lax` cookie
+  holding a language code), never from a browser's `Accept-Language`, until the reviewers named under DR-7
+  sign it off. The switcher at `/-/lang` is a form per language that needs no script, answers a form from
+  another site with a refusal page, and returns only to a local address. `docs/glossary.md` fixes the words in
+  both languages (a test holds it equal to both catalogs) and retires the version-control vocabulary (`seal`,
+  `commit`, `rebase`, `patch`, `block`, `ref`) outside explanations a reader opens on demand. One base layout (a
+  skip link first, a banner, one `main`, a footer, `lang` and `dir` on `<html>`) and one stylesheet with light
+  and dark colour tokens, served from the application origin under a name made of its own bytes with a
+  year-long `immutable` cache lifetime. The tests every later page inherits, each with its planted violation:
+  the catalog audit (missing, orphan, duplicate, mismatched placeholders, plural forms, markup, braces),
+  literal text in a template or a source file outside an allowlist whose dead lines fail, `|safe`, the retired
+  words, nineteen structural rules over every page state in both languages parsed with `html5ever`, and the
+  stylesheet checks (contrast of every pair in both schemes computed from the tokens, colours only as tokens,
+  logical properties only, focus, reduced motion, 24 px targets, forced colours, nothing loaded). A one-off
+  headless-Chromium run, which is not part of the build, found no sideways scroll at 320 px, with or without
+  the text-spacing override, in either language; no person using assistive technology has tested any of it,
+  and no fluent reader has read the Japanese. *Output change:* an unknown address on the application origin is
+  now a 404 page in the visitor's language, not the text `Not found.`; the content origin's 404 and the 421 are
+  one catalog sentence of plain text; `/-/health` and the 404 handler moved out of `routes.rs`.
