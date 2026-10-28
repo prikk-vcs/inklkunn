@@ -77,8 +77,8 @@
 - **Add your SSH public key line to `release-signers.toml`** (`authorized_ssh_signers`) before the first
   release; the decision to sign tags is taken (2026-10-28), only the key is missing (IS-6).
 - **Start the dev team**: M0 is approved; RFC 002's handoff is assignable and RFC 003's T1–T3 are startable.
-  Its prepare task is `.git-exclude/tasks/dev-team/inklkunn-001-prepare.md` (a fresh architect session has
-  `.git-exclude/tasks/architect/inklkunn-001-prepare.md`).
+  Its prepare task is `.git-exclude/tasks/dev-team/001-prepare.md` (a fresh architect session has
+  `.git-exclude/tasks/architect/001-prepare.md`).
 - Name the Japanese reviewers before the first catalog ships (DR-7; Japanese is compiled in as a preview
   until then).
 
