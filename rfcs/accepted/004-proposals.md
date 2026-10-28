@@ -1,7 +1,7 @@
 # RFC 004 — Proposals: propose, review, accept and seal; re-author a moved base gently; never lose a half-state
 
-**Status.** **Proposed** (2026-10-28, by the architect). The implementer must not start until the owner accepts
-it. Handoff: written on acceptance, as `../handoffs/004-proposals/`.
+**Status.** **Accepted** by the owner on 2026-10-28 ("RFC 004 is accepted."; both open questions ruled as the
+architect recommended); proposed the same day. Handoff: `../handoffs/004-proposals/proposals-handoff-v1.md`.
 **Tracks.** ROADMAP M2 (0.2.0), theme T4, risk R2 (measured by M0's spike B) and R3. Requirements
 `PR-1 … PR-15`, `PR-17`, `CM-5`, `CM-9`, `CM-10`, `ID-3 … ID-5`, `SEC-3`, `SEC-7`, `PERF-2`, `PERF-4`,
 `DUR-2`, `INT-2`, `INT-4`, `INT-7`; external design `WEB-03`, `WEB-04`, `WEB-05`, `WEB-09`, `API-03`,
@@ -180,12 +180,13 @@ re-verified.
 - **Direct edit for maintainers.** Rejected (PR-1): one path, always a proposal record, even when the same
   person proposes and accepts.
 
-## Open questions
+## Open questions (ruled by the owner, 2026-10-28)
 
-- Whether a comment's quote selector should also be re-anchored across accepted changes of the page (not
-  only across revisions of the proposal): decided in the handoff after RFC 005's needs are clearer.
-- The default of required approvals (D-3 proposes none, self-acceptance allowed for small wikis): the
-  owner's, since it shapes the first wikis' feel; RFC 006 makes it policy either way.
+- A comment's quote selector is re-anchored across revisions of the proposal (D-3); whether it is also
+  re-anchored across accepted changes of the page is decided in the handoff after RFC 005's needs are
+  clearer. **Ruled: as recommended.**
+- The default of required approvals is none, with self-acceptance allowed for maintainers of a wiki with
+  fewer than three maintainers (D-3); RFC 006 makes it policy data. **Ruled: as recommended.**
 
 ## Sequencing and handoff
 
