@@ -5,8 +5,9 @@
 use std::path::PathBuf;
 
 use inklkunn_store::{
-    DisplayName, MemoryStore, NewWiki, RootLayout, Slug, SqliteStore, StoreError, Verification,
-    VerificationState, Visibility, WikiId, WikiRecord, WikiStore,
+    AccountId, DisplayName, MemoryStore, NewWiki, Role, RoleGrant, RoleStore, RootLayout, Slug,
+    SqliteStore, StoreError, Verification, VerificationState, Visibility, WikiId, WikiRecord,
+    WikiStore,
 };
 
 fn slug(s: &str) -> Slug {
@@ -148,14 +149,101 @@ fn invariants(store: &dyn WikiStore) {
     assert_eq!(store.get(&full.id).expect("get"), full);
 }
 
+/// Role grants (RFC 002 D-2): one role per account per wiki, replaced by a new grant, isolated by wiki,
+/// refused for a wiki that is not there, in the order each was last made.
+fn role_invariants(store: &(impl WikiStore + RoleStore)) {
+    let w1 = store
+        .create(NewWiki::new(slug("roles-one"), name("Roles one")))
+        .expect("wiki one");
+    let w2 = store
+        .create(NewWiki::new(slug("roles-two"), name("Roles two")))
+        .expect("wiki two");
+    let (a, b, root) = (AccountId::new(), AccountId::new(), AccountId::new());
+    let grant =
+        |account: &AccountId, wiki: &WikiId, role: Role, by: Option<&AccountId>, at: i64| {
+            RoleGrant {
+                account: account.clone(),
+                wiki: wiki.clone(),
+                role,
+                granted_by: by.cloned(),
+                granted_at: at,
+            }
+        };
+
+    // Nothing is granted until it is.
+    assert_eq!(store.role(&a, &w1.id).expect("role"), None);
+    assert!(store.grants_in(&w1.id).expect("grants").is_empty());
+
+    store
+        .grant(grant(&a, &w1.id, Role::Contributor, None, 10))
+        .expect("grant a");
+    store
+        .grant(grant(&b, &w1.id, Role::Admin, Some(&root), 11))
+        .expect("grant b");
+    assert_eq!(
+        store.role(&a, &w1.id).expect("role"),
+        Some(Role::Contributor)
+    );
+    assert_eq!(store.role(&b, &w1.id).expect("role"), Some(Role::Admin));
+
+    // A role is per wiki: nothing leaks to the other wiki or to another account.
+    assert_eq!(store.role(&a, &w2.id).expect("role"), None);
+    assert_eq!(store.role(&root, &w1.id).expect("role"), None);
+
+    // A new grant replaces the old one (a promotion is one act) and moves to the end of the order.
+    store
+        .grant(grant(&a, &w1.id, Role::Maintainer, Some(&b), 12))
+        .expect("promote");
+    assert_eq!(
+        store.role(&a, &w1.id).expect("role"),
+        Some(Role::Maintainer)
+    );
+    let all = store.grants_in(&w1.id).expect("grants");
+    assert_eq!(all.len(), 2, "one role per account per wiki");
+    assert_eq!(
+        all.iter().map(|g| &g.account).collect::<Vec<_>>(),
+        vec![&b, &a]
+    );
+    let promoted = all.last().expect("promoted grant");
+    assert_eq!(promoted.granted_by.as_ref(), Some(&b));
+    assert_eq!(promoted.granted_at, 12);
+    assert_eq!(all.first().expect("first").granted_by.as_ref(), Some(&root));
+
+    // A grant for a wiki that is not there is refused, and leaves nothing behind.
+    let ghost = WikiId::new();
+    assert_eq!(
+        store.grant(grant(&a, &ghost, Role::Admin, None, 13)).err(),
+        Some(StoreError::NotFound)
+    );
+    assert_eq!(store.role(&a, &ghost).expect("role"), None);
+    assert!(store.grants_in(&ghost).expect("grants").is_empty());
+
+    // Revoking says whether there was anything to revoke, and only that account's role in that wiki goes.
+    store
+        .grant(grant(&a, &w2.id, Role::Observer, None, 14))
+        .expect("grant a in two");
+    assert!(store.revoke(&a, &w1.id).expect("revoke"));
+    assert!(!store.revoke(&a, &w1.id).expect("revoke again"));
+    assert_eq!(store.role(&a, &w1.id).expect("role"), None);
+    assert_eq!(store.role(&a, &w2.id).expect("role"), Some(Role::Observer));
+    assert_eq!(store.role(&b, &w1.id).expect("role"), Some(Role::Admin));
+    assert!(
+        !store
+            .revoke(&AccountId::new(), &w1.id)
+            .expect("unknown account")
+    );
+}
+
 #[test]
 fn memory_store_holds_the_invariants() {
     invariants(&MemoryStore::new());
+    role_invariants(&MemoryStore::new());
 }
 
 #[test]
 fn sqlite_store_holds_the_invariants() {
     invariants(&SqliteStore::open_in_memory().expect("open"));
+    role_invariants(&SqliteStore::open_in_memory().expect("open"));
 }
 
 struct TempDir(PathBuf);
@@ -222,7 +310,7 @@ fn sqlite_store_refuses_a_newer_or_unreadable_schema_before_touching_it() {
         Some(StoreError::SchemaVersion { .. })
     ));
     // The refusal changed nothing: restore the version and the wiki is still there.
-    doctor("1");
+    doctor(&inklkunn_store::sqlite::SCHEMA_VERSION.to_string());
     let store = SqliteStore::open(&db).expect("reopen");
     assert_eq!(store.list().expect("list").len(), 1);
 }
@@ -278,4 +366,90 @@ fn the_root_layout_puts_a_wiki_under_its_shard_renames_move_nothing_and_discard_
     assert!(!layout.scratch_dir(&w.id).exists());
     // Discarding what is already gone is not an error.
     layout.discard_unfinished(&w.id).expect("idempotent");
+}
+
+/// M0's schema, written out here on purpose: an oracle for "a database an M0 build made" that does not move
+/// when the code under test does.
+const M0_SCHEMA: &str = "
+CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE wikis (
+    id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL,
+    default_view TEXT NOT NULL, default_license TEXT NOT NULL, languages TEXT NOT NULL,
+    visibility TEXT NOT NULL, policy_bootstrap TEXT NOT NULL, prikk_format_version TEXT,
+    verification_state TEXT NOT NULL, verification_at INTEGER, author_key_id TEXT,
+    maintainer_key_id TEXT, created_at INTEGER NOT NULL, seq INTEGER NOT NULL
+);
+CREATE INDEX wikis_seq ON wikis(seq);
+INSERT INTO schema_meta (key, value) VALUES ('schema_version', '1');
+INSERT INTO wikis VALUES ('019a0000-0000-7000-8000-000000000001', 'old-wiki', 'Old wiki', 'heads/main',
+    'CC-BY-SA-4.0', '[\"en\"]', 'public', 'default', NULL, 'verified', 1700000000, 'ed25519-aaaa',
+    'ed25519-bbbb', 1700000000, 1);
+";
+
+#[test]
+fn an_m0_database_is_migrated_forward_with_its_wikis_and_only_once() {
+    let tmp = temp("migrate");
+    let db = tmp.0.join("store.sqlite");
+    {
+        let conn = rusqlite::Connection::open(&db).expect("raw open");
+        conn.execute_batch(M0_SCHEMA).expect("the M0 schema");
+    }
+    let version = || -> String {
+        let conn = rusqlite::Connection::open(&db).expect("raw open");
+        conn.query_row(
+            "SELECT value FROM schema_meta WHERE key = 'schema_version'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("version")
+    };
+    assert_eq!(version(), "1");
+    {
+        let store = SqliteStore::open(&db).expect("an M0 database opens");
+        let wikis = store.list().expect("list");
+        assert_eq!(wikis.len(), 1, "the M0 wiki survived");
+        let old = wikis.first().expect("wiki");
+        assert_eq!(old.slug.as_str(), "old-wiki");
+        assert_eq!(old.author_key_id.as_deref(), Some("ed25519-aaaa"));
+        // The new tables are there and work on the old wiki.
+        let account = AccountId::new();
+        store
+            .grant(RoleGrant {
+                account: account.clone(),
+                wiki: old.id.clone(),
+                role: Role::Admin,
+                granted_by: None,
+                granted_at: 5,
+            })
+            .expect("grant in a migrated database");
+        assert_eq!(
+            store.role(&account, &old.id).expect("role"),
+            Some(Role::Admin)
+        );
+    }
+    assert_eq!(
+        version(),
+        inklkunn_store::sqlite::SCHEMA_VERSION.to_string()
+    );
+    // Opening it again changes nothing and loses nothing.
+    let store = SqliteStore::open(&db).expect("reopen");
+    assert_eq!(store.list().expect("list").len(), 1);
+    assert_eq!(
+        version(),
+        inklkunn_store::sqlite::SCHEMA_VERSION.to_string()
+    );
+}
+
+#[test]
+fn the_migration_list_is_ordered_and_ends_at_the_schema_version() {
+    use inklkunn_store::sqlite::{MIGRATIONS, SCHEMA_VERSION};
+    let versions: Vec<i64> = MIGRATIONS.iter().map(|(v, _)| *v).collect();
+    assert_eq!(versions.first(), Some(&1), "version 1 is M0's schema");
+    assert!(
+        versions
+            .windows(2)
+            .all(|w| matches!(w, [a, b] if *b == *a + 1)),
+        "{versions:?}"
+    );
+    assert_eq!(versions.last(), Some(&SCHEMA_VERSION));
 }

@@ -1,25 +1,30 @@
 //! The SQLite store (`rusqlite`, bundled): WAL, a versioned schema, one connection behind a mutex.
 //!
-//! **Opening is refused before any write when the database is newer than this build knows**: the
-//! version is read first, and only a fresh database (no `schema_meta` table) or one at this build's
-//! version is touched. Schema creation and the version row land in one transaction. Every change to a
-//! record runs in an immediate transaction, so a second process (a command-line run beside the service)
-//! cannot slip between a check and a write; a slug or id already taken is reported as exactly that.
+//! **Opening never guesses about the schema.** The version is read first. A database newer than this build
+//! knows, or one whose version cannot be read, is refused before anything is written. An older one is
+//! brought forward by [`MIGRATIONS`], in order, inside one immediate transaction that re-reads the version
+//! first (a second process may have migrated already); a fresh database gets every migration and the
+//! version row in one transaction. Every migration only **adds**, so a build one step behind can still
+//! refuse cleanly and nothing is rewritten. Every change to a record runs in an immediate transaction, so
+//! a second process (a command-line run beside the service) cannot slip between a check and a write; a
+//! slug or id already taken is reported as exactly that.
 
 use std::path::Path;
 use std::sync::{Mutex, PoisonError};
 
 use rusqlite::{Connection, OptionalExtension, Row, TransactionBehavior, params};
 
+use crate::access::{Role, RoleGrant, RoleStore};
 use crate::record::{
-    DisplayName, Slug, Verification, VerificationState, Visibility, WikiId, WikiRecord,
+    AccountId, DisplayName, Slug, Verification, VerificationState, Visibility, WikiId, WikiRecord,
 };
 use crate::{Result, StoreError, WikiStore};
 
-/// The schema version this build writes and reads.
-pub const SCHEMA_VERSION: i64 = 1;
+/// The schema version this build writes and reads: the last of [`MIGRATIONS`].
+pub const SCHEMA_VERSION: i64 = 2;
 
-const SCHEMA: &str = "
+/// Version 1: M0's schema, the wiki records.
+const V1: &str = "
 CREATE TABLE IF NOT EXISTS schema_meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -44,10 +49,94 @@ CREATE TABLE IF NOT EXISTS wikis (
 CREATE INDEX IF NOT EXISTS wikis_seq ON wikis(seq);
 ";
 
+/// Version 2: who holds which role in which wiki (RFC 002 D-2). One role per account per wiki; `seq` orders
+/// grants by when each was last made.
+const V2: &str = "
+CREATE TABLE IF NOT EXISTS role_grants (
+    wiki_id    TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    role       TEXT NOT NULL,
+    granted_by TEXT,
+    granted_at INTEGER NOT NULL,
+    seq        INTEGER NOT NULL,
+    PRIMARY KEY (wiki_id, account_id)
+);
+CREATE INDEX IF NOT EXISTS role_grants_wiki ON role_grants(wiki_id, seq);
+";
+
+/// Every migration, in order, by the version it brings the database to. A new version is appended here and
+/// [`SCHEMA_VERSION`] moves with it (a test holds the two together).
+pub const MIGRATIONS: &[(i64, &str)] = &[(1, V1), (2, V2)];
+
 /// The SQLite-backed store.
 #[derive(Debug)]
 pub struct SqliteStore {
     conn: Mutex<Connection>,
+}
+
+/// The schema version a database records: `None` for a fresh one (no `schema_meta` table), the version
+/// otherwise. A table without a readable version row is refused, never treated as fresh.
+fn read_version(conn: &Connection) -> Result<Option<i64>> {
+    let has_meta: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_meta'",
+            [],
+            |_| Ok(true),
+        )
+        .optional()
+        .map_err(backend)?
+        .unwrap_or(false);
+    if !has_meta {
+        return Ok(None);
+    }
+    let found: Option<String> = conn
+        .query_row(
+            "SELECT value FROM schema_meta WHERE key = 'schema_version'",
+            [],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(backend)?;
+    match found.as_deref().map(str::parse::<i64>) {
+        Some(Ok(v)) => Ok(Some(v)),
+        Some(Err(_)) => Err(StoreError::SchemaVersion {
+            found: found.unwrap_or_default(),
+            known: SCHEMA_VERSION,
+        }),
+        None => Err(StoreError::SchemaVersion {
+            found: "(none)".to_owned(),
+            known: SCHEMA_VERSION,
+        }),
+    }
+}
+
+/// Bring an older database forward. The version is read **again inside the transaction**: a second process
+/// may have migrated it between our read and our lock, and migrating twice must not happen.
+fn migrate(conn: &mut Connection) -> Result<()> {
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(backend)?;
+    let current = read_version(&tx)?.ok_or_else(|| StoreError::SchemaVersion {
+        found: "(none)".to_owned(),
+        known: SCHEMA_VERSION,
+    })?;
+    if !(1..=SCHEMA_VERSION).contains(&current) {
+        return Err(StoreError::SchemaVersion {
+            found: current.to_string(),
+            known: SCHEMA_VERSION,
+        });
+    }
+    for (version, sql) in MIGRATIONS {
+        if *version > current {
+            tx.execute_batch(sql).map_err(backend)?;
+        }
+    }
+    tx.execute(
+        "UPDATE schema_meta SET value = ?1 WHERE key = 'schema_version'",
+        params![SCHEMA_VERSION.to_string()],
+    )
+    .map_err(backend)?;
+    tx.commit().map_err(backend)
 }
 
 fn backend(e: rusqlite::Error) -> StoreError {
@@ -114,58 +203,32 @@ impl SqliteStore {
             }
         }
         // 1. Read the version before touching anything.
-        let has_meta: bool = conn
-            .query_row(
-                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_meta'",
-                [],
-                |_| Ok(true),
-            )
-            .optional()
-            .map_err(backend)?
-            .unwrap_or(false);
-        if has_meta {
-            let found: Option<String> = conn
-                .query_row(
-                    "SELECT value FROM schema_meta WHERE key = 'schema_version'",
-                    [],
-                    |r| r.get(0),
+        match read_version(&conn)? {
+            // 2a. A fresh database: every migration and the version row in one transaction.
+            None => {
+                let tx = conn
+                    .transaction_with_behavior(TransactionBehavior::Immediate)
+                    .map_err(backend)?;
+                for (_, sql) in MIGRATIONS {
+                    tx.execute_batch(sql).map_err(backend)?;
+                }
+                tx.execute(
+                    "INSERT OR IGNORE INTO schema_meta (key, value) VALUES ('schema_version', ?1)",
+                    params![SCHEMA_VERSION.to_string()],
                 )
-                .optional()
                 .map_err(backend)?;
-            match found.as_deref().map(str::parse::<i64>) {
-                Some(Ok(v)) if v == SCHEMA_VERSION => {}
-                Some(Ok(v)) => {
-                    return Err(StoreError::SchemaVersion {
-                        found: v.to_string(),
-                        known: SCHEMA_VERSION,
-                    });
-                }
-                Some(Err(_)) => {
-                    return Err(StoreError::SchemaVersion {
-                        found: found.unwrap_or_default(),
-                        known: SCHEMA_VERSION,
-                    });
-                }
-                None => {
-                    return Err(StoreError::SchemaVersion {
-                        found: "(none)".to_owned(),
-                        known: SCHEMA_VERSION,
-                    });
-                }
+                tx.commit().map_err(backend)?;
             }
-        }
-        // 2. A fresh database: schema and version row in one transaction.
-        if !has_meta {
-            let tx = conn
-                .transaction_with_behavior(TransactionBehavior::Immediate)
-                .map_err(backend)?;
-            tx.execute_batch(SCHEMA).map_err(backend)?;
-            tx.execute(
-                "INSERT OR IGNORE INTO schema_meta (key, value) VALUES ('schema_version', ?1)",
-                params![SCHEMA_VERSION.to_string()],
-            )
-            .map_err(backend)?;
-            tx.commit().map_err(backend)?;
+            Some(v) if v == SCHEMA_VERSION => {}
+            // 2b. An older database: forward, in order, in one transaction.
+            Some(v) if (1..SCHEMA_VERSION).contains(&v) => migrate(&mut conn)?,
+            // 2c. Newer than this build, or not a version at all: refused, nothing written.
+            Some(v) => {
+                return Err(StoreError::SchemaVersion {
+                    found: v.to_string(),
+                    known: SCHEMA_VERSION,
+                });
+            }
         }
         Ok(SqliteStore {
             conn: Mutex::new(conn),
@@ -338,6 +401,110 @@ impl WikiStore for SqliteStore {
                 return Err(StoreError::NotFound);
             }
             Self::fetch(conn, Key::Id, id.as_str())
+        })
+    }
+}
+
+fn unreadable(what: &str) -> StoreError {
+    StoreError::Backend(format!("a stored {what} could not be read"))
+}
+
+fn row_to_grant(row: &Row<'_>) -> rusqlite::Result<RoleGrant> {
+    let wiki: String = row.get(0)?;
+    let account: String = row.get(1)?;
+    let role: String = row.get(2)?;
+    let granted_by: Option<String> = row.get(3)?;
+    let invalid = |what: &str| {
+        rusqlite::Error::InvalidColumnType(0, what.to_owned(), rusqlite::types::Type::Text)
+    };
+    Ok(RoleGrant {
+        wiki: WikiId::parse(&wiki).ok_or_else(|| invalid("wiki_id"))?,
+        account: AccountId::parse(&account).ok_or_else(|| invalid("account_id"))?,
+        role: Role::parse(&role).ok_or_else(|| invalid("role"))?,
+        granted_by: granted_by
+            .map(|g| AccountId::parse(&g).ok_or_else(|| invalid("granted_by")))
+            .transpose()?,
+        granted_at: row.get(4)?,
+    })
+}
+
+impl RoleStore for SqliteStore {
+    fn grant(&self, grant: RoleGrant) -> Result<()> {
+        self.with(|conn| {
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(backend)?;
+            let wiki_exists = tx
+                .query_row(
+                    "SELECT 1 FROM wikis WHERE id = ?1",
+                    params![grant.wiki.as_str()],
+                    |_| Ok(()),
+                )
+                .optional()
+                .map_err(backend)?
+                .is_some();
+            if !wiki_exists {
+                return Err(StoreError::NotFound);
+            }
+            tx.execute(
+                "INSERT INTO role_grants (wiki_id, account_id, role, granted_by, granted_at, seq) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, (SELECT COALESCE(MAX(seq), 0) + 1 FROM role_grants)) \
+                 ON CONFLICT (wiki_id, account_id) DO UPDATE SET role = excluded.role, \
+                 granted_by = excluded.granted_by, granted_at = excluded.granted_at, seq = excluded.seq",
+                params![
+                    grant.wiki.as_str(),
+                    grant.account.as_str(),
+                    grant.role.as_str(),
+                    grant.granted_by.as_ref().map(AccountId::as_str),
+                    grant.granted_at,
+                ],
+            )
+            .map_err(backend)?;
+            tx.commit().map_err(backend)
+        })
+    }
+
+    fn revoke(&self, account: &AccountId, wiki: &WikiId) -> Result<bool> {
+        self.with(|conn| {
+            let n = conn
+                .execute(
+                    "DELETE FROM role_grants WHERE wiki_id = ?1 AND account_id = ?2",
+                    params![wiki.as_str(), account.as_str()],
+                )
+                .map_err(backend)?;
+            Ok(n > 0)
+        })
+    }
+
+    fn role(&self, account: &AccountId, wiki: &WikiId) -> Result<Option<Role>> {
+        self.with(|conn| {
+            let stored: Option<String> = conn
+                .query_row(
+                    "SELECT role FROM role_grants WHERE wiki_id = ?1 AND account_id = ?2",
+                    params![wiki.as_str(), account.as_str()],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(backend)?;
+            stored
+                .map(|s| Role::parse(&s).ok_or_else(|| unreadable("role")))
+                .transpose()
+        })
+    }
+
+    fn grants_in(&self, wiki: &WikiId) -> Result<Vec<RoleGrant>> {
+        self.with(|conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT wiki_id, account_id, role, granted_by, granted_at FROM role_grants \
+                     WHERE wiki_id = ?1 ORDER BY seq",
+                )
+                .map_err(backend)?;
+            let rows = stmt
+                .query_map(params![wiki.as_str()], row_to_grant)
+                .map_err(backend)?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(|_| unreadable("role grant"))
         })
     }
 }

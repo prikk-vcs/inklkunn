@@ -12,6 +12,10 @@
 //! - **prikk spawn** (`LAY-3`): only `inklkunn-prikk` and `inklkunn-signer` spawn a process at all (no
 //!   `std::process` or `tokio::process` elsewhere), and `inklkunn-prikk` names no write verb.
 //! - **markup purity** (`LAY-6`): `inklkunn-markup` has no I/O, clock, process or randomness dependency.
+//! - **route registration** (`LAY-2`, `ENF-3`): the web crate registers routes in its `routes.rs` and
+//!   nowhere else, so the route table (`inklkunn_core::RouteTable`) is complete by construction.
+//! - **privileged principals** (`INV-4`, RFC 002 D-1): no web product source names a system principal or
+//!   builds an account principal; a handler receives the principal the auth crate produced.
 //! - **unsafe is forbidden** everywhere: every member crate carries `[lints] workspace = true` and opens
 //!   with `#![forbid(unsafe_code)]`.
 //! - **features**: no product crate enables another crate's test or bootstrap feature.
@@ -99,6 +103,29 @@ pub const MARKUP_ALLOWED_DEPS: &[&str] = &[
     "serde",
     "serde_json",
     "unicode-normalization",
+];
+
+/// What registers a route with axum (or merges a router in), in any spelling: the table
+/// (`inklkunn_core::RouteTable`) is complete only if none of these appears outside [`ROUTE_REGISTRY_FILE`].
+pub const ROUTE_REGISTRATION_TOKENS: &[&str] = &[
+    ".route(",
+    ".route_service(",
+    ".nest(",
+    ".nest_service(",
+    ".merge(",
+    ".fallback(",
+    ".fallback_service(",
+    "Router::new",
+];
+/// The one web source file that may register routes.
+pub const ROUTE_REGISTRY_FILE: &str = "routes.rs";
+/// Names a web handler must never use: it receives a principal, it does not make one.
+pub const PRIVILEGED_PRINCIPAL_NAMES: &[&str] = &[
+    "Principal::System",
+    "SystemPrincipal",
+    "Principal::Account",
+    "Principal::session",
+    "Principal::token",
 ];
 
 /// The workspace root: two levels above this crate's manifest.
@@ -703,6 +730,52 @@ pub fn runtime_dependencies(manifest: &str) -> Vec<String> {
         .filter(|d| d.kind != "dev-dependencies")
         .map(|d| d.package)
         .collect()
+}
+
+/// Where `tokens` appear in `source`'s code (comments and strings excluded), **whatever whitespace splits
+/// them**: `.route (` and `.route\n(` are the same call. Returns `(line, token)` of each first character.
+fn token_hits(source: &str, tokens: &[&str]) -> Vec<(usize, String)> {
+    let code = strip_strings(source);
+    let mut flat = String::with_capacity(code.len());
+    let mut line_of: Vec<usize> = Vec::with_capacity(code.len());
+    let mut line = 1;
+    for c in code.chars() {
+        if c == '\n' {
+            line += 1;
+        }
+        if !c.is_whitespace() {
+            flat.push(c);
+            line_of.extend(std::iter::repeat_n(line, c.len_utf8()));
+        }
+    }
+    let mut out = Vec::new();
+    for token in tokens {
+        let ident_start = token.starts_with(|c: char| c.is_alphabetic());
+        for (at, _) in flat.match_indices(token) {
+            // A token that begins like an identifier must begin a word (`SubRouter::new` is not `Router::new`).
+            let glued = ident_start
+                && flat[..at]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|c| c.is_alphanumeric() || c == '_');
+            if !glued {
+                out.push((line_of.get(at).copied().unwrap_or(1), (*token).to_owned()));
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Lines of `source` that register a route or merge a router ([`ROUTE_REGISTRATION_TOKENS`]).
+pub fn route_registrations(source: &str) -> Vec<(usize, String)> {
+    token_hits(source, ROUTE_REGISTRATION_TOKENS)
+}
+
+/// Lines of `source` that name a privileged principal ([`PRIVILEGED_PRINCIPAL_NAMES`]).
+pub fn privileged_principal_mentions(source: &str) -> Vec<(usize, String)> {
+    token_hits(source, PRIVILEGED_PRINCIPAL_NAMES)
 }
 
 /// Lines of `source` whose code names one of [`SIGNER_ONLY_NAMES`].

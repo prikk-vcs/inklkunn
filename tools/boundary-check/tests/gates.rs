@@ -411,3 +411,113 @@ fn every_member_crate_forbids_unsafe_and_uses_the_workspace_lints() {
         "[package]\nname = \"a\"\n\n[lints.rust]\nunsafe_code = \"allow\"\n"
     ));
 }
+
+#[test]
+fn routes_are_registered_in_the_registry_file_and_nowhere_else() {
+    let root = workspace_root();
+    for src in rust_sources(&root.join("crates/inklkunn-web/src")) {
+        if src.file_name().is_some_and(|n| n == ROUTE_REGISTRY_FILE) {
+            continue;
+        }
+        let hits = route_registrations(&read(&src));
+        assert!(
+            hits.is_empty(),
+            "ROUTE REGISTRATION violation (ENF-3): {} registers routes outside `{ROUTE_REGISTRY_FILE}` at {hits:?}; \
+             declare them in the route table and register them there",
+            src.display()
+        );
+    }
+}
+
+#[test]
+fn route_registration_gate_catches_every_spelling_and_spares_prose() {
+    for planted in [
+        "let app = Router::new();\n",
+        "app.route(\"/x\", get(h))\n",
+        "    .route(\"/leak\", get(leak))\n",
+        "    .route (\"/leak\", get(leak))\n",
+        "    .route\n    (\"/leak\", get(leak))\n",
+        "app.nest(\"/admin\", admin())\n",
+        "app.nest_service(\"/f\", serve)\n",
+        "app.route_service(\"/f\", serve)\n",
+        "app.merge(other)\n",
+        "app.fallback(h)\n",
+        "app.fallback_service(s)\n",
+        "use axum::Router; let r = axum::Router::new();\n",
+    ] {
+        assert!(!route_registrations(planted).is_empty(), "{planted:?}");
+    }
+    // The line number is the call's.
+    assert_eq!(
+        route_registrations(
+            "fn a() {}\n\nfn b() {\n    app\n        .route\n        (\"/x\", h)\n}\n"
+        ),
+        vec![(5, ".route(".to_owned())]
+    );
+    for fine in [
+        "// Router::new() and .route(\"/x\", h) are only mentioned\n",
+        "let s = \"app.route(\\\"/x\\\")\";\n",
+        "let t = SubRouter::new();\n",
+        "/* app.merge(other) */ let a = 1;\n",
+        "let route = table.route_for(path);\n",
+    ] {
+        assert_eq!(route_registrations(fine), vec![], "{fine:?}");
+    }
+    // Discovery: a planted web source other than the registry file is found; the registry file is exempt.
+    let scratch = Scratch::new("routes");
+    let web = scratch.0.join("crates/inklkunn-web/src");
+    fs::create_dir_all(web.join("deep")).unwrap();
+    fs::write(web.join("routes.rs"), "app.route(\"/ok\", h)\n").unwrap();
+    fs::write(web.join("deep/page.rs"), "app.nest(\"/x\", y)\n").unwrap();
+    let offenders: Vec<_> = rust_sources_under(&scratch.0, &web)
+        .into_iter()
+        .filter(|p| p.file_name().is_none_or(|n| n != ROUTE_REGISTRY_FILE))
+        .filter(|p| !route_registrations(&read(p)).is_empty())
+        .collect();
+    assert_eq!(offenders.len(), 1, "{offenders:?}");
+}
+
+#[test]
+fn a_web_handler_receives_a_principal_it_never_builds() {
+    let root = workspace_root();
+    for src in rust_sources(&root.join("crates/inklkunn-web")) {
+        if !is_product_source(&src) {
+            continue;
+        }
+        let hits = privileged_principal_mentions(&read(&src));
+        assert!(
+            hits.is_empty(),
+            "PRIVILEGED PRINCIPAL violation (INV-4): {} names {hits:?}; a handler is handed the principal \
+             inklkunn-auth produced and never builds one",
+            src.display()
+        );
+    }
+}
+
+#[test]
+fn privileged_principal_gate_catches_every_construction_and_spares_prose() {
+    for planted in [
+        "let p = Principal::System(s);\n",
+        "let p = Principal :: System(s);\n",
+        "let p: SystemPrincipal = x;\n",
+        "let p = Principal::Account { id, scope: Scope::Admin };\n",
+        "let p = Principal::session(id);\n",
+        "let p = Principal::token(id, scope);\n",
+        "use inklkunn_core::Principal::System as S;\n",
+        "match p { inklkunn_core::Principal::Account { .. } => {} _ => {} }\n",
+    ] {
+        assert!(
+            !privileged_principal_mentions(planted).is_empty(),
+            "{planted:?}"
+        );
+    }
+    for fine in [
+        "fn h(principal: Principal) {}\n",
+        "let p = Principal::Anonymous;\n",
+        "// Principal::System is minted by core only\n",
+        "let m = \"Principal::session\";\n",
+        "let n = MySystemPrincipalLike;\n",
+    ] {
+        assert_eq!(privileged_principal_mentions(fine), vec![], "{fine:?}");
+    }
+}

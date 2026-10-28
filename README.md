@@ -47,7 +47,10 @@ cargo test --workspace --locked          # prikk-dependent tests self-skip with 
   bubblewrap, pinned to a floor version and to each report's `schema_version`; the repository is bound
   read-only. Only `inklkunn-signer` runs a write verb or touches a key; a CI gate enforces both.
 - **Pure markup.** `inklkunn-markup` does no I/O; wiki-commons' conformance corpus is its acceptance test.
-- **Default deny.** One `authorize()` is consulted on every path; in M0 it denies everything.
+- **Default deny.** One `authorize()` is consulted on every path. It loads the wiki's visibility and the
+  caller's role itself, fails closed, answers the same for a wiki that is restricted and one that does not
+  exist, and records every consequential decision before allowing it. Each route is declared in one table
+  with the action that guards it, or as public with a reason.
 - **Measured dependencies.** Every crate enters with its measured cost, license and advisory state
   ([`docs/dependency-policy.md`](docs/dependency-policy.md)); upstream behaviours we rely on are a ledger.
 

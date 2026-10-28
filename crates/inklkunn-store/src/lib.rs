@@ -5,15 +5,21 @@
 //!
 //! - [`record`]: the wiki record and its vocabulary; validated slugs, display names and ids.
 //! - [`root`]: `<root>/<shard>/<wiki id>/`, never the wiki's name, so renames move no bytes.
-//! - [`WikiStore`]: the trait; [`MemoryStore`] for tests and [`SqliteStore`] for service.
+//! - [`access`]: roles, token scopes and the role grants (RFC 002 D-1, D-2).
+//! - [`audit`]: the shape of the audit trail and its sink trait (RFC 002 D-9).
+//! - [`WikiStore`] and [`RoleStore`]: the traits; [`MemoryStore`] for tests and [`SqliteStore`] for service.
 //!
 //! The store never holds a key seed (threat model INV-2 for this crate's part): key *ids* only.
 
+pub mod access;
+pub mod audit;
 pub mod memory;
 pub mod record;
 pub mod root;
 pub mod sqlite;
 
+pub use access::{Role, RoleGrant, RoleStore, Scope};
+pub use audit::{AuditEvent, AuditOutcome, AuditSink, MemoryAudit};
 pub use memory::MemoryStore;
 pub use record::{
     AccountId, DisplayName, DisplayNameError, NewWiki, NewWikiError, ProposalId, Slug, SlugError,

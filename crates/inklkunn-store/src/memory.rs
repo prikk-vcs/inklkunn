@@ -2,13 +2,15 @@
 
 use std::sync::{Mutex, PoisonError};
 
-use crate::record::{DisplayName, Slug, Verification, WikiId, WikiRecord};
+use crate::access::{Role, RoleGrant, RoleStore};
+use crate::record::{AccountId, DisplayName, Slug, Verification, WikiId, WikiRecord};
 use crate::{Result, StoreError, WikiStore};
 
 /// Records in a mutex.
 #[derive(Debug, Default)]
 pub struct MemoryStore {
     records: Mutex<Vec<WikiRecord>>,
+    grants: Mutex<Vec<RoleGrant>>,
 }
 
 impl MemoryStore {
@@ -111,5 +113,41 @@ impl WikiStore for MemoryStore {
             r.prikk_format_version = prikk_format_version;
             Ok(())
         })
+    }
+}
+
+impl RoleStore for MemoryStore {
+    fn grant(&self, grant: RoleGrant) -> Result<()> {
+        // The wiki must exist; the check and the write are one critical section over both lists.
+        let records = self.records.lock().unwrap_or_else(PoisonError::into_inner);
+        if !records.iter().any(|r| r.id == grant.wiki) {
+            return Err(StoreError::NotFound);
+        }
+        let mut grants = self.grants.lock().unwrap_or_else(PoisonError::into_inner);
+        // A grant replaces the account's earlier one in this wiki and counts as the latest, like the SQLite
+        // store's `seq`: grants are listed in the order each was last made.
+        grants.retain(|g| !(g.account == grant.account && g.wiki == grant.wiki));
+        grants.push(grant);
+        Ok(())
+    }
+
+    fn revoke(&self, account: &AccountId, wiki: &WikiId) -> Result<bool> {
+        let mut grants = self.grants.lock().unwrap_or_else(PoisonError::into_inner);
+        let before = grants.len();
+        grants.retain(|g| !(g.account == *account && g.wiki == *wiki));
+        Ok(grants.len() != before)
+    }
+
+    fn role(&self, account: &AccountId, wiki: &WikiId) -> Result<Option<Role>> {
+        let grants = self.grants.lock().unwrap_or_else(PoisonError::into_inner);
+        Ok(grants
+            .iter()
+            .find(|g| g.account == *account && g.wiki == *wiki)
+            .map(|g| g.role))
+    }
+
+    fn grants_in(&self, wiki: &WikiId) -> Result<Vec<RoleGrant>> {
+        let grants = self.grants.lock().unwrap_or_else(PoisonError::into_inner);
+        Ok(grants.iter().filter(|g| g.wiki == *wiki).cloned().collect())
     }
 }

@@ -64,3 +64,18 @@ RFC 002 and RFC 003 — the first handoffs after M0, in progress. Still nothing 
   wrote for a created wiki still parses.
   *Output change:* `DisplayName` now refuses U+2028 and U+2029 as well as controls, as its error text always
   said: a reader that splits lines on them would otherwise see a forged trailer in a signed message.
+- **`authorize()` and the roles** (RFC 002 D-2; handoff 002 T2). The decision is a pure rule (`decide`) over a
+  snapshot that an `Authorizer` loads itself, so a handler can no longer say that a wiki is public: a
+  resource names its wiki and nothing about it. The ladder is observer, questioner, contributor, reviewer,
+  maintainer, admin; a token's scope (`read ⊂ propose ⊂ review ⊂ accept ⊂ admin`) is intersected with the
+  account's role. A principal with no grant may read what the wiki's visibility lets it read, and nothing else;
+  a wiki that is not there and a restricted one it has no role in give the same answer, the same audit event
+  and the same number of lookups. The decision fails closed, records consequential decisions (accept,
+  moderate, admin, export, import) allowed or not, and refuses an allowed one it could not record. The
+  system principal cannot be built outside `inklkunn-core`. `inklkunn-store` gains the role grants and the
+  audit sink trait, and its SQLite file now migrates forward from M0's schema (schema version 2).
+  Two gates join the others: routes are registered in the web crate's `routes.rs` only (so the route table is
+  complete), and no web source names a system principal or builds an account one.
+  *Output change:* `inklkunn_core::authorize` (the free function that denied everything) is replaced by
+  `Authorizer::authorize`; `Resource::Wiki` no longer carries a visibility; `Principal::Account` carries the
+  credential's scope.
