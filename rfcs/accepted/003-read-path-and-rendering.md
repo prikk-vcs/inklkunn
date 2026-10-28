@@ -4,7 +4,9 @@
 architect. Handoff: `../handoffs/003-read-path-and-rendering/read-path-and-rendering-handoff-v1.md`.
 **Concretized by the architect on 2026-10-28**, within the accepted intent, from measurements on prikk 0.54.1 (issues
 IS-8 … IS-10 in `docs/STATUS.md`): D-2 builds the title index from one materialized tip; D-11 runs `archive export`
-in the signer crate's keyless writable mode, beside the checkpoint refresh.
+in the signer crate's keyless writable mode, beside the checkpoint refresh. **And on 2026-10-29**, after the review of
+handoff 003's T1 – T3: D-2 reads at the tip's block id and counts three calls on the first miss at a new tip; D-3 escapes
+author HTML while the profile's subset is empty (IS-14); D-6 chooses a preview language by the reader's cookie only.
 **Tracks.** ROADMAP M1 (0.1.0), theme T3. Requirements `RD-1 … RD-11`, `RD-14`, `CM-3 … CM-5`, `CM-9`,
 `INC-1 … INC-8`, `IX-1`, `IX-2`, `IX-5`, `IX-6`, `IX-8`, `SEC-2`, `PRV-1`, `PRV-4`, `PERF-1`, `OPS-5`;
 external design `WEB-01`, `WEB-02`, `WEB-06`, `WEB-09`, `WEB-10`, `API-01`, `API-02`, `API-06`, `API-07`,
@@ -40,12 +42,15 @@ release.
   from `branch` (held for a few seconds) → the title index at that tip (rebuilt from frontmatter on tip
   change, from **one `extract` of the tip** and never one `cat` per page, since each `cat` replays the whole tree;
   stored in the derived cache; an `extract` refused for want of prikk's checkpoint record is *could not be read now*
-  and asks for the checkpoint refresh of D-11, never a full replay from a request) → the path → the cache by (tip, path, language) → on a miss, `cat` at
-  the tip, parse, resolve, render, store. A page view issues a bounded number of prikk calls (at most two on
-  a miss) and none on a hit.
+  and asks for the checkpoint refresh of D-11, never a full replay from a request) → the path → the cache by (tip, path, language, presentation) → on a miss, `cat` at
+  the tip **by its block id** (so the key is the content read), parse, resolve, render, store. A page view issues a
+  bounded number of prikk calls: none on a hit, one on a miss, **three on the first miss at a new tip** (`views`,
+  `extract`, `cat`).
 - **D-3 — Rendering and safety.** The markup tree from `inklkunn-markup` is serialized to HTML and passed
   through an allowlist sanitizer (`ammonia`, the house choice) before any template sees it; the raw-HTML
-  subset of the profile is the sanitizer's allowlist and nothing more. A strict CSP (`default-src 'none'`,
+  subset of the profile is the sanitizer's allowlist and nothing more. **While that subset is empty, raw HTML an
+  author wrote is rendered as escaped, visible text** (the profile's hidden comments stay hidden): the markup crate marks
+  what the renderer writes so that an author's HTML can never pass as it, a forged wiki link included. A strict CSP (`default-src 'none'`,
   `script-src` absent, one stylesheet from the app origin), `nosniff`, `frame-ancestors 'none'`, a
   `Referrer-Policy`, `Permissions-Policy`, and `Cache-Control: private, no-cache` with `Vary` on dynamic
   pages. `-/raw/` and attachments answer only on the configured content origin, as inert attachments with
@@ -63,8 +68,9 @@ release.
   data. A change page says *Signed into the history* and *signed by the wiki service on behalf of …*.
 - **D-6 — The catalog, the glossary and the accessibility tests.** A message catalog keyed by stable
   identifiers, whole sentences with named placeholders and plural forms, English shipped and Japanese
-  compiled in as a preview until its reviewers sign off (DR-7); negotiation by `Accept-Language` and a
-  cookie switcher at `/-/lang` with no script; `<html lang>` and `dir`; logical CSS only. A glossary in
+  compiled in as a preview until its reviewers sign off (DR-7); negotiation by `Accept-Language` among the
+  **reviewed** languages and a cookie switcher at `/-/lang` with no script (a preview language is chosen only by the
+  reader's cookie, so no browser setting serves an unreviewed translation unannounced); `<html lang>` and `dir`; logical CSS only. A glossary in
   `docs/glossary.md` fixes every term, reusing planeter's where the concept is the same; tests fail on a
   missing key, an orphan key, a placeholder mismatch, markup in a message, a literal user-facing string
   outside the catalog, a retired word (`sealed`, `commit`, `patch`, `block`, `ref` outside explanations).

@@ -28,6 +28,12 @@ landed and been approved first (RFC 002's names RFC 001's).
 
 ## What a review request carries back
 
+**Where it lives (since 2026-10-28):** review requests and the architect's review reports are private files in
+`.git-exclude/review-requests/` (named `<handoff slug>-review-request.md` and `…-architect-review-<date>.md`), like the
+upstream correspondence; the outcome and every correction that binds future work are folded into the committed record
+(the RFC's Status, a corrections handoff or a dated note in the handoff, `docs/STATUS.md`). A handoff that still says
+"beside this file" means that folder.
+
 The implementation summary; the commits (hash → what landed); every gate with its command and exit code,
 including the test run **with** prikk on PATH and the run **with prikk shimmed off PATH** (CI's own run has
 prikk installed at the floor, but the shimmed run proves the self-skips are visible); the dependency-tree

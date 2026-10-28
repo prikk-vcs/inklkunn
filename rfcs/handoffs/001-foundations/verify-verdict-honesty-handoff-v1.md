@@ -81,6 +81,6 @@ while checking a repository is reported as *could not be checked now*, never as 
 
 T1's rule as written; T2's tests pass and the real-prikk sweep fails on the old code; the mutation table; every gate
 green (fmt, clippy on both compilers, rustdoc, tests with prikk on `PATH` and shimmed off with the new
-`EXPECTED_SKIPS`, deny, audit, the four gates). The review request, `verify-verdict-honesty-review-request.md` beside
-this file, carries: the commits; the measured ceilings and report excerpts; the gate table with exit codes; the
+`EXPECTED_SKIPS`, deny, audit, the four gates). The review request, `verify-verdict-honesty-review-request.md` in
+`.git-exclude/review-requests/`, carries: the commits; the measured ceilings and report excerpts; the gate table with exit codes; the
 mutation table; deviations and open questions. The architect answers with one of the six outcomes.

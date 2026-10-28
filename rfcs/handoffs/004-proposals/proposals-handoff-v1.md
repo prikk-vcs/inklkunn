@@ -43,6 +43,14 @@
   confirmed that the check is no evidence there. Recovery clears a stale lock with `unlock --force` (or `--yes`)
   **only** when the durable lease record shows no live holder, says so in the plan, and records it; a test plants a
   lock with a recorded pid that the namespace makes look alive.
+- **From the review of handoff 002 (2026-10-29), binding on T4 and T5.** (a) The lease is built **on** the per-wiki
+  `flock` of the 002 corrections (C3), held in inklkunn's data directory, so the command line and the server exclude
+  each other; the in-process mutex orders waiters inside one process. (b) Read the signer's outcomes as they are typed:
+  `Queued` = committed, not sealed (recovery seals it; never commit again); `SealedUnconfirmed` = sealed (record the
+  acceptance as sealed with its block, flag the wiki for a look, never retry); `WorktreeDirty` = flag for recovery;
+  `Unavailable { CeilingExceeded }` with its position (C1). (c) After every seal, call the read service's `forget_wiki`
+  and **warm the title index off the request path** (PERF-1's lever 2), and run the reconciliation (RFC 002 D-7) there.
+  (d) The acceptance token carries the prepared change's digest (C5), which is the record's "merged content's digest".
 - **T5, `doctor`'s unreached-object warning is not damage.** Since prikk 0.54, `verify` counts unreached objects as a
   warning (exit 0) and `doctor` reports `PRIKK-DOCTOR-UNREACHED-OBJECT` warnings; recovery records them and does not
   block on them (planeter D-40, ledger PL-12).

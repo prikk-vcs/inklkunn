@@ -73,6 +73,39 @@ read against:
     survives the next start: planeter's RFC 004 part 7 (a `creating` state until the last step, and a start-up sweep
     that removes an unfinished creation whole) is the precedent; prove it with a `SIGKILL` at each step.
 
+- **From the architect's review of T1 – T3 (2026-10-29; outcome *Conditionally Approved*; binding).** The review
+  report is `.git-exclude/review-requests/002-003-architect-review-2026-10-29.md`.
+  - **Before T4 serves a page, author HTML is escaped while the profile's subset is empty (IS-14; mandatory).** The
+    sanitizer's allowlist is the renderer's vocabulary, so an author's `<a class="wikilink" href="https://…">Home</a>`
+    survives looking exactly like an internal wiki link and without `rel="nofollow ugc"`: a forged link, against the
+    second lens and RFC 003 D-3 ("the raw-HTML subset is the sanitizer's allowlist and nothing more"). Change the
+    markup crate's pre-pass so that what the renderer writes carries an unforgeable origin (the transclusion markers
+    are the pattern) and every element an author wrote in raw HTML is **rendered as escaped, visible text** while
+    `html_subset` is empty — never silently dropped, and the profile's hidden-comment construct (`<!-- … -->`) stays
+    hidden; when a subset is declared, exactly its elements and attributes pass, through the sanitizer, with the
+    renderer's `rel` on links. The sanitizer stays as the second line. Tests: the forged-link case above, a forged
+    `wikilink-missing`, a forged callout and a forged heading id, each rendered as text; the corpus still passes.
+  - **Reads are pinned to the tip's block id (mandatory).** `views()` gives the tip, then the page and the index are
+    read *at the view*, so a write in between caches newer content under the older key. Read `cat` and `extract` at
+    the tip's **block id** (`--ref <block id>` / `--block-id`; PK-36 concerns `log` only, and the index builds on
+    `extract`), so the key is the content. Test: a stand-in that moves the view between the two calls.
+  - **The 405 and extractor rejections are catalog pages in the visitor's language** (a method-not-allowed fallback
+    in `routes.rs`), with the shared headers, before T4's first route.
+  - **Serve-stale (OP-03, CON-5) is part of T4**, as proposed: when prikk answers *busy* or *unavailable*, a page view
+    whose cache holds the page at the last known tip serves it **labelled as possibly out of date**, with the
+    verification badge reading *Could not be checked now* (never a stale verdict, INV-5); a miss is never rendered from
+    nothing.
+  - **Ruled:** the preview language is chosen only by the reader's cookie (RFC 003 D-6 concretized); the operators'
+    start-up refusals in `config.rs` and `serve.rs` stay English (an operator reads them; they are logs, not pages);
+    the gendered-word and blaming deny-lists and the Japanese forbidden-term table join the glossary tests with T4's
+    rendered content; PERF-1 is accepted as met on spike A's corpora (0.98 s median at 212 MiB) and the index is warmed
+    after every seal by RFC 004's write path (lever 2), off the request path; "at most two calls on a miss" reads
+    "**three on the first miss at a new tip** (`views`, `extract`, `cat`), one on a later miss" (RFC 003 D-2
+    concretized); the read settings (`tip_ttl` 5 s, index bounds 4 GiB and 200,000 files, page 1 MiB) go into the
+    binary's settings in T4 with these defaults, documented for operators (the extracted tree is transient disk).
+  - **Review requests now live in `.git-exclude/review-requests/`**, not beside this file (the definition of done below
+    names the old place; the new one wins).
+
 ## Before you start
 
 - M0 is on `main` with its review closed; read `docs/STATUS.md` for the current issue register.

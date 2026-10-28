@@ -28,7 +28,7 @@ The planned order is `../ROADMAP.md` §7. **RFCs 001 and 010 are done** (impleme
 approved by the owner on 2026-10-28); 001 has one follow-on handoff (IS-7, 2026-10-28) and 010's first re-baseline
 waits for prikk 0.55.0. **RFCs 002 and 003 are accepted** (2026-10-27): 002's handoff is assignable
 now; 003's T1–T3 are startable now and T4 onward after 002's T2. **RFC 004 is accepted** (2026-10-28); its
-handoff is assignable after 002's T1–T6 and 003's T1–T4 (its T1–T2 after 002's T5). RFCs 005–009 are reserved
+handoff is assignable after 002's corrections C1 – C7 and 003's T1 – T4 are approved (its T1–T2 may start now: 002's T5 has landed). RFCs 005–009 are reserved
 subjects not yet written: 005 knowledge layer
 (M3), 006 governance and moderation (M4), 007 interchange and API (M5), 008 the planeter module (joint),
 009 real-time co-editing (deferred).
@@ -36,9 +36,9 @@ subjects not yet written: 005 knowledge layer
 | # | RFC | Serves | State |
 |---|---|---|---|
 | 001 | [Foundations: the workspace and its gates, the storage driver, and the wiki repository layout](done/001-foundations.md) | M0 → M1 | **done** 2026-10-28 (approved after review; handoff review request v2); **follow-on handoff assignable** (2026-10-28): verification verdicts under a memory ceiling (IS-7), before 003's T4 |
-| 002 | [Identity, keys and signing](accepted/002-identity-keys-and-signing.md) | M0 → M2 (DR-4) | **accepted** 2026-10-27; handoff v1 **assignable now** (its notes from M0's review and of 2026-10-28 are binding; T1's OIDC token verifier on `jsonwebtoken`'s `aws_lc_rs` backend, the owner's DR-9 of 2026-10-28) |
-| 003 | [Read path and rendering](accepted/003-read-path-and-rendering.md) | M1 | **accepted** 2026-10-27, concretized 2026-10-28 (D-2, D-11); handoff v1 with 2026-10-28 hold notes: T1–T3 **startable now**, T4+ after 002's T2 and 001's follow-on, T7 after 002's T3–T5 |
-| 004 | [Proposals: propose, review, accept and seal; re-author a moved base gently; never lose a half-state](accepted/004-proposals.md) | M2 | **accepted** 2026-10-28; handoff v1 assignable after 002's T1–T6 and 003's T1–T4 |
+| 002 | [Identity, keys and signing](accepted/002-identity-keys-and-signing.md) | M0 → M2 (DR-4) | **accepted** 2026-10-27; handoff built and **Conditionally Approved 2026-10-29**; corrections handoff assignable (C1 – C4 before 003's T7); D-8 waits for the owner's DR-10 |
+| 003 | [Read path and rendering](accepted/003-read-path-and-rendering.md) | M1 | **accepted** 2026-10-27, concretized 2026-10-28 and 2026-10-29; T1 – T3 built and **Conditionally Approved 2026-10-29**; T4 next, after 001's follow-on and under the 2026-10-29 notes (author HTML escaped, reads pinned); T7 after 002's corrections C1 – C4 |
+| 004 | [Proposals: propose, review, accept and seal; re-author a moved base gently; never lose a half-state](accepted/004-proposals.md) | M2 | **accepted** 2026-10-28; handoff v1 assignable after 002's corrections C1 – C7 and 003's T1 – T4 are approved |
 | 010 | [Upstream tracking and supply-chain maintenance](done/010-upstream-and-supply-chain-maintenance.md) | all | **done** 2026-10-28 (approved after review); its procedures run at every release and re-baseline |
 
 ## Current state

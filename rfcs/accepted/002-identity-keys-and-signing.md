@@ -3,6 +3,15 @@
 **Status.** **Accepted by the owner 2026-10-27** (*"Accepted."*); proposed the same day by the architect. The
 implementer may start per the handoff **once RFC 001's tasks T1–T5 have landed and been approved**:
 [`../handoffs/002-identity-keys-and-signing/identity-keys-and-signing-handoff-v1.md`](../handoffs/002-identity-keys-and-signing/identity-keys-and-signing-handoff-v1.md).
+**Implemented on local `main` and reviewed 2026-10-29: Conditionally Approved**; the corrections owed are
+[`../handoffs/002-identity-keys-and-signing/identity-keys-and-signing-corrections-handoff-v1.md`](../handoffs/002-identity-keys-and-signing/identity-keys-and-signing-corrections-handoff-v1.md).
+**Concretized by the architect on 2026-10-29:** the `Accept` trait (D-4) and the message composer and parser (D-5)
+live in `inklkunn-signer` and are re-exported by `inklkunn-core`, because the signer must name both to enforce its guard
+and a lower crate may not depend on core (RFC 001 D-9 read the same way); the signer depends on the store for its
+validated identifiers. **D-8 waits for the owner (DR-10):** on prikk 0.54.1, removing the old maintainer key from trust
+makes everything it sealed fail verification (ledger PK-34), so "remove the old from trust" and "the repository still
+verifies" cannot both hold; until the ruling, rotation keeps the old key trusted and retiring it is an explicit,
+named act (`docs/KEYS.md`).
 **Tracks.** ROADMAP M0 → M2, theme T2; the owner's ruling **DR-4**. Requirements `ID-1 … ID-9`, `PR-4`,
 `PR-12`, `GV-2` (the bootstrap role set), `SEC-1`, `SEC-3`, `SEC-4`, `SEC-6`, `PRV-2`, `INT-2`, `INT-4`;
 external design `BD-05`, `AUTH-01 … AUTH-05`, `PK-03`, `PK-05`, `CT-03`, `OP-07`; internal design

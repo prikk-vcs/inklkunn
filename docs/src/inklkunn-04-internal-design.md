@@ -70,7 +70,7 @@ crate, lints as prikk's: `unwrap_used`, `expect_used` and `indexing_slicing` den
 - **LAY-2 — `authorize()` lives in CR-core and every surface calls it** (INV-4). A route-enumeration test in
   CR-web asserts every registered route and API verb either consults it or is registered public with a
   reason (planeter's ENF-4), from the first write handler.
-- **LAY-3 — Only CR-prikk and CR-signer spawn prikk**; CR-signer only for writes, CR-prikk only for reads; a
+- **LAY-3 — Only CR-prikk and CR-signer spawn prikk** (and only `inklkunn-fetch` spawns `curl`, IQ-3); CR-signer only for writes, CR-prikk only for reads; a
   source gate fails on `prikk` invocation anywhere else.
 - **LAY-4 — Only CR-signer depends on the key store** (INV-2). The key store is a module inside CR-signer
   with no public export of key bytes; `boundary-check` fails if any other crate declares a dependency on
@@ -305,8 +305,11 @@ crate, lints as prikk's: `unwrap_used`, `expect_used` and `indexing_slicing` den
   behind the dependency policy? Decided in RFC 004 after the MRG-4 spike.
 - **IQ-2 — Search engine.** SQLite FTS5 with a trigram tokenizer (no new crate) versus a dedicated engine;
   FTS5 first, measured against PERF-3 (RFC 003).
-- **IQ-3 — Outbound HTTPS for OpenID Connect.** A confined `curl` (planeter's shape, no TLS crates) versus an
-  in-process client; the dependency policy decides, measured (RFC 002).
+- **IQ-3 — Outbound HTTPS for OpenID Connect.** **Decided 2026-10-29: a confined `curl`** (planeter's shape, no TLS
+  crate) in a new lower-layer crate, `inklkunn-fetch`, which implements `inklkunn-auth`'s `HttpsFetcher` seam: the
+  egress guard in CR-core decides and pins the address; the fetcher runs `curl` under its own bubblewrap vector (network
+  shared; no repository, no key; `/usr` and the CA bundle read-only; `--resolve` to the pinned address; https only; no
+  redirects; bounded time and bytes). The spawn and layering gates list it (handoff 002 corrections C8).
 - **IQ-4 — Signer separation.** In-process module with the gate (v1) versus a separate process; revisited at
   the threat model v0.2 (RFC 002, SGN-5).
 - **IQ-5 — Store backend.** SQLite first; the PostgreSQL path kept by the traits; multi-replica is the
