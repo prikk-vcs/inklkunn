@@ -25,14 +25,17 @@ changes that verify. The design bounds, detects and attributes that risk rather 
   failed*, *Could not be checked now*), never that a person signed cryptographically (RFC 002 D-6, D-8).
 
 **Signing in** is built to give nothing away: past the throttles every password attempt costs one Argon2id
-verification whether the name exists or not, and one answer covers every way to fail. Failures are counted
-per sign-in name and per client address (the address from a declared trusted proxy only) **in the memory of one
-process** (threat model RR-7): a restart forgets them, and a deployment with several replicas needs the proxy
-to limit too. Locking a name after five failures lets someone who knows it lock its owner out for fifteen
-minutes; that is the price of refusing a correct password while locked, and the address throttle bounds how
-many names one client can lock. Sessions and API tokens are stored as hashes; a copy of the database opens
-neither. OpenID Connect accounts are linked by issuer and subject by an administrator; nothing is created at
-first sign-in in this release.
+verification whether the name exists or not (a stored hash nobody can verify included), and one answer covers
+every way to fail. Attempts are counted **before** they are judged, so a burst of simultaneous guesses is held to
+the limit as a sequence is. Failures are counted per sign-in name and per client address (the address from a
+declared trusted proxy only) **in the memory of one process** (threat model RR-7): a restart forgets them, and a
+deployment with several replicas needs the proxy to limit too. Locking a name after five failures lets someone
+who knows it lock its owner out for fifteen minutes; that is the price of refusing a correct password while
+locked, and the address throttle bounds how many names one client can lock. **Declare your reverse proxy**: behind
+one that is not declared, every client shares the proxy's address and thirty bad attempts by anyone lock everyone.
+Sessions and API tokens are stored as hashes; a copy of the database opens neither. A password change, an
+administrator's reset and a disabling end every session and revoke every token. OpenID Connect accounts are
+linked by issuer and subject by an administrator; nothing is created at first sign-in in this release.
 
 The **operator's secret** opens every wiki's keys: it is a file named by the operator (never stored beside the
 records), 16 to 1024 bytes, and anyone who holds both it and the key records holds every wiki's keys. Keep it

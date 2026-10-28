@@ -38,15 +38,87 @@ use remote::Remote;
 /// The cookie that carries a login's `state` to the callback.
 pub const STATE_COOKIE: &str = "__Host-inklkunn-oidc";
 
-/// Why OpenID Connect sign-in did not complete. Coarse on purpose: a person sees "sign-in failed", the log
-/// gets the detail.
+/// Which check an ID token failed. **For the log, never for the person**: a person sees "sign-in failed". It
+/// names the check and carries nothing the token said.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum InvalidReason {
+    /// The token is not a well-formed JWT.
+    Malformed,
+    /// Its algorithm is not one of the six asymmetric ones (never `none`, never `HS*`).
+    Algorithm,
+    /// Its header names no `kid`.
+    MissingKeyId,
+    /// The provider's key set has no such key, or the key cannot be used.
+    UnknownKey,
+    /// The key is published for something other than signatures.
+    KeyNotForSignatures,
+    /// The key declares an algorithm other than the token's.
+    KeyAlgorithmMismatch,
+    /// The signature does not verify.
+    Signature,
+    /// `iss` is not the configured issuer.
+    Issuer,
+    /// `aud` does not contain the client id.
+    Audience,
+    /// A required claim is missing or malformed.
+    MissingClaim,
+    /// `exp` has passed.
+    Expired,
+    /// `nbf` is in the future.
+    NotYetValid,
+    /// `iat` is in the future.
+    IssuedInFuture,
+    /// `iat` is older than a sign-in can be.
+    IssuedTooLongAgo,
+    /// `azp` is not the client id where it must be.
+    AuthorizedParty,
+    /// The nonce is not the one this login made.
+    Nonce,
+    /// `iss` or `sub` cannot be an external identity.
+    Subject,
+}
+
+impl InvalidReason {
+    /// A fixed phrase for the log.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            InvalidReason::Malformed => "not a well-formed token",
+            InvalidReason::Algorithm => "algorithm not allowed",
+            InvalidReason::MissingKeyId => "no key id",
+            InvalidReason::UnknownKey => "unknown or unusable key",
+            InvalidReason::KeyNotForSignatures => "key not published for signatures",
+            InvalidReason::KeyAlgorithmMismatch => "key declares another algorithm",
+            InvalidReason::Signature => "signature does not verify",
+            InvalidReason::Issuer => "issuer mismatch",
+            InvalidReason::Audience => "audience mismatch",
+            InvalidReason::MissingClaim => "required claim missing or malformed",
+            InvalidReason::Expired => "expired",
+            InvalidReason::NotYetValid => "not yet valid",
+            InvalidReason::IssuedInFuture => "issued in the future",
+            InvalidReason::IssuedTooLongAgo => "issued too long ago",
+            InvalidReason::AuthorizedParty => "authorized party mismatch",
+            InvalidReason::Nonce => "nonce mismatch",
+            InvalidReason::Subject => "subject not acceptable",
+        }
+    }
+}
+
+impl fmt::Display for InvalidReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Why OpenID Connect sign-in did not complete. Coarse for the person (they see "sign-in failed"); the log
+/// gets the reason.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum OidcError {
     /// No provider is configured.
     NotConfigured,
-    /// The ID token failed a check (signature, key, issuer, audience, times, nonce).
-    Invalid,
+    /// The ID token failed a check; which one is the reason.
+    Invalid(InvalidReason),
     /// The callback's state is unknown, expired, already used, or not the one in the browser's cookie.
     State,
     /// The provider could not be reached or answered something unusable. The text is for operators.
@@ -59,7 +131,7 @@ impl fmt::Display for OidcError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             OidcError::NotConfigured => f.write_str("no OpenID Connect provider is configured"),
-            OidcError::Invalid => f.write_str("the ID token is not valid"),
+            OidcError::Invalid(why) => write!(f, "the ID token is not valid ({why})"),
             OidcError::State => {
                 f.write_str("the sign-in state is unknown, expired or not this browser's")
             }
@@ -102,16 +174,23 @@ impl fmt::Debug for OidcConfig {
     }
 }
 
-/// What starting a login gives the web layer.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BeginLogin {
+/// What starting a sign-in gives the web layer.
+#[derive(Clone, PartialEq, Eq)]
+pub struct BeginSignIn {
     /// Where to send the browser.
     pub authorization_url: String,
-    /// The opaque `state`, to set as the [`STATE_COOKIE`] (see [`BeginLogin::state_cookie`]).
+    /// The opaque `state`, to set as the [`STATE_COOKIE`] (see [`BeginSignIn::state_cookie`]). It is a secret
+    /// of the browser that started the sign-in.
     pub state: String,
 }
 
-impl BeginLogin {
+impl fmt::Debug for BeginSignIn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BeginSignIn").finish_non_exhaustive()
+    }
+}
+
+impl BeginSignIn {
     /// The `Set-Cookie` value for the state cookie.
     pub fn state_cookie(&self) -> String {
         format!(
@@ -171,8 +250,9 @@ impl OidcProvider {
         &self.cfg.issuer
     }
 
-    /// Start a login: make the state, nonce and PKCE verifier, keep them, and build the URL.
-    pub fn begin_login(&self, now: i64) -> Result<BeginLogin, OidcError> {
+    /// Start a sign-in: make the state, nonce and PKCE verifier, keep them, and build the URL. Reached through
+    /// the authenticator, which spends the client address's budget for starting one first.
+    pub(crate) fn begin_sign_in(&self, now: i64) -> Result<BeginSignIn, OidcError> {
         let d = self.remote.discovery(now)?;
         let state = random::token()?;
         let nonce = random::token()?;
@@ -195,22 +275,26 @@ impl OidcProvider {
             pct(&nonce),
             pct(&challenge),
         );
-        Ok(BeginLogin {
+        Ok(BeginSignIn {
             authorization_url,
             state,
         })
     }
 
-    /// Finish a login from the callback. `state` is the callback's query parameter and `state_cookie` the
-    /// value of the browser's [`STATE_COOKIE`]; they must be the same, and the state must be a login this
-    /// server started a moment ago and has not finished.
-    pub fn finish_login(
+    /// Finish a sign-in from the callback. `state` is the callback's query parameter and `cookie_header` the
+    /// request's `Cookie` header, from which the browser's [`STATE_COOKIE`] is read: they must name the same
+    /// state, and it must be a sign-in this server started a moment ago and has not finished. (The cookie is
+    /// read here, from the header, so a caller cannot pass the query parameter for both.)
+    pub(crate) fn finish_sign_in(
         &self,
         state: &str,
-        state_cookie: &str,
+        cookie_header: Option<&str>,
         code: &str,
         now: i64,
     ) -> Result<VerifiedIdentity, OidcError> {
+        let state_cookie = cookie_header
+            .and_then(|h| crate::session::cookie_value(h, STATE_COOKIE))
+            .unwrap_or("");
         if state.is_empty() || !same_secret(state, state_cookie) {
             return Err(OidcError::State);
         }

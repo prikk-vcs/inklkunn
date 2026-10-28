@@ -7,8 +7,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use inklkunn_auth::oidc::OidcProvider;
 use inklkunn_auth::{
     Argon2idHasher, AuthConfig, AuthError, Authenticator, ClientAddress, PasswordHasher,
+    ProxyPolicy,
 };
 use inklkunn_store::{Account, AccountId, MemoryStore};
 
@@ -25,7 +27,7 @@ pub struct Counting {
 impl Counting {
     pub fn new() -> Arc<Self> {
         Arc::new(Counting {
-            inner: Argon2idHasher::with_cost(64, 1, 1),
+            inner: Argon2idHasher::with_cost(64, 1, 1).unwrap(),
             hashes: AtomicUsize::new(0),
             verifies: AtomicUsize::new(0),
         })
@@ -42,6 +44,10 @@ impl PasswordHasher for Counting {
         self.inner.hash(password)
     }
 
+    fn is_verifiable(&self, stored: &str) -> bool {
+        self.inner.is_verifiable(stored)
+    }
+
     fn verify(&self, password: &str, stored: &str) -> bool {
         self.verifies.fetch_add(1, Ordering::SeqCst);
         self.inner.verify(password, stored)
@@ -56,8 +62,9 @@ pub struct World {
     pub bob: Account,
 }
 
+/// The client address for a connection from `s` with no trusted proxy in the way.
 pub fn ip(s: &str) -> ClientAddress {
-    ClientAddress::from_ip(s.parse::<IpAddr>().unwrap())
+    ProxyPolicy::none().client(s.parse::<IpAddr>().unwrap(), None)
 }
 
 pub fn config() -> AuthConfig {
@@ -69,9 +76,18 @@ pub fn config() -> AuthConfig {
 }
 
 pub fn world_with(config: AuthConfig) -> World {
+    world_built(config, |auth| auth)
+}
+
+/// A world whose authenticator is passed through `finish` (to attach an OpenID Connect provider, an audit
+/// sink) before the two accounts are registered.
+pub fn world_built(
+    config: AuthConfig,
+    finish: impl FnOnce(Authenticator) -> Authenticator,
+) -> World {
     let store = Arc::new(MemoryStore::new());
     let hasher = Counting::new();
-    let auth = Authenticator::with_hasher(store.clone(), config, hasher.clone()).unwrap();
+    let auth = finish(Authenticator::with_hasher(store.clone(), config, hasher.clone()).unwrap());
     let alice = auth
         .register_local("alice", "Alice", ALICE_PASSWORD, NOW)
         .unwrap();
@@ -89,6 +105,10 @@ pub fn world_with(config: AuthConfig) -> World {
 
 pub fn world() -> World {
     world_with(config())
+}
+
+pub fn world_with_oidc(provider: OidcProvider) -> World {
+    world_built(config(), |auth| auth.with_oidc(provider))
 }
 
 pub fn id(account: &Account) -> AccountId {

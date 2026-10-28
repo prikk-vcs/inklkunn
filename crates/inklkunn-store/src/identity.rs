@@ -134,6 +134,46 @@ impl ExternalIdentity {
     }
 }
 
+/// Is this text shaped like an Argon2id PHC string: `$argon2id$v=19$m=…,t=…,p=…$<salt>$<hash>`? A shape check
+/// only (the store holds no cryptography): it stops a placeholder, a hash of another kind or garbage from being
+/// stored as if it were a password a sign-in could verify, which would let timing tell that account from one
+/// that does not exist.
+pub fn looks_like_an_argon2id_hash(s: &str) -> bool {
+    if s.len() > 512 || !s.bytes().all(|b| b.is_ascii_graphic()) {
+        return false;
+    }
+    let mut parts = s.split('$');
+    let shape = (
+        parts.next(),
+        parts.next(),
+        parts.next(),
+        parts.next(),
+        parts.next(),
+        parts.next(),
+        parts.next(),
+    );
+    let (Some(""), Some("argon2id"), Some(version), Some(params), Some(salt), Some(hash), None) =
+        shape
+    else {
+        return false;
+    };
+    let version_ok = version
+        .strip_prefix("v=")
+        .is_some_and(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()));
+    let params_ok = {
+        let mut keys = params.split(',').map(|kv| kv.split_once('='));
+        ["m", "t", "p"].iter().all(|want| {
+            matches!(keys.next(), Some(Some((k, v))) if k == *want && !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()))
+        }) && keys.next().is_none()
+    };
+    let b64 = |t: &str| {
+        !t.is_empty()
+            && t.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'+' || b == b'/')
+    };
+    version_ok && params_ok && b64(salt) && b64(hash)
+}
+
 /// A local password: the sign-in name and the Argon2id PHC string that verifies it. A password without a
 /// name, or a name without a password, cannot be stored, so neither can exist half-made.
 #[derive(Clone, PartialEq, Eq)]
@@ -173,7 +213,9 @@ pub struct Account {
 /// The account records. Every implementation passes the same invariant tests (`tests/invariants.rs`).
 pub trait AccountStore: Send + Sync {
     /// Store a new account. [`crate::StoreError::IdTaken`] when the id exists,
-    /// [`crate::StoreError::LoginTaken`] when another account has the sign-in name; nothing is stored then.
+    /// [`crate::StoreError::LoginTaken`] when another account has the sign-in name,
+    /// [`crate::StoreError::InvalidCredential`] when its password hash is not shaped like an Argon2id string;
+    /// nothing is stored then.
     fn add_account(&self, account: &Account) -> Result<()>;
     /// The account with this id.
     fn account(&self, id: &AccountId) -> Result<Option<Account>>;
@@ -186,6 +228,8 @@ pub trait AccountStore: Send + Sync {
     /// [`crate::StoreError::AccountNotFound`] when the account is not there.
     fn link_identity(&self, id: &AccountId, identity: &ExternalIdentity, at: i64) -> Result<()>;
     /// Replace (or, with `None`, remove) the account's local password.
+    /// [`crate::StoreError::AccountNotFound`] when the account is not there (checked first),
+    /// [`crate::StoreError::InvalidCredential`] for a hash that is not shaped like an Argon2id string,
     /// [`crate::StoreError::LoginTaken`] when another account has the name.
     fn set_local_credential(
         &self,
@@ -297,6 +341,8 @@ pub trait TokenStore: Send + Sync {
     /// already revoked. A token of another account is never touched (so a revocation can be offered a
     /// guessed id harmlessly).
     fn revoke_token(&self, account: &AccountId, id: &TokenId, at: i64) -> Result<bool>;
+    /// Revoke every live token of the account at `at` (a credential recovery, a disabling); how many.
+    fn revoke_tokens_of(&self, account: &AccountId, at: i64) -> Result<u64>;
 }
 
 #[cfg(test)]

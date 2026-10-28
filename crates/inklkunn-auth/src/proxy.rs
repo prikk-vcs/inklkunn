@@ -9,31 +9,63 @@ use std::fmt;
 use std::net::{IpAddr, Ipv6Addr};
 
 /// The address a throttle is keyed by: an IPv4 address, or the /64 an IPv6 address is in (one subscriber is
-/// given at least a /64, so counting single IPv6 addresses would give an attacker 2^64 fresh ones).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ClientAddress(String);
+/// given at least a /64, so counting single IPv6 addresses would give an attacker 2^64 fresh ones). It is
+/// made only by [`ProxyPolicy::client`], so no caller can name an address that skips the trusted-proxy rule.
+#[derive(Debug, Clone)]
+pub struct ClientAddress {
+    key: String,
+    fell_back: bool,
+}
+
+impl PartialEq for ClientAddress {
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key
+    }
+}
+
+impl Eq for ClientAddress {}
+
+impl std::hash::Hash for ClientAddress {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.key.hash(state);
+    }
+}
 
 impl ClientAddress {
-    /// The key for an address.
-    pub fn from_ip(ip: IpAddr) -> Self {
-        match ip.to_canonical() {
-            IpAddr::V4(v4) => ClientAddress(v4.to_string()),
+    /// The key for an address (tests; the product builds one only through [`ProxyPolicy::client`]).
+    #[cfg(test)]
+    pub(crate) fn from_ip(ip: IpAddr) -> Self {
+        Self::keyed(ip, false)
+    }
+
+    fn keyed(ip: IpAddr, fell_back: bool) -> Self {
+        let key = match ip.to_canonical() {
+            IpAddr::V4(v4) => v4.to_string(),
             IpAddr::V6(v6) => {
                 let prefix = u128::from(v6) & (u128::MAX << 64);
-                ClientAddress(format!("{}/64", Ipv6Addr::from(prefix)))
+                format!("{}/64", Ipv6Addr::from(prefix))
             }
-        }
+        };
+        ClientAddress { key, fell_back }
     }
 
     /// The text a throttle uses as its key.
     pub fn as_key(&self) -> &str {
-        &self.0
+        &self.key
+    }
+
+    /// `true` when the connection came from a trusted proxy but its `X-Forwarded-For` was missing or could
+    /// not be read, so the proxy's own address stands for the client. **Every client behind that proxy then
+    /// shares one budget** (thirty bad attempts by anyone lock everyone) until the proxy's header is fixed:
+    /// a web layer logs it when it sees it.
+    pub fn fell_back(&self) -> bool {
+        self.fell_back
     }
 }
 
 impl fmt::Display for ClientAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        f.write_str(&self.key)
     }
 }
 
@@ -134,13 +166,14 @@ impl ProxyPolicy {
     }
 
     /// The client behind a connection from `peer` that carried `forwarded_for` (the `X-Forwarded-For`
-    /// header's values joined with `, `, if any). Anything unreadable counts the peer.
+    /// header's values joined with `, `, if any). Anything unreadable counts the peer, and says so
+    /// ([`ClientAddress::fell_back`]).
     pub fn client(&self, peer: IpAddr, forwarded_for: Option<&str>) -> ClientAddress {
         if !self.is_trusted(peer) {
-            return ClientAddress::from_ip(peer);
+            return ClientAddress::keyed(peer, false);
         }
         let Some(hops) = forwarded_for.and_then(parse_hops) else {
-            return ClientAddress::from_ip(peer);
+            return ClientAddress::keyed(peer, true);
         };
         let client = hops
             .iter()
@@ -149,7 +182,7 @@ impl ProxyPolicy {
             .or_else(|| hops.first())
             .copied()
             .unwrap_or(peer);
-        ClientAddress::from_ip(client)
+        ClientAddress::keyed(client, false)
     }
 }
 

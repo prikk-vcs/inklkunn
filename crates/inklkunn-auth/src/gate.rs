@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 /// A fixed number of permits.
 #[derive(Debug)]
-pub struct WorkGate {
+pub(crate) struct WorkGate {
     free: Mutex<usize>,
     freed: Condvar,
     max_wait: Duration,
@@ -20,13 +20,13 @@ pub struct WorkGate {
 
 /// A permit; dropping it returns it to the gate.
 #[derive(Debug)]
-pub struct Permit<'a> {
+pub(crate) struct Permit<'a> {
     gate: &'a WorkGate,
 }
 
 impl WorkGate {
     /// A gate with `permits` permits (at least one) and the longest a caller waits for one.
-    pub fn new(permits: usize, max_wait: Duration) -> Self {
+    pub(crate) fn new(permits: usize, max_wait: Duration) -> Self {
         WorkGate {
             free: Mutex::new(permits.max(1)),
             freed: Condvar::new(),
@@ -35,7 +35,7 @@ impl WorkGate {
     }
 
     /// Take a permit, waiting up to the gate's wait; `None` when none came free in time.
-    pub fn acquire(&self) -> Option<Permit<'_>> {
+    pub(crate) fn acquire(&self) -> Option<Permit<'_>> {
         let deadline = Instant::now() + self.max_wait;
         let mut free = self.free.lock().unwrap_or_else(PoisonError::into_inner);
         while *free == 0 {
@@ -54,7 +54,8 @@ impl WorkGate {
     }
 
     /// Permits not in use right now.
-    pub fn available(&self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn available(&self) -> usize {
         *self.free.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }

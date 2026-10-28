@@ -109,3 +109,33 @@ fn debug_output_never_carries_a_hash_or_a_session_secret() {
     };
     assert!(!format!("{token:?}").contains("sha256"));
 }
+
+#[test]
+fn an_argon2id_hash_is_recognised_by_its_shape_and_nothing_else_is() {
+    for good in [
+        "$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNo",
+        "$argon2id$v=19$m=65536,t=3,p=4$YWJj$ZGVm",
+    ] {
+        assert!(looks_like_an_argon2id_hash(good), "{good}");
+    }
+    for bad in [
+        "",
+        "!",
+        "plaintext",
+        "$argon2i$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA",
+        "$argon2id$m=19456,t=2,p=1$c2FsdA$aGFzaA",
+        "$argon2id$v=19$m=19456,t=2$c2FsdA$aGFzaA",
+        "$argon2id$v=19$t=2,m=19456,p=1$c2FsdA$aGFzaA",
+        "$argon2id$v=19$m=19456,t=2,p=1$c2FsdA",
+        "$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA$extra",
+        "$argon2id$v=19$m=19456,t=2,p=1$$aGFzaA",
+        "$argon2id$v=19$m=19456,t=2,p=1$c2 Fs$aGFzaA",
+        "$bcrypt$12$abcdefghijklmnopqrstuv",
+    ] {
+        assert!(!looks_like_an_argon2id_hash(bad), "{bad:?}");
+    }
+    assert!(!looks_like_an_argon2id_hash(&format!(
+        "$argon2id$v=19$m=1,t=1,p=1$a${}",
+        "b".repeat(600)
+    )));
+}

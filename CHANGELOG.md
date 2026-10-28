@@ -122,26 +122,42 @@ RFC 002 and RFC 003 — the first handoffs after M0, in progress. Still nothing 
   presented credential into a principal. *Local passwords* are Argon2id (19 MiB, two passes) in the PHC format,
   NFKC-normalised, with a cost ceiling on what a stored hash may ask for; a new password has ten characters
   and no composition rule. *Sign-in is constant-work*: past the throttles every attempt does exactly one
-  verification (against a dummy hash made at start when there is no password to check), after taking a permit
-  from a bounded gate, and unknown name, wrong password, disabled account and correct-password-for-a-disabled-account
-  are one answer. *Throttles* count failures per sign-in name as typed (so a made-up name locks exactly like a
-  real one) and per client address (an IPv4 address or an IPv6 /64), five and thirty failures lock for fifteen
-  minutes, a correct password is refused while locked, and the address comes from `X-Forwarded-For` only when
-  the peer is a declared trusted proxy. *Sessions* are opaque random ids kept only as a hash, in
+  verification (against a dummy hash made at start, and of the same cost, when there is nothing usable to
+  check, a stored string nobody can verify included), after taking a permit from a bounded gate, and unknown
+  name, wrong password, disabled account and correct-password-for-a-disabled-account are one answer. *Throttles
+  are counted before they are judged*: an attempt is checked against the lock and counted in one step, so a
+  burst of simultaneous guesses is held to the limit exactly as a sequence is (sixty at once at one name: five
+  judged, fifty-five turned away); an attempt that was right, or that the service was too busy to judge, gives
+  its count back. They count failures per sign-in name as typed (so a made-up name locks exactly like a real
+  one) and per client address (an IPv4 address or an IPv6 /64), five and thirty failures lock for fifteen
+  minutes, a correct password is refused while locked, a lock is written to the audit trail (no name, no
+  address), and the address comes from `X-Forwarded-For` only when the peer is a declared trusted proxy (a
+  trusted proxy whose header cannot be read says so). *Sessions* are opaque random ids kept only as a hash, in
   `__Host-` cookies that are `Secure`, `HttpOnly` and `SameSite=Strict`, each with its own CSRF token (a
-  double-submit cookie for the sign-in form), a new one at every sign-in, ended by a new password or a disabling.
-  *API tokens* are `ink_` plus 256 random bits, kept as a hash, with a scope, a lifetime of at most a year and
-  a day, and a revocation; a token's principal carries its scope, which `authorize()` intersects with the
-  account's role (a test runs every scope, role, visibility and action). *OpenID Connect* is the authorization
-  code flow with PKCE: one-shot server-side state that must also be in the browser's state cookie (login CSRF),
-  ID tokens verified by `kid` against the provider's keys with `jsonwebtoken` on the `aws_lc_rs` backend (RS256,
-  ES256, ES384, EdDSA only; issuer, audience, `azp`, times and nonce checked; the provider's keys refetched
-  for an unknown `kid` at most once a minute); an identity nobody linked signs nobody in, and an e-mail
-  address is only a hint. The network is reached through one seam, `HttpsFetcher`, and the token verifier is a
-  seam with a test double. The store gains accounts, linked identities, sessions and tokens (schema version 4,
-  with `CHECK` and foreign-key rules in the database). Dependencies: `jsonwebtoken` (`aws_lc_rs`) and `sha2`
-  (+27 lock entries, measured, `rsa` and `crypto-bigint` absent, no advisory ignored; see the dependency
-  policy).
+  double-submit cookie for the sign-in form), a new one at every sign-in; a request that changes anything goes
+  through `principal_for_write`, which cannot be answered without the token. *Changing a password* proves the
+  old one (throttled like a sign-in) and, like an administrator's reset or a disabling, ends every session
+  **and revokes every API token**; enabling an account again does not bring them back. *API tokens* are `ink_`
+  plus 256 random bits, kept as a hash, with a scope, a lifetime of at most a year and a day, at most a hundred
+  live per account, and a revocation; a token's principal carries its scope, which `authorize()` intersects with
+  the account's role (a test runs every scope, role, visibility and action). *OpenID Connect* is the
+  authorization code flow with PKCE, owned by the authenticator: starting one spends the client address's
+  budget; the state is one-shot, server-side and must also be in the browser's state cookie, which the
+  authenticator reads from the `Cookie` header itself (login CSRF); ID tokens are verified by `kid` against
+  the provider's keys with `jsonwebtoken` on the `aws_lc_rs` backend (RS256, RS384, RS512, ES256, ES384 and
+  EdDSA only; the key must be published for signatures; issuer, audience, `azp`, nonce and times checked,
+  `iat` required and at most fifteen minutes old; every refusal carries the reason for the log); the provider's
+  keys are refetched for an unknown `kid` at most once a minute, and a provider that is down is not asked again
+  for five seconds. An identity nobody linked signs nobody in, and an e-mail address is only a hint. The
+  network is reached through one seam, `HttpsFetcher`, and the token verifier is a seam with a test double.
+  The store gains accounts, linked identities, sessions and tokens (schema version 4, with `CHECK` and
+  foreign-key rules in the database, and a password hash that is not an Argon2id string refused). Dependencies:
+  `jsonwebtoken` (`aws_lc_rs`) and `sha2` (+27 lock entries, measured, `rsa` and `crypto-bigint` absent, no
+  advisory ignored; see the dependency policy). *Changed after an independent reading of this task:* the
+  throttle ordering above, the cost of an unverifiable stored hash, the credential revocations, the typed
+  state-cookie path, the audit of locks, the reasons, the redacted `Debug` output of the OpenID Connect types,
+  the token cap, the configuration checks, and `Sessions`, `Tokens`, the throttles and the gate becoming
+  private to the crate.
 - **Key lifecycle** (RFC 002 D-8; handoff 002 T7). `inklkunn wiki keys status|create|rotate <wiki>` shows a
   wiki's key ids, generation and dates (never a secret), makes keys for an initialised repository that has
   none, and rotates them: new author and maintainer keys under **new ids** (prikk binds an id to one key for

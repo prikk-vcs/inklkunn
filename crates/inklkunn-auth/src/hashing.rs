@@ -31,38 +31,46 @@ const CEILING: (u32, u32, u32) = (64 * 1024, 6, 4);
 pub trait PasswordHasher: Send + Sync {
     /// A PHC string for `password`.
     fn hash(&self, password: &str) -> Result<String, AuthError>;
-    /// Does `password` match the stored PHC string? Any string that cannot be verified is a mismatch, and a
-    /// mismatch costs what a match does.
+    /// Can `stored` be verified at all: a well-formed Argon2id string whose cost is within the ceiling? A
+    /// caller that holds a string for which this is `false` verifies against a dummy hash instead, so that a
+    /// row nobody can verify costs what any other does (constant work).
+    fn is_verifiable(&self, stored: &str) -> bool;
+    /// Does `password` match the stored PHC string? A string that cannot be verified is a mismatch.
     fn verify(&self, password: &str, stored: &str) -> bool;
 }
 
 /// Argon2id.
 #[derive(Debug, Clone)]
 pub struct Argon2idHasher {
-    params: Params,
+    /// The cost new hashes are made at; `None` only if the constants were ever made invalid, in which case
+    /// [`PasswordHasher::hash`] says so instead of hashing at some other cost.
+    params: Option<Params>,
 }
 
 impl Argon2idHasher {
     /// The production cost ([`MEMORY_KIB`], [`PASSES`], [`LANES`]).
     pub fn new() -> Self {
-        Self::with_cost_unchecked(MEMORY_KIB, PASSES, LANES)
+        Argon2idHasher {
+            params: Params::new(MEMORY_KIB, PASSES, LANES, None).ok(),
+        }
     }
 
     /// A cheaper cost, for a test that hashes many passwords. Never available to a product build.
     #[cfg(any(test, feature = "test-knobs"))]
-    pub fn with_cost(memory_kib: u32, passes: u32, lanes: u32) -> Self {
-        Self::with_cost_unchecked(memory_kib, passes, lanes)
+    pub fn with_cost(memory_kib: u32, passes: u32, lanes: u32) -> Result<Self, AuthError> {
+        Params::new(memory_kib, passes, lanes, None)
+            .map(|params| Argon2idHasher {
+                params: Some(params),
+            })
+            .map_err(|_| AuthError::Misconfigured("those Argon2 costs are outside Argon2's limits"))
     }
 
-    fn with_cost_unchecked(memory_kib: u32, passes: u32, lanes: u32) -> Self {
-        // The constants and the test costs are inside Argon2's own limits; a value outside them is a
-        // programming error that the first `hash` reports as a backend failure instead of a panic.
-        let params = Params::new(memory_kib, passes, lanes, None).unwrap_or(Params::DEFAULT);
-        Argon2idHasher { params }
-    }
-
-    fn engine(&self) -> Argon2<'static> {
-        Argon2::new(Algorithm::Argon2id, Version::V0x13, self.params.clone())
+    /// The `m=…,t=…,p=…` text of the cost new hashes are made at, for a test that compares costs.
+    #[cfg(any(test, feature = "test-knobs"))]
+    pub fn cost_text(&self) -> Option<String> {
+        self.params
+            .as_ref()
+            .map(|p| format!("m={},t={},p={}", p.m_cost(), p.t_cost(), p.p_cost()))
     }
 }
 
@@ -77,30 +85,41 @@ fn prepared(password: &str) -> String {
     password.nfkc().collect()
 }
 
+/// A stored string that can be verified: Argon2id, well formed, within the ceiling. Its parameters are the
+/// ones it carries.
+fn inspect(stored: &str) -> Option<(Phc<'_>, Params)> {
+    let phc = Phc::new(stored).ok()?;
+    if phc.algorithm.as_str() != "argon2id" {
+        return None;
+    }
+    let params = Params::try_from(&phc).ok()?;
+    if params.m_cost() > CEILING.0 || params.t_cost() > CEILING.1 || params.p_cost() > CEILING.2 {
+        return None;
+    }
+    Some((phc, params))
+}
+
 impl PasswordHasher for Argon2idHasher {
     fn hash(&self, password: &str) -> Result<String, AuthError> {
+        let params = self.params.clone().ok_or(AuthError::Misconfigured(
+            "the password hashing costs are outside Argon2's limits",
+        ))?;
         let salt = SaltString::encode_b64(&random::bytes::<16>()?)
             .map_err(|_| AuthError::Backend("a salt could not be made".to_owned()))?;
-        self.engine()
+        Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
             .hash_password(prepared(password).as_bytes(), &salt)
             .map(|phc| phc.to_string())
             .map_err(|_| AuthError::Backend("a password could not be hashed".to_owned()))
     }
 
+    fn is_verifiable(&self, stored: &str) -> bool {
+        inspect(stored).is_some()
+    }
+
     fn verify(&self, password: &str, stored: &str) -> bool {
-        let Ok(phc) = Phc::new(stored) else {
+        let Some((phc, params)) = inspect(stored) else {
             return false;
         };
-        if phc.algorithm.as_str() != "argon2id" {
-            return false;
-        }
-        let Ok(params) = Params::try_from(&phc) else {
-            return false;
-        };
-        if params.m_cost() > CEILING.0 || params.t_cost() > CEILING.1 || params.p_cost() > CEILING.2
-        {
-            return false;
-        }
         Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
             .verify_password(prepared(password).as_bytes(), &phc)
             .is_ok()

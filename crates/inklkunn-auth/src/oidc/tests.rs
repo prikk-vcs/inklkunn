@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use super::InvalidReason as R;
 use inklkunn_store::ExternalIdentity;
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 
@@ -56,6 +57,10 @@ impl HttpsFetcher for MockFetcher {
             .cloned()
             .ok_or_else(|| FetchError::Transport(format!("no route for {}", req.url)))
     }
+}
+
+fn state_header(state: &str) -> String {
+    format!("{STATE_COOKIE}={state}")
 }
 
 fn jwks(entries: &[(&str, &str, &str, Option<&str>)]) -> String {
@@ -140,8 +145,8 @@ fn login_with(
     p: &OidcProvider,
     f: &MockFetcher,
     id_token: impl FnOnce(&str) -> String,
-) -> (BeginLogin, Result<VerifiedIdentity, OidcError>) {
-    let b = p.begin_login(NOW).unwrap();
+) -> (BeginSignIn, Result<VerifiedIdentity, OidcError>) {
+    let b = p.begin_sign_in(NOW).unwrap();
     let (nonce, _) = p.peek_pending(&b.state).unwrap();
     f.set(
         "https://idp.example/token",
@@ -150,14 +155,14 @@ fn login_with(
             id_token(&nonce)
         ),
     );
-    let result = p.finish_login(&b.state, &b.state, "the-code", NOW + 1);
+    let result = p.finish_sign_in(&b.state, Some(&state_header(&b.state)), "the-code", NOW + 1);
     (b, result)
 }
 
 #[test]
 fn begin_login_builds_a_pkce_url_keeps_the_secrets_and_asks_for_nothing_but_openid() {
     let (p, _) = provider(None);
-    let b = p.begin_login(NOW).unwrap();
+    let b = p.begin_sign_in(NOW).unwrap();
     let url = &b.authorization_url;
     assert!(
         url.starts_with("https://idp.example/auth?response_type=code&client_id=inklkunn-client"),
@@ -229,7 +234,7 @@ fn the_whole_flow_verifies_a_real_signature_and_the_state_is_one_shot() {
     );
     // Redeeming the same state again finds nothing.
     assert_eq!(
-        p.finish_login(&b.state, &b.state, "the-code", NOW + 2),
+        p.finish_sign_in(&b.state, Some(&state_header(&b.state)), "the-code", NOW + 2),
         Err(OidcError::State)
     );
 }
@@ -245,22 +250,37 @@ fn a_public_client_sends_no_secret() {
 #[test]
 fn a_callback_the_browser_did_not_start_is_refused_and_does_not_spend_the_login() {
     let (p, f) = provider(None);
-    let b = p.begin_login(NOW).unwrap();
+    let b = p.begin_sign_in(NOW).unwrap();
     let (nonce, _) = p.peek_pending(&b.state).unwrap();
     f.set(
         "https://idp.example/token",
         format!(r#"{{"id_token":"{}"}}"#, sign(&claims(&nonce))),
     );
-    // An attacker replays a victim's state without the victim's cookie, or with their own.
-    for cookie in ["", "attacker-state", &b.state[..10]] {
+    // An attacker replays a victim's state without the victim's cookie, or with their own, or with the cookie
+    // twice (ambiguous), or under another name.
+    let short = format!("{STATE_COOKIE}={}", &b.state[..10]);
+    let twice = format!("{0}; {0}", state_header(&b.state));
+    let other_name = format!("__Host-other={}", b.state);
+    let empty = format!("{STATE_COOKIE}=");
+    let attacker = state_header("attacker-state");
+    let headers: [Option<&str>; 7] = [
+        None,
+        Some(&empty),
+        Some(&attacker),
+        Some(&short),
+        Some(&twice),
+        Some(&other_name),
+        Some(""),
+    ];
+    for header in headers {
         assert_eq!(
-            p.finish_login(&b.state, cookie, "c", NOW + 1),
+            p.finish_sign_in(&b.state, header, "c", NOW + 1),
             Err(OidcError::State),
-            "{cookie:?}"
+            "{header:?}"
         );
     }
     assert_eq!(
-        p.finish_login("", "", "c", NOW + 1),
+        p.finish_sign_in("", Some(&empty), "c", NOW + 1),
         Err(OidcError::State),
         "empty is not a match"
     );
@@ -269,79 +289,178 @@ fn a_callback_the_browser_did_not_start_is_refused_and_does_not_spend_the_login(
         "no code was exchanged"
     );
     // The real browser can still finish.
-    assert!(p.finish_login(&b.state, &b.state, "c", NOW + 2).is_ok());
+    assert!(
+        p.finish_sign_in(&b.state, Some(&state_header(&b.state)), "c", NOW + 2)
+            .is_ok()
+    );
 }
 
 #[test]
 fn a_login_expires_and_an_unknown_state_is_refused() {
     let (p, _) = provider(None);
-    let b = p.begin_login(NOW).unwrap();
+    let b = p.begin_sign_in(NOW).unwrap();
     assert_eq!(
-        p.finish_login(&b.state, &b.state, "c", NOW + PENDING_TTL_SECS),
+        p.finish_sign_in(
+            &b.state,
+            Some(&state_header(&b.state)),
+            "c",
+            NOW + PENDING_TTL_SECS
+        ),
         Err(OidcError::State)
     );
     assert_eq!(
-        p.finish_login("never-issued", "never-issued", "c", NOW),
+        p.finish_sign_in(
+            "never-issued",
+            Some(&state_header("never-issued")),
+            "c",
+            NOW
+        ),
         Err(OidcError::State)
     );
 }
 
 #[test]
-fn a_wrong_nonce_audience_issuer_or_time_is_refused() {
+fn a_wrong_nonce_audience_issuer_or_time_is_refused_and_each_says_which() {
     type Make = Box<dyn Fn(&str) -> serde_json::Value>;
-    let cases: Vec<(&str, Make)> = vec![
-        ("another nonce", Box::new(|_| claims("someone-else"))),
-        ("no nonce", Box::new(|n| without(claims(n), "nonce"))),
+    let cases: Vec<(&str, Make, R)> = vec![
+        (
+            "another nonce",
+            Box::new(|_| claims("someone-else")),
+            R::Nonce,
+        ),
+        (
+            "no nonce",
+            Box::new(|n| without(claims(n), "nonce")),
+            R::Nonce,
+        ),
         (
             "another audience",
             Box::new(|n| with(claims(n), "aud", "someone-else".into())),
+            R::Audience,
         ),
         (
             "another issuer",
             Box::new(|n| with(claims(n), "iss", "https://evil.example".into())),
+            R::Issuer,
         ),
         (
             "expired",
             Box::new(|n| with(claims(n), "exp", (NOW - 3600).into())),
+            R::Expired,
         ),
         (
             "expires right now",
             Box::new(|n| with(claims(n), "exp", (NOW + 1 - 60).into())),
+            R::Expired,
         ),
         (
             "not yet valid",
             Box::new(|n| with(claims(n), "nbf", (NOW + 3600).into())),
+            R::NotYetValid,
         ),
         (
             "issued in the future",
             Box::new(|n| with(claims(n), "iat", (NOW + 3600).into())),
+            R::IssuedInFuture,
         ),
-        ("no expiry", Box::new(|n| without(claims(n), "exp"))),
-        ("no subject", Box::new(|n| without(claims(n), "sub"))),
-        ("no issuer", Box::new(|n| without(claims(n), "iss"))),
-        ("no audience", Box::new(|n| without(claims(n), "aud"))),
+        (
+            "issued twenty minutes ago",
+            Box::new(|n| with(claims(n), "iat", (NOW - 1200).into())),
+            R::IssuedTooLongAgo,
+        ),
+        (
+            "issued ninety-five years ago",
+            Box::new(|n| with(claims(n), "iat", 0.into())),
+            R::IssuedTooLongAgo,
+        ),
+        (
+            "no issued-at",
+            Box::new(|n| without(claims(n), "iat")),
+            R::MissingClaim,
+        ),
+        (
+            "no expiry",
+            Box::new(|n| without(claims(n), "exp")),
+            R::MissingClaim,
+        ),
+        (
+            "no subject",
+            Box::new(|n| without(claims(n), "sub")),
+            R::MissingClaim,
+        ),
+        (
+            "no issuer",
+            Box::new(|n| without(claims(n), "iss")),
+            R::MissingClaim,
+        ),
+        (
+            "no audience",
+            Box::new(|n| without(claims(n), "aud")),
+            R::MissingClaim,
+        ),
         (
             "an empty subject",
             Box::new(|n| with(claims(n), "sub", "".into())),
+            R::Subject,
         ),
         (
             "a subject over 255 bytes",
             Box::new(|n| with(claims(n), "sub", "s".repeat(256).into())),
+            R::Subject,
         ),
         (
             "two audiences and no azp",
             Box::new(|n| with(claims(n), "aud", serde_json::json!([CLIENT, "other"]))),
+            R::AuthorizedParty,
         ),
         (
             "an azp that is not us",
             Box::new(|n| with(claims(n), "azp", "other".into())),
+            R::AuthorizedParty,
         ),
     ];
-    for (what, make) in cases {
+    for (what, make, reason) in cases {
         let (p, f) = provider(None);
         let (_, result) = login_with(&p, &f, |n| sign(&make(n)));
-        assert_eq!(result, Err(OidcError::Invalid), "{what}");
+        assert_eq!(result, Err(OidcError::Invalid(reason)), "{what}");
     }
+}
+
+#[test]
+fn the_reason_is_for_the_log_and_says_nothing_the_token_said() {
+    let shown = OidcError::Invalid(R::Nonce).to_string();
+    assert!(shown.contains("nonce mismatch"), "{shown}");
+    for reason in [
+        R::Malformed,
+        R::Algorithm,
+        R::Signature,
+        R::Issuer,
+        R::Audience,
+        R::Expired,
+        R::Nonce,
+    ] {
+        assert!(!reason.as_str().is_empty() && reason.as_str().len() < 48);
+    }
+}
+
+#[test]
+fn a_key_published_for_encryption_does_not_verify_a_signature() {
+    let (p, f) = provider(None);
+    f.set(
+        "https://idp.example/jwks",
+        format!(
+            r#"{{"keys":[{{"kty":"EC","crv":"P-256","x":"{X_1}","y":"{Y_1}","kid":"k1","use":"enc","alg":"ES256"}}]}}"#
+        ),
+    );
+    let (_, result) = login_with(&p, &f, |n| sign(&claims(n)));
+    assert_eq!(result, Err(OidcError::Invalid(R::KeyNotForSignatures)));
+    // A key with no `use` at all is a signing key (RFC 7517 leaves it to the algorithm).
+    let (p, f) = provider(None);
+    f.set(
+        "https://idp.example/jwks",
+        format!(r#"{{"keys":[{{"kty":"EC","crv":"P-256","x":"{X_1}","y":"{Y_1}","kid":"k1"}}]}}"#),
+    );
+    assert!(login_with(&p, &f, |n| sign(&claims(n))).1.is_ok());
 }
 
 #[test]
@@ -368,13 +487,17 @@ fn a_token_signed_by_another_key_or_under_another_algorithm_is_refused() {
     let (_, r) = login_with(&p, &f, |n| {
         sign_with(KEY_2, Some("k1"), Algorithm::ES256, &claims(n))
     });
-    assert_eq!(r, Err(OidcError::Invalid), "a signature by another key");
+    assert_eq!(
+        r,
+        Err(OidcError::Invalid(R::Signature)),
+        "a signature by another key"
+    );
     // A token with no kid.
     let (p, f) = provider(None);
     let (_, r) = login_with(&p, &f, |n| {
         sign_with(KEY_1, None, Algorithm::ES256, &claims(n))
     });
-    assert_eq!(r, Err(OidcError::Invalid), "no kid");
+    assert_eq!(r, Err(OidcError::Invalid(R::MissingKeyId)), "no kid");
     // The key declares ES384; the token says ES256.
     let (p, f) = provider(None);
     f.set(
@@ -384,7 +507,7 @@ fn a_token_signed_by_another_key_or_under_another_algorithm_is_refused() {
     let (_, r) = login_with(&p, &f, |n| sign(&claims(n)));
     assert_eq!(
         r,
-        Err(OidcError::Invalid),
+        Err(OidcError::Invalid(R::KeyAlgorithmMismatch)),
         "an algorithm the key did not declare"
     );
     // HMAC with a made-up secret: the algorithm-confusion attack. It must never reach a signature check.
@@ -401,7 +524,7 @@ fn a_token_signed_by_another_key_or_under_another_algorithm_is_refused() {
     });
     assert_eq!(
         r,
-        Err(OidcError::Invalid),
+        Err(OidcError::Invalid(R::Algorithm)),
         "HS256 is not an allowed algorithm"
     );
     // `alg: none`, written by hand.
@@ -414,11 +537,15 @@ fn a_token_signed_by_another_key_or_under_another_algorithm_is_refused() {
             b(&claims(n).to_string())
         )
     });
-    assert_eq!(r, Err(OidcError::Invalid), "no signature at all");
+    assert_eq!(
+        r,
+        Err(OidcError::Invalid(R::Malformed)),
+        "no signature at all"
+    );
     // Garbage.
     let (p, f) = provider(None);
     let (_, r) = login_with(&p, &f, |_| "not.a.jwt".to_owned());
-    assert_eq!(r, Err(OidcError::Invalid));
+    assert_eq!(r, Err(OidcError::Invalid(R::Malformed)));
 }
 
 #[test]
@@ -428,23 +555,23 @@ fn an_unknown_kid_refetches_the_keys_but_not_more_than_once_a_minute() {
     let token =
         |kid: &str, nonce: &str| sign_with(KEY_2, Some(kid), Algorithm::ES256, &claims(nonce));
     let v = |kid: &str, nonce: &str, now: i64| {
-        let b = p.begin_login(now).unwrap();
+        let b = p.begin_sign_in(now).unwrap();
         let (n, _) = p.peek_pending(&b.state).unwrap();
         let _ = nonce;
         f.set(
             "https://idp.example/token",
             format!(r#"{{"id_token":"{}"}}"#, token(kid, &n)),
         );
-        p.finish_login(&b.state, &b.state, "c", now)
+        p.finish_sign_in(&b.state, Some(&state_header(&b.state)), "c", now)
     };
     // The first verification fetches the key set once (k1 only); k2 is unknown.
-    assert_eq!(v("k2", "", NOW), Err(OidcError::Invalid));
+    assert_eq!(v("k2", "", NOW), Err(OidcError::Invalid(R::UnknownKey)));
     assert_eq!(f.requests_to(jwks_url).len(), 1);
     // An attacker sends tokens with invented kids: no further fetch inside the minute.
     for i in 0..20 {
         assert_eq!(
             v(&format!("invented-{i}"), "", NOW + 30),
-            Err(OidcError::Invalid)
+            Err(OidcError::Invalid(R::UnknownKey))
         );
     }
     assert_eq!(
@@ -470,7 +597,7 @@ fn a_discovery_document_for_another_issuer_or_with_a_plain_http_endpoint_is_refu
     );
     let p = OidcProvider::new(config(None), f);
     assert!(
-        matches!(p.begin_login(NOW), Err(OidcError::Provider(_))),
+        matches!(p.begin_sign_in(NOW), Err(OidcError::Provider(_))),
         "another issuer"
     );
 
@@ -500,7 +627,7 @@ fn a_discovery_document_for_another_issuer_or_with_a_plain_http_endpoint_is_refu
         f.set("https://idp.example/.well-known/openid-configuration", doc);
         let p = OidcProvider::new(config(None), f);
         assert!(
-            matches!(p.begin_login(NOW), Err(OidcError::Provider(_))),
+            matches!(p.begin_sign_in(NOW), Err(OidcError::Provider(_))),
             "{what}"
         );
     }
@@ -510,15 +637,15 @@ fn a_discovery_document_for_another_issuer_or_with_a_plain_http_endpoint_is_refu
 fn a_provider_that_cannot_be_reached_or_answers_rubbish_is_a_provider_error() {
     // Nothing configured at the fetcher: the transport fails.
     let p = OidcProvider::new(config(None), Arc::new(MockFetcher::default()));
-    assert!(matches!(p.begin_login(NOW), Err(OidcError::Provider(_))));
+    assert!(matches!(p.begin_sign_in(NOW), Err(OidcError::Provider(_))));
     // A token endpoint that answers something that is not JSON, or JSON without an id_token.
     for body in ["<html>", r#"{"access_token":"x"}"#] {
         let (p, f) = provider(None);
-        let b = p.begin_login(NOW).unwrap();
+        let b = p.begin_sign_in(NOW).unwrap();
         f.set("https://idp.example/token", body);
         assert!(
             matches!(
-                p.finish_login(&b.state, &b.state, "c", NOW + 1),
+                p.finish_sign_in(&b.state, Some(&state_header(&b.state)), "c", NOW + 1),
                 Err(OidcError::Provider(_))
             ),
             "{body}"
@@ -530,14 +657,14 @@ fn a_provider_that_cannot_be_reached_or_answers_rubbish_is_a_provider_error() {
         "https://idp.example/jwks",
         vec![b' '; MAX_RESPONSE_BYTES + 1],
     );
-    let b = p.begin_login(NOW).unwrap();
+    let b = p.begin_sign_in(NOW).unwrap();
     let (n, _) = p.peek_pending(&b.state).unwrap();
     f.set(
         "https://idp.example/token",
         format!(r#"{{"id_token":"{}"}}"#, sign(&claims(&n))),
     );
     assert!(matches!(
-        p.finish_login(&b.state, &b.state, "c", NOW + 1),
+        p.finish_sign_in(&b.state, Some(&state_header(&b.state)), "c", NOW + 1),
         Err(OidcError::Provider(_))
     ));
 }
@@ -571,7 +698,7 @@ fn the_flow_hands_the_verifier_the_token_the_nonce_it_made_and_the_time() {
         answer: Ok(identity.clone()),
     });
     let p = OidcProvider::with_verifier(config(None), idp(), stub.clone());
-    let b = p.begin_login(NOW).unwrap();
+    let b = p.begin_sign_in(NOW).unwrap();
     let (nonce, _) = p.peek_pending(&b.state).unwrap();
     // The stub fetcher's token endpoint.
     let f = idp();
@@ -580,11 +707,11 @@ fn the_flow_hands_the_verifier_the_token_the_nonce_it_made_and_the_time() {
         r#"{"id_token":"the.id.token"}"#,
     );
     let p = OidcProvider::with_verifier(config(None), f, stub.clone());
-    let b2 = p.begin_login(NOW).unwrap();
+    let b2 = p.begin_sign_in(NOW).unwrap();
     let (nonce2, _) = p.peek_pending(&b2.state).unwrap();
     assert_ne!(nonce, nonce2);
     assert_eq!(
-        p.finish_login(&b2.state, &b2.state, "c", NOW + 5),
+        p.finish_sign_in(&b2.state, Some(&state_header(&b2.state)), "c", NOW + 5),
         Ok(identity)
     );
     assert_eq!(
@@ -599,13 +726,13 @@ fn a_verifier_that_refuses_refuses_the_login() {
     f.set("https://idp.example/token", r#"{"id_token":"x"}"#);
     let stub = Arc::new(StubVerifier {
         seen: Mutex::default(),
-        answer: Err(OidcError::Invalid),
+        answer: Err(OidcError::Invalid(R::Signature)),
     });
     let p = OidcProvider::with_verifier(config(None), f, stub);
-    let b = p.begin_login(NOW).unwrap();
+    let b = p.begin_sign_in(NOW).unwrap();
     assert_eq!(
-        p.finish_login(&b.state, &b.state, "c", NOW),
-        Err(OidcError::Invalid)
+        p.finish_sign_in(&b.state, Some(&state_header(&b.state)), "c", NOW),
+        Err(OidcError::Invalid(R::Signature))
     );
 }
 

@@ -158,30 +158,30 @@ fn looks_like_a_secret(v: &str) -> bool {
 
 /// A session found by its secret.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedSession {
+pub(crate) struct ResolvedSession {
     /// The account.
-    pub account: AccountId,
+    pub(crate) account: AccountId,
     /// The session's CSRF token.
-    pub csrf: CsrfToken,
+    pub(crate) csrf: CsrfToken,
     /// When it ends.
-    pub expires_at: i64,
+    pub(crate) expires_at: i64,
 }
 
 /// Starting, finding and ending sessions over a store.
-pub struct Sessions {
+pub(crate) struct Sessions {
     store: Arc<dyn SessionStore>,
     ttl_secs: i64,
 }
 
 impl Sessions {
     /// Sessions that last `ttl_secs`.
-    pub fn new(store: Arc<dyn SessionStore>, ttl_secs: i64) -> Self {
+    pub(crate) fn new(store: Arc<dyn SessionStore>, ttl_secs: i64) -> Self {
         Sessions { store, ttl_secs }
     }
 
     /// Start a session for `account`: a new secret every time, so a session id never survives a sign-in
     /// (no fixation). Also removes the sessions that have ended.
-    pub fn start(&self, account: &AccountId, now: i64) -> Result<NewSession, AuthError> {
+    pub(crate) fn start(&self, account: &AccountId, now: i64) -> Result<NewSession, AuthError> {
         let secret = SessionSecret(random::token()?);
         let csrf = CsrfToken::mint()?;
         let expires_at = now.saturating_add(self.ttl_secs);
@@ -201,7 +201,11 @@ impl Sessions {
     }
 
     /// The session this secret names, unless it is unknown or over.
-    pub fn resolve(&self, secret: &str, now: i64) -> Result<Option<ResolvedSession>, AuthError> {
+    pub(crate) fn resolve(
+        &self,
+        secret: &str,
+        now: i64,
+    ) -> Result<Option<ResolvedSession>, AuthError> {
         if !looks_like_a_secret(secret) {
             return Ok(None);
         }
@@ -216,12 +220,12 @@ impl Sessions {
     }
 
     /// End one session (sign-out); `true` when it existed.
-    pub fn end(&self, secret: &str) -> Result<bool, AuthError> {
+    pub(crate) fn end(&self, secret: &str) -> Result<bool, AuthError> {
         Ok(self.store.end_session(&stored_form(secret))?)
     }
 
     /// End every session of an account (a new password, a disabling); how many there were.
-    pub fn end_all(&self, account: &AccountId) -> Result<u64, AuthError> {
+    pub(crate) fn end_all(&self, account: &AccountId) -> Result<u64, AuthError> {
         Ok(self.store.end_sessions_of(account)?)
     }
 }

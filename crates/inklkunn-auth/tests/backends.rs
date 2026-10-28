@@ -50,7 +50,7 @@ fn the_whole_story_works_over_sqlite() {
 
     let identity = ExternalIdentity::new("https://idp.example", "u1").unwrap();
     auth.link_external(&alice.id, &identity, NOW).unwrap();
-    auth.set_password(&alice.id, "alice", "a brand new password")
+    auth.reset_password(&alice.id, "alice", "a brand new password", NOW + 3)
         .unwrap();
     assert!(
         auth.principal_for_session(secret, NOW + 4)

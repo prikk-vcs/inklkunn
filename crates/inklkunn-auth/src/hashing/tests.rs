@@ -3,7 +3,7 @@
 use super::*;
 
 fn cheap() -> Argon2idHasher {
-    Argon2idHasher::with_cost(64, 1, 1)
+    Argon2idHasher::with_cost(64, 1, 1).unwrap()
 }
 
 #[test]
@@ -31,6 +31,7 @@ fn two_hashes_of_one_password_differ_by_their_salt_and_both_verify() {
 #[test]
 fn a_hash_made_at_another_cost_still_verifies_because_the_cost_is_in_the_string() {
     let stored = Argon2idHasher::with_cost(128, 2, 1)
+        .unwrap()
         .hash("moving the cost later")
         .unwrap();
     assert!(cheap().verify("moving the cost later", &stored));
@@ -101,4 +102,34 @@ fn new_passwords_are_checked_for_length_in_characters_and_bytes_and_nothing_else
         Err(PasswordRefusal::TooLong)
     );
     assert!(check_new_password(&"a".repeat(PASSWORD_MAX_BYTES)).is_ok());
+}
+
+#[test]
+fn the_production_cost_constants_are_valid() {
+    assert_eq!(
+        Argon2idHasher::new().cost_text().as_deref(),
+        Some("m=19456,t=2,p=1")
+    );
+    assert!(
+        Argon2idHasher::with_cost(1, 1, 1).is_err(),
+        "below Argon2's own minimum"
+    );
+    assert!(Argon2idHasher::with_cost(64, 0, 1).is_err());
+}
+
+#[test]
+fn only_a_well_formed_argon2id_string_within_the_ceiling_is_verifiable() {
+    let h = cheap();
+    let good = h.hash("a password to hash").unwrap();
+    assert!(h.is_verifiable(&good));
+    for unusable in [
+        "",
+        "!",
+        "garbage",
+        "$argon2i$v=19$m=64,t=1,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNo",
+        "$argon2id$v=19$m=4194304,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNo",
+    ] {
+        assert!(!h.is_verifiable(unusable), "{unusable:?}");
+        assert!(!h.verify("x", unusable), "{unusable:?}");
+    }
 }

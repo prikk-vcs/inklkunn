@@ -153,3 +153,51 @@ fn issuing_for_an_account_that_is_not_there_is_a_backend_error() {
         Err(IssueError::Auth(AuthError::Backend(_)))
     ));
 }
+
+#[test]
+fn an_account_holds_a_bounded_number_of_live_tokens() {
+    let (_, tokens, id) = setup();
+    let mut first = None;
+    for i in 0..MAX_LIVE_PER_ACCOUNT {
+        let t = tokens
+            .issue(&id, Scope::Read, "x", 1_000, 0)
+            .unwrap_or_else(|e| panic!("{i}: {e}"));
+        first.get_or_insert(t.id);
+    }
+    assert_eq!(
+        tokens.issue(&id, Scope::Read, "x", 1_000, 0).unwrap_err(),
+        IssueError::TooMany
+    );
+    // Revoking one makes room; a token that has expired never counted.
+    assert!(tokens.revoke(&id, &first.unwrap(), 1).unwrap());
+    assert!(tokens.issue(&id, Scope::Read, "x", 1_000, 2).is_ok());
+    assert_eq!(
+        tokens.issue(&id, Scope::Read, "x", 1_000, 2).unwrap_err(),
+        IssueError::TooMany
+    );
+    assert!(
+        tokens.issue(&id, Scope::Read, "x", 1_000, 5_000).is_ok(),
+        "all the others have expired by then"
+    );
+}
+
+#[test]
+fn revoking_all_ends_every_live_token_once() {
+    let (_, tokens, id) = setup();
+    let a = tokens.issue(&id, Scope::Read, "a", 1_000, 0).unwrap();
+    let b = tokens.issue(&id, Scope::Admin, "b", 1_000, 0).unwrap();
+    let c = tokens.issue(&id, Scope::Read, "c", 1_000, 0).unwrap();
+    assert!(tokens.revoke(&id, &c.id, 5).unwrap());
+    assert_eq!(
+        tokens.revoke_all(&id, 10).unwrap(),
+        2,
+        "the two that were live"
+    );
+    assert_eq!(tokens.revoke_all(&id, 11).unwrap(), 0);
+    for t in [&a, &b, &c] {
+        assert_eq!(
+            tokens.verify(t.secret.as_str(), 12),
+            Err(AuthError::BadCredentials)
+        );
+    }
+}

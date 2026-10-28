@@ -4,6 +4,14 @@
 //! attacker cannot tell a real name from a made-up one by whether it locks) and one by the **client
 //! address** (so one client cannot spread guesses over many names).
 //!
+//! **An attempt is counted before it is judged.** [`Throttle::begin`] checks the lock and takes the attempt
+//! in one step, under one lock, and the work of judging it (waiting for a permit, hashing) happens after.
+//! Counting afterwards would let any number of simultaneous guesses pass the check before the first of them
+//! was recorded: the throttle would bound a *sequence* of guesses and not a *burst*. An attempt that turns
+//! out to be right gives its count back ([`Throttle::refund`]), one that never reached a judgement (the
+//! service was busy, a store failed) gives it back too, and a success on a sign-in name clears the name
+//! ([`Throttle::clear`]).
+//!
 //! The tables are bounded: a flood of made-up keys cannot grow memory without limit. When one is full the
 //! entries that mean nothing (not locked, not seen within the window) go first, then the lock that ends
 //! soonest. State is per process (residual risk RR-7): a restart forgets it, as a lock that long is a nuisance
@@ -41,6 +49,10 @@ impl ThrottlePolicy {
         forget_secs: 15 * 60,
         max_tracked: 10_000,
     };
+
+    /// Per client address, for starting an OpenID Connect sign-in: 30 starts lock it for 15 minutes. A
+    /// person starts one; the budget bounds the logins an address can leave in flight.
+    pub const OIDC_STARTS_PER_ADDRESS: ThrottlePolicy = ThrottlePolicy::PER_ADDRESS;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -50,16 +62,29 @@ struct Entry {
     last_seen: i64,
 }
 
+/// What [`Throttle::begin`] decided.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Begin {
+    /// The key is locked until this instant; the attempt was not counted and must not be judged.
+    Locked(i64),
+    /// The attempt was counted and may be judged. `locks_now` is the end of the lock when *this* attempt
+    /// was the one that reached the limit (the next attempt will be refused).
+    Admitted {
+        /// The end of the lock this attempt engaged, if it did.
+        locks_now: Option<i64>,
+    },
+}
+
 /// Failures per key, with lockout.
 #[derive(Debug)]
-pub struct Throttle {
+pub(crate) struct Throttle {
     policy: ThrottlePolicy,
     state: Mutex<HashMap<String, Entry>>,
 }
 
 impl Throttle {
     /// A throttle with a policy (`max_failures` and `max_tracked` are at least 1).
-    pub fn new(policy: ThrottlePolicy) -> Self {
+    pub(crate) fn new(policy: ThrottlePolicy) -> Self {
         Throttle {
             policy: ThrottlePolicy {
                 max_failures: policy.max_failures.max(1),
@@ -74,17 +99,15 @@ impl Throttle {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// May this key attempt a sign-in at `now`? `Err(until)` while it is locked.
-    pub fn check(&self, key: &str, now: i64) -> Result<(), i64> {
-        match self.map().get(key) {
-            Some(e) if e.locked_until > now => Err(e.locked_until),
-            _ => Ok(()),
-        }
-    }
-
-    /// Count a failure; `Some(until)` when this one locked the key.
-    pub fn record_failure(&self, key: &str, now: i64) -> Option<i64> {
+    /// Check the lock and, if the key is free, **count this attempt** — one step. The attempt that reaches
+    /// the limit engages the lock and is itself still admitted; every later one is refused until it ends.
+    pub(crate) fn begin(&self, key: &str, now: i64) -> Begin {
         let mut map = self.map();
+        if let Some(e) = map.get(key)
+            && e.locked_until > now
+        {
+            return Begin::Locked(e.locked_until);
+        }
         if !map.contains_key(key) && map.len() >= self.policy.max_tracked {
             self.make_room(&mut map, now);
         }
@@ -105,14 +128,26 @@ impl Throttle {
         if e.failures >= self.policy.max_failures {
             e.locked_until = now.saturating_add(self.policy.lock_secs);
             e.failures = 0;
-            Some(e.locked_until)
+            Begin::Admitted {
+                locks_now: Some(e.locked_until),
+            }
         } else {
-            None
+            Begin::Admitted { locks_now: None }
         }
     }
 
-    /// A successful sign-in clears the key's count.
-    pub fn record_success(&self, key: &str) {
+    /// Give back one counted attempt that did not fail a judgement (it was right, or it never got one).
+    pub(crate) fn refund(&self, key: &str) {
+        let mut map = self.map();
+        let Some(e) = map.get_mut(key) else { return };
+        e.failures = e.failures.saturating_sub(1);
+        if e.failures == 0 && e.locked_until == 0 {
+            map.remove(key);
+        }
+    }
+
+    /// A successful sign-in forgets the key altogether (and ends a lock this attempt may have engaged).
+    pub(crate) fn clear(&self, key: &str) {
         self.map().remove(key);
     }
 
@@ -135,7 +170,8 @@ impl Throttle {
     }
 
     /// How many keys are tracked (tests, and a gauge later).
-    pub fn tracked(&self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn tracked(&self) -> usize {
         self.map().len()
     }
 }

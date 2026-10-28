@@ -19,6 +19,9 @@ pub const TOKEN_PREFIX: &str = "ink_";
 /// The longest a token lives: a year and a day. A token is a bearer secret; the longer one lives the more
 /// places it has been copied.
 pub const MAX_LIFETIME_SECS: i64 = 366 * 24 * 3600;
+/// The most live tokens one account may hold: a token is a bearer secret and each one is another place it can
+/// leak from; a person who needs more than this has a service account and a policy question.
+pub const MAX_LIVE_PER_ACCOUNT: usize = 100;
 /// `ink_` and 43 base64url characters.
 const TOKEN_LEN: usize = TOKEN_PREFIX.len() + 43;
 
@@ -55,6 +58,8 @@ pub struct IssuedToken {
 pub enum IssueError {
     /// The lifetime is not between one second and [`MAX_LIFETIME_SECS`].
     Lifetime,
+    /// The account already holds [`MAX_LIVE_PER_ACCOUNT`] live tokens.
+    TooMany,
     /// The store or the random source failed.
     Auth(AuthError),
 }
@@ -66,6 +71,10 @@ impl fmt::Display for IssueError {
                 f,
                 "a token lives from one second to {} days",
                 MAX_LIFETIME_SECS / 86_400
+            ),
+            IssueError::TooMany => write!(
+                f,
+                "an account holds at most {MAX_LIVE_PER_ACCOUNT} live tokens; revoke one first"
             ),
             IssueError::Auth(e) => e.fmt(f),
         }
@@ -82,13 +91,13 @@ impl From<AuthError> for IssueError {
 
 /// A token that authenticated.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VerifiedToken {
+pub(crate) struct VerifiedToken {
     /// The account it acts for.
-    pub account: AccountId,
+    pub(crate) account: AccountId,
     /// The most it may do.
-    pub scope: Scope,
+    pub(crate) scope: Scope,
     /// Its id.
-    pub id: TokenId,
+    pub(crate) id: TokenId,
 }
 
 /// What an owner sees of a token in a list: never the token, never its hash.
@@ -109,18 +118,18 @@ pub struct TokenSummary {
 }
 
 /// Issuing, checking and revoking tokens over a store.
-pub struct Tokens {
+pub(crate) struct Tokens {
     store: Arc<dyn TokenStore>,
 }
 
 impl Tokens {
     /// Tokens kept in `store`.
-    pub fn new(store: Arc<dyn TokenStore>) -> Self {
+    pub(crate) fn new(store: Arc<dyn TokenStore>) -> Self {
         Tokens { store }
     }
 
     /// Issue a token for `account` that does at most `scope` and lasts `lifetime_secs`.
-    pub fn issue(
+    pub(crate) fn issue(
         &self,
         account: &AccountId,
         scope: Scope,
@@ -130,6 +139,16 @@ impl Tokens {
     ) -> Result<IssuedToken, IssueError> {
         if !(1..=MAX_LIFETIME_SECS).contains(&lifetime_secs) {
             return Err(IssueError::Lifetime);
+        }
+        let live = self
+            .store
+            .tokens_of(account)
+            .map_err(AuthError::from)?
+            .iter()
+            .filter(|t| t.revoked_at.is_none() && t.expires_at.is_none_or(|e| e > now))
+            .count();
+        if live >= MAX_LIVE_PER_ACCOUNT {
+            return Err(IssueError::TooMany);
         }
         let secret = TokenSecret(format!("{TOKEN_PREFIX}{}", random::token()?));
         let id = TokenId::new();
@@ -155,7 +174,7 @@ impl Tokens {
 
     /// Does this presented token authenticate at `now`? Unknown, malformed, expired and revoked tokens are
     /// one answer, [`AuthError::BadCredentials`].
-    pub fn verify(&self, presented: &str, now: i64) -> Result<VerifiedToken, AuthError> {
+    pub(crate) fn verify(&self, presented: &str, now: i64) -> Result<VerifiedToken, AuthError> {
         if presented.len() != TOKEN_LEN || !presented.starts_with(TOKEN_PREFIX) {
             return Err(AuthError::BadCredentials);
         }
@@ -175,12 +194,22 @@ impl Tokens {
     }
 
     /// Revoke the account's token `id`; `true` when it was theirs and live.
-    pub fn revoke(&self, account: &AccountId, id: &TokenId, now: i64) -> Result<bool, AuthError> {
+    pub(crate) fn revoke(
+        &self,
+        account: &AccountId,
+        id: &TokenId,
+        now: i64,
+    ) -> Result<bool, AuthError> {
         Ok(self.store.revoke_token(account, id, now)?)
     }
 
+    /// Revoke every live token of the account (a credential recovery, a disabling); how many.
+    pub(crate) fn revoke_all(&self, account: &AccountId, now: i64) -> Result<u64, AuthError> {
+        Ok(self.store.revoke_tokens_of(account, now)?)
+    }
+
     /// The account's tokens, oldest first.
-    pub fn list(&self, account: &AccountId) -> Result<Vec<TokenSummary>, AuthError> {
+    pub(crate) fn list(&self, account: &AccountId) -> Result<Vec<TokenSummary>, AuthError> {
         Ok(self
             .store
             .tokens_of(account)?

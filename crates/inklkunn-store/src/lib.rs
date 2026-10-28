@@ -57,6 +57,8 @@ pub enum StoreError {
     LoginTaken(String),
     /// Another account is already linked to this external identity.
     IdentityTaken,
+    /// A password hash is not shaped like an Argon2id PHC string (`$argon2id$v=19$m=…,t=…,p=…$salt$hash`).
+    InvalidCredential,
     /// The database was written by a newer build (or holds a value this build cannot read); refused
     /// before anything is changed.
     SchemaVersion {
@@ -81,6 +83,9 @@ impl std::fmt::Display for StoreError {
             StoreError::LoginTaken(s) => write!(f, "the sign-in name `{s}` is taken"),
             StoreError::IdentityTaken => {
                 write!(f, "that external identity is linked to another account")
+            }
+            StoreError::InvalidCredential => {
+                write!(f, "a password hash is not an Argon2id string")
             }
             StoreError::SchemaVersion { found, known } => write!(
                 f,

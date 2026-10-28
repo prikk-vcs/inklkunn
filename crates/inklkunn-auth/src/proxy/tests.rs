@@ -139,3 +139,28 @@ fn the_operator_is_told_which_entry_is_not_a_network() {
         NotANetwork("nope".into())
     );
 }
+
+#[test]
+fn a_trusted_proxy_whose_header_cannot_be_read_is_said_to_have_fallen_back() {
+    let p = ProxyPolicy::trusting(&["10.0.0.0/8"]).unwrap();
+    assert!(!p.client(ip("10.0.0.5"), Some("198.51.100.1")).fell_back());
+    for unreadable in [None, Some("198.51.100.1:5555"), Some("garbage")] {
+        let c = p.client(ip("10.0.0.5"), unreadable);
+        assert_eq!(c.as_key(), "10.0.0.5", "{unreadable:?}");
+        assert!(
+            c.fell_back(),
+            "{unreadable:?}: every client behind the proxy now shares this address"
+        );
+    }
+    // A peer that is not a trusted proxy never "falls back": its header is simply not believed.
+    assert!(
+        !ProxyPolicy::none()
+            .client(ip("203.0.113.7"), Some("garbage"))
+            .fell_back()
+    );
+    // Equality is the key's alone.
+    assert_eq!(
+        p.client(ip("10.0.0.5"), None),
+        ProxyPolicy::none().client(ip("10.0.0.5"), None)
+    );
+}

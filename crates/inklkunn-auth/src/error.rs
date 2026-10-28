@@ -20,6 +20,9 @@ pub enum AuthError {
     /// The service is hashing as many passwords as it allows at once and could not take this one in time.
     /// Nothing was decided about the credential; trying again shortly is right.
     Busy,
+    /// The authenticator was set up with a value that cannot work (a zero session lifetime, no permits); it
+    /// refuses to start rather than run in a way nobody asked for.
+    Misconfigured(&'static str),
     /// A store, or the operating system's random source, failed. The text is for operators and carries no
     /// credential.
     Backend(String),
@@ -31,6 +34,7 @@ impl fmt::Display for AuthError {
             AuthError::BadCredentials => f.write_str("authentication failed"),
             AuthError::Locked { .. } => f.write_str("too many failed attempts; try again later"),
             AuthError::Busy => f.write_str("the service is busy; try again shortly"),
+            AuthError::Misconfigured(why) => write!(f, "authentication is misconfigured: {why}"),
             AuthError::Backend(e) => write!(f, "authentication backend error: {e}"),
         }
     }

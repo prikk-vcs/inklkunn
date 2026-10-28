@@ -7,11 +7,11 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use common::*;
-use inklkunn_auth::AuthError;
 use inklkunn_auth::oidc::{
-    FetchError, FetchRequest, HttpsFetcher, OidcConfig, OidcError, OidcProvider, TokenVerifier,
-    VerifiedIdentity,
+    FetchError, FetchRequest, HttpsFetcher, InvalidReason, OidcConfig, OidcError, OidcProvider,
+    STATE_COOKIE, TokenVerifier, VerifiedIdentity,
 };
+use inklkunn_auth::{AccountError, AuthError, OidcSignInError};
 use inklkunn_core::Principal;
 use inklkunn_core::authorize::{Action, Decision, Snapshot, decide};
 use inklkunn_store::{ExternalIdentity, Role, Scope, Visibility};
@@ -153,7 +153,7 @@ impl HttpsFetcher for Idp {
     }
 }
 
-/// A verifier that vouches for one subject, whatever the token, but only for the nonce it is given.
+/// A verifier that vouches for one subject, whatever the token.
 struct Vouches(&'static str);
 
 impl TokenVerifier for Vouches {
@@ -165,7 +165,16 @@ impl TokenVerifier for Vouches {
     }
 }
 
-fn provider(subject: &'static str) -> OidcProvider {
+/// A verifier that refuses everything.
+struct Refuses;
+
+impl TokenVerifier for Refuses {
+    fn verify(&self, _: &str, _: &str, _: i64) -> Result<VerifiedIdentity, OidcError> {
+        Err(OidcError::Invalid(InvalidReason::Signature))
+    }
+}
+
+fn provider_with(verifier: Arc<dyn TokenVerifier>) -> OidcProvider {
     let idp = Arc::new(Idp(Mutex::new(HashMap::from([
         (
             "https://idp.example/.well-known/openid-configuration".to_owned(),
@@ -184,18 +193,37 @@ fn provider(subject: &'static str) -> OidcProvider {
             redirect_uri: "https://wiki.example/cb".into(),
         },
         idp,
-        Arc::new(Vouches(subject)),
+        verifier,
     )
 }
 
-fn complete(p: &OidcProvider) -> VerifiedIdentity {
-    let b = p.begin_login(NOW).unwrap();
-    p.finish_login(&b.state, &b.state, "code", NOW + 1).unwrap()
+fn oidc_world(subject: &'static str) -> World {
+    world_with_oidc(provider_with(Arc::new(Vouches(subject))))
+}
+
+/// A complete sign-in as a browser does it: start, then come back with the state in the query and in the
+/// cookie.
+fn sign_in_through_the_provider(
+    w: &World,
+    client: &str,
+    now: i64,
+) -> Result<inklkunn_auth::SignedIn, OidcSignInError> {
+    let begun = w.auth.begin_oidc(&ip(client), now)?;
+    assert!(
+        begun
+            .authorization_url
+            .starts_with("https://idp.example/auth?")
+    );
+    let cookie = begun.state_cookie();
+    let header = cookie.split(';').next().unwrap().to_owned();
+    assert!(header.starts_with(STATE_COOKIE), "{header}");
+    w.auth
+        .finish_oidc(&begun.state, Some(&header), "code", now + 1)
 }
 
 #[test]
-fn a_linked_identity_signs_in_and_gets_the_accounts_session() {
-    let w = world();
+fn a_linked_identity_signs_in_through_the_whole_flow_and_gets_the_accounts_session() {
+    let w = oidc_world("subject-1");
     let sso = w.auth.register_external("Sso Person", NOW).unwrap();
     w.auth
         .link_external(
@@ -204,9 +232,7 @@ fn a_linked_identity_signs_in_and_gets_the_accounts_session() {
             NOW,
         )
         .unwrap();
-    let verified = complete(&provider("subject-1"));
-    assert_eq!(verified.email_hint(), Some("someone@example.org"));
-    let signed = w.auth.sign_in_oidc(&verified, NOW + 2).unwrap();
+    let signed = sign_in_through_the_provider(&w, "203.0.113.1", NOW).unwrap();
     assert_eq!(signed.principal, Principal::session(sso.id.clone()));
     let found = w
         .auth
@@ -217,22 +243,21 @@ fn a_linked_identity_signs_in_and_gets_the_accounts_session() {
 
 #[test]
 fn an_identity_nobody_linked_signs_nobody_in_even_with_a_matching_email() {
-    let w = world();
+    let w = oidc_world("unlinked-subject");
     // An account whose display name looks like the e-mail the provider reports changes nothing: only the
     // (issuer, subject) pair links.
     w.auth
         .register_external("someone@example.org", NOW)
         .unwrap();
-    let verified = complete(&provider("unlinked-subject"));
     assert_eq!(
-        w.auth.sign_in_oidc(&verified, NOW + 2).unwrap_err(),
-        AuthError::BadCredentials
+        sign_in_through_the_provider(&w, "203.0.113.1", NOW).unwrap_err(),
+        OidcSignInError::Auth(AuthError::BadCredentials)
     );
 }
 
 #[test]
 fn a_disabled_accounts_identity_signs_nobody_in() {
-    let w = world();
+    let w = oidc_world("subject-2");
     let sso = w.auth.register_external("Sso Person", NOW).unwrap();
     w.auth
         .link_external(
@@ -241,19 +266,96 @@ fn a_disabled_accounts_identity_signs_nobody_in() {
             NOW,
         )
         .unwrap();
-    w.auth.disable(&sso.id).unwrap();
-    let verified = complete(&provider("subject-2"));
+    w.auth.disable(&sso.id, NOW).unwrap();
     assert_eq!(
-        w.auth.sign_in_oidc(&verified, NOW + 2).unwrap_err(),
-        AuthError::BadCredentials
+        sign_in_through_the_provider(&w, "203.0.113.1", NOW).unwrap_err(),
+        OidcSignInError::Auth(AuthError::BadCredentials)
     );
 }
 
 #[test]
-fn one_identity_links_to_one_account_only() {
-    use inklkunn_auth::authenticator::AccountError;
+fn a_callback_this_browser_did_not_start_or_one_used_twice_ends_before_any_account_is_looked_at() {
+    let w = oidc_world("subject-3");
+    let sso = w.auth.register_external("Sso Person", NOW).unwrap();
+    w.auth
+        .link_external(
+            &sso.id,
+            &ExternalIdentity::new(ISSUER, "subject-3").unwrap(),
+            NOW,
+        )
+        .unwrap();
+    let begun = w.auth.begin_oidc(&ip("203.0.113.1"), NOW).unwrap();
+    // No cookie, someone else's cookie: the login-CSRF check.
+    assert_eq!(
+        w.auth
+            .finish_oidc(&begun.state, None, "code", NOW + 1)
+            .unwrap_err(),
+        OidcSignInError::Oidc(OidcError::State)
+    );
+    let other = format!("{STATE_COOKIE}=not-this-state");
+    assert_eq!(
+        w.auth
+            .finish_oidc(&begun.state, Some(&other), "code", NOW + 1)
+            .unwrap_err(),
+        OidcSignInError::Oidc(OidcError::State)
+    );
+    // The real browser finishes once; the same callback again finds nothing.
+    let header = format!("{STATE_COOKIE}={}", begun.state);
+    assert!(
+        w.auth
+            .finish_oidc(&begun.state, Some(&header), "code", NOW + 2)
+            .is_ok()
+    );
+    assert_eq!(
+        w.auth
+            .finish_oidc(&begun.state, Some(&header), "code", NOW + 3)
+            .unwrap_err(),
+        OidcSignInError::Oidc(OidcError::State)
+    );
+}
+
+#[test]
+fn a_token_the_verifier_refuses_ends_the_sign_in_with_the_reason_for_the_log() {
+    let w = world_with_oidc(provider_with(Arc::new(Refuses)));
+    let err = sign_in_through_the_provider(&w, "203.0.113.1", NOW).unwrap_err();
+    assert_eq!(
+        err,
+        OidcSignInError::Oidc(OidcError::Invalid(InvalidReason::Signature))
+    );
+}
+
+#[test]
+fn starting_a_sign_in_spends_the_clients_budget_so_logins_in_flight_cannot_be_flooded() {
+    let w = oidc_world("subject-4");
+    let flooder = ip("198.51.100.9");
+    for i in 0..30 {
+        assert!(w.auth.begin_oidc(&flooder, NOW + i).is_ok(), "{i}");
+    }
+    assert!(matches!(
+        w.auth.begin_oidc(&flooder, NOW + 40),
+        Err(OidcSignInError::Auth(AuthError::Locked { .. }))
+    ));
+    // Another address is unaffected.
+    assert!(w.auth.begin_oidc(&ip("198.51.100.10"), NOW + 41).is_ok());
+}
+
+#[test]
+fn without_a_provider_there_is_no_openid_connect() {
     let w = world();
-    let identity = ExternalIdentity::new(ISSUER, "subject-3").unwrap();
+    assert!(matches!(
+        w.auth.begin_oidc(&ip("203.0.113.1"), NOW),
+        Err(OidcSignInError::Oidc(OidcError::NotConfigured))
+    ));
+    assert!(matches!(
+        w.auth.finish_oidc("s", None, "c", NOW),
+        Err(OidcSignInError::Oidc(OidcError::NotConfigured))
+    ));
+}
+
+#[test]
+fn one_identity_links_to_one_account_only() {
+    let w = world();
+    let identity = ExternalIdentity::new(ISSUER, "subject-5").unwrap();
     w.auth.link_external(&id(&w.alice), &identity, NOW).unwrap();
     assert_eq!(
         w.auth
@@ -265,4 +367,30 @@ fn one_identity_links_to_one_account_only() {
         w.auth.link_external(&id(&w.alice), &identity, NOW).is_ok(),
         "again for the same account is fine"
     );
+}
+
+#[test]
+fn nothing_about_a_sign_in_in_flight_prints_a_secret() {
+    let w = oidc_world("subject-6");
+    let begun = w.auth.begin_oidc(&ip("203.0.113.1"), NOW).unwrap();
+    let shown = format!("{begun:?}");
+    assert!(
+        !shown.contains(&begun.state) && !shown.contains("auth?"),
+        "{shown}"
+    );
+    let request = FetchRequest {
+        url: "https://idp.example/token".into(),
+        form: Some("grant_type=authorization_code&code=THE-CODE&code_verifier=THE-VERIFIER".into()),
+        authorization: Some("Basic Y2xpZW50OnNlY3JldA==".into()),
+    };
+    let shown = format!("{request:?}");
+    assert!(shown.contains("https://idp.example/token"));
+    for secret in ["THE-CODE", "THE-VERIFIER", "Y2xpZW50OnNlY3JldA"] {
+        assert!(!shown.contains(secret), "{shown}");
+    }
+    let verified = VerifiedIdentity::for_test(
+        ExternalIdentity::new(ISSUER, "u").unwrap(),
+        Some("private@example.org".into()),
+    );
+    assert!(!format!("{verified:?}").contains("private@example.org"));
 }

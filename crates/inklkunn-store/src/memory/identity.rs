@@ -4,7 +4,7 @@ use std::sync::PoisonError;
 
 use crate::identity::{
     Account, AccountStore, ExternalIdentity, LocalCredential, LoginName, SessionRecord,
-    SessionStore, TokenRecord, TokenStore,
+    SessionStore, TokenRecord, TokenStore, looks_like_an_argon2id_hash,
 };
 use crate::record::{AccountId, TokenId};
 use crate::{Result, StoreError};
@@ -45,6 +45,11 @@ impl MemoryStore {
 
 impl AccountStore for MemoryStore {
     fn add_account(&self, account: &Account) -> Result<()> {
+        if let Some(local) = &account.local
+            && !looks_like_an_argon2id_hash(&local.password_hash)
+        {
+            return Err(StoreError::InvalidCredential);
+        }
         let mut d = self.identities();
         if d.accounts.iter().any(|a| a.id == account.id) {
             return Err(StoreError::IdTaken(account.id.to_string()));
@@ -105,10 +110,15 @@ impl AccountStore for MemoryStore {
         credential: Option<&LocalCredential>,
     ) -> Result<()> {
         let mut d = self.identities();
-        if let Some(c) = credential
-            && d.login_taken(&c.login, Some(id))
-        {
-            return Err(StoreError::LoginTaken(c.login.to_string()));
+        // The account is checked first, as the SQLite store does, so the two answer alike.
+        d.account_mut(id)?;
+        if let Some(c) = credential {
+            if !looks_like_an_argon2id_hash(&c.password_hash) {
+                return Err(StoreError::InvalidCredential);
+            }
+            if d.login_taken(&c.login, Some(id)) {
+                return Err(StoreError::LoginTaken(c.login.to_string()));
+            }
         }
         d.account_mut(id)?.local = credential.cloned();
         Ok(())
@@ -192,13 +202,16 @@ impl TokenStore for MemoryStore {
     }
 
     fn tokens_of(&self, account: &AccountId) -> Result<Vec<TokenRecord>> {
-        Ok(self
+        let mut mine: Vec<TokenRecord> = self
             .identities()
             .tokens
             .iter()
             .filter(|t| t.account == *account)
             .cloned()
-            .collect())
+            .collect();
+        // Oldest first by creation time, ties in the order they were stored: the order SQLite gives.
+        mine.sort_by_key(|t| t.created_at);
+        Ok(mine)
     }
 
     fn revoke_token(&self, account: &AccountId, id: &TokenId, at: i64) -> Result<bool> {
@@ -214,5 +227,19 @@ impl TokenStore for MemoryStore {
             }
             None => Ok(false),
         }
+    }
+
+    fn revoke_tokens_of(&self, account: &AccountId, at: i64) -> Result<u64> {
+        let mut d = self.identities();
+        let mut n = 0;
+        for t in d
+            .tokens
+            .iter_mut()
+            .filter(|t| t.account == *account && t.revoked_at.is_none())
+        {
+            t.revoked_at = Some(at);
+            n += 1;
+        }
+        Ok(n)
     }
 }

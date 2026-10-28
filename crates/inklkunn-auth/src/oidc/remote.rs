@@ -27,9 +27,14 @@ pub(super) struct Discovery {
     pub jwks_uri: String,
 }
 
+/// After a failed discovery the provider is not asked again for this many seconds: a provider that is down
+/// must not be hit, and a blocking thread pinned, once for every person who tries to sign in.
+const DISCOVERY_RETRY_SECS: i64 = 5;
+
 #[derive(Default)]
 struct Cache {
     discovery: Option<(Discovery, i64)>,
+    discovery_failed_at: Option<i64>,
     jwks: Option<(Arc<JwkSet>, i64)>,
 }
 
@@ -90,11 +95,37 @@ impl Remote {
     }
 
     pub(super) fn discovery(&self, now: i64) -> Result<Discovery, OidcError> {
-        if let Some((d, at)) = &self.cache().discovery
-            && now.saturating_sub(*at) < DISCOVERY_TTL_SECS
         {
-            return Ok(d.clone());
+            let cache = self.cache();
+            if let Some((d, at)) = &cache.discovery
+                && now.saturating_sub(*at) < DISCOVERY_TTL_SECS
+            {
+                return Ok(d.clone());
+            }
+            if let Some(failed) = cache.discovery_failed_at
+                && now.saturating_sub(failed) < DISCOVERY_RETRY_SECS
+            {
+                return Err(OidcError::Provider(
+                    "the provider could not be reached a moment ago; not asking again yet"
+                        .to_owned(),
+                ));
+            }
         }
+        match self.fetch_discovery() {
+            Ok(d) => {
+                let mut cache = self.cache();
+                cache.discovery = Some((d.clone(), now));
+                cache.discovery_failed_at = None;
+                Ok(d)
+            }
+            Err(e) => {
+                self.cache().discovery_failed_at = Some(now);
+                Err(e)
+            }
+        }
+    }
+
+    fn fetch_discovery(&self) -> Result<Discovery, OidcError> {
         let url = format!(
             "{}/.well-known/openid-configuration",
             self.issuer.trim_end_matches('/')
@@ -115,7 +146,6 @@ impl Remote {
                 "a discovery endpoint is not an https URL".to_owned(),
             ));
         }
-        self.cache().discovery = Some((d.clone(), now));
         Ok(d)
     }
 

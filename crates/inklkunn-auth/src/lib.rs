@@ -20,18 +20,22 @@
 
 pub mod authenticator;
 pub mod error;
-pub mod gate;
+mod gate;
 pub mod hashing;
 pub mod oidc;
 pub mod proxy;
 mod random;
 pub mod session;
 mod stored;
-pub mod throttle;
+mod throttle;
 pub mod token;
 
-pub use authenticator::{AuthConfig, Authenticator, SessionPrincipal, SignedIn};
+pub use authenticator::{
+    AccountError, AuthConfig, Authenticator, OidcSignInError, SessionCheck, SessionPrincipal,
+    SignedIn,
+};
 pub use error::AuthError;
 pub use hashing::{Argon2idHasher, PasswordHasher, PasswordRefusal};
 pub use proxy::{ClientAddress, ProxyPolicy};
 pub use session::{CsrfToken, NewSession};
+pub use throttle::ThrottlePolicy;

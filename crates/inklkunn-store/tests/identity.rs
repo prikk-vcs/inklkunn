@@ -14,13 +14,21 @@ fn login(s: &str) -> LoginName {
     LoginName::parse(s).expect("a valid login")
 }
 
+/// A well-formed Argon2id string (the store checks the shape, not the cryptography).
+fn phc(tag: &str) -> String {
+    format!(
+        "$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaC1mb3ItdGVzdHM{}",
+        tag.len()
+    )
+}
+
 fn account(name: &str, with_login: Option<&str>) -> Account {
     Account {
         id: AccountId::new(),
         display_name: DisplayName::new(name).expect("a display name"),
         local: with_login.map(|l| LocalCredential {
             login: login(l),
-            password_hash: format!("$argon2id$stub-for-{l}"),
+            password_hash: phc(l),
         }),
         created_at: 100,
         disabled: false,
@@ -128,7 +136,7 @@ fn account_invariants(store: &(impl AccountStore + SessionStore + TokenStore)) {
     // missing account. Keeping one's own name is not a clash.
     let renewed = LocalCredential {
         login: login("alice"),
-        password_hash: "$argon2id$new".into(),
+        password_hash: phc("renewed"),
     };
     store
         .set_local_credential(&alice.id, Some(&renewed))
@@ -139,7 +147,7 @@ fn account_invariants(store: &(impl AccountStore + SessionStore + TokenStore)) {
     );
     let clash = LocalCredential {
         login: login("alice"),
-        password_hash: "$argon2id$x".into(),
+        password_hash: phc("clash"),
     };
     assert_eq!(
         store.set_local_credential(&sso.id, Some(&clash)).err(),
@@ -174,6 +182,45 @@ fn account_invariants(store: &(impl AccountStore + SessionStore + TokenStore)) {
     );
     assert_eq!(
         store.set_disabled(&AccountId::new(), true).err(),
+        Some(StoreError::AccountNotFound)
+    );
+
+    // A hash that is not an Argon2id string is refused, so no row can hold a "password" nobody can verify; the
+    // account is looked for first, then the hash, then the name — in both stores.
+    let mut bad = account("Bad hash", Some("badhash"));
+    bad.local.as_mut().unwrap().password_hash = "!".into();
+    assert_eq!(
+        store.add_account(&bad).err(),
+        Some(StoreError::InvalidCredential)
+    );
+    assert_eq!(
+        store.account(&bad.id).expect("get"),
+        None,
+        "nothing was stored"
+    );
+    let junk = LocalCredential {
+        login: login("junk"),
+        password_hash: "$bcrypt$12$abc".into(),
+    };
+    assert_eq!(
+        store.set_local_credential(&sso.id, Some(&junk)).err(),
+        Some(StoreError::InvalidCredential)
+    );
+    let taken_name = LocalCredential {
+        login: login("alice"),
+        password_hash: phc("t"),
+    };
+    assert_eq!(
+        store
+            .set_local_credential(&AccountId::new(), Some(&taken_name))
+            .err(),
+        Some(StoreError::AccountNotFound),
+        "a missing account is reported before a taken name"
+    );
+    assert_eq!(
+        store
+            .set_local_credential(&AccountId::new(), Some(&junk))
+            .err(),
         Some(StoreError::AccountNotFound)
     );
 
@@ -313,6 +360,71 @@ fn token_invariants(store: &(impl TokenStore + ?Sized), a: &AccountId, b: &Accou
             .revoke_token(a, &TokenId::new(), 500)
             .expect("revoke unknown")
     );
+    // "Oldest first" is by creation time, whatever order they were stored in — in both stores.
+    let mut late = token("sha256$o3", a, Scope::Read);
+    late.created_at = 300;
+    let mut early = token("sha256$o1", a, Scope::Read);
+    early.created_at = 50;
+    let mut middle = token("sha256$o2", a, Scope::Read);
+    middle.created_at = 200;
+    for t in [&late, &early, &middle] {
+        store.add_token(t).expect("create");
+    }
+    let order: Vec<TokenId> = store
+        .tokens_of(a)
+        .expect("list")
+        .into_iter()
+        .map(|t| t.id)
+        .collect();
+    let pos = |id: &TokenId| order.iter().position(|x| x == id).expect("listed");
+    assert!(
+        pos(&early.id) < pos(&middle.id) && pos(&middle.id) < pos(&late.id),
+        "{order:?}"
+    );
+
+    // Revoking all of an account's tokens: the live ones, once, and only that account's.
+    let before_b = store
+        .tokens_of(b)
+        .expect("list")
+        .iter()
+        .filter(|t| t.revoked_at.is_none())
+        .count();
+    let live_a = store
+        .tokens_of(a)
+        .expect("list")
+        .iter()
+        .filter(|t| t.revoked_at.is_none())
+        .count() as u64;
+    assert!(live_a >= 4);
+    assert_eq!(store.revoke_tokens_of(a, 900).expect("revoke all"), live_a);
+    assert_eq!(
+        store.revoke_tokens_of(a, 950).expect("again"),
+        0,
+        "nothing live is left"
+    );
+    assert!(
+        store
+            .tokens_of(a)
+            .expect("list")
+            .iter()
+            .all(|t| t.revoked_at.is_some())
+    );
+    assert_eq!(
+        store
+            .tokens_of(b)
+            .expect("list")
+            .iter()
+            .filter(|t| t.revoked_at.is_none())
+            .count(),
+        before_b,
+        "another account's tokens stand"
+    );
+    // The first revocation time of an earlier-revoked token is kept.
+    let kept = store
+        .token_by_hash("sha256$t1")
+        .expect("find")
+        .expect("there");
+    assert_eq!(kept.revoked_at, Some(500));
 }
 
 #[test]

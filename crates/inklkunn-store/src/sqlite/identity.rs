@@ -6,7 +6,7 @@ use super::{SqliteStore, backend};
 use crate::access::Scope;
 use crate::identity::{
     Account, AccountStore, ExternalIdentity, LocalCredential, LoginName, SessionRecord,
-    SessionStore, TokenRecord, TokenStore, clean_label,
+    SessionStore, TokenRecord, TokenStore, clean_label, looks_like_an_argon2id_hash,
 };
 use crate::record::{AccountId, DisplayName, TokenId};
 use crate::{Result, StoreError};
@@ -86,6 +86,11 @@ impl SqliteStore {
 
 impl AccountStore for SqliteStore {
     fn add_account(&self, account: &Account) -> Result<()> {
+        if let Some(local) = &account.local
+            && !looks_like_an_argon2id_hash(&local.password_hash)
+        {
+            return Err(StoreError::InvalidCredential);
+        }
         let login = account.local.as_ref().map(|l| &l.login);
         self.with(|conn| {
             let tx = conn
@@ -185,20 +190,39 @@ impl AccountStore for SqliteStore {
     ) -> Result<()> {
         let login = credential.map(|c| &c.login);
         self.with(|conn| {
-            let n = conn
-                .execute(
-                    "UPDATE accounts SET login = ?1, password_hash = ?2 WHERE id = ?3",
-                    params![
-                        login.map(LoginName::as_str),
-                        credential.map(|c| c.password_hash.as_str()),
-                        id.as_str()
-                    ],
-                )
-                .map_err(|e| map_account_write(e, id, login))?;
-            if n == 0 {
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(backend)?;
+            // The same order as the in-memory store: the account, then the hash, then the name.
+            if !exists(&tx, "SELECT 1 FROM accounts WHERE id = ?1", id.as_str())? {
                 return Err(StoreError::AccountNotFound);
             }
-            Ok(())
+            if let Some(c) = credential {
+                if !looks_like_an_argon2id_hash(&c.password_hash) {
+                    return Err(StoreError::InvalidCredential);
+                }
+                let owner: Option<String> = tx
+                    .query_row(
+                        "SELECT id FROM accounts WHERE login = ?1",
+                        params![c.login.as_str()],
+                        |r| r.get(0),
+                    )
+                    .optional()
+                    .map_err(backend)?;
+                if owner.as_deref().is_some_and(|o| o != id.as_str()) {
+                    return Err(StoreError::LoginTaken(c.login.to_string()));
+                }
+            }
+            tx.execute(
+                "UPDATE accounts SET login = ?1, password_hash = ?2 WHERE id = ?3",
+                params![
+                    login.map(LoginName::as_str),
+                    credential.map(|c| c.password_hash.as_str()),
+                    id.as_str()
+                ],
+            )
+            .map_err(|e| map_account_write(e, id, login))?;
+            tx.commit().map_err(backend)
         })
     }
 
@@ -396,4 +420,18 @@ impl TokenStore for SqliteStore {
             .map_err(backend)
         })
     }
+
+    fn revoke_tokens_of(&self, account: &AccountId, at: i64) -> Result<u64> {
+        self.with(|conn| {
+            conn.execute(
+                "UPDATE api_tokens SET revoked_at = ?1 WHERE account_id = ?2 AND revoked_at IS NULL",
+                params![at, account.as_str()],
+            )
+            .map(|n| n as u64)
+            .map_err(backend)
+        })
+    }
 }
+
+#[cfg(test)]
+mod tests;

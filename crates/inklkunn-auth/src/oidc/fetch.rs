@@ -10,8 +10,9 @@ use std::fmt;
 /// response is a few kilobytes.
 pub const MAX_RESPONSE_BYTES: usize = 1 << 20;
 
-/// One outbound request: a `GET`, or a form `POST` when `form` is set.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// One outbound request: a `GET`, or a form `POST` when `form` is set. Its `Debug` shows the URL and nothing
+/// else: the form carries the authorization code and the PKCE verifier, and the header the client's secret.
+#[derive(Clone, PartialEq, Eq)]
 pub struct FetchRequest {
     /// An `https://` URL.
     pub url: String,
@@ -19,6 +20,16 @@ pub struct FetchRequest {
     pub form: Option<String>,
     /// The `Authorization` header's value, when the request needs one.
     pub authorization: Option<String>,
+}
+
+impl fmt::Debug for FetchRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FetchRequest")
+            .field("url", &self.url)
+            .field("form", &self.form.as_ref().map(|_| "…"))
+            .field("authorization", &self.authorization.as_ref().map(|_| "…"))
+            .finish()
+    }
 }
 
 impl FetchRequest {
