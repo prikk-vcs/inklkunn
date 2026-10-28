@@ -108,6 +108,10 @@
 ## Pending on the owner
 
 - **DR-10 — Rotating a wiki's maintainer key** (decision request; issue IS-16; ledger PK-34; review report).
+  **Owner, 2026-10-29: (a) with (c) accepted in principle, final once prikk confirms it**; the three points to confirm
+  (revocation is retroactive by design; keeping the old key trusted is the right rotation on 0.54; what a leaked
+  still-trusted key can do and whether a verifier can see it) are in the letter below. Due before 0.1.0 creates wikis
+  with real keys.
   *Background:* RFC 002 D-8 and threat model C-1d say a rotation removes the old maintainer key from trust **and** the
   repository still verifies. On prikk 0.54.1 these cannot both hold: removing a key is revocation (prikk's reference),
   and everything it sealed then fails verification. *Options:* **(a)** as built — rotation keeps the old key trusted
@@ -181,7 +185,7 @@ the mode requires. CI is green from `d0a8307` on ([run 40489623629](https://gith
 | IS-13 | **A kill during *create wiki* leaves an unreferenced repository directory** (the record is stored last; nothing sweeps), and with RFC 002's key store it would leave key records too | architect review 2026-10-28; planeter RFC 004 part 7 (PL-11) | handoff 003's T7: creation kill-safe at every step (a `creating` state and a start-up sweep, planeter's precedent), proved by a `SIGKILL` at each step |
 | IS-14 | **An author can forge an internal wiki link.** The sanitizer's allowlist is the renderer's vocabulary, so raw HTML such as `<a class="wikilink" href="https://…">Home</a>` survives looking exactly like a wiki link, without `rel="nofollow ugc"` | the architect's review of handoff 003 T3, 2026-10-29 (the dev team's open question 6) | **mandatory before handoff 003's T4 serves a page**: author raw HTML rendered as escaped, visible text while the profile's subset is empty, the renderer's output carrying an unforgeable origin (RFC 003 D-3 concretized; handoff 003 note) |
 | IS-15 | **A lost key store cannot be rebuilt under the old key ids** (prikk binds a key id to one key for good, PK-35), and RFC 002 has no path for "the repository survived, its key records did not" | dev team, handoff 002 review request, open question 3 | a `recover` operation (new keys under fresh ids, the operator's confirmation) in the operations RFC before 1.0, with the restore runbook (DUR-1) |
-| IS-16 | **Rotation cannot both remove the old maintainer key and keep the history verifying** (PK-34; prikk's `remove` is revocation) | dev team, handoff 002 T7 (reproduced by the architect, 2026-10-29) | **waits for the owner (DR-10)**; meanwhile rotation keeps the old key trusted and retirement is an explicit, named act (`docs/KEYS.md`); the bundled letter asks prikk about rotation |
+| IS-16 | **Rotation cannot both remove the old maintainer key and keep the history verifying** (PK-34; prikk's `remove` is revocation) | dev team, handoff 002 T7 (reproduced by the architect, 2026-10-29) | **DR-10: (a) accepted in principle, final on prikk's confirmation** (asked in the bundled letter); meanwhile rotation keeps the old key trusted and retirement is an explicit, named act (`docs/KEYS.md`); the bundled letter asks prikk about rotation |
 
 ## Process lessons (keep)
 
