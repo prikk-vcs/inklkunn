@@ -173,7 +173,7 @@ RFC 002 and RFC 003 — the first handoffs after M0, in progress. Still nothing 
 
 - **Changes after an independent reading of T2 – T7** (the second of the two readings of handoff 002).
   *The reconciliation read only the newest page of a long history*: it paged by block id, which real prikk
-  answers with an empty list and exit 0 (ledger PK-36), so past 4,096 blocks it saw a prefix and called the rest
+  answers with an empty list and exit 0 (ledger PK-36), so past 500 blocks it saw a prefix and called the rest
   missing or clean. It now reads each view whole (one `log --limit`, repeated four times larger while it comes
   back full, an error at a stated bound), the driver refuses a block point for `history`, and a standing finding
   is reported once, not at every run. *Acceptance outcomes say what state the repository is in*:
