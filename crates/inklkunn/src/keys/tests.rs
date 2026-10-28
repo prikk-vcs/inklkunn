@@ -112,6 +112,8 @@ mod world {
         let p = base.join(format!("inklkunn-cli-{}-{tag}", std::process::id()));
         let _ = std::fs::remove_dir_all(&p);
         std::fs::create_dir_all(&p).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o700)).unwrap();
         Dir(p)
     }
 
@@ -195,6 +197,11 @@ mod world {
     impl World {
         /// Run `inklkunn --dev-unconfined <args>` in this process; (status, stdout, stderr).
         pub fn cli(&self, args: &str) -> (i32, String, String) {
+            self.cli_with_prikk(args, &self.settings.prikk.clone())
+        }
+
+        /// As [`World::cli`], with `INKLKUNN_PRIKK` naming this binary.
+        pub fn cli_with_prikk(&self, args: &str, prikk: &std::ffi::OsStr) -> (i32, String, String) {
             let s = &self.settings;
             let env: HashMap<&str, OsString> = HashMap::from([
                 ("INKLKUNN_DATA_DIR", s.data_dir.clone().into_os_string()),
@@ -204,7 +211,7 @@ mod world {
                 ),
                 ("INKLKUNN_KEY_DIR", s.key_dir.clone().into_os_string()),
                 ("INKLKUNN_SEED_DIR", s.seed_dir.clone().into_os_string()),
-                ("INKLKUNN_PRIKK", s.prikk.clone()),
+                ("INKLKUNN_PRIKK", prikk.to_os_string()),
             ]);
             let args: Vec<String> = format!("--dev-unconfined {args}")
                 .split_whitespace()
@@ -243,6 +250,27 @@ mod world {
                     )
                 })
                 .collect()
+        }
+
+        /// A `prikk` that fails `trust maintainer remove` and passes everything else to the real one.
+        pub fn standin_that_cannot_remove_a_key(&self) -> PathBuf {
+            let path = self.settings.data_dir.join("prikk-standin");
+            // The unconfined policy clears the environment, so the real prikk is named in full.
+            let real = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+                .map(|d| d.join("prikk"))
+                .find(|c| c.is_file())
+                .unwrap();
+            std::fs::write(
+                &path,
+                format!(
+                    "#!/bin/sh\nif [ \"$1 $2 $3\" = \"trust maintainer remove\" ]; then echo 'error: precondition not met: injected' >&2; exit 1; fi\nexec {} \"$@\"\n",
+                    real.display()
+                ),
+            )
+            .unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            path
         }
 
         pub fn recorded_ids(&self) -> (Option<String>, Option<String>) {
@@ -338,6 +366,18 @@ fn a_rotation_is_confirmed_applied_recorded_audited_and_the_repository_verifies(
             && d.contains("old key kept")),
         "{events:?}"
     );
+    // Written before and after: an act that stopped in the middle shows as begun and never finished.
+    let rotate: Vec<_> = events
+        .iter()
+        .filter(|(a, _, _)| a == "keys-rotate")
+        .collect();
+    assert_eq!(rotate.len(), 2, "{events:?}");
+    assert!(
+        rotate
+            .first()
+            .is_some_and(|(_, _, d)| d.starts_with("begun")),
+        "{events:?}"
+    );
 }
 
 #[test]
@@ -413,4 +453,73 @@ fn create_for_a_wiki_that_has_keys_is_refused_and_a_lost_key_record_is_reported_
     );
     let (status, _, err) = w.cli("wiki keys status handbook");
     assert_eq!(status, 1, "still no keys: {err}");
+}
+
+#[test]
+fn a_rotation_whose_retirement_fails_is_recorded_as_a_rotation_and_says_the_old_key_is_still_trusted()
+ {
+    let Some(w) = world::world("retire-fails") else {
+        return;
+    };
+    let before = w.recorded_ids();
+    let standin = w.standin_that_cannot_remove_a_key();
+    let (status, out, err) = w.cli_with_prikk(
+        "wiki keys rotate handbook --confirm handbook --retire-old --accept-unverifiable-history",
+        standin.as_os_str(),
+    );
+    assert_eq!(status, 1, "the operator must notice: {out}{err}");
+    assert!(
+        err.contains("STILL TRUSTED") && err.contains("prikk trust maintainer remove --key-id"),
+        "{err}"
+    );
+    // The keys did rotate, so the wiki record follows them and the output shows them…
+    assert_ne!(w.recorded_ids(), before);
+    assert!(out.contains("generation:      2"), "{out}");
+    // …the trail says what happened rather than "failed"…
+    let events = w.audit_events();
+    assert!(
+        events.iter().any(|(a, o, d)| a == "keys-rotate"
+            && o == "allowed"
+            && d.contains("retirement FAILED")),
+        "{events:?}"
+    );
+    // …and the old key is still trusted, so the repository still verifies.
+    assert!(w.verifies());
+}
+
+#[test]
+fn an_act_that_cannot_be_written_to_the_audit_trail_is_not_begun() {
+    use inklkunn_store::{AuditEvent, AuditSink, StoreError};
+    struct Broken;
+    impl AuditSink for Broken {
+        fn record(&self, _: &AuditEvent) -> inklkunn_store::Result<()> {
+            Err(StoreError::Backend("the disk is full".into()))
+        }
+    }
+    let Some(w) = world::world("no-trail") else {
+        return;
+    };
+    let before = w.recorded_ids();
+    let command = parse(&args("rotate handbook --confirm handbook")).unwrap();
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let status = execute_with(
+        &command,
+        &w.settings,
+        1_800_000_000,
+        &mut out,
+        &mut err,
+        Some(&Broken),
+    );
+    let err = String::from_utf8(err).unwrap();
+    assert_eq!(status, 1, "{err}");
+    assert!(
+        err.contains("audit trail could not be written") && err.contains("nothing was done"),
+        "{err}"
+    );
+    assert_eq!(w.recorded_ids(), before);
+    let (_, status_out, _) = w.cli("wiki keys status handbook");
+    assert!(
+        status_out.contains("generation:      1"),
+        "no key changed: {status_out}"
+    );
 }

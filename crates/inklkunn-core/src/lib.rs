@@ -27,7 +27,7 @@ pub use inklkunn_signer::message;
 
 pub use accept::{
     Accept, AcceptError, AcceptanceLedger, AcceptanceToken, ExpectedMessage, LedgerError,
-    PreparedChange, PreparedFile, SealedChange, ViewCreationAct, ViewCreationFacts,
+    PreparedChange, PreparedFile, SealedChange, Unconfirmed, ViewCreationAct, ViewCreationFacts,
 };
 pub use assurance::Assurance;
 pub use authorize::{
@@ -35,7 +35,9 @@ pub use authorize::{
     StoreAuthz, SystemPrincipal, decide,
 };
 pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, Resolver, StdEgressGuard, StdResolver};
-pub use inklkunn_signer::{KeyStatus, OldKey, Rotation, Signer, SignerConfig, SignerError};
+pub use inklkunn_signer::{
+    KeyStatus, OldKey, OldKeyOutcome, Rotation, Signer, SignerConfig, SignerError,
+};
 pub use routes::{Guard, RouteEntry, RouteError, RouteTable};
 pub use wiki::{
     Cleanup, CreateWikiError, CreatedWiki, RepositoryBootstrap, create_wiki, creation_message,

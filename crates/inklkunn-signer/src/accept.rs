@@ -79,22 +79,61 @@ pub struct SealedChange {
     pub patch_ids: Vec<String>,
 }
 
-/// Why an acceptance was refused or did not complete.
+/// What could not be confirmed after a change was sealed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unconfirmed {
+    /// The sealed block could not be read back: its ids are not known.
+    BlockNotRead,
+    /// The newest block is not the change that was written: something else sealed in between. Which block is
+    /// this acceptance's is not known.
+    NotOurs,
+    /// `verify` could not run to a verdict.
+    VerifyCouldNotRun,
+    /// `verify` ran and the repository does not verify. With prikk 0.54.1 this is also what **every** change
+    /// reports once a maintainer key has been retired (ledger PK-34): the change is sealed and the older
+    /// history cannot be verified.
+    VerifyFailed,
+}
+
+/// Why an acceptance was refused or did not complete. **Each variant says what state the repository is in**,
+/// so a caller never has to read text to decide between "nothing happened", "a patch is queued" and "the
+/// change is sealed".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AcceptError {
     /// The token names no acceptance record in state *pending seal* for this wiki and view (or no recorded
-    /// view-creation act).
+    /// view-creation act). Nothing was done.
     NotPending,
     /// The message does not name the token's proposal and acceptor (RFC 002 D-5), or is not a message.
+    /// Nothing was done.
     MessageMismatch,
-    /// Refused before anything was written, or after it with the worktree put back as it was; the text is
-    /// for operators. Nothing changed.
+    /// Refused before anything was committed, with the worktree as it was found (it may be on another view,
+    /// if a switch had been made); the text is for operators. Nothing was committed or sealed.
     Refused(String),
-    /// `commit` succeeded and a later step failed; RFC 004's recovery completes it. The text is for
-    /// operators.
-    Incomplete(String),
-    /// The call could not run, and the repository is as it was found. The text is for operators.
+    /// The call could not run, and nothing was committed or sealed; the worktree is as it was found. The text
+    /// is for operators.
     Unavailable(String),
+    /// A failure before `commit` could not be undone: **the worktree holds uncommitted changes** that a
+    /// recovery must restore before anything else is accepted. Nothing was committed or sealed.
+    WorktreeDirty(String),
+    /// `commit` succeeded and `seal` did not: **one patch is queued, nothing is sealed.** Sealing it completes
+    /// the acceptance (RFC 004's recovery); retrying the acceptance would commit the change a second time.
+    Queued {
+        /// The step that failed.
+        step: &'static str,
+        /// What failed, for operators.
+        detail: String,
+    },
+    /// **The change is sealed**, but something afterwards could not be confirmed. `sealed` carries the block
+    /// when it was read back. A retry of the acceptance would seal it again: the caller records the block (or
+    /// looks for it) instead.
+    SealedUnconfirmed {
+        /// What was sealed, when it is known.
+        sealed: Option<SealedChange>,
+        /// What could not be confirmed.
+        why: Unconfirmed,
+        /// For operators.
+        detail: String,
+    },
     /// **The call completed**, and `sealed` carries its ids when it was an acceptance, **but the temporary
     /// directory of decrypted seeds could not be removed.** The operator removes the directories named
     /// `inklkunn-seeds-*` under the seed directory.
@@ -112,11 +151,26 @@ impl std::fmt::Display for AcceptError {
                 f,
                 "the message does not name the acceptance's proposal and acceptor"
             ),
-            AcceptError::Refused(m) => write!(f, "refused, nothing changed: {m}"),
-            AcceptError::Incomplete(m) => {
-                write!(f, "committed but not sealed; recovery pending: {m}")
-            }
-            AcceptError::Unavailable(m) => write!(f, "could not run: {m}"),
+            AcceptError::Refused(m) => write!(f, "refused, nothing committed: {m}"),
+            AcceptError::Unavailable(m) => write!(f, "could not run, nothing committed: {m}"),
+            AcceptError::WorktreeDirty(m) => write!(
+                f,
+                "failed before the commit and the worktree could not be put back; recovery must restore it: {m}"
+            ),
+            AcceptError::Queued { step, detail } => write!(
+                f,
+                "committed, `{step}` failed: one patch is queued and nothing is sealed; recovery seals it: {detail}"
+            ),
+            AcceptError::SealedUnconfirmed { why, detail, .. } => write!(
+                f,
+                "the change is sealed but could not be confirmed ({}); do not accept it again: {detail}",
+                match why {
+                    Unconfirmed::BlockNotRead => "the block could not be read back",
+                    Unconfirmed::NotOurs => "the newest block is not the change that was written",
+                    Unconfirmed::VerifyCouldNotRun => "verification could not run",
+                    Unconfirmed::VerifyFailed => "the repository did not verify afterwards",
+                }
+            ),
             AcceptError::SeedsNotRemoved { sealed } => write!(
                 f,
                 "the call completed{} but a temporary directory of decrypted seeds could not be removed; \

@@ -121,6 +121,38 @@ pub(crate) struct Writes {
     sandbox: Sandbox,
 }
 
+/// prikk's words with every path into a call's seed directory replaced: `error: no seed at
+/// /dev/shm/…/inklkunn-seeds-<bits>/author.seed` names where keys are, and an error must never (RFC 002 D-3).
+fn scrub(text: &str) -> String {
+    use crate::key_store::DIR_PREFIX;
+    let path_char = |c: char| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/');
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(DIR_PREFIX) {
+        let (before, after) = rest.split_at(at);
+        // Back to where the path starts, forward to where it ends.
+        let start = before
+            .char_indices()
+            .rev()
+            .take_while(|(_, c)| path_char(*c))
+            .last()
+            .map_or(before.len(), |(i, _)| i);
+        out.push_str(before.get(..start).unwrap_or_default());
+        out.push_str("<seed directory>");
+        let mut end = after
+            .char_indices()
+            .find(|(_, c)| !path_char(*c))
+            .map_or(after.len(), |(i, _)| i);
+        // A full stop that ends a sentence is not part of the path.
+        while end > 0 && after.get(..end).is_some_and(|p| p.ends_with('.')) {
+            end -= 1;
+        }
+        rest = after.get(end..).unwrap_or_default();
+    }
+    out.push_str(rest);
+    out
+}
+
 /// The outcome of a confined call, read in the signer's terms.
 fn outcome(verb: &str, run: Run) -> Result<Vec<u8>, SignerError> {
     if run.timed_out {
@@ -135,7 +167,7 @@ fn outcome(verb: &str, run: Run) -> Result<Vec<u8>, SignerError> {
         )));
     }
     if !run.status.success() {
-        let stderr = String::from_utf8_lossy(&run.stderr).trim().to_owned();
+        let stderr = scrub(String::from_utf8_lossy(&run.stderr).trim());
         if let Some(first) = stderr.lines().next()
             && (first.starts_with("bwrap:") || first.starts_with("prlimit:"))
         {
@@ -199,6 +231,7 @@ impl Writes {
 
     /// A write verb: the repository writable, the key directory read-only, prikk's seed variables set.
     fn write(&self, repo: &Path, keys: &KeyDir, args: &[&str]) -> Result<Vec<u8>, SignerError> {
+        keys.touch();
         self.run(&Mounts::write(repo, keys.path(), keys.env()), args)
     }
 
@@ -293,6 +326,7 @@ impl Writes {
     /// `prikk key generate --out <path>` (writes the seed, mode 0600, and its `.key-id` file). The key
     /// directory is the only mount, writable; no repository is involved.
     pub(crate) fn generate_key(&self, keys: &KeyDir, role: &str) -> Result<(), SignerError> {
+        keys.touch();
         let out = keys.seed_file_text(role);
         self.run(
             &Mounts::dir_writable(keys.path()),
@@ -304,6 +338,7 @@ impl Writes {
     /// `prikk key public --seed-file <path>` → the public key hex (a public value). prikk prints
     /// `public key: <64 hex>`; anything else is refused rather than guessed at, since a seed is also 64 hex.
     pub(crate) fn public_key(&self, keys: &KeyDir, role: &str) -> Result<String, SignerError> {
+        keys.touch();
         let seed = keys.seed_file_text(role);
         let stdout = self.run(
             &Mounts::read(keys.path(), None),
@@ -437,3 +472,6 @@ impl Writes {
             .map(|_| ())
     }
 }
+
+#[cfg(test)]
+mod tests;

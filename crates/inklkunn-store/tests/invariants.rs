@@ -584,6 +584,9 @@ fn the_audit_trail_cannot_be_edited_or_erased_even_through_sql() {
         "UPDATE audit_log SET detail = 'nothing happened' WHERE seq = 1",
         "DELETE FROM audit_log",
         "DELETE FROM audit_log WHERE seq = 2",
+        // The replacing insert: it deletes the old row without firing a delete trigger, so it has its own.
+        "INSERT OR REPLACE INTO audit_log (seq, at, principal, action, resource, outcome, detail) VALUES (2, 9, 'p', 'a', 'r', 'allowed', 'rewritten')",
+        "REPLACE INTO audit_log (seq, at, principal, action, resource, outcome, detail) VALUES (1, 9, 'p', 'a', 'r', 'allowed', 'rewritten')",
     ] {
         let r = conn.execute(sql, []);
         let e = r.expect_err(sql).to_string();
@@ -592,6 +595,10 @@ fn the_audit_trail_cannot_be_edited_or_erased_even_through_sql() {
     let all = store.read(0, 10).expect("read");
     assert_eq!(all.len(), 3);
     assert!(all.iter().all(|r| r.event.outcome == AuditOutcome::Denied));
+    assert!(
+        all.iter().all(|r| r.event.detail.is_empty()),
+        "no row was rewritten"
+    );
     // An insert is what the log does, and the positions keep growing.
     conn.execute(
         "INSERT INTO audit_log (at, principal, action, resource, outcome, detail) VALUES (9, 'p', 'a', 'r', 'denied', '')",

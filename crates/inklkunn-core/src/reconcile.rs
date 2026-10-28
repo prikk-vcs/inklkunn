@@ -26,8 +26,26 @@ use inklkunn_signer::accept::ExpectedMessage;
 use inklkunn_signer::message::Message;
 use inklkunn_store::{AuditEvent, AuditOutcome, AuditSink, StoreError, WikiId};
 
-/// How many blocks of a view's history are asked for at a time (the driver's own default is 100).
-const PAGE: u64 = 500;
+/// How reconciliation reads a view's history. prikk's `log` cannot be paged (`--ref` takes a view, and a block
+/// id there is an empty answer, ledger PK-36), but `--limit` can be as large as the history: one read is asked
+/// for `first_read` blocks, and when it comes back full the same read is repeated four times larger, until a
+/// read comes back **short** (the whole history) or `max_read` is reached (an error, never a silent cut).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReadBounds {
+    /// How many blocks the first read asks for.
+    pub first_read: u64,
+    /// The most blocks one view may have to be reconciled.
+    pub max_read: u64,
+}
+
+impl Default for ReadBounds {
+    fn default() -> Self {
+        ReadBounds {
+            first_read: 4_096,
+            max_read: 1_048_576,
+        }
+    }
+}
 
 /// An acceptance the service recorded as **accepted**, with the block it says it sealed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +88,14 @@ pub enum ReconcileError {
     Storage(StorageError),
     /// The records could not be read.
     Records(RecordsError),
+    /// A view has more blocks than the reconciliation will read ([`ReadBounds::max_read`]); nothing was
+    /// concluded about it.
+    TooLarge {
+        /// The view.
+        view: String,
+        /// The most blocks that would have been read.
+        limit: u64,
+    },
 }
 
 impl std::fmt::Display for ReconcileError {
@@ -77,6 +103,10 @@ impl std::fmt::Display for ReconcileError {
         match self {
             ReconcileError::Storage(e) => write!(f, "the history could not be read: {e}"),
             ReconcileError::Records(e) => write!(f, "the records could not be read: {}", e.0),
+            ReconcileError::TooLarge { view, limit } => write!(
+                f,
+                "the view `{view}` has at least {limit} blocks, more than a reconciliation reads; nothing was concluded"
+            ),
         }
     }
 }
@@ -177,33 +207,46 @@ impl Report {
 /// Each block of the wiki once, with the names of the views whose history holds it.
 type BlockIndex = BTreeMap<String, (HistoryBlock, BTreeSet<String>)>;
 
+/// All of one view's blocks, newest first: one read, repeated larger while it comes back full.
+fn view_blocks(
+    storage: &dyn Storage,
+    repo: &Path,
+    view: &str,
+    bounds: ReadBounds,
+) -> Result<Vec<HistoryBlock>, ReconcileError> {
+    let mut limit = bounds.first_read.max(1);
+    loop {
+        let history = storage
+            .history(repo, &Point::View(view.to_owned()), Some(limit))
+            .map_err(ReconcileError::Storage)?;
+        if (history.blocks.len() as u64) < limit {
+            return Ok(history.blocks);
+        }
+        if limit >= bounds.max_read {
+            return Err(ReconcileError::TooLarge {
+                view: view.to_owned(),
+                limit,
+            });
+        }
+        limit = limit.saturating_mul(4).min(bounds.max_read);
+    }
+}
+
 /// Every block of every open view, once, with the views that hold it.
-fn blocks_of(storage: &dyn Storage, repo: &Path) -> Result<(BlockIndex, usize), StorageError> {
-    let views = storage.views(repo)?.views;
+fn blocks_of(
+    storage: &dyn Storage,
+    repo: &Path,
+    bounds: ReadBounds,
+) -> Result<(BlockIndex, usize), ReconcileError> {
+    let views = storage.views(repo).map_err(ReconcileError::Storage)?.views;
     let mut blocks = BlockIndex::new();
     for view in &views {
-        let mut point = Point::View(view.name.clone());
-        loop {
-            let history = storage.history(repo, &point, Some(PAGE))?;
-            let page = history.blocks.len();
-            let mut new = 0;
-            let mut oldest: Option<&HistoryBlock> = None;
-            for block in &history.blocks {
-                let entry = blocks
-                    .entry(block.block_id.clone())
-                    .or_insert_with(|| (block.clone(), BTreeSet::new()));
-                if entry.1.insert(view.name.clone()) {
-                    new += 1;
-                }
-                oldest = Some(block);
-            }
-            // Done when the page was short, the root was reached, or a page added nothing (so the loop
-            // always ends, whatever the storage answers).
-            let Some(oldest) = oldest else { break };
-            if (page as u64) < PAGE || oldest.previous_ref_state_id.is_none() || new == 0 {
-                break;
-            }
-            point = Point::Block(oldest.block_id.clone());
+        for block in view_blocks(storage, repo, &view.name, bounds)? {
+            blocks
+                .entry(block.block_id.clone())
+                .or_insert_with(|| (block.clone(), BTreeSet::new()))
+                .1
+                .insert(view.name.clone());
         }
     }
     Ok((blocks, views.len()))
@@ -216,9 +259,20 @@ pub fn reconcile(
     storage: &dyn Storage,
     records: &dyn RecordedActs,
 ) -> Result<Report, ReconcileError> {
+    reconcile_with(wiki, repo, storage, records, ReadBounds::default())
+}
+
+/// As [`reconcile`], with the read bounds named (a test shrinks them to exercise the growth).
+pub fn reconcile_with(
+    wiki: &WikiId,
+    repo: &Path,
+    storage: &dyn Storage,
+    records: &dyn RecordedActs,
+    bounds: ReadBounds,
+) -> Result<Report, ReconcileError> {
     let accepted = records.accepted(wiki).map_err(ReconcileError::Records)?;
     let system_acts = records.system_acts(wiki).map_err(ReconcileError::Records)?;
-    let (blocks, views) = blocks_of(storage, repo).map_err(ReconcileError::Storage)?;
+    let (blocks, views) = blocks_of(storage, repo, bounds)?;
 
     let mut findings: Vec<Finding> = Vec::new();
     let mut by_block: BTreeMap<&str, Vec<&AcceptedRecord>> = BTreeMap::new();
@@ -347,10 +401,17 @@ pub fn reconcile(
     })
 }
 
-/// Append one `reported` event per finding to the audit trail (nothing for a clean report): the wiki, a
-/// fixed word and ids. It changes nothing else.
-pub fn record_findings(report: &Report, audit: &dyn AuditSink, at: i64) -> Result<(), StoreError> {
-    for f in &report.findings {
+/// Append one `reported` event per finding **that the previous run did not already report** to the audit
+/// trail (`previous` is the last run's findings; pass none the first time): the wiki, a fixed word and ids. A
+/// standing disagreement is reported once, not once per run, so a schedule cannot fill the trail with it. It
+/// changes nothing else.
+pub fn record_findings(
+    report: &Report,
+    previous: &[Finding],
+    audit: &dyn AuditSink,
+    at: i64,
+) -> Result<(), StoreError> {
+    for f in report.findings.iter().filter(|f| !previous.contains(f)) {
         audit.record(&AuditEvent::new(
             at,
             "system:reconciliation",

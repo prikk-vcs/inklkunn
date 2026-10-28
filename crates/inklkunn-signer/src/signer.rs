@@ -11,16 +11,18 @@
 //! **What happens to the worktree.** The sequence is: nothing unfinished in the repository; the view's
 //! worktree; the renames, the writes and the removals; `commit`; `seal`; read the block back; `verify`.
 //! A failure **before `commit` succeeds** puts the worktree back (originals restored, renames moved back)
-//! and says so, or says plainly that it could not; a failure **after** it is [`AcceptError::Incomplete`],
+//! and says so, or says plainly that it could not ([`AcceptError::WorktreeDirty`]); a failure **after** it is
+//! [`AcceptError::Queued`] (nothing sealed yet) or [`AcceptError::SealedUnconfirmed`] (sealed; do not retry),
 //! because a patch is queued and RFC 004's recovery completes it.
 //!
 //! **The unguarded entry** is [`RepositoryBootstrap`], which creates a wiki's repository and keys and seals
 //! the very first change. It refuses any change but a `system` message to a repository with no history
 //! yet, so it cannot be used to add to a wiki that exists.
 
+use std::collections::HashMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use inklkunn_prikk::sandbox::Sandbox;
@@ -29,7 +31,7 @@ use inklkunn_store::{RootLayout, WikiId};
 use crate::RepositoryBootstrap;
 use crate::accept::{
     Accept, AcceptError, AcceptanceLedger, AcceptanceToken, PreparedChange, SealedChange,
-    ViewCreationAct,
+    Unconfirmed, ViewCreationAct,
 };
 use crate::key_store::{KeyStore, KeyStoreError, Meta, Secret, SeedBase, SeedDir, Seeds};
 use crate::keys::{KeyDir, KeyIds};
@@ -109,6 +111,23 @@ pub struct KeyStatus {
     pub rotated_at: Option<i64>,
 }
 
+/// One lock per wiki: **two calls on the same wiki never interleave in this process.** An acceptance is a
+/// sequence (status, switch, write files, commit, seal, read back, verify) over one worktree; two at once
+/// would commit each other's files under each other's messages. (Another *process* — the command line beside
+/// the server — is not excluded by this; RFC 004's lease is what will exclude it, and until then a key
+/// operation is done while the wiki is quiet.)
+#[derive(Default)]
+struct WikiLocks {
+    map: Mutex<HashMap<WikiId, Arc<Mutex<()>>>>,
+}
+
+impl WikiLocks {
+    fn of(&self, wiki: &WikiId) -> Arc<Mutex<()>> {
+        let mut map = self.map.lock().unwrap_or_else(PoisonError::into_inner);
+        Arc::clone(map.entry(wiki.clone()).or_default())
+    }
+}
+
 /// The signer.
 pub struct Signer {
     writes: Writes,
@@ -116,6 +135,7 @@ pub struct Signer {
     seed_base: SeedBase,
     root: RootLayout,
     ledger: Arc<dyn AcceptanceLedger>,
+    locks: WikiLocks,
     swept: usize,
 }
 
@@ -207,6 +227,7 @@ impl Signer {
             seed_base,
             root: config.root,
             ledger,
+            locks: WikiLocks::default(),
             swept,
         })
     }
@@ -321,9 +342,7 @@ impl Signer {
             other => other.to_string(),
         };
         if !clean {
-            return AcceptError::Unavailable(format!(
-                "{cause_text}; the worktree could not be put back as it was, and recovery must restore it"
-            ));
+            return AcceptError::WorktreeDirty(cause_text);
         }
         match cause {
             SignerError::Refused(_) => AcceptError::Refused(cause_text),
@@ -367,18 +386,28 @@ impl Signer {
         if let Err(e) = w.commit(repo, keys, view, message) {
             return Err(self.restore(repo, keys, applied, &moved, e));
         }
-        // From here a patch is queued: every failure is `Incomplete`, which recovery completes.
-        w.seal(repo, keys, view)
-            .map_err(|e| AcceptError::Incomplete(format!("seal: {e}")))?;
+        // From here a patch is queued: until the seal succeeds a failure is `Queued`, which recovery completes;
+        // after it, a failure is `SealedUnconfirmed`, which must never be retried as a new acceptance.
+        w.seal(repo, keys, view).map_err(|e| AcceptError::Queued {
+            step: "seal",
+            detail: e.to_string(),
+        })?;
+        let unconfirmed = |sealed: Option<SealedChange>, why: Unconfirmed, detail: String| {
+            AcceptError::SealedUnconfirmed {
+                sealed,
+                why,
+                detail,
+            }
+        };
         let tip = w
             .tip(repo, view)
-            .map_err(|e| {
-                AcceptError::Incomplete(format!(
-                    "sealed, but the block could not be read back: {e}"
-                ))
-            })?
+            .map_err(|e| unconfirmed(None, Unconfirmed::BlockNotRead, e.to_string()))?
             .ok_or_else(|| {
-                AcceptError::Incomplete("sealed, but the view has no block".to_owned())
+                unconfirmed(
+                    None,
+                    Unconfirmed::BlockNotRead,
+                    "the view has no block".to_owned(),
+                )
             })?;
         // The block read back must be this change: a foreign write between our seal and our read would
         // otherwise be reported as ours.
@@ -387,26 +416,35 @@ impl Signer {
             .first()
             .is_some_and(|m| m.message == message);
         if !ours {
-            return Err(AcceptError::Incomplete(
-                "sealed, but the newest block is not the change that was written".to_owned(),
+            return Err(unconfirmed(
+                None,
+                Unconfirmed::NotOurs,
+                "the newest block carries another message".to_owned(),
             ));
         }
-        let verification = w.verify(repo).map_err(|e| {
-            AcceptError::Incomplete(format!("sealed, but verification could not run: {e}"))
-        })?;
-        if !verification.verdict.ok {
-            return Err(AcceptError::Incomplete(
-                "sealed, but the repository did not verify afterwards".to_owned(),
-            ));
-        }
-        Ok(SealedChange {
+        let sealed = SealedChange {
             block_id: tip.block_id,
             patch_ids: tip
                 .patch_messages
                 .iter()
                 .map(|m| m.patch_id.clone())
                 .collect(),
-        })
+        };
+        let verification = w.verify(repo).map_err(|e| {
+            unconfirmed(
+                Some(sealed.clone()),
+                Unconfirmed::VerifyCouldNotRun,
+                e.to_string(),
+            )
+        })?;
+        if !verification.verdict.ok {
+            return Err(unconfirmed(
+                Some(sealed),
+                Unconfirmed::VerifyFailed,
+                "prikk's verify reported failed conditions".to_owned(),
+            ));
+        }
+        Ok(sealed)
     }
 }
 
@@ -421,6 +459,9 @@ impl Accept for Signer {
         if !is_view_ref(view) {
             return Err(AcceptError::Refused("a view is `heads/<name>`".to_owned()));
         }
+        // Held from the guard to the end: the guard's answer stays true while the files are written.
+        let lock = self.locks.of(wiki);
+        let _held = lock.lock().unwrap_or_else(PoisonError::into_inner);
         // 1. The guard: the record the token names, read here, and what the message says. Nothing is
         //    decrypted or written until both agree.
         let expected = self
@@ -466,6 +507,8 @@ impl Accept for Signer {
                 "a view is `heads/<name>` and starts from a `heads/` or `tags/` ref".to_owned(),
             ));
         }
+        let lock = self.locks.of(wiki);
+        let _held = lock.lock().unwrap_or_else(PoisonError::into_inner);
         let facts = self
             .ledger
             .view_creation(act)
@@ -490,8 +533,21 @@ fn note_leftover(e: AcceptError) -> AcceptError {
     const NOTE: &str = "; also, a temporary directory of decrypted seeds could not be removed (the next start removes it)";
     match e {
         AcceptError::Refused(m) => AcceptError::Refused(format!("{m}{NOTE}")),
-        AcceptError::Incomplete(m) => AcceptError::Incomplete(format!("{m}{NOTE}")),
         AcceptError::Unavailable(m) => AcceptError::Unavailable(format!("{m}{NOTE}")),
+        AcceptError::WorktreeDirty(m) => AcceptError::WorktreeDirty(format!("{m}{NOTE}")),
+        AcceptError::Queued { step, detail } => AcceptError::Queued {
+            step,
+            detail: format!("{detail}{NOTE}"),
+        },
+        AcceptError::SealedUnconfirmed {
+            sealed,
+            why,
+            detail,
+        } => AcceptError::SealedUnconfirmed {
+            sealed,
+            why,
+            detail: format!("{detail}{NOTE}"),
+        },
         other => other,
     }
 }
@@ -503,6 +559,8 @@ impl Signer {
     /// none). The key ids are `inklkunn-<wiki id>-author` and `-maintainer`.
     fn provision(&self, repo: &Path, init: bool) -> Result<KeyIds, SignerError> {
         let wiki = self.wiki_of(repo)?;
+        let lock = self.locks.of(&wiki);
+        let _held = lock.lock().unwrap_or_else(PoisonError::into_inner);
         if self.store.status(&wiki).is_ok() {
             return Err(SignerError::Refused("the wiki already has keys".to_owned()));
         }
@@ -543,15 +601,21 @@ impl Signer {
     }
 }
 
-/// The two generated seeds of a key directory, as the key store wants them.
+/// The two generated seeds of a key directory, as the key store wants them. The bytes read in between are
+/// wiped when they go out of scope, as the seeds are.
 fn read_seeds(keys: &KeyDir) -> Result<Seeds, SignerError> {
     let read = |role: &str| {
-        std::fs::read(keys.seed_file(role)).map_err(|e| {
-            SignerError::Unavailable(format!("a generated key could not be read ({})", e.kind()))
-        })
+        std::fs::read(keys.seed_file(role))
+            .map(zeroize::Zeroizing::new)
+            .map_err(|e| {
+                SignerError::Unavailable(format!(
+                    "a generated key could not be read ({})",
+                    e.kind()
+                ))
+            })
     };
-    Seeds::new(&read("author")?, &read("maintainer")?)
-        .map_err(|e| SignerError::Damaged(e.to_string()))
+    let (author, maintainer) = (read("author")?, read("maintainer")?);
+    Seeds::new(&author, &maintainer).map_err(|e| SignerError::Damaged(e.to_string()))
 }
 
 impl RepositoryBootstrap for Signer {
@@ -562,11 +626,23 @@ impl RepositoryBootstrap for Signer {
         self.provision(repo, true)
     }
 
+    /// Remove the sealed key record `create_repository` stored for a creation that did not finish. Only for a
+    /// wiki whose creation failed: it is called with the id's own repository directory, which the caller has
+    /// just removed, and it removes nothing but that wiki's record.
+    fn discard_unfinished(&self, repo: &Path) -> Result<(), SignerError> {
+        let wiki = self.wiki_of(repo)?;
+        let lock = self.locks.of(&wiki);
+        let _held = lock.lock().unwrap_or_else(PoisonError::into_inner);
+        self.store.remove(&wiki).map(|_| ()).map_err(ks)
+    }
+
     /// Commit the worktree as the repository's **first** change and seal it. Refused unless the message is a
     /// `system` message and the repository has no history yet: this entry has no acceptance record behind it,
     /// so it can only ever create the first block of a wiki that is being created.
     fn commit_and_seal(&self, repo: &Path, message: &str) -> Result<SealedIds, SignerError> {
         let wiki = self.wiki_of(repo)?;
+        let lock = self.locks.of(&wiki);
+        let _held = lock.lock().unwrap_or_else(PoisonError::into_inner);
         let parsed = Message::parse(message).map_err(|_| {
             SignerError::Refused("the first change's message is not a patch message".to_owned())
         })?;

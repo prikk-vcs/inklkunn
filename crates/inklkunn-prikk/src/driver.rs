@@ -566,6 +566,14 @@ impl Storage for PrikkCli {
 
     fn history(&self, repo: &Path, view: &Point, limit: Option<u64>) -> Result<History> {
         check_point("log", view)?;
+        if matches!(view, Point::Block(_)) {
+            // prikk's `log --ref` takes a ref; a block id there is an empty list with exit 0 (ledger PK-36).
+            // An answer that looks like "no history" must never come from a call that cannot give one.
+            return Err(StorageError::InvalidArgument {
+                verb: "log",
+                what: "a history is read from a view (`heads/<name>`); prikk's `log` does not take a block id",
+            });
+        }
         let limit_text = limit.unwrap_or(DEFAULT_HISTORY_LIMIT).to_string();
         let args = [
             "log",

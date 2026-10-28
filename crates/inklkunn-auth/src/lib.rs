@@ -10,13 +10,13 @@
 //! seconds) so every rule is testable without a clock.
 //!
 //! - [`hashing`]: Argon2id, the cost ceiling, the new-password rule.
-//! - [`gate`]: the bounded number of password verifications at once.
-//! - [`throttle`], [`proxy`]: failures counted per sign-in name and per client address; the address from a
-//!   declared trusted proxy only.
-//! - [`session`]: opaque server-side sessions, their cookies and CSRF tokens.
-//! - [`token`]: API tokens, hashed, scoped, expiring, revocable.
+//! - [`proxy`]: the client address a throttle counts, from a declared trusted proxy only.
+//! - [`session`]: opaque server-side sessions (kept private to the crate), their cookies and CSRF tokens.
+//! - [`token`]: API tokens, hashed, scoped, expiring, revocable (the store-facing type is private).
 //! - [`oidc`]: the provider seams and the code + PKCE flow.
-//! - [`authenticator`]: the pieces together.
+//! - [`authenticator`]: the pieces together, and the only way into all of the above. The bounded gate in
+//!   front of password verification and the failure throttles (counted before they are judged) are private
+//!   to the crate; their policy is [`ThrottlePolicy`].
 
 pub mod authenticator;
 pub mod error;

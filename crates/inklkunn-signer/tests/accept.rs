@@ -20,7 +20,7 @@ use inklkunn_signer::message::{Actor, BlockId, Message, Summary, SystemLabel};
 use inklkunn_signer::{
     Accept, AcceptError, AcceptanceLedger, AcceptanceToken, ExpectedMessage, LedgerError,
     PreparedChange, PreparedFile, RepositoryBootstrap, Signer, SignerConfig, SignerError,
-    ViewCreationAct, ViewCreationFacts,
+    Unconfirmed, ViewCreationAct, ViewCreationFacts,
 };
 use inklkunn_store::{AccountId, DisplayName, ProposalId, RootLayout, WikiId};
 
@@ -54,6 +54,9 @@ fn dir_under(base: &Path, tag: &str) -> Dir {
     let p = base.join(format!("inklkunn-it-{}-{tag}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
     std::fs::create_dir_all(&p).expect("dir");
+    // A seed base must be private to the user (the signer refuses one others can write to).
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o700)).expect("private");
     Dir(p)
 }
 
@@ -144,6 +147,13 @@ if [ -e "$CTL/probe-$verb" ]; then
   {{ echo "== $verb"; ls -A "$d"; stat -c 'dir=%a' "$d"; stat -c 'author=%a' "$PRIKK_AUTHOR_SEED_FILE"; cat "$PRIKK_AUTHOR_SEED_FILE"; cat "$PRIKK_MAINTAINER_SEED_FILE"; }} >> "$CTL/probe.log" 2>&1
 fi
 if [ -e "$CTL/fail-$verb" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
+if [ -e "$CTL/failafter-$verb" ]; then
+  n="$(cat "$CTL/failafter-$verb")"; c="$(cat "$CTL/count-$verb" 2>/dev/null || echo 0)"
+  echo "$((c + 1))" > "$CTL/count-$verb"
+  if [ "$c" -ge "$n" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
+fi
+if [ -e "$CTL/say-$verb" ]; then cat "$CTL/say-$verb"; exit 0; fi
+if [ -e "$CTL/lockseeds-$verb" ]; then chmod 0500 "$(dirname "$PRIKK_AUTHOR_SEED_FILE")"; fi
 if [ -e "$CTL/report-$verb" ]; then cat "$CTL/report-$verb"; exit 1; fi
 if [ -e "$CTL/block-$verb" ]; then : > "$CTL/blocked-$verb"; sleep 20; fi
 exec "$REAL" "$@"
@@ -355,6 +365,15 @@ impl Fixture {
             .pointer("/queue/count")
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(u64::MAX)
+    }
+
+    /// The newest block of a view, by `prikk log`.
+    fn tip_block(&self, view: &str) -> String {
+        self.prikk_json(&["log", "--ref", view, "--limit", "1", "--format", "json"])
+            .pointer("/blocks/0/block_id")
+            .and_then(serde_json::Value::as_str)
+            .expect("a block")
+            .to_owned()
     }
 
     fn seed_dirs(&self) -> Vec<PathBuf> {
@@ -796,7 +815,7 @@ fn a_prikk_refusal_at_commit_puts_the_worktree_back_exactly() {
 }
 
 #[test]
-fn a_failure_after_commit_is_incomplete_leaves_one_queued_patch_and_blocks_the_next_acceptance() {
+fn a_failure_after_commit_is_queued_leaves_one_queued_patch_and_blocks_the_next_acceptance() {
     let Some(f) = fixture("incomplete", Sandbox::Unconfined, true) else {
         println!("skipping: prikk not on PATH");
         return;
@@ -806,7 +825,7 @@ fn a_failure_after_commit_is_incomplete_leaves_one_queued_patch_and_blocks_the_n
     f.control("fail-seal");
     let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
     assert!(
-        matches!(&r, Err(AcceptError::Incomplete(m)) if m.contains("seal")),
+        matches!(&r, Err(AcceptError::Queued { step: "seal", .. })),
         "{r:?}"
     );
     // Exactly one patch is queued for recovery, nothing was sealed, and the seeds are gone.
@@ -854,7 +873,7 @@ fn a_dirty_worktree_blocks_an_acceptance_instead_of_riding_along() {
 }
 
 #[test]
-fn a_verification_that_fails_after_the_seal_is_incomplete_not_success() {
+fn a_verification_that_fails_after_the_seal_is_sealed_but_unconfirmed_not_success() {
     let Some(f) = fixture("verify", Sandbox::Unconfined, true) else {
         println!("skipping: prikk not on PATH");
         return;
@@ -866,13 +885,129 @@ fn a_verification_that_fails_after_the_seal_is_incomplete_not_success() {
     .unwrap();
     let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
     let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
-    assert!(
-        matches!(&r, Err(AcceptError::Incomplete(m)) if m.contains("did not verify")),
-        "{r:?}"
-    );
-    // The change is sealed (that is why recovery, not a retry, handles it).
+    let Err(AcceptError::SealedUnconfirmed {
+        sealed: Some(sealed),
+        why: Unconfirmed::VerifyFailed,
+        ..
+    }) = &r
+    else {
+        panic!("expected a sealed change that did not verify: {r:?}");
+    };
+    // The change is sealed, and the error says which block: a retry would seal it again, so the caller
+    // records this block instead.
     assert_eq!(f.queue_count(), 0);
     assert!(f.read(MAIN, "pages/Edit.md").unwrap().contains("edited"));
+    assert_eq!(f.tip_block(MAIN), sealed.block_id);
+}
+
+#[test]
+fn a_verification_that_cannot_run_after_the_seal_is_also_sealed_and_unconfirmed() {
+    let Some(f) = fixture("verify-down", Sandbox::Unconfined, true) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    f.control("fail-verify");
+    let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
+    let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+    assert!(
+        matches!(
+            &r,
+            Err(AcceptError::SealedUnconfirmed {
+                sealed: Some(_),
+                why: Unconfirmed::VerifyCouldNotRun,
+                ..
+            })
+        ),
+        "{r:?}"
+    );
+    assert_eq!(f.queue_count(), 0);
+}
+
+#[test]
+fn a_newest_block_that_is_not_the_change_just_written_is_not_claimed_as_ours() {
+    let Some(f) = fixture("notours", Sandbox::Unconfined, true) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    // After our seal, `log` answers with a newest block carrying another message: something else sealed in
+    // between. The ids of that block must not be handed back as this acceptance's.
+    let mut log = f.prikk_json(&["log", "--ref", MAIN, "--limit", "1", "--format", "json"]);
+    if let Some(m) = log.pointer_mut("/blocks/0/patch_messages/0/message") {
+        *m = serde_json::Value::String("someone else's change".to_owned());
+    }
+    std::fs::write(f.ctl.join("say-log"), log.to_string()).unwrap();
+    let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
+    let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+    assert!(
+        matches!(
+            &r,
+            Err(AcceptError::SealedUnconfirmed {
+                sealed: None,
+                why: Unconfirmed::NotOurs,
+                ..
+            })
+        ),
+        "{r:?}"
+    );
+}
+
+#[test]
+fn a_worktree_that_cannot_be_put_back_after_a_failed_commit_is_said_to_be_dirty() {
+    let Some(f) = fixture("dirty-restore", Sandbox::Unconfined, true) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    // The first `worktree-status` (the precondition) answers; the commit fails; the second (the check that
+    // the worktree is back as it was) fails too, so nothing can say it is clean.
+    std::fs::write(f.ctl.join("failafter-worktree-status"), "1").unwrap();
+    f.control("fail-commit");
+    let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
+    let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+    assert!(matches!(&r, Err(AcceptError::WorktreeDirty(_))), "{r:?}");
+    assert_eq!(f.queue_count(), 0, "nothing was committed");
+}
+
+#[test]
+fn a_seed_directory_that_cannot_be_removed_after_a_good_acceptance_is_reported_with_the_block() {
+    let Some(f) = fixture("lockseeds", Sandbox::Unconfined, true) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    f.control("lockseeds-seal");
+    let before = f.history_len(MAIN);
+    let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
+    let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+    // The change is sealed and the caller is told so, together with the leftover.
+    assert!(
+        matches!(&r, Err(AcceptError::SeedsNotRemoved { sealed: Some(_) })),
+        "{r:?}"
+    );
+    assert_eq!(f.history_len(MAIN), before + 1);
+    // Let the test directory be cleaned up.
+    use std::os::unix::fs::PermissionsExt;
+    for d in f.seed_dirs() {
+        std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+}
+
+#[test]
+fn the_guard_answers_before_the_signer_so_much_as_tries_to_make_a_seed_directory() {
+    let Some(f) = fixture("guard-first", Sandbox::Unconfined, false) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    use std::os::unix::fs::PermissionsExt;
+    // A seed base nothing can be made in: if the signer decrypted before it checked, the answer would be an
+    // I/O failure instead of the guard's.
+    std::fs::set_permissions(&f.shm.0, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
+    let stranger = AcceptanceToken::new("acceptance-never-recorded".to_owned());
+    let r = f.signer.accept(&f.wiki, MAIN, &stranger, &p.change);
+    assert_eq!(r, Err(AcceptError::NotPending));
+    // And with a valid token the same base is what stops it, which proves the base really was unusable.
+    let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+    assert!(matches!(&r, Err(AcceptError::Unavailable(_))), "{r:?}");
+    std::fs::set_permissions(&f.shm.0, std::fs::Permissions::from_mode(0o700)).unwrap();
 }
 
 #[test]
@@ -1363,4 +1498,72 @@ fn opening_the_signer_checks_the_secret_and_the_tmpfs() {
             on_disk.err()
         );
     }
+}
+
+#[test]
+fn after_a_retirement_every_acceptance_is_sealed_but_cannot_be_confirmed_until_prikk_can_verify_it()
+{
+    // Ledger PK-34: removing a maintainer key from trust makes what it sealed unverifiable, so the verify that
+    // closes every acceptance fails. The change IS sealed and the error says which block, which is what an
+    // orchestrator needs to record it instead of retrying. When prikk keeps a retired key's history
+    // verifiable this test fails and the runbook and the ledger row are due a change.
+    let Some(f) = fixture("retired", Sandbox::Unconfined, false) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    f.signer
+        .rotate_keys(&f.repo, inklkunn_signer::OldKey::Retire)
+        .expect("rotation");
+    let before = f.history_len(MAIN);
+    let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
+    let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+    let Err(AcceptError::SealedUnconfirmed {
+        sealed: Some(sealed),
+        why: Unconfirmed::VerifyFailed,
+        ..
+    }) = &r
+    else {
+        panic!("expected a sealed change that did not verify: {r:?}");
+    };
+    assert_eq!(f.history_len(MAIN), before + 1);
+    assert_eq!(f.tip_block(MAIN), sealed.block_id);
+    assert_eq!(f.queue_count(), 0);
+}
+
+#[test]
+fn two_acceptances_at_once_on_one_wiki_never_interleave() {
+    // Without a lock per wiki this failed in about half the runs: both threads wrote their files into one
+    // worktree, one committed both, and one acceptance's message was signed over the other's unaccepted
+    // file. With it, whichever comes second waits, and each block carries only its own change.
+    let Some(f) = fixture("concurrent", Sandbox::Unconfined, false) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    let before = f.history_len(MAIN);
+    for round in 0..8 {
+        let a = f.prepare(
+            MAIN,
+            vec![file("pages/Edit.md", Some(&format!("edit {round}\n")))],
+            vec![],
+        );
+        let b = f.prepare(
+            MAIN,
+            vec![file("pages/Home.md", Some(&format!("home {round}\n")))],
+            vec![],
+        );
+        let (ra, rb) = std::thread::scope(|s| {
+            let ta = s.spawn(|| f.signer.accept(&f.wiki, MAIN, &a.token, &a.change));
+            let tb = s.spawn(|| f.signer.accept(&f.wiki, MAIN, &b.token, &b.change));
+            (ta.join().unwrap(), tb.join().unwrap())
+        });
+        let (ra, rb) = (ra.expect("the first"), rb.expect("the second"));
+        assert_ne!(
+            ra.block_id, rb.block_id,
+            "round {round}: two acceptances are two blocks"
+        );
+        assert_eq!(f.queue_count(), 0, "round {round}");
+    }
+    assert_eq!(f.history_len(MAIN), before + 16);
+    assert!(f.read(MAIN, "pages/Edit.md").unwrap().contains("edit 7"));
+    assert!(f.read(MAIN, "pages/Home.md").unwrap().contains("home 7"));
 }

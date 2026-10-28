@@ -47,16 +47,21 @@ fn dir(base: &Path, tag: &str) -> Dir {
     let p = base.join(format!("inklkunn-lc-{}-{tag}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
     std::fs::create_dir_all(&p).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o700)).unwrap();
     Dir(p)
 }
 
 struct World {
     _tmp: Dir,
-    _shm: Dir,
+    shm: Dir,
     signer: Signer,
     wiki: WikiId,
     repo: PathBuf,
     prikk: PathBuf,
+    root: RootLayout,
+    key_dir: PathBuf,
+    secret_file: PathBuf,
 }
 
 /// A wiki made through the signer's own entry points, with its first change sealed.
@@ -97,15 +102,32 @@ fn world(tag: &str) -> Option<World> {
         .unwrap();
     Some(World {
         _tmp: tmp,
-        _shm: shm,
+        shm,
         signer,
         wiki,
         repo,
         prikk,
+        root,
+        key_dir,
+        secret_file,
     })
 }
 
 impl World {
+    /// A second signer over the same wiki, key store and seed base, that runs this `prikk` instead.
+    fn signer_with_prikk(&self, prikk: &Path) -> Signer {
+        let mut cfg = SignerConfig::new(
+            prikk,
+            Sandbox::Unconfined,
+            self.root.clone(),
+            &self.key_dir,
+            &self.secret_file,
+            &self.shm.0,
+        );
+        cfg.cheap_derivation = true;
+        Signer::open(cfg, std::sync::Arc::new(NoLedger)).unwrap()
+    }
+
     fn prikk(&self, args: &[&str]) -> std::process::Output {
         Command::new(&self.prikk)
             .args(args)
@@ -301,7 +323,7 @@ fn retiring_the_old_key_stops_it_sealing_and_prikk_then_cannot_verify_what_it_se
     let loot = dir(Path::new("/dev/shm"), "retire-loot");
     let stolen_ids = w.steal_seeds(&loot.0);
     let rotation = w.signer.rotate_keys(&w.repo, OldKey::Retire).unwrap();
-    assert_eq!(rotation.old_key, OldKey::Retire);
+    assert_eq!(rotation.old_key, OldKeyOutcome::Retired);
 
     // The new keys seal.
     w.seal_with_current_keys("second\n");
@@ -370,4 +392,46 @@ fn two_rotations_in_a_row_get_distinct_ids_each_time() {
     assert_ne!(first.author_key_id, second.author_key_id);
     w.seal_with_current_keys("third\n");
     assert!(w.verify().0);
+}
+
+#[test]
+fn a_retirement_that_fails_is_a_rotation_that_happened_and_says_the_old_key_is_still_trusted() {
+    let Some(w) = world("retire-fails") else {
+        return;
+    };
+    let before = w.signer.key_status(&w.wiki).unwrap();
+    // `trust maintainer remove` of an id prikk refuses to remove: make the adopted set hold only the key we
+    // are about to leave, so removing it after the new one is adopted is allowed — then break the repository
+    // so that the removal itself fails (the new key's adoption must succeed first, so only the removal fails).
+    // A stand-in is the clean way to do that: wrap prikk so that `trust maintainer remove` fails.
+    let standin = w._tmp.0.join("prikk-standin");
+    std::fs::write(
+        &standin,
+        format!(
+            "#!/bin/sh\nif [ \"$1 $2 $3\" = \"trust maintainer remove\" ]; then echo 'error: precondition not met: injected' >&2; exit 1; fi\nexec {} \"$@\"\n",
+            w.prikk.display()
+        ),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&standin, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let signer = w.signer_with_prikk(&standin);
+    let rotation = signer
+        .rotate_keys(&w.repo, OldKey::Retire)
+        .expect("the rotation happened");
+    assert!(
+        matches!(rotation.old_key, OldKeyOutcome::RetireFailed(ref why) if why.contains("injected")),
+        "{rotation:?}"
+    );
+    // The key store did change, and the old key is still trusted, so the history still verifies.
+    let after = signer.key_status(&w.wiki).unwrap();
+    assert_eq!(after.generation, before.generation + 1);
+    assert_eq!(after, rotation.status);
+    assert!(
+        w.verify().0,
+        "the old key is still trusted: {}",
+        w.verify().1
+    );
 }

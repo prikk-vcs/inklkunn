@@ -420,6 +420,10 @@ fn malformed_arguments_are_refused_before_prikk_runs() {
             .map(|_| ()),
         d.history(&repo, &Point::View("heads/".into()), None)
             .map(|_| ()),
+        // prikk's `log --ref` takes a view; a block id there is an empty list with exit 0 (ledger PK-36), so
+        // the driver refuses it before prikk can give an answer that looks like "no history".
+        d.history(&repo, &Point::Block("a".repeat(64)), None)
+            .map(|_| ()),
         d.change(&repo, "--help").map(|_| ()),
         d.diff(&repo, &main_view(), &Point::View("-x".into()), &[])
             .map(|_| ()),

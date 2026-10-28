@@ -5,9 +5,12 @@
 //! An entry is either guarded by an [`Action`] (its handler consults [`crate::Authorizer::authorize`] for that
 //! action before it touches wiki data) or **public with a reason** in words (it serves no wiki data: a
 //! stylesheet, the language switcher, a health check). There is no third kind and no empty reason. The table
-//! itself is plain data and framework-neutral; the web crate registers each entry with its router, and its
-//! enumeration test holds every entry to what it declares (an anonymous caller asking for a restricted wiki
-//! through a guarded route is answered exactly as for a wiki that does not exist).
+//! itself is plain data and framework-neutral; the web crate builds its routers from it. Its tests hold every
+//! entry to its shape (a guard or a real reason) and to the URL scheme (no fixed path can shadow a page
+//! title). **What is not yet tested** is that a guarded entry's *handler* really calls
+//! [`crate::Authorizer::authorize`] for the action it declares, and answers an anonymous caller asking for a
+//! restricted wiki exactly as for one that does not exist: that needs a request-level harness, which arrives
+//! with the first guarded route (handoff 003 T4). Until then the only entry is a public health check.
 //!
 //! The table is only complete if nothing else registers a route. That half is a workspace gate
 //! (`tools/boundary-check`, rule "route registration"): axum's own registration calls may appear in the web

@@ -171,6 +171,28 @@ RFC 002 and RFC 003 — the first handoffs after M0, in progress. Still nothing 
   flag, which prints a banner and is not settable from the environment). `docs/KEYS.md` is the runbook,
   including the compromise procedure and what a lost key store means.
 
+- **Changes after an independent reading of T2 – T7** (the second of the two readings of handoff 002).
+  *The reconciliation read only the newest page of a long history*: it paged by block id, which real prikk
+  answers with an empty list and exit 0 (ledger PK-36), so past 4,096 blocks it saw a prefix and called the rest
+  missing or clean. It now reads each view whole (one `log --limit`, repeated four times larger while it comes
+  back full, an error at a stated bound), the driver refuses a block point for `history`, and a standing finding
+  is reported once, not at every run. *Acceptance outcomes say what state the repository is in*:
+  `Queued { step }` (one patch queued, nothing sealed), `SealedUnconfirmed { sealed, why }` (sealed; do not
+  retry), `WorktreeDirty` (a failure that could not be undone), beside `Refused`, `Unavailable` and
+  `SeedsNotRemoved`; after a retirement every acceptance is `SealedUnconfirmed { VerifyFailed }`, which a test
+  pins. *Two acceptances on one wiki in one process no longer interleave* (a lock per wiki; they once sealed one
+  change's message over the other's file). A rotation whose retirement fails is a `Rotation` that says the old
+  key is still trusted, the command line audits an act before and after it and refuses to begin one it cannot
+  record, and the wiki record follows the key store. A failed wiki creation now removes its sealed key record.
+  The audit table also refuses `INSERT OR REPLACE` over an existing position. Seed paths are scrubbed from
+  prikk's words before they become errors; the seed directory must be owned by the service's user and not
+  writable by others, and a live call touches it so a long acceptance is not taken for a dead one. The gates
+  catch `Principal as P`, glob and group imports, function-call spellings of route registration and
+  `routes.rs` at any depth, and a surface naming the signer; their matcher is a lexer now, so `impl X` or
+  `dyn X` cannot hide `X`. `Decision` is `#[must_use]`. `inklkunn audit export` writes the trail as JSON
+  Lines. The write ceiling of the signer's prikk calls is **still the fixed 1 GiB** the handoff asked to
+  measure and replace; that measurement was not done (see the review request).
+
 RFC 003 — the read path, in progress (handoff 003 T1 – T3). Still no page is served.
 
 - **The web foundations** (RFC 003 D-5; handoff 003 T1). `inklkunn-web` holds what every later page inherits.

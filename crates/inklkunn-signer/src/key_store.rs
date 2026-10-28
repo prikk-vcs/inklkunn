@@ -36,7 +36,7 @@ mod seeds;
 
 use crypto::{KdfParams, MasterKey, NONCE_LEN, SALT_LEN};
 pub(crate) use record::{Meta, Seeds};
-pub(crate) use seeds::{SeedBase, SeedDir};
+pub(crate) use seeds::{DIR_PREFIX, SeedBase, SeedDir, touch};
 
 /// The header's file name.
 const HEADER_FILE: &str = "store.json";
@@ -505,6 +505,7 @@ impl KeyStore {
     }
 
     /// The wikis that have a record, by name order.
+    #[cfg(test)]
     pub(crate) fn wikis(&self) -> Result<Vec<WikiId>, KeyStoreError> {
         let mut out: Vec<WikiId> = std::fs::read_dir(&self.dir)
             .map_err(io("the key directory could not be listed"))?

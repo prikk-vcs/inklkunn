@@ -270,6 +270,7 @@ impl Resource {
 /// The answer. A denial carries no reason that would reveal whether the resource exists (RFC 002 D-2: a
 /// denied private resource is indistinguishable from an absent one).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use = "a decision that is not read is a check that was not made"]
 pub enum Decision {
     /// Allowed.
     Allow,

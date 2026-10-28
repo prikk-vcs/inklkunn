@@ -1,12 +1,14 @@
 //! OpenID Connect sign-in (RFC 002 D-1; AUTH-01): the **authorization code flow with PKCE**.
 //!
-//! [`OidcProvider::begin_login`] makes a `state`, a `nonce` and a PKCE verifier, keeps them on the server
-//! (ten minutes, one-shot) and returns the authorization URL and the `state` to put in a cookie.
-//! [`OidcProvider::finish_login`] takes the callback's `state` **and the state cookie** (login CSRF: a
-//! callback the browser did not start is refused), redeems the pending login, exchanges the code with the
-//! PKCE verifier, and has the [`TokenVerifier`] check the ID token against the provider's keys, issuer,
-//! audience, times and nonce. The result is an [`inklkunn_store::ExternalIdentity`]; mapping it to an account is the account
-//! store's link, and **an unlinked identity signs nobody in** (no auto-provisioning in this release).
+//! Starting a sign-in (`Authenticator::begin_oidc`) makes a `state`, a `nonce` and a PKCE verifier, keeps them
+//! on the server (ten minutes, one-shot) and returns the authorization URL and the `state` to put in a cookie;
+//! it spends one of the client address's sign-in starts first, so an address cannot flood the logins in
+//! flight. Finishing one (`Authenticator::finish_oidc`) takes the callback's `state` and the request's
+//! `Cookie` header and reads the state cookie itself (login CSRF: a callback the browser did not start is
+//! refused), redeems the pending sign-in, exchanges the code with the PKCE verifier, and has the
+//! [`TokenVerifier`] check the ID token against the provider's keys, issuer, audience, times and nonce. The
+//! result is an [`inklkunn_store::ExternalIdentity`]; mapping it to an account is the account store's link,
+//! and **an unlinked identity signs nobody in** (no auto-provisioning in this release).
 //!
 //! The state cookie is `SameSite=Lax`, not `Strict`: the provider's redirect back is a cross-site top-level
 //! navigation, which a `Strict` cookie would not accompany. It is `__Host-`, `Secure` and `HttpOnly`, and

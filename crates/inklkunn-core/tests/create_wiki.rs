@@ -405,3 +405,99 @@ fn the_system_message_is_ct03_shaped_whatever_the_summary() {
     assert!(long.starts_with(&"x".repeat(119)));
     assert!(long.lines().next().unwrap().ends_with('…'));
 }
+
+/// The real signer, but its seal step fails: what a creation that fails *after* the keys were sealed leaves.
+struct RealFailsAtSeal(inklkunn_core::Signer);
+
+impl RepositoryBootstrap for RealFailsAtSeal {
+    fn create_repository(&self, repo: &Path) -> Result<KeyIds, SignerError> {
+        self.0.create_repository(repo)
+    }
+    fn commit_and_seal(&self, _repo: &Path, _message: &str) -> Result<SealedIds, SignerError> {
+        Err(SignerError::Refused("the test refuses the seal".to_owned()))
+    }
+    fn discard_unfinished(&self, repo: &Path) -> Result<(), SignerError> {
+        self.0.discard_unfinished(repo)
+    }
+}
+
+struct NoLedger;
+
+impl inklkunn_core::AcceptanceLedger for NoLedger {
+    fn pending(
+        &self,
+        _: &inklkunn_core::AcceptanceToken,
+    ) -> Result<Option<inklkunn_core::ExpectedMessage>, inklkunn_core::LedgerError> {
+        Ok(None)
+    }
+    fn view_creation(
+        &self,
+        _: &inklkunn_core::ViewCreationAct,
+    ) -> Result<Option<inklkunn_core::ViewCreationFacts>, inklkunn_core::LedgerError> {
+        Ok(None)
+    }
+}
+
+fn key_records(dir: &Path) -> Vec<String> {
+    std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| n.ends_with(".key.json"))
+        .collect()
+}
+
+#[test]
+fn a_failed_creation_with_the_real_signer_removes_the_sealed_key_record_too() {
+    if !prikk_on_path() {
+        println!("skipping: prikk not on PATH");
+        return;
+    }
+    let tmp = temp("real-fail");
+    let shm = Path::new("/dev/shm").join(format!("inklkunn-core-real-fail-{}", std::process::id()));
+    std::fs::create_dir_all(&shm).expect("seed dir");
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&shm, std::fs::Permissions::from_mode(0o700)).expect("private");
+    }
+    let secret = tmp.0.join("secret");
+    std::fs::write(&secret, "an operator secret long enough for the tests").expect("secret");
+    let layout = RootLayout::new(tmp.0.join("root"));
+    let key_dir = tmp.0.join("keys");
+    let mut cfg = inklkunn_core::SignerConfig::new(
+        "prikk",
+        Sandbox::Unconfined,
+        layout.clone(),
+        &key_dir,
+        &secret,
+        &shm,
+    );
+    cfg.cheap_derivation = true;
+    let signer = inklkunn_core::Signer::open(cfg, std::sync::Arc::new(NoLedger)).expect("signer");
+    let doomed = RealFailsAtSeal(signer);
+    let storage = storage(Sandbox::Unconfined);
+    let store = MemoryStore::new();
+    let r = create_wiki(
+        &store,
+        &layout,
+        &doomed,
+        &storage,
+        NewWiki::new(Slug::new("doomed").expect("slug"), name("Doomed")),
+        "0.0.0",
+    );
+    match r {
+        Err(CreateWikiError::Signer {
+            step: "seal",
+            cleanup: Cleanup::Removed,
+            ..
+        }) => {}
+        other => panic!("expected a seal failure with everything removed, got {other:?}"),
+    }
+    assert_eq!(
+        key_records(&key_dir),
+        Vec::<String>::new(),
+        "the sealed key record of the failed creation was left behind"
+    );
+    let _ = std::fs::remove_dir_all(&shm);
+}

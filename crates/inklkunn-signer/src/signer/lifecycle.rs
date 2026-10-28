@@ -18,6 +18,7 @@
 //!   verifiable. Right for a compromise, where the alternative is forged seals that verify.
 
 use std::path::Path;
+use std::sync::PoisonError;
 
 use inklkunn_store::WikiId;
 
@@ -33,15 +34,29 @@ pub enum OldKey {
     Retire,
 }
 
-/// What a rotation did.
+/// What became of the old maintainer key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OldKeyOutcome {
+    /// It was left trusted, as asked.
+    Kept,
+    /// It was removed from the repository's trust, as asked.
+    Retired,
+    /// Removal was asked for and **failed**: the keys *were* rotated and the old maintainer key is **still
+    /// trusted**. The text is prikk's, for operators; the fix is `prikk trust maintainer remove --key-id <old>`
+    /// in the wiki's repository.
+    RetireFailed(String),
+}
+
+/// What a rotation did. A rotation that happened is always a `Rotation`, whatever became of the old key: the
+/// state of the key store is the first thing a caller must record, and an `Err` would hide it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rotation {
     /// The keys now in force (generation, ids and dates).
     pub status: super::KeyStatus,
     /// The maintainer key id that was in force before.
     pub previous_maintainer_key_id: String,
-    /// What was done with it.
-    pub old_key: OldKey,
+    /// What became of it.
+    pub old_key: OldKeyOutcome,
 }
 
 /// The id of a rotated key: `inklkunn-<wiki id>-<role>-<generation>-<first 8 hex of its public key>`. The
@@ -68,6 +83,10 @@ impl Signer {
     /// keys it read first; RFC 004's lease is what will exclude the two.
     pub fn rotate_keys(&self, repo: &Path, old_key: OldKey) -> Result<Rotation, SignerError> {
         let wiki = self.wiki_of(repo)?;
+        // Excludes an acceptance on this wiki in this process; the command line beside a running server is
+        // another process, which only RFC 004's lease can exclude.
+        let lock = self.locks.of(&wiki);
+        let _held = lock.lock().unwrap_or_else(PoisonError::into_inner);
         let before = self.store.status(&wiki).map_err(ks)?;
         let generation = before.generation.saturating_add(1);
         let scratch = self.seed_base.scratch().map_err(ks)?;
@@ -104,21 +123,20 @@ impl Signer {
             self.store.replace(&meta, &seeds).map_err(ks)?;
 
             // 4. Only now, and only on request, the old maintainer key leaves the trust store. If this fails
-            //    the rotation has happened and the old key is still trusted: said so, never hidden.
-            if old_key == OldKey::Retire
-                && let Err(e) =
-                    self.writes
+            //    the rotation has happened and the old key is still trusted: said so in the result, never
+            //    hidden and never an error that would make the caller think nothing changed.
+            let old_key_outcome = match old_key {
+                OldKey::Keep => OldKeyOutcome::Kept,
+                OldKey::Retire => {
+                    match self
+                        .writes
                         .untrust_maintainer(repo, &keys, &before.maintainer_key_id)
-            {
-                return Err(SignerError::Incomplete {
-                    step: "trust maintainer remove",
-                    detail: format!(
-                        "the keys were rotated (generation {generation}) but the old maintainer key `{}` is still trusted; \
-                         remove it with `prikk trust maintainer remove --key-id {}` in the wiki's repository: {e}",
-                        before.maintainer_key_id, before.maintainer_key_id
-                    ),
-                });
-            }
+                    {
+                        Ok(()) => OldKeyOutcome::Retired,
+                        Err(e) => OldKeyOutcome::RetireFailed(e.to_string()),
+                    }
+                }
+            };
             Ok(Rotation {
                 status: super::KeyStatus {
                     wiki: wiki.clone(),
@@ -129,7 +147,7 @@ impl Signer {
                     rotated_at: meta.rotated_at,
                 },
                 previous_maintainer_key_id: before.maintainer_key_id.clone(),
-                old_key,
+                old_key: old_key_outcome,
             })
         })();
         match (result, scratch.finish()) {

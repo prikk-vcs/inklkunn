@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 41c89979e0e9d46ea1929b5e77058c878466c13e1d8f5edc0eb8a59f8696dbbe # shrinks to title = " "
+cc 1eff98981de5d8bdbdf6cf7e00eeb6fb24c273ccb9d8661fb1a7df6d231d2ed1 # shrinks to title = "pRN"

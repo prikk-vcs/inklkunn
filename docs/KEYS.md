@@ -21,8 +21,15 @@ inklkunn wiki keys rotate <wiki> --confirm <slug> --retire-old --accept-unverifi
 `<wiki>` is the slug or the id. **Re-authentication:** the key store does not open without the operator's
 secret file, so these commands are the operator proving possession of it; the web administration surface will
 ask for the password again instead. `rotate` also needs the slug typed, so the wrong wiki is not rotated by a
-slip. `create` and `rotate` are **audited** (`system:operator-cli`, `keys-create` / `keys-rotate`, allowed or
-failed); read the trail with the audit export.
+slip. `create` and `rotate` are **audited**: an event is written *before* the act (and the act is refused if it
+cannot be written) and another after it (`system:operator-cli`, `keys-create` / `keys-rotate`, with what
+became of the old key); a trail that shows "begun" and no ending means the process stopped in the middle. Read
+the trail with `inklkunn audit export`. If a retirement fails after the keys rotated, the command exits 1,
+says the old key is **still trusted**, and names the `prikk trust maintainer remove` to run by hand.
+
+The seed directory (`INKLKUNN_SEED_DIR`) must be on a tmpfs, owned by the user the service runs as, and not
+writable by anyone else (mode 0700 is right); the signer refuses a directory that others can write to, since
+they could swap a call's directory for their own. The default `/dev/shm/inklkunn` is made that way.
 
 ## What a rotation does
 
@@ -56,12 +63,20 @@ verifiable (a request to prikk is open). The second flag exists so that cost can
    gone: continue.
 2. **Stop signing** (stop the service, or the wiki's writes) and note the time the compromise could have started.
 3. **Rotate with `--retire-old --accept-unverifiable-history`.** The old key can seal nothing more.
-4. **Re-verify** and read what happened in the window: run the reconciliation (it reports every sealed change no
-   acceptance explains and every acceptance with no change; RFC 002 D-7) and export the audit trail. Because
-   history the old key sealed no longer verifies, the reconciliation and the audit trail — not `verify` — are
-   what say which changes were legitimate.
-5. **State what was signed during the window**, from the reconciliation, to the wiki's maintainers.
+4. **Read what happened.** Export the audit trail (`inklkunn audit export`: JSON Lines, oldest first) and read
+   the wiki's history with `prikk log` in its repository. Because the history the old key sealed no longer
+   verifies, `prikk verify` cannot be the check any more. The reconciliation (RFC 002 D-7: every sealed change
+   against an acceptance record, and the reverse) is the check that fits, **but it is a library function today
+   and not yet a command or a schedule**, and the acceptance records it reads are RFC 004's, which do not exist
+   yet: until they do, the comparison is by hand, change by change, against the proposals the wiki shows.
+5. **State what was signed during the window**, to the wiki's maintainers.
 6. **Change the operator's secret** (it re-seals nothing; plan a re-key of the key records — not yet a command).
+
+**After a retirement the service reports every later change as sealed but unconfirmed.** Each acceptance still
+seals, and the wiki's history still grows, but the check that closes every acceptance (`prikk verify`) fails for
+the old key's history, so the signer answers `SealedUnconfirmed` with the new block's ids instead of success
+(a test pins this). Whatever records the acceptance (RFC 004) must treat that answer as "sealed, record the
+block", never as a reason to retry.
 
 An *author* key cannot be revoked (prikk has no author trust list): retiring it means only that the service
 stops using it. That is why the maintainer key is the one that matters.

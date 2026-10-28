@@ -119,6 +119,14 @@ pub const ROUTE_REGISTRATION_TOKENS: &[&str] = &[
     ".fallback(",
     ".fallback_service(",
     "Router::new",
+    // The same calls in function-call spelling (`Router::route(app, …)`).
+    "Router::route",
+    "Router::route_service",
+    "Router::nest",
+    "Router::nest_service",
+    "Router::merge",
+    "Router::fallback",
+    "Router::fallback_service",
 ];
 /// The one web source file that may register routes.
 pub const ROUTE_REGISTRY_FILE: &str = "routes.rs";
@@ -129,6 +137,26 @@ pub const PRIVILEGED_PRINCIPAL_NAMES: &[&str] = &[
     "Principal::Account",
     "Principal::session",
     "Principal::token",
+    // The ways to name a variant or a constructor without writing `Principal::Account` in full: a rename on
+    // import, a glob or a group import, and the qualified-type spelling.
+    "Principal as",
+    "Principal::*",
+    "Principal::{",
+    "<Principal>",
+];
+
+/// Names of the signer's crate that the web and auth crates must not use: the signer is reached through
+/// `inklkunn-core`'s services (RFC 004), never opened or driven from a surface. (`Accept` is not listed: it
+/// is also the name of an authorization action.)
+pub const SIGNER_NAMES_FORBIDDEN_IN_SURFACES: &[&str] = &[
+    "Signer",
+    "SignerConfig",
+    "OldKey",
+    "OldKeyOutcome",
+    "Rotation",
+    "RepositoryBootstrap",
+    "AcceptanceLedger",
+    "inklkunn_signer",
 ];
 
 /// Words and types that must not appear in a public item of the signer crate (matched on the item's line,
@@ -749,34 +777,55 @@ pub fn runtime_dependencies(manifest: &str) -> Vec<String> {
         .collect()
 }
 
-/// Where `tokens` appear in `source`'s code (comments and strings excluded), **whatever whitespace splits
-/// them**: `.route (` and `.route\n(` are the same call. Returns `(line, token)` of each first character.
-fn token_hits(source: &str, tokens: &[&str]) -> Vec<(usize, String)> {
-    let code = strip_strings(source);
-    let mut flat = String::with_capacity(code.len());
-    let mut line_of: Vec<usize> = Vec::with_capacity(code.len());
+/// The lexical tokens of Rust-ish `code` with the line each starts on: identifiers and numbers whole,
+/// every other non-space character alone. Whitespace only separates; it is never a token.
+fn lex(code: &str) -> Vec<(String, usize)> {
+    let mut out: Vec<(String, usize)> = Vec::new();
     let mut line = 1;
-    for c in code.chars() {
+    let mut chars = code.chars().peekable();
+    while let Some(c) = chars.next() {
         if c == '\n' {
             line += 1;
-        }
-        if !c.is_whitespace() {
-            flat.push(c);
-            line_of.extend(std::iter::repeat_n(line, c.len_utf8()));
+        } else if c.is_whitespace() {
+            continue;
+        } else if c.is_alphanumeric() || c == '_' {
+            let mut word = String::from(c);
+            while let Some(&n) = chars.peek() {
+                if n.is_alphanumeric() || n == '_' {
+                    word.push(n);
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            out.push((word, line));
+        } else {
+            out.push((c.to_string(), line));
         }
     }
+    out
+}
+
+/// Where `tokens` appear in `source`'s code (comments and strings excluded), **whatever whitespace splits
+/// them**: `.route (` and `.route\n(` are the same call, `impl X` and `dyn X` still begin with the word `X`,
+/// and `SubRouter::new` is not `Router::new` (words are matched whole). Returns `(line, token)` of each
+/// match's first token.
+fn token_hits(source: &str, tokens: &[&str]) -> Vec<(usize, String)> {
+    let code = lex(&strip_strings(source));
     let mut out = Vec::new();
     for token in tokens {
-        let ident_start = token.starts_with(|c: char| c.is_alphabetic());
-        for (at, _) in flat.match_indices(token) {
-            // A token that begins like an identifier must begin a word (`SubRouter::new` is not `Router::new`).
-            let glued = ident_start
-                && flat[..at]
-                    .chars()
-                    .next_back()
-                    .is_some_and(|c| c.is_alphanumeric() || c == '_');
-            if !glued {
-                out.push((line_of.get(at).copied().unwrap_or(1), (*token).to_owned()));
+        let pattern: Vec<String> = lex(token).into_iter().map(|(t, _)| t).collect();
+        if pattern.is_empty() || pattern.len() > code.len() {
+            continue;
+        }
+        for window_start in 0..=(code.len() - pattern.len()) {
+            let matches = pattern.iter().enumerate().all(|(k, want)| {
+                code.get(window_start + k)
+                    .is_some_and(|(have, _)| have == want)
+            });
+            if matches {
+                let line = code.get(window_start).map_or(1, |(_, l)| *l);
+                out.push((line, (*token).to_owned()));
             }
         }
     }
@@ -819,6 +868,11 @@ pub fn route_registrations(source: &str) -> Vec<(usize, String)> {
 /// Lines of `source` that name a privileged principal ([`PRIVILEGED_PRINCIPAL_NAMES`]).
 pub fn privileged_principal_mentions(source: &str) -> Vec<(usize, String)> {
     token_hits(source, PRIVILEGED_PRINCIPAL_NAMES)
+}
+
+/// Lines of `source` that name one of [`SIGNER_NAMES_FORBIDDEN_IN_SURFACES`].
+pub fn signer_mentions_in_a_surface(source: &str) -> Vec<(usize, String)> {
+    token_hits(source, SIGNER_NAMES_FORBIDDEN_IN_SURFACES)
 }
 
 /// Lines of `source` whose code names one of [`SIGNER_ONLY_NAMES`].

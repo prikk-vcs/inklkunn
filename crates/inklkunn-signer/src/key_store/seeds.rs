@@ -13,7 +13,7 @@
 //! - **Never named.** No error text and no `Debug` output carries the directory's path or a seed.
 
 use std::io::Write;
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
 use super::KeyStoreError;
@@ -33,7 +33,9 @@ pub(crate) struct SeedBase {
 }
 
 impl SeedBase {
-    /// Accept `dir` as a seed base: absolute, existing, and on a tmpfs (or ramfs).
+    /// Accept `dir` as a seed base: absolute, existing, **owned by the user this process runs as and not
+    /// writable by anyone else** (a directory another local user can write to lets them swap a call's
+    /// directory for their own between its creation and its use), and on a tmpfs (or ramfs).
     pub(crate) fn tmpfs(dir: &Path) -> Result<Self, KeyStoreError> {
         let refuse = KeyStoreError::SeedBase;
         if !dir.is_absolute() {
@@ -44,6 +46,23 @@ impl SeedBase {
             .map_err(|_| refuse("the seed directory does not exist"))?;
         if !real.is_dir() {
             return Err(refuse("the seed directory is not a directory"));
+        }
+        let meta = std::fs::metadata(&real)
+            .map_err(|_| refuse("the seed directory could not be examined"))?;
+        // `/proc/self` is owned by the process's own user: the identity to compare with, without a syscall
+        // this crate (which forbids `unsafe`) could not make.
+        let me = std::fs::metadata("/proc/self")
+            .map_err(|_| refuse("the process's own user could not be determined"))?
+            .uid();
+        if meta.uid() != me {
+            return Err(refuse(
+                "the seed directory must be owned by the user the service runs as",
+            ));
+        }
+        if meta.mode() & 0o022 != 0 {
+            return Err(refuse(
+                "the seed directory must not be writable by its group or by others (mode 0700 is right)",
+            ));
         }
         let mountinfo = std::fs::read_to_string("/proc/self/mountinfo")
             .map_err(|_| refuse("the mount table could not be read"))?;
@@ -108,6 +127,15 @@ pub(super) fn fs_type_of(mountinfo: &str, path: &Path) -> Option<String> {
         }
     }
     best.map(|(_, t)| t)
+}
+
+/// Say that the call using `dir` is still running: its modification time is set to now. The start-up sweep
+/// takes a directory not touched for five minutes to be a killed call's; an acceptance is many prikk calls
+/// and can run longer than that, so every call touches the directory first.
+pub(crate) fn touch(dir: &Path) {
+    if let Ok(f) = std::fs::File::open(dir) {
+        let _ = f.set_modified(std::time::SystemTime::now());
+    }
 }
 
 impl SeedBase {

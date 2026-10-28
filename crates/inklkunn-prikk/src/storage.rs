@@ -498,8 +498,10 @@ pub trait Storage: Send + Sync {
     fn stat(&self, repo: &Path, point: &Point, path: &str) -> Result<FileMeta>;
     /// One file's bytes at a point, refused when larger than `max_bytes`.
     fn read(&self, repo: &Path, point: &Point, path: &str, max_bytes: u64) -> Result<Vec<u8>>;
-    /// The sealed history at a point (a view, or a block to read the history that led to it), newest first,
-    /// at most `limit` blocks (the implementation's default when `None`).
+    /// The sealed history of a **view**, newest first, at most `limit` blocks (the implementation's default
+    /// when `None`). A block id is refused ([`StorageError::InvalidArgument`]): prikk's `log` cannot start from
+    /// a block, and answers an empty list with exit 0 if asked to (ledger PK-36). `limit` may be as large as
+    /// the history, which is how a whole history is read.
     fn history(&self, repo: &Path, view: &Point, limit: Option<u64>) -> Result<History>;
     /// What one block or patch changed.
     fn change(&self, repo: &Path, id: &str) -> Result<Change>;

@@ -87,6 +87,10 @@ fn base(tag: &str) -> Option<(ShmDir, SeedBase)> {
         println!("skipping: no writable tmpfs at /dev/shm here");
         return None;
     }
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+    }
     let guard = ShmDir(dir.clone());
     match SeedBase::tmpfs(&dir) {
         Ok(b) => Some((guard, b)),
@@ -686,14 +690,14 @@ fn a_record_cannot_be_changed_moved_or_corrupted_without_notice() {
         ("not JSON", "garbage".to_owned()),
         ("empty", String::new()),
     ];
+    let Some((_guard, seed_base)) = base("tamper") else {
+        return;
+    };
     for (what, text) in cases {
         std::fs::write(&path_a, &text).unwrap();
         let r = store.status(&a);
         assert!(matches!(r, Err(KeyStoreError::Record(_))), "{what}: {r:?}");
-        let r = store.checkout(
-            &a,
-            &SeedBase::tmpfs(Path::new("/dev/shm")).unwrap_or_else(|_| panic!("no tmpfs")),
-        );
+        let r = store.checkout(&a, &seed_base);
         assert!(matches!(r, Err(KeyStoreError::Record(_))), "{what}");
     }
     // Wiki B's record under wiki A's name is not A's keys.
@@ -1038,4 +1042,51 @@ fn the_production_open_uses_the_default_costs_and_takes_a_fraction_of_a_second()
             .unwrap(),
         meta(&wiki)
     );
+}
+
+#[test]
+fn a_seed_base_others_can_write_to_or_that_the_user_does_not_own_is_refused() {
+    use std::os::unix::fs::PermissionsExt;
+    let Some((guard, _)) = base("vetting") else {
+        return;
+    };
+    let dir = guard.0.clone();
+    // Group- or world-writable: another local user could swap a call's directory.
+    for mode in [0o770, 0o707, 0o777, 0o722] {
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(mode)).unwrap();
+        let r = SeedBase::tmpfs(&dir);
+        assert!(
+            matches!(&r, Err(KeyStoreError::SeedBase(why)) if why.contains("writable")),
+            "{mode:o}: {r:?}"
+        );
+    }
+    // Readable by others is a different matter and not this check's concern; mode 0700 and 0750 pass.
+    for mode in [0o700, 0o750] {
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(mode)).unwrap();
+        assert!(SeedBase::tmpfs(&dir).is_ok(), "{mode:o}");
+    }
+    // /dev/shm itself is root's and world-writable: never a seed base.
+    let r = SeedBase::tmpfs(Path::new("/dev/shm"));
+    assert!(matches!(r, Err(KeyStoreError::SeedBase(_))), "{r:?}");
+}
+
+#[test]
+fn a_call_that_is_still_running_is_not_taken_for_a_dead_one() {
+    let Some((guard, seed_base)) = base("heartbeat") else {
+        return;
+    };
+    let (a, b) = (seed_base.scratch().unwrap(), seed_base.scratch().unwrap());
+    // Both directories look a quarter of an hour old to the sweep…
+    let old = std::time::SystemTime::now() - std::time::Duration::from_secs(900);
+    for d in [a.path(), b.path()] {
+        std::fs::File::open(d).unwrap().set_modified(old).unwrap();
+    }
+    // …but the one whose call said it was alive (every prikk call does) is touched and so is kept.
+    touch(a.path());
+    let removed = seed_base
+        .sweep_stale(std::time::Duration::from_secs(300))
+        .unwrap();
+    assert_eq!(removed, 1, "only the silent one");
+    assert!(a.path().exists() && !b.path().exists());
+    drop((a, b, guard));
 }

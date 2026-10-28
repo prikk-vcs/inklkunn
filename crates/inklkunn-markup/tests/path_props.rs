@@ -51,6 +51,11 @@ proptest! {
 
     #[test]
     fn collision_keys_fold_case_only(title in "[A-Za-z]{1,8}") {
+        // A Windows device name (CON, PRN, AUX, NUL) has its first letter percent-encoded *as written*
+        // (`%70rn` for `pRN`, `%50RN` for `PRN`). Those two paths are different bytes even on a
+        // case-insensitive file system, so prikk sees no collision and their keys rightly differ. (This was a
+        // flaw in the property, not in the key: it failed once the generator happened on `pRN`.)
+        prop_assume!(!["CON", "PRN", "AUX", "NUL"].contains(&title.to_ascii_uppercase().as_str()));
         let p = title_to_path(&title).unwrap();
         let q = title_to_path(&title.to_uppercase()).unwrap();
         prop_assert_eq!(collision_key(&p), collision_key(&q));

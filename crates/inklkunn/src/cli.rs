@@ -8,7 +8,7 @@ use inklkunn_prikk::sandbox::Sandbox;
 use inklkunn_prikk::{Admission, MIN_PRIKK_VERSION, PrikkCli};
 
 use crate::config::{self, Settings, WebSettings};
-use crate::{keys, serve};
+use crate::{audit, keys, serve};
 
 /// The commit the release workflow built from (`INKLKUNN_COMMIT` at build time), or `unknown`.
 const COMMIT: &str = match option_env!("INKLKUNN_COMMIT") {
@@ -58,6 +58,7 @@ pub(crate) fn run(
             0
         }
         ["serve", rest @ ..] => serve_command(rest, get_env, dev_unconfined, err),
+        ["audit", "export"] => audit::export(get_env, out, err),
         ["wiki", "keys", ..] => {
             let rest: Vec<String> = args.iter().skip(2).cloned().collect();
             let command = match keys::parse(&rest) {
@@ -79,7 +80,7 @@ pub(crate) fn run(
         other => {
             let _ = writeln!(
                 err,
-                "inklkunn: unknown command `{}`; there are `--version`, `serve` and `wiki keys`\n{}\n{}",
+                "inklkunn: unknown command `{}`; there are `--version`, `serve`, `audit export` and `wiki keys`\n{}\n{}",
                 other.join(" "),
                 SERVE_USAGE,
                 keys::USAGE

@@ -68,8 +68,10 @@ CREATE INDEX IF NOT EXISTS role_grants_wiki ON role_grants(wiki_id, seq);
 ";
 
 /// Version 3: the audit trail (RFC 002 D-9). **Append-only in the database itself**: triggers abort any
-/// `UPDATE` or `DELETE`, so even code that holds a connection cannot edit or erase an event through SQL's
-/// data statements (dropping the table needs a deliberate schema change, which no code path here makes).
+/// `UPDATE`, any `DELETE` and any `INSERT` over a position already taken (`INSERT OR REPLACE`), so even code
+/// that holds a connection cannot edit or erase an event through SQL's data statements. This is a guard
+/// against code paths, not against someone with the file: they can drop the triggers, and there is no hash
+/// chain to show that they did (shipping the trail off the box, RFC 002 D-9's sink trait, is what answers that).
 const V3: &str = "
 CREATE TABLE IF NOT EXISTS audit_log (
     seq       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,6 +85,11 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE TRIGGER IF NOT EXISTS audit_log_no_update BEFORE UPDATE ON audit_log
 BEGIN SELECT RAISE(ABORT, 'the audit log is append-only'); END;
 CREATE TRIGGER IF NOT EXISTS audit_log_no_delete BEFORE DELETE ON audit_log
+BEGIN SELECT RAISE(ABORT, 'the audit log is append-only'); END;
+-- `INSERT OR REPLACE` with a position that exists deletes the old row without firing a delete trigger
+-- (recursive triggers are off by default), so a row may not be inserted under a position already taken.
+CREATE TRIGGER IF NOT EXISTS audit_log_no_replace BEFORE INSERT ON audit_log
+WHEN NEW.seq IS NOT NULL AND EXISTS (SELECT 1 FROM audit_log WHERE seq = NEW.seq)
 BEGIN SELECT RAISE(ABORT, 'the audit log is append-only'); END;
 ";
 

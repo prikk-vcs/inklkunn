@@ -97,6 +97,8 @@ impl Storage for Fake {
             });
         }
         let limit = usize::try_from(limit.unwrap_or(100)).unwrap();
+        // Like the real one: a view only (a block id there is an empty list, which the driver refuses before
+        // asking), newest first, cut at the limit.
         let chain: Vec<HistoryBlock> = match point {
             Point::View(v) => self
                 .chains
@@ -104,15 +106,7 @@ impl Storage for Fake {
                 .find(|(name, _)| name == v)
                 .map(|(_, c)| c.clone())
                 .ok_or_else(|| nope("log"))?,
-            Point::Block(b) => self
-                .chains
-                .iter()
-                .find_map(|(_, c)| {
-                    c.iter()
-                        .position(|x| &x.block_id == b)
-                        .map(|i| c.iter().skip(i).cloned().collect::<Vec<_>>())
-                })
-                .ok_or_else(|| nope("log"))?,
+            Point::Block(_) => return Err(nope("log")),
         };
         Ok(History {
             schema_version: "log-report-v1".into(),
@@ -216,6 +210,10 @@ fn system_message(text: &str) -> Message {
 
 fn run(fake: &Fake, records: &Records) -> Report {
     reconcile(&WikiId::new(), Path::new("/unused"), fake, records).expect("reconciled")
+}
+
+fn run_with(fake: &Fake, records: &Records, bounds: ReadBounds) -> Result<Report, ReconcileError> {
+    reconcile_with(&WikiId::new(), Path::new("/unused"), fake, records, bounds)
 }
 
 const MAIN: &str = "heads/main";
@@ -416,7 +414,7 @@ fn system_changes_need_a_system_act_matched_once() {
 fn a_long_history_is_read_in_full_and_a_block_in_two_views_counts_once() {
     let w = World::new();
     let create = system_message("Create the wiki");
-    // 1,300 accepted proposals after the creation: more than two pages of 500.
+    // 1,300 accepted proposals after the creation: the first read of 100 comes back full and the read grows.
     let mut chain = Vec::new();
     let mut accepted = Vec::new();
     for n in 2..=1301 {
@@ -453,7 +451,15 @@ fn a_long_history_is_read_in_full_and_a_block_in_two_views_counts_once() {
         }],
         fail: false,
     };
-    let r = run(&fake, &records);
+    let r = run_with(
+        &fake,
+        &records,
+        ReadBounds {
+            first_read: 100,
+            max_read: 100_000,
+        },
+    )
+    .unwrap();
     assert!(
         r.is_clean(),
         "{} findings, the first {:?}",
@@ -462,22 +468,65 @@ fn a_long_history_is_read_in_full_and_a_block_in_two_views_counts_once() {
     );
     assert_eq!(r.blocks, 1301, "every block, once");
     assert_eq!(r.views, 2);
-    assert!(*fake.history_calls.lock().unwrap() >= 3, "it paged");
+    // Main (1,301 blocks): reads of 100, 400 and 1,600, the last short. The draft view (600 blocks): the same
+    // three. A full read is never taken for the end.
+    assert_eq!(
+        *fake.history_calls.lock().unwrap(),
+        6,
+        "the read grew until it came back short"
+    );
 }
 
 #[test]
-fn a_storage_that_answers_the_same_page_forever_still_ends() {
-    // A history of exactly one full page whose oldest block is not a root: the loop must stop when a page adds nothing.
+fn a_history_exactly_as_long_as_a_read_is_still_read_in_full() {
     let create = system_message("c");
-    let chain: Vec<HistoryBlock> = (1..=500)
+    let chain: Vec<HistoryBlock> = (1..=100)
         .rev()
-        .map(|n| block(n, &create.to_text(), false))
+        .map(|n| block(n, &create.to_text(), n == 1))
         .collect();
     let fake = Fake::new(vec![(MAIN, chain)]);
-    let records = Records::default();
-    let r = reconcile(&WikiId::new(), Path::new("/x"), &fake, &records).expect("ends");
-    assert_eq!(r.blocks, 500);
-    assert!(*fake.history_calls.lock().unwrap() <= 3);
+    let r = run_with(
+        &fake,
+        &Records::default(),
+        ReadBounds {
+            first_read: 100,
+            max_read: 10_000,
+        },
+    )
+    .unwrap();
+    assert_eq!(r.blocks, 100);
+    assert_eq!(
+        *fake.history_calls.lock().unwrap(),
+        2,
+        "a full read is not proof it was the end"
+    );
+}
+
+#[test]
+fn a_history_longer_than_the_most_it_reads_is_an_error_never_a_silent_cut() {
+    let create = system_message("c");
+    let chain: Vec<HistoryBlock> = (1..=100)
+        .rev()
+        .map(|n| block(n, &create.to_text(), n == 1))
+        .collect();
+    let fake = Fake::new(vec![(MAIN, chain)]);
+    let e = run_with(
+        &fake,
+        &Records::default(),
+        ReadBounds {
+            first_read: 10,
+            max_read: 40,
+        },
+    )
+    .unwrap_err();
+    assert_eq!(
+        e,
+        ReconcileError::TooLarge {
+            view: MAIN.into(),
+            limit: 40
+        }
+    );
+    assert!(e.to_string().contains("nothing was concluded"), "{e}");
 }
 
 #[test]
@@ -500,11 +549,11 @@ fn findings_reach_the_audit_trail_as_ids_only_and_a_clean_report_writes_nothing(
     let (fake, mut records, _) = clean();
     let audit = MemoryAudit::new();
     let clean_report = run(&fake, &records);
-    record_findings(&clean_report, &audit, 1).unwrap();
+    record_findings(&clean_report, &[], &audit, 1).unwrap();
     assert!(audit.events().is_empty());
     records.accepted.remove(0);
     let report = run(&fake, &records);
-    record_findings(&report, &audit, 1_700_000_000).unwrap();
+    record_findings(&report, &[], &audit, 1_700_000_000).unwrap();
     let events = audit.events();
     assert_eq!(events.len(), 1);
     let [e] = events.as_slice() else {
@@ -538,4 +587,35 @@ fn findings_are_in_a_stable_order_without_duplicates() {
     assert_eq!(a, sorted);
     sorted.dedup();
     assert_eq!(a.len(), sorted.len());
+}
+
+#[test]
+fn a_standing_disagreement_is_reported_once_and_a_new_one_when_it_appears() {
+    let (fake, mut records, _) = clean();
+    records.accepted.remove(0);
+    let first = run(&fake, &records);
+    let audit = MemoryAudit::new();
+    record_findings(&first, &[], &audit, 10).unwrap();
+    assert_eq!(audit.events().len(), 1);
+    // The same report again, a day later: nothing new to say.
+    let second = run(&fake, &records);
+    record_findings(&second, &first.findings, &audit, 90_000).unwrap();
+    assert_eq!(
+        audit.events().len(),
+        1,
+        "a schedule must not fill the trail with the same finding"
+    );
+    // A second record goes missing: only that one is added.
+    records.accepted.remove(0);
+    let third = run(&fake, &records);
+    assert!(
+        third.findings.len() > first.findings.len(),
+        "{:?}",
+        third.findings
+    );
+    record_findings(&third, &second.findings, &audit, 180_000).unwrap();
+    assert_eq!(
+        audit.events().len(),
+        1 + (third.findings.len() - first.findings.len())
+    );
 }

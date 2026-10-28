@@ -415,8 +415,12 @@ fn every_member_crate_forbids_unsafe_and_uses_the_workspace_lints() {
 #[test]
 fn routes_are_registered_in_the_registry_file_and_nowhere_else() {
     let root = workspace_root();
+    // Exactly one file may register routes: matching by file name would let `src/admin/routes.rs` through.
+    let registry = root
+        .join("crates/inklkunn-web/src")
+        .join(ROUTE_REGISTRY_FILE);
     for src in rust_sources(&root.join("crates/inklkunn-web/src")) {
-        if src.file_name().is_some_and(|n| n == ROUTE_REGISTRY_FILE) {
+        if src == registry {
             continue;
         }
         let hits = route_registrations(&read(&src));
@@ -444,6 +448,10 @@ fn route_registration_gate_catches_every_spelling_and_spares_prose() {
         "app.fallback(h)\n",
         "app.fallback_service(s)\n",
         "use axum::Router; let r = axum::Router::new();\n",
+        "let app = Router::route(app, \"/leak\", get(h));\n",
+        "let app = axum::Router::merge(a, b);\n",
+        "let app = Router::nest(a, \"/x\", b);\n",
+        "let app = Router::fallback(a, h);\n",
     ] {
         assert!(!route_registrations(planted).is_empty(), "{planted:?}");
     }
@@ -505,6 +513,11 @@ fn privileged_principal_gate_catches_every_construction_and_spares_prose() {
         "let p = Principal::token(id, scope);\n",
         "use inklkunn_core::Principal::System as S;\n",
         "match p { inklkunn_core::Principal::Account { .. } => {} _ => {} }\n",
+        // The spellings that name a constructor or a variant without `Principal::Account` written out.
+        "use inklkunn_core::Principal as P;\nlet p = P::session(id);\n",
+        "use inklkunn_core::Principal::*;\nlet p = Account { id, scope };\n",
+        "use inklkunn_core::Principal::{Account, Anonymous};\n",
+        "let p = <Principal>::session(id);\n",
     ] {
         assert!(
             !privileged_principal_mentions(planted).is_empty(),
@@ -570,4 +583,49 @@ fn the_public_seed_gate_catches_every_shape_and_spares_what_is_not_public() {
     // A type name is matched as a word: `Secretary` and `KeyStoreLike` are other names.
     assert_eq!(public_seed_exposures("pub fn f(a: Secretary) {}\n"), vec![]);
     assert_eq!(public_seed_exposures("pub fn f(a: Secret) {}\n").len(), 1);
+}
+
+#[test]
+fn no_surface_names_the_signer() {
+    let root = workspace_root();
+    for krate in ["crates/inklkunn-web", "crates/inklkunn-auth"] {
+        for src in rust_sources(&root.join(krate)) {
+            if !is_product_source(&src) {
+                continue;
+            }
+            let hits = signer_mentions_in_a_surface(&read(&src));
+            assert!(
+                hits.is_empty(),
+                "SIGNER REACH violation (C-1a): {} names {hits:?}; a surface reaches signing through \
+                 inklkunn-core's services and never opens or drives the signer",
+                src.display()
+            );
+        }
+    }
+}
+
+#[test]
+fn the_signer_gate_catches_every_way_a_surface_could_open_one_and_spares_prose() {
+    for planted in [
+        "let s = Signer::open(cfg, ledger)?;\n",
+        "let c = SignerConfig::new(a, b, c, d, e, f);\n",
+        "s.rotate_keys(&repo, OldKey::Retire)?;\n",
+        "impl AcceptanceLedger for MyLedger {}\n",
+        "use inklkunn_signer::Signer;\n",
+        "fn f(r: &dyn RepositoryBootstrap) {}\n",
+    ] {
+        assert!(
+            !signer_mentions_in_a_surface(planted).is_empty(),
+            "{planted:?}"
+        );
+    }
+    for fine in [
+        "// the Signer is opened by the binary\n",
+        "let a = Action::Accept;\n",
+        "let s = \"Signer::open\";\n",
+        "let t = SignerLike::new();\n",
+        "fn assigner() {}\n",
+    ] {
+        assert_eq!(signer_mentions_in_a_surface(fine), vec![], "{fine:?}");
+    }
 }

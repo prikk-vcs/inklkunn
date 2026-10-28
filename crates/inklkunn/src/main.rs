@@ -4,6 +4,7 @@
 //! wiki's keys over time (RFC 002 D-8); and `serve`, which checks everything and serves (RFC 003; its pages
 //! arrive task by task).
 
+mod audit;
 mod cli;
 mod config;
 mod keys;

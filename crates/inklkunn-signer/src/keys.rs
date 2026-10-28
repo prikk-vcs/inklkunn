@@ -70,6 +70,11 @@ impl KeyDir {
         &self.dir
     }
 
+    /// Say the call that uses this directory is alive (see [`crate::key_store::touch`]).
+    pub(crate) fn touch(&self) {
+        crate::key_store::touch(&self.dir);
+    }
+
     /// `<dir>/<role>.seed`.
     pub(crate) fn seed_file(&self, role: &str) -> PathBuf {
         self.dir.join(format!("{role}.seed"))

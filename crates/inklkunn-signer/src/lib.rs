@@ -15,16 +15,9 @@
 //! (D-4). The `BootstrapSigner` — the same sequence over a **plain-text key directory** — exists **only behind
 //! the `bootstrap` cargo feature**, for tests; a product binary never enables it (the gate checks).
 
-// The module stays private: the key-reachability gate keeps every other crate from naming it. Parts of it
-// are for the key-lifecycle commands (handoff 002 T7), which arrive later.
-#[cfg_attr(not(test), allow(dead_code))]
+// The modules stay private: the key-reachability gate keeps every other crate from naming them.
 mod key_store;
-// Without the `bootstrap` feature nothing in M0 constructs the key directory or runs the write sequence:
-// RFC 002's handoff (T3, T4) wires them to the real key store and `Accept`. Until then they are kept, not
-// dead, and the product build says nothing about them.
-#[cfg_attr(not(feature = "bootstrap"), allow(dead_code))]
 mod keys;
-#[cfg_attr(not(feature = "bootstrap"), allow(dead_code))]
 mod writes;
 
 mod signer;
@@ -40,12 +33,12 @@ use std::path::Path;
 
 pub use accept::{
     Accept, AcceptError, AcceptanceLedger, AcceptanceToken, ExpectedMessage, LedgerError,
-    PreparedChange, PreparedFile, SealedChange, ViewCreationAct, ViewCreationFacts,
+    PreparedChange, PreparedFile, SealedChange, Unconfirmed, ViewCreationAct, ViewCreationFacts,
 };
 #[cfg(feature = "bootstrap")]
 pub use bootstrap::BootstrapSigner;
 pub use keys::KeyIds;
-pub use signer::lifecycle::{OldKey, Rotation};
+pub use signer::lifecycle::{OldKey, OldKeyOutcome, Rotation};
 pub use signer::{KeyStatus, Signer, SignerConfig};
 pub use writes::{SealedIds, SignerError, WRITE_CEILING, WRITE_DEADLINE};
 
@@ -57,4 +50,11 @@ pub trait RepositoryBootstrap: Send + Sync {
     fn create_repository(&self, repo: &Path) -> Result<KeyIds, SignerError>;
     /// Commit the worktree as one patch with `message` and seal it.
     fn commit_and_seal(&self, repo: &Path, message: &str) -> Result<SealedIds, SignerError>;
+    /// Remove what [`RepositoryBootstrap::create_repository`] made *outside* the repository for a creation
+    /// that did not finish (the wiki's sealed key record): the repository directory itself is the caller's to
+    /// remove. A signer that keeps nothing elsewhere has nothing to do.
+    fn discard_unfinished(&self, repo: &Path) -> Result<(), SignerError> {
+        let _ = repo;
+        Ok(())
+    }
 }

@@ -16,8 +16,8 @@ use std::sync::Arc;
 
 use inklkunn_core::wiki::repo_of;
 use inklkunn_core::{
-    AcceptanceLedger, AcceptanceToken, ExpectedMessage, KeyStatus, LedgerError, OldKey, Signer,
-    SignerConfig, ViewCreationAct, ViewCreationFacts,
+    AcceptanceLedger, AcceptanceToken, ExpectedMessage, KeyStatus, LedgerError, OldKey,
+    OldKeyOutcome, Signer, SignerConfig, ViewCreationAct, ViewCreationFacts,
 };
 use inklkunn_store::{
     AuditEvent, AuditOutcome, AuditSink, RootLayout, Slug, SqliteStore, WikiId, WikiRecord,
@@ -173,7 +173,19 @@ pub(crate) fn execute(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> i32 {
-    match run(command, settings, now, out, err) {
+    execute_with(command, settings, now, out, err, None)
+}
+
+/// As [`execute`], with the audit trail named: the store's own, or (a test) another sink.
+pub(crate) fn execute_with(
+    command: &Command,
+    settings: &Settings,
+    now: i64,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    trail: Option<&dyn AuditSink>,
+) -> i32 {
+    match run(command, settings, now, out, err, trail) {
         Ok(()) => 0,
         Err(why) => {
             let _ = writeln!(err, "inklkunn: {why}");
@@ -188,6 +200,7 @@ fn run(
     now: i64,
     out: &mut dyn Write,
     err: &mut dyn Write,
+    trail: Option<&dyn AuditSink>,
 ) -> Result<(), String> {
     let (wiki_arg, rotating) = match command {
         Command::Status { wiki } | Command::Create { wiki } => (wiki, None),
@@ -211,6 +224,7 @@ fn run(
     let store = SqliteStore::open(&store_path)
         .map_err(|e| format!("the store could not be opened: {e}"))?;
     let record = find_wiki(&store, wiki_arg)?;
+    let trail: &dyn AuditSink = trail.unwrap_or(&store);
 
     // Refusals that need nothing but the command line, before any key is touched.
     if let Some(Command::Rotate {
@@ -241,8 +255,12 @@ fn run(
     if settings.dev_unconfined {
         let _ = writeln!(err, "{UNCONFINED_BANNER}");
     }
-    std::fs::create_dir_all(&settings.seed_dir)
-        .map_err(|e| format!("the seed directory could not be made ({})", e.kind()))?;
+    make_private_directory(&settings.seed_dir).map_err(|e| {
+        format!(
+            "the seed directory could not be made private ({})",
+            e.kind()
+        )
+    })?;
     let layout = RootLayout::new(settings.wikis_root());
     let repo = repo_of(&layout, &record);
     let config = SignerConfig::new(
@@ -269,121 +287,198 @@ fn run(
             print_status(out, &record, &status);
             Ok(())
         }
-        Command::Create { .. } => match signer.create_keys(&repo) {
-            Ok(ids) => {
-                record_key_ids(&store, &record, &ids.author, &ids.maintainer)?;
-                audit(
-                    &store,
-                    err,
-                    &record,
-                    now,
-                    "keys-create",
-                    AuditOutcome::Allowed,
-                    "generation 1",
-                );
-                let status = signer.key_status(&record.id).map_err(|e| e.to_string())?;
-                print_status(out, &record, &status);
-                Ok(())
+        Command::Create { .. } => {
+            // The trail first: an act that cannot be recorded is not begun (the Authorizer's rule too).
+            begin(trail, &record, now, "keys-create", "begun")?;
+            match signer.create_keys(&repo) {
+                Ok(ids) => {
+                    let recorded = record_key_ids(&store, &record, &ids.author, &ids.maintainer);
+                    let status = signer.key_status(&record.id).map_err(|e| e.to_string());
+                    let done = finish(
+                        trail,
+                        &record,
+                        now,
+                        "keys-create",
+                        AuditOutcome::Allowed,
+                        &format!(
+                            "generation 1{}",
+                            if recorded.is_err() {
+                                "; the wiki record was not updated"
+                            } else {
+                                ""
+                            }
+                        ),
+                    );
+                    print_status(out, &record, &status?);
+                    recorded?;
+                    done
+                }
+                Err(e) => {
+                    let done = finish(
+                        trail,
+                        &record,
+                        now,
+                        "keys-create",
+                        AuditOutcome::Failed,
+                        "refused or failed",
+                    );
+                    done.and(Err(e.to_string()))
+                }
             }
-            Err(e) => {
-                audit(
-                    &store,
-                    err,
-                    &record,
-                    now,
-                    "keys-create",
-                    AuditOutcome::Failed,
-                    "refused or failed",
-                );
-                Err(e.to_string())
-            }
-        },
+        }
         Command::Rotate { retire_old, .. } => {
             let old = if *retire_old {
                 OldKey::Retire
             } else {
                 OldKey::Keep
             };
+            begin(
+                trail,
+                &record,
+                now,
+                "keys-rotate",
+                if *retire_old {
+                    "begun; old key to be retired"
+                } else {
+                    "begun; old key to be kept"
+                },
+            )?;
             match signer.rotate_keys(&repo, old) {
                 Ok(r) => {
-                    record_key_ids(
+                    // The key store changed: that is what the wiki record, the trail and the output must
+                    // follow, whatever became of the old key.
+                    let recorded = record_key_ids(
                         &store,
                         &record,
                         &r.status.author_key_id,
                         &r.status.maintainer_key_id,
-                    )?;
-                    let kept = if *retire_old {
-                        "old key retired"
-                    } else {
-                        "old key kept"
+                    );
+                    let what = match &r.old_key {
+                        OldKeyOutcome::Kept => "old key kept".to_owned(),
+                        OldKeyOutcome::Retired => "old key retired".to_owned(),
+                        OldKeyOutcome::RetireFailed(_) => {
+                            "old key retirement FAILED, the old key is still trusted".to_owned()
+                        }
                     };
-                    audit(
-                        &store,
-                        err,
+                    let done = finish(
+                        trail,
                         &record,
                         now,
                         "keys-rotate",
                         AuditOutcome::Allowed,
-                        &format!("generation {}; {kept}", r.status.generation),
+                        &format!(
+                            "generation {}; {what}{}",
+                            r.status.generation,
+                            if recorded.is_err() {
+                                "; the wiki record was not updated"
+                            } else {
+                                ""
+                            }
+                        ),
                     );
                     print_status(out, &record, &r.status);
-                    let _ = if *retire_old {
-                        writeln!(
-                            out,
-                            "previous maintainer key {} was removed from the repository's trust; what it sealed no longer verifies",
-                            r.previous_maintainer_key_id
-                        )
-                    } else {
-                        writeln!(
-                            out,
-                            "previous maintainer key {} is still trusted: history it sealed keeps verifying, and the service no longer holds its seed",
-                            r.previous_maintainer_key_id
-                        )
+                    let previous = &r.previous_maintainer_key_id;
+                    let outcome = match &r.old_key {
+                        OldKeyOutcome::Kept => {
+                            let _ = writeln!(
+                                out,
+                                "previous maintainer key {previous} is still trusted: history it sealed keeps verifying, \
+                                 the service no longer holds its seed, and a copy of that seed somewhere else could still \
+                                 seal changes that verify"
+                            );
+                            Ok(())
+                        }
+                        OldKeyOutcome::Retired => {
+                            let _ = writeln!(
+                                out,
+                                "previous maintainer key {previous} was removed from the repository's trust; what it sealed no longer verifies"
+                            );
+                            Ok(())
+                        }
+                        OldKeyOutcome::RetireFailed(why) => Err(format!(
+                            "the keys were rotated (generation {}) but the old maintainer key `{previous}` is STILL TRUSTED: \
+                             removing it failed ({why}); remove it with `prikk trust maintainer remove --key-id {previous}` \
+                             in the wiki's repository",
+                            r.status.generation
+                        )),
                     };
-                    Ok(())
+                    recorded?;
+                    outcome?;
+                    done
                 }
                 Err(e) => {
-                    audit(
-                        &store,
-                        err,
+                    let done = finish(
+                        trail,
                         &record,
                         now,
                         "keys-rotate",
                         AuditOutcome::Failed,
                         "refused or failed",
                     );
-                    Err(e.to_string())
+                    done.and(Err(e.to_string()))
                 }
             }
         }
     }
 }
 
-/// Write one audit event for the act. The act has happened (or failed) either way; an unrecorded one is said
-/// out loud.
-fn audit(
-    store: &SqliteStore,
-    err: &mut dyn Write,
+fn event(
     record: &WikiRecord,
     now: i64,
     action: &str,
     outcome: AuditOutcome,
     detail: &str,
-) {
-    let event = AuditEvent::new(
+) -> AuditEvent {
+    AuditEvent::new(
         now,
         PRINCIPAL,
         action,
         &format!("wiki:{}", record.id),
         outcome,
         detail,
-    );
-    if let Err(e) = store.record(&event) {
-        let _ = writeln!(
-            err,
-            "inklkunn: WARNING: the audit trail could not be written ({e})"
-        );
-    }
+    )
+}
+
+/// Write the event that says an act is **about to** be done. If the trail cannot take it the act is not
+/// begun: nothing is changed that cannot be accounted for.
+fn begin(
+    store: &dyn AuditSink,
+    record: &WikiRecord,
+    now: i64,
+    action: &str,
+    detail: &str,
+) -> Result<(), String> {
+    store
+        .record(&event(record, now, action, AuditOutcome::Allowed, detail))
+        .map_err(|e| format!("the audit trail could not be written ({e}); nothing was done"))
+}
+
+/// Write the event that says how an act ended. The act has happened either way, so a failure here is an
+/// error the operator sees (the exit status is not 0), never a quiet warning.
+fn finish(
+    store: &dyn AuditSink,
+    record: &WikiRecord,
+    now: i64,
+    action: &str,
+    outcome: AuditOutcome,
+    detail: &str,
+) -> Result<(), String> {
+    store
+        .record(&event(record, now, action, outcome, detail))
+        .map_err(|e| {
+            format!(
+                "the act was done but its completion could not be written to the audit trail ({e}); \
+                 the trail shows it as begun and not finished"
+            )
+        })
+}
+
+/// The seed directory, made if it is not there and set to mode 0700: the signer refuses one that others can
+/// write to.
+pub(crate) fn make_private_directory(dir: &std::path::Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::create_dir_all(dir)?;
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
 }
 
 /// Keep the wiki record's key ids (which the administration surface shows) equal to the key store's.

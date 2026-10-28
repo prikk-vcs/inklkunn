@@ -8,15 +8,15 @@
 //! [`AuthError::BadCredentials`] after the same work. The one verification takes a permit from a bounded gate
 //! first.
 //!
-//! **The throttles are counted before the work, not after it** ([`crate::throttle`]): an attempt is checked
+//! **The throttles are counted before the work, not after it**: an attempt is checked
 //! against the lock and counted in one step, so a burst of simultaneous guesses is held to the limit as a
 //! sequence is, and a locked name or address costs a map lookup and a correct password is refused while
 //! locked. An attempt that turns out right gives its count back (an address keeps what others failed), and one
 //! that was never judged (the service was busy, a store failed) gives it back too.
 //!
 //! **What cannot be made outside this crate.** [`SignedIn`] and [`SessionPrincipal`] are `#[non_exhaustive]`,
-//! [`NewSession`](crate::session::NewSession) and the OpenID Connect
-//! [`VerifiedIdentity`](crate::oidc::VerifiedIdentity) have no public constructor, the session and token stores
+//! [`NewSession`] and the OpenID Connect
+//! [`VerifiedIdentity`] have no public constructor, the session and token stores
 //! are reachable only through this type, and a [`ClientAddress`] comes only from the trusted-proxy rule. A
 //! [`Principal`] is `inklkunn-core`'s type, and core's gate (not the type system) keeps web sources from naming
 //! how one is made.

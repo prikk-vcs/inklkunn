@@ -57,7 +57,8 @@ pub struct Settings {
     pub dev_unconfined: bool,
 }
 
-fn absolute(name: &str, value: &OsStr) -> Result<PathBuf, ConfigError> {
+/// A setting that must be an absolute, UTF-8 path.
+pub(crate) fn absolute_setting(name: &str, value: &OsStr) -> Result<PathBuf, ConfigError> {
     let path = PathBuf::from(value);
     if value.is_empty() || !path.is_absolute() {
         return Err(ConfigError(format!(
@@ -80,16 +81,16 @@ impl Settings {
         let required = |name: &str| {
             get(name)
                 .ok_or_else(|| ConfigError(format!("{name} is not set; it is required")))
-                .and_then(|v| absolute(name, &v))
+                .and_then(|v| absolute_setting(name, &v))
         };
         let data_dir = required("INKLKUNN_DATA_DIR")?;
         let secret_file = required("INKLKUNN_SECRET_FILE")?;
         let key_dir = match get("INKLKUNN_KEY_DIR") {
-            Some(v) => absolute("INKLKUNN_KEY_DIR", &v)?,
+            Some(v) => absolute_setting("INKLKUNN_KEY_DIR", &v)?,
             None => data_dir.join("keys"),
         };
         let seed_dir = match get("INKLKUNN_SEED_DIR") {
-            Some(v) => absolute("INKLKUNN_SEED_DIR", &v)?,
+            Some(v) => absolute_setting("INKLKUNN_SEED_DIR", &v)?,
             None => PathBuf::from("/dev/shm/inklkunn"),
         };
         let prikk = match get("INKLKUNN_PRIKK") {

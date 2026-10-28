@@ -60,21 +60,31 @@ fn key_store_failures_are_told_in_the_signers_terms() {
 
 #[test]
 fn a_leftover_seed_directory_is_added_to_a_failure_and_never_replaces_it() {
-    for e in [
-        AcceptError::Refused("r".into()),
-        AcceptError::Incomplete("i".into()),
-        AcceptError::Unavailable("u".into()),
+    for (e, payload) in [
+        (AcceptError::Refused("r-payload".into()), "r-payload"),
+        (AcceptError::WorktreeDirty("d-payload".into()), "d-payload"),
+        (
+            AcceptError::Queued {
+                step: "seal",
+                detail: "q-payload".into(),
+            },
+            "q-payload",
+        ),
+        (
+            AcceptError::SealedUnconfirmed {
+                sealed: None,
+                why: Unconfirmed::NotOurs,
+                detail: "s-payload".into(),
+            },
+            "s-payload",
+        ),
+        (AcceptError::Unavailable("u-payload".into()), "u-payload"),
     ] {
         let text = note_leftover(e.clone()).to_string();
         assert!(text.contains("decrypted seeds"), "{text}");
         assert!(
-            text.contains(
-                &e.to_string()
-                    .trim_start_matches("refused, nothing changed: ")
-                    .trim_start_matches("could not run: ")
-                    .trim_start_matches("committed but not sealed; recovery pending: ")
-                    .to_owned()
-            )
+            text.contains(payload),
+            "the failure's own words stay: {text}"
         );
     }
     assert_eq!(

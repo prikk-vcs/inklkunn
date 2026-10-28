@@ -27,6 +27,14 @@ pub enum Cleanup {
         /// Why it could not be removed.
         error: String,
     },
+    /// The directories are gone but the wiki's sealed key record could not be removed from the key store;
+    /// the id (never the name) and the error, for the operator.
+    KeysLeftBehind {
+        /// The unfinished wiki's id: its record is `<id>.key.json` in the key directory.
+        wiki: WikiId,
+        /// Why it could not be removed.
+        error: String,
+    },
 }
 
 impl std::fmt::Display for Cleanup {
@@ -37,6 +45,10 @@ impl std::fmt::Display for Cleanup {
                 f,
                 "the unfinished repository at {} could not be removed ({error}); remove it by hand",
                 repo.display()
+            ),
+            Cleanup::KeysLeftBehind { wiki, error } => write!(
+                f,
+                "the key record {wiki}.key.json of the unfinished wiki could not be removed ({error}); remove it from the key directory by hand"
             ),
         }
     }
@@ -141,13 +153,21 @@ pub fn creation_message(record: &WikiRecord) -> String {
     system_message(&format!("Create the wiki {}", record.display_name))
 }
 
-fn discard(layout: &RootLayout, id: &WikiId) -> Cleanup {
-    match layout.discard_unfinished(id) {
-        Ok(()) => Cleanup::Removed,
-        Err(e) => Cleanup::LeftBehind {
+/// Remove everything a creation that did not finish made: the directories, then whatever the signer kept
+/// elsewhere (the sealed key record). Both are tried; the first thing left behind is what is reported.
+fn discard(layout: &RootLayout, signer: &dyn RepositoryBootstrap, id: &WikiId) -> Cleanup {
+    let directories = layout.discard_unfinished(id);
+    let keys = signer.discard_unfinished(&layout.repo_dir(id));
+    match (directories, keys) {
+        (Err(e), _) => Cleanup::LeftBehind {
             repo: layout.repo_dir(id),
             error: e.to_string(),
         },
+        (Ok(()), Err(e)) => Cleanup::KeysLeftBehind {
+            wiki: id.clone(),
+            error: e.to_string(),
+        },
+        (Ok(()), Ok(())) => Cleanup::Removed,
     }
 }
 
@@ -185,7 +205,7 @@ pub fn create_wiki(
             return Err(CreateWikiError::Signer {
                 step: "create",
                 error,
-                cleanup: discard(layout, &id),
+                cleanup: discard(layout, signer, &id),
             });
         }
     };
@@ -195,7 +215,7 @@ pub fn create_wiki(
     if let Err(error) = bundle::write_layout(&repo, &record, inklkunn_version) {
         return Err(CreateWikiError::Files {
             error,
-            cleanup: discard(layout, &id),
+            cleanup: discard(layout, signer, &id),
         });
     }
     // 6. The first change, sealed.
@@ -205,7 +225,7 @@ pub fn create_wiki(
             return Err(CreateWikiError::Signer {
                 step: "seal",
                 error,
-                cleanup: discard(layout, &id),
+                cleanup: discard(layout, signer, &id),
             });
         }
     };
@@ -215,14 +235,14 @@ pub fn create_wiki(
         Err(e) => {
             return Err(CreateWikiError::Verification {
                 error: Some(e),
-                cleanup: discard(layout, &id),
+                cleanup: discard(layout, signer, &id),
             });
         }
     };
     if !verification.verdict.ok {
         return Err(CreateWikiError::Verification {
             error: None,
-            cleanup: discard(layout, &id),
+            cleanup: discard(layout, signer, &id),
         });
     }
     record.verification = Verification {
@@ -233,7 +253,7 @@ pub fn create_wiki(
     let record = match store.insert(record) {
         Ok(r) => r,
         Err(e) => {
-            let _ = discard(layout, &id);
+            let _ = discard(layout, signer, &id);
             return Err(CreateWikiError::Store(e));
         }
     };

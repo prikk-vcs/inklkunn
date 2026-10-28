@@ -10,8 +10,8 @@ use std::time::Duration;
 
 use inklkunn_core::message::{Actor, BlockId, Kind, Message, Summary, SystemLabel};
 use inklkunn_core::reconcile::{
-    AcceptedRecord, Finding, RecordedActs, RecordsError, SystemActRecord, reconcile,
-    record_findings,
+    AcceptedRecord, Finding, ReadBounds, RecordedActs, RecordsError, SystemActRecord, reconcile,
+    reconcile_with, record_findings,
 };
 use inklkunn_core::{
     Accept, AcceptanceLedger, AcceptanceToken, ExpectedMessage, LedgerError, PreparedChange,
@@ -38,6 +38,8 @@ fn dir(base: &Path, tag: &str) -> Dir {
     let p = base.join(format!("inklkunn-rec-{}-{tag}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
     std::fs::create_dir_all(&p).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o700)).unwrap();
     Dir(p)
 }
 
@@ -285,7 +287,7 @@ fn an_unrecorded_seal_and_an_unsealed_acceptance_are_both_reported_and_nothing_i
         branch_before
     );
     let audit = MemoryAudit::new();
-    record_findings(&r, &audit, 1_700_000_000).unwrap();
+    record_findings(&r, &[], &audit, 1_700_000_000).unwrap();
     let events = audit.events();
     assert_eq!(events.len(), 2);
     assert!(
@@ -307,4 +309,51 @@ fn an_unrecorded_seal_and_an_unsealed_acceptance_are_both_reported_and_nothing_i
     let again = w.reconcile();
     assert!(again.is_clean(), "{:?}", again.findings);
     assert_eq!(w.tip(), before);
+}
+
+#[test]
+fn a_history_longer_than_the_first_read_is_reconciled_in_full_against_a_real_prikk() {
+    // The regression this guards: paging a history by block id, which real prikk answers with an empty list
+    // and exit 0, once made the reconciliation look at the newest page only and call the rest clean (or, with
+    // records for the rest, call them all missing). The read here is made to grow from 64 blocks.
+    let Some(w) = world("long") else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    for n in 1..=150 {
+        w.accept(n, true);
+    }
+    let bounds = ReadBounds {
+        first_read: 64,
+        max_read: 100_000,
+    };
+    let read = || {
+        reconcile_with(&w.wiki, &w.repo, &w.storage, w.books.as_ref(), bounds).expect("reconciled")
+    };
+    let r = read();
+    assert!(
+        r.is_clean(),
+        "{} findings, the first {:?}",
+        r.findings.len(),
+        r.findings.first()
+    );
+    assert_eq!((r.blocks, r.accepted, r.system_acts), (151, 150, 1));
+    // An acceptance whose record is lost, far beyond the first read, is still found.
+    w.books.accepted.lock().unwrap().remove(0);
+    let r = read();
+    assert_eq!(r.findings.len(), 1, "{:?}", r.findings);
+    assert!(
+        matches!(r.findings.first(), Some(Finding::UnrecordedSeal { .. })),
+        "{:?}",
+        r.findings
+    );
+    // And a bound that is too small is an error, not a quiet cut.
+    let tiny = ReadBounds {
+        first_read: 16,
+        max_read: 64,
+    };
+    assert!(matches!(
+        reconcile_with(&w.wiki, &w.repo, &w.storage, w.books.as_ref(), tiny),
+        Err(inklkunn_core::reconcile::ReconcileError::TooLarge { .. })
+    ));
 }
