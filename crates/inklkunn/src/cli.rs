@@ -4,10 +4,11 @@
 use std::ffi::OsString;
 use std::io::Write;
 
-use inklkunn_prikk::MIN_PRIKK_VERSION;
+use inklkunn_prikk::sandbox::Sandbox;
+use inklkunn_prikk::{Admission, MIN_PRIKK_VERSION, PrikkCli};
 
-use crate::config::Settings;
-use crate::keys;
+use crate::config::{self, Settings, WebSettings};
+use crate::{keys, serve};
 
 /// The commit the release workflow built from (`INKLKUNN_COMMIT` at build time), or `unknown`.
 const COMMIT: &str = match option_env!("INKLKUNN_COMMIT") {
@@ -15,11 +16,25 @@ const COMMIT: &str = match option_env!("INKLKUNN_COMMIT") {
     None => "unknown",
 };
 
-/// What `--version` prints.
-pub(crate) fn version_text() -> String {
+/// The prikk this host would use and what it says, for `--version`: the version found, or why none is.
+fn found_prikk(get_env: &dyn Fn(&str) -> Option<OsString>) -> String {
+    let prikk = get_env("INKLKUNN_PRIKK").unwrap_or_else(|| OsString::from("prikk"));
+    match PrikkCli::open(
+        &prikk,
+        Sandbox::Unconfined,
+        Admission::new(1 << 30, 64 << 20, std::time::Duration::from_millis(200)),
+    ) {
+        Ok(cli) => format!("found {}", cli.version()),
+        Err(e) => format!("no usable prikk: {e}"),
+    }
+}
+
+/// What `--version` prints: the build, the floor it needs, and the prikk found here.
+pub(crate) fn version_text(get_env: &dyn Fn(&str) -> Option<OsString>) -> String {
     format!(
-        "inklkunn {} (commit {COMMIT}; requires prikk >= {MIN_PRIKK_VERSION}, bubblewrap, prlimit)",
-        env!("CARGO_PKG_VERSION")
+        "inklkunn {} (commit {COMMIT}; requires prikk >= {MIN_PRIKK_VERSION}, bubblewrap, prlimit; {})",
+        env!("CARGO_PKG_VERSION"),
+        found_prikk(get_env)
     )
 }
 
@@ -39,15 +54,10 @@ pub(crate) fn run(
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
     match words.as_slice() {
         ["--version" | "-V"] | [] if !dev_unconfined => {
-            let _ = writeln!(out, "{}", version_text());
-            if words.is_empty() {
-                let _ = writeln!(
-                    out,
-                    "no server yet; the `serve` command arrives with RFC 003's handoff"
-                );
-            }
+            let _ = writeln!(out, "{}", version_text(get_env));
             0
         }
+        ["serve", rest @ ..] => serve_command(rest, get_env, dev_unconfined, err),
         ["wiki", "keys", ..] => {
             let rest: Vec<String> = args.iter().skip(2).cloned().collect();
             let command = match keys::parse(&rest) {
@@ -69,12 +79,80 @@ pub(crate) fn run(
         other => {
             let _ = writeln!(
                 err,
-                "inklkunn: unknown command `{}`; there are `--version` and `wiki keys`\n{}",
+                "inklkunn: unknown command `{}`; there are `--version`, `serve` and `wiki keys`\n{}\n{}",
                 other.join(" "),
+                SERVE_USAGE,
                 keys::USAGE
             );
             2
         }
+    }
+}
+
+const SERVE_USAGE: &str = "usage: inklkunn [--dev-unconfined] serve [--config FILE]";
+
+/// `serve [--config FILE]`: the settings (the file, then the environment over it), the checks, the server.
+fn serve_command(
+    rest: &[&str],
+    get_env: &dyn Fn(&str) -> Option<OsString>,
+    dev_unconfined: bool,
+    err: &mut dyn Write,
+) -> i32 {
+    let config_path = match rest {
+        [] => None,
+        ["--config", path] => Some(*path),
+        _ => {
+            let _ = writeln!(
+                err,
+                "inklkunn: serve takes only --config FILE\n{SERVE_USAGE}"
+            );
+            return 2;
+        }
+    };
+    let fail = |err: &mut dyn Write, why: &dyn std::fmt::Display| {
+        let _ = writeln!(err, "inklkunn: {why}");
+        1
+    };
+    let file = match config_path {
+        None => std::collections::HashMap::new(),
+        Some(path) => match std::fs::read_to_string(path)
+            .map_err(|e| {
+                config::ConfigError(format!(
+                    "the configuration file {path} could not be read ({})",
+                    e.kind()
+                ))
+            })
+            .and_then(|text| {
+                config::read_file(&text).map_err(|e| config::ConfigError(format!("{path}: {e}")))
+            }) {
+            Ok(f) => f,
+            Err(e) => return fail(err, &e),
+        },
+    };
+    let get = config::layered(get_env, &file);
+    let settings = match Settings::load(&get, dev_unconfined) {
+        Ok(s) => s,
+        Err(e) => return fail(err, &e),
+    };
+    let web = match WebSettings::load(&get) {
+        Ok(w) => w,
+        Err(e) => return fail(err, &e),
+    };
+    if dev_unconfined {
+        let _ = writeln!(err, "{}", config::UNCONFINED_BANNER);
+    }
+    let prepared = match serve::prepare(&settings, &web) {
+        Ok(p) => p,
+        Err(e) => return fail(err, &e),
+    };
+    match serve::run(
+        prepared,
+        inklkunn_web::serve::Shutdown::on_signal(),
+        err,
+        |_| {},
+    ) {
+        Ok(()) => 0,
+        Err(e) => fail(err, &e),
     }
 }
 

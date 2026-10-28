@@ -154,3 +154,23 @@ RFC 002 and RFC 003 — the first handoffs after M0, in progress. Still nothing 
   `INKLKUNN_SECRET_FILE`, `INKLKUNN_KEY_DIR`, `INKLKUNN_SEED_DIR`, `INKLKUNN_PRIKK`, and the `--dev-unconfined`
   flag, which prints a banner and is not settable from the environment). `docs/KEYS.md` is the runbook,
   including the compromise procedure and what a lost key store means.
+
+RFC 003 — the read path, in progress (handoff 003 T1 – T3). Still no page is served.
+
+- **The web foundations** (RFC 003 D-5; handoff 003 T1). `inklkunn-web` holds what every later page inherits.
+  *Two origins, one listener:* a request goes to the router of the origin its `Host` names, and a host that
+  names neither is misdirected (421), so the content origin never answers an application route and the
+  application never serves wiki-authored bytes. *Headers on every response* (200, 304, 404, 405, 421, errors),
+  set in one function that a handler cannot override for the security headers: a Content-Security-Policy with
+  `default-src 'none'` and **no script source at all** (one stylesheet from the application origin), a
+  sandboxed policy on the content origin, `nosniff`, `Referrer-Policy: same-origin`, `Permissions-Policy`,
+  frame denial, cross-origin policies, HSTS on https, and `Cache-Control: private, no-cache` with `Vary` unless
+  a handler says otherwise. *One route registry:* routes are registered in `routes.rs` only (a gate), each with
+  an action or a stated public reason, and a test fails any route that could shadow a page title (nothing but a
+  wiki's slug and the reserved prefix `-/` may precede one). *Validated at start, every refusal named:* the
+  bind address and the two origins are checked together (http only for loopback; the origins differ; on a
+  reachable address the content origin has its own host), `Sandbox::Unconfined` needs the `--dev-unconfined`
+  flag and prints a banner, prikk must be found at the floor, the store must open. `inklkunn serve [--config
+  FILE]` reads `NAME=value` lines (a typo is refused with its line number) under the environment;
+  `--version` prints the floor and the prikk found. The only route is `/-/health`. Dependencies: `axum`,
+  `tokio` (1.54.1, past RUSTSEC-2026-0386) and `tower-service` (+26 lock entries, measured).

@@ -9,6 +9,19 @@ repository.workspace = true
 description = "inklkunn's HTTP surface: the server-rendered UI, the read and write API, feeds, the message catalog, the sanitizer and the content origin."
 
 [dependencies]
+inklkunn-core = { workspace = true }
+# The standard async web stack (RFC 003; measured in docs/dependency-policy.md). HTTP/1.1 only, behind the
+# operator's TLS-terminating proxy; no JSON extractor and no WebSocket, no multipart: each is added by the task
+# that needs it, with its own row.
+axum = { version = "0.8", default-features = false, features = ["http1", "query", "form", "tokio"] }
+# tokio 1.53.3 or later (RUSTSEC-2026-0386, `AsyncFd`; ledger PL-10): the lock holds 1.54.1.
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync", "time", "signal"] }
+# The Service trait, to hand a request to one of two routers. Already locked as axum's own dependency.
+tower-service = "0.3"
+
+[dev-dependencies]
+# Test-only: drive a router with `oneshot`, with no socket.
+tower = { version = "0.5", features = ["util"] }
 
 [lints]
 workspace = true

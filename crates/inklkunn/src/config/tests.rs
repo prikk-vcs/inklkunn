@@ -120,3 +120,78 @@ fn unconfined_is_a_flag_and_the_sandbox_follows_it() {
     .unwrap();
     assert!(!s.dev_unconfined);
 }
+
+#[test]
+fn the_web_settings_have_defaults_and_named_refusals() {
+    let w = WebSettings::load(&env(&[
+        ("INKLKUNN_APP_ORIGIN", "https://wiki.example"),
+        ("INKLKUNN_CONTENT_ORIGIN", "https://files.example"),
+    ]))
+    .unwrap();
+    assert_eq!(
+        (w.bind.as_str(), w.admission_budget_mib, w.admission_wait_ms),
+        ("127.0.0.1:8080", 1024, 2000)
+    );
+    let e = |extra: &[(&str, &str)]| {
+        let mut all = vec![
+            ("INKLKUNN_APP_ORIGIN", "https://a.example"),
+            ("INKLKUNN_CONTENT_ORIGIN", "https://b.example"),
+        ];
+        all.extend_from_slice(extra);
+        WebSettings::load(&env(&all)).unwrap_err().0
+    };
+    assert!(
+        WebSettings::load(&env(&[]))
+            .unwrap_err()
+            .0
+            .contains("INKLKUNN_APP_ORIGIN")
+    );
+    assert!(
+        WebSettings::load(&env(&[("INKLKUNN_APP_ORIGIN", "https://a.example")]))
+            .unwrap_err()
+            .0
+            .contains("INKLKUNN_CONTENT_ORIGIN")
+    );
+    assert!(
+        e(&[("INKLKUNN_ADMISSION_BUDGET_MIB", "lots")]).contains("INKLKUNN_ADMISSION_BUDGET_MIB")
+    );
+    assert!(e(&[("INKLKUNN_ADMISSION_BUDGET_MIB", "10")]).contains("256 to"));
+    assert!(e(&[("INKLKUNN_ADMISSION_WAIT_MS", "0")]).contains("INKLKUNN_ADMISSION_WAIT_MS"));
+}
+
+#[test]
+fn a_configuration_file_is_name_equals_value_and_a_typo_is_refused() {
+    let file = read_file(
+        "# a comment\n\nINKLKUNN_DATA_DIR = /var/lib/inklkunn\nINKLKUNN_BIND=0.0.0.0:80\n",
+    )
+    .unwrap();
+    assert_eq!(
+        file.get("INKLKUNN_DATA_DIR"),
+        Some(&OsString::from("/var/lib/inklkunn"))
+    );
+    assert_eq!(file.len(), 2);
+    for (bad, why) in [
+        (
+            "INKLKUNN_BNID=1",
+            "line 1: `INKLKUNN_BNID` is not a setting",
+        ),
+        ("INKLKUNN_BIND", "line 1: expected NAME=value"),
+        (
+            "INKLKUNN_BIND=a\nINKLKUNN_BIND=b",
+            "line 2: `INKLKUNN_BIND` is set twice",
+        ),
+        ("export INKLKUNN_BIND=a", "is not a setting"),
+    ] {
+        assert!(read_file(bad).unwrap_err().0.contains(why), "{bad:?}");
+    }
+}
+
+#[test]
+fn the_environment_wins_over_the_file() {
+    let file = read_file("INKLKUNN_BIND=0.0.0.0:80\nINKLKUNN_PRIKK=/opt/prikk\n").unwrap();
+    let environment = env(&[("INKLKUNN_BIND", "127.0.0.1:9000")]);
+    let get = layered(&environment, &file);
+    assert_eq!(get("INKLKUNN_BIND"), Some(OsString::from("127.0.0.1:9000")));
+    assert_eq!(get("INKLKUNN_PRIKK"), Some(OsString::from("/opt/prikk")));
+    assert_eq!(get("INKLKUNN_DATA_DIR"), None);
+}

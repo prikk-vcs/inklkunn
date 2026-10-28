@@ -1,11 +1,13 @@
 #![forbid(unsafe_code)]
 //! The `inklkunn` binary. What exists in this release: `--version`, which names the build's commit and the
-//! prikk floor it was built for, so an operator can tell what they run, and `wiki keys`, a wiki's keys over
-//! time (RFC 002 D-8). The `serve` command arrives with RFC 003's handoff.
+//! prikk floor it was built for and the prikk it finds, so an operator can tell what they run; `wiki keys`, a
+//! wiki's keys over time (RFC 002 D-8); and `serve`, which checks everything and serves (RFC 003; its pages
+//! arrive task by task).
 
 mod cli;
 mod config;
 mod keys;
+mod serve;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();

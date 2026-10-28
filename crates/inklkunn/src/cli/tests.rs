@@ -32,6 +32,10 @@ fn the_version_names_the_build_and_the_floor() {
         assert_eq!(status, 0, "{args:?}");
         assert!(out.starts_with("inklkunn "), "{out}");
         assert!(out.contains("requires prikk >= 0.54.0"), "{out}");
+        assert!(
+            out.contains("found prikk 0.") || out.contains("no usable prikk"),
+            "{out}"
+        );
     }
 }
 
@@ -71,4 +75,35 @@ fn missing_settings_are_named_and_nothing_is_touched() {
         err.contains("no store at /nonexistent/inklkunn/store.sqlite"),
         "{err}"
     );
+}
+
+#[test]
+fn serve_names_a_missing_setting_a_bad_file_and_a_bad_option() {
+    let (status, _, err) = run_with("serve", &[]);
+    assert_eq!(status, 1);
+    assert!(err.contains("INKLKUNN_DATA_DIR"), "{err}");
+    let (status, _, err) = run_with("serve --config /nonexistent/inklkunn.conf", &[]);
+    assert_eq!(status, 1);
+    assert!(
+        err.contains("/nonexistent/inklkunn.conf could not be read"),
+        "{err}"
+    );
+    let (status, _, err) = run_with("serve --port 80", &[]);
+    assert_eq!(status, 2);
+    assert!(err.contains("usage: inklkunn"), "{err}");
+}
+
+#[test]
+fn a_configuration_file_with_a_typo_is_refused_with_its_line() {
+    let dir = std::env::temp_dir().join(format!("inklkunn-cli-conf-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("inklkunn.conf");
+    std::fs::write(&file, "INKLKUNN_DATA_DIR=/data\nINKLKUNN_BNID=0.0.0.0:80\n").unwrap();
+    let (status, _, err) = run_with(&format!("serve --config {}", file.display()), &[]);
+    assert_eq!(status, 1);
+    assert!(
+        err.contains("line 2: `INKLKUNN_BNID` is not a setting"),
+        "{err}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
