@@ -15,6 +15,10 @@
 //! decrypted into a private tmpfs for one call, and D-4 adds the acceptance guard in front of the sequence.
 //! The sequence itself (`writes`, private) is what RFC 002 keeps.
 
+// The key store is built and tested here and wired to `Accept` by handoff 002 T4; until then the product
+// build constructs none of it. The module stays private: the key-reachability gate keeps every other crate
+// from naming it.
+#[cfg_attr(not(test), allow(dead_code, unused_imports))]
 mod key_store;
 // Without the `bootstrap` feature nothing in M0 constructs the key directory or runs the write sequence:
 // RFC 002's handoff (T3, T4) wires them to the real key store and `Accept`. Until then they are kept, not

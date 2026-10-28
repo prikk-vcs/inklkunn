@@ -12,6 +12,9 @@
 //! - **prikk spawn** (`LAY-3`): only `inklkunn-prikk` and `inklkunn-signer` spawn a process at all (no
 //!   `std::process` or `tokio::process` elsewhere), and `inklkunn-prikk` names no write verb.
 //! - **markup purity** (`LAY-6`): `inklkunn-markup` has no I/O, clock, process or randomness dependency.
+//! - **no public seed** (`INV-2`, RFC 002 D-3): no public item of the signer crate mentions a seed, a
+//!   secret, a key directory or the key store's types, so nothing it exports can return key material or the
+//!   path of any.
 //! - **route registration** (`LAY-2`, `ENF-3`): the web crate registers routes in its `routes.rs` and
 //!   nowhere else, so the route table (`inklkunn_core::RouteTable`) is complete by construction.
 //! - **privileged principals** (`INV-4`, RFC 002 D-1): no web product source names a system principal or
@@ -126,6 +129,20 @@ pub const PRIVILEGED_PRINCIPAL_NAMES: &[&str] = &[
     "Principal::Account",
     "Principal::session",
     "Principal::token",
+];
+
+/// Words and types that must not appear in a public item of the signer crate (matched on the item's line,
+/// case-insensitively for `seed`, exactly for the type names). `pub(crate)` and `pub(super)` items are not
+/// public and are not examined.
+pub const SIGNER_PUBLIC_FORBIDDEN_TYPES: &[&str] = &[
+    "KeyDir",
+    "SeedDir",
+    "SeedBase",
+    "Seeds",
+    "Secret",
+    "Zeroizing",
+    "MasterKey",
+    "KeyStore",
 ];
 
 /// The workspace root: two levels above this crate's manifest.
@@ -760,6 +777,32 @@ fn token_hits(source: &str, tokens: &[&str]) -> Vec<(usize, String)> {
                     .is_some_and(|c| c.is_alphanumeric() || c == '_');
             if !glued {
                 out.push((line_of.get(at).copied().unwrap_or(1), (*token).to_owned()));
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Lines of the signer's `source` that declare a **public** item (`pub`, not `pub(crate)` or `pub(super)`)
+/// whose line mentions a seed (any case) or one of [`SIGNER_PUBLIC_FORBIDDEN_TYPES`]. Comments and strings
+/// are excluded. A public signature that names a seed, a secret or a key directory could hand one out.
+pub fn public_seed_exposures(source: &str) -> Vec<(usize, String)> {
+    let code = strip_strings(source);
+    let mut out = Vec::new();
+    for (i, line) in code.lines().enumerate() {
+        let t = line.trim_start();
+        let is_public = t.starts_with("pub ") && !t.starts_with("pub(");
+        if !is_public {
+            continue;
+        }
+        if t.to_ascii_lowercase().contains("seed") {
+            out.push((i + 1, "seed".to_owned()));
+        }
+        for name in SIGNER_PUBLIC_FORBIDDEN_TYPES {
+            if !word_mentions(t, name).is_empty() {
+                out.push((i + 1, (*name).to_owned()));
             }
         }
     }

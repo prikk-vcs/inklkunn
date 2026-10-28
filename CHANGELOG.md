@@ -79,3 +79,14 @@ RFC 002 and RFC 003 — the first handoffs after M0, in progress. Still nothing 
   *Output change:* `inklkunn_core::authorize` (the free function that denied everything) is replaced by
   `Authorizer::authorize`; `Resource::Wiki` no longer carries a visibility; `Principal::Account` carries the
   credential's scope.
+- **The key store** (RFC 002 D-3; handoff 002 T3). Each wiki's author and maintainer seeds are sealed in one
+  record, `<wiki id>.key.json`, under a master key that Argon2id derives once at start from the operator's
+  secret (a file; 16 to 1024 bytes without its trailing line break) and a store header that detects a wrong
+  secret when the store is opened. Records use XChaCha20-Poly1305 with a fresh 192-bit nonce each, and bind
+  the wiki, key ids, generation and times as associated data, so none can be edited or moved to another wiki.
+  A seed is decrypted only into a new 0700 directory on a verified tmpfs with 0600 files, for one write call,
+  overwritten and removed afterwards (and on a panic); a removal that fails is reported, never swallowed.
+  Randomness comes from `/dev/urandom` with no fallback. Nothing in the module is public, and a new gate fails
+  if any public item of the signer crate mentions a seed, a secret or a key directory. The module is built
+  and tested here and is wired to `Accept` by the next task. Dependencies: `argon2`, `chacha20poly1305`,
+  `zeroize` (+22 lock entries, measured; see the dependency policy).

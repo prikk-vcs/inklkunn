@@ -24,6 +24,10 @@ pub struct KeyIds {
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct KeyDir {
     dir: PathBuf,
+    /// The author and maintainer key ids, when the owner of the directory states them (the key store does:
+    /// it writes no `.key-id` files, and prikk is told the ids through its environment). Without them the
+    /// ids are read from the `.key-id` files prikk wrote beside generated seeds (the bootstrap signer).
+    ids: Option<(String, String)>,
 }
 
 impl std::fmt::Debug for KeyDir {
@@ -47,7 +51,18 @@ impl KeyDir {
                 "the key directory path must be UTF-8".to_owned(),
             ));
         }
-        Ok(KeyDir { dir })
+        Ok(KeyDir { dir, ids: None })
+    }
+
+    /// Name a key directory whose key ids are stated rather than read from files.
+    pub(crate) fn with_ids(
+        dir: impl Into<PathBuf>,
+        author_key_id: &str,
+        maintainer_key_id: &str,
+    ) -> Result<Self, SignerError> {
+        let mut key_dir = Self::new(dir)?;
+        key_dir.ids = Some((author_key_id.to_owned(), maintainer_key_id.to_owned()));
+        Ok(key_dir)
     }
 
     /// The directory.
@@ -91,10 +106,14 @@ impl KeyDir {
                 self.seed_file_text("maintainer"),
             ),
         ];
-        if let Some(id) = self.key_id("author") {
+        let (author, maintainer) = match &self.ids {
+            Some((a, m)) => (Some(a.clone()), Some(m.clone())),
+            None => (self.key_id("author"), self.key_id("maintainer")),
+        };
+        if let Some(id) = author {
             env.push(("PRIKK_AUTHOR_KEY_ID".to_owned(), id));
         }
-        if let Some(id) = self.key_id("maintainer") {
+        if let Some(id) = maintainer {
             env.push(("PRIKK_MAINTAINER_KEY_ID".to_owned(), id));
         }
         env

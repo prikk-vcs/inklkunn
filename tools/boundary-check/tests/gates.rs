@@ -521,3 +521,53 @@ fn privileged_principal_gate_catches_every_construction_and_spares_prose() {
         assert_eq!(privileged_principal_mentions(fine), vec![], "{fine:?}");
     }
 }
+
+#[test]
+fn no_public_item_of_the_signer_mentions_a_seed_a_secret_or_a_key_directory() {
+    let root = workspace_root();
+    for src in rust_sources(&root.join("crates/inklkunn-signer/src")) {
+        let hits = public_seed_exposures(&read(&src));
+        assert!(
+            hits.is_empty(),
+            "PUBLIC SEED violation (INV-2, RFC 002 D-3): {} declares public items that mention {hits:?}; \
+             nothing the signer exports may return or name key material",
+            src.display()
+        );
+    }
+}
+
+#[test]
+fn the_public_seed_gate_catches_every_shape_and_spares_what_is_not_public() {
+    for planted in [
+        "pub fn seed_path(&self) -> PathBuf {\n",
+        "pub fn read_seed(&self) -> Vec<u8> {\n",
+        "pub fn Seed_bytes(&self) -> Vec<u8> {\n",
+        "pub fn key_dir(&self) -> &KeyDir {\n",
+        "pub struct Holder { pub dir: SeedDir }\n",
+        "pub fn open(secret: Secret) {}\n",
+        "pub use key_store::KeyStore;\n",
+        "pub fn bytes(&self) -> Zeroizing<Vec<u8>> {\n",
+        "    pub fn master(&self) -> &MasterKey {\n",
+        "pub fn base(&self) -> &SeedBase {\n",
+        "pub fn unlock(&self) -> Seeds {\n",
+    ] {
+        assert!(!public_seed_exposures(planted).is_empty(), "{planted:?}");
+    }
+    for fine in [
+        "pub(crate) fn seed_path(&self) -> PathBuf {\n",
+        "pub(super) struct Seeds {\n",
+        "pub(crate) use seeds::SeedDir;\n",
+        "fn seed_path(&self) -> PathBuf {\n",
+        "/// pub fn seed_path() is only mentioned\n",
+        "let s = \"pub fn seed_path\";\n",
+        "pub fn sealed_ids(&self) -> SealedIds {\n",
+        "pub struct KeyIds { pub author: String }\n",
+        "pub fn secretary() {}\n",
+        "pub fn open_keystore_at(p: &Path) {}\n",
+    ] {
+        assert_eq!(public_seed_exposures(fine), vec![], "{fine:?}");
+    }
+    // A type name is matched as a word: `Secretary` and `KeyStoreLike` are other names.
+    assert_eq!(public_seed_exposures("pub fn f(a: Secretary) {}\n"), vec![]);
+    assert_eq!(public_seed_exposures("pub fn f(a: Secret) {}\n").len(), 1);
+}
