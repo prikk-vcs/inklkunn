@@ -463,7 +463,13 @@ proptest! {
     #[test]
     fn display_names_round_trip_or_are_refused_at_the_type(raw in display_name()) {
         match DisplayName::new(&raw) {
-            Err(_) => prop_assert!(raw.is_empty() || raw.chars().count() > 120 || raw.chars().any(char::is_control) || raw.trim() != raw),
+            Err(_) => {
+                let reason_listed = raw.is_empty()
+                    || raw.chars().count() > 120
+                    || raw.chars().any(|c| c.is_control() || c == '\u{2028}' || c == '\u{2029}')
+                    || raw.trim() != raw;
+                prop_assert!(reason_listed, "refused for no listed reason: {:?}", raw);
+            }
             Ok(name) => {
                 let m = Message::proposal(
                     summary("s"),
