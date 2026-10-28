@@ -19,7 +19,9 @@ pub mod root;
 pub mod sqlite;
 
 pub use access::{Role, RoleGrant, RoleStore, Scope};
-pub use audit::{AuditEvent, AuditOutcome, AuditSink, MemoryAudit};
+pub use audit::{
+    AuditEvent, AuditLog, AuditOutcome, AuditRecord, AuditSink, MemoryAudit, export_jsonl,
+};
 pub use memory::MemoryStore;
 pub use record::{
     AccountId, DisplayName, DisplayNameError, NewWiki, NewWikiError, ProposalId, Slug, SlugError,

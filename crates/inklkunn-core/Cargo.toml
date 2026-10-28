@@ -15,8 +15,9 @@ inklkunn-signer = { path = "../inklkunn-signer", version = "0.0.0" }
 inklkunn-store = { path = "../inklkunn-store", version = "0.0.0" }
 
 [dev-dependencies]
-# The tests create wikis with the bootstrap signer; the product build never enables the feature.
-inklkunn-signer = { path = "../inklkunn-signer", version = "0.0.0", features = ["bootstrap"] }
+# The tests create wikis with the bootstrap signer and open the real signer with the cheapest key derivation;
+# the product build never enables either feature.
+inklkunn-signer = { path = "../inklkunn-signer", version = "0.0.0", features = ["bootstrap", "test-knobs"] }
 
 [lints]
 workspace = true

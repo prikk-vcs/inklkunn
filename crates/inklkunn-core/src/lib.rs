@@ -4,6 +4,7 @@
 //!
 //! - [`authorize`](mod@authorize): the one default-deny decision (RFC 002 D-2): the pure rule [`decide`] and the
 //!   [`Authorizer`] that loads the facts itself, fails closed and audits consequential decisions.
+//! - [`reconcile`]: the sealed history against the service's records (RFC 002 D-7), reported and never repaired.
 //! - [`routes`]: the table of entry points, each guarded by an action or public with a reason.
 //! - [`accept`]: the `Accept` trait (RFC 002 D-4), defined in `inklkunn-signer`, which implements it, and
 //!   re-exported here; nothing else may implement it.
@@ -18,6 +19,7 @@ pub mod assurance;
 pub mod authorize;
 pub mod bundle;
 pub mod egress;
+pub mod reconcile;
 pub mod routes;
 pub mod wiki;
 

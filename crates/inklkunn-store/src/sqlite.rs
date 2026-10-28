@@ -15,13 +15,14 @@ use std::sync::{Mutex, PoisonError};
 use rusqlite::{Connection, OptionalExtension, Row, TransactionBehavior, params};
 
 use crate::access::{Role, RoleGrant, RoleStore};
+use crate::audit::{AuditEvent, AuditLog, AuditOutcome, AuditRecord, AuditSink};
 use crate::record::{
     AccountId, DisplayName, Slug, Verification, VerificationState, Visibility, WikiId, WikiRecord,
 };
 use crate::{Result, StoreError, WikiStore};
 
 /// The schema version this build writes and reads: the last of [`MIGRATIONS`].
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 
 /// Version 1: M0's schema, the wiki records.
 const V1: &str = "
@@ -64,9 +65,28 @@ CREATE TABLE IF NOT EXISTS role_grants (
 CREATE INDEX IF NOT EXISTS role_grants_wiki ON role_grants(wiki_id, seq);
 ";
 
+/// Version 3: the audit trail (RFC 002 D-9). **Append-only in the database itself**: triggers abort any
+/// `UPDATE` or `DELETE`, so even code that holds a connection cannot edit or erase an event through SQL's
+/// data statements (dropping the table needs a deliberate schema change, which no code path here makes).
+const V3: &str = "
+CREATE TABLE IF NOT EXISTS audit_log (
+    seq       INTEGER PRIMARY KEY AUTOINCREMENT,
+    at        INTEGER NOT NULL,
+    principal TEXT NOT NULL,
+    action    TEXT NOT NULL,
+    resource  TEXT NOT NULL,
+    outcome   TEXT NOT NULL,
+    detail    TEXT NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS audit_log_no_update BEFORE UPDATE ON audit_log
+BEGIN SELECT RAISE(ABORT, 'the audit log is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS audit_log_no_delete BEFORE DELETE ON audit_log
+BEGIN SELECT RAISE(ABORT, 'the audit log is append-only'); END;
+";
+
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and
 /// [`SCHEMA_VERSION`] moves with it (a test holds the two together).
-pub const MIGRATIONS: &[(i64, &str)] = &[(1, V1), (2, V2)];
+pub const MIGRATIONS: &[(i64, &str)] = &[(1, V1), (2, V2), (3, V3)];
 
 /// The SQLite-backed store.
 #[derive(Debug)]
@@ -505,6 +525,75 @@ impl RoleStore for SqliteStore {
                 .map_err(backend)?;
             rows.collect::<rusqlite::Result<Vec<_>>>()
                 .map_err(|_| unreadable("role grant"))
+        })
+    }
+}
+
+impl AuditSink for SqliteStore {
+    fn record(&self, event: &AuditEvent) -> Result<()> {
+        let e = event.cleaned();
+        self.with(|conn| {
+            conn.execute(
+                "INSERT INTO audit_log (at, principal, action, resource, outcome, detail) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    e.at,
+                    e.principal,
+                    e.action,
+                    e.resource,
+                    e.outcome.as_str(),
+                    e.detail
+                ],
+            )
+            .map(|_| ())
+            .map_err(backend)
+        })
+    }
+}
+
+impl AuditLog for SqliteStore {
+    fn read(&self, after_seq: i64, limit: usize) -> Result<Vec<AuditRecord>> {
+        let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+        self.with(|conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT seq, at, principal, action, resource, outcome, detail FROM audit_log \
+                     WHERE seq > ?1 ORDER BY seq LIMIT ?2",
+                )
+                .map_err(backend)?;
+            let rows = stmt
+                .query_map(params![after_seq, limit], |r| {
+                    let outcome: String = r.get(5)?;
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, i64>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, String>(3)?,
+                        r.get::<_, String>(4)?,
+                        outcome,
+                        r.get::<_, String>(6)?,
+                    ))
+                })
+                .map_err(backend)?;
+            let mut out = Vec::new();
+            for row in rows {
+                let (seq, at, principal, action, resource, outcome, detail) =
+                    row.map_err(|_| unreadable("audit event"))?;
+                let outcome =
+                    AuditOutcome::parse(&outcome).ok_or_else(|| unreadable("audit event"))?;
+                out.push(AuditRecord {
+                    seq,
+                    event: AuditEvent {
+                        at,
+                        principal,
+                        action,
+                        resource,
+                        outcome,
+                        detail,
+                    },
+                });
+            }
+            Ok(out)
         })
     }
 }

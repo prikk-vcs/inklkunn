@@ -103,3 +103,18 @@ RFC 002 and RFC 003 — the first handoffs after M0, in progress. Still nothing 
   seed directories a killed server left behind.
   *Output change:* `inklkunn_core::accept` re-exports the signer's types; `PreparedChange.message` is the text
   of a `Message`; `SignerConfig` is built with `SignerConfig::new`.
+- **The audit trail and the reconciliation** (RFC 002 D-7, D-9; handoff 002 T6). The audit log is a SQLite
+  table that the database itself refuses to update or delete from (two triggers abort with *the audit log is
+  append-only*, so a stray `UPDATE` or `DELETE` fails even from a hand-opened connection); the store's schema
+  is now version 3 and migrates forward from M0's schema. Every sink cleans each field again on the way in
+  (control characters and U+2028/U+2029 become `?`, at most 200 characters), so an event built by hand cannot
+  forge a second line. `AuditLog` reads the trail in pages after a position, and `export_jsonl` writes it, oldest
+  first, one object per line with fixed keys. The reconciliation (`inklkunn_core::reconcile`) reads every
+  view's whole history, a page of 500 blocks at a time, and compares it with the acceptance records and the
+  system-act records: a block whose message cannot be read, a seal no record explains, a system change no act
+  explains, a record whose block is not in the history, and a record that disagrees with the message it names
+  (kind, proposal, proposer, acceptor, base, source) or puts the change in a view that does not hold it. It
+  only reads: it repairs nothing, and `record_findings` writes ids and
+  a fixed word to the audit trail (outcome *reported*), never a message, a name or a path. Tested against a
+  fake storage for every finding and against a real prikk history, where it also leaves the history and the
+  current view as they were.

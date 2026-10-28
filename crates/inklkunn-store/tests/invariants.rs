@@ -5,9 +5,9 @@
 use std::path::PathBuf;
 
 use inklkunn_store::{
-    AccountId, DisplayName, MemoryStore, NewWiki, Role, RoleGrant, RoleStore, RootLayout, Slug,
-    SqliteStore, StoreError, Verification, VerificationState, Visibility, WikiId, WikiRecord,
-    WikiStore,
+    AccountId, AuditEvent, AuditLog, AuditOutcome, AuditSink, DisplayName, MemoryAudit,
+    MemoryStore, NewWiki, Role, RoleGrant, RoleStore, RootLayout, Slug, SqliteStore, StoreError,
+    Verification, VerificationState, Visibility, WikiId, WikiRecord, WikiStore, export_jsonl,
 };
 
 fn slug(s: &str) -> Slug {
@@ -452,4 +452,183 @@ fn the_migration_list_is_ordered_and_ends_at_the_schema_version() {
         "{versions:?}"
     );
     assert_eq!(versions.last(), Some(&SCHEMA_VERSION));
+}
+
+/// The audit trail (RFC 002 D-9): appended in order with positions that only grow, read back in pages,
+/// kept to one clean line per field however the event was built, exported as JSON Lines.
+fn audit_invariants(log: &dyn AuditLog) {
+    assert!(log.read(0, 10).expect("read").is_empty());
+    let mut empty = Vec::new();
+    assert_eq!(export_jsonl(log, &mut empty).expect("export"), 0);
+    assert!(empty.is_empty());
+
+    for n in 1..=5 {
+        log.record(&AuditEvent::new(
+            1_700_000_000 + n,
+            "account:a",
+            "accept",
+            &format!("proposal:w:p{n}"),
+            if n % 2 == 0 {
+                AuditOutcome::Allowed
+            } else {
+                AuditOutcome::Denied
+            },
+            "",
+        ))
+        .expect("record");
+    }
+    // An event built field by field (the fields are public) is cleaned by the sink.
+    log.record(&AuditEvent {
+        at: 1_700_000_100,
+        principal: "account:b\nforged-line".into(),
+        action: "export".into(),
+        resource: format!("wiki:{}", "w".repeat(500)),
+        outcome: AuditOutcome::Reported,
+        detail: "two\u{2028}lines".into(),
+    })
+    .expect("record");
+
+    let all = log.read(0, 100).expect("read");
+    assert_eq!(all.len(), 6);
+    assert_eq!(
+        all.iter().map(|r| r.seq).collect::<Vec<_>>(),
+        vec![1, 2, 3, 4, 5, 6]
+    );
+    let (Some(first_record), Some(last_record)) = (all.first(), all.last()) else {
+        panic!("six records were read");
+    };
+    assert_eq!(first_record.event.resource, "proposal:w:p1");
+    let last = &last_record.event;
+    assert_eq!(last.principal, "account:b?forged-line");
+    assert_eq!(last.detail, "two?lines");
+    assert_eq!(last.resource.chars().count(), 200);
+    assert_eq!(last.outcome, AuditOutcome::Reported);
+
+    // Pages: after a position, at most a limit.
+    let page = log.read(2, 2).expect("page");
+    assert_eq!(page.iter().map(|r| r.seq).collect::<Vec<_>>(), vec![3, 4]);
+    assert!(log.read(6, 10).expect("end").is_empty());
+    assert_eq!(log.read(0, 0).expect("zero").len(), 0);
+
+    // JSON Lines: one object per line, fixed keys, the whole trail, oldest first.
+    let mut out = Vec::new();
+    assert_eq!(export_jsonl(log, &mut out).expect("export"), 6);
+    let text = String::from_utf8(out).expect("utf8");
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 6);
+    assert!(text.ends_with('\n'));
+    let line = |n: usize| -> serde_json::Value {
+        serde_json::from_str(lines.get(n).copied().expect("line")).expect("json")
+    };
+    let field = |v: &serde_json::Value, key: &str| v.get(key).cloned().expect("field");
+    let first = line(0);
+    assert_eq!(field(&first, "seq"), 1);
+    assert_eq!(field(&first, "outcome"), "denied");
+    assert_eq!(field(&first, "action"), "accept");
+    assert_eq!(field(&first, "resource"), "proposal:w:p1");
+    let keys: Vec<&str> = first
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let mut sorted = keys.clone();
+    sorted.sort_unstable();
+    assert_eq!(
+        sorted,
+        [
+            "action",
+            "at",
+            "detail",
+            "outcome",
+            "principal",
+            "resource",
+            "seq"
+        ]
+    );
+    assert_eq!(
+        field(&line(5), "principal"),
+        "account:b?forged-line",
+        "no field can become a second line"
+    );
+}
+
+#[test]
+fn both_audit_sinks_hold_the_trail_invariants() {
+    audit_invariants(&MemoryAudit::new());
+    audit_invariants(&SqliteStore::open_in_memory().expect("open"));
+}
+
+#[test]
+fn the_audit_trail_cannot_be_edited_or_erased_even_through_sql() {
+    let tmp = temp("audit-append-only");
+    let db = tmp.0.join("store.sqlite");
+    let store = SqliteStore::open(&db).expect("open");
+    for n in 0..3 {
+        store
+            .record(&AuditEvent::new(
+                n,
+                "anonymous",
+                "export",
+                "wiki:w",
+                AuditOutcome::Denied,
+                "",
+            ))
+            .expect("record");
+    }
+    // A second connection to the same file (a stray tool, a bug, an attacker with the file): the database
+    // refuses the statements that would change the trail.
+    let conn = rusqlite::Connection::open(&db).expect("raw open");
+    for sql in [
+        "UPDATE audit_log SET outcome = 'allowed'",
+        "UPDATE audit_log SET detail = 'nothing happened' WHERE seq = 1",
+        "DELETE FROM audit_log",
+        "DELETE FROM audit_log WHERE seq = 2",
+    ] {
+        let r = conn.execute(sql, []);
+        let e = r.expect_err(sql).to_string();
+        assert!(e.contains("append-only"), "{sql}: {e}");
+    }
+    let all = store.read(0, 10).expect("read");
+    assert_eq!(all.len(), 3);
+    assert!(all.iter().all(|r| r.event.outcome == AuditOutcome::Denied));
+    // An insert is what the log does, and the positions keep growing.
+    conn.execute(
+        "INSERT INTO audit_log (at, principal, action, resource, outcome, detail) VALUES (9, 'p', 'a', 'r', 'denied', '')",
+        [],
+    )
+    .expect("insert");
+    assert_eq!(
+        store.read(0, 10).expect("read").last().map(|r| r.seq),
+        Some(4)
+    );
+}
+
+#[test]
+fn the_audit_trail_persists_across_reopen_and_unknown_outcomes_are_not_guessed() {
+    let tmp = temp("audit-reopen");
+    let db = tmp.0.join("store.sqlite");
+    {
+        let store = SqliteStore::open(&db).expect("open");
+        store
+            .record(&AuditEvent::new(
+                1,
+                "system:import",
+                "import",
+                "wiki:w",
+                AuditOutcome::Allowed,
+                "ok",
+            ))
+            .expect("record");
+    }
+    let store = SqliteStore::open(&db).expect("reopen");
+    assert_eq!(store.read(0, 10).expect("read").len(), 1);
+    // A row this build cannot read is an error, never a made-up event.
+    let conn = rusqlite::Connection::open(&db).expect("raw open");
+    conn.execute(
+        "INSERT INTO audit_log (at, principal, action, resource, outcome, detail) VALUES (2, 'p', 'a', 'r', 'maybe', '')",
+        [],
+    )
+    .expect("insert");
+    assert!(matches!(store.read(0, 10), Err(StoreError::Backend(_))));
 }
