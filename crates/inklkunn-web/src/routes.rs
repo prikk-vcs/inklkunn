@@ -6,7 +6,7 @@
 //! reserved prefix `-/`, may precede a page title, so no title can ever be shadowed by a route.
 
 use axum::Router;
-use axum::http::StatusCode;
+use axum::extract::DefaultBodyLimit;
 use axum::middleware::from_fn;
 use axum::routing::{MethodRouter, get};
 use inklkunn_core::{Guard, RouteError, RouteTable};
@@ -14,33 +14,49 @@ use inklkunn_core::{Guard, RouteError, RouteTable};
 use crate::config::{Scheme, WebConfig};
 use crate::headers::{self, Surface};
 use crate::origin::Dispatch;
+use crate::pages::{self, LANGUAGE_PATH, PageState};
+use crate::{probe, style};
 
 /// One declared entry point and the handler that serves it.
 struct Spec {
     path: &'static str,
     methods: &'static [&'static str],
     guard: Guard,
-    handler: fn() -> MethodRouter,
+    handler: fn() -> MethodRouter<PageState>,
 }
 
 /// The application origin's entry points, in declaration order.
 fn application_specs() -> Vec<Spec> {
-    vec![Spec {
-        path: "/-/health",
-        methods: &["GET", "HEAD"],
-        guard: Guard::Public {
-            reason: "liveness for the proxy: a fixed word, no wiki data, the same for everyone",
+    vec![
+        Spec {
+            path: "/-/health",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Public {
+                reason: "liveness for the proxy: a fixed word, no wiki data, the same for everyone",
+            },
+            handler: || get(probe::health),
         },
-        handler: || get(health),
-    }]
-}
-
-async fn health() -> &'static str {
-    "ok\n"
-}
-
-async fn not_found() -> (StatusCode, &'static str) {
-    (StatusCode::NOT_FOUND, "Not found.\n")
+        Spec {
+            path: LANGUAGE_PATH,
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Public {
+                reason: "the language switcher: it lists the languages and sets the visitor's own language cookie; it names no wiki and serves no wiki data",
+            },
+            handler: || {
+                get(pages::language_page)
+                    .post(pages::choose_language)
+                    .layer(DefaultBodyLimit::max(pages::FORM_LIMIT))
+            },
+        },
+        Spec {
+            path: style::ROUTE,
+            methods: &["GET", "HEAD"],
+            guard: Guard::Public {
+                reason: "the one stylesheet: static, the same for everyone, embedded in the binary; it serves no wiki data",
+            },
+            handler: || get(style::serve),
+        },
+    ]
 }
 
 /// The application origin's declared entry points.
@@ -52,24 +68,28 @@ pub fn application_table() -> Result<RouteTable, RouteError> {
     Ok(table)
 }
 
-/// The application origin's router, built from its table. Anything not declared is a 404 that carries the
-/// same headers as every other response.
+/// The application origin's router, built from its table. Anything not declared is a 404 page in the visitor's
+/// language that carries the same headers as every other response.
 pub fn application(https: bool) -> Result<Router, RouteError> {
     application_table()?;
     let mut router = Router::new();
     for spec in application_specs() {
         router = router.route(spec.path, (spec.handler)());
     }
-    Ok(router.fallback(not_found).layer(from_fn(move |req, next| {
-        headers::layer(Surface::Application { https }, req, next)
-    })))
+    Ok(router
+        .fallback(pages::not_found)
+        .with_state(PageState { https })
+        .layer(from_fn(move |req, next| {
+            headers::layer(Surface::Application { https }, req, next)
+        })))
 }
 
 /// The content origin's router. It serves wiki-authored bytes as inert attachments and nothing else; no
-/// attachment is served yet, so everything is a 404 with the content origin's headers.
+/// attachment is served yet, so everything is a plain-text 404 with the content origin's headers (its policy
+/// allows no stylesheet and no form, so it answers no page).
 pub fn content(https: bool) -> Router {
     Router::new()
-        .fallback(not_found)
+        .fallback(pages::plain_not_found)
         .layer(from_fn(move |req, next| {
             headers::layer(Surface::Content { https }, req, next)
         }))

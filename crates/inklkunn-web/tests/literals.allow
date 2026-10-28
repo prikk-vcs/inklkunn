@@ -1,0 +1,39 @@
+# The allowlist of tests/catalog_checks.rs (RFC 003 D-6; planeter RFC 012 D-5): every literal of a product source
+# or a template that looks like words and is NOT a catalog message, with the reason. Reviewed like code: a line
+# added here is a decision, and a line nothing matches fails the build.
+#
+# kind :: file :: literal :: reason
+#   scope   a source file that is not scanned at all (the file's name; the literal column is `*`)
+#   exact   a literal, as the scanner reads it and trimmed (the file's name, or `*` for any file)
+#   prefix  every literal that starts with the given text (the file's name, or `*`)
+#   safe    a template expression that may be printed with `|safe` (the template's name)
+#
+# A literal "looks like words" when it holds three ASCII letters in a row or any letter that is not ASCII. The
+# files that build a response a reader sees (`pages.rs`, `style.rs`, `probe.rs`, `origin.rs`) are scanned and
+# list what they hold; the files below are scoped because nothing in them is a sentence a reader sees.
+
+# --- files with no sentence a reader sees
+scope :: catalog.rs :: * :: the catalog's own machinery: language tags and endonyms, the identifiers of the keys, the markup of the typed slots and its escaping; the messages are the tables in catalog/
+scope :: config.rs :: * :: start-up refusals printed for the person who runs the server before a socket is opened (English by decision: operator vocabulary, like a log line); no response carries them
+scope :: serve.rs :: * :: operator-facing errors of binding and serving, printed at start; no response carries them
+scope :: headers.rs :: * :: header names and values, policy directives and the cache and vary tokens; nothing a reader sees
+scope :: lang.rs :: * :: the cookie and header names, the addresses a language switch never copies, and the cookie's format; it builds no sentence
+scope :: routes.rs :: * :: the route registry: paths, methods and the public reasons written for the reviewer of the route table; no response carries them, and no handler is defined here
+
+# --- pages.rs: the handlers and the layout's data
+exact :: pages.rs :: /-/lang :: the address of the language page, which every switcher form posts to
+exact :: pages.rs :: version :: a placeholder name of a catalog message
+exact :: pages.rs :: name :: a placeholder name of a catalog message
+exact :: pages.rs :: next :: the name of the form field and of the query parameter that carry the return address
+exact :: pages.rs :: lang :: the name of the form field that carries the language code
+exact :: pages.rs :: text/html; charset=utf-8 :: a media type
+exact :: pages.rs :: text/plain; charset=utf-8 :: a media type
+
+# --- style.rs: the stylesheet's route
+exact :: style.rs :: ../static/site.css :: the path of the file embedded with include_str!
+exact :: style.rs :: /-/assets/{file} :: the route pattern of the stylesheet
+exact :: style.rs :: /-/assets/{} :: the address the pages link to
+exact :: style.rs :: site-{:016x}.css :: the file name, made of the sheet's fingerprint
+exact :: style.rs :: text/css; charset=utf-8 :: a media type
+exact :: style.rs :: public, max-age=31536000, immutable :: a Cache-Control value
+exact :: style.rs :: Accept-Encoding :: a Vary token

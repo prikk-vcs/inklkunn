@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="{{ page.lang_tag() }}" dir="{{ page.dir() }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{% endblock %}</title>
+<link rel="stylesheet" href="{{ page.stylesheet() }}">
+</head>
+<body>
+<a class="skip-link" href="#main">{{ page.get(Key::LayoutSkip) }}</a>
+<header>
+<p class="brand">{{ page.product() }}</p>
+</header>
+<main id="main">
+{% block body %}{% endblock %}
+</main>
+<footer>
+<p class="footer-line">{{ page.footer_line() }}</p>
+{% if page.switcher %}<nav class="lang" aria-label="{{ page.get(Key::LayoutLanguage) }}">
+<ul>
+{% for choice in page.languages() %}<li><form method="post" action="{{ page.language_path() }}"><input type="hidden" name="lang" value="{{ choice.tag }}"><input type="hidden" name="next" value="{{ page.back }}"><button type="submit"{% if choice.current %} aria-current="true"{% endif %}>{{ choice.label }}</button></form></li>
+{% endfor %}</ul>
+</nav>{% endif %}
+</footer>
+</body>
+</html>

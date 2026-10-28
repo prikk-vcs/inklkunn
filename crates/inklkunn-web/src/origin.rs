@@ -9,14 +9,14 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use axum::Router;
-use axum::body::Body;
 use axum::extract::Request;
-use axum::http::{StatusCode, header};
+use axum::http::{HeaderMap, header};
 use axum::response::Response;
 use tower_service::Service;
 
 use crate::config::Origin;
 use crate::headers::{Surface, apply};
+use crate::pages;
 
 /// Hands each request to the router of the origin it was addressed to.
 #[derive(Clone)]
@@ -38,12 +38,10 @@ impl Dispatch {
         }
     }
 
-    fn misdirected(&self) -> Response {
-        let mut res = Response::builder()
-            .status(StatusCode::MISDIRECTED_REQUEST)
-            .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
-            .body(Body::from("This server does not answer for that host.\n"))
-            .unwrap_or_default();
+    /// The 421 answer: one catalog sentence as plain text, in the visitor's language, with the application's
+    /// headers.
+    fn misdirected(&self, headers: &HeaderMap) -> Response {
+        let mut res = pages::misdirected(headers);
         apply(
             &mut res,
             Surface::Application {
@@ -75,7 +73,7 @@ impl Service<Request> for Dispatch {
             Some(h) if self.app_origin.matches_host_header(h) => self.app.clone(),
             Some(h) if self.content_origin.matches_host_header(h) => self.content.clone(),
             _ => {
-                let res = self.misdirected();
+                let res = self.misdirected(req.headers());
                 return Box::pin(async move { Ok(res) });
             }
         };

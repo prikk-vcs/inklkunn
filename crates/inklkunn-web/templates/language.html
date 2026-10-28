@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ page.title(Key::TitleLanguage) }}{% endblock %}
+{% block body %}
+<h1>{{ page.get(Key::LanguageHeading) }}</h1>
+<p>{{ page.get(Key::LanguageIntro) }}</p>
+<ul class="choices">
+{% for choice in page.languages() %}<li>
+<form method="post" action="{{ page.language_path() }}"><input type="hidden" name="lang" value="{{ choice.tag }}"><input type="hidden" name="next" value="{{ next }}"><button type="submit"{% if choice.current %} aria-current="true"{% endif %}>{{ choice.label }}</button></form>
+{% if choice.current %}<p class="note">{{ page.get(Key::LanguageInUse) }}</p>
+{% endif %}{% if choice.preview %}<p class="note">{{ page.get(Key::LanguagePreviewNote) }}</p>
+{% endif %}</li>
+{% endfor %}</ul>
+{% if let Some(back) = back_link %}<p><a href="{{ back }}">{{ page.get(Key::LanguageBack) }}</a></p>
+{% endif %}{% endblock %}

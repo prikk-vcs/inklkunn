@@ -1,0 +1,12 @@
+# The allowlist of tests/retired_words.rs (RFC 003 D-6; INC-3): a message may not use a word that
+# `docs/glossary.md` section 3.1 retires, except where the word is not ours to change. Reviewed like code: a
+# line added here is a decision.
+#
+# key :: term :: reason
+#   key     the message key (for example `verify.intro`)
+#   term    the retired word the message is allowed to contain, as the glossary lists it
+#   reason  why it is legitimate (the name of a command in operator text, data owned by prikk, …)
+#
+# A message whose key starts `explain.` is an explanation the reader opens on demand and needs no line here.
+# An entry that no message needs any more fails the test, so this file cannot collect dead lines. It is empty
+# today: no message of either catalog uses a retired word.

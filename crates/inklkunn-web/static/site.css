@@ -1,0 +1,142 @@
+/* inklkunn's one stylesheet (RFC 003 D-3, D-6; INC-1, INC-5, INC-8).
+
+   Served from the application origin under a fingerprinted name, because the page policy allows nothing else:
+   no inline style, no <style> element, no web font, no other origin. tests/stylesheet.rs reads this file and
+   fails the build on a text pair below 4.5:1 or a control border or focus ring below 3:1 in either scheme (the
+   pairs are computed from the tokens below), on a physical-direction declaration (logical properties only), on
+   an outline that is removed or thin, on motion outside prefers-reduced-motion, and on a standalone target
+   smaller than 24 CSS px. A new colour pair or a new kind of target is a new line in that test.
+
+   The tokens come first and are the only place a colour is written. Nothing moves; any motion added later
+   belongs in a prefers-reduced-motion: no-preference block. */
+
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #595959;
+  --line: #d4d4d4;
+  --control: #6b6b6b;
+  --accent: #0b57d0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121212;
+    --fg: #ececec;
+    --muted: #b3b3b3;
+    --line: #3a3a3a;
+    --control: #8f8f8f;
+    --accent: #8ab4f8;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font: 1rem/1.6 system-ui, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  overflow-wrap: break-word;
+}
+
+/* Japanese: the system's CJK fonts only (no web font, no third-party request) and a looser line height. */
+:lang(ja) {
+  font-family: system-ui, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", Meiryo, "Noto Sans CJK JP", "Noto Sans JP", sans-serif;
+}
+body:lang(ja) { line-height: 1.75; }
+
+/* Structure: a banner, one main region, a footer. The banner and the footer are full-width bars whose text
+   lines up with the column of `main` (44rem wide, centred, with 1rem of padding inside). */
+header, footer {
+  padding-block: 0.75rem;
+  padding-inline: max(1rem, calc((100% - 44rem) / 2 + 1rem));
+}
+header { border-block-end: 1px solid var(--line); }
+footer { border-block-start: 1px solid var(--line); color: var(--muted); }
+.brand { margin: 0; font-weight: 600; }
+main {
+  max-inline-size: 44rem;
+  margin-inline: auto;
+  padding: 1rem;
+}
+h1, h2, h3 { overflow-wrap: anywhere; }
+h1 { margin-block: 0 1rem; font-size: 1.6rem; line-height: 1.25; }
+p { margin-block: 0 1rem; }
+a { color: var(--accent); }
+.note { color: var(--muted); font-size: 0.9em; }
+.footer-line { margin: 0; }
+
+/* The skip link: first in the page, out of sight until it has focus. */
+.skip-link {
+  position: absolute;
+  inset-inline-start: 0.5rem;
+  inset-block-start: -100vh;
+  z-index: 1;
+  padding: 0.5rem 0.75rem;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--control);
+}
+.skip-link:focus { inset-block-start: 0.5rem; }
+
+/* Controls: a border of at least 3:1 is the only thing that tells a button from text. */
+button, input, select, textarea {
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--control);
+  border-radius: 4px;
+  padding: 0.25rem 0.6rem;
+}
+button { cursor: pointer; }
+summary { cursor: pointer; }
+
+/* Targets of at least 24 CSS px (WCAG 2.5.8). A link in running text is exempt and stays inline; a link that
+   stands alone is a block of its own, so a minimum size means something. */
+header a, footer a, nav a, th a, td a, main > p > a, .skip-link {
+  display: inline-block;
+  min-block-size: 24px;
+  min-inline-size: 24px;
+  padding-block: 0.15rem;
+}
+button, input, select, textarea, summary {
+  min-block-size: 24px;
+  min-inline-size: 24px;
+}
+
+/* The language choices: a footer row and the language page's list. The current one is marked by weight and a
+   heavier border, not by colour. */
+nav.lang ul, .choices {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+nav.lang ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  margin-block-start: 0.5rem;
+}
+.choices > li { margin-block-end: 1rem; }
+.choices .note { margin-block: 0.25rem 0; }
+button[aria-current] {
+  font-weight: 600;
+  border-color: var(--fg);
+  border-width: 2px;
+}
+
+/* One focus ring for everything focusable, standing off the control. Never removed. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Forced colours replace the colours above with the system's; what must survive is restated. */
+@media (forced-colors: active) {
+  .skip-link { border: 1px solid CanvasText; }
+  :focus-visible { outline: 2px solid Highlight; }
+  button { border: 1px solid ButtonBorder; }
+  header, footer { border-color: CanvasText; }
+}
