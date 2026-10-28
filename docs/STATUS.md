@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | The dated brief a new session reads **first**: where the project is, what is pending on whom, and the issue register. Updated at every milestone, RFC disposition and owner ruling. |
-| As of | 2026-10-28 — **M0 done: RFCs 001 and 010 approved and moved to `done/`** (review requests v2 approved by the owner); **RFCs 002 and 003 accepted**, 002's handoff assignable and 003's T1–T3 startable; prikk's reply on Unicode paths folded (ship percent-encoded; migrate later); release tags will be SSH-signed (pending the owner's public key) |
+| As of | 2026-10-28 — **M0 done: RFCs 001 and 010 approved and moved to `done/`** (review requests v2 approved by the owner); **RFCs 002 and 003 accepted**, 002's handoff assignable and 003's T1–T3 startable; prikk's reply on Unicode paths folded (ship percent-encoded; migrate later); release tags will be SSH-signed (pending the owner's public key); **RFC 004 (proposals, M2) proposed** |
 | Read next | [`src/inklkunn-00-project-charter.md`](src/inklkunn-00-project-charter.md) → [`../ROADMAP.md`](../ROADMAP.md) → [`src/inklkunn-01-requirements-spec.md`](src/inklkunn-01-requirements-spec.md) → [`src/inklkunn-02-external-design.md`](src/inklkunn-02-external-design.md) → [`src/inklkunn-03-threat-model.md`](src/inklkunn-03-threat-model.md) → [`src/inklkunn-04-internal-design.md`](src/inklkunn-04-internal-design.md) → [`../rfcs/README.md`](../rfcs/README.md) |
 
 ## Where we are
@@ -47,6 +47,12 @@
   MRG-4 is the right place** (RFC 004). **T7**: README (IS-1 closed), CHANGELOG, SECURITY.md (RR-1), the two
   ledgers with a lock-inventory test, `UPSTREAM.md`, `RELEASING.md`, the book. No binary serves pages yet; that
   is M1 (RFC 003).
+- **2026-10-28 — RFC 004 proposed** (`rfcs/proposed/004-proposals.md`): the proposal object and its states,
+  the no-script form, review bound to revisions, acceptance as one atomic act under the wiki's lease through
+  RFC 002's `Accept`, the block-aware three-way merge the spike justified (in-crate, overlaps never resolved
+  by the service, the 120 spike pairs as its corpus), recovery with a kill test, undo as a proposal, inbox,
+  quotas, metrics, the words and the write API. Two open questions for the owner (required approvals'
+  default; comment re-anchoring across accepted changes).
 - **2026-10-28 — prikk replied** to the non-ASCII-paths letter (the first letter from prikk to inklkunn):
   Unicode paths get a design round in 0.56.0, implementation 0.57.0 at the earliest, no date. **Decision:**
   M1 ships with percent-encoded paths; native paths become a planned migration (PK-21, IS-5).
@@ -73,6 +79,8 @@
   `.git-exclude/tasks/architect/inklkunn-001-prepare.md`).
 - Name the Japanese reviewers before the first catalog ships (DR-7; Japanese is compiled in as a preview
   until then).
+- **Accept RFC 004** (`rfcs/proposed/004-proposals.md`) or name what to change; it serves M2 and can be
+  accepted while M1 is built. Its open question on the default of required approvals is yours.
 
 ## Pending upstream
 
@@ -87,8 +95,8 @@
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). The dev team takes RFC 002's handoff (the real
 signer and key store, the roles; its "Notes from M0's review" are binding) and RFC 003's handoff T1–T3 (the web
 skeleton and headers, the catalog and the structural tests, the read service and caches); T4 onward follows
-002's T2. The architect drafts RFC 004 (proposals, with the block-aware merge the spike justified) and prepares
-the M1 re-baseline (the single-large-attachment shape). The four kickoff documents the requirements transcript
+002's T2. RFC 004 (proposals) is proposed and awaits the owner; the architect prepares the M1 re-baseline (the
+single-large-attachment shape) and, on acceptance, RFC 004's handoff. The four kickoff documents the requirements transcript
 linked do not exist (owner, 2026-10-28): the transcripts under `.git-exclude/specs/` are the complete startup
 input, all in English. The reworked `release.yml` was rehearsed on `d90f901`
 ([run 40490072717](https://github.com/prikk-vcs/inklkunn/actions/runs/40490072717)): gates with both test
