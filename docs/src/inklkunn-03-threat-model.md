@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | inklkunn Threat Model (security): what inklkunn must defend, against whom, and how, so that the design and the tests can be checked against it. A first-class release deliverable (project rules): updated by any release that touches identity, signing, the prikk boundary, rendering or inbound content; re-verified by the others. |
-| Version | v0.1 |
+| Version | v0.1, amended 2026-10-29 (C-1d and RR-8: key rotation on prikk as it is, the owner's DR-10 ruling after prikk confirmed it) |
 | Date | 2026-10-27 |
 | Basis | Requirements v0.1 (SEC/PRV/ID/GV/INT), the external design v0.1 (BD/WEB/API/AUTH/PK/FL/CT/OP), the rulings DR-2 and DR-4, prikk's trust and threat model, planeter's threat model v0.4 (the house precedent and the neighbour whose guarantees inklkunn must not weaken), wiki-commons chapter 14, the requirements register items 7, 8, 14, 17. |
 | ID scheme | `A-` asset · `TB-` trust boundary · `T-` threat · `C-` control · `INV-` security invariant · `RR-` residual risk · `ASSUME-` assumption |
@@ -78,7 +78,13 @@ signer directly, a stolen key, an insider with the key store secret, a bug that 
   mount only the sandboxed prikk can read, removed after; never logged, never in content, never exported
   (SEC-4, OP-07). The secret is supplied at start, not stored beside the keys.
 - **C-1d — Per-wiki keys and rotation.** A compromise is bounded to one wiki; rotation adopts a new key id
-  and removes the old from the repository's trust store; the procedure is documented and rehearsed.
+  and the service seals only with it from then on; the procedure is documented and rehearsed. **On prikk,
+  removing a key from trust is revocation** (it makes everything that key ever sealed fail verification; prikk
+  confirmed this is by design, 2026-10-29; ledger PK-34), so by the owner's ruling DR-10 a rotation **keeps the
+  old maintainer key trusted** and destroys the service's copy of its seed, and **retiring** it is an explicit,
+  named act for a compromise, which turns the wiki's verification label to *Verification failed* until prikk can
+  rotate without revoking. A kept key's leaked seed could still seal changes that verify; the rotation records
+  the point where the old key stopped, and inklkunn reports any block sealed by it after that point (RR-8).
 - **C-1e — Independent witness.** The repository can be hosted read-only by planeter and exported as an
   archive at any time (MD-5, IX-2), so a forged change is visible to a path the wiki does not control.
 - **C-1f — Honest labels.** Every change is labelled *signed by the wiki service on behalf of …* (ID-5): the
@@ -270,6 +276,14 @@ A forged identity assertion from a fake planeter; planeter's guarantees weakened
   the procedure says so.
 - **RR-7 — Throttles and leases are per process** in v1; a multi-replica deployment needs the proxy to
   throttle and a shared lease (operations RFC before 1.0).
+- **RR-8 — A rotation cannot both stop the old key and keep its history verifying** (prikk 0.54 – 0.55; a
+  rotation that does both is "not built yet, not refused" by prikk and **not scheduled**: a waiting dependency
+  with no date, prikk's letter of 2026-10-29). Routine rotations keep the old key trusted; its seed, if it leaked,
+  can seal anything that verifies. inklkunn detects such a seal in the wiki's own repository from its record of
+  the rotation point while the host's records are intact; **a copy of the repository** (planeter as a read-only
+  witness, an archive) sees which key sealed each block but **cannot prove** that a block came after the
+  rotation, because prikk records the adoption of a key nowhere a copy can check. A host compromise is
+  `--retire-old`'s case, at the cost of the *Verified* label.
 - **ASSUME-1** The operator and the host are trusted; inklkunn defends against network actors and malicious
   users, not a hostile operator.
 - **ASSUME-2** prikk's offline `verify` is correct and is the arbiter of history integrity.

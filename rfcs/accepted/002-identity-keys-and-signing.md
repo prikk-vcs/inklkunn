@@ -8,10 +8,11 @@ implementer may start per the handoff **once RFC 001's tasks T1–T5 have landed
 **Concretized by the architect on 2026-10-29:** the `Accept` trait (D-4) and the message composer and parser (D-5)
 live in `inklkunn-signer` and are re-exported by `inklkunn-core`, because the signer must name both to enforce its guard
 and a lower crate may not depend on core (RFC 001 D-9 read the same way); the signer depends on the store for its
-validated identifiers. **D-8 waits for the owner (DR-10):** on prikk 0.54.1, removing the old maintainer key from trust
-makes everything it sealed fail verification (ledger PK-34), so "remove the old from trust" and "the repository still
-verifies" cannot both hold; until the ruling, rotation keeps the old key trusted and retiring it is an explicit,
-named act (`docs/KEYS.md`).
+validated identifiers. **D-8 ruled by the owner (DR-10, 2026-10-29, after
+prikk confirmed it):** on prikk, removing a maintainer key from trust is revocation and makes everything it sealed
+fail verification (ledger PK-34), so a rotation **keeps the old key trusted by default**, retiring it is an explicit,
+named act for a compromise (`docs/KEYS.md`), and the rotation records where the old key stopped so a later seal under
+it is reported (D-8 below; corrections handoff C11).
 **Tracks.** ROADMAP M0 → M2, theme T2; the owner's ruling **DR-4**. Requirements `ID-1 … ID-9`, `PR-4`,
 `PR-12`, `GV-2` (the bootstrap role set), `SEC-1`, `SEC-3`, `SEC-4`, `SEC-6`, `PRV-2`, `INT-2`, `INT-4`;
 external design `BD-05`, `AUTH-01 … AUTH-05`, `PK-03`, `PK-05`, `CT-03`, `OP-07`; internal design
@@ -104,10 +105,15 @@ takes a recorded, accepted proposal.
   *accepted*, or has `Kind: import | system` with a matching system act. A mismatch is reported in the audit
   log, on the administration surface and as a metric; it never changes anything by itself (INV-1, INV-10).
 - **D-8 — Key lifecycle.** `create` (two `prikk key generate`, `trust maintainer add` in the wiki's
-  repository, record), `rotate` (new ids, adopt the new maintainer key, remove the old from trust, record;
-  the old author key simply stops being used, since prikk has no author revocation), `status` (ids and
-  dates, never a secret). Each is an administrator's audited act through the administration surface or a
-  CLI subcommand of the binary, requiring re-authentication. The compromise runbook: rotate, re-verify,
+  repository, record), `rotate` (new ids, adopt the new maintainer key, record, and **keep the old maintainer
+  key trusted** so the history it sealed keeps verifying; the record keeps the old key id and the tip of every
+  view at the moment it stopped being used, and a block it seals after that point is reported as *sealed by a
+  superseded key after the rotation*; the old author key simply stops being used, since prikk has no author
+  revocation). **Retiring** the old maintainer key (removing it from trust) is a separate, explicitly named
+  act for a compromise, and costs the wiki its *Verified* label until prikk offers a rotation that keeps
+  history verifiable (asked 2026-10-29; not scheduled; ledger PK-34); ruled by the owner as DR-10. `status`
+  (ids and dates, never a secret). Each is an administrator's audited act through the administration surface or a
+  CLI subcommand of the binary, requiring re-authentication. The compromise runbook: rotate and retire, check,
   export the audit log, review the reconciliation, state what was signed during the window; it lives in
   `docs/` and SECURITY.md names it.
 - **D-9 — The audit log.** Append-only records {at, principal, action, resource, outcome, detail without
@@ -135,8 +141,10 @@ takes a recorded, accepted proposal.
 - D-6: an open proposal never renders *Verified* or *Signed into the history*; the retired-words test
   passes.
 - D-7: the reconciliation reports a planted unrecorded seal and a planted unsealed acceptance.
-- D-8: create, rotate and status work on a real repository; after rotation the old maintainer key no
-  longer verifies new seals and the repository still verifies.
+- D-8: create, rotate and status work on a real repository; after a default rotation the service seals
+  only with the new key, the old seed is gone from the store and the repository still verifies; a seal
+  planted under the old key after the rotation point is reported, and its seals before the point are not;
+  after a retirement the old key seals nothing and `verify` reports the publication-trust failure (PK-34).
 - The RFC 001 gate (b) still passes: no crate but `inklkunn-core` depends on `inklkunn-signer`, and only
   through the trait.
 

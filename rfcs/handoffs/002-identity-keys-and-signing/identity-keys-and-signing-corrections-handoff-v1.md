@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | Document | The architect's correction requests on handoff 002 (T1 … T8), from the review of the dev team's request `.git-exclude/review-requests/002-identity-keys-and-signing-review-request.md`. The outcome was **Conditionally Approved**: the work stands; the items below are owed, each before the step it names. |
-| Status | Inherits RFC 002's: accepted. **Assignable now.** C1 – C4 are **mandatory before handoff 003's T7** (the binary's first writes); C5 – C7 before RFC 004's T4; C8 – C10 before OpenID Connect is switched on in a deployment (M2). |
-| Basis | RFC 002 D-1 … D-10 (as concretized on 2026-10-29: D-4, D-5 in the signer crate; D-8 pending the owner's DR-10); threat model T-1, C-1a … C-1c, C-9a, INV-2, INV-6; ledger PK-9, PK-20, PK-34, PK-35, PK-36; internal design SGN-6, AZ-1 (IQ-3 decided below). |
+| Status | Inherits RFC 002's: accepted. **Assignable now.** C1 – C4 are **mandatory before handoff 003's T7** (the binary's first writes); C5 – C7 before RFC 004's T4; C8 – C10 before OpenID Connect is switched on in a deployment (M2); **C11 before 0.1.0** (added 2026-10-29 with the owner's DR-10 ruling). |
+| Basis | RFC 002 D-1 … D-10 (as concretized on 2026-10-29: D-4, D-5 in the signer crate; D-8 as ruled by the owner in DR-10, 2026-10-29); threat model T-1, C-1a … C-1c, C-9a, INV-2, INV-6; ledger PK-9, PK-20, PK-34, PK-35, PK-36; internal design SGN-6, AZ-1 (IQ-3 decided below). |
 | Audience | The dev team. Read the two lenses in handoff 003 first. |
-| Handback | One review request covering C1 – C10 (or one per group if they land at different times), filed in `.git-exclude/review-requests/`, with the usual gates, both test runs and a mutation table per item. |
+| Handback | One review request covering C1 – C11 (or one per group if they land at different times), filed in `.git-exclude/review-requests/`, with the usual gates, both test runs and a mutation table per item. |
 
 ## Mandatory before handoff 003's T7
 
@@ -82,10 +82,38 @@ migration) and mutant M19 killed (the store's connection must set `foreign_keys`
 not); a start-up warning when the bind address is not loopback and no trusted proxy is declared (thirty bad attempts
 by anyone would lock everyone out); a cap on live sessions per account (the tokens' hundred is the model).
 
+## Before 0.1.0 (the first release that creates wikis with real keys)
+
+**C11 — A rotation records where the old key stopped, and a seal after that point is reported (DR-10, PK-34).** The
+owner ruled DR-10 on 2026-10-29 after prikk confirmed the design: **a rotation keeps the old maintainer key trusted by
+default, retirement stays the explicit, named act** (`OldKey::Keep` / `Retire` as built). prikk also confirmed that a
+leaked copy of a still-trusted key can seal anything that verifies, and that a copy of the repository cannot prove a
+block was sealed by the old key *after* the new one was adopted (adoption is local and recorded nowhere a copy can
+check). inklkunn can: it knows the moment. So:
+- **Record the point.** At the rotation's commit point (step 3, under the per-wiki lock of C3), the key record keeps,
+  for each superseded generation, its maintainer key id and the tip block id of every view at that moment (a record
+  `format` bump; the old ids are today only in the audit trail and in prikk's trust store). A retired key is recorded
+  the same way, marked retired.
+- **Check it.** A core function (the reconciliation's first half that needs no acceptance record, so it works before
+  RFC 004) reads each block's maintainer signer (from whichever prikk output the driver pins for it; measure, and
+  record a ledger entry) and reports every block sealed by a superseded key that is **not** in the history up to that
+  key's recorded point: *sealed by a superseded key after the rotation*. Reported in the audit log and, once they
+  exist, on the administration surface and as a metric; it never changes anything by itself (D-7, INV-1). It runs
+  after each rotation and with the reconciliation (RFC 004 puts it after every seal and on a schedule); until then
+  `inklkunn wiki keys status` runs it and prints the result.
+- **Say what it covers.** It detects a leaked seed used against the wiki's own repository while the service's
+  records are intact (a leaked backup, a leaked seed file); it does not help when the host itself is taken over (the
+  records are the attacker's then) — that is `--retire-old`'s case. `docs/KEYS.md` says so in the table's
+  neighbourhood and in the runbook's step 1, and replaces "a request to prikk is open" with prikk's answer of
+  2026-10-29: confirmed, a rotation that keeps history verifiable is not scheduled.
+- **Tests:** a planted seal under the old key after a default rotation is reported, with its block id; the old
+  key's seals before the point are not; a retirement records the point too; an old-format record still opens (or is
+  refused naming the format, if the format policy says so).
+
 ## Recorded, not requested here
 
-- **Key rotation (PK-34):** the default-keep / explicit-retire design stands **until the owner rules DR-10**; nothing
-  changes in code before that.
+- **Key rotation (PK-34):** DR-10 ruled 2026-10-29 (above, C11). prikk will write when a rotation that keeps history
+  verifiable is scheduled; until then the threat model carries it as a waiting dependency with no date.
 - **A lost key store (PK-35):** a `recover` operation that provisions new keys under fresh ids is an operations
   matter (the restore runbook, DUR-1); it joins the operations RFC before 1.0, tracked as IS-15.
 - **Reconciliation scheduling and the audit view:** RFC 004 (after every seal) and the administration surface.

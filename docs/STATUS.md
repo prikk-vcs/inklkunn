@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | The dated brief a new session reads **first**: where the project is, what is pending on whom, and the issue register. Updated at every milestone, RFC disposition and owner ruling. |
-| As of | 2026-10-28 — **M0 done: RFCs 001 and 010 approved and moved to `done/`** (review requests v2 approved by the owner); **RFCs 002 and 003 accepted**, 002's handoff assignable and 003's T1–T3 startable; prikk's reply on Unicode paths folded (ship percent-encoded; migrate later); release tags will be SSH-signed (pending the owner's public key); **RFC 004 (proposals, M2) accepted** with its handoff v1. **Later the same day:** the dev team began (handoff 002 T5, `3913137`); a new architect session reviewed the whole record and the upstreams and folded **seven issues (IS-7 … IS-13)** into binding handoff notes, one driver follow-on handoff and ledger v1.1; **DR-9 ruled by the owner the same day: `aws_lc_rs`**. **2026-10-29:** the dev team's handoff 002 (T1 – T8) and handoff 003 (T1 – T3) **reviewed: both Conditionally Approved** (every gate re-run by the architect: 676 tests in both runs, 57 self-skips); corrections in `rfcs/handoffs/002-…/identity-keys-and-signing-corrections-handoff-v1.md` and handoff 003's T4 notes; **one decision asked of the owner (DR-10, key rotation)** and one letter to prikk drafted |
+| As of | 2026-10-28 — **M0 done: RFCs 001 and 010 approved and moved to `done/`** (review requests v2 approved by the owner); **RFCs 002 and 003 accepted**, 002's handoff assignable and 003's T1–T3 startable; prikk's reply on Unicode paths folded (ship percent-encoded; migrate later); release tags will be SSH-signed (pending the owner's public key); **RFC 004 (proposals, M2) accepted** with its handoff v1. **Later the same day:** the dev team began (handoff 002 T5, `3913137`); a new architect session reviewed the whole record and the upstreams and folded **seven issues (IS-7 … IS-13)** into binding handoff notes, one driver follow-on handoff and ledger v1.1; **DR-9 ruled by the owner the same day: `aws_lc_rs`**. **2026-10-29:** the dev team's handoff 002 (T1 – T8) and handoff 003 (T1 – T3) **reviewed: both Conditionally Approved** (every gate re-run by the architect: 676 tests in both runs, 57 self-skips); corrections in `rfcs/handoffs/002-…/identity-keys-and-signing-corrections-handoff-v1.md` and handoff 003's T4 notes; **one decision asked of the owner (DR-10, key rotation)** and one letter to prikk drafted. **Later the same day:** the letter sent and answered; **DR-10 ruled** (keep the old key by default, retire explicitly; corrections C11); **prikk 0.55.0 is tagged upstream: the first re-baseline is due** |
 | Read next | [`src/inklkunn-00-project-charter.md`](src/inklkunn-00-project-charter.md) → [`../ROADMAP.md`](../ROADMAP.md) → [`src/inklkunn-01-requirements-spec.md`](src/inklkunn-01-requirements-spec.md) → [`src/inklkunn-02-external-design.md`](src/inklkunn-02-external-design.md) → [`src/inklkunn-03-threat-model.md`](src/inklkunn-03-threat-model.md) → [`src/inklkunn-04-internal-design.md`](src/inklkunn-04-internal-design.md) → [`../rfcs/README.md`](../rfcs/README.md) |
 
 ## Where we are
@@ -104,30 +104,25 @@
   wiki link) and reads pinned to the tip's block id. Concretized: RFC 002 D-4/D-5 (in the signer crate), RFC 003 D-2,
   D-3, D-6; IQ-3 decided (a confined `curl` in a new lower crate, `inklkunn-fetch`); handoff 004 notes (the lease on the
   cross-process lock, the index warmed after each seal).
+- **2026-10-29 — DR-10 ruled by the owner: (a) with (c), final once prikk confirmed it; prikk confirmed it the same
+  day.** The question: on prikk, removing a maintainer key from trust is revocation (everything it ever sealed then
+  fails verification, PK-34), so a rotation cannot both stop the old key and keep its history verifying. Options:
+  **(a)** keep the old key trusted by default, retire it only as an explicit act for a compromise; **(b)** retire by
+  default; **(c)** either, plus asking prikk for a rotation that keeps history verifiable. The bundled letter
+  (sent; filed in `.git-exclude/upstream/prikk/send/`) asked prikk to confirm the interim design; **prikk's reply**
+  (`…/receive/2026-10-29-key-rotation-log-by-block-and-extract-scope.md`) confirmed all three points: revocation is
+  retroactive by design; keeping the old key is the correct rotation and no mechanism was missed; a leaked
+  still-trusted key can do everything it is trusted for, and a copy of the repository **cannot prove** a block came
+  after the successor's adoption. A rotation that keeps history verifiable is **not scheduled**. Folded: RFC 002 D-8
+  and its acceptance line; threat model C-1d and a new RR-8; ledger v1.2 (PK-34, PK-36 a defect prikk will fix in a
+  release it will name, PK-37 the `extract` scope a candidate); **corrections handoff C11, before 0.1.0**: the
+  rotation records where the old key stopped, and a seal under it after that point is reported (inklkunn knows the
+  moment, which a copy cannot prove). prikk's reply also measured on **0.55.0, now tagged upstream**: the first
+  re-baseline is due.
 
 ## Pending on the owner
 
-- **DR-10 — Rotating a wiki's maintainer key** (decision request; issue IS-16; ledger PK-34; review report).
-  **Owner, 2026-10-29: (a) with (c) accepted in principle, final once prikk confirms it**; the three points to confirm
-  (revocation is retroactive by design; keeping the old key trusted is the right rotation on 0.54; what a leaked
-  still-trusted key can do and whether a verifier can see it) are in the letter below. Due before 0.1.0 creates wikis
-  with real keys.
-  *Background:* RFC 002 D-8 and threat model C-1d say a rotation removes the old maintainer key from trust **and** the
-  repository still verifies. On prikk 0.54.1 these cannot both hold: removing a key is revocation (prikk's reference),
-  and everything it sealed then fails verification. *Options:* **(a)** as built — rotation keeps the old key trusted
-  by default (history verifies; the service no longer holds the old seed, but a copy of it, if leaked, could still seal
-  changes that verify), and retirement is an explicit act (`--retire-old --accept-unverifiable-history`) for a
-  compromise, after which every page says *Verification failed* until prikk can rotate; **(b)** retire by default —
-  a leaked seed is stopped at once, but every rotation, even a routine one, turns every page of the wiki to
-  *Verification failed*, which tells readers something untrue about the content; **(c)** either of these plus the
-  letter below asking prikk for a rotation that keeps history verifiable. *Recommendation:* **(a) with (c)**, and the
-  threat model says plainly that a compromise forces the choice between an honest-but-alarming badge and a still-valid
-  old key until prikk answers. *Deadline:* before the first deployment that holds real keys (0.1.0 creates wikis).
-  *If deferred:* (a) stays in force as built.
-- **The bundled letter to prikk** (three points: key rotation for DR-10; `log --ref <block id>` answers an empty list
-  instead of refusing; an `extract` path prefix): `.git-exclude/upstream/prikk/send/draft/2026-10-29-maintainer-key-rotation-log-by-block-and-extract-scope.md`.
-  Send, adjust or hold; nothing in the next release waits on it.
-- **Push:** local `main` is 23 ahead of `origin/main` (the dev team's work and the architect's, interleaved, nothing
+- **Push:** local `main` is 25 ahead of `origin/main` (the dev team's work and the architect's, interleaved, nothing
   pushed). The review leaves nothing in the way, and the first CI run is wanted (the only aarch64 build of AWS-LC so
   far). Say who pushes.
 
@@ -145,7 +140,8 @@
 | Upstream | What touches inklkunn | inklkunn action |
 |---|---|---|
 | prikk 0.54.1 | the M1 floor (`extract`, `diff`, `tree`, `cat`, the `show <block-id>` fix); RFC 170 (library) and RFC 154 unscheduled; **non-ASCII paths: a design round in 0.56.0, implementation ≥ 0.57.0** (letter of 2026-10-28, PK-21) | pin 0.54; re-baseline at each release (RFC 010); ship with percent-encoded paths, migrate when prikk's design lands |
-| prikk 0.55.0 (in progress) / 0.56.0 (scheduled) | 0.55.0: `extract`'s refusal ids 13 → 15, bundle reads stream, the checkpoint record documented; 0.56.0: the Unicode-path design round, a received ref that would move backwards refused by default, the signer in `branch --format json` (PK-26) | **the first re-baseline runs at 0.55.0's release** (RFC 010's deferred criterion); no inklkunn change is needed for either plan |
+| prikk 0.55.0 (**tagged upstream**, seen 2026-10-29) / 0.56.0 (scheduled) | 0.55.0: `extract`'s refusal ids 13 → 15, bundle reads stream, the checkpoint record documented; 0.56.0: the Unicode-path design round, a received ref that would move backwards refused by default, the signer in `branch --format json` (PK-26) | **the first re-baseline is due now** (RFC 010's deferred criterion; the architect's next task); no inklkunn change is expected from either plan |
+| prikk, reply of 2026-10-29 | `log --ref <block id>`'s empty success is a defect, fixed in a release prikk will name (PK-36); a rotation that keeps history verifiable is not scheduled (PK-34, RR-8); `extract --path-prefix` or a per-entry content id is a candidate (PK-37) | re-check each at every re-baseline; nothing in 0.1.0 waits on them |
 | planeter 0.4.0 (+ unreleased work to 2026-10-28) | no module mechanism; OQ-4 unruled (re-checked 2026-10-28); RFC 012's catalog pattern, glossary, RFC 011's admission and RFC 004's recovery reused as patterns; new: the complete-verdict rule (PL-7), `unlock` in a PID namespace (PL-8), the output cap (PL-9, already bounded here), the advisories and the `aws_lc_rs` measurement (PL-10, IS-54 waits for the owner), kill-safe creation (PL-11) | joint RFC 008 after M2's design; a letter through the owner then; DR-9 ruled `aws_lc_rs` (2026-10-28), put as one ruling with planeter's IS-54 |
 | wiki-commons 0.4 | the conformance corpus is CR-markup's fixture set; identifiers may change before its 1.0 | claims versioned `@0.4` |
 
@@ -155,8 +151,8 @@ M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and h
 conditionally approved (2026-10-29). **The dev team's order now:** the driver follow-on (IS-7) and the 002 corrections
 C1 – C4 (both small, independent), then handoff 003's T4 – T6 under the 2026-10-29 notes (author HTML escaped and reads
 pinned first), then T7 (which needs C1 – C4) and T8 – T9 toward the 0.1.0 readiness report; C5 – C7 before RFC 004's
-T4, C8 – C10 before OpenID Connect is switched on. The architect reviews each request as it arrives and runs the first
-re-baseline at prikk 0.55.0. RFC 004 (proposals) is accepted and its handoff v1 is written; it is assigned when the 002 corrections C1 – C7 and
+T4, C8 – C10 before OpenID Connect is switched on, C11 (rotation records its point) before 0.1.0. The architect reviews
+each request as it arrives and runs the first re-baseline at prikk 0.55.0, which is now tagged. RFC 004 (proposals) is accepted and its handoff v1 is written; it is assigned when the 002 corrections C1 – C7 and
 handoff 003's T1 – T4 are approved. The single-large-attachment measurement is now handoff 003's T6 (IS-12; the architect's
 early data are in ledger PK-20). The architect drafts RFC 005 part 1 (the claim-identity investigation) when M1 is
 under way. The four kickoff documents the requirements transcript
@@ -185,7 +181,7 @@ the mode requires. CI is green from `d0a8307` on ([run 40489623629](https://gith
 | IS-13 | **A kill during *create wiki* leaves an unreferenced repository directory** (the record is stored last; nothing sweeps), and with RFC 002's key store it would leave key records too | architect review 2026-10-28; planeter RFC 004 part 7 (PL-11) | handoff 003's T7: creation kill-safe at every step (a `creating` state and a start-up sweep, planeter's precedent), proved by a `SIGKILL` at each step |
 | IS-14 | **An author can forge an internal wiki link.** The sanitizer's allowlist is the renderer's vocabulary, so raw HTML such as `<a class="wikilink" href="https://…">Home</a>` survives looking exactly like a wiki link, without `rel="nofollow ugc"` | the architect's review of handoff 003 T3, 2026-10-29 (the dev team's open question 6) | **mandatory before handoff 003's T4 serves a page**: author raw HTML rendered as escaped, visible text while the profile's subset is empty, the renderer's output carrying an unforgeable origin (RFC 003 D-3 concretized; handoff 003 note) |
 | IS-15 | **A lost key store cannot be rebuilt under the old key ids** (prikk binds a key id to one key for good, PK-35), and RFC 002 has no path for "the repository survived, its key records did not" | dev team, handoff 002 review request, open question 3 | a `recover` operation (new keys under fresh ids, the operator's confirmation) in the operations RFC before 1.0, with the restore runbook (DUR-1) |
-| IS-16 | **Rotation cannot both remove the old maintainer key and keep the history verifying** (PK-34; prikk's `remove` is revocation) | dev team, handoff 002 T7 (reproduced by the architect, 2026-10-29) | **DR-10: (a) accepted in principle, final on prikk's confirmation** (asked in the bundled letter); meanwhile rotation keeps the old key trusted and retirement is an explicit, named act (`docs/KEYS.md`); the bundled letter asks prikk about rotation |
+| IS-16 | **Rotation cannot both remove the old maintainer key and keep the history verifying** (PK-34; prikk's `remove` is revocation) | dev team, handoff 002 T7 (reproduced by the architect, 2026-10-29) | **Resolved by DR-10 (owner, 2026-10-29, after prikk confirmed the design):** rotation keeps the old key trusted, retirement is an explicit, named act (`docs/KEYS.md`); the rotation records its point and a later seal under the old key is reported (corrections handoff C11, before 0.1.0); threat model RR-8 carries the rest as a waiting dependency with no date |
 
 ## Process lessons (keep)
 

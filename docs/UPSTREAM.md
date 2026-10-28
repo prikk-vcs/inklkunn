@@ -28,7 +28,14 @@ staying true to all three (RFC 010 D-1, D-2, D-8). The record of what each upstr
   upstream ledger (status, evidence, the letter named in the version line), ROADMAP's dependency notes and
   milestone table when a schedule or ruling moved, and a hold note in the affected handoff. The letters are
   the source; the ledger is what a reader relies on.
-- **Open asks as of 2026-10-28: none.** `send/2026-10-27-non-ascii-repository-paths.md` (sent by the owner)
+- **Open asks as of 2026-10-29: none outstanding; two things prikk will write about.**
+  `send/2026-10-29-maintainer-key-rotation-log-by-block-and-extract-scope.md` (sent by the owner; one question, one
+  report, one wish) was answered the same day (`receive/2026-10-29-key-rotation-log-by-block-and-extract-scope.md`):
+  the interim rotation design confirmed and rotation that keeps history verifiable not scheduled (PK-34, DR-10 ruled,
+  threat model RR-8); `log --ref <block id>`'s empty success accepted as a defect, prikk to name the fixing release
+  (PK-36); an `extract` path scope or per-entry content id recorded as an unscheduled candidate (PK-37). prikk writes
+  when the rotation design is scheduled or the defect's release is named.
+- **Earlier (2026-10-27 – 28):** `send/2026-10-27-non-ascii-repository-paths.md` (sent by the owner)
   asked whether NFC path support is scheduled; prikk replied on 2026-10-28 (`receive/…design-round-in-0-56-0.md`):
   a design round in 0.56.0, implementation 0.57.0 at the earliest, no date. Folded into the ledger (PK-21,
   **RULED**), ROADMAP §6 and RFC 003's handoff: inklkunn ships with percent-encoded paths and plans the switch
