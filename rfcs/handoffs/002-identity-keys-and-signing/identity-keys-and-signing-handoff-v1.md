@@ -15,7 +15,7 @@
 - Every new dependency follows RFC 010 D-6: measure, report the delta with deny and audit before the commit
   that adopts it. Candidates for this handoff: Argon2id (`argon2`), an AEAD and a KDF for the key store (the
   RustCrypto families planeter already carries are the first candidates), an OpenID Connect token verifier
-  (`jsonwebtoken`; **its backend waits for DR-9, see the 2026-10-28 notes below**), and the outbound HTTPS question of IQ-3 (a
+  (`jsonwebtoken` with its **`aws_lc_rs` backend, by the owner's ruling DR-9; see the 2026-10-28 notes below**), and the outbound HTTPS question of IQ-3 (a
   confined `curl` through the egress guard first; an in-process client only if measured and justified).
 
 ## Notes from M0's review (2026-10-27), binding on the tasks below
@@ -36,17 +36,21 @@
 
 ## Notes from the architect's review of 2026-10-28, binding on the tasks below
 
-- **T1, the OpenID Connect token verifier waits for one owner ruling (issue IS-11).** The candidate named above,
-  `jsonwebtoken` with its RustCrypto backend, now fails both supply-chain gates: RUSTSEC-2026-0387 (`crypto-bigint`
-  0.5.5, timing variability on secret integers; no fixed version reachable through `jsonwebtoken`) and
-  RUSTSEC-2023-0071 (`rsa`, the Marvin attack). planeter measured the alternative, `jsonwebtoken`'s `aws_lc_rs`
-  backend: it removes `crypto-bigint`, `rsa` and 33 other crates (`p256` and `p384` among them), `cargo deny` and
-  `cargo audit` exit 0, OIDC behaviour byte-identical over 30 cases, about 2 MB larger, no licence outside the same
-  allow-list inklkunn uses (planeter decision D-41; ledger PL-10). The owner rules on that switch for planeter (its IS-54) and is asked to rule
-  for inklkunn with the same answer (STATUS, decision request DR-9). **Until then:** build everything else in T1
-  (accounts, local passwords with constant-work Argon2id, sessions, CSRF, scoped tokens, throttles, the OIDC code + PKCE
-  flow up to the token check behind a `TokenVerifier` seam with a test double); adopt **no** JWT crate; do not add an
-  advisory ignore. The review request may hand T1 back with the verifier marked as waiting on DR-9.
+- **T1, the OpenID Connect token verifier uses `jsonwebtoken`'s `aws_lc_rs` backend: the owner's ruling DR-9,
+  2026-10-28 (issue IS-11).** The candidate first named above, `jsonwebtoken` with its RustCrypto backend, fails both
+  supply-chain gates: RUSTSEC-2026-0387 (`crypto-bigint` 0.5.5, timing variability on secret integers; no fixed
+  version reachable through `jsonwebtoken`) and RUSTSEC-2023-0071 (`rsa`, the Marvin attack). planeter measured the
+  `aws_lc_rs` backend: it removes `crypto-bigint`, `rsa` and 33 other crates (`p256` and `p384` among them), `cargo
+  deny` and `cargo audit` exit 0, OIDC behaviour byte-identical over 30 cases, about 2 MB larger, no licence outside
+  the same allow-list inklkunn uses (planeter decision D-41; ledger PL-10). **How to adopt it:**
+  `default-features = false` with the `aws_lc_rs` feature and only what the flow needs, measured before the commit
+  that adopts it (RFC 010 D-6: the lock delta, deny, audit, licences); AWS-LC is compiled from C and assembly, so
+  record as well the build-time and binary-size deltas and that CI, the MSRV job and both release architectures
+  build it. **No advisory ignore**, and `rsa` and `crypto-bigint` must not be in the lock (show it). The rejection
+  carried from planeter in `docs/dependency-policy.md` (`jsonwebtoken` on `ring`/`aws-lc`) is overturned for `aws-lc`
+  by DR-9: the accepted row that T1 adds cites DR-9, and that rejected row gains a note saying so. Keep the
+  `TokenVerifier` seam with its test double for the tests. **DR-9 decides this backend only**: the key store's AEAD
+  and memory-hard derivation follow T3 as written.
 - **Any task that adds `tokio`:** at least 1.53.3 in the lock (RUSTSEC-2026-0386, `AsyncFd`; ledger PL-10).
 
 ## Task breakdown, in build order

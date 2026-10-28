@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | The dated brief a new session reads **first**: where the project is, what is pending on whom, and the issue register. Updated at every milestone, RFC disposition and owner ruling. |
-| As of | 2026-10-28 — **M0 done: RFCs 001 and 010 approved and moved to `done/`** (review requests v2 approved by the owner); **RFCs 002 and 003 accepted**, 002's handoff assignable and 003's T1–T3 startable; prikk's reply on Unicode paths folded (ship percent-encoded; migrate later); release tags will be SSH-signed (pending the owner's public key); **RFC 004 (proposals, M2) accepted** with its handoff v1. **Later the same day:** the dev team began (handoff 002 T5, `3913137`); a new architect session reviewed the whole record and the upstreams and folded **seven issues (IS-7 … IS-13)** into binding handoff notes, one driver follow-on handoff and ledger v1.1; **one decision is asked of the owner (DR-9)** |
+| As of | 2026-10-28 — **M0 done: RFCs 001 and 010 approved and moved to `done/`** (review requests v2 approved by the owner); **RFCs 002 and 003 accepted**, 002's handoff assignable and 003's T1–T3 startable; prikk's reply on Unicode paths folded (ship percent-encoded; migrate later); release tags will be SSH-signed (pending the owner's public key); **RFC 004 (proposals, M2) accepted** with its handoff v1. **Later the same day:** the dev team began (handoff 002 T5, `3913137`); a new architect session reviewed the whole record and the upstreams and folded **seven issues (IS-7 … IS-13)** into binding handoff notes, one driver follow-on handoff and ledger v1.1; **DR-9 ruled by the owner the same day: `aws_lc_rs`** |
 | Read next | [`src/inklkunn-00-project-charter.md`](src/inklkunn-00-project-charter.md) → [`../ROADMAP.md`](../ROADMAP.md) → [`src/inklkunn-01-requirements-spec.md`](src/inklkunn-01-requirements-spec.md) → [`src/inklkunn-02-external-design.md`](src/inklkunn-02-external-design.md) → [`src/inklkunn-03-threat-model.md`](src/inklkunn-03-threat-model.md) → [`src/inklkunn-04-internal-design.md`](src/inklkunn-04-internal-design.md) → [`../rfcs/README.md`](../rfcs/README.md) |
 
 ## Where we are
@@ -81,27 +81,25 @@
   vector** (scratch repositories only). Result: seven issues (IS-7 … IS-13 below), all disposed of without changing
   any accepted decision — a follow-on handoff for the driver (IS-7), dated binding notes in handoffs 002, 003 and 004,
   two concretizations of RFC 003 (D-2, D-11; internal design SGN-6), ledger v1.1, and one decision request (DR-9).
+- **2026-10-28 — DR-9 ruled by the owner: *"aws_lc_rs"*.** The question: which backend verifies OpenID Connect ID
+  tokens, now that `jsonwebtoken`'s RustCrypto backend fails both supply-chain gates (RUSTSEC-2026-0387
+  `crypto-bigint`, no fixed version reachable; RUSTSEC-2023-0071 `rsa`). The options put: **(a)** `jsonwebtoken`'s
+  `aws_lc_rs` backend — both advisories removed rather than ignored, with `crypto-bigint`, `rsa` and 33 other crates,
+  no new licence, OIDC behaviour unchanged in planeter's 30 cases, about 2 MB larger, at the price of AWS-LC (C and
+  assembly) in the trusted base and of reversing the 2026-09-24 rejection carried from planeter; **(b)** RustCrypto
+  with two scoped ignores (pure Rust; public-key verification only; two standing advisories on the sign-in path). The
+  architect recommended (a) as one ruling for both projects, since planeter's IS-54 asks the same; **(a) was chosen**.
+  Folded: handoff 002's T1 note (the verifier is unblocked: how to adopt and measure it, no ignore, `rsa` and
+  `crypto-bigint` absent from the lock), IS-11, ledger PL-10. planeter's records are folded by planeter's own session.
+  Meanwhile the dev team committed handoff 002's T5 follow-up and T2 (`bc60dc6`, `fb95846`; local, unreviewed).
 
 ## Pending on the owner
 
-- **DR-9 — Which backend verifies OpenID Connect ID tokens** (decision request; issue IS-11; ledger PL-10).
-  *Background:* RFC 002's handoff named `jsonwebtoken` with its RustCrypto backend, as in planeter; since 2026-10-23
-  that backend fails both supply-chain gates (RUSTSEC-2026-0387 `crypto-bigint`, no fixed version reachable;
-  RUSTSEC-2023-0071 `rsa`, which planeter ignores by your ruling of 2026-09-24). You are already asked the same
-  question for planeter (its IS-54). *Options:* **(a)** `jsonwebtoken`'s `aws_lc_rs` backend in both projects —
-  removes both advisories instead of ignoring them (with `crypto-bigint`, `rsa` and 33 other crates), no new licence (the two allow-lists are equal),
-  OIDC behaviour unchanged in planeter's 30 cases, about 2 MB larger; but it compiles AWS-LC (C and assembly) into the
-  binary, a larger non-Rust trusted base, and it reverses the 2026-09-24 rejection that inklkunn's dependency policy
-  carries as evidence. **(b)** RustCrypto with two scoped ignores — pure Rust; verification uses only the provider's
-  public keys, so neither timing issue touches a secret; but two standing advisories on the sign-in path, re-examined
-  at every release. *Recommendation:* **(a), one ruling for both projects**, so the ecosystem has one supply chain.
-  *Deadline:* before handoff 002's review request closes; M1 does not wait (RFC 002's T1 proceeds without the verifier
-  behind a seam). *If deferred:* OpenID Connect sign-in cannot ship in M2.
-
 - **Add your SSH public key line to `release-signers.toml`** (`authorized_ssh_signers`) before the first
   release; the decision to sign tags is taken (2026-10-28), only the key is missing (IS-6).
-- **Tell the dev team** that handoffs 002, 003 and 004 gained binding notes dated 2026-10-28 (002 T1: no JWT crate
-  until DR-9; 003 T3: the title index from one `extract`; 003 T7: `archive export` in the signer's keyless mode) and
+- **Tell the dev team** that handoffs 002, 003 and 004 gained binding notes dated 2026-10-28 (002 T1: the OIDC
+  verifier on `jsonwebtoken`'s `aws_lc_rs` backend, by DR-9; 003 T3: the title index from one `extract`; 003 T7:
+  `archive export` in the signer's keyless mode) and
   that `rfcs/handoffs/001-foundations/verify-verdict-honesty-handoff-v1.md` is theirs, before 003's T4. (The dev team
   started on 2026-10-28; its prepare task is `.git-exclude/tasks/dev-team/001-prepare.md`.)
 - Name the Japanese reviewers before the first catalog ships (DR-7; Japanese is compiled in as a preview
@@ -113,14 +111,14 @@
 |---|---|---|
 | prikk 0.54.1 | the M1 floor (`extract`, `diff`, `tree`, `cat`, the `show <block-id>` fix); RFC 170 (library) and RFC 154 unscheduled; **non-ASCII paths: a design round in 0.56.0, implementation ≥ 0.57.0** (letter of 2026-10-28, PK-21) | pin 0.54; re-baseline at each release (RFC 010); ship with percent-encoded paths, migrate when prikk's design lands |
 | prikk 0.55.0 (in progress) / 0.56.0 (scheduled) | 0.55.0: `extract`'s refusal ids 13 → 15, bundle reads stream, the checkpoint record documented; 0.56.0: the Unicode-path design round, a received ref that would move backwards refused by default, the signer in `branch --format json` (PK-26) | **the first re-baseline runs at 0.55.0's release** (RFC 010's deferred criterion); no inklkunn change is needed for either plan |
-| planeter 0.4.0 (+ unreleased work to 2026-10-28) | no module mechanism; OQ-4 unruled (re-checked 2026-10-28); RFC 012's catalog pattern, glossary, RFC 011's admission and RFC 004's recovery reused as patterns; new: the complete-verdict rule (PL-7), `unlock` in a PID namespace (PL-8), the output cap (PL-9, already bounded here), the advisories and the `aws_lc_rs` measurement (PL-10, IS-54 waits for the owner), kill-safe creation (PL-11) | joint RFC 008 after M2's design; a letter through the owner then; DR-9 follows planeter's IS-54 ruling |
+| planeter 0.4.0 (+ unreleased work to 2026-10-28) | no module mechanism; OQ-4 unruled (re-checked 2026-10-28); RFC 012's catalog pattern, glossary, RFC 011's admission and RFC 004's recovery reused as patterns; new: the complete-verdict rule (PL-7), `unlock` in a PID namespace (PL-8), the output cap (PL-9, already bounded here), the advisories and the `aws_lc_rs` measurement (PL-10, IS-54 waits for the owner), kill-safe creation (PL-11) | joint RFC 008 after M2's design; a letter through the owner then; DR-9 ruled `aws_lc_rs` (2026-10-28), put as one ruling with planeter's IS-54 |
 | wiki-commons 0.4 | the conformance corpus is CR-markup's fixture set; identifiers may change before its 1.0 | claims versioned `@0.4` |
 
 ## Next
 
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). The dev team takes RFC 002's handoff (the real
-signer and key store, the roles; its notes from M0's review and of 2026-10-28 are binding; T1's OIDC verifier waits
-for DR-9) and RFC 003's handoff T1–T3 (the web skeleton and headers, the catalog and the structural tests, the read
+signer and key store, the roles; its notes from M0's review and of 2026-10-28 are binding; T1's OIDC verifier on the
+`aws_lc_rs` backend, DR-9) and RFC 003's handoff T1–T3 (the web skeleton and headers, the catalog and the structural tests, the read
 service and caches, under the 2026-10-28 hold notes), plus the driver follow-on for IS-7; T4 onward follows 002's T2
 and that follow-on. The architect reviews each review request as it arrives (the first will be handoff 002's; points
 already noted for it: the message grammar landed in `inklkunn-signer` and is re-exported by core, where RFC 002 D-5
@@ -148,7 +146,7 @@ the mode requires. CI is green from `d0a8307` on ([run 40489623629](https://gith
 | IS-8 | **RFC 003's handoff routed `prikk archive export` through the read driver**, but the verb writes lock files inside `.prikk/` and refuses on a read-only bind (measured), the boundary gate already forbids the driver to name `archive`, and it conflicts with concurrent writers | architect review 2026-10-28; ledger PK-23 | **concretized**: RFC 003 D-11 and the handoff's T7 run it in `inklkunn-signer`'s keyless writable mode, serialized with the wiki's writes (internal design SGN-6); RFC 004's lease covers it (handoff 004 note) |
 | IS-9 | **`extract` needs prikk's checkpoint record, which a read-only `verify` cannot refresh**: after a prikk upgrade, a restore or a cleared cache, `extract` of a history beyond 63 blocks refuses (`not-recorded`) until a seal or a writable `verify` | architect review 2026-10-28; measured on 0.54.1; ledger PK-24 | **concretized**: the checkpoint refresh is the keyless mode's second operation (RFC 003 D-11), run at start where the prikk version changed (the wiki record keeps it, store schema 2) and on demand; a `not-recorded` refusal is *could not be read now*, never `--allow-full-replay` from a request (handoff 003, T3 and T7 notes) |
 | IS-10 | **The title index as specified would cost one whole-tree replay per page** ("one `tree` and the `cat`s it needs"): each `cat` replays the tree (0.17–0.42 s at 76–212 MiB), and `diff --path` filters only the output; tens of minutes per tip on a 10,000-page wiki | architect review 2026-10-28; spike A's numbers; ledger PK-25 | **concretized**: RFC 003 D-2 and the handoff's T3 build each tip's index from one `extract` (0.28–0.58 s at 10,000 pages); the build is measured against PERF-1 in T3; serving page bodies from the materialized tip is the next lever if PERF-1 fails (the architect's call) |
-| IS-11 | **The OIDC token-verifier crate named in RFC 002's handoff fails both supply-chain gates** (RUSTSEC-2026-0387, RUSTSEC-2023-0071 through `jsonwebtoken`'s RustCrypto backend); `tokio` below 1.53.3 has RUSTSEC-2026-0386 | planeter IS-54, D-40, D-41 (PL-10); architect review 2026-10-28 | **waits for the owner (DR-9)**; meanwhile handoff 002's T1 builds everything but the verifier, behind a seam, and adopts no JWT crate; handoff 003's T1 takes `tokio` ≥ 1.53.3 |
+| IS-11 | **The OIDC token-verifier crate named in RFC 002's handoff fails both supply-chain gates** (RUSTSEC-2026-0387, RUSTSEC-2023-0071 through `jsonwebtoken`'s RustCrypto backend); `tokio` below 1.53.3 has RUSTSEC-2026-0386 | planeter IS-54, D-40, D-41 (PL-10); architect review 2026-10-28 | **decided 2026-10-28 (DR-9: `aws_lc_rs`)**: handoff 002's T1 adopts `jsonwebtoken`'s `aws_lc_rs` backend, measured, with no advisory ignore and neither `rsa` nor `crypto-bigint` in the lock; handoff 003's T1 takes `tokio` ≥ 1.53.3; closes when T1 lands with `cargo deny` and `cargo audit` green |
 | IS-12 | **The cost table is thin for a single large attachment**: on one 24 MiB attachment `cat` needs 3.0 × S against a ceiling of 3.15 × S (admission understated by 30 %), `verify` 5.0 × S against a cost of 4.1 × S | architect review 2026-10-28; measured on 0.54.1; ledger PK-20 | handoff 003's T6 re-measures at 64 and 200 MiB and raises the multiples **before `-/raw/` serves attachments** (T9's measurement brought forward); a `cat` rule that follows the file's size is to be proposed from the data |
 | IS-13 | **A kill during *create wiki* leaves an unreferenced repository directory** (the record is stored last; nothing sweeps), and with RFC 002's key store it would leave key records too | architect review 2026-10-28; planeter RFC 004 part 7 (PL-11) | handoff 003's T7: creation kill-safe at every step (a `creating` state and a start-up sweep, planeter's precedent), proved by a `SIGKILL` at each step |
 

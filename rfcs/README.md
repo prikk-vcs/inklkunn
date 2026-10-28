@@ -36,7 +36,7 @@ subjects not yet written: 005 knowledge layer
 | # | RFC | Serves | State |
 |---|---|---|---|
 | 001 | [Foundations: the workspace and its gates, the storage driver, and the wiki repository layout](done/001-foundations.md) | M0 → M1 | **done** 2026-10-28 (approved after review; handoff review request v2); **follow-on handoff assignable** (2026-10-28): verification verdicts under a memory ceiling (IS-7), before 003's T4 |
-| 002 | [Identity, keys and signing](accepted/002-identity-keys-and-signing.md) | M0 → M2 (DR-4) | **accepted** 2026-10-27; handoff v1 **assignable now** (its notes from M0's review and of 2026-10-28 are binding; T1's OIDC token verifier waits for the owner's DR-9) |
+| 002 | [Identity, keys and signing](accepted/002-identity-keys-and-signing.md) | M0 → M2 (DR-4) | **accepted** 2026-10-27; handoff v1 **assignable now** (its notes from M0's review and of 2026-10-28 are binding; T1's OIDC token verifier on `jsonwebtoken`'s `aws_lc_rs` backend, the owner's DR-9 of 2026-10-28) |
 | 003 | [Read path and rendering](accepted/003-read-path-and-rendering.md) | M1 | **accepted** 2026-10-27, concretized 2026-10-28 (D-2, D-11); handoff v1 with 2026-10-28 hold notes: T1–T3 **startable now**, T4+ after 002's T2 and 001's follow-on, T7 after 002's T3–T5 |
 | 004 | [Proposals: propose, review, accept and seal; re-author a moved base gently; never lose a half-state](accepted/004-proposals.md) | M2 | **accepted** 2026-10-28; handoff v1 assignable after 002's T1–T6 and 003's T1–T4 |
 | 010 | [Upstream tracking and supply-chain maintenance](done/010-upstream-and-supply-chain-maintenance.md) | all | **done** 2026-10-28 (approved after review); its procedures run at every release and re-baseline |

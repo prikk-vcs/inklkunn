@@ -174,6 +174,8 @@ handoff; the dev team implements against it; the owner authorizes.
 
 **All eight were ruled by the owner on 2026-10-24, each as recommended** (*"Accepted. Proceed on the next."*).
 The requests are kept as written so the alternatives considered stay on record.
+Later decision requests (DR-9 onward) are put and ruled in `docs/STATUS.md`, kept there with their options, and
+listed here only when they change the roadmap (DR-9, the sign-in token verifier's backend, does not).
 
 Each request states the decision, the options with their trade-offs, the architect's recommendation and
 what deferring costs (workflow §9.3). **The roadmap above is drawn on the recommended options**; a
