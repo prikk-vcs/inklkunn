@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | The implementation package for RFC 003: tasks in build order, the QA checklist drawn from the RFC's acceptance criteria, and the definition of done and handback. A handoff directs implementation and never redefines its RFC; a design conflict goes back to the RFC first. |
-| Status | Inherits RFC 003's: **accepted 2026-10-27**. **T1–T3 are startable once handoff 001's review is closed**; T4 onward also needs RFC 002's T2 (`authorize()` with the visibility rule and the route-enumeration harness); T7 also needs RFC 002's T3–T5 (the key store, `Accept`, the message contract). |
+| Status | Inherits RFC 003's: **accepted 2026-10-27**. **T1–T3 are startable once handoff 001's review is closed**; T4 onward also needs RFC 002's T2 (`authorize()` with the visibility rule and the route-enumeration harness) **and the driver follow-on for IS-7**; T7 also needs RFC 002's T3–T5 (the key store, `Accept`, the message contract). **Read the 2026-10-28 hold notes below before T1.** |
 | Basis | RFC 003 (D-1 … D-13); RFC 001 (`Storage`, `inklkunn-markup`, the wiki record, the gates); RFC 002 D-2, D-6; internal design `RD-1 … RD-5`, `MK-1 … MK-6`, `DM-6`, `DM-7`, `ENF-3`, `ENF-5`, `IQ-2`, `IQ-6`; external design `WEB-01`, `WEB-02`, `WEB-06`, `WEB-09`, `WEB-10`, `API-01`, `API-02`, `API-04`, `API-06`, `API-07`, `FL-01`, `FL-08`, `CT-05`, `CT-06`, `CT-07`, `OP-02`, `OP-03`, `OP-06`; threat model `T-6`, `T-7`, `T-10`, `INV-5`, `INV-6`; requirements `RD-1 … RD-11`, `RD-14`, `INC-1 … INC-8`, `IX-1`, `IX-2`, `IX-5`, `IX-6`, `SEC-2`, `PRV-1`, `PRV-4`, `PERF-1`, `OPS-5`; planeter RFC 012 (D-2 … D-5 adopted as rules) and RFC 011 (the admission shape); RFC 010 D-6 (every new crate measured before its commit). |
 | Audience | The dev team (the mid-capability model). Read `.git-exclude/roles/mid-capability-model-operating-instructions.md`, then `docs/STATUS.md`, then handoff 001's review request (what M0 is and what it is not), then this. |
 | Scope | M1: `inklkunn-web` (routes, templates, catalog, sanitizer, headers, content origin, feeds, OpenAPI), the read service and caches in `inklkunn-core` and `inklkunn-store`, export and `import-folder`, the `inklkunn` binary, and the rendering refinements in `inklkunn-markup` that the pages reveal. **Not** sign-in pages beyond what tests need (RFC 002), **not** proposals (RFC 004), **not** the knowledge or governance surfaces, **not** bundle import (RFC 007). |
@@ -27,6 +27,51 @@ read against:
   handoff waits for prikk. The URL scheme (D-1) and every surface show **titles**; a path appears only in
   `-/raw/` responses' metadata and the export, labelled as the storage path. The switch to native paths is a
   later migration, not this handoff's.
+- **From the architect's review of 2026-10-28 (binding; issues IS-7 … IS-13 in `docs/STATUS.md`, facts in the
+  ledger rows PK-22 … PK-25 and PL-7 … PL-13).** Measured on prikk 0.54.1 with the driver's own sandbox vector.
+  - **T1:** `tokio` at least 1.53.3 in the lock (RUSTSEC-2026-0386; ledger PL-10).
+  - **T3, the title index is built from one materialized tip, never from one `cat` per page (IS-10).** Each `cat`
+    replays the whole tree (spike A: 1.0 × S; 0.17 s at 76 MiB and 0.42 s at 212 MiB for 10,000 pages), and
+    `diff --path` filters only the output ("the work is whole-tree either way", prikk `reference/commands.md`), so
+    "one `tree` and the `cat`s it needs" would cost one whole-tree replay per page: tens of minutes for a 10,000-page
+    wiki at every new tip. Build each tip's index from **one `materialize` (`extract`) of the tip** into the wiki's
+    scratch directory (spike A: 0.9 × S, 0.28–0.58 s at 76–212 MiB for 10,000 pages), read every page's frontmatter
+    from the files, and remove the directory. Neither `tree` nor `cat` names a file's content id (checked), so
+    caches stay keyed by (tip, path) as D-2 says. Measure the build on spike A's 1,000- and 10,000-page corpora and
+    report it beside PERF-1; if PERF-1 fails, say so and stop — serving page bodies from the materialized tip is the
+    candidate the architect will weigh, not a change to make on your own.
+  - **T3, `extract` needs prikk's checkpoint record (IS-9).** On a history beyond 63 blocks `extract` anchors on a
+    record that only `seal` and a **writable** `verify` write; after a prikk upgrade (the record is keyed to the prikk
+    version), a restore or a cleared `.prikk/cache/`, it refuses `no-checkpoint-in-reach` with reason `not-recorded`,
+    and the driver's read-only `verify` does not re-record it (measured). The index build maps that refusal to the
+    ordinary *could not be read now* path with the reason named for the operator and flags the wiki for a
+    **checkpoint refresh** (T7); it **never** passes `--allow-full-replay` from a request path.
+  - **T4 also needs** the driver follow-on `../001-foundations/verify-verdict-honesty-handoff-v1.md` (IS-7) landed and
+    approved: the badge must never show *Verification failed* for a memory ceiling.
+  - **T6, before `-/raw/` serves attachments, re-measure the attachment shape (IS-12; T9's measurement, brought
+    forward for `cat` and `verify`).** Early data, one 24 MiB attachment (S = 24.1 MiB): `cat` of it needs **3.0 × S**
+    of `RLIMIT_DATA` against the table's cost 2.1 × and ceiling 3.15 × (5 % headroom, admission understated by 30 %);
+    `verify` needs **5.0 × S** against 4.1 × (ceiling 6.15 ×). `tree` (2.0 ×) and `extract` (2.0 ×) are inside their
+    rules. Raise the multiples from your own measurement (64 and 200 MiB single attachments, spike A's method) with
+    margin; propose, if the measurement supports it, a `cat` rule that follows the file's size from the tree listing
+    rather than the store, and the architect decides.
+  - **T7, `prikk archive export` is not a read verb (IS-8).** It writes inside `.prikk/` (lock files and caches) and
+    refuses on a read-only bind (`i/o error: Read-only file system (os error 30)`, exit 1, measured), the boundary gate
+    already forbids the read driver from naming `archive`, and it conflicts with concurrent writers (planeter PK-60).
+    It therefore runs in **`inklkunn-signer`, in a keyless writable mode** (the repository writable, no key directory
+    mounted, no seed variables), as an audited admin act, **serialized with the wiki's writes**: in M1 every write is
+    an admin CLI act and prikk's own fail-fast lock answers a concurrent one with `lock conflict`, surfaced and never
+    cleared; from M2 it takes the wiki's write lease. The **checkpoint refresh** of IS-9 is the same mode's second
+    operation (a `verify` with the repository writable), run by the binary at start for every wiki whose last refresh
+    ran under another prikk version (a field of the wiki record, added with T3's store schema version 2), and when T3
+    raises the flag. `prikk bundle export` (one ref's closure, runs
+    read-only) is not needed in M1: "bundle" in inklkunn always means the Portable Wiki Bundle. RFC 003 D-2 and D-11
+    carry these concretizations.
+  - **T7, creation is kill-safe (IS-13).** *Create wiki* stores the record last, so a `SIGKILL` between the first
+    directory and the record leaves a repository directory (and, once RFC 002's key store exists, key records) that
+    nothing references and nothing removes. Make a kill at any step leave either a complete wiki or nothing that
+    survives the next start: planeter's RFC 004 part 7 (a `creating` state until the last step, and a start-up sweep
+    that removes an unfinished creation whole) is the precedent; prove it with a `SIGKILL` at each step.
 
 ## Before you start
 
@@ -92,14 +137,15 @@ read against:
   authority for content.
 - **Change scope.** In `inklkunn-core`: the read service over `Storage` and `inklkunn-markup` — the view's
   tip from `views()` held for a few seconds per wiki; the title index at a tip (title, aliases, redirect
-  targets, page id, path, from the frontmatter of every page at that tip, built with one `tree` and the
-  `cat`s it needs, bounded); the page cache keyed by (tip state id, path, catalog language) holding the
+  targets, page id, path, from the frontmatter of every page at that tip, built from **one `materialize` of the
+  tip**, bounded, per the 2026-10-28 hold note: never one `cat` per page); the page cache keyed by (tip state id, path, catalog language) holding the
   rendered HTML and the link sets; **a per-wiki store-size cache keyed by the tip's state id**, so the
   driver's cost estimate does not re-walk `.prikk` on every call (the driver gains an optional size hint;
   the walk stays the fallback and the truth after a write); the sanitizer pass (`ammonia`) under a policy
   that is exactly the profile's raw-HTML subset (today empty: the manifest says `html_subset: []`) applied
   **before any template sees the HTML**; the counting harness (how many prikk calls a request issued).
-  In `inklkunn-store`: schema version 2 with the derived-cache and title-index tables, the migration from
+  In `inklkunn-store`: schema version 2 with the derived-cache and title-index tables and the wiki record's
+  prikk version of its last checkpoint refresh (hold note IS-9), the migration from
   1 explicit and tested (a database at a newer schema is refused at open, as today); the cache never holds a
   verification result (a type-level rule: the cache record has no field for one). In `inklkunn-markup`:
   block identifiers become `id` attributes on the enclosing block (MKUP-12), and transclusion
@@ -173,8 +219,9 @@ read against:
   why: a path over the caps, a non-UTF-8 file, a frontmatter the parser refuses); `inklkunn wiki export
   <slug> --bundle <dir>` at fidelity level 3 (files as stored, `history/<page id>.jsonl` from `history()` and
   `change()` with the message's people as authors, `users.yaml`, the manifest with fidelity, interwiki map and
-  checksums) and `--archive <file>` through `prikk archive export` (a read verb added to the driver with its
-  cost rule and schema pin); both as audited admin acts, offered from `-/admin` as downloads from the
+  checksums) and `--archive <file>` through `prikk archive export` (**in `inklkunn-signer`'s keyless writable mode,
+  serialized with the wiki's writes, with its cost rule and schema pin**: the 2026-10-28 hold note, IS-8), and the
+  checkpoint refresh (IS-9) in the same mode; both as audited admin acts, offered from `-/admin` as downloads from the
   content origin.
 - **Required tests.** The export round trip (export, import into a fresh wiki, export) agrees on text,
   links, metadata and history; a dry run writes nothing; an import of the hostile-bundle fixture (ENF-4) is

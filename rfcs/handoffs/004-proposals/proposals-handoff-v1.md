@@ -32,6 +32,21 @@
   handoff's notes); `create_view` takes a `ViewCreationAct`; `inklkunn_core::system_message` is the shape
   the composer extends with `Kind: proposal | rollback | import`.
 
+## Notes from the architect's review of 2026-10-28, binding on the tasks below
+
+- **T4, the write lease covers every act that writes inside the repository**, not only acceptances: RFC 003's
+  `archive export` and checkpoint refresh (RFC 003 D-11; issues IS-8, IS-9) take the wiki's lease too, so an export
+  can never make an acceptance meet prikk's `lock conflict` after its `commit` and leave the wiki needing recovery.
+- **T5, a lock holder's liveness is decided by inklkunn's own lease record, never by `prikk unlock`'s process check
+  (ledger PL-8).** prikk records only the writer's process id, and inside the sandbox's PID namespace that id means
+  nothing: planeter measured `unlock` reporting a holder as "appears running" (recorded pid 2) when none was, and prikk
+  confirmed that the check is no evidence there. Recovery clears a stale lock with `unlock --force` (or `--yes`)
+  **only** when the durable lease record shows no live holder, says so in the plan, and records it; a test plants a
+  lock with a recorded pid that the namespace makes look alive.
+- **T5, `doctor`'s unreached-object warning is not damage.** Since prikk 0.54, `verify` counts unreached objects as a
+  warning (exit 0) and `doctor` reports `PRIKK-DOCTOR-UNREACHED-OBJECT` warnings; recovery records them and does not
+  block on them (planeter D-40, ledger PL-12).
+
 ## Task breakdown, in build order
 
 ### T1 — The records and the proposal service (RFC 004 D-1, D-11; DM-3, CT-04, CON-6)

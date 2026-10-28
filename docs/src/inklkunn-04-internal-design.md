@@ -120,6 +120,11 @@ crate, lints as prikk's: `unwrap_used`, `expect_used` and `indexing_slicing` den
   publication in prikk), bound to a recorded view-creation act.
 - **SGN-5 — Process separation is a documented option**, not v1: the trait is designed so CR-signer can run
   as a separate process on a local socket later (threat model RR-1), with no change to callers.
+- **SGN-6 — Keyless writable operations** (added 2026-10-28; ledger PK-23, PK-24; RFC 003 D-11). Two prikk
+  operations write inside `.prikk/` without signing anything: `archive export` (its lock files) and the
+  checkpoint refresh (a `verify` that records the checkpoint `extract` anchors on). They run in CR-signer, the
+  only crate that may bind a repository writable, with no key directory mounted and no seed variables, and
+  are serialized with the wiki's writes (CON-1). CR-prikk stays read-only (STO-5).
 
 ## 5. Markup (MK-…) — CR-markup
 

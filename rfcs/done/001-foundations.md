@@ -3,6 +3,9 @@
 **Status.** **Done** — implemented on `main` (M0) and **approved by the owner on 2026-10-28** (review request v2 under `../handoffs/`, after the architect's independent review; *"Your recommendations are approved."*). Accepted by the owner 2026-10-27 (*"Accepted."*); proposed the same day by the architect. The
 first inklkunn RFC and the substrate every later one sits on. **The implementer may start** per the handoff,
 which is assignable now: [`../handoffs/001-foundations/foundations-handoff-v1.md`](../handoffs/001-foundations/foundations-handoff-v1.md).
+**Follow-on (2026-10-28, assignable):** [`../handoffs/001-foundations/verify-verdict-honesty-handoff-v1.md`](../handoffs/001-foundations/verify-verdict-honesty-handoff-v1.md)
+— the driver must read a `verify` report whose stage ran out of memory as a ceiling hit, never as a failed
+verification (issue IS-7; measured on prikk 0.54.1); it lands before RFC 003's T4.
 **Tracks.** ROADMAP M0 → M1, theme T1. Requirements `PU-3`, `PU-7`, `CM-1 … CM-5`, `CM-7`, `INT-1 … INT-3`,
 `INT-10`, `SEC-5`, `SEC-7`, `SEC-8`, `OPS-1`, `OPS-5`; external design `BD-03 … BD-05`, `PK-01`, `PK-02`,
 `PK-04`, `CT-01`, `CT-02`; internal design `CR-*`, `LAY-*`, `STO-*`, `MK-*`, `DM-1`, `DM-2`, `ENF-1`,

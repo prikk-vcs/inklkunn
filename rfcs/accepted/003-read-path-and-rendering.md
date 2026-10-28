@@ -2,6 +2,9 @@
 
 **Status.** **Accepted** by the owner on 2026-10-27 ("RFC 003 is accepted."); proposed the same day by the
 architect. Handoff: `../handoffs/003-read-path-and-rendering/read-path-and-rendering-handoff-v1.md`.
+**Concretized by the architect on 2026-10-28**, within the accepted intent, from measurements on prikk 0.54.1 (issues
+IS-8 … IS-10 in `docs/STATUS.md`): D-2 builds the title index from one materialized tip; D-11 runs `archive export`
+in the signer crate's keyless writable mode, beside the checkpoint refresh.
 **Tracks.** ROADMAP M1 (0.1.0), theme T3. Requirements `RD-1 … RD-11`, `RD-14`, `CM-3 … CM-5`, `CM-9`,
 `INC-1 … INC-8`, `IX-1`, `IX-2`, `IX-5`, `IX-6`, `IX-8`, `SEC-2`, `PRV-1`, `PRV-4`, `PERF-1`, `OPS-5`;
 external design `WEB-01`, `WEB-02`, `WEB-06`, `WEB-09`, `WEB-10`, `API-01`, `API-02`, `API-06`, `API-07`,
@@ -35,7 +38,9 @@ release.
   *Propose it* (NAV-3). `/-/` at the root is the instance's own: `/-/wikis`, `/-/sign-in`, `/-/lang`.
 - **D-2 — The read pipeline** (internal design RD-1). Slug → wiki record → `authorize(read)` → the view's tip
   from `branch` (held for a few seconds) → the title index at that tip (rebuilt from frontmatter on tip
-  change; stored in the derived cache) → the path → the cache by (tip, path, language) → on a miss, `cat` at
+  change, from **one `extract` of the tip** and never one `cat` per page, since each `cat` replays the whole tree;
+  stored in the derived cache; an `extract` refused for want of prikk's checkpoint record is *could not be read now*
+  and asks for the checkpoint refresh of D-11, never a full replay from a request) → the path → the cache by (tip, path, language) → on a miss, `cat` at
   the tip, parse, resolve, render, store. A page view issues a bounded number of prikk calls (at most two on
   a miss) and none on a hit.
 - **D-3 — Rendering and safety.** The markup tree from `inklkunn-markup` is serialized to HTML and passed
@@ -85,8 +90,13 @@ release.
 - **D-11 — Export.** `inklkunn wiki export <slug> --bundle <dir>` builds a Portable Wiki Bundle at fidelity
   level 3: the files as stored, `history/<page id>.jsonl` from `log` and `show` with the message's people
   as authors, `users.yaml` (pseudonymizable), the manifest with fidelity, interwiki map and checksums; `--
-  archive <file>` runs `prikk archive export`. Both are admin acts, audited; the web surface offers them from
-  `-/admin` in M1 as downloads from the content origin.
+  archive <file>` runs `prikk archive export`, which writes prikk's own lock files and refuses on a read-only
+  repository, so it runs in `inklkunn-signer`'s **keyless writable mode** (the repository writable, no key mounted),
+  serialized with the wiki's writes. The two exports are admin acts, audited; the web surface offers them from
+  `-/admin` in M1 as downloads from the content origin. The same keyless mode's only other operation is the
+  **checkpoint refresh** (a `verify` with the repository writable), which keeps prikk's checkpoint record current
+  for `extract` after a prikk upgrade or a restore; the binary runs it at start where needed, and it is recorded in
+  the audit log like any act on a repository.
 - **D-12 — Filling an M1 wiki.** `inklkunn wiki import-folder <slug> <dir>` commits a folder of pages and
   attachments as one accepted change under the system principal (`Kind: import`) through RFC 002's `Accept`,
   so the read path ships with content before the proposal loop exists (internal design IQ-6).

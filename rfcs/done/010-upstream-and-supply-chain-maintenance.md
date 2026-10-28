@@ -2,6 +2,9 @@
 
 **Status.** **Done** — implemented on `main` (M0) and **approved by the owner on 2026-10-28** (review request v2 under `../handoffs/`, after the architect's independent review; *"Your recommendations are approved."*). Accepted by the owner 2026-10-27 (*"Accepted."*; the open question on the container image is taken
 as the recommendation: binaries and an image from the first release). Proposed the same day by the architect.
+**Deferred (recorded 2026-10-28):** the last acceptance criterion, *the first re-baseline executed by the
+procedure*, waits for the first prikk release after M0 began: prikk 0.55.0 (in progress, unreleased on 2026-10-28;
+`docs/STATUS.md`). The procedure is in place; its first run is recorded there when it happens.
 Numbered 010 by the roadmap's plan so that 003–009 keep
 their reserved subjects; it is written with RFC 001 because M0's workspace must carry its gates from the
 first commit. Handoff, assignable now together with RFC 001's:
