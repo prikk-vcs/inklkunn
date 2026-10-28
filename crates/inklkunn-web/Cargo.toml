@@ -16,12 +16,18 @@ inklkunn-core = { workspace = true }
 axum = { version = "0.8", default-features = false, features = ["http1", "query", "form", "tokio"] }
 # tokio 1.53.3 or later (RUSTSEC-2026-0386, `AsyncFd`; ledger PL-10): the lock holds 1.54.1.
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync", "time", "signal"] }
+# Compiled, auto-escaping templates (RFC 003 D-5). Default features off on purpose: `config` (an `askama.toml`)
+# pulls a TOML parser this project has no use for.
+askama = { version = "0.16", default-features = false, features = ["derive", "std"] }
 # The Service trait, to hand a request to one of two routers. Already locked as axum's own dependency.
 tower-service = "0.3"
 
 [dev-dependencies]
 # Test-only: drive a router with `oneshot`, with no socket.
 tower = { version = "0.5", features = ["util"] }
+# Test-only: parse rendered pages for the structural checks (RFC 003 D-6). It is `ammonia`'s own parser, so
+# nothing new enters the lock beyond it.
+html5ever = "0.40"
 
 [lints]
 workspace = true

@@ -13,6 +13,8 @@ inklkunn-markup = { path = "../inklkunn-markup", version = "0.0.0" }
 inklkunn-prikk = { path = "../inklkunn-prikk", version = "0.0.0" }
 inklkunn-signer = { path = "../inklkunn-signer", version = "0.0.0" }
 inklkunn-store = { path = "../inklkunn-store", version = "0.0.0" }
+# The sanitizer every rendered page passes through before a template sees it (RFC 003 D-3; threat model T-6).
+ammonia = "4"
 
 [dev-dependencies]
 # The tests create wikis with the bootstrap signer and open the real signer with the cheapest key derivation;
