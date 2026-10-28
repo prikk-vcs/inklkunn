@@ -35,7 +35,7 @@ pub use authorize::{
     StoreAuthz, SystemPrincipal, decide,
 };
 pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, Resolver, StdEgressGuard, StdResolver};
-pub use inklkunn_signer::{KeyStatus, Signer, SignerConfig, SignerError};
+pub use inklkunn_signer::{KeyStatus, OldKey, Rotation, Signer, SignerConfig, SignerError};
 pub use routes::{Guard, RouteEntry, RouteError, RouteTable};
 pub use wiki::{
     Cleanup, CreateWikiError, CreatedWiki, RepositoryBootstrap, create_wiki, creation_message,

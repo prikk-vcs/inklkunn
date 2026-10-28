@@ -13,7 +13,9 @@ name = "inklkunn"
 path = "src/main.rs"
 
 [dependencies]
+inklkunn-core = { path = "../inklkunn-core", version = "0.0.0" }
 inklkunn-prikk = { path = "../inklkunn-prikk", version = "0.0.0" }
+inklkunn-store = { path = "../inklkunn-store", version = "0.0.0" }
 
 [lints]
 workspace = true

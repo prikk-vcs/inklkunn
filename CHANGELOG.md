@@ -142,3 +142,15 @@ RFC 002 and RFC 003 — the first handoffs after M0, in progress. Still nothing 
   with `CHECK` and foreign-key rules in the database). Dependencies: `jsonwebtoken` (`aws_lc_rs`) and `sha2`
   (+27 lock entries, measured, `rsa` and `crypto-bigint` absent, no advisory ignored; see the dependency
   policy).
+- **Key lifecycle** (RFC 002 D-8; handoff 002 T7). `inklkunn wiki keys status|create|rotate <wiki>` shows a
+  wiki's key ids, generation and dates (never a secret), makes keys for an initialised repository that has
+  none, and rotates them: new author and maintainer keys under **new ids** (prikk binds an id to one key for
+  good), the new maintainer key adopted first, the sealed record replaced last, so a failure leaves the wiki as
+  it was. Rotation needs the wiki's slug typed (`--confirm`) and is audited. **The old maintainer key stays
+  trusted by default** and its history keeps verifying; `--retire-old --accept-unverifiable-history` removes it
+  from the repository's trust, after which it can seal nothing and **prikk 0.54.1 cannot verify what it sealed**
+  (ledger PK-34, a test that fails the day prikk changes this; RFC 002 D-8's "the repository still verifies"
+  cannot hold with retirement until then). The binary gains its configuration (`INKLKUNN_DATA_DIR`,
+  `INKLKUNN_SECRET_FILE`, `INKLKUNN_KEY_DIR`, `INKLKUNN_SEED_DIR`, `INKLKUNN_PRIKK`, and the `--dev-unconfined`
+  flag, which prints a banner and is not settable from the environment). `docs/KEYS.md` is the runbook,
+  including the compromise procedure and what a lost key store means.

@@ -404,7 +404,9 @@ dependencies = [
 name = "inklkunn"
 version = "0.0.0"
 dependencies = [
+ "inklkunn-core",
  "inklkunn-prikk",
+ "inklkunn-store",
 ]
 
 [[package]]

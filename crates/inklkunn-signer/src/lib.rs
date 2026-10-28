@@ -45,6 +45,7 @@ pub use accept::{
 #[cfg(feature = "bootstrap")]
 pub use bootstrap::BootstrapSigner;
 pub use keys::KeyIds;
+pub use signer::lifecycle::{OldKey, Rotation};
 pub use signer::{KeyStatus, Signer, SignerConfig};
 pub use writes::{SealedIds, SignerError, WRITE_CEILING, WRITE_DEADLINE};
 

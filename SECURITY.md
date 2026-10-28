@@ -20,7 +20,8 @@ changes that verify. The design bounds, detects and attributes that risk rather 
   reason to look at the host (the next start reports how many directories it removed);
 - every sealed change carries the proposer and the acceptor in its signed message, and a reconciliation
   compares the history with the acceptance records so an unrecorded seal is reported (RFC 002 D-5, D-7);
-- keys rotate per wiki, and the surface tells readers only what was checked (*Verified*, *Verification
+- keys rotate per wiki (`inklkunn wiki keys rotate`; the runbook is `docs/KEYS.md`, including the cost of
+  retiring a key under prikk 0.54.1), and the surface tells readers only what was checked (*Verified*, *Verification
   failed*, *Could not be checked now*), never that a person signed cryptographically (RFC 002 D-6, D-8).
 
 **Signing in** is built to give nothing away: past the throttles every password attempt costs one Argon2id

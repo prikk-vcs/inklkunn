@@ -236,6 +236,23 @@ impl Writes {
         .map(|_| ())
     }
 
+    /// `prikk trust maintainer remove --key-id <id>`: the key can seal nothing more, **and** (prikk 0.54.1,
+    /// ledger PK-34) everything it sealed stops verifying. A retired key is the answer to a compromise, not
+    /// to a routine rotation.
+    pub(crate) fn untrust_maintainer(
+        &self,
+        repo: &Path,
+        keys: &KeyDir,
+        key_id: &str,
+    ) -> Result<(), SignerError> {
+        self.write(
+            repo,
+            keys,
+            &["trust", "maintainer", "remove", "--key-id", key_id],
+        )
+        .map(|_| ())
+    }
+
     /// `prikk commit -m <message>` under the author seed, then `prikk seal --allow-no-audit` under the
     /// maintainer seed, then read the tip from `log` (read-only, no keys) and return its ids. A failure
     /// after `commit` is [`SignerError::Incomplete`]; a failure after `seal` is

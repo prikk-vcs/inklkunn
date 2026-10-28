@@ -496,11 +496,12 @@ fn note_leftover(e: AcceptError) -> AcceptError {
     }
 }
 
-impl RepositoryBootstrap for Signer {
-    /// Create the repository in `repo` (the directory the root layout keeps a wiki in, empty), generate the
-    /// wiki's two keys with prikk, adopt the maintainer key, and store the sealed record **last**: a
-    /// failure before that leaves no record. The key ids are `inklkunn-<wiki id>-author` and `-maintainer`.
-    fn create_repository(&self, repo: &Path) -> Result<KeyIds, SignerError> {
+impl Signer {
+    /// Generate a wiki's two keys with prikk in a scratch directory, adopt the maintainer key in `repo`, and
+    /// store the sealed record **last**: a failure before that leaves no record. `init` first makes the
+    /// repository (wiki creation); without it the repository must already exist (keys for a wiki that has
+    /// none). The key ids are `inklkunn-<wiki id>-author` and `-maintainer`.
+    fn provision(&self, repo: &Path, init: bool) -> Result<KeyIds, SignerError> {
         let wiki = self.wiki_of(repo)?;
         if self.store.status(&wiki).is_ok() {
             return Err(SignerError::Refused("the wiki already has keys".to_owned()));
@@ -510,22 +511,15 @@ impl RepositoryBootstrap for Signer {
         let scratch = self.seed_base.scratch().map_err(ks)?;
         let result = (|| -> Result<KeyIds, SignerError> {
             let keys = KeyDir::with_ids(scratch.path(), &author_id, &maintainer_id)?;
-            self.writes.init(repo, &keys)?;
+            if init {
+                self.writes.init(repo, &keys)?;
+            }
             self.writes.generate_key(&keys, "author")?;
             self.writes.generate_key(&keys, "maintainer")?;
             let public = self.writes.public_key(&keys, "maintainer")?;
             self.writes
                 .trust_maintainer(repo, &keys, &maintainer_id, &public)?;
-            let read = |role: &str| {
-                std::fs::read(keys.seed_file(role)).map_err(|e| {
-                    SignerError::Unavailable(format!(
-                        "a generated key could not be read ({})",
-                        e.kind()
-                    ))
-                })
-            };
-            let seeds = Seeds::new(&read("author")?, &read("maintainer")?)
-                .map_err(|e| SignerError::Damaged(e.to_string()))?;
+            let seeds = read_seeds(&keys)?;
             let meta = Meta {
                 wiki: wiki.clone(),
                 generation: 1,
@@ -546,6 +540,26 @@ impl RepositoryBootstrap for Signer {
             (Ok(_), Err(e)) => Err(ks(e)),
             (Err(e), _) => Err(e),
         }
+    }
+}
+
+/// The two generated seeds of a key directory, as the key store wants them.
+fn read_seeds(keys: &KeyDir) -> Result<Seeds, SignerError> {
+    let read = |role: &str| {
+        std::fs::read(keys.seed_file(role)).map_err(|e| {
+            SignerError::Unavailable(format!("a generated key could not be read ({})", e.kind()))
+        })
+    };
+    Seeds::new(&read("author")?, &read("maintainer")?)
+        .map_err(|e| SignerError::Damaged(e.to_string()))
+}
+
+impl RepositoryBootstrap for Signer {
+    /// Create the repository in `repo` (the directory the root layout keeps a wiki in, empty), generate the
+    /// wiki's two keys with prikk, adopt the maintainer key, and store the sealed record **last**: a
+    /// failure before that leaves no record.
+    fn create_repository(&self, repo: &Path) -> Result<KeyIds, SignerError> {
+        self.provision(repo, true)
     }
 
     /// Commit the worktree as the repository's **first** change and seal it. Refused unless the message is a
@@ -571,6 +585,8 @@ impl RepositoryBootstrap for Signer {
         })
     }
 }
+
+pub(crate) mod lifecycle;
 
 #[cfg(test)]
 mod tests;
