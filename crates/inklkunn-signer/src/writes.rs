@@ -8,8 +8,9 @@ use std::path::Path;
 use std::time::Duration;
 
 use inklkunn_prikk::sandbox::{CallLimits, Mounts, Run, Sandbox};
-use inklkunn_prikk::storage::History;
+use inklkunn_prikk::storage::{History, HistoryBlock, Verification};
 use inklkunn_prikk::{parse_report, schema};
+use serde::Deserialize;
 
 use crate::keys::KeyDir;
 
@@ -33,6 +34,9 @@ pub enum SignerError {
     /// The change is committed **and sealed**; only reading its ids back failed. Nothing needs recovery;
     /// the ids are in `log`.
     SealedButUnread(String),
+    /// The call completed, but the temporary directory of decrypted seeds could not be removed. The operator
+    /// removes the directories named `inklkunn-seeds-*` under the seed directory.
+    SeedsNotRemoved,
 }
 
 impl std::fmt::Display for SignerError {
@@ -53,6 +57,11 @@ impl std::fmt::Display for SignerError {
                     "the change is sealed but its ids could not be read back: {m}"
                 )
             }
+            SignerError::SeedsNotRemoved => write!(
+                f,
+                "the call completed but a temporary directory of decrypted seeds could not be removed; \
+                 remove the directories named `inklkunn-seeds-*` under the seed directory"
+            ),
         }
     }
 }
@@ -76,6 +85,34 @@ pub const WRITE_DEADLINE: Duration = Duration::from_secs(120);
 /// bound against a runaway, generous for any content a proposal may carry. RFC 002's handoff measures
 /// the write verbs and replaces it with a costed one.
 pub const WRITE_CEILING: u64 = 1 << 30;
+
+/// `status --format json`: the pinned schema name (ledger PK-27).
+pub(crate) const STATUS_REPORT: &str = "status-report-v1";
+/// `worktree-status --format json`.
+pub(crate) const WORKTREE_REPORT: &str = "worktree-status-report-v1";
+
+/// What the write sequence reads from `status`: the current branch and the queue.
+#[derive(Debug, Deserialize)]
+pub(crate) struct StatusReport {
+    /// The repository's current branch (`heads/<name>`), absent in a repository with none.
+    pub(crate) current_branch: Option<String>,
+    /// Patches committed and not yet sealed.
+    pub(crate) queue: QueueReport,
+}
+
+/// The unsealed queue.
+#[derive(Debug, Deserialize)]
+pub(crate) struct QueueReport {
+    /// How many patches wait for a seal.
+    pub(crate) count: u64,
+}
+
+/// What the write sequence reads from `worktree-status`: whether the worktree matches the baseline.
+#[derive(Debug, Deserialize)]
+pub(crate) struct WorktreeReport {
+    /// No change and no declaration against the baseline.
+    pub(crate) clean: bool,
+}
 
 /// The write-verb runner over a sandbox and a key directory.
 #[derive(Debug, Clone)]
@@ -115,6 +152,17 @@ fn outcome(verb: &str, run: Run) -> Result<Vec<u8>, SignerError> {
         }));
     }
     Ok(run.stdout)
+}
+
+/// Like [`outcome`], for a verb whose **report is the answer even when it exits 1**: `worktree-status` exits
+/// 1 on a dirty tree and `verify` on a failing verdict, each still printing its JSON report on stdout. A
+/// non-zero exit with a report on stdout is returned as the report; one without is the refusal it says.
+fn report_outcome(verb: &str, run: Run) -> Result<Vec<u8>, SignerError> {
+    let has_report = run.stdout.first() == Some(&b'{');
+    if has_report && !run.timed_out && !run.output_exceeded {
+        return Ok(run.stdout);
+    }
+    outcome(verb, run)
 }
 
 impl Writes {
@@ -263,5 +311,112 @@ impl Writes {
         found.ok_or_else(|| {
             SignerError::Damaged("`key public` printed no `public key: <hex>` line".to_owned())
         })
+    }
+
+    /// A read whose report is the answer even on exit 1 (see [`report_outcome`]); no keys in sight.
+    fn read_report(&self, repo: &Path, args: &[&str]) -> Result<Vec<u8>, SignerError> {
+        let verb = args.first().copied().unwrap_or("");
+        let run = self
+            .sandbox
+            .run_mounts(
+                self.binary.as_os_str(),
+                &Mounts::read(repo, None),
+                args,
+                Self::limits(),
+                Some(WRITE_DEADLINE),
+            )
+            .map_err(|e| SignerError::Unavailable(e.to_string()))?;
+        report_outcome(verb, run)
+    }
+
+    /// `prikk status`: the current branch and the unsealed queue.
+    pub(crate) fn status(&self, repo: &Path) -> Result<StatusReport, SignerError> {
+        let out = self.read_report(repo, &["status", "--format", "json"])?;
+        parse_report("status", &out, STATUS_REPORT).map_err(|e| SignerError::Damaged(e.to_string()))
+    }
+
+    /// Is the worktree exactly the baseline (no change, no declared rename)?
+    pub(crate) fn worktree_clean(&self, repo: &Path) -> Result<bool, SignerError> {
+        let out = self.read_report(repo, &["worktree-status", "--format", "json"])?;
+        let report: WorktreeReport = parse_report("worktree-status", &out, WORKTREE_REPORT)
+            .map_err(|e| SignerError::Damaged(e.to_string()))?;
+        Ok(report.clean)
+    }
+
+    /// `prikk branch switch heads/<view>`: the worktree becomes the view's tip. prikk refuses a worktree that
+    /// is not clean, before changing anything.
+    pub(crate) fn switch(&self, repo: &Path, keys: &KeyDir, view: &str) -> Result<(), SignerError> {
+        self.write(repo, keys, &["branch", "switch", view])
+            .map(|_| ())
+    }
+
+    /// `prikk mv <from> <to>`: moves the file and declares the rename for the next commit. A move back
+    /// cancels the declaration (ledger PK-29).
+    pub(crate) fn mv(
+        &self,
+        repo: &Path,
+        keys: &KeyDir,
+        from: &str,
+        to: &str,
+    ) -> Result<(), SignerError> {
+        self.write(repo, keys, &["mv", from, to]).map(|_| ())
+    }
+
+    /// `prikk commit --ref <view> -m <message>` under the author seed.
+    pub(crate) fn commit(
+        &self,
+        repo: &Path,
+        keys: &KeyDir,
+        view: &str,
+        message: &str,
+    ) -> Result<(), SignerError> {
+        self.write(repo, keys, &["commit", "--ref", view, "-m", message])
+            .map(|_| ())
+    }
+
+    /// `prikk seal --allow-no-audit --ref <view>` under the maintainer seed.
+    pub(crate) fn seal(&self, repo: &Path, keys: &KeyDir, view: &str) -> Result<(), SignerError> {
+        self.write(repo, keys, &["seal", "--allow-no-audit", "--ref", view])
+            .map(|_| ())
+    }
+
+    /// The newest block of a view, read back (read-only, no keys).
+    pub(crate) fn tip(&self, repo: &Path, view: &str) -> Result<Option<HistoryBlock>, SignerError> {
+        let stdout = self.read(
+            repo,
+            &["log", "--ref", view, "--limit", "1", "--format", "json"],
+        )?;
+        let history: History = parse_report("log", &stdout, schema::LOG_REPORT)
+            .map_err(|e| SignerError::Damaged(e.to_string()))?;
+        Ok(history.blocks.into_iter().next())
+    }
+
+    /// The newest block of the repository's **current** branch, or `None` when it has none yet (a fresh
+    /// repository). Read-only, no keys.
+    pub(crate) fn head(&self, repo: &Path) -> Result<Option<HistoryBlock>, SignerError> {
+        let stdout = self.read(repo, &["log", "--limit", "1", "--format", "json"])?;
+        let history: History = parse_report("log", &stdout, schema::LOG_REPORT)
+            .map_err(|e| SignerError::Damaged(e.to_string()))?;
+        Ok(history.blocks.into_iter().next())
+    }
+
+    /// `prikk verify`: the verdict of the repository's own checks (read-only, no keys). A failing verdict
+    /// is a report, not an error.
+    pub(crate) fn verify(&self, repo: &Path) -> Result<Verification, SignerError> {
+        let out = self.read_report(repo, &["verify", "--format", "json"])?;
+        parse_report("verify", &out, schema::VERIFY_REPORT)
+            .map_err(|e| SignerError::Damaged(e.to_string()))
+    }
+
+    /// `prikk branch create heads/<name> --from <ref>`, published under the maintainer seed.
+    pub(crate) fn branch_create(
+        &self,
+        repo: &Path,
+        keys: &KeyDir,
+        name: &str,
+        from: &str,
+    ) -> Result<(), SignerError> {
+        self.write(repo, keys, &["branch", "create", name, "--from", from])
+            .map(|_| ())
     }
 }

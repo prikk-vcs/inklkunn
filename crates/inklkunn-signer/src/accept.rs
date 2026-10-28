@@ -1,0 +1,229 @@
+//! `Accept`: the one way into a wiki's history (RFC 002 D-4; internal design SGN-3; threat model C-1a,
+//! C-1b, INV-1). One operation brings an **accepted** proposal into the repository; a second creates a
+//! view. Neither takes a key, a seed path or a signing primitive, and neither can be asked to sign anything
+//! that is not bound to a recorded act.
+//!
+//! The trait lives here, in the crate that implements it and enforces it, and `inklkunn-core` re-exports it
+//! (a lower crate may not depend on core; the internal design calls it "the signer's trait"). A caller holds
+//! an [`AcceptanceToken`], an id, and nothing else: the signer **reads the record the id names itself**
+//! through an [`AcceptanceLedger`], so a caller cannot invent the facts a seal is bound to. In RFC 004 the
+//! ledger is the service store's acceptance records; here it is a trait, and tests give it a double.
+
+use inklkunn_store::{ProposalId, WikiId};
+
+use crate::message::{Actor, BlockId, ImportSource, Kind, Message};
+
+/// The id of an acceptance record in state *pending seal* (RFC 004's records; the guard is RFC 002 D-4's).
+/// Holding one proves nothing by itself: the signer re-reads the record the id names and refuses unless it
+/// is pending seal and the message matches.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AcceptanceToken(String);
+
+impl AcceptanceToken {
+    /// Name an acceptance record.
+    pub fn new(record_id: impl Into<String>) -> Self {
+        AcceptanceToken(record_id.into())
+    }
+
+    /// The record id.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// The id of a recorded view-creation act (RFC 002 D-4, SGN-4): `create_view` is bound to one as `accept`
+/// is bound to an acceptance.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ViewCreationAct(String);
+
+impl ViewCreationAct {
+    /// Name a view-creation act.
+    pub fn new(record_id: impl Into<String>) -> Self {
+        ViewCreationAct(record_id.into())
+    }
+
+    /// The record id.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// One file of a prepared change.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreparedFile {
+    /// Repository-relative path under `pages/`, `attachments/`, `knowledge/` or `governance/`, or the
+    /// manifest `wiki-bundle.yaml`. **The signer validates it** before anything is written (ASCII, prikk's
+    /// path rules, the allowed roots); this type carries, it does not guarantee.
+    pub path: std::path::PathBuf,
+    /// The bytes to write; `None` removes the file.
+    pub content: Option<Vec<u8>>,
+}
+
+/// A change ready to be written: files, declared renames, and the CT-03 message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreparedChange {
+    /// Files written or removed. A renamed page's *new* path is listed here when its content changes too.
+    pub files: Vec<PreparedFile>,
+    /// `(from, to)` renames, declared with `prikk mv` so identity survives.
+    pub renames: Vec<(std::path::PathBuf, std::path::PathBuf)>,
+    /// The CT-03 message text, exactly as [`Message::to_text`] writes it.
+    pub message: String,
+}
+
+/// What a sealed change leaves behind.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SealedChange {
+    /// The sealed block.
+    pub block_id: String,
+    /// The patches it seals.
+    pub patch_ids: Vec<String>,
+}
+
+/// Why an acceptance was refused or did not complete.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AcceptError {
+    /// The token names no acceptance record in state *pending seal* for this wiki and view (or no recorded
+    /// view-creation act).
+    NotPending,
+    /// The message does not name the token's proposal and acceptor (RFC 002 D-5), or is not a message.
+    MessageMismatch,
+    /// Refused before anything was written, or after it with the worktree put back as it was; the text is
+    /// for operators. Nothing changed.
+    Refused(String),
+    /// `commit` succeeded and a later step failed; RFC 004's recovery completes it. The text is for
+    /// operators.
+    Incomplete(String),
+    /// The call could not run, and the repository is as it was found. The text is for operators.
+    Unavailable(String),
+    /// **The call completed**, and `sealed` carries its ids when it was an acceptance, **but the temporary
+    /// directory of decrypted seeds could not be removed.** The operator removes the directories named
+    /// `inklkunn-seeds-*` under the seed directory.
+    SeedsNotRemoved {
+        /// What the call sealed, when it was an acceptance.
+        sealed: Option<SealedChange>,
+    },
+}
+
+impl std::fmt::Display for AcceptError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AcceptError::NotPending => write!(f, "the acceptance is not pending seal"),
+            AcceptError::MessageMismatch => write!(
+                f,
+                "the message does not name the acceptance's proposal and acceptor"
+            ),
+            AcceptError::Refused(m) => write!(f, "refused, nothing changed: {m}"),
+            AcceptError::Incomplete(m) => {
+                write!(f, "committed but not sealed; recovery pending: {m}")
+            }
+            AcceptError::Unavailable(m) => write!(f, "could not run: {m}"),
+            AcceptError::SeedsNotRemoved { sealed } => write!(
+                f,
+                "the call completed{} but a temporary directory of decrypted seeds could not be removed; \
+                 remove the directories named `inklkunn-seeds-*` under the seed directory",
+                if sealed.is_some() {
+                    " (the change is sealed)"
+                } else {
+                    ""
+                }
+            ),
+        }
+    }
+}
+
+impl std::error::Error for AcceptError {}
+
+/// The one way into the repository's history.
+pub trait Accept: Send + Sync {
+    /// Bring the worktree to `view`, apply `change`, commit under the wiki's author key, seal under its
+    /// maintainer key, verify, and return the ids. Refuses unless `token` names an acceptance **pending
+    /// seal for this wiki and view** and the message names its proposal and acceptor, **before anything is
+    /// written**.
+    fn accept(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        token: &AcceptanceToken,
+        change: &PreparedChange,
+    ) -> Result<SealedChange, AcceptError>;
+
+    /// Create view `name` (`heads/<name>`) from the published ref `from`: a maintainer-signed publication
+    /// bound to the recorded act `act`. Refuses unless the act is recorded and names this wiki, view and ref.
+    fn create_view(
+        &self,
+        wiki: &WikiId,
+        name: &str,
+        from: &str,
+        act: &ViewCreationAct,
+    ) -> Result<(), AcceptError>;
+}
+
+/// The facts an acceptance record binds a seal to: everything in the message except its summary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExpectedMessage {
+    /// The wiki the acceptance is for.
+    pub wiki: WikiId,
+    /// The view (`heads/<name>`) it accepts into.
+    pub view: String,
+    /// The kind of change.
+    pub kind: Kind,
+    /// The proposal, for a proposal or a rollback.
+    pub proposal: Option<ProposalId>,
+    /// Who proposed.
+    pub proposed_by: Actor,
+    /// Who accepted.
+    pub accepted_by: Actor,
+    /// The block the proposal was made against, for a proposal or a rollback.
+    pub base: Option<BlockId>,
+    /// Where an import came from.
+    pub imported_from: Option<ImportSource>,
+}
+
+impl ExpectedMessage {
+    /// Does `message` say exactly what the record says (the summary is the proposer's words and is not
+    /// part of the binding)?
+    pub fn matches(&self, message: &Message) -> bool {
+        message.kind() == self.kind
+            && message.proposal_id() == self.proposal.as_ref()
+            && message.proposed_by() == &self.proposed_by
+            && message.accepted_by() == &self.accepted_by
+            && message.base() == self.base.as_ref()
+            && message.imported_from() == self.imported_from.as_ref()
+    }
+}
+
+/// What a recorded view-creation act binds a branch creation to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ViewCreationFacts {
+    /// The wiki.
+    pub wiki: WikiId,
+    /// The new view, `heads/<name>`.
+    pub name: String,
+    /// The ref it starts from.
+    pub from: String,
+}
+
+/// The ledger could not answer. The text is for operators.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LedgerError(pub String);
+
+impl std::fmt::Display for LedgerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the acceptance ledger could not answer: {}", self.0)
+    }
+}
+
+impl std::error::Error for LedgerError {}
+
+/// The records a seal is bound to (RFC 002 D-4; threat model C-1b). The signer reads them itself; a caller
+/// only names them.
+pub trait AcceptanceLedger: Send + Sync {
+    /// The facts of the acceptance record `token` names, **only if it is in state *pending seal* with an
+    /// open intent**; `None` for any other state or an unknown id.
+    fn pending(&self, token: &AcceptanceToken) -> Result<Option<ExpectedMessage>, LedgerError>;
+    /// The facts of the recorded view-creation act `act` names; `None` for an unknown id.
+    fn view_creation(
+        &self,
+        act: &ViewCreationAct,
+    ) -> Result<Option<ViewCreationFacts>, LedgerError>;
+}

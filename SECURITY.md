@@ -8,14 +8,29 @@ is therefore a compromise of every hosted wiki's signing keys, in the sense that
 changes that verify. The design bounds, detects and attributes that risk rather than denying it:
 
 - keys live only in `inklkunn-signer`'s key store, reachable through one call that takes a recorded,
-  accepted proposal; a CI gate keeps every other crate away from them (RFC 001 D-2, RFC 002 D-3, D-4); (in M0 the gate guards the private `key_store` module, the writable sandbox mounts and the bootstrap signer by name; the real key store of RFC 002 adds the rule that no public item returns a seed path or seed bytes)
+  accepted proposal (RFC 001 D-2, RFC 002 D-3, D-4). A CI gate keeps every other crate away from the store
+  and the writable sandbox mounts, and a second gate fails if any public item of the signer crate mentions a
+  seed, a secret or a key directory, so nothing it exports can return key material or the path of any;
+- the seeds are sealed at rest (Argon2id from the operator's secret, XChaCha20-Poly1305 per record, with the
+  wiki, key ids and times bound in, so no record can be edited or moved to another wiki), and are decrypted
+  only into a fresh directory on a tmpfs for the one call that signs, overwritten and removed afterwards.
+  **A server killed in the middle of a signing call (`SIGKILL`) cannot clean up after itself**: its
+  decrypted seeds stay on the tmpfs until the next start, which removes any such directory older than five
+  minutes. Run the seed directory on a tmpfs that is not swapped to disk, and treat an unclean stop as a
+  reason to look at the host (the next start reports how many directories it removed);
 - every sealed change carries the proposer and the acceptor in its signed message, and a reconciliation
   compares the history with the acceptance records so an unrecorded seal is reported (RFC 002 D-5, D-7);
 - keys rotate per wiki, and the surface tells readers only what was checked (*Verified*, *Verification
   failed*, *Could not be checked now*), never that a person signed cryptographically (RFC 002 D-6, D-8).
 
-In M0 the signer is a **bootstrap signer over a plain-text key directory** meant for tests and a developer's
-first wiki; it must not be exposed to a request path. RFC 002's handoff replaces it before any hosting.
+The **operator's secret** opens every wiki's keys: it is a file named by the operator (never stored beside the
+records), 16 to 1024 bytes, and anyone who holds both it and the key records holds every wiki's keys. Keep it
+out of backups of the key records, readable by the server's user only, and long and random. There is **no
+second factor** on local accounts in v1 (threat model RR-4); an OpenID Connect provider that enforces one is the
+interim answer.
+
+The **bootstrap signer** over a plain-text key directory exists only behind the `bootstrap` cargo feature, for
+tests; the gate fails if a product crate enables it.
 
 ## Reporting a vulnerability
 

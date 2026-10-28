@@ -12,6 +12,9 @@ description = "inklkunn's signer: the per-wiki key store and the only path to pr
 # The plain-text bootstrap signer (RFC 001 D-9): tests and a developer's first wiki only. A product binary
 # never enables it; the boundary gate fails if one does.
 bootstrap = []
+# Knobs the crate's own tests turn (the cheapest key derivation). Never enabled by a product crate; the
+# boundary gate fails if one does.
+test-knobs = []
 
 [dependencies]
 inklkunn-prikk = { path = "../inklkunn-prikk", version = "0.0.0" }
@@ -25,7 +28,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
-inklkunn-signer = { path = ".", version = "0.0.0", features = ["bootstrap"] }
+inklkunn-signer = { path = ".", version = "0.0.0", features = ["bootstrap", "test-knobs"] }
 proptest = { workspace = true }
 
 [lints]

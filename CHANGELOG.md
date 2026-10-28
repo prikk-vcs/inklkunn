@@ -90,3 +90,16 @@ RFC 002 and RFC 003 — the first handoffs after M0, in progress. Still nothing 
   if any public item of the signer crate mentions a seed, a secret or a key directory. The module is built
   and tested here and is wired to `Accept` by the next task. Dependencies: `argon2`, `chacha20poly1305`,
   `zeroize` (+22 lock entries, measured; see the dependency policy).
+- **`Accept` and `create_view`** (RFC 002 D-4; handoff 002 T4). `Accept` is now defined in `inklkunn-signer`, the
+  crate that implements and enforces it, and re-exported by `inklkunn-core`; `Signer` implements it. Before a byte
+  is written the signer reads the acceptance record the token names (through an `AcceptanceLedger`) and
+  refuses unless it is pending seal for this wiki and view and the message says exactly what the record says
+  (proposal, proposer, acceptor, base, kind). Then: nothing unsealed and a clean worktree, the view's worktree,
+  the renames, writes and removals (paths validated whole beforehand: ASCII, prikk's rules, the bundle's
+  roots), `commit`, `seal`, read the block back and check it is this change, `verify`. A failure before
+  `commit` puts the worktree back and says so; a failure after is `Incomplete` for recovery. A view is created
+  only for a recorded act. The first change of a new wiki goes through `RepositoryBootstrap`, which now
+  refuses anything but a `system` message to a repository with no history. A start-up sweep removes the
+  seed directories a killed server left behind.
+  *Output change:* `inklkunn_core::accept` re-exports the signer's types; `PreparedChange.message` is the text
+  of a `Message`; `SignerConfig` is built with `SignerConfig::new`.

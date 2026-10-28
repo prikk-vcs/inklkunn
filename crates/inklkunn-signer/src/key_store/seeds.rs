@@ -110,6 +110,105 @@ pub(super) fn fs_type_of(mountinfo: &str, path: &Path) -> Option<String> {
     best.map(|(_, t)| t)
 }
 
+impl SeedBase {
+    /// A scratch directory of the same kind as a seed directory (private, random name, tmpfs), empty: for
+    /// work that produces key material, such as generating a wiki's keys. Its name starts with
+    /// [`DIR_PREFIX`], so the start-up sweep covers it.
+    pub(crate) fn scratch(&self) -> Result<Scratch, KeyStoreError> {
+        let name = format!(
+            "{DIR_PREFIX}{}",
+            random::hex(&random::bytes::<16>().map_err(|_| KeyStoreError::Random)?)
+        );
+        let dir = self.dir.join(name);
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&dir)
+            .map_err(|e| KeyStoreError::Io("a scratch directory could not be made", e.kind()))?;
+        Ok(Scratch {
+            dir,
+            removed: false,
+        })
+    }
+
+    /// Remove seed and scratch directories older than `older_than`: what a call leaves behind when the
+    /// process was killed (`SIGKILL` runs no `Drop`). A directory is touched only if it is a real directory
+    /// (never a link) whose name starts with [`DIR_PREFIX`]; a live call's directory is younger than the
+    /// write deadline, so the age keeps another process's call safe. Returns how many were removed.
+    pub(crate) fn sweep_stale(
+        &self,
+        older_than: std::time::Duration,
+    ) -> Result<usize, KeyStoreError> {
+        let entries = std::fs::read_dir(&self.dir)
+            .map_err(|e| KeyStoreError::Io("the seed directory could not be listed", e.kind()))?;
+        let mut removed = 0;
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            if !name.to_string_lossy().starts_with(DIR_PREFIX) {
+                continue;
+            }
+            let path = entry.path();
+            let Ok(meta) = std::fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if !meta.is_dir() {
+                continue;
+            }
+            let age = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.elapsed().ok())
+                .unwrap_or_default();
+            if age < older_than {
+                continue;
+            }
+            if remove_all(&path) {
+                removed += 1;
+            } else {
+                return Err(KeyStoreError::SeedsNotRemoved);
+            }
+        }
+        Ok(removed)
+    }
+}
+
+/// A private, empty directory on the tmpfs for work that produces key material; removed when finished or
+/// dropped. Its path is never in an error or `Debug` output.
+pub(crate) struct Scratch {
+    dir: PathBuf,
+    removed: bool,
+}
+
+impl std::fmt::Debug for Scratch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Scratch(..)")
+    }
+}
+
+impl Scratch {
+    /// The directory.
+    pub(crate) fn path(&self) -> &Path {
+        &self.dir
+    }
+
+    /// Remove it (files overwritten, then unlinked) and report whether it is gone.
+    pub(crate) fn finish(mut self) -> Result<(), KeyStoreError> {
+        self.removed = true;
+        if remove_all(&self.dir) {
+            Ok(())
+        } else {
+            Err(KeyStoreError::SeedsNotRemoved)
+        }
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        if !self.removed {
+            let _ = remove_all(&self.dir);
+        }
+    }
+}
+
 /// The seeds of one wiki, as files, for one call.
 pub(crate) struct SeedDir {
     dir: PathBuf,

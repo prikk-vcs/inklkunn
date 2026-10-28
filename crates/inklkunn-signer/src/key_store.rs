@@ -336,6 +336,21 @@ impl KeyStore {
         Self::open_with(dir, secret, KdfParams::DEFAULT)
     }
 
+    /// Open with the cheapest derivation costs the bounds allow: for tests, behind the `test-knobs`
+    /// feature. A store made this way keeps those costs in its header.
+    #[cfg(any(test, feature = "test-knobs"))]
+    pub(crate) fn open_cheap(dir: &Path, secret: &Secret) -> Result<Self, KeyStoreError> {
+        Self::open_with(
+            dir,
+            secret,
+            KdfParams {
+                m_cost_kib: 8,
+                t_cost: 1,
+                p_cost: 1,
+            },
+        )
+    }
+
     /// The same, with the key derivation costs a **new** store is made with (an existing store keeps the
     /// costs its header records). Tests use cheap ones.
     fn open_with(dir: &Path, secret: &Secret, params: KdfParams) -> Result<Self, KeyStoreError> {

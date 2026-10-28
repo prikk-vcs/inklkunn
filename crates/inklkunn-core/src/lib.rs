@@ -5,7 +5,8 @@
 //! - [`authorize`](mod@authorize): the one default-deny decision (RFC 002 D-2): the pure rule [`decide`] and the
 //!   [`Authorizer`] that loads the facts itself, fails closed and audits consequential decisions.
 //! - [`routes`]: the table of entry points, each guarded by an action or public with a reason.
-//! - [`accept`]: the `Accept` trait (RFC 002 D-4's signature; the signer implements it; nothing else may).
+//! - [`accept`]: the `Accept` trait (RFC 002 D-4), defined in `inklkunn-signer`, which implements it, and
+//!   re-exported here; nothing else may implement it.
 //! - [`assurance`]: the honesty view-model values (RFC 002 D-6).
 //! - [`message`]: the patch message, the attribution contract written into every signed change (CT-03;
 //!   RFC 002 D-5). The grammar lives in `inklkunn-signer`, which enforces it, and is re-exported here.
@@ -23,8 +24,8 @@ pub mod wiki;
 pub use inklkunn_signer::message;
 
 pub use accept::{
-    Accept, AcceptError, AcceptanceToken, PreparedChange, PreparedFile, SealedChange,
-    ViewCreationAct,
+    Accept, AcceptError, AcceptanceLedger, AcceptanceToken, ExpectedMessage, LedgerError,
+    PreparedChange, PreparedFile, SealedChange, ViewCreationAct, ViewCreationFacts,
 };
 pub use assurance::Assurance;
 pub use authorize::{
@@ -32,6 +33,7 @@ pub use authorize::{
     StoreAuthz, SystemPrincipal, decide,
 };
 pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, Resolver, StdEgressGuard, StdResolver};
+pub use inklkunn_signer::{KeyStatus, Signer, SignerConfig, SignerError};
 pub use routes::{Guard, RouteEntry, RouteError, RouteTable};
 pub use wiki::{
     Cleanup, CreateWikiError, CreatedWiki, RepositoryBootstrap, create_wiki, creation_message,
