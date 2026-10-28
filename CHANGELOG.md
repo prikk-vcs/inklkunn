@@ -237,3 +237,26 @@ are the language switcher and the notices.
   and no fluent reader has read the Japanese. *Output change:* an unknown address on the application origin is
   now a 404 page in the visitor's language, not the text `Not found.`; the content origin's 404 and the 421 are
   one catalog sentence of plain text; `/-/health` and the 404 handler moved out of `routes.rs`.
+
+- **The read path** (RFC 003 D-2; handoff 003 T3; no new dependency). `inklkunn-core::read` serves a page from a
+  held tip: the title index (titles, aliases, redirects, page ids) is built from **one `extract` of the tip** into
+  the wiki's scratch directory, once per tip however many readers meet it, and rendered pages are cached by the
+  tip's state id, the path, the catalog language and the link base. A cached view makes no prikk call and a miss
+  makes one once the index is there (a counting harness holds both). Everything a page carries reaches a template
+  only as `SafeHtml`, which only the `ammonia` sanitizer can construct (a policy built from the markup's own
+  vocabulary plus the profile's raw-HTML subset, empty today; a cached row is sanitized again on the way out); the
+  cache has no field for a verification result. `extract`'s refusal for want of prikk's checkpoint record is the
+  ordinary "could not be read now" and flags the wiki for a refresh; a request never passes
+  `--allow-full-replay` (a test scans the driver's sources). The store gains **schema 5** (derived pages, the title
+  index, and the wiki's checkpoint refresh; a database at 4 migrates forward with its data) and the driver an
+  optional size hint that stands in for the store walk (flat verbs no longer walk the store). `inklkunn-markup`
+  writes a block identifier as the `id` of its block (MKUP-12) and renders `![[Page]]` to depth 2, refusing a cycle
+  and naming it (and a budget of 32 pages and 4 MiB per page, which the handoff does not state). Measured on
+  spike A's corpora with prikk 0.54.1, a cold page on 10,000 pages takes about 0.55 s at 76 MiB and **about
+  0.98 s at 212 MiB** (0.38 s and 0.64 s of it the index build), which is at the 1 s PERF-1 draws; a cached view
+  takes 0.2 ms. *Not done and stated:* an author's own HTML that spells an element the renderer writes (a plain
+  `<a href>`) passes the sanitizer, without `rel="nofollow"`; a stale page is not served when prikk is busy
+  (OP-03). *Output change:* a block identifier is the `id` of its paragraph or block (`<p id="^p1">`), no longer a
+  separate empty `<span>`; `![[Page]]` of a page shows that page (it was a link). *API changes:*
+  `StorageError::Refused` carries the refusal's `reason`; `WikiStore` has two more methods
+  (`request_checkpoint_refresh`, `record_checkpoint_refresh`); `RenderLinks` has three more for transclusion.
