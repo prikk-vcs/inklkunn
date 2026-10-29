@@ -9,6 +9,7 @@
 //! affordance is explained once, under the list, with the catalog's sentence about proposals.
 
 use askama::Template;
+use axum::extract::rejection::PathRejection;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
@@ -119,8 +120,11 @@ pub(crate) async fn health_index(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
-    Path(slug): Path<String>,
+    slug: Result<Path<String>, PathRejection>,
 ) -> Response {
+    let Ok(Path(slug)) = slug else {
+        return generic_not_found(&page);
+    };
     let Some((_, wiki)) = resolve(&state, headers, slug).await else {
         return generic_not_found(&page);
     };
@@ -364,8 +368,11 @@ pub(crate) async fn health_list(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
-    Path((slug, list)): Path<(String, String)>,
+    path: Result<Path<(String, String)>, PathRejection>,
 ) -> Response {
+    let Ok(Path((slug, list))) = path else {
+        return generic_not_found(&page);
+    };
     let Some(kind) = Kind::from_slug(&list) else {
         return generic_not_found(&page);
     };
@@ -400,7 +407,12 @@ pub(crate) async fn health_list(
     let rendered = ListTpl {
         page: &page,
         shell: &shell,
-        title: t.msg(Key::TitleHealth).with("wiki", name).product().text(),
+        title: t
+            .msg(Key::TitlePage)
+            .with("page", page.get(kind.name()))
+            .with("wiki", name)
+            .product()
+            .text(),
         heading: page.get(kind.name()),
         description: page.get(kind.description()),
         caption: page.get(kind.name()),
@@ -471,8 +483,11 @@ pub(crate) async fn links_page(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
-    Path((slug, title)): Path<(String, String)>,
+    path: Result<Path<(String, String)>, PathRejection>,
 ) -> Response {
+    let Ok(Path((slug, title))) = path else {
+        return generic_not_found(&page);
+    };
     let Some((services, wiki)) = resolve(&state, headers, slug).await else {
         return generic_not_found(&page);
     };

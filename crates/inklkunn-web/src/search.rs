@@ -12,6 +12,7 @@
 use std::collections::HashMap;
 
 use askama::Template;
+use axum::extract::rejection::{PathRejection, QueryRejection};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
@@ -159,13 +160,19 @@ pub(crate) async fn search_page(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
-    Path(slug): Path<String>,
-    Query(query): Query<HashMap<String, String>>,
+    slug: Result<Path<String>, PathRejection>,
+    query: Result<Query<HashMap<String, String>>, QueryRejection>,
 ) -> Response {
+    let Ok(Path(slug)) = slug else {
+        return generic_not_found(&page);
+    };
     let Some((services, wiki)) = resolve(&state, headers, slug).await else {
         return generic_not_found(&page);
     };
-    let asked = query.get("q").cloned().unwrap_or_default();
+    let asked = query
+        .ok()
+        .and_then(|q| q.0.get("q").cloned())
+        .unwrap_or_default();
     let wiki_for_work = wiki.clone();
     let for_work = services.clone();
     let outcome = blocking(move || {

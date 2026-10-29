@@ -489,3 +489,58 @@ Handoff 003 T7 (RFC 003 D-11, D-12; hold notes IS-8, IS-9, IS-13).
   directory holds files but no header; it is not a key store (or its header was removed)"), not "there is no key
   store … check the key directory setting"; an empty directory (the creation lock and a creator's temporary file
   aside) is still "no key store".
+Handoff 003 T6 (recent changes, feeds, search, health, discovery; RFC 003 D-7 … D-10). No new external crate
+(`unicode-normalization`, already locked for the markup crate, is now also a dependency of `inklkunn-core`).
+
+- **Recent changes** at `/<wiki>/-/changes`, over the changes of all the wiki's open views (a change the views share is
+  listed once): the summary, the people from the patch message (proposed by, accepted by; *made by the wiki service* for
+  an import; a change sealed outside the service is listed by its first line with *the people are not known*), the pages
+  it touched as links, the view, and *First seen here*. Filters by namespace (a title prefix), view, the wiki service's own
+  changes (show, hide, only) and, for a feed, one page; a filtered list says so, names the filters in use and links to the
+  unfiltered one. Every change is checked with `authorize(Read)` against its view and each page it touched; changes the
+  reader may not read are left out and the page says so. **prikk's log carries no time**, so the time shown (and every
+  Atom `updated`) is when this server first saw the change, kept in the service store (schema 7, `block_seen`; the cache's
+  `clear` leaves it alone) and named so on the page. **No change is marked minor**: the patch message has no such trailer,
+  so the `minor` filter exists in the query and passes everything, and the page offers no control for it.
+- **Atom feeds** for the wiki, a namespace and a page (`-/changes.atom`, `?namespace=`, `?page=`): well-formed, every
+  text escaped and characters XML cannot carry dropped, ids `urn:inklkunn:<wiki id>:<block id>` (stable across a rename of
+  the address), absolute links, `rel=self`, newest first. The tests read them with a strict XML reader and check
+  Atom's structure (RFC 4287 §4.1, §4.2), each rule with a planted violation. A wiki the reader may not read answers its feed
+  exactly as a wiki that is not there.
+- **Search** at `-/search?q=` over titles and aliases: **SQLite FTS5 with the trigram tokenizer** (the bundled SQLite has
+  both; a test says so), one index per (wiki, tip) built from the title index in memory and replaced with the tip (store
+  schema 7: `search_docs`, `search_fts`, `search_tips`). Texts are folded before they are stored and before they are
+  asked (`fold`: NFKC, diacritics removed, kana voicing marks kept, lower case), so width variants, accents and case are one
+  letter, and a Japanese title is found by any part of it (a query of fewer than three characters is a scan of the tip's
+  texts, the same answer). Results show the title or alias that matched with the matching part in `<strong>`; the text is
+  escaped and passes the page sanitizer, so an alias that is a script element is shown as its letters. When no page has the
+  title searched for, the pages with similar titles come first, then *Create “…”* as a button that cannot be pressed (proposals
+  arrive with RFC 004; no dead link). `-/opensearch.xml` describes the search.
+- **Health lists** at `-/health` and `-/health/{wanted,orphans,dead-ends,redirects,wants-help,stale}`, from a link graph of
+  the tip built on demand from one extract (every page read, parsed and its links resolved by the renderer's rules; held
+  in memory per tip, never stored): wanted pages ranked by the pages that link to them, orphans, dead ends, redirects that
+  lead nowhere, loop, run long or lead to a redirect, pages with status `wip`/`draft` or marked `stub`, and the pages unchanged
+  longest (judged within the newest 100 changes, and said so). Each row says what would resolve it. **Backlinks** at
+  `-/links/<Title>` list the pages that link to a page (or to a wanted title), each with the line of its source that makes the
+  link, shown as text.
+- **The stored file** at `/<wiki>/-/raw/<Title>`, byte for byte, **on the content origin only**: `text/markdown;
+  charset=UTF-8`, `ETag` (the tip's block and the path), `Last-Modified` (when this server first saw the tip's block),
+  conditional requests answered 304, `nosniff`, the content origin's sandbox policy, `noindex`, a `Link` to the page. The
+  application origin refuses the address with the generic not-found page; a wiki that is not there, one the reader may not
+  read and a title that leads nowhere are one plain-text answer. The content origin sees no session cookie on a deployment
+  with its own host, so it serves the wikis anyone may read (a way to carry a signed-in reader across is an open question).
+- **Discovery.** Every wiki page's head carries `canonical`, `license`, `search`, `alternate` (the wiki's feed; on a page also its
+  Markdown source on the content origin and its feed) and `describedby`; a page adds `version-history` and `bookmark` (these
+  two point at routes of handoff 003 T5). **schema.org JSON-LD is a document of its own** at `-/describe/<Title>`
+  (`application/ld+json`, linked with `rel="describedby"`): the page policy is `default-src 'none'` with no `script-src`,
+  and JSON-LD inside a page needs a `<script>` element, so the policy is not weakened for it. The site description document
+  (`-/site.json`), `-/sitemap.xml` (public wikis only) and `/robots.txt` (the sitemaps of the public wikis, naming no other).
+  A wiki that is not public says `noindex` in the page and in `X-Robots-Tag`.
+- **Messages:** 126 catalog messages in English and Japanese (the preview), glossary rows for each, five concept rows
+  (*orphan page*, *dead-end page*, *wiki health*, *first seen here*, and *wanted page*, *alias* and *the wiki service* are now in use).
+  `-/changes`, `-/search`, the six lists, the index and the backlinks join the structural states in both languages.
+- **Measured** (`cargo run --release -p inklkunn-core --example measure_search` and `measure_index`, 10,000 pages, prikk 0.55.0): building a
+  tip's search index 20 ms (a rebuild 35 – 100 ms), an index of 8 MiB; a query through the index 0.3 ms at p95 (6 ms with twenty
+  wikis' indexes in the same table), a one- or two-character query 3 ms (4 ms); the link graph's first use 1.9 s (one extract,
+  every page read), then free; the first recent-changes page 1.7 s for 21 rows (one `show` of about 80 ms each, remembered
+  afterwards), then 30 ms; the raw source of a page 0.13 s.

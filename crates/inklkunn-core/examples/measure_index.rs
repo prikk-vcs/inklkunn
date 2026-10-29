@@ -241,6 +241,75 @@ fn run() -> Result<(), String> {
             calls.read,
         );
     }
+    // Handoff 003 T6: what the surfaces built on the same tip cost. Each on a service with nothing in it but
+    // the title index, so the first of each pays for itself (an extract for the link graph; the search index
+    // is built from the title index in memory; the changes are the log and one `show` for each change listed).
+    {
+        let s = service(Duration::from_secs(3600));
+        s.title_index(&record, None).map_err(|e| e.to_string())?;
+        let time =
+            |what: &str, f: &mut dyn FnMut() -> Result<String, String>| -> Result<(), String> {
+                let t = Instant::now();
+                let note = f()?;
+                println!("T6 {what:<44} {:>8.3} s  {note}", secs(t.elapsed()));
+                Ok(())
+            };
+        time("search, first query (builds the index)", &mut || {
+            let o = s
+                .search(&record, None, "page 12")
+                .map_err(|e| e.to_string())?;
+            Ok(format!("{} hits", o.hits.len()))
+        })?;
+        time("search, next query", &mut || {
+            let o = s.search(&record, None, "ab").map_err(|e| e.to_string())?;
+            Ok(format!("{} hits", o.hits.len()))
+        })?;
+        time("link graph, first use (one extract)", &mut || {
+            let g = s.link_graph(&record, None).map_err(|e| e.to_string())?;
+            Ok(format!(
+                "{} pages, {} wanted, {} orphans, {} dead ends",
+                g.pages().len(),
+                g.wanted().len(),
+                g.orphans().len(),
+                g.dead_ends().len()
+            ))
+        })?;
+        time("link graph, next use", &mut || {
+            let g = s.link_graph(&record, None).map_err(|e| e.to_string())?;
+            Ok(format!("{} pages", g.pages().len()))
+        })?;
+        time("recent changes, first (log + a show per row)", &mut || {
+            let c = s
+                .changes(&record, &inklkunn_core::read::ChangeFilter::default(), 50)
+                .map_err(|e| e.to_string())?;
+            Ok(format!("{} rows", c.rows.len()))
+        })?;
+        time("recent changes, next (shows remembered)", &mut || {
+            let c = s
+                .changes(&record, &inklkunn_core::read::ChangeFilter::default(), 50)
+                .map_err(|e| e.to_string())?;
+            Ok(format!("{} rows", c.rows.len()))
+        })?;
+        time("stale list (the whole window of shows)", &mut || {
+            let c = s.stale_pages(&record).map_err(|e| e.to_string())?;
+            Ok(format!(
+                "{} pages, {} changes looked through",
+                c.pages.len(),
+                c.looked_through
+            ))
+        })?;
+        time("raw source of one page", &mut || {
+            let title = s
+                .title_index(&record, None)
+                .map_err(|e| e.to_string())?
+                .entries()
+                .first()
+                .map(|e| e.title.clone())
+                .ok_or("no page")?;
+            let r = s.raw(&record, None, &title).map_err(|e| e.to_string())?;
+            Ok(format!("{} bytes", r.map_or(0, |r| r.bytes.len())))
+        })?;
+    }
     let _ = std::fs::remove_file(&linked);
     let _ = std::fs::remove_dir_all(&root);
     Ok(())

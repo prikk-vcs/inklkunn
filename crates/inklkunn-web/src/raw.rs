@@ -15,6 +15,7 @@
 //! cross hosts), so there it serves the wikis anyone may read; reading a restricted wiki's source needs a way
 //! to carry the reader across, which is a decision of its own (reported with this task).
 
+use axum::extract::rejection::PathRejection;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -49,8 +50,11 @@ fn none_match(header_value: &str, etag: &str) -> bool {
 pub(crate) async fn raw_content(
     State(state): State<PageState>,
     headers: HeaderMap,
-    Path((slug, title)): Path<(String, String)>,
+    path: Result<Path<(String, String)>, PathRejection>,
 ) -> Response {
+    let Ok(Path((slug, title))) = path else {
+        return nothing(&headers);
+    };
     let Some(services) = state.services.clone() else {
         return nothing(&headers);
     };

@@ -19,6 +19,7 @@
 use std::fmt::Write as _;
 use std::sync::Arc;
 
+use axum::extract::rejection::PathRejection;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -276,8 +277,11 @@ pub(crate) async fn site_description(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
-    Path(slug): Path<String>,
+    slug: Result<Path<String>, PathRejection>,
 ) -> Response {
+    let Ok(Path(slug)) = slug else {
+        return no_document(&page);
+    };
     let Some((_, wiki)) = resolve(&state, headers, slug).await else {
         return no_document(&page);
     };
@@ -324,8 +328,11 @@ pub(crate) async fn describe_page(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
-    Path((slug, title)): Path<(String, String)>,
+    path: Result<Path<(String, String)>, PathRejection>,
 ) -> Response {
+    let Ok(Path((slug, title))) = path else {
+        return no_document(&page);
+    };
     let Some((services, wiki)) = resolve(&state, headers, slug).await else {
         return no_document(&page);
     };
@@ -396,8 +403,11 @@ pub(crate) async fn opensearch(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
-    Path(slug): Path<String>,
+    slug: Result<Path<String>, PathRejection>,
 ) -> Response {
+    let Ok(Path(slug)) = slug else {
+        return no_document(&page);
+    };
     let Some((_, wiki)) = resolve(&state, headers, slug).await else {
         return no_document(&page);
     };
@@ -430,8 +440,11 @@ pub(crate) async fn sitemap(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
-    Path(slug): Path<String>,
+    slug: Result<Path<String>, PathRejection>,
 ) -> Response {
+    let Ok(Path(slug)) = slug else {
+        return no_document(&page);
+    };
     let Some((services, wiki)) = resolve(&state, headers, slug).await else {
         return no_document(&page);
     };

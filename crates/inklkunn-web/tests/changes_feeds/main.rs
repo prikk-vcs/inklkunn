@@ -77,7 +77,10 @@ fn handbook() -> World {
 
 fn order(body: &str, needles: &[&str]) -> bool {
     let at: Vec<Option<usize>> = needles.iter().map(|n| body.find(n)).collect();
-    at.iter().all(Option::is_some) && at.windows(2).all(|w| w[0] < w[1])
+    at.iter().all(Option::is_some)
+        && at
+            .windows(2)
+            .all(|w| w.first().unwrap() < w.get(1).unwrap())
 }
 
 #[tokio::test]
@@ -264,12 +267,14 @@ async fn the_feeds_of_the_wiki_a_namespace_and_a_page_validate_as_atom() {
     let entries: Vec<_> = wiki.all("entry").collect();
     assert_eq!(entries.len(), 4);
     assert_eq!(
-        entries[0].first("title").unwrap().text,
+        entries.first().unwrap().first("title").unwrap().text,
         "Update the Home page"
     );
     // The people are the author; the page is the link; the pages touched are the summary.
     assert_eq!(
-        entries[0]
+        entries
+            .first()
+            .unwrap()
             .first("author")
             .unwrap()
             .first("name")
@@ -277,7 +282,9 @@ async fn the_feeds_of_the_wiki_a_namespace_and_a_page_validate_as_atom() {
             .text,
         "Ben Okoye"
     );
-    let link = entries[0]
+    let link = entries
+        .first()
+        .unwrap()
         .all("link")
         .find(|l| l.attr("rel") == Some("alternate"))
         .unwrap();
@@ -285,10 +292,15 @@ async fn the_feeds_of_the_wiki_a_namespace_and_a_page_validate_as_atom() {
         link.attr("href"),
         Some("http://localhost:8080/handbook/Home")
     );
-    assert_eq!(entries[0].first("summary").unwrap().text, "Pages: Home");
+    assert_eq!(
+        entries.first().unwrap().first("summary").unwrap().text,
+        "Pages: Home"
+    );
     // Ids are the wiki's stable id and the change's, so they survive a rename of the address.
     assert!(
-        entries[0]
+        entries
+            .first()
+            .unwrap()
             .first("id")
             .unwrap()
             .text
