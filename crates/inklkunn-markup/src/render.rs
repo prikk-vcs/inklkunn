@@ -185,6 +185,38 @@ pub fn render_page_with_html(
     options_: ScanOptions,
     author_html: AuthorHtml,
 ) -> Rendered {
+    render_page_with(
+        page,
+        body,
+        links,
+        options_,
+        RenderOptions {
+            author_html,
+            ..RenderOptions::default()
+        },
+    )
+}
+
+/// How a page is drawn beyond how its source is read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RenderOptions {
+    /// What becomes of raw HTML the author wrote.
+    pub author_html: AuthorHtml,
+    /// How many levels every heading of the page is moved down (`# Title` is an `h2` when 1): a surface that
+    /// puts the page's title in its own `h1` asks for 1, so that the page has one `h1` and its headings stay in
+    /// order. A heading never goes below `h6`.
+    pub demote_headings: u8,
+}
+
+/// [`render_page`] with every option.
+pub fn render_page_with(
+    page: Option<(&str, &str)>,
+    body: &str,
+    links: &dyn RenderLinks,
+    options_: ScanOptions,
+    render: RenderOptions,
+) -> Rendered {
+    let author_html = render.author_html;
     let mut ctx = Ctx {
         links,
         options: options_,
@@ -203,7 +235,14 @@ pub fn render_page_with_html(
         budget_noted: false,
         author_html,
     };
-    let rendered = render_body(body, &mut ctx, &Level::root());
+    let rendered = render_body(
+        body,
+        &mut ctx,
+        &Level {
+            demote: render.demote_headings,
+            ..Level::root()
+        },
+    );
     Rendered {
         unsanitized_html: rendered.html,
         toc: rendered.toc,

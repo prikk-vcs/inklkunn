@@ -159,7 +159,7 @@ fn a_view_carries_its_metadata_headings_links_and_where_it_came_from() {
     );
     assert!(html.contains("<li id=\"^i1\">"), "{html}");
     assert!(html.contains("class=\"transclusion\""), "{html}");
-    assert!(html.contains("<h2 id=\"t1-terms\">Terms</h2>"), "{html}");
+    assert!(html.contains("<h3 id=\"t1-terms\">Terms</h3>"), "{html}");
     assert!(html.contains("href=\"#welcome\""), "{html}");
 }
 
@@ -321,7 +321,7 @@ fn the_cache_holds_the_present_and_the_past_is_dropped_when_a_tip_moves() {
                 tip,
                 path,
                 lang: "en",
-                presentation: "/w",
+                presentation: &cache_presentation(&Env::EN),
             })
             .unwrap()
     };

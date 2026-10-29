@@ -64,7 +64,7 @@ use std::time::{Duration, Instant};
 
 use inklkunn_markup::path::{PathError, title_to_path};
 use inklkunn_markup::scan::ScanOptions;
-use inklkunn_markup::{AuthorHtml, Page, ParseError, render_page_with_html};
+use inklkunn_markup::{AuthorHtml, Page, ParseError, RenderOptions, render_page_with};
 use inklkunn_prikk::{ExtractBounds, Point, SizeHints, Storage, StorageError};
 use inklkunn_store::{
     DerivedHeading, DerivedMeta, DerivedPage, DerivedStore, IndexEntry, PageKey, RootLayout,
@@ -273,6 +273,16 @@ pub enum PageOutcome {
     },
 }
 
+/// How far every heading of a page body is moved down: the page's title is the page's one `h1`, so a body's
+/// `#` is an `h2` (accessibility: one `h1`, headings in order).
+const HEADING_DEMOTION: u8 = 1;
+
+/// What the derived cache keys a page by besides its tip, path and language: the surface's own presentation
+/// key and the render options this service draws with, so a row drawn another way is never read back.
+fn cache_presentation(presentation: &dyn Presentation) -> String {
+    format!("{}|d{HEADING_DEMOTION}", presentation.key())
+}
+
 /// The most title indexes kept in memory at once, over all wikis: a bound, since a title index is a few
 /// megabytes for a large wiki. The derived store holds the rest.
 const MAX_MEMORY_INDEXES: usize = 64;
@@ -474,7 +484,7 @@ impl ReadService {
                 _ => PageProblem::Frontmatter("the frontmatter is not readable".to_owned()),
             }));
         }
-        let presentation_key = presentation.key();
+        let presentation_key = cache_presentation(presentation);
         let key = PageKey {
             wiki: &wiki.id,
             tip: &tip.state_id,
@@ -535,7 +545,7 @@ impl ReadService {
         if found.entry.problem.is_some() {
             return None;
         }
-        let presentation_key = presentation.key();
+        let presentation_key = cache_presentation(presentation);
         let key = PageKey {
             wiki: &wiki.id,
             tip: &state_id,
@@ -584,12 +594,15 @@ impl ReadService {
         } else {
             AuthorHtml::PassToSanitizer
         };
-        let rendered = render_page_with_html(
+        let rendered = render_page_with(
             Some((&entry.path, &entry.title)),
             &page.body,
             &links,
             ScanOptions::default(),
-            author_html,
+            RenderOptions {
+                author_html,
+                demote_headings: HEADING_DEMOTION,
+            },
         );
         // A page rendered around an included page that could not be read is not a page to keep.
         if let Some(failure) = links.take_failure() {

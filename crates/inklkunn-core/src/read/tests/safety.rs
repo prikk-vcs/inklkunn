@@ -119,7 +119,7 @@ fn a_cached_row_that_was_altered_in_the_database_is_sanitized_on_the_way_out() {
         tip: &tip,
         path: "pages/Home.md",
         lang: "en",
-        presentation: "/w",
+        presentation: &cache_presentation(&Env::EN),
     };
     let mut row = inklkunn_store::DerivedStore::page(&*w.store, &key)
         .expect("store")
