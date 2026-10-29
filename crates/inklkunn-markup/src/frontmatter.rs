@@ -156,8 +156,11 @@ impl std::fmt::Display for YamlError {
                 write!(f, "line {line}: {what} is outside the plain YAML subset")
             }
             YamlError::Malformed { line } => write!(f, "line {line}: malformed"),
-            YamlError::DuplicateKey { line, key } => {
-                write!(f, "line {line}: duplicate key `{key}`")
+            // The key is the page's text, and this message reaches terminals and logs (an operator's dry run of an
+            // import): it names the line and the rule, never the key (`key` stays on the value for a caller that
+            // shows it where text is escaped).
+            YamlError::DuplicateKey { line, .. } => {
+                write!(f, "line {line}: a key is repeated (keys are unique)")
             }
             YamlError::Indentation { line } => write!(f, "line {line}: bad indentation"),
             YamlError::UnterminatedQuote { line } => write!(f, "line {line}: unterminated quote"),

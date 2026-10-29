@@ -104,3 +104,20 @@ fn metadata_lifts_the_vocabulary_and_keeps_the_rest() {
     assert_eq!(m.status, "stable");
     assert_eq!(m.extra, vec![("custom".to_owned(), Value::Int(1))]);
 }
+
+#[test]
+fn a_repeated_key_is_named_by_line_and_rule_and_never_by_the_key() {
+    // The key is the page's text; the message reaches terminals (an import's dry run), so it carries none of it.
+    let hostile = "\u{1b}]0;owned\u{7}";
+    let err = parse_yaml(&format!("{hostile}: 1\n{hostile}: 2\n")).unwrap_err();
+    assert!(
+        matches!(&err, YamlError::DuplicateKey { line: 2, key } if key == hostile),
+        "{err:?}"
+    );
+    let text = err.to_string();
+    assert_eq!(text, "line 2: a key is repeated (keys are unique)");
+    assert!(
+        !text.contains('\u{1b}') && !text.contains("owned"),
+        "{text}"
+    );
+}
