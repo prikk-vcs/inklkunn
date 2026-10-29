@@ -132,7 +132,8 @@ text, links, metadata and history.
 
 - Whether `-/at/<block>` permalinks should also exist per patch (a change within a block): decided in the
   handoff after `show`'s shape is measured.
-- The first catalog's Japanese reviewers (DR-7): the owner's.
+- The first catalog's Japanese reviewer (DR-7): **the owner** (2026-10-29). The dev team files the catalog as a
+  review request (every message in English and Japanese, with where it appears); the owner's sign-off ends the preview.
 
 ## Sequencing and handoff
 

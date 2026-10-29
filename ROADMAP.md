@@ -271,7 +271,8 @@ begin with a proposal".
 ### DR-7 — Languages shipped
 
 - **Recommendation: English and Japanese from M1**, the planeter precedent, with Japanese shipped only
-  after a fluent reviewer's pass. The owner names the reviewers.
+  after a fluent reviewer's pass. The owner names the reviewers. **Ruled as recommended (2026-10-24); the
+  reviewer is the owner (2026-10-29).**
 
 ### DR-8 — Default content license
 

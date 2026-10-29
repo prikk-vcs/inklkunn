@@ -293,7 +293,10 @@ read against:
       diff and a search snippet; raw source and attachments only on the content origin.
 - [ ] Diffs are always per path; the word-level refinement is labelled inklkunn's.
 - [ ] Every catalog and structural test passes on every page state in English and Japanese; Japanese is
-      labelled a preview until DR-7's reviewers sign off.
+      labelled a preview until DR-7's reviewer signs off. **The reviewer is the owner (2026-10-29):** when the
+      catalog is complete for 0.1.0, file `.git-exclude/review-requests/NNN-japanese-catalog-review-request.md`
+      with a table of every key, its English, its Japanese and where it appears (page and state); the owner's
+      corrections land as one commit, and the sign-off removes the preview label.
 - [ ] Export round trip agrees on text, links, metadata and history; `prikk verify` passes independently.
 - [ ] Route enumeration: every route and endpoint has its `Action` or public reason; a planted bare route
       fails.

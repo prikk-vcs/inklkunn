@@ -119,12 +119,13 @@
   rotation records where the old key stopped, and a seal under it after that point is reported (inklkunn knows the
   moment, which a copy cannot prove). prikk's reply also measured on **0.55.0, now tagged upstream**: the first
   re-baseline is due.
+- **2026-10-29 — the owner's rulings on process:** **the architect may commit and push**; **the dev team may commit
+  and push only what it made and what has been approved** (a package pushes after its review, not before); `gh` is
+  available for CI and releases. **prikk 0.55.0 is installed** on the build host by the owner (the first re-baseline
+  runs against it). **DR-7's reviewer is the owner**, who reads Japanese: the catalog's sign-off is a review request
+  to the owner, not a person still to be found.
 
 ## Pending on the owner
-
-- **Push:** local `main` is 25 ahead of `origin/main` (the dev team's work and the architect's, interleaved, nothing
-  pushed). The review leaves nothing in the way, and the first CI run is wanted (the only aarch64 build of AWS-LC so
-  far). Say who pushes.
 
 - **Add your SSH public key line to `release-signers.toml`** (`authorized_ssh_signers`) before the first
   release; the decision to sign tags is taken (2026-10-28), only the key is missing (IS-6).
@@ -132,8 +133,9 @@
   `rfcs/handoffs/002-identity-keys-and-signing/identity-keys-and-signing-corrections-handoff-v1.md` (C1 – C4 before
   003's T7); `rfcs/handoffs/001-foundations/verify-verdict-honesty-handoff-v1.md` (before 003's T4); then handoff 003
   from T4 under its dated notes.
-- Name the Japanese reviewers before the first catalog ships (DR-7; Japanese is compiled in as a preview
-  until then).
+- **Review the Japanese catalog** when the dev team files it (DR-7; the owner is the reviewer, 2026-10-29): one
+  review request listing every message in English and Japanese with where it appears, before 0.1.0. Until the
+  owner signs off, Japanese stays a preview that only a reader's own choice turns on.
 
 ## Pending upstream
 
