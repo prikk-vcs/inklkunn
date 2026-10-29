@@ -1,9 +1,12 @@
 #![forbid(unsafe_code)]
 //! The `inklkunn` binary. What exists in this release: `--version`, which names the build's commit and the
 //! prikk floor it was built for and the prikk it finds, so an operator can tell what they run; `wiki keys`, a
-//! wiki's keys over time (RFC 002 D-8); and `serve`, which checks everything and serves (RFC 003; its pages
+//! wiki's keys over time (RFC 002 D-8); `wiki create`, `wiki import-folder` and `wiki export`, the acts that
+//! bring a wiki into being, fill it and copy it out (RFC 003 D-11, D-12); and `serve`, which checks everything,
+//! removes the creations that were killed, refreshes prikk's checkpoint records and serves (RFC 003; its pages
 //! arrive task by task).
 
+mod admin;
 mod audit;
 mod cli;
 mod config;

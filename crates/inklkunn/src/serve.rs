@@ -14,6 +14,7 @@ use inklkunn_store::{AuditSink, RootLayout, SqliteStore};
 use inklkunn_web::serve::{Shutdown, run_blocking};
 use inklkunn_web::{AnonymousOnly, Services, Site, WebConfig, routes};
 
+use crate::admin;
 use crate::config::{ConfigError, Settings, WebSettings};
 
 /// Everything `serve` checked and built, ready to bind.
@@ -25,6 +26,9 @@ pub(crate) struct Prepared {
     /// Whether the operator declared a trusted proxy (`INKLKUNN_TRUSTED_PROXIES`): the warning below depends
     /// on it, and the sign-in's per-address throttle will read the policy.
     trusted_proxies_declared: bool,
+    /// What the start-up work did or could not do (unfinished creations removed, checkpoint records
+    /// refreshed), one line each. None of it stops the server.
+    pub notes: Vec<String>,
     // Held so what `prepare` checked stays true while serving: the services the pages ask hold these too.
     _services: Arc<Services>,
 }
@@ -51,7 +55,7 @@ pub(crate) fn prepare(settings: &Settings, web: &WebSettings) -> Result<Prepared
         format!("INKLKUNN_TRUSTED_PROXIES must be addresses or networks like 10.0.0.0/8 ({e})")
     })?;
     let hints = SizeHints::new();
-    let storage = PrikkCli::open(&settings.prikk, sandbox, admission)
+    let storage = PrikkCli::open(&settings.prikk, sandbox.clone(), admission)
         .map_err(|e| {
             format!(
                 "prikk is not usable ({e}); install prikk {} or later",
@@ -67,6 +71,15 @@ pub(crate) fn prepare(settings: &Settings, web: &WebSettings) -> Result<Prepared
             settings.store_path().display()
         )
     })?);
+    // Before anything is served: remove the creations that were killed, refresh prikk's checkpoint records
+    // where the prikk version changed or a refresh was asked for (handoff 003 T7; IS-8, IS-9, IS-13).
+    let notes = admin::start_up(
+        &store,
+        settings,
+        &sandbox,
+        &storage,
+        inklkunn_store::record::now_secs(),
+    );
     let version = storage.version().to_owned();
     let layout = RootLayout::new(settings.wikis_root());
     let storage: Arc<dyn Storage> = Arc::new(storage);
@@ -126,6 +139,7 @@ pub(crate) fn prepare(settings: &Settings, web: &WebSettings) -> Result<Prepared
         site,
         banner,
         trusted_proxies_declared: !web.trusted_proxies.is_empty(),
+        notes,
         _services: services,
     })
 }
@@ -149,10 +163,14 @@ pub(crate) fn proxy_warning(bind: std::net::SocketAddr, declared: bool) -> Optio
 fn write_start_notes(
     err: &mut dyn Write,
     banner: &[String],
+    notes: &[String],
     web: &WebConfig,
     trusted_proxies_declared: bool,
 ) {
     for line in banner {
+        let _ = writeln!(err, "{line}");
+    }
+    for line in notes {
         let _ = writeln!(err, "{line}");
     }
     if let Some(w) = proxy_warning(web.bind, trusted_proxies_declared) {
@@ -170,6 +188,7 @@ pub(crate) fn run(
     write_start_notes(
         err,
         &prepared.banner,
+        &prepared.notes,
         &prepared.web,
         prepared.trusted_proxies_declared,
     );

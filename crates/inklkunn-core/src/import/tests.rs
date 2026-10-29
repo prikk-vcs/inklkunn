@@ -195,10 +195,17 @@ fn a_component_over_255_bytes_and_a_path_over_1024_are_refused_by_prikks_caps_wi
         .map(|r| r.reason.as_str())
         .collect();
     assert!(
-        reasons[0].contains("260 bytes") && reasons[0].contains("255-byte cap"),
+        reasons
+            .first()
+            .is_some_and(|r| r.contains("260 bytes") && r.contains("255-byte cap")),
         "{reasons:?}"
     );
-    assert!(reasons[1].contains("over the 1024-byte cap"), "{reasons:?}");
+    assert!(
+        reasons
+            .get(1)
+            .is_some_and(|r| r.contains("over the 1024-byte cap")),
+        "{reasons:?}"
+    );
 }
 
 #[test]
@@ -210,7 +217,12 @@ fn a_path_the_wiki_has_is_refused_unless_replacing_is_asked_for() {
     let refused = plan_folder(&d.0, &has, false).unwrap();
     assert!(!refused.is_importable());
     assert_eq!(refused.refused.len(), 1);
-    assert!(refused.refused[0].reason.contains("--replace-existing"));
+    assert!(
+        refused
+            .refused
+            .first()
+            .is_some_and(|r| r.reason.contains("--replace-existing"))
+    );
     let replaced = plan_folder(&d.0, &has, true).unwrap();
     assert!(replaced.is_importable());
     let actions: Vec<(&str, Action)> = replaced
@@ -247,7 +259,11 @@ fn nothing_to_import_and_not_a_directory_are_said_plainly() {
     std::os::unix::fs::symlink(&d.0, e.0.join("pages")).unwrap();
     let plan = plan_folder(&e.0, &none_exist, false).unwrap();
     assert!(!plan.is_importable());
-    assert!(plan.refused[0].reason.contains("symbolic link"));
+    assert!(
+        plan.refused
+            .first()
+            .is_some_and(|r| r.reason.contains("symbolic link"))
+    );
 }
 
 #[test]

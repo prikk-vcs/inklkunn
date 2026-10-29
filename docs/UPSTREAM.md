@@ -65,7 +65,7 @@ staying true to all three (RFC 010 D-1, D-2, D-8). The record of what each upstr
    `floor-check` fails until they all agree; every "≥ x.y.z" mention follows (README, RELEASING, ROADMAP, STATUS). A floor bump
    is release-relevant: the review request says so; the owner decides the version.
 5. **Re-measure the cost tables** — the read table (`crates/inklkunn-prikk/src/cost.rs`) and the signer's write table
-   (`crates/inklkunn-signer/src/cost.rs`, ledger PK-38; measured by `tools/spikes/spike-a-write.py`): each
+   (`crates/inklkunn-signer/src/cost.rs`, ledger PK-38 and, for the keyless mode's `archive export` and writable `verify`, PK-40; measured by `tools/spikes/spike-a-write.py`): each
    table's `BOUND_TO` must equal the floor
    (a test fails otherwise). Method: `cargo run --release -p inklkunn-corpus -- wiki …` for the 1 / 16 / 64 /
    200 MiB wiki shapes (1,000 and 10,000 pages, a 500-deep chain) **and**, once attachments exist (M1), a

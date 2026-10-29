@@ -30,7 +30,7 @@ use crate::config::{Settings, UNCONFINED_BANNER};
 /// process (a command-line run makes one command; the tests of this module make many in one process, and reuse
 /// it). Nothing outside this module can reach it: the binary's surfaces never hold the right to make or change
 /// keys (corrections handoff C7).
-fn key_authority() -> &'static KeyAuthority {
+pub(crate) fn key_authority() -> &'static KeyAuthority {
     static AUTHORITY: std::sync::OnceLock<KeyAuthority> = std::sync::OnceLock::new();
     AUTHORITY.get_or_init(|| {
         KeyAuthority::claim().unwrap_or_else(|| {
@@ -158,7 +158,7 @@ pub(crate) fn rfc3339(secs: i64) -> String {
     )
 }
 
-fn find_wiki(store: &SqliteStore, wiki: &str) -> Result<WikiRecord, String> {
+pub(crate) fn find_wiki(store: &SqliteStore, wiki: &str) -> Result<WikiRecord, String> {
     let found = match WikiId::parse(wiki) {
         Some(id) => store.get(&id),
         None => match Slug::new(wiki) {

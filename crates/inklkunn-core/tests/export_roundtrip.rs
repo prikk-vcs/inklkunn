@@ -270,6 +270,16 @@ fn manifest_checksums(manifest: &str) -> BTreeMap<String, String> {
         .collect()
 }
 
+fn get<'a>(files: &'a BTreeMap<String, Vec<u8>>, path: &str) -> &'a Vec<u8> {
+    files
+        .get(path)
+        .unwrap_or_else(|| panic!("the bundle has no `{path}`"))
+}
+
+fn at<'a>(v: &'a serde_json::Value, pointer: &str) -> &'a serde_json::Value {
+    v.pointer(pointer).unwrap_or(&serde_json::Value::Null)
+}
+
 fn json_lines(bytes: &[u8]) -> Vec<serde_json::Value> {
     String::from_utf8(bytes.to_vec())
         .unwrap()
@@ -318,15 +328,21 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
         assert_eq!(done.attachments, 1);
         let one = files_of(&dir1);
         // Files as stored.
-        assert_eq!(one["pages/Home.md"], format!("{edited_home}").into_bytes());
-        assert_eq!(one["pages/Docs/Deep Page.md"], DEEP.as_bytes());
         assert_eq!(
-            one["attachments/logo.png.meta.yaml"],
-            b"license: CC0-1.0\n".to_vec()
+            get(&one, "pages/Home.md"),
+            &edited_home.clone().into_bytes()
         );
-        assert_eq!(one["attachments/logo.png"].len(), 4000);
+        assert_eq!(
+            get(&one, "pages/Docs/Deep Page.md").as_slice(),
+            DEEP.as_bytes()
+        );
+        assert_eq!(
+            get(&one, "attachments/logo.png.meta.yaml").as_slice(),
+            b"license: CC0-1.0\n"
+        );
+        assert_eq!(get(&one, "attachments/logo.png").len(), 4000);
         // The manifest: fidelity, counts, block, interwiki, and a checksum for every other file.
-        let manifest = String::from_utf8(one["wiki-bundle.yaml"].clone()).unwrap();
+        let manifest = String::from_utf8(get(&one, "wiki-bundle.yaml").clone()).unwrap();
         for needle in [
             "  level: 3",
             "  pages: 4",
@@ -341,10 +357,10 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
         let others: Vec<&String> = one.keys().filter(|k| *k != "wiki-bundle.yaml").collect();
         assert_eq!(sums.keys().collect::<Vec<_>>(), others);
         for (path, hash) in &sums {
-            assert_eq!(&sha(&one[path]), hash, "{path}");
+            assert_eq!(&sha(get(&one, path)), hash, "{path}");
         }
         // Private on disk: the bundle may hold private pages.
-        for (path, _) in &one {
+        for path in one.keys() {
             let mode = std::fs::metadata(dir1.join(path))
                 .unwrap()
                 .permissions()
@@ -352,24 +368,25 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
             assert_eq!(mode & 0o077, 0, "{path} is readable by others");
         }
         // History: one file per page id, authors from the messages' people.
-        let home_history = json_lines(&one["history/home-1.jsonl"]);
+        let home_history = json_lines(get(&one, "history/home-1.jsonl"));
         assert_eq!(home_history.len(), 2, "{home_history:#?}");
-        assert_eq!(home_history[0]["kind"], "import");
-        assert_eq!(home_history[0]["authors"][0]["type"], "system");
+        let (first, second) = (home_history.first().unwrap(), home_history.get(1).unwrap());
+        assert_eq!(at(first, "/kind"), "import");
+        assert_eq!(at(first, "/authors/0/type"), "system");
         assert!(
-            home_history[0]["imported_from"]
+            at(first, "/imported_from")
                 .as_str()
                 .unwrap()
                 .starts_with("folder sha256:")
         );
-        assert_eq!(home_history[1]["kind"], "proposal");
-        assert_eq!(home_history[1]["authors"][0]["name"], "Aiko Tanaka");
-        assert_eq!(home_history[1]["authors"][1]["name"], "Ben (maintainer)");
-        assert_eq!(home_history[1]["authors"][0]["role"], "proposer");
-        assert_eq!(json_lines(&one["history/guide-1.jsonl"]).len(), 2);
-        assert_eq!(json_lines(&one["history/deep-1.jsonl"]).len(), 1);
+        assert_eq!(at(second, "/kind"), "proposal");
+        assert_eq!(at(second, "/authors/0/name"), "Aiko Tanaka");
+        assert_eq!(at(second, "/authors/1/name"), "Ben (maintainer)");
+        assert_eq!(at(second, "/authors/0/role"), "proposer");
+        assert_eq!(json_lines(get(&one, "history/guide-1.jsonl")).len(), 2);
+        assert_eq!(json_lines(get(&one, "history/deep-1.jsonl")).len(), 1);
         assert_eq!(done.histories, 4);
-        let users = String::from_utf8(one["users.yaml"].clone()).unwrap();
+        let users = String::from_utf8(get(&one, "users.yaml").clone()).unwrap();
         assert!(
             users.contains("Aiko Tanaka") && users.contains("Ben (maintainer)"),
             "{users}"
@@ -435,7 +452,7 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
         );
         // The manifests' checksums agree on every stored file.
         let sums2 =
-            manifest_checksums(&String::from_utf8(two["wiki-bundle.yaml"].clone()).unwrap());
+            manifest_checksums(&String::from_utf8(get(&two, "wiki-bundle.yaml").clone()).unwrap());
         for (path, hash) in &sums {
             if !path.starts_with("history/") && path != "users.yaml" {
                 assert_eq!(sums2.get(path), Some(hash), "{path}");
@@ -447,7 +464,7 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
             .filter(|(k, _)| k.starts_with("pages/"))
         {
             let a_text = std::str::from_utf8(bytes).unwrap();
-            let b_text = std::str::from_utf8(&two[path]).unwrap();
+            let b_text = std::str::from_utf8(get(&two, path)).unwrap();
             assert_eq!(
                 format!("{:?}", inklkunn_markup::scan(a_text).links),
                 format!("{:?}", inklkunn_markup::scan(b_text).links),
@@ -469,7 +486,7 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
         };
         assert_eq!(names(&one), names(&two));
         for name in names(&two) {
-            let lines = json_lines(&two[&name]);
+            let lines = json_lines(get(&two, &name));
             assert!(!lines.is_empty(), "{name}");
             for l in &lines {
                 for key in ["block", "path", "operation", "kind", "authors", "summary"] {
@@ -477,10 +494,10 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
                 }
             }
             let last = lines.last().unwrap();
-            assert_eq!(last["kind"], "import", "{name}");
-            assert_eq!(last["authors"][0]["type"], "system");
+            assert_eq!(at(last, "/kind"), "import", "{name}");
+            assert_eq!(at(last, "/authors/0/type"), "system");
             // A's history of the same page ends at the same text.
-            assert!(!json_lines(&one[&name]).is_empty());
+            assert!(!json_lines(get(&one, &name)).is_empty());
         }
         assert!(w.storage.verify(&b.repo).unwrap().verdict.ok);
     }

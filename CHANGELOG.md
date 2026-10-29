@@ -439,3 +439,53 @@ Handoff 003 T5 (history, change, difference and permalinks; RFC 003 D-4).
   cost an extract each; its render is held in memory only. A change too large for prikk's report to fit the server's
   output bound is listed as such, never skipped. *API:* `ReadService::{page_history, change, page_diff, page_at}` and
   the types of `read::history`/`read::linediff`; `forget_wiki` also forgets the log.
+
+Handoff 003 T7 (RFC 003 D-11, D-12; hold notes IS-8, IS-9, IS-13).
+
+- **Handoff 003 T7: `inklkunn wiki create`, `import-folder` and `export` in the binary.** `wiki create <slug> --name
+  <name>` is *create wiki* with the real signer and key store (`--license`, `--lang`, `--visibility` optional); it
+  makes the deployment's store and key store when it is the first act. `wiki import-folder <wiki> <dir>` commits a
+  folder (`pages/**/*.md`, `attachments/**`) as **one accepted change under the system principal** (`Kind: import`,
+  `Imported-From: folder sha256:<digest of the files>`) through `Accept`: the plan is the dry run (`--dry-run` prints
+  the same report and writes nothing), it walks the folder without following a link, and **any refusal refuses the
+  whole import** with every reason named and no content repeated: a link, a device or a pipe, a name that is not UTF-8
+  or not ASCII, a path over prikk's 1024- and 255-byte caps, a name a repository refuses (the signer's own rule), a
+  page that is not UTF-8 text or whose frontmatter the parser refuses, a duplicate page id, two paths one
+  case-insensitive file system cannot tell apart, a path the wiki already has (`--replace-existing` replaces it).
+  `wiki export <wiki> [--bundle <dir>] [--archive <file>]` writes a Portable Wiki Bundle at fidelity level 3 (the
+  files of one tip as stored, extracted by block id; `history/<page id>.jsonl` from `history()` and `change()` with
+  the message's people as authors; `users.yaml`; `wiki-bundle.yaml` with the fidelity, the real counts, the block it
+  is as of, the interwiki map and the SHA-256 of every other file) and/or prikk's own archive. A bundle is built
+  beside its destination and renamed into place only when complete; the destination is never overwritten. Every one
+  of these acts is audited (`system:operator-cli`; begun and ended). *Not built:* offering the exports from `-/admin`
+  as downloads from the content origin, which needs sign-in pages that do not exist yet; `users.yaml`'s
+  pseudonymization option.
+- **The signer's keyless writable mode** (IS-8, IS-9). `inklkunn_signer::Maintenance`: the repository writable, **no
+  key store, no secret, no key directory mounted and no seed variable**, for exactly two operations that write inside
+  `.prikk/` and sign nothing. `archive export` (its own cost rule, a flat 16 MiB measured at 0.4 to 3.5 MiB on stores
+  of 3 to 200 MiB, and the pinned report schema `prepo-export-report-v1`) copies the archive to the destination with
+  mode 0600 after checking its size against prikk's report. The **checkpoint refresh** is a `verify` with the
+  repository writable (the existing `verify` rule; 2.0 × S, 5.0 × S for one attachment, re-measured) and re-records
+  prikk's checkpoint record that `extract` anchors on. Both take the wiki's write lock, so an export never runs beside
+  an acceptance, a key act or another export, in this process or another (a second is told the wiki is busy). The
+  binary runs the refresh at every start for each wiki whose last refresh ran under another prikk version or whose
+  refresh a reader asked for, and records it in the wiki record (`record_checkpoint_refresh`) only when `verify`
+  ran to a complete passing verdict. New sandbox constructor `Mounts::write_keyless_with_output`, named in the
+  signer-only list of the key-reachability gate. *No new dependency crate:* `sha2` and `serde_json` are added as
+  direct dependencies of `inklkunn-core` (lock +0 crates).
+- **Wiki creation is kill-safe** (IS-13). A creation is bracketed by a **creation mark** (`<id>.creating` beside the
+  repository, made durable before the first directory, locked while the creation runs, removed after the record is
+  stored), and `sweep_unfinished_creations`, run by every `wiki create` and every `serve` start, removes whole what a
+  creation whose process is gone left: the sealed key record, the repository, the scratch directory, the lock file
+  and the mark. A creation that has stored its record keeps the wiki and only loses its mark; a creation that is still
+  running (another process) is left alone; one the sweep cannot remove whole keeps its mark and is retried at the next
+  start. Proved by a `SIGKILL` inside each prikk call of the signer's part (`init`, three `key` calls, `trust`, `log`,
+  `commit`, `seal`, `log`; `crates/inklkunn-signer/tests/creation_kill.rs`) and by a stop after each of the seven
+  steps with the real signer and key store (`crates/inklkunn-core/tests/creation_kill.rs`). *API:* `create_wiki`
+  gains `create_wiki_observed` (the same, naming each step), `CreateWikiError::Marked`, `sweep_unfinished_creations`;
+  a failed creation's cleanup now removes the key record before the lock file, which stops the lock file being
+  re-made after it was removed. `RootLayout` gains `creation_mark` and `creation_marks`.
+- **F5** (handoff 002 corrections). Opening a key directory that holds files but no store header says so ("the
+  directory holds files but no header; it is not a key store (or its header was removed)"), not "there is no key
+  store … check the key directory setting"; an empty directory (the creation lock and a creator's temporary file
+  aside) is still "no key store".

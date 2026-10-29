@@ -31,6 +31,15 @@ changes that verify. The design bounds, detects and attributes that risk rather 
   every directory it can lock and none a live call holds, however long the call runs. Run the seed directory on a tmpfs that is not swapped to disk, owned by the
   service's user and writable by nobody else (the signer refuses anything else), and treat an unclean stop as a
   reason to look at the host (the next start reports how many directories it removed);
+- **Two things write a repository without a key.** `archive export` (which writes prikk's own lock files inside
+  `.prikk/` and refuses a read-only repository) and the checkpoint refresh (a `verify` that re-records prikk's
+  checkpoint) run in the signer's **keyless writable mode** (`Maintenance`): the repository writable, no key store,
+  no secret, no key directory mounted and no seed variable, under the same per-wiki write lock, so an export never
+  runs beside an acceptance. An archive and a bundle hold every page, private ones included: they are written
+  readable by the operator alone, and the operator decides where they go. A **wiki being created** is marked
+  (`<id>.creating`) from before its first directory until its record is stored, and every start removes whole the
+  creation of a process that was killed in between (the repository, the scratch directory and the sealed key
+  record), so a kill leaves either a complete wiki or nothing;
 - every sealed change carries the proposer and the acceptor in its signed message, and a reconciliation
   (a function today; no command or schedule runs it yet) compares the history with the acceptance records so
   an unrecorded seal is reported (RFC 002 D-5, D-7). One wiki has one writer at a time: every act that

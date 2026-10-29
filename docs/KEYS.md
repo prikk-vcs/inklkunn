@@ -102,6 +102,24 @@ block", never as a reason to retry.
 An *author* key cannot be revoked (prikk has no author trust list): retiring it means only that the service
 stops using it. That is why the maintainer key is the one that matters.
 
+## Making a wiki, filling it, taking a copy out
+
+```sh
+inklkunn wiki create <slug> --name "<name>"            # the keys are made with the wiki; the deployment too, if it is the first
+inklkunn wiki import-folder <wiki> <dir> --dry-run     # what would be written, what is refused and why; writes nothing
+inklkunn wiki import-folder <wiki> <dir>               # one accepted change, Kind: import, under the system principal
+inklkunn wiki export <wiki> --bundle <dir> --archive <file>
+```
+
+`create` is the act that is asked to bring a key store into being: it makes one when the key directory is new or
+empty (and refuses a directory of other files, saying so). A creation that is killed leaves a mark, and the next
+`create` or `serve` removes what it made, key record included, and says so on standard error. `import-folder`
+refuses the whole folder when any entry is refused and names every reason; it never follows a link. An export's
+destination must not exist, and both outputs are readable by you alone (they hold private pages too). The archive
+is prikk's own (`prikk archive verify <file>` checks it without inklkunn). Every one of these is audited like the key
+commands. A seed never appears in any of their output, in a bundle or in an archive (a test looks for the real seeds
+in every file of a deployment).
+
 ## When the key store is lost
 
 Restore it from a backup of the key directory (keep that backup **apart from** the operator's secret). There

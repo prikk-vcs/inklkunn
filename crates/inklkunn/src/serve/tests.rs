@@ -239,7 +239,7 @@ fn the_start_notes_put_the_banner_first_and_the_warning_on_stderr_only_for_a_rea
     let notes = |addr: &str| {
         let web = WebConfig::new(addr, "https://wiki.example", "https://content.example").unwrap();
         let mut err = Vec::new();
-        write_start_notes(&mut err, &["the banner".to_owned()], &web, false);
+        write_start_notes(&mut err, &["the banner".to_owned()], &[], &web, false);
         String::from_utf8(err).unwrap()
     };
     let open = notes("0.0.0.0:8080");
@@ -259,7 +259,7 @@ fn a_declared_trusted_proxy_ends_the_warning_and_a_typo_stops_the_start() {
     )
     .unwrap();
     let mut err = Vec::new();
-    write_start_notes(&mut err, &["the banner".to_owned()], &web, true);
+    write_start_notes(&mut err, &["the banner".to_owned()], &[], &web, true);
     assert_eq!(String::from_utf8(err).unwrap(), "the banner\n");
 
     let d = dir("proxies");

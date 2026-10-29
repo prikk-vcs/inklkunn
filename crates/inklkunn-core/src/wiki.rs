@@ -400,7 +400,7 @@ impl SweepReport {
 
 /// The start-up sweep (handoff 003 T7; IS-13): find every creation mark under `layout` whose creating process
 /// is gone and settle it. **No record in `store`**: the creation never finished, and everything it made is
-/// removed whole ([`discard`]'s list: the sealed key record, the repository, the scratch directory, the lock
+/// removed whole (the sealed key record, the repository, the scratch directory, the lock
 /// file) and then the mark. **A record**: the wiki is complete (the process died between storing the record and
 /// removing the mark) and only the mark is removed. A mark whose creation is still running is left alone.
 ///

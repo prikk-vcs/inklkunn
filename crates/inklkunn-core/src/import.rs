@@ -5,7 +5,7 @@
 //! **A dry run is the plan.** [`plan_folder`] walks the folder without following a link, reads every page (and
 //! nothing else), and says for each entry what would be written or why it is refused: a path over prikk's caps
 //! (`inklkunn_markup::path`), a name that is not UTF-8 or not ASCII, a name a repository refuses (the signer's own
-//! rule, [`check_change_path`](inklkunn_signer::check_change_path)), a link, a device or a pipe, a page that is not
+//! rule, [`inklkunn_signer::check_change_path`]), a link, a device or a pipe, a page that is not
 //! UTF-8 text or whose frontmatter the parser refuses, a duplicate page id, a path that collides with another on a
 //! case-insensitive file system, a path the wiki already has. **Any refusal refuses the whole import** (the
 //! change is all or nothing), every reason is named, and the report never repeats a byte of a refused file's

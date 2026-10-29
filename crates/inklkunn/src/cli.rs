@@ -8,7 +8,7 @@ use inklkunn_prikk::sandbox::Sandbox;
 use inklkunn_prikk::{Admission, MIN_PRIKK_VERSION, PrikkCli};
 
 use crate::config::{self, Settings, WebSettings};
-use crate::{audit, keys, serve};
+use crate::{admin, audit, keys, serve};
 
 /// The commit the release workflow built from (`INKLKUNN_COMMIT` at build time), or `unknown`.
 const COMMIT: &str = match option_env!("INKLKUNN_COMMIT") {
@@ -77,13 +77,32 @@ pub(crate) fn run(
             };
             keys::execute(&command, &settings, now, out, err)
         }
+        ["wiki", "create" | "import-folder" | "export", ..] => {
+            let rest: Vec<String> = args.iter().skip(1).cloned().collect();
+            let command = match admin::parse(&rest) {
+                Ok(c) => c,
+                Err(admin::Usage(why)) => {
+                    let _ = writeln!(err, "inklkunn: {why}");
+                    return 2;
+                }
+            };
+            let settings = match Settings::load(get_env, dev_unconfined) {
+                Ok(s) => s,
+                Err(e) => {
+                    let _ = writeln!(err, "inklkunn: {e}");
+                    return 1;
+                }
+            };
+            admin::execute(&command, &settings, now, out, err)
+        }
         other => {
             let _ = writeln!(
                 err,
-                "inklkunn: unknown command `{}`; there are `--version`, `serve`, `audit export` and `wiki keys`\n{}\n{}",
+                "inklkunn: unknown command `{}`; there are `--version`, `serve`, `audit export`, `wiki keys`, `wiki create`, `wiki import-folder` and `wiki export`\n{}\n{}\n{}",
                 other.join(" "),
                 SERVE_USAGE,
-                keys::USAGE
+                keys::USAGE,
+                admin::USAGE
             );
             2
         }
