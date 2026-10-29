@@ -277,12 +277,27 @@ exec "$REAL" "$@"
             prikk: prikk.clone().into_os_string(),
             dev_unconfined: true,
         };
-        let storage = PrikkCli::open(
-            &prikk,
-            Sandbox::Unconfined,
-            Admission::new(1 << 30, 64 << 20, Duration::from_millis(200)),
-        )
-        .unwrap();
+        // A sibling test may fork while the spy script is still open for writing, and the kernel then answers
+        // `ETXTBSY` to our exec (the child never execs this file): ask again, as the driver's own tests do.
+        let open = || {
+            PrikkCli::open(
+                &prikk,
+                Sandbox::Unconfined,
+                Admission::new(1 << 30, 64 << 20, Duration::from_millis(200)),
+            )
+        };
+        let mut storage = open();
+        for _ in 0..50 {
+            let busy = matches!(&storage, Err(inklkunn_prikk::StorageError::Unavailable {
+                reason: inklkunn_prikk::Unavailable::Spawn(m), ..
+            }) if m.contains("Text file busy"));
+            if !busy {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+            storage = open();
+        }
+        let storage = storage.unwrap();
         // The first `wiki create` makes the store; open it afterwards.
         std::fs::create_dir_all(&settings.data_dir).unwrap();
         let store = SqliteStore::open(&settings.store_path()).unwrap();
