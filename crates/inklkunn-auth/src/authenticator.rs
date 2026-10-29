@@ -39,7 +39,9 @@ use crate::gate::WorkGate;
 use crate::hashing::{
     Argon2idHasher, PASSWORD_MAX_BYTES, PasswordHasher, PasswordRefusal, check_new_password,
 };
-use crate::oidc::{BeginSignIn, OidcError, OidcProvider, VerifiedIdentity};
+use crate::oidc::{
+    BeginSignIn, Landing, OidcError, OidcProvider, VerifiedIdentity, clear_state_cookie,
+};
 use crate::proxy::{ClientAddress, ProxyPolicy};
 use crate::random;
 use crate::session::{CsrfToken, NewSession, SESSION_TTL_SECS, Sessions};
@@ -94,6 +96,17 @@ pub struct SignedIn {
     pub account: AccountId,
     /// The new session: its cookie and its CSRF token.
     pub session: NewSession,
+}
+
+/// A successful OpenID Connect sign-in: the sign-in, and the page the callback must be answered with.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+#[must_use]
+pub struct OidcSignedIn {
+    /// Who signed in and the new session (its secret is also in the landing's cookies).
+    pub signed_in: SignedIn,
+    /// The answer to the callback. **Send it as it is**, not a redirect: see [`Landing`].
+    pub landing: Landing,
 }
 
 /// A request's session, found and checked.
@@ -516,14 +529,23 @@ impl Authenticator {
     /// nobody linked all end here; the first two and the third are [`OidcSignInError::Oidc`] with the reason
     /// for the log, the last [`AuthError::BadCredentials`].
     ///
+    /// **Answer a success with its [`OidcSignedIn::landing`] exactly as it is.** The session cookie is
+    /// `SameSite=Strict`, and the callback is a navigation the provider started on another site: a redirect
+    /// from it would reach the landing page *without* the session cookie, so the person would see the site
+    /// signed out. The landing is a `200` page that moves the browser on with a request of this site's own,
+    /// which does carry it. `next` is the path to land on (a path on this site; anything else becomes `/`).
+    /// The landing also removes the one-shot state cookie. On an error, send [`clear_state_cookie`] with the
+    /// refusal.
+    ///
     /// **Blocking** (the token exchange is a request to the provider).
     pub fn finish_oidc(
         &self,
         state: &str,
         cookie_header: Option<&str>,
         code: &str,
+        next: Option<&str>,
         now: i64,
-    ) -> Result<SignedIn, OidcSignInError> {
+    ) -> Result<OidcSignedIn, OidcSignInError> {
         let provider = self
             .oidc
             .as_ref()
@@ -531,16 +553,18 @@ impl Authenticator {
         let identity = provider
             .finish_sign_in(state, cookie_header, code, now)
             .map_err(OidcSignInError::Oidc)?;
-        self.sign_in_verified(&identity, now)
-            .map_err(OidcSignInError::Auth)
+        let signed_in = self
+            .sign_in_verified(&identity, now)
+            .map_err(OidcSignInError::Auth)?;
+        let landing = Landing::new(
+            next,
+            vec![signed_in.session.set_cookie(now), clear_state_cookie()],
+        );
+        Ok(OidcSignedIn { signed_in, landing })
     }
 
     /// The principal for a request's session cookie, if the session is live and its account is enabled. For
     /// a request that only reads; a request that changes anything uses [`Authenticator::principal_for_write`].
-    ///
-    /// After an OpenID Connect callback, answer with a page that moves the browser on itself (a `200` with a
-    /// `<meta http-equiv="refresh">`) rather than a redirect: a `SameSite=Strict` cookie is not sent on the
-    /// request that follows a cross-site-initiated redirect, and the landing page would render signed out.
     pub fn principal_for_session(
         &self,
         secret: &str,

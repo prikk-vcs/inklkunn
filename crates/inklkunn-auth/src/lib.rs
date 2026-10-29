@@ -31,11 +31,12 @@ mod throttle;
 pub mod token;
 
 pub use authenticator::{
-    AccountError, AuthConfig, Authenticator, OidcSignInError, SessionCheck, SessionPrincipal,
-    SignedIn,
+    AccountError, AuthConfig, Authenticator, OidcSignInError, OidcSignedIn, SessionCheck,
+    SessionPrincipal, SignedIn,
 };
 pub use error::AuthError;
 pub use hashing::{Argon2idHasher, PasswordHasher, PasswordRefusal};
+pub use oidc::Landing;
 pub use proxy::{ClientAddress, ProxyPolicy};
 pub use session::{CsrfToken, NewSession};
 pub use throttle::ThrottlePolicy;

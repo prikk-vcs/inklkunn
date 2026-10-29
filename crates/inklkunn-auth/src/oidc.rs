@@ -11,13 +11,19 @@
 //! and **an unlinked identity signs nobody in** (no auto-provisioning in this release).
 //!
 //! The state cookie is `SameSite=Lax`, not `Strict`: the provider's redirect back is a cross-site top-level
-//! navigation, which a `Strict` cookie would not accompany. It is `__Host-`, `Secure` and `HttpOnly`, and
-//! lives as long as a login may take.
+//! navigation, which a `Strict` cookie would not accompany. It is `__Host-` (`Path=/`, no `Domain`), `Secure`
+//! and `HttpOnly`, lives as long as a login may take ([`PENDING_TTL_SECS`]), and is **single-use**: the callback
+//! removes it ([`clear_state_cookie`], carried by the [`Landing`]) and the server forgets the state when it is
+//! redeemed. The *session* cookie stays `Strict`, so a successful callback is answered with a [`Landing`], a
+//! `200` page that moves the browser on with a request of this site's own, and never with a redirect (the
+//! browser withholds a Strict cookie from the request after a cross-site-initiated navigation; the
+//! documentation of [`Landing`]'s module says why).
 //!
 //! Every outbound request goes through the [`HttpsFetcher`] seam (the egress guard); the verifier is a seam
 //! too, so the flow can be tested without cryptography and the cryptography without the flow.
 
 mod fetch;
+mod landing;
 mod pending;
 mod remote;
 mod verify;
@@ -29,6 +35,7 @@ use base64ct::{Base64, Base64UrlUnpadded, Encoding as _};
 use sha2::{Digest as _, Sha256};
 
 pub use fetch::{FetchError, FetchRequest, HttpsFetcher, MAX_RESPONSE_BYTES};
+pub use landing::Landing;
 pub use pending::PENDING_TTL_SECS;
 pub use verify::{TokenVerifier, VerifiedIdentity};
 
@@ -200,6 +207,14 @@ impl BeginSignIn {
             self.state
         )
     }
+}
+
+/// The `Set-Cookie` value that removes the state cookie. The attributes match [`BeginSignIn::state_cookie`]
+/// (a cookie is replaced only by one with the same name, path and `Secure`/`__Host-` shape). The
+/// authenticator puts it in the [`Landing`] of a successful sign-in; a web layer that refuses a callback sends
+/// it too, so a failed login leaves nothing behind.
+pub fn clear_state_cookie() -> String {
+    format!("{STATE_COOKIE}=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0")
 }
 
 /// A configured OpenID Connect provider.

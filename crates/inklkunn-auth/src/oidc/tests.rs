@@ -765,3 +765,36 @@ fn percent_encoding_leaves_only_unreserved_characters() {
     assert_eq!(pct("aZ09-_.~"), "aZ09-_.~");
     assert_eq!(pct("a b&c=d/é"), "a%20b%26c%3Dd%2F%C3%A9");
 }
+
+/// The cookie attributes of the login-state cookie and of its removal (handoff 002 C9): `__Host-` rules
+/// (`Secure`, `Path=/`, no `Domain`), `HttpOnly`, `SameSite=Lax` (the provider's cross-site redirect must
+/// carry it back; `Strict` would not be sent), short-lived, and removed by a cookie of the same shape.
+#[test]
+fn the_state_cookie_is_lax_short_lived_and_host_prefixed_and_its_removal_matches_it() {
+    let (p, _f) = provider(None);
+    let b = p.begin_sign_in(1_000).unwrap();
+    let set = b.state_cookie();
+    let attrs = |c: &str| -> Vec<String> { c.split("; ").skip(1).map(str::to_owned).collect() };
+    assert_eq!(
+        attrs(&set),
+        [
+            "Path=/",
+            "Secure",
+            "HttpOnly",
+            "SameSite=Lax",
+            "Max-Age=600"
+        ]
+    );
+    assert!(!set.contains("Strict"), "{set}");
+    assert!(
+        !set.contains("Domain"),
+        "a __Host- cookie has no Domain: {set}"
+    );
+    assert_eq!(PENDING_TTL_SECS, 600, "short-lived: ten minutes");
+    let clear = clear_state_cookie();
+    assert!(clear.starts_with("__Host-inklkunn-oidc=; "), "{clear}");
+    assert_eq!(
+        attrs(&clear),
+        ["Path=/", "Secure", "HttpOnly", "SameSite=Lax", "Max-Age=0"]
+    );
+}
