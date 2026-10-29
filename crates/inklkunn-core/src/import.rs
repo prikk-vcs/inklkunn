@@ -13,7 +13,7 @@
 //! [`Accept`]; the signer validates once more before it writes a byte.
 //!
 //! **What a folder is.** The layout an export writes: `pages/**/*.md` and `attachments/**`. Everything else at the
-//! top (the manifest, `users.yaml`, `history/`, `knowledge/`, `governance/`) is *not imported* and is listed as
+//! top (the manifest, `SHA256SUMS`, `users.yaml`, `history/`, `knowledge/`, `governance/`) is *not imported* and is listed as
 //! such: a Portable Wiki Bundle's import with its history is RFC 007's.
 
 use std::collections::{HashMap, HashSet};
@@ -42,6 +42,10 @@ const NOT_IMPORTED: &[(&str, &str)] = &[
     (
         "wiki-bundle.yaml",
         "the manifest describes the export; the wiki keeps its own",
+    ),
+    (
+        "SHA256SUMS",
+        "the checksums of the export's files; the import reads the files themselves",
     ),
     (
         "users.yaml",

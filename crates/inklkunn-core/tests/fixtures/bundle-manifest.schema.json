@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/kos-commons/wiki-commons/main/schemas/bundle-manifest.schema.json",
+  "title": "Portable Wiki Bundle manifest (wiki-bundle.yaml)",
+  "description": "Describes a Portable Wiki Bundle: origin, conventions, contents, and fidelity. See guidelines/10-Interchange_and_Portability.md (XFER-1, XFER-2).",
+  "type": "object",
+  "required": ["format", "version"],
+  "properties": {
+    "format": {"const": "portable-wiki-bundle"},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$", "description": "Bundle layout version, e.g. \"0.1\"."},
+    "generator": {"$ref": "#/$defs/software"},
+    "exported_at": {"type": "string", "format": "date-time"},
+    "source": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "url": {"type": "string", "format": "uri"},
+        "engine": {"type": "string"},
+        "engine_version": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "lang": {"type": "string", "description": "Default page language (BCP 47)."},
+    "license": {"type": "string", "description": "Default content license (SPDX) for pages without their own."},
+    "visibility_default": {"type": "string", "enum": ["public", "internal", "restricted"]},
+    "markup": {
+      "type": "object",
+      "properties": {
+        "profile": {"type": "string", "description": "Highest profile layer used, e.g. portable-wiki-markdown/2."},
+        "native_format": {"type": "string"},
+        "link_label_order": {"type": "string", "enum": ["target-first", "label-first"]},
+        "hierarchy_separator": {"type": "string"},
+        "native_hierarchy_separator": {"type": "string"},
+        "heading_anchor_algorithm": {"type": "string"},
+        "directives": {"type": "array", "items": {"type": "string"}},
+        "html_subset": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": true
+    },
+    "namespaces": {"type": "array", "items": {"type": "string"}, "description": "MediaWiki-style title prefixes present in this bundle."},
+    "interwiki": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Prefix to URL template; {title} is replaced by the target title."},
+    "contents": {
+      "type": "object",
+      "properties": {
+        "pages": {"type": "integer", "minimum": 0},
+        "attachments": {"type": "integer", "minimum": 0},
+        "history": {"type": "boolean"},
+        "discussions": {"type": "boolean"},
+        "discussions_representation": {"type": "string", "enum": ["jsonl", "pages"]},
+        "users": {"type": "boolean"},
+        "structured": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    },
+    "fidelity": {
+      "type": "object",
+      "properties": {
+        "level": {"type": "integer", "minimum": 0, "maximum": 5},
+        "degraded": {"type": "array", "items": {"$ref": "#/$defs/loss"}},
+        "dropped": {"type": "array", "items": {"$ref": "#/$defs/loss"}}
+      },
+      "additionalProperties": true
+    },
+    "extensions_used": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "version": {"type": "string"},
+          "directives": {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["name"],
+        "additionalProperties": true
+      }
+    },
+    "pseudonymized": {"type": "boolean", "description": "True when contributor identities were replaced by stable opaque identifiers."},
+    "checksums": {"type": "string", "description": "Path of a file of \"<sha256>  <path>\" lines."},
+    "conformance": {"type": "array", "items": {"type": "string"}, "description": "Self-declared profiles, e.g. portable-content@0.1."}
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "software": {
+      "type": "object",
+      "properties": {"name": {"type": "string"}, "version": {"type": "string"}, "url": {"type": "string", "format": "uri"}},
+      "additionalProperties": true
+    },
+    "loss": {
+      "type": "object",
+      "properties": {"construct": {"type": "string"}, "count": {"type": "integer", "minimum": 0}, "how": {"type": "string"}},
+      "required": ["construct"],
+      "additionalProperties": true
+    }
+  }
+}

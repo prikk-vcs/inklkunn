@@ -27,6 +27,11 @@ use inklkunn_signer::Accept;
 use inklkunn_store::{AccountId, DisplayName, MemoryStore, NewWiki, ProposalId, RootLayout, Slug};
 use sha2::{Digest, Sha256};
 
+#[path = "support/bundle_manifest.rs"]
+mod bundle_manifest;
+#[path = "support/json_schema.rs"]
+mod json_schema;
+
 struct Dir(PathBuf);
 
 impl Drop for Dir {
@@ -258,14 +263,25 @@ fn sha(bytes: &[u8]) -> String {
         .collect()
 }
 
-/// The `"path": "hash"` lines of a manifest's checksums.
-fn manifest_checksums(manifest: &str) -> BTreeMap<String, String> {
-    manifest
+/// The `<sha256>  <path>` lines of a bundle's `SHA256SUMS` file, which its manifest's `checksums` names.
+fn bundle_checksums(files: &BTreeMap<String, Vec<u8>>) -> BTreeMap<String, String> {
+    let manifest = String::from_utf8(get(files, "wiki-bundle.yaml").clone()).unwrap();
+    assert!(
+        manifest.lines().any(|l| l == "checksums: SHA256SUMS"),
+        "{manifest}"
+    );
+    let problems = bundle_manifest::violations(&manifest);
+    assert!(
+        problems.is_empty(),
+        "the manifest is not valid against wiki-commons' schema: {problems:#?}\n{manifest}"
+    );
+    String::from_utf8(get(files, "SHA256SUMS").clone())
+        .unwrap()
         .lines()
-        .filter_map(|l| l.strip_prefix("    \""))
-        .filter_map(|l| {
-            let (path, rest) = l.split_once("\": \"")?;
-            Some((path.to_owned(), rest.strip_suffix('"')?.to_owned()))
+        .map(|l| {
+            let (sum, path) = l.split_once("  ").expect("a sum, two spaces, a path");
+            assert_eq!(sum.len(), 64, "{l}");
+            (path.to_owned(), sum.to_owned())
         })
         .collect()
 }
@@ -348,13 +364,16 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
             "  pages: 4",
             "  attachments: 1",
             "interwiki: {}",
-            "  algorithm: sha256",
+            "  histories_not_written: 0",
         ] {
             assert!(manifest.contains(needle), "{needle}\n{manifest}");
         }
         assert!(manifest.contains(&format!("as_of_block: \"{}\"", done.tip)));
-        let sums = manifest_checksums(&manifest);
-        let others: Vec<&String> = one.keys().filter(|k| *k != "wiki-bundle.yaml").collect();
+        let sums = bundle_checksums(&one);
+        let others: Vec<&String> = one
+            .keys()
+            .filter(|k| *k != "wiki-bundle.yaml" && *k != "SHA256SUMS")
+            .collect();
         assert_eq!(sums.keys().collect::<Vec<_>>(), others);
         for (path, hash) in &sums {
             assert_eq!(&sha(get(&one, path)), hash, "{path}");
@@ -408,6 +427,7 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
             skipped,
             vec![
                 ".prikkignore",
+                "SHA256SUMS",
                 "governance",
                 "history",
                 "knowledge",
@@ -440,7 +460,10 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
         let content = |m: &BTreeMap<String, Vec<u8>>| -> BTreeMap<String, Vec<u8>> {
             m.iter()
                 .filter(|(k, _)| {
-                    !k.starts_with("history/") && *k != "users.yaml" && *k != "wiki-bundle.yaml"
+                    !k.starts_with("history/")
+                        && *k != "users.yaml"
+                        && *k != "wiki-bundle.yaml"
+                        && *k != "SHA256SUMS"
                 })
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect()
@@ -451,8 +474,7 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
             "the round trip changed a stored file"
         );
         // The manifests' checksums agree on every stored file.
-        let sums2 =
-            manifest_checksums(&String::from_utf8(get(&two, "wiki-bundle.yaml").clone()).unwrap());
+        let sums2 = bundle_checksums(&two);
         for (path, hash) in &sums {
             if !path.starts_with("history/") && path != "users.yaml" {
                 assert_eq!(sums2.get(path), Some(hash), "{path}");
@@ -654,4 +676,195 @@ fn a_dry_run_writes_nothing_to_the_wiki_the_folder_or_anywhere() {
         log_run.blocks.first().unwrap().block_id,
         done.sealed.block_id
     );
+}
+
+/// Page text with the given id, for the tests of histories that cannot be written.
+fn page_with_id(title: &str, id: &str) -> String {
+    format!("---\ntitle: {title}\nid: \"{id}\"\n---\n\nBody of {title}.\n")
+}
+
+#[test]
+fn histories_that_cannot_be_written_are_counted_in_the_manifest_not_dropped_silently() {
+    if !prikk_on_path() {
+        println!("skipping: prikk not on PATH");
+        return;
+    }
+    let w = world("unwritable", Sandbox::Unconfined);
+    let a = create(&w, "epsilon");
+    // One page with a good id; one whose id cannot name a file; two that share an id (a second import can
+    // bring a page whose id another page already has).
+    let first = dir_in(&w.tmp, "folder1");
+    put(
+        &first.0,
+        "pages/Good.md",
+        page_with_id("Good", "good-1").as_bytes(),
+    );
+    put(
+        &first.0,
+        "pages/Bad.md",
+        page_with_id("Bad", "../escape/bad").as_bytes(),
+    );
+    put(
+        &first.0,
+        "pages/Twin A.md",
+        page_with_id("Twin A", "twin-1").as_bytes(),
+    );
+    do_import(&w, &a, &first.0, false);
+    let second = dir_in(&w.tmp, "folder2");
+    put(
+        &second.0,
+        "pages/Twin B.md",
+        page_with_id("Twin B", "twin-1").as_bytes(),
+    );
+    do_import(&w, &a, &second.0, false);
+
+    let out = dir_in(&w.tmp, "out");
+    let dest = out.0.join("bundle");
+    let done = export_bundle(&w.storage, &w.layout, &a.record, &dest, "0.0.0", 1)
+        .unwrap_or_else(|e| panic!("{e}"));
+    let files = files_of(&dest);
+    // Bad (1) and the two twins (2): three pages whose history has no file.
+    assert_eq!(done.histories_not_written, 3);
+    assert!(
+        String::from_utf8(get(&files, "wiki-bundle.yaml").clone())
+            .unwrap()
+            .contains("  histories_not_written: 3\n")
+    );
+    // The history that could be written (Help, Good) is there; none of the others is, and nothing escaped.
+    assert!(files.contains_key("history/good-1.jsonl"));
+    assert_eq!(done.histories, 2, "Help and Good");
+    assert!(
+        !files
+            .keys()
+            .any(|k| k.contains("twin") || k.contains("escape"))
+    );
+    assert!(!out.0.join("escape").exists() && !out.0.join("bad.jsonl").exists());
+    // The checksums list every file that is there.
+    let sums = bundle_checksums(&files);
+    for (path, hash) in &sums {
+        assert_eq!(&sha(get(&files, path)), hash, "{path}");
+    }
+    assert_eq!(
+        sums.len(),
+        files.len() - 2,
+        "all but the manifest and SHA256SUMS"
+    );
+}
+
+#[test]
+fn an_export_begins_by_sweeping_what_a_killed_one_left_and_touches_nothing_else() {
+    if !prikk_on_path() {
+        println!("skipping: prikk not on PATH");
+        return;
+    }
+    let w = world("sweep", Sandbox::Unconfined);
+    let a = create(&w, "zeta");
+    let scratch = w.layout.scratch_dir(&a.record.id);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let out = dir_in(&w.tmp, "out");
+    let dest = out.0.join("bundle");
+    // A process id no machine has (above the kernel's maximum), and this process's own.
+    let dead = 4_294_967_000_u32;
+    let me = std::process::id();
+    let killed_extraction = scratch.join(format!("export-{dead}-1"));
+    let killed_partial = out.0.join(format!(".bundle.partial-{dead}-1"));
+    for dir in [&killed_extraction, &killed_partial] {
+        std::fs::create_dir_all(dir.join("pages")).unwrap();
+        std::fs::write(dir.join("pages/Half.md"), "half a page").unwrap();
+    }
+    // Not leftovers of this export: a live process's (this one), another destination's, another name.
+    let kept: Vec<PathBuf> = vec![
+        scratch.join(format!("export-{me}-1")),
+        scratch.join("tip-index"),
+        scratch.join(format!("export-{dead}")),
+        out.0.join(format!(".other.partial-{dead}-1")),
+        out.0.join(format!(".bundle.partial-{me}-1")),
+        out.0.join("bundle-notes"),
+    ];
+    for dir in &kept {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    export_bundle(&w.storage, &w.layout, &a.record, &dest, "0.0.0", 1)
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert!(
+        !killed_extraction.exists(),
+        "a killed export's extraction was left"
+    );
+    assert!(
+        !killed_partial.exists(),
+        "a killed export's partial bundle was left"
+    );
+    for dir in &kept {
+        assert!(dir.exists(), "{dir:?} is not a leftover and was removed");
+    }
+    assert!(dest.join("wiki-bundle.yaml").is_file());
+}
+
+#[test]
+fn an_empty_directory_made_at_the_destination_meanwhile_is_not_replaced() {
+    if !prikk_on_path() {
+        println!("skipping: prikk not on PATH");
+        return;
+    }
+    // A storage that, when asked to extract, makes the destination: after the export checked that it did not
+    // exist and before it moved the bundle in.
+    struct Racer<'a>(&'a PrikkCli, PathBuf);
+    impl Storage for Racer<'_> {
+        fn views(&self, r: &Path) -> inklkunn_prikk::Result<Views> {
+            self.0.views(r)
+        }
+        fn tree(&self, r: &Path, p: &Point, x: Option<&str>) -> inklkunn_prikk::Result<Tree> {
+            self.0.tree(r, p, x)
+        }
+        fn stat(&self, r: &Path, p: &Point, x: &str) -> inklkunn_prikk::Result<FileMeta> {
+            self.0.stat(r, p, x)
+        }
+        fn read(&self, r: &Path, p: &Point, x: &str, m: u64) -> inklkunn_prikk::Result<Vec<u8>> {
+            self.0.read(r, p, x, m)
+        }
+        fn history(&self, r: &Path, p: &Point, l: Option<u64>) -> inklkunn_prikk::Result<History> {
+            self.0.history(r, p, l)
+        }
+        fn change(&self, r: &Path, i: &str) -> inklkunn_prikk::Result<Change> {
+            self.0.change(r, i)
+        }
+        fn diff(&self, r: &Path, a: &Point, b: &Point, p: &[&str]) -> inklkunn_prikk::Result<Diff> {
+            self.0.diff(r, a, b, p)
+        }
+        fn plan(&self, r: &Path, p: &Point) -> inklkunn_prikk::Result<Materialized> {
+            self.0.plan(r, p)
+        }
+        fn materialize(
+            &self,
+            r: &Path,
+            p: &Point,
+            s: &Path,
+            n: &str,
+            b: ExtractBounds,
+        ) -> inklkunn_prikk::Result<Materialized> {
+            std::fs::create_dir(&self.1).unwrap();
+            self.0.materialize(r, p, s, n, b)
+        }
+        fn verify(&self, r: &Path) -> inklkunn_prikk::Result<Verification> {
+            self.0.verify(r)
+        }
+    }
+    let w = world("noreplace", Sandbox::Unconfined);
+    let a = create(&w, "eta");
+    let out = dir_in(&w.tmp, "out");
+    let dest = out.0.join("bundle");
+    let err = export_bundle(
+        &Racer(&w.storage, dest.clone()),
+        &w.layout,
+        &a.record,
+        &dest,
+        "0.0.0",
+        1,
+    )
+    .unwrap_err();
+    assert!(matches!(err, ExportError::Destination(_)), "{err}");
+    // The directory the other process made is still there, still empty, and nothing is left beside it.
+    assert_eq!(std::fs::read_dir(&dest).unwrap().count(), 0);
+    let beside: Vec<_> = std::fs::read_dir(&out.0).unwrap().collect();
+    assert_eq!(beside.len(), 1, "{beside:?}");
 }

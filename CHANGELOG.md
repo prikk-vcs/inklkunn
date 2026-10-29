@@ -488,6 +488,23 @@ Handoff 003 T7 (RFC 003 D-11, D-12; hold notes IS-8, IS-9, IS-13).
   of these acts is audited (`system:operator-cli`; begun and ended). *Not built:* offering the exports from `-/admin`
   as downloads from the content origin, which needs sign-in pages that do not exist yet; `users.yaml`'s
   pseudonymization option.
+- **R6 (handoff 003 corrections): the bundle manifest follows wiki-commons.** `checksums` is now the *name* of a
+  `SHA256SUMS` file (`checksums: SHA256SUMS`), written beside the manifest, with one `"<sha256>  <path>"` line for
+  every other file of the bundle, in path order (`sha256sum -c` reads it); the object that held the sums is gone. A
+  path with a line break is refused rather than written into the file. `inklkunn_core::bundle::ExportFacts` loses
+  its `checksums` field; `bundle::CHECKSUMS` and `bundle::sha256sums` are new. Every manifest the code writes (the
+  creation manifest, an export's, and a real wiki's export) is validated in tests against wiki-commons'
+  `schemas/bundle-manifest.schema.json` (a copy under `crates/inklkunn-core/tests/fixtures/`, wiki-commons 0.4.0, its
+  commit recorded beside it), by a small checker of the tests' own that fails on any schema keyword it does not
+  apply (no JSON Schema crate is in the lock). `import-folder` lists `SHA256SUMS` among the entries it does not read.
+- **R8 (handoff 003 corrections): the export sweeps, never replaces, and counts.** An export begins by removing what
+  a killed one left: `export-<pid>-<nanos>` in the wiki's scratch directory and `.<name>.partial-<pid>-<nanos>`
+  beside the destination, only when the process that made it has ended. The finished bundle is moved in over an empty
+  directory the export has just made itself with `mkdir`, so a name taken meanwhile (even by an empty directory) is
+  refused and left alone; `std` has no `RENAME_NOREPLACE`, so a window remains in which another process removes that
+  empty directory and makes its own. Pages whose history has no file because the page id cannot name one, or two pages
+  share it, are counted: `export.histories_not_written` in the manifest, `Exported::histories_not_written`, and a
+  clause in `inklkunn wiki export`'s report. A shared id's one mixed history file is no longer written.
 - **The signer's keyless writable mode** (IS-8, IS-9). `inklkunn_signer::Maintenance`: the repository writable, **no
   key store, no secret, no key directory mounted and no seed variable**, for exactly two operations that write inside
   `.prikk/` and sign nothing. `archive export` (its own cost rule, a flat 16 MiB measured at 0.4 to 3.5 MiB on stores

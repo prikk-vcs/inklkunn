@@ -6,6 +6,8 @@ use inklkunn_prikk::storage::{
     Change, Diff, FileMeta, History, Materialized, Tree, Verification, Views,
 };
 
+use std::os::unix::fs::PermissionsExt as _;
+
 use super::*;
 
 /// A storage that must not be called: the rules under test refuse before any read.
@@ -118,7 +120,7 @@ fn only_the_not_recorded_refusal_is_the_checkpoint_one() {
 }
 
 #[test]
-fn a_manifest_carries_the_fidelity_the_counts_the_block_the_interwiki_map_and_every_checksum() {
+fn a_manifest_carries_the_fidelity_the_counts_the_block_the_interwiki_map_and_the_checksums_file() {
     let rec = record();
     let text = bundle::manifest_with(
         &rec,
@@ -131,7 +133,7 @@ fn a_manifest_carries_the_fidelity_the_counts_the_block_the_interwiki_map_and_ev
                 tip: "ab".repeat(32),
                 interwiki: vec![("wp".to_owned(), "https://en.wikipedia.org/wiki/".to_owned())],
                 unattributed_changes: 4,
-                checksums: vec![("pages/A.md".to_owned(), "00ff".to_owned())],
+                histories_not_written: 2,
             }),
         },
     );
@@ -144,8 +146,8 @@ fn a_manifest_carries_the_fidelity_the_counts_the_block_the_interwiki_map_and_ev
         "  at: 1700000000",
         "  history_changes_without_a_page: 4",
         "interwiki:\n  \"wp\": \"https://en.wikipedia.org/wiki/\"",
-        "  algorithm: sha256",
-        "    \"pages/A.md\": \"00ff\"",
+        "  histories_not_written: 2",
+        "checksums: SHA256SUMS\n",
     ] {
         assert!(text.contains(needle), "{needle}\n{text}");
     }
@@ -153,4 +155,63 @@ fn a_manifest_carries_the_fidelity_the_counts_the_block_the_interwiki_map_and_ev
     let created = bundle::manifest(&rec, "0.0.0");
     assert!(created.contains("# Counts at creation; the export rewrites them."));
     assert!(!created.contains("checksums:") && !created.contains("export:"));
+}
+
+#[test]
+fn only_a_leftover_of_exactly_the_shape_and_of_an_ended_process_is_swept() {
+    assert_eq!(leftover_pid("export-123-456", "export-"), Some(123));
+    assert_eq!(leftover_pid(".out.partial-7-8", ".out.partial-"), Some(7));
+    for not in [
+        "export-123",
+        "export--1",
+        "export-12-",
+        "export-1a-2",
+        "export-1-2-3",
+        "export-123-456x",
+        "tip-index",
+        "export-99999999999999999999-1",
+    ] {
+        assert_eq!(leftover_pid(not, "export-"), None, "{not}");
+    }
+    assert!(
+        !process_has_ended(std::process::id()),
+        "this process is alive"
+    );
+    assert!(process_has_ended(4_294_967_000), "no such process");
+}
+
+#[test]
+fn an_empty_directory_of_ours_is_what_the_bundle_is_renamed_over_and_a_taken_name_is_refused() {
+    let tmp = std::env::temp_dir().join(format!("inklkunn-export-place-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    let partial = tmp.join("partial");
+    std::fs::create_dir_all(partial.join("pages")).unwrap();
+    std::fs::write(partial.join("pages/A.md"), "a").unwrap();
+    // The export makes its partial bundle private; the rename carries that mode to the destination.
+    std::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o700)).unwrap();
+    // A name that is taken (by an empty directory, which a plain rename would replace) is refused untouched.
+    let taken = tmp.join("taken");
+    std::fs::create_dir(&taken).unwrap();
+    let err = put_in_place(&partial, &taken).unwrap_err();
+    assert!(matches!(err, ExportError::Destination(_)), "{err}");
+    assert_eq!(std::fs::read_dir(&taken).unwrap().count(), 0);
+    assert!(partial.join("pages/A.md").is_file(), "the bundle was moved");
+    // A file or a link at the name is refused too.
+    std::fs::write(tmp.join("file"), "x").unwrap();
+    std::os::unix::fs::symlink(&taken, tmp.join("link")).unwrap();
+    for name in ["file", "link"] {
+        let err = put_in_place(&partial, &tmp.join(name)).unwrap_err();
+        assert!(matches!(err, ExportError::Destination(_)), "{name}: {err}");
+    }
+    // A free name gets the bundle, private.
+    let dest = tmp.join("dest");
+    put_in_place(&partial, &dest).unwrap();
+    assert_eq!(std::fs::read(dest.join("pages/A.md")).unwrap(), b"a");
+    assert!(!partial.exists());
+    assert_eq!(
+        std::fs::metadata(&dest).unwrap().permissions().mode() & 0o077,
+        0
+    );
+    let _ = std::fs::remove_dir_all(&tmp);
 }

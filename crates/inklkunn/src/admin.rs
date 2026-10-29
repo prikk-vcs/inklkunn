@@ -606,9 +606,17 @@ fn export(
                 );
                 let _ = writeln!(
                     out,
-                    "  history: {} page(s), {} line(s){}; users: {}",
+                    "  history: {} page(s), {} line(s){}{}; users: {}",
                     done.histories,
                     done.history_entries,
+                    if done.histories_not_written > 0 {
+                        format!(
+                            "; {} page(s) have no history file (the page id cannot name a file or is shared)",
+                            done.histories_not_written
+                        )
+                    } else {
+                        String::new()
+                    },
                     if done.unattributed_changes > 0 {
                         format!(
                             "; {} change(s) to paths that are no longer pages are in no history file",

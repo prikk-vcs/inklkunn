@@ -16,6 +16,9 @@ pub const DIRECTORIES: &[&str] = &["pages", "attachments", "knowledge", "governa
 pub const KEEP: &str = ".keep";
 /// prikk's ignore file: literal path prefixes, one per line.
 pub const PRIKKIGNORE: &str = ".prikkignore";
+/// The file the manifest's `checksums` names (wiki-commons: "path of a file of `<sha256>  <path>` lines"), beside
+/// the manifest.
+pub const CHECKSUMS: &str = "SHA256SUMS";
 /// The first page of every wiki.
 pub const HELP_PAGE: &str = "pages/Help.md";
 /// The worktree prefix reserved for files the service may keep beside the content and that must never
@@ -47,8 +50,8 @@ pub struct ExportFacts {
     /// Changes in the history to paths that are not pages of the tip (a page since removed or renamed), which
     /// no `history/<page id>.jsonl` holds.
     pub unattributed_changes: usize,
-    /// `(path, sha-256 hex)` of every file in the bundle but the manifest itself, in path order.
-    pub checksums: Vec<(String, String)>,
+    /// Pages whose history file was not written (the page id cannot name a file, or two pages share it).
+    pub histories_not_written: usize,
 }
 
 /// The bundle manifest for a new wiki (wiki-commons chapter 10). `pages_prefix` is `pages`; fidelity is
@@ -59,7 +62,7 @@ pub fn manifest(record: &WikiRecord, inklkunn_version: &str) -> String {
 }
 
 /// The manifest with an export's facts: the real counts, when and as of which block, the interwiki map and the
-/// checksums of every file. Without them, the creation manifest.
+/// name of the file of checksums ([`CHECKSUMS`]). Without them, the creation manifest.
 pub fn manifest_with(record: &WikiRecord, inklkunn_version: &str, facts: &ManifestFacts) -> String {
     let lang = record.languages.first().map_or("en", String::as_str);
     let langs = record
@@ -125,6 +128,10 @@ pub fn manifest_with(record: &WikiRecord, inklkunn_version: &str, facts: &Manife
             "  history_changes_without_a_page: {}",
             e.unattributed_changes
         ));
+        lines.push(format!(
+            "  histories_not_written: {}",
+            e.histories_not_written
+        ));
         if e.interwiki.is_empty() {
             lines.push("interwiki: {}".to_owned());
         } else {
@@ -133,13 +140,7 @@ pub fn manifest_with(record: &WikiRecord, inklkunn_version: &str, facts: &Manife
                 lines.push(format!("  {}: {}", yaml_str(prefix), yaml_str(target)));
             }
         }
-        lines.push("checksums:".to_owned());
-        lines.push("  algorithm: sha256".to_owned());
-        lines.push("  # Every file of the bundle but this manifest.".to_owned());
-        lines.push("  files:".to_owned());
-        for (path, hex) in &e.checksums {
-            lines.push(format!("    {}: {}", yaml_str(path), yaml_str(hex)));
-        }
+        lines.push(format!("checksums: {CHECKSUMS}"));
     }
     lines.extend([
         "inklkunn:".to_owned(),
@@ -152,6 +153,25 @@ pub fn manifest_with(record: &WikiRecord, inklkunn_version: &str, facts: &Manife
     let mut out = lines.join("\n");
     out.push('\n');
     out
+}
+
+/// The body of the [`CHECKSUMS`] file: one `"<sha256>  <path>"` line per `(path, sha-256 hex)`, paths relative to
+/// the manifest's directory, in path order (the format `sha256sum -c` reads). A path with a line break cannot be
+/// one of these lines and is refused (`None`).
+pub fn sha256sums(entries: &[(String, String)]) -> Option<String> {
+    let mut sorted: Vec<&(String, String)> = entries.iter().collect();
+    sorted.sort();
+    let mut out = String::new();
+    for (path, hex) in sorted {
+        if path.contains(['\n', '\r']) {
+            return None;
+        }
+        out.push_str(hex);
+        out.push_str("  ");
+        out.push_str(path);
+        out.push('\n');
+    }
+    Some(out)
 }
 
 /// A YAML scalar that is **always** double-quoted: for values that must never be read as anything but text (a

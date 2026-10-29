@@ -11,11 +11,13 @@
 //!   not dropped silently.
 //! - **`users.yaml`**: the accounts that appear in those messages, with the names they had.
 //! - **`wiki-bundle.yaml`**: the manifest, with the fidelity, the real counts, the block it is as of, the
-//!   interwiki map and the SHA-256 of every other file.
+//!   interwiki map and, in `checksums`, the name of the file below (wiki-commons' shape).
+//! - **`SHA256SUMS`**, beside the manifest: one `"<sha256>  <path>"` line for every other file.
 //!
 //! The bundle is built beside its destination and renamed into place only when complete, and the destination
 //! must not exist: a failed export leaves nothing. The extraction directory in the wiki's scratch directory is
-//! removed whatever happened.
+//! removed whatever happened, and an export begins by sweeping what a killed one left (its extraction there,
+//! its `.<name>.partial-*` beside the destination).
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::Write as _;
@@ -99,6 +101,9 @@ pub struct Exported {
     pub unattributed_changes: usize,
     /// Accounts in `users.yaml`.
     pub users: usize,
+    /// Pages whose history file was not written because the page id in its frontmatter cannot name a file
+    /// (unsafe) or belongs to more than one page (shared): the manifest says how many.
+    pub histories_not_written: usize,
 }
 
 fn io(what: &str, e: &std::io::Error) -> ExportError {
@@ -118,6 +123,48 @@ fn hex(bytes: &[u8]) -> String {
 /// Remove a directory tree; a failure is the caller's to ignore (the next export sweeps its own leftovers).
 fn remove_tree(path: &Path) {
     let _ = std::fs::remove_dir_all(path);
+}
+
+/// Is `pid` a process that has ended? `false` for this process, for a live one, and whenever `/proc` cannot say
+/// (no export is ever swept on a guess).
+fn process_has_ended(pid: u32) -> bool {
+    pid != std::process::id()
+        && Path::new("/proc/self").exists()
+        && !Path::new(&format!("/proc/{pid}")).exists()
+}
+
+/// The process id of a leftover named `<prefix><pid>-<nanos>`, when the name has exactly that shape.
+fn leftover_pid(name: &str, prefix: &str) -> Option<u32> {
+    let (pid, nanos) = name.strip_prefix(prefix)?.split_once('-')?;
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    if digits(pid) && digits(nanos) {
+        pid.parse().ok()
+    } else {
+        None
+    }
+}
+
+/// Remove the directories a killed export left: `export-<pid>-<nanos>` in `scratch` and
+/// `.<name>.partial-<pid>-<nanos>` in `parent`, when the process that made them has ended (a live export of the
+/// same wiki or destination, in another process, keeps its own). Only directories of exactly these names; nothing
+/// is followed.
+fn sweep_leftovers(scratch: &Path, parent: &Path, name: &str) {
+    let partial_prefix = format!(".{name}.partial-");
+    for (dir, prefix) in [(scratch, "export-"), (parent, partial_prefix.as_str())] {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.filter_map(Result::ok) {
+            let file_name = entry.file_name();
+            let is_leftover = file_name
+                .to_str()
+                .and_then(|n| leftover_pid(n, prefix))
+                .is_some_and(process_has_ended);
+            if is_leftover && entry.file_type().is_ok_and(|t| t.is_dir()) {
+                remove_tree(&entry.path());
+            }
+        }
+    }
 }
 
 /// Every regular file under `dir`, as `/`-separated relative paths in order. A link or any other kind of entry
@@ -376,6 +423,7 @@ pub fn export_bundle(
     let scratch = layout.scratch_dir(&record.id);
     std::fs::create_dir_all(&scratch)
         .map_err(|e| io("the wiki's scratch directory could not be made", &e))?;
+    sweep_leftovers(&scratch, parent, name);
     let extraction = format!("export-{}-{}", std::process::id(), nanos());
     let result = (|| {
         storage
@@ -414,10 +462,7 @@ pub fn export_bundle(
         );
         match built {
             Ok(mut done) => {
-                std::fs::rename(&partial, dest).map_err(|e| {
-                    remove_tree(&partial);
-                    io("the bundle could not be put in place", &e)
-                })?;
+                put_in_place(&partial, dest).inspect_err(|_| remove_tree(&partial))?;
                 done.dir = dest.to_path_buf();
                 Ok(done)
             }
@@ -429,6 +474,28 @@ pub fn export_bundle(
     })();
     remove_tree(&scratch.join(&extraction));
     result
+}
+
+/// Move the finished bundle `partial` to `dest`, which must not exist. `rename(2)` replaces an empty directory,
+/// and `RENAME_NOREPLACE` (which would refuse) is not reachable from `std`, so `dest` is first made here with
+/// `mkdir` (which cannot succeed on anything that exists) and only that empty directory of ours is renamed over.
+/// What is left is a window in which another process removes our empty directory and makes its own empty one.
+fn put_in_place(partial: &Path, dest: &Path) -> Result<(), ExportError> {
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(dest)
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::AlreadyExists {
+                ExportError::Destination("it already exists; nothing was written".to_owned())
+            } else {
+                io("the bundle could not be put in place", &e)
+            }
+        })?;
+    std::fs::rename(partial, dest).map_err(|e| {
+        // `dest` is the empty directory this call made; `remove_dir` removes nothing else.
+        let _ = std::fs::remove_dir(dest);
+        io("the bundle could not be put in place", &e)
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -475,15 +542,25 @@ fn build(
     }
     let h = histories(storage, repo, view, tip, &page_ids)?;
     let mut history_entries = 0;
+    // How many pages carry each id: an id two pages share cannot say whose history a file holds.
+    let mut carriers: HashMap<&str, usize> = HashMap::new();
+    for id in page_ids.values() {
+        *carriers.entry(id.as_str()).or_default() += 1;
+    }
+    let mut histories_not_written = 0;
     for (id, lines) in &h.lines {
-        // A page id is a plain value from a person's frontmatter: it names a file only when it is safe to.
+        // A page id is a plain value from a person's frontmatter: it names a file only when it is safe to, and
+        // only when one page has it.
         let safe = !id.is_empty()
             && id.len() <= 128
             && id
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
             && !id.starts_with('.');
-        if !safe {
+        let carried = carriers.get(id.as_str()).copied().unwrap_or(0);
+        if !safe || carried != 1 {
+            // Counted in the manifest, never dropped silently.
+            histories_not_written += carried;
             continue;
         }
         let mut text = lines.join("\n");
@@ -516,6 +593,12 @@ fn build(
     let hash = write_new(&partial.join("users.yaml"), users.as_bytes())?;
     checksums.push(("users.yaml".to_owned(), hash));
     checksums.sort();
+    let sums = bundle::sha256sums(&checksums).ok_or_else(|| {
+        ExportError::Io(
+            "a file's name holds a line break; it cannot be listed in the checksums".to_owned(),
+        )
+    })?;
+    write_new(&partial.join(bundle::CHECKSUMS), sums.as_bytes())?;
     let accounts = h.accounts.len();
     let manifest = bundle::manifest_with(
         record,
@@ -528,7 +611,7 @@ fn build(
                 tip: tip.to_owned(),
                 interwiki: Vec::new(),
                 unattributed_changes: h.unattributed,
-                checksums,
+                histories_not_written,
             }),
         },
     );
@@ -542,6 +625,7 @@ fn build(
         history_entries,
         unattributed_changes: h.unattributed,
         users: accounts,
+        histories_not_written,
     })
 }
 
