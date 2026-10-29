@@ -26,7 +26,7 @@ rfcs/
 
 The planned order is `../ROADMAP.md` §7. **RFCs 001 and 010 are done** (implemented in M0, review requests v2
 approved by the owner on 2026-10-28); 001 has one follow-on handoff (IS-7, 2026-10-28) and 010's first re-baseline
-waits for prikk 0.55.0. **RFCs 002 and 003 are accepted** (2026-10-27): 002's handoff is assignable
+ran at prikk 0.55.0 on 2026-10-29 (nothing changed; the floor stays 0.54.0). **RFCs 002 and 003 are accepted** (2026-10-27): 002's handoff is assignable
 now; 003's T1–T3 are startable now and T4 onward after 002's T2. **RFC 004 is accepted** (2026-10-28); its
 handoff is assignable after 002's corrections C1 – C7 and 003's T1 – T4 are approved (its T1–T2 may start now: 002's T5 has landed). RFCs 005–009 are reserved
 subjects not yet written: 005 knowledge layer

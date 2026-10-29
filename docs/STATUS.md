@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | The dated brief a new session reads **first**: where the project is, what is pending on whom, and the issue register. Updated at every milestone, RFC disposition and owner ruling. |
-| As of | 2026-10-28 — **M0 done: RFCs 001 and 010 approved and moved to `done/`** (review requests v2 approved by the owner); **RFCs 002 and 003 accepted**, 002's handoff assignable and 003's T1–T3 startable; prikk's reply on Unicode paths folded (ship percent-encoded; migrate later); release tags will be SSH-signed (pending the owner's public key); **RFC 004 (proposals, M2) accepted** with its handoff v1. **Later the same day:** the dev team began (handoff 002 T5, `3913137`); a new architect session reviewed the whole record and the upstreams and folded **seven issues (IS-7 … IS-13)** into binding handoff notes, one driver follow-on handoff and ledger v1.1; **DR-9 ruled by the owner the same day: `aws_lc_rs`**. **2026-10-29:** the dev team's handoff 002 (T1 – T8) and handoff 003 (T1 – T3) **reviewed: both Conditionally Approved** (every gate re-run by the architect: 676 tests in both runs, 57 self-skips); corrections in `rfcs/handoffs/002-…/identity-keys-and-signing-corrections-handoff-v1.md` and handoff 003's T4 notes; **one decision asked of the owner (DR-10, key rotation)** and one letter to prikk drafted. **Later the same day:** the letter sent and answered; **DR-10 ruled** (keep the old key by default, retire explicitly; corrections C11); **prikk 0.55.0 is tagged upstream: the first re-baseline is due** |
+| As of | 2026-10-28 — **M0 done: RFCs 001 and 010 approved and moved to `done/`** (review requests v2 approved by the owner); **RFCs 002 and 003 accepted**, 002's handoff assignable and 003's T1–T3 startable; prikk's reply on Unicode paths folded (ship percent-encoded; migrate later); release tags will be SSH-signed (pending the owner's public key); **RFC 004 (proposals, M2) accepted** with its handoff v1. **Later the same day:** the dev team began (handoff 002 T5, `3913137`); a new architect session reviewed the whole record and the upstreams and folded **seven issues (IS-7 … IS-13)** into binding handoff notes, one driver follow-on handoff and ledger v1.1; **DR-9 ruled by the owner the same day: `aws_lc_rs`**. **2026-10-29:** the dev team's handoff 002 (T1 – T8) and handoff 003 (T1 – T3) **reviewed: both Conditionally Approved** (every gate re-run by the architect: 676 tests in both runs, 57 self-skips); corrections in `rfcs/handoffs/002-…/identity-keys-and-signing-corrections-handoff-v1.md` and handoff 003's T4 notes; **one decision asked of the owner (DR-10, key rotation)** and one letter to prikk drafted. **Later the same day:** the letter sent and answered; **DR-10 ruled** (keep the old key by default, retire explicitly; corrections C11); **prikk 0.55.0 released and the first re-baseline run** (suite whole, cost multiples unchanged, floor stays 0.54.0); pushed (`fec2a50`); CI's first run on the pushed tree found **IS-17** (a key-store creation race) |
 | Read next | [`src/inklkunn-00-project-charter.md`](src/inklkunn-00-project-charter.md) → [`../ROADMAP.md`](../ROADMAP.md) → [`src/inklkunn-01-requirements-spec.md`](src/inklkunn-01-requirements-spec.md) → [`src/inklkunn-02-external-design.md`](src/inklkunn-02-external-design.md) → [`src/inklkunn-03-threat-model.md`](src/inklkunn-03-threat-model.md) → [`src/inklkunn-04-internal-design.md`](src/inklkunn-04-internal-design.md) → [`../rfcs/README.md`](../rfcs/README.md) |
 
 ## Where we are
@@ -124,6 +124,16 @@
   available for CI and releases. **prikk 0.55.0 is installed** on the build host by the owner (the first re-baseline
   runs against it). **DR-7's reviewer is the owner**, who reads Japanese: the catalog's sign-off is a review request
   to the owner, not a person still to be found.
+- **2026-10-29 — the first re-baseline, at prikk 0.55.0** (RFC 010 D-1; the owner installed the binary). The release
+  changes nothing inklkunn pins: the suite passes whole (676 passed, 0 failed, no self-skips) in a clean worktree;
+  spike A re-run on the same four wiki shapes gives every multiple unchanged, and a 64 MiB attachment shape (bare
+  prikk) gives 2.0 × for the reads and 4.99 × for `verify` (IS-12 stands; handoff 003's T6 measures through the
+  driver's vector). **The floor stays 0.54.0** (nothing in 0.55.0 is a verb inklkunn needs or a fix a wiki depends
+  on). IS-7's report shape was not seen on 0.55.0 (it aborts instead); the follow-on handoff stands. Records: the
+  spikes report and `spikes/spike-a-prikk-0.55.0.json`, ledger PK-20 and PK-26.
+- **2026-10-29 — pushed; CI's first run on the pushed tree failed one test** (run 40795756404): concurrent key-store
+  creation (IS-17, below), reproduced by the architect; correction C4 amended. The next run (40796294165) is the
+  first to reach the shimmed run and the aarch64 build.
 
 ## Pending on the owner
 
@@ -142,7 +152,7 @@
 | Upstream | What touches inklkunn | inklkunn action |
 |---|---|---|
 | prikk 0.54.1 | the M1 floor (`extract`, `diff`, `tree`, `cat`, the `show <block-id>` fix); RFC 170 (library) and RFC 154 unscheduled; **non-ASCII paths: a design round in 0.56.0, implementation ≥ 0.57.0** (letter of 2026-10-28, PK-21) | pin 0.54; re-baseline at each release (RFC 010); ship with percent-encoded paths, migrate when prikk's design lands |
-| prikk 0.55.0 (**tagged upstream**, seen 2026-10-29) / 0.56.0 (scheduled) | 0.55.0: `extract`'s refusal ids 13 → 15, bundle reads stream, the checkpoint record documented; 0.56.0: the Unicode-path design round, a received ref that would move backwards refused by default, the signer in `branch --format json` (PK-26) | **the first re-baseline is due now** (RFC 010's deferred criterion; the architect's next task); no inklkunn change is expected from either plan |
+| prikk 0.55.0 (**released 2026-10-29, re-baselined the same day**) / 0.56.0 (scheduled) | 0.55.0: `extract`'s refusal ids 13 → 15, bundle reads stream, the checkpoint record documented; 0.56.0: the Unicode-path design round, a received ref that would move backwards refused by default, the signer in `branch --format json` (PK-26) | 0.55.0: **done**, nothing changes, floor stays 0.54.0; 0.56.0: re-baseline at its release (check `branch-list-v1`'s id with the signer added) |
 | prikk, reply of 2026-10-29 | `log --ref <block id>`'s empty success is a defect, fixed in a release prikk will name (PK-36); a rotation that keeps history verifiable is not scheduled (PK-34, RR-8); `extract --path-prefix` or a per-entry content id is a candidate (PK-37) | re-check each at every re-baseline; nothing in 0.1.0 waits on them |
 | planeter 0.4.0 (+ unreleased work to 2026-10-28) | no module mechanism; OQ-4 unruled (re-checked 2026-10-28); RFC 012's catalog pattern, glossary, RFC 011's admission and RFC 004's recovery reused as patterns; new: the complete-verdict rule (PL-7), `unlock` in a PID namespace (PL-8), the output cap (PL-9, already bounded here), the advisories and the `aws_lc_rs` measurement (PL-10, IS-54 waits for the owner), kill-safe creation (PL-11) | joint RFC 008 after M2's design; a letter through the owner then; DR-9 ruled `aws_lc_rs` (2026-10-28), put as one ruling with planeter's IS-54 |
 | wiki-commons 0.4 | the conformance corpus is CR-markup's fixture set; identifiers may change before its 1.0 | claims versioned `@0.4` |
@@ -154,7 +164,7 @@ conditionally approved (2026-10-29). **The dev team's order now:** the driver fo
 C1 – C4 (both small, independent), then handoff 003's T4 – T6 under the 2026-10-29 notes (author HTML escaped and reads
 pinned first), then T7 (which needs C1 – C4) and T8 – T9 toward the 0.1.0 readiness report; C5 – C7 before RFC 004's
 T4, C8 – C10 before OpenID Connect is switched on, C11 (rotation records its point) before 0.1.0. The architect reviews
-each request as it arrives and runs the first re-baseline at prikk 0.55.0, which is now tagged. RFC 004 (proposals) is accepted and its handoff v1 is written; it is assigned when the 002 corrections C1 – C7 and
+each request as it arrives; the next re-baseline is at prikk 0.56.0. RFC 004 (proposals) is accepted and its handoff v1 is written; it is assigned when the 002 corrections C1 – C7 and
 handoff 003's T1 – T4 are approved. The single-large-attachment measurement is now handoff 003's T6 (IS-12; the architect's
 early data are in ledger PK-20). The architect drafts RFC 005 part 1 (the claim-identity investigation) when M1 is
 under way. The four kickoff documents the requirements transcript

@@ -1,0 +1,500 @@
+{
+ "prikk": "prikk 0.55.0",
+ "repos": [
+  {
+   "repo": "w-1m-1k",
+   "store_bytes": 3733443,
+   "files": 1001,
+   "blocks": 5,
+   "largest_page": "pages/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d.md",
+   "verbs": {
+    "branch": {
+     "rss_bytes": 12914688,
+     "rss_over_store": 3.46,
+     "median_secs": 0.0019,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 7105664,
+     "data_over_store": 1.9
+    },
+    "tree": {
+     "rss_bytes": 12914688,
+     "rss_over_store": 3.46,
+     "median_secs": 0.0255,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 7105664,
+     "data_over_store": 1.9
+    },
+    "cat": {
+     "rss_bytes": 13176832,
+     "rss_over_store": 3.53,
+     "median_secs": 0.0257,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 7039552,
+     "data_over_store": 1.89
+    },
+    "cat-bytes": {
+     "rss_bytes": 13180928,
+     "rss_over_store": 3.53,
+     "median_secs": 0.0248,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 7041664,
+     "data_over_store": 1.89
+    },
+    "log": {
+     "rss_bytes": 12914688,
+     "rss_over_store": 3.46,
+     "median_secs": 0.0033,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 7105664,
+     "data_over_store": 1.9
+    },
+    "show": {
+     "rss_bytes": 12943360,
+     "rss_over_store": 3.47,
+     "median_secs": 0.0227,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 6919168,
+     "data_over_store": 1.85
+    },
+    "diff": {
+     "rss_bytes": 15933440,
+     "rss_over_store": 4.27,
+     "median_secs": 0.0452,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 10696960,
+     "data_over_store": 2.87
+    },
+    "extract": {
+     "rss_bytes": 12918784,
+     "rss_over_store": 3.46,
+     "median_secs": 0.0742,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 7107840,
+     "data_over_store": 1.9
+    },
+    "verify": {
+     "rss_bytes": 12931072,
+     "rss_over_store": 3.46,
+     "median_secs": 0.1416,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 7114368,
+     "data_over_store": 1.91
+    }
+   }
+  },
+  {
+   "repo": "w-16m-1k",
+   "store_bytes": 19459279,
+   "files": 1001,
+   "blocks": 5,
+   "largest_page": "pages/Page 815.md",
+   "verbs": {
+    "branch": {
+     "rss_bytes": 12894208,
+     "rss_over_store": 0.66,
+     "median_secs": 0.0013,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 7094784,
+     "data_over_store": 0.36
+    },
+    "tree": {
+     "rss_bytes": 25604096,
+     "rss_over_store": 1.32,
+     "median_secs": 0.0752,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 19640416,
+     "data_over_store": 1.01
+    },
+    "cat": {
+     "rss_bytes": 25657344,
+     "rss_over_store": 1.32,
+     "median_secs": 0.0732,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 19480576,
+     "data_over_store": 1.0
+    },
+    "cat-bytes": {
+     "rss_bytes": 25337856,
+     "rss_over_store": 1.3,
+     "median_secs": 0.072,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 19636352,
+     "data_over_store": 1.01
+    },
+    "log": {
+     "rss_bytes": 12914688,
+     "rss_over_store": 0.66,
+     "median_secs": 0.0034,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 7105664,
+     "data_over_store": 0.37
+    },
+    "show": {
+     "rss_bytes": 12922880,
+     "rss_over_store": 0.66,
+     "median_secs": 0.0686,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 7110016,
+     "data_over_store": 0.37
+    },
+    "diff": {
+     "rss_bytes": 73883648,
+     "rss_over_store": 3.8,
+     "median_secs": 0.1183,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 71228224,
+     "data_over_store": 3.66
+    },
+    "extract": {
+     "rss_bytes": 21569536,
+     "rss_over_store": 1.11,
+     "median_secs": 0.1611,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 15236928,
+     "data_over_store": 0.78
+    },
+    "verify": {
+     "rss_bytes": 43167744,
+     "rss_over_store": 2.22,
+     "median_secs": 0.3288,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 37668256,
+     "data_over_store": 1.94
+    }
+   }
+  },
+  {
+   "repo": "w-64m-10k",
+   "store_bytes": 80014770,
+   "files": 10001,
+   "blocks": 9,
+   "largest_page": "pages/Page 3268.md",
+   "verbs": {
+    "branch": {
+     "rss_bytes": 12902400,
+     "rss_over_store": 0.16,
+     "median_secs": 0.0082,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 7099136,
+     "data_over_store": 0.09
+    },
+    "tree": {
+     "rss_bytes": 85135360,
+     "rss_over_store": 1.06,
+     "median_secs": 0.2125,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 80212040,
+     "data_over_store": 1.0
+    },
+    "cat": {
+     "rss_bytes": 85295104,
+     "rss_over_store": 1.07,
+     "median_secs": 0.2143,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 80195584,
+     "data_over_store": 1.0
+    },
+    "cat-bytes": {
+     "rss_bytes": 85282816,
+     "rss_over_store": 1.07,
+     "median_secs": 0.2102,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 80184064,
+     "data_over_store": 1.0
+    },
+    "log": {
+     "rss_bytes": 12914688,
+     "rss_over_store": 0.16,
+     "median_secs": 0.0308,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 7105664,
+     "data_over_store": 0.09
+    },
+    "show": {
+     "rss_bytes": 15720448,
+     "rss_over_store": 0.2,
+     "median_secs": 0.1872,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 11047424,
+     "data_over_store": 0.14
+    },
+    "diff": {
+     "rss_bytes": 295161856,
+     "rss_over_store": 3.69,
+     "median_secs": 0.5268,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 295535338,
+     "data_over_store": 3.69
+    },
+    "extract": {
+     "rss_bytes": 77135872,
+     "rss_over_store": 0.96,
+     "median_secs": 0.6497,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 71492160,
+     "data_over_store": 0.89
+    },
+    "verify": {
+     "rss_bytes": 162713600,
+     "rss_over_store": 2.03,
+     "median_secs": 0.9644,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 160242220,
+     "data_over_store": 2.0
+    }
+   }
+  },
+  {
+   "repo": "w-200m-10k",
+   "store_bytes": 222654262,
+   "files": 10001,
+   "blocks": 9,
+   "largest_page": "pages/Page 7075.md",
+   "verbs": {
+    "branch": {
+     "rss_bytes": 12914688,
+     "rss_over_store": 0.06,
+     "median_secs": 0.0064,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 7105664,
+     "data_over_store": 0.03
+    },
+    "tree": {
+     "rss_bytes": 228216832,
+     "rss_over_store": 1.02,
+     "median_secs": 0.4107,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 222875308,
+     "data_over_store": 1.0
+    },
+    "cat": {
+     "rss_bytes": 227901440,
+     "rss_over_store": 1.02,
+     "median_secs": 0.4253,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 222790144,
+     "data_over_store": 1.0
+    },
+    "cat-bytes": {
+     "rss_bytes": 227708928,
+     "rss_over_store": 1.02,
+     "median_secs": 0.3488,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 222824484,
+     "data_over_store": 1.0
+    },
+    "log": {
+     "rss_bytes": 12615680,
+     "rss_over_store": 0.06,
+     "median_secs": 0.012,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 6946816,
+     "data_over_store": 0.03
+    },
+    "show": {
+     "rss_bytes": 14823424,
+     "rss_over_store": 0.07,
+     "median_secs": 0.2963,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 10892928,
+     "data_over_store": 0.05
+    },
+    "diff": {
+     "rss_bytes": 840556544,
+     "rss_over_store": 3.78,
+     "median_secs": 0.9459,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 1023214054,
+     "data_over_store": 4.6
+    },
+    "extract": {
+     "rss_bytes": 201469952,
+     "rss_over_store": 0.9,
+     "median_secs": 0.5816,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 196387996,
+     "data_over_store": 0.88
+    },
+    "verify": {
+     "rss_bytes": 443723776,
+     "rss_over_store": 1.99,
+     "median_secs": 1.3067,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 440486816,
+     "data_over_store": 1.98
+    }
+   }
+  },
+  {
+   "repo": "a-64m",
+   "store_bytes": 67388192,
+   "files": 52,
+   "blocks": 3,
+   "largest_page": "pages/attachment.bin",
+   "verbs": {
+    "branch": {
+     "rss_bytes": 12914688,
+     "rss_over_store": 0.19,
+     "median_secs": 0.001,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 7105664,
+     "data_over_store": 0.11
+    },
+    "tree": {
+     "rss_bytes": 140947456,
+     "rss_over_store": 2.09,
+     "median_secs": 0.1,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 134846680,
+     "data_over_store": 2.0
+    },
+    "cat": {
+     "rss_bytes": 140738560,
+     "rss_over_store": 2.09,
+     "median_secs": 0.1041,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 134784576,
+     "data_over_store": 2.0
+    },
+    "cat-bytes": {
+     "rss_bytes": 140681216,
+     "rss_over_store": 2.09,
+     "median_secs": 0.1076,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 134729752,
+     "data_over_store": 2.0
+    },
+    "log": {
+     "rss_bytes": 12840960,
+     "rss_over_store": 0.19,
+     "median_secs": 0.0007,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 7066496,
+     "data_over_store": 0.1
+    },
+    "show": {
+     "rss_bytes": 140267520,
+     "rss_over_store": 2.08,
+     "median_secs": 0.1798,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 134608132,
+     "data_over_store": 2.0
+    },
+    "diff": {
+     "rss_bytes": 140742656,
+     "rss_over_store": 2.09,
+     "median_secs": 0.0945,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 135063316,
+     "data_over_store": 2.0
+    },
+    "extract": {
+     "rss_bytes": 140992512,
+     "rss_over_store": 2.09,
+     "median_secs": 0.2716,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 134752056,
+     "data_over_store": 2.0
+    },
+    "verify": {
+     "rss_bytes": 274411520,
+     "rss_over_store": 4.07,
+     "median_secs": 0.3214,
+     "exit_codes": [
+      0
+     ],
+     "data_limit_need_bytes": 336134962,
+     "data_over_store": 4.99
+    }
+   }
+  }
+ ]
+}
