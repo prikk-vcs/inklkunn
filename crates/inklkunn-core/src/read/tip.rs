@@ -35,6 +35,17 @@ pub struct Tip {
     pub block_id: String,
 }
 
+impl Tip {
+    /// A tip whose block is not known: what a stale page is read at (it is read from the cache, not from prikk).
+    pub(super) fn unpinned(view: &str, state_id: &str) -> Tip {
+        Tip {
+            view: view.to_owned(),
+            state_id: state_id.to_owned(),
+            block_id: String::new(),
+        }
+    }
+}
+
 /// A view and one RefState id of it.
 type ViewState = (String, String);
 
@@ -76,6 +87,9 @@ pub(super) struct Tips {
     held: Mutex<HashMap<WikiId, Held>>,
     /// The block each `(view, state id)` of a wiki belongs to, learned once per state id.
     blocks: Mutex<HashMap<WikiId, HashMap<ViewState, String>>>,
+    /// The last answer's `(view, state id)` pairs whatever its age, and kept when the hold is forgotten: what
+    /// a page could be served from, labelled out of date, when prikk cannot be asked (OP-03).
+    last: Mutex<HashMap<WikiId, Vec<ViewState>>>,
     /// `(fingerprint of the views the figure was walked at, bytes)`.
     sizes: Mutex<HashMap<WikiId, (String, u64)>>,
     hints: Option<SizeHints>,
@@ -87,6 +101,7 @@ impl Tips {
             ttl,
             held: Mutex::new(HashMap::new()),
             blocks: Mutex::new(HashMap::new()),
+            last: Mutex::new(HashMap::new()),
             sizes: Mutex::new(HashMap::new()),
             hints,
         }
@@ -105,9 +120,31 @@ impl Tips {
         )
     }
 
+    /// The state id `view` had the last time prikk was asked, however long ago, even if the hold was forgotten
+    /// since. `None` when this process has never seen the view.
+    pub(super) fn last_known(&self, wiki: &WikiId, view: &str) -> Option<String> {
+        let last = self.last.lock().unwrap_or_else(PoisonError::into_inner);
+        last.get(wiki)?
+            .iter()
+            .find(|(name, _)| name == view)
+            .map(|(_, state)| state.clone())
+    }
+
     /// The log named a newer state for `view` than the list held: hold that one, so that the cache of the
     /// tip the reads are about to fill is kept, not pruned as a past one.
     pub(super) fn moved(&self, wiki: &WikiId, view: &str, state: &str) {
+        if let Some(pairs) = self
+            .last
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get_mut(wiki)
+        {
+            for (name, current) in pairs {
+                if name == view {
+                    state.clone_into(current);
+                }
+            }
+        }
         let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(h) = held.get_mut(wiki) {
             for (name, current) in &mut h.views {
@@ -142,6 +179,10 @@ impl Tips {
     pub(super) fn hold(&self, wiki: &WikiId, repo: &Path, views: &Views) {
         let held = Held::from(views);
         let fingerprint = held.fingerprint();
+        self.last
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(wiki.clone(), held.views.clone());
         // Only the states the views have now can be asked for again.
         if let Some(known) = self
             .blocks

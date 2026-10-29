@@ -243,6 +243,10 @@ pub struct PageView {
     pub via: Via,
     /// The page came from the derived cache and was not rendered for this request.
     pub cached: bool,
+    /// The page is the last one this server has, served because prikk could not be asked for the newest
+    /// ([`ReadService::stale_page`]): the surface says so, and the verification badge reads *Could not be
+    /// checked now* (INV-5), whatever the record says.
+    pub stale: bool,
 }
 
 /// What a title leads to.
@@ -504,7 +508,54 @@ impl ReadService {
             redirected_from: found.redirected_from,
             via: found.via,
             cached: from_cache,
+            stale: false,
         })))
+    }
+
+    /// The page titled `title` as this server last had it, **without asking prikk anything**, for a surface that
+    /// has just been told prikk is busy or unavailable (external design OP-03, internal design CON-5). It is the
+    /// page of the last tip this process saw, from the title index and the page cache, and only if both are
+    /// there: a miss is never rendered from nothing. The view carries [`PageView::stale`].
+    pub fn stale_page(
+        &self,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+        title: &str,
+        presentation: &dyn Presentation,
+    ) -> Option<PageView> {
+        title_to_path(title).ok()?;
+        let view = view.unwrap_or(&wiki.default_view);
+        let state_id = self.tips.last_known(&wiki.id, view)?;
+        let index = self
+            .remembered(&wiki.id, &state_id)
+            .or_else(|| self.stored_index(wiki, &Tip::unpinned(view, &state_id)))?;
+        let Lookup::Found(found) = index.lookup(title) else {
+            return None;
+        };
+        if found.entry.problem.is_some() {
+            return None;
+        }
+        let presentation_key = presentation.key();
+        let key = PageKey {
+            wiki: &wiki.id,
+            tip: &state_id,
+            path: &found.entry.path,
+            lang: presentation.lang(),
+            presentation: &presentation_key,
+        };
+        let row = self.derived.page(&key).ok().flatten()?;
+        Some(PageView {
+            tip: Tip::unpinned(view, &state_id),
+            path: found.entry.path,
+            html: self.sanitizer.clean(&row.html),
+            meta: row.meta,
+            toc: row.toc,
+            links: row.links,
+            redirected_from: found.redirected_from,
+            via: found.via,
+            cached: true,
+            stale: true,
+        })
     }
 
     // ------------------------------------------------------------------------------------ rendering

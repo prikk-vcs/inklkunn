@@ -15,12 +15,15 @@
 //! - [`read`]: the read service (RFC 003 D-2): the view's tip, the title index of the tip, pages re-derived
 //!   from prikk and cached by prikk's ids, the sanitizer pass every page goes through, and the counting
 //!   harness that holds the number of prikk calls to a bound.
+//! - [`check`]: the verification check (RFC 003 D-5): `verify` run on request, its outcome recorded as the
+//!   wiki's last verification, and a check that could not run kept apart from a verdict.
 //! - [`bundle`] and [`wiki`]: the repository layout (external design CT-02) and *create wiki*.
 
 pub mod accept;
 pub mod assurance;
 pub mod authorize;
 pub mod bundle;
+pub mod check;
 pub mod egress;
 pub mod read;
 pub mod reconcile;
@@ -39,6 +42,7 @@ pub use authorize::{
     AccountPrincipal, Action, Authorizer, AuthzSource, Decision, IdentityAuthority, Principal,
     Resource, Snapshot, SourceError, StoreAuthz, SystemPrincipal, decide,
 };
+pub use check::{CheckOutcome, Checked, NotChecked, StageFinding, Verifier};
 pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, Resolver, StdEgressGuard, StdResolver};
 pub use inklkunn_signer::{
     KeyAuthority, KeyStatus, LateSeal, OldKey, OldKeyOutcome, Rotation, Signer, SignerConfig,
