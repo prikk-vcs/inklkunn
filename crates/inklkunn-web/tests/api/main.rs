@@ -383,7 +383,7 @@ async fn a_page_is_metadata_and_a_sanitized_fragment() {
     // The wiki's default license when the page names none.
     assert_eq!(body.at("/license"), "CC-BY-SA-4.0");
     let html = body.at("/html").as_str().unwrap();
-    assert!(html.contains("<h2 id=\"welcome\">Welcome</h2>"), "{html}");
+    assert!(html.contains("<h2 id=\"h-welcome\">Welcome</h2>"), "{html}");
     assert!(html.contains("href=\"/handbook/Guide\""), "{html}");
     assert_eq!(body.at("/toc/0/text"), "Welcome");
     assert_eq!(body.at("/toc/0/level"), 2);
@@ -420,7 +420,7 @@ async fn the_fragment_endpoint_answers_html_and_nothing_around_it() {
     assert_eq!(a.header("content-type"), Some("text/html; charset=utf-8"));
     assert_api_headers(&a, "fragment");
     let text = a.text();
-    assert!(text.contains("<h2 id=\"welcome\">Welcome</h2>"), "{text}");
+    assert!(text.contains("<h2 id=\"h-welcome\">Welcome</h2>"), "{text}");
     for wrapper in ["<html", "<body", "<head", "<!DOCTYPE", "<!doctype"] {
         assert!(!text.contains(wrapper), "{wrapper}: {text}");
     }

@@ -135,7 +135,7 @@ async fn a_page_is_shown_with_one_main_heading_its_body_and_the_honest_badge() {
     assert!(a.body.contains("<h1>Home</h1>"), "{}", a.body);
     // The body's own `#` is moved down so the page keeps its one h1.
     assert!(
-        a.body.contains("<h2 id=\"welcome\">Welcome</h2>"),
+        a.body.contains("<h2 id=\"h-welcome\">Welcome</h2>"),
         "{}",
         a.body
     );
@@ -403,7 +403,7 @@ async fn when_prikk_is_busy_a_page_with_no_copy_is_unavailable_and_one_with_a_co
         "{}",
         stale.body
     );
-    assert!(stale.body.contains("<h2 id=\"welcome\">Welcome</h2>"));
+    assert!(stale.body.contains("<h2 id=\"h-welcome\">Welcome</h2>"));
     // The record still says Verified, and the page does not repeat it: it could not ask just now.
     assert!(
         stale.body.contains(">Could not be checked now</a>"),
@@ -642,4 +642,38 @@ async fn an_address_that_does_not_take_the_method_answers_with_a_page_and_says_w
         assert!(a.headers.contains_key(header::CONTENT_SECURITY_POLICY));
         assert!(a.headers.contains_key(header::ALLOW), "{method} {uri}");
     }
+}
+
+#[tokio::test]
+async fn a_heading_called_main_cannot_take_the_skip_links_target() {
+    let w = World::new(
+        "handbook",
+        "The Handbook",
+        &[(
+            "pages/Home.md",
+            &page(&["title: Home"], "# Main\n\nBack to [[#Main]].\n"),
+        )],
+    );
+    let a = get(&w, "/handbook/Home").await;
+    assert_eq!(a.status, StatusCode::OK);
+    // One element answers to `main`: the template's. The heading has its own prefixed id, and the contents
+    // list and the page's own link point at that.
+    assert_eq!(count(&a.body, "id=\"main\""), 1, "{}", a.body);
+    assert!(a.body.contains("<h2 id=\"h-main\">Main</h2>"), "{}", a.body);
+    assert!(
+        a.body.contains("<a href=\"#h-main\">Main</a>"),
+        "{}",
+        a.body
+    );
+    assert!(
+        a.body.contains("wikilink-self\" href=\"#h-main\""),
+        "{}",
+        a.body
+    );
+    assert_eq!(
+        count(&a.body, "href=\"#main\""),
+        1,
+        "only the skip link: {}",
+        a.body
+    );
 }

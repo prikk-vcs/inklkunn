@@ -232,9 +232,9 @@ fn a_real_wiki_is_read_through_the_whole_path_with_the_numbers_of_calls_the_desi
         assert_eq!(home.meta.title, "Home");
         assert_eq!(home.meta.description.as_deref(), Some("The front page"));
         let html = home.html.as_str();
-        assert!(html.contains("<p id=\"^intro\">Welcome."), "{html}");
+        assert!(html.contains("<p id=\"h-^intro\">Welcome."), "{html}");
         assert!(html.contains("class=\"transclusion\""), "{html}");
-        assert!(html.contains("<h3 id=\"t1-terms\">Terms</h3>"), "{html}");
+        assert!(html.contains("<h3 id=\"h-t1-terms\">Terms</h3>"), "{html}");
         assert!(html.contains("wikilink-missing"), "{html}");
         assert_eq!(home.links.dangling, ["Nowhere"]);
         // The author's raw HTML is shown as text, not run: no element, no handler, no `javascript:` link.

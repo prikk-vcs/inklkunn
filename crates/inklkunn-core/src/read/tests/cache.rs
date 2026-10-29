@@ -134,7 +134,7 @@ fn a_view_carries_its_metadata_headings_links_and_where_it_came_from() {
             .iter()
             .map(|h| (h.level, h.id.as_str()))
             .collect::<Vec<_>>(),
-        [(1, "welcome")],
+        [(1, "h-welcome")],
         "the page's own headings, not those of the page it includes"
     );
     assert_eq!(
@@ -151,16 +151,16 @@ fn a_view_carries_its_metadata_headings_links_and_where_it_came_from() {
     assert_eq!(home.links.dangling, ["Missing"]);
     assert_eq!(home.links.transcluded, ["pages/Glossary.md"]);
     let html = home.html.as_str();
-    assert!(html.contains("<p id=\"^intro\">"), "{html}");
-    assert!(html.contains("<table id=\"^t1\">"), "{html}");
+    assert!(html.contains("<p id=\"h-^intro\">"), "{html}");
+    assert!(html.contains("<table id=\"h-^t1\">"), "{html}");
     assert!(
-        html.contains("<pre id=\"^c1\"><code class=\"language-rust\">"),
+        html.contains("<pre id=\"h-^c1\"><code class=\"language-rust\">"),
         "{html}"
     );
-    assert!(html.contains("<li id=\"^i1\">"), "{html}");
+    assert!(html.contains("<li id=\"h-^i1\">"), "{html}");
     assert!(html.contains("class=\"transclusion\""), "{html}");
-    assert!(html.contains("<h3 id=\"t1-terms\">Terms</h3>"), "{html}");
-    assert!(html.contains("href=\"#welcome\""), "{html}");
+    assert!(html.contains("<h3 id=\"h-t1-terms\">Terms</h3>"), "{html}");
+    assert!(html.contains("href=\"#h-welcome\""), "{html}");
 }
 
 #[test]

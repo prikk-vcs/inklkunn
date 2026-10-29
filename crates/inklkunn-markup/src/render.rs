@@ -206,6 +206,12 @@ pub struct RenderOptions {
     /// puts the page's title in its own `h1` asks for 1, so that the page has one `h1` and its headings stay in
     /// order. A heading never goes below `h6`.
     pub demote_headings: u8,
+    /// Written before every `id` the page's body gets (headings and identified blocks) and before the fragment
+    /// of every link to one, on this page and on another page rendered with the same prefix. A surface whose
+    /// template has ids of its own (a skip-link target) asks for one, so that no heading, whatever it is
+    /// called, can collide with them. Empty by default: the ids are then the scanner's anchors, as wiki-commons
+    /// writes them.
+    pub id_prefix: &'static str,
 }
 
 /// [`render_page`] with every option.
@@ -234,12 +240,14 @@ pub fn render_page_with(
         included_bytes: 0,
         budget_noted: false,
         author_html,
+        root_prefix: render.id_prefix,
     };
     let rendered = render_body(
         body,
         &mut ctx,
         &Level {
             demote: render.demote_headings,
+            id_prefix: render.id_prefix.to_owned(),
             ..Level::root()
         },
     );
@@ -293,6 +301,9 @@ struct Ctx<'a> {
     budget_noted: bool,
     /// What becomes of raw HTML the page's author wrote.
     author_html: AuthorHtml,
+    /// [`RenderOptions::id_prefix`]: the prefix of the page's own ids, and so of a fragment of a link to
+    /// another page (which is drawn the same way).
+    root_prefix: &'static str,
 }
 
 /// Where in the nesting a body is rendered.
@@ -606,7 +617,7 @@ fn inline_pre_pass(
     let mut edits: Vec<(usize, usize, String)> = Vec::new();
     let mut fragments: Vec<transclude::Fragment> = Vec::new();
     for l in &report.links {
-        let inline = render_link(l, links, &level.id_prefix);
+        let inline = render_link(l, links, &level.id_prefix, ctx.root_prefix);
         // An embed alone on its line may be a block, which the parser's paragraphs decide; everywhere else
         // it stays the link.
         if transclude::is_candidate(l, body) {
@@ -692,12 +703,17 @@ fn inline_pre_pass(
 }
 
 /// `id_prefix` is the prefix of the ids on the page the link is on: a link to this very page points at an
-/// id of it.
-fn render_link(l: &Link, links: &dyn RenderLinks, id_prefix: &str) -> String {
-    let fragment = match (&l.fragment, l.fragment_kind) {
-        (Some(f), Some(FragmentKind::Heading)) => format!("#{}", github_anchor(f)),
-        (Some(f), Some(FragmentKind::Block)) => format!("#^{f}"),
-        _ => String::new(),
+/// id of it. `root_prefix` is the prefix of the ids of a page of its own, which is where a link to another
+/// page points.
+fn render_link(l: &Link, links: &dyn RenderLinks, id_prefix: &str, root_prefix: &str) -> String {
+    let anchor = match (&l.fragment, l.fragment_kind) {
+        (Some(f), Some(FragmentKind::Heading)) => Some(github_anchor(f)),
+        (Some(f), Some(FragmentKind::Block)) => Some(format!("^{f}")),
+        _ => None,
+    };
+    let fragment = match &anchor {
+        Some(a) => format!("#{a}"),
+        None => String::new(),
     };
     let target_attr = format!(" data-wiki-target=\"{}\"", escape_html(&l.target));
     if l.target.is_empty() {
@@ -717,6 +733,11 @@ fn render_link(l: &Link, links: &dyn RenderLinks, id_prefix: &str) -> String {
             escape_html(&label)
         );
     }
+    // Another page's ids carry the prefix of a page of its own.
+    let fragment = match &anchor {
+        Some(a) => format!("#{root_prefix}{a}"),
+        None => fragment,
+    };
     let last = l.target.rsplit('/').next().unwrap_or(&l.target).to_owned();
     let is_image = l.embed
         && l.target

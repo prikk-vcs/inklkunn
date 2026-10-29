@@ -698,7 +698,7 @@ fn a_permalink_is_not_kept_in_the_derived_store_and_a_forgotten_log_is_read_agai
         .page_at(&w.wiki, None, &block_id(2), "Home", &Env::EN)
         .expect("a page");
     // The derived store holds the rows a page view put there; a permalink puts none.
-    let presentation = format!("{}|d1", Env::EN.key());
+    let presentation = format!("{}|d1|ih-", Env::EN.key());
     let derived: &dyn inklkunn_store::DerivedStore = &*w.store;
     let stored = derived.page(&inklkunn_store::PageKey {
         wiki: &w.wiki.id,

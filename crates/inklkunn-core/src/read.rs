@@ -325,10 +325,18 @@ fn author_html_for(subset: &[&str]) -> AuthorHtml {
 /// `#` is an `h2` (accessibility: one `h1`, headings in order).
 pub const HEADING_DEMOTION: u8 = 1;
 
+/// Written before every heading `id` (and block `id`) of a page body, and before the fragment of every link to
+/// one: the surface's template has ids of its own (`main`, the skip-link's target), and a heading called
+/// "Main" must not take it over. The table of contents and the API's `toc` carry the ids as written.
+pub const HEADING_ID_PREFIX: &str = "h-";
+
 /// What the derived cache keys a page by besides its tip, path and language: the surface's own presentation
 /// key and the render options this service draws with, so a row drawn another way is never read back.
 fn cache_presentation(presentation: &dyn Presentation) -> String {
-    format!("{}|d{HEADING_DEMOTION}", presentation.key())
+    format!(
+        "{}|d{HEADING_DEMOTION}|i{HEADING_ID_PREFIX}",
+        presentation.key()
+    )
 }
 
 /// The most title indexes kept in memory at once, over all wikis: a bound, since a title index is a few
@@ -675,6 +683,7 @@ impl ReadService {
             RenderOptions {
                 author_html,
                 demote_headings: HEADING_DEMOTION,
+                id_prefix: HEADING_ID_PREFIX,
             },
         );
         // A page rendered around an included page that could not be read is not a page to keep.

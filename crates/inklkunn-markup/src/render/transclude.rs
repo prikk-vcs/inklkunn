@@ -197,7 +197,7 @@ pub(super) fn block(page: &Transclusion, ctx: &mut Ctx<'_>, level: &Level) -> Op
     ctx.counter += 1;
     let inner_level = Level {
         depth: level.depth + 1,
-        id_prefix: format!("t{}-", ctx.counter),
+        id_prefix: format!("{}t{}-", ctx.root_prefix, ctx.counter),
         demote: level.demote + 1,
     };
     ctx.stack.push(PageRef {
