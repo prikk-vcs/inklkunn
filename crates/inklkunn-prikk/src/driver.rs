@@ -735,17 +735,28 @@ impl PrikkCli {
         if run.timed_out || run.output_exceeded {
             return None;
         }
-        if run.status.success() {
-            return Some(parse_report("verify", &run.stdout, schema::VERIFY_REPORT));
-        }
-        if run.status.code() != Some(1) {
-            return None;
-        }
-        let report =
-            parse_report::<Verification>("verify", &run.stdout, schema::VERIFY_REPORT).ok()?;
-        if report.verdict.ok {
-            return None;
-        }
+        // A report that finds fault is held to the rule whatever the exit code: prikk's contract is that findings
+        // exit 1, so a failing report on exit 0 should never come, and if one does (a prikk defect, a later
+        // change) a partial one must not pass as a verdict.
+        let report = match (run.status.success(), run.status.code()) {
+            (true, _) => {
+                match parse_report::<Verification>("verify", &run.stdout, schema::VERIFY_REPORT) {
+                    Ok(report) if report.verdict.ok => return Some(Ok(report)),
+                    Ok(report) => report,
+                    Err(e) => return Some(Err(e)),
+                }
+            }
+            (false, Some(1)) => {
+                let report =
+                    parse_report::<Verification>("verify", &run.stdout, schema::VERIFY_REPORT)
+                        .ok()?;
+                if report.verdict.ok {
+                    return None;
+                }
+                report
+            }
+            _ => return None,
+        };
         if !report.is_partial() {
             return Some(Ok(report));
         }

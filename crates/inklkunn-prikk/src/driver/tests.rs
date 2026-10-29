@@ -194,10 +194,10 @@ fn a_failing_report_is_a_verdict_only_when_every_stage_ran_to_an_outcome() {
             "a failure that gives no message is not a resource failure",
             r#"{"stage":"objects","status":"failed"}"#.to_owned(),
         ),
-        // Nothing ran, so nothing is partial.
-        ("no stages", String::new()),
     ];
     let partials = [
+        // prikk walks every stage, so an empty list is not a report it prints (review V2).
+        ("no stages", String::new()),
         ("the measured out-of-memory shape", format!("{OOM},{DONE}")),
         (
             "raw ENOMEM, whole",

@@ -903,7 +903,9 @@ fn a_verification_that_fails_after_the_seal_is_sealed_but_unconfirmed_not_succes
     };
     std::fs::write(
         f.ctl.join("report-verify"),
-        r#"{"schema_version":"verify-report-v1","verdict":{"ok":false,"failed_conditions":[]},"stages":[]}"#,
+        // A real-shaped failing report (what prikk prints for a damaged ref pointer index): a finding, and the
+        // stages behind it not evaluated. An empty stage list is not a report prikk prints and is not a verdict.
+        r#"{"schema_version":"verify-report-v1","verdict":{"ok":false,"failed_conditions":[{"id":"stage-failure","message":"repository verification did not complete every stage; see stage outcomes above"}]},"stages":[{"stage":"objects","status":"failed","message":"integrity error: ref pointer index has a damaged entry"},{"stage":"refs","status":"failed","message":"integrity error: ref pointer index has a damaged entry"},{"stage":"ref-update-schema-trust","status":"not_evaluated","blocked_by":"refs"}]}"#,
     )
     .unwrap();
     let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);

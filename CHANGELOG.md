@@ -330,3 +330,6 @@ Follow-on to RFC 001 (issue IS-7, `verify-verdict-honesty-handoff-v1`).
   `CeilingExceeded`. The out-of-memory message is matched only whole, after the prefix `i/o error:`, never as a
   substring. *API change:* `Stage` carries `message` and `blocked_by` and is read through `Stage::outcome()`;
   `Verification::is_partial()` and `stage_summary()` are new.
+- **The completeness rule holds whatever the exit code, and an empty stage list is partial** (review V1, V2 of the
+  driver follow-on). A failing report on exit 0, which prikk's contract says never comes, is a verdict only if it is
+  complete; a report with no stages is not one prikk prints and is read as the memory limit.

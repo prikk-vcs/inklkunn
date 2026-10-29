@@ -379,7 +379,8 @@ impl Verification {
     /// or `not_evaluated` behind a stage **of this report** that is `failed` with a finding. Partial are:
     /// a `halted` stage, a status this driver does not know, a `not_evaluated` stage whose blocker is
     /// missing, unnamed, unknown, itself `not_evaluated`, or failed for lack of memory, and a stage that
-    /// failed for lack of memory. A report with no stages at all has nothing to be partial about.
+    /// failed for lack of memory. So is a report with **no stages**: prikk walks every stage, so an empty list is
+    /// not a report it prints, and nothing in it shows the run finished.
     pub fn is_partial(&self) -> bool {
         // A blocker that failed for lack of memory is no finding either, but it needs no check of its own:
         // that stage is itself a stage of this report and makes the whole report partial below.
@@ -388,12 +389,13 @@ impl Verification {
                 .iter()
                 .any(|s| s.stage == id && matches!(s.outcome(), StageOutcome::Failed { .. }))
         };
-        self.stages.iter().any(|s| match s.outcome() {
-            StageOutcome::Evaluated => false,
-            StageOutcome::Failed { message } => message.is_some_and(is_resource_failure),
-            StageOutcome::NotEvaluated { blocked_by } => !blocked_by.is_some_and(failed),
-            StageOutcome::Halted | StageOutcome::Unknown(_) => true,
-        })
+        self.stages.is_empty()
+            || self.stages.iter().any(|s| match s.outcome() {
+                StageOutcome::Evaluated => false,
+                StageOutcome::Failed { message } => message.is_some_and(is_resource_failure),
+                StageOutcome::NotEvaluated { blocked_by } => !blocked_by.is_some_and(failed),
+                StageOutcome::Halted | StageOutcome::Unknown(_) => true,
+            })
     }
 
     /// The stages' names and statuses on one line, for an operator's log. No message is included.
