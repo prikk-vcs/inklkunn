@@ -413,6 +413,9 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `head.feed_page` | the name of the feed of one page's changes; `{page}` is its title | "Changes to {page}" | "{page} への変更" |
 | `head.markdown` | the name of a page's Markdown source in a tool's list; `{page}` is its title | "{page} as Markdown" | "{page}（Markdown）" |
 | `head.search` | the name of the search in a browser's list of search engines; `{wiki}` is the wiki's name | "Search {wiki}" | "{wiki} を検索" |
+| `problem.change_not_found.title` | the API's problem detail `change-not-found`: the title | "Change not found" | "変更が見つかりません" |
+| `problem.change_not_found.detail` | the API's problem detail `change-not-found`: the detail | "This wiki has no change with this id in this view." | "このウィキのこのビューには、この ID の変更がありません。" |
+| `problem.change_not_found.hint` | the API's problem detail `change-not-found`: the hint | "Take the id of a change from the history of a page or from the recent changes." | "変更の ID は、ページの履歴または最近の変更から取ってください。" |
 
 ## 3. Words the interface does not say
 

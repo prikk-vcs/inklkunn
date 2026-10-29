@@ -93,9 +93,10 @@ fn the_registry_is_complete() {
         | Code::NotAvailable
         | Code::Unavailable
         | Code::Failed
-        | Code::MethodNotAllowed => 1,
+        | Code::MethodNotAllowed
+        | Code::ChangeNotFound => 1,
     };
-    assert_eq!(Code::ALL.iter().map(|c| named(*c)).sum::<usize>(), 14);
+    assert_eq!(Code::ALL.iter().map(|c| named(*c)).sum::<usize>(), 15);
 }
 
 #[test]

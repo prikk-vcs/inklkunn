@@ -431,7 +431,8 @@ fn concrete(path: &str, operation: &Value) -> String {
     let values: Vec<String> = required
         .iter()
         .map(|name| match *name {
-            "path" => "path=pages%2FHome.md".to_owned(),
+            "path" => "path=Home".to_owned(),
+            "list" => "list=orphans".to_owned(),
             other => format!("{other}=x"),
         })
         .collect();

@@ -414,6 +414,34 @@ Handoff 003 T8 (the read API; RFC 003 D-13; no new crate).
 - **Dependency:** `serde_json` becomes a direct dependency of `inklkunn-web` (already locked; the lock gains one edge,
   no package). axum's `json` feature stays off.
 
+Handoff 003 T8, completion (the read API's seven stubs become real reads; no new crate, no new external dependency).
+
+- **`history/<title>`, `revisions/<id>`, `diff`, `backlinks/<title>`, `health`, `search` and `changes` are real.** Each
+  calls the read the corresponding web page calls (`page_history`, `change` and `page_at`, `page_diff`, the link graph,
+  `stale_pages_in`, `search`, `changes`) and shapes the result as JSON, described in the OpenAPI document (a schema
+  for each answer, an `enum` for a parameter that takes words) and held to it by a test in both directions (every answer
+  validates against its schema; every declared member is seen). The history is stepped by cursor (a step is at most 20
+  rows and may be empty with a cursor: the same step the page takes); a revision is a change by its `id` and, with
+  `?title=`, carries that page as it stood after it; **`diff`'s `path` is the page's title** (the web diff's address; it
+  was the storage path) and the points may be left out (`to` is the tip, `from` the change before it); `backlinks`, `health`
+  (`list` is required: `wanted`, `orphans`, `dead-ends`, `redirects`, `wants-help`, `stale`) and `changes` are in cursor pages of at
+  most 100; `search` returns at most 50 hits whose snippet is an **array of `{text, marked}` segments, never HTML**.
+  Health rows carry what would resolve them as a **code** (`link-to-it`, `retarget-or-remove`, …) from one list shared
+  with the pages (`Resolve`), so the words and the codes cannot disagree. `changes` takes `view`, `namespace`,
+  `automated` (`show`, `hide`, `only`), `limit` and `cursor`, checks every change against the principal exactly as the
+  changes page does, and says how many it left out (`left_out`).
+- **People are what the message says.** Every row that has people carries `provenance` (`kind`, `proposed_by`,
+  `accepted_by`; `not-recorded` for a message not in the service's form, which names nobody) and `people`, the sentences
+  the pages say, produced by the pages' own functions; no member says a person signed.
+- **Cursors.** A cursor of one list is refused by every other (`invalid-cursor`): paths for pages, the change number for a
+  history, an offset stamped with the tip and the list for backlinks and health (a cursor does not outlive its tip), and a
+  hash of the last change for the changes (a cursor never carries a block id).
+- **One new problem code, `change-not-found` (404)**, for an id that is not a change of the view (and for the diff
+  of the first change, which has nothing before it); the registry has 15 codes. `not-available` stays, for the list's
+  `tag` and `changed_since` filters. Three catalog messages (English and Japanese, glossary rows).
+- **JSON answers write `<`, `>` and `&` as `\u003c`, `\u003e` and `\u0026`** (the same document to any JSON reader), so no
+  markup of an author's is markup on the wire in any endpoint.
+
 Handoff 003 T5 (history, change, difference and permalinks; RFC 003 D-4).
 
 - **A page has a past you can read.** `/<wiki>/-/history/<Title>` lists the changes that touched the page, newest

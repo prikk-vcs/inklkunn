@@ -1,12 +1,12 @@
 //! The reads the API adds to the read service: the list's pages and cursors, the filters, the raw
-//! information, and the stubs that say they are stubs.
+//! information; the history, diff, backlinks, health and changes are in the two files beside this one.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::time::Duration;
 
 use super::super::testing::{World, page};
 use super::*;
-use crate::read::ReadConfig;
+use crate::read::{ChangeFilter, ReadConfig};
 
 fn titles(list: &PageList) -> Vec<&str> {
     list.items.iter().map(|i| i.title.as_str()).collect()
@@ -280,33 +280,104 @@ fn the_raw_information_follows_the_title_to_its_page() {
 }
 
 #[test]
-fn the_reads_other_tasks_own_say_they_are_not_available() {
-    let w = many(1);
-    let s = &w.service;
-    let wiki = &w.wiki;
-    let gaps = [
-        (
-            s.api_history(wiki, None, "Page 000").map(|_| ()),
-            Feature::History,
-        ),
-        (s.api_revision(wiki, "abc").map(|_| ()), Feature::Revision),
-        (
-            s.api_diff(wiki, None, None, "pages/Page 000.md")
-                .map(|_| ()),
-            Feature::Diff,
-        ),
-        (
-            s.api_backlinks(wiki, None, "Page 000").map(|_| ()),
-            Feature::Backlinks,
-        ),
-        (s.api_health(wiki, None).map(|_| ()), Feature::Health),
-        (s.api_search(wiki, None, "x").map(|_| ()), Feature::Search),
-        (s.api_changes(wiki, None).map(|_| ()), Feature::Changes),
-    ];
-    for (got, feature) in gaps {
-        match got {
-            Err(ApiError::NotAvailable(f)) => assert_eq!(f, feature),
-            other => panic!("{feature:?}: {other:?}"),
-        }
+fn the_cursors_of_every_list_are_read_in_their_one_spelling_only() {
+    let number = Cursor::after_number(7);
+    assert_eq!(number.as_str(), "n17");
+    assert_eq!(number.position(), Some(Position::Number(7)));
+    let offset = Cursor::at_offset(40, "ab12");
+    assert_eq!(offset.as_str(), "o140.ab12");
+    assert_eq!(
+        offset.position(),
+        Some(Position::Offset {
+            at: 40,
+            stamp: "ab12".to_owned()
+        })
+    );
+    let change = Cursor::after_change(&"b".repeat(64));
+    assert!(change.as_str().starts_with("k1") && change.as_str().len() == 18);
+    assert!(
+        !change.as_str().contains("bbbbbbbbbbbbbbbb"),
+        "a hash, not the id"
+    );
+    for cursor in [&number, &offset, &change] {
+        assert_eq!(Cursor::parse(cursor.as_str()).as_ref(), Some(cursor));
     }
+    for bad in [
+        // numbers: no zero, no sign, no leading zero, nothing but digits, nothing past u64
+        "n1",
+        "n10",
+        "n1007",
+        "n1+5",
+        "n1-5",
+        "n15 ",
+        "n1x",
+        "n1184467440737095516160",
+        // offsets: a number, a dot, a lower-case stamp of 1 to 64 digits
+        "o1",
+        "o15",
+        "o15.",
+        "o1.ab",
+        "o105.ab",
+        "o15.AB",
+        "o15.zz",
+        "o1-1.ab",
+        "o15.ab.cd",
+        // changes: 16 lower-case hexadecimal digits
+        "k1",
+        "k10123456789abcde",
+        "k10123456789abcdef0",
+        "k10123456789ABCDEF",
+        "k1gggggggggggggggg",
+        // another version or another tag
+        "n2",
+        "x15",
+    ] {
+        assert!(Cursor::parse(bad).is_none(), "{bad:?}");
+    }
+    assert!(Cursor::parse(&format!("o15.{}", "a".repeat(65))).is_none());
+    assert!(Cursor::parse(&format!("o15.{}", "a".repeat(64))).is_some());
 }
+
+#[test]
+fn a_list_refuses_a_cursor_of_a_list_that_is_not_it() {
+    let w = many(3);
+    let foreign = [
+        Cursor::after_number(2),
+        Cursor::at_offset(1, "ab"),
+        Cursor::after_change(&"a".repeat(64)),
+    ];
+    for cursor in &foreign {
+        assert!(
+            matches!(
+                w.service
+                    .list_pages(&w.wiki, None, &PageFilter::default(), Some(cursor), 10),
+                Err(ApiError::InvalidCursor)
+            ),
+            "{cursor:?}"
+        );
+    }
+    let path = Cursor::after_path("pages/Page 000.md");
+    assert!(matches!(
+        w.service
+            .api_history(&w.wiki, None, "Page 000", Some(&path)),
+        Err(ApiError::InvalidCursor)
+    ));
+    assert!(matches!(
+        w.service
+            .api_changes(&w.wiki, &ChangeFilter::default(), Some(&path), 10),
+        Err(ApiError::InvalidCursor)
+    ));
+    assert!(matches!(
+        w.service
+            .api_health(&w.wiki, None, HealthList::Orphans, Some(&path), 10),
+        Err(ApiError::InvalidCursor)
+    ));
+    assert!(matches!(
+        w.service
+            .api_backlinks(&w.wiki, None, "Page 000", Some(&path), 10),
+        Err(ApiError::InvalidCursor)
+    ));
+}
+
+mod discover;
+mod past;

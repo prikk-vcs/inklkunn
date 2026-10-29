@@ -3,32 +3,32 @@
 //! endpoint's [`Doc`]) and the shared finish (`ETag`, `304`, problem details, the `Link` to the description);
 //! the closure given to it is the endpoint's own work.
 //!
-//! **Real now:** `pages` (list), `pages/{title}`, `raw/{title}`, `fragment/{title}`, and `openapi.json`.
-//! **Stubs:** `history`, `revisions`, `diff`, `backlinks`, `health`, `search`, `changes` check their input and
-//! answer the problem `not-available` until the read service has the read behind them (`inklkunn_core::read`'s
-//! `api.rs` is where each stub is filled in).
+//! `pages` (list), `pages/{title}`, `raw/{title}`, `fragment/{title}` and `openapi.json` are here;
+//! `history`, `revisions` and `diff` are in [`past`], `backlinks`, `health`, `search` and `changes` in
+//! [`across`]. Every one calls the read service's own reads, the ones the web pages call, and shapes the result
+//! (`shape.rs`).
 
 use axum::extract::State;
 use axum::http::{HeaderMap, Uri};
 use axum::response::Response;
 use axum::routing::get;
-use inklkunn_core::read::{
-    ApiError, Cursor, DEFAULT_PAGE_SIZE, HEADING_DEMOTION, PageFilter, PageOutcome, PageView,
-    Pending,
-};
+use inklkunn_core::read::{Cursor, DEFAULT_PAGE_SIZE, PageFilter, PageOutcome, PageView};
 use inklkunn_core::{Action, Guard};
-use inklkunn_store::WikiRecord;
+use inklkunn_store::{IndexEntry, WikiRecord};
 use serde_json::{Value, json};
 
 use super::describe::{self, Doc};
 use super::problem::{Code, Problem};
 use super::reply::{self, Reply};
-use super::request::{Params, from_api, from_read, hex_id, language, serve};
-use super::{Endpoint, OPENAPI_MEDIA_TYPE, openapi};
+use super::request::{Params, from_api, from_read, language, serve};
+use super::{Endpoint, OPENAPI_MEDIA_TYPE, openapi, shape};
 use crate::pages::PageState;
 use crate::present::WikiLinks;
 use crate::services::Services;
 use crate::url::view_ref;
+
+mod across;
+mod past;
 
 /// The addresses under the API's prefixes that are *not* endpoints: they answer the generic not-found problem,
 /// so a mistyped endpoint is never taken for a page title. The OpenAPI document does not list them.
@@ -63,13 +63,13 @@ pub(super) fn all() -> Vec<Endpoint> {
         documented(&describe::PAGE, read, || get(get_page)),
         documented(&describe::RAW, read, || get(get_raw)),
         documented(&describe::FRAGMENT, read, || get(get_fragment)),
-        documented(&describe::HISTORY, read, || get(history)),
-        documented(&describe::REVISION, read, || get(revision)),
-        documented(&describe::DIFF, read, || get(diff)),
-        documented(&describe::BACKLINKS, read, || get(backlinks)),
-        documented(&describe::HEALTH, read, || get(health)),
-        documented(&describe::SEARCH, read, || get(search)),
-        documented(&describe::CHANGES, read, || get(changes)),
+        documented(&describe::HISTORY, read, || get(past::history)),
+        documented(&describe::REVISION, read, || get(past::revision)),
+        documented(&describe::DIFF, read, || get(past::diff)),
+        documented(&describe::BACKLINKS, read, || get(across::backlinks)),
+        documented(&describe::HEALTH, read, || get(across::health)),
+        documented(&describe::SEARCH, read, || get(across::search)),
+        documented(&describe::CHANGES, read, || get(across::changes)),
         unlisted(NOT_ENDPOINTS[0], || get(unknown)),
         unlisted(NOT_ENDPOINTS[1], || get(unknown)),
     ]
@@ -78,12 +78,12 @@ pub(super) fn all() -> Vec<Endpoint> {
 // ------------------------------------------------------------------------------------ small helpers
 
 /// The view a request names: its short name (for the page links) and the repository name (for the read).
-struct View {
-    name: Option<String>,
-    full: Option<String>,
+pub(super) struct View {
+    pub(super) name: Option<String>,
+    pub(super) full: Option<String>,
 }
 
-fn view_of(params: &Params) -> Result<View, Problem> {
+pub(super) fn view_of(params: &Params) -> Result<View, Problem> {
     match params.text("view") {
         None => Ok(View {
             name: None,
@@ -99,11 +99,11 @@ fn view_of(params: &Params) -> Result<View, Problem> {
     }
 }
 
-fn short(view: &str) -> &str {
+pub(super) fn short(view: &str) -> &str {
     view.strip_prefix("heads/").unwrap_or(view)
 }
 
-fn tip_json(tip: &inklkunn_core::read::Tip) -> Value {
+pub(super) fn tip_json(tip: &inklkunn_core::read::Tip) -> Value {
     json!({
         "view": short(&tip.view),
         // A page served from what the server last had is not pinned to a block.
@@ -111,16 +111,30 @@ fn tip_json(tip: &inklkunn_core::read::Tip) -> Value {
     })
 }
 
-/// A stub's answer: the read is not there yet, so the only thing it can be is the problem.
-fn pending(
-    read: Result<Pending, ApiError>,
-    services: &Services,
-    wiki: &WikiRecord,
-) -> Result<Reply, Problem> {
-    match read {
-        Err(error) => Err(from_api(services, wiki, error)),
-        Ok(never) => match never {},
+/// The cursor a request sends back, if it sent one and it is one this server gave out.
+pub(super) fn cursor_of(params: &Params) -> Result<Option<Cursor>, Problem> {
+    match params.text("cursor") {
+        Some(text) => Cursor::parse(text)
+            .map(Some)
+            .ok_or_else(|| Problem::new(Code::InvalidCursor)),
+        None => Ok(None),
     }
+}
+
+/// The size of a page of a list a request asks for (already checked to be within the bounds), else the default.
+pub(super) fn limit_of(params: &Params) -> usize {
+    params
+        .int("limit")
+        .and_then(|n| usize::try_from(n).ok())
+        .unwrap_or(DEFAULT_PAGE_SIZE)
+}
+
+/// Several pages match a title and none is nearer: the problem that lists them.
+pub(super) fn ambiguous(candidates: &[IndexEntry]) -> Problem {
+    Problem::new(Code::AmbiguousTitle).member(
+        "candidates",
+        Value::Array(candidates.iter().map(|c| json!(c.title)).collect()),
+    )
 }
 
 /// The page a title leads to, or why not; a page the server could not ask for is the last one it has, labelled
@@ -139,11 +153,7 @@ fn page_of(
     {
         Ok(PageOutcome::Found(found)) => Ok(*found),
         Ok(PageOutcome::Missing { .. }) => Err(Problem::new(Code::PageNotFound)),
-        Ok(PageOutcome::Ambiguous { candidates }) => Err(Problem::new(Code::AmbiguousTitle)
-            .member(
-                "candidates",
-                Value::Array(candidates.into_iter().map(|c| json!(c.title)).collect()),
-            )),
+        Ok(PageOutcome::Ambiguous { candidates }) => Err(ambiguous(&candidates)),
         Ok(PageOutcome::BrokenRedirect { .. }) => Err(Problem::new(Code::RedirectBroken)),
         Err(inklkunn_core::ReadError::CouldNotBeReadNow(cause)) => {
             (services.log)(&format!(
@@ -184,19 +194,16 @@ async fn list_pages(State(state): State<PageState>, headers: HeaderMap, uri: Uri
                 tag: params.text("tag").map(str::to_owned),
                 changed_since: params.int("changed_since"),
             };
-            let limit = params
-                .int("limit")
-                .and_then(|n| usize::try_from(n).ok())
-                .unwrap_or(DEFAULT_PAGE_SIZE);
-            let after = match params.text("cursor") {
-                Some(text) => {
-                    Some(Cursor::parse(text).ok_or_else(|| Problem::new(Code::InvalidCursor))?)
-                }
-                None => None,
-            };
+            let after = cursor_of(params)?;
             let list = services
                 .read
-                .list_pages(wiki, view.full.as_deref(), &filter, after.as_ref(), limit)
+                .list_pages(
+                    wiki,
+                    view.full.as_deref(),
+                    &filter,
+                    after.as_ref(),
+                    limit_of(params),
+                )
                 .map_err(|e| from_api(services, wiki, e))?;
             Reply::json(&json!({
                 "tip": tip_json(&list.tip),
@@ -223,39 +230,7 @@ async fn get_page(State(state): State<PageState>, headers: HeaderMap, uri: Uri) 
         |services, wiki, params, ctx| {
             let view = view_of(params)?;
             let page = page_of(services, wiki, ctx, &view)?;
-            let license = page
-                .meta
-                .license
-                .clone()
-                .unwrap_or_else(|| wiki.default_license.clone());
-            Reply::json(&json!({
-                "title": page.meta.title,
-                "id": page.meta.id,
-                "kind": page.meta.kind,
-                "status": page.meta.status,
-                "lang": page.meta.lang,
-                "license": license,
-                "description": page.meta.description,
-                "tags": page.meta.tags,
-                "aliases": page.meta.aliases,
-                "toc": page.toc.iter().map(|h| json!({
-                    // The level the heading has in `html`, where the page's own title is the one `h1`.
-                    "level": h.level.saturating_add(HEADING_DEMOTION).min(6),
-                    "id": h.id,
-                    "text": h.text,
-                })).collect::<Vec<_>>(),
-                "html": page.html.as_str(),
-                "redirected_from": page.redirected_from.as_ref().map(|from| json!({
-                    "title": from.title,
-                    "by": match from.by {
-                        inklkunn_core::read::RedirectedBy::Alias => "alias",
-                        inklkunn_core::read::RedirectedBy::Redirect => "redirect",
-                    },
-                })),
-                "matched_by": page.via.as_str(),
-                "stale": page.stale,
-                "tip": tip_json(&page.tip),
-            }))
+            Reply::json(&shape::page(wiki, &page))
         },
     )
     .await
@@ -309,141 +284,4 @@ async fn get_fragment(State(state): State<PageState>, headers: HeaderMap, uri: U
 
 async fn unknown(headers: HeaderMap) -> Response {
     super::not_found(&headers)
-}
-
-// ------------------------------------------------------------------------------------ the stubs
-
-async fn history(State(state): State<PageState>, headers: HeaderMap, uri: Uri) -> Response {
-    serve(
-        state,
-        headers,
-        uri,
-        &describe::HISTORY,
-        |services, wiki, params, ctx| {
-            let view = view_of(params)?;
-            let title = ctx.title()?;
-            pending(
-                services
-                    .read
-                    .api_history(wiki, view.full.as_deref(), &title),
-                services,
-                wiki,
-            )
-        },
-    )
-    .await
-}
-
-async fn revision(State(state): State<PageState>, headers: HeaderMap, uri: Uri) -> Response {
-    serve(
-        state,
-        headers,
-        uri,
-        &describe::REVISION,
-        |services, wiki, _, ctx| {
-            let id = hex_id(&ctx.rest, 64, "id")?;
-            pending(services.read.api_revision(wiki, &id), services, wiki)
-        },
-    )
-    .await
-}
-
-async fn diff(State(state): State<PageState>, headers: HeaderMap, uri: Uri) -> Response {
-    serve(
-        state,
-        headers,
-        uri,
-        &describe::DIFF,
-        |services, wiki, params, _| {
-            // `path` is required by the parameter's own description, so a diff of nothing in particular is
-            // refused before any read could be asked for it.
-            let Some(path) = params.text("path") else {
-                return Err(Problem::new(Code::DiffPathRequired));
-            };
-            pending(
-                services
-                    .read
-                    .api_diff(wiki, params.text("from"), params.text("to"), path),
-                services,
-                wiki,
-            )
-        },
-    )
-    .await
-}
-
-async fn backlinks(State(state): State<PageState>, headers: HeaderMap, uri: Uri) -> Response {
-    serve(
-        state,
-        headers,
-        uri,
-        &describe::BACKLINKS,
-        |services, wiki, params, ctx| {
-            let view = view_of(params)?;
-            let title = ctx.title()?;
-            pending(
-                services
-                    .read
-                    .api_backlinks(wiki, view.full.as_deref(), &title),
-                services,
-                wiki,
-            )
-        },
-    )
-    .await
-}
-
-async fn health(State(state): State<PageState>, headers: HeaderMap, uri: Uri) -> Response {
-    serve(
-        state,
-        headers,
-        uri,
-        &describe::HEALTH,
-        |services, wiki, params, _| {
-            let view = view_of(params)?;
-            pending(
-                services.read.api_health(wiki, view.full.as_deref()),
-                services,
-                wiki,
-            )
-        },
-    )
-    .await
-}
-
-async fn search(State(state): State<PageState>, headers: HeaderMap, uri: Uri) -> Response {
-    serve(
-        state,
-        headers,
-        uri,
-        &describe::SEARCH,
-        |services, wiki, params, _| {
-            let view = view_of(params)?;
-            let query = params.text("q").unwrap_or_default();
-            pending(
-                services.read.api_search(wiki, view.full.as_deref(), query),
-                services,
-                wiki,
-            )
-        },
-    )
-    .await
-}
-
-async fn changes(State(state): State<PageState>, headers: HeaderMap, uri: Uri) -> Response {
-    serve(
-        state,
-        headers,
-        uri,
-        &describe::CHANGES,
-        |services, wiki, params, _| {
-            let view = view_of(params)?;
-            pending(
-                services.read.api_changes(wiki, view.full.as_deref()),
-                services,
-                wiki,
-            )
-        },
-    )
-    .await
 }

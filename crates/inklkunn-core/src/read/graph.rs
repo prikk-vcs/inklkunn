@@ -35,7 +35,7 @@ const MAX_LINKS_PER_PAGE: usize = 1_000;
 /// The most characters kept of the line a link stands in.
 const CONTEXT_CHARS: usize = 240;
 /// The most backlinks kept for one target (the count is of all of them).
-const MAX_BACKLINKS: usize = 500;
+pub(super) const MAX_BACKLINKS: usize = 500;
 /// The most graphs kept in memory at once, over all wikis.
 const MAX_MEMORY_GRAPHS: usize = 8;
 

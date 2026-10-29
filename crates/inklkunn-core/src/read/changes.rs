@@ -534,9 +534,19 @@ impl ReadService {
     /// default view. prikk's log does not say which pages a change touched, so a page's last change is known
     /// only inside the window; the list says how far it looked ([`StaleList::complete`]).
     pub fn stale_pages(&self, wiki: &WikiRecord) -> Result<StaleList, ReadError> {
+        self.stale_pages_in(wiki, None)
+    }
+
+    /// [`stale_pages`](Self::stale_pages) for another view (`None` is the default view): the changes of that
+    /// view, the pages of its tip.
+    pub fn stale_pages_in(
+        &self,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+    ) -> Result<StaleList, ReadError> {
         let window = usize::try_from(SCAN_WINDOW).unwrap_or(usize::MAX);
         let filter = ChangeFilter {
-            view: Some(wiki.default_view.clone()),
+            view: Some(view.unwrap_or(&wiki.default_view).to_owned()),
             ..ChangeFilter::default()
         };
         let list = self.changes(wiki, &filter, window)?;
@@ -546,7 +556,7 @@ impl ReadService {
                 touched.entry(page.path.as_str()).or_insert(row.first_seen);
             }
         }
-        let index = self.title_index(wiki, None)?;
+        let index = self.title_index(wiki, view)?;
         let mut pages: Vec<StalePage> = index
             .entries()
             .iter()

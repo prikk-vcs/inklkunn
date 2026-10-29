@@ -44,6 +44,8 @@ pub(crate) enum Code {
     Failed,
     /// The address does not take that method.
     MethodNotAllowed,
+    /// The view's history has no change with this id (also: a diff asked for the change before the first).
+    ChangeNotFound,
 }
 
 impl Code {
@@ -64,6 +66,7 @@ impl Code {
         Code::Unavailable,
         Code::Failed,
         Code::MethodNotAllowed,
+        Code::ChangeNotFound,
     ];
 
     /// The stable name: lower case, hyphenated.
@@ -83,6 +86,7 @@ impl Code {
             Code::Unavailable => "unavailable",
             Code::Failed => "failed",
             Code::MethodNotAllowed => "method-not-allowed",
+            Code::ChangeNotFound => "change-not-found",
         }
     }
 
@@ -94,9 +98,11 @@ impl Code {
     /// The HTTP status.
     pub(crate) const fn status(self) -> StatusCode {
         match self {
-            Code::NotFound | Code::PageNotFound | Code::RedirectBroken | Code::NoSuchView => {
-                StatusCode::NOT_FOUND
-            }
+            Code::NotFound
+            | Code::PageNotFound
+            | Code::RedirectBroken
+            | Code::NoSuchView
+            | Code::ChangeNotFound => StatusCode::NOT_FOUND,
             Code::AmbiguousTitle => StatusCode::MULTIPLE_CHOICES,
             Code::PageUnreadable => StatusCode::UNPROCESSABLE_ENTITY,
             Code::InvalidTitle
@@ -182,6 +188,11 @@ impl Code {
                 Key::ProblemMethodNotAllowedTitle,
                 Key::ProblemMethodNotAllowedDetail,
                 Key::ProblemMethodNotAllowedHint,
+            ),
+            Code::ChangeNotFound => (
+                Key::ProblemChangeNotFoundTitle,
+                Key::ProblemChangeNotFoundDetail,
+                Key::ProblemChangeNotFoundHint,
             ),
         }
     }

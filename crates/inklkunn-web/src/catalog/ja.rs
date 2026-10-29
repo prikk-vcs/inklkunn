@@ -827,4 +827,14 @@ pub const CATALOG: &[Entry] = &[
     msg("head.feed_page", "{page} への変更"),
     msg("head.markdown", "{page}（Markdown）"),
     msg("head.search", "{wiki} を検索"),
+    // the API's problem for a change that is not in the history (handoff 003 T8, completion)
+    msg("problem.change_not_found.title", "変更が見つかりません"),
+    msg(
+        "problem.change_not_found.detail",
+        "このウィキのこのビューには、この ID の変更がありません。",
+    ),
+    msg(
+        "problem.change_not_found.hint",
+        "変更の ID は、ページの履歴または最近の変更から取ってください。",
+    ),
 ];

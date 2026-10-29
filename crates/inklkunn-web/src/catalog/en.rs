@@ -764,4 +764,14 @@ pub const CATALOG: &[Entry] = &[
     msg("head.feed_page", "Changes to {page}"),
     msg("head.markdown", "{page} as Markdown"),
     msg("head.search", "Search {wiki}"),
+    // the API's problem for a change that is not in the history (handoff 003 T8, completion)
+    msg("problem.change_not_found.title", "Change not found"),
+    msg(
+        "problem.change_not_found.detail",
+        "This wiki has no change with this id in this view.",
+    ),
+    msg(
+        "problem.change_not_found.hint",
+        "Take the id of a change from the history of a page or from the recent changes.",
+    ),
 ];

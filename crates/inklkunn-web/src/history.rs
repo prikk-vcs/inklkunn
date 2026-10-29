@@ -177,8 +177,9 @@ fn who_text(t: T, who: &Who) -> String {
     }
 }
 
-/// The sentences about the people of a change, from what its message says and no more.
-fn people(t: T, provenance: &Provenance) -> Vec<String> {
+/// The sentences about the people of a change, from what its message says and no more. (The read API gives
+/// these very sentences beside the structured fields.)
+pub(crate) fn people(t: T, provenance: &Provenance) -> Vec<String> {
     match provenance {
         Provenance::Recorded {
             kind: HistoryChangeKind::Proposal | HistoryChangeKind::Rollback,
@@ -204,24 +205,64 @@ fn people(t: T, provenance: &Provenance) -> Vec<String> {
     }
 }
 
+/// What a change is marked as, beyond what its people say. One list for the pages (which say each in words) and
+/// the read API (which gives each as a code).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Flag {
+    /// It undoes an earlier change.
+    Undo,
+    /// It is an import.
+    Import,
+    /// The wiki service made it itself.
+    Service,
+    /// It is the first change of the view.
+    First,
+}
+
+impl Flag {
+    /// The marks of a change, in the order the pages say them.
+    pub(crate) fn of(info: &ChangeInfo) -> Vec<Flag> {
+        let mut out = Vec::new();
+        let kind = match &info.provenance {
+            Provenance::Recorded { kind, .. } => Some(*kind),
+            Provenance::NotRecorded => None,
+        };
+        if info.undoes || kind == Some(HistoryChangeKind::Rollback) {
+            out.push(Flag::Undo);
+        }
+        match kind {
+            Some(HistoryChangeKind::Import) => out.push(Flag::Import),
+            Some(HistoryChangeKind::System) => out.push(Flag::Service),
+            _ => {}
+        }
+        if info.first {
+            out.push(Flag::First);
+        }
+        out
+    }
+
+    /// The stable code the API gives.
+    pub(crate) const fn code(self) -> &'static str {
+        match self {
+            Flag::Undo => "undo",
+            Flag::Import => "import",
+            Flag::Service => "service",
+            Flag::First => "first",
+        }
+    }
+
+    const fn key(self) -> Key {
+        match self {
+            Flag::Undo => Key::FlagUndo,
+            Flag::Import => Key::FlagImport,
+            Flag::Service => Key::FlagService,
+            Flag::First => Key::FlagFirst,
+        }
+    }
+}
+
 fn flags(t: T, info: &ChangeInfo) -> Vec<String> {
-    let mut out = Vec::new();
-    let kind = match &info.provenance {
-        Provenance::Recorded { kind, .. } => Some(*kind),
-        Provenance::NotRecorded => None,
-    };
-    if info.undoes || kind == Some(HistoryChangeKind::Rollback) {
-        out.push(t.get(Key::FlagUndo));
-    }
-    match kind {
-        Some(HistoryChangeKind::Import) => out.push(t.get(Key::FlagImport)),
-        Some(HistoryChangeKind::System) => out.push(t.get(Key::FlagService)),
-        _ => {}
-    }
-    if info.first {
-        out.push(t.get(Key::FlagFirst));
-    }
-    out
+    Flag::of(info).into_iter().map(|f| t.get(f.key())).collect()
 }
 
 fn summary_of(info: &ChangeInfo) -> Option<String> {

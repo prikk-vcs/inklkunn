@@ -72,6 +72,7 @@ fn schema_of(kind: Kind) -> Value {
             "type": "string",
             "pattern": format!("^[0-9a-f]{{1,{max}}}$"),
         }),
+        Kind::Choice(words) => json!({"type": "string", "enum": words}),
     }
 }
 
@@ -118,7 +119,7 @@ fn problem_response(codes: &[Code]) -> Value {
     })
 }
 
-fn success_response(answer: Answer) -> Option<Value> {
+fn success_response(answer: Answer) -> Value {
     let validators = json!({
         "ETag": {
             "description": "A strong validator of the body. Send it back as `If-None-Match` to get `304` while the answer has not changed.",
@@ -126,22 +127,21 @@ fn success_response(answer: Answer) -> Option<Value> {
         },
     });
     match answer {
-        Answer::Schema(name) => Some(json!({
+        Answer::Schema(name) => json!({
             "description": "The answer.",
             "headers": validators,
             "content": {"application/json": {"schema": {"$ref": format!("#/components/schemas/{name}")}}},
-        })),
-        Answer::Fragment => Some(json!({
+        }),
+        Answer::Fragment => json!({
             "description": "The page body's sanitized HTML, as a fragment.",
             "headers": validators,
             "content": {"text/html": {"schema": {"type": "string"}}},
-        })),
-        Answer::Description => Some(json!({
+        }),
+        Answer::Description => json!({
             "description": "This document.",
             "headers": validators,
             "content": {super::OPENAPI_MEDIA_TYPE: {"schema": {"type": "object"}}},
-        })),
-        Answer::NotOffered => None,
+        }),
     }
 }
 
@@ -150,13 +150,11 @@ fn operation(doc: &Doc, path: &str, guard: Guard) -> Value {
     parameters.extend(doc.query.iter().map(query_parameter));
 
     let mut responses: BTreeMap<String, Value> = BTreeMap::new();
-    if let Some(success) = success_response(doc.answer) {
-        responses.insert("200".to_owned(), success);
-        responses.insert(
-            "304".to_owned(),
-            json!({"description": "Not modified: the `If-None-Match` matched the answer's `ETag`."}),
-        );
-    }
+    responses.insert("200".to_owned(), success_response(doc.answer));
+    responses.insert(
+        "304".to_owned(),
+        json!({"description": "Not modified: the `If-None-Match` matched the answer's `ETag`."}),
+    );
     let mut by_status: BTreeMap<u16, Vec<Code>> = BTreeMap::new();
     for code in EVERY_ENDPOINT.iter().chain(doc.problems) {
         let codes = by_status.entry(code.status().as_u16()).or_default();
@@ -186,10 +184,6 @@ fn operation(doc: &Doc, path: &str, guard: Guard) -> Value {
             op.insert("x-inklkunn-public".to_owned(), json!(reason));
         }
     }
-    op.insert(
-        "x-inklkunn-offered".to_owned(),
-        json!(doc.answer != Answer::NotOffered),
-    );
     Value::Object(op)
 }
 
@@ -203,8 +197,7 @@ fn components() -> Value {
             "block_id": {"type": ["string", "null"]},
         },
     });
-    json!({
-        "schemas": {
+    let mut schemas = json!({
             "Problem": {
                 "type": "object",
                 "description": "A problem detail (RFC 9457). `type` is stable and does not change with the language; `title`, `detail` and `hint` are in the language of `Content-Language`. The members after `hint` appear only for the codes that use them.",
@@ -217,7 +210,7 @@ fn components() -> Value {
                     "hint": {"type": "string", "description": "What to do next."},
                     "parameter": {"type": "string", "description": "`invalid-parameter`: the parameter."},
                     "view": {"type": "string", "description": "`no-such-view`: the view asked for."},
-                    "feature": {"type": "string", "description": "`not-available`: the read that is not offered."},
+                    "feature": {"type": "string", "description": "`not-available`: the filter that is not offered."},
                     "candidates": {"type": "array", "items": {"type": "string"}, "description": "`ambiguous-title`: the titles that match."},
                 },
             },
@@ -290,8 +283,11 @@ fn components() -> Value {
                     "tip": {"$ref": "#/components/schemas/Tip"},
                 },
             },
-        },
-    })
+    });
+    if let Some(map) = schemas.as_object_mut() {
+        map.extend(shapes::schemas());
+    }
+    json!({"schemas": schemas})
 }
 
 fn problem_types() -> Value {
@@ -343,15 +339,15 @@ pub(crate) fn document(table: &RouteTable, docs: &[&'static Doc]) -> Result<Valu
         "info": {
             "title": "inklkunn read API",
             "version": "1.0.0",
-            "summary": "Read access to wikis: pages, their rendering, and the history as it becomes available.",
+            "summary": "Read access to wikis: pages, their rendering, their history, links and search.",
             "description": INTRO,
             "license": {"name": "Apache-2.0", "identifier": "Apache-2.0"},
         },
         "tags": [
             {"name": "pages", "description": "Pages and their rendering."},
-            {"name": "history", "description": "Changes and differences. Not offered by this build."},
-            {"name": "links", "description": "Backlinks and link health. Not offered by this build."},
-            {"name": "search", "description": "Search. Not offered by this build."},
+            {"name": "history", "description": "A page's history, one change, the difference between two changes of a page, and the wiki's recent changes."},
+            {"name": "links", "description": "The pages that link to a page, and the wiki's link health lists."},
+            {"name": "search", "description": "Search over titles and aliases."},
             {"name": "description", "description": "This document."},
         ],
         "paths": paths,
@@ -375,6 +371,8 @@ pub(crate) fn served() -> Result<&'static [u8], super::problem::Problem> {
         .as_deref()
         .ok_or_else(|| super::problem::Problem::new(Code::Failed))
 }
+
+mod shapes;
 
 #[cfg(test)]
 mod tests;

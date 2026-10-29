@@ -115,16 +115,65 @@ fn the_documented_bounds_are_the_enforced_ones() {
 }
 
 #[test]
-fn an_endpoint_that_is_not_offered_says_so_in_its_description() {
+fn every_endpoint_answers_a_schema_the_document_defines_and_every_problem_it_lists_is_registered() {
+    let document: serde_json::Value = serde_json::from_slice(openapi::served().unwrap()).unwrap();
     for endpoint in endpoints() {
         let Some(doc) = endpoint.doc else { continue };
-        if doc.answer == Answer::NotOffered {
+        if let Answer::Schema(name) = doc.answer {
             assert!(
-                doc.description.contains("Not offered by this build"),
-                "{}",
+                document
+                    .pointer(&format!("/components/schemas/{name}"))
+                    .is_some(),
+                "{}: the schema {name} is not defined",
                 doc.path
             );
-            assert!(doc.problems.contains(&problem::Code::NotAvailable));
         }
+        for code in doc.problems {
+            assert!(problem::Code::ALL.contains(code), "{}", doc.path);
+        }
+        // No endpoint is left as a stub: what each one is, it is.
+        assert!(
+            !doc.description.contains("Not offered by this build"),
+            "{}",
+            doc.path
+        );
+    }
+}
+
+#[test]
+fn a_choice_parameter_documents_its_words_as_an_enum() {
+    let document: serde_json::Value = serde_json::from_slice(openapi::served().unwrap()).unwrap();
+    let parameters = document
+        .pointer("/paths/~1{slug}~1-~1api~1v1~1health/get/parameters")
+        .and_then(serde_json::Value::as_array)
+        .unwrap();
+    let list = parameters
+        .iter()
+        .find(|p| p.get("name") == Some(&serde_json::json!("list")))
+        .unwrap();
+    assert_eq!(list.get("required"), Some(&serde_json::json!(true)));
+    let words: Vec<&str> = list
+        .pointer("/schema/enum")
+        .and_then(serde_json::Value::as_array)
+        .unwrap()
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .collect();
+    assert_eq!(
+        words,
+        [
+            "wanted",
+            "orphans",
+            "dead-ends",
+            "redirects",
+            "wants-help",
+            "stale"
+        ]
+    );
+    for word in &words {
+        assert!(
+            inklkunn_core::read::HealthList::from_slug(word).is_some(),
+            "{word}"
+        );
     }
 }

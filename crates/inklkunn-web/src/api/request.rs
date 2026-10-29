@@ -8,6 +8,7 @@
 
 use axum::http::{HeaderMap, Uri};
 use axum::response::Response;
+use inklkunn_core::Principal;
 use inklkunn_core::read::ApiError;
 use inklkunn_core::read::ReadError;
 use inklkunn_store::WikiRecord;
@@ -38,6 +39,8 @@ pub(crate) fn answer_plain(headers: &HeaderMap, code: Code) -> Response {
 #[derive(Debug, Clone)]
 pub(crate) struct Ctx {
     pub t: T,
+    /// Who is asking: the endpoints that list what several pages hold check each against it.
+    pub principal: Principal,
     /// The path after the endpoint's word, as the address spells it (not decoded): a title or an id.
     pub rest: String,
     /// The query string, as sent.
@@ -97,14 +100,16 @@ where
     let services = state.services.ok_or_else(not_found)?;
     let (raw_slug, _word, raw_rest) = parse_path(uri.path()).ok_or_else(not_found)?;
     let slug = decode(raw_slug).ok_or_else(not_found)?;
-    let ctx = Ctx {
-        t,
-        rest: raw_rest.to_owned(),
-        query: uri.query().map(str::to_owned),
-    };
+    let (rest, query) = (raw_rest.to_owned(), uri.query().map(str::to_owned));
     let done = blocking(move || {
         // Existence-neutral: no wiki and no right to read it are the same answer, before anything else.
         let wiki = open(&services, &headers, &slug).ok_or_else(not_found)?;
+        let ctx = Ctx {
+            t,
+            principal: services.identity.principal(&headers),
+            rest,
+            query,
+        };
         let params = Params::parse(ctx.query.as_deref(), doc.query)?;
         work(&services, &wiki, &params, &ctx)
     })
@@ -151,6 +156,7 @@ fn value_ok(kind: Kind, value: &str) -> bool {
                     .bytes()
                     .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         }
+        Kind::Choice(words) => words.contains(&value),
     }
 }
 

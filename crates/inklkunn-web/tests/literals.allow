@@ -69,6 +69,10 @@ scope :: reply.rs :: * :: media types and the `Link` header's fixed value; no se
 scope :: endpoints.rs :: * :: the JSON member names of the answers, the registry's public reasons (written for the reviewer of the route table), the names of query parameters and an operator's log line; every sentence a caller reads is a problem detail in problem.rs
 scope :: describe.rs :: * :: the OpenAPI document's descriptions: English by decision, the reference a programmer reads (like an operator's log line); the problem details a caller gets are catalog messages in the caller's language
 scope :: openapi.rs :: * :: the OpenAPI document's structure and descriptions: English by decision, like describe.rs; machine-readable member names
+scope :: across.rs :: * :: the endpoints of the links, health, search and changes: JSON member names and the codes of the answers (kinds, actions, marks); every sentence a caller reads is a problem detail or a catalog message chosen by the pages' own functions
+scope :: past.rs :: * :: the endpoints of a page's past: JSON member names and codes (statuses, kinds); every sentence a caller reads is a problem detail or a catalog message chosen by the pages' own functions
+scope :: shape.rs :: * :: the JSON shapes the endpoints share: member names and codes (person kinds, events, line kinds); the sentences in them are the pages' own catalog messages
+scope :: shapes.rs :: * :: the OpenAPI schemas of the answers: English descriptions by decision, like describe.rs; machine-readable member names
 exact :: request.rs :: api :: a segment of the API's address
 exact :: request.rs :: parameter :: the name of a placeholder of a catalog message and of the member that carries the same value
 exact :: request.rs :: view :: the name of a placeholder of a catalog message and of the member that carries the same value
@@ -196,3 +200,15 @@ exact :: wiki.rs :: {base}/-/search :: an address of the wiki's own surfaces, or
 exact :: wiki.rs :: {base}/-/health :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
 exact :: wiki.rs :: -/about :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
 exact :: wiki.rs :: -/verification :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: health.rs :: add-page-or-fix-links :: the read API's code for what would resolve a row (a stable word of the API; the pages say it in the catalog's words)
+exact :: health.rs :: link-to-it :: the read API's code for what would resolve a row (a stable word of the API; the pages say it in the catalog's words)
+exact :: health.rs :: link-from-it :: the read API's code for what would resolve a row (a stable word of the API; the pages say it in the catalog's words)
+exact :: health.rs :: retarget-or-remove :: the read API's code for what would resolve a row (a stable word of the API; the pages say it in the catalog's words)
+exact :: health.rs :: break-the-loop :: the read API's code for what would resolve a row (a stable word of the API; the pages say it in the catalog's words)
+exact :: health.rs :: point-at-final-page :: the read API's code for what would resolve a row (a stable word of the API; the pages say it in the catalog's words)
+exact :: health.rs :: finish-and-unmark :: the read API's code for what would resolve a row (a stable word of the API; the pages say it in the catalog's words)
+exact :: health.rs :: review :: the read API's code for what would resolve a row (a stable word of the API; the pages say it in the catalog's words)
+exact :: history.rs :: undo :: the read API's code for a mark of a change (a stable word of the API; the pages say it in the catalog's words)
+exact :: history.rs :: import :: the read API's code for a mark of a change (a stable word of the API; the pages say it in the catalog's words)
+exact :: history.rs :: service :: the read API's code for a mark of a change (a stable word of the API; the pages say it in the catalog's words)
+exact :: history.rs :: first :: the read API's code for a mark of a change (a stable word of the API; the pages say it in the catalog's words)

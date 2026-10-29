@@ -116,8 +116,9 @@ pub use tip::Tip;
 
 // The read API's reads (handoff 003 T8).
 pub use api::{
-    ApiError, Cursor, DEFAULT_PAGE_SIZE, Feature, ListedPage, MAX_PAGE_SIZE, PageFilter, PageList,
-    Pending, RawInfo,
+    ApiError, BacklinkAnswer, BacklinkPage, ChangePage, Cursor, DEFAULT_PAGE_SIZE, Feature,
+    HealthList, HealthPage, HealthRows, HistoryAnswer, ListedPage, MAX_PAGE_SIZE, PageFilter,
+    PageList, RawInfo, StaleScan,
 };
 
 /// Plain-data views of what a page carries, as the derived cache keeps them.

@@ -116,6 +116,38 @@ pub(crate) fn restrict(
     (kept, hidden)
 }
 
+/// The changes of `rows` that `principal` may read, and how many were left out: every change is checked against
+/// the read action on its view and on each page it touched ([`restrict`]). The changes page, its feed and the
+/// read API all come through here.
+pub(crate) fn restrict_to_reader(
+    services: &Services,
+    principal: &Principal,
+    wiki: &WikiRecord,
+    rows: Vec<ChangeRow>,
+) -> (Vec<ChangeRow>, usize) {
+    let allowed = |resource: Resource| {
+        services
+            .authorizer
+            .authorize(principal, Action::Read, &resource)
+            .is_allowed()
+    };
+    restrict(
+        rows,
+        |view| {
+            allowed(Resource::View {
+                wiki: wiki.id.clone(),
+                name: view.to_owned(),
+            })
+        },
+        |path| {
+            allowed(Resource::Page {
+                wiki: wiki.id.clone(),
+                path: path.to_owned(),
+            })
+        },
+    )
+}
+
 /// The changes a request lists: the list itself, restricted to what the principal may read.
 struct Listed {
     wiki: WikiRecord,
@@ -132,27 +164,7 @@ fn list_changes(
 ) -> Result<Listed, inklkunn_core::read::ReadError> {
     let principal: Principal = services.identity.principal(headers);
     let list = services.read.changes(&wiki, filter, LIMIT)?;
-    let allowed = |resource: Resource| {
-        services
-            .authorizer
-            .authorize(&principal, Action::Read, &resource)
-            .is_allowed()
-    };
-    let (rows, hidden) = restrict(
-        list.rows.clone(),
-        |view| {
-            allowed(Resource::View {
-                wiki: wiki.id.clone(),
-                name: view.to_owned(),
-            })
-        },
-        |path| {
-            allowed(Resource::Page {
-                wiki: wiki.id.clone(),
-                path: path.to_owned(),
-            })
-        },
-    );
+    let (rows, hidden) = restrict_to_reader(services, &principal, &wiki, list.rows.clone());
     Ok(Listed {
         wiki,
         list,
@@ -175,7 +187,7 @@ fn person_text(t: T, person: &Person) -> String {
 }
 
 /// Who made a change, as lines of words.
-fn people_lines(t: T, row: &ChangeRow) -> Vec<String> {
+pub(crate) fn people_lines(t: T, row: &ChangeRow) -> Vec<String> {
     if row.kind == ChangeKind::Foreign {
         return vec![t.get(Key::ChangesForeign)];
     }
@@ -206,7 +218,7 @@ fn people_lines(t: T, row: &ChangeRow) -> Vec<String> {
     }
 }
 
-fn view_name(full: &str) -> &str {
+pub(crate) fn view_name(full: &str) -> &str {
     full.strip_prefix("heads/").unwrap_or(full)
 }
 

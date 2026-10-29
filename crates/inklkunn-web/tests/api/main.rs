@@ -4,9 +4,12 @@
 //! double, so these run in both test runs.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+mod across;
 #[path = "../common/mod.rs"]
 mod common;
 mod description;
+mod past;
+mod shapes;
 
 use axum::Router;
 use axum::body::Body;
@@ -642,16 +645,30 @@ fn every_address(slug: &str) -> Vec<String> {
         "fragment/Home",
         "fragment/Nowhere",
         "history/Home",
+        "history/Home?cursor=n13",
+        "history/Home?cursor=bogus",
+        "history/Nowhere",
         "revisions/abc123",
         "revisions/NOT-HEX",
+        "revisions/abc123?title=Home",
         "diff",
-        "diff?path=pages/Home.md",
+        "diff?path=Home",
+        "diff?path=Home&from=abc&to=def",
         "diff?bogus=1",
         "backlinks/Home",
+        "backlinks/Nowhere",
+        "backlinks/Home?limit=1",
         "health",
+        "health?list=orphans",
+        "health?list=stale",
+        "health?list=nope",
         "search?q=x",
+        "search?q=x&limit=1",
         "search",
         "changes",
+        "changes?automated=hide",
+        "changes?view=nope",
+        "changes?cursor=k10123456789abcdef",
         "nonsense",
         "pages/Home/..%2f..",
     ]
@@ -751,7 +768,7 @@ async fn the_code_is_the_same_in_every_language_and_the_words_are_not() {
         "/handbook/-/api/v1/pages/Nowhere",
         "/handbook/-/api/v1/pages?limit=0",
         "/handbook/-/api/v1/pages?cursor=zz",
-        "/handbook/-/api/v1/history/Home",
+        "/handbook/-/api/v1/revisions/abc",
         "/handbook/-/api/v1/diff",
         "/handbook/-/api/v1/pages/Home?view=nope",
         "/nobody/-/api/v1/pages",
@@ -818,11 +835,13 @@ async fn a_diff_needs_a_path_there_is_no_diff_of_a_whole_tree() {
             "{address}"
         );
     }
-    let given = get(&w, "/handbook/-/api/v1/diff?path=pages%2FHome.md").await;
-    assert_eq!(given.status, StatusCode::NOT_IMPLEMENTED);
-    let body = given.json();
-    assert_eq!(body.at("/type"), "urn:inklkunn:problem:not-available");
-    assert_eq!(body.at("/feature"), "diff");
+    // With the path it is a diff of that page: this wiki has one change, and nothing before it to compare to.
+    let given = get(&w, "/handbook/-/api/v1/diff?path=Home").await;
+    assert_eq!(given.status, StatusCode::NOT_FOUND);
+    assert_eq!(
+        problem_type(&given),
+        "urn:inklkunn:problem:change-not-found"
+    );
     // The same parameter may not be given twice, and none other is known.
     let twice = get(&w, "/handbook/-/api/v1/diff?path=a&path=b").await;
     assert_eq!(
@@ -834,46 +853,6 @@ async fn a_diff_needs_a_path_there_is_no_diff_of_a_whole_tree() {
         problem_type(&tree),
         "urn:inklkunn:problem:invalid-parameter"
     );
-}
-
-// ------------------------------------------------------------------------------------ the stubs
-
-#[tokio::test]
-async fn the_endpoints_whose_read_is_not_in_this_build_say_so_with_the_feature() {
-    let w = handbook();
-    for (address, feature) in [
-        ("history/Home", "history"),
-        ("revisions/abc123", "revision"),
-        ("diff?path=pages%2FHome.md", "diff"),
-        ("backlinks/Home", "backlinks"),
-        ("health", "health"),
-        ("search?q=welcome", "search"),
-        ("changes", "changes"),
-    ] {
-        let a = get(&w, &format!("/handbook/-/api/v1/{address}")).await;
-        assert_eq!(a.status, StatusCode::NOT_IMPLEMENTED, "{address}");
-        assert_eq!(a.header("content-type"), Some("application/problem+json"));
-        let body = a.json();
-        assert_eq!(
-            body.at("/type"),
-            "urn:inklkunn:problem:not-available",
-            "{address}"
-        );
-        assert_eq!(body.at("/feature"), feature, "{address}");
-        assert_api_headers(&a, address);
-    }
-    // Their input is still checked first.
-    for (address, parameter) in [
-        ("revisions/NOT-HEX", "id"),
-        ("revisions/ABC", "id"),
-        ("search", "q"),
-        ("search?q=", "q"),
-        ("changes?limit=500", "limit"),
-    ] {
-        let a = get(&w, &format!("/handbook/-/api/v1/{address}")).await;
-        assert_eq!(a.status, StatusCode::BAD_REQUEST, "{address}");
-        assert_eq!(a.json().at("/parameter"), parameter, "{address}");
-    }
 }
 
 // ------------------------------------------------------------------------------------ addresses

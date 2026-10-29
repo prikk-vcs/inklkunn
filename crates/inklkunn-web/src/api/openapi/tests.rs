@@ -77,7 +77,7 @@ fn a_description_without_a_route_is_drift() {
         summary: "A description that no route serves",
         description: "x",
         query: &[],
-        answer: Answer::NotOffered,
+        answer: Answer::Fragment,
         problems: &[],
     };
     let mut all = docs();

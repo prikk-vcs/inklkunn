@@ -18,12 +18,14 @@ pub(crate) struct Reply {
 }
 
 impl Reply {
-    /// A JSON document.
+    /// A JSON document, with `<`, `>` and `&` written as `<`, `>` and `&`: the same document to
+    /// any JSON reader, and no markup of an author's in it for anything that is not one (a response sniffed as
+    /// HTML, a body pasted into a page). They can only be inside a string, so no other byte changes.
     pub(crate) fn json(value: &Value) -> Result<Reply, Problem> {
         match serde_json::to_vec(value) {
             Ok(body) => Ok(Reply {
                 content_type: "application/json",
-                body,
+                body: no_markup(&body),
             }),
             Err(_) => Err(Problem::new(super::problem::Code::Failed)),
         }
@@ -41,6 +43,20 @@ impl Reply {
     pub(crate) fn bytes(content_type: &'static str, body: Vec<u8>) -> Reply {
         Reply { content_type, body }
     }
+}
+
+/// `bytes` of a JSON document with the three characters of markup written as JSON escapes.
+fn no_markup(bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(bytes.len());
+    for byte in bytes {
+        match byte {
+            b'<' => out.extend_from_slice(b"\\u003c"),
+            b'>' => out.extend_from_slice(b"\\u003e"),
+            b'&' => out.extend_from_slice(b"\\u0026"),
+            other => out.push(*other),
+        }
+    }
+    out
 }
 
 /// FNV-1a over the bytes: a short validator that changes when the body does. It is a cache validator, not a

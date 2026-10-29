@@ -2,21 +2,26 @@
 //! reads that are not a page view, in plain data a surface turns into JSON.
 //!
 //! **This file is the seam between the API and the read service.** The web crate's endpoints call the methods
-//! below and nothing else of the service that a page view does not already call, so the other read tasks
-//! (T5 history and diff, T6 search, changes, links and health) land their reads by *filling in* the methods
-//! that are stubs here, without touching the endpoints' shape:
+//! below and the methods of the service that a page view calls too, and nothing else:
 //!
-//! | method | state |
+//! | method | what it is |
 //! |---|---|
-//! | [`ReadService::list_pages`] | real: the title index at the view's tip, filtered, in keyset pages |
-//! | [`ReadService::raw_info`] | real: where a page's source is (title, storage path, tip), from the index alone |
-//! | [`ReadService::api_history`], [`api_revision`](ReadService::api_revision), [`api_diff`](ReadService::api_diff), [`api_backlinks`](ReadService::api_backlinks), [`api_health`](ReadService::api_health), [`api_search`](ReadService::api_search), [`api_changes`](ReadService::api_changes) | **stubs**: answer [`ApiError::NotAvailable`] until the task that owns the read replaces the body and the [`Pending`] return type with its own |
+//! | [`ReadService::list_pages`] | the title index at the view's tip, filtered, in keyset pages |
+//! | [`ReadService::raw_info`] | where a page's source is (title, storage path, tip), from the index alone |
+//! | [`ReadService::api_history`] | [`ReadService::page_history`] with the history's position as a cursor |
+//! | [`ReadService::api_diff`] | [`ReadService::page_diff`] with the points a request may leave out |
+//! | [`ReadService::api_backlinks`], [`api_health`](ReadService::api_health), [`api_changes`](ReadService::api_changes) | the link graph, the health lists and the recent changes, in bounded pages |
 //!
-//! The page itself (metadata and the sanitized fragment) is [`ReadService::page`], unchanged.
+//! The reads that need no shaping are the page views' own, called as they are: [`ReadService::page`],
+//! [`ReadService::change`], [`ReadService::page_at`], [`ReadService::search`].
 //!
 //! **Bounded by construction.** A page of results never holds more than [`MAX_PAGE_SIZE`] items whatever the
-//! caller asks for, and a cursor is a position (the last item of the previous page), not an offset, so a
-//! walk through a list that changes underneath it neither repeats nor skips an item that stayed.
+//! caller asks for. A cursor is a position, and which kind of position depends on the list: the pages, the
+//! history of a page and the changes are walked by the *last item seen* (a path, a change number, a change), so
+//! a walk through a list that changes underneath it neither repeats nor skips an item that stayed; the
+//! backlinks and the health lists, which are computed whole for one tip, are walked by an offset that is
+//! stamped with that tip, and a cursor of another tip is refused (start again) rather than followed into a
+//! different list.
 
 use inklkunn_store::WikiRecord;
 
@@ -33,11 +38,28 @@ pub const DEFAULT_PAGE_SIZE: usize = 50;
 const MAX_CURSOR_CHARS: usize = 2 * 1024 + 8;
 
 const CURSOR_TAG: &str = "c1";
+const NUMBER_TAG: &str = "n1";
+const OFFSET_TAG: &str = "o1";
+const KEY_TAG: &str = "k1";
 
-/// A position in a list: the last item of the page before. **Opaque to callers** (it is a version tag and the
-/// item's sort key in hexadecimal; the format may change, and a cursor from another format is refused).
+/// A position in a list. **Opaque to callers** (it is a version tag and what the list's order is keyed by; the
+/// format may change, and a cursor from another format, or one made for another list, is refused).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cursor(String);
+
+/// What a cursor says, once read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Position {
+    /// After the page with this storage path (the list of pages).
+    Path(String),
+    /// After the change with this number in the view's history (the history of a page).
+    Number(u64),
+    /// At this offset of a list computed for the tip with this state id (backlinks, health).
+    Offset { at: usize, stamp: String },
+    /// After the change whose block id has this key (the recent changes): the key is a hash, so a cursor does
+    /// not carry the id of a change the reader may not be allowed to see.
+    Key(String),
+}
 
 impl Cursor {
     /// The position just after the item with this storage path.
@@ -51,6 +73,21 @@ impl Cursor {
         Cursor(out)
     }
 
+    /// The position just after the change with this number.
+    fn after_number(number: u64) -> Cursor {
+        Cursor(format!("{NUMBER_TAG}{number}"))
+    }
+
+    /// The position at this offset of the list computed for the tip `stamp`.
+    fn at_offset(at: usize, stamp: &str) -> Cursor {
+        Cursor(format!("{OFFSET_TAG}{at}.{stamp}"))
+    }
+
+    /// The position just after the change in block `block_id`.
+    fn after_change(block_id: &str) -> Cursor {
+        Cursor(format!("{KEY_TAG}{}", change_key(block_id)))
+    }
+
     /// The cursor a caller sent back, if it is one this service gave out.
     pub fn parse(text: &str) -> Option<Cursor> {
         Cursor::decode(text).map(|_| Cursor(text.to_owned()))
@@ -61,13 +98,36 @@ impl Cursor {
         &self.0
     }
 
-    /// The storage path a cursor text is after: a version tag, then the path in lower-case hexadecimal, a
-    /// path of a page and no longer than a repository path may be.
-    fn decode(text: &str) -> Option<String> {
+    /// What the cursor says.
+    fn position(&self) -> Option<Position> {
+        Cursor::decode(&self.0)
+    }
+
+    fn decode(text: &str) -> Option<Position> {
         if text.len() > MAX_CURSOR_CHARS {
             return None;
         }
-        let digits = text.strip_prefix(CURSOR_TAG)?;
+        if let Some(digits) = text.strip_prefix(CURSOR_TAG) {
+            return Cursor::decode_path(digits).map(Position::Path);
+        }
+        if let Some(digits) = text.strip_prefix(NUMBER_TAG) {
+            return canonical(digits).filter(|n| *n >= 1).map(Position::Number);
+        }
+        if let Some(rest) = text.strip_prefix(OFFSET_TAG) {
+            let (at, stamp) = rest.split_once('.')?;
+            let at = usize::try_from(canonical(at)?).ok()?;
+            return is_hex(stamp, 1..=64).then(|| Position::Offset {
+                at,
+                stamp: stamp.to_owned(),
+            });
+        }
+        let key = text.strip_prefix(KEY_TAG)?;
+        is_hex(key, 16..=16).then(|| Position::Key(key.to_owned()))
+    }
+
+    /// The storage path a cursor of the list of pages is after: the path in lower-case hexadecimal, a path of
+    /// a page and no longer than a repository path may be.
+    fn decode_path(digits: &str) -> Option<String> {
         if digits.is_empty() || !digits.len().is_multiple_of(2) {
             return None;
         }
@@ -82,6 +142,41 @@ impl Cursor {
         let path = String::from_utf8(bytes?).ok()?;
         path.starts_with("pages/").then_some(path)
     }
+}
+
+/// Is `text` lower-case hexadecimal of a length in `lengths`?
+fn is_hex(text: &str, lengths: std::ops::RangeInclusive<usize>) -> bool {
+    lengths.contains(&text.len())
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// A whole number in its one spelling (digits only, no leading zero): a cursor that is not what this service
+/// would have written is not one it gave out.
+fn canonical(digits: &str) -> Option<u64> {
+    let number: u64 = digits.parse().ok()?;
+    (number.to_string() == digits).then_some(number)
+}
+
+/// A short, stable key for a change: FNV-1a over its block id. It only has to tell the changes of one short
+/// list apart, and it must not be the id itself.
+fn change_key(block_id: &str) -> String {
+    fnv_hex(block_id)
+}
+
+/// What an offset cursor is stamped with: the tip the list was computed for and which list it is, so a cursor
+/// of another tip, or of another list, is not followed.
+fn list_stamp(tip: &str, list: &str) -> String {
+    fnv_hex(&format!("{tip}|{list}"))
+}
+
+/// FNV-1a over the bytes, as 16 lower-case hexadecimal digits.
+fn fnv_hex(text: &str) -> String {
+    let hash = text.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |hash, b| {
+        (hash ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+    });
+    format!("{hash:016x}")
 }
 
 fn hex_digit(nibble: u8) -> char {
@@ -156,28 +251,14 @@ pub struct RawInfo {
     pub kind: String,
 }
 
-/// What a read of the API cannot give yet. Each names the read that will, so the answer says what is missing
-/// and a client can tell one gap from another.
+/// What a read of the API cannot give yet. Each names the filter that is not offered, so the answer says what
+/// is missing and a client can tell one gap from another.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Feature {
     /// The `tag` filter of the list of pages.
     TagFilter,
     /// The `changed_since` filter of the list of pages.
     ChangedSince,
-    /// The history of a page.
-    History,
-    /// One recorded change.
-    Revision,
-    /// The difference between two points, for one page.
-    Diff,
-    /// The pages that link to a page.
-    Backlinks,
-    /// The wiki's link health.
-    Health,
-    /// Search.
-    Search,
-    /// Recent changes.
-    Changes,
 }
 
 impl Feature {
@@ -186,13 +267,6 @@ impl Feature {
         match self {
             Feature::TagFilter => "tag-filter",
             Feature::ChangedSince => "changed-since",
-            Feature::History => "history",
-            Feature::Revision => "revision",
-            Feature::Diff => "diff",
-            Feature::Backlinks => "backlinks",
-            Feature::Health => "health",
-            Feature::Search => "search",
-            Feature::Changes => "changes",
         }
     }
 }
@@ -202,7 +276,7 @@ impl Feature {
 pub enum ApiError {
     /// The read failed for a reason the page view has too.
     Read(ReadError),
-    /// This build does not offer the read yet.
+    /// This build does not offer the filter yet.
     NotAvailable(Feature),
     /// The cursor is not one this service gave out.
     InvalidCursor,
@@ -231,12 +305,6 @@ impl std::fmt::Display for ApiError {
 }
 
 impl std::error::Error for ApiError {}
-
-/// The result type of a read that has no data type yet: it has no values, so a stub can only be an error and
-/// the surface cannot be written to depend on a shape that is not decided. The task that fills the read in
-/// replaces this with its own type.
-#[derive(Debug, Clone, Copy)]
-pub enum Pending {}
 
 /// The title's namespace: the part before the last `/`, if there is one.
 fn namespace_of(title: &str) -> Option<&str> {
@@ -270,8 +338,9 @@ impl ReadService {
         if filter.changed_since.is_some() {
             return Err(ApiError::NotAvailable(Feature::ChangedSince));
         }
-        let after = match after {
-            Some(cursor) => Some(Cursor::decode(&cursor.0).ok_or(ApiError::InvalidCursor)?),
+        let after = match after.map(Cursor::position) {
+            Some(Some(Position::Path(path))) => Some(path),
+            Some(_) => return Err(ApiError::InvalidCursor),
             None => None,
         };
         let limit = limit.clamp(1, MAX_PAGE_SIZE);
@@ -337,68 +406,15 @@ impl ReadService {
             _ => None,
         })
     }
-
-    /// The changes to one page, newest first. **Stub** (T5 owns the read).
-    pub fn api_history(
-        &self,
-        _wiki: &WikiRecord,
-        _view: Option<&str>,
-        _title: &str,
-    ) -> Result<Pending, ApiError> {
-        Err(ApiError::NotAvailable(Feature::History))
-    }
-
-    /// One recorded change, by the id of its step in the history. **Stub** (T5 owns the read).
-    pub fn api_revision(&self, _wiki: &WikiRecord, _id: &str) -> Result<Pending, ApiError> {
-        Err(ApiError::NotAvailable(Feature::Revision))
-    }
-
-    /// What changed in one page between two points of the history. `path` is the page's storage path: there
-    /// is no read of a whole tree, so there is no way to ask for one. **Stub** (T5 owns the read).
-    pub fn api_diff(
-        &self,
-        _wiki: &WikiRecord,
-        _from: Option<&str>,
-        _to: Option<&str>,
-        _path: &str,
-    ) -> Result<Pending, ApiError> {
-        Err(ApiError::NotAvailable(Feature::Diff))
-    }
-
-    /// The pages that link to the page titled `title`. **Stub** (T6 owns the link graph).
-    pub fn api_backlinks(
-        &self,
-        _wiki: &WikiRecord,
-        _view: Option<&str>,
-        _title: &str,
-    ) -> Result<Pending, ApiError> {
-        Err(ApiError::NotAvailable(Feature::Backlinks))
-    }
-
-    /// The wiki's link health: wanted pages, ambiguous and broken links. **Stub** (T6 owns it).
-    pub fn api_health(&self, _wiki: &WikiRecord, _view: Option<&str>) -> Result<Pending, ApiError> {
-        Err(ApiError::NotAvailable(Feature::Health))
-    }
-
-    /// Search over the wiki's pages. **Stub** (T6 owns it).
-    pub fn api_search(
-        &self,
-        _wiki: &WikiRecord,
-        _view: Option<&str>,
-        _query: &str,
-    ) -> Result<Pending, ApiError> {
-        Err(ApiError::NotAvailable(Feature::Search))
-    }
-
-    /// The wiki's recent changes. **Stub** (T6 owns it).
-    pub fn api_changes(
-        &self,
-        _wiki: &WikiRecord,
-        _view: Option<&str>,
-    ) -> Result<Pending, ApiError> {
-        Err(ApiError::NotAvailable(Feature::Changes))
-    }
 }
+
+mod discover;
+mod past;
+
+pub use discover::{
+    BacklinkAnswer, BacklinkPage, ChangePage, HealthList, HealthPage, HealthRows, StaleScan,
+};
+pub use past::HistoryAnswer;
 
 #[cfg(test)]
 mod tests;

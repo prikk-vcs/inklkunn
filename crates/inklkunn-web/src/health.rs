@@ -97,6 +97,80 @@ impl Kind {
     }
 }
 
+/// What would resolve a row: the pages say it in words, the read API as a code (the words are the client's).
+/// One list, so the two cannot disagree about which row wants which.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Resolve {
+    /// A wanted title: add a page with it, or change the links.
+    WantedAdd,
+    /// A page nothing links to: link to it.
+    Orphan,
+    /// A page that links nowhere: add links from it.
+    DeadEnd,
+    /// A redirect whose target is not a page.
+    Broken,
+    /// Redirects that lead round in a circle.
+    Loop,
+    /// A chain of redirects that is too long.
+    Long,
+    /// A redirect whose target is itself a redirect.
+    Double,
+    /// A page marked as needing help.
+    Help,
+    /// A page that has gone long without a change.
+    Review,
+}
+
+impl Resolve {
+    pub(crate) const fn key(self) -> Key {
+        match self {
+            Resolve::WantedAdd => Key::HealthWantedAction,
+            Resolve::Orphan => Key::HealthOrphansAction,
+            Resolve::DeadEnd => Key::HealthDeadEndsAction,
+            Resolve::Broken => Key::HealthActionBroken,
+            Resolve::Loop => Key::HealthActionLoop,
+            Resolve::Long => Key::HealthActionLong,
+            Resolve::Double => Key::HealthActionDouble,
+            Resolve::Help => Key::HealthHelpAction,
+            Resolve::Review => Key::HealthStaleAction,
+        }
+    }
+
+    /// The stable code of the read API.
+    pub(crate) const fn code(self) -> &'static str {
+        match self {
+            Resolve::WantedAdd => "add-page-or-fix-links",
+            Resolve::Orphan => "link-to-it",
+            Resolve::DeadEnd => "link-from-it",
+            Resolve::Broken => "retarget-or-remove",
+            Resolve::Loop => "break-the-loop",
+            Resolve::Long | Resolve::Double => "point-at-final-page",
+            Resolve::Help => "finish-and-unmark",
+            Resolve::Review => "review",
+        }
+    }
+
+    /// What is wrong with a redirect, and what resolves it.
+    pub(crate) const fn of_redirect(kind: RedirectIssueKind) -> Resolve {
+        match kind {
+            RedirectIssueKind::Broken => Resolve::Broken,
+            RedirectIssueKind::Loop => Resolve::Loop,
+            RedirectIssueKind::TooLong => Resolve::Long,
+            RedirectIssueKind::Double => Resolve::Double,
+        }
+    }
+
+    /// The sentence that says what is wrong with the redirect (only for the redirects).
+    const fn problem(self) -> Key {
+        match self {
+            Resolve::Loop => Key::HealthProblemLoop,
+            Resolve::Long => Key::HealthProblemLong,
+            Resolve::Double => Key::HealthProblemDouble,
+            _ => Key::HealthProblemBroken,
+        }
+    }
+}
+
 // ------------------------------------------------------------------------------------ the index page
 
 struct ListLink {
@@ -207,14 +281,14 @@ fn rows_of(
     stale: Option<&inklkunn_core::read::StaleList>,
     notes: &mut Vec<String>,
 ) -> (Vec<String>, Vec<Vec<Cell>>) {
-    let action = |key| Cell::text(page.get(key));
+    let action = |resolve: Resolve| Cell::text(page.get(resolve.key()));
     match kind {
         Kind::Wanted => {
             let rows = graph
                 .wanted()
                 .into_iter()
                 .map(|w| {
-                    let mut act = action(Key::HealthWantedAction);
+                    let mut act = action(Resolve::WantedAdd);
                     act.link = Some((
                         t.msg(Key::HealthSeeLinks).with("title", &w.title).text(),
                         format!("/{}/-/links/{}", wiki.slug, encode_title(&w.title)),
@@ -238,9 +312,9 @@ fn rows_of(
         }
         Kind::Orphans | Kind::DeadEnds => {
             let (pages, key) = if kind == Kind::Orphans {
-                (graph.orphans(), Key::HealthOrphansAction)
+                (graph.orphans(), Resolve::Orphan)
             } else {
-                (graph.dead_ends(), Key::HealthDeadEndsAction)
+                (graph.dead_ends(), Resolve::DeadEnd)
             };
             let rows = pages
                 .into_iter()
@@ -261,23 +335,12 @@ fn rows_of(
                 .redirect_issues()
                 .iter()
                 .map(|i| {
-                    let (problem, act) = match i.kind {
-                        RedirectIssueKind::Broken => {
-                            (Key::HealthProblemBroken, Key::HealthActionBroken)
-                        }
-                        RedirectIssueKind::Loop => (Key::HealthProblemLoop, Key::HealthActionLoop),
-                        RedirectIssueKind::TooLong => {
-                            (Key::HealthProblemLong, Key::HealthActionLong)
-                        }
-                        RedirectIssueKind::Double => {
-                            (Key::HealthProblemDouble, Key::HealthActionDouble)
-                        }
-                    };
+                    let resolve = Resolve::of_redirect(i.kind.clone());
                     vec![
                         Cell::page(i.entry.title.clone(), page_href(wiki, &i.entry.title)),
                         Cell::text(i.target.clone()),
-                        action(problem),
-                        action(act),
+                        Cell::text(page.get(resolve.problem())),
+                        action(resolve),
                     ]
                 })
                 .collect();
@@ -305,8 +368,8 @@ fn rows_of(
                     };
                     vec![
                         Cell::page(p.entry.title.clone(), page_href(wiki, &p.entry.title)),
-                        action(mark),
-                        action(Key::HealthHelpAction),
+                        Cell::text(page.get(mark)),
+                        action(Resolve::Help),
                     ]
                 })
                 .collect();
@@ -335,7 +398,7 @@ fn rows_of(
                             vec![
                                 Cell::page(p.entry.title.clone(), page_href(wiki, &p.entry.title)),
                                 Cell::text(last),
-                                action(Key::HealthStaleAction),
+                                action(Resolve::Review),
                             ]
                         })
                         .collect()

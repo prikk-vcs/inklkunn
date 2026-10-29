@@ -53,6 +53,7 @@ pub(crate) mod openapi;
 pub(crate) mod problem;
 mod reply;
 mod request;
+mod shape;
 
 pub use inklkunn_core::read::MAX_PAGE_SIZE;
 

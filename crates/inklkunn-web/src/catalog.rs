@@ -676,6 +676,10 @@ keys! {
     HeadFeedPage => "head.feed_page",
     HeadMarkdown => "head.markdown",
     HeadSearch => "head.search",
+    // the API's problem for a change that is not in the history (handoff 003 T8, completion)
+    ProblemChangeNotFoundTitle => "problem.change_not_found.title",
+    ProblemChangeNotFoundDetail => "problem.change_not_found.detail",
+    ProblemChangeNotFoundHint => "problem.change_not_found.hint",
 }
 
 /// A typed value for a placeholder. Text is HTML-escaped; a link is an escaped label plus an `href` the
