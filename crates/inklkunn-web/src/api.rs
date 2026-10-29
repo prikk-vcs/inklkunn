@@ -51,7 +51,7 @@ pub(crate) mod describe;
 pub(crate) mod endpoints;
 pub(crate) mod openapi;
 pub(crate) mod problem;
-mod reply;
+pub(crate) mod reply;
 mod request;
 mod shape;
 

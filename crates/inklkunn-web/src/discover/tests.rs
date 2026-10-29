@@ -9,8 +9,11 @@ fn a_json_string_cannot_be_broken_out_of() {
     assert_eq!(json_string("line\nbreak\ttab"), "\"line\\nbreak\\ttab\"");
     assert_eq!(json_string("\u{1}\u{2028}"), "\"\\u0001\\u2028\"");
     assert_eq!(json_string("日本語 é"), "\"日本語 é\"");
-    // `</script>` has no special meaning in a document of its own, and is escaped text in any case.
-    assert_eq!(json_string("</script>"), "\"</script>\"");
+    // The three characters of markup are escapes, as in the API's documents (R10).
+    assert_eq!(
+        json_string("</script> & <b>"),
+        "\"\\u003c/script\\u003e \\u0026 \\u003cb\\u003e\""
+    );
 }
 
 #[test]

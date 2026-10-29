@@ -408,6 +408,28 @@ async fn what_an_author_wrote_cannot_break_out_of_the_json_ld() {
     );
     assert_eq!(doc.get("description").unwrap().text(), Some(hostile));
     assert!(doc.get("x").is_none());
+    // The three characters of markup are written as escapes, as the API writes them (R10).
+    let body = a.body();
+    assert!(
+        !body.contains(['<', '>', '&']),
+        "markup characters in the JSON-LD: {body}"
+    );
+    assert!(
+        body.contains("\\u003c/script\\u003e\\u003cscript\\u003e"),
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn the_site_description_writes_markup_characters_as_json_escapes() {
+    let w = World::new("handbook", "Docs & <More>", &[]);
+    let a = get(&w, "/handbook/-/site.json").await;
+    assert_eq!(a.status, 200, "{}", a.body());
+    let body = a.body();
+    assert!(!body.contains(['<', '>', '&']), "{body}");
+    assert!(body.contains("Docs \\u0026 \\u003cMore\\u003e"), "{body}");
+    let doc = json::parse(&body).unwrap();
+    assert_eq!(doc.get("name").unwrap().text(), Some("Docs & <More>"));
 }
 
 #[tokio::test]

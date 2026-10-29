@@ -26,6 +26,7 @@ use axum::response::{IntoResponse, Response};
 use inklkunn_core::read::PageOutcome;
 use inklkunn_store::{Visibility, WikiRecord};
 
+use crate::api::reply::markup_escape;
 use crate::catalog::Key;
 use crate::config::Origin;
 use crate::feed::escape as xml;
@@ -216,7 +217,8 @@ pub(crate) fn query_escape(text: &str) -> String {
 
 // ------------------------------------------------------------------------------------ the documents
 
-/// `text` as a JSON string, quotes included.
+/// `text` as a JSON string, quotes included. `<`, `>` and `&` are written as escapes, as the API does, so no
+/// markup of an author's is in a document that is not HTML (a response sniffed as HTML, a body pasted into a page).
 pub(crate) fn json_string(text: &str) -> String {
     let mut out = String::with_capacity(text.len() + 2);
     out.push('"');
@@ -230,7 +232,10 @@ pub(crate) fn json_string(text: &str) -> String {
             c if (c as u32) < 0x20 || matches!(c, '\u{2028}' | '\u{2029}') => {
                 let _ = write!(out, "\\u{:04x}", c as u32);
             }
-            c => out.push(c),
+            c => match markup_escape(c) {
+                Some(escape) => out.push_str(escape),
+                None => out.push(c),
+            },
         }
     }
     out.push('"');

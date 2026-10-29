@@ -45,15 +45,25 @@ impl Reply {
     }
 }
 
+/// The JSON escape of one of the three characters of markup (`<`, `>`, `&`), or `None` for any other. Every
+/// JSON document the service writes (the API's, the discovery documents') escapes exactly these.
+pub(crate) fn markup_escape(c: char) -> Option<&'static str> {
+    match c {
+        '<' => Some("\\u003c"),
+        '>' => Some("\\u003e"),
+        '&' => Some("\\u0026"),
+        _ => None,
+    }
+}
+
 /// `bytes` of a JSON document with the three characters of markup written as JSON escapes.
 fn no_markup(bytes: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(bytes.len());
     for byte in bytes {
-        match byte {
-            b'<' => out.extend_from_slice(b"\\u003c"),
-            b'>' => out.extend_from_slice(b"\\u003e"),
-            b'&' => out.extend_from_slice(b"\\u0026"),
-            other => out.push(*other),
+        match markup_escape(char::from(*byte)) {
+            // The three are ASCII, and a byte of a multi-byte character is never one of them.
+            Some(escape) if byte.is_ascii() => out.extend_from_slice(escape.as_bytes()),
+            _ => out.push(*byte),
         }
     }
     out
