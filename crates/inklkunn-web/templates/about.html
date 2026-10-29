@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+<p>{{ license }}</p>
+<p>{{ view }}</p>
+<p class="badge">{{ badge }}</p>
+<section aria-labelledby="accessibility">
+<h2 id="accessibility">{{ page.get(Key::AccessibilityHeading) }}</h2>
+<p>{{ page.get(Key::AccessibilityTools) }}</p>
+<p>{{ page.get(Key::AccessibilityPeople) }}</p>
+{% if preview %}<p>{{ page.get(Key::LanguagePreviewNote) }}</p>
+{% endif %}</section>
+{% endblock %}

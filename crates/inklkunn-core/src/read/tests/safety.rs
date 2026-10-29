@@ -224,3 +224,10 @@ fn a_title_whose_path_exceeds_either_cap_is_refused_before_any_prikk_call() {
     let (out, _) = w.counted(|| w.service.page(&w.wiki, None, &ok, &Env::EN));
     assert!(matches!(out, Ok(PageOutcome::Missing { .. })), "{out:?}");
 }
+
+#[test]
+fn raw_html_is_escaped_while_the_profile_declares_no_subset_and_handed_to_the_sanitizer_once_it_does()
+ {
+    assert_eq!(author_html_for(&[]), AuthorHtml::Escape);
+    assert_eq!(author_html_for(&["mark"]), AuthorHtml::PassToSanitizer);
+}

@@ -95,7 +95,7 @@ summary { cursor: pointer; }
 
 /* Targets of at least 24 CSS px (WCAG 2.5.8). A link in running text is exempt and stays inline; a link that
    stands alone is a block of its own, so a minimum size means something. */
-header a, footer a, nav a, th a, td a, main > p > a, .skip-link {
+header a, footer a, nav a, th a, td a, main > p > a, .choices a, .wikis a, .skip-link {
   display: inline-block;
   min-block-size: 24px;
   min-inline-size: 24px;
@@ -126,6 +126,37 @@ button[aria-current] {
   border-color: var(--fg);
   border-width: 2px;
 }
+
+/* A wiki's pages (RFC 003 T4): its navigation, the notes above a page, the contents list, the line under a page
+   that carries the license and the verification badge. Nothing here is told by colour alone. */
+.wiki-nav ul, .contents ul, .wikis {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.wiki-nav ul { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin-block-end: 1rem; }
+.wikis > li { margin-block-end: 0.5rem; }
+.view-note, .page-note { color: var(--muted); margin-block-end: 0.5rem; }
+.stale-note {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--control);
+  border-inline-start-width: 4px;
+}
+.contents { margin-block-end: 1rem; }
+.contents .toc-3 { padding-inline-start: 1rem; }
+.contents .toc-4, .contents .toc-5, .contents .toc-6 { padding-inline-start: 2rem; }
+.page-body pre { overflow-x: auto; }
+.page-body img { max-inline-size: 100%; block-size: auto; }
+.page-info {
+  margin-block-start: 2rem;
+  padding-block-start: 0.75rem;
+  border-block-start: 1px solid var(--line);
+  color: var(--muted);
+}
+.badge { font-weight: 600; }
+button:disabled { color: var(--muted); cursor: not-allowed; }
+.stages { padding-inline-start: 1.25rem; }
+code { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 0.95em; }
 
 /* One focus ring for everything focusable, standing off the control. Never removed. */
 :focus-visible {

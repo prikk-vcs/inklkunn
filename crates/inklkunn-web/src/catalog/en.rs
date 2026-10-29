@@ -54,4 +54,191 @@ pub const CATALOG: &[Entry] = &[
         "misdirected.body",
         "This server does not serve pages at that address. Check the address you typed, or tell the person who runs this server.",
     ),
+    // wiki shell
+    msg("wiki.nav", "This wiki"),
+    msg("wiki.nav_about", "About this wiki"),
+    msg("wiki.nav_verification", "Verification"),
+    msg("wiki.nav_wikis", "All wikis"),
+    msg("wiki.view_in_use", "You are reading the view {view}."),
+    msg("title.page", "{page} · {wiki} · {product}"),
+    // a page
+    msg("page.redirected_from", "Redirected from {title}."),
+    msg("page.alias_from", "{title} is another title of this page."),
+    msg(
+        "page.matched_loosely",
+        "You asked for {title}. This is the page with the closest title.",
+    ),
+    msg(
+        "page.stale",
+        "This page may be out of date. The server could not ask for the newest version just now, so this is the last version it has.",
+    ),
+    msg("page.contents", "On this page"),
+    msg("page.license", "License: {license}"),
+    msg("page.propose_disabled", "Propose a change"),
+    msg(
+        "page.propose_note",
+        "Proposals arrive with the next release.",
+    ),
+    // a page that is not there, or not one
+    msg("missing.heading", "This page does not exist yet"),
+    msg("missing.body", "No page in {wiki} has the title {title}."),
+    msg(
+        "missing.invite",
+        "You can propose it when proposals arrive with the next release.",
+    ),
+    msg("ambiguous.heading", "More than one page fits"),
+    msg(
+        "ambiguous.body",
+        "Several pages could be the one called {title}. Choose one.",
+    ),
+    msg("redirect.heading", "This redirect does not lead to a page"),
+    msg(
+        "redirect.dangling",
+        "The page {title} sends readers to {target}, and no page has that title.",
+    ),
+    msg(
+        "redirect.loop",
+        "The page {title} sends readers round in a circle.",
+    ),
+    msg(
+        "redirect.too_long",
+        "The page {title} sends readers through too many other pages.",
+    ),
+    msg("unreadable.heading", "This page cannot be shown"),
+    msg(
+        "unreadable.not_text",
+        "The file of this page is not text that this site can read.",
+    ),
+    msg(
+        "unreadable.info",
+        "The information at the top of this page cannot be read.",
+    ),
+    msg(
+        "unreadable.info_long",
+        "The information at the top of this page is too long.",
+    ),
+    msg(
+        "unreadable.advice",
+        "The people who write this wiki can fix it.",
+    ),
+    msg("unavailable.heading", "This page could not be read now"),
+    msg(
+        "unavailable.body",
+        "Try again in a little while. If it keeps happening, tell the person who runs this server.",
+    ),
+    msg("no_view.heading", "There is no such view"),
+    msg("no_view.body", "This wiki has no view called {view}."),
+    msg("invalid_title.heading", "That title cannot name a page"),
+    msg(
+        "invalid_title.body",
+        "A title cannot be empty, cannot have an empty part between slashes, and cannot be longer than the wiki can store.",
+    ),
+    // verification
+    msg("assurance.verified", "Verified"),
+    msg("assurance.verification_failed", "Verification failed"),
+    msg(
+        "assurance.could_not_be_checked_now",
+        "Could not be checked now",
+    ),
+    msg("assurance.not_checked_yet", "Not checked yet"),
+    msg("badge.sentence", "Verification: {state}"),
+    msg("title.verification", "Verification · {wiki} · {product}"),
+    msg("verification.heading", "Verification"),
+    msg(
+        "explain.verification",
+        "Verification asks prikk, the program that keeps this wiki's history, to check every part of that history and its signatures. “Verified” means the last check found nothing wrong. It does not mean the pages are correct.",
+    ),
+    msg("verification.explain_summary", "What does this mean?"),
+    msg(
+        "verification.state_verified",
+        "The last check found nothing wrong.",
+    ),
+    msg(
+        "verification.state_failed",
+        "The last check found a problem with this wiki's history. The person who runs this server can look into it.",
+    ),
+    msg(
+        "verification.state_could_not",
+        "The last check could not be completed. That says nothing about whether the history is sound.",
+    ),
+    msg(
+        "verification.state_unknown",
+        "This wiki has not been checked yet.",
+    ),
+    msg("verification.checked_at", "Last checked: {when}."),
+    msg("verification.check_now", "Check now"),
+    msg(
+        "verification.recent",
+        "A check ran a moment ago, so no new one was started. Wait a little before asking again.",
+    ),
+    msg("verification.found_heading", "What the check found"),
+    msg(
+        "verification.found_intro",
+        "These parts of the check did not come out well:",
+    ),
+    msg(
+        "verification.now_verified",
+        "The check you asked for found nothing wrong.",
+    ),
+    msg(
+        "verification.not_saved",
+        "The result could not be saved, so the label on the pages has not changed.",
+    ),
+    msg(
+        "verification.busy",
+        "The server is busy with other work, so the check did not run. Try again in a little while.",
+    ),
+    msg(
+        "verification.limit",
+        "The check needs more time or memory than this server is set up to give it. Tell the person who runs this server.",
+    ),
+    msg(
+        "verification.unavailable",
+        "The check could not be started. Tell the person who runs this server.",
+    ),
+    // about, and the list of wikis
+    msg("title.about", "About {wiki} · {product}"),
+    msg("about.heading", "About {wiki}"),
+    msg(
+        "about.license",
+        "Unless a page says otherwise, the pages of this wiki are shared under the license {license}.",
+    ),
+    msg("about.view", "The view shown when none is named is {view}."),
+    msg("about.accessibility_heading", "Accessibility statement"),
+    msg(
+        "about.accessibility_tools",
+        "Automated tests check every kind of page on this site for one main heading, landmarks, a link that skips to the content, labels, text alternatives, language and direction, contrast in the light and dark schemes, visible keyboard focus and large enough targets.",
+    ),
+    msg(
+        "about.accessibility_people",
+        "No person who uses assistive technology has tested this site yet. If something does not work for you, tell the person who runs this server.",
+    ),
+    msg("title.wikis", "Wikis · {product}"),
+    msg("wikis.heading", "Wikis"),
+    msg("wikis.intro", "These are the wikis you can read here."),
+    msg("wikis.none", "There are no wikis you can read here yet."),
+    // transclusion (a page that includes another)
+    msg("transclusion.from", "From {title}"),
+    msg(
+        "transclusion.cycle",
+        "Not included, it would include itself: {chain}",
+    ),
+    msg(
+        "transclusion.too_deep",
+        "Not included, deeper than {limit}: {title}",
+    ),
+    msg(
+        "transclusion.over_budget",
+        "Not included, a page includes only so much: {title}",
+    ),
+    // a request this address does not take
+    msg("title.method_not_allowed", "Not possible here · {product}"),
+    msg(
+        "method_not_allowed.heading",
+        "That is not possible at this address",
+    ),
+    msg(
+        "method_not_allowed.body",
+        "This address can be opened, but not used in that way. Go back and use the links on the page.",
+    ),
 ];

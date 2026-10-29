@@ -66,4 +66,212 @@ pub const CATALOG: &[Entry] = &[
         "misdirected.body",
         "このサーバーは、そのアドレスのページを提供していません。入力したアドレスを確認するか、このサーバーの管理者にお知らせください。",
     ),
+    // wiki shell
+    msg("wiki.nav", "このウィキ"),
+    msg("wiki.nav_about", "このウィキについて"),
+    msg("wiki.nav_verification", "検証"),
+    msg("wiki.nav_wikis", "ウィキの一覧"),
+    msg("wiki.view_in_use", "ビュー「{view}」を表示しています。"),
+    msg("title.page", "{page} · {wiki} · {product}"),
+    // a page
+    msg(
+        "page.redirected_from",
+        "「{title}」からリダイレクトされました。",
+    ),
+    msg(
+        "page.alias_from",
+        "「{title}」はこのページの別のタイトルです。",
+    ),
+    msg(
+        "page.matched_loosely",
+        "「{title}」を探しています。タイトルが最も近いページを表示しています。",
+    ),
+    msg(
+        "page.stale",
+        "このページは古い可能性があります。今は最新版を取得できなかったため、サーバーが持っている最後の版を表示しています。",
+    ),
+    msg("page.contents", "このページの内容"),
+    msg("page.license", "ライセンス: {license}"),
+    msg("page.propose_disabled", "変更を提案する"),
+    msg(
+        "page.propose_note",
+        "提案の機能は、次のリリースで提供されます。",
+    ),
+    // a page that is not there, or not one
+    msg("missing.heading", "このページはまだありません"),
+    msg(
+        "missing.body",
+        "{wiki} に「{title}」というタイトルのページはありません。",
+    ),
+    msg(
+        "missing.invite",
+        "提案の機能が次のリリースで提供されたら、このページを提案できます。",
+    ),
+    msg("ambiguous.heading", "該当するページが複数あります"),
+    msg(
+        "ambiguous.body",
+        "「{title}」に当たるページが複数あります。ひとつ選んでください。",
+    ),
+    msg(
+        "redirect.heading",
+        "このリダイレクトの先にはページがありません",
+    ),
+    msg(
+        "redirect.dangling",
+        "ページ「{title}」は「{target}」へリダイレクトしますが、そのタイトルのページはありません。",
+    ),
+    msg(
+        "redirect.loop",
+        "ページ「{title}」のリダイレクトは、ぐるぐると回り続けます。",
+    ),
+    msg(
+        "redirect.too_long",
+        "ページ「{title}」のリダイレクトは、経由するページが多すぎます。",
+    ),
+    msg("unreadable.heading", "このページは表示できません"),
+    msg(
+        "unreadable.not_text",
+        "このページのファイルは、このサイトが読み取れるテキストではありません。",
+    ),
+    msg(
+        "unreadable.info",
+        "このページの先頭にある情報の部分を読み取れません。",
+    ),
+    msg(
+        "unreadable.info_long",
+        "このページの先頭にある情報の部分が長すぎます。",
+    ),
+    msg(
+        "unreadable.advice",
+        "このウィキを書いている人が直すことができます。",
+    ),
+    msg("unavailable.heading", "今はこのページを読み込めません"),
+    msg(
+        "unavailable.body",
+        "しばらくしてから、もう一度お試しください。それでも解決しない場合は、このサーバーの管理者にお知らせください。",
+    ),
+    msg("no_view.heading", "そのビューはありません"),
+    msg(
+        "no_view.body",
+        "このウィキに「{view}」というビューはありません。",
+    ),
+    msg(
+        "invalid_title.heading",
+        "そのタイトルはページの名前にできません",
+    ),
+    msg(
+        "invalid_title.body",
+        "タイトルを空にすることはできません。スラッシュで区切った部分を空にすることも、ウィキが保存できる長さを超えることもできません。",
+    ),
+    // verification
+    msg("assurance.verified", "検証済み"),
+    msg("assurance.verification_failed", "検証に失敗"),
+    msg("assurance.could_not_be_checked_now", "現在は確認できません"),
+    msg("assurance.not_checked_yet", "まだ確認していません"),
+    msg("badge.sentence", "検証: {state}"),
+    msg("title.verification", "検証 · {wiki} · {product}"),
+    msg("verification.heading", "検証"),
+    msg(
+        "explain.verification",
+        "検証では、このウィキの履歴を保管しているプログラム prikk に、履歴のすべてと署名を確認してもらいます。「検証済み」は、直前の確認で問題が見つからなかったという意味です。ページの内容が正しいという意味ではありません。",
+    ),
+    msg("verification.explain_summary", "これは何を意味しますか"),
+    msg(
+        "verification.state_verified",
+        "直前の確認では、問題は見つかりませんでした。",
+    ),
+    msg(
+        "verification.state_failed",
+        "直前の確認で、このウィキの履歴に問題が見つかりました。このサーバーの管理者が調べることができます。",
+    ),
+    msg(
+        "verification.state_could_not",
+        "直前の確認は最後まで実行できませんでした。履歴に問題があるかどうかについては、何も分かっていません。",
+    ),
+    msg(
+        "verification.state_unknown",
+        "このウィキはまだ確認されていません。",
+    ),
+    msg("verification.checked_at", "最終確認: {when}。"),
+    msg("verification.check_now", "今すぐ確認"),
+    msg(
+        "verification.recent",
+        "つい先ほど確認を実行したため、新しい確認は開始しませんでした。少し待ってからもう一度お試しください。",
+    ),
+    msg("verification.found_heading", "確認の結果"),
+    msg(
+        "verification.found_intro",
+        "確認のうち、次の部分で問題がありました:",
+    ),
+    msg(
+        "verification.now_verified",
+        "いま実行した確認では、問題は見つかりませんでした。",
+    ),
+    msg(
+        "verification.not_saved",
+        "結果を保存できなかったため、ページに表示されるラベルは変わっていません。",
+    ),
+    msg(
+        "verification.busy",
+        "サーバーが他の作業で混み合っているため、確認を実行できませんでした。しばらくしてから、もう一度お試しください。",
+    ),
+    msg(
+        "verification.limit",
+        "この確認には、このサーバーに設定されている以上の時間またはメモリが必要です。このサーバーの管理者にお知らせください。",
+    ),
+    msg(
+        "verification.unavailable",
+        "確認を開始できませんでした。このサーバーの管理者にお知らせください。",
+    ),
+    // about, and the list of wikis
+    msg("title.about", "{wiki} について · {product}"),
+    msg("about.heading", "{wiki} について"),
+    msg(
+        "about.license",
+        "ページに別の記載がない限り、このウィキのページはライセンス {license} で共有されています。",
+    ),
+    msg(
+        "about.view",
+        "ビューを指定しない場合に表示されるのは「{view}」です。",
+    ),
+    msg(
+        "about.accessibility_heading",
+        "アクセシビリティに関する声明",
+    ),
+    msg(
+        "about.accessibility_tools",
+        "このサイトのすべての種類のページについて、自動テストが次の点を確認しています: メインの見出しが一つであること、ランドマーク、本文へ移動するリンク、ラベル、代替テキスト、言語と文字の方向、明るい配色と暗い配色でのコントラスト、キーボードフォーカスの表示、十分な大きさの操作対象。",
+    ),
+    msg(
+        "about.accessibility_people",
+        "支援技術を使っている方による、このサイトの確認はまだ行われていません。うまく使えないところがあれば、このサーバーの管理者にお知らせください。",
+    ),
+    msg("title.wikis", "ウィキ · {product}"),
+    msg("wikis.heading", "ウィキ"),
+    msg("wikis.intro", "ここで読めるウィキの一覧です。"),
+    msg("wikis.none", "ここで読めるウィキはまだありません。"),
+    // transclusion (a page that includes another)
+    msg("transclusion.from", "{title} から"),
+    msg(
+        "transclusion.cycle",
+        "含めません。自分自身を含むことになります: {chain}",
+    ),
+    msg(
+        "transclusion.too_deep",
+        "含めません。{limit} 段より深くなります: {title}",
+    ),
+    msg(
+        "transclusion.over_budget",
+        "含めません。1 ページに含められる量には上限があります: {title}",
+    ),
+    // a request this address does not take
+    msg("title.method_not_allowed", "ここではできません · {product}"),
+    msg(
+        "method_not_allowed.heading",
+        "このアドレスではその操作はできません",
+    ),
+    msg(
+        "method_not_allowed.body",
+        "このアドレスは開くことはできますが、その使い方はできません。前のページに戻って、ページ内のリンクをお使いください。",
+    ),
 ];

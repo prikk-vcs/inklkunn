@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ page.get(Key::VerificationHeading) }}</h1>
+<p class="badge">{{ badge }}</p>
+<p>{{ state_sentence }}</p>
+{% if let Some(when) = checked_at %}<p>{{ when }}</p>
+{% endif %}{% if let Some(result) = result %}<section class="check-result" aria-labelledby="found">
+<h2 id="found">{{ page.get(Key::VerificationFoundHeading) }}</h2>
+{% for line in result.lines %}<p>{{ line }}</p>
+{% endfor %}{% if !result.stages.is_empty() %}<p>{{ page.get(Key::VerificationFoundIntro) }}</p>
+<ul class="stages">
+{% for stage in result.stages %}<li><code>{{ stage }}</code></li>
+{% endfor %}</ul>
+{% endif %}</section>
+{% endif %}<form method="post" action="{{ action }}">
+<button type="submit">{{ page.get(Key::VerificationCheckNow) }}</button>
+</form>
+<details>
+<summary>{{ page.get(Key::VerificationExplainSummary) }}</summary>
+<p>{{ page.get(Key::ExplainVerification) }}</p>
+</details>
+{% endblock %}

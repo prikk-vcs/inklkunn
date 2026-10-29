@@ -34,10 +34,13 @@ pub const LANGUAGE_PATH: &str = "/-/lang";
 pub(crate) const FORM_LIMIT: usize = 4096;
 
 /// What the pages need to know about the site, shared by every handler.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct PageState {
     /// Whether the application origin is `https` (then the language cookie is `Secure`).
     pub https: bool,
+    /// What the wiki pages are built on; `None` serves no wiki at all (every wiki address is then the generic
+    /// not-found page, exactly as for a wiki that does not exist).
+    pub services: Option<std::sync::Arc<crate::services::Services>>,
 }
 
 /// One language the switcher offers.
@@ -58,8 +61,8 @@ pub struct Choice {
 #[derive(Clone, Debug)]
 pub struct Page {
     t: T,
-    back: String,
-    switcher: bool,
+    pub(crate) back: String,
+    pub(crate) switcher: bool,
 }
 
 impl Page {
@@ -86,36 +89,36 @@ impl Page {
         self.t
     }
 
-    fn get(&self, key: Key) -> String {
+    pub(crate) fn get(&self, key: Key) -> String {
         self.t.get(key)
     }
 
     /// A page title: the message with `{product}` filled.
-    fn title(&self, key: Key) -> String {
+    pub(crate) fn title(&self, key: Key) -> String {
         self.t.msg(key).product().text()
     }
 
-    fn lang_tag(&self) -> &'static str {
+    pub(crate) fn lang_tag(&self) -> &'static str {
         self.t.lang().tag()
     }
 
-    fn dir(&self) -> &'static str {
+    pub(crate) fn dir(&self) -> &'static str {
         self.t.lang().dir()
     }
 
-    fn product(&self) -> &'static str {
+    pub(crate) fn product(&self) -> &'static str {
         PRODUCT
     }
 
-    fn stylesheet(&self) -> &'static str {
+    pub(crate) fn stylesheet(&self) -> &'static str {
         style::path()
     }
 
-    fn language_path(&self) -> &'static str {
+    pub(crate) fn language_path(&self) -> &'static str {
         LANGUAGE_PATH
     }
 
-    fn footer_line(&self) -> String {
+    pub(crate) fn footer_line(&self) -> String {
         self.t
             .msg(Key::LayoutFooter)
             .product()
@@ -223,7 +226,7 @@ fn render_language_refused(page: &Page) -> Result<String, askama::Error> {
     .render()
 }
 
-fn render_form_refused(page: &Page) -> Result<String, askama::Error> {
+pub(crate) fn render_form_refused(page: &Page) -> Result<String, askama::Error> {
     NoticeTpl {
         page,
         title: page.title(Key::TitleFormRefused),
@@ -235,7 +238,7 @@ fn render_form_refused(page: &Page) -> Result<String, askama::Error> {
 }
 
 /// A page answer: the HTML, the status, and the language it is in.
-fn html(status: StatusCode, language: Lang, body: String) -> Response {
+pub(crate) fn html(status: StatusCode, language: Lang, body: String) -> Response {
     (
         status,
         [
@@ -248,7 +251,7 @@ fn html(status: StatusCode, language: Lang, body: String) -> Response {
 }
 
 /// An answer that is not a page: one catalog sentence as plain text.
-fn plain(status: StatusCode, language: Lang, body: String) -> Response {
+pub(crate) fn plain(status: StatusCode, language: Lang, body: String) -> Response {
     (
         status,
         [
@@ -262,7 +265,11 @@ fn plain(status: StatusCode, language: Lang, body: String) -> Response {
 
 /// Turn a rendered page into an answer. A template that cannot draw is a failure said in one sentence, never a
 /// silent empty page.
-fn answer(status: StatusCode, page: &Page, rendered: Result<String, askama::Error>) -> Response {
+pub(crate) fn answer(
+    status: StatusCode,
+    page: &Page,
+    rendered: Result<String, askama::Error>,
+) -> Response {
     match rendered {
         Ok(body) => html(status, page.t.lang(), body),
         Err(_) => plain(
@@ -277,6 +284,20 @@ fn answer(status: StatusCode, page: &Page, rendered: Result<String, askama::Erro
 pub(crate) async fn not_found(page: Page) -> Response {
     let rendered = render_not_found(&page);
     answer(StatusCode::NOT_FOUND, &page, rendered)
+}
+
+/// An address that exists but does not take the request's method (405): a page in the visitor's language.
+/// (The `Allow` header is the router's own, set on the method router before this fallback answers.)
+pub(crate) async fn method_not_allowed(page: Page) -> Response {
+    let rendered = NoticeTpl {
+        page: &page,
+        title: page.title(Key::TitleMethodNotAllowed),
+        heading: page.get(Key::MethodNotAllowedHeading),
+        body: page.get(Key::MethodNotAllowedBody),
+        link: None,
+    }
+    .render();
+    answer(StatusCode::METHOD_NOT_ALLOWED, &page, rendered)
 }
 
 /// The content origin's 404: it serves no page (its policy allows no stylesheet and no form), so the same

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+{% if let Some(note) = view_note %}<p class="view-note">{{ note }}</p>
+{% endif %}{% for note in notes %}<p class="page-note">{{ note }}</p>
+{% endfor %}{% if let Some(text) = stale %}<p class="stale-note" role="note">{{ text }}</p>
+{% endif %}{% if !toc.is_empty() %}<nav class="contents" aria-label="{{ contents_label }}">
+<ul>
+{% for h in toc %}<li class="toc-{{ h.level }}"><a href="#{{ h.id }}">{{ h.text }}</a></li>
+{% endfor %}</ul>
+</nav>
+{% endif %}<article class="page-body"{% if let Some(language) = body_lang %} lang="{{ language }}"{% endif %}>
+{{ body }}
+</article>
+<div class="page-info">
+<p>{{ license }}</p>
+<p class="badge">{{ badge }}</p>
+<p><button type="button" disabled>{{ page.get(Key::PageProposeDisabled) }}</button> {{ page.get(Key::PageProposeNote) }}</p>
+</div>
+{% endblock %}

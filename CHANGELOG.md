@@ -346,3 +346,30 @@ Handoff 003, the notes before T4 (the architect's review of 2026-10-29).
   per new state); `cat` and `extract` read at the block, so a write between two calls of a request cannot cache newer
   content under an older key. The first miss at a new tip is four prikk calls (the list, the log, the extract, the
   `cat`), a hit none.
+
+Handoff 003 T4 (the page view; RFC 003 D-1, D-5).
+
+- **A wiki's pages are served.** `/<wiki>/<Title>` (and `/<wiki>/~<view>/<Title>`), with the wiki's front door
+  (`/<wiki>`: the page *Home*, else the about page), `/<wiki>/-/about` (license, default view, the accessibility
+  statement that says no person using assistive technology has tested the site yet), `/<wiki>/-/verification` and
+  `/-/wikis`. A title that resolves through an alias or a redirect says *redirected from*; a near title says what
+  was asked; a missing page is a 404 that says so, with *Propose a change* shown disabled and a note that proposals
+  arrive with the next release (no dead link); an ambiguous title lists its candidates; a redirect that leads nowhere,
+  a page that cannot be shown, an unknown view and a title that cannot name a page each have a page in the reader's
+  language. A page's own headings move down one level (its title is the page's one `h1`).
+- **Existence is neutral.** A wiki that is not there and a wiki the visitor may not read give the same answer, byte
+  for byte, for every address under it, including the verification form.
+- **The badge is the record's.** Every page shows *Verification: Verified | Verification failed | Could not be checked
+  now | Not checked yet*, read from the wiki record for that request, never from a cache; a page served stale says
+  *Could not be checked now* whatever the record says. The verification page runs `verify` on request (a form, same-site
+  only, never repeated within a minute), records the outcome, names the stages that did not come out well, and keeps a
+  check that could not run (busy, over its limit, not started) apart from a verdict.
+- **Serve-stale** (OP-03): when prikk cannot be asked, a page whose copy this server holds for the last tip it saw is
+  served labelled as possibly out of date; a page it does not hold is *could not be read now* (503, `Retry-After`),
+  never rendered from nothing.
+- **405 and undecodable addresses are pages** in the reader's language with the shared headers.
+- **Settings** (all optional, see `inklkunn` config): `INKLKUNN_TIP_TTL_SECS` (5), `INKLKUNN_INDEX_MAX_MIB` (4096; the
+  index build extracts the wiki into the data directory for a moment, so it needs that much free disk),
+  `INKLKUNN_INDEX_MAX_FILES` (200000), `INKLKUNN_PAGE_MAX_KIB` (1024), and `INKLKUNN_TRUSTED_PROXIES`, which ends the
+  start-up warning for a reachable bind. *Not yet:* sign-in is not served, so every visitor is anonymous and only public
+  wikis can be read.

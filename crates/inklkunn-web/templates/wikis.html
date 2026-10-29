@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ page.title(Key::TitleWikis) }}{% endblock %}
+{% block body %}
+<h1>{{ page.get(Key::WikisHeading) }}</h1>
+{% if wikis.is_empty() %}<p>{{ page.get(Key::WikisNone) }}</p>
+{% else %}<p>{{ page.get(Key::WikisIntro) }}</p>
+<ul class="wikis">
+{% for w in wikis %}<li><a href="{{ w.href }}">{{ w.name }}</a></li>
+{% endfor %}</ul>
+{% endif %}{% endblock %}

@@ -5,17 +5,20 @@
 //! declared, and a test holds the table to the URL scheme's one rule: nothing but a wiki's slug, then the
 //! reserved prefix `-/`, may precede a page title, so no title can ever be shadowed by a route.
 
+use std::sync::Arc;
+
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::middleware::from_fn;
 use axum::routing::{MethodRouter, get};
-use inklkunn_core::{Guard, RouteError, RouteTable};
+use inklkunn_core::{Action, Guard, RouteError, RouteTable};
 
 use crate::config::{Scheme, WebConfig};
 use crate::headers::{self, Surface};
 use crate::origin::Dispatch;
 use crate::pages::{self, LANGUAGE_PATH, PageState};
-use crate::{probe, style};
+use crate::services::Services;
+use crate::{probe, style, wiki};
 
 /// One declared entry point and the handler that serves it.
 struct Spec {
@@ -56,6 +59,40 @@ fn application_specs() -> Vec<Spec> {
             },
             handler: || get(style::serve),
         },
+        Spec {
+            path: "/-/wikis",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(wiki::wikis),
+        },
+        Spec {
+            path: "/{slug}",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(wiki::front),
+        },
+        Spec {
+            path: "/{slug}/-/about",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(wiki::about),
+        },
+        Spec {
+            path: "/{slug}/-/verification",
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Action(Action::Read),
+            handler: || {
+                get(wiki::verification)
+                    .post(wiki::check_now)
+                    .layer(DefaultBodyLimit::max(pages::FORM_LIMIT))
+            },
+        },
+        Spec {
+            path: "/{slug}/{*title}",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(wiki::view_page),
+        },
     ]
 }
 
@@ -71,6 +108,14 @@ pub fn application_table() -> Result<RouteTable, RouteError> {
 /// The application origin's router, built from its table. Anything not declared is a 404 page in the visitor's
 /// language that carries the same headers as every other response.
 pub fn application(https: bool) -> Result<Router, RouteError> {
+    application_with(https, None)
+}
+
+/// [`application`], serving the wikis `services` reaches.
+pub fn application_with(
+    https: bool,
+    services: Option<Arc<Services>>,
+) -> Result<Router, RouteError> {
     application_table()?;
     let mut router = Router::new();
     for spec in application_specs() {
@@ -78,7 +123,8 @@ pub fn application(https: bool) -> Result<Router, RouteError> {
     }
     Ok(router
         .fallback(pages::not_found)
-        .with_state(PageState { https })
+        .method_not_allowed_fallback(pages::method_not_allowed)
+        .with_state(PageState { https, services })
         .layer(from_fn(move |req, next| {
             headers::layer(Surface::Application { https }, req, next)
         })))
@@ -95,11 +141,19 @@ pub fn content(https: bool) -> Router {
         }))
 }
 
-/// Both origins behind one listener.
+/// Both origins behind one listener, serving no wiki (every wiki address is then the generic not-found page).
 pub fn site(config: &WebConfig) -> Result<Router, RouteError> {
+    site_with(config, None)
+}
+
+/// Both origins behind one listener, serving the wikis `services` reaches.
+pub fn site_with(
+    config: &WebConfig,
+    services: Option<Arc<Services>>,
+) -> Result<Router, RouteError> {
     let https = |scheme| scheme == Scheme::Https;
     let dispatch = Dispatch::new(
-        application(https(config.app_origin.scheme()))?,
+        application_with(https(config.app_origin.scheme()), services)?,
         content(https(config.content_origin.scheme())),
         config.app_origin.clone(),
         config.content_origin.clone(),

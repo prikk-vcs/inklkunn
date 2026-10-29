@@ -13,6 +13,11 @@
 //! | `INKLKUNN_CONTENT_ORIGIN` | (`serve`) the origin wiki-authored bytes are served from, a different host when reachable | **required** |
 //! | `INKLKUNN_ADMISSION_BUDGET_MIB` | (`serve`) the memory the prikk calls share | `1024` |
 //! | `INKLKUNN_ADMISSION_WAIT_MS` | (`serve`) how long a read waits for budget before it is told the service is busy | `2000` |
+//! | `INKLKUNN_TIP_TTL_SECS` | (`serve`) how long a view's newest state is held before prikk is asked again; a change made a moment ago may take this long to show on a page | `5` |
+//! | `INKLKUNN_INDEX_MAX_MIB` | (`serve`) the largest wiki, in MiB of everything it holds (attachments too), the title index is built from; a larger one is "could not be read now" until this is raised. **The build extracts the whole wiki into `<data dir>/wikis/…/scratch` for a moment, so the data directory needs that much free disk.** | `4096` |
+//! | `INKLKUNN_INDEX_MAX_FILES` | (`serve`) the most files the title index is built from | `200000` |
+//! | `INKLKUNN_PAGE_MAX_KIB` | (`serve`) the largest page source read, in KiB | `1024` |
+//! | `INKLKUNN_TRUSTED_PROXIES` | (`serve`) the reverse proxies whose `X-Forwarded-For` is believed: comma-separated addresses or networks (`10.0.0.0/8`); none by default | none |
 //!
 //! `serve --config FILE` reads the same names from a file, one `NAME=value` per line (`#` comments); the
 //! environment wins over the file, and a name that is not a setting is refused with its line number.
@@ -151,6 +156,34 @@ pub struct WebSettings {
     /// `INKLKUNN_ADMISSION_WAIT_MS`: how long a read waits for budget before it is told the service is busy,
     /// default 2000.
     pub admission_wait_ms: u64,
+    /// What the read service holds and reads.
+    pub read: ReadSettings,
+    /// `INKLKUNN_TRUSTED_PROXIES`: networks of reverse proxies, as written (validated at start).
+    pub trusted_proxies: Vec<String>,
+}
+
+/// The read service's settings (RFC 003 D-2; handoff 003 T4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReadSettings {
+    /// `INKLKUNN_TIP_TTL_SECS`, default 5.
+    pub tip_ttl_secs: u64,
+    /// `INKLKUNN_INDEX_MAX_MIB`, default 4096.
+    pub index_max_mib: u64,
+    /// `INKLKUNN_INDEX_MAX_FILES`, default 200,000.
+    pub index_max_files: u64,
+    /// `INKLKUNN_PAGE_MAX_KIB`, default 1024.
+    pub page_max_kib: u64,
+}
+
+impl Default for ReadSettings {
+    fn default() -> Self {
+        ReadSettings {
+            tip_ttl_secs: 5,
+            index_max_mib: 4096,
+            index_max_files: 200_000,
+            page_max_kib: 1024,
+        }
+    }
 }
 
 impl WebSettings {
@@ -187,6 +220,21 @@ impl WebSettings {
             content_origin: required("INKLKUNN_CONTENT_ORIGIN")?,
             admission_budget_mib: number("INKLKUNN_ADMISSION_BUDGET_MIB", 1024, 256, 1_048_576)?,
             admission_wait_ms: number("INKLKUNN_ADMISSION_WAIT_MS", 2000, 10, 600_000)?,
+            read: ReadSettings {
+                tip_ttl_secs: number("INKLKUNN_TIP_TTL_SECS", 5, 0, 3600)?,
+                index_max_mib: number("INKLKUNN_INDEX_MAX_MIB", 4096, 1, 1_048_576)?,
+                index_max_files: number("INKLKUNN_INDEX_MAX_FILES", 200_000, 1, 100_000_000)?,
+                page_max_kib: number("INKLKUNN_PAGE_MAX_KIB", 1024, 1, 1_048_576)?,
+            },
+            trusted_proxies: match text("INKLKUNN_TRUSTED_PROXIES")? {
+                None => Vec::new(),
+                Some(list) => list
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|n| !n.is_empty())
+                    .map(str::to_owned)
+                    .collect(),
+            },
         })
     }
 }
@@ -203,6 +251,11 @@ pub const KNOWN: &[&str] = &[
     "INKLKUNN_CONTENT_ORIGIN",
     "INKLKUNN_ADMISSION_BUDGET_MIB",
     "INKLKUNN_ADMISSION_WAIT_MS",
+    "INKLKUNN_TIP_TTL_SECS",
+    "INKLKUNN_INDEX_MAX_MIB",
+    "INKLKUNN_INDEX_MAX_FILES",
+    "INKLKUNN_PAGE_MAX_KIB",
+    "INKLKUNN_TRUSTED_PROXIES",
 ];
 
 /// Read a configuration file: one `NAME=value` per line, `#` comments and blank lines allowed, no quoting, no

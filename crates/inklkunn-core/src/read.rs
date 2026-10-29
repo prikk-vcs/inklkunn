@@ -273,6 +273,16 @@ pub enum PageOutcome {
     },
 }
 
+/// What becomes of an author's raw HTML under a profile whose raw-HTML subset is `subset`: escaped to text while
+/// it is empty, handed to the sanitizer (whose allowlist is then that subset) when it is not.
+fn author_html_for(subset: &[&str]) -> AuthorHtml {
+    if subset.is_empty() {
+        AuthorHtml::Escape
+    } else {
+        AuthorHtml::PassToSanitizer
+    }
+}
+
 /// How far every heading of a page body is moved down: the page's title is the page's one `h1`, so a body's
 /// `#` is an `h2` (accessibility: one `h1`, headings in order).
 const HEADING_DEMOTION: u8 = 1;
@@ -589,11 +599,7 @@ impl ReadService {
         let links = PageLinks::new(index, presentation, &entry.path, &included);
         // The author's raw HTML is escaped to text while the profile declares no subset; with one, it goes on
         // to the sanitizer, whose allowlist is exactly that subset (RFC 003 D-3).
-        let author_html = if HTML_SUBSET.is_empty() {
-            AuthorHtml::Escape
-        } else {
-            AuthorHtml::PassToSanitizer
-        };
+        let author_html = author_html_for(HTML_SUBSET);
         let rendered = render_page_with(
             Some((&entry.path, &entry.title)),
             &page.body,

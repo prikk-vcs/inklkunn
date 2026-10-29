@@ -160,6 +160,71 @@ fn the_web_settings_have_defaults_and_named_refusals() {
 }
 
 #[test]
+fn the_read_settings_have_the_defaults_the_design_names_and_named_refusals() {
+    let base = [
+        ("INKLKUNN_APP_ORIGIN", "https://a.example"),
+        ("INKLKUNN_CONTENT_ORIGIN", "https://b.example"),
+    ];
+    let w = WebSettings::load(&env(&base)).unwrap();
+    // RFC 003 D-2 concretized: a 5 s hold, 4 GiB and 200,000 files per index build, a 1 MiB page.
+    assert_eq!(
+        w.read,
+        ReadSettings {
+            tip_ttl_secs: 5,
+            index_max_mib: 4096,
+            index_max_files: 200_000,
+            page_max_kib: 1024
+        }
+    );
+    assert!(w.trusted_proxies.is_empty());
+    let with = |extra: &[(&str, &str)]| {
+        let mut all = base.to_vec();
+        all.extend_from_slice(extra);
+        WebSettings::load(&env(&all))
+    };
+    let w = with(&[
+        ("INKLKUNN_TIP_TTL_SECS", "0"),
+        ("INKLKUNN_INDEX_MAX_MIB", "512"),
+        ("INKLKUNN_INDEX_MAX_FILES", "1000"),
+        ("INKLKUNN_PAGE_MAX_KIB", "256"),
+        ("INKLKUNN_TRUSTED_PROXIES", "10.0.0.0/8, 192.0.2.1 ,"),
+    ])
+    .unwrap();
+    assert_eq!(
+        w.read,
+        ReadSettings {
+            tip_ttl_secs: 0,
+            index_max_mib: 512,
+            index_max_files: 1000,
+            page_max_kib: 256
+        }
+    );
+    assert_eq!(w.trusted_proxies, ["10.0.0.0/8", "192.0.2.1"]);
+    for (name, bad) in [
+        ("INKLKUNN_TIP_TTL_SECS", "-1"),
+        ("INKLKUNN_TIP_TTL_SECS", "99999"),
+        ("INKLKUNN_INDEX_MAX_MIB", "0"),
+        ("INKLKUNN_INDEX_MAX_FILES", "many"),
+        ("INKLKUNN_PAGE_MAX_KIB", "0"),
+    ] {
+        let e = with(&[(name, bad)]).unwrap_err().0;
+        assert!(e.contains(name), "{name}={bad}: {e}");
+    }
+    for name in [
+        "INKLKUNN_TIP_TTL_SECS",
+        "INKLKUNN_INDEX_MAX_MIB",
+        "INKLKUNN_INDEX_MAX_FILES",
+        "INKLKUNN_PAGE_MAX_KIB",
+        "INKLKUNN_TRUSTED_PROXIES",
+    ] {
+        assert!(
+            KNOWN.contains(&name),
+            "{name} is a setting a file may carry"
+        );
+    }
+}
+
+#[test]
 fn a_configuration_file_is_name_equals_value_and_a_typo_is_refused() {
     let file = read_file(
         "# a comment\n\nINKLKUNN_DATA_DIR = /var/lib/inklkunn\nINKLKUNN_BIND=0.0.0.0:80\n",

@@ -10,6 +10,10 @@ description = "inklkunn's HTTP surface: the server-rendered UI, the read and wri
 
 [dependencies]
 inklkunn-core = { workspace = true }
+# The wiki record, its store and the validated slug: what a request resolves before it reads anything.
+inklkunn-store = { workspace = true }
+# The one percent-encoding of titles (the same function the renderer writes its links with).
+inklkunn-markup = { workspace = true }
 # The standard async web stack (RFC 003; measured in docs/dependency-policy.md). HTTP/1.1 only, behind the
 # operator's TLS-terminating proxy; no JSON extractor and no WebSocket, no multipart: each is added by the task
 # that needs it, with its own row.
@@ -23,6 +27,8 @@ askama = { version = "0.16", default-features = false, features = ["derive", "st
 tower-service = "0.3"
 
 [dev-dependencies]
+# Test-only: the storage the page tests stand a repository on (an in-memory double of prikk's reads).
+inklkunn-prikk = { workspace = true }
 # Test-only: drive a router with `oneshot`, with no socket.
 tower = { version = "0.5", features = ["util"] }
 # Test-only: parse rendered pages for the structural checks (RFC 003 D-6). It is `ammonia`'s own parser, so

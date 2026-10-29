@@ -47,6 +47,8 @@ fn web(bind: &str, app: &str, content: &str) -> WebSettings {
         content_origin: content.into(),
         admission_budget_mib: 1024,
         admission_wait_ms: 200,
+        read: crate::config::ReadSettings::default(),
+        trusted_proxies: Vec::new(),
     }
 }
 
@@ -228,13 +230,8 @@ fn an_address_anybody_can_reach_without_a_declared_proxy_is_warned_about_and_a_l
     for loopback in ["127.0.0.1:8080", "[::1]:8080", "127.0.0.2:1"] {
         assert_eq!(proxy_warning(bind(loopback), false), None, "{loopback}");
     }
-    // Once a proxy can be declared, declaring one ends the warning.
+    // Declaring a trusted proxy ends the warning.
     assert_eq!(proxy_warning(bind("0.0.0.0:8080"), true), None);
-    assert!(
-        proxy_warning(bind("0.0.0.0:8080"), false)
-            .unwrap()
-            .contains("not read by this build")
-    );
 }
 
 #[test]
@@ -242,7 +239,7 @@ fn the_start_notes_put_the_banner_first_and_the_warning_on_stderr_only_for_a_rea
     let notes = |addr: &str| {
         let web = WebConfig::new(addr, "https://wiki.example", "https://content.example").unwrap();
         let mut err = Vec::new();
-        write_start_notes(&mut err, &["the banner".to_owned()], &web);
+        write_start_notes(&mut err, &["the banner".to_owned()], &web, false);
         String::from_utf8(err).unwrap()
     };
     let open = notes("0.0.0.0:8080");
@@ -251,4 +248,31 @@ fn the_start_notes_put_the_banner_first_and_the_warning_on_stderr_only_for_a_rea
     assert_eq!(lines.len(), 2, "{open}");
     assert!(lines.get(1).unwrap().starts_with("warning: "), "{open}");
     assert_eq!(notes("127.0.0.1:8080"), "the banner\n");
+}
+
+#[test]
+fn a_declared_trusted_proxy_ends_the_warning_and_a_typo_stops_the_start() {
+    let web = WebConfig::new(
+        "0.0.0.0:8080",
+        "https://wiki.example",
+        "https://content.example",
+    )
+    .unwrap();
+    let mut err = Vec::new();
+    write_start_notes(&mut err, &["the banner".to_owned()], &web, true);
+    assert_eq!(String::from_utf8(err).unwrap(), "the banner\n");
+
+    let d = dir("proxies");
+    let mut w = web_settings();
+    w.trusted_proxies = vec!["10.0.0.0/8".into(), "not a network".into()];
+    let e = prepare(&settings(&d.0, true), &w).err().unwrap();
+    assert!(
+        e.contains("INKLKUNN_TRUSTED_PROXIES") && e.contains("not a network"),
+        "{e}"
+    );
+    assert!(!d.0.join("store.sqlite").exists(), "nothing was created");
+}
+
+fn web_settings() -> WebSettings {
+    web("127.0.0.1:1", "http://localhost:1", "http://localhost:2")
 }

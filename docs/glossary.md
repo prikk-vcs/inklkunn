@@ -33,24 +33,24 @@ T6, RFC 004) take the word from here and do not choose their own.
 | Concept | English | Japanese | In use | Why | Status |
 |---|---|---|---|---|---|
 | The whole web address that serves wikis | site | サイト | yes | "This site" says where a form must come from without naming a server or a product | Drafted |
-| A named collection of pages with its own history (storage: one prikk repository) | wiki | ウィキ | not yet | The usual word, and the name of the thing the reader came for | Drafted · ja: hard term |
+| A named collection of pages with its own history (storage: one prikk repository) | wiki | ウィキ | yes | The usual word, and the name of the thing the reader came for | Drafted · ja: hard term |
 | One document of a wiki, found by its title | page | ページ | yes | The reader's word; never "file" or "article" | Named by the handoff |
-| The name of a page, which is also its address | title | タイトル | not yet | A page's title is its address (RFC 003 D-1); the storage path is never the address | Drafted |
+| The name of a page, which is also its address | title | タイトル | yes | A page's title is its address (RFC 003 D-1); the storage path is never the address | Drafted |
 | What a reader types in the browser to reach something | address | アドレス | yes | The plain word for what a not-found page asks the reader to check | Drafted |
-| A named version of the whole wiki that readers can switch between (storage: a branch) | view | ビュー | not yet | A wiki reader does not know "branch"; the default view is the one shown when none is named | Named by the handoff · ja: hard term |
-| Everything that happened to a page, newest first | history | 履歴 | not yet | The usual word | Reused from planeter |
-| One recorded step in a wiki's history: work that was accepted and signed in (storage: a block) | change | 変更 | not yet | One word for one thing; never "commit", "block" or "patch" | Reused from planeter · ja: hard term |
+| A named version of the whole wiki that readers can switch between (storage: a branch) | view | ビュー | yes | A wiki reader does not know "branch"; the default view is the one shown when none is named | Named by the handoff · ja: hard term |
+| Everything that happened to a page, newest first | history | 履歴 | yes | The usual word | Reused from planeter |
+| One recorded step in a wiki's history: work that was accepted and signed in (storage: a block) | change | 変更 | yes | One word for one thing; never "commit", "block" or "patch" | Reused from planeter · ja: hard term |
 | Work someone puts forward for review before it becomes part of a page | proposal | 提案 | not yet | "Change" is taken by the recorded step; one word for two things is the confusion this page exists to remove | Reused from planeter · ja: hard term |
 | A proposal the wiki service has received and keeps: it is not part of the history yet | held for review | レビュー待ちで保持中 | not yet | Says what is true and no more: the service holds the work, nothing is approved for merging. As a label: *Held for review* (RFC 002 D-6) | Named by the handoff · ja: hard term |
 | A proposal that an authorized person took into the history | accepted | 受け入れ済み | not yet | RFC 002 D-6, WEB-09; "approved" is a reviewer's opinion about one revision and means something else. As a label: *Accepted* | Drafted · ja: hard term |
 | A proposal that an authorized person did not take into the history | declined | 見送り済み | not yet | RFC 002 D-6, WEB-09; calm, assumes good faith, and the message beside it names the next step. As a label: *Declined* | Drafted · ja: hard term |
 | A page that other pages link to and that does not exist yet | wanted page | 未作成のページ | not yet | Says what the reader can do about it: write it | Named by the handoff · ja: hard term |
-| The label that prikk ran all of its checks on the wiki and found no problems | Verified | 検証済み | not yet | A trust label: it never means more than the check found, and never appears without it | Reused from planeter · ja: hard term, trust label |
-| The label that prikk checked and found problems | Verification failed | 検証に失敗 | not yet | "Unverified" would read as "not checked" | Reused from planeter · ja: hard term, trust label |
-| The label for a check that could not run | Could not be checked now | 現在は確認できません | not yet | Separates "failed" from "could not check"; it claims nothing either way | Reused from planeter · ja: hard term, trust label |
+| The label that prikk ran all of its checks on the wiki and found no problems | Verified | 検証済み | yes | A trust label: it never means more than the check found, and never appears without it | Reused from planeter · ja: hard term, trust label |
+| The label that prikk checked and found problems | Verification failed | 検証に失敗 | yes | "Unverified" would read as "not checked" | Reused from planeter · ja: hard term, trust label |
+| The label for a check that could not run | Could not be checked now | 現在は確認できません | yes | Separates "failed" from "could not check"; it claims nothing either way | Reused from planeter · ja: hard term, trust label |
 | The label on a change that was signed into the history | Signed into the history | 署名して履歴に記録済み | not yet | Plain for "sealed"; on a change page it must not read as "Verified" | Reused from planeter · ja: hard term, trust label |
 | inklkunn itself, as the author of record of every change | the wiki service | ウィキサービス | not yet | RFC 002 D-6, WEB-09: "signed by the wiki service on behalf of {proposer}, accepted by {acceptor}" says who signed and for whom, and never implies that a person signed cryptographically | Drafted · ja: hard term |
-| A page title that sends the reader to another page | redirect | リダイレクト | not yet | The usual word; the page says "redirected from {title}" | Drafted |
+| A page title that sends the reader to another page | redirect | リダイレクト | yes | The usual word; the page says "redirected from {title}" | Drafted |
 | Another title a page also answers to | alias | 別名 | not yet | Plain | Drafted |
 | An address that always shows a page as it was at one point in its history | permalink | 固定リンク | not yet | The usual word | Drafted |
 | The pages that link to this page | backlinks | リンク元 | not yet | The usual word on wikis | Drafted |
@@ -93,6 +93,81 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `form_refused.body` | its sentence | "The form could not be confirmed as coming from a page of this site, so nothing was changed. Go back, reload the page and try again." | "このサイトのページから送信されたものだと確認できなかったため、何も変更していません。前のページに戻り、再読み込みしてからもう一度お試しください。" |
 | `page.render_failed` | the plain answer when a page could not be drawn | "This page could not be shown. Try again in a little while. If it keeps happening, tell the person who runs this server." | "このページを表示できませんでした。しばらくしてから、もう一度お試しください。それでも解決しない場合は、このサーバーの管理者にお知らせください。" |
 | `misdirected.body` | the plain answer to a request for an address this server does not serve | "This server does not serve pages at that address. Check the address you typed, or tell the person who runs this server." | "このサーバーは、そのアドレスのページを提供していません。入力したアドレスを確認するか、このサーバーの管理者にお知らせください。" |
+| `wiki.nav` | the name of the navigation bar of a wiki's pages (a screen reader announces it) | "This wiki" | "このウィキ" |
+| `wiki.nav_about` | a link in the navigation bar of a wiki's pages | "About this wiki" | "このウィキについて" |
+| `wiki.nav_verification` | a link in the navigation bar of a wiki's pages | "Verification" | "検証" |
+| `wiki.nav_wikis` | a link in the navigation bar of a wiki's pages, to the list of wikis | "All wikis" | "ウィキの一覧" |
+| `wiki.view_in_use` | under the heading of a page read in a view other than the wiki's default; `{view}` is the view's name | "You are reading the view {view}." | "ビュー「{view}」を表示しています。" |
+| `title.page` | the title of a page; `{page}` is the page's title, `{wiki}` the wiki's name | "{page} · {wiki} · {product}" | "{page} · {wiki} · {product}" |
+| `page.redirected_from` | under the heading of a page the reader reached through a redirect; `{title}` is the title the reader asked for | "Redirected from {title}." | "「{title}」からリダイレクトされました。" |
+| `page.alias_from` | under the heading of a page the reader reached by another title of it; `{title}` is that title | "{title} is another title of this page." | "「{title}」はこのページの別のタイトルです。" |
+| `page.matched_loosely` | under the heading of a page whose title only nearly matches what the reader asked for; `{title}` is what was asked | "You asked for {title}. This is the page with the closest title." | "「{title}」を探しています。タイトルが最も近いページを表示しています。" |
+| `page.stale` | a notice above a page that is the last version the server has, shown when the newest could not be read | "This page may be out of date. The server could not ask for the newest version just now, so this is the last version it has." | "このページは古い可能性があります。今は最新版を取得できなかったため、サーバーが持っている最後の版を表示しています。" |
+| `page.contents` | the name of the list of headings of a page | "On this page" | "このページの内容" |
+| `page.license` | under a page; `{license}` is the license of the page, or of the wiki when the page names none | "License: {license}" | "ライセンス: {license}" |
+| `page.propose_disabled` | the label of a button that cannot be pressed yet, under a page | "Propose a change" | "変更を提案する" |
+| `page.propose_note` | beside the button above | "Proposals arrive with the next release." | "提案の機能は、次のリリースで提供されます。" |
+| `missing.heading` | the heading of the page shown for a title no page has | "This page does not exist yet" | "このページはまだありません" |
+| `missing.body` | its sentence; `{title}` is the title asked for, `{wiki}` the wiki's name | "No page in {wiki} has the title {title}." | "{wiki} に「{title}」というタイトルのページはありません。" |
+| `missing.invite` | its second sentence, an invitation | "You can propose it when proposals arrive with the next release." | "提案の機能が次のリリースで提供されたら、このページを提案できます。" |
+| `ambiguous.heading` | the heading of the page that lists the pages a title could mean | "More than one page fits" | "該当するページが複数あります" |
+| `ambiguous.body` | its sentence; `{title}` is the title asked for | "Several pages could be the one called {title}. Choose one." | "「{title}」に当たるページが複数あります。ひとつ選んでください。" |
+| `redirect.heading` | the heading of the page shown for a redirect that leads nowhere | "This redirect does not lead to a page" | "このリダイレクトの先にはページがありません" |
+| `redirect.dangling` | its sentence for a redirect to a title no page has; `{title}` is the redirecting page, `{target}` where it points | "The page {title} sends readers to {target}, and no page has that title." | "ページ「{title}」は「{target}」へリダイレクトしますが、そのタイトルのページはありません。" |
+| `redirect.loop` | its sentence for redirects that go round in a circle; `{title}` is the page the chain began at | "The page {title} sends readers round in a circle." | "ページ「{title}」のリダイレクトは、ぐるぐると回り続けます。" |
+| `redirect.too_long` | its sentence for a chain of redirects that is too long; `{title}` is the page the chain began at | "The page {title} sends readers through too many other pages." | "ページ「{title}」のリダイレクトは、経由するページが多すぎます。" |
+| `unreadable.heading` | the heading of the page shown for a page that exists and cannot be shown | "This page cannot be shown" | "このページは表示できません" |
+| `unreadable.not_text` | its sentence when the page's file is not text | "The file of this page is not text that this site can read." | "このページのファイルは、このサイトが読み取れるテキストではありません。" |
+| `unreadable.info` | its sentence when the information at the top of the page cannot be read | "The information at the top of this page cannot be read." | "このページの先頭にある情報の部分を読み取れません。" |
+| `unreadable.info_long` | its sentence when that block is too long | "The information at the top of this page is too long." | "このページの先頭にある情報の部分が長すぎます。" |
+| `unreadable.advice` | its last sentence | "The people who write this wiki can fix it." | "このウィキを書いている人が直すことができます。" |
+| `unavailable.heading` | the heading of the page shown when the page could not be read just now | "This page could not be read now" | "今はこのページを読み込めません" |
+| `unavailable.body` | its sentence | "Try again in a little while. If it keeps happening, tell the person who runs this server." | "しばらくしてから、もう一度お試しください。それでも解決しない場合は、このサーバーの管理者にお知らせください。" |
+| `no_view.heading` | the heading of the page shown for a view the wiki does not have | "There is no such view" | "そのビューはありません" |
+| `no_view.body` | its sentence; `{view}` is the name asked for | "This wiki has no view called {view}." | "このウィキに「{view}」というビューはありません。" |
+| `invalid_title.heading` | the heading of the page shown for a title that cannot name a page | "That title cannot name a page" | "そのタイトルはページの名前にできません" |
+| `invalid_title.body` | its sentence | "A title cannot be empty, cannot have an empty part between slashes, and cannot be longer than the wiki can store." | "タイトルを空にすることはできません。スラッシュで区切った部分を空にすることも、ウィキが保存できる長さを超えることもできません。" |
+| `assurance.verified` | the label of a wiki whose last check found nothing wrong | "Verified" | "検証済み" |
+| `assurance.verification_failed` | the label of a wiki whose last check found a problem | "Verification failed" | "検証に失敗" |
+| `assurance.could_not_be_checked_now` | the label of a wiki whose last check could not be completed, and of a page the server could not confirm | "Could not be checked now" | "現在は確認できません" |
+| `assurance.not_checked_yet` | the label of a wiki that has never been checked | "Not checked yet" | "まだ確認していません" |
+| `badge.sentence` | under every page of a wiki; `{state}` is one of the four labels above, linked to the verification page | "Verification: {state}" | "検証: {state}" |
+| `title.verification` | the title of the verification page | "Verification · {wiki} · {product}" | "検証 · {wiki} · {product}" |
+| `verification.heading` | the heading of the verification page | "Verification" | "検証" |
+| `explain.verification` | an explanation the reader opens on the verification page | "Verification asks prikk, the program that keeps this wiki's history, to check every part of that history and its signatures. “Verified” means the last check found nothing wrong. It does not mean the pages are correct." | "検証では、このウィキの履歴を保管しているプログラム prikk に、履歴のすべてと署名を確認してもらいます。「検証済み」は、直前の確認で問題が見つからなかったという意味です。ページの内容が正しいという意味ではありません。" |
+| `verification.explain_summary` | the label of the explanation above, closed | "What does this mean?" | "これは何を意味しますか" |
+| `verification.state_verified` | a sentence on the verification page | "The last check found nothing wrong." | "直前の確認では、問題は見つかりませんでした。" |
+| `verification.state_failed` | a sentence on the verification page | "The last check found a problem with this wiki's history. The person who runs this server can look into it." | "直前の確認で、このウィキの履歴に問題が見つかりました。このサーバーの管理者が調べることができます。" |
+| `verification.state_could_not` | a sentence on the verification page | "The last check could not be completed. That says nothing about whether the history is sound." | "直前の確認は最後まで実行できませんでした。履歴に問題があるかどうかについては、何も分かっていません。" |
+| `verification.state_unknown` | a sentence on the verification page | "This wiki has not been checked yet." | "このウィキはまだ確認されていません。" |
+| `verification.checked_at` | a sentence on the verification page; `{when}` is a date and time in UTC | "Last checked: {when}." | "最終確認: {when}。" |
+| `verification.check_now` | the button that starts a check | "Check now" | "今すぐ確認" |
+| `verification.recent` | shown instead of a new check when one ran a moment ago | "A check ran a moment ago, so no new one was started. Wait a little before asking again." | "つい先ほど確認を実行したため、新しい確認は開始しませんでした。少し待ってからもう一度お試しください。" |
+| `verification.found_heading` | the heading of what a check found | "What the check found" | "確認の結果" |
+| `verification.found_intro` | above the list of parts of the check that did not come out well | "These parts of the check did not come out well:" | "確認のうち、次の部分で問題がありました:" |
+| `verification.now_verified` | the result of a check just run | "The check you asked for found nothing wrong." | "いま実行した確認では、問題は見つかりませんでした。" |
+| `verification.not_saved` | after a check whose result could not be saved | "The result could not be saved, so the label on the pages has not changed." | "結果を保存できなかったため、ページに表示されるラベルは変わっていません。" |
+| `verification.busy` | the result of a check that could not start because the server was busy | "The server is busy with other work, so the check did not run. Try again in a little while." | "サーバーが他の作業で混み合っているため、確認を実行できませんでした。しばらくしてから、もう一度お試しください。" |
+| `verification.limit` | the result of a check that was stopped for want of time or memory | "The check needs more time or memory than this server is set up to give it. Tell the person who runs this server." | "この確認には、このサーバーに設定されている以上の時間またはメモリが必要です。このサーバーの管理者にお知らせください。" |
+| `verification.unavailable` | the result of a check that could not be started | "The check could not be started. Tell the person who runs this server." | "確認を開始できませんでした。このサーバーの管理者にお知らせください。" |
+| `title.about` | the title of a wiki's about page | "About {wiki} · {product}" | "{wiki} について · {product}" |
+| `about.heading` | the heading of a wiki's about page | "About {wiki}" | "{wiki} について" |
+| `about.license` | a sentence on the about page | "Unless a page says otherwise, the pages of this wiki are shared under the license {license}." | "ページに別の記載がない限り、このウィキのページはライセンス {license} で共有されています。" |
+| `about.view` | a sentence on the about page; `{view}` is the wiki's default view | "The view shown when none is named is {view}." | "ビューを指定しない場合に表示されるのは「{view}」です。" |
+| `about.accessibility_heading` | the heading of the accessibility statement, on the about page | "Accessibility statement" | "アクセシビリティに関する声明" |
+| `about.accessibility_tools` | the first sentence of the statement | "Automated tests check every kind of page on this site for one main heading, landmarks, a link that skips to the content, labels, text alternatives, language and direction, contrast in the light and dark schemes, visible keyboard focus and large enough targets." | "このサイトのすべての種類のページについて、自動テストが次の点を確認しています: メインの見出しが一つであること、ランドマーク、本文へ移動するリンク、ラベル、代替テキスト、言語と文字の方向、明るい配色と暗い配色でのコントラスト、キーボードフォーカスの表示、十分な大きさの操作対象。" |
+| `about.accessibility_people` | the second sentence of the statement | "No person who uses assistive technology has tested this site yet. If something does not work for you, tell the person who runs this server." | "支援技術を使っている方による、このサイトの確認はまだ行われていません。うまく使えないところがあれば、このサーバーの管理者にお知らせください。" |
+| `title.wikis` | the title of the list of wikis | "Wikis · {product}" | "ウィキ · {product}" |
+| `wikis.heading` | the heading of the list of wikis | "Wikis" | "ウィキ" |
+| `wikis.intro` | under that heading | "These are the wikis you can read here." | "ここで読めるウィキの一覧です。" |
+| `wikis.none` | shown instead of the list when there is none | "There are no wikis you can read here yet." | "ここで読めるウィキはまだありません。" |
+| `transclusion.from` | above the text of a page included in another; `{title}` is the included page's title | "From {title}" | "{title} から" |
+| `transclusion.cycle` | in place of an included page that would include itself; `{chain}` is the pages in the circle | "Not included, it would include itself: {chain}" | "含めません。自分自身を含むことになります: {chain}" |
+| `transclusion.too_deep` | in place of an included page that is too deep; `{title}` is its title, `{limit}` the depth allowed | "Not included, deeper than {limit}: {title}" | "含めません。{limit} 段より深くなります: {title}" |
+| `transclusion.over_budget` | in place of an included page when a page has included as much as it may; `{title}` is its title | "Not included, a page includes only so much: {title}" | "含めません。1 ページに含められる量には上限があります: {title}" |
+| `title.method_not_allowed` | the title of the page shown when the address does not take that kind of request | "Not possible here · {product}" | "ここではできません · {product}" |
+| `method_not_allowed.heading` | its heading | "That is not possible at this address" | "このアドレスではその操作はできません" |
+| `method_not_allowed.body` | its sentence | "This address can be opened, but not used in that way. Go back and use the links on the page." | "このアドレスは開くことはできますが、その使い方はできません。前のページに戻って、ページ内のリンクをお使いください。" |
 
 ## 3. Words the interface does not say
 

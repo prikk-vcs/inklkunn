@@ -20,12 +20,18 @@ pub mod headers;
 pub mod lang;
 pub mod origin;
 pub mod pages;
+mod present;
 mod probe;
 pub mod routes;
 pub mod serve;
+pub mod services;
 pub mod style;
+mod time;
+mod url;
+mod wiki;
 
 /// The assembled application: both origins behind one listener (see [`routes::site`]).
 pub type Site = axum::Router;
 
 pub use config::{ConfigRefusal, Origin, OriginError, Scheme, WebConfig};
+pub use services::{AnonymousOnly, Identify, Services};

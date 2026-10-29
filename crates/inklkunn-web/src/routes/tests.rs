@@ -263,7 +263,32 @@ fn the_switcher_and_the_stylesheet_are_public_routes_with_a_reason_under_the_res
             Guard::Action(_) => panic!("{path}: the switcher and the sheet serve no wiki data"),
         }
     }
-    assert!(table.guarded().next().is_none(), "no wiki route exists yet");
+}
+
+#[test]
+fn every_route_that_can_show_wiki_data_is_guarded_by_read_and_the_rest_are_public() {
+    let table = application_table().unwrap();
+    let guarded: Vec<&str> = table.guarded().map(|(e, _)| e.path).collect();
+    assert_eq!(
+        guarded,
+        [
+            "/-/wikis",
+            "/{slug}",
+            "/{slug}/-/about",
+            "/{slug}/-/verification",
+            "/{slug}/{*title}"
+        ]
+    );
+    for (e, action) in table.guarded() {
+        assert_eq!(action, inklkunn_core::Action::Read, "{}", e.path);
+    }
+    let public: Vec<&str> = table
+        .entries()
+        .iter()
+        .filter(|e| matches!(e.guard, Guard::Public { .. }))
+        .map(|e| e.path)
+        .collect();
+    assert_eq!(public, ["/-/health", "/-/lang", "/-/assets/{file}"]);
 }
 
 #[tokio::test]

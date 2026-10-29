@@ -37,3 +37,27 @@ exact :: style.rs :: site-{:016x}.css :: the file name, made of the sheet's fing
 exact :: style.rs :: text/css; charset=utf-8 :: a media type
 exact :: style.rs :: public, max-age=31536000, immutable :: a Cache-Control value
 exact :: style.rs :: Accept-Encoding :: a Vary token
+
+# --- T4: the wiki's pages (handoff 003)
+scope :: present.rs :: * :: the URL scheme of a wiki's pages and the names of the placeholders of catalog messages; every sentence it returns is a catalog message
+scope :: url.rs :: * :: the URL scheme (view and title addresses and percent-escapes); it builds no sentence a reader sees
+scope :: services.rs :: * :: the services a handler holds; its only literal is the name of its Debug output
+exact :: time.rs :: {year:04}-{month:02}-{day:02} {:02}:{:02} UTC :: the format of a moment (a date, a time and the unit UTC), data in a sentence the catalog builds around it
+exact :: wiki.rs :: /-/wikis :: the address of the list of wikis, which every wiki page's navigation links to
+exact :: wiki.rs :: {base}/-/about :: an address of the wiki's own surfaces (RFC 003 D-1)
+exact :: wiki.rs :: {base}/-/verification :: an address of the wiki's own surfaces (RFC 003 D-1)
+exact :: wiki.rs :: /{}/-/verification :: an address of the wiki's own surfaces (RFC 003 D-1)
+exact :: wiki.rs :: /{}/Home :: the address of a wiki's start page: the page titled Home (RFC 003 D-1)
+exact :: wiki.rs :: /{}/-/about :: the address of a wiki's about page, where a wiki with no Home page starts
+exact :: wiki.rs :: Home :: the title of the page a wiki starts at; a title is the wiki's own data, not a sentence of this site
+exact :: wiki.rs :: heads/ :: the prefix of a view's name in the repository, taken off for the address
+exact :: wiki.rs :: state :: a placeholder name of a catalog message
+exact :: wiki.rs :: page :: a placeholder name of a catalog message
+exact :: wiki.rs :: wiki :: a placeholder name of a catalog message
+exact :: wiki.rs :: title :: a placeholder name of a catalog message
+exact :: wiki.rs :: target :: a placeholder name of a catalog message
+exact :: wiki.rs :: view :: a placeholder name of a catalog message
+exact :: wiki.rs :: license :: a placeholder name of a catalog message
+exact :: wiki.rs :: when :: a placeholder name of a catalog message
+exact :: wiki.rs :: a page of wiki `{}` could not be read now: {cause} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: wiki.rs :: a verification of wiki `{}` could not be completed: {why} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it

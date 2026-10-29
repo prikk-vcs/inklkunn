@@ -12,8 +12,11 @@
 //! the cookie the language page sets.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+#[path = "../common/mod.rs"]
+mod common;
 mod dom;
 mod rules;
+mod wiki_states;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -183,7 +186,7 @@ const ENGLISH: &[(&str, &str)] = &[];
 const JAPANESE: &[(&str, &str)] = &[("cookie", "inklkunn_lang=ja")];
 
 /// How many of the states above are pages.
-const EXPECTED_PAGES: usize = VISITS.len();
+const EXPECTED_PAGES: usize = VISITS.len() + wiki_states::SCENARIOS.len();
 
 async fn build_states(extra: &[(&str, &str)]) -> Out {
     let router = router();
@@ -232,6 +235,7 @@ async fn build_states(extra: &[(&str, &str)]) -> Out {
             ));
         }
     }
+    wiki_states::build(extra, &mut out).await;
     out
 }
 
