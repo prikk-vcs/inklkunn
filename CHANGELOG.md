@@ -333,3 +333,16 @@ Follow-on to RFC 001 (issue IS-7, `verify-verdict-honesty-handoff-v1`).
 - **The completeness rule holds whatever the exit code, and an empty stage list is partial** (review V1, V2 of the
   driver follow-on). A failing report on exit 0, which prikk's contract says never comes, is a verdict only if it is
   complete; a report with no stages is not one prikk prints and is read as the memory limit.
+
+Handoff 003, the notes before T4 (the architect's review of 2026-10-29).
+
+- **Raw HTML an author wrote is shown as text, never as markup** (IS-14). While the profile declares no raw-HTML
+  subset, an element a page's author spells out — a link that looks like an internal wiki link, a callout, a heading
+  id, a block marker — is rendered as visible, escaped text, and a hidden comment stays hidden. The markup crate
+  records the byte ranges of the Markdown source that *it* wrote and treats an HTML event that is not wholly inside one
+  as the author's, so no spelling of the renderer's own elements can pass as it. The sanitizer stays as the second line.
+  *API:* `AuthorHtml` and `render_page_with_html`; `render_page` and `render_html` escape.
+- **Reads are pinned to the tip's block.** A view's tip is its state id and the block that state belongs to (one `log`
+  per new state); `cat` and `extract` read at the block, so a write between two calls of a request cannot cache newer
+  content under an older key. The first miss at a new tip is four prikk calls (the list, the log, the extract, the
+  `cat`), a hit none.

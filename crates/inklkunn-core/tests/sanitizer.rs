@@ -225,13 +225,21 @@ fn what_the_renderer_writes_for_every_conformance_case_passes_the_policy_untouch
 
 #[test]
 fn the_authors_own_html_is_held_to_the_same_policy_as_everything_else() {
-    // A page may carry raw HTML; the renderer passes it through and the policy decides.
+    // The sanitizer is the second line: even if a page's raw HTML were handed on (a wiki that declares a
+    // subset), the policy decides. (By default the renderer escapes it first; the next test.)
     let sanitizer = Sanitizer::profile();
     let page = "Text <script>alert(1)</script> and <span class=\"tag\" onclick=\"alert(2)\">kept</span>.\n\n\
                 <div class=\"site-header\" style=\"position:fixed\">Verified by prikk</div>\n\n\
                 <a href=\"javascript:alert(3)\">js</a> <a href=\"https://example.org\">out</a>\n\n\
                 <img src=\"https://tracker.example/p.gif\" alt=\"pixel\"> <iframe src=\"https://evil.example\"></iframe>\n";
-    let rendered = render_html(page, &Rich).unsanitized_html;
+    let rendered = inklkunn_markup::render_page_with_html(
+        None,
+        page,
+        &Rich,
+        inklkunn_markup::ScanOptions::default(),
+        inklkunn_markup::AuthorHtml::PassToSanitizer,
+    )
+    .unsanitized_html;
     let clean = sanitizer.clean(&rendered);
     let out = clean.as_str();
     for gone in [
@@ -255,5 +263,24 @@ fn the_authors_own_html_is_held_to_the_same_policy_as_everything_else() {
         "alt=\"pixel\"",
     ] {
         assert!(out.contains(kept), "`{kept}` lost from {out}");
+    }
+}
+
+#[test]
+fn by_default_the_authors_html_never_reaches_the_sanitizer_as_markup() {
+    // The profile declares no raw-HTML subset, so everything the author spelled out is text a reader sees,
+    // and nothing of it can be mistaken for what the renderer wrote (review finding IS-14).
+    let page = "Text <script>alert(1)</script> and <span class=\"tag\" onclick=\"alert(2)\">kept</span>.\n\n\
+                <div class=\"site-header\" style=\"position:fixed\">Verified by prikk</div>\n\n\
+                <a class=\"wikilink\" href=\"https://evil.example/\">Home</a>\n";
+    let rendered = render_html(page, &Rich).unsanitized_html;
+    let clean = Sanitizer::profile().clean(&rendered);
+    let out = clean.as_str();
+    for element in ["<script", "<span", "<div", "<a ", "<a>"] {
+        assert!(!out.contains(element), "`{element}` in {out}");
+    }
+    // The words are there, as text.
+    for text in ["&lt;script&gt;", "Verified by prikk", "&lt;a class="] {
+        assert!(out.contains(text), "`{text}` lost from {out}");
     }
 }

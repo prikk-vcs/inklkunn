@@ -32,9 +32,9 @@ pub use frontmatter::{Metadata, Value, YamlError};
 pub use lint::{Context as LintContext, Finding, Level, lint};
 pub use path::{PathError, collision_key, path_to_title, title_to_path, with_suffix};
 pub use render::{
-    LinkHref, MAX_TRANSCLUDED_BYTES, MAX_TRANSCLUSION_DEPTH, MAX_TRANSCLUSIONS, NoLinks,
-    RenderLinks, Rendered, TocEntry, Transclusion, TransclusionRefusal, render_html, render_page,
-    render_with,
+    AuthorHtml, LinkHref, MAX_TRANSCLUDED_BYTES, MAX_TRANSCLUSION_DEPTH, MAX_TRANSCLUSIONS,
+    NoLinks, RenderLinks, Rendered, TocEntry, Transclusion, TransclusionRefusal, render_html,
+    render_page, render_page_with_html, render_with,
 };
 pub use resolve::{Index, PageEntry, Resolution, Via, resolve};
 pub use scan::{Link, ScanOptions, ScanReport, scan, scan_with};

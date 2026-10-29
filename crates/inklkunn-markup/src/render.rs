@@ -174,6 +174,17 @@ pub fn render_page(
     links: &dyn RenderLinks,
     options_: ScanOptions,
 ) -> Rendered {
+    render_page_with_html(page, body, links, options_, AuthorHtml::default())
+}
+
+/// [`render_page`], with a say in what becomes of the raw HTML the page's author wrote.
+pub fn render_page_with_html(
+    page: Option<(&str, &str)>,
+    body: &str,
+    links: &dyn RenderLinks,
+    options_: ScanOptions,
+    author_html: AuthorHtml,
+) -> Rendered {
     let mut ctx = Ctx {
         links,
         options: options_,
@@ -190,6 +201,7 @@ pub fn render_page(
         included: 0,
         included_bytes: 0,
         budget_noted: false,
+        author_html,
     };
     let rendered = render_body(body, &mut ctx, &Level::root());
     Rendered {
@@ -198,6 +210,25 @@ pub fn render_page(
         refusals: ctx.refusals,
         transcluded: ctx.transcluded,
     }
+}
+
+/// What becomes of the raw HTML a page's author wrote (RFC 003 D-3; review finding IS-14).
+///
+/// The renderer writes HTML into the source it hands the Markdown parser (links, tags, directives, callouts,
+/// block markers), and the parser reports that and the author's own HTML as the same kind of event. What
+/// tells them apart here is **where in the source they stand**: the renderer records the byte ranges it wrote,
+/// and an HTML event that is not wholly inside one of them is the author's. The author cannot move a range
+/// (they are made of what the renderer wrote, not of anything the author typed), so no spelling of the
+/// renderer's elements, classes or markers forges the renderer's output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AuthorHtml {
+    /// The author's HTML is shown as escaped, visible text and never as markup: the profile declares no
+    /// raw-HTML subset (`html_subset: []`). A hidden comment (`<!-- … -->`) stays hidden. The default.
+    #[default]
+    Escape,
+    /// The author's HTML is left in the output for the sanitizer, whose allowlist is then the profile's
+    /// declared subset and nothing more.
+    PassToSanitizer,
 }
 
 /// A page being rendered, outermost first in [`Ctx::stack`].
@@ -221,6 +252,8 @@ struct Ctx<'a> {
     included_bytes: usize,
     /// The refusal for an exhausted budget has been written once.
     budget_noted: bool,
+    /// What becomes of raw HTML the page's author wrote.
+    author_html: AuthorHtml,
 }
 
 /// Where in the nesting a body is rendered.
@@ -252,8 +285,8 @@ struct Body {
 
 fn render_body(body: &str, ctx: &mut Ctx<'_>, level: &Level) -> Body {
     let body = transclude::strip_sentinels(body);
-    let pre = containers_pre_pass(&body);
-    let (source, report, fragments) = inline_pre_pass(&pre, ctx, level);
+    let (pre, written) = containers_pre_pass(&body);
+    let (source, report, fragments, trusted) = inline_pre_pass(&pre, &written, ctx, level);
     let scan_anchors: BTreeMap<usize, String> = report
         .headings
         .iter()
@@ -263,6 +296,10 @@ fn render_body(body: &str, ctx: &mut Ctx<'_>, level: &Level) -> Body {
     let with_ranges: Vec<(Event<'_>, Range<usize>)> = Parser::new_ext(&source, options())
         .into_offset_iter()
         .collect();
+    let with_ranges = match ctx.author_html {
+        AuthorHtml::Escape => escape_author_html(with_ranges, &trusted),
+        AuthorHtml::PassToSanitizer => with_ranges,
+    };
     let with_ranges = transclude::splice(with_ranges, &fragments, ctx, level);
     let (events, toc) = rewrite_headings(with_ranges, &lines, &scan_anchors, level);
     let events = rewrite_callouts(events);
@@ -273,10 +310,104 @@ fn render_body(body: &str, ctx: &mut Ctx<'_>, level: &Level) -> Body {
     Body { html: out, toc }
 }
 
+// ---------------------------------------------------------------- author HTML
+
+/// `ranges` sorted, with those that overlap or touch joined.
+fn merged(mut ranges: Vec<Range<usize>>) -> Vec<Range<usize>> {
+    ranges.sort_by_key(|r| (r.start, r.end));
+    let mut out: Vec<Range<usize>> = Vec::with_capacity(ranges.len());
+    for r in ranges {
+        match out.last_mut() {
+            Some(last) if r.start <= last.end => last.end = last.end.max(r.end),
+            _ => out.push(r),
+        }
+    }
+    out
+}
+
+/// Is `at` wholly inside one of the renderer's ranges (`trusted` is [`merged`])?
+fn is_renderers(trusted: &[Range<usize>], at: &Range<usize>) -> bool {
+    let after = trusted.partition_point(|t| t.start <= at.start);
+    after
+        .checked_sub(1)
+        .and_then(|i| trusted.get(i))
+        .is_some_and(|t| at.end <= t.end)
+}
+
+/// `html` without its comments (`<!-- … -->`, an unterminated one to the end): the hidden-comment construct
+/// stays hidden. Nothing else is taken out.
+fn without_comments(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(open) = rest.find("<!--") {
+        out.push_str(sl(rest, 0, open));
+        rest = match rest
+            .get(open + 4..)
+            .and_then(|after| after.find("-->").map(|i| open + 4 + i + 3))
+        {
+            Some(end) => rest.get(end..).unwrap_or(""),
+            None => "",
+        };
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The events of a page with every piece of raw HTML the author wrote turned into text a reader sees: a
+/// block of it becomes one paragraph, inline HTML becomes text where it stands. HTML wholly inside one of
+/// the renderer's `trusted` ranges is the renderer's and stays.
+fn escape_author_html<'a>(
+    events: Vec<(Event<'a>, Range<usize>)>,
+    trusted: &[Range<usize>],
+) -> Vec<(Event<'a>, Range<usize>)> {
+    let mut out: Vec<(Event<'a>, Range<usize>)> = Vec::with_capacity(events.len());
+    // Consecutive lines of an HTML block the author wrote, collected into one paragraph.
+    let mut block: Option<(String, Range<usize>)> = None;
+    let flush = |block: &mut Option<(String, Range<usize>)>,
+                 out: &mut Vec<(Event<'a>, Range<usize>)>| {
+        if let Some((text, range)) = block.take() {
+            let shown = without_comments(&text);
+            let shown = shown.trim_end_matches(['\n', '\r']);
+            if !shown.trim().is_empty() {
+                out.push((Event::Start(Tag::Paragraph), range.clone()));
+                out.push((Event::Text(CowStr::from(shown.to_owned())), range.clone()));
+                out.push((Event::End(TagEnd::Paragraph), range));
+            }
+        }
+    };
+    for (event, range) in events {
+        match event {
+            Event::Html(text) if !is_renderers(trusted, &range) => match &mut block {
+                Some((all, whole)) => {
+                    all.push_str(&text);
+                    whole.end = range.end;
+                }
+                None => block = Some((text.to_string(), range)),
+            },
+            Event::InlineHtml(text) if !is_renderers(trusted, &range) => {
+                flush(&mut block, &mut out);
+                let shown = without_comments(&text);
+                if !shown.is_empty() {
+                    out.push((Event::Text(CowStr::from(shown)), range));
+                }
+            }
+            other => {
+                flush(&mut block, &mut out);
+                out.push((other, range));
+            }
+        }
+    }
+    flush(&mut block, &mut out);
+    out
+}
+
 // ---------------------------------------------------------------- pre-passes
 
 /// `::: name key=value` … `:::` → wrappers. Lines inside code or HTML (comments) are left alone.
-fn containers_pre_pass(body: &str) -> String {
+///
+/// Returns the new source and the byte ranges of it that **this function wrote** (wrappers and closers, with
+/// their line breaks): the renderer's own HTML, as distinct from whatever the page's author typed.
+fn containers_pre_pass(body: &str) -> (String, Vec<Range<usize>>) {
     let structure = Structure::of(body);
     let mut hidden: Vec<Range<usize>> = structure
         .code
@@ -294,6 +425,7 @@ fn containers_pre_pass(body: &str) -> String {
         hidden.get(cursor).is_some_and(|r| r.contains(&offset))
     };
     let mut out = String::with_capacity(body.len() + 64);
+    let mut written: Vec<Range<usize>> = Vec::new();
     let mut stack: Vec<&'static str> = Vec::new();
     let mut offset = 0;
     for line in body.split_inclusive('\n') {
@@ -309,9 +441,11 @@ fn containers_pre_pass(body: &str) -> String {
             let rest_trim = rest.trim_start_matches([' ', '\t']);
             if rest_trim.trim().is_empty() {
                 if let Some(closer) = stack.pop() {
+                    let from = out.len();
                     out.push('\n');
                     out.push_str(closer);
                     out.push('\n');
+                    written.push(from..out.len());
                     continue;
                 }
             } else if rest_trim.starts_with(|c: char| c.is_ascii_alphabetic()) {
@@ -326,10 +460,13 @@ fn containers_pre_pass(body: &str) -> String {
                 if ADMONITION_NAMES.contains(&lname.as_str()) {
                     // The title is the free text before the first `key=value`, if any.
                     let title = title_before_attrs(attrs_text);
+                    let from = out.len();
                     out.push_str(&callout_open(&lname.to_uppercase(), None, title));
                     out.push_str("\n\n");
+                    written.push(from..out.len());
                     stack.push("</aside>");
                 } else {
+                    let from = out.len();
                     out.push_str(&format!(
                         "<div class=\"directive directive-{}\" data-directive=\"{}\"{}>\n",
                         escape_html(&lname),
@@ -337,6 +474,7 @@ fn containers_pre_pass(body: &str) -> String {
                         data_attrs(&attrs)
                     ));
                     out.push('\n');
+                    written.push(from..out.len());
                     stack.push("</div>");
                 }
                 continue;
@@ -345,11 +483,13 @@ fn containers_pre_pass(body: &str) -> String {
         out.push_str(line);
     }
     for closer in stack.into_iter().rev() {
+        let from = out.len();
         out.push('\n');
         out.push_str(closer);
         out.push('\n');
+        written.push(from..out.len());
     }
-    out
+    (out, written)
 }
 
 /// `Heads up depth=2` → `Heads up`: the words before the first `key=` are the title.
@@ -407,11 +547,20 @@ fn callout_open(kind: &str, fold: Option<&str>, title: Option<&str>) -> String {
 /// Replace inline constructs with HTML in the source, at the byte spans the scanner reported. Returns the
 /// new source, the scan it was built from (the heading anchors come from it) and the transclusions whose
 /// tokens the source now holds (see [`transclude`]).
+///
+/// `written` are the ranges of `body` the container pass wrote; the ranges returned are the same in the new
+/// source, together with every replacement made here: **all the HTML the renderer put in the source**.
 fn inline_pre_pass(
     body: &str,
+    written: &[Range<usize>],
     ctx: &mut Ctx<'_>,
     level: &Level,
-) -> (String, scan::ScanReport, Vec<transclude::Fragment>) {
+) -> (
+    String,
+    scan::ScanReport,
+    Vec<transclude::Fragment>,
+    Vec<Range<usize>>,
+) {
     let links = ctx.links;
     let report = scan::scan_body(body, 0, ctx.options);
     // (start, end, replacement) for every construct, then applied front to back.
@@ -468,16 +617,39 @@ fn inline_pre_pass(
     edits.sort_by_key(|(s, _, _)| *s);
     let mut out = String::with_capacity(body.len() + 256);
     let mut pos = 0;
+    // (old start, old end, new start, new end) of every edit applied, to carry `written` over.
+    let mut applied: Vec<(usize, usize, usize, usize)> = Vec::new();
     for (s, e, html) in edits {
         if s < pos {
             continue;
         }
         out.push_str(sl(body, pos, s));
+        let from = out.len();
         out.push_str(&html);
+        applied.push((s, e, from, out.len()));
         pos = e;
     }
     out.push_str(body.get(pos..).unwrap_or(""));
-    (out, report, fragments)
+    let mut trusted: Vec<Range<usize>> = applied.iter().map(|&(_, _, a, b)| a..b).collect();
+    // A position of the old source in the new one: after the edits before it; inside an edit, the edge of
+    // its replacement that keeps the range inside it.
+    let carry = |at: usize, end: bool| -> usize {
+        let mut shifted = at;
+        for &(s, e, a, b) in &applied {
+            if e <= at {
+                shifted = b + (at - e);
+            } else if s < at {
+                return if end { b } else { a };
+            } else {
+                break;
+            }
+        }
+        shifted
+    };
+    for w in written {
+        trusted.push(carry(w.start, false)..carry(w.end, true));
+    }
+    (out, report, fragments, merged(trusted))
 }
 
 /// `id_prefix` is the prefix of the ids on the page the link is on: a link to this very page points at an

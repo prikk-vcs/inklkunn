@@ -9,9 +9,12 @@
 //!
 //! **The policy is the profile's vocabulary and nothing more.** The allowlist is exactly what
 //! `inklkunn-markup` may write ([`inklkunn_markup::render::vocabulary`]) plus the profile's raw-HTML subset
-//! ([`HTML_SUBSET`], what the bundle manifest calls `html_subset`: empty today). Because the renderer's own
-//! output reaches the sanitizer as the same kind of text as HTML a page's author wrote, raw HTML survives
-//! only where it spells something the renderer writes, with the attributes and classes the renderer writes.
+//! ([`HTML_SUBSET`], what the bundle manifest calls `html_subset`: empty today). **This is the second line.**
+//! While the subset is empty the markup crate has already turned every piece of raw HTML a page's author wrote
+//! into escaped, visible text (`AuthorHtml::Escape`; review finding IS-14), so the sanitizer sees only what
+//! the renderer wrote, plus text; when a subset is declared the author's HTML is handed on and the allowlist
+//! below is what lets exactly that subset through. Either way the policy holds on its own: a page read back
+//! from a database is input like any other (T-10).
 //! Beyond the allowlist the policy is stricter than HTML is:
 //!
 //! - schemes: `http`, `https`, `mailto`, `tel`; a relative URL passes; nothing else (no `javascript:`, no

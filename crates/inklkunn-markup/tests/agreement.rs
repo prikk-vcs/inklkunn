@@ -199,9 +199,19 @@ fn hrefs_with_dangerous_schemes_are_never_emitted_as_links() {
     // The scheme check is case-insensitive for the external marking too.
     let h = render_html("[z](HTTP://e.com)", &Links).unsanitized_html;
     assert!(h.contains(r#"rel="nofollow ugc""#), "{h}");
-    // Raw HTML passes through unsanitized, and the field name says so: the web layer's sanitizer is the
-    // contract (RFC 003 D-3). This pins the behaviour so a change is visible.
+    // Raw HTML an author wrote is shown as text and never as markup (the profile declares no raw-HTML subset;
+    // tests/author_html.rs). Handed on to the sanitizer only when the caller says a subset is declared, and
+    // then the field name is the warning: the web layer's sanitizer is the contract (RFC 003 D-3).
     let h = render_html("<script>alert(1)</script>", &Links).unsanitized_html;
+    assert!(!h.contains("<script>"), "{h}");
+    let h = inklkunn_markup::render_page_with_html(
+        None,
+        "<script>alert(1)</script>",
+        &Links,
+        inklkunn_markup::ScanOptions::default(),
+        inklkunn_markup::AuthorHtml::PassToSanitizer,
+    )
+    .unsanitized_html;
     assert!(h.contains("<script>"), "{h}");
 }
 

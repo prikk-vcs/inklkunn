@@ -237,9 +237,14 @@ fn a_real_wiki_is_read_through_the_whole_path_with_the_numbers_of_calls_the_desi
         assert!(html.contains("<h2 id=\"t1-terms\">Terms</h2>"), "{html}");
         assert!(html.contains("wikilink-missing"), "{html}");
         assert_eq!(home.links.dangling, ["Nowhere"]);
-        for attack in ["<script", "alert", "onerror", "javascript:"] {
+        // The author's raw HTML is shown as text, not run: no element, no handler, no `javascript:` link.
+        for attack in ["<script", "<img", "href=\"javascript:"] {
             assert!(!html.contains(attack), "{attack} in {html}");
         }
+        assert!(
+            html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"),
+            "{html}"
+        );
 
         // A hit asks prikk for nothing.
         let (again, hit) = w.counted(|| w.page("Home"));

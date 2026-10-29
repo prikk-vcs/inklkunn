@@ -64,7 +64,7 @@ use std::time::{Duration, Instant};
 
 use inklkunn_markup::path::{PathError, title_to_path};
 use inklkunn_markup::scan::ScanOptions;
-use inklkunn_markup::{Page, ParseError, render_page};
+use inklkunn_markup::{AuthorHtml, Page, ParseError, render_page_with_html};
 use inklkunn_prikk::{ExtractBounds, Point, SizeHints, Storage, StorageError};
 use inklkunn_store::{
     DerivedHeading, DerivedMeta, DerivedPage, DerivedStore, IndexEntry, PageKey, RootLayout,
@@ -526,11 +526,19 @@ impl ReadService {
         })?;
         let included = |e: &IndexEntry| self.read_text(wiki, tip, &e.path);
         let links = PageLinks::new(index, presentation, &entry.path, &included);
-        let rendered = render_page(
+        // The author's raw HTML is escaped to text while the profile declares no subset; with one, it goes on
+        // to the sanitizer, whose allowlist is exactly that subset (RFC 003 D-3).
+        let author_html = if HTML_SUBSET.is_empty() {
+            AuthorHtml::Escape
+        } else {
+            AuthorHtml::PassToSanitizer
+        };
+        let rendered = render_page_with_html(
             Some((&entry.path, &entry.title)),
             &page.body,
             &links,
             ScanOptions::default(),
+            author_html,
         );
         // A page rendered around an included page that could not be read is not a page to keep.
         if let Some(failure) = links.take_failure() {
