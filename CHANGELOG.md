@@ -413,3 +413,29 @@ Handoff 003 T8 (the read API; RFC 003 D-13; no new crate).
   fails the build of the document; tests hold it both ways and check the document's structure.
 - **Dependency:** `serde_json` becomes a direct dependency of `inklkunn-web` (already locked; the lock gains one edge,
   no package). axum's `json` feature stays off.
+
+Handoff 003 T5 (history, change, difference and permalinks; RFC 003 D-4).
+
+- **A page has a past you can read.** `/<wiki>/-/history/<Title>` lists the changes that touched the page, newest
+  first, each with the change's number, its summary, what it did to the page (created, edited, removed, moved from or
+  to another title — a rename is an event, and the history goes on under the old title), who proposed and who accepted
+  it as the change's message records them (CT-03; a message in another form names nobody and is said to), and flags
+  (an undo, an import, made by the wiki service, the first change). `/<wiki>/-/change/<block>` says *Signed into the
+  history* and, for a change that came from a proposal, *signed by the wiki service on behalf of …, accepted by …* —
+  never that a person signed — and lists what the change did (pages by title; attachments and other files unnamed).
+  `/<wiki>/-/diff/<from>/<to>/<Title>` shows what changed on the page between two changes with `ins` and `del` that
+  carry a text alternative, a text summary, and the changed words marked by inklkunn (labelled as inklkunn's; the
+  lines are prikk's, and writing the marked model back gives prikk's hunk byte for byte).
+  `/<wiki>/-/at/<block>/<Title>` shows the page as it was after a change, with a banner that links to the current page
+  and no proposal button. A view other than the default is named by `?view=`. There is no time on any of these pages:
+  prikk's log carries none. Every address opens with the wiki's read check, so a private wiki and an absent one give
+  the same answer.
+- **Bounded reads.** prikk's `log` lists a view's changes and nothing about paths, so a page's history is the view's
+  log, read once per tip and held (at most 10,000 changes), with each change's `show` kept by block id for good and
+  filtered to the page's path; a request makes at most 24 `show`s it did not already hold and inspects at most 400
+  changes, and when it stops early it says where to go on. A difference is exactly one `diff`, always `--path <the
+  page>`, between two changes of the view's history; a whole-tree diff is never asked for. A permalink reads the page's text at the block (one `cat`) and decides
+  which links lead to pages from the titles of the view's tip, because an index of every block a reader names would
+  cost an extract each; its render is held in memory only. A change too large for prikk's report to fit the server's
+  output bound is listed as such, never skipped. *API:* `ReadService::{page_history, change, page_diff, page_at}` and
+  the types of `read::history`/`read::linediff`; `forget_wiki` also forgets the log.

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+{% if let Some(note) = view_note %}<p class="view-note">{{ note }}</p>
+{% endif %}<p class="signed">{{ signed }}</p>
+<p>{{ statement }}</p>
+{% if let Some(summary) = summary %}<p class="summary">{{ summary }}</p>
+{% endif %}{% if !facts.is_empty() %}<ul class="change-facts">
+{% for fact in facts %}<li>{{ fact }}</li>
+{% endfor %}</ul>
+{% endif %}<h2>{{ page.get(Key::ChangeDidHeading) }}</h2>
+{% if let Some(text) = too_large %}<p>{{ text }}</p>
+{% else if did.is_empty() %}<p>{{ page.get(Key::ChangeDidNone) }}</p>
+{% else %}<ul class="did">
+{% for item in did %}<li>{{ item.text }}{% if let Some(link) = item.diff %}<ul class="change-links"><li><a href="{{ link.href }}">{{ link.label }}</a></li></ul>{% endif %}</li>
+{% endfor %}</ul>
+{% endif %}{% if let Some(text) = more %}<p class="note">{{ text }}</p>
+{% endif %}{% endblock %}

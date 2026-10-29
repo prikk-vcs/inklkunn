@@ -62,7 +62,7 @@ pub(crate) async fn blocking<T: Send + 'static>(
     tokio::task::spawn_blocking(work).await.ok()
 }
 
-fn render_failed(page: &Page) -> Response {
+pub(crate) fn render_failed(page: &Page) -> Response {
     pages::plain(
         StatusCode::INTERNAL_SERVER_ERROR,
         page.t().lang(),
@@ -71,7 +71,7 @@ fn render_failed(page: &Page) -> Response {
 }
 
 /// The one answer for a wiki that is not there (or not readable).
-fn generic_not_found(page: &Page) -> Response {
+pub(crate) fn generic_not_found(page: &Page) -> Response {
     answer(StatusCode::NOT_FOUND, page, pages::render_not_found(page))
 }
 
@@ -89,18 +89,18 @@ impl fmt::Display for Body {
 impl HtmlSafe for Body {}
 
 /// What every page of a wiki shows above its heading: the wiki's name and the addresses of its own pages.
-struct Shell {
-    name: String,
-    front: String,
-    about: String,
-    verification: String,
-    wikis: &'static str,
+pub(crate) struct Shell {
+    pub(crate) name: String,
+    pub(crate) front: String,
+    pub(crate) about: String,
+    pub(crate) verification: String,
+    pub(crate) wikis: &'static str,
 }
 
 const WIKIS_PATH: &str = "/-/wikis";
 
 impl Shell {
-    fn of(wiki: &WikiRecord) -> Shell {
+    pub(crate) fn of(wiki: &WikiRecord) -> Shell {
         let base = format!("/{}", wiki.slug);
         Shell {
             name: wiki.display_name.as_str().to_owned(),
@@ -112,19 +112,19 @@ impl Shell {
     }
 }
 
-struct TocItem {
+pub(crate) struct TocItem {
     level: u8,
     id: String,
     text: String,
 }
 
-struct Choice {
-    label: String,
-    href: String,
+pub(crate) struct Choice {
+    pub(crate) label: String,
+    pub(crate) href: String,
 }
 
 /// The badge: the four labels, said in the sentence the catalog gives, linked to the verification page.
-fn badge(t: T, wiki: &WikiRecord, stale: bool) -> Rich {
+pub(crate) fn badge(t: T, wiki: &WikiRecord, stale: bool) -> Rich {
     let key = if stale {
         Key::AssuranceCouldNotBeCheckedNow
     } else {
@@ -162,6 +162,21 @@ struct PageTpl<'a> {
     body: Body,
     license: String,
     badge: Rich,
+    history_href: String,
+    banner: Option<Banner>,
+    propose: bool,
+}
+
+/// What stands above a page that is not the page as it is now (a permalink, handoff 003 T5): sentences with
+/// their links, built from catalog messages.
+pub(crate) struct Banner {
+    pub(crate) lines: Vec<Rich>,
+}
+
+/// How a page differs from a plain page view: its own `<title>` and a banner (a permalink).
+pub(crate) struct Variant {
+    pub(crate) title: Option<String>,
+    pub(crate) banner: Option<Banner>,
 }
 
 #[derive(Template)]
@@ -221,7 +236,7 @@ struct WikisTpl<'a> {
 
 // ------------------------------------------------------------------------------------ small helpers
 
-fn notice(
+pub(crate) fn notice(
     page: &Page,
     wiki: &WikiRecord,
     status: StatusCode,
@@ -250,14 +265,14 @@ fn notice(
     answer(status, page, rendered)
 }
 
-fn with_retry_after(mut response: Response) -> Response {
+pub(crate) fn with_retry_after(mut response: Response) -> Response {
     response
         .headers_mut()
         .insert(header::RETRY_AFTER, HeaderValue::from_static("30"));
     response
 }
 
-fn services_of(state: &PageState) -> Option<Arc<Services>> {
+pub(crate) fn services_of(state: &PageState) -> Option<Arc<Services>> {
     state.services.clone()
 }
 
@@ -304,7 +319,7 @@ fn redirect(location: &str) -> Response {
 }
 
 /// What a request for a page came to, before any template.
-enum Shown {
+pub(crate) enum Shown {
     NotFound,
     Found {
         wiki: Box<WikiRecord>,
@@ -451,7 +466,7 @@ pub(crate) async fn view_page(
     present(&page, shown)
 }
 
-fn present(page: &Page, shown: Shown) -> Response {
+pub(crate) fn present(page: &Page, shown: Shown) -> Response {
     let t = page.t();
     match shown {
         Shown::NotFound => generic_not_found(page),
@@ -569,6 +584,29 @@ fn found(
     asked: &str,
     view_name: Option<&str>,
 ) -> Response {
+    found_with(
+        page,
+        wiki,
+        view,
+        asked,
+        view_name,
+        Variant {
+            title: None,
+            banner: None,
+        },
+    )
+}
+
+/// A page, drawn: the page view, and the permalink, which differs in its title and its banner and offers no
+/// proposal (a change is proposed against the page as it is).
+pub(crate) fn found_with(
+    page: &Page,
+    wiki: &WikiRecord,
+    view: &PageView,
+    asked: &str,
+    view_name: Option<&str>,
+    variant: Variant,
+) -> Response {
     let t = page.t();
     let shell = Shell::of(wiki);
     let mut notes = Vec::new();
@@ -595,12 +633,16 @@ fn found(
     let rendered = PageTpl {
         page,
         shell: &shell,
-        title: t
-            .msg(Key::TitlePage)
-            .with("page", &heading)
-            .with("wiki", wiki.display_name.as_str())
-            .product()
-            .text(),
+        title: variant.title.unwrap_or_else(|| {
+            t.msg(Key::TitlePage)
+                .with("page", &heading)
+                .with("wiki", wiki.display_name.as_str())
+                .product()
+                .text()
+        }),
+        history_href: crate::url::history_path(wiki.slug.as_str(), view_name, &heading, None),
+        propose: variant.banner.is_none(),
+        banner: variant.banner,
         heading,
         view_note: view_name.map(|v| t.msg(Key::WikiViewInUse).with("view", v).text()),
         notes,

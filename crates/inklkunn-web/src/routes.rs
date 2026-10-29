@@ -18,7 +18,7 @@ use crate::headers::{self, Surface};
 use crate::origin::Dispatch;
 use crate::pages::{self, LANGUAGE_PATH, PageState};
 use crate::services::Services;
-use crate::{api, probe, style, wiki};
+use crate::{api, history, probe, style, wiki};
 
 /// One declared entry point and the handler that serves it.
 struct Spec {
@@ -99,6 +99,31 @@ fn page_specs() -> Vec<Spec> {
                     .post(wiki::check_now)
                     .layer(DefaultBodyLimit::max(pages::FORM_LIMIT))
             },
+        },
+        // --- handoff 003 T5: a page's past. Each opens with the wiki's read check, as every handler does.
+        Spec {
+            path: "/{slug}/-/history/{*title}",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(history::history),
+        },
+        Spec {
+            path: "/{slug}/-/change/{block}",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(history::change),
+        },
+        Spec {
+            path: "/{slug}/-/diff/{from}/{to}/{*title}",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(history::diff),
+        },
+        Spec {
+            path: "/{slug}/-/at/{block}/{*title}",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(history::at),
         },
         Spec {
             path: "/{slug}/{*title}",

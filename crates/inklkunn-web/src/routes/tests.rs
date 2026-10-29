@@ -281,6 +281,10 @@ fn every_route_that_can_show_wiki_data_is_guarded_by_read_and_the_rest_are_publi
             "/{slug}",
             "/{slug}/-/about",
             "/{slug}/-/verification",
+            "/{slug}/-/history/{*title}",
+            "/{slug}/-/change/{block}",
+            "/{slug}/-/diff/{from}/{to}/{*title}",
+            "/{slug}/-/at/{block}/{*title}",
             "/{slug}/{*title}"
         ]
     );

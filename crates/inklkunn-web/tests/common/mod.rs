@@ -11,14 +11,19 @@ use std::sync::{Arc, Mutex, PoisonError};
 use inklkunn_core::read::ReadConfig;
 use inklkunn_core::{Authorizer, ReadService, StoreAuthz, Verifier};
 use inklkunn_prikk::{
-    Change, Diff, ExtractBounds, FileMeta, History, HistoryBlock, Materialized, Point, Result,
-    Stage, Storage, StorageError, Tree, Unavailable, Verdict, Verification, View, Views,
+    Change, Diff, ExtractBounds, FileMeta, History, HistoryBlock, Materialized, PatchMessage,
+    Point, Result, Stage, Storage, StorageError, Tree, Unavailable, Verdict, Verification, View,
+    Views,
 };
 use inklkunn_store::{
     DisplayName, MemoryAudit, MemoryStore, NewWiki, RootLayout, Slug, Visibility, WikiRecord,
     WikiStore,
 };
 use inklkunn_web::{AnonymousOnly, Services};
+
+mod past;
+#[allow(unused_imports)]
+pub use past::*;
 
 #[derive(Default)]
 struct State {
@@ -28,6 +33,15 @@ struct State {
     fail_views: Option<StorageError>,
     verify: Option<Result<Verification>>,
     verifies: usize,
+    /// The message sealed with each version's block: `history` lists one block per version (T5).
+    messages: BTreeMap<u64, String>,
+    /// What `show` answers for a block id.
+    shows: BTreeMap<String, Result<Change>>,
+    /// What `diff` answers, and every `diff` asked.
+    diff: Option<Result<Diff>>,
+    diffs: Vec<(Point, Point, Vec<String>)>,
+    /// How many `show`s were asked.
+    show_calls: usize,
 }
 
 /// A one-view repository whose files can be changed, whose `branch list` can fail, and whose `verify` says
@@ -72,6 +86,42 @@ impl Fake {
         s.version += 1;
         let (v, f) = (s.version, s.files.clone());
         s.snapshots.insert(v, f);
+    }
+
+    /// Write several files in one block: the tip moves once.
+    pub fn set_files(&self, files: &[(&str, &str)]) {
+        let mut s = self.state();
+        for (path, text) in files {
+            s.files.insert((*path).to_owned(), text.as_bytes().to_vec());
+        }
+        s.version += 1;
+        let (v, f) = (s.version, s.files.clone());
+        s.snapshots.insert(v, f);
+    }
+
+    /// The message the block of `version` was sealed with.
+    pub fn say(&self, version: u64, message: &str) {
+        self.state().messages.insert(version, message.to_owned());
+    }
+
+    /// What `show` answers for the block of `version`.
+    pub fn show(&self, version: u64, answer: Result<Change>) {
+        self.state().shows.insert(block_id(version), answer);
+    }
+
+    /// What `diff` answers.
+    pub fn diff_says(&self, answer: Result<Diff>) {
+        self.state().diff = Some(answer);
+    }
+
+    /// Every `diff` asked: from, to and the paths.
+    pub fn diffs_asked(&self) -> Vec<(Point, Point, Vec<String>)> {
+        self.state().diffs.clone()
+    }
+
+    /// How many `show`s were asked.
+    pub fn shows_asked(&self) -> usize {
+        self.state().show_calls
     }
 
     pub fn fail_views(&self, e: Option<StorageError>) {
@@ -164,8 +214,31 @@ impl Storage for Fake {
         unsupported("tree")
     }
 
-    fn stat(&self, _: &Path, _: &Point, _: &str) -> Result<FileMeta> {
-        unsupported("cat")
+    fn stat(&self, _: &Path, point: &Point, path: &str) -> Result<FileMeta> {
+        let s = self.state();
+        let Point::Block(id) = point else {
+            return unsupported("cat");
+        };
+        s.snapshots
+            .iter()
+            .find(|(v, _)| block_id(**v) == *id)
+            .and_then(|(_, f)| f.get(path))
+            .map(|bytes| FileMeta {
+                schema_version: "path-content-v1".to_owned(),
+                point: point.to_string(),
+                target_block_id: id.clone(),
+                path: path.to_owned(),
+                kind: "file".to_owned(),
+                encoding: Some("text".to_owned()),
+                mode: None,
+                size: bytes.len() as u64,
+            })
+            .ok_or_else(|| StorageError::Refused {
+                verb: "cat",
+                message: format!("no {path}"),
+                kind: None,
+                reason: None,
+            })
     }
 
     fn read(&self, _: &Path, point: &Point, path: &str, _: u64) -> Result<Vec<u8>> {
@@ -189,30 +262,56 @@ impl Storage for Fake {
             })
     }
 
-    fn history(&self, _: &Path, view: &Point, _: Option<u64>) -> Result<History> {
+    fn history(&self, _: &Path, view: &Point, limit: Option<u64>) -> Result<History> {
         let s = self.state();
+        let limit = limit.map_or(1_000, |l| usize::try_from(l).unwrap_or(usize::MAX));
+        let blocks = (1..=s.version)
+            .rev()
+            .take(limit)
+            .map(|v| HistoryBlock {
+                block_id: block_id(v),
+                ref_state_id: state_id(v),
+                update_seq: v,
+                kind: if v == 1 { "Root" } else { "Normal" }.to_owned(),
+                rollback_block: false,
+                patch_count: 1,
+                patch_messages: s
+                    .messages
+                    .get(&v)
+                    .map(|m| {
+                        vec![PatchMessage {
+                            patch_id: format!("{v:064x}"),
+                            message: m.clone(),
+                        }]
+                    })
+                    .unwrap_or_default(),
+                previous_ref_state_id: (v > 1).then(|| state_id(v - 1)),
+            })
+            .collect();
         Ok(History {
             schema_version: "log-report-v1".to_owned(),
             view: view.to_string(),
-            blocks: vec![HistoryBlock {
-                block_id: block_id(s.version),
-                ref_state_id: state_id(s.version),
-                update_seq: s.version,
-                kind: "Normal".to_owned(),
-                rollback_block: false,
-                patch_count: 1,
-                patch_messages: Vec::new(),
-                previous_ref_state_id: None,
-            }],
+            blocks,
         })
     }
 
-    fn change(&self, _: &Path, _: &str) -> Result<Change> {
-        unsupported("show")
+    fn change(&self, _: &Path, id: &str) -> Result<Change> {
+        let mut s = self.state();
+        s.show_calls += 1;
+        s.shows
+            .get(id)
+            .cloned()
+            .unwrap_or_else(|| unsupported("show"))
     }
 
-    fn diff(&self, _: &Path, _: &Point, _: &Point, _: &[&str]) -> Result<Diff> {
-        unsupported("diff")
+    fn diff(&self, _: &Path, from: &Point, to: &Point, paths: &[&str]) -> Result<Diff> {
+        let mut s = self.state();
+        s.diffs.push((
+            from.clone(),
+            to.clone(),
+            paths.iter().map(|p| (*p).to_owned()).collect(),
+        ));
+        s.diff.clone().unwrap_or_else(|| unsupported("diff"))
     }
 
     fn plan(&self, _: &Path, _: &Point) -> Result<Materialized> {

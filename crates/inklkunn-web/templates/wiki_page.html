@@ -3,7 +3,10 @@
 {% block body %}
 {% include "wiki_nav.html" %}
 <h1>{{ heading }}</h1>
-{% if let Some(note) = view_note %}<p class="view-note">{{ note }}</p>
+{% if let Some(banner) = banner %}<div class="at-banner" role="note">
+{% for line in banner.lines %}<p>{{ line }}</p>
+{% endfor %}</div>
+{% endif %}{% if let Some(note) = view_note %}<p class="view-note">{{ note }}</p>
 {% endif %}{% for note in notes %}<p class="page-note">{{ note }}</p>
 {% endfor %}{% if let Some(text) = stale %}<p class="stale-note" role="note">{{ text }}</p>
 {% endif %}{% if !toc.is_empty() %}<nav class="contents" aria-label="{{ contents_label }}">
@@ -17,6 +20,7 @@
 <div class="page-info">
 <p>{{ license }}</p>
 <p class="badge">{{ badge }}</p>
-<p><button type="button" disabled>{{ page.get(Key::PageProposeDisabled) }}</button> {{ page.get(Key::PageProposeNote) }}</p>
-</div>
+<p><a href="{{ history_href }}">{{ page.get(Key::PageLinkHistory) }}</a></p>
+{% if propose %}<p><button type="button" disabled>{{ page.get(Key::PageProposeDisabled) }}</button> {{ page.get(Key::PageProposeNote) }}</p>
+{% endif %}</div>
 {% endblock %}

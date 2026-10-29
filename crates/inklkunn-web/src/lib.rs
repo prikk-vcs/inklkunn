@@ -19,6 +19,7 @@ pub mod api;
 pub mod catalog;
 pub mod config;
 pub mod headers;
+mod history;
 pub mod lang;
 pub mod origin;
 pub mod pages;

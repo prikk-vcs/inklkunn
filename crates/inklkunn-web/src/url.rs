@@ -70,5 +70,67 @@ pub(crate) fn page_address(rest: &str) -> Option<PageAddress> {
     }
 }
 
+// ------------------------------------------------------------------------------------ a page's past
+
+/// The part of an address after `?` that names the view and the place in a history, when they are not the
+/// defaults. A view's name is a plain name (`view_ref`), so it needs no escaping.
+fn past_query(view: Option<&str>, after: Option<u64>) -> String {
+    let mut parts = Vec::new();
+    if let Some(view) = view {
+        parts.push(format!("view={view}"));
+    }
+    if let Some(after) = after {
+        parts.push(format!("after={after}"));
+    }
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!("?{}", parts.join("&"))
+    }
+}
+
+/// `/<slug>/-/history/<Title>`: a page's history, from the change after `after` when given.
+pub(crate) fn history_path(
+    slug: &str,
+    view: Option<&str>,
+    title: &str,
+    after: Option<u64>,
+) -> String {
+    format!(
+        "/{slug}/-/history/{}{}",
+        encode_title(title),
+        past_query(view, after)
+    )
+}
+
+/// `/<slug>/-/change/<block>`: one change.
+pub(crate) fn change_path(slug: &str, view: Option<&str>, block: &str) -> String {
+    format!("/{slug}/-/change/{block}{}", past_query(view, None))
+}
+
+/// `/<slug>/-/diff/<from>/<to>/<Title>`: what changed on a page between two changes.
+pub(crate) fn diff_path(
+    slug: &str,
+    view: Option<&str>,
+    from: &str,
+    to: &str,
+    title: &str,
+) -> String {
+    format!(
+        "/{slug}/-/diff/{from}/{to}/{}{}",
+        encode_title(title),
+        past_query(view, None)
+    )
+}
+
+/// `/<slug>/-/at/<block>/<Title>`: a page as it was after a change (a permalink).
+pub(crate) fn at_path(slug: &str, view: Option<&str>, block: &str, title: &str) -> String {
+    format!(
+        "/{slug}/-/at/{block}/{}{}",
+        encode_title(title),
+        past_query(view, None)
+    )
+}
+
 #[cfg(test)]
 mod tests;

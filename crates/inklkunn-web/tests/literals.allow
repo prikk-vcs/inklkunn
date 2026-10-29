@@ -75,3 +75,25 @@ exact :: request.rs :: view :: the name of a placeholder of a catalog message an
 exact :: request.rs :: feature :: the name of the member that says which read is not offered
 exact :: request.rs :: heads/ :: the prefix of a view's name in the repository, taken off for the answer
 exact :: request.rs :: the API could not read wiki `{}` now: {cause} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+# --- T5: a page's past (handoff 003): the history, change, difference and permalink handlers
+exact :: history.rs :: view :: the name of a query parameter, and a placeholder name of a catalog message
+exact :: history.rs :: after :: the name of the query parameter that says where in a history to go on from
+exact :: history.rs :: heads/ :: the prefix of a view's name in the repository, taken off for the address
+exact :: history.rs :: {what} of wiki `{}` could not be read now: {cause} :: the operator's log line for a read that could not be made (a log, not a page)
+exact :: history.rs :: a page's history :: what the operator's log line above was about (a log, not a page)
+exact :: history.rs :: a change :: what the operator's log line above was about (a log, not a page)
+exact :: history.rs :: a difference :: what the operator's log line above was about (a log, not a page)
+exact :: history.rs :: a page at a change :: what the operator's log line above was about (a log, not a page)
+exact :: history.rs :: token :: a placeholder name of a catalog message
+exact :: history.rs :: name :: a placeholder name of a catalog message
+exact :: history.rs :: number :: a placeholder name of a catalog message
+exact :: history.rs :: title :: a placeholder name of a catalog message
+exact :: history.rs :: page :: a placeholder name of a catalog message
+exact :: history.rs :: wiki :: a placeholder name of a catalog message
+exact :: history.rs :: proposer :: a placeholder name of a catalog message
+exact :: history.rs :: acceptor :: a placeholder name of a catalog message
+exact :: history.rs :: from :: a placeholder name of a catalog message
+exact :: history.rs :: line :: a placeholder name of a catalog message
+exact :: history.rs :: limit :: a placeholder name of a catalog message
+exact :: history.rs :: change :: a placeholder name of a catalog message
+exact :: history.rs :: current :: a placeholder name of a catalog message

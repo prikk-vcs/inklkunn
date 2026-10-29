@@ -18,6 +18,11 @@
 //! note IS-10). The first view at a new tip therefore also pays that one `extract`, and the one `log` that
 //! names the tip's block: **four on the first miss at a new tip**, one on a later miss.
 //!
+//! **A page's past** (handoff 003 T5; the `history` module): the history of a page, one change, a page's diff and
+//! a permalink are read through the same service, with their own bounds (a window of the view's log held per
+//! tip, a block's operations kept by id, at most [`MAX_SHOWS_PER_REQUEST`] `show`s per request, exactly one `diff`
+//! and always with the page's path), and the word-level refinement of a diff in `linediff` is inklkunn's own.
+//!
 //! **What this module never does**: it never passes `--allow-full-replay` (the driver has no way to), it
 //! never reads a verification result from the cache (there is none in it: [`inklkunn_store::DerivedPage`]
 //! has no field for one; the badge is read from the wiki record, RD-3), and it never hands a template HTML
@@ -48,7 +53,9 @@
 //!   footnotes keep the ids the Markdown writer gives them.
 
 mod counting;
+mod history;
 mod index;
+mod linediff;
 mod links;
 mod sanitize;
 mod tip;
@@ -77,11 +84,18 @@ use inklkunn_store::{
 use links::PageLinks;
 
 pub use counting::{Calls, CountingStorage};
+pub use history::{
+    AtOutcome, ChangeDetail, ChangeInfo, ChangeKind, ChangeOutcome, Did, DiffOutcome, DiffStatus,
+    HISTORY_PAGE_ROWS, HistoryOutcome, HistoryRow, MAX_DID, MAX_DIFF_LINES,
+    MAX_INSPECTED_PER_REQUEST, MAX_SHOWS_PER_REQUEST, MAX_WINDOW, PageDiff, PageEvent, PageHistory,
+    Provenance, Subject, Who,
+};
 pub use index::{
     FRONTMATTER_READ_BYTES, Found, Lookup, MAX_REDIRECT_HOPS, Problem, RedirectProblem,
     RedirectedBy, RedirectedFrom, TitleIndex, TreeError, entries_from_tree,
 };
 pub use inklkunn_markup::{TransclusionRefusal, Via};
+pub use linediff::{DiffLine, Hunk, HunkView, LineKind, MAX_WORDS, Segment};
 pub use links::Presentation;
 pub use sanitize::{HTML_SUBSET, SafeHtml, Sanitizer};
 pub use tip::Tip;
@@ -328,6 +342,9 @@ pub struct ReadService {
     refused_builds: Mutex<HashMap<WikiId, (Instant, String, ReadError)>>,
     scratch_names: AtomicU64,
     store_failures: AtomicU64,
+    /// What history, change, diff and permalink pages hold (handoff 003 T5): log windows, the operations of
+    /// blocks, a few permalink renders.
+    history: history::State,
 }
 
 impl ReadService {
@@ -355,6 +372,7 @@ impl ReadService {
             refused_builds: Mutex::new(HashMap::new()),
             scratch_names: AtomicU64::new(0),
             store_failures: AtomicU64::new(0),
+            history: history::State::default(),
         }
     }
 
@@ -380,6 +398,7 @@ impl ReadService {
     /// derived store needs nothing, its rows are keyed by tips the wiki has left.
     pub fn forget_wiki(&self, wiki: &WikiRecord) {
         self.tips.forget(&wiki.id, &self.layout.repo_dir(&wiki.id));
+        self.history.forget(&wiki.id);
         self.refused_builds
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -601,7 +620,21 @@ impl ReadService {
         let text = self
             .read_text(wiki, tip, &entry.path)?
             .ok_or(ReadError::PageUnreadable(PageProblem::NotUtf8))?;
-        let page = Page::parse(&text).map_err(|ParseError::Frontmatter(e)| {
+        self.render_text(wiki, tip, index, entry, presentation, &text)
+    }
+
+    /// Parse, resolve, render and sanitize the source `text` of the page `entry` (read at `tip`, which is also
+    /// where an included page is read).
+    fn render_text(
+        &self,
+        wiki: &WikiRecord,
+        tip: &Tip,
+        index: &TitleIndex,
+        entry: &IndexEntry,
+        presentation: &dyn Presentation,
+        text: &str,
+    ) -> Result<DerivedPage, ReadError> {
+        let page = Page::parse(text).map_err(|ParseError::Frontmatter(e)| {
             ReadError::PageUnreadable(PageProblem::Frontmatter(e.to_string()))
         })?;
         let included = |e: &IndexEntry| self.read_text(wiki, tip, &e.path);

@@ -128,7 +128,7 @@ const GOOD: &str = r#"
 :root{color-scheme:light dark;--bg:#fff;--fg:#1a1a1a;--muted:#666;--control:#767676;--accent:#2a5db0;--line:#ddd}
 @media (prefers-color-scheme:dark){:root{--bg:#111;--fg:#eee;--muted:#aaa;--control:#8c8c8c;--accent:#7aa7ff;--line:#333}}
 body{margin:0;color:var(--fg);background:var(--bg)}
-header a,footer a,nav a,th a,td a,main > p > a,.skip-link{display:inline-block;min-block-size:24px;min-inline-size:24px}
+header a,footer a,nav a,th a,td a,main > p > a,.skip-link,.change-link,.change-links a,.page-info a{display:inline-block;min-block-size:24px;min-inline-size:24px}
 button,input,select,textarea,summary{min-block-size:24px;min-inline-size:24px}
 input,button,select,textarea{border:1px solid var(--control);background:var(--bg);color:var(--fg)}
 .skip-link{border:1px solid var(--control);background:var(--bg)}
@@ -385,8 +385,8 @@ fn loading_anything_is_found() {
 fn target_size_fails_on_a_missing_minimum_or_an_inline_link() {
     assert!(
         !target_findings(&replaced(
-            "header a,footer a,nav a,th a,td a,main > p > a,.skip-link{display:inline-block;min-block-size:24px;min-inline-size:24px}",
-            "header a,footer a,nav a,th a,td a,main > p > a,.skip-link{display:inline-block;min-inline-size:24px}"
+            "header a,footer a,nav a,th a,td a,main > p > a,.skip-link,.change-link,.change-links a,.page-info a{display:inline-block;min-block-size:24px;min-inline-size:24px}",
+            "header a,footer a,nav a,th a,td a,main > p > a,.skip-link,.change-link,.change-links a,.page-info a{display:inline-block;min-inline-size:24px}"
         ))
         .is_empty()
     );

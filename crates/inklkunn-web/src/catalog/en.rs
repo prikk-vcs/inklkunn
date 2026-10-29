@@ -2,7 +2,7 @@
 //! Japanese table follows it, so a reviewer's sheet maps back to the keys one to one. The words are the
 //! glossary's (`docs/glossary.md`, section 2); a test holds the two equal.
 
-use super::{Entry, msg};
+use super::{Entry, msg, plural_msg};
 
 /// Every message, in English.
 pub const CATALOG: &[Entry] = &[
@@ -367,5 +367,154 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "problem.method_not_allowed.hint",
         "Ask with GET or HEAD instead.",
+    ),
+    // history, change, diff and permalinks (handoff 003 T5)
+    msg("page.link_history", "History of this page"),
+    msg("title.history", "History of {page} · {wiki} · {product}"),
+    msg("history.heading", "History of {title}"),
+    msg(
+        "history.intro",
+        "These changes touched this page. The newest is first.",
+    ),
+    msg("history.current", "The current version of {title}"),
+    msg("history.none", "No change to this page was found."),
+    msg(
+        "history.none_so_far",
+        "No change to this page was found among those read so far. Older changes may have touched it.",
+    ),
+    msg("history.older", "Look at older changes"),
+    msg(
+        "history.beyond",
+        "This wiki has more changes than are read at once. The oldest are not listed here.",
+    ),
+    msg("history.change_label", "Change {number}"),
+    msg("history.link_diff", "What change {number} did to this page"),
+    msg("history.link_version", "The page after change {number}"),
+    msg("people.proposed_by", "Proposed by {name}"),
+    msg("people.accepted_by", "Accepted by {name}"),
+    msg("people.made_by", "Made by {name}"),
+    msg("people.service", "the wiki service"),
+    msg("people.anonymous", "an anonymous contributor ({token})"),
+    msg(
+        "people.unrecorded",
+        "The record of this change does not say who made it.",
+    ),
+    msg("flag.undo", "Undoes earlier changes"),
+    msg("flag.import", "Import"),
+    msg("flag.service", "Made by the wiki service itself"),
+    msg("flag.first", "The first change of this wiki"),
+    msg("event.created", "The page was created"),
+    msg("event.edited", "The page was edited"),
+    msg("event.deleted", "The page was removed"),
+    msg("event.moved_from", "The page was moved here from {title}"),
+    msg("event.moved_to", "The page was moved to {title}"),
+    msg(
+        "event.not_inspected",
+        "This change is too large to list what it did, so it may have touched this page.",
+    ),
+    msg("title.change", "Change {number} · {wiki} · {product}"),
+    msg("change.heading", "Change {number}"),
+    msg("change.signed", "Signed into the history"),
+    msg(
+        "change.signed_by",
+        "Signed by the wiki service on behalf of {proposer}, accepted by {acceptor}.",
+    ),
+    msg("change.signed_service", "Signed by the wiki service."),
+    msg("change.did_heading", "What this change did"),
+    msg("change.did_none", "This change has nothing to list."),
+    msg("change.did_added", "Added the page {title}"),
+    msg("change.did_edited", "Edited the page {title}"),
+    msg("change.did_removed", "Removed the page {title}"),
+    msg("change.did_moved", "Moved the page {from} to {to}"),
+    msg(
+        "change.did_file_added",
+        "Added an attachment or another file that is not a page",
+    ),
+    msg(
+        "change.did_file_edited",
+        "Edited an attachment or another file that is not a page",
+    ),
+    msg(
+        "change.did_file_removed",
+        "Removed an attachment or another file that is not a page",
+    ),
+    msg(
+        "change.did_file_moved",
+        "Moved an attachment or another file that is not a page",
+    ),
+    plural_msg(
+        "change.did_more",
+        "{count} more item is not listed.",
+        "{count} more items are not listed.",
+    ),
+    msg(
+        "change.too_large",
+        "This change is too large to list what it did.",
+    ),
+    msg("change.link_diff", "What this change did to {title}"),
+    msg("change_none.heading", "There is no such change"),
+    msg(
+        "change_none.body",
+        "This wiki has no change at this address. Check the address, or open the history of a page and follow a link from there.",
+    ),
+    msg("title.diff", "Changes to {page} · {wiki} · {product}"),
+    msg("diff.heading", "Changes to {title}"),
+    msg("diff.from_to", "From {from} to {to}."),
+    msg("diff.summary_heading", "Summary"),
+    plural_msg(
+        "diff.summary_added",
+        "{count} line added",
+        "{count} lines added",
+    ),
+    plural_msg(
+        "diff.summary_removed",
+        "{count} line removed",
+        "{count} lines removed",
+    ),
+    msg("diff.summary_none", "No line differs."),
+    msg(
+        "diff.status_added",
+        "The page did not exist at the first point and exists at the second.",
+    ),
+    msg(
+        "diff.status_removed",
+        "The page existed at the first point and does not exist at the second.",
+    ),
+    msg(
+        "diff.status_unchanged",
+        "The page is the same at both points.",
+    ),
+    msg(
+        "diff.no_lines",
+        "The lines of this page cannot be shown. It may not be text, or it could not be compared.",
+    ),
+    msg("diff.truncated", "Only the first {limit} lines are shown."),
+    msg(
+        "diff.refinement",
+        "Marked words are found by inklkunn, which compares the changed lines word by word. The lines themselves come from prikk.",
+    ),
+    msg("diff.hunk_near", "Changes near line {line}"),
+    msg("diff.hunk_plain", "Changes"),
+    msg(
+        "diff.hunk_raw",
+        "These lines could not be read as a list of changes. They are shown as they are.",
+    ),
+    msg("diff.added_label", "Added:"),
+    msg("diff.removed_label", "Removed:"),
+    msg(
+        "diff.no_newline",
+        "The text ends here without a line break.",
+    ),
+    msg(
+        "title.at",
+        "{page} after change {number} · {wiki} · {product}",
+    ),
+    msg("at.banner", "This is the page as it was after {change}."),
+    msg("at.current", "Go to {current}."),
+    msg("at.current_label", "the current version of this page"),
+    msg("at.missing_heading", "The page did not exist then"),
+    msg(
+        "at.missing_body",
+        "After {change}, this wiki had no page titled {title}.",
     ),
 ];

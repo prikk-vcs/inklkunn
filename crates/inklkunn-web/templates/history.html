@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+{% if let Some(note) = view_note %}<p class="view-note">{{ note }}</p>
+{% endif %}{% if rows.is_empty() %}<p>{{ empty }}</p>
+{% else %}<p>{{ page.get(Key::HistoryIntro) }}</p>
+<ol class="history">
+{% for row in rows %}<li>
+<p class="change-head"><a class="change-link" href="{{ row.href }}">{{ row.label }}</a>{% if let Some(summary) = row.summary %}: {{ summary }}{% endif %}</p>
+{% if !row.facts.is_empty() %}<ul class="change-facts">
+{% for fact in row.facts %}<li>{{ fact }}</li>
+{% endfor %}</ul>
+{% endif %}<ul class="change-links">
+{% if let Some(link) = row.diff %}<li><a href="{{ link.href }}">{{ link.label }}</a></li>
+{% endif %}{% if let Some(link) = row.version %}<li><a href="{{ link.href }}">{{ link.label }}</a></li>
+{% endif %}</ul>
+</li>
+{% endfor %}</ol>
+{% endif %}{% if let Some(older) = older %}<p><a href="{{ older.href }}">{{ older.label }}</a></p>
+{% endif %}{% if let Some(text) = beyond %}<p class="note">{{ text }}</p>
+{% endif %}<p><a href="{{ current.href }}">{{ current.label }}</a></p>
+{% endblock %}

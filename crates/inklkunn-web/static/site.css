@@ -171,3 +171,63 @@ code { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; 
   button { border: 1px solid ButtonBorder; }
   header, footer { border-color: CanvasText; }
 }
+
+/* A page's past (handoff 003 T5): its history, one change, a difference, and the banner of a permalink. No new
+   colour pair: text is --fg or --muted on --bg, and what marks a line is never colour alone (a sign, a
+   decoration and a weight). */
+.visually-hidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.history, .change-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.history > li {
+  margin-block-end: 1.25rem;
+  padding-block-end: 0.75rem;
+  border-block-end: 1px solid var(--line);
+}
+.change-head { margin-block-end: 0.25rem; font-weight: 600; }
+.change-facts, .did, .diff-summary { margin-block: 0 0.5rem; padding-inline-start: 1.25rem; }
+.change-links { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; }
+.change-link, .change-links a, .page-info a {
+  display: inline-block;
+  min-block-size: 24px;
+  min-inline-size: 24px;
+  padding-block: 0.15rem;
+}
+.signed { font-weight: 600; }
+.at-banner {
+  margin-block-end: 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--control);
+  border-inline-start-width: 4px;
+}
+.at-banner p { margin-block-end: 0.25rem; }
+.diff-hunk {
+  margin-block-end: 1rem;
+  border: 1px solid var(--line);
+  overflow-x: auto;
+}
+.diff-line {
+  padding-inline: 0.5rem;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.95em;
+  white-space: pre-wrap;
+}
+.diff-sign { display: inline-block; inline-size: 1.25rem; }
+.diff-context { padding-inline-start: 1.75rem; }
+.diff-note { padding-inline-start: 1.75rem; color: var(--muted); font-style: italic; }
+.diff-raw { overflow-x: auto; }
+ins { text-decoration: underline; }
+del { text-decoration: line-through; }
+mark { background: none; color: var(--fg); font-weight: 700; text-decoration: underline double; }

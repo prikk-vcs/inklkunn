@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+{% if let Some(note) = view_note %}<p class="view-note">{{ note }}</p>
+{% endif %}<p>{{ range }}</p>
+<h2>{{ page.get(Key::DiffSummaryHeading) }}</h2>
+<ul class="diff-summary">
+{% for line in summary %}<li>{{ line }}</li>
+{% endfor %}</ul>
+{% for note in notes %}<p>{{ note }}</p>
+{% endfor %}{% if let Some(text) = refinement %}<p class="note">{{ text }}</p>
+{% endif %}{% for hunk in hunks %}<section aria-labelledby="hunk-{{ loop.index }}">
+<h2 id="hunk-{{ loop.index }}">{{ hunk.heading }}</h2>
+{% if let Some(raw) = hunk.raw %}<p>{{ page.get(Key::DiffHunkRaw) }}</p>
+<pre class="diff-raw">{{ raw }}</pre>
+{% else %}<div class="diff-hunk">
+{% for line in hunk.lines %}{% if line.removed %}<div class="diff-line diff-removed"><span class="diff-sign" aria-hidden="true">-</span><del><span class="visually-hidden">{{ removed_label }} </span>{% for seg in line.segments %}{% if seg.marked %}<mark>{{ seg.text }}</mark>{% else %}{{ seg.text }}{% endif %}{% endfor %}</del></div>
+{% else if line.added %}<div class="diff-line diff-added"><span class="diff-sign" aria-hidden="true">+</span><ins><span class="visually-hidden">{{ added_label }} </span>{% for seg in line.segments %}{% if seg.marked %}<mark>{{ seg.text }}</mark>{% else %}{{ seg.text }}{% endif %}{% endfor %}</ins></div>
+{% else if let Some(note) = line.note %}<div class="diff-line diff-note">{{ note }}</div>
+{% else %}<div class="diff-line diff-context">{% for seg in line.segments %}{{ seg.text }}{% endfor %}</div>
+{% endif %}{% endfor %}</div>
+{% endif %}</section>
+{% endfor %}<p><a href="{{ current.href }}">{{ current.label }}</a></p>
+{% endblock %}

@@ -48,8 +48,8 @@ T6, RFC 004) take the word from here and do not choose their own.
 | The label that prikk ran all of its checks on the wiki and found no problems | Verified | 検証済み | yes | A trust label: it never means more than the check found, and never appears without it | Reused from planeter · ja: hard term, trust label |
 | The label that prikk checked and found problems | Verification failed | 検証に失敗 | yes | "Unverified" would read as "not checked" | Reused from planeter · ja: hard term, trust label |
 | The label for a check that could not run | Could not be checked now | 現在は確認できません | yes | Separates "failed" from "could not check"; it claims nothing either way | Reused from planeter · ja: hard term, trust label |
-| The label on a change that was signed into the history | Signed into the history | 署名して履歴に記録済み | not yet | Plain for "sealed"; on a change page it must not read as "Verified" | Reused from planeter · ja: hard term, trust label |
-| inklkunn itself, as the author of record of every change | the wiki service | ウィキサービス | not yet | RFC 002 D-6, WEB-09: "signed by the wiki service on behalf of {proposer}, accepted by {acceptor}" says who signed and for whom, and never implies that a person signed cryptographically | Drafted · ja: hard term |
+| The label on a change that was signed into the history | Signed into the history | 署名して履歴に記録済み | yes | Plain for "sealed"; on a change page it must not read as "Verified" | Reused from planeter · ja: hard term, trust label |
+| inklkunn itself, as the author of record of every change | the wiki service | ウィキサービス | yes | RFC 002 D-6, WEB-09: "signed by the wiki service on behalf of {proposer}, accepted by {acceptor}" says who signed and for whom, and never implies that a person signed cryptographically | Drafted · ja: hard term |
 | A page title that sends the reader to another page | redirect | リダイレクト | yes | The usual word; the page says "redirected from {title}" | Drafted |
 | Another title a page also answers to | alias | 別名 | not yet | Plain | Drafted |
 | An address that always shows a page as it was at one point in its history | permalink | 固定リンク | not yet | The usual word | Drafted |
@@ -210,6 +210,79 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `problem.method_not_allowed.title` | the API's problem detail `method-not-allowed`: the title | "Method not allowed" | "このメソッドは使えません" |
 | `problem.method_not_allowed.detail` | the API's problem detail `method-not-allowed`: the detail | "This release of the API only reads, so this address does not take that method." | "この版の API は読み取り専用のため、このアドレスではそのメソッドを使えません。" |
 | `problem.method_not_allowed.hint` | the API's problem detail `method-not-allowed`: the hint | "Ask with GET or HEAD instead." | "GET または HEAD で求めてください。" |
+| `page.link_history` | under a page, the link to its history | "History of this page" | "このページの履歴" |
+| `title.history` | the title of a page's history; `{page}` is the page's title, `{wiki}` the wiki's name | "History of {page} · {wiki} · {product}" | "{page} の履歴 · {wiki} · {product}" |
+| `history.heading` | the heading of a page's history; `{title}` is the page's title | "History of {title}" | "{title} の履歴" |
+| `history.intro` | the sentence under the heading, above the list of changes | "These changes touched this page. The newest is first." | "このページに関わった変更です。新しい順に並んでいます。" |
+| `history.current` | a link from the history, the difference and the permalink to the page itself; `{title}` is its title | "The current version of {title}" | "{title} の現在の版" |
+| `history.none` | in place of the list when no change touched the page | "No change to this page was found." | "このページに関わる変更は見つかりませんでした。" |
+| `history.none_so_far` | in place of the list when none of the changes read so far touched the page and older ones remain | "No change to this page was found among those read so far. Older changes may have touched it." | "ここまでに読み込んだ変更の中に、このページに関わるものは見つかりませんでした。さらに古い変更に含まれている可能性があります。" |
+| `history.older` | the link under the list that goes on to older changes | "Look at older changes" | "さらに古い変更を見る" |
+| `history.beyond` | under the list when the wiki has more changes than are read at once | "This wiki has more changes than are read at once. The oldest are not listed here." | "このウィキには一度に読み込める数より多くの変更があります。いちばん古い変更はここには表示されません。" |
+| `history.change_label` | the name of one change, a link to its page; `{number}` is its place in the history, counting from the first | "Change {number}" | "変更 {number}" |
+| `history.link_diff` | a link from a change in a page's history to what that change did to the page; `{number}` as above | "What change {number} did to this page" | "変更 {number} でこのページがどう変わったか" |
+| `history.link_version` | a link from a change in a page's history to the page as it was after that change (a permalink); `{number}` as above | "The page after change {number}" | "変更 {number} の後のページ" |
+| `people.proposed_by` | beside a change: who put the change forward; `{name}` is a person's name, an anonymous contributor or the wiki service | "Proposed by {name}" | "提案者: {name}" |
+| `people.accepted_by` | beside a change: who took it into the history; `{name}` as above | "Accepted by {name}" | "受け入れた人: {name}" |
+| `people.made_by` | beside a change the wiki service made itself (a start, an import); `{name}` is the wiki service | "Made by {name}" | "{name} による変更" |
+| `people.service` | a name in the three messages above and in the signed line of a change: the wiki service itself | "the wiki service" | "ウィキサービス" |
+| `people.anonymous` | a name in the messages above: someone who proposed without an account; `{token}` is the temporary name the wiki gave them | "an anonymous contributor ({token})" | "匿名の投稿者（{token}）" |
+| `people.unrecorded` | beside a change whose record does not name the people | "The record of this change does not say who made it." | "この変更の記録には、誰が行ったかが書かれていません。" |
+| `flag.undo` | a mark on a change that undoes earlier changes | "Undoes earlier changes" | "以前の変更を取り消します" |
+| `flag.import` | a mark on a change that brought in content from another source | "Import" | "取り込み" |
+| `flag.service` | a mark on a change the wiki service made itself | "Made by the wiki service itself" | "ウィキサービス自身が行った変更" |
+| `flag.first` | a mark on the first change of a wiki | "The first change of this wiki" | "このウィキの最初の変更" |
+| `event.created` | what a change did to the page whose history is shown | "The page was created" | "ページが作成されました" |
+| `event.edited` | as above | "The page was edited" | "ページが編集されました" |
+| `event.deleted` | as above | "The page was removed" | "ページが削除されました" |
+| `event.moved_from` | as above; `{title}` is the title the page had before | "The page was moved here from {title}" | "ページは {title} から移動されました" |
+| `event.moved_to` | as above; `{title}` is the title the page has now | "The page was moved to {title}" | "ページは {title} へ移動されました" |
+| `event.not_inspected` | in place of the above when the change is too large to list what it did | "This change is too large to list what it did, so it may have touched this page." | "この変更は大きすぎて内容を一覧できないため、このページに関わっている可能性があります。" |
+| `title.change` | the title of a change's page; `{number}` is its place in the history | "Change {number} · {wiki} · {product}" | "変更 {number} · {wiki} · {product}" |
+| `change.heading` | the heading of a change's page | "Change {number}" | "変更 {number}" |
+| `change.signed` | the label on a change's page: it was signed into the history. It says nothing about who signed or whether the history was checked | "Signed into the history" | "署名して履歴に記録済み" |
+| `change.signed_by` | under the label above, for a change that came from a proposal | "Signed by the wiki service on behalf of {proposer}, accepted by {acceptor}." | "ウィキサービスが {proposer} に代わって署名し、{acceptor} が受け入れました。" |
+| `change.signed_service` | under the label above, for a change the wiki service made itself | "Signed by the wiki service." | "ウィキサービスが署名しました。" |
+| `change.did_heading` | the heading over what a change did | "What this change did" | "この変更の内容" |
+| `change.did_none` | in place of the list when the change has nothing to list | "This change has nothing to list." | "この変更に一覧できる内容はありません。" |
+| `change.did_added` | one thing a change did; `{title}` is a link to the page | "Added the page {title}" | "ページ {title} を追加しました" |
+| `change.did_edited` | as above | "Edited the page {title}" | "ページ {title} を編集しました" |
+| `change.did_removed` | as above | "Removed the page {title}" | "ページ {title} を削除しました" |
+| `change.did_moved` | as above; `{from}` and `{to}` are the old and the new title | "Moved the page {from} to {to}" | "ページ {from} を {to} へ移動しました" |
+| `change.did_file_added` | as above, for something that is not a page (an attachment, a manifest) | "Added an attachment or another file that is not a page" | "ページではない添付ファイルなどを追加しました" |
+| `change.did_file_edited` | as above | "Edited an attachment or another file that is not a page" | "ページではない添付ファイルなどを編集しました" |
+| `change.did_file_removed` | as above | "Removed an attachment or another file that is not a page" | "ページではない添付ファイルなどを削除しました" |
+| `change.did_file_moved` | as above, when a move involves something that is not a page | "Moved an attachment or another file that is not a page" | "ページではない添付ファイルなどを移動しました" |
+| `change.did_more` | under the list when the change did more than is listed; `{count}` is how many more | "{count} more item is not listed." / "{count} more items are not listed." | "ほかに {count} 件は一覧に含まれていません。" |
+| `change.too_large` | in place of the list when the change is too large to describe | "This change is too large to list what it did." | "この変更は大きすぎて、内容を一覧できません。" |
+| `change.link_diff` | beside an edited page in a change: a link to what the change did to that page; `{title}` is its title | "What this change did to {title}" | "この変更で {title} がどう変わったか" |
+| `change_none.heading` | the heading of the page for a change, a difference or a permalink that this wiki does not have | "There is no such change" | "そのような変更はありません" |
+| `change_none.body` | its sentence | "This wiki has no change at this address. Check the address, or open the history of a page and follow a link from there." | "このアドレスに対応する変更は、このウィキにはありません。アドレスを確認するか、ページの履歴を開いてリンクをたどってください。" |
+| `title.diff` | the title of a page's difference; `{page}` is the page's title | "Changes to {page} · {wiki} · {product}" | "{page} の変更点 · {wiki} · {product}" |
+| `diff.heading` | the heading of a page's difference | "Changes to {title}" | "{title} の変更点" |
+| `diff.from_to` | under the heading: what is compared; `{from}` and `{to}` are links to the two changes | "From {from} to {to}." | "{from} から {to} まで。" |
+| `diff.summary_heading` | the heading of the text summary of a difference | "Summary" | "概要" |
+| `diff.summary_added` | a line of the summary: how many lines the difference adds | "{count} line added" / "{count} lines added" | "{count} 行追加" |
+| `diff.summary_removed` | a line of the summary: how many lines the difference removes | "{count} line removed" / "{count} lines removed" | "{count} 行削除" |
+| `diff.summary_none` | in place of the summary when no line differs | "No line differs." | "異なる行はありません。" |
+| `diff.status_added` | under the summary: the page is new at the second point | "The page did not exist at the first point and exists at the second." | "このページは、比較の前の時点には存在せず、後の時点に存在します。" |
+| `diff.status_removed` | under the summary: the page is gone at the second point | "The page existed at the first point and does not exist at the second." | "このページは、比較の前の時点に存在し、後の時点には存在しません。" |
+| `diff.status_unchanged` | under the summary: nothing differs | "The page is the same at both points." | "このページは、どちらの時点でも同じです。" |
+| `diff.no_lines` | under the summary: the lines cannot be shown | "The lines of this page cannot be shown. It may not be text, or it could not be compared." | "このページの行は表示できません。テキストではないか、比較できなかった可能性があります。" |
+| `diff.truncated` | under the lines when the difference is longer than is shown; `{limit}` is how many lines are shown | "Only the first {limit} lines are shown." | "最初の {limit} 行だけを表示しています。" |
+| `diff.refinement` | above the lines: where the marked words come from | "Marked words are found by inklkunn, which compares the changed lines word by word. The lines themselves come from prikk." | "印の付いた語は、inklkunn が変更された行を語ごとに比べて見つけたものです。行そのものは prikk が出力したものです。" |
+| `diff.hunk_near` | the heading of one group of changed lines; `{line}` is the line of the page where the group begins | "Changes near line {line}" | "{line} 行目付近の変更" |
+| `diff.hunk_plain` | as above, when the line is not known | "Changes" | "変更" |
+| `diff.hunk_raw` | above a group of lines that could not be read as changes and is shown as it is | "These lines could not be read as a list of changes. They are shown as they are." | "この部分は変更の一覧として読み取れませんでした。そのまま表示しています。" |
+| `diff.added_label` | read aloud before an added line (not shown on screen) | "Added:" | "追加:" |
+| `diff.removed_label` | read aloud before a removed line (not shown on screen) | "Removed:" | "削除:" |
+| `diff.no_newline` | in place of a line that says the text ends without a line break | "The text ends here without a line break." | "ここでテキストは改行なしで終わっています。" |
+| `title.at` | the title of a page as it was after a change (a permalink); `{page}` is its title, `{number}` the change | "{page} after change {number} · {wiki} · {product}" | "変更 {number} の後の {page} · {wiki} · {product}" |
+| `at.banner` | the banner above a page shown as it was after a change; `{change}` is a link to that change | "This is the page as it was after {change}." | "これは {change} の後のページです。" |
+| `at.current` | under the banner above; `{current}` is a link to the page as it is now | "Go to {current}." | "{current} へ移動できます。" |
+| `at.current_label` | the words of the link in the message above | "the current version of this page" | "このページの現在の版" |
+| `at.missing_heading` | the heading of the page for a permalink to a point before the page existed, or after it was removed | "The page did not exist then" | "そのときこのページはありませんでした" |
+| `at.missing_body` | its sentence; `{title}` is the title asked for, `{change}` the name of the change, which a link under it opens | "After {change}, this wiki had no page titled {title}." | "{change} の後、このウィキに {title} というタイトルのページはありませんでした。" |
 
 ## 3. Words the interface does not say
 
@@ -248,6 +321,10 @@ What to look at first:
   見送り済み for *accepted* and *declined* (見送り is gentler than 却下, which the draft avoids on purpose),
   未作成のページ for *wanted page*, ビュー for *view*, and the four trust labels, which carry meaning and must not
   read as a lasting guarantee (検証済み) or as a verification that did not happen (署名して履歴に記録済み).
+- **The signed line of a change** (`change.signed_by`, handoff 003 T5): ウィキサービスが {proposer} に代わって署名し、
+  {acceptor} が受け入れました。 It must say that the *service* signed *for* the proposer and that a person
+  *accepted*; it must never read as if a person signed. Also the people lines of a history (提案者, 受け入れた人),
+  and the word 変更 for a change in a sentence that also names 提案.
 - **Tone.** The polite register throughout; headings and labels are noun phrases; a refusal says what happened,
   what was not done, and what to do next.
 - **Cookie** is written in Latin letters, as many Japanese sites do; クッキー is the alternative.

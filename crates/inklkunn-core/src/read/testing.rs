@@ -31,6 +31,13 @@ struct State {
     fail_materialize: Option<StorageError>,
     fail_read: Option<StorageError>,
     delay: Duration,
+    /// The message sealed with each version's block (T5): `history` lists one block per version.
+    messages: BTreeMap<u64, String>,
+    /// What `show` answers for a block id.
+    shows: BTreeMap<String, Result<Change>>,
+    /// What `diff` answers, and every `diff` asked.
+    diff: Option<Result<Diff>>,
+    diffs: Vec<(Point, Point, Vec<String>)>,
 }
 
 /// A one-view repository. Changing a file moves the tip.
@@ -64,6 +71,17 @@ impl Fake {
     /// Write a file and move the tip.
     pub(crate) fn set(&self, path: &str, text: &str) {
         self.set_bytes(path, text.as_bytes());
+    }
+
+    /// Write several files in one block: the tip moves once.
+    pub(crate) fn set_files(&self, files: &[(String, String)]) {
+        let mut s = self.state();
+        for (path, text) in files {
+            s.files.insert(path.clone(), text.as_bytes().to_vec());
+        }
+        s.version += 1;
+        let (version, files) = (s.version, s.files.clone());
+        s.snapshots.insert(version, files);
     }
 
     pub(crate) fn set_bytes(&self, path: &str, bytes: &[u8]) {
@@ -111,13 +129,33 @@ impl Fake {
     pub(crate) fn state_id(&self) -> String {
         state_id(self.state().version)
     }
+
+    /// The message the block of `version` was sealed with.
+    pub(crate) fn say(&self, version: u64, message: &str) {
+        self.state().messages.insert(version, message.to_owned());
+    }
+
+    /// What `show` answers for the block of `version`.
+    pub(crate) fn show(&self, version: u64, answer: Result<Change>) {
+        self.state().shows.insert(block_id(version), answer);
+    }
+
+    /// What `diff` answers.
+    pub(crate) fn diff_says(&self, answer: Result<Diff>) {
+        self.state().diff = Some(answer);
+    }
+
+    /// Every `diff` asked: from, to and the paths.
+    pub(crate) fn diffs_asked(&self) -> Vec<(Point, Point, Vec<String>)> {
+        self.state().diffs.clone()
+    }
 }
 
-fn state_id(n: u64) -> String {
+pub(crate) fn state_id(n: u64) -> String {
     format!("{n:064x}")
 }
 
-fn block_id(n: u64) -> String {
+pub(crate) fn block_id(n: u64) -> String {
     format!("{:064x}", 0xb10c_0000 + n)
 }
 
@@ -184,8 +222,36 @@ impl Storage for Fake {
         Err(unsupported("tree"))
     }
 
-    fn stat(&self, _: &Path, _: &Point, _: &str) -> Result<FileMeta> {
-        Err(unsupported("cat"))
+    fn stat(&self, _: &Path, point: &Point, path: &str) -> Result<FileMeta> {
+        // Only a block's files are described (a permalink asks); a view's are not needed by any read.
+        if matches!(point, Point::View(_)) {
+            return Err(unsupported("cat"));
+        }
+        let s = self.state();
+        let files = files_at(&s, point).ok_or_else(|| StorageError::Refused {
+            verb: "cat",
+            message: format!("no such block: {point}"),
+            kind: None,
+            reason: None,
+        })?;
+        match files.get(path) {
+            Some(bytes) => Ok(FileMeta {
+                schema_version: "path-content-v1".to_owned(),
+                point: point.to_string(),
+                target_block_id: point.to_string(),
+                path: path.to_owned(),
+                kind: "file".to_owned(),
+                encoding: Some("text".to_owned()),
+                mode: None,
+                size: bytes.len() as u64,
+            }),
+            None => Err(StorageError::Refused {
+                verb: "cat",
+                message: format!("path {path} not found"),
+                kind: None,
+                reason: None,
+            }),
+        }
     }
 
     fn read(&self, _repo: &Path, point: &Point, path: &str, max_bytes: u64) -> Result<Vec<u8>> {
@@ -216,7 +282,7 @@ impl Storage for Fake {
         }
     }
 
-    fn history(&self, _: &Path, view: &Point, _: Option<u64>) -> Result<History> {
+    fn history(&self, _: &Path, view: &Point, limit: Option<u64>) -> Result<History> {
         let s = self.state();
         let Point::View(name) = view else {
             return Err(unsupported("log"));
@@ -235,6 +301,38 @@ impl Storage for Fake {
                 }
             },
         };
+        if n == s.version && name == "heads/main" {
+            // One block per version, newest first, each with the message it was sealed with.
+            let limit = limit.map_or(1_000, |l| usize::try_from(l).unwrap_or(usize::MAX));
+            let blocks = (1..=n)
+                .rev()
+                .take(limit)
+                .map(|v| HistoryBlock {
+                    block_id: block_id(v),
+                    ref_state_id: state_id(v),
+                    update_seq: v,
+                    kind: if v == 1 { "Root" } else { "Normal" }.to_owned(),
+                    rollback_block: false,
+                    patch_count: 1,
+                    patch_messages: s
+                        .messages
+                        .get(&v)
+                        .map(|m| {
+                            vec![inklkunn_prikk::PatchMessage {
+                                patch_id: format!("{v:064x}"),
+                                message: m.clone(),
+                            }]
+                        })
+                        .unwrap_or_default(),
+                    previous_ref_state_id: (v > 1).then(|| state_id(v - 1)),
+                })
+                .collect();
+            return Ok(History {
+                schema_version: "log-report-v1".to_owned(),
+                view: name.clone(),
+                blocks,
+            });
+        }
         Ok(History {
             schema_version: "log-report-v1".to_owned(),
             view: name.clone(),
@@ -251,12 +349,22 @@ impl Storage for Fake {
         })
     }
 
-    fn change(&self, _: &Path, _: &str) -> Result<Change> {
-        Err(unsupported("show"))
+    fn change(&self, _: &Path, id: &str) -> Result<Change> {
+        self.state()
+            .shows
+            .get(id)
+            .cloned()
+            .unwrap_or_else(|| Err(unsupported("show")))
     }
 
-    fn diff(&self, _: &Path, _: &Point, _: &Point, _: &[&str]) -> Result<Diff> {
-        Err(unsupported("diff"))
+    fn diff(&self, _: &Path, from: &Point, to: &Point, paths: &[&str]) -> Result<Diff> {
+        let mut s = self.state();
+        s.diffs.push((
+            from.clone(),
+            to.clone(),
+            paths.iter().map(|p| (*p).to_owned()).collect(),
+        ));
+        s.diff.clone().unwrap_or_else(|| Err(unsupported("diff")))
     }
 
     fn plan(&self, _: &Path, _: &Point) -> Result<Materialized> {

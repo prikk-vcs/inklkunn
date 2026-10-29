@@ -76,3 +76,26 @@ fn only_a_plain_name_is_a_view() {
         assert!(view_ref(bad).is_none(), "{bad}");
     }
 }
+
+#[test]
+fn the_addresses_of_a_pages_past_carry_the_view_and_the_place_and_escape_the_title() {
+    let b = "ab".repeat(32);
+    assert_eq!(history_path("w", None, "Home", None), "/w/-/history/Home");
+    assert_eq!(
+        history_path("w", Some("draft"), "~x/日本", Some(7)),
+        "/w/-/history/%7Ex/%E6%97%A5%E6%9C%AC?view=draft&after=7"
+    );
+    assert_eq!(change_path("w", None, &b), format!("/w/-/change/{b}"));
+    assert_eq!(
+        change_path("w", Some("draft"), &b),
+        format!("/w/-/change/{b}?view=draft")
+    );
+    assert_eq!(
+        diff_path("w", None, &b, &b, "a b"),
+        format!("/w/-/diff/{b}/{b}/a%20b")
+    );
+    assert_eq!(
+        at_path("w", None, &b, "Guides/Setup"),
+        format!("/w/-/at/{b}/Guides/Setup")
+    );
+}
