@@ -52,12 +52,16 @@
 //!   [`inklkunn_markup::MAX_TRANSCLUDED_BYTES`] of their source, however it nests them, and an included page's
 //!   footnotes keep the ids the Markdown writer gives them.
 
+mod changes;
 mod counting;
 mod history;
+mod graph;
 mod index;
 mod linediff;
 mod links;
+mod raw;
 mod sanitize;
+mod search;
 mod tip;
 
 // The read API's reads (handoff 003 T8).
@@ -83,6 +87,10 @@ use inklkunn_store::{
 
 use links::PageLinks;
 
+pub use changes::{
+    ChangeFilter, ChangeKind, ChangeList, ChangeRow, ChangedPage, Person, SCAN_WINDOW, StaleList,
+    StalePage, Tri,
+};
 pub use counting::{Calls, CountingStorage};
 pub use history::{
     AtOutcome, ChangeDetail, ChangeInfo, ChangeKind, ChangeOutcome, Did, DiffOutcome, DiffStatus,
@@ -90,14 +98,20 @@ pub use history::{
     MAX_INSPECTED_PER_REQUEST, MAX_SHOWS_PER_REQUEST, MAX_WINDOW, PageDiff, PageEvent, PageHistory,
     Provenance, Subject, Who,
 };
+pub use graph::{
+    Backlink, BacklinkKind, GraphPage, LinkGraph, RedirectIssue, RedirectIssueKind, Wanted,
+};
 pub use index::{
     FRONTMATTER_READ_BYTES, Found, Lookup, MAX_REDIRECT_HOPS, Problem, RedirectProblem,
     RedirectedBy, RedirectedFrom, TitleIndex, TreeError, entries_from_tree,
 };
 pub use inklkunn_markup::{TransclusionRefusal, Via};
 pub use linediff::{DiffLine, Hunk, HunkView, LineKind, MAX_WORDS, Segment};
+pub use inklkunn_store::SearchKind;
 pub use links::Presentation;
+pub use raw::RawPage;
 pub use sanitize::{HTML_SUBSET, SafeHtml, Sanitizer};
+pub use search::{SearchHit, SearchOutcome, Segment, fold, highlight};
 pub use tip::Tip;
 
 // The read API's reads (handoff 003 T8).
@@ -340,6 +354,10 @@ pub struct ReadService {
     /// was refused at and when: asked again within the hold of a tip, the answer is the same one, and prikk
     /// is not spawned for every page request while the operator fixes it.
     refused_builds: Mutex<HashMap<WikiId, (Instant, String, ReadError)>>,
+    /// The link graph of a tip, built on demand from one extract (backlinks and the health views), newest last.
+    graphs: Mutex<Vec<(WikiId, Arc<LinkGraph>)>>,
+    /// The pages each block touched (`show` is immutable: a block's change never changes), by wiki and block.
+    block_pages: Mutex<HashMap<(WikiId, String), Vec<String>>>,
     scratch_names: AtomicU64,
     store_failures: AtomicU64,
     /// What history, change, diff and permalink pages hold (handoff 003 T5): log windows, the operations of
@@ -370,6 +388,8 @@ impl ReadService {
             indexes: Mutex::new(Vec::new()),
             builds: Mutex::new(HashMap::new()),
             refused_builds: Mutex::new(HashMap::new()),
+            graphs: Mutex::new(Vec::new()),
+            block_pages: Mutex::new(HashMap::new()),
             scratch_names: AtomicU64::new(0),
             store_failures: AtomicU64::new(0),
             history: history::State::default(),
@@ -404,6 +424,10 @@ impl ReadService {
             .unwrap_or_else(PoisonError::into_inner)
             .remove(&wiki.id);
         self.indexes
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .retain(|(w, _)| *w != wiki.id);
+        self.graphs
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .retain(|(w, _)| *w != wiki.id);
@@ -835,6 +859,27 @@ impl ReadService {
 
     /// One `extract` of the tip into the wiki's scratch directory, read, and the directory removed.
     fn build_entries(&self, wiki: &WikiRecord, tip: &Tip) -> Result<Vec<IndexEntry>, ReadError> {
+        self.with_tree(wiki, tip, |root| {
+            entries_from_tree(root, self.config.index_max_files).map_err(|e| match e {
+                TreeError::TooManyEntries(n) => ReadError::CouldNotBeReadNow(Cause::IndexBounds(
+                    format!("more than {n} entries under `pages/`"),
+                )),
+                TreeError::Io(e) => ReadError::CouldNotBeReadNow(Cause::Scratch(format!(
+                    "reading the extracted tree: {e}"
+                ))),
+            })
+        })
+    }
+
+    /// Run `work` over **one extract of the tip** in the wiki's scratch directory, and remove the directory
+    /// whatever came of it (the caller holds the wiki's build lock, so only one extract of a wiki runs at a
+    /// time).
+    fn with_tree<R>(
+        &self,
+        wiki: &WikiRecord,
+        tip: &Tip,
+        work: impl FnOnce(&Path) -> Result<R, ReadError>,
+    ) -> Result<R, ReadError> {
         let scratch_error = |what: &str, e: std::io::Error| {
             ReadError::CouldNotBeReadNow(Cause::Scratch(format!("{what}: {e}")))
         };
@@ -864,21 +909,14 @@ impl ReadService {
                 bounds,
             )
             .map_err(|e| self.storage_error(wiki, e));
-        let entries =
-            match extracted {
-                Ok(_) => entries_from_tree(&scratch.join(&name), self.config.index_max_files)
-                    .map_err(|e| match e {
-                        TreeError::TooManyEntries(n) => ReadError::CouldNotBeReadNow(
-                            Cause::IndexBounds(format!("more than {n} entries under `pages/`")),
-                        ),
-                        TreeError::Io(e) => scratch_error("reading the extracted tree", e),
-                    }),
-                Err(e) => Err(e),
-            };
+        let result = match extracted {
+            Ok(_) => work(&scratch.join(&name)),
+            Err(e) => Err(e),
+        };
         // The directory goes whatever came of the build. A directory that will not go is swept by the next
-        // build; the index itself is good.
+        // build; what was read is good.
         remove_tree(&scratch.join(&name));
-        entries
+        result
     }
 
     // ------------------------------------------------------------------------------------ errors

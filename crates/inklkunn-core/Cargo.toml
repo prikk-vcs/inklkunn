@@ -25,6 +25,8 @@ ammonia = "4"
 sha2 = "0.10"
 # Per-page history lines (`history/<page id>.jsonl`) and the report values.
 serde_json = { workspace = true }
+# Folding for search: width variants and diacritics are one letter (RFC 003 D-8). Already in the lock (the markup crate).
+unicode-normalization = { workspace = true }
 
 [dev-dependencies]
 # The tests create wikis with the bootstrap signer and open the real signer with the cheapest key derivation;

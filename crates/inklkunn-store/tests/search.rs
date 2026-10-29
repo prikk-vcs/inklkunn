@@ -159,7 +159,10 @@ fn observations(store: &(impl DerivedStore + WikiStore)) {
     let more = vec!["b3".to_owned(), "b1".to_owned()];
     assert_eq!(store.first_seen(&w, &more, 200).unwrap(), [200, 100]);
     // Another wiki's blocks are its own.
-    assert_eq!(store.first_seen(&other, &blocks[..1], 300).unwrap(), [300]);
+    assert_eq!(
+        store.first_seen(&other, &["b1".to_owned()], 300).unwrap(),
+        [300]
+    );
     // Clearing the cache, and keeping only some tips, leave the observations alone: they cannot be rebuilt.
     store.clear(&w).unwrap();
     store.retain_tips(&w, &[]).unwrap();
