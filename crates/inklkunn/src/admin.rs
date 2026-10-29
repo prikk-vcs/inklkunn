@@ -333,6 +333,29 @@ fn run(
     }
 }
 
+/// The audit events of a start-up sweep, after it ran: one per unfinished creation it removed (*allowed*, with
+/// the wiki's id, never its name), and one per creation it could not or would not remove (*failed*). A write
+/// that fails comes back as a line for the operator: the removal has happened, and saying so is all that is left.
+fn audit_sweep(sink: &dyn AuditSink, report: &inklkunn_core::SweepReport, now: i64) -> Vec<String> {
+    let trail = Trail { sink, now };
+    let removed = report
+        .removed
+        .iter()
+        .map(|id| (id, AuditOutcome::Allowed, "unfinished creation removed"));
+    let kept = report
+        .left_behind
+        .iter()
+        .map(|(id, _)| (id, AuditOutcome::Failed, "unfinished creation not removed"));
+    removed
+        .chain(kept)
+        .filter_map(|(id, outcome, detail)| {
+            trail
+                .finish("creation-sweep", &format!("wiki:{id}"), outcome, detail)
+                .err()
+        })
+        .collect()
+}
+
 /// Print what a start-up sweep found.
 fn report_sweep(report: &inklkunn_core::SweepReport, err: &mut dyn Write) {
     for id in &report.removed {
@@ -415,8 +438,11 @@ fn create(
         );
     }
     // What an earlier, killed creation left goes first.
-    let report = sweep_unfinished_creations(&store, &env.layout, &signer)?;
+    let report = sweep_unfinished_creations(&store, &env.layout, &signer, &env.storage, fresh)?;
     report_sweep(&report, err);
+    for line in audit_sweep(&store, &report, now) {
+        let _ = writeln!(err, "{line}");
+    }
     let trail = Trail { sink: &store, now };
     trail.begin("wiki-create", "wiki:new", "begun")?;
     let created = create_wiki(
@@ -748,11 +774,13 @@ fn refresh_checkpoint(
 /// refresh prikk's checkpoint record for every wiki whose last refresh ran under another prikk version or whose
 /// refresh was asked for (IS-9). Failures are returned as lines for the operator; none of them stops the server,
 /// because what they leave undone is housekeeping and the pages that need it say *could not be read now*.
+/// `store_is_new` is true when this start made the store: the sweep then removes nothing (R9).
 pub(crate) fn start_up(
     store: &SqliteStore,
     settings: &Settings,
     sandbox: &Sandbox,
     storage: &PrikkCli,
+    store_is_new: bool,
     now: i64,
 ) -> Vec<String> {
     let mut notes = Vec::new();
@@ -779,11 +807,18 @@ pub(crate) fn start_up(
                     Signer::open(config, Arc::new(ImportLedger::new())).map_err(|e| e.to_string())
                 });
             match opened {
-                Ok(signer) => match sweep_unfinished_creations(store, &layout, &signer) {
+                Ok(signer) => match sweep_unfinished_creations(
+                    store,
+                    &layout,
+                    &signer,
+                    storage,
+                    store_is_new,
+                ) {
                     Ok(report) => {
                         let mut text = Vec::new();
                         report_sweep(&report, &mut text);
                         notes.extend(String::from_utf8_lossy(&text).lines().map(str::to_owned));
+                        notes.extend(audit_sweep(store, &report, now));
                     }
                     Err(why) => notes.push(format!(
                         "inklkunn: unfinished creations could not be examined: {why}"

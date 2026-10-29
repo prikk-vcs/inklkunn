@@ -623,3 +623,9 @@ RFC 003 — corrections from the review of 2026-10-30 (R1 – R10, before 0.1.0)
   that tip and the signer refuses the change if the view has moved (`pinned_tip` of the acceptance record; the message has no
   `Base` for an import) and writes nothing. Re-importing a folder the wiki already has, byte for byte (with
   `--replace-existing`), is *nothing changed* (exit 0, no act begun), and a mixed folder writes only what differs.
+- **Correction R9: the start-up sweep.** Each unfinished creation the sweep removes (or cannot remove) is one audit event
+  (`creation-sweep`, `wiki:<id>`; *allowed* for a removal, *failed* for one left behind), from `serve` and from `wiki create`
+  alike. The sweep removes nothing when the store was made by this start (`wiki create` or `serve` found no `store.sqlite`), and
+  nothing from a repository that already holds a sealed block (asked through the driver's `branch list` and `log`): both are
+  reported as left behind, with the mark kept, for the operator. `sweep_unfinished_creations` takes the `Storage` and a
+  `store_is_new` flag.

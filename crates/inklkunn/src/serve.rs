@@ -65,6 +65,7 @@ pub(crate) fn prepare(settings: &Settings, web: &WebSettings) -> Result<Prepared
         .with_size_hints(hints.clone());
     std::fs::create_dir_all(&settings.data_dir)
         .map_err(|e| format!("INKLKUNN_DATA_DIR could not be made ({})", e.kind()))?;
+    let store_is_new = !settings.store_path().is_file();
     let store = Arc::new(SqliteStore::open(&settings.store_path()).map_err(|e| {
         format!(
             "the store at {} could not be opened: {e}",
@@ -78,6 +79,7 @@ pub(crate) fn prepare(settings: &Settings, web: &WebSettings) -> Result<Prepared
         settings,
         &sandbox,
         &storage,
+        store_is_new,
         inklkunn_store::record::now_secs(),
     );
     let version = storage.version().to_owned();

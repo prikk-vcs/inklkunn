@@ -783,16 +783,25 @@ fn a_start_removes_a_killed_creation_whole_and_a_create_does_the_same_before_it_
     let Some(w) = world("sweep") else { return };
     let (status, _, err) = w.cli(&["wiki", "create", "kept", "--name", "Kept"]);
     assert_eq!(status, 0, "{err}");
-    // A creation killed after its keys were made and its first change sealed.
-    w.killed_creation_after("lost", inklkunn_core::CreationStep::Sealed);
-    assert_eq!(w.layout().creation_marks().unwrap().len(), 1);
+    // A creation killed after its keys were made, before anything was sealed.
+    w.killed_creation_after("lost", inklkunn_core::CreationStep::RepositoryCreated);
+    let marks = w.layout().creation_marks().unwrap();
+    assert_eq!(marks.len(), 1);
+    let lost = marks.first().unwrap().clone();
     assert_eq!(
         w.store.list().unwrap().len(),
         1,
         "the killed creation stored no record"
     );
     let sandbox = inklkunn_prikk::sandbox::Sandbox::Unconfined;
-    let notes = start_up(&w.store, &w.settings, &sandbox, &w.storage, 1_800_000_000);
+    let notes = start_up(
+        &w.store,
+        &w.settings,
+        &sandbox,
+        &w.storage,
+        false,
+        1_800_000_000,
+    );
     assert!(
         notes
             .iter()
@@ -800,6 +809,19 @@ fn a_start_removes_a_killed_creation_whole_and_a_create_does_the_same_before_it_
         "{notes:?}"
     );
     assert!(w.layout().creation_marks().unwrap().is_empty());
+    // One audit event for the removal, naming the wiki by its id.
+    let swept: Vec<_> = w
+        .audit()
+        .into_iter()
+        .filter(|(_, a, ..)| a == "creation-sweep")
+        .collect();
+    assert_eq!(swept.len(), 1, "{swept:?}");
+    assert!(
+        swept.iter().all(|(p, _, o, r)| p == "system:operator-cli"
+            && o == "allowed"
+            && *r == format!("wiki:{lost}")),
+        "{swept:?}"
+    );
     let keys: Vec<_> = std::fs::read_dir(&w.settings.key_dir)
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
@@ -832,6 +854,14 @@ fn a_start_removes_a_killed_creation_whole_and_a_create_does_the_same_before_it_
         "{err}"
     );
     assert!(w.layout().creation_marks().unwrap().is_empty());
+    assert_eq!(
+        w.audit()
+            .iter()
+            .filter(|(_, a, o, _)| a == "creation-sweep" && o == "allowed")
+            .count(),
+        2,
+        "the create's sweep is audited as the start's is"
+    );
     assert_eq!(w.store.list().unwrap().len(), 2);
     // Nothing but the two kept wikis' directories is under the root.
     let dirs = std::fs::read_dir(w.layout().root())
@@ -847,6 +877,91 @@ fn a_start_removes_a_killed_creation_whole_and_a_create_does_the_same_before_it_
 }
 
 #[test]
+fn a_start_removes_nothing_from_a_repository_with_a_sealed_block_or_when_it_made_the_store() {
+    let Some(w) = world("sweep-keeps") else {
+        return;
+    };
+    let sandbox = inklkunn_prikk::sandbox::Sandbox::Unconfined;
+    // A creation killed after its first change was sealed: a history, which only a person may discard.
+    w.killed_creation_after("sealed", inklkunn_core::CreationStep::Sealed);
+    let marks = w.layout().creation_marks().unwrap();
+    let sealed = marks.first().unwrap().clone();
+    let keys = || std::fs::read_dir(&w.settings.key_dir).unwrap().count();
+    let (keys_before, repo) = (keys(), w.layout().repo_dir(&sealed));
+    let notes = start_up(
+        &w.store,
+        &w.settings,
+        &sandbox,
+        &w.storage,
+        false,
+        1_800_000_000,
+    );
+    assert!(
+        notes
+            .iter()
+            .any(|n| n.contains("could not be removed whole") && n.contains("sealed block")),
+        "{notes:?}"
+    );
+    assert!(
+        repo.is_dir(),
+        "a repository with a sealed block was removed"
+    );
+    assert_eq!(keys(), keys_before, "its key record was removed");
+    assert_eq!(w.layout().creation_marks().unwrap().len(), 1);
+    assert!(
+        w.audit().iter().any(|(_, a, o, r)| a == "creation-sweep"
+            && o == "failed"
+            && *r == format!("wiki:{sealed}")),
+        "the refusal is audited"
+    );
+    assert!(
+        w.audit()
+            .iter()
+            .all(|(_, a, o, _)| a != "creation-sweep" || o != "allowed")
+    );
+    // A store this start made: nothing is removed even from a repository that holds no block.
+    w.killed_creation_after("early", inklkunn_core::CreationStep::RepositoryCreated);
+    let early = w
+        .layout()
+        .creation_marks()
+        .unwrap()
+        .into_iter()
+        .find(|id| *id != sealed)
+        .unwrap();
+    let notes = start_up(
+        &w.store,
+        &w.settings,
+        &sandbox,
+        &w.storage,
+        true,
+        1_800_000_001,
+    );
+    assert!(
+        notes.iter().any(|n| n.contains("made the store")),
+        "{notes:?}"
+    );
+    assert!(w.layout().repo_dir(&early).is_dir());
+    assert_eq!(w.layout().creation_marks().unwrap().len(), 2);
+    // The next start, with a store that was not made by it, removes the one without a block and only that one.
+    let notes = start_up(
+        &w.store,
+        &w.settings,
+        &sandbox,
+        &w.storage,
+        false,
+        1_800_000_002,
+    );
+    assert!(
+        notes
+            .iter()
+            .any(|n| n.contains(&format!("removed the unfinished creation of wiki {early}"))),
+        "{notes:?}"
+    );
+    assert!(!w.layout().repo_dir(&early).exists());
+    assert!(repo.is_dir());
+}
+
+#[test]
 fn the_start_refreshes_the_checkpoint_where_the_prikk_version_changed_or_a_refresh_was_asked_for() {
     let Some(w) = world("checkpoint") else { return };
     let (status, _, err) = w.cli(&["wiki", "create", "notes", "--name", "Notes"]);
@@ -859,7 +974,14 @@ fn the_start_refreshes_the_checkpoint_where_the_prikk_version_changed_or_a_refre
         "a new wiki has had no refresh"
     );
     // First start: refreshed, recorded, audited.
-    let notes = start_up(&w.store, &w.settings, &sandbox, &w.storage, 1_800_000_001);
+    let notes = start_up(
+        &w.store,
+        &w.settings,
+        &sandbox,
+        &w.storage,
+        false,
+        1_800_000_001,
+    );
     assert!(
         notes
             .iter()
@@ -878,19 +1000,43 @@ fn the_start_refreshes_the_checkpoint_where_the_prikk_version_changed_or_a_refre
                 && o == "allowed")
     );
     // The same prikk, nothing asked: nothing to do.
-    assert!(start_up(&w.store, &w.settings, &sandbox, &w.storage, 1_800_000_002).is_empty());
+    assert!(
+        start_up(
+            &w.store,
+            &w.settings,
+            &sandbox,
+            &w.storage,
+            false,
+            1_800_000_002
+        )
+        .is_empty()
+    );
     // A reader asked for a refresh: done again, and the request is cleared.
     w.store
         .request_checkpoint_refresh(&r.id, 1_800_000_003)
         .unwrap();
     assert!(w.record("notes").checkpoint.refresh_requested_at.is_some());
-    let notes = start_up(&w.store, &w.settings, &sandbox, &w.storage, 1_800_000_004);
+    let notes = start_up(
+        &w.store,
+        &w.settings,
+        &sandbox,
+        &w.storage,
+        false,
+        1_800_000_004,
+    );
     assert_eq!(notes.len(), 1, "{notes:?}");
     assert!(w.record("notes").checkpoint.refresh_requested_at.is_none());
     // Another prikk version (as after an upgrade): the record says so, and the start refreshes.
     let old = PrikkVersion::parse("prikk 0.0.1").unwrap();
     w.store.record_checkpoint_refresh(&r.id, &old).unwrap();
-    let notes = start_up(&w.store, &w.settings, &sandbox, &w.storage, 1_800_000_005);
+    let notes = start_up(
+        &w.store,
+        &w.settings,
+        &sandbox,
+        &w.storage,
+        false,
+        1_800_000_005,
+    );
     assert_eq!(notes.len(), 1, "{notes:?}");
     assert_eq!(w.record("notes").checkpoint.refreshed_with, Some(version));
 }
@@ -909,7 +1055,14 @@ fn a_refresh_that_fails_is_said_recorded_as_failed_and_leaves_the_request_standi
     // prikk's `verify` now fails: the refresh cannot run to a verdict.
     std::fs::write(w.tmp.0.join("fail-verify"), "").unwrap();
     let sandbox = inklkunn_prikk::sandbox::Sandbox::Unconfined;
-    let notes = start_up(&w.store, &w.settings, &sandbox, &w.storage, 1_800_000_004);
+    let notes = start_up(
+        &w.store,
+        &w.settings,
+        &sandbox,
+        &w.storage,
+        false,
+        1_800_000_004,
+    );
     assert_eq!(notes.len(), 1, "{notes:?}");
     assert!(
         notes
@@ -929,7 +1082,14 @@ fn a_refresh_that_fails_is_said_recorded_as_failed_and_leaves_the_request_standi
     // checkpoint is not recorded as refreshed, and the request stands.
     std::fs::remove_file(w.tmp.0.join("fail-verify")).unwrap();
     std::fs::write(w.tmp.0.join("fail-report"), "").unwrap();
-    let notes = start_up(&w.store, &w.settings, &sandbox, &w.storage, 1_800_000_004);
+    let notes = start_up(
+        &w.store,
+        &w.settings,
+        &sandbox,
+        &w.storage,
+        false,
+        1_800_000_004,
+    );
     assert!(
         notes
             .first()
@@ -941,7 +1101,14 @@ fn a_refresh_that_fails_is_said_recorded_as_failed_and_leaves_the_request_standi
     assert_eq!(after.checkpoint.refresh_requested_at, Some(1_800_000_003));
     // Mended, the next start does it.
     std::fs::remove_file(w.tmp.0.join("fail-report")).unwrap();
-    let notes = start_up(&w.store, &w.settings, &sandbox, &w.storage, 1_800_000_005);
+    let notes = start_up(
+        &w.store,
+        &w.settings,
+        &sandbox,
+        &w.storage,
+        false,
+        1_800_000_005,
+    );
     assert!(
         notes.first().is_some_and(|n| n.contains("refreshed")),
         "{notes:?}"

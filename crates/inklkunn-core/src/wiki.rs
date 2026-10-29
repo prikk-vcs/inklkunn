@@ -10,12 +10,14 @@
 //! record is stored), and [`sweep_unfinished_creations`], run at every start, removes whole whatever a creation
 //! whose process is gone left: the repository directory, the scratch directory, the lock file and the sealed
 //! key record. A kill at any step therefore leaves either a complete wiki (the record is stored) or nothing
-//! that survives the next start. [`create_wiki_observed`] names the steps so that a test can stop the process
+//! that survives the next start, **except** that the sweep removes nothing from a repository that already
+//! holds a sealed block, nor when the store is one this start made (R9): those wait for the operator.
+//! [`create_wiki_observed`] names the steps so that a test can stop the process
 //! (or panic, which runs no cleanup either) after each one.
 
 use std::path::{Path, PathBuf};
 
-use inklkunn_prikk::{Storage, StorageError};
+use inklkunn_prikk::{Point, Storage, StorageError};
 pub use inklkunn_signer::RepositoryBootstrap;
 use inklkunn_signer::message::{Message, Summary, SystemLabel};
 use inklkunn_signer::{CreationMark, KeyAuthority, find_unfinished};
@@ -404,12 +406,20 @@ impl SweepReport {
 /// file) and then the mark. **A record**: the wiki is complete (the process died between storing the record and
 /// removing the mark) and only the mark is removed. A mark whose creation is still running is left alone.
 ///
+/// **An empty store proves nothing, and a sealed block is not an attempt (R9).** Nothing is removed when
+/// `store_is_new` (this start made the store, so a wiki whose record was in a lost one would look unfinished),
+/// and nothing is removed from a repository that already holds a sealed block (`storage` is asked: a creation
+/// that got that far has made a history, and only a person may decide whether to discard it). Both are
+/// reported as left behind, with the mark kept and the reason in words for the operator.
+///
 /// Run it before anything serves or creates, with the signer that holds the key store, so the key records can be
 /// removed. It never removes anything it cannot tie to an unfinished creation: it acts on ids that have a mark.
 pub fn sweep_unfinished_creations(
     store: &dyn WikiStore,
     layout: &RootLayout,
     signer: &dyn RepositoryBootstrap,
+    storage: &dyn Storage,
+    store_is_new: bool,
 ) -> Result<SweepReport, String> {
     let found = find_unfinished(layout).map_err(|e| e.to_string())?;
     let mut report = SweepReport {
@@ -423,10 +433,16 @@ pub fn sweep_unfinished_creations(
                 let _ = mark.finish();
                 report.completed.push(id);
             }
-            Err(StoreError::NotFound) => match settle(mark, discard(layout, signer, &id)) {
-                Cleanup::Removed => report.removed.push(id),
-                other => report.left_behind.push((id, other.to_string())),
-            },
+            Err(StoreError::NotFound) => {
+                if let Some(why) = refuse_removal(storage, layout, &id, store_is_new) {
+                    report.left_behind.push((id, why));
+                    continue;
+                }
+                match settle(mark, discard(layout, signer, &id)) {
+                    Cleanup::Removed => report.removed.push(id),
+                    other => report.left_behind.push((id, other.to_string())),
+                }
+            }
             Err(e) => {
                 // The record store cannot say: removing a wiki that might exist would be worse than waiting.
                 report
@@ -436,6 +452,45 @@ pub fn sweep_unfinished_creations(
         }
     }
     Ok(report)
+}
+
+/// Why the sweep must not remove the unfinished creation `id` (no record in the store), or `None` when it may.
+fn refuse_removal(
+    storage: &dyn Storage,
+    layout: &RootLayout,
+    id: &WikiId,
+    store_is_new: bool,
+) -> Option<String> {
+    if store_is_new {
+        return Some(
+            "this start made the store, so the lack of a record proves nothing; nothing was removed"
+                .to_owned(),
+        );
+    }
+    match holds_sealed_block(storage, &layout.repo_dir(id)) {
+        Ok(false) => None,
+        Ok(true) => Some(
+            "its repository holds a sealed block, so it may be a wiki whose record was lost; nothing was removed"
+                .to_owned(),
+        ),
+        Err(e) => Some(format!(
+            "its repository could not be examined for a sealed block ({e}); nothing was removed"
+        )),
+    }
+}
+
+/// Does the repository at `repo` hold a sealed block in any view? A directory that is not (yet) a prikk
+/// repository holds none. `branch list` naming a view, or the default view's `log` listing a block, says yes.
+fn holds_sealed_block(storage: &dyn Storage, repo: &Path) -> Result<bool, StorageError> {
+    // A creation killed before `prikk init` left a directory prikk would refuse; that is not a failure to read.
+    if !repo.join(".prikk").exists() {
+        return Ok(false);
+    }
+    if !storage.views(repo)?.views.is_empty() {
+        return Ok(true);
+    }
+    let main = Point::View("heads/main".to_owned());
+    Ok(!storage.history(repo, &main, Some(1))?.blocks.is_empty())
 }
 
 /// The repository directory of a wiki, for callers that hold a record.
