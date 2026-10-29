@@ -332,6 +332,34 @@ fn a_remote_image_is_never_loaded_on_a_readers_behalf() {
 }
 
 #[test]
+fn an_image_source_a_browser_would_read_as_another_host_is_refused() {
+    // What a browser makes of these is `//tracker.example/p.gif`: it reads `\` as `/` and drops tab, CR and LF
+    // wherever they stand. The references are decoded before the sanitizer sees the value.
+    for remote in [
+        "/\\tracker.example/p.gif",
+        "\\/tracker.example/p.gif",
+        "a\\b.png",
+        "/&#9;/tracker.example/p.gif",
+        "/&#10;/tracker.example/p.gif",
+        "/&#13;/tracker.example/p.gif",
+        "&#10;//tracker.example/p.gif",
+        "a&#9;.png",
+        "a&#10;.png",
+        "a&#13;.png",
+        "&#1;//tracker.example/p.gif",
+    ] {
+        let out = clean(&format!("<img src=\"{remote}\" alt=\"alt text\">"));
+        assert!(!out.contains("src="), "{remote}: {out}");
+        assert!(out.contains("alt=\"alt text\""), "{remote}: {out}");
+    }
+    // A slash that is not followed by another or by a backslash is a path.
+    for local in ["/att/a.png", "/a//b.png", "att/a.png"] {
+        let out = clean(&format!("<img src=\"{local}\" alt=\"a\">"));
+        assert!(out.contains("src="), "{local}: {out}");
+    }
+}
+
+#[test]
 fn the_one_form_control_is_a_disabled_checkbox() {
     for html in [
         "<input type=\"text\" value=\"secret\" name=\"n\" form=\"f\" autofocus>",

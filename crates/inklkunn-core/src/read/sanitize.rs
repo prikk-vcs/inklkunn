@@ -188,9 +188,14 @@ fn is_language_tag(value: &str) -> bool {
 }
 
 /// A URL that names a file of this wiki and not a place elsewhere: no scheme, not scheme-relative.
+///
+/// A browser removes tab, CR and LF from a URL wherever they stand, strips leading control characters and
+/// spaces, and reads `\` as `/`: `/\host`, `/<tab>/host` and `<LF>//host` are all `//host`. So none of those
+/// characters is accepted anywhere in the value (no control character at all, and no backslash), and what is
+/// left cannot start with `//`.
 fn is_attachment_url(value: &str) -> bool {
     let v = value.trim();
-    if v.is_empty() || v.starts_with("//") || v.starts_with('\\') {
+    if v.is_empty() || v.starts_with("//") || value.chars().any(|c| c == '\\' || c.is_control()) {
         return false;
     }
     match v.find(':') {
