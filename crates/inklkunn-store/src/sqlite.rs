@@ -28,7 +28,7 @@ use crate::record::{
 use crate::{Result, StoreError, WikiStore};
 
 /// The schema version this build writes and reads: the last of [`MIGRATIONS`].
-pub const SCHEMA_VERSION: i64 = 6;
+pub const SCHEMA_VERSION: i64 = 7;
 
 /// Version 1: M0's schema, the wiki records.
 const V1: &str = "
@@ -216,9 +216,50 @@ ALTER TABLE role_grants_v6 RENAME TO role_grants;
 CREATE INDEX role_grants_wiki ON role_grants(wiki_id, seq);
 ";
 
+/// Version 7: the search index and the observed times (RFC 003 D-8, D-7; handoff 003 T6). **Only adds.**
+/// `search_docs` holds every title and alias of a tip with the folded text the search compares, `search_fts` is
+/// an FTS5 index over that folded text with the **trigram** tokenizer (a query matches any part of a text, which
+/// is how a Japanese title is found by a substring), and `search_tips` says an index is whole (the same device
+/// as `title_index_tips`). All three are derived and can be dropped and rebuilt (INV-5). `block_seen` is not:
+/// prikk's history carries no time, so the time a block was **first seen by this service** is the only time
+/// the pages can show, and it cannot be recovered once lost; the cache's `clear` leaves it alone.
+const V7: &str = "
+CREATE TABLE IF NOT EXISTS search_tips (
+    wiki_id  TEXT NOT NULL,
+    tip      TEXT NOT NULL,
+    docs     INTEGER NOT NULL,
+    built_at INTEGER NOT NULL,
+    PRIMARY KEY (wiki_id, tip)
+);
+CREATE TABLE IF NOT EXISTS search_docs (
+    id      INTEGER PRIMARY KEY,
+    wiki_id TEXT NOT NULL,
+    tip     TEXT NOT NULL,
+    path    TEXT NOT NULL,
+    kind    TEXT NOT NULL,
+    text    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS search_docs_tip ON search_docs(wiki_id, tip);
+CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(folded, tokenize = 'trigram');
+CREATE TABLE IF NOT EXISTS block_seen (
+    wiki_id  TEXT NOT NULL,
+    block_id TEXT NOT NULL,
+    seen_at  INTEGER NOT NULL,
+    PRIMARY KEY (wiki_id, block_id)
+);
+";
+
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and
 /// [`SCHEMA_VERSION`] moves with it (a test holds the two together).
-pub const MIGRATIONS: &[(i64, &str)] = &[(1, V1), (2, V2), (3, V3), (4, V4), (5, V5), (6, V6)];
+pub const MIGRATIONS: &[(i64, &str)] = &[
+    (1, V1),
+    (2, V2),
+    (3, V3),
+    (4, V4),
+    (5, V5),
+    (6, V6),
+    (7, V7),
+];
 
 /// The SQLite-backed store.
 #[derive(Debug)]

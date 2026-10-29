@@ -113,7 +113,7 @@ fn a_version_5_database_gains_the_role_grant_foreign_keys_and_keeps_every_grant(
 
     let store = SqliteStore::open(&db).expect("a version 5 database opens");
     assert_eq!(version(&db), SCHEMA_VERSION.to_string());
-    assert_eq!(SCHEMA_VERSION, 6);
+    assert!(SCHEMA_VERSION >= 6);
     let w1 = WikiId::parse(&w1).expect("id");
     let grants = store.grants_in(&w1).expect("grants");
     assert_eq!(grants.len(), 2, "both grants of the first wiki survived");
@@ -222,7 +222,7 @@ fn a_version_5_database_with_a_grant_to_a_missing_account_is_refused_by_name_and
             .execute("DELETE FROM role_grants WHERE seq = 2", [])
             .expect("repair");
         SqliteStore::open(&db).expect("the repaired database migrates");
-        assert_eq!(version(&db), "6");
+        assert_eq!(version(&db), SCHEMA_VERSION.to_string());
     }
 }
 

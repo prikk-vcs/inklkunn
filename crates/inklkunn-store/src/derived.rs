@@ -119,6 +119,60 @@ pub struct IndexEntry {
     pub problem: Option<String>,
 }
 
+/// What a searchable text of a page is: its title, or one of its aliases.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchKind {
+    /// The page's title.
+    Title,
+    /// One of the page's aliases.
+    Alias,
+}
+
+impl SearchKind {
+    /// The stable code stored with the text.
+    pub const fn code(self) -> &'static str {
+        match self {
+            SearchKind::Title => "title",
+            SearchKind::Alias => "alias",
+        }
+    }
+
+    /// Read a code back; `None` for one this build does not know (the row is then a miss).
+    pub fn from_code(code: &str) -> Option<Self> {
+        match code {
+            "title" => Some(SearchKind::Title),
+            "alias" => Some(SearchKind::Alias),
+            _ => None,
+        }
+    }
+}
+
+/// One text the search finds a page by (RFC 003 D-8): the text as the page wrote it, and the **folded** form
+/// the search compares (case, diacritics and width variants folded by the writer; the store compares what it
+/// is given and judges none of it).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchDoc {
+    /// The page's repository path.
+    pub path: String,
+    /// A title or an alias.
+    pub kind: SearchKind,
+    /// The text as written. Plain text: a surface escapes it.
+    pub text: String,
+    /// The text, folded.
+    pub folded: String,
+}
+
+/// A text the search found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchHit {
+    /// The page's repository path.
+    pub path: String,
+    /// A title or an alias.
+    pub kind: SearchKind,
+    /// The text as written.
+    pub text: String,
+}
+
 /// The derived cache. Every implementation passes the same invariant tests (`tests/derived.rs`).
 ///
 /// **A row that cannot be read back is a miss**, never an error and never a made-up value: the cache is
@@ -144,6 +198,33 @@ pub trait DerivedStore: Send + Sync {
     /// wiki has now, so the cache holds the present and not the past.
     fn retain_tips(&self, wiki: &WikiId, keep: &[String]) -> Result<u64>;
     /// Drop everything cached for `wiki` (the derived store cleared, ENF-5); how many cached items went,
-    /// counted as in [`DerivedStore::retain_tips`].
+    /// counted as in [`DerivedStore::retain_tips`]. **Not the observations** ([`DerivedStore::first_seen`]):
+    /// they are not derived from the repository and cannot be rebuilt from it.
     fn clear(&self, wiki: &WikiId) -> Result<u64>;
+
+    /// Store the complete search index of `wiki` at `tip` (every title and alias), replacing what was there.
+    /// It becomes visible all at once, like the title index.
+    fn put_search_index(
+        &self,
+        wiki: &WikiId,
+        tip: &str,
+        docs: &[SearchDoc],
+        built_at: i64,
+    ) -> Result<()>;
+    /// The texts of `wiki` at `tip` that **contain** `folded_query` (a substring of the folded text, so a
+    /// Japanese title is found by any part of it), in the order they were stored, at most `limit`. `None`
+    /// when no complete index is stored for the tip.
+    fn search(
+        &self,
+        wiki: &WikiId,
+        tip: &str,
+        folded_query: &str,
+        limit: usize,
+    ) -> Result<Option<Vec<SearchHit>>>;
+
+    /// When this service first saw each block of `wiki`, in Unix seconds, in the order asked: a block not
+    /// seen before is recorded as seen at `now`. **An observation, not a fact about the change**: prikk's
+    /// history carries no time, so this is the only time the pages can show (ledger: the log has no
+    /// timestamps), and they say so. It is kept when the cache is cleared and dropped with nothing else.
+    fn first_seen(&self, wiki: &WikiId, blocks: &[String], now: i64) -> Result<Vec<i64>>;
 }

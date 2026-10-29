@@ -1,11 +1,13 @@
-//! The SQLite derived cache (schema version 5). A row that cannot be decoded is a **miss**: the cache is
+//! The SQLite derived cache (schema versions 5 and 7). A row that cannot be decoded is a **miss**: the cache is
 //! derived, so a damaged row is derived again rather than reported as a failure or guessed at.
 
 use rusqlite::{OptionalExtension, Row, TransactionBehavior, params};
 
 use super::{SqliteStore, backend};
 use crate::Result;
-use crate::derived::{DerivedPage, DerivedStore, IndexEntry, PageKey};
+use crate::derived::{
+    DerivedPage, DerivedStore, IndexEntry, PageKey, SearchDoc, SearchHit, SearchKind,
+};
 use crate::record::WikiId;
 
 /// A page row as stored: `html`, then the three JSON columns, then the time.
@@ -230,6 +232,7 @@ impl DerivedStore for SqliteStore {
             for sql in [
                 "SELECT DISTINCT tip FROM derived_pages WHERE wiki_id = ?1",
                 "SELECT tip FROM title_index_tips WHERE wiki_id = ?1",
+                "SELECT tip FROM search_tips WHERE wiki_id = ?1",
             ] {
                 let mut stmt = tx.prepare(sql).map_err(backend)?;
                 let tips = stmt
@@ -273,9 +276,214 @@ impl DerivedStore for SqliteStore {
                     params![wiki.as_str()],
                 )
                 .map_err(backend)?;
+            let searches = delete_search(&tx, wiki, None)?;
             tx.commit().map_err(backend)?;
-            Ok(u64::try_from(pages + indexes).unwrap_or(u64::MAX))
+            Ok(u64::try_from(pages + indexes + searches).unwrap_or(u64::MAX))
         })
+    }
+
+    fn put_search_index(
+        &self,
+        wiki: &WikiId,
+        tip: &str,
+        docs: &[SearchDoc],
+        built_at: i64,
+    ) -> Result<()> {
+        self.with(|conn| {
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(backend)?;
+            delete_search(&tx, wiki, Some(tip))?;
+            {
+                let mut doc = tx
+                    .prepare(
+                        "INSERT INTO search_docs (wiki_id, tip, path, kind, text) \
+                         VALUES (?1, ?2, ?3, ?4, ?5)",
+                    )
+                    .map_err(backend)?;
+                let mut fts = tx
+                    .prepare("INSERT INTO search_fts (rowid, folded) VALUES (?1, ?2)")
+                    .map_err(backend)?;
+                for d in docs {
+                    doc.execute(params![wiki.as_str(), tip, d.path, d.kind.code(), d.text])
+                        .map_err(backend)?;
+                    fts.execute(params![tx.last_insert_rowid(), d.folded])
+                        .map_err(backend)?;
+                }
+            }
+            tx.execute(
+                "INSERT INTO search_tips (wiki_id, tip, docs, built_at) VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    wiki.as_str(),
+                    tip,
+                    i64::try_from(docs.len()).unwrap_or(i64::MAX),
+                    built_at
+                ],
+            )
+            .map_err(backend)?;
+            tx.commit().map_err(backend)
+        })
+    }
+
+    fn search(
+        &self,
+        wiki: &WikiId,
+        tip: &str,
+        folded_query: &str,
+        limit: usize,
+    ) -> Result<Option<Vec<SearchHit>>> {
+        self.with(|conn| {
+            let expected: Option<i64> = conn
+                .query_row(
+                    "SELECT docs FROM search_tips WHERE wiki_id = ?1 AND tip = ?2",
+                    params![wiki.as_str(), tip],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(backend)?;
+            if expected.is_none() {
+                return Ok(None);
+            }
+            let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+            let query = folded_query.trim();
+            // The trigram tokenizer needs three characters to match on; a shorter query is a scan of this
+            // tip's texts (LIKE, with the wildcards escaped), which gives the same substring answer.
+            let hits = if query.chars().count() >= 3 {
+                let phrase = format!("\"{}\"", query.replace('"', "\"\""));
+                run_search(
+                    conn,
+                    "SELECT d.path, d.kind, d.text FROM search_fts f JOIN search_docs d ON d.id = f.rowid \
+                     WHERE search_fts MATCH ?1 AND d.wiki_id = ?2 AND d.tip = ?3 ORDER BY d.id LIMIT ?4",
+                    &phrase,
+                    wiki,
+                    tip,
+                    limit,
+                )?
+            } else {
+                let pattern = format!(
+                    "%{}%",
+                    query
+                        .replace('\\', "\\\\")
+                        .replace('%', "\\%")
+                        .replace('_', "\\_")
+                );
+                run_search(
+                    conn,
+                    "SELECT d.path, d.kind, d.text FROM search_fts f JOIN search_docs d ON d.id = f.rowid \
+                     WHERE d.wiki_id = ?2 AND d.tip = ?3 AND f.folded LIKE ?1 ESCAPE '\\' \
+                     ORDER BY d.id LIMIT ?4",
+                    &pattern,
+                    wiki,
+                    tip,
+                    limit,
+                )?
+            };
+            Ok(Some(hits))
+        })
+    }
+
+    fn first_seen(&self, wiki: &WikiId, blocks: &[String], now: i64) -> Result<Vec<i64>> {
+        self.with(|conn| {
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(backend)?;
+            let mut out = Vec::with_capacity(blocks.len());
+            {
+                let mut insert = tx
+                    .prepare(
+                        "INSERT OR IGNORE INTO block_seen (wiki_id, block_id, seen_at) VALUES (?1, ?2, ?3)",
+                    )
+                    .map_err(backend)?;
+                let mut read = tx
+                    .prepare("SELECT seen_at FROM block_seen WHERE wiki_id = ?1 AND block_id = ?2")
+                    .map_err(backend)?;
+                for block in blocks {
+                    insert
+                        .execute(params![wiki.as_str(), block, now])
+                        .map_err(backend)?;
+                    out.push(
+                        read.query_row(params![wiki.as_str(), block], |r| r.get::<_, i64>(0))
+                            .map_err(backend)?,
+                    );
+                }
+            }
+            tx.commit().map_err(backend)?;
+            Ok(out)
+        })
+    }
+}
+
+fn run_search(
+    conn: &rusqlite::Connection,
+    sql: &str,
+    pattern: &str,
+    wiki: &WikiId,
+    tip: &str,
+    limit: i64,
+) -> Result<Vec<SearchHit>> {
+    let mut stmt = conn.prepare(sql).map_err(backend)?;
+    let rows = stmt
+        .query_map(params![pattern, wiki.as_str(), tip, limit], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })
+        .map_err(backend)?;
+    let mut hits = Vec::new();
+    for row in rows {
+        let (path, kind, text) = row.map_err(backend)?;
+        // A kind this build does not know is a damaged row: skipped, the cache is derived.
+        if let Some(kind) = SearchKind::from_code(&kind) {
+            hits.push(SearchHit { path, kind, text });
+        }
+    }
+    Ok(hits)
+}
+
+/// Drop the search index of one tip (`Some`) or of every tip (`None`) of a wiki; how many indexes went.
+fn delete_search(
+    tx: &rusqlite::Transaction<'_>,
+    wiki: &WikiId,
+    tip: Option<&str>,
+) -> Result<usize> {
+    match tip {
+        Some(tip) => {
+            tx.execute(
+                "DELETE FROM search_fts WHERE rowid IN \
+                 (SELECT id FROM search_docs WHERE wiki_id = ?1 AND tip = ?2)",
+                params![wiki.as_str(), tip],
+            )
+            .map_err(backend)?;
+            tx.execute(
+                "DELETE FROM search_docs WHERE wiki_id = ?1 AND tip = ?2",
+                params![wiki.as_str(), tip],
+            )
+            .map_err(backend)?;
+            tx.execute(
+                "DELETE FROM search_tips WHERE wiki_id = ?1 AND tip = ?2",
+                params![wiki.as_str(), tip],
+            )
+            .map_err(backend)
+        }
+        None => {
+            tx.execute(
+                "DELETE FROM search_fts WHERE rowid IN (SELECT id FROM search_docs WHERE wiki_id = ?1)",
+                params![wiki.as_str()],
+            )
+            .map_err(backend)?;
+            tx.execute(
+                "DELETE FROM search_docs WHERE wiki_id = ?1",
+                params![wiki.as_str()],
+            )
+            .map_err(backend)?;
+            tx.execute(
+                "DELETE FROM search_tips WHERE wiki_id = ?1",
+                params![wiki.as_str()],
+            )
+            .map_err(backend)
+        }
     }
 }
 
@@ -298,7 +506,8 @@ fn delete_tip(tx: &rusqlite::Transaction<'_>, wiki: &WikiId, tip: &str) -> Resul
             params![wiki.as_str(), tip],
         )
         .map_err(backend)?;
-    Ok(u64::try_from(pages + indexes).unwrap_or(u64::MAX))
+    let searches = delete_search(tx, wiki, Some(tip))?;
+    Ok(u64::try_from(pages + indexes + searches).unwrap_or(u64::MAX))
 }
 
 fn backend_text(what: &str) -> crate::StoreError {

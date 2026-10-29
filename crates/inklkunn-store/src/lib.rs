@@ -31,6 +31,7 @@ pub use audit::{
 };
 pub use derived::{
     DerivedHeading, DerivedLinks, DerivedMeta, DerivedPage, DerivedStore, IndexEntry, PageKey,
+    SearchDoc, SearchHit, SearchKind,
 };
 pub use identity::{
     Account, AccountStore, ExternalIdentity, ExternalIdentityError, LocalCredential, LoginName,
