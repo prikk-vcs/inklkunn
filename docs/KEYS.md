@@ -18,7 +18,7 @@ inklkunn wiki keys rotate <wiki> --confirm <slug>      # new keys; the old maint
 inklkunn wiki keys rotate <wiki> --confirm <slug> --retire-old --accept-unverifiable-history
 ```
 
-`<wiki>` is the slug or the id. **Re-authentication:** the key store does not open without the operator's
+`<wiki>` is the slug or the id. **A key directory with no key store in it is never made into one by `status` or `rotate`:** they refuse, naming the path, so a mistyped `INKLKUNN_KEY_DIR` cannot start a second, empty store; only `create` (and creating a wiki) makes the store, and two processes doing so at once end with one. **Re-authentication:** the key store does not open without the operator's
 secret file, so these commands are the operator proving possession of it; the web administration surface will
 ask for the password again instead. `rotate` also needs the slug typed, so the wrong wiki is not rotated by a
 slip. `create` and `rotate` are **audited**: an event is written *before* the act (and the act is refused if it

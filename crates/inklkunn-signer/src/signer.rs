@@ -155,6 +155,8 @@ fn ks(e: KeyStoreError) -> SignerError {
         | KeyStoreError::Io(..)
         | KeyStoreError::Locked
         | KeyStoreError::Header(_)
+        | KeyStoreError::NoStore(_)
+        | KeyStoreError::CreationBusy
         | KeyStoreError::SeedBase(_)
         | KeyStoreError::Random => SignerError::Unavailable(e.to_string()),
     }
@@ -201,19 +203,47 @@ fn is_ref_tail(name: &str) -> bool {
 impl Signer {
     /// Open the signer: read the operator's secret, open the key store with it, check that the seed
     /// directory is on a tmpfs, and remove the seed directories a killed call left behind.
+    ///
+    /// **It never makes a key store**: a key directory with no store in it (a mistyped path, a store that was
+    /// lost) is refused with the path named. The acts that were asked to create keys use
+    /// [`Signer::open_creating_store`].
     pub fn open(
         config: SignerConfig,
         ledger: Arc<dyn AcceptanceLedger>,
     ) -> Result<Self, SignerError> {
+        Self::open_inner(config, ledger, false)
+    }
+
+    /// As [`Signer::open`], but a key directory that is new or empty becomes a key store. For `inklkunn wiki
+    /// keys create` and for creating a wiki, the two acts that are asked to bring keys into being; two
+    /// processes doing it at once end with one store.
+    pub fn open_creating_store(
+        config: SignerConfig,
+        ledger: Arc<dyn AcceptanceLedger>,
+    ) -> Result<Self, SignerError> {
+        Self::open_inner(config, ledger, true)
+    }
+
+    fn open_inner(
+        config: SignerConfig,
+        ledger: Arc<dyn AcceptanceLedger>,
+        create_store: bool,
+    ) -> Result<Self, SignerError> {
         let secret = Secret::from_file(&config.secret_file).map_err(ks)?;
         #[cfg(feature = "test-knobs")]
         let store = if config.cheap_derivation {
-            KeyStore::open_cheap(&config.key_dir, &secret)
+            KeyStore::open_cheap(&config.key_dir, &secret, create_store)
+        } else if create_store {
+            KeyStore::create_or_open(&config.key_dir, &secret)
         } else {
             KeyStore::open(&config.key_dir, &secret)
         };
         #[cfg(not(feature = "test-knobs"))]
-        let store = KeyStore::open(&config.key_dir, &secret);
+        let store = if create_store {
+            KeyStore::create_or_open(&config.key_dir, &secret)
+        } else {
+            KeyStore::open(&config.key_dir, &secret)
+        };
         let store = store.map_err(ks)?;
         let seed_base = SeedBase::tmpfs(&config.tmpfs_dir).map_err(ks)?;
         #[cfg(feature = "test-knobs")]

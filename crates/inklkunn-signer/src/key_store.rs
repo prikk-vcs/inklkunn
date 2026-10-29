@@ -29,6 +29,8 @@ use inklkunn_store::WikiId;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
+use crate::flock;
+
 mod crypto;
 mod random;
 mod record;
@@ -40,6 +42,12 @@ pub(crate) use seeds::{DIR_PREFIX, SeedBase, SeedDir, touch};
 
 /// The header's file name.
 const HEADER_FILE: &str = "store.json";
+/// The lock file that makes a store's creation one critical section (held across the emptiness check and the
+/// header's exclusive link). Not a key file: it does not count as content of the directory.
+const CREATE_LOCK_FILE: &str = ".create.lock";
+/// How long a creator waits for another creator's critical section (it is a few file operations and one key
+/// derivation).
+const CREATE_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 /// The format name of the header.
 const HEADER_FORMAT: &str = "inklkunn-key-store/1";
 /// The largest header there is.
@@ -65,6 +73,11 @@ pub(crate) enum KeyStoreError {
     Locked,
     /// The store's header is missing, unreadable or of a format this build does not read.
     Header(&'static str),
+    /// There is no key store at this path, and the caller did not ask for one to be made (a mistyped key
+    /// directory must not become a new, empty store). The path is the operator's own setting, not a secret.
+    NoStore(PathBuf),
+    /// Another process was making the store and did not finish in time.
+    CreationBusy,
     /// A record is unreadable, altered, or not for this wiki.
     Record(&'static str),
     /// The wiki has no keys here.
@@ -90,6 +103,15 @@ impl std::fmt::Display for KeyStoreError {
                 "the key secret does not open the key store: it is the wrong secret, or the store's header was altered"
             ),
             KeyStoreError::Header(why) => write!(f, "the key store's header: {why}"),
+            KeyStoreError::NoStore(path) => write!(
+                f,
+                "there is no key store in `{}`: check the key directory setting; a store is made only when asked for",
+                path.display()
+            ),
+            KeyStoreError::CreationBusy => write!(
+                f,
+                "another process is making the key store and did not finish; try again"
+            ),
             KeyStoreError::Record(why) => write!(f, "a key record: {why}"),
             KeyStoreError::NoKeys => write!(f, "the wiki has no keys in the key store"),
             KeyStoreError::Exists => write!(f, "the wiki already has keys in the key store"),
@@ -243,6 +265,18 @@ fn read_small(path: &Path, max: u64, what: &'static str) -> Result<Option<String
 /// Write `text` to `dir/name` through a temporary file in `dir` (mode 0600, synced), so the destination is
 /// never partly written. `exclusive` refuses to replace an existing file ([`KeyStoreError::Exists`]).
 fn write_private(dir: &Path, name: &str, text: &str, exclusive: bool) -> Result<(), KeyStoreError> {
+    write_private_then(dir, name, text, exclusive, &|| {})
+}
+
+/// [`write_private`], calling `after_tmp` once the temporary file exists and before it is moved into place
+/// (tests make a second process arrive at exactly that moment).
+fn write_private_then(
+    dir: &Path,
+    name: &str,
+    text: &str,
+    exclusive: bool,
+    after_tmp: &dyn Fn(),
+) -> Result<(), KeyStoreError> {
     let tmp = dir.join(format!(
         ".{name}.tmp-{}",
         random::hex(&random::bytes::<8>().map_err(|_| KeyStoreError::Random)?)
@@ -262,6 +296,7 @@ fn write_private(dir: &Path, name: &str, text: &str, exclusive: bool) -> Result<
         let _ = std::fs::remove_file(&tmp);
         return Err(e);
     }
+    after_tmp();
     let dest = dir.join(name);
     let moved = if exclusive {
         // A hard link fails if the destination exists: the exclusive create, atomically.
@@ -330,17 +365,63 @@ fn prepare_dir(dir: &Path) -> Result<(), KeyStoreError> {
     Ok(())
 }
 
+/// Remove the temporary files a creator that died left (`.store.json.tmp-*`, this store's own naming). Called
+/// only under the creation lock, when no live creator can own one.
+fn sweep_creation_leftovers(dir: &Path) -> Result<(), KeyStoreError> {
+    let prefix = format!(".{HEADER_FILE}.tmp-");
+    for entry in std::fs::read_dir(dir)
+        .map_err(io("the key directory could not be listed"))?
+        .filter_map(Result::ok)
+    {
+        let is_leftover = entry
+            .file_name()
+            .to_str()
+            .is_some_and(|n| n.starts_with(&prefix))
+            && entry.file_type().is_ok_and(|t| t.is_file());
+        if is_leftover {
+            std::fs::remove_file(entry.path())
+                .map_err(io("a leftover temporary file could not be removed"))?;
+        }
+    }
+    Ok(())
+}
+
+/// Whether opening may make the store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Access {
+    /// The store must be there; its absence is an error naming the path, and nothing is created.
+    MustExist,
+    /// Make the store if the directory is new or holds nothing: only for the acts that were asked to create.
+    MayCreate,
+}
+
 impl KeyStore {
-    /// Open the key store in `dir` with `secret`, creating it (empty) if `dir` is new or holds nothing.
+    /// Open the key store in `dir` with `secret`. **Never creates one**: a missing directory, or one with no
+    /// header, is [`KeyStoreError::NoStore`] with the path named, and nothing is made.
     pub(crate) fn open(dir: &Path, secret: &Secret) -> Result<Self, KeyStoreError> {
-        Self::open_with(dir, secret, KdfParams::DEFAULT)
+        Self::open_inner(dir, secret, KdfParams::DEFAULT, Access::MustExist, &|| {})
+    }
+
+    /// Open the key store in `dir`, making it (empty) if `dir` is new or holds nothing. For the acts that were
+    /// asked to create keys, and for nothing else.
+    pub(crate) fn create_or_open(dir: &Path, secret: &Secret) -> Result<Self, KeyStoreError> {
+        Self::open_inner(dir, secret, KdfParams::DEFAULT, Access::MayCreate, &|| {})
     }
 
     /// Open with the cheapest derivation costs the bounds allow: for tests, behind the `test-knobs`
     /// feature. A store made this way keeps those costs in its header.
     #[cfg(any(test, feature = "test-knobs"))]
-    pub(crate) fn open_cheap(dir: &Path, secret: &Secret) -> Result<Self, KeyStoreError> {
-        Self::open_with(
+    pub(crate) fn open_cheap(
+        dir: &Path,
+        secret: &Secret,
+        create: bool,
+    ) -> Result<Self, KeyStoreError> {
+        let access = if create {
+            Access::MayCreate
+        } else {
+            Access::MustExist
+        };
+        Self::open_inner(
             dir,
             secret,
             KdfParams {
@@ -348,29 +429,85 @@ impl KeyStore {
                 t_cost: 1,
                 p_cost: 1,
             },
+            access,
+            &|| {},
         )
     }
 
-    /// The same, with the key derivation costs a **new** store is made with (an existing store keeps the
-    /// costs its header records). Tests use cheap ones.
+    /// The same as [`KeyStore::create_or_open`], with the costs a **new** store is made with (an existing store
+    /// keeps the costs its header records). Tests use cheap ones.
+    #[cfg(test)]
     fn open_with(dir: &Path, secret: &Secret, params: KdfParams) -> Result<Self, KeyStoreError> {
-        prepare_dir(dir)?;
+        Self::open_inner(dir, secret, params, Access::MayCreate, &|| {})
+    }
+
+    /// The one implementation. `between` runs once a creator has written the header's temporary file and
+    /// before it links it into place: tests make a second process arrive at exactly that moment.
+    fn open_inner(
+        dir: &Path,
+        secret: &Secret,
+        params: KdfParams,
+        access: Access,
+        between: &dyn Fn(),
+    ) -> Result<Self, KeyStoreError> {
+        match access {
+            Access::MayCreate => prepare_dir(dir)?,
+            Access::MustExist => {
+                if !dir.is_absolute() {
+                    return Err(KeyStoreError::Io(
+                        "the key directory must be an absolute path",
+                        std::io::ErrorKind::InvalidInput,
+                    ));
+                }
+                match std::fs::symlink_metadata(dir) {
+                    Ok(_) => prepare_dir(dir)?,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        return Err(KeyStoreError::NoStore(dir.to_path_buf()));
+                    }
+                    Err(e) => {
+                        return Err(KeyStoreError::Io(
+                            "the key directory could not be read",
+                            e.kind(),
+                        ));
+                    }
+                }
+            }
+        }
         let header = dir.join(HEADER_FILE);
-        if let Some(text) = read_small(
-            &header,
-            MAX_HEADER_BYTES,
-            "the key store header could not be read",
-        )? {
+        let existing = || {
+            read_small(
+                &header,
+                MAX_HEADER_BYTES,
+                "the key store header could not be read",
+            )
+        };
+        // An existing header needs no lock: it is written whole, exactly once, by an exclusive link.
+        if let Some(text) = existing()? {
             return Self::unlock(dir, &text, secret);
         }
-        let mut entries =
-            std::fs::read_dir(dir).map_err(io("the key directory could not be listed"))?;
-        if entries.next().is_some() {
+        if access == Access::MustExist {
+            return Err(KeyStoreError::NoStore(dir.to_path_buf()));
+        }
+        // Creation is one critical section: the emptiness check and the header's link happen under an
+        // exclusive lock on a file in the directory, so a second creator neither sees the first one's
+        // temporary file as foreign content nor writes a second header.
+        let _creating = flock::exclusive_within(&dir.join(CREATE_LOCK_FILE), CREATE_WAIT)
+            .map_err(io("the key store's creation lock could not be taken"))?
+            .ok_or(KeyStoreError::CreationBusy)?;
+        if let Some(text) = existing()? {
+            return Self::unlock(dir, &text, secret);
+        }
+        sweep_creation_leftovers(dir)?;
+        let mut foreign = std::fs::read_dir(dir)
+            .map_err(io("the key directory could not be listed"))?
+            .filter_map(Result::ok)
+            .filter(|e| e.file_name() != CREATE_LOCK_FILE);
+        if foreign.next().is_some() {
             return Err(KeyStoreError::Header(
                 "the directory holds files but no header; it is not a key store (or its header was removed)",
             ));
         }
-        Self::initialize(dir, secret, params)
+        Self::initialize(dir, secret, params, between)
     }
 
     fn unlock(dir: &Path, header_text: &str, secret: &Secret) -> Result<Self, KeyStoreError> {
@@ -399,7 +536,12 @@ impl KeyStore {
         })
     }
 
-    fn initialize(dir: &Path, secret: &Secret, params: KdfParams) -> Result<Self, KeyStoreError> {
+    fn initialize(
+        dir: &Path,
+        secret: &Secret,
+        params: KdfParams,
+        between: &dyn Fn(),
+    ) -> Result<Self, KeyStoreError> {
         let params = params.check().map_err(|_| {
             KeyStoreError::Header("the key derivation costs are outside the bounds")
         })?;
@@ -425,7 +567,7 @@ impl KeyStore {
         let mut text = serde_json::to_string_pretty(&h)
             .map_err(|_| KeyStoreError::Header("it could not be written"))?;
         text.push('\n');
-        match write_private(dir, HEADER_FILE, &text, true) {
+        match write_private_then(dir, HEADER_FILE, &text, true, between) {
             Ok(()) => Ok(KeyStore {
                 dir: dir.to_path_buf(),
                 master,

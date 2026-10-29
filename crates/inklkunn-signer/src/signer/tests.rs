@@ -96,3 +96,48 @@ fn a_leftover_seed_directory_is_added_to_a_failure_and_never_replaces_it() {
         AcceptError::MessageMismatch
     );
 }
+
+struct NoLedger;
+
+impl AcceptanceLedger for NoLedger {
+    fn pending(
+        &self,
+        _: &crate::accept::AcceptanceToken,
+    ) -> Result<Option<crate::accept::ExpectedMessage>, crate::accept::LedgerError> {
+        Ok(None)
+    }
+    fn view_creation(
+        &self,
+        _: &crate::accept::ViewCreationAct,
+    ) -> Result<Option<crate::accept::ViewCreationFacts>, crate::accept::LedgerError> {
+        Ok(None)
+    }
+}
+
+#[test]
+fn opening_the_signer_on_a_mistyped_key_directory_is_refused_and_makes_nothing() {
+    let tmp = std::env::temp_dir().join(format!("inklkunn-signer-open-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    let secret = tmp.join("operator.secret");
+    std::fs::write(&secret, "an operator secret that is long enough").unwrap();
+    let keys = tmp.join("mistyped-keys");
+    let config = || {
+        SignerConfig::new(
+            "prikk",
+            Sandbox::Unconfined,
+            RootLayout::new(tmp.join("wikis")),
+            &keys,
+            &secret,
+            tmp.join("seeds"),
+        )
+    };
+    let err = Signer::open(config(), Arc::new(NoLedger)).unwrap_err();
+    assert!(matches!(err, SignerError::Unavailable(_)), "{err:?}");
+    assert!(
+        err.to_string().contains(&*keys.to_string_lossy()),
+        "the path is not named: {err}"
+    );
+    assert!(!keys.exists(), "opening made a key directory");
+    let _ = std::fs::remove_dir_all(&tmp);
+}

@@ -474,7 +474,8 @@ fn a_failed_creation_with_the_real_signer_removes_the_sealed_key_record_too() {
         &shm,
     );
     cfg.cheap_derivation = true;
-    let signer = inklkunn_core::Signer::open(cfg, std::sync::Arc::new(NoLedger)).expect("signer");
+    let signer = inklkunn_core::Signer::open_creating_store(cfg, std::sync::Arc::new(NoLedger))
+        .expect("signer");
     let doomed = RealFailsAtSeal(signer);
     let storage = storage(Sandbox::Unconfined);
     let store = MemoryStore::new();

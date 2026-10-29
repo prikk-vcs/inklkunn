@@ -360,6 +360,90 @@ fn two_processes_starting_on_a_new_directory_end_with_one_store() {
     assert_eq!(store_in(&dir).status(&wiki).unwrap().wiki, wiki);
 }
 
+#[test]
+fn opening_never_makes_a_store_and_names_the_path_it_did_not_find() {
+    let tmp = temp("no-store");
+    let missing = tmp.0.join("mistyped");
+    let err = KeyStore::open(&missing, &secret()).unwrap_err();
+    assert_eq!(err, KeyStoreError::NoStore(missing.clone()));
+    assert!(
+        err.to_string().contains(&*missing.to_string_lossy()),
+        "{err}"
+    );
+    assert!(!missing.exists(), "opening made a directory");
+    // An existing, private, empty directory is no store either, and stays empty.
+    let empty = tmp.0.join("empty");
+    std::fs::create_dir(&empty).unwrap();
+    std::fs::set_permissions(&empty, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(
+        KeyStore::open(&empty, &secret()).unwrap_err(),
+        KeyStoreError::NoStore(empty.clone())
+    );
+    assert_eq!(std::fs::read_dir(&empty).unwrap().count(), 0);
+    // Asked to create, the same call makes it, and then plain open finds it.
+    KeyStore::create_or_open(&missing, &secret()).unwrap();
+    assert!(KeyStore::open(&missing, &secret()).is_ok());
+}
+
+#[test]
+fn a_second_creator_arriving_while_the_first_has_only_a_temporary_file_ends_with_the_one_store() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+    let tmp = temp("race-det");
+    let dir = tmp.0.join("keys");
+    std::fs::create_dir(&dir).unwrap();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let (go, arrive) = mpsc::channel::<()>();
+    let second = {
+        let dir = dir.clone();
+        std::thread::spawn(move || {
+            arrive.recv().unwrap();
+            KeyStore::open_with(&dir, &secret(), CHEAP).map(|_| ())
+        })
+    };
+    // The first creator, stopped with its temporary header written and not yet linked, lets the second one
+    // start and gives it time to look at the directory.
+    let first = KeyStore::open_inner(&dir, &secret(), CHEAP, Access::MayCreate, &|| {
+        go.send(()).unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+    });
+    assert!(first.is_ok(), "{first:?}");
+    assert_eq!(second.join().unwrap(), Ok(()));
+    assert!(KeyStore::open_with(&dir, &secret(), CHEAP).is_ok());
+    let headers = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter(|e| e.as_ref().unwrap().file_name() == "store.json")
+        .count();
+    assert_eq!(headers, 1);
+}
+
+#[test]
+fn a_temporary_file_left_by_a_crash_does_not_block_creation_but_foreign_files_still_do() {
+    let tmp = temp("leftover");
+    let dir = tmp.0.join("keys");
+    std::fs::create_dir(&dir).unwrap();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::fs::write(dir.join(".store.json.tmp-0123456789abcdef"), "half").unwrap();
+    KeyStore::open_with(&dir, &secret(), CHEAP).expect("a crash's leftover blocked creation");
+    assert!(
+        !dir.join(".store.json.tmp-0123456789abcdef").exists(),
+        "the leftover was kept"
+    );
+    // Something that is not this store's own is still a refusal, and is left alone.
+    let other = tmp.0.join("other");
+    std::fs::create_dir(&other).unwrap();
+    std::fs::set_permissions(&other, std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::fs::write(other.join("notes.txt"), "mine").unwrap();
+    assert!(matches!(
+        KeyStore::open_with(&other, &secret(), CHEAP),
+        Err(KeyStoreError::Header(_))
+    ));
+    assert_eq!(
+        std::fs::read_to_string(other.join("notes.txt")).unwrap(),
+        "mine"
+    );
+}
+
 // ---- records ----
 
 #[test]
@@ -1019,7 +1103,7 @@ fn randomness_is_real_and_hex_is_strict() {
 fn the_production_open_uses_the_default_costs_and_takes_a_fraction_of_a_second() {
     let tmp = temp("default");
     let started = std::time::Instant::now();
-    let store = KeyStore::open(&tmp.0.join("keys"), &secret()).unwrap();
+    let store = KeyStore::create_or_open(&tmp.0.join("keys"), &secret()).unwrap();
     let took = started.elapsed();
     println!("default Argon2id (64 MiB, 3 passes, 1 lane), store opened: {took:?}");
     // A loose bound: a slow CI runner must not fail this, but a derivation that stopped being memory-hard
@@ -1036,7 +1120,7 @@ fn the_production_open_uses_the_default_costs_and_takes_a_fraction_of_a_second()
     store.create(&meta(&wiki), &seeds()).unwrap();
     drop(store);
     assert_eq!(
-        KeyStore::open(&tmp.0.join("keys"), &secret())
+        KeyStore::create_or_open(&tmp.0.join("keys"), &secret())
             .unwrap()
             .status(&wiki)
             .unwrap(),

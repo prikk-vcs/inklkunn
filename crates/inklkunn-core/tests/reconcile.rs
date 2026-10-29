@@ -113,7 +113,7 @@ fn world(tag: &str) -> Option<World> {
         &shm.0,
     );
     cfg.cheap_derivation = true;
-    let signer = Signer::open(cfg, books.clone()).expect("signer");
+    let signer = Signer::open_creating_store(cfg, books.clone()).expect("signer");
     let wiki = WikiId::new();
     let repo = root.prepare(&wiki).unwrap();
     signer

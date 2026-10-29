@@ -34,6 +34,7 @@
 
 | Date | Crate(s) | Cost (lock) | Notes |
 |---|---|---|---|
+| 2026-10-29 | `rustix` 1 (`fs`, `std`; no default features) as a direct dependency of `inklkunn-signer` — `flock(2)` for the key store's creation and, next, the per-wiki write lock and the seed directories' liveness (corrections C3, C4, C6 of handoff 002) | 209 → 209 (+0: `rustix` was already in the tree through `tempfile`, dev-only; it becomes a runtime crate, with the same `bitflags`, `errno`, `libc`, `linux-raw-sys` and `windows-sys` it already had); deny: advisories, bans, licenses, sources ok; audit: 0 vulnerabilities | `std::fs::File::lock` is stable only from Rust 1.89 and the declared minimum is 1.88; a safe wrapper is needed because every crate forbids `unsafe`. The alternative is raising the minimum compiler to 1.89 and using the standard library, which costs no dependency: the architect may prefer it (review request, deviation). |
 | 2026-10-28 | `askama` 0.16 (`derive`, `std`; no default features) — runtime of `inklkunn-web`; `ammonia` 4 — runtime of `inklkunn-core`; `html5ever` 0.40 — dev-only in `inklkunn-web` (handoff 003 T2 and T3, adopted together so both tasks start from one measured tree) | 155 → 209 (+54: `askama`, `askama_derive`, `askama_macros`, `askama_parser`; `ammonia` and its HTML stack `html5ever`, `markup5ever`, `web_atoms`, `string_cache`, `string_cache_codegen`, `phf`, `phf_codegen`, `phf_generator`, `phf_shared`, `siphasher`, `tendril`, `utf8_iter`, `new_debug_unreachable`, `precomputed-hash`, `parking_lot`, `parking_lot_core`, `lock_api`, `scopeguard`, `redox_syscall`, `log`, `maplit`, `cssparser`, `dtoa`, `dtoa-short`, `synstructure`, `displaydoc`; and `url`, `idna`, `idna_adapter`, `stable_deref_trait` with the Unicode data crates they need: `icu_collections`, `icu_locale_core`, `icu_normalizer`, `icu_normalizer_data`, `icu_properties`, `icu_properties_data`, `icu_provider`, `litemap`, `potential_utf`, `tinystr`, `writeable`, `yoke`, `yoke-derive`, `zerofrom`, `zerofrom-derive`, `zerotrie`, `zerovec`, `zerovec-derive`; `rustc-hash` was already locked); deny: advisories, bans, licenses, sources ok (exit 0); audit: 0 vulnerabilities, 1,380 advisories, 209 crates (exit 0); new licenses: `Unicode-3.0` (the ICU crates; already allowed for `unicode-ident`), `MPL-2.0` (`cssparser`, `dtoa-short`: file-level weak copyleft, in the allow-list and now encountered), the rest MIT or Apache-2.0 | RFC 003 D-3 requires every rendered page to pass a strict HTML sanitizer before any template sees it (threat model T-6); `ammonia` is the house choice (planeter) and its tree is the cost, mostly the Unicode tables behind `url`. RFC 003 D-5/D-6 want compiled, auto-escaping templates: `askama` with the `config` feature off (it would pull a TOML parser this project has no use for) is +4. The structural tests (D-6) parse rendered pages with `html5ever`, which `ammonia` already locks, so it adds nothing beyond the sanitizer's own tree. No Markdown change: `pulldown-cmark` stays the one renderer. **MSRV** — `cargo +1.88.0 check --workspace --all-targets` passes. |
 | 2026-10-28 | `axum` 0.8 (`http1`, `query`, `form`, `tokio`; no default features), `tokio` 1 (`rt-multi-thread`, `net`, `macros`, `sync`, `time`, `signal`), `tower-service` 0.3 — runtime of `inklkunn-web`; `tower` 0.5 (`util`) — dev-only (handoff 003 T1) | 129 → 155 (+26: `axum`, `axum-core`, `hyper`, `hyper-util`, `http`, `http-body`, `http-body-util`, `httparse`, `httpdate`, `mime`, `matchit`, `tower`, `tower-layer`, `tower-service`, `sync_wrapper`, `atomic-waker`, `tokio`, `tokio-macros`, `mio`, `socket2`, `signal-hook-registry`, `form_urlencoded`, `percent-encoding`, `serde_urlencoded`, `serde_path_to_error`, `ryu`); deny: advisories, bans, licenses, sources ok (exit 0); audit: 0 vulnerabilities, 1,380 advisories, 155 crates (exit 0); **`tokio` is 1.54.1, past RUSTSEC-2026-0386's 1.53.3**; new licenses: none outside the allow-list (MIT for axum, hyper, tokio, tower; `matchit` MIT AND BSD-3-Clause; `ryu` Apache-2.0 OR BSL-1.0; `sync_wrapper` Apache-2.0; the rest MIT or Apache-2.0) | RFC 003 D-5 and planeter's measured choice (STD-3): the standard async stack, HTTP/1.1 only behind the operator's TLS proxy. Features are trimmed to what the foundations use: no `json` extractor, no `ws`, no `multipart`, no `tracing`, no `tower-http` (the headers are one function, tested), no HTTP/2. `tower-service` is axum's own dependency, named so the origin dispatcher can hold two routers. Measured: **build time** — a clean debug build of `inklkunn-web` after `inklkunn-core` takes 3.7 s wall (14.5 s CPU); a clean release build of the `inklkunn` binary 26 s wall (70 s CPU against 48 s CPU before). **Binary size** — release `inklkunn` 3.41 MB (3.03 MB stripped) before, 4.90 MB (4.01 MB stripped) after: +1.5 MB (+1.0 MB stripped). **MSRV** — `cargo +1.88.0 check -p inklkunn-web` passes. `askama` 0.16 (+5 crates, measured on the same tree, deny and audit exit 0) is *not* added here: the task that writes the first template adds it with its own row. |
 | 2026-10-28 | `inklkunn-core` and `inklkunn-store` as runtime dependencies of the `inklkunn` binary (handoff 002 T7, the key commands) | 129 → 129 (+0: workspace-internal edges); deny: advisories, bans, licenses, sources ok (exit 0); audit: 0 vulnerabilities, 1,380 advisories, 129 crates (exit 0); new licenses: none | The commands open the real signer (re-exported by `inklkunn-core`; only core may depend on the signer, and the binary does not), the SQLite store and its audit trail. No command-line or configuration crate: the grammar is four subcommands and five variables, hand-parsed and tested, as planeter does. |
@@ -85,7 +86,7 @@ resolves optional dependencies of dependencies ahead of any feature choice, and 
 | `base64ct` | 1.8.3 | `argon2` via `inklkunn-auth`; `argon2` via `inklkunn-signer`; +1 more |
 | `bit-set` | 0.11.1 | `proptest` via `inklkunn-markup` (dev-only); `proptest` via `inklkunn-signer` (dev-only) |
 | `bit-vec` | 0.10.1 | `proptest` via `inklkunn-markup` (dev-only); `proptest` via `inklkunn-signer` (dev-only) |
-| `bitflags` | 2.13.2 | `ammonia` via `inklkunn-core`; `pulldown-cmark` via `inklkunn-markup`; +1 more |
+| `bitflags` | 2.13.2 | `ammonia` via `inklkunn-core`; `pulldown-cmark` via `inklkunn-markup`; +2 more |
 | `blake2` | 0.10.6 | `argon2` via `inklkunn-auth`; `argon2` via `inklkunn-signer` |
 | `block-buffer` | 0.10.4 | `argon2` via `inklkunn-auth`; `argon2` via `inklkunn-signer`; +1 more |
 | `borsh` | 1.8.1 | locked but never built: an optional dependency of a dependency that no feature of this workspace enables (still scanned by deny and audit) |
@@ -109,7 +110,7 @@ resolves optional dependencies of dependencies ahead of any feature choice, and 
 | `dtoa-short` | 0.3.5 | `ammonia` via `inklkunn-core` |
 | `dunce` | 1.0.5 | `jsonwebtoken` via `inklkunn-auth` (build-only) |
 | `equivalent` | 1.0.3 | locked but never built: an optional dependency of a dependency that no feature of this workspace enables (still scanned by deny and audit) |
-| `errno` | 0.3.14 | `axum` via `inklkunn-web`; `tokio` via `inklkunn-web` |
+| `errno` | 0.3.14 | `axum` via `inklkunn-web`; `rustix` via `inklkunn-signer`; +1 more |
 | `fallible-iterator` | 0.3.0 | `rusqlite` via `inklkunn-store` |
 | `fallible-streaming-iterator` | 0.1.9 | `rusqlite` via `inklkunn-store` |
 | `fastrand` | 2.5.0 | `ammonia` via `inklkunn-core` (build-only) |
@@ -146,9 +147,9 @@ resolves optional dependencies of dependencies ahead of any feature choice, and 
 | `jobserver` | 0.1.35 | `jsonwebtoken` via `inklkunn-auth` (build-only); `rusqlite` via `inklkunn-store` (build-only) |
 | `js-sys` | 0.3.106 | `jsonwebtoken` via `inklkunn-auth` |
 | `jsonwebtoken` | 11.1.0 | `jsonwebtoken` via `inklkunn-auth` |
-| `libc` | 0.2.191 | `ammonia` via `inklkunn-core`; `argon2` via `inklkunn-auth`; +6 more |
+| `libc` | 0.2.191 | `ammonia` via `inklkunn-core`; `argon2` via `inklkunn-auth`; +7 more |
 | `libsqlite3-sys` | 0.38.2 | `rusqlite` via `inklkunn-store` |
-| `linux-raw-sys` | 0.12.1 | `proptest` via `inklkunn-markup` (dev-only); `proptest` via `inklkunn-signer` (dev-only) |
+| `linux-raw-sys` | 0.12.1 | `rustix` via `inklkunn-signer` |
 | `litemap` | 0.8.3 | `ammonia` via `inklkunn-core` |
 | `lock_api` | 0.4.14 | `ammonia` via `inklkunn-core` |
 | `log` | 0.4.34 | `ammonia` via `inklkunn-core` |
@@ -190,7 +191,7 @@ resolves optional dependencies of dependencies ahead of any feature choice, and 
 | `regex-syntax` | 0.8.11 | `proptest` via `inklkunn-markup` (dev-only); `proptest` via `inklkunn-signer` (dev-only) |
 | `rusqlite` | 0.40.2 | `rusqlite` via `inklkunn-store` |
 | `rustc-hash` | 2.1.3 | `askama` via `inklkunn-web` |
-| `rustix` | 1.1.5 | `proptest` via `inklkunn-markup` (dev-only); `proptest` via `inklkunn-signer` (dev-only) |
+| `rustix` | 1.1.5 | `rustix` via `inklkunn-signer` |
 | `rustversion` | 1.0.23 | `jsonwebtoken` via `inklkunn-auth` (build-only) |
 | `rusty-fork` | 0.3.1 | `proptest` via `inklkunn-markup` (dev-only); `proptest` via `inklkunn-signer` (dev-only) |
 | `ryu` | 1.0.23 | `axum` via `inklkunn-web` |
@@ -246,8 +247,8 @@ resolves optional dependencies of dependencies ahead of any feature choice, and 
 | `wasm-bindgen-macro-support` | 0.2.129 | `jsonwebtoken` via `inklkunn-auth` |
 | `wasm-bindgen-shared` | 0.2.129 | `jsonwebtoken` via `inklkunn-auth` |
 | `web_atoms` | 0.3.0 | `ammonia` via `inklkunn-core` |
-| `windows-link` | 0.2.1 | `ammonia` via `inklkunn-core`; `axum` via `inklkunn-web`; +1 more |
-| `windows-sys` | 0.61.2 | `axum` via `inklkunn-web`; `tokio` via `inklkunn-web` |
+| `windows-link` | 0.2.1 | `ammonia` via `inklkunn-core`; `axum` via `inklkunn-web`; +2 more |
+| `windows-sys` | 0.61.2 | `axum` via `inklkunn-web`; `rustix` via `inklkunn-signer`; +1 more |
 | `winnow` | 1.0.4 | `askama` via `inklkunn-web` |
 | `writeable` | 0.6.4 | `ammonia` via `inklkunn-core` |
 | `yoke` | 0.8.4 | `ammonia` via `inklkunn-core` |

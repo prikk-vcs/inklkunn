@@ -203,7 +203,8 @@ fn fixture(tag: &str, sandbox: Sandbox, use_standin: bool) -> Option<Fixture> {
         shm: shm.0.clone(),
     };
     let ledger = Arc::new(Ledger::default());
-    let signer = Signer::open(config(&pre, &prikk, sandbox), ledger.clone()).expect("signer opens");
+    let signer = Signer::open_creating_store(config(&pre, &prikk, sandbox), ledger.clone())
+        .expect("signer opens");
     let wiki = WikiId::new();
     let repo = root.prepare(&wiki).expect("directories");
     let ids = signer
@@ -1226,7 +1227,7 @@ fn a_killed_server_leaves_a_state_recovery_can_complete_and_the_next_start_sweep
     };
     let mut cfg = config(&pre, &f.prikk, Sandbox::Unconfined);
     cfg.stale_after = Some(Duration::ZERO);
-    let restarted = Signer::open(cfg, f.ledger.clone()).expect("restart");
+    let restarted = Signer::open_creating_store(cfg, f.ledger.clone()).expect("restart");
     assert_eq!(restarted.leftover_call_directories_removed(), 1);
     assert!(f.seed_dirs().is_empty());
     // A signer opened with the default age leaves a young directory alone (another process's live call).
@@ -1235,7 +1236,7 @@ fn a_killed_server_leaves_a_state_recovery_can_complete_and_the_next_start_sweep
         .0
         .join("inklkunn-seeds-0123456789abcdef0123456789abcdef");
     std::fs::create_dir(&young).unwrap();
-    let again = Signer::open(
+    let again = Signer::open_creating_store(
         config(&pre, &f.prikk, Sandbox::Unconfined),
         f.ledger.clone(),
     )
@@ -1281,7 +1282,7 @@ fn child_accepts_and_blocks_in_seal() {
         s(field(&spec, "shm")),
     );
     cfg.cheap_derivation = true;
-    let signer = Signer::open(cfg, ledger).expect("signer");
+    let signer = Signer::open_creating_store(cfg, ledger).expect("signer");
     let files = field(&spec, "files")
         .as_array()
         .unwrap()
@@ -1476,7 +1477,7 @@ fn opening_the_signer_checks_the_secret_and_the_tmpfs() {
     std::fs::write(&wrong, "a different operator secret, also long enough").unwrap();
     let mut cfg = config(&pre, &f.prikk, Sandbox::Unconfined);
     cfg.secret_file = wrong;
-    let r = Signer::open(cfg, f.ledger.clone());
+    let r = Signer::open_creating_store(cfg, f.ledger.clone());
     assert!(
         matches!(&r, Err(SignerError::Unavailable(m)) if m.contains("does not open the key store")),
         "{:?}",
@@ -1485,7 +1486,7 @@ fn opening_the_signer_checks_the_secret_and_the_tmpfs() {
     // A seed directory that is not a tmpfs is refused.
     let mut cfg = config(&pre, &f.prikk, Sandbox::Unconfined);
     cfg.tmpfs_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let on_disk = Signer::open(cfg, f.ledger.clone());
+    let on_disk = Signer::open_creating_store(cfg, f.ledger.clone());
     let mountinfo = std::fs::read_to_string("/proc/self/mountinfo").unwrap();
     if !mountinfo.lines().any(|l| {
         l.contains(" tmpfs ")

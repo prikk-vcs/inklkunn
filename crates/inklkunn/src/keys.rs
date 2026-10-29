@@ -271,8 +271,14 @@ fn run(
         &settings.secret_file,
         &settings.seed_dir,
     );
-    let signer = Signer::open(config, Arc::new(NoAcceptances))
-        .map_err(|e| format!("the signer could not be opened: {e}"))?;
+    // Only `create` is asked to bring a key store into being; every other command refuses a key directory with
+    // no store in it (a mistyped path must not become a new, empty store).
+    let opened = if matches!(command, Command::Create { .. }) {
+        Signer::open_creating_store(config, Arc::new(NoAcceptances))
+    } else {
+        Signer::open(config, Arc::new(NoAcceptances))
+    };
+    let signer = opened.map_err(|e| format!("the signer could not be opened: {e}"))?;
     let swept = signer.leftover_call_directories_removed();
     if swept > 0 {
         let _ = writeln!(

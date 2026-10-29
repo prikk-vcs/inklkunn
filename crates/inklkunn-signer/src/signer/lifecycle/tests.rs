@@ -85,7 +85,7 @@ fn world(tag: &str) -> Option<World> {
         &shm.0,
     );
     cfg.cheap_derivation = true;
-    let signer = Signer::open(cfg, std::sync::Arc::new(NoLedger)).unwrap();
+    let signer = Signer::open_creating_store(cfg, std::sync::Arc::new(NoLedger)).unwrap();
     let wiki = WikiId::new();
     let repo = root.prepare(&wiki).unwrap();
     signer.create_repository(&repo).unwrap();
@@ -125,7 +125,7 @@ impl World {
             &self.shm.0,
         );
         cfg.cheap_derivation = true;
-        Signer::open(cfg, std::sync::Arc::new(NoLedger)).unwrap()
+        Signer::open_creating_store(cfg, std::sync::Arc::new(NoLedger)).unwrap()
     }
 
     fn prikk(&self, args: &[&str]) -> std::process::Output {
@@ -240,7 +240,7 @@ fn keys_are_created_for_an_initialised_repository_that_has_none_and_only_once() 
         &shm.0,
     );
     cfg.cheap_derivation = true;
-    let signer = Signer::open(cfg, std::sync::Arc::new(NoLedger)).unwrap();
+    let signer = Signer::open_creating_store(cfg, std::sync::Arc::new(NoLedger)).unwrap();
     let wiki = WikiId::new();
     let repo = root.prepare(&wiki).unwrap();
     // A repository that exists and has no keys (restored from a backup of the repository alone).

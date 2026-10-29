@@ -842,6 +842,7 @@ dependencies = [
  "inklkunn-signer",
  "inklkunn-store",
  "proptest",
+ "rustix",
  "serde",
  "serde_json",
  "zeroize",

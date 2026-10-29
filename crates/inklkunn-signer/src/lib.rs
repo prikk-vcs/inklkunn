@@ -16,6 +16,7 @@
 //! the `bootstrap` cargo feature**, for tests; a product binary never enables it (the gate checks).
 
 // The modules stay private: the key-reachability gate keeps every other crate from naming them.
+mod flock;
 mod key_store;
 mod keys;
 mod writes;

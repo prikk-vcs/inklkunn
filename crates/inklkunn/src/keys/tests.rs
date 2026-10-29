@@ -1,6 +1,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use super::*;
+use std::os::unix::fs::PermissionsExt;
 
 fn args(s: &str) -> Vec<String> {
     s.split_whitespace().map(str::to_owned).collect()
@@ -153,7 +154,7 @@ mod world {
         };
         let layout = RootLayout::new(settings.wikis_root());
         let store = SqliteStore::open(&settings.store_path()).unwrap();
-        let signer = Signer::open(
+        let signer = Signer::open_creating_store(
             SignerConfig::new(
                 "prikk",
                 Sandbox::Unconfined,
@@ -202,6 +203,20 @@ mod world {
 
         /// As [`World::cli`], with `INKLKUNN_PRIKK` naming this binary.
         pub fn cli_with_prikk(&self, args: &str, prikk: &std::ffi::OsStr) -> (i32, String, String) {
+            self.run_cli(args, prikk, &self.settings.key_dir)
+        }
+
+        /// As [`World::cli`], with `INKLKUNN_KEY_DIR` pointing somewhere else (a mistyped setting).
+        pub fn cli_with_key_dir(&self, args: &str, key_dir: &Path) -> (i32, String, String) {
+            self.run_cli(args, &self.settings.prikk.clone(), key_dir)
+        }
+
+        fn run_cli(
+            &self,
+            args: &str,
+            prikk: &std::ffi::OsStr,
+            key_dir: &Path,
+        ) -> (i32, String, String) {
             let s = &self.settings;
             let env: HashMap<&str, OsString> = HashMap::from([
                 ("INKLKUNN_DATA_DIR", s.data_dir.clone().into_os_string()),
@@ -209,7 +224,7 @@ mod world {
                     "INKLKUNN_SECRET_FILE",
                     s.secret_file.clone().into_os_string(),
                 ),
-                ("INKLKUNN_KEY_DIR", s.key_dir.clone().into_os_string()),
+                ("INKLKUNN_KEY_DIR", key_dir.to_path_buf().into_os_string()),
                 ("INKLKUNN_SEED_DIR", s.seed_dir.clone().into_os_string()),
                 ("INKLKUNN_PRIKK", prikk.to_os_string()),
             ]);
@@ -453,6 +468,43 @@ fn create_for_a_wiki_that_has_keys_is_refused_and_a_lost_key_record_is_reported_
     );
     let (status, _, err) = w.cli("wiki keys status handbook");
     assert_eq!(status, 1, "still no keys: {err}");
+}
+
+#[test]
+fn a_key_directory_with_no_store_in_it_is_refused_by_status_and_rotate_and_nothing_is_made() {
+    let Some(w) = world::world("mistyped") else {
+        return;
+    };
+    // A directory that does not exist is the command line's own refusal; one that exists and is empty (made by
+    // hand, or the wrong mount) is the signer's: no store there, the path named, nothing created in it.
+    let (status, _, err) = w.cli_with_key_dir(
+        "wiki keys status handbook",
+        &w.settings.data_dir.join("kyes"),
+    );
+    assert_eq!(status, 1);
+    assert!(
+        err.contains("no key directory") && err.contains("kyes"),
+        "{err}"
+    );
+    let empty = w.settings.data_dir.join("empty-keys");
+    std::fs::create_dir(&empty).unwrap();
+    std::fs::set_permissions(&empty, std::fs::Permissions::from_mode(0o700)).unwrap();
+    for command in [
+        "wiki keys status handbook",
+        "wiki keys rotate handbook --confirm handbook",
+    ] {
+        let (status, _, err) = w.cli_with_key_dir(command, &empty);
+        assert_eq!(status, 1, "{command}: {err}");
+        assert!(
+            err.contains("there is no key store") && err.contains("empty-keys"),
+            "{command}: {err}"
+        );
+        assert_eq!(
+            std::fs::read_dir(&empty).unwrap().count(),
+            0,
+            "{command} made something in the key directory"
+        );
+    }
 }
 
 #[test]
