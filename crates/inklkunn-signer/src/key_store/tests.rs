@@ -1175,22 +1175,95 @@ fn a_seed_base_others_can_write_to_or_that_the_user_does_not_own_is_refused() {
 }
 
 #[test]
-fn a_call_that_is_still_running_is_not_taken_for_a_dead_one() {
-    let Some((guard, seed_base)) = base("heartbeat") else {
+fn a_directory_a_live_call_holds_is_never_swept_and_one_nobody_holds_always_is() {
+    let Some((guard, seed_base)) = base("liveness") else {
         return;
     };
-    let (a, b) = (seed_base.scratch().unwrap(), seed_base.scratch().unwrap());
-    // Both directories look a quarter of an hour old to the sweep…
-    let old = std::time::SystemTime::now() - std::time::Duration::from_secs(900);
-    for d in [a.path(), b.path()] {
+    let (live, held_scratch) = (seed_base.scratch().unwrap(), seed_base.scratch().unwrap());
+    // Both look a day old to anyone who goes by age: it must not matter.
+    let old = std::time::SystemTime::now() - std::time::Duration::from_secs(86_400);
+    for d in [live.path(), held_scratch.path()] {
         std::fs::File::open(d).unwrap().set_modified(old).unwrap();
     }
-    // …but the one whose call said it was alive (every prikk call does) is touched and so is kept.
-    touch(a.path());
+    // A directory whose holder is gone (made by hand, no lock held): dead, however young.
+    let dead = guard
+        .0
+        .join(format!("{DIR_PREFIX}00000000000000000000000000000001"));
+    std::fs::create_dir(&dead).unwrap();
+    std::fs::write(dead.join("author.seed"), "not a seed").unwrap();
     let removed = seed_base
-        .sweep_stale(std::time::Duration::from_secs(300))
+        .sweep(std::time::Duration::from_secs(300))
         .unwrap();
-    assert_eq!(removed, 1, "only the silent one");
-    assert!(a.path().exists() && !b.path().exists());
-    drop((a, b, guard));
+    assert_eq!(removed, 1, "only the one nobody holds");
+    assert!(live.path().exists() && held_scratch.path().exists() && !dead.exists());
+    // Once its call is over, a directory is gone by the call's own hand, and nothing is left to sweep.
+    live.finish().unwrap();
+    held_scratch.finish().unwrap();
+    assert_eq!(
+        seed_base
+            .sweep(std::time::Duration::from_secs(300))
+            .unwrap(),
+        0
+    );
+    drop(guard);
+}
+
+#[test]
+fn a_directory_is_never_visible_unlocked_and_removal_does_not_follow_a_link() {
+    use std::os::unix::fs::symlink;
+    let Some((guard, seed_base)) = base("birth") else {
+        return;
+    };
+    // Born locked: the moment a directory exists under its final name, a sweep finds it held.
+    let scratch = seed_base.scratch().unwrap();
+    let name = scratch.path().file_name().unwrap().to_owned();
+    assert!(matches!(
+        live::try_take(seed_base_dir(&seed_base), &name),
+        live::Liveness::Alive
+    ));
+    // A link named like a seed directory is not a directory: not followed, not removed through, not counted.
+    let victim = guard.0.join("victim");
+    std::fs::create_dir(&victim).unwrap();
+    std::fs::write(victim.join("precious"), "keep").unwrap();
+    let link = guard
+        .0
+        .join(format!("{DIR_PREFIX}ffffffffffffffffffffffffffffffff"));
+    symlink(&victim, &link).unwrap();
+    assert_eq!(
+        seed_base
+            .sweep(std::time::Duration::from_secs(300))
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        std::fs::read_to_string(victim.join("precious")).unwrap(),
+        "keep"
+    );
+    assert!(
+        !live::remove_dir_at(&link),
+        "removal followed or accepted a link"
+    );
+    assert_eq!(
+        std::fs::read_to_string(victim.join("precious")).unwrap(),
+        "keep"
+    );
+    // A directory holding something that is not a plain file is left and reported, not followed.
+    let odd = guard
+        .0
+        .join(format!("{DIR_PREFIX}eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"));
+    std::fs::create_dir(&odd).unwrap();
+    symlink(&victim, odd.join("inner-link")).unwrap();
+    assert!(matches!(
+        seed_base.sweep(std::time::Duration::from_secs(300)),
+        Ok(1) | Err(_)
+    ));
+    assert_eq!(
+        std::fs::read_to_string(victim.join("precious")).unwrap(),
+        "keep"
+    );
+    scratch.finish().unwrap();
+}
+
+fn seed_base_dir(base: &SeedBase) -> &Path {
+    base.path()
 }

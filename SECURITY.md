@@ -22,9 +22,9 @@ changes that verify. The design bounds, detects and attributes that risk rather 
   a failed verification*, together with where the repository is (nothing committed; one patch queued; sealed,
   not confirmed).
   **A server killed in the middle of a signing call (`SIGKILL`) cannot clean up after itself**: its
-  decrypted seeds stay on the tmpfs until a later start finds them untouched for five minutes (a live call
-  touches its directory before every prikk call) and removes them, so after a quick restart they can remain
-  for up to five minutes more. Run the seed directory on a tmpfs that is not swapped to disk, owned by the
+  decrypted seeds stay on the tmpfs until the next start, which removes them at once: a seed directory is held
+  under a lock for the life of its call and the kernel drops the lock with a killed process, so a start removes
+  every directory it can lock and none a live call holds, however long the call runs. Run the seed directory on a tmpfs that is not swapped to disk, owned by the
   service's user and writable by nobody else (the signer refuses anything else), and treat an unclean stop as a
   reason to look at the host (the next start reports how many directories it removed);
 - every sealed change carries the proposer and the acceptor in its signed message, and a reconciliation

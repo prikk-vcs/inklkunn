@@ -10,13 +10,17 @@
 //! - **Removed, and told if not.** [`SeedDir::finish`] overwrites each file with zeros, unlinks it, removes
 //!   the directory, and reports a failure instead of swallowing it. [`Drop`] does the same on a panic or an
 //!   early return, where nothing can be reported.
+//! - **Alive means locked.** A directory is held under an exclusive `flock` for the life of its call (see
+//!   [`super::live`]), so a start removes every directory it can lock at once, however recent, and never one a
+//!   live call holds, however old.
 //! - **Never named.** No error text and no `Debug` output carries the directory's path or a seed.
 
 use std::io::Write;
-use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
 use super::KeyStoreError;
+use super::live;
 use super::random;
 use super::record::Seeds;
 use crate::keys::{KeyDir, Role};
@@ -74,6 +78,7 @@ impl SeedBase {
     }
 
     /// The directory.
+    #[cfg(test)]
     pub(crate) fn path(&self) -> &Path {
         &self.dir
     }
@@ -127,51 +132,47 @@ pub(super) fn fs_type_of(mountinfo: &str, path: &Path) -> Option<String> {
     best.map(|(_, t)| t)
 }
 
-/// Say that the call using `dir` is still running: its modification time is set to now. The start-up sweep
-/// takes a directory not touched for five minutes to be a killed call's; an acceptance is many prikk calls
-/// and can run longer than that, so every call touches the directory first.
-pub(crate) fn touch(dir: &Path) {
-    if let Ok(f) = std::fs::File::open(dir) {
-        let _ = f.set_modified(std::time::SystemTime::now());
-    }
-}
-
 impl SeedBase {
-    /// A scratch directory of the same kind as a seed directory (private, random name, tmpfs), empty: for
-    /// work that produces key material, such as generating a wiki's keys. Its name starts with
-    /// [`DIR_PREFIX`], so the start-up sweep covers it.
+    /// A scratch directory of the same kind as a seed directory (private, random name, tmpfs, locked for its
+    /// life), empty: for work that produces key material, such as generating a wiki's keys. Its name starts
+    /// with [`DIR_PREFIX`], so the start-up sweep covers it.
     pub(crate) fn scratch(&self) -> Result<Scratch, KeyStoreError> {
-        let name = format!(
-            "{DIR_PREFIX}{}",
-            random::hex(&random::bytes::<16>().map_err(|_| KeyStoreError::Random)?)
-        );
-        let dir = self.dir.join(name);
-        std::fs::DirBuilder::new()
-            .mode(0o700)
-            .create(&dir)
-            .map_err(|e| KeyStoreError::Io("a scratch directory could not be made", e.kind()))?;
+        let (dir, lock) = self.make_locked_dir("a scratch directory could not be made")?;
         Ok(Scratch {
             dir,
+            lock: Some(lock),
             removed: false,
         })
     }
 
-    /// Remove seed and scratch directories older than `older_than`: what a call leaves behind when the
-    /// process was killed (`SIGKILL` runs no `Drop`). A directory is touched only if it is a real directory
-    /// (never a link) whose name starts with [`DIR_PREFIX`]; a live call's directory is younger than the
-    /// write deadline, so the age keeps another process's call safe. Returns how many were removed.
-    pub(crate) fn sweep_stale(
+    /// A new directory under a random name, born locked.
+    fn make_locked_dir(
         &self,
-        older_than: std::time::Duration,
+        what: &'static str,
+    ) -> Result<(PathBuf, std::fs::File), KeyStoreError> {
+        let hex = random::hex(&random::bytes::<16>().map_err(|_| KeyStoreError::Random)?);
+        let name = format!("{DIR_PREFIX}{hex}");
+        let lock = live::make_locked(&self.dir, &name, &hex)
+            .map_err(|e| KeyStoreError::Io(what, e.kind()))?;
+        Ok((self.dir.join(name), lock))
+    }
+
+    /// Remove the seed and scratch directories **no live call holds**: what a call leaves behind when its
+    /// process was killed (`SIGKILL` runs no `Drop`), found by the lock the kernel dropped with it, so a quick
+    /// restart clears them at once. A directory is touched only if it is a real directory (never a link) whose
+    /// name starts with [`DIR_PREFIX`]; one a live call holds is skipped however old it is. A half-made
+    /// `.new-…` directory (a creator that died between making and locking it) goes when it is older than
+    /// `birth_leftover_age`. Returns how many were removed.
+    pub(crate) fn sweep(
+        &self,
+        birth_leftover_age: std::time::Duration,
     ) -> Result<usize, KeyStoreError> {
         let entries = std::fs::read_dir(&self.dir)
             .map_err(|e| KeyStoreError::Io("the seed directory could not be listed", e.kind()))?;
         let mut removed = 0;
         for entry in entries.flatten() {
             let name = entry.file_name();
-            if !name.to_string_lossy().starts_with(DIR_PREFIX) {
-                continue;
-            }
+            let text = name.to_string_lossy();
             let path = entry.path();
             let Ok(meta) = std::fs::symlink_metadata(&path) else {
                 continue;
@@ -179,18 +180,32 @@ impl SeedBase {
             if !meta.is_dir() {
                 continue;
             }
-            let age = meta
-                .modified()
-                .ok()
-                .and_then(|t| t.elapsed().ok())
-                .unwrap_or_default();
-            if age < older_than {
-                continue;
-            }
-            if remove_all(&path) {
-                removed += 1;
-            } else {
-                return Err(KeyStoreError::SeedsNotRemoved);
+            if text.starts_with(DIR_PREFIX) {
+                match live::try_take(&self.dir, &name) {
+                    live::Liveness::Alive | live::Liveness::NotADirectory => continue,
+                    live::Liveness::Dead(held) => {
+                        let gone = live::remove_dir_at(&path);
+                        drop(held);
+                        if gone {
+                            removed += 1;
+                        } else {
+                            return Err(KeyStoreError::SeedsNotRemoved);
+                        }
+                    }
+                }
+            } else if text.starts_with(live::BIRTH_PREFIX) {
+                let age = meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.elapsed().ok())
+                    .unwrap_or_default();
+                if age >= birth_leftover_age {
+                    if live::remove_dir_at(&path) {
+                        removed += 1;
+                    } else {
+                        return Err(KeyStoreError::SeedsNotRemoved);
+                    }
+                }
             }
         }
         Ok(removed)
@@ -201,6 +216,8 @@ impl SeedBase {
 /// dropped. Its path is never in an error or `Debug` output.
 pub(crate) struct Scratch {
     dir: PathBuf,
+    /// Held for the scratch directory's life: alive means locked.
+    lock: Option<std::fs::File>,
     removed: bool,
 }
 
@@ -219,7 +236,9 @@ impl Scratch {
     /// Remove it (files overwritten, then unlinked) and report whether it is gone.
     pub(crate) fn finish(mut self) -> Result<(), KeyStoreError> {
         self.removed = true;
-        if remove_all(&self.dir) {
+        let gone = live::remove_dir_at(&self.dir);
+        drop(self.lock.take());
+        if gone {
             Ok(())
         } else {
             Err(KeyStoreError::SeedsNotRemoved)
@@ -230,7 +249,7 @@ impl Scratch {
 impl Drop for Scratch {
     fn drop(&mut self) {
         if !self.removed {
-            let _ = remove_all(&self.dir);
+            let _ = live::remove_dir_at(&self.dir);
         }
     }
 }
@@ -239,6 +258,8 @@ impl Drop for Scratch {
 pub(crate) struct SeedDir {
     dir: PathBuf,
     key_dir: KeyDir,
+    /// Held for the call's life: alive means locked.
+    lock: Option<std::fs::File>,
     removed: bool,
 }
 
@@ -247,37 +268,6 @@ impl std::fmt::Debug for SeedDir {
         // The path is where the seeds are: it stays out of every output (RFC 002 D-3).
         f.write_str("SeedDir(..)")
     }
-}
-
-/// Overwrite each file with zeros, unlink it, remove the directory. `false` if anything is left.
-fn remove_all(dir: &Path) -> bool {
-    let mut clean = true;
-    match std::fs::read_dir(dir) {
-        Ok(entries) => {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if let Ok(meta) = std::fs::symlink_metadata(&path)
-                    && meta.is_file()
-                    && let Ok(mut f) = std::fs::OpenOptions::new().write(true).open(&path)
-                {
-                    let zeros = vec![0u8; usize::try_from(meta.len()).unwrap_or(0)];
-                    let _ = f.write_all(&zeros);
-                    let _ = f.sync_all();
-                }
-                if std::fs::remove_file(&path).is_err() {
-                    clean = false;
-                }
-            }
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return true,
-        Err(_) => clean = false,
-    }
-    match std::fs::remove_dir(dir) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(_) => clean = false,
-    }
-    clean
 }
 
 impl SeedDir {
@@ -290,15 +280,7 @@ impl SeedDir {
         seeds: &Seeds,
         key_id: &str,
     ) -> Result<Self, KeyStoreError> {
-        let name = format!(
-            "{DIR_PREFIX}{}",
-            random::hex(&random::bytes::<16>().map_err(|_| KeyStoreError::Random)?)
-        );
-        let dir = base.path().join(name);
-        std::fs::DirBuilder::new()
-            .mode(0o700)
-            .create(&dir)
-            .map_err(|e| KeyStoreError::Io("the seed directory could not be made", e.kind()))?;
+        let (dir, lock) = base.make_locked_dir("the seed directory could not be made")?;
         let write = || -> Result<(), KeyStoreError> {
             let bytes = match role {
                 Role::Author => &seeds.author,
@@ -314,17 +296,18 @@ impl SeedDir {
                 .map_err(|e| KeyStoreError::Io("a seed file could not be written", e.kind()))
         };
         if let Err(e) = write() {
-            let _ = remove_all(&dir);
+            let _ = live::remove_dir_at(&dir);
             return Err(e);
         }
         match KeyDir::single(&dir, role, key_id) {
             Ok(key_dir) => Ok(SeedDir {
                 dir,
                 key_dir,
+                lock: Some(lock),
                 removed: false,
             }),
             Err(_) => {
-                let _ = remove_all(&dir);
+                let _ = live::remove_dir_at(&dir);
                 Err(KeyStoreError::SeedBase(
                     "the seed directory path is not usable",
                 ))
@@ -340,7 +323,9 @@ impl SeedDir {
     /// Remove the directory and report whether it is gone. Call it after every use; [`Drop`] is the backstop.
     pub(crate) fn finish(mut self) -> Result<(), KeyStoreError> {
         self.removed = true;
-        if remove_all(&self.dir) {
+        let gone = live::remove_dir_at(&self.dir);
+        drop(self.lock.take());
+        if gone {
             Ok(())
         } else {
             Err(KeyStoreError::SeedsNotRemoved)
@@ -351,7 +336,7 @@ impl SeedDir {
 impl Drop for SeedDir {
     fn drop(&mut self) {
         if !self.removed {
-            let _ = remove_all(&self.dir);
+            let _ = live::remove_dir_at(&self.dir);
         }
     }
 }

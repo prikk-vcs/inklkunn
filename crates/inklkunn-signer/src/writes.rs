@@ -372,7 +372,6 @@ impl Writes {
         args: &[&str],
     ) -> Result<Vec<u8>, SignerError> {
         seeds.with_role(role, |keys| {
-            keys.touch();
             self.run(
                 &Mounts::write(repo, Some(keys.path()), keys.env()),
                 Sizing::change(repo, change_bytes),
@@ -477,7 +476,6 @@ impl Writes {
     /// `prikk key generate --out <path>` (writes the seed, mode 0600, and its `.key-id` file). The key
     /// directory is the only mount, writable; no repository is involved.
     pub(crate) fn generate_key(&self, keys: &KeyDir, role: &str) -> Result<(), SignerError> {
-        keys.touch();
         let out = keys.seed_file_text(role);
         self.run(
             &Mounts::dir_writable(keys.path()),
@@ -490,7 +488,6 @@ impl Writes {
     /// `prikk key public --seed-file <path>` → the public key hex (a public value). prikk prints
     /// `public key: <64 hex>`; anything else is refused rather than guessed at, since a seed is also 64 hex.
     pub(crate) fn public_key(&self, keys: &KeyDir, role: &str) -> Result<String, SignerError> {
-        keys.touch();
         let seed = keys.seed_file_text(role);
         let stdout = self.run(
             &Mounts::read(keys.path(), None),

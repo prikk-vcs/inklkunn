@@ -108,6 +108,7 @@ impl KeyDir {
 
     /// The same directory, for a call that signs with `role` only: the other role's variables are not exported.
     /// (A directory the key store made holds one seed already; this is for a plain directory that holds both.)
+    #[cfg(any(test, feature = "bootstrap"))]
     pub(crate) fn restricted_to(&self, role: Role) -> Self {
         KeyDir {
             only: Some(role),
@@ -118,11 +119,6 @@ impl KeyDir {
     /// The directory.
     pub(crate) fn path(&self) -> &Path {
         &self.dir
-    }
-
-    /// Say the call that uses this directory is alive (see [`crate::key_store::touch`]).
-    pub(crate) fn touch(&self) {
-        crate::key_store::touch(&self.dir);
     }
 
     /// `<dir>/<role>.seed`.

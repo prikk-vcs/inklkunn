@@ -368,7 +368,7 @@ impl Signer {
         let stale_after = config.stale_after.unwrap_or(STALE_AFTER);
         #[cfg(not(feature = "test-knobs"))]
         let stale_after = STALE_AFTER;
-        let swept = seed_base.sweep_stale(stale_after).map_err(ks)?;
+        let swept = seed_base.sweep(stale_after).map_err(ks)?;
         Ok(Signer {
             writes: Writes::new(config.prikk, config.sandbox),
             store,

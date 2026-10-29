@@ -1093,13 +1093,19 @@ fn a_wiki_with_a_300_mib_attachment_accepts_that_attachment_and_the_change_after
             let bytes = x.to_le_bytes();
             chunk.copy_from_slice(bytes.get(..chunk.len()).unwrap_or_default());
         }
-        let p = f.prepare(MAIN, vec![file("attachments/big.bin", None)], vec![]);
-        drop(p);
         let mut change = f.prepare(MAIN, Vec::new(), vec![]);
         change.change.files = vec![PreparedFile {
             path: PathBuf::from("attachments/big.bin"),
             content: Some(big),
         }];
+        // The record binds the files: the digest of the real change is what the ledger holds.
+        f.ledger.set(
+            &change.token,
+            ExpectedMessage {
+                change_digest: change.change.digest(),
+                ..change.expected.clone()
+            },
+        );
         let r = f
             .signer
             .accept(&f.wiki, MAIN, &change.token, &change.change);
@@ -1493,6 +1499,21 @@ fn a_killed_server_leaves_a_state_recovery_can_complete_and_the_next_start_sweep
         1,
         "the seeds are on the tmpfs during the call"
     );
+    // A start that happens now (a supervisor's second process, the command line) leaves the live call's
+    // directory alone: it is held under a lock, however young or old it is.
+    let pre = Fixtureless {
+        root: f.root.clone(),
+        key_dir: f.key_dir.clone(),
+        secret_file: f.secret_file.clone(),
+        shm: f.shm.0.clone(),
+    };
+    let beside = Signer::open(
+        config(&pre, &f.prikk, Sandbox::Unconfined),
+        f.ledger.clone(),
+    )
+    .expect("a second process starts");
+    assert_eq!(beside.leftover_call_directories_removed(), 0);
+    assert_eq!(f.seed_dirs().len(), 1, "a live call's seeds were swept");
     child.kill().expect("SIGKILL");
     let _ = child.wait();
     // What recovery finds: one queued patch carrying the message, nothing sealed, the seeds still on disk.
@@ -1561,31 +1582,32 @@ fn a_killed_server_leaves_a_state_recovery_can_complete_and_the_next_start_sweep
             .message,
         p.change.message
     );
-    // The next start removes the seeds the kill left.
-    let pre = Fixtureless {
-        root: f.root.clone(),
-        key_dir: f.key_dir.clone(),
-        secret_file: f.secret_file.clone(),
-        shm: f.shm.0.clone(),
-    };
-    let mut cfg = config(&pre, &f.prikk, Sandbox::Unconfined);
-    cfg.stale_after = Some(Duration::ZERO);
-    let restarted = Signer::open_creating_store(cfg, f.ledger.clone()).expect("restart");
+    // The next start removes the seeds the kill left, at once: the kernel dropped the dead call's lock.
+    let restarted = Signer::open(
+        config(&pre, &f.prikk, Sandbox::Unconfined),
+        f.ledger.clone(),
+    )
+    .expect("restart");
     assert_eq!(restarted.leftover_call_directories_removed(), 1);
     assert!(f.seed_dirs().is_empty());
-    // A signer opened with the default age leaves a young directory alone (another process's live call).
-    let young = f
+    // A directory nobody holds is dead however young it is…
+    let unheld = f
         .shm
         .0
         .join("inklkunn-seeds-0123456789abcdef0123456789abcdef");
-    std::fs::create_dir(&young).unwrap();
-    let again = Signer::open_creating_store(
+    std::fs::create_dir(&unheld).unwrap();
+    std::fs::write(unheld.join("author.seed"), "x").unwrap();
+    // …and a half-made one (a creator that died before locking and renaming it) waits out its age first.
+    let birth = f.shm.0.join(".new-0123456789abcdef0123456789abcdef");
+    std::fs::create_dir(&birth).unwrap();
+    let again = Signer::open(
         config(&pre, &f.prikk, Sandbox::Unconfined),
         f.ledger.clone(),
     )
     .unwrap();
-    assert_eq!(again.leftover_call_directories_removed(), 0);
-    assert!(young.exists());
+    assert_eq!(again.leftover_call_directories_removed(), 1);
+    assert!(!unheld.exists());
+    assert!(birth.exists(), "a creator may be a moment from locking it");
 }
 
 /// The child half of the kill test: do one acceptance against the stand-in that blocks in `seal`.

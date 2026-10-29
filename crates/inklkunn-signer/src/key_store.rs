@@ -32,6 +32,7 @@ use zeroize::Zeroizing;
 use crate::flock;
 
 mod crypto;
+mod live;
 mod random;
 mod record;
 mod seeds;
@@ -39,7 +40,7 @@ mod seeds;
 use crate::keys::Role;
 use crypto::{KdfParams, MasterKey, NONCE_LEN, SALT_LEN};
 pub(crate) use record::{Meta, Seeds};
-pub(crate) use seeds::{DIR_PREFIX, SeedBase, SeedDir, touch};
+pub(crate) use seeds::{DIR_PREFIX, SeedBase, SeedDir};
 
 /// The header's file name.
 const HEADER_FILE: &str = "store.json";
