@@ -35,6 +35,15 @@ impl RootLayout {
             .join(format!("{}.scratch", id.as_str()))
     }
 
+    /// The wiki's write-lock file, a sibling of the repository (inklkunn's data directory, never inside
+    /// `.prikk/`): the signer holds an exclusive `flock` on it for every act that writes the repository, so the
+    /// command line and a running server take turns (corrections handoff C3).
+    pub fn lock_file(&self, id: &WikiId) -> PathBuf {
+        self.root
+            .join(id.shard())
+            .join(format!("{}.lock", id.as_str()))
+    }
+
     /// Create the directories for a wiki (idempotent). The repository itself is created by the signer
     /// (`prikk init` is a write).
     pub fn prepare(&self, id: &WikiId) -> std::io::Result<PathBuf> {
@@ -54,7 +63,11 @@ impl RootLayout {
                 Err(e) => return Err(e),
             }
         }
-        Ok(())
+        match std::fs::remove_file(self.lock_file(id)) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e),
+        }
     }
 }
 

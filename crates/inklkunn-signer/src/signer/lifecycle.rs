@@ -18,7 +18,6 @@
 //!   verifiable. Right for a compromise, where the alternative is forged seals that verify.
 
 use std::path::Path;
-use std::sync::PoisonError;
 
 use inklkunn_store::WikiId;
 
@@ -79,14 +78,12 @@ impl Signer {
     /// (generation + 1), and — only when asked — the old maintainer key removed from trust. See the module
     /// documentation for what each choice means. Refused when the wiki has no keys.
     ///
-    /// **Do it while the wiki is quiet.** A change being accepted at the same moment signs with whichever
-    /// keys it read first; RFC 004's lease is what will exclude the two.
+    /// A change being accepted at the same moment is excluded by the wiki's write lock: whichever of the two
+    /// comes second is told the wiki is busy ([`SignerError::Busy`]), naming the process that holds it.
     pub fn rotate_keys(&self, repo: &Path, old_key: OldKey) -> Result<Rotation, SignerError> {
         let wiki = self.wiki_of(repo)?;
-        // Excludes an acceptance on this wiki in this process; the command line beside a running server is
-        // another process, which only RFC 004's lease can exclude.
-        let lock = self.locks.of(&wiki);
-        let _held = lock.lock().unwrap_or_else(PoisonError::into_inner);
+        // Excludes an acceptance on this wiki in this process and in every other (the per-wiki write lock).
+        let _held = self.write_lock(&wiki)?;
         let before = self.store.status(&wiki).map_err(ks)?;
         let generation = before.generation.saturating_add(1);
         let scratch = self.seed_base.scratch().map_err(ks)?;

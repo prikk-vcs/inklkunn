@@ -492,9 +492,12 @@ impl KeyStore {
         // Creation is one critical section: the emptiness check and the header's link happen under an
         // exclusive lock on a file in the directory, so a second creator neither sees the first one's
         // temporary file as foreign content nor writes a second header.
-        let _creating = flock::exclusive_within(&dir.join(CREATE_LOCK_FILE), CREATE_WAIT)
+        let _creating = match flock::exclusive_within(&dir.join(CREATE_LOCK_FILE), CREATE_WAIT)
             .map_err(io("the key store's creation lock could not be taken"))?
-            .ok_or(KeyStoreError::CreationBusy)?;
+        {
+            flock::Acquired::Held(lock) => lock,
+            flock::Acquired::Busy { .. } => return Err(KeyStoreError::CreationBusy),
+        };
         if let Some(text) = existing()? {
             return Self::unlock(dir, &text, secret);
         }

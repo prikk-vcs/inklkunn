@@ -19,10 +19,10 @@
 //! the very first change. It refuses any change but a `system` message to a repository with no history
 //! yet, so it cannot be used to add to a wiki that exists.
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::Duration;
 
 use inklkunn_prikk::sandbox::Sandbox;
@@ -33,6 +33,7 @@ use crate::accept::{
     Accept, AcceptError, AcceptanceLedger, AcceptanceToken, PreparedChange, SealedChange,
     Unconfirmed, ViewCreationAct,
 };
+use crate::flock::{self, Acquired, FileLock};
 use crate::key_store::{KeyStore, KeyStoreError, Meta, Secret, SeedBase, SeedDir, Seeds};
 use crate::keys::Role;
 use crate::keys::{KeyDir, KeyIds};
@@ -112,20 +113,68 @@ pub struct KeyStatus {
     pub rotated_at: Option<i64>,
 }
 
-/// One lock per wiki: **two calls on the same wiki never interleave in this process.** An acceptance is a
-/// sequence (status, switch, write files, commit, seal, read back, verify) over one worktree; two at once
-/// would commit each other's files under each other's messages. (Another *process* — the command line beside
-/// the server — is not excluded by this; RFC 004's lease is what will exclude it, and until then a key
-/// operation is done while the wiki is quiet.)
+/// How long a caller rides out a lock that is held: the moment a sibling thread's `fork` holds a copy of a
+/// descriptor just released (the child closes it at `exec`). Not a wait for the holder's work.
+const LOCK_GRACE: Duration = Duration::from_millis(250);
+
+/// **One writer per wiki** (corrections handoff C3; threat model CON-1, INT-2). An acceptance is a sequence
+/// (status, switch, write files, commit, seal, read back, verify) over one worktree; two at once would commit
+/// each other's files under each other's messages, and the command line beside a running server is as much a
+/// second writer as a second thread. So every act that writes a wiki's repository or key record takes
+///
+/// 1. the in-process turn (a thread of this process waits for another thread's act on the same wiki, as it
+///    always did), and then
+/// 2. an exclusive `flock` on the wiki's lock file in inklkunn's data directory ([`RootLayout::lock_file`],
+///    never inside `.prikk/`), which excludes every other process **and answers at once**: a caller that
+///    cannot have it is told the wiki is busy, naming the process that holds it, and never waits for it.
+///
+/// The kernel drops the lock with its holder, so a killed process leaves nothing to clear. RFC 004's lease is
+/// built on this lock.
 #[derive(Default)]
 struct WikiLocks {
-    map: Mutex<HashMap<WikiId, Arc<Mutex<()>>>>,
+    held: Mutex<HashSet<WikiId>>,
+    turn: Condvar,
+}
+
+/// A wiki's write lock, held for one act.
+struct WriteGuard<'a> {
+    locks: &'a WikiLocks,
+    wiki: WikiId,
+    file: Option<FileLock>,
+}
+
+impl Drop for WriteGuard<'_> {
+    fn drop(&mut self) {
+        // The file first: the in-process turn must not be given up while the file lock is still held, or the
+        // next thread would find its own process "busy".
+        drop(self.file.take());
+        let mut held = self
+            .locks
+            .held
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        held.remove(&self.wiki);
+        self.locks.turn.notify_all();
+        drop(held);
+        // Tests widen the gap in which a wrongly ordered release would be seen (see the test that pins the order).
+        #[cfg(test)]
+        std::thread::sleep(Duration::from_millis(3));
+    }
 }
 
 impl WikiLocks {
-    fn of(&self, wiki: &WikiId) -> Arc<Mutex<()>> {
-        let mut map = self.map.lock().unwrap_or_else(PoisonError::into_inner);
-        Arc::clone(map.entry(wiki.clone()).or_default())
+    fn enter(&self, wiki: &WikiId) {
+        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        while held.contains(wiki) {
+            held = self.turn.wait(held).unwrap_or_else(PoisonError::into_inner);
+        }
+        held.insert(wiki.clone());
+    }
+
+    fn leave(&self, wiki: &WikiId) {
+        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        held.remove(wiki);
+        self.turn.notify_all();
     }
 }
 
@@ -138,6 +187,34 @@ pub struct Signer {
     ledger: Arc<dyn AcceptanceLedger>,
     locks: WikiLocks,
     swept: usize,
+}
+
+impl Signer {
+    /// Take the wiki's write lock for one act, or say who holds it.
+    fn write_lock(&self, wiki: &WikiId) -> Result<WriteGuard<'_>, SignerError> {
+        self.locks.enter(wiki);
+        match flock::exclusive_within(&self.root.lock_file(wiki), LOCK_GRACE) {
+            Ok(Acquired::Held(file)) => Ok(WriteGuard {
+                locks: &self.locks,
+                wiki: wiki.clone(),
+                file: Some(file),
+            }),
+            Ok(Acquired::Busy { holder }) => {
+                self.locks.leave(wiki);
+                Err(SignerError::Busy {
+                    wiki: wiki.to_string(),
+                    holder,
+                })
+            }
+            Err(e) => {
+                self.locks.leave(wiki);
+                Err(SignerError::Unavailable(format!(
+                    "the wiki's write lock could not be taken ({})",
+                    e.kind()
+                )))
+            }
+        }
+    }
 }
 
 impl std::fmt::Debug for Signer {
@@ -211,6 +288,7 @@ fn accept_error(e: SignerError) -> AcceptError {
         SignerError::CeilingExceeded { verb, bytes } => {
             AcceptError::CeilingExceeded { verb, bytes }
         }
+        SignerError::Busy { holder, .. } => AcceptError::Busy { holder },
         other => AcceptError::Unavailable(other.to_string()),
     }
 }
@@ -535,8 +613,7 @@ impl Accept for Signer {
             return Err(AcceptError::Refused("a view is `heads/<name>`".to_owned()));
         }
         // Held from the guard to the end: the guard's answer stays true while the files are written.
-        let lock = self.locks.of(wiki);
-        let _held = lock.lock().unwrap_or_else(PoisonError::into_inner);
+        let _held = self.write_lock(wiki).map_err(accept_error)?;
         // 1. The guard: the record the token names, read here, and what the message says. Nothing is
         //    decrypted or written until both agree.
         let expected = self
@@ -579,8 +656,7 @@ impl Accept for Signer {
                 "a view is `heads/<name>` and starts from a `heads/` or `tags/` ref".to_owned(),
             ));
         }
-        let lock = self.locks.of(wiki);
-        let _held = lock.lock().unwrap_or_else(PoisonError::into_inner);
+        let _held = self.write_lock(wiki).map_err(accept_error)?;
         let facts = self
             .ledger
             .view_creation(act)
@@ -637,8 +713,7 @@ impl Signer {
     /// none). The key ids are `inklkunn-<wiki id>-author` and `-maintainer`.
     fn provision(&self, repo: &Path, init: bool) -> Result<KeyIds, SignerError> {
         let wiki = self.wiki_of(repo)?;
-        let lock = self.locks.of(&wiki);
-        let _held = lock.lock().unwrap_or_else(PoisonError::into_inner);
+        let _held = self.write_lock(&wiki)?;
         if self.store.status(&wiki).is_ok() {
             return Err(SignerError::Refused("the wiki already has keys".to_owned()));
         }
@@ -709,8 +784,7 @@ impl RepositoryBootstrap for Signer {
     /// just removed, and it removes nothing but that wiki's record.
     fn discard_unfinished(&self, repo: &Path) -> Result<(), SignerError> {
         let wiki = self.wiki_of(repo)?;
-        let lock = self.locks.of(&wiki);
-        let _held = lock.lock().unwrap_or_else(PoisonError::into_inner);
+        let _held = self.write_lock(&wiki)?;
         self.store.remove(&wiki).map(|_| ()).map_err(ks)
     }
 
@@ -719,8 +793,7 @@ impl RepositoryBootstrap for Signer {
     /// so it can only ever create the first block of a wiki that is being created.
     fn commit_and_seal(&self, repo: &Path, message: &str) -> Result<SealedIds, SignerError> {
         let wiki = self.wiki_of(repo)?;
-        let lock = self.locks.of(&wiki);
-        let _held = lock.lock().unwrap_or_else(PoisonError::into_inner);
+        let _held = self.write_lock(&wiki)?;
         let parsed = Message::parse(message).map_err(|_| {
             SignerError::Refused("the first change's message is not a patch message".to_owned())
         })?;

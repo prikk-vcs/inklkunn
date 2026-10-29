@@ -37,8 +37,7 @@ prikk binds a key id to one public key for good and has no key rotation of its o
 rotation is a **new pair of key ids**: `inklkunn-<wiki id>-author-<generation>-<8 hex>` and `…-maintainer-…`.
 New keys are generated on the tmpfs, the new maintainer key is adopted in the wiki's repository, and only then
 is the sealed record replaced; a failure before that leaves the wiki exactly as it was. From then on changes
-are signed with the new keys. Do it while the wiki is quiet: a change being accepted at that moment signs with
-the keys it read first (RFC 004's lease will exclude the two).
+are signed with the new keys. A change being accepted at that moment, in this process or another, holds the wiki's write lock: the rotation is refused at once (`wiki … is being written by process N`) and changes nothing; run it again when that is over.
 
 ## Keep the old key, or retire it
 

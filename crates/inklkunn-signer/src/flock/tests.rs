@@ -28,9 +28,10 @@ fn a_second_holder_is_refused_and_told_who_holds_the_lock() {
     // tests spawn children), and a child holds a copy of the descriptor until it execs: so "free" is a few
     // milliseconds away at most, never a state that lasts.
     assert!(
-        exclusive_within(&path, Duration::from_secs(2))
-            .unwrap()
-            .is_some(),
+        matches!(
+            exclusive_within(&path, Duration::from_secs(2)).unwrap(),
+            Acquired::Held(_)
+        ),
         "the lock was not released"
     );
     let _ = std::fs::remove_dir_all(&d);
@@ -42,11 +43,10 @@ fn waiting_is_bounded() {
     let path = d.join("w.lock");
     let _held = try_exclusive(&path).unwrap();
     let started = Instant::now();
-    assert!(
-        exclusive_within(&path, Duration::from_millis(60))
-            .unwrap()
-            .is_none()
-    );
+    assert!(matches!(
+        exclusive_within(&path, Duration::from_millis(60)).unwrap(),
+        Acquired::Busy { .. }
+    ));
     assert!(started.elapsed() < Duration::from_secs(5));
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -106,9 +106,10 @@ fn a_lock_held_by_another_process_refuses_us_and_dies_with_its_holder() {
     holder.wait().unwrap();
     // Killed: the kernel released it; nothing stale remains.
     assert!(
-        exclusive_within(&path, Duration::from_secs(5))
-            .unwrap()
-            .is_some(),
+        matches!(
+            exclusive_within(&path, Duration::from_secs(5)).unwrap(),
+            Acquired::Held(_)
+        ),
         "the lock outlived its holder"
     );
     let _ = std::fs::remove_dir_all(&d);

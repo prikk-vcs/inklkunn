@@ -29,8 +29,10 @@ changes that verify. The design bounds, detects and attributes that risk rather 
   reason to look at the host (the next start reports how many directories it removed);
 - every sealed change carries the proposer and the acceptor in its signed message, and a reconciliation
   (a function today; no command or schedule runs it yet) compares the history with the acceptance records so
-  an unrecorded seal is reported (RFC 002 D-5, D-7). One wiki is never signed on by two calls at once in one
-  process; the command line beside a running server is another process, which only RFC 004's lease will exclude;
+  an unrecorded seal is reported (RFC 002 D-5, D-7). One wiki has one writer at a time: every act that
+  writes its repository or its key record takes an exclusive `flock` on a lock file in the data directory (never
+  inside `.prikk/`), so the command line beside a running server and a second server process are refused at once,
+  naming the process that holds it, and a killed holder leaves nothing to clear (RFC 004's lease is built on it);
 - keys rotate per wiki (`inklkunn wiki keys rotate`; the runbook is `docs/KEYS.md`, including the cost of
   retiring a key under prikk 0.54.1), and the surface tells readers only what was checked (*Verified*, *Verification
   failed*, *Could not be checked now*), never that a person signed cryptographically (RFC 002 D-6, D-8).

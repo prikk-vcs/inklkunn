@@ -113,6 +113,12 @@ pub enum AcceptError {
     /// Refused before anything was committed, with the worktree as it was found (it may be on another view,
     /// if a switch had been made); the text is for operators. Nothing was committed or sealed.
     Refused(String),
+    /// Another act is writing this wiki (another thread, or another process such as the command line beside a
+    /// running server): **nothing was done.** Retrying later is safe; the record stays pending.
+    Busy {
+        /// The process that holds the wiki's write lock, when it could be read.
+        holder: Option<u32>,
+    },
     /// The call could not run, and nothing was committed or sealed; the worktree is as it was found. The text
     /// is for operators.
     Unavailable(String),
@@ -168,6 +174,14 @@ impl std::fmt::Display for AcceptError {
                 "the message does not name the acceptance's proposal and acceptor"
             ),
             AcceptError::Refused(m) => write!(f, "refused, nothing committed: {m}"),
+            AcceptError::Busy { holder: Some(pid) } => write!(
+                f,
+                "the wiki is being written by process {pid}; nothing was done, try again when it is finished"
+            ),
+            AcceptError::Busy { holder: None } => write!(
+                f,
+                "the wiki is being written by another process; nothing was done, try again when it is finished"
+            ),
             AcceptError::Unavailable(m) => write!(f, "could not run, nothing committed: {m}"),
             AcceptError::CeilingExceeded { verb, bytes } => write!(
                 f,

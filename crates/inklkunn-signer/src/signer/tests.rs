@@ -142,3 +142,44 @@ fn opening_the_signer_on_a_mistyped_key_directory_is_refused_and_makes_nothing()
     assert!(!keys.exists(), "opening made a key directory");
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+#[test]
+fn the_in_process_turn_is_given_up_only_after_the_file_lock_is_released() {
+    // A thread waiting for its turn must find the file lock free the moment it has the turn: if the guard
+    // gave the turn up first, the waiter would see its own process "busy" in the gap.
+    let dir = std::env::temp_dir().join(format!("inklkunn-turn-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("w.lock");
+    let wiki = WikiId::new();
+    let locks = WikiLocks::default();
+    for round in 0..400 {
+        locks.enter(&wiki);
+        let Acquired::Held(file) = flock::try_exclusive(&path).unwrap() else {
+            panic!("round {round}: the lock was busy for the first holder");
+        };
+        let guard = WriteGuard {
+            locks: &locks,
+            wiki: wiki.clone(),
+            file: Some(file),
+        };
+        std::thread::scope(|s| {
+            let waiter = s.spawn(|| {
+                locks.enter(&wiki);
+                let got = flock::try_exclusive(&path).unwrap();
+                let held = matches!(got, Acquired::Held(_));
+                drop(got);
+                locks.leave(&wiki);
+                held
+            });
+            // Let the waiter reach the condition variable, then release.
+            std::thread::yield_now();
+            drop(guard);
+            assert!(
+                waiter.join().unwrap(),
+                "round {round}: the waiter was given the turn while the file lock was still held"
+            );
+        });
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

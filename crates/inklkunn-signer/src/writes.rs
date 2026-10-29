@@ -25,6 +25,14 @@ pub enum SignerError {
     Unavailable(String),
     /// prikk's output could not be read.
     Damaged(String),
+    /// Another act is writing this wiki (another thread, or another process such as the command line beside a
+    /// running server), and holds its write lock. **Nothing was done.** Try again when it is over.
+    Busy {
+        /// The wiki.
+        wiki: String,
+        /// The process that holds the lock, when it could be read (a courtesy for the operator).
+        holder: Option<u32>,
+    },
     /// The call was stopped by its memory ceiling (`RLIMIT_DATA`; threat model C-9a). **Not a refusal and not a
     /// failed check**: nothing is wrong with what was asked, the call needed more memory than its ceiling
     /// allowed. Where the repository is depends on the step the caller was at.
@@ -55,6 +63,16 @@ impl std::fmt::Display for SignerError {
             SignerError::Refused(m) => write!(f, "prikk refused the write: {m}"),
             SignerError::Unavailable(m) => write!(f, "the write could not run to completion: {m}"),
             SignerError::Damaged(m) => write!(f, "prikk's output could not be read: {m}"),
+            SignerError::Busy { wiki, holder } => match holder {
+                Some(pid) => write!(
+                    f,
+                    "wiki {wiki} is being written by process {pid}; nothing was done, try again when it is finished"
+                ),
+                None => write!(
+                    f,
+                    "wiki {wiki} is being written by another process; nothing was done, try again when it is finished"
+                ),
+            },
             SignerError::CeilingExceeded { verb, bytes } => write!(
                 f,
                 "`{verb}` was stopped by its memory ceiling ({bytes} bytes); it is not refused and not failed, it needs more memory"

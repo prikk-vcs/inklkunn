@@ -1838,3 +1838,149 @@ fn two_acceptances_at_once_on_one_wiki_never_interleave() {
     assert!(f.read(MAIN, "pages/Edit.md").unwrap().contains("edit 7"));
     assert!(f.read(MAIN, "pages/Home.md").unwrap().contains("home 7"));
 }
+
+/// Another process holding the wiki's write lock: a shell opens the lock file on descriptor 9, locks it with
+/// util-linux `flock 9`, records its process id, and *becomes* `sleep`, so the process that holds the lock is the
+/// one the test kills.
+struct OtherProcess {
+    child: std::process::Child,
+}
+
+impl OtherProcess {
+    fn holding(lock_file: &Path) -> Option<OtherProcess> {
+        if Command::new("flock").arg("--version").output().is_err() {
+            println!("skipping: flock(1) not available");
+            return None;
+        }
+        let child = Command::new("sh")
+            .args([
+                "-c",
+                "exec 9<>\"$0\" && flock 9 && echo $$ > \"$0\" && exec sleep 60",
+            ])
+            .arg(lock_file)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .ok()?;
+        let started = Instant::now();
+        // The pid appears in the file once the child has the lock.
+        while std::fs::read_to_string(lock_file)
+            .ok()
+            .and_then(|t| t.trim().parse::<u32>().ok())
+            != Some(child.id())
+        {
+            assert!(
+                started.elapsed() < Duration::from_secs(10),
+                "the holder never locked"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        Some(OtherProcess { child })
+    }
+
+    fn pid(&self) -> u32 {
+        self.child.id()
+    }
+
+    fn kill(mut self) {
+        self.child.kill().unwrap();
+        self.child.wait().unwrap();
+    }
+}
+
+impl Drop for OtherProcess {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+#[test]
+fn a_wiki_written_by_another_process_is_busy_by_name_and_free_again_when_its_holder_dies() {
+    let Some(f) = fixture("busy", Sandbox::Unconfined, false) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    let Some(other) = OtherProcess::holding(&f.root.lock_file(&f.wiki)) else {
+        return;
+    };
+    let pid = other.pid();
+    let before = f.history_len(MAIN);
+    let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
+    // An acceptance, a view creation, key work and the first change: each is refused at once and names the holder.
+    let started = Instant::now();
+    assert_eq!(
+        f.signer.accept(&f.wiki, MAIN, &p.token, &p.change),
+        Err(AcceptError::Busy { holder: Some(pid) })
+    );
+    f.ledger.views.lock().unwrap().insert(
+        "act-busy".into(),
+        ViewCreationFacts {
+            wiki: f.wiki.clone(),
+            name: "heads/draft".into(),
+            from: MAIN.into(),
+        },
+    );
+    assert_eq!(
+        f.signer.create_view(
+            &f.wiki,
+            "heads/draft",
+            MAIN,
+            &ViewCreationAct::new("act-busy")
+        ),
+        Err(AcceptError::Busy { holder: Some(pid) })
+    );
+    for r in [
+        f.signer
+            .rotate_keys(&f.repo, inklkunn_signer::OldKey::Keep)
+            .map(|_| ()),
+        f.signer.create_keys(&f.repo).map(|_| ()),
+        f.signer.commit_and_seal(&f.repo, "x").map(|_| ()),
+    ] {
+        assert!(
+            matches!(&r, Err(SignerError::Busy { holder: Some(h), .. }) if *h == pid),
+            "{r:?}"
+        );
+    }
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "busy is an answer, not a wait"
+    );
+    let shown = f
+        .signer
+        .accept(&f.wiki, MAIN, &p.token, &p.change)
+        .unwrap_err()
+        .to_string();
+    assert!(shown.contains(&pid.to_string()), "{shown}");
+    // Nothing changed: no queue, no new block, the page as it was, no seed left behind.
+    assert_eq!(f.queue_count(), 0);
+    assert_eq!(f.history_len(MAIN), before);
+    assert!(f.seed_dirs().is_empty());
+    // The holder dies; the kernel drops its lock; the same acceptance goes through.
+    other.kill();
+    f.signer
+        .accept(&f.wiki, MAIN, &p.token, &p.change)
+        .expect("free again");
+    assert_eq!(f.history_len(MAIN), before + 1);
+}
+
+#[test]
+fn the_lock_file_is_beside_the_repository_and_never_inside_it() {
+    let Some(f) = fixture("lockplace", Sandbox::Unconfined, false) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
+    f.signer.accept(&f.wiki, MAIN, &p.token, &p.change).unwrap();
+    let lock = f.root.lock_file(&f.wiki);
+    assert!(lock.is_file());
+    assert!(!lock.starts_with(&f.repo));
+    assert_eq!(lock.parent(), f.repo.parent());
+    // Nothing of it reached the repository: the worktree is clean and the store holds no lock file of ours.
+    assert!(
+        !std::fs::read_dir(&f.repo)
+            .unwrap()
+            .flatten()
+            .any(|e| e.file_name().to_string_lossy().ends_with(".lock"))
+    );
+}

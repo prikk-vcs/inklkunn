@@ -32,8 +32,6 @@ pub(crate) enum Acquired {
     /// Another open file description holds it; `holder` is the process id it recorded, when it could be read.
     Busy {
         /// The recorded holder.
-        #[cfg_attr(not(test), allow(dead_code))]
-        // named in the per-wiki lock's refusal (next commit)
         holder: Option<u32>,
     },
 }
@@ -74,14 +72,16 @@ pub(crate) fn try_exclusive(path: &Path) -> std::io::Result<Acquired> {
     }
 }
 
-/// Take the exclusive lock on `path`, polling for at most `wait`. `None` if it stayed busy. For short critical
-/// sections only (a store's creation); the per-wiki lock never waits.
-pub(crate) fn exclusive_within(path: &Path, wait: Duration) -> std::io::Result<Option<FileLock>> {
+/// Take the exclusive lock on `path`, polling for at most `wait`: [`Acquired::Busy`] (with the holder the lock
+/// file names) if it stayed busy. A short grace and not a wait: it rides out the moment a sibling thread's
+/// `fork` holds a copy of a descriptor just released (the child closes it at `exec`), and a store's creation
+/// is a few file operations. Nothing here waits for another process's work.
+pub(crate) fn exclusive_within(path: &Path, wait: Duration) -> std::io::Result<Acquired> {
     let started = Instant::now();
     loop {
         match try_exclusive(path)? {
-            Acquired::Held(lock) => return Ok(Some(lock)),
-            Acquired::Busy { .. } if started.elapsed() >= wait => return Ok(None),
+            held @ Acquired::Held(_) => return Ok(held),
+            busy @ Acquired::Busy { .. } if started.elapsed() >= wait => return Ok(busy),
             Acquired::Busy { .. } => std::thread::sleep(Duration::from_millis(5)),
         }
     }
