@@ -550,6 +550,21 @@ impl Accept for Signer {
         let plan = Plan::new(change).map_err(|why| AcceptError::Refused(why.to_owned()))?;
         // 3. The sequence. Each signing call has the one seed it signs with on disk for exactly its duration.
         let repo = self.root.repo_dir(wiki);
+        // 2b. A change planned against a tip (an import) is written only if the view is still there; the write
+        //     lock is held, so no other act of this service moves it between this read and the commit.
+        if let Some(pinned) = &expected.pinned_tip {
+            let now = self
+                .writes
+                .tip(&repo, view)
+                .map_err(accept_error)?
+                .map(|b| b.block_id);
+            if now.as_deref() != Some(pinned.as_str()) {
+                return Err(AcceptError::Refused(
+                    "the wiki changed after the import was planned (its tip moved); nothing was written, plan the import again"
+                        .to_owned(),
+                ));
+            }
+        }
         let seeds = self.seeds(wiki);
         let result = self.write_sequence(&repo, &seeds, view, &plan, &change.message);
         match (result, seeds.left_over()) {

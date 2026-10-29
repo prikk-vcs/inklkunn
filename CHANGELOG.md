@@ -595,7 +595,7 @@ Handoff 003 T6 (recent changes, feeds, search, health, discovery; RFC 003 D-7 �
   every page read), then free; the first recent-changes page 1.7 s for 21 rows (one `show` of about 80 ms each, remembered
   afterwards), then 30 ms; the raw source of a page 0.13 s.
 
-Corrections from the review of 2026-10-30 (handoff 003, R1).
+RFC 003 — corrections from the review of 2026-10-30 (R1 – R10, before 0.1.0).
 
 - **A check that could not run never replaces a verdict** (R1; INT-6). The wiki record keeps the last verdict (*Verified* or
   *Failed*, with its time) apart from the last attempt that could not run (its time and why: busy, a limit, unavailable); a
@@ -606,3 +606,20 @@ Corrections from the review of 2026-10-30 (handoff 003, R1).
   told *a check is running*), at most `CONCURRENT_CHECKS` (2) at once overall, and the 60-second guard is read inside the
   claim from the record as it stands (a recorded time in the future counts as recent; an attempt the gate turned away does
   not). `VerificationState::CouldNotCheck` is gone; `WikiStore::record_attempt` and `WikiRecord::last_attempt` are new.
+- **R4 — `import-folder` does not trust the folder between the plan and the run.** The plan records the device and
+  inode of every directory it walked and every file it found; the run checks that each directory above a file is still
+  that directory (not a link, the same inode), opens the file with `O_NOFOLLOW | O_NONBLOCK`, compares the open
+  handle's identity with the plan's, and refuses a file with more than one hard link (at the plan too). A directory
+  swapped for a link, a file replaced by another with the same bytes and a pipe swapped in are each refused, and the open
+  never waits on a pipe. Not `openat` from a directory handle: that needs `rustix` in `inklkunn-core` (decision request
+  in the review request); the open flags are spelled per architecture (x86-64, aarch64) and a test proves them. The
+  signer gains `make_fifo_for_tests` (behind `test-knobs`): the tests may not spawn `mkfifo`.
+- **R5 — no refusal reason carries a byte of the folder's content.** A repeated frontmatter key is reported by line and
+  rule (`line 2: a key is repeated (keys are unique)`), never by the key; every reason passes through the escaping
+  names get.
+- **R7 — `import-folder` against the wiki.** The wiki's files are read at one tip (`wiki_state`, one extraction): a name
+  that collides in case with the wiki's, a page id the wiki keeps, a page path that is not the canonical one of its
+  title, an attachment over the cap of one acceptance and an overflowing sum are refused at the plan. The plan carries
+  that tip and the signer refuses the change if the view has moved (`pinned_tip` of the acceptance record; the message has no
+  `Base` for an import) and writes nothing. Re-importing a folder the wiki already has, byte for byte (with
+  `--replace-existing`), is *nothing changed* (exit 0, no act begun), and a mixed folder writes only what differs.

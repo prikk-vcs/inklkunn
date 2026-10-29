@@ -150,6 +150,7 @@ fn world(tag: &str) -> Option<World> {
             accepted_by: Actor::System(SystemLabel::inklkunn()),
             base: None,
             imported_from: None,
+            pinned_tip: None,
         },
     });
     let storage = PrikkCli::open(
@@ -203,6 +204,7 @@ impl World {
             accepted_by: self.acceptor.clone(),
             base: message.base().cloned(),
             imported_from: None,
+            pinned_tip: None,
         };
         let token = AcceptanceToken::new(format!("acceptance-{proposal}"));
         self.books

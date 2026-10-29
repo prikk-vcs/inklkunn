@@ -13,22 +13,22 @@
 //! - `wiki create <slug> --name <name>`: *create wiki* with the real signer and key store. Kill-safe: the
 //!   creation is marked, and a start-up sweep (here, and in `serve`) removes an unfinished one whole.
 //! - `wiki import-folder <wiki> <dir> [--dry-run] [--replace-existing]`: the folder as one accepted change under
-//!   the system principal. `--dry-run` prints the same report and writes nothing; a refusal anywhere refuses all.
+//!   the system principal. `--dry-run` prints the same report and writes nothing; a refusal anywhere refuses all;
+//!   a folder the wiki already has, byte for byte, is *nothing changed* (exit 0, no act begun).
 //! - `wiki export <wiki> [--bundle <dir>] [--archive <file>]`: a Portable Wiki Bundle at fidelity level 3, and/or
 //!   prikk's own archive, written by the signer's keyless writable mode, serialized with the wiki's writes.
 //!
 //! The M0 bootstrap signer is not here and cannot be: this crate does not enable the `bootstrap` feature of the
 //! signer, and a test reads the manifest to say so.
 
-use std::collections::HashSet;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use inklkunn_core::export::is_checkpoint_not_recorded;
 use inklkunn_core::export::{ExportError, export_bundle};
-use inklkunn_core::import::{ImportError, ImportLedger, existing_paths, plan_folder, run_import};
-use inklkunn_core::wiki::repo_of;
+use inklkunn_core::import::{ImportError, ImportLedger, plan_folder, run_import, wiki_state};
 use inklkunn_core::{
     AcceptError, Maintenance, Signer, SignerConfig, SignerError, create_wiki,
     sweep_unfinished_creations,
@@ -479,13 +479,33 @@ fn import_folder(
     let store = existing_store(settings)?;
     let record = find_wiki(&store, wiki)?;
     let env = environment(settings, err)?;
-    let repo = repo_of(&env.layout, &record);
-    // What the wiki has now, to tell a new path from an existing one.
-    let have: HashSet<String> =
-        existing_paths(&env.storage, &repo, &record.default_view).map_err(|e| e.to_string())?;
-    let plan =
-        plan_folder(&folder, &|p| have.contains(p), replace_existing).map_err(|e| e.to_string())?;
+    // What the wiki has now, at one tip: to tell a new path from an existing one, a file that would not change
+    // from one that would, and the page ids and names that are taken. The plan is pinned to that tip.
+    let mut have = wiki_state(&env.storage, &env.layout, &record);
+    if let Err(ImportError::Storage(e)) = &have
+        && is_checkpoint_not_recorded(e)
+    {
+        // The record `extract` anchors on is missing (a prikk upgrade, a restore): bring it back, once.
+        let _ = writeln!(
+            err,
+            "inklkunn: prikk's checkpoint record is missing; refreshing it before the import"
+        );
+        let maintenance = Maintenance::new(
+            settings.prikk.clone(),
+            env.sandbox.clone(),
+            env.layout.clone(),
+        );
+        refresh_checkpoint(&store, &maintenance, &env.storage, &record, now)?;
+        have = wiki_state(&env.storage, &env.layout, &record);
+    }
+    let have = have.map_err(|e| e.to_string())?;
+    let plan = plan_folder(&folder, &have, replace_existing).map_err(|e| e.to_string())?;
     let _ = write!(out, "{}", plan.report());
+    if plan.is_unchanged() {
+        // Nothing to write and nothing wrong: said by name, in a dry run and in the run, and no act is begun.
+        let _ = writeln!(out, "{}", ImportError::NothingChanged(plan.unchanged.len()));
+        return Ok(());
+    }
     if dry_run {
         let _ = writeln!(
             out,

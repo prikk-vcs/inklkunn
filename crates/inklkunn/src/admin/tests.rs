@@ -552,6 +552,37 @@ fn a_wiki_is_created_filled_exported_and_archived_through_the_commands_and_no_se
     assert_eq!(status, 1);
     assert!(out.contains("already exists in the wiki"), "{out}");
     assert_eq!(w.blocks("handbook"), before + 1);
+    // With --replace-existing, an unchanged folder is a named outcome, not a failed commit: exit 0, the report
+    // says what was compared, no act is begun, nothing moves.
+    let imports_begun = w
+        .audit()
+        .iter()
+        .filter(|(_, a, ..)| a == "wiki-import")
+        .count();
+    for extra in [
+        vec!["--replace-existing"],
+        vec!["--replace-existing", "--dry-run"],
+    ] {
+        let mut argv = vec!["wiki", "import-folder", "handbook", folder_arg];
+        argv.extend(extra.iter().copied());
+        let (status, out, err) = w.cli(&argv);
+        note("import unchanged", status, &out, &err);
+        assert_eq!(status, 0, "{extra:?}: {err}");
+        assert!(
+            out.contains("unchanged (3)")
+                && out.contains("nothing changed: the wiki already has all 3 files of the folder exactly as they are"),
+            "{extra:?}: {out}"
+        );
+        assert_eq!(w.blocks("handbook"), before + 1);
+    }
+    assert_eq!(
+        w.audit()
+            .iter()
+            .filter(|(_, a, ..)| a == "wiki-import")
+            .count(),
+        imports_begun,
+        "an unchanged import began an act"
+    );
 
     // export: a bundle and an archive.
     let out_dir = dir(&w.tmp.0, "exports");

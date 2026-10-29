@@ -5,32 +5,53 @@
 //! **A dry run is the plan.** [`plan_folder`] walks the folder without following a link, reads every page (and
 //! nothing else), and says for each entry what would be written or why it is refused: a path over prikk's caps
 //! (`inklkunn_markup::path`), a name that is not UTF-8 or not ASCII, a name a repository refuses (the signer's own
-//! rule, [`inklkunn_signer::check_change_path`]), a link, a device or a pipe, a page that is not
-//! UTF-8 text or whose frontmatter the parser refuses, a duplicate page id, a path that collides with another on a
-//! case-insensitive file system, a path the wiki already has. **Any refusal refuses the whole import** (the
+//! rule, [`inklkunn_signer::check_change_path`]), a page path that is not the canonical one of its title, a
+//! link, a device or a pipe, a file with more than one hard link, a file over its cap, a page that is not
+//! UTF-8 text or whose frontmatter the parser refuses, a duplicate page id (in the folder, and against the
+//! wiki's pages), a path that collides with another on a case-insensitive file system (in the folder, and
+//! against the wiki's files), a path the wiki already has. **Any refusal refuses the whole import** (the
 //! change is all or nothing), every reason is named, and the report never repeats a byte of a refused file's
-//! content. Running the import is the same plan, then the same checks again on the bytes actually read, then
-//! [`Accept`]; the signer validates once more before it writes a byte.
+//! content (every reason is escaped as a name is). Running the import is the same plan, then the same checks
+//! again on the bytes actually read, then [`Accept`]; the signer validates once more before it writes a byte.
+//!
+//! **Against the wiki, at one tip.** [`wiki_state`] reads the wiki's files at the default view's tip (one
+//! extraction) and the plan is pinned to that tip's block id: [`run_import`] hands it to the signer, which
+//! refuses the change if the view has moved since, so a concurrent change cannot turn an add into a replace. A
+//! file the wiki already has with exactly these bytes is *unchanged* and is not written; a folder of nothing
+//! but unchanged files is [`ImportError::NothingChanged`], not a failed commit.
+//!
+//! **The folder is not trusted between the plan and the run.** The plan records the identity (device and
+//! inode) of every directory it walked and every file it found. The run checks, for each file, that each
+//! directory above it is still the directory that was walked (not a link, the same inode), opens the file
+//! without following a link and without blocking on a pipe, and compares the open handle's identity with the
+//! one that was planned; a file with more than one hard link is refused. Bytes from anywhere but the planned
+//! inodes never reach the signer. (Standard-library `open` flags and procedure only: `openat` with a directory
+//! handle needs a crate this one does not depend on; see the correction R4 note in the changelog.)
 //!
 //! **What a folder is.** The layout an export writes: `pages/**/*.md` and `attachments/**`. Everything else at the
 //! top (the manifest, `SHA256SUMS`, `users.yaml`, `history/`, `knowledge/`, `governance/`) is *not imported* and is listed as
 //! such: a Portable Wiki Bundle's import with its history is RFC 007's.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::ffi::OsString;
-use std::os::unix::fs::MetadataExt;
+use std::fs::{File, Metadata, OpenOptions};
+use std::io::Read as _;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 
-use inklkunn_markup::path::{MAX_COMPONENT_BYTES, MAX_PATH_BYTES};
-use inklkunn_prikk::{Point, Storage, StorageError};
-use inklkunn_signer::message::{Actor, ImportSource, Kind, Message, Summary, SystemLabel};
+use inklkunn_markup::path::{
+    MAX_COMPONENT_BYTES, MAX_PATH_BYTES, collision_key, path_to_title, title_to_path,
+};
+use inklkunn_prikk::{ExtractBounds, Point, Storage, StorageError};
+use inklkunn_signer::message::{Actor, BlockId, ImportSource, Kind, Message, Summary, SystemLabel};
 use inklkunn_signer::{
     Accept, AcceptError, AcceptanceLedger, AcceptanceToken, ChangeDigest, ExpectedMessage,
     LedgerError, MAX_CHANGE_BYTES, MAX_CHANGE_FILES, PreparedChange, PreparedFile, SealedChange,
     ViewCreationAct, ViewCreationFacts, check_change_path,
 };
-use inklkunn_store::WikiRecord;
+use inklkunn_store::{RootLayout, WikiRecord};
+use sha2::{Digest as _, Sha256};
 
 use crate::read::ReadConfig;
 
@@ -60,6 +81,48 @@ const NOT_IMPORTED: &[(&str, &str)] = &[
     (".prikkignore", "service-local"),
 ];
 
+/// How a file of the folder is opened: `O_NOFOLLOW` (a link in the last component is refused, not followed) and
+/// `O_NONBLOCK` (opening a pipe returns at once instead of waiting for a writer to appear). The standard library
+/// has no names for them and this crate has no `libc`; the values are the kernel's, per architecture, and a test
+/// opens a link and a pipe with them (`open_refuses_a_link_and_does_not_wait_for_a_pipe`).
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+const OPEN_FLAGS: i32 = 0o4000 | 0o400_000;
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+const OPEN_FLAGS: i32 = 0o4000 | 0o100_000;
+#[cfg(not(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)))]
+compile_error!(
+    "import-folder opens files with O_NOFOLLOW | O_NONBLOCK, spelled per architecture in import.rs; add this target's values"
+);
+
+/// `ELOOP`: what `open` answers for a link when `O_NOFOLLOW` is set.
+const ELOOP: i32 = 40;
+
+/// A file system object's identity: the device and the inode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct Identity {
+    dev: u64,
+    ino: u64,
+}
+
+impl Identity {
+    fn of(m: &Metadata) -> Self {
+        Identity {
+            dev: m.dev(),
+            ino: m.ino(),
+        }
+    }
+}
+
+/// A SHA-256 digest.
+pub type Digest = [u8; 32];
+
+fn sha256(bytes: &[u8]) -> Digest {
+    Sha256::digest(bytes).into()
+}
+
 /// What would be done with a file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
@@ -80,6 +143,8 @@ pub struct PlannedFile {
     pub action: Action,
     /// Where it is read from.
     pub source: PathBuf,
+    /// The inode the plan found there; the run reads that file and no other.
+    identity: Identity,
 }
 
 impl PlannedFile {
@@ -89,7 +154,7 @@ impl PlannedFile {
 }
 
 /// An entry the import refuses, and the one rule it broke. The name is the entry's place in the folder, escaped
-/// for a terminal; **the reason never repeats content**.
+/// for a terminal; **the reason never repeats content** and is escaped the same way.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Refusal {
     /// The entry, relative to the folder.
@@ -103,10 +168,20 @@ pub struct Refusal {
 pub struct ImportPlan {
     /// The files that would be written, in path order.
     pub files: Vec<PlannedFile>,
+    /// Files of the folder that the wiki already has with exactly these bytes (`--replace-existing`): they are
+    /// not written.
+    pub unchanged: Vec<String>,
     /// Everything that is refused. **Non-empty means the whole import is refused.**
     pub refused: Vec<Refusal>,
     /// Entries at the top of the folder that are not imported, with the reason.
     pub not_imported: Vec<(String, String)>,
+    /// The block id of the wiki's tip the plan was made against; the signer refuses the change if the view has
+    /// moved ([`Existing::tip`]).
+    pub base: String,
+    /// The folder, as it was given.
+    root: PathBuf,
+    /// Every directory the walk entered (and the folder itself) with its identity.
+    dirs: BTreeMap<PathBuf, Identity>,
 }
 
 fn unit(n: u64) -> String {
@@ -122,12 +197,19 @@ fn unit(n: u64) -> String {
 impl ImportPlan {
     /// The bytes the import would write.
     pub fn total_bytes(&self) -> u64 {
-        self.files.iter().map(|f| f.size).sum()
+        self.files
+            .iter()
+            .fold(0_u64, |sum, f| sum.saturating_add(f.size))
     }
 
     /// Would the import go ahead? Something to write and nothing refused.
     pub fn is_importable(&self) -> bool {
         !self.files.is_empty() && self.refused.is_empty()
+    }
+
+    /// Is every file of the folder one the wiki already has, byte for byte? Nothing refused, nothing to write.
+    pub fn is_unchanged(&self) -> bool {
+        self.files.is_empty() && self.refused.is_empty() && !self.unchanged.is_empty()
     }
 
     /// The pages and the attachments in the plan.
@@ -153,6 +235,15 @@ impl ImportPlan {
             };
             out.push_str(&format!("  {verb:<8}{}  ({})\n", f.path, unit(f.size)));
         }
+        if !self.unchanged.is_empty() {
+            out.push_str(&format!(
+                "unchanged ({}): the wiki has these exactly as they are, so they are not written:\n",
+                self.unchanged.len()
+            ));
+            for path in &self.unchanged {
+                out.push_str(&format!("  {path}\n"));
+            }
+        }
         if !self.refused.is_empty() {
             out.push_str(&format!(
                 "refused ({}): the import is all or nothing, so none of it goes ahead:\n",
@@ -172,6 +263,58 @@ impl ImportPlan {
     }
 }
 
+/// What the wiki has at one tip, to plan an import against: every file under `pages/` and `attachments/` by
+/// path with the digest of its bytes, and the page ids. Read it with [`wiki_state`]; [`Existing::at`] and
+/// [`Existing::with_file`] build one by hand (a test, or a caller that already has the files).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Existing {
+    /// The block id of the tip these files are as of; the plan carries it and the signer holds the change to it.
+    pub tip: String,
+    files: HashMap<String, Digest>,
+    /// page id → the path that has it.
+    page_ids: HashMap<String, String>,
+    /// [`collision_key`] → the path that took it.
+    keys: HashMap<String, String>,
+}
+
+impl Existing {
+    /// A wiki with no file at the tip `tip`.
+    pub fn at(tip: &str) -> Self {
+        Existing {
+            tip: tip.to_owned(),
+            ..Existing::default()
+        }
+    }
+
+    /// The same, with the file `path` holding `content` (a page's `id` is read from it).
+    #[must_use]
+    pub fn with_file(mut self, path: &str, content: &[u8]) -> Self {
+        let id = page_id_of(path, content);
+        self.add(path, sha256(content), id);
+        self
+    }
+
+    fn add(&mut self, path: &str, digest: Digest, page_id: Option<String>) {
+        self.files.insert(path.to_owned(), digest);
+        self.keys.insert(collision_key(path), path.to_owned());
+        if let Some(id) = page_id {
+            self.page_ids.insert(id, path.to_owned());
+        }
+    }
+}
+
+/// The `id` a page file declares, when `path` is a page and `content` is UTF-8 text whose frontmatter parses.
+fn page_id_of(path: &str, content: &[u8]) -> Option<String> {
+    if !(path.starts_with("pages/") && path.ends_with(".md")) {
+        return None;
+    }
+    let text = std::str::from_utf8(content).ok()?;
+    inklkunn_markup::parse_metadata(text)
+        .ok()?
+        .id
+        .filter(|id| !id.is_empty())
+}
+
 /// Why an import did not happen. Each says whether anything changed.
 #[derive(Debug)]
 pub enum ImportError {
@@ -179,10 +322,15 @@ pub enum ImportError {
     Folder(String),
     /// There is nothing to import (no page and no attachment). Nothing changed.
     Nothing,
+    /// Every file of the folder is one the wiki already has, byte for byte (the count). Nothing changed, and
+    /// nothing needed to.
+    NothingChanged(usize),
     /// The plan has refusals ([`ImportPlan::refused`]). Nothing changed.
     Refused(usize),
     /// The wiki's current files could not be listed (to tell a new path from an existing one). Nothing changed.
     Storage(StorageError),
+    /// The wiki's current files could not be read from the extraction. Nothing changed.
+    Wiki(String),
     /// A file changed between the plan and the read, or could not be read. Nothing changed.
     Changed(String),
     /// The change could not be described to the signer. Nothing changed.
@@ -199,6 +347,16 @@ impl std::fmt::Display for ImportError {
                 f,
                 "the folder holds no page and no attachment (`pages/**/*.md` and `attachments/**`); nothing was done"
             ),
+            ImportError::NothingChanged(n) => write!(
+                f,
+                "nothing changed: the wiki already has {} of the folder exactly as {}; nothing was written",
+                if *n == 1 {
+                    "the one file".to_owned()
+                } else {
+                    format!("all {n} files")
+                },
+                if *n == 1 { "it is" } else { "they are" }
+            ),
             ImportError::Refused(n) => write!(
                 f,
                 "{n} entr{} refused, so none of the folder was imported; nothing was changed",
@@ -207,6 +365,10 @@ impl std::fmt::Display for ImportError {
             ImportError::Storage(e) => write!(
                 f,
                 "the wiki's current files could not be listed: {e}; nothing was changed"
+            ),
+            ImportError::Wiki(why) => write!(
+                f,
+                "the wiki's current files could not be read: {why}; nothing was changed"
             ),
             ImportError::Changed(why) => {
                 write!(f, "{why}; nothing was changed, plan the import again")
@@ -225,22 +387,54 @@ fn shown(name: &str) -> String {
     name.escape_debug().to_string()
 }
 
+/// A refusal's reason, escaped the way a name is, except that a quote stays a quote (the rules are sentences).
+fn shown_reason(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if c == '\'' || c == '"' {
+            out.push(c);
+        } else {
+            out.extend(c.escape_debug());
+        }
+    }
+    out
+}
+
 fn lossy(name: &std::ffi::OsStr) -> String {
     shown(&name.to_string_lossy())
 }
 
-/// Read a regular file without following a link and without trusting the listing: the open handle's identity
-/// (device and inode) must be that of the entry that was listed, so a link swapped in after the listing is not
-/// followed. At most `cap` bytes are read; a longer file is refused by size.
-fn read_regular(path: &Path, listed: &std::fs::Metadata, cap: u64) -> Result<Vec<u8>, String> {
-    use std::io::Read as _;
-    let file = std::fs::File::open(path).map_err(|e| format!("cannot be read ({})", e.kind()))?;
-    let opened = file
-        .metadata()
-        .map_err(|e| format!("cannot be read ({})", e.kind()))?;
-    if !opened.is_file() || opened.dev() != listed.dev() || opened.ino() != listed.ino() {
+/// Open a file of the folder for reading: a link in the last component is refused, a pipe does not block the
+/// open, and the open handle must be a regular file with exactly the identity that was planned and no other
+/// hard link. The handle is what is read; no path is consulted again.
+fn open_checked(path: &Path, expect: Identity) -> Result<File, String> {
+    let read_error = |e: std::io::Error| {
+        if e.raw_os_error() == Some(ELOOP) {
+            "is a symbolic link now (it changed while being read)".to_owned()
+        } else {
+            format!("cannot be read ({})", e.kind())
+        }
+    };
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(OPEN_FLAGS)
+        .open(path)
+        .map_err(read_error)?;
+    let opened = file.metadata().map_err(read_error)?;
+    if !opened.is_file() {
+        return Err("is no longer a regular file".to_owned());
+    }
+    if Identity::of(&opened) != expect {
         return Err("is not the file that was listed (it changed while being read)".to_owned());
     }
+    if opened.nlink() > 1 {
+        return Err("has more than one hard link".to_owned());
+    }
+    Ok(file)
+}
+
+/// At most `cap` bytes of an open file; a longer file is refused by size.
+fn read_all(file: File, cap: u64) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
     file.take(cap.saturating_add(1))
         .read_to_end(&mut bytes)
@@ -249,6 +443,70 @@ fn read_regular(path: &Path, listed: &std::fs::Metadata, cap: u64) -> Result<Vec
         return Err(format!("is larger than the {} cap", unit(cap)));
     }
     Ok(bytes)
+}
+
+/// The SHA-256 of an open file, without holding it in memory; a file over `cap` is refused by size.
+fn hash_all(mut file: File, cap: u64) -> Result<Digest, String> {
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0_u8; 64 * 1024];
+    let mut seen: u64 = 0;
+    loop {
+        let n = file
+            .read(&mut buf)
+            .map_err(|e| format!("cannot be read ({})", e.kind()))?;
+        if n == 0 {
+            break;
+        }
+        seen = seen.saturating_add(n as u64);
+        if seen > cap {
+            return Err(format!("is larger than the {} cap", unit(cap)));
+        }
+        hasher.update(buf.get(..n).unwrap_or_default());
+    }
+    Ok(hasher.finalize().into())
+}
+
+/// Read a regular file as the plan found it: [`open_checked`], then at most `cap` bytes.
+fn read_regular(path: &Path, expect: Identity, cap: u64) -> Result<Vec<u8>, String> {
+    read_all(open_checked(path, expect)?, cap)
+}
+
+/// Every directory between the folder and `file` is still the directory the walk entered: not a link, the same
+/// inode. (The folder itself is looked at through a link once, as the operator named it, and must be the same
+/// inode.)
+fn verify_chain(
+    root: &Path,
+    dirs: &BTreeMap<PathBuf, Identity>,
+    file: &Path,
+) -> Result<(), String> {
+    for dir in file.ancestors().skip(1) {
+        let name = || {
+            dir.strip_prefix(root)
+                .ok()
+                .filter(|p| !p.as_os_str().is_empty())
+                .map_or_else(|| "the folder".to_owned(), |p| lossy(p.as_os_str()))
+        };
+        let moved = || {
+            format!(
+                "is reached through `{}`, which is no longer the directory that was planned",
+                name()
+            )
+        };
+        let expect = dirs.get(dir).ok_or_else(moved)?;
+        let now = if dir == root {
+            std::fs::metadata(dir)
+        } else {
+            std::fs::symlink_metadata(dir)
+        };
+        match now {
+            Ok(m) if m.is_dir() && Identity::of(&m) == *expect => {}
+            _ => return Err(moved()),
+        }
+        if dir == root {
+            return Ok(());
+        }
+    }
+    Err("is outside the folder that was planned".to_owned())
 }
 
 /// What a page must be to be imported: UTF-8 text whose frontmatter the parser accepts. Returns the page's `id`
@@ -266,7 +524,7 @@ fn inspect_page(bytes: &[u8]) -> Result<Option<String>, String> {
 }
 
 struct Walk<'a> {
-    existing: &'a dyn Fn(&str) -> bool,
+    existing: &'a Existing,
     replace_existing: bool,
     page_cap: u64,
     plan: ImportPlan,
@@ -274,17 +532,35 @@ struct Walk<'a> {
     keys: HashMap<String, String>,
     /// page id → the path that has it.
     ids: HashMap<String, String>,
+    /// The page paths of the folder.
+    pages: Vec<String>,
 }
 
 impl Walk<'_> {
-    fn refuse(&mut self, name: &str, reason: impl Into<String>) {
+    fn refuse(&mut self, name: &str, reason: impl AsRef<str>) {
         self.plan.refused.push(Refusal {
             name: shown(name),
-            reason: reason.into(),
+            reason: shown_reason(reason.as_ref()),
         });
     }
 
     fn dir(&mut self, dir: &Path, rel: &str, depth: usize) {
+        // The directory is what the parent's listing said it was, before it is listed and after.
+        let before = match std::fs::symlink_metadata(dir) {
+            Ok(m) if m.is_dir() => Identity::of(&m),
+            Ok(_) => {
+                self.refuse(
+                    rel,
+                    "is no longer a directory (it changed while the folder was walked)",
+                );
+                return;
+            }
+            Err(err) => {
+                self.refuse(rel, format!("cannot be examined ({})", err.kind()));
+                return;
+            }
+        };
+        self.plan.dirs.insert(dir.to_path_buf(), before);
         let mut entries: Vec<(OsString, std::fs::FileType)> = Vec::new();
         match std::fs::read_dir(dir) {
             Ok(rd) => {
@@ -307,6 +583,11 @@ impl Walk<'_> {
                 self.refuse(rel, format!("cannot be listed ({})", err.kind()));
                 return;
             }
+        }
+        let after = std::fs::symlink_metadata(dir).ok().filter(Metadata::is_dir);
+        if after.as_ref().map(Identity::of) != Some(before) {
+            self.refuse(rel, "changed while it was listed");
+            return;
         }
         entries.sort_by(|a, b| a.0.cmp(&b.0));
         for (name, kind) in entries {
@@ -376,6 +657,22 @@ impl Walk<'_> {
             self.refuse(rel, "a page is a `.md` file");
             return;
         }
+        // A page lives at the path its title spells, and no other (the same title would otherwise have two).
+        if is_page {
+            let canonical = path_to_title(rel).and_then(|t| title_to_path(&t).ok());
+            if canonical.as_deref() != Some(rel) {
+                self.refuse(
+                    rel,
+                    match canonical {
+                        Some(c) => format!(
+                            "is not the canonical path of the page it spells (that page is `{c}`)"
+                        ),
+                        None => "is not a path any page title spells".to_owned(),
+                    },
+                );
+                return;
+            }
+        }
         let listed = match std::fs::symlink_metadata(source) {
             Ok(m) if m.is_file() => m,
             Ok(_) => {
@@ -387,52 +684,103 @@ impl Walk<'_> {
                 return;
             }
         };
-        let key = inklkunn_markup::collision_key(rel);
+        if listed.nlink() > 1 {
+            self.refuse(
+                rel,
+                "has more than one hard link (another name could change it after it was checked)",
+            );
+            return;
+        }
+        let identity = Identity::of(&listed);
+        let key = collision_key(rel);
         if let Some(first) = self.keys.get(&key) {
             let first = first.clone();
             self.refuse(
                 rel,
                 format!(
-                    "collides with `{}` on a case-insensitive file system (prikk refuses such a pair)",
-                    shown(&first)
+                    "collides with `{first}` on a case-insensitive file system (prikk refuses such a pair)"
+                ),
+            );
+            return;
+        }
+        if let Some(have) = self.existing.keys.get(&key)
+            && have != rel
+        {
+            let have = have.clone();
+            self.refuse(
+                rel,
+                format!(
+                    "collides with `{have}`, which the wiki has, on a case-insensitive file system (prikk refuses such a pair)"
                 ),
             );
             return;
         }
         self.keys.insert(key, rel.to_owned());
+        let cap = if is_page {
+            self.page_cap
+        } else {
+            MAX_CHANGE_BYTES
+        };
+        if listed.len() > cap {
+            self.refuse(
+                rel,
+                format!(
+                    "is larger than the {} cap of {}",
+                    unit(cap),
+                    if is_page { "a page" } else { "one acceptance" }
+                ),
+            );
+            return;
+        }
+        // The bytes are compared only for a file the wiki has and the operator allowed to replace.
+        let have = self.existing.files.get(rel).copied();
+        let want_digest = have.is_some() && self.replace_existing;
+        let mut digest: Option<Digest> = None;
         if is_page {
-            if listed.len() > self.page_cap {
-                self.refuse(
-                    rel,
-                    format!("is larger than the {} cap of a page", unit(self.page_cap)),
-                );
-                return;
-            }
-            match read_regular(source, &listed, self.page_cap).and_then(|b| inspect_page(&b)) {
+            match read_regular(source, identity, cap)
+                .and_then(|b| inspect_page(&b).map(|id| (b, id)))
+            {
                 Err(why) => {
                     self.refuse(rel, why);
                     return;
                 }
-                Ok(Some(id)) => {
-                    if let Some(other) = self.ids.get(&id) {
-                        let other = other.clone();
-                        self.refuse(
-                            rel,
-                            format!("has the page id of `{}`; ids are unique", shown(&other)),
-                        );
-                        return;
+                Ok((bytes, id)) => {
+                    if want_digest {
+                        digest = Some(sha256(&bytes));
                     }
-                    self.ids.insert(id, rel.to_owned());
+                    if let Some(id) = id {
+                        if let Some(other) = self.ids.get(&id) {
+                            let other = other.clone();
+                            self.refuse(
+                                rel,
+                                format!("has the page id of `{other}`; ids are unique"),
+                            );
+                            return;
+                        }
+                        self.ids.insert(id, rel.to_owned());
+                    }
                 }
-                Ok(None) => {}
+            }
+            self.pages.push(rel.to_owned());
+        } else if want_digest {
+            match open_checked(source, identity).and_then(|f| hash_all(f, cap)) {
+                Ok(d) => digest = Some(d),
+                Err(why) => {
+                    self.refuse(rel, why);
+                    return;
+                }
             }
         }
-        let action = if (self.existing)(rel) {
+        let action = if let Some(have) = have {
             if !self.replace_existing {
                 self.refuse(
                     rel,
                     "already exists in the wiki (`--replace-existing` replaces it)",
                 );
+                return;
+            }
+            if digest == Some(have) {
+                self.plan.unchanged.push(rel.to_owned());
                 return;
             }
             Action::Replace
@@ -444,16 +792,37 @@ impl Walk<'_> {
             size: listed.len(),
             action,
             source: source.to_path_buf(),
+            identity,
         });
+    }
+
+    /// The page ids against the wiki's: an id the wiki has at a path this import does not rewrite is taken.
+    fn ids_against_the_wiki(&mut self) {
+        let mut taken: Vec<(String, String, String)> = Vec::new();
+        for (id, path) in &self.ids {
+            if let Some(owner) = self.existing.page_ids.get(id)
+                && owner != path
+                && !self.pages.contains(owner)
+            {
+                taken.push((path.clone(), owner.clone(), id.clone()));
+            }
+        }
+        taken.sort();
+        for (path, owner, _) in taken {
+            self.refuse(
+                &path,
+                format!("has the page id of `{owner}`, which the wiki has; ids are unique"),
+            );
+        }
     }
 }
 
-/// Plan the import of `folder`: walk it, check every entry, and say what would be written. `existing` tells
-/// whether the wiki already has a path; `replace_existing` allows replacing it. Reads pages (to check them) and
-/// nothing else; writes nothing, anywhere.
+/// Plan the import of `folder`: walk it, check every entry, and say what would be written. `existing` is what
+/// the wiki has at the tip the plan is pinned to ([`wiki_state`]); `replace_existing` allows replacing a file it
+/// has. Reads pages (to check them) and nothing else; writes nothing, anywhere.
 pub fn plan_folder(
     folder: &Path,
-    existing: &dyn Fn(&str) -> bool,
+    existing: &Existing,
     replace_existing: bool,
 ) -> Result<ImportPlan, ImportError> {
     let root = std::fs::metadata(folder)
@@ -465,10 +834,18 @@ pub fn plan_folder(
         existing,
         replace_existing,
         page_cap: ReadConfig::default().page_max_bytes,
-        plan: ImportPlan::default(),
+        plan: ImportPlan {
+            base: existing.tip.clone(),
+            root: folder.to_path_buf(),
+            ..ImportPlan::default()
+        },
         keys: HashMap::new(),
         ids: HashMap::new(),
+        pages: Vec::new(),
     };
+    walk.plan
+        .dirs
+        .insert(folder.to_path_buf(), Identity::of(&root));
     let mut top: Vec<(OsString, Option<std::fs::FileType>)> = std::fs::read_dir(folder)
         .map_err(|e| ImportError::Folder(format!("it cannot be listed ({})", e.kind())))?
         .filter_map(Result::ok)
@@ -501,8 +878,10 @@ pub fn plan_folder(
                 .push((shown_name, "not part of the bundle layout".to_owned())),
         }
     }
+    walk.ids_against_the_wiki();
     let mut plan = walk.plan;
     plan.files.sort_by(|a, b| a.path.cmp(&b.path));
+    plan.unchanged.sort();
     if plan.files.len() > MAX_CHANGE_FILES {
         plan.refused.push(Refusal {
             name: "(the folder)".to_owned(),
@@ -522,59 +901,132 @@ pub fn plan_folder(
             ),
         });
     }
-    if plan.files.is_empty() && plan.refused.is_empty() {
+    if plan.files.is_empty() && plan.refused.is_empty() && plan.unchanged.is_empty() {
         return Err(ImportError::Nothing);
     }
     Ok(plan)
 }
 
-/// The paths the wiki has at its default view's tip, to tell a new path from an existing one.
-pub fn existing_paths(
+/// What the wiki has at its default view's tip: one extraction of the tip (in the wiki's scratch directory,
+/// removed again), every file under `pages/` and `attachments/` hashed and every page's id read. The tip's
+/// block id is [`Existing::tip`], and the extraction is of that block, so the files and the tip agree.
+pub fn wiki_state(
     storage: &dyn Storage,
-    repo: &Path,
-    view: &str,
-) -> Result<HashSet<String>, ImportError> {
+    layout: &RootLayout,
+    record: &WikiRecord,
+) -> Result<Existing, ImportError> {
+    let repo = layout.repo_dir(&record.id);
     let tree = storage
-        .tree(repo, &Point::View(view.to_owned()), None)
+        .tree(&repo, &Point::View(record.default_view.clone()), None)
         .map_err(ImportError::Storage)?;
-    Ok(tree
-        .entries
-        .into_iter()
-        .filter(|e| e.kind == "file")
-        .map(|e| e.path)
-        .collect())
+    let tip = tree.target_block_id;
+    let scratch = layout.scratch_dir(&record.id);
+    std::fs::create_dir_all(&scratch).map_err(|e| {
+        ImportError::Wiki(format!(
+            "the wiki's scratch directory could not be made ({})",
+            e.kind()
+        ))
+    })?;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let extraction = format!("import-{}-{nanos}", std::process::id());
+    let result = (|| {
+        storage
+            .materialize(
+                &repo,
+                &Point::Block(tip.clone()),
+                &scratch,
+                &extraction,
+                ExtractBounds {
+                    max_bytes: None,
+                    max_files: None,
+                },
+            )
+            .map_err(ImportError::Storage)?;
+        let mut state = Existing::at(&tip);
+        let extracted = scratch.join(&extraction);
+        for top in ["pages", "attachments"] {
+            collect(&extracted, top, &mut state)?;
+        }
+        Ok(state)
+    })();
+    let _ = std::fs::remove_dir_all(scratch.join(&extraction));
+    result
 }
 
-/// Read the files of a plan that can be imported, checking each again as it is read.
+/// Add the regular files under `<extracted>/<rel>` (a missing directory has none).
+fn collect(extracted: &Path, rel: &str, state: &mut Existing) -> Result<(), ImportError> {
+    let wiki_error =
+        |what: &str, e: &std::io::Error| ImportError::Wiki(format!("{what} ({})", e.kind()));
+    let dir = extracted.join(rel);
+    let listing = match std::fs::read_dir(&dir) {
+        Ok(l) => l,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => {
+            return Err(wiki_error(
+                "a directory of the extraction could not be listed",
+                &e,
+            ));
+        }
+    };
+    for item in listing {
+        let item = item.map_err(|e| wiki_error("the extraction could not be listed", &e))?;
+        let Some(name) = item.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        let child = format!("{rel}/{name}");
+        let kind = item
+            .file_type()
+            .map_err(|e| wiki_error("the extraction could not be examined", &e))?;
+        if kind.is_dir() {
+            collect(extracted, &child, state)?;
+        } else if kind.is_file() {
+            let path = item.path();
+            let io = |e: std::io::Error| wiki_error("an extracted file could not be read", &e);
+            let is_page = child.starts_with("pages/") && child.ends_with(".md");
+            let (digest, id) = if is_page
+                && item.metadata().map_err(io)?.len() <= ReadConfig::default().page_max_bytes
+            {
+                let bytes = std::fs::read(&path).map_err(io)?;
+                (sha256(&bytes), page_id_of(&child, &bytes))
+            } else {
+                let file = File::open(&path).map_err(io)?;
+                let digest = hash_all(file, u64::MAX).map_err(ImportError::Wiki)?;
+                (digest, None)
+            };
+            state.add(&child, digest, id);
+        }
+    }
+    Ok(())
+}
+
+/// Read the files of a plan that can be imported, checking each again as it is read: the directories above it,
+/// the open handle's identity against the plan's, its size and (for a page) its content.
 fn read_files(plan: &ImportPlan) -> Result<Vec<PreparedFile>, ImportError> {
     let page_cap = ReadConfig::default().page_max_bytes;
     let mut files = Vec::with_capacity(plan.files.len());
+    let changed =
+        |f: &PlannedFile, why: String| ImportError::Changed(format!("`{}` {why}", f.path));
     for f in &plan.files {
-        let listed = std::fs::symlink_metadata(&f.source).map_err(|e| {
-            ImportError::Changed(format!("`{}` cannot be examined ({})", f.path, e.kind()))
-        })?;
+        verify_chain(&plan.root, &plan.dirs, &f.source).map_err(|why| changed(f, why))?;
+        let listed = std::fs::symlink_metadata(&f.source)
+            .map_err(|e| changed(f, format!("cannot be examined ({})", e.kind())))?;
         if !listed.is_file() {
-            return Err(ImportError::Changed(format!(
-                "`{}` is no longer a regular file",
-                f.path
-            )));
+            return Err(changed(f, "is no longer a regular file".to_owned()));
         }
         let cap = if f.is_page() {
             page_cap
         } else {
             MAX_CHANGE_BYTES
         };
-        let bytes = read_regular(&f.source, &listed, cap)
-            .map_err(|why| ImportError::Changed(format!("`{}` {why}", f.path)))?;
+        let bytes = read_regular(&f.source, f.identity, cap).map_err(|why| changed(f, why))?;
+        verify_chain(&plan.root, &plan.dirs, &f.source).map_err(|why| changed(f, why))?;
         if bytes.len() as u64 != f.size {
-            return Err(ImportError::Changed(format!(
-                "`{}` changed size since it was planned",
-                f.path
-            )));
+            return Err(changed(f, "changed size since it was planned".to_owned()));
         }
         if f.is_page() {
-            inspect_page(&bytes)
-                .map_err(|why| ImportError::Changed(format!("`{}` {why}", f.path)))?;
+            inspect_page(&bytes).map_err(|why| changed(f, why))?;
         }
         files.push(PreparedFile {
             path: PathBuf::from(&f.path),
@@ -642,8 +1094,9 @@ pub struct Imported {
 }
 
 /// Run an import: read the planned files (checking them again), describe the change (`Kind: import`, both people
-/// the service), bind it in `ledger` under a fresh token, and hand it to `accept`. The `ledger` must be the one the
-/// signer behind `accept` was opened with. A plan with refusals, or without files, is refused here.
+/// the service), bind it in `ledger` under a fresh token and to the tip the plan was made against, and hand it to
+/// `accept`. The `ledger` must be the one the signer behind `accept` was opened with. A plan with refusals, or
+/// without files, is refused here; the signer refuses it if the wiki's tip is no longer the plan's.
 pub fn run_import(
     accept: &dyn Accept,
     ledger: &ImportLedger,
@@ -654,7 +1107,11 @@ pub fn run_import(
         return Err(ImportError::Refused(plan.refused.len()));
     }
     if plan.files.is_empty() {
-        return Err(ImportError::Nothing);
+        return Err(if plan.unchanged.is_empty() {
+            ImportError::Nothing
+        } else {
+            ImportError::NothingChanged(plan.unchanged.len())
+        });
     }
     let files = read_files(plan)?;
     let (pages, attachments) = plan.counts();
@@ -671,6 +1128,9 @@ pub fn run_import(
     let digest = change.digest();
     let label = SystemLabel::inklkunn();
     let source = ImportSource::new(&format!("folder sha256:{digest}")).map_err(describe)?;
+    // The tip the plan was made against: the signer holds the change to it (a message of kind `import` has no
+    // `Base`, so the pin is part of the record, not of the message).
+    let pinned_tip = BlockId::new(&plan.base).map_err(describe)?;
     let message = Message::import(summary, label.clone(), source.clone());
     change.message = message.to_text();
     let token = AcceptanceToken::new(inklkunn_store::record::uuid_v7());
@@ -685,6 +1145,7 @@ pub fn run_import(
             accepted_by: Actor::System(label),
             base: None,
             imported_from: Some(source),
+            pinned_tip: Some(pinned_tip),
             change_digest: digest,
         },
     );

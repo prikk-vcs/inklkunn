@@ -367,6 +367,11 @@ pub struct ExpectedMessage {
     pub base: Option<BlockId>,
     /// Where an import came from.
     pub imported_from: Option<ImportSource>,
+    /// The block the view's tip must still be when the change is written (an import is planned against the tip
+    /// it saw; a message of kind `import` carries no `Base`, so the pin lives here, in the record). The signer
+    /// reads the tip under the wiki's write lock, before it decrypts a seed or writes a byte, and refuses if
+    /// the view has moved. `None` pins nothing (a proposal's `base` is the merge's business, not the signer's).
+    pub pinned_tip: Option<BlockId>,
     /// The digest of the files that were accepted (RFC 004 D-4 records "the merged content's digest" on the
     /// acceptance record). The signer recomputes it over the change it is handed and refuses a mismatch
     /// before it writes anything.

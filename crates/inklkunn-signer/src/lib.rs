@@ -63,6 +63,21 @@ pub fn check_change_path(path: &str) -> Result<(), &'static str> {
     worktree::repo_path(Path::new(path)).map(|_| ())
 }
 
+/// Make a named pipe at `path`, for the tests of a reader that must not wait on one (`import-folder`'s). Behind the
+/// `test-knobs` feature, which a product crate never enables and a gate checks: this crate has the file-system
+/// crate (`rustix`) that the crates which may not spawn a process lack, and the tests may not spawn `mkfifo`.
+#[cfg(feature = "test-knobs")]
+pub fn make_fifo_for_tests(path: &Path) -> std::io::Result<()> {
+    rustix::fs::mknodat(
+        rustix::fs::CWD,
+        path,
+        rustix::fs::FileType::Fifo,
+        rustix::fs::Mode::from_bits_truncate(0o600),
+        0,
+    )
+    .map_err(std::io::Error::from)
+}
+
 /// The most files one acceptance may carry.
 pub const MAX_CHANGE_FILES: usize = worktree::MAX_FILES;
 

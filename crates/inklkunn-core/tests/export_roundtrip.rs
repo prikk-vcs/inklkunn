@@ -11,12 +11,12 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use inklkunn_core::export::{ExportError, export_bundle};
-use inklkunn_core::import::{ImportLedger, existing_paths, plan_folder, run_import};
+use inklkunn_core::import::{ImportError, ImportLedger, plan_folder, run_import, wiki_state};
 use inklkunn_core::message::{Actor, BlockId, Message, Summary};
 use inklkunn_core::{
-    AcceptanceLedger, AcceptanceToken, CreatedWiki, ExpectedMessage, KeyAuthority, LedgerError,
-    PreparedChange, PreparedFile, Signer, SignerConfig, ViewCreationAct, ViewCreationFacts,
-    create_wiki,
+    AcceptError, AcceptanceLedger, AcceptanceToken, CreatedWiki, ExpectedMessage, KeyAuthority,
+    LedgerError, PreparedChange, PreparedFile, Signer, SignerConfig, ViewCreationAct,
+    ViewCreationFacts, create_wiki,
 };
 use inklkunn_prikk::sandbox::probe_bwrap;
 use inklkunn_prikk::storage::{
@@ -174,9 +174,8 @@ fn do_import(
     folder: &Path,
     replace: bool,
 ) -> inklkunn_core::import::Imported {
-    let view = wiki.record.default_view.clone();
-    let have = existing_paths(&w.storage, &wiki.repo, &view).unwrap();
-    let plan = plan_folder(folder, &|p| have.contains(p), replace).unwrap();
+    let have = wiki_state(&w.storage, &w.layout, &wiki.record).unwrap();
+    let plan = plan_folder(folder, &have, replace).unwrap();
     assert!(plan.is_importable(), "{}", plan.report());
     run_import(&w.signer, &w.ledgers.import, &wiki.record, &plan).unwrap_or_else(|e| panic!("{e}"))
 }
@@ -227,6 +226,7 @@ fn proposal_edit(w: &World, wiki: &CreatedWiki) -> (String, String) {
             accepted_by: acceptor,
             base: Some(BlockId::new(&base).unwrap()),
             imported_from: None,
+            pinned_tip: None,
             change_digest: change.digest(),
         },
     );
@@ -419,8 +419,8 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
 
         // Wiki B: fresh, filled from A's bundle (its own Help page is replaced by A's).
         let b = create(&w, "beta");
-        let have = existing_paths(&w.storage, &b.repo, &b.record.default_view).unwrap();
-        let plan = plan_folder(&dir1, &|p| have.contains(p), true).unwrap();
+        let have = wiki_state(&w.storage, &w.layout, &b.record).unwrap();
+        let plan = plan_folder(&dir1, &have, true).unwrap();
         assert!(plan.is_importable(), "{}", plan.report());
         let skipped: Vec<&str> = plan.not_imported.iter().map(|(n, _)| n.as_str()).collect();
         assert_eq!(
@@ -436,7 +436,7 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
             ]
         );
         // Without --replace-existing the Help page that both wikis have is refused.
-        let refused = plan_folder(&dir1, &|p| have.contains(p), false).unwrap();
+        let refused = plan_folder(&dir1, &have, false).unwrap();
         assert!(
             !refused.is_importable() && refused.refused.iter().any(|r| r.name == "pages/Help.md")
         );
@@ -645,8 +645,8 @@ fn a_dry_run_writes_nothing_to_the_wiki_the_folder_or_anywhere() {
         .storage
         .history(&a.repo, &Point::View(a.record.default_view.clone()), None)
         .unwrap();
-    let have = existing_paths(&w.storage, &a.repo, &a.record.default_view).unwrap();
-    let plan = plan_folder(&folder.0, &|p| have.contains(p), false).unwrap();
+    let have = wiki_state(&w.storage, &w.layout, &a.record).unwrap();
+    let plan = plan_folder(&folder.0, &have, false).unwrap();
     assert!(plan.is_importable());
     let report = plan.report();
     assert!(report.contains("5 file(s) to write"), "{report}");
@@ -867,4 +867,68 @@ fn an_empty_directory_made_at_the_destination_meanwhile_is_not_replaced() {
     assert_eq!(std::fs::read_dir(&dest).unwrap().count(), 0);
     let beside: Vec<_> = std::fs::read_dir(&out.0).unwrap().collect();
     assert_eq!(beside.len(), 1, "{beside:?}");
+}
+
+#[test]
+fn an_import_is_held_to_the_tip_it_was_planned_against_and_an_unchanged_reimport_is_nothing_changed()
+ {
+    if !prikk_on_path() {
+        println!("skipping: prikk not on PATH");
+        return;
+    }
+    let w = world("tip", Sandbox::Unconfined);
+    let a = create(&w, "epsilon");
+    let folder = dir_in(&w.tmp, "folder");
+    first_folder(&folder.0);
+    let done = do_import(&w, &a, &folder.0, false);
+
+    // The wiki now has the folder byte for byte: with --replace-existing it is nothing changed, and nothing
+    // is asked of the signer (the history does not move).
+    let blocks = |w: &World| {
+        w.storage
+            .history(&a.repo, &Point::View(a.record.default_view.clone()), None)
+            .unwrap()
+            .blocks
+            .len()
+    };
+    let before = blocks(&w);
+    let have = wiki_state(&w.storage, &w.layout, &a.record).unwrap();
+    assert_eq!(have.tip, done.sealed.block_id, "the state is as of the tip");
+    let again = plan_folder(&folder.0, &have, true).unwrap();
+    assert!(again.is_unchanged(), "{}", again.report());
+    assert_eq!(again.unchanged.len(), 5);
+    let err = run_import(&w.signer, &w.ledgers.import, &a.record, &again).unwrap_err();
+    assert!(matches!(err, ImportError::NothingChanged(5)), "{err}");
+    assert_eq!(blocks(&w), before);
+
+    // One page differs: only it is written, and the other four are reported unchanged.
+    let guide2 = GUIDE.replace("Back to", "Return to");
+    put(&folder.0, "pages/Guide.md", guide2.as_bytes());
+    let mixed = plan_folder(&folder.0, &have, true).unwrap();
+    assert_eq!(mixed.files.len(), 1, "{}", mixed.report());
+    assert_eq!(mixed.unchanged.len(), 4);
+
+    // A plan made against this tip, run after the wiki moved: the signer refuses, before a byte is written.
+    let other = dir_in(&w.tmp, "other");
+    put(
+        &other.0,
+        "pages/Elsewhere.md",
+        b"---\ntitle: Elsewhere\nid: else-1\n---\n\nx\n",
+    );
+    do_import(&w, &a, &other.0, false);
+    let after_other = blocks(&w);
+    let err = run_import(&w.signer, &w.ledgers.import, &a.record, &mixed).unwrap_err();
+    assert!(
+        matches!(&err, ImportError::Accept(AcceptError::Refused(m)) if m.contains("tip moved")),
+        "{err}"
+    );
+    assert_eq!(blocks(&w), after_other, "a refused import moved the view");
+    assert!(w.storage.verify(&a.repo).unwrap().verdict.ok);
+
+    // Planned again against the new tip, it goes through, and only the page that differs changes.
+    let have = wiki_state(&w.storage, &w.layout, &a.record).unwrap();
+    let replan = plan_folder(&folder.0, &have, true).unwrap();
+    assert_eq!(replan.files.len(), 1);
+    run_import(&w.signer, &w.ledgers.import, &a.record, &replan).unwrap();
+    assert_eq!(blocks(&w), after_other + 1);
 }

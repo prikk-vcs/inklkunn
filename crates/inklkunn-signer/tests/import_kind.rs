@@ -12,7 +12,7 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 
 use inklkunn_prikk::Sandbox;
-use inklkunn_signer::message::{Actor, ImportSource, Kind, Message, Summary, SystemLabel};
+use inklkunn_signer::message::{Actor, BlockId, ImportSource, Kind, Message, Summary, SystemLabel};
 use inklkunn_signer::{
     Accept, AcceptError, AcceptanceLedger, AcceptanceToken, ExpectedMessage, KeyAuthority,
     LedgerError, PreparedChange, PreparedFile, RepositoryBootstrap, Signer, SignerConfig,
@@ -133,20 +133,56 @@ fn an_import_under_the_system_principal_verifies_with_prikk_itself_and_says_what
     );
     change.message = message.to_text();
     let token = AcceptanceToken::new("import-1");
-    ledger.0.lock().unwrap().insert(
-        token.as_str().to_owned(),
-        ExpectedMessage {
-            wiki: wiki.clone(),
-            view: "heads/main".to_owned(),
-            kind: Kind::Import,
-            proposal: None,
-            proposed_by: Actor::System(label.clone()),
-            accepted_by: Actor::System(label.clone()),
-            base: None,
-            imported_from: Some(source),
-            change_digest: digest,
-        },
+    // The tip the plan was made against: what `prikk log` says the view's newest block is.
+    let tip_now = |repo: &Path| -> BlockId {
+        let log = prikk_in(&prikk, repo, &["log", "--limit", "1", "--format", "json"]);
+        let log: serde_json::Value = serde_json::from_slice(&log.stdout).unwrap();
+        BlockId::new(
+            log.pointer("/blocks/0/block_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap(),
+        )
+        .unwrap()
+    };
+    let planned_at = tip_now(&repo);
+    let expected = |pinned_tip: BlockId| ExpectedMessage {
+        wiki: wiki.clone(),
+        view: "heads/main".to_owned(),
+        kind: Kind::Import,
+        proposal: None,
+        proposed_by: Actor::System(label.clone()),
+        accepted_by: Actor::System(label.clone()),
+        base: None,
+        imported_from: Some(source.clone()),
+        pinned_tip: Some(pinned_tip),
+        change_digest: digest,
+    };
+    // The wiki moved after the plan was made (here: the plan names a block that is not the view's tip): the
+    // signer refuses before it writes a byte, and says why.
+    let moved = BlockId::new(&"0".repeat(64)).unwrap();
+    ledger
+        .0
+        .lock()
+        .unwrap()
+        .insert(token.as_str().to_owned(), expected(moved));
+    let refused = signer
+        .accept(&wiki, "heads/main", &token, &change)
+        .unwrap_err();
+    assert!(
+        matches!(&refused, AcceptError::Refused(m) if m.contains("tip moved") && m.contains("nothing was written")),
+        "{refused:?}"
     );
+    assert!(!repo.join("pages/Home.md").exists());
+    assert_eq!(
+        tip_now(&repo),
+        planned_at,
+        "a refused import moved the view"
+    );
+    ledger
+        .0
+        .lock()
+        .unwrap()
+        .insert(token.as_str().to_owned(), expected(planned_at.clone()));
     // A different set of files under the same token is refused before a byte is written…
     let mut other = change.clone();
     other.files.pop();

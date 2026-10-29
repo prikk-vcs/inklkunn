@@ -333,6 +333,7 @@ impl Fixture {
             accepted_by: self.acceptor.clone(),
             base: Some(base),
             imported_from: None,
+            pinned_tip: None,
             change_digest: change.digest(),
         };
         self.ledger.set(&token, expected.clone());
@@ -1653,6 +1654,7 @@ fn child_accepts_and_blocks_in_seal() {
             accepted_by: actor(&s(field(e, "acceptor_id")), &s(field(e, "acceptor_name"))),
             base: BlockId::new(&s(field(e, "base"))).ok(),
             imported_from: None,
+            pinned_tip: None,
         },
     );
     let mut cfg = SignerConfig::new(
