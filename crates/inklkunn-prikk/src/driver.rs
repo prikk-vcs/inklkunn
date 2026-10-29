@@ -708,26 +708,60 @@ impl Storage for PrikkCli {
             &["verify", "--format", "json"],
             MAX_REPORT_BYTES,
         )?;
-        // The verdict is read from the report on stdout, never from the exit code or stderr text (prikk's
-        // rule: graded results are in the JSON report; exit 1 is any operational failure). A failed verdict
-        // is a fact about the repository, while a ceiling hit or a kill is not a verdict.
-        if !run.timed_out
-            && !run.output_exceeded
-            && let Ok(report) =
-                parse_report::<Verification>("verify", &run.stdout, schema::VERIFY_REPORT)
-            && (run.status.success() || !report.verdict.ok)
-        {
-            return Ok(report);
+        match Self::verdict_of(&run, ceiling) {
+            Some(read) => read,
+            None => Err(Self::failure(
+                ReadVerb::Verify,
+                &run,
+                ceiling,
+                self.deadline_for(ReadVerb::Verify),
+            )),
         }
-        if run.status.success() && !run.timed_out && !run.output_exceeded {
-            return parse_report("verify", &run.stdout, schema::VERIFY_REPORT);
+    }
+}
+
+impl PrikkCli {
+    /// What a finished `verify` run says about the repository, or `None` when it says nothing and
+    /// [`PrikkCli::failure`] must read the run instead (a kill, a bound, a death, a refusal, a report that is
+    /// not a report).
+    ///
+    /// The verdict is read from the report on stdout, never from stderr text (prikk's rule: graded results
+    /// are in the JSON report; exit 1 is any operational failure). A failing report is a verdict about the
+    /// repository **only when it is complete** ([`Verification::is_partial`]): under a memory limit prikk may
+    /// not abort but print a whole report whose `objects` stage failed for lack of memory (ledger PK-22), and
+    /// that is the limit, not the repository. `ceiling` is `Some` on every production call (the driver costs
+    /// one for each verb); a partial report with no ceiling to blame is `Damaged`, never a verdict.
+    fn verdict_of(run: &Run, ceiling: Option<u64>) -> Option<Result<Verification>> {
+        if run.timed_out || run.output_exceeded {
+            return None;
         }
-        Err(Self::failure(
-            ReadVerb::Verify,
-            &run,
-            ceiling,
-            self.deadline_for(ReadVerb::Verify),
-        ))
+        if run.status.success() {
+            return Some(parse_report("verify", &run.stdout, schema::VERIFY_REPORT));
+        }
+        if run.status.code() != Some(1) {
+            return None;
+        }
+        let report =
+            parse_report::<Verification>("verify", &run.stdout, schema::VERIFY_REPORT).ok()?;
+        if report.verdict.ok {
+            return None;
+        }
+        if !report.is_partial() {
+            return Some(Ok(report));
+        }
+        Some(Err(match ceiling {
+            Some(bytes) => StorageError::Unavailable {
+                verb: "verify",
+                reason: Unavailable::CeilingExceeded { bytes },
+            },
+            None => StorageError::Damaged {
+                verb: "verify",
+                detail: format!(
+                    "a failing report that is not complete: {}",
+                    report.stage_summary()
+                ),
+            },
+        }))
     }
 }
 

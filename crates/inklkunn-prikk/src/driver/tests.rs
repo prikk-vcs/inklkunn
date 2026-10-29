@@ -1,4 +1,6 @@
+#![allow(clippy::expect_used, clippy::unwrap_used)]
 use super::*;
+use crate::storage::{Stage, StageOutcome};
 
 #[test]
 fn versions_parse_and_compare_to_the_floor() {
@@ -111,5 +113,212 @@ fn a_refusal_without_a_report_or_without_a_reason_has_none() {
             StorageError::Refused { kind: Some(k), reason: None, .. } if k == "over-max-bytes"
         ),
         "{e:?}"
+    );
+}
+
+/// A finished `verify` run with the given exit code and stdout.
+fn verify_run(code: i32, stdout: &str) -> Run {
+    use std::os::unix::process::ExitStatusExt;
+    Run {
+        status: std::process::ExitStatus::from_raw(code << 8),
+        stdout: stdout.as_bytes().to_vec(),
+        stderr: Vec::new(),
+        timed_out: false,
+        output_exceeded: false,
+    }
+}
+
+/// A failing `verify-report-v1` over the given stages (JSON objects, comma-separated).
+fn failing(stages: &str) -> String {
+    format!(
+        r#"{{"schema_version":"verify-report-v1","verdict":{{"ok":false,"failed_conditions":[{{"id":"stage-failure","message":"repository verification did not complete every stage; see stage outcomes above"}}]}},"stages":[{stages}]}}"#
+    )
+}
+
+const OOM: &str = r#"{"stage":"objects","status":"failed","message":"i/o error: out of memory"}"#;
+const DONE: &str = r#"{"stage":"refs","status":"evaluated"}"#;
+const DAMAGED: &str = r#"{"stage":"refs","status":"failed","message":"integrity error: ref pointer index has a damaged entry"}"#;
+
+/// What `verdict_of` makes of a failing report with `stages`, with the ceiling of a production call and
+/// without one: `Verdict` when it is a verdict about the repository, `Ceiling` when it is the memory limit
+/// (the damage reading when no ceiling was set).
+#[derive(Debug, PartialEq)]
+enum Read {
+    Verdict,
+    Ceiling,
+    Damaged,
+    Other,
+}
+
+fn read(stages: &str, ceiling: Option<u64>) -> Read {
+    match PrikkCli::verdict_of(&verify_run(1, &failing(stages)), ceiling) {
+        Some(Ok(v)) if !v.verdict.ok => Read::Verdict,
+        Some(Err(StorageError::Unavailable {
+            verb: "verify",
+            reason: Unavailable::CeilingExceeded { bytes },
+        })) if Some(bytes) == ceiling => Read::Ceiling,
+        Some(Err(StorageError::Damaged { verb: "verify", .. })) => Read::Damaged,
+        _ => Read::Other,
+    }
+}
+
+#[test]
+fn a_failing_report_is_a_verdict_only_when_every_stage_ran_to_an_outcome() {
+    let blocked = |by: &str| {
+        format!(
+            r#"{DAMAGED},{{"stage":"ref-update-schema-trust","status":"not_evaluated","blocked_by":"{by}"}}"#
+        )
+    };
+    let verdicts = [
+        // Genuine damage as measured on 0.54.1 / 0.55.0: failed with findings, the rest blocked behind one.
+        ("damage with its blocked stages", blocked("refs")),
+        ("a finding beside evaluated stages", format!("{DONE},{DAMAGED}")),
+        // A message may name a thing the repository's contributors chose: never a substring match.
+        (
+            "a planted name",
+            r#"{"stage":"objects","status":"failed","message":"integrity error: page \"out of memory\" has a damaged entry"}"#.to_owned(),
+        ),
+        (
+            "the words after the prefix, not whole",
+            r#"{"stage":"objects","status":"failed","message":"i/o error: out of memory while reading page X"}"#.to_owned(),
+        ),
+        (
+            "the words behind another prefix",
+            r#"{"stage":"objects","status":"failed","message":"integrity error: i/o error: out of memory"}"#.to_owned(),
+        ),
+        (
+            "the words without the prefix",
+            r#"{"stage":"objects","status":"failed","message":"out of memory"}"#.to_owned(),
+        ),
+        (
+            "a failure that gives no message is not a resource failure",
+            r#"{"stage":"objects","status":"failed"}"#.to_owned(),
+        ),
+        // Nothing ran, so nothing is partial.
+        ("no stages", String::new()),
+    ];
+    let partials = [
+        ("the measured out-of-memory shape", format!("{OOM},{DONE}")),
+        (
+            "raw ENOMEM, whole",
+            r#"{"stage":"objects","status":"failed","message":"i/o error: Cannot allocate memory (os error 12)"}"#.to_owned(),
+        ),
+        (
+            "out of memory with padding after the prefix",
+            r#"{"stage":"objects","status":"failed","message":"i/o error:   out of memory  "}"#.to_owned(),
+        ),
+        ("blocked by a stage missing from the report", blocked("no-such-stage").replace(DAMAGED, DONE)),
+        ("blocked by a stage the report does not list, beside damage", blocked("nowhere")),
+        (
+            "blocked by a not_evaluated stage",
+            format!(
+                r#"{DAMAGED},{{"stage":"a","status":"not_evaluated","blocked_by":"refs"}},{{"stage":"b","status":"not_evaluated","blocked_by":"a"}}"#
+            ),
+        ),
+        (
+            "blocked by a stage that ran out of memory",
+            format!(
+                r#"{OOM},{{"stage":"c","status":"not_evaluated","blocked_by":"objects"}}"#
+            ),
+        ),
+        (
+            "not_evaluated with no blocker named",
+            format!(r#"{DAMAGED},{{"stage":"c","status":"not_evaluated"}}"#),
+        ),
+        ("a halted stage", format!(r#"{DONE},{{"stage":"c","status":"halted"}}"#)),
+        (
+            "a status the driver does not know",
+            format!(r#"{DAMAGED},{{"stage":"c","status":"skipped"}}"#),
+        ),
+        (
+            "an out-of-memory stage beside a finding",
+            format!("{OOM},{DAMAGED}"),
+        ),
+    ];
+    for (what, stages) in &verdicts {
+        for ceiling in [Some(4 << 20), None] {
+            assert_eq!(
+                read(stages, ceiling),
+                Read::Verdict,
+                "{what} (ceiling {ceiling:?})"
+            );
+        }
+    }
+    for (what, stages) in &partials {
+        assert_eq!(
+            read(stages, Some(4 << 20)),
+            Read::Ceiling,
+            "{what}, with a ceiling"
+        );
+        assert_eq!(read(stages, None), Read::Damaged, "{what}, without one");
+    }
+}
+
+#[test]
+fn only_an_exit_one_failing_report_is_considered_and_everything_else_is_read_as_a_failure() {
+    let report = failing(DAMAGED);
+    let good = r#"{"schema_version":"verify-report-v1","verdict":{"ok":true},"stages":[]}"#;
+    // Exit 0: the report, whatever it says.
+    assert!(
+        matches!(PrikkCli::verdict_of(&verify_run(0, good), Some(1)), Some(Ok(v)) if v.verdict.ok)
+    );
+    // A death by signal (bwrap's 128 + n) or an abort is never a verdict, even with a report on stdout.
+    for code in [2, 127, 134, 139] {
+        assert!(
+            PrikkCli::verdict_of(&verify_run(code, &report), Some(1)).is_none(),
+            "exit {code}"
+        );
+    }
+    // Exit 1 with a good verdict, with output that is not a report, and with a doctored schema.
+    assert!(PrikkCli::verdict_of(&verify_run(1, good), Some(1)).is_none());
+    assert!(PrikkCli::verdict_of(&verify_run(1, "error: nope"), Some(1)).is_none());
+    assert!(
+        PrikkCli::verdict_of(
+            &verify_run(1, &report.replace("verify-report-v1", "verify-report-v9")),
+            Some(1)
+        )
+        .is_none()
+    );
+    // A kill or an output bound outranks the report.
+    for (timed_out, output_exceeded) in [(true, false), (false, true)] {
+        let mut run = verify_run(1, &report);
+        run.timed_out = timed_out;
+        run.output_exceeded = output_exceeded;
+        assert!(PrikkCli::verdict_of(&run, Some(1)).is_none());
+    }
+}
+
+#[test]
+fn a_stage_is_modelled_as_prikk_reports_it_and_an_unknown_status_is_never_a_good_one() {
+    let stage = |status: &str| Stage {
+        stage: "s".to_owned(),
+        status: status.to_owned(),
+        message: Some("m".to_owned()),
+        blocked_by: Some("b".to_owned()),
+    };
+    assert_eq!(stage("evaluated").outcome(), StageOutcome::Evaluated);
+    assert_eq!(
+        stage("failed").outcome(),
+        StageOutcome::Failed { message: Some("m") }
+    );
+    assert_eq!(
+        stage("not_evaluated").outcome(),
+        StageOutcome::NotEvaluated {
+            blocked_by: Some("b")
+        }
+    );
+    assert_eq!(stage("halted").outcome(), StageOutcome::Halted);
+    for other in ["", "Evaluated", "skipped", "passed", "ok"] {
+        assert_eq!(stage(other).outcome(), StageOutcome::Unknown(other));
+    }
+    let v: Verification = serde_json::from_str(&failing(&format!("{OOM},{DONE}"))).unwrap();
+    assert_eq!(v.stage_summary(), "objects failed");
+    let v: Verification = serde_json::from_str(&failing(&format!(
+        r#"{DAMAGED},{{"stage":"x","status":"not_evaluated","blocked_by":"refs"}}"#
+    )))
+    .unwrap();
+    assert_eq!(
+        v.stage_summary(),
+        "refs failed, x not_evaluated (behind refs)"
     );
 }

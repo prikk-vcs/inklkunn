@@ -811,3 +811,77 @@ fn admission_refusals_are_typed() {
         "{r:?}"
     );
 }
+
+#[test]
+fn a_failing_report_through_a_stand_in_is_a_verdict_only_when_it_is_complete() {
+    let tmp = TempDir::new("verdicts");
+    let repo = tmp.0.join("repo");
+    fs::create_dir_all(repo.join(".prikk")).unwrap();
+    let report = |stages: &str| {
+        format!(
+            r#"{{"schema_version":"verify-report-v1","verdict":{{"ok":false,"failed_conditions":[{{"id":"stage-failure","message":"repository verification did not complete every stage; see stage outcomes above"}}]}},"stages":[{stages}]}}"#
+        )
+    };
+    let oom = r#"{"stage":"objects","status":"failed","message":"i/o error: out of memory"}"#;
+    let done = r#"{"stage":"refs","status":"evaluated"}"#;
+    let damaged = r#"{"stage":"refs","status":"failed","message":"integrity error: ref pointer index has a damaged entry"}"#;
+    let blocked = |by: &str| {
+        format!(r#"{damaged},{{"stage":"x","status":"not_evaluated","blocked_by":"{by}"}}"#)
+    };
+    let cases: Vec<(&str, String, bool)> = vec![
+        ("the measured out-of-memory shape", format!("{oom},{done}"), false),
+        ("genuine damage", blocked("refs"), true),
+        (
+            "a planted name",
+            r#"{"stage":"objects","status":"failed","message":"integrity error: page \"out of memory\" is damaged"}"#.to_owned(),
+            true,
+        ),
+        ("blocked by a stage missing from the report", blocked("nowhere"), false),
+        ("blocked by an unknown id", blocked("????"), false),
+        (
+            "blocked by a stage that is not_evaluated",
+            format!(
+                r#"{damaged},{{"stage":"a","status":"not_evaluated","blocked_by":"refs"}},{{"stage":"b","status":"not_evaluated","blocked_by":"a"}}"#
+            ),
+            false,
+        ),
+        (
+            "blocked by the out-of-memory stage",
+            format!(r#"{oom},{{"stage":"x","status":"not_evaluated","blocked_by":"objects"}}"#),
+            false,
+        ),
+        ("a halted stage", format!(r#"{done},{{"stage":"x","status":"halted"}}"#), false),
+        ("a status nobody knows", format!(r#"{damaged},{{"stage":"x","status":"skipped"}}"#), false),
+    ];
+    for (n, (what, stages, is_verdict)) in cases.iter().enumerate() {
+        let file = tmp.0.join(format!("report-{n}.json"));
+        fs::write(&file, report(stages)).unwrap();
+        let fake = shim_named(
+            &tmp.0,
+            &format!("prikk-{n}"),
+            &format!(
+                r#"case "$1" in
+  --version) echo 'prikk 0.54.0' ;;
+  verify) cat '{}'; echo "error: repository verification did not complete every stage" >&2; exit 1 ;;
+esac"#,
+                file.display()
+            ),
+        );
+        let d = open_shim(&fake).expect("open");
+        let r = retry(|| d.verify(&repo));
+        if *is_verdict {
+            assert!(matches!(&r, Ok(v) if !v.verdict.ok), "{what}: {r:?}");
+        } else {
+            assert!(
+                matches!(
+                    &r,
+                    Err(StorageError::Unavailable {
+                        verb: "verify",
+                        reason: Unavailable::CeilingExceeded { .. }
+                    })
+                ),
+                "{what}: {r:?}"
+            );
+        }
+    }
+}

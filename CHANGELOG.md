@@ -318,3 +318,15 @@ are the language switcher and the notices.
   separate empty `<span>`; `![[Page]]` of a page shows that page (it was a link). *API changes:*
   `StorageError::Refused` carries the refusal's `reason`; `WikiStore` has two more methods
   (`request_checkpoint_refresh`, `record_checkpoint_refresh`); `RenderLinks` has three more for transclusion.
+
+Follow-on to RFC 001 (issue IS-7, `verify-verdict-honesty-handoff-v1`).
+
+- **A memory limit reached while checking a repository is reported as *could not be checked now*, never as a failed
+  verification.** Under a memory ceiling prikk's `verify` may print a *complete* failing report whose `objects` stage
+  failed with `i/o error: out of memory` (ledger PK-22). The driver now returns a failing report as a verdict only
+  when every stage ran to an outcome: `evaluated`, `failed` with a finding, or `not_evaluated` behind a stage of the
+  same report that failed with a finding. A stage that ran out of memory, a `halted` stage, a status the driver does
+  not know, or a `not_evaluated` stage with no such blocker makes the report partial, and a partial report is
+  `CeilingExceeded`. The out-of-memory message is matched only whole, after the prefix `i/o error:`, never as a
+  substring. *API change:* `Stage` carries `message` and `blocked_by` and is read through `Stage::outcome()`;
+  `Verification::is_partial()` and `stage_summary()` are new.

@@ -279,13 +279,72 @@ pub struct Materialized {
     pub largest_file_bytes: u64,
 }
 
-/// One verification stage.
+/// One verification stage, as prikk reports it (`verify-report-v1`). The fields are prikk's: read the
+/// outcome through [`Stage::outcome`], which never maps a status it does not know to a good one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Stage {
     /// Stage name.
     pub stage: String,
-    /// `evaluated`, `skipped`, …
+    /// `evaluated`, `failed`, `not_evaluated`, `halted`, or a status a newer prikk invented (kept as sent).
     pub status: String,
+    /// Why a `failed` stage failed, in prikk's words. **Operator text**: it may embed a name the repository's
+    /// contributors chose (a page path, a ref), so it is never matched as a substring and never shown.
+    #[serde(default)]
+    pub message: Option<String>,
+    /// The stage a `not_evaluated` stage was blocked behind (a machine-readable id, not text to parse).
+    #[serde(default)]
+    pub blocked_by: Option<String>,
+}
+
+/// What a [`Stage`] came to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StageOutcome<'a> {
+    /// The stage ran and found nothing wrong.
+    Evaluated,
+    /// The stage ran and failed, with prikk's message when it gave one.
+    Failed {
+        /// prikk's message, operator text.
+        message: Option<&'a str>,
+    },
+    /// The stage did not run, behind the stage named.
+    NotEvaluated {
+        /// The blocking stage's id, when prikk named one.
+        blocked_by: Option<&'a str>,
+    },
+    /// The run stopped at this stage.
+    Halted,
+    /// A status this driver does not know; never read as success.
+    Unknown(&'a str),
+}
+
+impl Stage {
+    /// The outcome of this stage; a status the driver does not know is [`StageOutcome::Unknown`].
+    pub fn outcome(&self) -> StageOutcome<'_> {
+        match self.status.as_str() {
+            "evaluated" => StageOutcome::Evaluated,
+            "failed" => StageOutcome::Failed {
+                message: self.message.as_deref(),
+            },
+            "not_evaluated" => StageOutcome::NotEvaluated {
+                blocked_by: self.blocked_by.as_deref(),
+            },
+            "halted" => StageOutcome::Halted,
+            other => StageOutcome::Unknown(other),
+        }
+    }
+}
+
+/// Whether a failed stage's message is a *resource* failure — prikk ran out of memory — and so says nothing
+/// about the repository (ledger PK-22). Only the measured texts, only whole, and only after the exact prefix
+/// `i/o error:`: **never a substring match**, because a message can carry a name the repository's
+/// contributors chose, and a page titled "out of memory" must not turn damage into a ceiling hit.
+fn is_resource_failure(message: &str) -> bool {
+    message
+        .strip_prefix("i/o error:")
+        .map(str::trim)
+        .is_some_and(|rest| {
+            rest == "out of memory" || rest == "Cannot allocate memory (os error 12)"
+        })
 }
 
 /// A verification verdict.
@@ -299,7 +358,8 @@ pub struct Verdict {
 }
 
 /// The result of `verify`. `verify-report-v1`. A verdict is a fact about the repository; a call that could
-/// not run to completion is a [`StorageError`], never a verdict.
+/// not run to completion is a [`StorageError`], never a verdict. The driver returns a *failing* report only
+/// when it is complete ([`Verification::is_partial`] is `false`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Verification {
     /// Pinned schema name.
@@ -309,6 +369,50 @@ pub struct Verification {
     /// The stages run.
     #[serde(default)]
     pub stages: Vec<Stage>,
+}
+
+impl Verification {
+    /// Whether some stage did not run to an outcome about the repository, so that a failing verdict from
+    /// this report would blame the repository for something it did not do (ledger PK-22, PL-7).
+    ///
+    /// Every stage must be `evaluated`; `failed` with a message that is not a resource failure (a finding);
+    /// or `not_evaluated` behind a stage **of this report** that is `failed` with a finding. Partial are:
+    /// a `halted` stage, a status this driver does not know, a `not_evaluated` stage whose blocker is
+    /// missing, unnamed, unknown, itself `not_evaluated`, or failed for lack of memory, and a stage that
+    /// failed for lack of memory. A report with no stages at all has nothing to be partial about.
+    pub fn is_partial(&self) -> bool {
+        // A blocker that failed for lack of memory is no finding either, but it needs no check of its own:
+        // that stage is itself a stage of this report and makes the whole report partial below.
+        let failed = |id: &str| {
+            self.stages
+                .iter()
+                .any(|s| s.stage == id && matches!(s.outcome(), StageOutcome::Failed { .. }))
+        };
+        self.stages.iter().any(|s| match s.outcome() {
+            StageOutcome::Evaluated => false,
+            StageOutcome::Failed { message } => message.is_some_and(is_resource_failure),
+            StageOutcome::NotEvaluated { blocked_by } => !blocked_by.is_some_and(failed),
+            StageOutcome::Halted | StageOutcome::Unknown(_) => true,
+        })
+    }
+
+    /// The stages' names and statuses on one line, for an operator's log. No message is included.
+    pub fn stage_summary(&self) -> String {
+        let parts: Vec<String> = self
+            .stages
+            .iter()
+            .filter(|s| s.status != "evaluated")
+            .map(|s| match &s.blocked_by {
+                Some(b) => format!("{} {} (behind {b})", s.stage, s.status),
+                None => format!("{} {}", s.stage, s.status),
+            })
+            .collect();
+        if parts.is_empty() {
+            "every stage evaluated".to_owned()
+        } else {
+            parts.join(", ")
+        }
+    }
 }
 
 /// Bounds for materializing a point.
@@ -524,6 +628,10 @@ pub trait Storage: Send + Sync {
         name: &str,
         bounds: ExtractBounds,
     ) -> Result<Materialized>;
-    /// Verify the repository. A failed verdict is `Ok(Verification { verdict.ok: false, .. })`.
+    /// Verify the repository. A failed verdict is `Ok(Verification { verdict.ok: false, .. })`, **and only a
+    /// complete report is a verdict**: a failing report in which a stage ran out of memory, halted, or was
+    /// left unevaluated for a reason the report does not give as a finding ([`Verification::is_partial`]) is
+    /// [`Unavailable::CeilingExceeded`] when a memory ceiling was set (every production call sets one) and
+    /// [`StorageError::Damaged`] when none was. A resource limit is never shown as damage to the repository.
     fn verify(&self, repo: &Path) -> Result<Verification>;
 }

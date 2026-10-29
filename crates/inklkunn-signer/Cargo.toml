@@ -35,6 +35,8 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 inklkunn-signer = { path = ".", version = "0.0.0", features = ["bootstrap", "test-knobs"] }
+# The fixed-ceiling knob: the verdict sweep (tests/verify_verdicts.rs) drives the read driver at chosen ceilings.
+inklkunn-prikk = { path = "../inklkunn-prikk", version = "0.0.0", features = ["test-knobs"] }
 proptest = { workspace = true }
 
 [lints]
