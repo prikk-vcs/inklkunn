@@ -225,6 +225,40 @@ fn a_write_without_a_key_directory_mounts_no_keys_and_sets_no_variables() {
     assert!(!a.iter().any(|x| x.starts_with("PRIKK_")), "{a:?}");
 }
 
+#[test]
+fn the_keyless_writable_mode_binds_the_repo_and_one_output_directory_and_nothing_of_keys() {
+    let m = Mounts::write_keyless_with_output(Path::new("/repo"), Path::new("/out"));
+    assert!(m.is_writable());
+    assert!(m.env().is_empty());
+    let c = Sandbox::default().command_mounts(
+        OsStr::new("prikk"),
+        &m,
+        &["verify", "--format", "json"],
+        CallLimits::default(),
+    );
+    let a = args_of(&c);
+    assert!(
+        a.windows(3).any(|w| w == ["--bind", "/repo", "/repo"]),
+        "{a:?}"
+    );
+    assert!(
+        a.windows(3).any(|w| w == ["--bind", "/out", "/out"]),
+        "{a:?}"
+    );
+    // Only the system, the binary, the repository and the output: no key directory, no variable but PATH.
+    assert!(!a.iter().any(|x| x.contains("keys")), "{a:?}");
+    assert!(!a.iter().any(|x| x.starts_with("PRIKK_")), "{a:?}");
+    assert_eq!(a.iter().filter(|x| x.as_str() == "--setenv").count(), 1);
+    // The output may not sit inside the repository.
+    let tmp = Tmp::new("keyless");
+    let repo = tmp.0.join("repo");
+    std::fs::create_dir_all(repo.join("out")).unwrap();
+    assert!(matches!(
+        Mounts::write_keyless_with_output(&repo, &repo.join("out")).validate(),
+        Err(MountError::Overlap(..))
+    ));
+}
+
 fn run_of(status: i32, stderr: &str) -> Run {
     use std::os::unix::process::ExitStatusExt;
     Run {

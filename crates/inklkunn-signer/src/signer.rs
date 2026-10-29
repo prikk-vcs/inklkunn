@@ -19,10 +19,9 @@
 //! the very first change. It refuses any change but a `system` message to a repository with no history
 //! yet, so it cannot be used to add to a wiki that exists.
 
-use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Condvar, Mutex, PoisonError};
+use std::sync::Arc;
 use std::time::Duration;
 
 use inklkunn_prikk::sandbox::Sandbox;
@@ -34,10 +33,10 @@ use crate::accept::{
     Accept, AcceptError, AcceptanceLedger, AcceptanceToken, PreparedChange, SealedChange,
     Unconfirmed, ViewCreationAct,
 };
-use crate::flock::{self, Acquired, FileLock};
 use crate::key_store::{KeyStore, KeyStoreError, Meta, Secret, SeedBase, SeedDir, Seeds};
 use crate::keys::Role;
 use crate::keys::{KeyDir, KeyIds};
+use crate::locks::{WikiLocks, WriteGuard};
 use crate::message::{Kind, Message};
 use crate::worktree::{Applied, Plan};
 use crate::writes::{SealedIds, SeedAccess, SignerError, Writes};
@@ -114,71 +113,6 @@ pub struct KeyStatus {
     pub rotated_at: Option<i64>,
 }
 
-/// How long a caller rides out a lock that is held: the moment a sibling thread's `fork` holds a copy of a
-/// descriptor just released (the child closes it at `exec`). Not a wait for the holder's work.
-const LOCK_GRACE: Duration = Duration::from_millis(250);
-
-/// **One writer per wiki** (corrections handoff C3; threat model CON-1, INT-2). An acceptance is a sequence
-/// (status, switch, write files, commit, seal, read back, verify) over one worktree; two at once would commit
-/// each other's files under each other's messages, and the command line beside a running server is as much a
-/// second writer as a second thread. So every act that writes a wiki's repository or key record takes
-///
-/// 1. the in-process turn (a thread of this process waits for another thread's act on the same wiki, as it
-///    always did), and then
-/// 2. an exclusive `flock` on the wiki's lock file in inklkunn's data directory ([`RootLayout::lock_file`],
-///    never inside `.prikk/`), which excludes every other process **and answers at once**: a caller that
-///    cannot have it is told the wiki is busy, naming the process that holds it, and never waits for it.
-///
-/// The kernel drops the lock with its holder, so a killed process leaves nothing to clear. RFC 004's lease is
-/// built on this lock.
-#[derive(Default)]
-struct WikiLocks {
-    held: Mutex<HashSet<WikiId>>,
-    turn: Condvar,
-}
-
-/// A wiki's write lock, held for one act.
-struct WriteGuard<'a> {
-    locks: &'a WikiLocks,
-    wiki: WikiId,
-    file: Option<FileLock>,
-}
-
-impl Drop for WriteGuard<'_> {
-    fn drop(&mut self) {
-        // The file first: the in-process turn must not be given up while the file lock is still held, or the
-        // next thread would find its own process "busy".
-        drop(self.file.take());
-        let mut held = self
-            .locks
-            .held
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
-        held.remove(&self.wiki);
-        self.locks.turn.notify_all();
-        drop(held);
-        // Tests widen the gap in which a wrongly ordered release would be seen (see the test that pins the order).
-        #[cfg(test)]
-        std::thread::sleep(Duration::from_millis(40));
-    }
-}
-
-impl WikiLocks {
-    fn enter(&self, wiki: &WikiId) {
-        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
-        while held.contains(wiki) {
-            held = self.turn.wait(held).unwrap_or_else(PoisonError::into_inner);
-        }
-        held.insert(wiki.clone());
-    }
-
-    fn leave(&self, wiki: &WikiId) {
-        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
-        held.remove(wiki);
-        self.turn.notify_all();
-    }
-}
-
 /// The signer.
 pub struct Signer {
     writes: Writes,
@@ -193,28 +127,7 @@ pub struct Signer {
 impl Signer {
     /// Take the wiki's write lock for one act, or say who holds it.
     fn write_lock(&self, wiki: &WikiId) -> Result<WriteGuard<'_>, SignerError> {
-        self.locks.enter(wiki);
-        match flock::exclusive_within(&self.root.lock_file(wiki), LOCK_GRACE) {
-            Ok(Acquired::Held(file)) => Ok(WriteGuard {
-                locks: &self.locks,
-                wiki: wiki.clone(),
-                file: Some(file),
-            }),
-            Ok(Acquired::Busy { holder }) => {
-                self.locks.leave(wiki);
-                Err(SignerError::Busy {
-                    wiki: wiki.to_string(),
-                    holder,
-                })
-            }
-            Err(e) => {
-                self.locks.leave(wiki);
-                Err(SignerError::Unavailable(format!(
-                    "the wiki's write lock could not be taken ({})",
-                    e.kind()
-                )))
-            }
-        }
+        self.locks.take(&self.root, wiki)
     }
 }
 

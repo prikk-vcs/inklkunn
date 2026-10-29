@@ -1,6 +1,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use super::*;
+use crate::flock::{self, Acquired};
 
 #[test]
 fn a_view_is_heads_and_a_start_is_heads_or_tags() {

@@ -118,6 +118,22 @@ pub(crate) const STATUS_REPORT: &str = "status-report-v1";
 /// `worktree-status --format json`.
 pub(crate) const WORKTREE_REPORT: &str = "worktree-status-report-v1";
 
+/// `archive export --format json`: the pinned schema name (ledger PK-23; measured on prikk 0.55.0).
+pub(crate) const ARCHIVE_REPORT: &str = "prepo-export-report-v1";
+
+/// What the signer reads from `archive export`'s report.
+#[derive(Debug, Deserialize)]
+pub(crate) struct ArchiveReport {
+    /// The export completed.
+    pub(crate) ok: bool,
+    /// The archive's size in bytes, which the signer checks against the file it finds.
+    pub(crate) total_bytes: u64,
+    /// The repository format the archive carries.
+    pub(crate) repository_format: u64,
+    /// The prikk that wrote it.
+    pub(crate) tool_version: String,
+}
+
 /// What the write sequence reads from `status`: the current branch and the queue.
 #[derive(Debug, Deserialize)]
 pub(crate) struct StatusReport {
@@ -635,8 +651,19 @@ impl Writes {
     /// every other partial report, is the verify-verdict follow-on's; the signer needs this part now, because
     /// a seal followed by a ceiling-failed `verify` must not read as a failed verification.)
     pub(crate) fn verify(&self, repo: &Path) -> Result<Verification, SignerError> {
+        self.verify_under(&Mounts::read(repo, None), repo)
+    }
+
+    /// `prikk verify` with the repository **writable and no key in sight** (the keyless mode): the one thing
+    /// that makes prikk record its checkpoint (`.prikk/cache/replay-verified-blocks.v1`) besides `seal`, which a
+    /// read-only `verify` does not (ledger PK-24). The same verdict rules as [`Writes::verify`].
+    pub(crate) fn verify_writable(&self, repo: &Path) -> Result<Verification, SignerError> {
+        self.verify_under(&Mounts::write(repo, None, Vec::new()), repo)
+    }
+
+    fn verify_under(&self, mounts: &Mounts, repo: &Path) -> Result<Verification, SignerError> {
         let args = ["verify", "--format", "json"];
-        let (run, ceiling) = self.run_raw(&Mounts::read(repo, None), Sizing::repo(repo), &args)?;
+        let (run, ceiling) = self.run_raw(mounts, Sizing::repo(repo), &args)?;
         if !run.timed_out && !run.output_exceeded && resource_failure_in(&run.stdout) {
             return Err(SignerError::CeilingExceeded {
                 verb: "verify".to_owned(),
@@ -646,6 +673,34 @@ impl Writes {
         let out = report_outcome("verify", run, ceiling)?;
         parse_report("verify", &out, schema::VERIFY_REPORT)
             .map_err(|e| SignerError::Damaged(e.to_string()))
+    }
+
+    /// `prikk archive export <file>` with the repository writable (prikk writes lock files and caches inside
+    /// `.prikk/`, ledger PK-23), no key in sight, and `output_dir` the one other directory writable: the archive
+    /// is written to `file`, which must lie directly in `output_dir`. The report is read under its pinned schema
+    /// and must say `ok`.
+    pub(crate) fn archive_export(
+        &self,
+        repo: &Path,
+        output_dir: &Path,
+        file: &Path,
+    ) -> Result<ArchiveReport, SignerError> {
+        let file_text = file
+            .to_str()
+            .ok_or_else(|| SignerError::Refused("the archive's path is not UTF-8".to_owned()))?;
+        let out = self.run(
+            &Mounts::write_keyless_with_output(repo, output_dir),
+            Sizing::repo(repo),
+            &["archive", "export", file_text, "--format", "json"],
+        )?;
+        let report: ArchiveReport = parse_report("archive export", &out, ARCHIVE_REPORT)
+            .map_err(|e| SignerError::Damaged(e.to_string()))?;
+        if !report.ok {
+            return Err(SignerError::Damaged(
+                "`archive export` did not report success".to_owned(),
+            ));
+        }
+        Ok(report)
     }
 
     /// Every view of the repository, closed ones included (`branch list --all`): what a rotation records the

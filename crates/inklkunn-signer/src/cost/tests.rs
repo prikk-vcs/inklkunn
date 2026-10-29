@@ -3,6 +3,26 @@
 use super::*;
 
 #[test]
+fn the_archive_export_is_flat_because_it_streams_and_the_refresh_follows_verify() {
+    // Measured on prikk 0.55.0: 0.4 – 3.5 MiB whatever the store (3 MiB to 200 MiB, 10,000 pages or one
+    // attachment). The rule is a flat 16 MiB cost, ceiling 24 MiB, and does not follow the store.
+    for store in [0, 3 * MIB, 90 * MIB, 200 * MIB, 4096 * MIB] {
+        assert_eq!(WriteVerb::ArchiveExport.cost(store, 0), 16 * MIB, "{store}");
+        assert_eq!(
+            WriteVerb::ArchiveExport.ceiling(store, 0),
+            ceiling_for(16 * MIB)
+        );
+    }
+    // The checkpoint refresh is a `verify` with the repository writable: the same verb, the same rule.
+    assert_eq!(
+        WriteVerb::of(&["verify", "--format", "json"]),
+        Some(WriteVerb::Verify)
+    );
+    // 2.0 × S on wiki stores and 5.0 × S for one attachment (200 MiB measured at 1000.4 MiB) fit under 5.0 × S.
+    assert!(WriteVerb::Verify.cost(200 * MIB, 0) >= 1000 * MIB);
+}
+
+#[test]
 fn the_table_is_bound_to_the_floor() {
     let mut parts = inklkunn_prikk::MIN_PRIKK_VERSION
         .split('.')
@@ -21,7 +41,7 @@ fn the_table_is_bound_to_the_floor() {
 #[test]
 fn every_verb_the_signer_runs_has_a_rule_and_is_found_by_its_arguments() {
     // The argument vectors the runner is given, one per verb: each is found, none is found twice.
-    let vectors: [(&[&str], WriteVerb); 14] = [
+    let vectors: [(&[&str], WriteVerb); 16] = [
         (&["init"], WriteVerb::Init),
         (
             &["trust", "maintainer", "add", "--key-id", "k"],
@@ -45,6 +65,11 @@ fn every_verb_the_signer_runs_has_a_rule_and_is_found_by_its_arguments() {
         (&["commit", "-m", "m"], WriteVerb::Commit),
         (&["seal", "--allow-no-audit"], WriteVerb::Seal),
         (&["branch", "list", "--all"], WriteVerb::BranchList),
+        (
+            &["archive", "export", "/x/a.tmp", "--format", "json"],
+            WriteVerb::ArchiveExport,
+        ),
+        (&["archive", "export", "/x/a.tmp"], WriteVerb::ArchiveExport),
     ];
     for (args, verb) in vectors {
         assert_eq!(WriteVerb::of(args), Some(verb), "{args:?}");
@@ -61,6 +86,10 @@ fn every_verb_the_signer_runs_has_a_rule_and_is_found_by_its_arguments() {
         &["gc"],
         &["branch"],
         &["branch", "delete", "x"],
+        // The other archive verbs are not run: only `export` has a rule.
+        &["archive", "import", "x"],
+        &["archive", "verify", "x"],
+        &["archive"],
         &[],
     ] {
         assert_eq!(WriteVerb::of(unknown), None, "{unknown:?}");

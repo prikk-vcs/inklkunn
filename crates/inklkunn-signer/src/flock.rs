@@ -21,7 +21,14 @@ use rustix::io::Errno;
 /// A held exclusive lock. Dropping it (or the process dying) releases it.
 #[derive(Debug)]
 pub(crate) struct FileLock {
-    _file: File,
+    file: File,
+}
+
+impl FileLock {
+    /// Make the locked file durable (its existence, for a mark that must survive a crash of the machine).
+    pub(crate) fn sync(&self) -> std::io::Result<()> {
+        self.file.sync_all()
+    }
 }
 
 /// The outcome of asking for a lock without waiting.
@@ -56,7 +63,7 @@ pub(crate) fn try_exclusive(path: &Path) -> std::io::Result<Acquired> {
             // The holder's id, for whoever is refused next. A failure to record it does not undo the lock.
             let _ = file.set_len(0);
             let _ = file.write_all_at(std::process::id().to_string().as_bytes(), 0);
-            Ok(Acquired::Held(FileLock { _file: file }))
+            Ok(Acquired::Held(FileLock { file }))
         }
         Err(Errno::WOULDBLOCK) => {
             let mut buf = [0_u8; 24];

@@ -5,7 +5,10 @@
 //! `key_store` private, and keeps the writable sandbox mounts out of every other crate.
 //!
 //! **What is public is small by design.** [`Accept`] is the one way into a wiki's history and [`Signer`]
-//! implements it; [`RepositoryBootstrap`] is the seam *create wiki* calls; [`message`] is the attribution
+//! implements it; [`RepositoryBootstrap`] is the seam *create wiki* calls; [`Maintenance`] is the **keyless
+//! writable mode** (no key store, no secret, no seed): `archive export` and the checkpoint refresh, nothing
+//! else (handoff 003 T7); [`CreationMark`] is the state a wiki is in while it is being created, which the
+//! start-up sweep reads (a kill at any step leaves nothing behind); [`message`] is the attribution
 //! contract the signer enforces; [`KeyIds`], [`KeyStatus`] and [`SealedIds`] carry ids and dates (never
 //! seeds); [`SignerError`] says what did not happen. The write-verb runner, the key directory and the
 //! key store are private to the crate.
@@ -20,13 +23,17 @@ mod cost;
 mod flock;
 mod key_store;
 mod keys;
+mod locks;
 mod writes;
 
 mod signer;
 mod worktree;
 
 pub mod accept;
+pub mod creation;
 pub mod message;
+
+mod maintenance;
 
 #[cfg(feature = "bootstrap")]
 pub mod bootstrap;
@@ -40,7 +47,9 @@ pub use accept::{
 };
 #[cfg(feature = "bootstrap")]
 pub use bootstrap::BootstrapSigner;
+pub use creation::{CreationMark, Unfinished, find_unfinished};
 pub use keys::KeyIds;
+pub use maintenance::{ArchiveExported, Maintenance};
 pub use signer::lifecycle::{OldKey, OldKeyOutcome, Rotation};
 pub use signer::superseded::{LateSeal, SupersededKey};
 pub use signer::{KeyStatus, Signer, SignerConfig};

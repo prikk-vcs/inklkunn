@@ -79,6 +79,7 @@ pub const KEY_STORE_MODULE: &str = "key_store";
 pub const SIGNER_ONLY_NAMES: &[&str] = &[
     "Mounts::write",
     "Mounts::dir_writable",
+    "Mounts::write_keyless_with_output",
     "BootstrapSigner",
     "run_mounts",
 ];

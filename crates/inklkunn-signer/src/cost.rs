@@ -18,6 +18,13 @@
 //! by the first measurement). The rules round up (the commit's multiple is 8) and the ceiling is 1.5 × the cost.
 //! Every rule carries the prikk version it is bound to ([`BOUND_TO`]); a test fails when
 //! that is not the floor, so the table is revisited at every re-baseline (RFC 010).
+//!
+//! **The keyless writable mode's two verbs** (handoff 003 T7; measured 2026-10-29 on prikk 0.55.0 by the same
+//! method, on a copy per probe: wiki stores of 3.0, 29.4 and 86.6 MiB (1,000 and 10,000 pages) and single-attachment
+//! stores of 64 and 200 MiB): `archive export` needs 0.7, 3.5, 3.5, 0.4 and 0.4 MiB, so it is a flat 16 MiB cost
+//! (ceiling 24 MiB); a `verify` with the repository writable (the checkpoint refresh) needs 2.09, 2.02 and 2.01 × S on
+//! the wiki stores and 5.01 and 5.00 × S for one attachment, the same as the read-only `verify`, so it runs under the
+//! existing `verify` rule.
 
 use std::path::Path;
 
@@ -72,12 +79,14 @@ pub(crate) enum WriteVerb {
     BranchCreate,
     /// `branch list`.
     BranchList,
+    /// `archive export` (keyless writable mode; handoff 003 T7, IS-8).
+    ArchiveExport,
 }
 
 impl WriteVerb {
     /// Every verb.
     #[cfg(test)]
-    pub(crate) const ALL: [WriteVerb; 14] = [
+    pub(crate) const ALL: [WriteVerb; 15] = [
         WriteVerb::Init,
         WriteVerb::Trust,
         WriteVerb::KeyGenerate,
@@ -92,6 +101,7 @@ impl WriteVerb {
         WriteVerb::Seal,
         WriteVerb::BranchCreate,
         WriteVerb::BranchList,
+        WriteVerb::ArchiveExport,
     ];
 
     /// The verb a prikk argument vector runs, or `None` for one the signer has no cost for (and so never runs).
@@ -108,6 +118,7 @@ impl WriteVerb {
             ["branch", "switch", ..] => WriteVerb::Switch,
             ["branch", "create", ..] => WriteVerb::BranchCreate,
             ["branch", "list", ..] => WriteVerb::BranchList,
+            ["archive", "export", ..] => WriteVerb::ArchiveExport,
             ["mv", ..] => WriteVerb::Mv,
             ["commit", ..] => WriteVerb::Commit,
             ["seal", ..] => WriteVerb::Seal,
@@ -140,6 +151,9 @@ impl WriteVerb {
             // 13 MiB for 10,000 pages; 2.0 × S once a large file is in an earlier block; 2.1 × the bytes of a
             // file it seals.
             WriteVerb::Seal => (30, 30, 32 * MIB),
+            // 0.4 MiB for one 64 or 200 MiB attachment, 0.7 MiB at 3 MiB, 3.5 MiB at 29 and 87 MiB (10,000
+            // pages): it streams, and its need does not follow S. Flat, at four times the largest need.
+            WriteVerb::ArchiveExport => (0, 0, 16 * MIB),
         };
         WriteRule {
             store_tenths,

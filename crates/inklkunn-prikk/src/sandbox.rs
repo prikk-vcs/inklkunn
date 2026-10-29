@@ -223,6 +223,19 @@ impl Mounts {
         }
     }
 
+    /// The signer's **keyless writable mode** (handoff 003 T7, IS-8): the repository writable, **no key
+    /// directory and no seed variable**, and one output directory, read-write and disjoint from the repository,
+    /// for the file `archive export` writes. For nothing but the two operations of `Maintenance`.
+    pub fn write_keyless_with_output(repo: &Path, output_dir: &Path) -> Self {
+        Mounts {
+            repo: repo.to_path_buf(),
+            repo_writable: true,
+            scratch: Some(output_dir.to_path_buf()),
+            key_dir: None,
+            env: Vec::new(),
+        }
+    }
+
     /// One directory, writable, as the working directory and the only mount (key generation, which needs
     /// no repository).
     pub fn dir_writable(dir: &Path) -> Self {

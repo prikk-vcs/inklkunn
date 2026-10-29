@@ -45,8 +45,8 @@ pub use authorize::{
 pub use check::{CheckOutcome, Checked, NotChecked, StageFinding, Verifier};
 pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, Resolver, StdEgressGuard, StdResolver};
 pub use inklkunn_signer::{
-    KeyAuthority, KeyStatus, LateSeal, OldKey, OldKeyOutcome, Rotation, Signer, SignerConfig,
-    SignerError, SupersededKey,
+    ArchiveExported, KeyAuthority, KeyStatus, LateSeal, Maintenance, OldKey, OldKeyOutcome,
+    Rotation, Signer, SignerConfig, SignerError, SupersededKey,
 };
 pub use read::{
     Calls, Cause, CountingStorage, Found, Lookup, PageOutcome, PageView, Presentation, ReadConfig,
@@ -54,6 +54,7 @@ pub use read::{
 };
 pub use routes::{Guard, RouteEntry, RouteError, RouteTable};
 pub use wiki::{
-    Cleanup, CreateWikiError, CreatedWiki, RepositoryBootstrap, create_wiki, creation_message,
+    Cleanup, CreateWikiError, CreatedWiki, CreationStep, RepositoryBootstrap, SweepReport,
+    create_wiki, create_wiki_observed, creation_message, sweep_unfinished_creations,
     system_message,
 };
