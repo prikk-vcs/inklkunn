@@ -152,6 +152,15 @@
   failed** in both runs, **71 self-skips**; the real-prikk sweep reproduced (the shape at 1792, 2048, 2304 KiB) and
   shown to fail on the old driver. Two small follow-ups (V1: the rule whatever the exit code; V2: an empty stage list
   is partial) before T4's badge. Ledger PK-8 and PK-22 folded. Pushed.
+- **2026-10-30 — handoff 003's pre-T4 notes and T4 – T9 reviewed: Conditionally Approved** (result
+  `.git-exclude/reviewed/003-read-path-and-rendering-t4-t9-review-result.md`; two areas also read by independent
+  reviewers, every finding confirmed in the code). Gates re-run at `7cf4709`: **1,169 passed, 0 failed** in both runs,
+  **91 self-skips**. Corrections R1 – R10 in handoff 003, **all before 0.1.0**; the one that matters most: a check
+  that could not run must never replace a verdict (R1: today an anonymous visitor can turn *Verification failed* into
+  *Could not be checked now*). Others: the archive's temporary file and copy (R2, R3), the import walk and its
+  refusals (R4, R5), the bundle manifest's checksums in wiki-commons' shape (R6). IS-18 opened (raw source of a
+  restricted wiki on a separate content host, for sign-in). Three asks for the next bundled letter to prikk (below).
+  Pushed.
 
 ## Pending on the owner
 
@@ -177,13 +186,12 @@
 
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and handoff 003's T1 – T3 are built and
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
-**The driver follow-on (IS-7) is done and approved the same day.** **The dev team's order now:** handoff
-003's T4 – T6 under the 2026-10-29 notes (author HTML escaped and reads pinned first; the trusted-proxy setting, F6,
-and the verdict follow-ups V1, V2 with T4), then T7 (with F5) and T8 – T9
-toward the 0.1.0 readiness report; the corrections' follow-ups F1 (the write-cost script) before 0.1.0 and F2 – F4
+**The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
+(2026-10-30).** **The dev team's order now:** handoff 003's corrections R1 – R10 (R1 first), all before 0.1.0;
+then the architect brings the 0.1.0 decision to the owner. F1, F5, F6, V1, V2 are done (in T4 – T9); F2 – F4
 before OpenID Connect is switched on. The architect reviews
-each request as it arrives; the next re-baseline is at prikk 0.56.0. RFC 004 (proposals) is accepted and its handoff v1 is written; it is assigned when handoff 003's T1 – T4 are approved
-(the 002 corrections it also waited for are). The single-large-attachment measurement is now handoff 003's T6 (IS-12; the architect's
+each request as it arrives; the next re-baseline is at prikk 0.56.0. RFC 004 (proposals) is accepted and its handoff v1 is written; it is assignable **once R1 is approved** (acceptance
+reads the verification verdict, INT-6), beside the rest of R2 – R10. The single-large-attachment measurement is now handoff 003's T6 (IS-12; the architect's
 early data are in ledger PK-20). The architect drafts RFC 005 part 1 (the claim-identity investigation) when M1 is
 under way. The four kickoff documents the requirements transcript
 linked do not exist (owner, 2026-10-28): the transcripts under `.git-exclude/specs/` are the complete startup
@@ -207,12 +215,13 @@ the mode requires. CI is green from `d0a8307` on ([run 40489623629](https://gith
 | IS-9 | **`extract` needs prikk's checkpoint record, which a read-only `verify` cannot refresh**: after a prikk upgrade, a restore or a cleared cache, `extract` of a history beyond 63 blocks refuses (`not-recorded`) until a seal or a writable `verify` | architect review 2026-10-28; measured on 0.54.1; ledger PK-24 | **concretized**: the checkpoint refresh is the keyless mode's second operation (RFC 003 D-11), run at start where the prikk version changed (the wiki record keeps it, store schema 2) and on demand; a `not-recorded` refusal is *could not be read now*, never `--allow-full-replay` from a request (handoff 003, T3 and T7 notes) |
 | IS-10 | **The title index as specified would cost one whole-tree replay per page** ("one `tree` and the `cat`s it needs"): each `cat` replays the tree (0.17–0.42 s at 76–212 MiB), and `diff --path` filters only the output; tens of minutes per tip on a 10,000-page wiki | architect review 2026-10-28; spike A's numbers; ledger PK-25 | **concretized**: RFC 003 D-2 and the handoff's T3 build each tip's index from one `extract` (0.28–0.58 s at 10,000 pages); the build is measured against PERF-1 in T3; serving page bodies from the materialized tip is the next lever if PERF-1 fails (the architect's call) |
 | IS-11 | **The OIDC token-verifier crate named in RFC 002's handoff fails both supply-chain gates** (RUSTSEC-2026-0387, RUSTSEC-2023-0071 through `jsonwebtoken`'s RustCrypto backend); `tokio` below 1.53.3 has RUSTSEC-2026-0386 | planeter IS-54, D-40, D-41 (PL-10); architect review 2026-10-28 | **decided 2026-10-28 (DR-9: `aws_lc_rs`)**: handoff 002's T1 adopts `jsonwebtoken`'s `aws_lc_rs` backend, measured, with no advisory ignore and neither `rsa` nor `crypto-bigint` in the lock; handoff 003's T1 takes `tokio` ≥ 1.53.3; closes when T1 lands with `cargo deny` and `cargo audit` green |
-| IS-12 | **The cost table is thin for a single large attachment**: on one 24 MiB attachment `cat` needs 3.0 × S against a ceiling of 3.15 × S (admission understated by 30 %), `verify` 5.0 × S against a cost of 4.1 × S | architect review 2026-10-28; measured on 0.54.1; ledger PK-20 | handoff 003's T6 re-measures at 64 and 200 MiB and raises the multiples **before `-/raw/` serves attachments** (T9's measurement brought forward); a `cat` rule that follows the file's size is to be proposed from the data |
+| IS-12 | **The cost table is thin for a single large attachment**: on one 24 MiB attachment `cat` needs 3.0 × S against a ceiling of 3.15 × S (admission understated by 30 %), `verify` 5.0 × S against a cost of 4.1 × S | architect review 2026-10-28; measured on 0.54.1; ledger PK-20 | **Resolved 2026-10-30** (handoff 003 T9, measured through the driver's vector at 24, 64 and 200 MiB on prikk 0.55.0: the reads 2.0 × S, `verify` 3.0 × S; the table's 2.1 × and 4.1 × hold, no multiple changes; the 5.0 × S of PK-20 is the writable `verify` of the signer's table) |
 | IS-13 | **A kill during *create wiki* leaves an unreferenced repository directory** (the record is stored last; nothing sweeps), and with RFC 002's key store it would leave key records too | architect review 2026-10-28; planeter RFC 004 part 7 (PL-11) | handoff 003's T7: creation kill-safe at every step (a `creating` state and a start-up sweep, planeter's precedent), proved by a `SIGKILL` at each step |
 | IS-14 | **An author can forge an internal wiki link.** The sanitizer's allowlist is the renderer's vocabulary, so raw HTML such as `<a class="wikilink" href="https://…">Home</a>` survives looking exactly like a wiki link, without `rel="nofollow ugc"` | the architect's review of handoff 003 T3, 2026-10-29 (the dev team's open question 6) | **mandatory before handoff 003's T4 serves a page**: author raw HTML rendered as escaped, visible text while the profile's subset is empty, the renderer's output carrying an unforgeable origin (RFC 003 D-3 concretized; handoff 003 note) |
 | IS-15 | **A lost key store cannot be rebuilt under the old key ids** (prikk binds a key id to one key for good, PK-35), and RFC 002 has no path for "the repository survived, its key records did not" | dev team, handoff 002 review request, open question 3 | a `recover` operation (new keys under fresh ids, the operator's confirmation) in the operations RFC before 1.0, with the restore runbook (DUR-1) |
 | IS-16 | **Rotation cannot both remove the old maintainer key and keep the history verifying** (PK-34; prikk's `remove` is revocation) | dev team, handoff 002 T7 (reproduced by the architect, 2026-10-29) | **Resolved by DR-10 (owner, 2026-10-29, after prikk confirmed the design):** rotation keeps the old key trusted, retirement is an explicit, named act (`docs/KEYS.md`); the rotation records its point and a later seal under the old key is reported (corrections handoff C11, before 0.1.0); threat model RR-8 carries the rest as a waiting dependency with no date |
 | IS-17 | **Two processes creating a key store at once: the loser is told the directory "is not a key store (or its header was removed)"**, because the other's temporary header file makes the directory non-empty; a crash's leftover temporary file blocks creation for good | CI runs 40795756404 and 40796294165 (two of the first three on the pushed tree, 2026-10-29), reproduced by the architect 1 in 300 on one CPU | **Resolved 2026-10-29** by correction C4 (`e8a00cc`: creation under an exclusive lock, leftovers swept, a deterministic test), reviewed and approved |
+| IS-18 | **A restricted wiki's raw source cannot be reached when the content origin has its own host**: the session cookie does not cross hosts | dev team, handoff 003 T6 (deviation 6), 2026-10-29 | an open design decision for sign-in (RFC 006 / M2): a signed, short-lived address for the content origin is the candidate. Not a 0.1.0 matter (every visitor is anonymous; only public wikis are readable) |
 
 ## Process lessons (keep)
 

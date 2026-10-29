@@ -319,3 +319,42 @@ correctness, security and evidence, and answers Approved, Conditionally Approved
 Design Reconsideration Required, Requirements Clarification Required or Owner Decision Required. The 0.1.0
 cut itself is proposed to the owner with the readiness report and executed only on the owner's
 authorization (ROADMAP §5).
+
+## Corrections from the review of 2026-10-30 (binding; all before 0.1.0)
+
+The review of the pre-T4 notes and T4 – T9 (`.git-exclude/reviewed/003-read-path-and-rendering-t4-t9-review-result.md`)
+is **Conditionally Approved**. Hand back R1 – R10 as one review request,
+`003-read-path-and-rendering-corrections-review-request.md`.
+
+- **R1 (High) — a check that could not run never replaces a verdict.** The wiki record keeps the **last verdict**
+  (*Verified* or *Verification failed*, with its time) apart from the **last attempt** (its time and why it could not
+  run). The badge and INT-6 read the verdict; *Could not be checked now* is shown when there is no verdict yet, when the
+  page itself is served stale, and on the verification page for the attempt. Claim the check before running it (one
+  check per wiki at a time; a concurrent POST is told *a check is running*), cap concurrent checks below the heavy
+  pool, and treat a recorded time in the future as recent. Tests: a `Busy`, a limit and a timeout each leave a
+  *Verification failed* record failed; concurrent POSTs run one `verify`.
+- **R2 (Medium).** The archive's temporary file is opened with `O_NOFOLLOW`, checked with `fstat` to be a regular file
+  on the scratch directory's device, and measured from that handle; a link there is refused as damage.
+- **R3 (Medium).** A failed archive copy removes the destination only if this call created it.
+- **R4 (Medium).** `import-folder` walks with directory handles (`openat` with `O_DIRECTORY | O_NOFOLLOW` from one root
+  handle, or `openat2` with `RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS`), opens files with `O_NOFOLLOW | O_NONBLOCK`, checks
+  with `fstat`, and refuses a file with more than one link. Tests: a directory swapped for a link between plan and run;
+  a FIFO swapped in.
+- **R5 (Medium).** No refusal reason carries a byte of the folder's content: drop the key from the duplicate-key reason
+  (name the page and the rule), and pass every reason through the same escaping as names.
+- **R6 (Medium).** The bundle manifest follows wiki-commons: `checksums` is the path of a `SHA256SUMS`-style file of
+  `"<sha256>  <path>"` lines, written beside the manifest; a test validates every manifest the code writes against
+  wiki-commons' `schemas/bundle-manifest.schema.json` (the version the project claims).
+- **R7 (Low) — import against the wiki.** Case collisions and page ids checked against the tip; page paths must be
+  canonical (`title_to_path(path_to_title(p)) == p`); a per-file cap at plan time and checked sums; the plan pinned to
+  the tip and the base handed to the signer, which refuses if it moved; an unchanged re-import reports *nothing
+  changed*.
+- **R8 (Low) — export.** Sweep the scratch extraction and `.partial-*` leftovers at start; `RENAME_NOREPLACE` for the
+  final rename; count histories that could not be written in the manifest.
+- **R9 (Low) — the start-up sweep.** One audit event per removal; never remove anything when the store was created by
+  this start or the repository already holds a sealed block.
+- **R10 (Low) — hardening and small points.** The sanitizer's image source refuses `\`, tab, CR, LF and `/` followed by
+  `/` or `\`; the content origin's `Cross-Origin-Resource-Policy` is `same-site` (or the comment says why not); the
+  discovery JSON escapes `<`, `>`, `&`; the page body's heading ids are prefixed so none collides with the template's;
+  Markdown right after a closing `:::` renders; the permalink banner says its links point to today's pages; the markup
+  crate's timing tests are made robust to load (a ratio over repeated runs, or a bound that a loaded runner meets).

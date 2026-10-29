@@ -28,6 +28,10 @@ staying true to all three (RFC 010 D-1, D-2, D-8). The record of what each upstr
   upstream ledger (status, evidence, the letter named in the version line), ROADMAP's dependency notes and
   milestone table when a schedule or ruling moved, and a hold note in the affected handoff. The letters are
   the source; the ledger is what a reader relies on.
+- **Candidates for the next bundled letter (none sent; bundle when one more matters):** a machine-readable block
+  signer in `log` or `show` (PK-39); the block id in `branch list` (the fourth call on a new tip, handoff 003 T4); a
+  commit time in `log`/`show` and a path-filtered `log` (history shows *First seen here* and costs a `show` per block,
+  handoff 003 T5/T6).
 - **Open asks as of 2026-10-29: none outstanding; two things prikk will write about.**
   `send/2026-10-29-maintainer-key-rotation-log-by-block-and-extract-scope.md` (sent by the owner; one question, one
   report, one wish) was answered the same day (`receive/2026-10-29-key-rotation-log-by-block-and-extract-scope.md`):
