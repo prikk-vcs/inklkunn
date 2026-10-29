@@ -61,3 +61,17 @@ exact :: wiki.rs :: license :: a placeholder name of a catalog message
 exact :: wiki.rs :: when :: a placeholder name of a catalog message
 exact :: wiki.rs :: a page of wiki `{}` could not be read now: {cause} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
 exact :: wiki.rs :: a verification of wiki `{}` could not be completed: {why} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+
+# --- T8: the read API (handoff 003)
+scope :: api.rs :: * :: the API's prefixes, the description's path and the media types: addresses and media types, no sentence
+scope :: problem.rs :: * :: the registry of problem codes: stable identifiers, the form of the URN and the standard's member names; every sentence a problem says is a catalog message chosen by `Code::keys` (the tests in problem/tests.rs hold that)
+scope :: reply.rs :: * :: media types and the `Link` header's fixed value; no sentence
+scope :: endpoints.rs :: * :: the JSON member names of the answers, the registry's public reasons (written for the reviewer of the route table), the names of query parameters and an operator's log line; every sentence a caller reads is a problem detail in problem.rs
+scope :: describe.rs :: * :: the OpenAPI document's descriptions: English by decision, the reference a programmer reads (like an operator's log line); the problem details a caller gets are catalog messages in the caller's language
+scope :: openapi.rs :: * :: the OpenAPI document's structure and descriptions: English by decision, like describe.rs; machine-readable member names
+exact :: request.rs :: api :: a segment of the API's address
+exact :: request.rs :: parameter :: the name of a placeholder of a catalog message and of the member that carries the same value
+exact :: request.rs :: view :: the name of a placeholder of a catalog message and of the member that carries the same value
+exact :: request.rs :: feature :: the name of the member that says which read is not offered
+exact :: request.rs :: heads/ :: the prefix of a view's name in the repository, taken off for the answer
+exact :: request.rs :: the API could not read wiki `{}` now: {cause} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it

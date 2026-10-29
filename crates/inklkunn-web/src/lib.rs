@@ -13,7 +13,9 @@
 //! - [`lang`]: which language a request wants, the cookie that remembers it, where a switch returns to.
 //! - [`pages`]: the layout, the language page and the notices; the extractor every page handler asks for.
 //! - [`style`]: the one stylesheet, served under a fingerprinted name.
+//! - [`api`]: the read API under `/{slug}/-/api/v1/` and its OpenAPI description, generated from the route table.
 
+pub mod api;
 pub mod catalog;
 pub mod config;
 pub mod headers;

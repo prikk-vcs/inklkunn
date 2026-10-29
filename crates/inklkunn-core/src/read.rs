@@ -53,6 +53,9 @@ mod links;
 mod sanitize;
 mod tip;
 
+// The read API's reads (handoff 003 T8).
+mod api;
+
 #[cfg(test)]
 mod testing;
 
@@ -82,6 +85,12 @@ pub use inklkunn_markup::{TransclusionRefusal, Via};
 pub use links::Presentation;
 pub use sanitize::{HTML_SUBSET, SafeHtml, Sanitizer};
 pub use tip::Tip;
+
+// The read API's reads (handoff 003 T8).
+pub use api::{
+    ApiError, Cursor, DEFAULT_PAGE_SIZE, Feature, ListedPage, MAX_PAGE_SIZE, PageFilter, PageList,
+    Pending, RawInfo,
+};
 
 /// Plain-data views of what a page carries, as the derived cache keeps them.
 pub use inklkunn_store::{
@@ -285,7 +294,7 @@ fn author_html_for(subset: &[&str]) -> AuthorHtml {
 
 /// How far every heading of a page body is moved down: the page's title is the page's one `h1`, so a body's
 /// `#` is an `h2` (accessibility: one `h1`, headings in order).
-const HEADING_DEMOTION: u8 = 1;
+pub const HEADING_DEMOTION: u8 = 1;
 
 /// What the derived cache keys a page by besides its tip, path and language: the surface's own presentation
 /// key and the render options this service draws with, so a row drawn another way is never read back.

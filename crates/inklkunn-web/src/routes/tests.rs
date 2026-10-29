@@ -268,7 +268,12 @@ fn the_switcher_and_the_stylesheet_are_public_routes_with_a_reason_under_the_res
 #[test]
 fn every_route_that_can_show_wiki_data_is_guarded_by_read_and_the_rest_are_public() {
     let table = application_table().unwrap();
-    let guarded: Vec<&str> = table.guarded().map(|(e, _)| e.path).collect();
+    // The read API's endpoints are held to the same rule by `tests/api` (description.rs); this list is the pages'.
+    let guarded: Vec<&str> = table
+        .guarded()
+        .map(|(e, _)| e.path)
+        .filter(|p| !p.contains("/-/api/"))
+        .collect();
     assert_eq!(
         guarded,
         [
@@ -287,6 +292,7 @@ fn every_route_that_can_show_wiki_data_is_guarded_by_read_and_the_rest_are_publi
         .iter()
         .filter(|e| matches!(e.guard, Guard::Public { .. }))
         .map(|e| e.path)
+        .filter(|p| !p.contains("/-/api/"))
         .collect();
     assert_eq!(public, ["/-/health", "/-/lang", "/-/assets/{file}"]);
 }

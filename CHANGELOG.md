@@ -385,3 +385,31 @@ Handoff 003 T9, the measurements (IS-12; corrections follow-up F1).
   `crates/inklkunn-prikk/examples/measure_vector.rs` the read verbs through the vector; `tools/spikes/make-attachment-shape.sh`
   builds the attachment shapes. Their outputs are under `rfcs/handoffs/001-foundations/spikes/`, and `docs/UPSTREAM.md`
   step 5 names them.
+
+Handoff 003 T8 (the read API; RFC 003 D-13; no new crate).
+
+- **The read API, GET half** (external design API-01, API-02, API-04). Under `/<wiki>/-/api/v1/` (the reserved
+  `-/`, so no title can collide; the version is in the path): `pages` (a list, in cursor pages of at most 100, with
+  the `namespace` and `kind` filters and a `view`), `pages/<title>` (metadata, table of contents and the sanitized
+  HTML fragment; an alias or a redirect leads to its page and says so; served stale and labelled when prikk cannot be
+  asked), `raw/<title>` (where the source is: the storage path; the source itself stays on the content origin),
+  `fragment/<title>` (the HTML alone). **Not in this build, and answering the problem `not-available` (501) with the
+  missing read named:** `history/<title>`, `revisions/<id>`, `diff` (which refuses a request without `path` first: there
+  is no diff of a whole tree), `backlinks/<title>`, `health`, `search`, `changes`, and the list's `tag` and
+  `changed_since` filters. Their reads are methods of `ReadService` in `crates/inklkunn-core/src/read/api.rs`, which
+  the tasks that own them fill in.
+- **Problem details (RFC 9457)** with a registry of 14 stable codes. The `type` is `urn:inklkunn:problem:<code>`, so
+  it never depends on the host and is never a link that might not resolve; `title`, `detail` and `hint` are catalog
+  messages in the reader's language (the language cookie, else `Accept-Language`, else English; Japanese stays a
+  preview chosen only by the reader), and the `type`, `status` and extension members do not change with it. Unknown or
+  repeated query parameters are refused by name, a page size above 100 is refused and never trimmed.
+- **`ETag` and `304`** on every success (a hash of the body; checked only after the caller was allowed to read), a
+  `Link: </-/api/v1/openapi.json>; rel="service-desc"` header on every API answer, and **existence-neutral 404s**: a
+  wiki that is absent and a wiki the caller may not read give the same problem, byte for byte, whatever the path,
+  query or `If-None-Match`; the right to read is checked before the query is.
+- **The OpenAPI 3.1 document** at `/-/api/v1/openapi.json`, generated from the router's route table and the
+  per-endpoint descriptions in `crates/inklkunn-web/src/api/describe.rs` (the handlers check the query with the same
+  parameter descriptions the document is built from). A route without a description, or a description without a route,
+  fails the build of the document; tests hold it both ways and check the document's structure.
+- **Dependency:** `serde_json` becomes a direct dependency of `inklkunn-web` (already locked; the lock gains one edge,
+  no package). axum's `json` feature stays off.

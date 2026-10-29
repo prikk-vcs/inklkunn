@@ -20,6 +20,9 @@ inklkunn-markup = { workspace = true }
 axum = { version = "0.8", default-features = false, features = ["http1", "query", "form", "tokio"] }
 # tokio 1.53.3 or later (RUSTSEC-2026-0386, `AsyncFd`; ledger PL-10): the lock holds 1.54.1.
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync", "time", "signal"] }
+# The read API's JSON (handoff 003 T8): bodies are built as values and written by hand, so axum's `json` feature
+# (an extractor and a responder this crate does not need) stays off. Already locked for the store and the driver.
+serde_json = { workspace = true }
 # Compiled, auto-escaping templates (RFC 003 D-5). Default features off on purpose: `config` (an `askama.toml`)
 # pulls a TOML parser this project has no use for.
 askama = { version = "0.16", default-features = false, features = ["derive", "std"] }

@@ -18,7 +18,7 @@ use crate::headers::{self, Surface};
 use crate::origin::Dispatch;
 use crate::pages::{self, LANGUAGE_PATH, PageState};
 use crate::services::Services;
-use crate::{probe, style, wiki};
+use crate::{api, probe, style, wiki};
 
 /// One declared entry point and the handler that serves it.
 struct Spec {
@@ -28,8 +28,21 @@ struct Spec {
     handler: fn() -> MethodRouter<PageState>,
 }
 
-/// The application origin's entry points, in declaration order.
+/// The application origin's entry points, in declaration order: the pages', then the read API's (which declare
+/// themselves, with their descriptions, in `api::endpoints`).
 fn application_specs() -> Vec<Spec> {
+    let mut specs = page_specs();
+    specs.extend(api::endpoints().into_iter().map(|endpoint| Spec {
+        path: endpoint.path,
+        methods: &["GET", "HEAD"],
+        guard: endpoint.guard,
+        handler: endpoint.handler,
+    }));
+    specs
+}
+
+/// The web pages' entry points.
+fn page_specs() -> Vec<Spec> {
     vec![
         Spec {
             path: "/-/health",
@@ -122,8 +135,8 @@ pub fn application_with(
         router = router.route(spec.path, (spec.handler)());
     }
     Ok(router
-        .fallback(pages::not_found)
-        .method_not_allowed_fallback(pages::method_not_allowed)
+        .fallback(api::fallback_not_found)
+        .method_not_allowed_fallback(api::fallback_method_not_allowed)
         .with_state(PageState { https, services })
         .layer(from_fn(move |req, next| {
             headers::layer(Surface::Application { https }, req, next)

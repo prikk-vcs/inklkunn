@@ -168,6 +168,48 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `title.method_not_allowed` | the title of the page shown when the address does not take that kind of request | "Not possible here · {product}" | "ここではできません · {product}" |
 | `method_not_allowed.heading` | its heading | "That is not possible at this address" | "このアドレスではその操作はできません" |
 | `method_not_allowed.body` | its sentence | "This address can be opened, but not used in that way. Go back and use the links on the page." | "このアドレスは開くことはできますが、その使い方はできません。前のページに戻って、ページ内のリンクをお使いください。" |
+| `problem.not_found.title` | the API's problem detail `not-found`: the title | "Not found" | "見つかりません" |
+| `problem.not_found.detail` | the API's problem detail `not-found`: the detail | "There is nothing to show at this address." | "このアドレスには表示できるものがありません。" |
+| `problem.not_found.hint` | the API's problem detail `not-found`: the hint | "Check the address for typing mistakes." | "アドレスに入力ミスがないか確認してください。" |
+| `problem.page_not_found.title` | the API's problem detail `page-not-found`: the title | "Page not found" | "ページが見つかりません" |
+| `problem.page_not_found.detail` | the API's problem detail `page-not-found`: the detail | "The wiki has no page with this title." | "このウィキには、このタイトルのページがありません。" |
+| `problem.page_not_found.hint` | the API's problem detail `page-not-found`: the hint | "Check the title, or list the pages of the wiki to find it." | "タイトルを確認するか、ウィキのページの一覧から探してください。" |
+| `problem.ambiguous_title.title` | the API's problem detail `ambiguous-title`: the title | "Several pages match" | "複数のページが該当します" |
+| `problem.ambiguous_title.detail` | the API's problem detail `ambiguous-title`: the detail | "More than one page matches this title, and none is nearer." | "このタイトルに該当するページが複数あり、どれが最も近いか決められません。" |
+| `problem.ambiguous_title.hint` | the API's problem detail `ambiguous-title`: the hint | "Ask for one of the pages listed under candidates, by its exact title." | "candidates に挙がっているページのうち、ひとつを正確なタイトルで指定してください。" |
+| `problem.redirect_broken.title` | the API's problem detail `redirect-broken`: the title | "The redirect cannot be followed" | "リダイレクトをたどれません" |
+| `problem.redirect_broken.detail` | the API's problem detail `redirect-broken`: the detail | "This title is a redirect that does not lead to a page." | "このタイトルは、ページにつながっていないリダイレクトです。" |
+| `problem.redirect_broken.hint` | the API's problem detail `redirect-broken`: the hint | "Ask the people who look after the wiki to fix the redirect, or ask for the page it should lead to." | "ウィキを管理する方にリダイレクトの修正を依頼するか、行き先のはずのページを直接指定してください。" |
+| `problem.page_unreadable.title` | the API's problem detail `page-unreadable`: the title | "The page cannot be shown" | "ページを表示できません" |
+| `problem.page_unreadable.detail` | the API's problem detail `page-unreadable`: the detail | "The page exists, but its stored text cannot be read as a page." | "ページはありますが、保存されている内容をページとして読み取れません。" |
+| `problem.page_unreadable.hint` | the API's problem detail `page-unreadable`: the hint | "Ask the people who write the page to correct it." | "ページを書いている方に修正を依頼してください。" |
+| `problem.invalid_title.title` | the API's problem detail `invalid-title`: the title | "Title not accepted" | "タイトルを受け付けられません" |
+| `problem.invalid_title.detail` | the API's problem detail `invalid-title`: the detail | "This title cannot name a page." | "このタイトルでは、ページを指定できません。" |
+| `problem.invalid_title.hint` | the API's problem detail `invalid-title`: the hint | "Use a title that is not empty, not too long, and has no empty part between its slashes." | "空でなく、長すぎず、スラッシュの間に空の部分がないタイトルを使ってください。" |
+| `problem.no_such_view.title` | the API's problem detail `no-such-view`: the title | "View not found" | "ビューが見つかりません" |
+| `problem.no_such_view.detail` | the API's problem detail `no-such-view`: the detail | "The wiki has no open view named {view}." | "このウィキには、{view} という名前の開いているビューがありません。" |
+| `problem.no_such_view.hint` | the API's problem detail `no-such-view`: the hint | "Leave the view out to use the default view of the wiki." | "ビューを指定しなければ、ウィキの既定のビューが使われます。" |
+| `problem.invalid_parameter.title` | the API's problem detail `invalid-parameter`: the title | "Parameter not accepted" | "パラメーターを受け付けられません" |
+| `problem.invalid_parameter.detail` | the API's problem detail `invalid-parameter`: the detail | "The parameter {parameter} is not accepted as it was given." | "パラメーター {parameter} は、指定された形では受け付けられません。" |
+| `problem.invalid_parameter.hint` | the API's problem detail `invalid-parameter`: the hint | "Check the API description for what {parameter} may be." | "{parameter} に指定できるものは、API の説明で確認してください。" |
+| `problem.diff_path_required.title` | the API's problem detail `diff-path-required`: the title | "A diff needs a path" | "差分にはパスが必要です" |
+| `problem.diff_path_required.detail` | the API's problem detail `diff-path-required`: the detail | "A diff is always for one page, so the parameter path is required." | "差分は常にひとつのページについて求めるため、パラメーター path は必須です。" |
+| `problem.diff_path_required.hint` | the API's problem detail `diff-path-required`: the hint | "Give the storage path of the page, as the raw endpoint reports it." | "raw のエンドポイントが返す、ページの保存先のパスを指定してください。" |
+| `problem.invalid_cursor.title` | the API's problem detail `invalid-cursor`: the title | "Cursor not accepted" | "カーソルを受け付けられません" |
+| `problem.invalid_cursor.detail` | the API's problem detail `invalid-cursor`: the detail | "The cursor is not one this server gave out." | "このサーバーが発行したものではないカーソルです。" |
+| `problem.invalid_cursor.hint` | the API's problem detail `invalid-cursor`: the hint | "Start again from the first page, without a cursor." | "カーソルを付けずに、最初のページからやり直してください。" |
+| `problem.not_available.title` | the API's problem detail `not-available`: the title | "Not available in this build" | "このビルドでは利用できません" |
+| `problem.not_available.detail` | the API's problem detail `not-available`: the detail | "This build of the server does not offer this yet." | "このサーバーのビルドでは、まだ提供されていません。" |
+| `problem.not_available.hint` | the API's problem detail `not-available`: the hint | "Check the API description of this server for what it offers." | "このサーバーが提供するものは、API の説明で確認してください。" |
+| `problem.unavailable.title` | the API's problem detail `unavailable`: the title | "Cannot be read now" | "現在は読み取れません" |
+| `problem.unavailable.detail` | the API's problem detail `unavailable`: the detail | "The server could not read the wiki just now." | "サーバーが今、ウィキを読み取れませんでした。" |
+| `problem.unavailable.hint` | the API's problem detail `unavailable`: the hint | "Try again in a little while." | "しばらくしてから、もう一度お試しください。" |
+| `problem.failed.title` | the API's problem detail `failed`: the title | "The request failed" | "リクエストに失敗しました" |
+| `problem.failed.detail` | the API's problem detail `failed`: the detail | "Something went wrong on the server, so the request was not served." | "サーバー側で問題が起きたため、リクエストを処理できませんでした。" |
+| `problem.failed.hint` | the API's problem detail `failed`: the hint | "Try again in a little while, and tell the person who runs this server if it keeps happening." | "しばらくしてからもう一度お試しになり、続く場合はこのサーバーの管理者にお知らせください。" |
+| `problem.method_not_allowed.title` | the API's problem detail `method-not-allowed`: the title | "Method not allowed" | "このメソッドは使えません" |
+| `problem.method_not_allowed.detail` | the API's problem detail `method-not-allowed`: the detail | "This release of the API only reads, so this address does not take that method." | "この版の API は読み取り専用のため、このアドレスではそのメソッドを使えません。" |
+| `problem.method_not_allowed.hint` | the API's problem detail `method-not-allowed`: the hint | "Ask with GET or HEAD instead." | "GET または HEAD で求めてください。" |
 
 ## 3. Words the interface does not say
 

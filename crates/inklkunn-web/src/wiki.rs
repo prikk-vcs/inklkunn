@@ -39,7 +39,7 @@ use crate::url::{page_address, view_ref};
 
 /// The wiki a request is about, if the principal may read it. `None` is the one answer for "no such wiki" and
 /// "not yours to read".
-fn open(services: &Services, headers: &HeaderMap, slug: &str) -> Option<WikiRecord> {
+pub(crate) fn open(services: &Services, headers: &HeaderMap, slug: &str) -> Option<WikiRecord> {
     let principal = services.identity.principal(headers);
     let record = Slug::new(slug)
         .ok()
@@ -56,7 +56,9 @@ fn open(services: &Services, headers: &HeaderMap, slug: &str) -> Option<WikiReco
 }
 
 /// Run `work` on a blocking thread (the stores and prikk block).
-async fn blocking<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+pub(crate) async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Option<T> {
     tokio::task::spawn_blocking(work).await.ok()
 }
 
@@ -420,6 +422,11 @@ pub(crate) async fn view_page(
     headers: HeaderMap,
     uri: Uri,
 ) -> Response {
+    // An address under the API's prefix that no endpoint took is answered in the API's own form, never as a
+    // page that does not exist.
+    if crate::api::is_api_path(uri.path()) {
+        return crate::api::not_found(&headers);
+    }
     let Some(services) = services_of(&state) else {
         return generic_not_found(&page);
     };

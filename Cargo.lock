@@ -879,6 +879,7 @@ dependencies = [
  "inklkunn-markup",
  "inklkunn-prikk",
  "inklkunn-store",
+ "serde_json",
  "tokio",
  "tower",
  "tower-service",

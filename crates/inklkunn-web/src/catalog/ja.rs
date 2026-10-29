@@ -274,4 +274,149 @@ pub const CATALOG: &[Entry] = &[
         "method_not_allowed.body",
         "このアドレスは開くことはできますが、その使い方はできません。前のページに戻って、ページ内のリンクをお使いください。",
     ),
+    // the read API's problem details (handoff 003 T8)
+    msg("problem.not_found.title", "見つかりません"),
+    msg(
+        "problem.not_found.detail",
+        "このアドレスには表示できるものがありません。",
+    ),
+    msg(
+        "problem.not_found.hint",
+        "アドレスに入力ミスがないか確認してください。",
+    ),
+    msg("problem.page_not_found.title", "ページが見つかりません"),
+    msg(
+        "problem.page_not_found.detail",
+        "このウィキには、このタイトルのページがありません。",
+    ),
+    msg(
+        "problem.page_not_found.hint",
+        "タイトルを確認するか、ウィキのページの一覧から探してください。",
+    ),
+    msg("problem.ambiguous_title.title", "複数のページが該当します"),
+    msg(
+        "problem.ambiguous_title.detail",
+        "このタイトルに該当するページが複数あり、どれが最も近いか決められません。",
+    ),
+    msg(
+        "problem.ambiguous_title.hint",
+        "candidates に挙がっているページのうち、ひとつを正確なタイトルで指定してください。",
+    ),
+    msg(
+        "problem.redirect_broken.title",
+        "リダイレクトをたどれません",
+    ),
+    msg(
+        "problem.redirect_broken.detail",
+        "このタイトルは、ページにつながっていないリダイレクトです。",
+    ),
+    msg(
+        "problem.redirect_broken.hint",
+        "ウィキを管理する方にリダイレクトの修正を依頼するか、行き先のはずのページを直接指定してください。",
+    ),
+    msg("problem.page_unreadable.title", "ページを表示できません"),
+    msg(
+        "problem.page_unreadable.detail",
+        "ページはありますが、保存されている内容をページとして読み取れません。",
+    ),
+    msg(
+        "problem.page_unreadable.hint",
+        "ページを書いている方に修正を依頼してください。",
+    ),
+    msg(
+        "problem.invalid_title.title",
+        "タイトルを受け付けられません",
+    ),
+    msg(
+        "problem.invalid_title.detail",
+        "このタイトルでは、ページを指定できません。",
+    ),
+    msg(
+        "problem.invalid_title.hint",
+        "空でなく、長すぎず、スラッシュの間に空の部分がないタイトルを使ってください。",
+    ),
+    msg("problem.no_such_view.title", "ビューが見つかりません"),
+    msg(
+        "problem.no_such_view.detail",
+        "このウィキには、{view} という名前の開いているビューがありません。",
+    ),
+    msg(
+        "problem.no_such_view.hint",
+        "ビューを指定しなければ、ウィキの既定のビューが使われます。",
+    ),
+    msg(
+        "problem.invalid_parameter.title",
+        "パラメーターを受け付けられません",
+    ),
+    msg(
+        "problem.invalid_parameter.detail",
+        "パラメーター {parameter} は、指定された形では受け付けられません。",
+    ),
+    msg(
+        "problem.invalid_parameter.hint",
+        "{parameter} に指定できるものは、API の説明で確認してください。",
+    ),
+    msg("problem.diff_path_required.title", "差分にはパスが必要です"),
+    msg(
+        "problem.diff_path_required.detail",
+        "差分は常にひとつのページについて求めるため、パラメーター path は必須です。",
+    ),
+    msg(
+        "problem.diff_path_required.hint",
+        "raw のエンドポイントが返す、ページの保存先のパスを指定してください。",
+    ),
+    msg(
+        "problem.invalid_cursor.title",
+        "カーソルを受け付けられません",
+    ),
+    msg(
+        "problem.invalid_cursor.detail",
+        "このサーバーが発行したものではないカーソルです。",
+    ),
+    msg(
+        "problem.invalid_cursor.hint",
+        "カーソルを付けずに、最初のページからやり直してください。",
+    ),
+    msg(
+        "problem.not_available.title",
+        "このビルドでは利用できません",
+    ),
+    msg(
+        "problem.not_available.detail",
+        "このサーバーのビルドでは、まだ提供されていません。",
+    ),
+    msg(
+        "problem.not_available.hint",
+        "このサーバーが提供するものは、API の説明で確認してください。",
+    ),
+    msg("problem.unavailable.title", "現在は読み取れません"),
+    msg(
+        "problem.unavailable.detail",
+        "サーバーが今、ウィキを読み取れませんでした。",
+    ),
+    msg(
+        "problem.unavailable.hint",
+        "しばらくしてから、もう一度お試しください。",
+    ),
+    msg("problem.failed.title", "リクエストに失敗しました"),
+    msg(
+        "problem.failed.detail",
+        "サーバー側で問題が起きたため、リクエストを処理できませんでした。",
+    ),
+    msg(
+        "problem.failed.hint",
+        "しばらくしてからもう一度お試しになり、続く場合はこのサーバーの管理者にお知らせください。",
+    ),
+    msg(
+        "problem.method_not_allowed.title",
+        "このメソッドは使えません",
+    ),
+    msg(
+        "problem.method_not_allowed.detail",
+        "この版の API は読み取り専用のため、このアドレスではそのメソッドを使えません。",
+    ),
+    msg(
+        "problem.method_not_allowed.hint",
+        "GET または HEAD で求めてください。",
+    ),
 ];

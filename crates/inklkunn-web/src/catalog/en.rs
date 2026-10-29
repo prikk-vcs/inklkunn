@@ -241,4 +241,131 @@ pub const CATALOG: &[Entry] = &[
         "method_not_allowed.body",
         "This address can be opened, but not used in that way. Go back and use the links on the page.",
     ),
+    // the read API's problem details (handoff 003 T8)
+    msg("problem.not_found.title", "Not found"),
+    msg(
+        "problem.not_found.detail",
+        "There is nothing to show at this address.",
+    ),
+    msg(
+        "problem.not_found.hint",
+        "Check the address for typing mistakes.",
+    ),
+    msg("problem.page_not_found.title", "Page not found"),
+    msg(
+        "problem.page_not_found.detail",
+        "The wiki has no page with this title.",
+    ),
+    msg(
+        "problem.page_not_found.hint",
+        "Check the title, or list the pages of the wiki to find it.",
+    ),
+    msg("problem.ambiguous_title.title", "Several pages match"),
+    msg(
+        "problem.ambiguous_title.detail",
+        "More than one page matches this title, and none is nearer.",
+    ),
+    msg(
+        "problem.ambiguous_title.hint",
+        "Ask for one of the pages listed under candidates, by its exact title.",
+    ),
+    msg(
+        "problem.redirect_broken.title",
+        "The redirect cannot be followed",
+    ),
+    msg(
+        "problem.redirect_broken.detail",
+        "This title is a redirect that does not lead to a page.",
+    ),
+    msg(
+        "problem.redirect_broken.hint",
+        "Ask the people who look after the wiki to fix the redirect, or ask for the page it should lead to.",
+    ),
+    msg("problem.page_unreadable.title", "The page cannot be shown"),
+    msg(
+        "problem.page_unreadable.detail",
+        "The page exists, but its stored text cannot be read as a page.",
+    ),
+    msg(
+        "problem.page_unreadable.hint",
+        "Ask the people who write the page to correct it.",
+    ),
+    msg("problem.invalid_title.title", "Title not accepted"),
+    msg(
+        "problem.invalid_title.detail",
+        "This title cannot name a page.",
+    ),
+    msg(
+        "problem.invalid_title.hint",
+        "Use a title that is not empty, not too long, and has no empty part between its slashes.",
+    ),
+    msg("problem.no_such_view.title", "View not found"),
+    msg(
+        "problem.no_such_view.detail",
+        "The wiki has no open view named {view}.",
+    ),
+    msg(
+        "problem.no_such_view.hint",
+        "Leave the view out to use the default view of the wiki.",
+    ),
+    msg("problem.invalid_parameter.title", "Parameter not accepted"),
+    msg(
+        "problem.invalid_parameter.detail",
+        "The parameter {parameter} is not accepted as it was given.",
+    ),
+    msg(
+        "problem.invalid_parameter.hint",
+        "Check the API description for what {parameter} may be.",
+    ),
+    msg("problem.diff_path_required.title", "A diff needs a path"),
+    msg(
+        "problem.diff_path_required.detail",
+        "A diff is always for one page, so the parameter path is required.",
+    ),
+    msg(
+        "problem.diff_path_required.hint",
+        "Give the storage path of the page, as the raw endpoint reports it.",
+    ),
+    msg("problem.invalid_cursor.title", "Cursor not accepted"),
+    msg(
+        "problem.invalid_cursor.detail",
+        "The cursor is not one this server gave out.",
+    ),
+    msg(
+        "problem.invalid_cursor.hint",
+        "Start again from the first page, without a cursor.",
+    ),
+    msg("problem.not_available.title", "Not available in this build"),
+    msg(
+        "problem.not_available.detail",
+        "This build of the server does not offer this yet.",
+    ),
+    msg(
+        "problem.not_available.hint",
+        "Check the API description of this server for what it offers.",
+    ),
+    msg("problem.unavailable.title", "Cannot be read now"),
+    msg(
+        "problem.unavailable.detail",
+        "The server could not read the wiki just now.",
+    ),
+    msg("problem.unavailable.hint", "Try again in a little while."),
+    msg("problem.failed.title", "The request failed"),
+    msg(
+        "problem.failed.detail",
+        "Something went wrong on the server, so the request was not served.",
+    ),
+    msg(
+        "problem.failed.hint",
+        "Try again in a little while, and tell the person who runs this server if it keeps happening.",
+    ),
+    msg("problem.method_not_allowed.title", "Method not allowed"),
+    msg(
+        "problem.method_not_allowed.detail",
+        "This release of the API only reads, so this address does not take that method.",
+    ),
+    msg(
+        "problem.method_not_allowed.hint",
+        "Ask with GET or HEAD instead.",
+    ),
 ];
