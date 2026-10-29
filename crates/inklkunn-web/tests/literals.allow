@@ -97,3 +97,102 @@ exact :: history.rs :: line :: a placeholder name of a catalog message
 exact :: history.rs :: limit :: a placeholder name of a catalog message
 exact :: history.rs :: change :: a placeholder name of a catalog message
 exact :: history.rs :: current :: a placeholder name of a catalog message
+# --- T6: changes, feeds, search, health, backlinks, raw source, discovery (handoff 003)
+scope :: discover.rs :: * :: the discovery documents and the head's link relations: JSON, XML and plain-text formats (a site description, JSON-LD, a sitemap, robots.txt, an OpenSearch description), media types and addresses of the wiki's own surfaces; no sentence a reader sees, every word of them is a catalog message
+scope :: feed.rs :: * :: the Atom feed's markup: element names, attributes, entity escapes and the XML declaration; every word of a feed entry is a catalog message or the author's own text, escaped
+exact :: changes.rs :: hide :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: changes.rs :: only :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: changes.rs :: view :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: changes.rs :: namespace :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: changes.rs :: page :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: changes.rs :: automated :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: changes.rs :: minor :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: changes.rs :: view={} :: a format of a machine-readable value (an address, a date or a header value): no sentence a reader sees
+exact :: changes.rs :: namespace={} :: a format of a machine-readable value (an address, a date or a header value): no sentence a reader sees
+exact :: changes.rs :: page={} :: a format of a machine-readable value (an address, a date or a header value): no sentence a reader sees
+exact :: changes.rs :: automated=hide :: a machine-readable value: no sentence a reader sees
+exact :: changes.rs :: automated=only :: a machine-readable value: no sentence a reader sees
+exact :: changes.rs :: token :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: changes.rs :: label :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: changes.rs :: person :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: changes.rs :: heads/ :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: changes.rs :: /{slug}/{} :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: changes.rs :: /{slug}/~{}/{} :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: changes.rs :: title :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: changes.rs :: -/changes :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: changes.rs :: show :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: changes.rs :: wiki :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: changes.rs :: /{}/-/changes :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: changes.rs :: /{}/-/changes.atom{} :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: changes.rs :: :page:{} :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: changes.rs :: :namespace:{} :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: changes.rs :: {base}/-/changes :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: changes.rs :: {base}/-/diff/{parent}/{}/{} :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: changes.rs :: urn:inklkunn:{}:{} :: a format of a machine-readable value (an address, a date or a header value): no sentence a reader sees
+exact :: changes.rs :: pages :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: changes.rs :: urn:inklkunn:{}:changes{scope} :: a format of a machine-readable value (an address, a date or a header value): no sentence a reader sees
+exact :: changes.rs :: {base}/-/changes.atom{} :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: changes.rs :: {base}/-/changes{} :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: changes.rs :: CARGO_PKG_VERSION :: the name of a build-time environment variable
+exact :: changes.rs :: application/atom+xml; charset=utf-8 :: a media type
+exact :: changes.rs :: x-robots-tag :: a header name and value that ask a crawler not to index the page
+exact :: changes.rs :: noindex, nofollow :: a header name and value that ask a crawler not to index the page
+exact :: health.rs :: wanted :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: health.rs :: orphans :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: health.rs :: dead-ends :: a machine-readable value: no sentence a reader sees
+exact :: health.rs :: redirects :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: health.rs :: wants-help :: a machine-readable value: no sentence a reader sees
+exact :: health.rs :: stale :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: health.rs :: -/health :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: health.rs :: wiki :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: health.rs :: /{}/-/health/{} :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: health.rs :: title :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: health.rs :: /{}/-/links/{} :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: health.rs :: wip :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: health.rs :: draft :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: health.rs :: when :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: health.rs :: limit :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: health.rs :: -/health/{} :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: health.rs :: /{}/-/health :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: health.rs :: -/links/{} :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: health.rs :: page :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: pages.rs :: x-robots-tag :: a header name and value that ask a crawler not to index the page
+exact :: pages.rs :: noindex, nofollow :: a header name and value that ask a crawler not to index the page
+exact :: raw.rs :: text/markdown; charset=UTF-8 :: a media type
+exact :: raw.rs :: x-robots-tag :: a header name and value that ask a crawler not to index the page
+exact :: raw.rs :: noindex, nofollow :: a header name and value that ask a crawler not to index the page
+exact :: raw.rs :: inline; filename*=UTF-8''{}.md :: a format of a machine-readable value (an address, a date or a header value): no sentence a reader sees
+exact :: raw.rs :: <{}>; rel="canonical" :: a format of a machine-readable value (an address, a date or a header value): no sentence a reader sees
+exact :: search.rs :: <strong> :: the one element that marks the part of a snippet that matched; the text inside it is escaped and the whole passes the sanitizer
+exact :: search.rs :: </strong> :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: search.rs :: -/search :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: search.rs :: query :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: search.rs :: title :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: search.rs :: wiki :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: search.rs :: /{}/-/search :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: time.rs :: {year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z :: a format of a machine-readable value (an address, a date or a header value): no sentence a reader sees
+exact :: time.rs :: Sun :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
+exact :: time.rs :: Mon :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
+exact :: time.rs :: Tue :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
+exact :: time.rs :: Wed :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
+exact :: time.rs :: Thu :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
+exact :: time.rs :: Fri :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
+exact :: time.rs :: Sat :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
+exact :: time.rs :: Jan :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
+exact :: time.rs :: Feb :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
+exact :: time.rs :: Mar :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
+exact :: time.rs :: Apr :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
+exact :: time.rs :: May :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
+exact :: time.rs :: Jun :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
+exact :: time.rs :: Jul :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
+exact :: time.rs :: Aug :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
+exact :: time.rs :: Sep :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
+exact :: time.rs :: Oct :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
+exact :: time.rs :: Nov :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
+exact :: time.rs :: Dec :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
+exact :: time.rs :: {}, {day:02} {month_name} {year:04} {:02}:{:02}:{:02} GMT :: a format of a machine-readable value (an address, a date or a header value): no sentence a reader sees
+exact :: wiki.rs :: {base}/-/changes :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: wiki.rs :: {base}/-/search :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: wiki.rs :: {base}/-/health :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: wiki.rs :: -/about :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: wiki.rs :: -/verification :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees

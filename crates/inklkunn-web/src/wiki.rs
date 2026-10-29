@@ -29,6 +29,7 @@ use inklkunn_core::{Action, CheckOutcome, NotChecked, PageView, Resource, SafeHt
 use inklkunn_store::{Slug, VerificationState, WikiId, WikiRecord};
 
 use crate::catalog::{Key, Rich, T};
+use crate::discover::Subject;
 use crate::pages::{self, Page, PageState, answer, render_form_refused};
 use crate::present::WikiLinks;
 use crate::services::{MIN_RECHECK_SECS, Services};
@@ -78,7 +79,7 @@ pub(crate) fn generic_not_found(page: &Page) -> Response {
 // ------------------------------------------------------------------------------------ view models
 
 /// HTML that has passed the sanitizer, as a template prints it: unescaped, because it was made safe already.
-struct Body(SafeHtml);
+pub(crate) struct Body(pub(crate) SafeHtml);
 
 impl fmt::Display for Body {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -94,6 +95,9 @@ pub(crate) struct Shell {
     pub(crate) front: String,
     pub(crate) about: String,
     pub(crate) verification: String,
+    pub(crate) changes: String,
+    pub(crate) search: String,
+    pub(crate) health: String,
     pub(crate) wikis: &'static str,
 }
 
@@ -106,6 +110,9 @@ impl Shell {
             name: wiki.display_name.as_str().to_owned(),
             about: format!("{base}/-/about"),
             verification: format!("{base}/-/verification"),
+            changes: format!("{base}/-/changes"),
+            search: format!("{base}/-/search"),
+            health: format!("{base}/-/health"),
             front: base,
             wikis: WIKIS_PATH,
         }
@@ -246,6 +253,7 @@ pub(crate) fn notice(
     propose: bool,
 ) -> Response {
     let shell = Shell::of(wiki);
+    let page = &page.wiki_head(wiki, Subject::Wiki);
     let rendered = NoticeTpl {
         page,
         shell: &shell,
@@ -311,11 +319,22 @@ pub(crate) async fn front(
     }
 }
 
-fn redirect(location: &str) -> Response {
+pub(crate) fn redirect(location: &str) -> Response {
     match HeaderValue::from_str(location) {
         Ok(value) => (StatusCode::SEE_OTHER, [(header::LOCATION, value)]).into_response(),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
+}
+
+/// The page shown for a title that leads to no page: the 404 that invites it.
+pub(crate) fn missing_page(page: &Page, wiki: &WikiRecord, title: &str) -> Response {
+    present(
+        page,
+        Shown::Missing {
+            wiki: Box::new(wiki.clone()),
+            title: title.trim().to_owned(),
+        },
+    )
 }
 
 /// What a request for a page came to, before any template.
@@ -630,6 +649,14 @@ pub(crate) fn found_with(
         .clone()
         .unwrap_or_else(|| wiki.default_license.clone());
     let heading = view.meta.title.clone();
+    let page = &page.wiki_head(
+        wiki,
+        Subject::Page {
+            title: &heading,
+            view: view_name,
+            block: (!view.stale).then_some(view.tip.block_id.as_str()),
+        },
+    );
     let rendered = PageTpl {
         page,
         shell: &shell,
@@ -689,6 +716,7 @@ pub(crate) async fn about(
     };
     let t = page.t();
     let shell = Shell::of(&wiki);
+    let page = page.wiki_head(&wiki, Subject::Surface("-/about"));
     let rendered = AboutTpl {
         page: &page,
         shell: &shell,
@@ -737,6 +765,7 @@ fn state_sentence(page: &Page, state: VerificationState) -> String {
 fn verification_page(page: &Page, wiki: &WikiRecord, result: Option<CheckView>) -> Response {
     let t = page.t();
     let shell = Shell::of(wiki);
+    let page = &page.wiki_head(wiki, Subject::Surface("-/verification"));
     let rendered = VerificationTpl {
         page,
         shell: &shell,

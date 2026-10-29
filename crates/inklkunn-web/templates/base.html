@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}{% endblock %}</title>
 <link rel="stylesheet" href="{{ page.stylesheet() }}">
-</head>
+{% if page.noindex() %}<meta name="robots" content="noindex, nofollow">
+{% endif %}{% for l in page.head_links() %}<link rel="{{ l.rel }}" href="{{ l.href }}"{% if let Some(kind) = l.media_type %} type="{{ kind }}"{% endif %}{% if let Some(name) = l.title %} title="{{ name }}"{% endif %}>
+{% endfor %}</head>
 <body>
 <a class="skip-link" href="#main">{{ page.get(Key::LayoutSkip) }}</a>
 <header>

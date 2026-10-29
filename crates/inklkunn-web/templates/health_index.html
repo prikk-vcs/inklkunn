@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+<p>{{ page.get(Key::HealthIntro) }}</p>
+<ul class="health-lists">
+{% for l in lists %}<li><a href="{{ l.href }}">{{ l.name }}</a><br>{{ l.description }}</li>
+{% endfor %}</ul>
+{% endblock %}

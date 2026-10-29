@@ -10,10 +10,11 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use inklkunn_core::read::ReadConfig;
 use inklkunn_core::{Authorizer, ReadService, StoreAuthz, Verifier};
+use inklkunn_prikk::storage::PathRef;
 use inklkunn_prikk::{
-    Change, Diff, ExtractBounds, FileMeta, History, HistoryBlock, Materialized, PatchMessage,
-    Point, Result, Stage, Storage, StorageError, Tree, Unavailable, Verdict, Verification, View,
-    Views,
+    Change, Diff, ExtractBounds, FileMeta, History, HistoryBlock, Materialized, Operation, Patch,
+    PatchMessage, Point, Result, Stage, Storage, StorageError, Tree, Unavailable, Verdict,
+    Verification, View, Views,
 };
 use inklkunn_store::{
     DisplayName, MemoryAudit, MemoryStore, NewWiki, RootLayout, Slug, Visibility, WikiRecord,
@@ -42,6 +43,18 @@ struct State {
     diffs: Vec<(Point, Point, Vec<String>)>,
     /// How many `show`s were asked.
     show_calls: usize,
+    /// The message of the newest change (the tip's block).
+    tip_message: String,
+    /// Older changes of each view, newest first: `(block id, message)`.
+    older: BTreeMap<String, Vec<(String, String)>>,
+    /// Views besides `heads/main`; all sit at the same state.
+    extra_views: Vec<String>,
+    /// The pages (paths) each change touched, by block id.
+    touched: BTreeMap<String, Vec<String>>,
+    /// How many times `show` was asked.
+    touch_shows: usize,
+    /// Make `show` fail.
+    fail_show: bool,
 }
 
 /// A one-view repository whose files can be changed, whose `branch list` can fail, and whose `verify` says
@@ -137,6 +150,43 @@ impl Fake {
     pub fn verify_says(&self, answer: Result<Verification>) {
         self.state().verify = Some(answer);
     }
+
+    /// The message of the newest change.
+    pub fn tip_message(&self, message: &str) {
+        self.state().tip_message = message.to_owned();
+    }
+
+    /// An open view besides `heads/main`, at the same state.
+    pub fn add_view(&self, name: &str) {
+        self.state().extra_views.push(name.to_owned());
+    }
+
+    /// An older change of `view`, after the ones already added (so add the newest first).
+    pub fn push_change(&self, view: &str, block: &str, message: &str) {
+        self.state()
+            .older
+            .entry(view.to_owned())
+            .or_default()
+            .push((block.to_owned(), message.to_owned()));
+    }
+
+    /// The pages a change touched.
+    pub fn touches(&self, block: &str, paths: &[&str]) {
+        self.state().touched.insert(
+            block.to_owned(),
+            paths.iter().map(|p| (*p).to_owned()).collect(),
+        );
+    }
+
+    /// How many times `show` was asked.
+    pub fn shows(&self) -> usize {
+        self.state().touch_shows
+    }
+
+    /// Make every `show` fail.
+    pub fn fail_show(&self, fail: bool) {
+        self.state().fail_show = fail;
+    }
 }
 
 pub fn clean() -> Verification {
@@ -199,14 +249,21 @@ impl Storage for Fake {
         if let Some(e) = &s.fail_views {
             return Err(e.clone());
         }
+        let mut views = vec![View {
+            name: "heads/main".to_owned(),
+            state_id: state_id(s.version),
+            closed: false,
+            current: true,
+        }];
+        views.extend(s.extra_views.iter().map(|name| View {
+            name: format!("heads/{name}"),
+            state_id: state_id(s.version),
+            closed: false,
+            current: false,
+        }));
         Ok(Views {
             schema_version: "branch-list-v1".to_owned(),
-            views: vec![View {
-                name: "heads/main".to_owned(),
-                state_id: state_id(s.version),
-                closed: false,
-                current: true,
-            }],
+            views,
         })
     }
 
@@ -264,30 +321,66 @@ impl Storage for Fake {
 
     fn history(&self, _: &Path, view: &Point, limit: Option<u64>) -> Result<History> {
         let s = self.state();
-        let limit = limit.map_or(1_000, |l| usize::try_from(l).unwrap_or(usize::MAX));
-        let blocks = (1..=s.version)
-            .rev()
-            .take(limit)
-            .map(|v| HistoryBlock {
-                block_id: block_id(v),
-                ref_state_id: state_id(v),
-                update_seq: v,
-                kind: if v == 1 { "Root" } else { "Normal" }.to_owned(),
+        let scripted = !s.tip_message.is_empty() || s.older.contains_key(view.as_arg());
+        let blocks: Vec<HistoryBlock> = if scripted {
+            let block = |id: String, state: String, seq: u64, message: &str| HistoryBlock {
+                block_id: id,
+                ref_state_id: state,
+                update_seq: seq,
+                kind: "Normal".to_owned(),
                 rollback_block: false,
                 patch_count: 1,
-                patch_messages: s
-                    .messages
-                    .get(&v)
-                    .map(|m| {
-                        vec![PatchMessage {
-                            patch_id: format!("{v:064x}"),
-                            message: m.clone(),
-                        }]
-                    })
-                    .unwrap_or_default(),
-                previous_ref_state_id: (v > 1).then(|| state_id(v - 1)),
-            })
-            .collect();
+                patch_messages: if message.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![PatchMessage {
+                        patch_id: format!("{seq:064x}"),
+                        message: message.to_owned(),
+                    }]
+                },
+                previous_ref_state_id: None,
+            };
+            let mut blocks = vec![block(
+                block_id(s.version),
+                state_id(s.version),
+                s.version,
+                &s.tip_message,
+            )];
+            let mut seq = s.version;
+            for (id, message) in s.older.get(view.as_arg()).into_iter().flatten() {
+                seq = seq.saturating_sub(1);
+                blocks.push(block(id.clone(), state_id(seq), seq, message));
+            }
+            if let Some(limit) = limit {
+                blocks.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
+            }
+            blocks
+        } else {
+            let limit = limit.map_or(1_000, |l| usize::try_from(l).unwrap_or(usize::MAX));
+            (1..=s.version)
+                .rev()
+                .take(limit)
+                .map(|v| HistoryBlock {
+                    block_id: block_id(v),
+                    ref_state_id: state_id(v),
+                    update_seq: v,
+                    kind: if v == 1 { "Root" } else { "Normal" }.to_owned(),
+                    rollback_block: false,
+                    patch_count: 1,
+                    patch_messages: s
+                        .messages
+                        .get(&v)
+                        .map(|m| {
+                            vec![PatchMessage {
+                                patch_id: format!("{v:064x}"),
+                                message: m.clone(),
+                            }]
+                        })
+                        .unwrap_or_default(),
+                    previous_ref_state_id: (v > 1).then(|| state_id(v - 1)),
+                })
+                .collect::<Vec<_>>()
+        };
         Ok(History {
             schema_version: "log-report-v1".to_owned(),
             view: view.to_string(),
@@ -298,10 +391,32 @@ impl Storage for Fake {
     fn change(&self, _: &Path, id: &str) -> Result<Change> {
         let mut s = self.state();
         s.show_calls += 1;
-        s.shows
-            .get(id)
-            .cloned()
-            .unwrap_or_else(|| unsupported("show"))
+        if let Some(known) = s.shows.get(id).cloned() {
+            return known;
+        }
+        s.touch_shows += 1;
+        if s.fail_show {
+            return Err(busy());
+        }
+        let paths = s.touched.get(id).cloned().unwrap_or_default();
+        Ok(Change {
+            schema_version: "show-report-v1".to_owned(),
+            patches: vec![Patch {
+                patch_id: "p".repeat(64),
+                queued: false,
+                operations: paths
+                    .into_iter()
+                    .map(|p| Operation {
+                        kind: "edit-text".to_owned(),
+                        paths: vec![PathRef {
+                            path: Some(p),
+                            unresolved_node_id: None,
+                        }],
+                        content: Default::default(),
+                    })
+                    .collect(),
+            }],
+        })
     }
 
     fn diff(&self, _: &Path, from: &Point, to: &Point, paths: &[&str]) -> Result<Diff> {
@@ -502,4 +617,140 @@ pub fn assemble(
         clock: || NOW,
     });
     (services, audit, log)
+}
+
+// ------------------------------------------------------------------------------------ over HTTP
+
+/// What a request came to.
+pub struct Answer {
+    pub status: axum::http::StatusCode,
+    pub headers: axum::http::HeaderMap,
+    pub bytes: Vec<u8>,
+}
+
+impl Answer {
+    pub fn body(&self) -> String {
+        String::from_utf8_lossy(&self.bytes).into_owned()
+    }
+
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers.get(name).and_then(|v| v.to_str().ok())
+    }
+}
+
+pub const APP: &str = "localhost:8080";
+pub const CONTENT: &str = "localhost:8081";
+
+/// The site over the world's services: both origins, as the binary builds it.
+pub fn site(w: &World) -> axum::Router {
+    inklkunn_web::routes::site_with(
+        &inklkunn_web::WebConfig::new(
+            "127.0.0.1:8080",
+            "http://localhost:8080",
+            "http://localhost:8081",
+        )
+        .unwrap(),
+        Some(w.services.clone()),
+    )
+    .unwrap()
+}
+
+/// One request to `host` (`APP` or `CONTENT`).
+pub async fn request(
+    w: &World,
+    host: &str,
+    method: &str,
+    uri: &str,
+    extra: &[(&str, &str)],
+) -> Answer {
+    use tower::ServiceExt as _;
+    let mut req = axum::http::Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(axum::http::header::HOST, host);
+    for (k, v) in extra {
+        req = req.header(*k, *v);
+    }
+    let res = site(w)
+        .oneshot(req.body(axum::body::Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let (parts, body) = res.into_parts();
+    Answer {
+        status: parts.status,
+        headers: parts.headers,
+        bytes: axum::body::to_bytes(body, 1 << 24).await.unwrap().to_vec(),
+    }
+}
+
+/// `GET` on the application origin.
+pub async fn get(w: &World, uri: &str) -> Answer {
+    request(w, APP, "GET", uri, &[]).await
+}
+
+/// Who a request is, for the tests of readers who are not anonymous: the account named by the header
+/// `x-test-account`, else anonymous.
+pub struct HeaderAccount(inklkunn_core::IdentityAuthority);
+
+impl inklkunn_web::Identify for HeaderAccount {
+    fn principal(&self, headers: &axum::http::HeaderMap) -> inklkunn_core::Principal {
+        headers
+            .get("x-test-account")
+            .and_then(|v| v.to_str().ok())
+            .and_then(inklkunn_store::AccountId::parse)
+            .map_or(inklkunn_core::Principal::Anonymous, |id| {
+                inklkunn_core::Principal::session(&self.0, id)
+            })
+    }
+}
+
+/// The world with requests that carry `x-test-account` taken as that account.
+pub fn with_accounts(mut w: World) -> World {
+    w.services = Arc::new(Services {
+        identity: Arc::new(HeaderAccount(inklkunn_core::IdentityAuthority::for_tests())),
+        ..(*w.services).clone()
+    });
+    w
+}
+
+/// Let `account` read the wiki (an observer).
+pub fn let_read(w: &World, account: &inklkunn_store::AccountId) {
+    use inklkunn_store::{Account, AccountStore, Role, RoleGrant, RoleStore};
+    w.store
+        .add_account(&Account {
+            id: account.clone(),
+            display_name: DisplayName::new("A reader").unwrap(),
+            local: None,
+            created_at: NOW,
+            disabled: false,
+        })
+        .unwrap();
+    w.store
+        .grant(RoleGrant {
+            account: account.clone(),
+            wiki: w.wiki.id.clone(),
+            role: Role::Observer,
+            granted_by: None,
+            granted_at: NOW,
+        })
+        .unwrap();
+}
+
+/// A canonical patch message for an accepted proposal.
+pub fn proposal_message(summary: &str, proposer: &str, acceptor: &str) -> String {
+    format!(
+        "{summary}\n\nProposal: 019a0000-0000-7000-8000-00000000aaaa\n\
+         Proposed-By: 019a0000-0000-7000-8000-0000000000a1 ({proposer})\n\
+         Accepted-By: 019a0000-0000-7000-8000-0000000000a2 ({acceptor})\n\
+         Base: {}\nKind: proposal\n",
+        "b".repeat(64)
+    )
+}
+
+/// A canonical patch message for an import the service made itself.
+pub fn import_message(summary: &str) -> String {
+    format!(
+        "{summary}\n\nProposed-By: system (inklkunn)\nAccepted-By: system (inklkunn)\n\
+         Kind: import\nImported-From: bundle:sha256:abcd\n"
+    )
 }

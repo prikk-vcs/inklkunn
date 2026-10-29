@@ -17,15 +17,21 @@
 
 pub mod api;
 pub mod catalog;
+mod changes;
 pub mod config;
+mod discover;
+mod feed;
 pub mod headers;
+mod health;
 mod history;
 pub mod lang;
 pub mod origin;
 pub mod pages;
 mod present;
 mod probe;
+mod raw;
 pub mod routes;
+mod search;
 pub mod serve;
 pub mod services;
 pub mod style;

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+{% if let Some(text) = note %}<p>{{ text }}</p>
+{% endif %}{% if let Some(link) = go_to %}<p><a href="{{ link.1 }}">{{ link.0 }}</a></p>
+{% endif %}{% if links.is_empty() %}<p>{{ none }}</p>
+{% else %}<ul class="backlinks">
+{% for l in links %}<li><a href="{{ l.href }}">{{ l.title }}</a>{% if let Some(kind) = l.kind %} <small>{{ kind }}</small>{% endif %}{% if !l.context.is_empty() %}<br><span class="context">{{ l.context }}</span>{% endif %}</li>
+{% endfor %}</ul>
+{% endif %}{% if let Some(text) = cut %}<p class="list-note" role="note">{{ text }}</p>
+{% endif %}{% endblock %}

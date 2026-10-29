@@ -44,14 +44,14 @@ T6, RFC 004) take the word from here and do not choose their own.
 | A proposal the wiki service has received and keeps: it is not part of the history yet | held for review | レビュー待ちで保持中 | not yet | Says what is true and no more: the service holds the work, nothing is approved for merging. As a label: *Held for review* (RFC 002 D-6) | Named by the handoff · ja: hard term |
 | A proposal that an authorized person took into the history | accepted | 受け入れ済み | not yet | RFC 002 D-6, WEB-09; "approved" is a reviewer's opinion about one revision and means something else. As a label: *Accepted* | Drafted · ja: hard term |
 | A proposal that an authorized person did not take into the history | declined | 見送り済み | not yet | RFC 002 D-6, WEB-09; calm, assumes good faith, and the message beside it names the next step. As a label: *Declined* | Drafted · ja: hard term |
-| A page that other pages link to and that does not exist yet | wanted page | 未作成のページ | not yet | Says what the reader can do about it: write it | Named by the handoff · ja: hard term |
+| A page that other pages link to and that does not exist yet | wanted page | 未作成のページ | yes | Says what the reader can do about it: write it | Named by the handoff · ja: hard term |
 | The label that prikk ran all of its checks on the wiki and found no problems | Verified | 検証済み | yes | A trust label: it never means more than the check found, and never appears without it | Reused from planeter · ja: hard term, trust label |
 | The label that prikk checked and found problems | Verification failed | 検証に失敗 | yes | "Unverified" would read as "not checked" | Reused from planeter · ja: hard term, trust label |
 | The label for a check that could not run | Could not be checked now | 現在は確認できません | yes | Separates "failed" from "could not check"; it claims nothing either way | Reused from planeter · ja: hard term, trust label |
 | The label on a change that was signed into the history | Signed into the history | 署名して履歴に記録済み | yes | Plain for "sealed"; on a change page it must not read as "Verified" | Reused from planeter · ja: hard term, trust label |
 | inklkunn itself, as the author of record of every change | the wiki service | ウィキサービス | yes | RFC 002 D-6, WEB-09: "signed by the wiki service on behalf of {proposer}, accepted by {acceptor}" says who signed and for whom, and never implies that a person signed cryptographically | Drafted · ja: hard term |
 | A page title that sends the reader to another page | redirect | リダイレクト | yes | The usual word; the page says "redirected from {title}" | Drafted |
-| Another title a page also answers to | alias | 別名 | not yet | Plain | Drafted |
+| Another title a page also answers to | alias | 別名 | yes | Plain | Drafted |
 | An address that always shows a page as it was at one point in its history | permalink | 固定リンク | not yet | The usual word | Drafted |
 | The pages that link to this page | backlinks | リンク元 | not yet | The usual word on wikis | Drafted |
 | The page exactly as it is stored, as text | raw source | ソース | not yet | The reader's word; it is served from the separate content address | Drafted |
@@ -61,6 +61,10 @@ T6, RFC 004) take the word from here and do not choose their own.
 | Whoever looks after this installation | the person who runs this server | このサーバーの管理者 | yes | Operator vocabulary stays out of the pages | Reused from planeter |
 | A form a page offers to be filled in and sent | form | フォーム | yes | The plain word | Drafted |
 | What the language choice is made on | language page | 言語のページ | yes | Names the page the refusal sends the reader to | Drafted |
+| A page that no other page links to | orphan page | 孤立したページ | yes | The usual wiki word; the health list says what would resolve it | Drafted |
+| A page that links to no other page | dead-end page | 行き止まりのページ | yes | The usual wiki word; the health list says what would resolve it | Drafted |
+| The lists of what can be improved in a wiki | wiki health | ウィキの健全性 | yes | Names the lists as opportunities, never as faults (NAV-15) | Drafted |
+| When this server first saw a change | first seen here | 初めて確認した日時 | yes | The history carries no time, so the only time shown is the server's own observation, named so it is never read as the time of the change | Drafted |
 
 ## 2. Messages
 
@@ -283,6 +287,132 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `at.current_label` | the words of the link in the message above | "the current version of this page" | "このページの現在の版" |
 | `at.missing_heading` | the heading of the page for a permalink to a point before the page existed, or after it was removed | "The page did not exist then" | "そのときこのページはありませんでした" |
 | `at.missing_body` | its sentence; `{title}` is the title asked for, `{change}` the name of the change, which a link under it opens | "After {change}, this wiki had no page titled {title}." | "{change} の後、このウィキに {title} というタイトルのページはありませんでした。" |
+| `wiki.nav_changes` | a link in the navigation bar of a wiki's pages, to the recent changes | "Recent changes" | "最近の変更" |
+| `wiki.nav_search` | a link in the navigation bar of a wiki's pages, to the search | "Search" | "検索" |
+| `wiki.nav_health` | a link in the navigation bar of a wiki's pages, to the lists of what can be improved | "Wiki health" | "ウィキの健全性" |
+| `title.changes` | the title of the recent changes page | "Recent changes · {wiki} · {product}" | "最近の変更 · {wiki} · {product}" |
+| `changes.heading` | the heading of the recent changes page | "Recent changes" | "最近の変更" |
+| `changes.intro` | under the heading of the recent changes page; `{wiki}` is the wiki's name | "The changes recorded in the history of {wiki}, newest first." | "{wiki} の履歴に記録された変更を、新しい順に表示しています。" |
+| `changes.seen_note` | under the recent changes: why the time shown is not the time of the change | "The history does not record when a change was made, so each change shows when this server first saw it." | "履歴には変更を行った日時が記録されないため、各変更にはこのサーバーが最初に確認した日時を表示しています。" |
+| `changes.filter_legend` | the name of the group of filters on the recent changes page | "Choose which changes to show" | "表示する変更を選ぶ" |
+| `changes.filter_namespace` | the label of the field that limits the changes to the pages under a title | "Only pages under this title" | "このタイトルの下にあるページのみ" |
+| `changes.filter_namespace_hint` | the hint of that field | "For example Guides shows changes to Guides/Setup. Leave it empty for all pages." | "たとえば Guides と入力すると、Guides/Setup への変更が表示されます。空欄にするとすべてのページが対象になります。" |
+| `changes.filter_view` | the label of the view choice, and the heading of the column that names a change's view | "View" | "ビュー" |
+| `changes.all_views` | the choice that shows the changes of every view | "All views" | "すべてのビュー" |
+| `changes.filter_automated` | the label of the choice about changes the wiki service made itself (imports, creating the wiki) | "Changes made by the wiki service itself" | "ウィキサービス自身による変更" |
+| `changes.opt_show` | a choice: show those changes together with the others | "Show them" | "表示する" |
+| `changes.opt_hide` | a choice: leave those changes out | "Hide them" | "表示しない" |
+| `changes.opt_only` | a choice: show only those changes | "Show only them" | "それらのみ表示する" |
+| `changes.filter_apply` | the button of the filters | "Show these changes" | "この条件で表示" |
+| `changes.active_heading` | the heading of the list of filters in use, shown when the list is filtered | "The list is filtered" | "一覧は絞り込まれています" |
+| `changes.active_namespace` | an item of the filters in use; `{namespace}` is the title typed | "Only pages under {namespace}" | "{namespace} の下にあるページのみ" |
+| `changes.active_page` | an item of the filters in use on a page's own list of changes; `{page}` is its title | "Only changes to the page {page}" | "ページ {page} への変更のみ" |
+| `changes.active_view` | an item of the filters in use; `{view}` is the view's name | "Only the view {view}" | "ビュー {view} のみ" |
+| `changes.active_hide` | an item of the filters in use | "Changes made by the wiki service itself are hidden" | "ウィキサービス自身による変更は表示していません" |
+| `changes.active_only` | an item of the filters in use | "Only changes made by the wiki service itself" | "ウィキサービス自身による変更のみ" |
+| `changes.clear` | a link that removes every filter | "Show all changes" | "すべての変更を表示" |
+| `changes.caption` | the caption of the table of changes | "Changes, newest first" | "変更の一覧（新しい順）" |
+| `changes.col_change` | the heading of the column with each change's summary | "Change" | "変更" |
+| `changes.col_people` | the heading of the column that says who made each change | "People" | "関わった人" |
+| `changes.col_pages` | the heading of the column that lists the pages each change touched | "Pages" | "ページ" |
+| `changes.col_seen` | the heading of the column with the time this server first saw each change | "First seen here" | "初めて確認した日時" |
+| `changes.proposed_by` | in a change's row; `{person}` is who proposed it | "Proposed by {person}" | "提案者: {person}" |
+| `changes.accepted_by` | in a change's row; `{person}` is who accepted it | "Accepted by {person}" | "受け入れた人: {person}" |
+| `changes.made_by` | in the row of a change nobody proposed; `{person}` is who made it | "Made by {person}" | "変更した人: {person}" |
+| `changes.person_anonymous` | a person in a change's row; `{token}` is the temporary name an anonymous visitor was given | "an anonymous visitor ({token})" | "匿名の訪問者（{token}）" |
+| `changes.person_service` | a person in a change's row; `{label}` is the name the service gave itself | "{label}, the wiki service" | "ウィキサービス（{label}）" |
+| `changes.foreign` | in the row of a change that was not recorded through this service | "Recorded outside this service, so the people are not known." | "このサービスの外で記録されたため、関わった人は不明です。" |
+| `changes.rollback` | in the row of a change that undoes earlier ones | "Undoes earlier changes" | "以前の変更を取り消す変更" |
+| `changes.no_pages` | in the pages column of a change that touched no page | "No pages" | "ページなし" |
+| `changes.pages_unavailable` | in the pages column when the pages of a change could not be read | "The pages of this change could not be read just now." | "この変更のページを今は取得できませんでした。" |
+| `changes.page_gone` | a page a change touched that is no longer there; `{title}` is its title | "{title} (no longer there)" | "{title}（現在は存在しません）" |
+| `changes.none` | in place of the table when there is no change to show | "There are no changes to show." | "表示できる変更はありません。" |
+| `changes.more` | under the table when older changes exist than the ones looked through | "Older changes exist than these. Only the newest changes were looked through." | "ここに表示されたより古い変更があります。確認したのは新しい変更のみです。" |
+| `changes.pages_missing` | under the table when some changes could not be matched to their pages | "Some changes could not be matched to their pages just now, so this list may miss changes." | "一部の変更はページとの対応を今は確認できなかったため、この一覧には載っていない変更がある可能性があります。" |
+| `changes.hidden` | under the table when changes to pages the reader may not read were left out | "Changes to pages you may not read are not shown." | "閲覧できないページへの変更は表示していません。" |
+| `changes.feed` | a link to the Atom feed of the changes shown | "Follow these changes in a feed reader (Atom)" | "これらの変更をフィードリーダーで購読する（Atom）" |
+| `feed.title_wiki` | the title of the feed of a wiki's changes; `{wiki}` is its name | "Recent changes · {wiki}" | "最近の変更 · {wiki}" |
+| `feed.title_namespace` | the title of the feed of the changes under a title | "Recent changes under {namespace} · {wiki}" | "{namespace} の下の最近の変更 · {wiki}" |
+| `feed.title_page` | the title of the feed of one page's changes | "Changes to {page} · {wiki}" | "{page} への変更 · {wiki}" |
+| `feed.pages` | the text of a feed entry; `{pages}` is the titles of the pages the change touched | "Pages: {pages}" | "ページ: {pages}" |
+| `title.search` | the title of the search page | "Search · {wiki} · {product}" | "検索 · {wiki} · {product}" |
+| `search.heading` | the heading of the search page | "Search" | "検索" |
+| `search.label` | the label of the search field | "Search the titles and aliases of pages" | "ページのタイトルと別名を検索" |
+| `search.button` | the button of the search form | "Search" | "検索する" |
+| `search.scope` | under the search field: what the search looks through | "Search finds pages by their titles and aliases. Searching the text of pages arrives in a later release." | "検索の対象はページのタイトルと別名です。ページ本文の検索は、今後のリリースで提供されます。" |
+| `search.empty` | on the search page before anything was searched for | "Type a title, or part of one, to search for." | "検索するタイトル、またはその一部を入力してください。" |
+| `search.results_heading` | the heading of the results; `{query}` is what was searched for | "Pages found for {query}" | "「{query}」で見つかったページ" |
+| `search.matched_title` | before the part of a result that matched, when it is the page's title | "Title:" | "タイトル:" |
+| `search.matched_alias` | before the part of a result that matched, when it is one of the page's aliases | "Alias:" | "別名:" |
+| `search.none` | when nothing was found; `{query}` is what was searched for | "No page has {query} in its title or aliases." | "タイトルにも別名にも「{query}」を含むページはありません。" |
+| `search.cut` | under the results when only the best matches are listed | "Only the best matches are listed. Type more of the title to narrow the search." | "一致度の高いものだけを表示しています。タイトルをもう少し入力すると絞り込めます。" |
+| `search.exact` | when the search words name a page that exists | "A page with this title exists already." | "このタイトルのページはすでにあります。" |
+| `search.similar_heading` | the heading of the pages whose titles resemble what was searched for, shown before the offer to create it | "Pages with similar titles" | "タイトルが似ているページ" |
+| `search.create_heading` | the heading of the offer to create the page searched for | "Create this page" | "このページを作成する" |
+| `search.create` | the label of a button that cannot be pressed yet; `{title}` is the title searched for | "Create “{title}”" | "「{title}」を作成する" |
+| `opensearch.description` | the description of the search in a browser's list of search engines; `{wiki}` is the wiki's name | "Search the titles and aliases of {wiki}" | "{wiki} のページをタイトルと別名で検索" |
+| `title.health` | the title of the page that lists what can be improved | "Wiki health · {wiki} · {product}" | "ウィキの健全性 · {wiki} · {product}" |
+| `health.heading` | the heading of that page; `{wiki}` is the wiki's name | "Health of {wiki}" | "{wiki} の健全性" |
+| `health.intro` | under that heading | "These lists show where the wiki can be improved. Each row says what would resolve it." | "これらの一覧は、ウィキを改善できる箇所を示します。各行には、解決するための対応が書かれています。" |
+| `health.wanted_name` | the name of the list of titles that are linked and have no page | "Wanted pages" | "未作成のページ" |
+| `health.wanted_desc` | what that list shows | "A wanted page is a title that pages link to and that no page has yet." | "ページからリンクされているのに、まだ存在しないタイトル。" |
+| `health.orphans_name` | the name of the list of pages nothing links to | "Orphan pages" | "孤立したページ" |
+| `health.orphans_desc` | what that list shows | "An orphan page is a page that no other page links to." | "ほかのどのページからもリンクされていないページ。" |
+| `health.dead_ends_name` | the name of the list of pages that link to nothing | "Dead-end pages" | "行き止まりのページ" |
+| `health.dead_ends_desc` | what that list shows | "A dead-end page is a page that links to no other page." | "ほかのどのページにもリンクしていないページ。" |
+| `health.redirects_name` | the name of the list of redirects with a problem | "Redirect problems" | "リダイレクトの問題" |
+| `health.redirects_desc` | what that list shows | "Redirects that lead nowhere, go round in a circle, run too long, or lead to another redirect." | "行き先がない、循環している、長すぎる、または別のリダイレクトに続くリダイレクト。" |
+| `health.help_name` | the name of the list of pages marked as needing work | "Pages that want help" | "手助けが必要なページ" |
+| `health.help_desc` | what that list shows | "Pages marked as work in progress, draft or stub." | "作業中、下書き、またはスタブと示されているページ。" |
+| `health.stale_name` | the name of the list of pages that changed longest ago | "Pages unchanged longest" | "長く変更されていないページ" |
+| `health.stale_desc` | what that list shows | "Pages whose latest change is the oldest among the recent changes." | "最近の変更の中で、最後に変更された時期がいちばん古いページ。" |
+| `health.back` | a link from one list back to the page that names them all | "All health lists" | "すべての一覧" |
+| `health.col_page` | the heading of the column with a page's title | "Page" | "ページ" |
+| `health.col_wanted` | the heading of the column with a wanted title | "Wanted title" | "未作成のタイトル" |
+| `health.col_linked` | the heading of the column that counts the pages linking to a title | "Pages linking to it" | "リンクしているページ数" |
+| `health.col_action` | the heading of the column that says what would resolve each row | "What would resolve it" | "解決するための対応" |
+| `health.col_target` | the heading of the column with a redirect's target | "Points to" | "リダイレクト先" |
+| `health.col_problem` | the heading of the column that names a redirect's problem | "Problem" | "問題" |
+| `health.col_mark` | the heading of the column that says how a page is marked | "Marked as" | "表示されている状態" |
+| `health.col_changed` | the heading of the column that says when a page last changed | "Last change" | "最後の変更" |
+| `health.see_links` | a link to the pages that link to a wanted title; `{title}` is that title | "Pages that link to {title}" | "{title} へのリンク元のページ" |
+| `health.wanted_action` | the action beside a wanted title | "Add a page with this title, or change the links that point to it." | "このタイトルのページを追加するか、リンクを修正します。" |
+| `health.orphans_action` | the action beside an orphan page | "Link to this page from a related page, so that readers can find it." | "関連するページからこのページへリンクして、読者が見つけられるようにします。" |
+| `health.dead_ends_action` | the action beside a dead-end page | "Add links from this page to related pages." | "このページから関連するページへのリンクを追加します。" |
+| `health.problem_broken` | a redirect's problem | "The target is not a page." | "リダイレクト先がページではありません。" |
+| `health.problem_loop` | a redirect's problem | "The redirects lead round in a circle." | "リダイレクトが循環しています。" |
+| `health.problem_long` | a redirect's problem | "The chain of redirects is too long." | "リダイレクトの連鎖が長すぎます。" |
+| `health.problem_double` | a redirect's problem | "The target is itself a redirect." | "リダイレクト先がさらに別のリダイレクトです。" |
+| `health.action_broken` | the action beside a redirect whose target is no page | "Point it at a page that exists, or remove the redirect." | "存在するページを指すように直すか、リダイレクトを削除します。" |
+| `health.action_loop` | the action beside redirects that go round in a circle | "Make one of the redirects point at a real page." | "どれか一つのリダイレクトを、実在するページに向けます。" |
+| `health.action_long` | the action beside a chain of redirects that is too long | "Point the first redirect straight at the final page." | "最初のリダイレクトを最終的なページに直接向けます。" |
+| `health.action_double` | the action beside a redirect to a redirect | "Point this redirect straight at the final page." | "このリダイレクトを最終的なページに直接向けます。" |
+| `health.mark_wip` | how a page is marked | "Work in progress" | "作業中" |
+| `health.mark_draft` | how a page is marked | "Draft" | "下書き" |
+| `health.mark_stub` | how a page is marked | "Stub" | "スタブ" |
+| `health.help_action` | the action beside a page that wants help | "Finish or improve the page, then remove the mark." | "ページを仕上げるか改善してから、その表示を外します。" |
+| `health.stale_never` | in the last change column of a page the recent changes did not touch | "Not changed in the recent changes looked through" | "確認した最近の変更の中では変更されていません" |
+| `health.stale_seen` | in the last change column; `{when}` is when this server first saw the change | "In a change first seen {when}" | "{when} に初めて確認された変更" |
+| `health.stale_action` | the action beside a page unchanged for long | "Read the page, and update it if it is out of date." | "ページを読み、古くなっていれば更新します。" |
+| `health.stale_window` | under the list of pages unchanged longest; `{limit}` is how many of the newest changes were looked through | "The history does not say when a page last changed, so this list looks only through the newest {limit} changes." | "履歴にはページが最後に変更された時期が記録されないため、この一覧では新しい {limit} 件の変更だけを確認しています。" |
+| `health.none_wanted` | in place of the list of wanted pages when there are none | "No page is wanted: every link leads to a page." | "未作成のページはありません。すべてのリンクがページにつながっています。" |
+| `health.none_orphans` | in place of the list of orphan pages when there are none | "Every page has a page that links to it." | "すべてのページが、ほかのページからリンクされています。" |
+| `health.none_dead_ends` | in place of the list of dead-end pages when there are none | "Every page links to another page." | "すべてのページが、ほかのページにリンクしています。" |
+| `health.none_redirects` | in place of the list of redirect problems when there are none | "Every redirect leads to a page." | "すべてのリダイレクトがページにつながっています。" |
+| `health.none_help` | in place of the list of pages that want help when there are none | "No page is marked as needing help." | "手助けが必要と示されているページはありません。" |
+| `health.none_stale` | in place of the list of pages unchanged longest when the wiki has no page | "There are no pages to list." | "表示できるページはありません。" |
+| `title.links` | the title of the page that lists the pages linking to a page; `{page}` is its title | "Links to {page} · {wiki} · {product}" | "{page} へのリンク · {wiki} · {product}" |
+| `links.heading` | its heading | "Pages that link to {page}" | "{page} へのリンク元のページ" |
+| `links.missing` | under that heading when no page has the title | "No page has this title yet. These pages link to it." | "このタイトルのページはまだありません。次のページがリンクしています。" |
+| `links.go_to` | a link to the page whose backlinks are listed | "Go to {page}" | "{page} を開く" |
+| `links.none` | when no page links to the page | "No page links here." | "このページへリンクしているページはありません。" |
+| `links.kind_include` | beside a page that includes this one | "Includes this page" | "このページを埋め込んでいます" |
+| `links.kind_redirect` | beside a redirect to this page | "Redirects here" | "ここへリダイレクトしています" |
+| `links.cut` | under the list when it is cut; `{limit}` is how many are listed | "Only the first {limit} are listed." | "最初の {limit} 件のみ表示しています。" |
+| `head.feed_wiki` | the name of the feed of a wiki's changes in a browser's or reader's list; `{wiki}` is the wiki's name | "Recent changes to {wiki}" | "{wiki} の最近の変更" |
+| `head.feed_page` | the name of the feed of one page's changes; `{page}` is its title | "Changes to {page}" | "{page} への変更" |
+| `head.markdown` | the name of a page's Markdown source in a tool's list; `{page}` is its title | "{page} as Markdown" | "{page}（Markdown）" |
+| `head.search` | the name of the search in a browser's list of search engines; `{wiki}` is the wiki's name | "Search {wiki}" | "{wiki} を検索" |
 
 ## 3. Words the interface does not say
 

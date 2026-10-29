@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+<p>{{ description }}</p>
+{% if rows.is_empty() %}<p>{{ none }}</p>
+{% else %}<table class="health">
+<caption>{{ caption }}</caption>
+<thead>
+<tr>{% for h in headers %}<th scope="col">{{ h }}</th>{% endfor %}</tr>
+</thead>
+<tbody>
+{% for row in rows %}<tr>{% for cell in row %}{% if loop.first %}<th scope="row">{% if let Some(href) = cell.href %}<a href="{{ href }}">{{ cell.text }}</a>{% else %}{{ cell.text }}{% endif %}</th>{% else %}<td>{{ cell.text }}{% if let Some(link) = cell.link %}<br><a href="{{ link.1 }}">{{ link.0 }}</a>{% endif %}</td>{% endif %}{% endfor %}</tr>
+{% endfor %}</tbody>
+</table>
+{% endif %}{% for note in notes %}<p class="list-note" role="note">{{ note }}</p>
+{% endfor %}<p><a href="{{ back_href }}">{{ back_text }}</a></p>
+{% endblock %}

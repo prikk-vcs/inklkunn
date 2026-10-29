@@ -54,8 +54,8 @@
 
 mod changes;
 mod counting;
-mod history;
 mod graph;
+mod history;
 mod index;
 mod linediff;
 mod links;
@@ -92,26 +92,26 @@ pub use changes::{
     StalePage, Tri,
 };
 pub use counting::{Calls, CountingStorage};
-pub use history::{
-    AtOutcome, ChangeDetail, ChangeInfo, ChangeKind, ChangeOutcome, Did, DiffOutcome, DiffStatus,
-    HISTORY_PAGE_ROWS, HistoryOutcome, HistoryRow, MAX_DID, MAX_DIFF_LINES,
-    MAX_INSPECTED_PER_REQUEST, MAX_SHOWS_PER_REQUEST, MAX_WINDOW, PageDiff, PageEvent, PageHistory,
-    Provenance, Subject, Who,
-};
 pub use graph::{
     Backlink, BacklinkKind, GraphPage, LinkGraph, RedirectIssue, RedirectIssueKind, Wanted,
+};
+pub use history::{
+    AtOutcome, ChangeDetail, ChangeInfo, ChangeKind as HistoryChangeKind, ChangeOutcome, Did,
+    DiffOutcome, DiffStatus, HISTORY_PAGE_ROWS, HistoryOutcome, HistoryRow, MAX_DID,
+    MAX_DIFF_LINES, MAX_INSPECTED_PER_REQUEST, MAX_SHOWS_PER_REQUEST, MAX_WINDOW, PageDiff,
+    PageEvent, PageHistory, Provenance, Subject, Who,
 };
 pub use index::{
     FRONTMATTER_READ_BYTES, Found, Lookup, MAX_REDIRECT_HOPS, Problem, RedirectProblem,
     RedirectedBy, RedirectedFrom, TitleIndex, TreeError, entries_from_tree,
 };
 pub use inklkunn_markup::{TransclusionRefusal, Via};
-pub use linediff::{DiffLine, Hunk, HunkView, LineKind, MAX_WORDS, Segment};
 pub use inklkunn_store::SearchKind;
+pub use linediff::{DiffLine, Hunk, HunkView, LineKind, MAX_WORDS, Segment};
 pub use links::Presentation;
 pub use raw::RawPage;
 pub use sanitize::{HTML_SUBSET, SafeHtml, Sanitizer};
-pub use search::{SearchHit, SearchOutcome, Segment, fold, highlight};
+pub use search::{SearchHit, SearchOutcome, Segment as SnippetSegment, fold, highlight};
 pub use tip::Tip;
 
 // The read API's reads (handoff 003 T8).

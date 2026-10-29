@@ -44,12 +44,17 @@ fn every_entry_is_guarded_or_public_with_a_reason() {
 /// The URL scheme's one rule (RFC 003 D-1): a path is `/`, `/-/…`, or `/{slug}/-/…` or `/{slug}/…` with a
 /// parameter standing for a title. No other fixed word may stand where a slug or a title could, so no title
 /// is ever shadowed.
+const ROOT_FILES: &[&str] = &["robots.txt"];
+
 fn path_is_reserved_or_parametric(path: &str) -> bool {
     let segments: Vec<&str> = path.trim_start_matches('/').split('/').collect();
     match segments.as_slice() {
         [""] => true,
         ["-", ..] => true,
         [first, "-", ..] if first.starts_with('{') => true,
+        // The files a crawler asks for at the root. No wiki can be named like one: a slug is lower-case
+        // letters, digits and hyphens (`root_files_cannot_be_wiki_slugs`).
+        [file] if ROOT_FILES.contains(file) => true,
         [first, rest @ ..] if first.starts_with('{') => rest.iter().all(|s| s.starts_with('{')),
         _ => false,
     }
@@ -67,6 +72,16 @@ fn no_declared_route_can_shadow_a_title() {
 }
 
 #[test]
+fn root_files_cannot_be_wiki_slugs() {
+    for file in ROOT_FILES {
+        assert!(
+            inklkunn_store::Slug::new(file).is_err(),
+            "a wiki could be named {file}, which the root file would shadow"
+        );
+    }
+}
+
+#[test]
 fn the_shadowing_check_catches_its_planted_violations() {
     for ok in [
         "/",
@@ -74,6 +89,7 @@ fn the_shadowing_check_catches_its_planted_violations() {
         "/{slug}/-/history/{*title}",
         "/{slug}/{*title}",
         "/-/wikis",
+        "/robots.txt",
     ] {
         assert!(path_is_reserved_or_parametric(ok), "{ok}");
     }
@@ -84,6 +100,7 @@ fn the_shadowing_check_catches_its_planted_violations() {
         "/{slug}/history/{*title}",
         "/static/site.css",
         "/api/v1",
+        "/sitemap.xml",
     ] {
         assert!(
             !path_is_reserved_or_parametric(planted),
@@ -285,6 +302,16 @@ fn every_route_that_can_show_wiki_data_is_guarded_by_read_and_the_rest_are_publi
             "/{slug}/-/change/{block}",
             "/{slug}/-/diff/{from}/{to}/{*title}",
             "/{slug}/-/at/{block}/{*title}",
+            "/{slug}/-/changes",
+            "/{slug}/-/changes.atom",
+            "/{slug}/-/search",
+            "/{slug}/-/opensearch.xml",
+            "/{slug}/-/health",
+            "/{slug}/-/health/{list}",
+            "/{slug}/-/links/{*title}",
+            "/{slug}/-/site.json",
+            "/{slug}/-/describe/{*title}",
+            "/{slug}/-/sitemap.xml",
             "/{slug}/{*title}"
         ]
     );
@@ -298,7 +325,16 @@ fn every_route_that_can_show_wiki_data_is_guarded_by_read_and_the_rest_are_publi
         .map(|e| e.path)
         .filter(|p| !p.contains("/-/api/"))
         .collect();
-    assert_eq!(public, ["/-/health", "/-/lang", "/-/assets/{file}"]);
+    assert_eq!(
+        public,
+        [
+            "/-/health",
+            "/-/lang",
+            "/-/assets/{file}",
+            "/robots.txt",
+            "/{slug}/-/raw/{*title}"
+        ]
+    );
 }
 
 #[tokio::test]

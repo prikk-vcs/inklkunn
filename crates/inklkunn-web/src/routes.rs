@@ -14,11 +14,12 @@ use axum::routing::{MethodRouter, get};
 use inklkunn_core::{Action, Guard, RouteError, RouteTable};
 
 use crate::config::{Scheme, WebConfig};
+use crate::discover::Origins;
 use crate::headers::{self, Surface};
 use crate::origin::Dispatch;
 use crate::pages::{self, LANGUAGE_PATH, PageState};
 use crate::services::Services;
-use crate::{api, history, probe, style, wiki};
+use crate::{api, changes, discover, health, history, probe, raw, search, style, wiki};
 
 /// One declared entry point and the handler that serves it.
 struct Spec {
@@ -126,12 +127,107 @@ fn page_specs() -> Vec<Spec> {
             handler: || get(history::at),
         },
         Spec {
+            path: "/robots.txt",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Public {
+                reason: "robots.txt for crawlers: fixed rules and the sitemap addresses of the wikis anyone may read; it names no wiki that is not public",
+            },
+            handler: || get(discover::robots),
+        },
+        Spec {
+            path: "/{slug}/-/changes",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(changes::changes_page),
+        },
+        Spec {
+            path: "/{slug}/-/changes.atom",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(changes::changes_atom),
+        },
+        Spec {
+            path: "/{slug}/-/search",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(search::search_page),
+        },
+        Spec {
+            path: "/{slug}/-/opensearch.xml",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(discover::opensearch),
+        },
+        Spec {
+            path: "/{slug}/-/health",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(health::health_index),
+        },
+        Spec {
+            path: "/{slug}/-/health/{list}",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(health::health_list),
+        },
+        Spec {
+            path: "/{slug}/-/links/{*title}",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(health::links_page),
+        },
+        Spec {
+            path: "/{slug}/-/site.json",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(discover::site_description),
+        },
+        Spec {
+            path: "/{slug}/-/describe/{*title}",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(discover::describe_page),
+        },
+        Spec {
+            path: "/{slug}/-/sitemap.xml",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(discover::sitemap),
+        },
+        Spec {
+            path: "/{slug}/-/raw/{*title}",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Public {
+                reason: "refuses: a page's source is served only on the content origin, so this origin answers every request for it with the generic not-found page and reads nothing",
+            },
+            handler: || get(raw::raw_refused),
+        },
+        Spec {
             path: "/{slug}/{*title}",
             methods: &["GET", "HEAD"],
             guard: Guard::Action(Action::Read),
             handler: || get(wiki::view_page),
         },
     ]
+}
+
+/// The content origin's entry points: a page's source, byte for byte, and nothing else.
+fn content_specs() -> Vec<Spec> {
+    vec![Spec {
+        path: "/{slug}/-/raw/{*title}",
+        methods: &["GET", "HEAD"],
+        guard: Guard::Action(Action::Read),
+        handler: || get(raw::raw_content),
+    }]
+}
+
+/// The content origin's declared entry points.
+pub fn content_table() -> Result<RouteTable, RouteError> {
+    let mut table = RouteTable::new();
+    for spec in content_specs() {
+        table.register(spec.path, spec.methods, spec.guard)?;
+    }
+    Ok(table)
 }
 
 /// The application origin's declared entry points.
@@ -143,18 +239,15 @@ pub fn application_table() -> Result<RouteTable, RouteError> {
     Ok(table)
 }
 
-/// The application origin's router, built from its table. Anything not declared is a 404 page in the visitor's
+/// The application origin's router, built from its table, serving the wikis `services` reaches (none: every
+/// wiki address is then the generic not-found page). Anything not declared is a 404 page in the visitor's
 /// language that carries the same headers as every other response.
-pub fn application(https: bool) -> Result<Router, RouteError> {
-    application_with(https, None)
-}
-
-/// [`application`], serving the wikis `services` reaches.
-pub fn application_with(
-    https: bool,
+pub(crate) fn application_with(
+    origins: Origins,
     services: Option<Arc<Services>>,
 ) -> Result<Router, RouteError> {
     application_table()?;
+    let https = origins.app_origin().scheme() == Scheme::Https;
     let mut router = Router::new();
     for spec in application_specs() {
         router = router.route(spec.path, (spec.handler)());
@@ -162,21 +255,39 @@ pub fn application_with(
     Ok(router
         .fallback(api::fallback_not_found)
         .method_not_allowed_fallback(api::fallback_method_not_allowed)
-        .with_state(PageState { https, services })
+        .with_state(PageState {
+            https,
+            services,
+            origins: Arc::new(origins),
+        })
         .layer(from_fn(move |req, next| {
             headers::layer(Surface::Application { https }, req, next)
         })))
 }
 
-/// The content origin's router. It serves wiki-authored bytes as inert attachments and nothing else; no
-/// attachment is served yet, so everything is a plain-text 404 with the content origin's headers (its policy
-/// allows no stylesheet and no form, so it answers no page).
-pub fn content(https: bool) -> Router {
-    Router::new()
+/// The content origin's router, built from its table. It serves wiki-authored bytes as inert files and nothing
+/// else; everything it does not serve is a plain-text 404 with the content origin's headers (its policy allows
+/// no stylesheet and no form, so it answers no page).
+pub(crate) fn content_with(
+    origins: Origins,
+    services: Option<Arc<Services>>,
+) -> Result<Router, RouteError> {
+    content_table()?;
+    let https = origins.content_origin().scheme() == Scheme::Https;
+    let mut router = Router::new();
+    for spec in content_specs() {
+        router = router.route(spec.path, (spec.handler)());
+    }
+    Ok(router
         .fallback(pages::plain_not_found)
+        .with_state(PageState {
+            https,
+            services,
+            origins: Arc::new(origins),
+        })
         .layer(from_fn(move |req, next| {
             headers::layer(Surface::Content { https }, req, next)
-        }))
+        })))
 }
 
 /// Both origins behind one listener, serving no wiki (every wiki address is then the generic not-found page).
@@ -189,10 +300,10 @@ pub fn site_with(
     config: &WebConfig,
     services: Option<Arc<Services>>,
 ) -> Result<Router, RouteError> {
-    let https = |scheme| scheme == Scheme::Https;
+    let origins = Origins::new(config.app_origin.clone(), config.content_origin.clone());
     let dispatch = Dispatch::new(
-        application_with(https(config.app_origin.scheme()), services)?,
-        content(https(config.content_origin.scheme())),
+        application_with(origins.clone(), services.clone())?,
+        content_with(origins, services)?,
         config.app_origin.clone(),
         config.content_origin.clone(),
     );

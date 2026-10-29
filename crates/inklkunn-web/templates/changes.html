@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+<p>{{ intro }}</p>
+<p class="seen-note">{{ seen_note }}</p>
+<form method="get" action="{{ action }}" class="filters">
+<fieldset>
+<legend>{{ page.get(Key::ChangesFilterLegend) }}</legend>
+<p><label for="filter-namespace">{{ page.get(Key::ChangesFilterNamespace) }}</label> <input id="filter-namespace" name="namespace" type="text" value="{{ namespace_value }}" aria-describedby="filter-namespace-hint"></p>
+<p id="filter-namespace-hint" class="hint">{{ page.get(Key::ChangesFilterNamespaceHint) }}</p>
+<p><label for="filter-view">{{ page.get(Key::ChangesFilterView) }}</label> <select id="filter-view" name="view">{% for v in views %}<option value="{{ v.value }}"{% if v.selected %} selected{% endif %}>{{ v.label }}</option>{% endfor %}</select></p>
+<p><label for="filter-automated">{{ page.get(Key::ChangesFilterAutomated) }}</label> <select id="filter-automated" name="automated">{% for o in automated %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>{% endfor %}</select></p>
+<p><button type="submit">{{ page.get(Key::ChangesFilterApply) }}</button></p>
+</fieldset>
+</form>
+{% if !active.is_empty() %}<section class="filters-in-use" aria-labelledby="active-filters">
+<h2 id="active-filters">{{ page.get(Key::ChangesActiveHeading) }}</h2>
+<ul>
+{% for item in active %}<li>{{ item }}</li>
+{% endfor %}</ul>
+<p><a href="{{ clear_href }}">{{ page.get(Key::ChangesClear) }}</a></p>
+</section>
+{% endif %}{% if rows.is_empty() %}<p>{{ page.get(Key::ChangesNone) }}</p>
+{% else %}<table class="changes">
+<caption>{{ page.get(Key::ChangesCaption) }}</caption>
+<thead>
+<tr><th scope="col">{{ page.get(Key::ChangesColChange) }}</th><th scope="col">{{ page.get(Key::ChangesColPeople) }}</th><th scope="col">{{ page.get(Key::ChangesColPages) }}</th><th scope="col">{{ page.get(Key::ChangesFilterView) }}</th><th scope="col">{{ page.get(Key::ChangesColSeen) }}</th></tr>
+</thead>
+<tbody>
+{% for r in rows %}<tr><th scope="row">{{ r.summary }}{% if let Some(text) = r.rollback %}<br><small>{{ text }}</small>{% endif %}</th><td>{% for line in r.people %}{% if !loop.first %}<br>{% endif %}{{ line }}{% endfor %}</td><td>{% if !r.pages.is_empty() %}<ul>{% for p in r.pages %}<li>{% if let Some(href) = p.href %}<a href="{{ href }}">{{ p.label }}</a>{% else %}{{ p.label }}{% endif %}</li>{% endfor %}</ul>{% endif %}{% if let Some(text) = r.pages_note %}{{ text }}{% endif %}</td><td>{{ r.view }}</td><td><time datetime="{{ r.iso }}">{{ r.when }}</time></td></tr>
+{% endfor %}</tbody>
+</table>
+{% endif %}{% for note in notes %}<p class="list-note" role="note">{{ note }}</p>
+{% endfor %}<p><a href="{{ feed_href }}">{{ page.get(Key::ChangesFeed) }}</a></p>
+{% endblock %}

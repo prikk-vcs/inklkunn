@@ -7,6 +7,7 @@ use inklkunn_prikk::{Change, Diff, DiffEntry, Operation, Patch};
 use super::super::testing::{Env, World, block_id, page, state_id};
 use super::*;
 use crate::message::{Actor, Message, Summary, SystemLabel};
+use crate::read::history::ChangeKind;
 
 /// The `i`th of a slice, or a failed test.
 fn nth<T>(items: &[T], i: usize) -> &T {

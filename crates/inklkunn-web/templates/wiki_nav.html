@@ -1,6 +1,9 @@
 <nav class="wiki-nav" aria-label="{{ page.get(Key::WikiNav) }}">
 <ul>
 <li><a href="{{ shell.front }}">{{ shell.name }}</a></li>
+<li><a href="{{ shell.changes }}">{{ page.get(Key::WikiNavChanges) }}</a></li>
+<li><a href="{{ shell.search }}">{{ page.get(Key::WikiNavSearch) }}</a></li>
+<li><a href="{{ shell.health }}">{{ page.get(Key::WikiNavHealth) }}</a></li>
 <li><a href="{{ shell.about }}">{{ page.get(Key::WikiNavAbout) }}</a></li>
 <li><a href="{{ shell.verification }}">{{ page.get(Key::WikiNavVerification) }}</a></li>
 <li><a href="{{ shell.wikis }}">{{ page.get(Key::WikiNavWikis) }}</a></li>

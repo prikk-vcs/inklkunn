@@ -21,7 +21,7 @@ use askama::Template;
 use axum::extract::rejection::{FormRejection, QueryRejection};
 use axum::extract::{Form, FromRequestParts, Query, State};
 use axum::http::request::Parts;
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 
 use crate::catalog::{self, Key, Lang, PRODUCT, Rich, T};
@@ -41,6 +41,9 @@ pub(crate) struct PageState {
     /// What the wiki pages are built on; `None` serves no wiki at all (every wiki address is then the generic
     /// not-found page, exactly as for a wiki that does not exist).
     pub services: Option<std::sync::Arc<crate::services::Services>>,
+    /// The two origins, for the addresses that must be absolute (feeds, the sitemap, links to the content
+    /// origin).
+    pub origins: std::sync::Arc<crate::discover::Origins>,
 }
 
 /// One language the switcher offers.
@@ -63,6 +66,12 @@ pub struct Page {
     t: T,
     pub(crate) back: String,
     pub(crate) switcher: bool,
+    /// The link relations of the head (a wiki's pages carry them, see `discover`).
+    pub(crate) head: Vec<crate::discover::HeadLink>,
+    /// A page of a wiki that is not public: `noindex`, in the head and in a header.
+    pub(crate) noindex: bool,
+    /// The site's origins, when the page was built for a request.
+    pub(crate) origins: Option<std::sync::Arc<crate::discover::Origins>>,
 }
 
 impl Page {
@@ -73,6 +82,9 @@ impl Page {
             t,
             back: lang::safe_back(back).unwrap_or("/").to_owned(),
             switcher: true,
+            head: Vec::new(),
+            noindex: false,
+            origins: None,
         }
     }
 
@@ -118,6 +130,16 @@ impl Page {
         LANGUAGE_PATH
     }
 
+    /// The `<link>` elements of the head.
+    pub(crate) fn head_links(&self) -> &[crate::discover::HeadLink] {
+        &self.head
+    }
+
+    /// Does the page ask not to be indexed?
+    pub(crate) fn noindex(&self) -> bool {
+        self.noindex
+    }
+
     pub(crate) fn footer_line(&self) -> String {
         self.t
             .msg(Key::LayoutFooter)
@@ -151,15 +173,14 @@ impl Page {
     }
 }
 
-impl<S: Send + Sync> FromRequestParts<S> for Page {
+impl FromRequestParts<PageState> for Page {
     type Rejection = Infallible;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Page, Infallible> {
+    async fn from_request_parts(parts: &mut Parts, state: &PageState) -> Result<Page, Infallible> {
         let language = lang::negotiate_from_headers(&parts.headers);
-        Ok(Page::new(
-            T::new(language),
-            &lang::back_for(&parts.method, &parts.uri),
-        ))
+        let mut page = Page::new(T::new(language), &lang::back_for(&parts.method, &parts.uri));
+        page.origins = Some(state.origins.clone());
+        Ok(page)
     }
 }
 
@@ -271,7 +292,16 @@ pub(crate) fn answer(
     rendered: Result<String, askama::Error>,
 ) -> Response {
     match rendered {
-        Ok(body) => html(status, page.t.lang(), body),
+        Ok(body) => {
+            let mut res = html(status, page.t.lang(), body);
+            if page.noindex {
+                res.headers_mut().insert(
+                    HeaderName::from_static("x-robots-tag"),
+                    HeaderValue::from_static("noindex, nofollow"),
+                );
+            }
+            res
+        }
         Err(_) => plain(
             StatusCode::INTERNAL_SERVER_ERROR,
             page.t.lang(),

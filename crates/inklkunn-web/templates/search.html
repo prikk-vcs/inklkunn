@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ page.get(Key::SearchHeading) }}</h1>
+<form method="get" action="{{ action }}" role="search">
+<p><label for="search-query">{{ page.get(Key::SearchLabel) }}</label> <input id="search-query" name="q" type="search" value="{{ query }}" aria-describedby="search-scope"> <button type="submit">{{ page.get(Key::SearchButton) }}</button></p>
+<p id="search-scope" class="hint">{{ page.get(Key::SearchScope) }}</p>
+</form>
+{% if let Some(text) = note %}<p class="search-note">{{ text }}</p>
+{% endif %}{% if let Some(heading) = results_heading %}<section class="results" aria-labelledby="results-heading">
+<h2 id="results-heading">{{ heading }}</h2>
+<ul>
+{% for h in hits %}<li><a href="{{ h.href }}">{{ h.title }}</a><br><span class="matched">{{ h.label }} {{ h.snippet }}</span></li>
+{% endfor %}</ul>
+{% if cut %}<p class="list-note" role="note">{{ page.get(Key::SearchCut) }}</p>
+{% endif %}</section>
+{% endif %}{% if let Some(offer) = create %}<section class="create-offer" aria-labelledby="create-heading">
+<h2 id="create-heading">{{ offer.heading }}</h2>
+<p><button type="button" disabled>{{ offer.label }}</button> {{ page.get(Key::PageProposeNote) }}</p>
+</section>
+{% endif %}{% endblock %}

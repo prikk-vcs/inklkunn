@@ -30,6 +30,9 @@ askama = { version = "0.16", default-features = false, features = ["derive", "st
 tower-service = "0.3"
 
 [dev-dependencies]
+# Test-only: build account principals, to show a reader of a restricted wiki what an anonymous visitor is refused.
+# (A dev-dependency feature: the boundary gate refuses it in a product dependency only.)
+inklkunn-core = { workspace = true, features = ["test-authority"] }
 # Test-only: the storage the page tests stand a repository on (an in-memory double of prikk's reads).
 inklkunn-prikk = { workspace = true }
 # Test-only: drive a router with `oneshot`, with no socket.

@@ -24,9 +24,9 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use inklkunn_core::read::{
-    AtOutcome, ChangeDetail, ChangeInfo, ChangeKind, ChangeOutcome, Did, DiffOutcome, DiffStatus,
-    HistoryOutcome, HistoryRow, HunkView, LineKind, MAX_DIFF_LINES, PageDiff, PageEvent,
-    PageHistory, Presentation, Provenance, ReadError, Subject, Who,
+    AtOutcome, ChangeDetail, ChangeInfo, ChangeOutcome, Did, DiffOutcome, DiffStatus,
+    HistoryChangeKind, HistoryOutcome, HistoryRow, HunkView, LineKind, MAX_DIFF_LINES, PageDiff,
+    PageEvent, PageHistory, Presentation, Provenance, ReadError, Subject, Who,
 };
 use inklkunn_markup::path::path_to_title;
 use inklkunn_store::WikiRecord;
@@ -181,7 +181,7 @@ fn who_text(t: T, who: &Who) -> String {
 fn people(t: T, provenance: &Provenance) -> Vec<String> {
     match provenance {
         Provenance::Recorded {
-            kind: ChangeKind::Proposal | ChangeKind::Rollback,
+            kind: HistoryChangeKind::Proposal | HistoryChangeKind::Rollback,
             proposed_by,
             accepted_by,
         } => vec![
@@ -210,12 +210,12 @@ fn flags(t: T, info: &ChangeInfo) -> Vec<String> {
         Provenance::Recorded { kind, .. } => Some(*kind),
         Provenance::NotRecorded => None,
     };
-    if info.undoes || kind == Some(ChangeKind::Rollback) {
+    if info.undoes || kind == Some(HistoryChangeKind::Rollback) {
         out.push(t.get(Key::FlagUndo));
     }
     match kind {
-        Some(ChangeKind::Import) => out.push(t.get(Key::FlagImport)),
-        Some(ChangeKind::System) => out.push(t.get(Key::FlagService)),
+        Some(HistoryChangeKind::Import) => out.push(t.get(Key::FlagImport)),
+        Some(HistoryChangeKind::System) => out.push(t.get(Key::FlagService)),
         _ => {}
     }
     if info.first {
@@ -421,7 +421,7 @@ struct ChangeTpl<'a> {
 fn statement(t: T, provenance: &Provenance) -> String {
     match provenance {
         Provenance::Recorded {
-            kind: ChangeKind::Proposal | ChangeKind::Rollback,
+            kind: HistoryChangeKind::Proposal | HistoryChangeKind::Rollback,
             proposed_by,
             accepted_by,
         } => t
