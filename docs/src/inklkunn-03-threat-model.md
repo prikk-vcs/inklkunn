@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | inklkunn Threat Model (security): what inklkunn must defend, against whom, and how, so that the design and the tests can be checked against it. A first-class release deliverable (project rules): updated by any release that touches identity, signing, the prikk boundary, rendering or inbound content; re-verified by the others. |
-| Version | v0.1, amended 2026-10-29 (C-1d and RR-8: key rotation on prikk as it is, the owner's DR-10 ruling after prikk confirmed it) |
+| Version | v0.1, amended 2026-10-29 (C-1d and RR-8: key rotation on prikk as it is, the owner's DR-10 ruling after prikk confirmed it). **Section 7's tests re-verified 2026-10-29** at the end of handoff 003 (M1): the record is §7.1 |
 | Date | 2026-10-27 |
 | Basis | Requirements v0.1 (SEC/PRV/ID/GV/INT), the external design v0.1 (BD/WEB/API/AUTH/PK/FL/CT/OP), the rulings DR-2 and DR-4, prikk's trust and threat model, planeter's threat model v0.4 (the house precedent and the neighbour whose guarantees inklkunn must not weaken), wiki-commons chapter 14, the requirements register items 7, 8, 14, 17. |
 | ID scheme | `A-` asset · `TB-` trust boundary · `T-` threat · `C-` control · `INV-` security invariant · `RR-` residual risk · `ASSUME-` assumption |
@@ -324,6 +324,31 @@ INV-1 and INV-10 (the reconciliation, with a planted unrecorded seal and a plant
 INV-4 (the route enumeration test); INV-3 (the title-to-path fuzz, a hostile bundle fixture, an SSRF fixture
 per fetch site); INV-5 and INV-6 (the cache-cleared rebuild; a stale badge never served; an open proposal
 never rendered as the record).
+
+### 7.1 Verification record (2026-10-29, handoff 003 T9)
+
+Every item of §7 below was re-run with the workspace test suite (`cargo test --workspace --locked`, prikk 0.55.0 on
+`PATH`, and again with prikk shimmed off, where the prikk-dependent tests print their `skipping: prikk not on PATH`
+line and the count is held to `EXPECTED_SKIPS`). A row says which tests carry the item and what they do **not**
+cover; nothing is claimed beyond that. The dev team wrote this record; the architect's review re-verifies it.
+
+| Item | Tests that carry it | Not covered |
+|---|---|---|
+| **INV-2** keys reachable from one component only; the web tier cannot obtain a signer with keys | `tools/boundary-check/tests/gates.rs`: `only_core_depends_on_the_signer_and_no_product_crate_enables_a_test_feature`, `key_reachability_gate_catches_planted_dependencies_and_features`, `the_key_store_module_is_private_unmentioned_and_the_signer_names_stay_in_the_signer`, `a_web_handler_receives_a_principal_it_never_builds` (each gate is shown to fail on a planted violation); the compile-fail doctests of `IdentityAuthority`, `AccountPrincipal` and `KeyAuthority` (`cargo test --doc`) | the running service's memory; the tests are the build graph and the types |
+| **INV-1, INV-10** the reconciliation, with a planted unrecorded seal and a planted unsealed acceptance | `inklkunn-core/tests/reconcile.rs`: `an_unrecorded_seal_and_an_unsealed_acceptance_are_both_reported_and_nothing_is_changed`; `src/reconcile/tests.rs` | the schedule (it is run by the write path of RFC 004, which does not exist yet) |
+| **INV-4** the route enumeration | `inklkunn-web/tests/route_enumeration`: `every_guarded_route_answers_a_restricted_wiki_exactly_as_one_that_is_not_there` walks the route registry (application and content origins), asks every guarded route of a restricted and of an absent wiki and requires the same refusal, byte for byte but for the echoed address (mutation: `open()` ignoring its decision is caught); `wiki_pages::a_private_wiki_and_a_wiki_that_is_not_there_are_the_same_answer`; the API's `a_wiki_you_may_not_read_answers_every_endpoint_exactly_as_a_wiki_that_is_not_there`; `boundary-check`: `routes_are_registered_in_the_registry_file_and_nowhere_else` (a planted bare route fails) | an authenticated principal with a role: sign-in is not served in this release, so only anonymous requests reach the router |
+| **INV-3** the title-to-path fuzz | `inklkunn-markup/tests/path_props.rs` (property tests, with the regression file) | |
+| **INV-3** a hostile bundle fixture | `inklkunn-core/src/import` tests and `crates/inklkunn/src/admin` tests: `a_hostile_folder_is_refused…` (links, device names, non-UTF-8 name and content, bad frontmatter, over-cap path, case collision, duplicate id, socket, non-ASCII name; every reason named, nothing written) | the Portable Wiki Bundle import (RFC 007); this is the folder import (RFC 003 D-12) |
+| **INV-3** an SSRF fixture per fetch site | `inklkunn-core/src/egress/tests.rs` (24 refused literal ranges, schemes, the pin), `inklkunn-fetch/tests/standin.rs` and `real_vector.rs` (the confined `curl`: no redirect followed, caps, deadline) | the only fetch site in this release is the OIDC fetcher, which is not switched on |
+| **INV-5** the cache-cleared rebuild | `inklkunn-core/src/read/tests/cache.rs`: `the_cache_cleared_and_every_view_rebuilt_yields_identical_pages`; `tests/read_path.rs` (real prikk) | |
+| **INV-5, INV-6** a stale badge is never served | `wiki_pages::the_badge_is_the_records_and_never_the_caches`; `…when_prikk_is_busy_a_page_with_no_copy_is_unavailable_and_one_with_a_copy_is_served_stale` (a page served stale says *Could not be checked now* whatever the record says); the derived cache has no field for a verification (a type-level rule, `inklkunn-store/tests/derived.rs`) | |
+| **INV-6** a memory limit is never a failed verification | `inklkunn-prikk` `verdict_of` unit tables; the real-prikk sweep `inklkunn-signer/tests/verify_verdicts.rs` (fails on the old driver); `inklkunn-core/src/check/tests.rs` | |
+| **INV-6** an open proposal is never rendered as the record | **not testable yet**: proposals arrive with RFC 004. What exists: the `Assurance` values and the retired-words and glossary tests, and the change page that says only *Signed into the history* and who the message names (`wiki_history`: `a_change_the_service_made_itself_and_one_nobody_is_named…`) | the proposal states themselves |
+
+Also re-run: the structural, catalog, glossary, retired-words and stylesheet tests on every page state in both languages
+(`inklkunn-web/tests/structure`, `catalog_checks`, `glossary`, `retired_words`, `stylesheet`), the sanitizer tests
+(`inklkunn-core/tests/sanitizer.rs`, `read/sanitize/tests.rs`, `inklkunn-markup/tests/author_html.rs` for IS-14), and
+the supply-chain gates (`cargo deny check`, `cargo audit`).
 
 *End of Threat Model v0.1. Its headline is RR-1, stated so no one discovers it after depending on it: inklkunn
 holds its wikis' signing keys by the owner's ruling, and everything in this model is built to make that
