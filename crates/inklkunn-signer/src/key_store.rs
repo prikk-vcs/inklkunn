@@ -488,7 +488,26 @@ impl KeyStore {
             return Self::unlock(dir, &text, secret);
         }
         if access == Access::MustExist {
-            return Err(KeyStoreError::NoStore(dir.to_path_buf()));
+            // F5: a directory that holds files but no header is not "no key store here": say what it is, so
+            // an operator who pointed the setting at a directory of something else (or lost the header) is
+            // not told to check a path that is right. The creation lock and a creator's temporary file are
+            // not content; a directory with nothing else is empty.
+            let tmp_prefix = format!(".{HEADER_FILE}.tmp-");
+            let holds_files = std::fs::read_dir(dir)
+                .map_err(io("the key directory could not be listed"))?
+                .filter_map(Result::ok)
+                .any(|e| {
+                    let name = e.file_name();
+                    let name = name.to_string_lossy();
+                    name != CREATE_LOCK_FILE && !name.starts_with(&tmp_prefix)
+                });
+            return Err(if holds_files {
+                KeyStoreError::Header(
+                    "the directory holds files but no header; it is not a key store (or its header was removed)",
+                )
+            } else {
+                KeyStoreError::NoStore(dir.to_path_buf())
+            });
         }
         // Creation is one critical section: the emptiness check and the header's link happen under an
         // exclusive lock on a file in the directory, so a second creator neither sees the first one's

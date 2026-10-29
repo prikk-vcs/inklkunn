@@ -386,6 +386,42 @@ fn opening_never_makes_a_store_and_names_the_path_it_did_not_find() {
     assert!(KeyStore::open(&missing, &secret()).is_ok());
 }
 
+/// Follow-up F5 of handoff 002's corrections: a directory with files and no header is said to be exactly that.
+#[test]
+fn opening_a_directory_that_holds_files_but_no_header_says_so_and_changes_nothing() {
+    let tmp = temp("files-no-header");
+    let dir = tmp.0.join("something-else");
+    std::fs::create_dir(&dir).unwrap();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::fs::write(dir.join("notes.txt"), "not a key store").unwrap();
+    let err = KeyStore::open(&dir, &secret()).unwrap_err();
+    assert!(
+        matches!(err, KeyStoreError::Header(why) if why.contains("holds files but no header")),
+        "{err}"
+    );
+    let text = err.to_string();
+    assert!(
+        !text.contains("there is no key store") && !text.contains("check the key directory"),
+        "{text}"
+    );
+    // Nothing was made or removed.
+    let names: Vec<String> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names, vec!["notes.txt".to_owned()]);
+    // The creation lock and a creator's temporary file are not content: such a directory is still "no store".
+    let quiet = tmp.0.join("quiet");
+    std::fs::create_dir(&quiet).unwrap();
+    std::fs::set_permissions(&quiet, std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::fs::write(quiet.join(".create.lock"), "").unwrap();
+    std::fs::write(quiet.join(".store.json.tmp-1"), "x").unwrap();
+    assert_eq!(
+        KeyStore::open(&quiet, &secret()).unwrap_err(),
+        KeyStoreError::NoStore(quiet.clone())
+    );
+}
+
 #[test]
 fn a_second_creator_arriving_while_the_first_has_only_a_temporary_file_ends_with_the_one_store() {
     use std::sync::mpsc;
