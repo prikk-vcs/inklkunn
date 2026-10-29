@@ -7,10 +7,10 @@
 //! stylesheet, the language switcher, a health check). There is no third kind and no empty reason. The table
 //! itself is plain data and framework-neutral; the web crate builds its routers from it. Its tests hold every
 //! entry to its shape (a guard or a real reason) and to the URL scheme (no fixed path can shadow a page
-//! title). **What is not yet tested** is that a guarded entry's *handler* really calls
-//! [`crate::Authorizer::authorize`] for the action it declares, and answers an anonymous caller asking for a
-//! restricted wiki exactly as for one that does not exist: that needs a request-level harness, which arrives
-//! with the first guarded route (handoff 003 T4). Until then the only entry is a public health check.
+//! title). That a guarded entry's *handler* really calls [`crate::Authorizer::authorize`], and answers a caller who
+//! may not read the wiki exactly as for one that does not exist, is held by the route-enumeration harness
+//! (`crates/inklkunn-web/tests/route_enumeration`): it walks this table, asks every guarded route of a
+//! restricted wiki and of an absent one, and fails on any difference (threat model INV-4).
 //!
 //! The table is only complete if nothing else registers a route. That half is a workspace gate
 //! (`tools/boundary-check`, rule "route registration"): axum's own registration calls may appear in the web
