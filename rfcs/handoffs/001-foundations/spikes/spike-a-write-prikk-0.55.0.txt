@@ -1,0 +1,33 @@
+# Spike A for the write verbs (corrections handoff 002 F1; ledger PK-38) — output of tools/spikes/spike-a-write.py
+# prikk 0.55.0; host Linux 7.3.0-5-cachyos; 2026-10-29
+# python3 tools/spikes/spike-a-write.py --prikk prikk --keys KEYS --repo <1,000 pages 4.4 MB> --repo <100 pages> --repo <64 MiB attachment shape> --add-mib 8 --add-mib 32 --scratch SCRATCH
+# w1k  S = 4.9 MiB
+  worktree-status  adds    0 MiB  need      2.2 MiB   0.46 x S
+  verify           adds    0 MiB  need      9.6 MiB   1.97 x S
+  branch switch    adds    0 MiB  need      6.7 MiB   1.37 x S
+  commit           adds    0 MiB  need      2.2 MiB   0.46 x S
+  seal             adds    0 MiB  need      1.2 MiB   0.26 x S
+  commit           adds    8 MiB  need     57.8 MiB  11.86 x S   7.23 x added
+  seal             adds    8 MiB  need     17.2 MiB   3.54 x S   2.16 x added
+  commit           adds   32 MiB  need    225.9 MiB  46.31 x S   7.06 x added
+  seal             adds   32 MiB  need     65.2 MiB  13.38 x S   2.04 x added
+# w3  S = 0.5 MiB
+  worktree-status  adds    0 MiB  need      1.2 MiB   2.47 x S
+  verify           adds    0 MiB  need      1.2 MiB   2.47 x S
+  branch switch    adds    0 MiB  need      1.2 MiB   2.47 x S
+  commit           adds    0 MiB  need      1.2 MiB   2.47 x S
+  seal             adds    0 MiB  need      1.2 MiB   2.47 x S
+  commit           adds    8 MiB  need     56.6 MiB  112.05 x S   7.08 x added
+  seal             adds    8 MiB  need     16.5 MiB  32.66 x S   2.06 x added
+  commit           adds   32 MiB  need    224.6 MiB  444.53 x S   7.02 x added
+  seal             adds   32 MiB  need     64.5 MiB  127.65 x S   2.02 x added
+# a64k  S = 64.3 MiB
+  worktree-status  adds    0 MiB  need    320.4 MiB   4.99 x S
+  verify           adds    0 MiB  need    320.6 MiB   4.99 x S
+  branch switch    adds    0 MiB  need    384.5 MiB   5.98 x S
+  commit           adds    0 MiB  need    128.3 MiB   2.00 x S
+  seal             adds    0 MiB  need    128.5 MiB   2.00 x S
+  commit           adds    8 MiB  need    128.3 MiB   2.00 x S  16.03 x added
+  seal             adds    8 MiB  need    128.5 MiB   2.00 x S  16.06 x added
+  commit           adds   32 MiB  need    224.4 MiB   3.49 x S   7.01 x added
+  seal             adds   32 MiB  need    128.5 MiB   2.00 x S   4.02 x added

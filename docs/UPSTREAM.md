@@ -65,13 +65,17 @@ staying true to all three (RFC 010 D-1, D-2, D-8). The record of what each upstr
    `floor-check` fails until they all agree; every "≥ x.y.z" mention follows (README, RELEASING, ROADMAP, STATUS). A floor bump
    is release-relevant: the review request says so; the owner decides the version.
 5. **Re-measure the cost tables** — the read table (`crates/inklkunn-prikk/src/cost.rs`) and the signer's write table
-   (`crates/inklkunn-signer/src/cost.rs`, ledger PK-38; its script is follow-up F1 of handoff 002's corrections): each
+   (`crates/inklkunn-signer/src/cost.rs`, ledger PK-38; measured by `tools/spikes/spike-a-write.py`): each
    table's `BOUND_TO` must equal the floor
    (a test fails otherwise). Method: `cargo run --release -p inklkunn-corpus -- wiki …` for the 1 / 16 / 64 /
    200 MiB wiki shapes (1,000 and 10,000 pages, a 500-deep chain) **and**, once attachments exist (M1), a
    single large attachment of 64 and 200 MiB (the shape behind planeter's worst-case multiples), then
-   `tools/spikes/spike-a.py --bisect`; update the multiples **only from the measurement**, never to make a test
-   pass; record the run in the spikes report and the ledger (PK-20).
+   `tools/spikes/spike-a.py --bisect` **and, for the read driver's own vector,** `cargo run --release -p inklkunn-prikk
+   --example measure_vector -- REPO --path pages/attachment.bin` on the shapes `tools/spikes/make-attachment-shape.sh`
+   builds (the vector mounts the repository read-only, which changes `verify`'s need: 3.0 × S there, 5.0 × S for the
+   write path's writable `verify`); update the multiples **only from the measurement**, never to make a test pass;
+   record the run in the spikes report and the ledger (PK-20), the outputs beside spike A's data in
+   `rfcs/handoffs/001-foundations/spikes/`.
 6. **Rebuild the driver fixture** (`crates/inklkunn-prikk/tests/fixtures/README.md`) if the on-disk format
    changed; it is otherwise left alone so that history stays comparable.
 7. **Record**: the ledger's version line and the affected rows; `docs/STATUS.md`'s upstream table; a hold

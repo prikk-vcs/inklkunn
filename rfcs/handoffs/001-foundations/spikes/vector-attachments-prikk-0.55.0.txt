@@ -1,0 +1,43 @@
+# Spike A, the single-large-attachment shape through the driver's own vector (handoff 003 T9; IS-12)
+# prikk 0.55.0; bubblewrap 0.13.1; host Linux 7.3.0-5-cachyos; 2026-10-29
+# built by   tools/spikes/make-attachment-shape.sh SIZE_MIB OUT_DIR
+# measured by cargo run --release -p inklkunn-prikk --example measure_vector -- REPO --path pages/attachment.bin [--unconfined]
+# method: the smallest RLIMIT_DATA at which the driver's call succeeds, bisected to 256 KiB, over a fresh copy
+# of the repository per probe, the repository mounted read-only as the read driver mounts it.
+
+# repository a24 — S = 24.3 MiB, file pages/attachment.bin, the driver's vector (prlimit + bubblewrap) (2 block(s) listed)
+verb       need (MiB)       × S      secs
+tree             48.7      2.01      0.07
+cat              48.7      2.01      0.08
+extract          48.5      2.00      0.14
+verify           72.9      3.00      0.14
+show             48.3      1.99      0.10
+diff             48.9      2.02      0.08
+
+# repository a64 — S = 64.3 MiB, file pages/attachment.bin, the driver's vector (prlimit + bubblewrap) (2 block(s) listed)
+verb       need (MiB)       × S      secs
+tree            128.5      2.00      0.15
+cat             128.5      2.00      0.18
+extract         128.4      2.00      0.35
+verify          192.8      3.00      0.37
+show            128.4      2.00      0.26
+diff            128.8      2.00      0.16
+
+# repository a200 — S = 200.3 MiB, file pages/attachment.bin, the driver's vector (prlimit + bubblewrap) (2 block(s) listed)
+verb       need (MiB)       × S      secs
+tree            400.5      2.00      0.42
+cat             400.5      2.00      0.51
+extract         400.5      2.00      1.20
+verify          600.8      3.00      1.03
+show            400.5      2.00      0.73
+diff            400.9      2.00      0.44
+
+## unconfined (prlimit only), 64 MiB
+# repository a64 — S = 64.3 MiB, file pages/attachment.bin, unconfined (prlimit only) (2 block(s) listed)
+verb       need (MiB)       × S      secs
+tree            128.5      2.00      0.15
+cat             128.5      2.00      0.17
+extract         128.4      2.00      0.31
+verify          192.8      3.00      0.30
+show            128.4      2.00      0.20
+diff            128.8      2.00      0.13

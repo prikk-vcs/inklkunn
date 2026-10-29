@@ -373,3 +373,15 @@ Handoff 003 T4 (the page view; RFC 003 D-1, D-5).
   `INKLKUNN_INDEX_MAX_FILES` (200000), `INKLKUNN_PAGE_MAX_KIB` (1024), and `INKLKUNN_TRUSTED_PROXIES`, which ends the
   start-up warning for a reachable bind. *Not yet:* sign-in is not served, so every visitor is anonymous and only public
   wikis can be read.
+
+Handoff 003 T9, the measurements (IS-12; corrections follow-up F1).
+
+- **The read driver's cost table, measured on the single-large-attachment shape through the driver's own vector**
+  (`prlimit` + bubblewrap, the repository mounted read-only) at 24, 64 and 200 MiB on prikk 0.55.0: `tree`, `cat`,
+  `extract`, `show` and `diff` need **2.0 × S**, `verify` **3.0 × S**, at every size. The table (`tree`/`cat` 2.1 ×,
+  `verify` 4.1 ×, ceilings 1.5 ×) holds with margin; **no multiple changes**. (The 5.0 × S for `verify` that PK-20 and
+  PK-38 record is the *writable* `verify` of the signer's write path; the read vector is read-only.)
+- **`tools/spikes/spike-a-write.py`** measures the write verbs the signer's table (`cost.rs`, PK-38) is derived from;
+  `crates/inklkunn-prikk/examples/measure_vector.rs` the read verbs through the vector; `tools/spikes/make-attachment-shape.sh`
+  builds the attachment shapes. Their outputs are under `rfcs/handoffs/001-foundations/spikes/`, and `docs/UPSTREAM.md`
+  step 5 names them.
