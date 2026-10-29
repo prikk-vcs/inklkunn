@@ -36,12 +36,12 @@ pub use accept::{
 };
 pub use assurance::Assurance;
 pub use authorize::{
-    Action, Authorizer, AuthzSource, Decision, Principal, Resource, Snapshot, SourceError,
-    StoreAuthz, SystemPrincipal, decide,
+    AccountPrincipal, Action, Authorizer, AuthzSource, Decision, IdentityAuthority, Principal,
+    Resource, Snapshot, SourceError, StoreAuthz, SystemPrincipal, decide,
 };
 pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, Resolver, StdEgressGuard, StdResolver};
 pub use inklkunn_signer::{
-    KeyStatus, OldKey, OldKeyOutcome, Rotation, Signer, SignerConfig, SignerError,
+    KeyAuthority, KeyStatus, OldKey, OldKeyOutcome, Rotation, Signer, SignerConfig, SignerError,
 };
 pub use read::{
     Calls, Cause, CountingStorage, Found, Lookup, PageOutcome, PageView, Presentation, ReadConfig,

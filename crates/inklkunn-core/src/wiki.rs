@@ -7,6 +7,7 @@
 use std::path::{Path, PathBuf};
 
 use inklkunn_prikk::{Storage, StorageError};
+use inklkunn_signer::KeyAuthority;
 pub use inklkunn_signer::RepositoryBootstrap;
 use inklkunn_signer::message::{Message, Summary, SystemLabel};
 use inklkunn_store::{
@@ -172,7 +173,7 @@ fn discard(layout: &RootLayout, signer: &dyn RepositoryBootstrap, id: &WikiId) -
     }
 }
 
-/// Create a wiki: check the slug, build the record, make the directories, create the repository, write the
+/// Create a wiki (an act that brings keys into being, so it takes the process's [`KeyAuthority`]): check the slug, build the record, make the directories, create the repository, write the
 /// bundle files, seal the first change, verify, and only then store the record.
 pub fn create_wiki(
     store: &dyn WikiStore,
@@ -181,6 +182,7 @@ pub fn create_wiki(
     storage: &dyn Storage,
     new: NewWiki,
     inklkunn_version: &str,
+    authority: &KeyAuthority,
 ) -> Result<CreatedWiki, CreateWikiError> {
     // 1. A taken slug is refused before anything touches the disk (the insert at the end is the guarantee
     //    against a race; this is the early, cheap answer).
@@ -200,7 +202,7 @@ pub fn create_wiki(
     // 3. The directories.
     let repo = layout.prepare(&id).map_err(CreateWikiError::Layout)?;
     // 4. The repository and the keys.
-    let keys = match signer.create_repository(&repo) {
+    let keys = match signer.create_repository(&repo, authority) {
         Ok(k) => k,
         Err(error) => {
             return Err(CreateWikiError::Signer {

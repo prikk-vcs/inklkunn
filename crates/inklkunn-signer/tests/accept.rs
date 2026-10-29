@@ -228,7 +228,7 @@ fn fixture(tag: &str, sandbox: Sandbox, use_standin: bool) -> Option<Fixture> {
     let wiki = WikiId::new();
     let repo = root.prepare(&wiki).expect("directories");
     let ids = signer
-        .create_repository(&repo)
+        .create_repository(&repo, &inklkunn_signer::KeyAuthority::for_tests())
         .expect("repository and keys");
     assert_eq!(ids.author, format!("inklkunn-{wiki}-author"));
     assert_eq!(ids.maintainer, format!("inklkunn-{wiki}-maintainer"));
@@ -1277,7 +1277,7 @@ fn each_write_verb_sees_only_the_seed_it_signs_with_and_a_verb_that_signs_nothin
     let other = WikiId::new();
     let other_repo = f.root.prepare(&other).unwrap();
     f.signer
-        .create_repository(&other_repo)
+        .create_repository(&other_repo, &inklkunn_signer::KeyAuthority::for_tests())
         .expect("a second wiki");
     // A view, then an acceptance on it (a `branch switch` to it) that renames a page (an `mv`).
     f.ledger.views.lock().unwrap().insert(
@@ -1432,7 +1432,10 @@ fn no_error_text_ever_carries_a_seed_the_secret_or_the_seed_directory() {
             .to_string(),
         format!("{:?}", f.signer.key_status(&f.wiki).unwrap()),
         format!("{:?}", f.signer.key_status(&WikiId::new()).unwrap_err()),
-        f.signer.create_repository(&f.repo).unwrap_err().to_string(),
+        f.signer
+            .create_repository(&f.repo, &inklkunn_signer::KeyAuthority::for_tests())
+            .unwrap_err()
+            .to_string(),
     ] {
         shown.push(e);
     }
@@ -1807,7 +1810,8 @@ fn the_unguarded_entry_creates_only_the_first_change_of_a_new_wiki() {
     let elsewhere = f._tmp.0.join("elsewhere");
     std::fs::create_dir_all(&elsewhere).unwrap();
     assert!(matches!(
-        f.signer.create_repository(&elsewhere),
+        f.signer
+            .create_repository(&elsewhere, &inklkunn_signer::KeyAuthority::for_tests()),
         Err(SignerError::Refused(_))
     ));
     assert!(matches!(
@@ -1816,7 +1820,8 @@ fn the_unguarded_entry_creates_only_the_first_change_of_a_new_wiki() {
     ));
     // A wiki that has keys does not get a second pair.
     assert!(matches!(
-        f.signer.create_repository(&f.repo),
+        f.signer
+            .create_repository(&f.repo, &inklkunn_signer::KeyAuthority::for_tests()),
         Err(SignerError::Refused(_))
     ));
     // Key status says ids and dates and nothing else.
@@ -1879,7 +1884,11 @@ fn after_a_retirement_every_acceptance_is_sealed_but_cannot_be_confirmed_until_p
         return;
     };
     f.signer
-        .rotate_keys(&f.repo, inklkunn_signer::OldKey::Retire)
+        .rotate_keys(
+            &inklkunn_signer::KeyAuthority::for_tests(),
+            &f.repo,
+            inklkunn_signer::OldKey::Retire,
+        )
         .expect("rotation");
     let before = f.history_len(MAIN);
     let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
@@ -2028,9 +2037,15 @@ fn a_wiki_written_by_another_process_is_busy_by_name_and_free_again_when_its_hol
     );
     for r in [
         f.signer
-            .rotate_keys(&f.repo, inklkunn_signer::OldKey::Keep)
+            .rotate_keys(
+                &inklkunn_signer::KeyAuthority::for_tests(),
+                &f.repo,
+                inklkunn_signer::OldKey::Keep,
+            )
             .map(|_| ()),
-        f.signer.create_keys(&f.repo).map(|_| ()),
+        f.signer
+            .create_keys(&inklkunn_signer::KeyAuthority::for_tests(), &f.repo)
+            .map(|_| ()),
         f.signer.commit_and_seal(&f.repo, "x").map(|_| ()),
     ] {
         assert!(

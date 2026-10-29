@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use common::*;
 use inklkunn_auth::{AuthConfig, AuthError, Authenticator};
-use inklkunn_core::Principal;
+use inklkunn_core::{IdentityAuthority, Principal};
 use inklkunn_store::{ExternalIdentity, Scope, SqliteStore};
 
 #[test]
@@ -26,7 +26,10 @@ fn the_whole_story_works_over_sqlite() {
     let signed = auth
         .sign_in("alice", ALICE_PASSWORD, &ip("203.0.113.1"), NOW)
         .unwrap();
-    assert_eq!(signed.principal, Principal::session(alice.id.clone()));
+    assert_eq!(
+        signed.principal,
+        Principal::session(&IdentityAuthority::for_tests(), alice.id.clone())
+    );
     let secret = signed.session.secret().as_str();
     assert!(
         auth.principal_for_session(secret, NOW + 1)
@@ -40,7 +43,11 @@ fn the_whole_story_works_over_sqlite() {
     assert_eq!(
         auth.principal_for_token(token.secret.as_str(), NOW + 1)
             .unwrap(),
-        Principal::token(alice.id.clone(), Scope::Review)
+        Principal::token(
+            &IdentityAuthority::for_tests(),
+            alice.id.clone(),
+            Scope::Review
+        )
     );
     assert!(auth.revoke_token(&alice.id, &token.id, NOW + 2).unwrap());
     assert_eq!(
@@ -67,7 +74,8 @@ fn the_whole_story_works_over_sqlite() {
 #[test]
 fn the_production_cost_signs_in_and_refuses_for_real() {
     let store = Arc::new(SqliteStore::open_in_memory().unwrap());
-    let auth = Authenticator::new(store, AuthConfig::default()).unwrap();
+    let auth =
+        Authenticator::new(store, AuthConfig::default(), IdentityAuthority::for_tests()).unwrap();
     auth.register_local("alice", "Alice", ALICE_PASSWORD, NOW)
         .unwrap();
     assert!(

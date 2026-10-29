@@ -82,6 +82,7 @@ fn a_created_wiki_verifies_and_has_the_bundle_layout() {
             &storage,
             NewWiki::new(slug.clone(), name("First Wiki")),
             "0.0.0",
+            &inklkunn_core::KeyAuthority::for_tests(),
         )
         .unwrap_or_else(|e| panic!("{e}"));
 
@@ -202,6 +203,7 @@ fn a_created_wiki_verifies_and_has_the_bundle_layout() {
             &storage,
             NewWiki::new(slug, name("Again")),
             "0.0.0",
+            &inklkunn_core::KeyAuthority::for_tests(),
         );
         assert!(
             matches!(again, Err(CreateWikiError::Store(StoreError::SlugTaken(_)))),
@@ -229,8 +231,12 @@ fn bytes_under(dir: &Path, out: &mut Vec<u8>) {
 struct FailsAtSeal(BootstrapSigner);
 
 impl RepositoryBootstrap for FailsAtSeal {
-    fn create_repository(&self, repo: &Path) -> Result<KeyIds, SignerError> {
-        self.0.create_repository(repo)
+    fn create_repository(
+        &self,
+        repo: &Path,
+        authority: &inklkunn_signer::KeyAuthority,
+    ) -> Result<KeyIds, SignerError> {
+        self.0.create_repository(repo, authority)
     }
     fn commit_and_seal(&self, _repo: &Path, _message: &str) -> Result<SealedIds, SignerError> {
         Err(SignerError::Refused("the test refuses the seal".to_owned()))
@@ -263,6 +269,7 @@ fn a_failed_creation_leaves_no_record_and_no_directories() {
             &storage,
             NewWiki::new(slug.clone(), name("Doomed")),
             "0.0.0",
+            &inklkunn_core::KeyAuthority::for_tests(),
         );
         match r {
             Err(CreateWikiError::Signer {
@@ -292,6 +299,7 @@ fn a_failed_creation_leaves_no_record_and_no_directories() {
             &storage,
             NewWiki::new(slug, name("Doomed")),
             "0.0.0",
+            &inklkunn_core::KeyAuthority::for_tests(),
         )
         .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(created.record.slug.as_str(), "doomed");
@@ -305,7 +313,11 @@ fn an_invalid_request_is_refused_before_anything_is_made() {
     // No prikk needed: the request is refused before the signer or the storage is touched.
     struct Never;
     impl RepositoryBootstrap for Never {
-        fn create_repository(&self, _: &Path) -> Result<KeyIds, SignerError> {
+        fn create_repository(
+            &self,
+            _: &Path,
+            _: &inklkunn_signer::KeyAuthority,
+        ) -> Result<KeyIds, SignerError> {
             panic!("must not be reached")
         }
         fn commit_and_seal(&self, _: &Path, _: &str) -> Result<SealedIds, SignerError> {
@@ -380,7 +392,15 @@ fn an_invalid_request_is_refused_before_anything_is_made() {
     let store = MemoryStore::new();
     let mut bad = NewWiki::new(Slug::new("bad-view").expect("slug"), name("Bad"));
     bad.default_view = Some("main".into());
-    let r = create_wiki(&store, &layout, &Never, &NoStorage, bad, "0.0.0");
+    let r = create_wiki(
+        &store,
+        &layout,
+        &Never,
+        &NoStorage,
+        bad,
+        "0.0.0",
+        &inklkunn_core::KeyAuthority::for_tests(),
+    );
     assert!(
         matches!(
             r,
@@ -410,8 +430,12 @@ fn the_system_message_is_ct03_shaped_whatever_the_summary() {
 struct RealFailsAtSeal(inklkunn_core::Signer);
 
 impl RepositoryBootstrap for RealFailsAtSeal {
-    fn create_repository(&self, repo: &Path) -> Result<KeyIds, SignerError> {
-        self.0.create_repository(repo)
+    fn create_repository(
+        &self,
+        repo: &Path,
+        authority: &inklkunn_signer::KeyAuthority,
+    ) -> Result<KeyIds, SignerError> {
+        self.0.create_repository(repo, authority)
     }
     fn commit_and_seal(&self, _repo: &Path, _message: &str) -> Result<SealedIds, SignerError> {
         Err(SignerError::Refused("the test refuses the seal".to_owned()))
@@ -486,6 +510,7 @@ fn a_failed_creation_with_the_real_signer_removes_the_sealed_key_record_too() {
         &storage,
         NewWiki::new(Slug::new("doomed").expect("slug"), name("Doomed")),
         "0.0.0",
+        &inklkunn_core::KeyAuthority::for_tests(),
     );
     match r {
         Err(CreateWikiError::Signer {

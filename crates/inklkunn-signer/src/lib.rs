@@ -45,12 +45,45 @@ pub use signer::lifecycle::{OldKey, OldKeyOutcome, Rotation};
 pub use signer::{KeyStatus, Signer, SignerConfig};
 pub use writes::{SealedIds, SignerError, WRITE_DEADLINE};
 
+/// The authority to make a wiki's keys and to rotate them (corrections handoff C7): [`Signer::create_keys`],
+/// [`Signer::rotate_keys`] and [`RepositoryBootstrap::create_repository`] each need one. **There is one per
+/// process**: the binary claims it once, for the administrative acts that are meant to make or change keys (the
+/// key commands, *create wiki*), and a surface never holds it, so none can reach key operations by naming the
+/// signer. (`claim` answers `None` the second time, whoever asks.)
+///
+/// ```compile_fail
+/// use inklkunn_signer::KeyAuthority;
+/// // No public constructor but `claim`.
+/// let _ = KeyAuthority(());
+/// ```
+#[derive(Debug)]
+pub struct KeyAuthority(());
+
+impl KeyAuthority {
+    /// Claim the process's one key authority: `Some` the first time, `None` ever after.
+    pub fn claim() -> Option<KeyAuthority> {
+        static CLAIMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        (!CLAIMED.swap(true, std::sync::atomic::Ordering::SeqCst)).then_some(KeyAuthority(()))
+    }
+
+    /// An authority for a test (any number of them). Behind the `test-knobs` feature, which a product crate
+    /// never enables and a gate checks.
+    #[cfg(any(test, feature = "test-knobs"))]
+    pub fn for_tests() -> KeyAuthority {
+        KeyAuthority(())
+    }
+}
+
 /// The wiki-creating writes, in the signer's hands: the seam `inklkunn-core`'s *create wiki* calls. The
 /// bootstrap signer implements it in M0; RFC 002's signer implements it for service.
 pub trait RepositoryBootstrap: Send + Sync {
     /// Create the repository in `repo` (an existing, otherwise empty directory) and adopt the wiki's
     /// maintainer key; return the key ids.
-    fn create_repository(&self, repo: &Path) -> Result<KeyIds, SignerError>;
+    fn create_repository(
+        &self,
+        repo: &Path,
+        authority: &KeyAuthority,
+    ) -> Result<KeyIds, SignerError>;
     /// Commit the worktree as one patch with `message` and seal it.
     fn commit_and_seal(&self, repo: &Path, message: &str) -> Result<SealedIds, SignerError>;
     /// Remove what [`RepositoryBootstrap::create_repository`] made *outside* the repository for a creation

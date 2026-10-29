@@ -96,7 +96,9 @@ fn every_kind_of_message_is_found_in_prikks_log_exactly_as_composed() {
         let repo = tmp.0.join("repo");
         std::fs::create_dir_all(&repo).expect("repo");
         let signer = BootstrapSigner::new("prikk", sandbox.clone(), &keys).expect("signer");
-        signer.create_repository(&repo).expect("repository");
+        signer
+            .create_repository(&repo, &inklkunn_signer::KeyAuthority::for_tests())
+            .expect("repository");
         for (i, m) in messages.iter().enumerate() {
             std::fs::write(repo.join(format!("page-{i}.md")), format!("# {i}\n")).expect("write");
             signer

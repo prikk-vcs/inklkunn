@@ -11,6 +11,10 @@ changes that verify. The design bounds, detects and attributes that risk rather 
   accepted proposal (RFC 001 D-2, RFC 002 D-3, D-4). A CI gate keeps every other crate away from the store
   and the writable sandbox mounts, and a second gate fails if any public item of the signer crate mentions a
   seed, a secret or a key directory, so nothing it exports can return key material or the path of any;
+  the right to make or change keys, and the right to say who a request is, are values that exist once per process
+  (`KeyAuthority`, `IdentityAuthority`): the binary claims each for the code that is meant to use it, and a
+  surface never holds either, so the compiler, and not only the gate, refuses a handler that builds an account
+  principal or opens a key operation;
 - the seeds are sealed at rest (Argon2id from the operator's secret, XChaCha20-Poly1305 per record, with the
   wiki, key ids and times bound in, so no record can be edited or moved to another wiki), and are decrypted
   only into a fresh directory on a tmpfs for the one call that signs, overwritten and removed afterwards.

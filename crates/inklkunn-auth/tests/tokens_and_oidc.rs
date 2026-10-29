@@ -12,8 +12,8 @@ use inklkunn_auth::oidc::{
     STATE_COOKIE, TokenVerifier, VerifiedIdentity,
 };
 use inklkunn_auth::{AccountError, AuthError, OidcSignInError};
-use inklkunn_core::Principal;
 use inklkunn_core::authorize::{Action, Decision, Snapshot, decide};
+use inklkunn_core::{IdentityAuthority, Principal};
 use inklkunn_store::{ExternalIdentity, Role, Scope, Visibility};
 
 #[test]
@@ -26,10 +26,13 @@ fn a_token_gets_a_principal_with_its_scope_and_authorize_never_lets_it_do_more()
             .auth
             .principal_for_token(issued.secret.as_str(), NOW + 1)
             .unwrap();
-        assert_eq!(principal, Principal::token(alice.clone(), scope));
+        assert_eq!(
+            principal,
+            Principal::token(&IdentityAuthority::for_tests(), alice.clone(), scope)
+        );
         // Every role the account could hold, every action: the token is never allowed what its scope or
         // the role forbids, and never allowed what the same account's session is not.
-        let session = Principal::session(alice.clone());
+        let session = Principal::session(&IdentityAuthority::for_tests(), alice.clone());
         for role in Role::ALL.map(Some).into_iter().chain([None]) {
             for visibility in [
                 Visibility::Public,
@@ -233,7 +236,10 @@ fn a_linked_identity_signs_in_through_the_whole_flow_and_gets_the_accounts_sessi
         )
         .unwrap();
     let signed = sign_in_through_the_provider(&w, "203.0.113.1", NOW).unwrap();
-    assert_eq!(signed.principal, Principal::session(sso.id.clone()));
+    assert_eq!(
+        signed.principal,
+        Principal::session(&IdentityAuthority::for_tests(), sso.id.clone())
+    );
     let found = w
         .auth
         .principal_for_session(signed.session.secret().as_str(), NOW + 3)

@@ -27,7 +27,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use inklkunn_core::Principal;
+use inklkunn_core::{IdentityAuthority, Principal};
 use inklkunn_store::{
     Account, AccountId, AccountStore, AuditEvent, AuditOutcome, AuditSink, DisplayName,
     DisplayNameError, ExternalIdentity, LocalCredential, LoginName, LoginNameError, SessionStore,
@@ -216,6 +216,9 @@ pub struct Authenticator {
     proxies: ProxyPolicy,
     oidc: Option<OidcProvider>,
     audit: Option<Arc<dyn AuditSink>>,
+    /// The right to say who a request is: this authenticator holds the process's only one, so no other code can
+    /// build an account principal (corrections handoff C7).
+    authority: IdentityAuthority,
 }
 
 /// The throttle key for a sign-in name as typed: trimmed, ASCII case folded, at most 128 characters (so a
@@ -230,12 +233,18 @@ fn login_key(typed: &str) -> String {
 }
 
 impl Authenticator {
-    /// An authenticator over one store that holds accounts, sessions and tokens.
-    pub fn new<S>(store: Arc<S>, config: AuthConfig) -> Result<Self, AuthError>
+    /// An authenticator over one store that holds accounts, sessions and tokens. It takes the process's
+    /// [`IdentityAuthority`] (`IdentityAuthority::claim()`, once, in the binary) and keeps it: every principal
+    /// that exists is built here.
+    pub fn new<S>(
+        store: Arc<S>,
+        config: AuthConfig,
+        authority: IdentityAuthority,
+    ) -> Result<Self, AuthError>
     where
         S: AccountStore + SessionStore + TokenStore + 'static,
     {
-        Self::build(store, config, Arc::new(Argon2idHasher::new()))
+        Self::build(store, config, Arc::new(Argon2idHasher::new()), authority)
     }
 
     /// As [`Authenticator::new`] with a different hasher: a cheap one, or one that counts. Never available
@@ -249,13 +258,14 @@ impl Authenticator {
     where
         S: AccountStore + SessionStore + TokenStore + 'static,
     {
-        Self::build(store, config, hasher)
+        Self::build(store, config, hasher, IdentityAuthority::for_tests())
     }
 
     fn build<S>(
         store: Arc<S>,
         config: AuthConfig,
         hasher: Arc<dyn PasswordHasher>,
+        authority: IdentityAuthority,
     ) -> Result<Self, AuthError>
     where
         S: AccountStore + SessionStore + TokenStore + 'static,
@@ -284,6 +294,7 @@ impl Authenticator {
             proxies: config.proxies,
             oidc: None,
             audit: None,
+            authority,
         })
     }
 
@@ -445,7 +456,7 @@ impl Authenticator {
     fn start(&self, account: &Account, now: i64) -> Result<SignedIn, AuthError> {
         let session = self.sessions.start(&account.id, now)?;
         Ok(SignedIn {
-            principal: Principal::session(account.id.clone()),
+            principal: Principal::session(&self.authority, account.id.clone()),
             account: account.id.clone(),
             session,
         })
@@ -545,7 +556,7 @@ impl Authenticator {
             return Ok(None);
         }
         Ok(Some(SessionPrincipal {
-            principal: Principal::session(account.id.clone()),
+            principal: Principal::session(&self.authority, account.id.clone()),
             account: account.id,
             csrf: session.csrf,
             expires_at: session.expires_at,
@@ -578,7 +589,11 @@ impl Authenticator {
         if account.disabled {
             return Err(AuthError::BadCredentials);
         }
-        Ok(Principal::token(verified.account, verified.scope))
+        Ok(Principal::token(
+            &self.authority,
+            verified.account,
+            verified.scope,
+        ))
     }
 
     /// Sign out: end the session the cookie names.

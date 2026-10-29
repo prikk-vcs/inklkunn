@@ -13,7 +13,7 @@ use inklkunn_auth::session::{cookie_value, secret_from_cookie_header};
 use inklkunn_auth::{
     AccountError, AuthConfig, AuthError, Authenticator, PasswordHasher, SessionCheck,
 };
-use inklkunn_core::Principal;
+use inklkunn_core::{IdentityAuthority, Principal};
 use inklkunn_store::{
     Account, AccountId, AccountStore, DisplayName, LocalCredential, LoginName, MemoryAudit,
     MemoryStore, Scope,
@@ -507,7 +507,10 @@ fn a_sign_in_makes_a_session_that_a_request_can_present_and_sign_out_ends() {
         .auth
         .sign_in("alice", ALICE_PASSWORD, &ip("203.0.113.1"), NOW)
         .unwrap();
-    assert_eq!(signed.principal, Principal::session(id(&w.alice)));
+    assert_eq!(
+        signed.principal,
+        Principal::session(&IdentityAuthority::for_tests(), id(&w.alice))
+    );
     let cookie = signed.session.set_cookie(NOW);
     let header = format!("theme=dark; {}", cookie.split(';').next().unwrap());
     let secret = secret_from_cookie_header(&header).expect("the cookie holds a well-formed secret");
@@ -517,7 +520,10 @@ fn a_sign_in_makes_a_session_that_a_request_can_present_and_sign_out_ends() {
         .principal_for_session(secret, NOW + 60)
         .unwrap()
         .expect("a live session");
-    assert_eq!(found.principal, Principal::session(id(&w.alice)));
+    assert_eq!(
+        found.principal,
+        Principal::session(&IdentityAuthority::for_tests(), id(&w.alice))
+    );
     assert!(found.csrf.matches(signed.session.csrf().as_str()));
     assert_eq!(found.expires_at, NOW + 7 * 24 * 3600);
 

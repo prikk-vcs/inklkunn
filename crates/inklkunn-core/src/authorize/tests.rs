@@ -78,7 +78,7 @@ fn a_role_may_do_what_the_ladder_says_whatever_the_visibility() {
     for role in Role::ALL {
         for vis in VISIBILITIES {
             for action in Action::ALL {
-                let p = Principal::session(account());
+                let p = Principal::session(&IdentityAuthority::for_tests(), account());
                 let got = decide(snap(Some(vis), Some(role)), &p, action);
                 let want = documented(role).contains(&action);
                 assert_eq!(got.is_allowed(), want, "{role:?} {vis:?} {}", action.name());
@@ -101,7 +101,7 @@ fn a_principal_with_no_grant_may_only_read_what_the_visibility_lets_it() {
             for scope in Scope::ALL {
                 let acct = decide(
                     snap(Some(vis), None),
-                    &Principal::token(account(), scope),
+                    &Principal::token(&IdentityAuthority::for_tests(), account(), scope),
                     action,
                 );
                 assert_eq!(
@@ -121,7 +121,7 @@ fn a_wiki_that_is_not_there_denies_everyone_everything() {
         for role in std::iter::once(None).chain(Role::ALL.into_iter().map(Some)) {
             for p in [
                 Principal::Anonymous,
-                Principal::session(account()),
+                Principal::session(&IdentityAuthority::for_tests(), account()),
                 Principal::system(SystemLabel::inklkunn()),
             ] {
                 assert_eq!(
@@ -140,7 +140,7 @@ fn a_token_never_does_more_than_its_scope_or_its_account_allows() {
     for scope in Scope::ALL {
         for role in Role::ALL {
             for action in Action::ALL {
-                let p = Principal::token(account(), scope);
+                let p = Principal::token(&IdentityAuthority::for_tests(), account(), scope);
                 let got = decide(snap(Some(Visibility::Public), Some(role)), &p, action);
                 let want =
                     documented(role).contains(&action) && scope_reaches(scope).contains(&action);
@@ -155,11 +155,11 @@ fn a_token_never_does_more_than_its_scope_or_its_account_allows() {
     }
     // The intersection in two concrete sentences: a maintainer's `read` token cannot accept, and an
     // observer's `admin` token cannot either.
-    let read_token = Principal::token(account(), Scope::Read);
+    let read_token = Principal::token(&IdentityAuthority::for_tests(), account(), Scope::Read);
     let maintainer = snap(Some(Visibility::Public), Some(Role::Maintainer));
     assert!(decide(maintainer, &read_token, Action::Read).is_allowed());
     assert!(!decide(maintainer, &read_token, Action::Accept).is_allowed());
-    let admin_token = Principal::token(account(), Scope::Admin);
+    let admin_token = Principal::token(&IdentityAuthority::for_tests(), account(), Scope::Admin);
     let observer = snap(Some(Visibility::Public), Some(Role::Observer));
     assert!(!decide(observer, &admin_token, Action::Accept).is_allowed());
 }
@@ -303,8 +303,8 @@ fn a_restricted_wiki_and_an_absent_one_are_indistinguishable_to_every_caller() {
     // resource, and for the consequential ones the same audit event but for the wiki id.
     let callers = [
         Principal::Anonymous,
-        Principal::session(stranger.clone()),
-        Principal::token(stranger, Scope::Admin),
+        Principal::session(&IdentityAuthority::for_tests(), stranger.clone()),
+        Principal::token(&IdentityAuthority::for_tests(), stranger, Scope::Admin),
     ];
     for caller in &callers {
         for action in Action::ALL {
@@ -351,7 +351,7 @@ fn a_restricted_wiki_and_an_absent_one_are_indistinguishable_to_every_caller() {
     // A member is told apart from a stranger by what they may do, never by how the wiki answers.
     assert_eq!(
         a.authorize(
-            &Principal::session(member),
+            &Principal::session(&IdentityAuthority::for_tests(), member),
             Action::Read,
             &Resource::Wiki { wiki: restricted }
         ),
@@ -378,7 +378,11 @@ fn consequential_decisions_are_recorded_allowed_or_not_and_the_others_are_not() 
         id: "prop-9".into(),
     };
     for action in Action::ALL {
-        let _ = a.authorize(&Principal::session(admin.clone()), action, &page);
+        let _ = a.authorize(
+            &Principal::session(&IdentityAuthority::for_tests(), admin.clone()),
+            action,
+            &page,
+        );
         let _ = a.authorize(&Principal::Anonymous, action, &proposal);
     }
     let events = sink.events.lock().unwrap().clone();
@@ -438,7 +442,10 @@ fn a_source_that_cannot_answer_denies_and_says_so_in_the_trail() {
     );
     let r = Resource::Wiki { wiki };
     for action in Action::ALL {
-        for p in [Principal::Anonymous, Principal::session(account())] {
+        for p in [
+            Principal::Anonymous,
+            Principal::session(&IdentityAuthority::for_tests(), account()),
+        ] {
             assert_eq!(
                 a.authorize(&p, action, &r),
                 Decision::Deny,
@@ -473,7 +480,7 @@ fn nothing_consequential_is_allowed_unrecorded() {
         },
     );
     let r = Resource::Wiki { wiki };
-    let p = Principal::session(admin);
+    let p = Principal::session(&IdentityAuthority::for_tests(), admin);
     for action in Action::ALL {
         let d = a.authorize(&p, action, &r);
         if action.is_consequential() {
@@ -510,7 +517,7 @@ fn the_store_backed_source_reads_the_wiki_record_and_the_role_grants() {
     let r = Resource::Wiki {
         wiki: wiki.id.clone(),
     };
-    let p = Principal::session(member.clone());
+    let p = Principal::session(&IdentityAuthority::for_tests(), member.clone());
     assert_eq!(
         a.authorize(&p, Action::Read, &r),
         Decision::Deny,
@@ -609,11 +616,24 @@ fn audit_names_carry_ids_and_never_titles() {
     assert_eq!(Principal::Anonymous.audit_name(), "anonymous");
     let id = account();
     assert_eq!(
-        Principal::session(id.clone()).audit_name(),
+        Principal::session(&IdentityAuthority::for_tests(), id.clone()).audit_name(),
         format!("account:{id}")
     );
     assert_eq!(
-        Principal::token(id.clone(), Scope::Read).audit_name(),
+        Principal::token(&IdentityAuthority::for_tests(), id.clone(), Scope::Read).audit_name(),
         format!("account:{id}")
     );
+}
+
+#[test]
+fn the_identity_authority_is_claimed_once_per_process_and_whoever_asks_second_gets_nothing() {
+    // The only test of this binary that claims it: the statics are per process.
+    let first = IdentityAuthority::claim();
+    assert!(first.is_some(), "the first claim");
+    assert!(IdentityAuthority::claim().is_none(), "the second claim");
+    assert!(IdentityAuthority::claim().is_none(), "and every one after");
+    // Tests build their own, as many as they like, and a principal built with one is an ordinary account.
+    let p = Principal::session(&IdentityAuthority::for_tests(), account());
+    assert!(matches!(&p, Principal::Account(a) if a.scope() == Scope::Admin));
+    assert!(p.audit_name().starts_with("account:"));
 }

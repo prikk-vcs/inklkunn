@@ -185,3 +185,12 @@ fn the_in_process_turn_is_given_up_only_after_the_file_lock_is_released() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn the_key_authority_is_claimed_once_per_process_and_whoever_asks_second_gets_nothing() {
+    // The only test of this binary that claims it: the statics are per process.
+    assert!(KeyAuthority::claim().is_some(), "the first claim");
+    assert!(KeyAuthority::claim().is_none(), "the second claim");
+    // Tests make their own, as many as they like.
+    let _ = (KeyAuthority::for_tests(), KeyAuthority::for_tests());
+}

@@ -182,6 +182,7 @@ mod world {
                 DisplayName::new("Handbook").unwrap(),
             ),
             "test",
+            super::super::key_authority(),
         )
         .expect("a wiki");
         let record = store.get(&created.record.id).unwrap();

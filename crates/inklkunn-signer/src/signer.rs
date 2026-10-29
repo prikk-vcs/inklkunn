@@ -28,6 +28,7 @@ use std::time::Duration;
 use inklkunn_prikk::sandbox::Sandbox;
 use inklkunn_store::{RootLayout, WikiId};
 
+use crate::KeyAuthority;
 use crate::RepositoryBootstrap;
 use crate::accept::{
     Accept, AcceptError, AcceptanceLedger, AcceptanceToken, PreparedChange, SealedChange,
@@ -779,7 +780,11 @@ impl RepositoryBootstrap for Signer {
     /// Create the repository in `repo` (the directory the root layout keeps a wiki in, empty), generate the
     /// wiki's two keys with prikk, adopt the maintainer key, and store the sealed record **last**: a
     /// failure before that leaves no record.
-    fn create_repository(&self, repo: &Path) -> Result<KeyIds, SignerError> {
+    fn create_repository(
+        &self,
+        repo: &Path,
+        _authority: &KeyAuthority,
+    ) -> Result<KeyIds, SignerError> {
         self.provision(repo, true)
     }
 

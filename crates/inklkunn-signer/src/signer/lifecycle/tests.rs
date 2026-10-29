@@ -89,7 +89,9 @@ fn world(tag: &str) -> Option<World> {
     let signer = Signer::open_creating_store(cfg, std::sync::Arc::new(NoLedger)).unwrap();
     let wiki = WikiId::new();
     let repo = root.prepare(&wiki).unwrap();
-    signer.create_repository(&repo).unwrap();
+    signer
+        .create_repository(&repo, &crate::KeyAuthority::for_tests())
+        .unwrap();
     std::fs::write(repo.join("Main.md"), "# Main\n").unwrap();
     signer
         .commit_and_seal(
@@ -257,13 +259,18 @@ fn keys_are_created_for_an_initialised_repository_that_has_none_and_only_once() 
         "no keys yet"
     );
 
-    let ids = signer.create_keys(&repo).unwrap();
+    let ids = signer
+        .create_keys(&crate::KeyAuthority::for_tests(), &repo)
+        .unwrap();
     assert_eq!(ids.author, format!("inklkunn-{wiki}-author"));
     assert_eq!(ids.maintainer, format!("inklkunn-{wiki}-maintainer"));
     let status = signer.key_status(&wiki).unwrap();
     assert_eq!((status.generation, status.rotated_at), (1, None));
     assert!(
-        matches!(signer.create_keys(&repo), Err(SignerError::Refused(_))),
+        matches!(
+            signer.create_keys(&crate::KeyAuthority::for_tests(), &repo),
+            Err(SignerError::Refused(_))
+        ),
         "not twice"
     );
 }
@@ -273,7 +280,10 @@ fn a_rotation_that_keeps_the_old_key_gives_new_ids_signs_with_them_and_the_repos
     let Some(w) = world("keep") else { return };
     let before = w.signer.key_status(&w.wiki).unwrap();
     assert_eq!(before.generation, 1);
-    let rotation = w.signer.rotate_keys(&w.repo, OldKey::Keep).unwrap();
+    let rotation = w
+        .signer
+        .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Keep)
+        .unwrap();
     let after = w.signer.key_status(&w.wiki).unwrap();
     assert_eq!(after, rotation.status);
     assert_eq!(after.generation, 2);
@@ -308,7 +318,9 @@ fn keeping_the_old_key_trusted_means_a_copy_of_its_seed_can_still_seal() {
     let Some(w) = world("keep-thief") else { return };
     let loot = dir(Path::new("/dev/shm"), "keep-loot");
     let stolen_ids = w.steal_seeds(&loot.0);
-    w.signer.rotate_keys(&w.repo, OldKey::Keep).unwrap();
+    w.signer
+        .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Keep)
+        .unwrap();
     // This is what `Keep` costs, said in a test so nobody has to take it on trust.
     assert_eq!(
         w.seal_with_stolen(&loot.0, &stolen_ids),
@@ -324,7 +336,10 @@ fn retiring_the_old_key_stops_it_sealing_and_prikk_then_cannot_verify_what_it_se
     let Some(w) = world("retire") else { return };
     let loot = dir(Path::new("/dev/shm"), "retire-loot");
     let stolen_ids = w.steal_seeds(&loot.0);
-    let rotation = w.signer.rotate_keys(&w.repo, OldKey::Retire).unwrap();
+    let rotation = w
+        .signer
+        .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
+        .unwrap();
     assert_eq!(rotation.old_key, OldKeyOutcome::Retired);
 
     // The new keys seal.
@@ -356,7 +371,11 @@ fn a_rotation_that_fails_before_the_record_changes_leaves_the_wiki_as_it_was() {
     let before = w.signer.key_status(&w.wiki).unwrap();
     // Damage the repository so that adopting the new key fails.
     std::fs::remove_dir_all(w.repo.join(".prikk")).unwrap();
-    assert!(w.signer.rotate_keys(&w.repo, OldKey::Keep).is_err());
+    assert!(
+        w.signer
+            .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Keep)
+            .is_err()
+    );
     assert_eq!(
         w.signer.key_status(&w.wiki).unwrap(),
         before,
@@ -372,14 +391,16 @@ fn only_a_wiki_with_keys_can_be_rotated_and_only_its_own_repository_directory() 
     let elsewhere = w.repo.parent().unwrap().join("not-a-wiki-id");
     std::fs::create_dir_all(&elsewhere).unwrap();
     assert!(matches!(
-        w.signer.rotate_keys(&elsewhere, OldKey::Keep),
+        w.signer
+            .rotate_keys(&crate::KeyAuthority::for_tests(), &elsewhere, OldKey::Keep),
         Err(SignerError::Refused(_))
     ));
     // A well-formed wiki id with no keys.
     let other = WikiId::new();
     let other_repo = w.signer.root.prepare(&other).unwrap();
     assert!(matches!(
-        w.signer.rotate_keys(&other_repo, OldKey::Keep),
+        w.signer
+            .rotate_keys(&crate::KeyAuthority::for_tests(), &other_repo, OldKey::Keep),
         Err(SignerError::Refused(_))
     ));
 }
@@ -387,8 +408,16 @@ fn only_a_wiki_with_keys_can_be_rotated_and_only_its_own_repository_directory() 
 #[test]
 fn two_rotations_in_a_row_get_distinct_ids_each_time() {
     let Some(w) = world("twice") else { return };
-    let first = w.signer.rotate_keys(&w.repo, OldKey::Keep).unwrap().status;
-    let second = w.signer.rotate_keys(&w.repo, OldKey::Keep).unwrap().status;
+    let first = w
+        .signer
+        .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Keep)
+        .unwrap()
+        .status;
+    let second = w
+        .signer
+        .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Keep)
+        .unwrap()
+        .status;
     assert_eq!((first.generation, second.generation), (2, 3));
     assert_ne!(first.maintainer_key_id, second.maintainer_key_id);
     assert_ne!(first.author_key_id, second.author_key_id);
@@ -421,7 +450,7 @@ fn a_retirement_that_fails_is_a_rotation_that_happened_and_says_the_old_key_is_s
     }
     let signer = w.signer_with_prikk(&standin);
     let rotation = signer
-        .rotate_keys(&w.repo, OldKey::Retire)
+        .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
         .expect("the rotation happened");
     assert!(
         matches!(rotation.old_key, OldKeyOutcome::RetireFailed(ref why) if why.contains("injected")),

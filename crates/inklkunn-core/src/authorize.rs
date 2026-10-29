@@ -25,9 +25,13 @@
 //! answer** (and, for a consequential action, the same audit event), so a decision cannot be used to find
 //! out which wikis exist (RFC 002 D-2; planeter RFC 002).
 //!
-//! `Principal::Account` is built by `inklkunn-auth` from a verified credential and by nothing else; a
-//! [`SystemPrincipal`] cannot be built outside this crate at all, and the boundary gate fails if a web source
-//! names either (`tools/boundary-check`, rule "privileged principals").
+//! An account principal is built by `inklkunn-auth` from a verified credential and by nothing else, and the
+//! types say so (corrections handoff C7): the only constructors, [`Principal::session`] and
+//! [`Principal::token`], need an [`IdentityAuthority`], which exists **once per process**, is claimed by the
+//! binary when it builds the authenticator, and is held by the authenticator alone; [`AccountPrincipal`] has
+//! private fields, so nothing builds one by hand. A [`SystemPrincipal`] cannot be built outside this crate at
+//! all. The boundary gate still fails if a web source names any of them (`tools/boundary-check`, rule
+//! "privileged principals"): the gate catches the shortcut in review, the types refuse it in the compiler.
 
 use std::sync::Arc;
 
@@ -37,35 +41,95 @@ use inklkunn_store::{
     WikiId, WikiStore,
 };
 
+/// The authority to say who a request is: to turn a verified credential into a [`Principal`]. **There is one
+/// per process.** The binary claims it once, when it builds the authenticator, and gives it to the
+/// authenticator, which keeps it; a handler, a route or any other crate never holds it, so none can build an
+/// account principal and act as someone. (`claim` answers `None` the second time, whoever asks.)
+///
+/// The compiler refuses the shortcuts (these are compile-fail tests of the rule, run with the documentation):
+///
+/// ```compile_fail
+/// use inklkunn_core::Principal;
+/// use inklkunn_store::AccountId;
+/// // A session principal needs the authority.
+/// let _ = Principal::session(AccountId::new());
+/// ```
+///
+/// ```compile_fail
+/// use inklkunn_core::{AccountPrincipal, Principal};
+/// use inklkunn_store::{AccountId, Scope};
+/// // The account principal has private fields: it cannot be written out by hand.
+/// let _ = Principal::Account(AccountPrincipal { id: AccountId::new(), scope: Scope::Admin });
+/// ```
+///
+/// ```compile_fail
+/// use inklkunn_core::IdentityAuthority;
+/// // There is no public constructor but `claim`, and the test constructor is not in a product build.
+/// let _ = IdentityAuthority(());
+/// ```
+#[derive(Debug)]
+pub struct IdentityAuthority(());
+
+impl IdentityAuthority {
+    /// Claim the process's one identity authority: `Some` the first time, `None` ever after.
+    pub fn claim() -> Option<IdentityAuthority> {
+        static CLAIMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        (!CLAIMED.swap(true, std::sync::atomic::Ordering::SeqCst)).then_some(IdentityAuthority(()))
+    }
+
+    /// An authority for a test, which builds principals freely (a process may have any number of these; the
+    /// product build has the feature off, and a gate fails if a product dependency turns it on).
+    #[cfg(any(test, feature = "test-authority"))]
+    pub fn for_tests() -> IdentityAuthority {
+        IdentityAuthority(())
+    }
+}
+
+/// An account reached through a credential: the account and how much of its authority the credential carries.
+/// Built only by [`Principal::session`] and [`Principal::token`], which need an [`IdentityAuthority`].
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AccountPrincipal {
+    id: AccountId,
+    scope: Scope,
+}
+
+impl AccountPrincipal {
+    /// The account.
+    pub fn id(&self) -> &AccountId {
+        &self.id
+    }
+
+    /// How much of the account's authority the credential carries. A session carries all of it.
+    pub fn scope(&self) -> Scope {
+        self.scope
+    }
+}
+
 /// Who is asking (RFC 002 D-1).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Principal {
     /// No session, no token.
     Anonymous,
     /// An account, reached through a session or a token, with the scope that credential carries.
-    Account {
-        /// The account.
-        id: AccountId,
-        /// How much of the account's authority the credential carries. A session carries all of it.
-        scope: Scope,
-    },
+    Account(AccountPrincipal),
     /// The service itself (import, recovery). Never reached from the network, and not constructible
     /// outside this crate.
     System(SystemPrincipal),
 }
 
 impl Principal {
-    /// An account signed in with a session: the credential carries the account's whole authority.
-    pub fn session(id: AccountId) -> Self {
-        Principal::Account {
+    /// An account signed in with a session: the credential carries the account's whole authority. Needs the
+    /// process's [`IdentityAuthority`].
+    pub fn session(_authority: &IdentityAuthority, id: AccountId) -> Self {
+        Principal::Account(AccountPrincipal {
             id,
             scope: Scope::Admin,
-        }
+        })
     }
 
-    /// An account reached with an API token of `scope`.
-    pub fn token(id: AccountId, scope: Scope) -> Self {
-        Principal::Account { id, scope }
+    /// An account reached with an API token of `scope`. Needs the process's [`IdentityAuthority`].
+    pub fn token(_authority: &IdentityAuthority, id: AccountId, scope: Scope) -> Self {
+        Principal::Account(AccountPrincipal { id, scope })
     }
 
     /// The system principal for a service-made change, named by `label`. **Crate-private on purpose**: only
@@ -82,7 +146,7 @@ impl Principal {
     pub fn audit_name(&self) -> String {
         match self {
             Principal::Anonymous => "anonymous".to_owned(),
-            Principal::Account { id, .. } => format!("account:{id}"),
+            Principal::Account(a) => format!("account:{}", a.id),
             Principal::System(s) => format!("system:{}", s.label.as_str()),
         }
     }
@@ -304,7 +368,8 @@ pub fn decide(snapshot: Snapshot, principal: &Principal, action: Action) -> Deci
     let allowed = match principal {
         Principal::System(_) => matches!(action, Action::Read | Action::Accept | Action::Import),
         Principal::Anonymous => action == Action::Read && visibility == Visibility::Public,
-        Principal::Account { scope, .. } => {
+        Principal::Account(a) => {
+            let scope = &a.scope;
             // The credential limits the account; the role limits the credential. Both must allow.
             *scope >= action.required_scope()
                 && match snapshot.role {
@@ -417,7 +482,7 @@ impl Authorizer {
         // The role is looked up for every account whether or not the wiki exists, so that an absent wiki and
         // a private one cost the same to ask about.
         let role = match principal {
-            Principal::Account { id, .. } => self.source.role(id, wiki)?,
+            Principal::Account(a) => self.source.role(&a.id, wiki)?,
             Principal::Anonymous | Principal::System(_) => None,
         };
         Ok(Snapshot { visibility, role })

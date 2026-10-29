@@ -52,7 +52,7 @@ pub const SIGNER_ONLY_NAMES: &[&str] = &[
     "run_mounts",
 ];
 /// Cargo features no product crate may enable in a non-dev dependency.
-pub const TEST_ONLY_FEATURES: &[&str] = &["test-knobs", "bootstrap"];
+pub const TEST_ONLY_FEATURES: &[&str] = &["test-knobs", "bootstrap", "test-authority"];
 
 /// prikk verbs that write; `inklkunn-prikk` (the read driver) may not name any of them as a string.
 pub const PRIKK_WRITE_VERBS: &[&str] = &[
@@ -134,6 +134,8 @@ pub const ROUTE_REGISTRY_FILE: &str = "routes.rs";
 pub const PRIVILEGED_PRINCIPAL_NAMES: &[&str] = &[
     "Principal::System",
     "SystemPrincipal",
+    "IdentityAuthority",
+    "AccountPrincipal",
     "Principal::Account",
     "Principal::session",
     "Principal::token",
@@ -155,6 +157,7 @@ pub const SIGNER_NAMES_FORBIDDEN_IN_SURFACES: &[&str] = &[
     "OldKeyOutcome",
     "Rotation",
     "RepositoryBootstrap",
+    "KeyAuthority",
     "AcceptanceLedger",
     "inklkunn_signer",
 ];

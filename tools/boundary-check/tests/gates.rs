@@ -518,6 +518,9 @@ fn privileged_principal_gate_catches_every_construction_and_spares_prose() {
         "use inklkunn_core::Principal::*;\nlet p = Account { id, scope };\n",
         "use inklkunn_core::Principal::{Account, Anonymous};\n",
         "let p = <Principal>::session(id);\n",
+        // The witness itself: a surface has no business with it.
+        "let a = IdentityAuthority::claim();\n",
+        "fn f(a: &AccountPrincipal) {}\n",
     ] {
         assert!(
             !privileged_principal_mentions(planted).is_empty(),
@@ -613,6 +616,7 @@ fn the_signer_gate_catches_every_way_a_surface_could_open_one_and_spares_prose()
         "impl AcceptanceLedger for MyLedger {}\n",
         "use inklkunn_signer::Signer;\n",
         "fn f(r: &dyn RepositoryBootstrap) {}\n",
+        "let k = KeyAuthority::claim();\n",
     ] {
         assert!(
             !signer_mentions_in_a_surface(planted).is_empty(),

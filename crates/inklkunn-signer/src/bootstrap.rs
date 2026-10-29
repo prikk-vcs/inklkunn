@@ -11,9 +11,9 @@ use std::path::{Path, PathBuf};
 
 use inklkunn_prikk::sandbox::Sandbox;
 
-use crate::RepositoryBootstrap;
 use crate::keys::{KeyDir, KeyIds, Role};
 use crate::writes::{SealedIds, SeedAccess, SignerError, Writes};
+use crate::{KeyAuthority, RepositoryBootstrap};
 
 /// The bootstrap signer.
 #[derive(Debug, Clone)]
@@ -75,7 +75,11 @@ impl BootstrapSigner {
 }
 
 impl RepositoryBootstrap for BootstrapSigner {
-    fn create_repository(&self, repo: &Path) -> Result<KeyIds, SignerError> {
+    fn create_repository(
+        &self,
+        repo: &Path,
+        _authority: &KeyAuthority,
+    ) -> Result<KeyIds, SignerError> {
         let ids = self.ensure_keys()?;
         self.writes.init(repo)?;
         self.writes

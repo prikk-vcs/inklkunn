@@ -16,8 +16,8 @@ use std::sync::Arc;
 
 use inklkunn_core::wiki::repo_of;
 use inklkunn_core::{
-    AcceptanceLedger, AcceptanceToken, ExpectedMessage, KeyStatus, LedgerError, OldKey,
-    OldKeyOutcome, Signer, SignerConfig, ViewCreationAct, ViewCreationFacts,
+    AcceptanceLedger, AcceptanceToken, ExpectedMessage, KeyAuthority, KeyStatus, LedgerError,
+    OldKey, OldKeyOutcome, Signer, SignerConfig, ViewCreationAct, ViewCreationFacts,
 };
 use inklkunn_store::{
     AuditEvent, AuditOutcome, AuditSink, RootLayout, Slug, SqliteStore, WikiId, WikiRecord,
@@ -25,6 +25,23 @@ use inklkunn_store::{
 };
 
 use crate::config::{Settings, UNCONFINED_BANNER};
+
+/// The process's one [`KeyAuthority`], claimed the first time a key command runs and kept for the life of the
+/// process (a command-line run makes one command; the tests of this module make many in one process, and reuse
+/// it). Nothing outside this module can reach it: the binary's surfaces never hold the right to make or change
+/// keys (corrections handoff C7).
+fn key_authority() -> &'static KeyAuthority {
+    static AUTHORITY: std::sync::OnceLock<KeyAuthority> = std::sync::OnceLock::new();
+    AUTHORITY.get_or_init(|| {
+        KeyAuthority::claim().unwrap_or_else(|| {
+            // Only this module claims it. If something else did, that is a bug to see, not to paper over.
+            #[allow(clippy::panic)]
+            {
+                panic!("the key authority was claimed elsewhere in this process")
+            }
+        })
+    })
+}
 
 /// The operator at the host, in the audit trail.
 const PRINCIPAL: &str = "system:operator-cli";
@@ -296,7 +313,7 @@ fn run(
         Command::Create { .. } => {
             // The trail first: an act that cannot be recorded is not begun (the Authorizer's rule too).
             begin(trail, &record, now, "keys-create", "begun")?;
-            match signer.create_keys(&repo) {
+            match signer.create_keys(key_authority(), &repo) {
                 Ok(ids) => {
                     let recorded = record_key_ids(&store, &record, &ids.author, &ids.maintainer);
                     let status = signer.key_status(&record.id).map_err(|e| e.to_string());
@@ -349,7 +366,7 @@ fn run(
                     "begun; old key to be kept"
                 },
             )?;
-            match signer.rotate_keys(&repo, old) {
+            match signer.rotate_keys(key_authority(), &repo, old) {
                 Ok(r) => {
                     // The key store changed: that is what the wiki record, the trail and the output must
                     // follow, whatever became of the old key.

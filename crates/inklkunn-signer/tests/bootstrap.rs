@@ -134,7 +134,9 @@ fn refused_incomplete_and_sealed_are_told_apart_and_no_seed_enters_the_repositor
         let repo = tmp.0.join("repo");
         std::fs::create_dir_all(&repo).expect("repo");
         let signer = BootstrapSigner::new("prikk", sandbox, &keys).expect("signer");
-        signer.create_repository(&repo).expect("init and trust");
+        signer
+            .create_repository(&repo, &inklkunn_signer::KeyAuthority::for_tests())
+            .expect("init and trust");
 
         // Nothing to commit: prikk refuses, and the text is prikk's.
         let empty = signer.commit_and_seal(&repo, "Nothing");

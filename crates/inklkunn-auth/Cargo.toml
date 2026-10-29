@@ -11,7 +11,7 @@ description = "inklkunn's authentication: accounts, sessions, tokens, OpenID Con
 [features]
 # Knobs this crate's own tests turn (a cheap password hash, a hasher double). Never enabled by a product
 # crate; the boundary gate fails if one does.
-test-knobs = []
+test-knobs = ["inklkunn-core/test-authority"]
 
 [dependencies]
 inklkunn-core = { workspace = true }

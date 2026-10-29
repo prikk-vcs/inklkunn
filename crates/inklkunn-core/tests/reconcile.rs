@@ -117,7 +117,7 @@ fn world(tag: &str) -> Option<World> {
     let wiki = WikiId::new();
     let repo = root.prepare(&wiki).unwrap();
     signer
-        .create_repository(&repo)
+        .create_repository(&repo, &inklkunn_signer::KeyAuthority::for_tests())
         .expect("repository and keys");
     for (path, text) in [
         (
@@ -185,8 +185,16 @@ impl World {
             BlockId::new(&self.first_block).unwrap(),
         )
         .unwrap();
+        let change = PreparedChange {
+            files: vec![PreparedFile {
+                path: PathBuf::from(format!("pages/Page{n}.md")),
+                content: Some(format!("page {n}\n").into_bytes()),
+            }],
+            renames: vec![],
+            message: message.to_text(),
+        };
         let facts = ExpectedMessage {
-            change_digest: inklkunn_core::accept::ChangeDigest::from_bytes([0; 32]),
+            change_digest: change.digest(),
             wiki: self.wiki.clone(),
             view: "heads/main".into(),
             kind: message.kind(),
@@ -202,14 +210,6 @@ impl World {
             .lock()
             .unwrap()
             .insert(token.as_str().to_owned(), facts.clone());
-        let change = PreparedChange {
-            files: vec![PreparedFile {
-                path: PathBuf::from(format!("pages/Page{n}.md")),
-                content: Some(format!("page {n}\n").into_bytes()),
-            }],
-            renames: vec![],
-            message: message.to_text(),
-        };
         let sealed = self
             .signer
             .accept(&self.wiki, "heads/main", &token, &change)

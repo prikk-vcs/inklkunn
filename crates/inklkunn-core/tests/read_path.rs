@@ -121,6 +121,7 @@ impl Real {
                 DisplayName::new("Real").expect("name"),
             ),
             "0.0.0",
+            &inklkunn_core::KeyAuthority::for_tests(),
         )
         .unwrap_or_else(|e| panic!("{e}"));
         let service = ReadService::new(
