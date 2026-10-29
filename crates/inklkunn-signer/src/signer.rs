@@ -158,7 +158,7 @@ impl Drop for WriteGuard<'_> {
         drop(held);
         // Tests widen the gap in which a wrongly ordered release would be seen (see the test that pins the order).
         #[cfg(test)]
-        std::thread::sleep(Duration::from_millis(3));
+        std::thread::sleep(Duration::from_millis(40));
     }
 }
 
@@ -627,6 +627,10 @@ impl Accept for Signer {
         let message = Message::parse(&change.message).map_err(|_| AcceptError::MessageMismatch)?;
         if !expected.matches(&message) {
             return Err(AcceptError::MessageMismatch);
+        }
+        // 1b. The files are the ones that were accepted: the record's digest against the change in hand.
+        if change.digest() != expected.change_digest {
+            return Err(AcceptError::ChangeMismatch);
         }
         // 2. The change itself, validated whole before the worktree is touched.
         let plan = Plan::new(change).map_err(|why| AcceptError::Refused(why.to_owned()))?;

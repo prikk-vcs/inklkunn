@@ -193,6 +193,7 @@ impl World {
 
 fn facts(m: &Message, view: &str) -> ExpectedMessage {
     ExpectedMessage {
+        change_digest: crate::accept::ChangeDigest::from_bytes([0; 32]),
         wiki: WikiId::new(),
         view: view.to_owned(),
         kind: m.kind(),

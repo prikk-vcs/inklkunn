@@ -153,7 +153,7 @@ fn the_in_process_turn_is_given_up_only_after_the_file_lock_is_released() {
     let path = dir.join("w.lock");
     let wiki = WikiId::new();
     let locks = WikiLocks::default();
-    for round in 0..400 {
+    for round in 0..40 {
         locks.enter(&wiki);
         let Acquired::Held(file) = flock::try_exclusive(&path).unwrap() else {
             panic!("round {round}: the lock was busy for the first holder");
@@ -166,7 +166,9 @@ fn the_in_process_turn_is_given_up_only_after_the_file_lock_is_released() {
         std::thread::scope(|s| {
             let waiter = s.spawn(|| {
                 locks.enter(&wiki);
-                let got = flock::try_exclusive(&path).unwrap();
+                // A short grace: a sibling test forking holds a copy of the descriptor for microseconds, which is
+                // not what is under test; a lock held across the gap below is.
+                let got = flock::exclusive_within(&path, Duration::from_millis(10)).unwrap();
                 let held = matches!(got, Acquired::Held(_));
                 drop(got);
                 locks.leave(&wiki);

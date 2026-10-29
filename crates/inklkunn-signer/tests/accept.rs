@@ -316,6 +316,14 @@ impl Fixture {
         )
         .unwrap();
         let token = AcceptanceToken::new(format!("acceptance-{proposal}"));
+        let change = PreparedChange {
+            files,
+            renames: renames
+                .into_iter()
+                .map(|(a, b)| (PathBuf::from(a), PathBuf::from(b)))
+                .collect(),
+            message: message.to_text(),
+        };
         let expected = ExpectedMessage {
             wiki: self.wiki.clone(),
             view: view.to_owned(),
@@ -325,18 +333,12 @@ impl Fixture {
             accepted_by: self.acceptor.clone(),
             base: Some(base),
             imported_from: None,
+            change_digest: change.digest(),
         };
         self.ledger.set(&token, expected.clone());
         Prepared {
             token,
-            change: PreparedChange {
-                files,
-                renames: renames
-                    .into_iter()
-                    .map(|(a, b)| (PathBuf::from(a), PathBuf::from(b)))
-                    .collect(),
-                message: message.to_text(),
-            },
+            change,
             expected,
             proposal,
         }
@@ -1123,6 +1125,77 @@ fn a_wiki_with_a_300_mib_attachment_accepts_that_attachment_and_the_change_after
     }
 }
 
+/// The signer checks the files it is handed, not only the message: a change altered between the acceptance
+/// record and the call is refused before anything is written, and the record stays pending (C5).
+#[test]
+fn a_change_altered_after_the_record_is_refused_before_anything_is_written() {
+    let Some(f) = fixture("digest", Sandbox::Unconfined, true) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    let p = f.prepare(
+        MAIN,
+        vec![file("pages/Edit.md", Some("edited\n"))],
+        vec![("pages/Rename Me.md", "pages/Renamed.md")],
+    );
+    let before = f.history_len(MAIN);
+    let calls_before = std::fs::read_to_string(f.ctl.join("calls.log")).unwrap_or_default();
+    let altered: Vec<(&str, PreparedChange)> = vec![
+        ("another content", {
+            let mut c = p.change.clone();
+            c.files = vec![file("pages/Edit.md", Some("EDITED\n"))];
+            c
+        }),
+        ("an extra file", {
+            let mut c = p.change.clone();
+            c.files.push(file("pages/Extra.md", Some("smuggled\n")));
+            c
+        }),
+        ("a rename dropped", {
+            let mut c = p.change.clone();
+            c.renames.clear();
+            c
+        }),
+        ("a removal added", {
+            let mut c = p.change.clone();
+            c.files.push(file("pages/Remove.md", None));
+            c
+        }),
+    ];
+    for (what, c) in altered {
+        let r = f.signer.accept(&f.wiki, MAIN, &p.token, &c);
+        assert_eq!(r, Err(AcceptError::ChangeMismatch), "{what}");
+    }
+    // Nothing was done: not one prikk call (not even a read), nothing queued, no new block, no file touched,
+    // no seed directory made.
+    let calls_after = std::fs::read_to_string(f.ctl.join("calls.log")).unwrap_or_default();
+    assert_eq!(calls_before, calls_after, "prikk was called");
+    assert_eq!(f.queue_count(), 0);
+    assert_eq!(f.history_len(MAIN), before);
+    assert!(!f.repo.join("pages/Extra.md").exists());
+    assert!(f.repo.join("pages/Rename Me.md").exists());
+    assert!(f.seed_dirs().is_empty());
+    // The record is still pending: the change that was accepted goes through.
+    f.signer
+        .accept(&f.wiki, MAIN, &p.token, &p.change)
+        .expect("the accepted change");
+    assert_eq!(f.history_len(MAIN), before + 1);
+    // And the order the files are listed in is not meaning.
+    let q = f.prepare(
+        MAIN,
+        vec![
+            file("pages/Edit.md", Some("two\n")),
+            file("pages/Home.md", Some("two\n")),
+        ],
+        vec![],
+    );
+    let mut reordered = q.change.clone();
+    reordered.files.reverse();
+    f.signer
+        .accept(&f.wiki, MAIN, &q.token, &reordered)
+        .expect("a reordered list is the same change");
+}
+
 #[test]
 fn a_worktree_that_cannot_be_put_back_after_a_failed_commit_is_said_to_be_dirty() {
     let Some(f) = fixture("dirty-restore", Sandbox::Unconfined, true) else {
@@ -1530,9 +1603,21 @@ fn child_accepts_and_blocks_in_seal() {
         name: DisplayName::new(name).unwrap(),
     };
     let token = AcceptanceToken::new(s(field(&spec, "token")));
+    let files = field(&spec, "files")
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| file(f[0].as_str().unwrap(), f[1].as_str()))
+        .collect();
+    let change = PreparedChange {
+        files,
+        renames: vec![],
+        message: s(field(&spec, "message")),
+    };
     ledger.set(
         &token,
         ExpectedMessage {
+            change_digest: change.digest(),
             wiki: WikiId::parse(&s(field(&spec, "wiki"))).unwrap(),
             view: s(field(e, "view")),
             kind: inklkunn_signer::message::Kind::Proposal,
@@ -1553,17 +1638,6 @@ fn child_accepts_and_blocks_in_seal() {
     );
     cfg.cheap_derivation = true;
     let signer = Signer::open_creating_store(cfg, ledger).expect("signer");
-    let files = field(&spec, "files")
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|f| file(f[0].as_str().unwrap(), f[1].as_str()))
-        .collect();
-    let change = PreparedChange {
-        files,
-        renames: vec![],
-        message: s(field(&spec, "message")),
-    };
     // Blocks inside `seal` until the parent kills this process.
     let _ = signer.accept(
         &WikiId::parse(&s(field(&spec, "wiki"))).unwrap(),

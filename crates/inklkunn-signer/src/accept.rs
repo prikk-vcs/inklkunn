@@ -59,6 +59,48 @@ pub struct PreparedFile {
     pub content: Option<Vec<u8>>,
 }
 
+/// The SHA-256 of a prepared change, in a canonical form (corrections handoff C5): what an acceptance record
+/// says was accepted, and what the signer recomputes over what it is about to write. The message binds the
+/// proposal and the people; this binds the **files**, so a change altered between the record and the call is
+/// refused before anything is written.
+///
+/// The encoding is `"inklkunn-change/1\0"`, then the files **sorted by path** (a path may appear once), each as
+/// a tag (`W` write or `D` delete), the length and bytes of the path, and for a write the length and bytes of the
+/// content; then the renames **in the order given** (the order is meaning: a chain `a → b`, `b → c` is not
+/// `b → c`, `a → b`), each as the length and bytes of both paths. Lengths are 8 bytes, big endian. The message
+/// is not part of it (the record binds that separately).
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ChangeDigest([u8; 32]);
+
+impl ChangeDigest {
+    /// A digest from its 32 bytes (what a record stores).
+    pub fn from_bytes(bytes: [u8; 32]) -> Self {
+        ChangeDigest(bytes)
+    }
+
+    /// The 32 bytes.
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+
+    /// Lowercase hex, 64 characters.
+    pub fn to_hex(&self) -> String {
+        self.0.iter().map(|b| format!("{b:02x}")).collect()
+    }
+}
+
+impl std::fmt::Debug for ChangeDigest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ChangeDigest({})", self.to_hex())
+    }
+}
+
+impl std::fmt::Display for ChangeDigest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.to_hex())
+    }
+}
+
 /// A change ready to be written: files, declared renames, and the CT-03 message.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreparedChange {
@@ -68,6 +110,47 @@ pub struct PreparedChange {
     pub renames: Vec<(std::path::PathBuf, std::path::PathBuf)>,
     /// The CT-03 message text, exactly as [`Message::to_text`] writes it.
     pub message: String,
+}
+
+impl PreparedChange {
+    /// The digest of this change's files and renames (see [`ChangeDigest`]).
+    pub fn digest(&self) -> ChangeDigest {
+        use sha2::{Digest, Sha256};
+        use std::os::unix::ffi::OsStrExt;
+        fn put(h: &mut Sha256, bytes: &[u8]) {
+            h.update((bytes.len() as u64).to_be_bytes());
+            h.update(bytes);
+        }
+        let mut h = Sha256::new();
+        h.update(b"inklkunn-change/1\0");
+        let mut files: Vec<&PreparedFile> = self.files.iter().collect();
+        files.sort_by(|a, b| {
+            a.path
+                .as_os_str()
+                .as_bytes()
+                .cmp(b.path.as_os_str().as_bytes())
+        });
+        h.update((files.len() as u64).to_be_bytes());
+        for f in files {
+            match &f.content {
+                Some(bytes) => {
+                    h.update(b"W");
+                    put(&mut h, f.path.as_os_str().as_bytes());
+                    put(&mut h, bytes);
+                }
+                None => {
+                    h.update(b"D");
+                    put(&mut h, f.path.as_os_str().as_bytes());
+                }
+            }
+        }
+        h.update((self.renames.len() as u64).to_be_bytes());
+        for (from, to) in &self.renames {
+            put(&mut h, from.as_os_str().as_bytes());
+            put(&mut h, to.as_os_str().as_bytes());
+        }
+        ChangeDigest(h.finalize().into())
+    }
 }
 
 /// What a sealed change leaves behind.
@@ -110,6 +193,9 @@ pub enum AcceptError {
     /// The message does not name the token's proposal and acceptor (RFC 002 D-5), or is not a message.
     /// Nothing was done.
     MessageMismatch,
+    /// The prepared files are not the ones the acceptance record says were accepted (their digest differs).
+    /// Nothing was done.
+    ChangeMismatch,
     /// Refused before anything was committed, with the worktree as it was found (it may be on another view,
     /// if a switch had been made); the text is for operators. Nothing was committed or sealed.
     Refused(String),
@@ -172,6 +258,10 @@ impl std::fmt::Display for AcceptError {
             AcceptError::MessageMismatch => write!(
                 f,
                 "the message does not name the acceptance's proposal and acceptor"
+            ),
+            AcceptError::ChangeMismatch => write!(
+                f,
+                "the prepared files are not the ones that were accepted; nothing was done"
             ),
             AcceptError::Refused(m) => write!(f, "refused, nothing committed: {m}"),
             AcceptError::Busy { holder: Some(pid) } => write!(
@@ -277,6 +367,10 @@ pub struct ExpectedMessage {
     pub base: Option<BlockId>,
     /// Where an import came from.
     pub imported_from: Option<ImportSource>,
+    /// The digest of the files that were accepted (RFC 004 D-4 records "the merged content's digest" on the
+    /// acceptance record). The signer recomputes it over the change it is handed and refuses a mismatch
+    /// before it writes anything.
+    pub change_digest: ChangeDigest,
 }
 
 impl ExpectedMessage {
@@ -327,3 +421,6 @@ pub trait AcceptanceLedger: Send + Sync {
         act: &ViewCreationAct,
     ) -> Result<Option<ViewCreationFacts>, LedgerError>;
 }
+
+#[cfg(test)]
+mod tests;

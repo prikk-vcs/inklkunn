@@ -141,6 +141,7 @@ fn world(tag: &str) -> Option<World> {
         id: "create".into(),
         block_id: Some(sealed.block_id.clone()),
         facts: ExpectedMessage {
+            change_digest: inklkunn_core::accept::ChangeDigest::from_bytes([0; 32]),
             wiki: wiki.clone(),
             view: "heads/main".into(),
             kind: Kind::System,
@@ -185,6 +186,7 @@ impl World {
         )
         .unwrap();
         let facts = ExpectedMessage {
+            change_digest: inklkunn_core::accept::ChangeDigest::from_bytes([0; 32]),
             wiki: self.wiki.clone(),
             view: "heads/main".into(),
             kind: message.kind(),

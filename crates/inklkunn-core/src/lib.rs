@@ -30,8 +30,9 @@ pub mod wiki;
 pub use inklkunn_signer::message;
 
 pub use accept::{
-    Accept, AcceptError, AcceptanceLedger, AcceptanceToken, ExpectedMessage, LedgerError,
-    PreparedChange, PreparedFile, SealedChange, Unconfirmed, ViewCreationAct, ViewCreationFacts,
+    Accept, AcceptError, AcceptanceLedger, AcceptanceToken, ChangeDigest, ExpectedMessage,
+    LedgerError, PreparedChange, PreparedFile, SealedChange, Unconfirmed, ViewCreationAct,
+    ViewCreationFacts,
 };
 pub use assurance::Assurance;
 pub use authorize::{

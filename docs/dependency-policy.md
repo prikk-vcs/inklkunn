@@ -34,6 +34,7 @@
 
 | Date | Crate(s) | Cost (lock) | Notes |
 |---|---|---|---|
+| 2026-10-29 | `sha2` 0.10 as a direct dependency of `inklkunn-signer` — the SHA-256 of a prepared change, which the acceptance guard compares with the record's digest (correction C5 of handoff 002) | 209 → 209 (+0: `sha2` is already in the tree for `inklkunn-auth`; one workspace edge); deny and audit unchanged | The acceptance record binds the files as well as the message; a hash is the only honest way to bind them, and the signer must not depend on `inklkunn-auth` for it. |
 | 2026-10-29 | `rustix` 1 (`fs`, `std`; no default features) as a direct dependency of `inklkunn-signer` — `flock(2)` for the key store's creation and, next, the per-wiki write lock and the seed directories' liveness (corrections C3, C4, C6 of handoff 002) | 209 → 209 (+0: `rustix` was already in the tree through `tempfile`, dev-only; it becomes a runtime crate, with the same `bitflags`, `errno`, `libc`, `linux-raw-sys` and `windows-sys` it already had); deny: advisories, bans, licenses, sources ok; audit: 0 vulnerabilities | `std::fs::File::lock` is stable only from Rust 1.89 and the declared minimum is 1.88; a safe wrapper is needed because every crate forbids `unsafe`. The alternative is raising the minimum compiler to 1.89 and using the standard library, which costs no dependency: the architect may prefer it (review request, deviation). |
 | 2026-10-28 | `askama` 0.16 (`derive`, `std`; no default features) — runtime of `inklkunn-web`; `ammonia` 4 — runtime of `inklkunn-core`; `html5ever` 0.40 — dev-only in `inklkunn-web` (handoff 003 T2 and T3, adopted together so both tasks start from one measured tree) | 155 → 209 (+54: `askama`, `askama_derive`, `askama_macros`, `askama_parser`; `ammonia` and its HTML stack `html5ever`, `markup5ever`, `web_atoms`, `string_cache`, `string_cache_codegen`, `phf`, `phf_codegen`, `phf_generator`, `phf_shared`, `siphasher`, `tendril`, `utf8_iter`, `new_debug_unreachable`, `precomputed-hash`, `parking_lot`, `parking_lot_core`, `lock_api`, `scopeguard`, `redox_syscall`, `log`, `maplit`, `cssparser`, `dtoa`, `dtoa-short`, `synstructure`, `displaydoc`; and `url`, `idna`, `idna_adapter`, `stable_deref_trait` with the Unicode data crates they need: `icu_collections`, `icu_locale_core`, `icu_normalizer`, `icu_normalizer_data`, `icu_properties`, `icu_properties_data`, `icu_provider`, `litemap`, `potential_utf`, `tinystr`, `writeable`, `yoke`, `yoke-derive`, `zerofrom`, `zerofrom-derive`, `zerotrie`, `zerovec`, `zerovec-derive`; `rustc-hash` was already locked); deny: advisories, bans, licenses, sources ok (exit 0); audit: 0 vulnerabilities, 1,380 advisories, 209 crates (exit 0); new licenses: `Unicode-3.0` (the ICU crates; already allowed for `unicode-ident`), `MPL-2.0` (`cssparser`, `dtoa-short`: file-level weak copyleft, in the allow-list and now encountered), the rest MIT or Apache-2.0 | RFC 003 D-3 requires every rendered page to pass a strict HTML sanitizer before any template sees it (threat model T-6); `ammonia` is the house choice (planeter) and its tree is the cost, mostly the Unicode tables behind `url`. RFC 003 D-5/D-6 want compiled, auto-escaping templates: `askama` with the `config` feature off (it would pull a TOML parser this project has no use for) is +4. The structural tests (D-6) parse rendered pages with `html5ever`, which `ammonia` already locks, so it adds nothing beyond the sanitizer's own tree. No Markdown change: `pulldown-cmark` stays the one renderer. **MSRV** — `cargo +1.88.0 check --workspace --all-targets` passes. |
 | 2026-10-28 | `axum` 0.8 (`http1`, `query`, `form`, `tokio`; no default features), `tokio` 1 (`rt-multi-thread`, `net`, `macros`, `sync`, `time`, `signal`), `tower-service` 0.3 — runtime of `inklkunn-web`; `tower` 0.5 (`util`) — dev-only (handoff 003 T1) | 129 → 155 (+26: `axum`, `axum-core`, `hyper`, `hyper-util`, `http`, `http-body`, `http-body-util`, `httparse`, `httpdate`, `mime`, `matchit`, `tower`, `tower-layer`, `tower-service`, `sync_wrapper`, `atomic-waker`, `tokio`, `tokio-macros`, `mio`, `socket2`, `signal-hook-registry`, `form_urlencoded`, `percent-encoding`, `serde_urlencoded`, `serde_path_to_error`, `ryu`); deny: advisories, bans, licenses, sources ok (exit 0); audit: 0 vulnerabilities, 1,380 advisories, 155 crates (exit 0); **`tokio` is 1.54.1, past RUSTSEC-2026-0386's 1.53.3**; new licenses: none outside the allow-list (MIT for axum, hyper, tokio, tower; `matchit` MIT AND BSD-3-Clause; `ryu` Apache-2.0 OR BSL-1.0; `sync_wrapper` Apache-2.0; the rest MIT or Apache-2.0) | RFC 003 D-5 and planeter's measured choice (STD-3): the standard async stack, HTTP/1.1 only behind the operator's TLS proxy. Features are trimmed to what the foundations use: no `json` extractor, no `ws`, no `multipart`, no `tracing`, no `tower-http` (the headers are one function, tested), no HTTP/2. `tower-service` is axum's own dependency, named so the origin dispatcher can hold two routers. Measured: **build time** — a clean debug build of `inklkunn-web` after `inklkunn-core` takes 3.7 s wall (14.5 s CPU); a clean release build of the `inklkunn` binary 26 s wall (70 s CPU against 48 s CPU before). **Binary size** — release `inklkunn` 3.41 MB (3.03 MB stripped) before, 4.90 MB (4.01 MB stripped) after: +1.5 MB (+1.0 MB stripped). **MSRV** — `cargo +1.88.0 check -p inklkunn-web` passes. `askama` 0.16 (+5 crates, measured on the same tree, deny and audit exit 0) is *not* added here: the task that writes the first template adds it with its own row. |
@@ -88,23 +89,23 @@ resolves optional dependencies of dependencies ahead of any feature choice, and 
 | `bit-vec` | 0.10.1 | `proptest` via `inklkunn-markup` (dev-only); `proptest` via `inklkunn-signer` (dev-only) |
 | `bitflags` | 2.13.2 | `ammonia` via `inklkunn-core`; `pulldown-cmark` via `inklkunn-markup`; +2 more |
 | `blake2` | 0.10.6 | `argon2` via `inklkunn-auth`; `argon2` via `inklkunn-signer` |
-| `block-buffer` | 0.10.4 | `argon2` via `inklkunn-auth`; `argon2` via `inklkunn-signer`; +1 more |
+| `block-buffer` | 0.10.4 | `argon2` via `inklkunn-auth`; `argon2` via `inklkunn-signer`; +2 more |
 | `borsh` | 1.8.1 | locked but never built: an optional dependency of a dependency that no feature of this workspace enables (still scanned by deny and audit) |
 | `borsh-derive` | 1.8.1 | locked but never built: an optional dependency of a dependency that no feature of this workspace enables (still scanned by deny and audit) |
 | `bumpalo` | 3.20.3 | `jsonwebtoken` via `inklkunn-auth` |
 | `bytes` | 1.12.1 | `axum` via `inklkunn-web` |
 | `cc` | 1.10.0 | `jsonwebtoken` via `inklkunn-auth` (build-only); `rusqlite` via `inklkunn-store` (build-only) |
-| `cfg-if` | 1.0.5 | `ammonia` via `inklkunn-core`; `chacha20poly1305` via `inklkunn-signer`; +2 more |
+| `cfg-if` | 1.0.5 | `ammonia` via `inklkunn-core`; `chacha20poly1305` via `inklkunn-signer`; +3 more |
 | `cfg_aliases` | 0.2.2 | locked but never built: an optional dependency of a dependency that no feature of this workspace enables (still scanned by deny and audit) |
 | `chacha20` | 0.10.2 | `chacha20poly1305` via `inklkunn-signer` |
 | `chacha20poly1305` | 0.10.1 | `chacha20poly1305` via `inklkunn-signer` |
 | `cipher` | 0.4.4 | `chacha20poly1305` via `inklkunn-signer` |
 | `cmake` | 0.1.58 | `jsonwebtoken` via `inklkunn-auth` (build-only) |
 | `core_detect` | 1.0.0 | `proptest` via `inklkunn-markup` (dev-only); `proptest` via `inklkunn-signer` (dev-only) |
-| `cpufeatures` | 0.3.1 | `argon2` via `inklkunn-auth`; `argon2` via `inklkunn-signer`; +2 more |
-| `crypto-common` | 0.1.7 | `argon2` via `inklkunn-auth`; `argon2` via `inklkunn-signer`; +2 more |
+| `cpufeatures` | 0.3.1 | `argon2` via `inklkunn-auth`; `argon2` via `inklkunn-signer`; +3 more |
+| `crypto-common` | 0.1.7 | `argon2` via `inklkunn-auth`; `argon2` via `inklkunn-signer`; +3 more |
 | `cssparser` | 0.38.0 | `ammonia` via `inklkunn-core` |
-| `digest` | 0.10.7 | `argon2` via `inklkunn-auth`; `argon2` via `inklkunn-signer`; +1 more |
+| `digest` | 0.10.7 | `argon2` via `inklkunn-auth`; `argon2` via `inklkunn-signer`; +2 more |
 | `displaydoc` | 0.2.7 | `ammonia` via `inklkunn-core` |
 | `dtoa` | 1.0.11 | `ammonia` via `inklkunn-core` |
 | `dtoa-short` | 0.3.5 | `ammonia` via `inklkunn-core` |
@@ -121,7 +122,7 @@ resolves optional dependencies of dependencies ahead of any feature choice, and 
 | `futures-core` | 0.3.34 | `axum` via `inklkunn-web`; `jsonwebtoken` via `inklkunn-auth` |
 | `futures-task` | 0.3.34 | `axum` via `inklkunn-web`; `jsonwebtoken` via `inklkunn-auth` |
 | `futures-util` | 0.3.34 | `axum` via `inklkunn-web`; `jsonwebtoken` via `inklkunn-auth` |
-| `generic-array` | 0.14.7 | `argon2` via `inklkunn-auth`; `argon2` via `inklkunn-signer`; +2 more |
+| `generic-array` | 0.14.7 | `argon2` via `inklkunn-auth`; `argon2` via `inklkunn-signer`; +3 more |
 | `getrandom` | 0.4.3 | `jsonwebtoken` via `inklkunn-auth` |
 | `hashbrown` | 0.17.1 | locked but never built: an optional dependency of a dependency that no feature of this workspace enables (still scanned by deny and audit) |
 | `html5ever` | 0.40.1 | `ammonia` via `inklkunn-core` |
@@ -147,7 +148,7 @@ resolves optional dependencies of dependencies ahead of any feature choice, and 
 | `jobserver` | 0.1.35 | `jsonwebtoken` via `inklkunn-auth` (build-only); `rusqlite` via `inklkunn-store` (build-only) |
 | `js-sys` | 0.3.106 | `jsonwebtoken` via `inklkunn-auth` |
 | `jsonwebtoken` | 11.1.0 | `jsonwebtoken` via `inklkunn-auth` |
-| `libc` | 0.2.191 | `ammonia` via `inklkunn-core`; `argon2` via `inklkunn-auth`; +7 more |
+| `libc` | 0.2.191 | `ammonia` via `inklkunn-core`; `argon2` via `inklkunn-auth`; +8 more |
 | `libsqlite3-sys` | 0.38.2 | `rusqlite` via `inklkunn-store` |
 | `linux-raw-sys` | 0.12.1 | `rustix` via `inklkunn-signer` |
 | `litemap` | 0.8.3 | `ammonia` via `inklkunn-core` |
@@ -202,7 +203,7 @@ resolves optional dependencies of dependencies ahead of any feature choice, and 
 | `serde_json` | 1.0.154 | `jsonwebtoken` via `inklkunn-auth`; `serde_json` via `inklkunn-auth`; +5 more |
 | `serde_path_to_error` | 0.1.20 | `axum` via `inklkunn-web` |
 | `serde_urlencoded` | 0.7.1 | `axum` via `inklkunn-web` |
-| `sha2` | 0.10.9 | `sha2` via `inklkunn-auth` |
+| `sha2` | 0.10.9 | `sha2` via `inklkunn-auth`; `sha2` via `inklkunn-signer` |
 | `shlex` | 2.0.1 | `jsonwebtoken` via `inklkunn-auth` (build-only); `rusqlite` via `inklkunn-store` (build-only) |
 | `signal-hook-registry` | 1.4.8 | `axum` via `inklkunn-web`; `tokio` via `inklkunn-web` |
 | `signature` | 2.2.0 | `jsonwebtoken` via `inklkunn-auth` |
@@ -213,7 +214,7 @@ resolves optional dependencies of dependencies ahead of any feature choice, and 
 | `stable_deref_trait` | 1.2.1 | `ammonia` via `inklkunn-core` |
 | `string_cache` | 0.11.0 | `ammonia` via `inklkunn-core` |
 | `string_cache_codegen` | 0.11.2 | `ammonia` via `inklkunn-core` (build-only) |
-| `subtle` | 2.6.1 | `argon2` via `inklkunn-auth`; `argon2` via `inklkunn-signer`; +3 more |
+| `subtle` | 2.6.1 | `argon2` via `inklkunn-auth`; `argon2` via `inklkunn-signer`; +4 more |
 | `syn` | 3.0.9 | `ammonia` via `inklkunn-core`; `askama` via `inklkunn-web`; +17 more |
 | `sync_wrapper` | 1.0.2 | `axum` via `inklkunn-web` |
 | `synstructure` | 0.14.0 | `ammonia` via `inklkunn-core` |
@@ -229,7 +230,7 @@ resolves optional dependencies of dependencies ahead of any feature choice, and 
 | `tower` | 0.5.3 | `axum` via `inklkunn-web` |
 | `tower-layer` | 0.3.3 | `axum` via `inklkunn-web` |
 | `tower-service` | 0.3.3 | `axum` via `inklkunn-web`; `tower-service` via `inklkunn-web` |
-| `typenum` | 1.20.1 | `argon2` via `inklkunn-auth`; `argon2` via `inklkunn-signer`; +2 more |
+| `typenum` | 1.20.1 | `argon2` via `inklkunn-auth`; `argon2` via `inklkunn-signer`; +3 more |
 | `unarray` | 0.1.4 | `proptest` via `inklkunn-markup` (dev-only); `proptest` via `inklkunn-signer` (dev-only) |
 | `unicase` | 2.10.0 | `pulldown-cmark` via `inklkunn-markup` |
 | `unicode-ident` | 1.0.27 | `ammonia` via `inklkunn-core`; `askama` via `inklkunn-web`; +17 more |
@@ -239,7 +240,7 @@ resolves optional dependencies of dependencies ahead of any feature choice, and 
 | `url` | 2.5.8 | `ammonia` via `inklkunn-core` |
 | `utf8_iter` | 1.0.4 | `ammonia` via `inklkunn-core` |
 | `vcpkg` | 0.2.15 | `rusqlite` via `inklkunn-store` (build-only) |
-| `version_check` | 0.9.5 | `argon2` via `inklkunn-auth` (build-only); `argon2` via `inklkunn-signer` (build-only); +2 more |
+| `version_check` | 0.9.5 | `argon2` via `inklkunn-auth` (build-only); `argon2` via `inklkunn-signer` (build-only); +3 more |
 | `wait-timeout` | 0.2.1 | `proptest` via `inklkunn-markup` (dev-only); `proptest` via `inklkunn-signer` (dev-only) |
 | `wasi` | 0.11.1+wasi-snapshot-preview1 | `axum` via `inklkunn-web`; `jsonwebtoken` via `inklkunn-auth`; +1 more |
 | `wasm-bindgen` | 0.2.129 | `jsonwebtoken` via `inklkunn-auth` |
