@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | The architect's correction requests on handoff 002 (T1 … T8), from the review of the dev team's request `.git-exclude/review-requests/002-identity-keys-and-signing-review-request.md`. The outcome was **Conditionally Approved**: the work stands; the items below are owed, each before the step it names. |
-| Status | Inherits RFC 002's: accepted. **Assignable now.** C1 – C4 are **mandatory before handoff 003's T7** (the binary's first writes); C5 – C7 before RFC 004's T4; C8 – C10 before OpenID Connect is switched on in a deployment (M2); **C11 before 0.1.0** (added 2026-10-29 with the owner's DR-10 ruling). |
+| Status | **Done and approved 2026-10-29** (review of the dev team's C1 – C11: `.git-exclude/reviewed/002-identity-keys-and-signing-corrections-review-result.md`); the follow-ups F1 – F7 at the end are owed at the steps they name. Was: inherits RFC 002's: accepted. **Assignable now.** C1 – C4 are **mandatory before handoff 003's T7** (the binary's first writes); C5 – C7 before RFC 004's T4; C8 – C10 before OpenID Connect is switched on in a deployment (M2); **C11 before 0.1.0** (added 2026-10-29 with the owner's DR-10 ruling). |
 | Basis | RFC 002 D-1 … D-10 (as concretized on 2026-10-29: D-4, D-5 in the signer crate; D-8 as ruled by the owner in DR-10, 2026-10-29); threat model T-1, C-1a … C-1c, C-9a, INV-2, INV-6; ledger PK-9, PK-20, PK-34, PK-35, PK-36; internal design SGN-6, AZ-1 (IQ-3 decided below). |
 | Audience | The dev team. Read the two lenses in handoff 003 first. |
 | Handback | One review request covering C1 – C11 (or one per group if they land at different times), filed in `.git-exclude/review-requests/`, with the usual gates, both test runs and a mutation table per item. |
@@ -79,7 +79,7 @@ compile-fail case for each (a `trybuild`-free way is fine: a gate test over a pl
 **C8 — IQ-3 decided: a confined `curl`, in a new lower-layer crate `inklkunn-fetch`.** The egress guard (core) decides
 and pins the address; `inklkunn-fetch` runs `curl` in its own bubblewrap vector (network shared, no repository, no key,
 `/usr` and the CA bundle read-only, `--resolve` to the pinned address, `--proto =https`, no redirects, bounded time and
-bytes) and implements `inklkunn-auth`'s `HttpsFetcher`. The spawn gate gains it as the third crate allowed to spawn a
+bytes) and implements `inklkunn-auth`'s `HttpsFetcher`. *(Amended 2026-10-29 at review: the binary implements `HttpsFetcher` as an adapter over `inklkunn-fetch`, since a lower crate may not implement a core-layer seam.)* The spawn gate gains it as the third crate allowed to spawn a
 process (for `curl` only), the layering gate lists it as lower. No TLS crate enters the lock (planeter's ruling and
 inklkunn's dependency policy). Internal design AZ-1 and LAY-3 are updated by the architect.
 
@@ -130,3 +130,21 @@ check). inklkunn can: it knows the moment. So:
 - **Reconciliation scheduling and the audit view:** RFC 004 (after every seal) and the administration surface.
 - **The undeclared-proxy throttle hazard** is C10's warning; sampling anonymous denials in the audit trail is deferred
   to the governance RFC (006), where abuse handling lives.
+
+## Follow-ups from the review of 2026-10-29 (binding; none conditions the approval)
+
+- **F1 — before 0.1.0.** Commit the write-cost measurement script (beside `tools/spikes/spike-a.py`), run it once, and
+  record its output beside spike A's data, so the signer's cost table (`crates/inklkunn-signer/src/cost.rs`, ledger
+  PK-38) can be re-measured at every re-baseline (`docs/UPSTREAM.md` step 5 now names it). The 300 MiB acceptance test
+  says, when it fails for space, that it needs about 1 GB of temporary space.
+- **F2 — before OIDC is switched on.** Re-run the real-browser check of C9 once and commit its script and output under
+  this handoff's folder (`evidence/`): the first record was lost with a scratchpad.
+- **F3 — before OIDC is switched on.** `prlimit` on the `curl` vector, as on prikk's; `curl` and `ca-certificates` in
+  the `Dockerfile`.
+- **F4 — before OIDC is switched on.** The landing page's words come from the message catalog in the reader's language:
+  the web layer renders the page; `inklkunn-auth` hands it the target, the cookies and the headers.
+- **F5 — with handoff 003 T7.** `KeyStore::open` on a directory that holds files but no store header says exactly that,
+  not "there is no key store … check the key directory setting".
+- **F6 — with handoff 003 T4.** The trusted-proxy setting, in the settings file T4 introduces; the start-up warning then
+  fires only for a non-loopback bind with no proxy declared.
+- **F7 — the architect.** A machine-readable block signer (ledger PK-39) goes into the next bundled letter to prikk.

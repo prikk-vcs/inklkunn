@@ -306,7 +306,8 @@ crate, lints as prikk's: `unwrap_used`, `expect_used` and `indexing_slicing` den
 - **IQ-2 — Search engine.** SQLite FTS5 with a trigram tokenizer (no new crate) versus a dedicated engine;
   FTS5 first, measured against PERF-3 (RFC 003).
 - **IQ-3 — Outbound HTTPS for OpenID Connect.** **Decided 2026-10-29: a confined `curl`** (planeter's shape, no TLS
-  crate) in a new lower-layer crate, `inklkunn-fetch`, which implements `inklkunn-auth`'s `HttpsFetcher` seam: the
+  crate) in a new lower-layer crate, `inklkunn-fetch`, which the binary adapts to `inklkunn-auth`'s `HttpsFetcher`
+  seam (a lower crate may not implement a core-layer trait; amended at the review of 2026-10-29): the
   egress guard in CR-core decides and pins the address; the fetcher runs `curl` under its own bubblewrap vector (network
   shared; no repository, no key; `/usr` and the CA bundle read-only; `--resolve` to the pinned address; https only; no
   redirects; bounded time and bytes). The spawn and layering gates list it (handoff 002 corrections C8).
