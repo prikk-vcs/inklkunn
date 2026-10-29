@@ -501,6 +501,11 @@ Handoff 003 T7 (RFC 003 D-11, D-12; hold notes IS-8, IS-9, IS-13).
   ran to a complete passing verdict. New sandbox constructor `Mounts::write_keyless_with_output`, named in the
   signer-only list of the key-reachability gate. *No new dependency crate:* `sha2` and `serde_json` are added as
   direct dependencies of `inklkunn-core` (lock +0 crates).
+- **R2, R3 (handoff 003 corrections): the archive copy no longer follows a link or removes a stranger's file.** The
+  archive's temporary file is opened with `O_NOFOLLOW` (and `O_NONBLOCK`), checked with `fstat` to be a regular file
+  on the scratch directory's device, and measured and copied from that one handle; a link there is refused as damage
+  (a compromised prikk could otherwise have inklkunn copy any file it can read into the operator's archive). A failed
+  copy removes the destination only when this call created it. No new dependency (`rustix` was already the signer's).
 - **Wiki creation is kill-safe** (IS-13). A creation is bracketed by a **creation mark** (`<id>.creating` beside the
   repository, made durable before the first directory, locked while the creation runs, removed after the record is
   stored), and `sweep_unfinished_creations`, run by every `wiki create` and every `serve` start, removes whole what a

@@ -53,6 +53,8 @@ case "$1" in
   archive)
     case "$M" in
       short) printf 'ARCHIVE' > "$3"; SIZE=99 ;;
+      link) ln -s {secret} "$3"; SIZE=6 ;;
+      racer) printf 'ARCHIVE-BYTES' > "$3"; printf 'theirs' > {dest}; SIZE=13 ;;
       *) printf 'ARCHIVE-BYTES' > "$3"; SIZE=13 ;;
     esac
     SCHEMA=prepo-export-report-v1
@@ -68,9 +70,12 @@ case "$1" in
 esac
 "#,
             log = log.display(),
-            mode = mode.display()
+            mode = mode.display(),
+            secret = dir.join("secret").display(),
+            dest = dir.join("out.prikk").display()
         ),
     );
+    std::fs::write(dir.join("secret"), "SECRET").unwrap();
     Fixture {
         dir,
         root,
@@ -300,4 +305,82 @@ fn a_refresh_is_a_writable_verify_and_a_partial_report_is_not_a_refresh() {
         .refresh_checkpoint(&WikiId::new())
         .unwrap_err();
     assert!(matches!(err, SignerError::Refused(_)), "{err:?}");
+}
+
+#[test]
+fn a_link_where_the_archive_should_be_is_refused_and_what_it_points_to_is_not_copied() {
+    let f = fixture("link");
+    f.set_mode("link");
+    let err = f
+        .maintenance()
+        .archive_export(&f.wiki, &f.destination())
+        .unwrap_err();
+    assert!(
+        matches!(&err, SignerError::Damaged(m) if m.contains("a link")),
+        "{err:?}"
+    );
+    assert!(!f.destination().exists(), "the link's target was copied");
+    assert_eq!(
+        std::fs::read(f.dir.join("secret")).unwrap(),
+        b"SECRET".to_vec()
+    );
+    assert!(
+        std::fs::read_dir(f.root.scratch_dir(&f.wiki))
+            .unwrap()
+            .next()
+            .is_none(),
+        "the planted link was left"
+    );
+}
+
+#[test]
+fn the_archive_handle_must_be_a_regular_file_on_the_scratch_directorys_device() {
+    let f = fixture("device");
+    let scratch = f.root.scratch_dir(&f.wiki);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let file = scratch.join("archive-export-1-1.tmp");
+    std::fs::write(&file, "twelve bytes").unwrap();
+    let (_, size) = open_archive(&file, &scratch).unwrap();
+    assert_eq!(size, 12);
+    // A directory is not an archive.
+    let sub = scratch.join("archive-export-2-2.tmp");
+    std::fs::create_dir(&sub).unwrap();
+    let err = open_archive(&sub, &scratch).unwrap_err();
+    assert!(
+        matches!(&err, SignerError::Damaged(m) if m.contains("regular file")),
+        "{err:?}"
+    );
+    // A file on another device than the scratch directory is not what prikk wrote there. `/proc` is never the
+    // device of a temporary directory.
+    let proc = Path::new("/proc");
+    if proc.is_dir()
+        && std::fs::metadata(proc).unwrap().dev() != std::fs::metadata(&scratch).unwrap().dev()
+    {
+        let err = open_archive(&file, proc).unwrap_err();
+        assert!(
+            matches!(&err, SignerError::Damaged(m) if m.contains("device")),
+            "{err:?}"
+        );
+    } else {
+        println!("skipping the device check: /proc is not on another device here");
+    }
+}
+
+#[test]
+fn a_destination_that_appeared_meanwhile_is_refused_and_not_removed() {
+    let f = fixture("racer");
+    f.set_mode("racer");
+    let err = f
+        .maintenance()
+        .archive_export(&f.wiki, &f.destination())
+        .unwrap_err();
+    assert!(
+        matches!(&err, SignerError::Unavailable(m) if m.contains("could not be created")),
+        "{err:?}"
+    );
+    assert_eq!(
+        std::fs::read(f.destination()).unwrap(),
+        b"theirs".to_vec(),
+        "a file this call did not make was removed"
+    );
 }

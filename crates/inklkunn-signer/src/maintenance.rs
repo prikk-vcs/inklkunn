@@ -20,12 +20,14 @@
 
 use std::ffi::OsString;
 use std::io::Write as _;
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
 use inklkunn_prikk::sandbox::Sandbox;
 use inklkunn_prikk::storage::Verification;
 use inklkunn_store::{RootLayout, WikiId};
+use rustix::fs::{Mode, OFlags};
+use rustix::io::Errno;
 
 use crate::locks::WikiLocks;
 use crate::writes::{SignerError, Writes};
@@ -85,7 +87,8 @@ impl Maintenance {
     /// a file that exists is never overwritten), **serialized with the wiki's writes**. The archive is written
     /// by prikk into the wiki's scratch directory, checked against its report, and then copied to
     /// `destination` with mode 0600 (it holds every page, private ones included) and the scratch copy removed.
-    /// A failure leaves no destination file.
+    /// A failure leaves no destination file of this call's making (a file that appeared there meanwhile is not
+    /// removed).
     pub fn archive_export(
         &self,
         wiki: &WikiId,
@@ -135,25 +138,16 @@ impl Maintenance {
         destination: &Path,
     ) -> Result<ArchiveExported, SignerError> {
         let report = self.writes.archive_export(repo, scratch, temp)?;
-        let on_disk = std::fs::metadata(temp)
-            .map_err(|e| {
-                SignerError::Damaged(format!(
-                    "the archive prikk wrote is not there ({})",
-                    e.kind()
-                ))
-            })?
-            .len();
+        // The temporary file sits where the confined prikk writes: open it without following a link, check
+        // what was opened, and measure and copy from that one handle (R2).
+        let (mut source, on_disk) = open_archive(temp, scratch)?;
         if on_disk != report.total_bytes {
             return Err(SignerError::Damaged(format!(
                 "the archive is {on_disk} bytes and prikk's report says {}",
                 report.total_bytes
             )));
         }
-        let copied = copy_private(temp, destination);
-        if let Err(e) = copied {
-            let _ = std::fs::remove_file(destination);
-            return Err(e);
-        }
+        copy_private(&mut source, destination)?;
         Ok(ArchiveExported {
             bytes: report.total_bytes,
             repository_format: report.repository_format,
@@ -205,25 +199,76 @@ fn remove_temporaries(scratch: &Path) {
     }
 }
 
-/// Copy `from` to the new file `to` (created exclusively, mode 0600, never following a link), and make it
-/// durable.
-fn copy_private(from: &Path, to: &Path) -> Result<(), SignerError> {
+/// Open the archive prikk wrote at `temp` and return the handle with its size. The path is opened with
+/// `O_NOFOLLOW` (a link there is refused as damage: a compromised prikk could leave one to have inklkunn copy
+/// any file it can read into the operator's archive), `O_NONBLOCK` (a FIFO there cannot hold the open), and the
+/// handle is checked with `fstat` to be a regular file on the scratch directory's device. The size is the
+/// handle's, so what is measured is what is copied.
+fn open_archive(temp: &Path, scratch: &Path) -> Result<(std::fs::File, u64), SignerError> {
+    let damaged = |what: &str| SignerError::Damaged(format!("the archive prikk wrote {what}"));
+    let fd = rustix::fs::open(
+        temp,
+        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
+        Mode::empty(),
+    )
+    .map_err(|e| {
+        if e == Errno::LOOP {
+            damaged("is a link")
+        } else {
+            damaged(&format!(
+                "could not be opened ({})",
+                std::io::Error::from(e).kind()
+            ))
+        }
+    })?;
+    let file = std::fs::File::from(fd);
+    let meta = file
+        .metadata()
+        .map_err(|e| damaged(&format!("could not be examined ({})", e.kind())))?;
+    if !meta.file_type().is_file() {
+        return Err(damaged("is not a regular file"));
+    }
+    let scratch_device = std::fs::metadata(scratch)
+        .map_err(|e| {
+            SignerError::Unavailable(format!(
+                "the wiki's scratch directory could not be examined ({})",
+                e.kind()
+            ))
+        })?
+        .dev();
+    if meta.dev() != scratch_device {
+        return Err(damaged("is not on the scratch directory's device"));
+    }
+    Ok((file, meta.len()))
+}
+
+/// Copy `source` to the new file `to` (created exclusively, mode 0600, never following a link), and make it
+/// durable. **A failure after the file was created removes it; a failure to create it removes nothing**: the
+/// path then holds a file this call did not make.
+fn copy_private(source: &mut std::fs::File, to: &Path) -> Result<(), SignerError> {
     let fail =
         |what: &str, e: &std::io::Error| SignerError::Unavailable(format!("{what} ({})", e.kind()));
-    let mut source =
-        std::fs::File::open(from).map_err(|e| fail("the archive could not be read", &e))?;
     let mut out = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(0o600)
         .open(to)
         .map_err(|e| fail("the archive's destination could not be created", &e))?;
-    std::io::copy(&mut source, &mut out)
-        .map_err(|e| fail("the archive could not be copied", &e))?;
-    out.flush()
-        .map_err(|e| fail("the archive could not be written", &e))?;
-    out.sync_all()
-        .map_err(|e| fail("the archive could not be made durable", &e))
+    let written = std::io::copy(source, &mut out)
+        .map_err(|e| fail("the archive could not be copied", &e))
+        .and_then(|_| {
+            out.flush()
+                .map_err(|e| fail("the archive could not be written", &e))
+        })
+        .and_then(|()| {
+            out.sync_all()
+                .map_err(|e| fail("the archive could not be made durable", &e))
+        });
+    if written.is_err() {
+        // This call made the file: it goes.
+        let _ = std::fs::remove_file(to);
+    }
+    written
 }
 
 #[cfg(test)]
