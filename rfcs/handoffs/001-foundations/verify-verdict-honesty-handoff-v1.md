@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | A follow-on of RFC 001's driver (`inklkunn-prikk`): `verify` must never turn a memory-ceiling hit into *Verification failed*. One task, one review request. |
-| Status | RFC 001 is **done**; this follow-on is **assignable now** (architect, 2026-10-28). It must land **before RFC 003's T4** (the badge and the verification page), and it may run beside RFC 002's handoff and RFC 003's T1–T3. |
+| Status | **Done and approved 2026-10-29** (`34def34`; review result `.git-exclude/reviewed/001-verify-verdict-honesty-review-result.md`); follow-ups V1, V2 below are owed before RFC 003's T4 shows the badge. Was: RFC 001 is **done**; this follow-on is **assignable now** (architect, 2026-10-28). It must land **before RFC 003's T4** (the badge and the verification page), and it may run beside RFC 002's handoff and RFC 003's T1–T3. |
 | Basis | RFC 001 D-3, D-4; threat model C-9a ("a ceiling hit is *unavailable*, never a verification verdict"), INV-6; requirements RD-4, INT-6 (a wiki whose last verification failed refuses acceptances); ledger PK-8, PK-9, **PK-22** (the shape, measured on prikk 0.54.1), **PL-7** (planeter's IS-43 rule, the precedent); `crates/inklkunn-prikk/src/driver.rs` (`verify`, `failure`), `src/storage.rs` (`Stage`, `Verdict`, `Verification`), `tests/driver.rs` (`a_too_small_ceiling_is_unavailable_never_a_verdict`). |
 | Audience | The dev team. Read the two lenses in RFC 003's handoff first; they apply here unchanged. |
 | Scope | The driver's reading of `verify-report-v1` and its tests. **Not** the badge, the verification page or any wording (RFC 003 T4); **not** the cost table (RFC 003 T9). |
@@ -84,3 +84,12 @@ green (fmt, clippy on both compilers, rustdoc, tests with prikk on `PATH` and sh
 `EXPECTED_SKIPS`, deny, audit, the four gates). The review request, `verify-verdict-honesty-review-request.md` in
 `.git-exclude/review-requests/`, carries: the commits; the measured ceilings and report excerpts; the gate table with exit codes; the
 mutation table; deviations and open questions. The architect answers with one of the six outcomes.
+
+## Follow-ups from the review of 2026-10-29 (binding; owed before RFC 003's T4 shows the badge)
+
+- **V1.** Apply the completeness rule to every parsed report whose `verdict.ok` is false, **whatever the exit code**:
+  prikk's contract sends findings with exit 1, so `ok: false` with exit 0 should never come, but if it does it must not
+  pass unchecked. A unit case pins it.
+- **V2.** A failing report with **no stages** is partial, not a verdict (prikk's report walks every stage by
+  construction, so an empty list proves nothing finished). Give the stand-in in `crates/inklkunn-signer/tests/accept.rs`
+  (*a verification that fails after the seal is sealed but unconfirmed*) a real-shaped report; a unit case pins the rule.

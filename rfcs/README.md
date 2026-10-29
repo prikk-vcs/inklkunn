@@ -25,7 +25,7 @@ rfcs/
 ## Pipeline (from the roadmap)
 
 The planned order is `../ROADMAP.md` §7. **RFCs 001 and 010 are done** (implemented in M0, review requests v2
-approved by the owner on 2026-10-28); 001 has one follow-on handoff (IS-7, 2026-10-28) and 010's first re-baseline
+approved by the owner on 2026-10-28); 001's follow-on handoff (IS-7) is done and approved (2026-10-29) and 010's first re-baseline
 ran at prikk 0.55.0 on 2026-10-29 (nothing changed; the floor stays 0.54.0). **RFCs 002 and 003 are accepted** (2026-10-27): 002's handoff is assignable
 now; 003's T1–T3 are startable now and T4 onward after 002's T2. **RFC 004 is accepted** (2026-10-28); its
 handoff is assignable after 003's T1 – T4 are approved (its T1–T2 may start now: 002's T5 has landed). RFCs 005–009 are reserved
@@ -35,7 +35,7 @@ subjects not yet written: 005 knowledge layer
 
 | # | RFC | Serves | State |
 |---|---|---|---|
-| 001 | [Foundations: the workspace and its gates, the storage driver, and the wiki repository layout](done/001-foundations.md) | M0 → M1 | **done** 2026-10-28 (approved after review; handoff review request v2); **follow-on handoff assignable** (2026-10-28): verification verdicts under a memory ceiling (IS-7), before 003's T4 |
+| 001 | [Foundations: the workspace and its gates, the storage driver, and the wiki repository layout](done/001-foundations.md) | M0 → M1 | **done** 2026-10-28 (approved after review; handoff review request v2); follow-on handoff (verification verdicts under a memory ceiling, IS-7) **done and approved 2026-10-29**; follow-ups V1, V2 before 003's T4 badge |
 | 002 | [Identity, keys and signing](accepted/002-identity-keys-and-signing.md) | M0 → M2 (DR-4) | **accepted** 2026-10-27; handoff built and **Conditionally Approved 2026-10-29**; corrections C1 – C11 **done and approved 2026-10-29** (follow-ups F1 – F7 at the steps they name); D-8 ruled (DR-10) |
 | 003 | [Read path and rendering](accepted/003-read-path-and-rendering.md) | M1 | **accepted** 2026-10-27, concretized 2026-10-28 and 2026-10-29; T1 – T3 built and **Conditionally Approved 2026-10-29**; T4 next, after 001's follow-on and under the 2026-10-29 notes (author HTML escaped, reads pinned); T7 after 002's corrections C1 – C4 |
 | 004 | [Proposals: propose, review, accept and seal; re-author a moved base gently; never lose a half-state](accepted/004-proposals.md) | M2 | **accepted** 2026-10-28; handoff v1 assignable after 003's T1 – T4 are approved (002's corrections approved 2026-10-29) |
