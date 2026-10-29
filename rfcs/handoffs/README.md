@@ -28,9 +28,10 @@ landed and been approved first (RFC 002's names RFC 001's).
 
 ## What a review request carries back
 
-**Where it lives (since 2026-10-28):** review requests and the architect's review reports are private files in
-`.git-exclude/review-requests/` (named `<handoff slug>-review-request.md` and `…-architect-review-<date>.md`), like the
-upstream correspondence; the outcome and every correction that binds future work are folded into the committed record
+**Where it lives (since 2026-10-28; results since 2026-10-29):** review requests are private files in
+`.git-exclude/review-requests/` (named `<NNN>-<handoff slug>-review-request.md`), and the architect's result for each is a
+private file in `.git-exclude/reviewed/` (named `<NNN>-<handoff slug>-review-result.md`), like the upstream
+correspondence; the outcome and every correction that binds future work are folded into the committed record
 (the RFC's Status, a corrections handoff or a dated note in the handoff, `docs/STATUS.md`). A handoff that still says
 "beside this file" means that folder.
 

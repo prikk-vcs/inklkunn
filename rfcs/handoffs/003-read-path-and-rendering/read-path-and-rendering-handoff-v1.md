@@ -74,7 +74,7 @@ read against:
     that removes an unfinished creation whole) is the precedent; prove it with a `SIGKILL` at each step.
 
 - **From the architect's review of T1 – T3 (2026-10-29; outcome *Conditionally Approved*; binding).** The review
-  report is `.git-exclude/review-requests/002-003-architect-review-2026-10-29.md`.
+  result is `.git-exclude/reviewed/003-read-path-and-rendering-review-result.md`.
   - **Before T4 serves a page, author HTML is escaped while the profile's subset is empty (IS-14; mandatory).** The
     sanitizer's allowlist is the renderer's vocabulary, so an author's `<a class="wikilink" href="https://…">Home</a>`
     survives looking exactly like an internal wiki link and without `rel="nofollow ugc"`: a forged link, against the

@@ -94,7 +94,7 @@
   Meanwhile the dev team committed handoff 002's T5 follow-up and T2 (`bc60dc6`, `fb95846`; local, unreviewed).
 
 - **2026-10-29 — the architect reviewed the dev team's first two packages** (handoff 002 T1 – T8; handoff 003 T1 –
-  T3; requests and the review report in `.git-exclude/review-requests/`). Every gate re-run in a clean worktree:
+  T3; requests in `.git-exclude/review-requests/`, results in `.git-exclude/reviewed/`). Every gate re-run in a clean worktree:
   fmt, clippy on both compilers, rustdoc, deny, audit all 0; **676 passed, 0 failed** with prikk on `PATH` and with it
   shimmed off, **57 self-skips = `EXPECTED_SKIPS`**. PK-34 and PK-36 reproduced on prikk 0.54.1. **Both Conditionally
   Approved.** The conditions: ten correction items for handoff 002 (C1 – C10, a corrections handoff; the three that
@@ -143,7 +143,7 @@
 
 ## Pending on the owner
 
-- **Hand the dev team its next work:** the review report (`.git-exclude/review-requests/002-003-architect-review-2026-10-29.md`);
+- **Hand the dev team its next work:** the review results (`.git-exclude/reviewed/002-identity-keys-and-signing-review-result.md`, `…/003-read-path-and-rendering-review-result.md`);
   `rfcs/handoffs/002-identity-keys-and-signing/identity-keys-and-signing-corrections-handoff-v1.md` (C1 – C4 before
   003's T7); `rfcs/handoffs/001-foundations/verify-verdict-honesty-handoff-v1.md` (before 003's T4); then handoff 003
   from T4 under its dated notes.
