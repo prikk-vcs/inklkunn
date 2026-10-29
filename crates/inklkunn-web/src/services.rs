@@ -53,7 +53,3 @@ impl std::fmt::Debug for Services {
         f.write_str("Services")
     }
 }
-
-/// A check that ran this recently is not run again (the verification page says so): a page anyone can open
-/// must not be a way to make the server run its longest read in a loop.
-pub const MIN_RECHECK_SECS: i64 = 60;

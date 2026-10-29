@@ -47,7 +47,10 @@ pub use authorize::{
     AccountPrincipal, Action, Authorizer, AuthzSource, Decision, IdentityAuthority, Principal,
     Resource, Snapshot, SourceError, StoreAuthz, SystemPrincipal, decide,
 };
-pub use check::{CheckOutcome, Checked, NotChecked, StageFinding, Verifier};
+pub use check::{
+    CONCURRENT_CHECKS, CheckOutcome, Checked, Declined, MIN_RECHECK_SECS, NotChecked, StageFinding,
+    Verifier,
+};
 pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, Resolver, StdEgressGuard, StdResolver};
 pub use inklkunn_signer::{
     ArchiveExported, KeyAuthority, KeyStatus, LateSeal, Maintenance, OldKey, OldKeyOutcome,

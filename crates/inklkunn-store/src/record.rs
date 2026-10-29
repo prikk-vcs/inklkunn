@@ -405,7 +405,9 @@ impl Visibility {
     }
 }
 
-/// The Assurance value a verification yields (external design, ID-9; planeter's vocabulary).
+/// The Assurance value a verification **verdict** yields (external design, ID-9; planeter's vocabulary). Only a
+/// check that ran to completion is a verdict: one that could not run is an [`Attempt`], kept apart so that it
+/// can never replace what the last verdict said (handoff 003, review R1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum VerificationState {
@@ -415,8 +417,6 @@ pub enum VerificationState {
     Verified,
     /// `verify` ran and a condition failed.
     Failed,
-    /// `verify` could not run to completion (busy, ceiling, timeout): not a verdict.
-    CouldNotCheck,
 }
 
 impl VerificationState {
@@ -426,7 +426,6 @@ impl VerificationState {
             VerificationState::Unknown => "unknown",
             VerificationState::Verified => "verified",
             VerificationState::Failed => "failed",
-            VerificationState::CouldNotCheck => "could-not-check",
         }
     }
 
@@ -436,19 +435,62 @@ impl VerificationState {
             "unknown" => Some(VerificationState::Unknown),
             "verified" => Some(VerificationState::Verified),
             "failed" => Some(VerificationState::Failed),
-            "could-not-check" => Some(VerificationState::CouldNotCheck),
             _ => None,
         }
     }
 }
 
-/// A verification outcome and when it was reached.
+/// A verification verdict and when it was reached.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Verification {
-    /// The outcome.
+    /// The verdict.
     pub state: VerificationState,
     /// Unix seconds, `None` while unknown.
     pub at: Option<i64>,
+}
+
+/// Why a verification could not run to completion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NotRun {
+    /// The server was busy with other work.
+    Busy,
+    /// Stopped for want of memory or time.
+    Limit,
+    /// Could not be started, or its answer could not be read.
+    Unavailable,
+}
+
+impl NotRun {
+    /// The stored name.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            NotRun::Busy => "busy",
+            NotRun::Limit => "limit",
+            NotRun::Unavailable => "unavailable",
+        }
+    }
+
+    /// Parse the stored name.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "busy" => Some(NotRun::Busy),
+            "limit" => Some(NotRun::Limit),
+            "unavailable" => Some(NotRun::Unavailable),
+            _ => None,
+        }
+    }
+}
+
+/// A verification that could not run to completion: **not a verdict**, and never a replacement for one. A
+/// wiki's record holds the latest such attempt only while it is the latest thing that happened; the next
+/// verdict clears it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Attempt {
+    /// Unix seconds.
+    pub at: i64,
+    /// Why it could not run.
+    pub why: NotRun,
 }
 
 impl Default for Verification {
@@ -657,8 +699,11 @@ pub struct WikiRecord {
     pub policy_bootstrap: String,
     /// prikk's repository format version, once known.
     pub prikk_format_version: Option<String>,
-    /// The latest verification.
+    /// The last verification **verdict** (a check that ran to completion).
     pub verification: Verification,
+    /// A later attempt that could not run, if the last thing that happened was that; the next verdict clears
+    /// it. It never replaces `verification`.
+    pub last_attempt: Option<Attempt>,
     /// The wiki's author key id (never a seed).
     pub author_key_id: Option<String>,
     /// The wiki's maintainer key id (never a seed).
@@ -706,6 +751,7 @@ impl WikiRecord {
             policy_bootstrap,
             prikk_format_version: None,
             verification: Verification::default(),
+            last_attempt: None,
             author_key_id: None,
             maintainer_key_id: None,
             checkpoint: Checkpoint::default(),

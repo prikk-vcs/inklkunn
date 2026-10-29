@@ -572,3 +572,15 @@ Handoff 003 T6 (recent changes, feeds, search, health, discovery; RFC 003 D-7 â€
   wikis' indexes in the same table), a one- or two-character query 3 ms (4 ms); the link graph's first use 1.9 s (one extract,
   every page read), then free; the first recent-changes page 1.7 s for 21 rows (one `show` of about 80 ms each, remembered
   afterwards), then 30 ms; the raw source of a page 0.13 s.
+
+Corrections from the review of 2026-10-30 (handoff 003, R1).
+
+- **A check that could not run never replaces a verdict** (R1; INT-6). The wiki record keeps the last verdict (*Verified* or
+  *Failed*, with its time) apart from the last attempt that could not run (its time and why: busy, a limit, unavailable); a
+  later verdict clears the attempt, an attempt never touches the verdict. The badge and the verification page read the
+  verdict; *Could not be checked now* is said when there is no verdict yet, when the page itself is served stale, and, as a
+  sentence of its own, for the attempt. **Store schema 8** adds `attempt_at` / `attempt_why`; a row that held `could-not-check`
+  becomes `unknown` with the attempt kept. A check is claimed before it runs: one per wiki at a time (a concurrent request is
+  told *a check is running*), at most `CONCURRENT_CHECKS` (2) at once overall, and the 60-second guard is read inside the
+  claim from the record as it stands (a recorded time in the future counts as recent; an attempt the gate turned away does
+  not). `VerificationState::CouldNotCheck` is gone; `WikiStore::record_attempt` and `WikiRecord::last_attempt` are new.

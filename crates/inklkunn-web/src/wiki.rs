@@ -25,14 +25,14 @@ use inklkunn_core::read::Via;
 use inklkunn_core::read::{
     PageOutcome, PageProblem, Presentation, ReadError, RedirectProblem, RedirectedBy,
 };
-use inklkunn_core::{Action, CheckOutcome, NotChecked, PageView, Resource, SafeHtml};
+use inklkunn_core::{Action, CheckOutcome, Declined, NotChecked, PageView, Resource, SafeHtml};
 use inklkunn_store::{Slug, VerificationState, WikiId, WikiRecord};
 
 use crate::catalog::{Key, Rich, T};
 use crate::discover::Subject;
 use crate::pages::{self, Page, PageState, answer, render_form_refused};
 use crate::present::WikiLinks;
-use crate::services::{MIN_RECHECK_SECS, Services};
+use crate::services::Services;
 use crate::time::utc_minutes;
 use crate::url::{page_address, view_ref};
 
@@ -130,16 +130,19 @@ pub(crate) struct Choice {
     pub(crate) href: String,
 }
 
-/// The badge: the four labels, said in the sentence the catalog gives, linked to the verification page.
+/// The badge: the four labels, said in the sentence the catalog gives, linked to the verification page. It
+/// reads the **last verdict**; a check that could not run never replaces one (handoff 003, review R1). *Could
+/// not be checked now* is what it says when the page itself is served stale, and when there is no verdict yet
+/// but an attempt was made.
 pub(crate) fn badge(t: T, wiki: &WikiRecord, stale: bool) -> Rich {
     let key = if stale {
         Key::AssuranceCouldNotBeCheckedNow
     } else {
-        match wiki.verification.state {
-            VerificationState::Verified => Key::AssuranceVerified,
-            VerificationState::Failed => Key::AssuranceVerificationFailed,
-            VerificationState::CouldNotCheck => Key::AssuranceCouldNotBeCheckedNow,
-            VerificationState::Unknown => Key::AssuranceNotCheckedYet,
+        match (wiki.verification.state, wiki.last_attempt) {
+            (VerificationState::Verified, _) => Key::AssuranceVerified,
+            (VerificationState::Failed, _) => Key::AssuranceVerificationFailed,
+            (VerificationState::Unknown, Some(_)) => Key::AssuranceCouldNotBeCheckedNow,
+            (VerificationState::Unknown, None) => Key::AssuranceNotCheckedYet,
         }
     };
     t.msg(Key::BadgeSentence)
@@ -212,6 +215,7 @@ struct VerificationTpl<'a> {
     badge: Rich,
     state_sentence: String,
     checked_at: Option<String>,
+    attempt_at: Option<String>,
     result: Option<CheckView>,
     action: String,
 }
@@ -753,12 +757,13 @@ pub(crate) async fn about(
 
 // ------------------------------------------------------------------------------------ verification
 
-fn state_sentence(page: &Page, state: VerificationState) -> String {
-    page.get(match state {
-        VerificationState::Verified => Key::VerificationStateVerified,
-        VerificationState::Failed => Key::VerificationStateFailed,
-        VerificationState::CouldNotCheck => Key::VerificationStateCouldNot,
-        VerificationState::Unknown => Key::VerificationStateUnknown,
+/// What the last verdict says; with no verdict yet, that an attempt could not run, or that nothing has.
+fn state_sentence(page: &Page, wiki: &WikiRecord) -> String {
+    page.get(match (wiki.verification.state, wiki.last_attempt) {
+        (VerificationState::Verified, _) => Key::VerificationStateVerified,
+        (VerificationState::Failed, _) => Key::VerificationStateFailed,
+        (VerificationState::Unknown, Some(_)) => Key::VerificationStateCouldNot,
+        (VerificationState::Unknown, None) => Key::VerificationStateUnknown,
     })
 }
 
@@ -775,7 +780,16 @@ fn verification_page(page: &Page, wiki: &WikiRecord, result: Option<CheckView>) 
             .product()
             .text(),
         badge: badge(t, wiki, false),
-        state_sentence: state_sentence(page, wiki.verification.state),
+        state_sentence: state_sentence(page, wiki),
+        attempt_at: wiki
+            .last_attempt
+            // With no verdict yet the sentence above already says so; the attempt's time is all that is added.
+            .map(|a| {
+                t.msg(Key::VerificationAttemptAt)
+                    .with("when", utc_minutes(a.at))
+                    .text()
+            })
+            .filter(|_| wiki.verification.at.is_some()),
         checked_at: wiki.verification.at.map(|at| {
             t.msg(Key::VerificationCheckedAt)
                 .with("when", utc_minutes(at))
@@ -831,14 +845,6 @@ pub(crate) async fn check_now(
     let t = page.t();
     let done = blocking(move || {
         let wiki = open(&services, &headers, &slug)?;
-        let now = (services.clock)();
-        let recent = wiki
-            .verification
-            .at
-            .is_some_and(|at| (0..MIN_RECHECK_SECS).contains(&(now - at)));
-        if recent {
-            return Some((wiki, vec![t.get(Key::VerificationRecent)], Vec::new(), true));
-        }
         let checked = services.verifier.check(&wiki);
         if let Some(why) = &checked.operator {
             (services.log)(&format!(
@@ -859,8 +865,14 @@ pub(crate) async fn check_now(
                 NotChecked::Limit => Key::VerificationLimit,
                 NotChecked::Unavailable => Key::VerificationUnavailable,
             })),
+            // Nothing ran and nothing was recorded; the page says why.
+            CheckOutcome::Declined(why) => lines.push(t.get(match why {
+                Declined::Running => Key::VerificationRunning,
+                Declined::Recent => Key::VerificationRecent,
+                Declined::Crowded => Key::VerificationBusy,
+            })),
         }
-        if !checked.recorded {
+        if checked.ran() && !checked.recorded {
             lines.push(t.get(Key::VerificationNotSaved));
         }
         // The record as it stands now (what the badge will say), or the one we had if it cannot be read.

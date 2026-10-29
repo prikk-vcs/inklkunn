@@ -9,7 +9,7 @@
 
 use axum::body::Body;
 use axum::http::{Request, header};
-use inklkunn_store::{Verification, VerificationState, WikiStore};
+use inklkunn_store::{Attempt, NotRun, Verification, VerificationState, WikiStore};
 use inklkunn_web::WebConfig;
 use inklkunn_web::routes::site_with;
 use tower::ServiceExt as _;
@@ -39,6 +39,19 @@ fn record(w: &World, state: VerificationState) {
             Verification {
                 state,
                 at: Some(NOW - 3600),
+            },
+        )
+        .unwrap();
+}
+
+/// A check that could not run, after whatever verdict the wiki has (none, unless the scenario set one).
+fn attempt(w: &World) {
+    w.store
+        .record_attempt(
+            &w.wiki.id,
+            Attempt {
+                at: NOW - 60,
+                why: NotRun::Limit,
             },
         )
         .unwrap();
@@ -89,7 +102,20 @@ pub(super) const SCENARIOS: &[Scenario] = &[
         identity: "wiki-page-home",
         status: 200,
         warm: &[],
-        setup: |w| record(w, VerificationState::CouldNotCheck),
+        setup: |w| attempt(w),
+        method: "GET",
+        uri: "/handbook/Home",
+        headers: &[],
+    },
+    Scenario {
+        id: "wiki-page-failed-and-then-could-not-check",
+        identity: "wiki-page-home",
+        status: 200,
+        warm: &[],
+        setup: |w| {
+            record(w, VerificationState::Failed);
+            attempt(w);
+        },
         method: "GET",
         uri: "/handbook/Home",
         headers: &[],
@@ -240,6 +266,19 @@ pub(super) const SCENARIOS: &[Scenario] = &[
         status: 200,
         warm: &[],
         setup: |w| record(w, VerificationState::Verified),
+        method: "GET",
+        uri: "/handbook/-/verification",
+        headers: &[],
+    },
+    Scenario {
+        id: "wiki-verification-failed-and-then-could-not-check",
+        identity: "wiki-verification",
+        status: 200,
+        warm: &[],
+        setup: |w| {
+            record(w, VerificationState::Failed);
+            attempt(w);
+        },
         method: "GET",
         uri: "/handbook/-/verification",
         headers: &[],

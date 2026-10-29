@@ -94,10 +94,12 @@ fn records_fill_defaults_and_validate_free_text() {
     assert_eq!(r.languages, vec!["en"]);
     assert_eq!(r.policy_bootstrap, "default");
     assert_eq!(r.verification.state, VerificationState::Unknown);
-    assert_eq!(
-        VerificationState::parse("could-not-check"),
-        Some(VerificationState::CouldNotCheck)
-    );
+    // A check that could not run is not a verdict: its old stored name no longer parses as one.
+    assert_eq!(VerificationState::parse("could-not-check"), None);
+    assert_eq!(r.last_attempt, None);
+    for why in [NotRun::Busy, NotRun::Limit, NotRun::Unavailable] {
+        assert_eq!(NotRun::parse(why.as_str()), Some(why));
+    }
     assert_eq!(Visibility::parse("internal"), Some(Visibility::Internal));
 
     let mut n = NewWiki::new(slug(), name("W"));

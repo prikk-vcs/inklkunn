@@ -53,13 +53,12 @@ impl Assurance {
         )
     }
 
-    /// From the store's recorded verification state.
+    /// From the store's recorded verification verdict (a check that could not run is not one).
     pub fn from_verification(state: inklkunn_store::VerificationState) -> Option<Self> {
         use inklkunn_store::VerificationState as V;
         match state {
             V::Verified => Some(Assurance::Verified),
             V::Failed => Some(Assurance::VerificationFailed),
-            V::CouldNotCheck => Some(Assurance::CouldNotBeCheckedNow),
             V::Unknown => None,
         }
     }

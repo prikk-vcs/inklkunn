@@ -223,6 +223,14 @@ pub const CATALOG: &[Entry] = &[
         "verification.unavailable",
         "確認を開始できませんでした。このサーバーの管理者にお知らせください。",
     ),
+    msg(
+        "verification.attempt_at",
+        "その後の確認は最後まで実行できませんでした（{when}）。履歴に問題があるかどうかについては何も分かっておらず、上の結果は変わりません。",
+    ),
+    msg(
+        "verification.running",
+        "このウィキの確認はすでに実行中です。終わるまでお待ちになってから、このページをもう一度ご覧ください。",
+    ),
     // about, and the list of wikis
     msg("title.about", "{wiki} について · {product}"),
     msg("about.heading", "{wiki} について"),

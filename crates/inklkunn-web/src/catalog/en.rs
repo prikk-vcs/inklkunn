@@ -196,6 +196,14 @@ pub const CATALOG: &[Entry] = &[
         "verification.unavailable",
         "The check could not be started. Tell the person who runs this server.",
     ),
+    msg(
+        "verification.attempt_at",
+        "A later check could not be completed ({when}). That says nothing about whether the history is sound, and the result above still stands.",
+    ),
+    msg(
+        "verification.running",
+        "A check of this wiki is already running. Wait for it to finish, then look at this page again.",
+    ),
     // about, and the list of wikis
     msg("title.about", "About {wiki} · {product}"),
     msg("about.heading", "About {wiki}"),

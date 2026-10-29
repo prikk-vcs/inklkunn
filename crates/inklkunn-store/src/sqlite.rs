@@ -22,13 +22,13 @@ use rusqlite::{Connection, OptionalExtension, Row, TransactionBehavior, params};
 use crate::access::{Role, RoleGrant, RoleStore};
 use crate::audit::{AuditEvent, AuditLog, AuditOutcome, AuditRecord, AuditSink};
 use crate::record::{
-    AccountId, Checkpoint, DisplayName, PrikkVersion, Slug, Verification, VerificationState,
-    Visibility, WikiId, WikiRecord,
+    AccountId, Attempt, Checkpoint, DisplayName, NotRun, PrikkVersion, Slug, Verification,
+    VerificationState, Visibility, WikiId, WikiRecord,
 };
 use crate::{Result, StoreError, WikiStore};
 
 /// The schema version this build writes and reads: the last of [`MIGRATIONS`].
-pub const SCHEMA_VERSION: i64 = 7;
+pub const SCHEMA_VERSION: i64 = 8;
 
 /// Version 1: M0's schema, the wiki records.
 const V1: &str = "
@@ -249,6 +249,19 @@ CREATE TABLE IF NOT EXISTS block_seen (
 );
 ";
 
+/// Version 8: a verification that could not run is kept apart from the last verdict (handoff 003, review R1).
+/// `verification_state` / `verification_at` now hold **verdicts only** (`unknown`, `verified`, `failed`);
+/// `attempt_at` / `attempt_why` hold the latest attempt that could not run, if it is the latest thing that
+/// happened. A row that held `could-not-check` has lost the verdict it replaced, and says so honestly: it is
+/// made `unknown`, with the attempt (reason `unavailable`: the old record never said why) kept.
+const V8: &str = "
+ALTER TABLE wikis ADD COLUMN attempt_at INTEGER;
+ALTER TABLE wikis ADD COLUMN attempt_why TEXT;
+UPDATE wikis SET attempt_at = verification_at, attempt_why = 'unavailable',
+                 verification_state = 'unknown', verification_at = NULL
+    WHERE verification_state = 'could-not-check';
+";
+
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and
 /// [`SCHEMA_VERSION`] moves with it (a test holds the two together).
 pub const MIGRATIONS: &[(i64, &str)] = &[
@@ -259,6 +272,7 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (5, V5),
     (6, V6),
     (7, V7),
+    (8, V8),
 ];
 
 /// The SQLite-backed store.
@@ -496,7 +510,7 @@ impl SqliteStore {
 const COLUMNS: &str = "id, slug, display_name, default_view, default_license, languages, visibility, \
                        policy_bootstrap, prikk_format_version, verification_state, verification_at, \
                        author_key_id, maintainer_key_id, created_at, checkpoint_prikk_version, \
-                       checkpoint_refresh_requested_at";
+                       checkpoint_refresh_requested_at, attempt_at, attempt_why";
 
 fn row_to_record(row: &Row<'_>) -> rusqlite::Result<WikiRecord> {
     let id: String = row.get(0)?;
@@ -506,6 +520,8 @@ fn row_to_record(row: &Row<'_>) -> rusqlite::Result<WikiRecord> {
     let visibility: String = row.get(6)?;
     let state: String = row.get(9)?;
     let checkpoint_version: Option<String> = row.get(14)?;
+    let attempt_at: Option<i64> = row.get(16)?;
+    let attempt_why: Option<String> = row.get(17)?;
     let invalid = |what: &str| {
         rusqlite::Error::InvalidColumnType(0, what.to_owned(), rusqlite::types::Type::Text)
     };
@@ -522,6 +538,14 @@ fn row_to_record(row: &Row<'_>) -> rusqlite::Result<WikiRecord> {
         verification: Verification {
             state: VerificationState::parse(&state).ok_or_else(|| invalid("verification_state"))?,
             at: row.get(10)?,
+        },
+        last_attempt: match (attempt_at, attempt_why) {
+            (None, None) => None,
+            (Some(at), Some(why)) => Some(Attempt {
+                at,
+                why: NotRun::parse(&why).ok_or_else(|| invalid("attempt_why"))?,
+            }),
+            _ => return Err(invalid("attempt")),
         },
         author_key_id: row.get(11)?,
         maintainer_key_id: row.get(12)?,
@@ -546,8 +570,9 @@ impl WikiStore for SqliteStore {
             let r = tx.execute(
                 "INSERT INTO wikis (id, slug, display_name, default_view, default_license, languages, visibility, \
                  policy_bootstrap, prikk_format_version, verification_state, verification_at, author_key_id, \
-                 maintainer_key_id, created_at, checkpoint_prikk_version, checkpoint_refresh_requested_at, seq) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
+                 maintainer_key_id, created_at, checkpoint_prikk_version, checkpoint_refresh_requested_at, \
+                 attempt_at, attempt_why, seq) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, \
                  (SELECT COALESCE(MAX(seq), 0) + 1 FROM wikis))",
                 params![
                     record.id.as_str(),
@@ -566,6 +591,8 @@ impl WikiStore for SqliteStore {
                     record.created_at,
                     record.checkpoint.refreshed_with.as_ref().map(PrikkVersion::as_str),
                     record.checkpoint.refresh_requested_at,
+                    record.last_attempt.map(|a| a.at),
+                    record.last_attempt.map(|a| a.why.as_str()),
                 ],
             );
             if let Err(e) = r {
@@ -627,8 +654,24 @@ impl WikiStore for SqliteStore {
         self.with(|conn| {
             let n = conn
                 .execute(
-                    "UPDATE wikis SET verification_state = ?1, verification_at = ?2 WHERE id = ?3",
+                    "UPDATE wikis SET verification_state = ?1, verification_at = ?2, \
+                     attempt_at = NULL, attempt_why = NULL WHERE id = ?3",
                     params![verification.state.as_str(), verification.at, id.as_str()],
+                )
+                .map_err(backend)?;
+            if n == 0 {
+                return Err(StoreError::NotFound);
+            }
+            Self::fetch(conn, Key::Id, id.as_str())
+        })
+    }
+
+    fn record_attempt(&self, id: &WikiId, attempt: Attempt) -> Result<WikiRecord> {
+        self.with(|conn| {
+            let n = conn
+                .execute(
+                    "UPDATE wikis SET attempt_at = ?1, attempt_why = ?2 WHERE id = ?3",
+                    params![attempt.at, attempt.why.as_str(), id.as_str()],
                 )
                 .map_err(backend)?;
             if n == 0 {

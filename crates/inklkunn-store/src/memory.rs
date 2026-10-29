@@ -6,7 +6,9 @@ mod identity;
 use std::sync::{Mutex, PoisonError};
 
 use crate::access::{Role, RoleGrant, RoleStore};
-use crate::record::{AccountId, DisplayName, PrikkVersion, Slug, Verification, WikiId, WikiRecord};
+use crate::record::{
+    AccountId, Attempt, DisplayName, PrikkVersion, Slug, Verification, WikiId, WikiRecord,
+};
 use crate::{Result, StoreError, WikiStore};
 
 /// Records in a mutex.
@@ -101,6 +103,14 @@ impl WikiStore for MemoryStore {
     fn set_verification(&self, id: &WikiId, verification: Verification) -> Result<WikiRecord> {
         self.update(id, |r| {
             r.verification = verification;
+            r.last_attempt = None;
+            Ok(())
+        })
+    }
+
+    fn record_attempt(&self, id: &WikiId, attempt: Attempt) -> Result<WikiRecord> {
+        self.update(id, |r| {
+            r.last_attempt = Some(attempt);
             Ok(())
         })
     }

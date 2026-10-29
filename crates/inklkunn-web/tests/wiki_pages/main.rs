@@ -10,7 +10,7 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode, header};
 use common::{NOW, World, busy, clean, damaged, page};
-use inklkunn_store::{Verification, VerificationState, Visibility, WikiStore};
+use inklkunn_store::{Attempt, NotRun, Verification, VerificationState, Visibility, WikiStore};
 use inklkunn_web::WebConfig;
 use inklkunn_web::routes::site_with;
 use tower::ServiceExt as _;
@@ -172,7 +172,6 @@ async fn the_badge_is_the_records_and_never_the_caches() {
     for (state, label) in [
         (VerificationState::Verified, "Verified"),
         (VerificationState::Failed, "Verification failed"),
-        (VerificationState::CouldNotCheck, "Could not be checked now"),
     ] {
         w.store
             .set_verification(
@@ -191,6 +190,57 @@ async fn the_badge_is_the_records_and_never_the_caches() {
             a.body
         );
         assert_eq!(count(&a.body, "Verification: "), 1);
+    }
+}
+
+#[tokio::test]
+async fn a_check_that_could_not_run_never_changes_what_the_badge_says_of_the_last_verdict() {
+    let attempt = Attempt {
+        at: NOW - 30,
+        why: NotRun::Busy,
+    };
+    // No verdict yet: the attempt is what there is to say.
+    let w = handbook();
+    w.store.record_attempt(&w.wiki.id, attempt).unwrap();
+    let a = get(&w, "/handbook/Home").await;
+    assert!(
+        a.body.contains(">Could not be checked now</a>"),
+        "{}",
+        a.body
+    );
+
+    // A verdict, then an attempt: the badge and the verification page still read the verdict.
+    for (state, label) in [
+        (VerificationState::Failed, "Verification failed"),
+        (VerificationState::Verified, "Verified"),
+    ] {
+        let w = handbook();
+        w.store
+            .set_verification(
+                &w.wiki.id,
+                Verification {
+                    state,
+                    at: Some(NOW - 10_000),
+                },
+            )
+            .unwrap();
+        w.store.record_attempt(&w.wiki.id, attempt).unwrap();
+        for uri in ["/handbook/Home", "/handbook/-/verification"] {
+            let a = get(&w, uri).await;
+            assert!(
+                a.body.contains(&format!(">{label}</a>")),
+                "{uri}: {}",
+                a.body
+            );
+            assert!(!a.body.contains(">Could not be checked now</a>"), "{uri}");
+        }
+        let page = get(&w, "/handbook/-/verification").await;
+        assert!(
+            page.body.contains("A later check could not be completed")
+                && page.body.contains("the result above still stands"),
+            "the attempt is told apart on the verification page: {}",
+            page.body
+        );
     }
 }
 
@@ -430,9 +480,31 @@ async fn a_failed_check_names_the_stages_and_a_check_that_could_not_run_is_not_a
     assert!(b.body.contains(">Could not be checked now</a>"));
     assert!(!b.body.contains("Verification failed"));
     assert!(b.body.contains("needs more time or memory"));
+    let record = w.store.get(&w.wiki.id).unwrap();
+    assert_eq!(record.verification.state, VerificationState::Unknown);
+    assert_eq!(record.last_attempt.map(|a| a.why), Some(NotRun::Limit));
+
+    // R1: where the last verdict was a failure, a check that could not run leaves it failed.
+    let w = handbook();
+    w.fake.verify_says(Ok(damaged()));
+    post_form(&w, "/handbook/-/verification", true).await;
+    w.store
+        .set_verification(
+            &w.wiki.id,
+            Verification {
+                state: VerificationState::Failed,
+                at: Some(NOW - 3600),
+            },
+        )
+        .unwrap();
+    w.fake.verify_says(Err(busy()));
+    let d = post_form(&w, "/handbook/-/verification", true).await;
+    assert!(d.body.contains("The server is busy with other work"));
+    assert!(d.body.contains(">Verification failed</a>"), "{}", d.body);
+    assert!(!d.body.contains(">Could not be checked now</a>"));
     assert_eq!(
         w.store.get(&w.wiki.id).unwrap().verification.state,
-        VerificationState::CouldNotCheck
+        VerificationState::Failed
     );
     // Busy says so in its own words.
     let w = handbook();

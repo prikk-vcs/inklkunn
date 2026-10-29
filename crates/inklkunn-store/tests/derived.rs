@@ -448,7 +448,7 @@ fn a_version_4_database_gains_the_derived_cache_and_the_checkpoint_fields_and_ke
         assert_eq!(refreshed.checkpoint.refresh_requested_at, None);
     }
     assert_eq!(version(), SCHEMA_VERSION.to_string());
-    assert_eq!(SCHEMA_VERSION, 7);
+    assert_eq!(SCHEMA_VERSION, 8);
     // Opening it again changes nothing and loses nothing.
     let store = SqliteStore::open(&db).expect("reopen");
     let w = WikiId::parse(&id).expect("id");

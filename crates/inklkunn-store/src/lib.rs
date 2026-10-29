@@ -39,9 +39,9 @@ pub use identity::{
 };
 pub use memory::MemoryStore;
 pub use record::{
-    AccountId, Checkpoint, DisplayName, DisplayNameError, NewWiki, NewWikiError, PrikkVersion,
-    ProposalId, Slug, SlugError, TokenId, Verification, VerificationState, Visibility, WikiId,
-    WikiRecord,
+    AccountId, Attempt, Checkpoint, DisplayName, DisplayNameError, NewWiki, NewWikiError, NotRun,
+    PrikkVersion, ProposalId, Slug, SlugError, TokenId, Verification, VerificationState,
+    Visibility, WikiId, WikiRecord,
 };
 pub use root::RootLayout;
 pub use sqlite::SqliteStore;
@@ -161,8 +161,12 @@ pub trait WikiStore: Send + Sync {
         slug: Option<Slug>,
         display_name: Option<DisplayName>,
     ) -> Result<WikiRecord>;
-    /// Record the outcome of a verification.
+    /// Record a verification **verdict** (a check that ran to completion) and clear any later attempt that
+    /// could not run: the verdict is now the latest thing that happened.
     fn set_verification(&self, id: &WikiId, verification: Verification) -> Result<WikiRecord>;
+    /// Record that a verification could not run to completion. **The last verdict is left as it was**: a check
+    /// that did not run never replaces what the last one found (handoff 003, review R1).
+    fn record_attempt(&self, id: &WikiId, attempt: Attempt) -> Result<WikiRecord>;
     /// Record the wiki's key ids (never seeds) and prikk format version after the signer created them.
     fn set_keys(
         &self,
