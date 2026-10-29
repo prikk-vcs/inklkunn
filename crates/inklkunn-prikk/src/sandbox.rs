@@ -431,14 +431,38 @@ pub(crate) fn run_probe(cmd: Command, deadline: Duration) -> std::io::Result<Run
 
 /// Spawn `cmd`, collect its output up to `max_output`, kill it at `deadline` or when the output bound is
 /// passed. Spawn and wait on this thread (module docs).
-fn run_bounded(
-    mut cmd: Command,
+fn run_bounded(cmd: Command, deadline: Option<Duration>, max_output: u64) -> std::io::Result<Run> {
+    run_bounded_with_input(cmd, None, deadline, max_output)
+}
+
+/// Run an already-built command (its sandbox, mounts and cleared environment are the caller's) with the
+/// driver's bounds: `input` (if any) is written to its standard input and closed, stdout and stderr are
+/// kept up to `max_output` each, and the child is killed at `deadline` or when stdout passes the bound.
+/// Spawn and wait happen on the calling thread (module docs). This is how `inklkunn-fetch` runs its
+/// confined `curl` without a second copy of the runner; `input` must be small (it is written before the
+/// exit is awaited, and a child that exits without reading it is not an error here).
+pub fn run_command(
+    cmd: Command,
+    input: Option<&[u8]>,
     deadline: Option<Duration>,
     max_output: u64,
 ) -> std::io::Result<Run> {
-    cmd.stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    run_bounded_with_input(cmd, input, deadline, max_output)
+}
+
+fn run_bounded_with_input(
+    mut cmd: Command,
+    input: Option<&[u8]>,
+    deadline: Option<Duration>,
+    max_output: u64,
+) -> std::io::Result<Run> {
+    cmd.stdin(if input.is_some() {
+        Stdio::piped()
+    } else {
+        Stdio::null()
+    })
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
     let mut guard = Reap {
         child: cmd.spawn()?,
         armed: true,
@@ -468,6 +492,12 @@ fn run_bounded(
         let _ = limited.read_to_end(&mut buf);
         buf
     });
+    // The input goes in after the readers are running, so a child that answers before it has read all of
+    // it cannot stall on a full pipe; a closed pipe (the child is already gone) is the exit's to report.
+    if let (Some(bytes), Some(mut stdin)) = (input, guard.child.stdin.take()) {
+        use std::io::Write;
+        let _ = stdin.write_all(bytes);
+    }
     // 1. Wait for stdout to end (or the deadline, or the output bound).
     let end = match deadline {
         None => end_rx.recv().ok(),

@@ -13,10 +13,16 @@ name = "inklkunn"
 path = "src/main.rs"
 
 [dependencies]
+inklkunn-auth = { path = "../inklkunn-auth", version = "0.0.0" }
 inklkunn-core = { path = "../inklkunn-core", version = "0.0.0" }
+inklkunn-fetch = { path = "../inklkunn-fetch", version = "0.0.0" }
 inklkunn-prikk = { path = "../inklkunn-prikk", version = "0.0.0" }
 inklkunn-store = { path = "../inklkunn-store", version = "0.0.0" }
 inklkunn-web = { path = "../inklkunn-web", version = "0.0.0" }
+
+[dev-dependencies]
+# The outbound wiring's tests run the fetcher unconfined with a stand-in curl; the product build never enables it.
+inklkunn-fetch = { path = "../inklkunn-fetch", version = "0.0.0", features = ["test-knobs"] }
 
 [lints]
 workspace = true

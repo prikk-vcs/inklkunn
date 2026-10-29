@@ -227,15 +227,26 @@ fn key_store_exposure_gate_catches_planted_exposures() {
 }
 
 #[test]
-fn only_the_driver_and_the_signer_spawn_a_process() {
+fn only_the_driver_the_signer_and_the_fetcher_spawn_a_process() {
     let root = workspace_root();
     for src in rust_sources(&root.join("crates")) {
+        let text = read(&src);
+        if src.starts_with(root.join("crates/inklkunn-fetch")) {
+            // The third crate allowed to spawn, and only the sandbox that runs curl (or curl, unconfined,
+            // for tests): see `fetch_spawn_violations`.
+            let hits = fetch_spawn_violations(&text);
+            assert!(
+                hits.is_empty(),
+                "PRIKK SPAWN violation (LAY-3, IQ-3): {} spawns something other than bwrap or curl: {hits:?}",
+                src.display()
+            );
+            continue;
+        }
         let allowed = src.starts_with(root.join("crates/inklkunn-prikk"))
             || src.starts_with(root.join("crates/inklkunn-signer"));
         if allowed {
             continue;
         }
-        let text = read(&src);
         let hits = spawn_lines(&text);
         assert!(
             hits.is_empty(),
@@ -311,6 +322,203 @@ fn prikk_spawn_gate_catches_planted_violations_including_a_planted_file() {
     for f in found {
         assert!(!spawn_lines(&read(&f)).is_empty(), "{}", f.display());
     }
+}
+
+#[test]
+fn the_fetch_crate_spawns_only_bwrap_or_curl() {
+    // Allowed: the sandbox by name, by field or by constant, and curl itself.
+    for ok in [
+        "let mut c = Command::new(bwrap);\n",
+        "let mut c = Command::new(&self.bwrap);\n",
+        "let mut c = Command::new(BWRAP);\n",
+        "let mut c = std::process::Command::new(curl);\n",
+        "let mut c = Command::new(\"curl\");\n",
+        "let mut c = Command::new(\n    bwrap,\n);\n",
+        "// Command::new(\"prikk\") in prose\n",
+        "let c = something.new(x);\n",
+    ] {
+        assert!(fetch_spawn_violations(ok).is_empty(), "{ok}");
+    }
+    // Refused: anything else, in any spelling, with the line.
+    for (bad, line) in [
+        ("let c = Command::new(\"prikk\");\n", 1),
+        ("\n\nlet c = Command::new(\"/bin/sh\");\n", 3),
+        ("let c = Command::new(&binary);\n", 1),
+        ("let c = std::process::Command::new(prikk_binary);\n", 1),
+        ("let c = Command::new(program());\n", 1),
+        ("let c = Command::new(\n  \"sh\",\n);\n", 1),
+        ("let c = Command::new (\"sh\");\n", 1),
+        ("let c = Command::new(\"curl-wrapper\");\n", 1),
+    ] {
+        let hits = fetch_spawn_violations(bad);
+        assert_eq!(hits.len(), 1, "{bad}: {hits:?}");
+        assert_eq!(hits.first().map(|h| h.0), Some(line), "{bad}");
+    }
+    assert!(!fetch_spawn_violations("let c = tokio::process::Command::new(bwrap);\n").is_empty());
+    assert_eq!(
+        command_new_arguments("let a = Command::new(f(x, (y)));\n"),
+        vec![(1, "f(x, (y))".to_owned())]
+    );
+    // Discovery: a spawn planted anywhere under the fetch crate is found by the same walk the real gate does.
+    let scratch = Scratch::new("fetchspawn");
+    let dir = scratch.0.join("crates/inklkunn-fetch/tests/deep");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("x.rs"), "let c = Command::new(\"prikk\");\n").unwrap();
+    let found = rust_sources_under(&scratch.0, &scratch.0.join("crates"));
+    assert_eq!(found.len(), 1);
+    assert!(
+        found
+            .first()
+            .is_some_and(|f| !fetch_spawn_violations(&read(f)).is_empty())
+    );
+    // A spawn in the crate next door is still a spawn violation of the general kind.
+    assert_eq!(spawn_lines("let c = Command::new(bwrap);\n"), vec![1]);
+}
+
+#[test]
+fn only_the_fetch_crate_names_curl() {
+    let root = workspace_root();
+    for src in rust_sources(&root.join("crates")) {
+        if src.starts_with(root.join("crates/inklkunn-fetch")) {
+            continue;
+        }
+        let hits = curl_mentions(&read(&src));
+        assert!(
+            hits.is_empty(),
+            "CURL violation (IQ-3): {} names curl at lines {hits:?}; only inklkunn-fetch may",
+            src.display()
+        );
+    }
+    // The fetch crate itself does name it (the gate is not looking at an empty set).
+    let fetch_names: usize = rust_sources(&root.join("crates/inklkunn-fetch"))
+        .iter()
+        .map(|p| curl_mentions(&read(p)).len())
+        .sum();
+    assert!(fetch_names > 0);
+}
+
+#[test]
+fn curl_gate_catches_every_spelling_and_spares_prose_and_other_words() {
+    assert_eq!(curl_mentions("let c = Command::new(\"curl\");\n"), vec![1]);
+    assert_eq!(curl_mentions("\n\nconst P: &str = \"CURL\";\n"), vec![3]);
+    assert_eq!(curl_mentions("let curl = path;\n"), vec![1]);
+    assert_eq!(curl_mentions("struct Curl;\n"), vec![1]);
+    assert_eq!(curl_mentions("run(\"/usr/bin/curl\", args);\n"), vec![1]);
+    assert_eq!(curl_mentions("x(&[\"curl\", \"-q\"]);\n"), vec![1]);
+    assert!(curl_mentions("// curl is spawned by inklkunn-fetch\n").is_empty());
+    assert!(curl_mentions("/* curl */ let x = 1;\n").is_empty());
+    assert!(curl_mentions("let x = CurlFetcher::new();\n").is_empty());
+    assert!(curl_mentions("let curly = 1;\n").is_empty());
+}
+
+#[test]
+fn only_the_binary_depends_on_the_fetch_crate_and_the_fetch_crate_depends_on_the_driver_alone() {
+    let manifests = read_manifests(&workspace_root());
+    assert!(
+        manifests.contains_key(FETCH_CRATE),
+        "the fetch crate is a member"
+    );
+    let d = fetch_dependents(&manifests);
+    assert!(
+        d.is_empty(),
+        "CURL violation (IQ-3): {d:?} depend on `inklkunn-fetch`; only the binary may"
+    );
+    let own = manifests.get(FETCH_CRATE).cloned().unwrap_or_default();
+    let extra = fetch_disallowed_deps(&own);
+    assert!(
+        extra.is_empty(),
+        "CURL violation (IQ-3): inklkunn-fetch depends on {extra:?}; only the driver is allowed (no TLS or HTTP crate)"
+    );
+    assert!(
+        LOWER.contains(&FETCH_CRATE),
+        "the fetch crate is a lower layer"
+    );
+    assert!(
+        !test_feature_leaks(&manifests)
+            .iter()
+            .any(|(_, dep, _)| dep == FETCH_CRATE)
+    );
+}
+
+#[test]
+fn fetch_dependency_gates_catch_planted_edges_and_spare_the_binary() {
+    for crate_name in [
+        "inklkunn-core",
+        "inklkunn-web",
+        "inklkunn-auth",
+        "inklkunn-store",
+        "inklkunn-signer",
+    ] {
+        for plant in [
+            "[dependencies]\ninklkunn-fetch = { path = \"../inklkunn-fetch\" }\n",
+            "[dependencies]\ninklkunn-fetch.workspace = true\n",
+            "[dependencies.inklkunn-fetch]\npath = \"../inklkunn-fetch\"\n",
+            "[dependencies]\nfetch = { package = \"inklkunn-fetch\", path = \"../inklkunn-fetch\" }\n",
+        ] {
+            let mut m = read_manifests(&workspace_root());
+            m.insert(crate_name.into(), plant.into());
+            assert_eq!(
+                fetch_dependents(&m),
+                vec![crate_name.to_owned()],
+                "{crate_name}: {plant}"
+            );
+        }
+    }
+    // The binary may; a dev-dependency is not an edge.
+    let mut m = read_manifests(&workspace_root());
+    m.insert(
+        "inklkunn".into(),
+        "[dependencies]\ninklkunn-fetch.workspace = true\n".into(),
+    );
+    assert!(fetch_dependents(&m).is_empty());
+    m.insert(
+        "inklkunn-core".into(),
+        "[dev-dependencies]\ninklkunn-fetch = { path = \"x\" }\n".into(),
+    );
+    assert!(fetch_dependents(&m).is_empty());
+    // The fetch crate reaching for a core crate is an upward edge (it is a lower layer)...
+    let mut m = read_manifests(&workspace_root());
+    m.insert(
+        FETCH_CRATE.into(),
+        "[dependencies]\ninklkunn-core.workspace = true\n".into(),
+    );
+    assert_eq!(
+        layering_violations(&m),
+        vec![(FETCH_CRATE.to_owned(), "inklkunn-core".to_owned())]
+    );
+    m.insert(
+        FETCH_CRATE.into(),
+        "[dependencies]\ninklkunn-auth.workspace = true\n".into(),
+    );
+    assert_eq!(
+        layering_violations(&m),
+        vec![(FETCH_CRATE.to_owned(), "inklkunn-auth".to_owned())]
+    );
+    // ...and any other dependency of it is refused by name, a TLS crate first.
+    for dep in [
+        "rustls",
+        "reqwest",
+        "native-tls",
+        "openssl",
+        "hyper",
+        "inklkunn-store",
+        "serde",
+    ] {
+        let manifest = format!(
+            "[dependencies]\ninklkunn-prikk = {{ path = \"../inklkunn-prikk\" }}\n{dep} = \"1\"\n"
+        );
+        assert_eq!(
+            fetch_disallowed_deps(&manifest),
+            vec![dep.to_owned()],
+            "{dep}"
+        );
+    }
+    assert!(
+        fetch_disallowed_deps(
+            "[dependencies]\ninklkunn-prikk = \"0\"\n[dev-dependencies]\nproptest = \"1\"\n"
+        )
+        .is_empty()
+    );
 }
 
 #[test]

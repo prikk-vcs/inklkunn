@@ -1,0 +1,25 @@
+[package]
+name = "inklkunn-fetch"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "inklkunn's outbound HTTPS: a confined curl (its own bubblewrap vector: network shared, no repository, no key) that connects only to an address the egress guard pinned. No TLS crate."
+
+[features]
+# Knobs the crate's own tests turn (an unconfined curl, so a stand-in script can run where bubblewrap does not).
+# Never enabled by a product crate; the boundary gate fails if one does.
+test-knobs = []
+
+[dependencies]
+# The bounded runner and the bubblewrap probe the driver already has (a lower-layer edge, like the signer's):
+# one copy of "spawn, feed, read at most N bytes, kill at the deadline".
+inklkunn-prikk = { path = "../inklkunn-prikk", version = "0.0.0" }
+
+[dev-dependencies]
+inklkunn-fetch = { path = ".", version = "0.0.0", features = ["test-knobs"] }
+
+[lints]
+workspace = true

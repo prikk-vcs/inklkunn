@@ -758,7 +758,9 @@ dependencies = [
 name = "inklkunn"
 version = "0.0.0"
 dependencies = [
+ "inklkunn-auth",
  "inklkunn-core",
+ "inklkunn-fetch",
  "inklkunn-prikk",
  "inklkunn-store",
  "inklkunn-web",
@@ -802,6 +804,14 @@ version = "0.0.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "inklkunn-fetch"
+version = "0.0.0"
+dependencies = [
+ "inklkunn-fetch",
+ "inklkunn-prikk",
 ]
 
 [[package]]

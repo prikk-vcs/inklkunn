@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/inklkunn-prikk",
     "crates/inklkunn-signer",
+    "crates/inklkunn-fetch",
     "crates/inklkunn-store",
     "crates/inklkunn-markup",
     "crates/inklkunn-core",
@@ -17,6 +18,7 @@ members = [
 default-members = [
     "crates/inklkunn-prikk",
     "crates/inklkunn-signer",
+    "crates/inklkunn-fetch",
     "crates/inklkunn-store",
     "crates/inklkunn-markup",
     "crates/inklkunn-core",
@@ -38,6 +40,7 @@ repository = "https://github.com/prikk-vcs/inklkunn"
 [workspace.dependencies]
 inklkunn-prikk  = { version = "0.0.0", path = "crates/inklkunn-prikk" }
 inklkunn-signer = { version = "0.0.0", path = "crates/inklkunn-signer" }
+inklkunn-fetch  = { version = "0.0.0", path = "crates/inklkunn-fetch" }
 inklkunn-store  = { version = "0.0.0", path = "crates/inklkunn-store" }
 inklkunn-markup = { version = "0.0.0", path = "crates/inklkunn-markup" }
 inklkunn-core   = { version = "0.0.0", path = "crates/inklkunn-core" }

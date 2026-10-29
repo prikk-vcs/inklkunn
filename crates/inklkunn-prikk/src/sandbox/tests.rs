@@ -305,3 +305,23 @@ fn a_run_is_bounded_in_time_and_output() {
     assert_eq!(r.stderr, b"err\n");
     assert!(!r.timed_out && !r.output_exceeded);
 }
+
+#[test]
+fn a_run_can_be_given_input_and_a_child_that_never_reads_it_is_not_an_error() {
+    let mut cat = Command::new("/bin/sh");
+    cat.args(["-c", "cat"]);
+    let r = run_command(cat, Some(b"hello"), Some(Duration::from_secs(10)), 1000).expect("runs");
+    assert_eq!(r.stdout, b"hello");
+    assert!(r.status.success());
+
+    let mut deaf = Command::new("/bin/sh");
+    deaf.args(["-c", "exit 4"]);
+    let r = run_command(deaf, Some(b"ignored"), Some(Duration::from_secs(10)), 1000).expect("runs");
+    assert_eq!(r.status.code(), Some(4));
+
+    // Without input the child's stdin is closed.
+    let mut cat = Command::new("/bin/sh");
+    cat.args(["-c", "cat; echo end"]);
+    let r = run_command(cat, None, Some(Duration::from_secs(10)), 1000).expect("runs");
+    assert_eq!(r.stdout, b"end\n");
+}

@@ -9,8 +9,12 @@
 //! - **key reachability** (`LAY-4`, `INV-2`): only `inklkunn-core` may depend on `inklkunn-signer`; the
 //!   signer's key-store module is private and never re-exported; the bootstrap signer and the writable
 //!   sandbox mounts are named by no product source outside the signer (and the sandbox's own crate).
-//! - **prikk spawn** (`LAY-3`): only `inklkunn-prikk` and `inklkunn-signer` spawn a process at all (no
-//!   `std::process` or `tokio::process` elsewhere), and `inklkunn-prikk` names no write verb.
+//! - **prikk spawn** (`LAY-3`): only `inklkunn-prikk`, `inklkunn-signer` and `inklkunn-fetch` spawn a process
+//!   at all (no `std::process` or `tokio::process` elsewhere), `inklkunn-prikk` names no write verb, and
+//!   `inklkunn-fetch` spawns only `bwrap` (which runs `curl`) or, in tests, `curl` itself.
+//! - **curl** (`LAY-3`, IQ-3, handoff 002 corrections C8): nothing but `inklkunn-fetch` names `curl`; only the
+//!   binary may depend on `inklkunn-fetch`; and `inklkunn-fetch` depends on the driver alone (no TLS or HTTP
+//!   crate can enter through it).
 //! - **markup purity** (`LAY-6`): `inklkunn-markup` has no I/O, clock, process or randomness dependency.
 //! - **no public seed** (`INV-2`, RFC 002 D-3): no public item of the signer crate mentions a seed, a
 //!   secret, a key directory or the key store's types, so nothing it exports can return key material or the
@@ -33,8 +37,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Lower crates: depend on nothing in the workspace above them. The signer depends on the driver (the sandbox,
-/// the typed reports) and on the store (the validated identifiers it may put in a path or a signed message).
-pub const LOWER: &[&str] = &["inklkunn-prikk", "inklkunn-signer", "inklkunn-store"];
+/// the typed reports) and on the store (the validated identifiers it may put in a path or a signed message);
+/// the fetcher depends on the driver's bounded runner alone.
+pub const LOWER: &[&str] = &[
+    "inklkunn-prikk",
+    "inklkunn-signer",
+    "inklkunn-store",
+    "inklkunn-fetch",
+];
 /// Core crates: may depend on lower crates and on each other, never on upper ones.
 pub const CORE: &[&str] = &["inklkunn-markup", "inklkunn-core", "inklkunn-auth"];
 /// Upper crates: may depend downward; nothing depends on them.
@@ -42,6 +52,27 @@ pub const UPPER: &[&str] = &["inklkunn-web", "inklkunn"];
 
 /// The only crate that may depend on the signer (RFC 001 D-2 b).
 pub const SIGNER_CONSUMER: &str = "inklkunn-core";
+/// The crate that runs `curl` (IQ-3): the third crate allowed to spawn a process, and the only one that may
+/// name `curl`.
+pub const FETCH_CRATE: &str = "inklkunn-fetch";
+/// The only crate that may depend on [`FETCH_CRATE`]: the binary, whose wiring joins the egress guard, the
+/// fetcher and the authentication seam.
+pub const FETCH_CONSUMER: &str = "inklkunn";
+/// What [`FETCH_CRATE`] may depend on in a non-dev table: the driver's bounded runner and nothing else, so no
+/// TLS or HTTP crate (and no core crate) can enter through it.
+pub const FETCH_ALLOWED_DEPS: &[&str] = &["inklkunn-prikk"];
+/// The arguments [`FETCH_CRATE`] may give `Command::new`: the sandbox (`bwrap`, which runs `curl`) or `curl`
+/// itself (the tests-only unconfined mode), as a name or a literal.
+pub const FETCH_SPAWN_ALLOWED_ARGS: &[&str] = &[
+    "bwrap",
+    "self.bwrap",
+    "BWRAP",
+    "curl",
+    "self.curl",
+    "CURL",
+    "\"bwrap\"",
+    "\"curl\"",
+];
 /// The signer's private key-store module name, which no other crate may mention.
 pub const KEY_STORE_MODULE: &str = "key_store";
 /// Names only the signer's product sources may use: the writable mounts and the bootstrap signer.
@@ -651,6 +682,96 @@ pub fn spawn_lines(source: &str) -> Vec<usize> {
                 })
         })
         .map(|(i, _)| i + 1)
+        .collect()
+}
+
+/// The argument of every `Command::new(…)` in `source` (comments excluded, strings kept), with the line it
+/// starts on: `Command::new(&self.bwrap)` gives `(n, "self.bwrap")`. A leading `&` is dropped and whitespace
+/// trimmed. Parentheses are balanced, so `Command::new(f(x))` yields `f(x)`.
+pub fn command_new_arguments(source: &str) -> Vec<(usize, String)> {
+    let code = strip_comments(source);
+    let mut out = Vec::new();
+    let needle = "Command::new";
+    let mut from = 0;
+    while let Some(i) = code[from..].find(needle) {
+        let start = from + i + needle.len();
+        from = start;
+        let rest = code[start..].trim_start();
+        let Some(inner) = rest.strip_prefix('(') else {
+            continue;
+        };
+        let mut depth = 1usize;
+        let mut end = inner.len();
+        for (k, c) in inner.char_indices() {
+            match c {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = k;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let arg = inner[..end]
+            .trim()
+            .trim_end_matches(',')
+            .trim_start_matches('&')
+            .trim()
+            .to_owned();
+        let line = code[..start].matches('\n').count() + 1;
+        out.push((line, arg));
+    }
+    out
+}
+
+/// What the fetch crate's `source` spawns that it may not: any `Command::new` whose argument is not in
+/// [`FETCH_SPAWN_ALLOWED_ARGS`], and any use of `tokio::process`. Returns `(line, what)`. The crate may spawn
+/// `bwrap` (which runs `curl`) and, in its tests-only unconfined mode, `curl`; a spawn of `prikk`, a shell or
+/// anything computed fails.
+pub fn fetch_spawn_violations(source: &str) -> Vec<(usize, String)> {
+    let mut out: Vec<(usize, String)> = command_new_arguments(source)
+        .into_iter()
+        .filter(|(_, arg)| !FETCH_SPAWN_ALLOWED_ARGS.contains(&arg.as_str()))
+        .collect();
+    let code = strip_strings(source);
+    for (i, line) in code.lines().enumerate() {
+        if line.contains("tokio::process") {
+            out.push((i + 1, "tokio::process".to_owned()));
+        }
+    }
+    out.sort();
+    out
+}
+
+/// Lines (1-based) of `source` that name `curl` as a word, in code or in a string literal, in any case
+/// (`Curl` the type, `"curl"` the program, `curl` the variable; `CurlFetcher` and `curly` are other words).
+/// Comments are excluded: prose may say what the fetcher is.
+pub fn curl_mentions(source: &str) -> Vec<usize> {
+    word_mentions(&strip_comments(source).to_ascii_lowercase(), "curl")
+}
+
+/// Every crate other than [`FETCH_CONSUMER`] and the fetch crate itself that depends on [`FETCH_CRATE`] in a
+/// non-dev table.
+pub fn fetch_dependents(manifests: &BTreeMap<String, String>) -> Vec<String> {
+    manifests
+        .iter()
+        .filter(|(name, text)| {
+            name.as_str() != FETCH_CONSUMER
+                && name.as_str() != FETCH_CRATE
+                && declares_dep_on(text, FETCH_CRATE)
+        })
+        .map(|(name, _)| name.clone())
+        .collect()
+}
+
+/// The non-dev dependencies of the fetch crate's `manifest` that are not in [`FETCH_ALLOWED_DEPS`].
+pub fn fetch_disallowed_deps(manifest: &str) -> Vec<String> {
+    runtime_dependencies(manifest)
+        .into_iter()
+        .filter(|d| !FETCH_ALLOWED_DEPS.contains(&d.as_str()))
         .collect()
 }
 

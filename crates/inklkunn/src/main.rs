@@ -8,6 +8,9 @@ mod audit;
 mod cli;
 mod config;
 mod keys;
+// Compiled and tested, constructed by nothing yet: OpenID Connect is switched on in M2 (handoff 002 C8).
+#[allow(dead_code)]
+mod outbound;
 mod serve;
 
 fn main() {
