@@ -494,7 +494,9 @@ fn containers_pre_pass(body: &str) -> (String, Vec<Range<usize>>) {
                     let from = out.len();
                     out.push('\n');
                     out.push_str(closer);
-                    out.push('\n');
+                    // A blank line after it: `</div>` and `</aside>` start an HTML block, which only a blank
+                    // line ends, so the line right after the closer would otherwise be part of it.
+                    out.push_str("\n\n");
                     written.push(from..out.len());
                     continue;
                 }
@@ -536,7 +538,7 @@ fn containers_pre_pass(body: &str) -> (String, Vec<Range<usize>>) {
         let from = out.len();
         out.push('\n');
         out.push_str(closer);
-        out.push('\n');
+        out.push_str("\n\n");
         written.push(from..out.len());
     }
     (out, written)
