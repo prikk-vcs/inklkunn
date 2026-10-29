@@ -52,6 +52,11 @@ fn the_content_origin_is_sandboxed_and_allows_nothing() {
     assert_eq!(value(h, "content-security-policy"), CONTENT_CSP);
     assert!(CONTENT_CSP.contains("sandbox") && CONTENT_CSP.contains("default-src 'none'"));
     assert_eq!(value(h, "x-content-type-options"), "nosniff");
+    assert_eq!(
+        value(h, "cross-origin-resource-policy"),
+        "same-site",
+        "a third party's page may not embed a wiki's bytes"
+    );
     assert!(
         h.get("strict-transport-security").is_none(),
         "no HSTS over plain http"

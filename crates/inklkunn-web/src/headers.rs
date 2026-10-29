@@ -74,9 +74,11 @@ pub fn apply(res: &mut Response, surface: Surface) {
         HeaderName::from_static("cross-origin-resource-policy"),
         match surface {
             Surface::Application { .. } => "same-origin",
-            // Attachments are embedded by the application origin's own pages (an image in a page), never
-            // by a third party: `same-site` covers a content origin under the application's registrable name.
-            Surface::Content { .. } => "cross-origin",
+            // Nothing of the content origin is embedded by a page of ours (the page policy's `img-src` is
+            // `'self'`; the raw source is reached by a link, a navigation, which this policy does not govern),
+            // and a third party's page must not embed a wiki's bytes either: `same-site` is enough for a
+            // content origin under the application's registrable name.
+            Surface::Content { .. } => "same-site",
         },
     );
     if https {
