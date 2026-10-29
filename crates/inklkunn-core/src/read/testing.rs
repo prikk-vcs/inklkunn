@@ -10,8 +10,8 @@ use std::time::Duration;
 
 use inklkunn_markup::TransclusionRefusal;
 use inklkunn_prikk::{
-    Change, Diff, ExtractBounds, FileMeta, History, Materialized, Point, Result, Storage,
-    StorageError, Tree, Verification, View, Views,
+    Change, Diff, ExtractBounds, FileMeta, History, HistoryBlock, Materialized, Point, Result,
+    Storage, StorageError, Tree, Verification, View, Views,
 };
 use inklkunn_store::{DisplayName, MemoryStore, NewWiki, RootLayout, Slug, WikiRecord, WikiStore};
 
@@ -22,6 +22,10 @@ struct State {
     files: BTreeMap<String, Vec<u8>>,
     /// Moves whenever a file does: the view's RefState id.
     version: u64,
+    /// The files at every version, so that a read pinned to a block sees that block's files.
+    snapshots: BTreeMap<u64, BTreeMap<String, Vec<u8>>>,
+    /// A file change applied right after the next `branch list` answers (the view moves between two calls).
+    move_after_views: Option<(String, Vec<u8>)>,
     extra_views: Vec<(String, u64)>,
     fail_views: Option<StorageError>,
     fail_materialize: Option<StorageError>,
@@ -44,7 +48,12 @@ impl Fake {
                 .files
                 .insert((*path).to_owned(), text.as_bytes().to_vec());
         }
-        fake.state().version = 1;
+        {
+            let mut s = fake.state();
+            s.version = 1;
+            let files = s.files.clone();
+            s.snapshots.insert(1, files);
+        }
         fake
     }
 
@@ -61,6 +70,19 @@ impl Fake {
         let mut s = self.state();
         s.files.insert(path.to_owned(), bytes.to_vec());
         s.version += 1;
+        let (version, files) = (s.version, s.files.clone());
+        s.snapshots.insert(version, files);
+    }
+
+    /// Write this file right after the next `branch list` has answered: the view moves between a request's
+    /// first call and its second.
+    pub(crate) fn move_after_next_views(&self, path: &str, text: &str) {
+        self.state().move_after_views = Some((path.to_owned(), text.as_bytes().to_vec()));
+    }
+
+    /// The block the tip is at.
+    pub(crate) fn block_id(&self) -> String {
+        block_id(self.state().version)
     }
 
     /// A second view, which has its own state.
@@ -95,6 +117,29 @@ fn state_id(n: u64) -> String {
     format!("{n:064x}")
 }
 
+fn block_id(n: u64) -> String {
+    format!("{:064x}", 0xb10c_0000 + n)
+}
+
+/// The files a point names: the block's own files for a block, the current ones for a view.
+fn files_at(s: &State, point: &Point) -> Option<BTreeMap<String, Vec<u8>>> {
+    match point {
+        Point::View(_) => Some(s.files.clone()),
+        Point::Block(id) => s
+            .snapshots
+            .iter()
+            .find(|(version, _)| block_id(**version) == *id)
+            .map(|(_, files)| files.clone())
+            // An extra view shares the files of the fake (it has its own state, not its own content).
+            .or_else(|| {
+                s.extra_views
+                    .iter()
+                    .any(|(_, n)| block_id(1_000_000 + n) == *id)
+                    .then(|| s.files.clone())
+            }),
+    }
+}
+
 fn unsupported(verb: &'static str) -> StorageError {
     StorageError::Driver {
         verb,
@@ -104,28 +149,35 @@ fn unsupported(verb: &'static str) -> StorageError {
 
 impl Storage for Fake {
     fn views(&self, _repo: &Path) -> Result<Views> {
-        let s = self.state();
-        if let Some(e) = &s.fail_views {
-            return Err(e.clone());
-        }
-        let mut views = vec![View {
-            name: "heads/main".to_owned(),
-            state_id: state_id(s.version),
-            closed: false,
-            current: true,
-        }];
-        for (name, n) in &s.extra_views {
-            views.push(View {
-                name: name.clone(),
-                state_id: state_id(1_000_000 + n),
+        let answer = {
+            let s = self.state();
+            if let Some(e) = &s.fail_views {
+                return Err(e.clone());
+            }
+            let mut views = vec![View {
+                name: "heads/main".to_owned(),
+                state_id: state_id(s.version),
                 closed: false,
-                current: false,
-            });
+                current: true,
+            }];
+            for (name, n) in &s.extra_views {
+                views.push(View {
+                    name: name.clone(),
+                    state_id: state_id(1_000_000 + n),
+                    closed: false,
+                    current: false,
+                });
+            }
+            Views {
+                schema_version: "branch-list-v1".to_owned(),
+                views,
+            }
+        };
+        let pending = self.state().move_after_views.take();
+        if let Some((path, bytes)) = pending {
+            self.set_bytes(&path, &bytes);
         }
-        Ok(Views {
-            schema_version: "branch-list-v1".to_owned(),
-            views,
-        })
+        Ok(answer)
     }
 
     fn tree(&self, _: &Path, _: &Point, _: Option<&str>) -> Result<Tree> {
@@ -136,12 +188,18 @@ impl Storage for Fake {
         Err(unsupported("cat"))
     }
 
-    fn read(&self, _repo: &Path, _point: &Point, path: &str, max_bytes: u64) -> Result<Vec<u8>> {
+    fn read(&self, _repo: &Path, point: &Point, path: &str, max_bytes: u64) -> Result<Vec<u8>> {
         let s = self.state();
         if let Some(e) = &s.fail_read {
             return Err(e.clone());
         }
-        match s.files.get(path) {
+        let files = files_at(&s, point).ok_or_else(|| StorageError::Refused {
+            verb: "cat",
+            message: format!("no such block: {point}"),
+            kind: None,
+            reason: None,
+        })?;
+        match files.get(path) {
             None => Err(StorageError::Refused {
                 verb: "cat",
                 message: format!("path {path} not found"),
@@ -158,8 +216,39 @@ impl Storage for Fake {
         }
     }
 
-    fn history(&self, _: &Path, _: &Point, _: Option<u64>) -> Result<History> {
-        Err(unsupported("log"))
+    fn history(&self, _: &Path, view: &Point, _: Option<u64>) -> Result<History> {
+        let s = self.state();
+        let Point::View(name) = view else {
+            return Err(unsupported("log"));
+        };
+        let n = match name.as_str() {
+            "heads/main" => s.version,
+            other => match s.extra_views.iter().find(|(v, _)| v == other) {
+                Some((_, n)) => 1_000_000 + n,
+                None => {
+                    return Err(StorageError::Refused {
+                        verb: "log",
+                        message: format!("no such view: {other}"),
+                        kind: None,
+                        reason: None,
+                    });
+                }
+            },
+        };
+        Ok(History {
+            schema_version: "log-report-v1".to_owned(),
+            view: name.clone(),
+            blocks: vec![HistoryBlock {
+                block_id: block_id(n),
+                ref_state_id: state_id(n),
+                update_seq: n,
+                kind: "Normal".to_owned(),
+                rollback_block: false,
+                patch_count: 1,
+                patch_messages: Vec::new(),
+                previous_ref_state_id: None,
+            }],
+        })
     }
 
     fn change(&self, _: &Path, _: &str) -> Result<Change> {
@@ -184,7 +273,13 @@ impl Storage for Fake {
     ) -> Result<Materialized> {
         let (files, fail, delay) = {
             let s = self.state();
-            (s.files.clone(), s.fail_materialize.clone(), s.delay)
+            let files = files_at(&s, point).ok_or_else(|| StorageError::Refused {
+                verb: "extract",
+                message: format!("no such block: {point}"),
+                kind: None,
+                reason: None,
+            })?;
+            (files, s.fail_materialize.clone(), s.delay)
         };
         std::thread::sleep(delay);
         if let Some(e) = fail {

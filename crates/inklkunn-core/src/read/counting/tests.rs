@@ -30,7 +30,8 @@ fn every_call_is_counted_by_its_verb_whether_or_not_it_succeeds() {
     );
     assert!(counting.tree(repo, &main_view(), None).is_err());
     assert!(counting.stat(repo, &main_view(), "pages/Home.md").is_err());
-    assert!(counting.history(repo, &main_view(), None).is_err());
+    // The in-memory repository answers a log (the tip's block); it is a call all the same.
+    assert!(counting.history(repo, &main_view(), Some(1)).is_ok());
     assert!(counting.change(repo, &"a".repeat(64)).is_err());
     assert!(
         counting

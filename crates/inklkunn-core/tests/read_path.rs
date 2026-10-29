@@ -214,14 +214,16 @@ fn a_real_wiki_is_read_through_the_whole_path_with_the_numbers_of_calls_the_desi
             "Add pages",
         );
 
-        // The first view: the tip, one extract of it, the page, and the page it includes.
+        // The first view: the tip (the list, and one log for its block), one extract of it, the page, and the
+        // page it includes. Every read is pinned to the block.
         let (home, cold) = w.counted(|| w.page("Home"));
         assert!(!home.cached);
         assert_eq!(cold.views, 1, "{cold:?}");
+        assert_eq!(cold.history, 1, "the block of the tip: {cold:?}");
         assert_eq!(cold.materialize, 1, "the index is one extract: {cold:?}");
         assert_eq!(cold.read, 2, "Home and the Glossary it includes: {cold:?}");
         assert_eq!(
-            cold.tree + cold.stat + cold.history + cold.diff + cold.verify,
+            cold.tree + cold.stat + cold.diff + cold.verify,
             0,
             "{cold:?}"
         );

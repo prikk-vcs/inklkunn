@@ -15,7 +15,8 @@
 //! held, so at most two; an included page (transclusion) costs one more `cat` each. The index is built from
 //! **one `extract` of the tip per tip** and shared by every page and reader at it (single flight), because
 //! each `cat` replays the whole tree and an index built page by page would cost one replay per page (hold
-//! note IS-10). The first view at a new tip therefore also pays that one `extract`.
+//! note IS-10). The first view at a new tip therefore also pays that one `extract`, and the one `log` that
+//! names the tip's block: **four on the first miss at a new tip**, one on a later miss.
 //!
 //! **What this module never does**: it never passes `--allow-full-replay` (the driver has no way to), it
 //! never reads a verification result from the cache (there is none in it: [`inklkunn_store::DerivedPage`]
@@ -29,12 +30,12 @@
 //!
 //! **Limits worth knowing.**
 //!
-//! - *The tip is read, not pinned.* `branch list` gives a view's RefState id and not the block it points at,
-//!   so a page is read with `cat` at the **view** and cached under the tip that was held. If the view moves
-//!   inside the hold ([`ReadConfig::tip_ttl`]), the page cached under the old id is the newer text. That is
-//!   harmless (the newer text is what the wiki says, and a reader who sees the new tip asks for its own
-//!   key), and it ends with the hold; pinning the read would take a `log` call per miss (a third call) or a
-//!   tip block id in `branch-list-v1` (a candidate ask for prikk).
+//! - *The tip is pinned.* `branch list` gives a view's RefState id and not the block it points at, so the
+//!   first time a state id is met one `log --limit 1` asks for the pair, and every read of that tip (`cat`,
+//!   `extract`) is made *at the block*: a write between two calls of a request cannot cache newer content
+//!   under an older key. The price is one more call on the first miss at a new tip (four: the list, the
+//!   log, the extract, the `cat`), none on a hit; a tip block id in `branch-list-v1` would remove it (a
+//!   candidate ask for prikk).
 //! - *The index costs the whole tip.* `extract` writes every file the tip has, attachments included, so the
 //!   bounds ([`ReadConfig::index_max_bytes`], [`ReadConfig::index_max_files`]) count them too, and a wiki
 //!   with a great many attachments needs them raised. `extract` has no path filter (ledger PK-25).
@@ -368,24 +369,51 @@ impl ReadService {
     /// answer makes no prikk call.
     pub fn tip(&self, wiki: &WikiRecord, view: Option<&str>) -> Result<Tip, ReadError> {
         let view = view.unwrap_or(&wiki.default_view);
-        if let Some(held) = self.tips.fresh(&wiki.id, view) {
-            return held.ok_or_else(|| ReadError::NoSuchView(view.to_owned()));
-        }
         let repo = self.layout.repo_dir(&wiki.id);
-        let views = self
+        let (name, state) = match self.tips.fresh(&wiki.id, view) {
+            Some(held) => held.ok_or_else(|| ReadError::NoSuchView(view.to_owned()))?,
+            None => {
+                let views = self
+                    .storage
+                    .views(&repo)
+                    .map_err(|e| self.storage_error(wiki, e))?;
+                self.tips.hold(&wiki.id, &repo, &views);
+                views
+                    .views
+                    .iter()
+                    .find(|v| v.name == view && !v.closed)
+                    .map(|v| (v.name.clone(), v.state_id.clone()))
+                    .ok_or_else(|| ReadError::NoSuchView(view.to_owned()))?
+            }
+        };
+        if let Some(block_id) = self.tips.block(&wiki.id, &name, &state) {
+            return Ok(Tip {
+                view: name,
+                state_id: state,
+                block_id,
+            });
+        }
+        // `branch list` names the state, not the block: ask once, here, for the pair. If the view moved
+        // since the list, the pair the log gives is the newer tip, whole.
+        let newest = self
             .storage
-            .views(&repo)
+            .history(&repo, &Point::View(name.clone()), Some(1))
             .map_err(|e| self.storage_error(wiki, e))?;
-        self.tips.hold(&wiki.id, &repo, &views);
-        views
-            .views
-            .iter()
-            .find(|v| v.name == view && !v.closed)
-            .map(|v| Tip {
-                view: v.name.clone(),
-                state_id: v.state_id.clone(),
-            })
-            .ok_or_else(|| ReadError::NoSuchView(view.to_owned()))
+        let block = newest.blocks.into_iter().next().ok_or_else(|| {
+            ReadError::CouldNotBeReadNow(Cause::Scratch(format!(
+                "the log of `{name}` lists no block"
+            )))
+        })?;
+        if block.ref_state_id != state {
+            self.tips.moved(&wiki.id, &name, &block.ref_state_id);
+        }
+        self.tips
+            .remember_block(&wiki.id, &name, &block.ref_state_id, &block.block_id);
+        Ok(Tip {
+            view: name,
+            state_id: block.ref_state_id,
+            block_id: block.block_id,
+        })
     }
 
     /// The title index of the view's tip: from memory, else from the derived store, else built from **one
@@ -549,7 +577,7 @@ impl ReadService {
             .storage
             .read(
                 &self.layout.repo_dir(&wiki.id),
-                &Point::View(tip.view.clone()),
+                &Point::Block(tip.block_id.clone()),
                 path,
                 self.config.page_max_bytes,
             )
@@ -710,7 +738,7 @@ impl ReadService {
             .storage
             .materialize(
                 &repo,
-                &Point::View(tip.view.clone()),
+                &Point::Block(tip.block_id.clone()),
                 &scratch,
                 &name,
                 bounds,

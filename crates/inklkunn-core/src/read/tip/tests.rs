@@ -43,15 +43,12 @@ fn an_answer_is_held_for_the_hold_and_then_asked_for_again() {
     );
     assert_eq!(
         tips.fresh(&wiki, "heads/main"),
-        Some(Some(Tip {
-            view: "heads/main".into(),
-            state_id: "s1".into()
-        }))
+        Some(Some(("heads/main".to_owned(), "s1".to_owned())))
     );
     // One answer serves every view; a view it does not list is known to be absent while it is held.
     assert_eq!(
         tips.fresh(&wiki, "heads/other")
-            .map(|t| t.map(|t| t.state_id)),
+            .map(|t| t.map(|(_, state)| state)),
         Some(Some("s2".to_owned()))
     );
     assert_eq!(tips.fresh(&wiki, "heads/none"), Some(None));
@@ -169,4 +166,25 @@ fn without_hints_nothing_is_walked() {
     let wiki = WikiId::new();
     tips.hold(&wiki, &repo, &views(&[("heads/main", "s1")]));
     assert_eq!(tips.store_bytes(&wiki), None);
+}
+
+#[test]
+fn a_block_is_learned_once_per_state_and_forgotten_with_the_state() {
+    let tips = Tips::new(Duration::from_secs(60), None);
+    let wiki = WikiId::new();
+    let nowhere = std::path::Path::new("/nowhere");
+    tips.hold(&wiki, nowhere, &views(&[("heads/main", "s1")]));
+    assert_eq!(tips.block(&wiki, "heads/main", "s1"), None);
+    tips.remember_block(&wiki, "heads/main", "s1", "b1");
+    assert_eq!(tips.block(&wiki, "heads/main", "s1").as_deref(), Some("b1"));
+    // The same views again: nothing changed, the block stays.
+    tips.hold(&wiki, nowhere, &views(&[("heads/main", "s1")]));
+    assert_eq!(tips.block(&wiki, "heads/main", "s1").as_deref(), Some("b1"));
+    // The view moved: the old pair is gone, so it cannot be mistaken for the new tip.
+    tips.hold(&wiki, nowhere, &views(&[("heads/main", "s2")]));
+    assert_eq!(tips.block(&wiki, "heads/main", "s1"), None);
+    // Forgetting drops what was learned.
+    tips.remember_block(&wiki, "heads/main", "s2", "b2");
+    tips.forget(&wiki, nowhere);
+    assert_eq!(tips.block(&wiki, "heads/main", "s2"), None);
 }

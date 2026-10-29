@@ -157,7 +157,7 @@ fn a_transclusion_cycle_is_refused_with_the_cycle_named_and_the_page_still_rende
     assert_eq!(view.links.transcluded, ["pages/B.md"]);
     // The page, plus each page it includes: one `cat` each (and the index and the tip, this first time).
     assert_eq!(calls.read, 2);
-    assert_eq!(calls.total(), 4);
+    assert_eq!(calls.total(), 5);
     // The cached page names it too.
     let again = read_page(&w, "A");
     assert!(again.cached);

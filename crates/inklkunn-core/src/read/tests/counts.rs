@@ -25,12 +25,19 @@ fn a_page_view_issues_no_prikk_call_on_a_hit_and_at_most_two_on_a_miss() {
         ("Glossary", &[], "Terms.\n"),
     ]);
 
-    // The first view at a tip also builds the index: the tip, one extract of it (once per tip), the page.
+    // The first view at a tip also builds the index: the tip (`branch list` names the state, one `log` names
+    // its block, so every read below is pinned to it), one extract of it (once per tip), the page.
     let (out, first) = w.counted(|| w.service.page(&w.wiki, None, "Home", &Env::EN));
     assert!(!found(out).cached);
     assert_eq!(
-        (first.views, first.materialize, first.read, first.total()),
-        (1, 1, 1, 3)
+        (
+            first.views,
+            first.history,
+            first.materialize,
+            first.read,
+            first.total()
+        ),
+        (1, 1, 1, 1, 4)
     );
 
     // A hit while the tip is held: no call at all.
@@ -69,9 +76,10 @@ fn when_the_tip_is_not_held_a_miss_is_two_calls_and_a_hit_is_the_one_that_asks_f
         ttl_zero(),
     );
     let (_, cold) = w.counted(|| read_page(&w, "Home"));
-    assert_eq!(cold.total(), 3, "the tip, the index, the page");
+    assert_eq!(cold.total(), 4, "the tip (two calls), the index, the page");
     let (_, hit) = w.counted(|| read_page(&w, "Home"));
-    assert_eq!((hit.views, hit.total()), (1, 1));
+    // The list is asked again, the block of an unchanged state is not.
+    assert_eq!((hit.views, hit.history, hit.total()), (1, 0, 1));
     let (_, miss) = w.counted(|| read_page(&w, "Guide"));
     assert_eq!((miss.views, miss.read, miss.total()), (1, 1, 2));
 }
@@ -93,7 +101,8 @@ fn the_index_is_built_from_one_extract_per_tip_however_many_pages_and_readers() 
     assert_eq!(calls.materialize, 1, "one extract for 30 pages");
     assert_eq!(calls.read, 30, "one `cat` for each page's miss");
     assert_eq!(calls.views, 1, "the tip was held");
-    assert_eq!(calls.total(), 32);
+    assert_eq!(calls.history, 1, "and its block was asked for once");
+    assert_eq!(calls.total(), 33);
 
     // The tip moves: the next request is at a new tip, and so is the index.
     w.fake()
@@ -101,7 +110,7 @@ fn the_index_is_built_from_one_extract_per_tip_however_many_pages_and_readers() 
     w.service.forget_wiki(&w.wiki);
     let (view, moved) = w.counted(|| read_page(&w, "P0"));
     assert_eq!(moved.materialize, 1);
-    assert_eq!(moved.views, 1);
+    assert_eq!((moved.views, moved.history), (1, 1));
     assert!(view.html.as_str().contains("Changed."));
     let (_, other) = w.counted(|| read_page(&w, "P1"));
     assert_eq!(other.materialize, 0, "the new index serves every page");

@@ -1,7 +1,11 @@
 //! A view's tip, held for a few seconds, and the store size that goes with it (RFC 003 D-2; handoff 003 T3).
 //!
 //! **The tip** is the RefState id of a view (`branch list`), which prikk changes whenever the view moves;
-//! every cache is keyed by it. Asking prikk for it on every request would make `branch list` the cost of a
+//! every cache is keyed by it, **and every read is pinned to the block that state id belongs to**: `branch
+//! list` does not name the block, so the first time a state id is met one `log --limit 1` asks for the pair,
+//! and the pair (state id, block id) is what the tip is. A page and an index are then read *at the block*
+//! (`cat --ref <block id>`, `extract --ref <block id>`), so a write between two of a request's calls cannot
+//! put newer content under an older key (the key is the content). Asking prikk for it on every request would make `branch list` the cost of a
 //! cache hit, so one answer is held for [`ReadConfig::tip_ttl`](super::ReadConfig::tip_ttl) and serves
 //! every view of the wiki (the call lists them all). The price is staleness of at most that long: a page
 //! changed a moment ago is shown as it was until the hold ends, which the write path shortens by calling
@@ -27,7 +31,12 @@ pub struct Tip {
     pub view: String,
     /// The view's RefState id at the time it was read: the key of everything derived from it.
     pub state_id: String,
+    /// The block that state id belongs to (64 hex): what every read of this tip is pinned to.
+    pub block_id: String,
 }
+
+/// A view and one RefState id of it.
+type ViewState = (String, String);
 
 /// What one `branch list` said, kept for a while.
 #[derive(Debug, Clone)]
@@ -65,6 +74,8 @@ impl Held {
 pub(super) struct Tips {
     ttl: Duration,
     held: Mutex<HashMap<WikiId, Held>>,
+    /// The block each `(view, state id)` of a wiki belongs to, learned once per state id.
+    blocks: Mutex<HashMap<WikiId, HashMap<ViewState, String>>>,
     /// `(fingerprint of the views the figure was walked at, bytes)`.
     sizes: Mutex<HashMap<WikiId, (String, u64)>>,
     hints: Option<SizeHints>,
@@ -75,24 +86,54 @@ impl Tips {
         Tips {
             ttl,
             held: Mutex::new(HashMap::new()),
+            blocks: Mutex::new(HashMap::new()),
             sizes: Mutex::new(HashMap::new()),
             hints,
         }
     }
 
-    /// The held answer for `wiki`, if it is younger than the hold.
-    pub(super) fn fresh(&self, wiki: &WikiId, view: &str) -> Option<Option<Tip>> {
+    /// The held answer for `wiki`, if it is younger than the hold: `(view, state id)` of the view, or `None`
+    /// inside the answer when the view is not one of the open ones.
+    pub(super) fn fresh(&self, wiki: &WikiId, view: &str) -> Option<Option<ViewState>> {
         let held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
         let h = held.get(wiki).filter(|h| h.at.elapsed() < self.ttl)?;
         Some(
             h.views
                 .iter()
                 .find(|(name, _)| name == view)
-                .map(|(name, state)| Tip {
-                    view: name.clone(),
-                    state_id: state.clone(),
-                }),
+                .map(|(name, state)| (name.clone(), state.clone())),
         )
+    }
+
+    /// The log named a newer state for `view` than the list held: hold that one, so that the cache of the
+    /// tip the reads are about to fill is kept, not pruned as a past one.
+    pub(super) fn moved(&self, wiki: &WikiId, view: &str, state: &str) {
+        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(h) = held.get_mut(wiki) {
+            for (name, current) in &mut h.views {
+                if name == view {
+                    state.clone_into(current);
+                }
+            }
+        }
+    }
+
+    /// The block `state` of `view` belongs to, when it has been asked for.
+    pub(super) fn block(&self, wiki: &WikiId, view: &str, state: &str) -> Option<String> {
+        let blocks = self.blocks.lock().unwrap_or_else(PoisonError::into_inner);
+        blocks
+            .get(wiki)?
+            .get(&(view.to_owned(), state.to_owned()))
+            .cloned()
+    }
+
+    /// Remember the block `state` of `view` belongs to.
+    pub(super) fn remember_block(&self, wiki: &WikiId, view: &str, state: &str, block: &str) {
+        let mut blocks = self.blocks.lock().unwrap_or_else(PoisonError::into_inner);
+        blocks
+            .entry(wiki.clone())
+            .or_default()
+            .insert((view.to_owned(), state.to_owned()), block.to_owned());
     }
 
     /// Hold a fresh `branch list` answer. When the views have moved since the store was last measured, the
@@ -101,6 +142,16 @@ impl Tips {
     pub(super) fn hold(&self, wiki: &WikiId, repo: &Path, views: &Views) {
         let held = Held::from(views);
         let fingerprint = held.fingerprint();
+        // Only the states the views have now can be asked for again.
+        if let Some(known) = self
+            .blocks
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get_mut(wiki)
+        {
+            known
+                .retain(|(view, state), _| held.views.iter().any(|(v, s)| v == view && s == state));
+        }
         self.held
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -153,6 +204,10 @@ impl Tips {
     /// Forget what is held and measured for `wiki`: the next request asks prikk and walks.
     pub(super) fn forget(&self, wiki: &WikiId, repo: &Path) {
         self.held
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(wiki);
+        self.blocks
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .remove(wiki);
