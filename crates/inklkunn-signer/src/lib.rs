@@ -55,6 +55,20 @@ pub use signer::superseded::{LateSeal, SupersededKey};
 pub use signer::{KeyStatus, Signer, SignerConfig};
 pub use writes::{SealedIds, SignerError, WRITE_DEADLINE};
 
+/// The rule every path of a change must obey before the signer writes a byte (ASCII, prikk's path rules and caps,
+/// under `pages/`, `attachments/`, `knowledge/` or `governance/` or the manifest), as a pure check: the answer
+/// is the rule that was broken, never the path. What a dry run of an import reports is exactly what the signer
+/// would refuse.
+pub fn check_change_path(path: &str) -> Result<(), &'static str> {
+    worktree::repo_path(Path::new(path)).map(|_| ())
+}
+
+/// The most files one acceptance may carry.
+pub const MAX_CHANGE_FILES: usize = worktree::MAX_FILES;
+
+/// The most bytes one acceptance may carry.
+pub const MAX_CHANGE_BYTES: u64 = worktree::MAX_TOTAL_BYTES;
+
 /// The authority to make a wiki's keys and to rotate them (corrections handoff C7): [`Signer::create_keys`],
 /// [`Signer::rotate_keys`] and [`RepositoryBootstrap::create_repository`] each need one. **There is one per
 /// process**: the binary claims it once, for the administrative acts that are meant to make or change keys (the

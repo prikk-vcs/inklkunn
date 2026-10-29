@@ -17,7 +17,10 @@
 //!   harness that holds the number of prikk calls to a bound.
 //! - [`check`]: the verification check (RFC 003 D-5): `verify` run on request, its outcome recorded as the
 //!   wiki's last verification, and a check that could not run kept apart from a verdict.
-//! - [`bundle`] and [`wiki`]: the repository layout (external design CT-02) and *create wiki*.
+//! - [`bundle`] and [`wiki`]: the repository layout (external design CT-02) and *create wiki*, which is
+//!   kill-safe (a creation mark and a start-up sweep).
+//! - [`import`] and [`export`]: `import-folder` (one accepted change under the system principal) and the
+//!   Portable Wiki Bundle export at fidelity level 3 (handoff 003 T7; RFC 003 D-11, D-12).
 
 pub mod accept;
 pub mod assurance;
@@ -25,6 +28,8 @@ pub mod authorize;
 pub mod bundle;
 pub mod check;
 pub mod egress;
+pub mod export;
+pub mod import;
 pub mod read;
 pub mod reconcile;
 pub mod routes;

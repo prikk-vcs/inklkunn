@@ -23,10 +23,44 @@ pub const HELP_PAGE: &str = "pages/Help.md";
 /// inside it); the reservation is made now so no page can ever take the name.
 pub const SERVICE_PREFIX: &str = ".inklkunn/";
 
+/// What a manifest says about the bundle's contents and provenance, beyond what the wiki record gives it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ManifestFacts {
+    /// `None` for the counts at creation (one page, nothing else), which the manifest says so about; an export
+    /// gives the real ones.
+    pub exported: Option<ExportFacts>,
+}
+
+/// The facts an export writes into its manifest.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ExportFacts {
+    /// Pages in the bundle.
+    pub pages: usize,
+    /// Attachments in the bundle.
+    pub attachments: usize,
+    /// Unix seconds of the export.
+    pub exported_at: i64,
+    /// The block the files are as of.
+    pub tip: String,
+    /// The wiki's interwiki map (prefix and target), in the order given; empty when it has none.
+    pub interwiki: Vec<(String, String)>,
+    /// Changes in the history to paths that are not pages of the tip (a page since removed or renamed), which
+    /// no `history/<page id>.jsonl` holds.
+    pub unattributed_changes: usize,
+    /// `(path, sha-256 hex)` of every file in the bundle but the manifest itself, in path order.
+    pub checksums: Vec<(String, String)>,
+}
+
 /// The bundle manifest for a new wiki (wiki-commons chapter 10). `pages_prefix` is `pages`; fidelity is
 /// level 3 with nothing degraded, since nothing was converted. The `contents` counts are those at creation
-/// and say so; an export rewrites them.
+/// and say so; an export rewrites them ([`manifest_with`]).
 pub fn manifest(record: &WikiRecord, inklkunn_version: &str) -> String {
+    manifest_with(record, inklkunn_version, &ManifestFacts::default())
+}
+
+/// The manifest with an export's facts: the real counts, when and as of which block, the interwiki map and the
+/// checksums of every file. Without them, the creation manifest.
+pub fn manifest_with(record: &WikiRecord, inklkunn_version: &str, facts: &ManifestFacts) -> String {
     let lang = record.languages.first().map_or("en", String::as_str);
     let langs = record
         .languages
@@ -34,7 +68,7 @@ pub fn manifest(record: &WikiRecord, inklkunn_version: &str) -> String {
         .map(|l| yaml_quote(l))
         .collect::<Vec<_>>()
         .join(", ");
-    let lines = [
+    let mut lines = vec![
         "format: portable-wiki-bundle".to_owned(),
         "version: '0.4'".to_owned(),
         "generator:".to_owned(),
@@ -56,32 +90,78 @@ pub fn manifest(record: &WikiRecord, inklkunn_version: &str) -> String {
         "  directives: [toc, children]".to_owned(),
         "  html_subset: []".to_owned(),
         "contents:".to_owned(),
-        "  # Counts at creation; the export rewrites them.".to_owned(),
-        "  pages: 1".to_owned(),
-        "  attachments: 0".to_owned(),
-        "  history: true".to_owned(),
-        "  discussions: false".to_owned(),
-        "  users: false".to_owned(),
-        "  structured: false".to_owned(),
+    ];
+    match &facts.exported {
+        None => {
+            lines.push("  # Counts at creation; the export rewrites them.".to_owned());
+            lines.push("  pages: 1".to_owned());
+            lines.push("  attachments: 0".to_owned());
+            lines.push("  history: true".to_owned());
+            lines.push("  discussions: false".to_owned());
+            lines.push("  users: false".to_owned());
+            lines.push("  structured: false".to_owned());
+        }
+        Some(e) => {
+            lines.push(format!("  pages: {}", e.pages));
+            lines.push(format!("  attachments: {}", e.attachments));
+            lines.push("  history: true".to_owned());
+            lines.push("  discussions: false".to_owned());
+            lines.push("  users: true".to_owned());
+            lines.push("  structured: false".to_owned());
+        }
+    }
+    lines.extend([
         "fidelity:".to_owned(),
         "  level: 3".to_owned(),
         "  degraded: []".to_owned(),
         "  dropped: []".to_owned(),
         "  note: native; nothing was converted".to_owned(),
+    ]);
+    if let Some(e) = &facts.exported {
+        lines.push("export:".to_owned());
+        lines.push(format!("  at: {}", e.exported_at));
+        lines.push(format!("  as_of_block: {}", yaml_str(&e.tip)));
+        lines.push(format!(
+            "  history_changes_without_a_page: {}",
+            e.unattributed_changes
+        ));
+        if e.interwiki.is_empty() {
+            lines.push("interwiki: {}".to_owned());
+        } else {
+            lines.push("interwiki:".to_owned());
+            for (prefix, target) in &e.interwiki {
+                lines.push(format!("  {}: {}", yaml_str(prefix), yaml_str(target)));
+            }
+        }
+        lines.push("checksums:".to_owned());
+        lines.push("  algorithm: sha256".to_owned());
+        lines.push("  # Every file of the bundle but this manifest.".to_owned());
+        lines.push("  files:".to_owned());
+        for (path, hex) in &e.checksums {
+            lines.push(format!("    {}: {}", yaml_str(path), yaml_str(hex)));
+        }
+    }
+    lines.extend([
         "inklkunn:".to_owned(),
         format!("  default_view: {}", yaml_quote(&record.default_view)),
         format!(
             "  policy_bootstrap: {}",
             yaml_quote(&record.policy_bootstrap)
         ),
-    ];
+    ]);
     let mut out = lines.join("\n");
     out.push('\n');
     out
 }
 
+/// A YAML scalar that is **always** double-quoted: for values that must never be read as anything but text (a
+/// digest such as `1e5…` is a number to a YAML reader).
+pub(crate) fn yaml_str(s: &str) -> String {
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
 /// Quote a YAML scalar when it needs it (always, when it could be read as anything but a string).
-fn yaml_quote(s: &str) -> String {
+pub(crate) fn yaml_quote(s: &str) -> String {
     let plain = !s.is_empty()
         && s.len() <= 200
         && s.bytes()

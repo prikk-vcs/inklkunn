@@ -796,6 +796,8 @@ dependencies = [
  "inklkunn-prikk",
  "inklkunn-signer",
  "inklkunn-store",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
