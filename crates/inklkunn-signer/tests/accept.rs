@@ -143,8 +143,20 @@ REAL="{real}"
 verb="$1"
 echo "$verb" >> "$CTL/calls.log"
 if [ -e "$CTL/probe-$verb" ]; then
-  d="$(dirname "$PRIKK_AUTHOR_SEED_FILE")"
-  {{ echo "== $verb"; ls -A "$d"; stat -c 'dir=%a' "$d"; stat -c 'author=%a' "$PRIKK_AUTHOR_SEED_FILE"; cat "$PRIKK_AUTHOR_SEED_FILE"; cat "$PRIKK_MAINTAINER_SEED_FILE"; }} >> "$CTL/probe.log" 2>&1
+  {{
+    echo "== $verb $2"
+    echo "vars: $(env | sed -n 's/^\(PRIKK_[A-Z_]*\)=.*/\1/p' | sort | tr '\n' ' ')"
+    for v in PRIKK_AUTHOR_SEED_FILE PRIKK_MAINTAINER_SEED_FILE; do
+      f="$(printenv "$v")"
+      if [ -n "$f" ]; then
+        d="$(dirname "$f")"
+        echo "$v dir holds: $(ls -A "$d" | tr '\n' ' ')"
+        stat -c 'dir=%a' "$d"
+        stat -c 'file=%a' "$f"
+        cat "$f"
+      fi
+    done
+  }} >> "$CTL/probe.log" 2>&1
 fi
 if [ -e "$CTL/fail-$verb" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
 if [ -e "$CTL/failafter-$verb" ]; then
@@ -152,8 +164,16 @@ if [ -e "$CTL/failafter-$verb" ]; then
   echo "$((c + 1))" > "$CTL/count-$verb"
   if [ "$c" -ge "$n" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
 fi
+if [ -e "$CTL/die-$verb" ]; then
+  case "$(cat "$CTL/die-$verb")" in
+    abort) echo "memory allocation of 629145648 bytes failed" >&2; exit 134 ;;
+    loader) echo "error while loading shared libraries: cannot allocate TLS" >&2; exit 127 ;;
+    segv) kill -SEGV $$ ;;
+    bwrap) echo "Out of memory" >&2; exit 1 ;;
+  esac
+fi
 if [ -e "$CTL/say-$verb" ]; then cat "$CTL/say-$verb"; exit 0; fi
-if [ -e "$CTL/lockseeds-$verb" ]; then chmod 0500 "$(dirname "$PRIKK_AUTHOR_SEED_FILE")"; fi
+if [ -e "$CTL/lockseeds-$verb" ]; then chmod 0500 "$(dirname "${{PRIKK_AUTHOR_SEED_FILE:-$PRIKK_MAINTAINER_SEED_FILE}}")"; fi
 if [ -e "$CTL/report-$verb" ]; then cat "$CTL/report-$verb"; exit 1; fi
 if [ -e "$CTL/block-$verb" ]; then : > "$CTL/blocked-$verb"; sleep 20; fi
 exec "$REAL" "$@"
@@ -952,6 +972,157 @@ fn a_newest_block_that_is_not_the_change_just_written_is_not_claimed_as_ours() {
     );
 }
 
+/// How a process dies of `RLIMIT_DATA` depends on where its first refused allocation lands (ledger PK-9).
+const DEATHS: [&str; 4] = ["abort", "loader", "segv", "bwrap"];
+
+impl Fixture {
+    fn die(&self, verb: &str, shape: &str) {
+        std::fs::write(self.ctl.join(format!("die-{verb}")), shape).unwrap();
+    }
+}
+
+#[test]
+fn a_call_stopped_by_its_memory_ceiling_before_the_commit_is_the_ceiling_with_nothing_written() {
+    for shape in DEATHS {
+        // `worktree-status` is the precondition read; `commit` dies after the files were written.
+        for verb in ["status", "worktree-status", "commit"] {
+            let Some(f) = fixture("ceiling-pre", Sandbox::Unconfined, true) else {
+                println!("skipping: prikk not on PATH");
+                return;
+            };
+            let before = f.history_len(MAIN);
+            f.die(verb, shape);
+            let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
+            let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+            assert!(
+                matches!(&r, Err(AcceptError::CeilingExceeded { verb: v, .. }) if v == verb),
+                "{shape} at {verb}: {r:?}"
+            );
+            f.uncontrol(&format!("die-{verb}"));
+            assert_eq!(
+                f.queue_count(),
+                0,
+                "{shape} at {verb}: nothing was committed"
+            );
+            assert_eq!(f.history_len(MAIN), before, "{shape} at {verb}");
+            assert_eq!(
+                std::fs::read_to_string(f.repo.join("pages/Edit.md")).unwrap(),
+                "---\ntitle: Edit\n---\n\nbefore\n",
+                "{shape} at {verb}: the worktree is as it was"
+            );
+            assert!(f.seed_dirs().is_empty());
+        }
+    }
+}
+
+#[test]
+fn a_seal_stopped_by_its_memory_ceiling_is_queued_with_the_ceiling_named() {
+    for shape in DEATHS {
+        let Some(f) = fixture("ceiling-seal", Sandbox::Unconfined, true) else {
+            println!("skipping: prikk not on PATH");
+            return;
+        };
+        f.die("seal", shape);
+        let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
+        let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+        assert!(
+            matches!(
+                &r,
+                Err(AcceptError::Queued {
+                    step: "seal",
+                    ceiling: Some(_),
+                    ..
+                })
+            ),
+            "{shape}: {r:?}"
+        );
+        f.uncontrol("die-seal");
+        assert_eq!(f.queue_count(), 1, "{shape}: one patch is queued");
+    }
+}
+
+#[test]
+fn a_check_after_the_seal_stopped_by_its_memory_ceiling_is_unconfirmed_and_never_failed() {
+    for shape in DEATHS {
+        for verb in ["log", "verify"] {
+            let Some(f) = fixture("ceiling-post", Sandbox::Unconfined, true) else {
+                println!("skipping: prikk not on PATH");
+                return;
+            };
+            let before = f.history_len(MAIN);
+            f.die(verb, shape);
+            let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
+            let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+            match &r {
+                Err(AcceptError::SealedUnconfirmed { sealed, why, .. }) => {
+                    assert_eq!(*why, Unconfirmed::CeilingExceeded, "{shape} at {verb}");
+                    assert_eq!(sealed.is_some(), verb == "verify", "{shape} at {verb}");
+                }
+                other => panic!("{shape} at {verb}: {other:?}"),
+            }
+            let shown = r.unwrap_err().to_string();
+            assert!(
+                shown.contains("memory ceiling") && !shown.contains("did not verify"),
+                "{shape} at {verb}: {shown}"
+            );
+            f.uncontrol(&format!("die-{verb}"));
+            assert_eq!(f.queue_count(), 0, "it was sealed");
+            assert_eq!(f.history_len(MAIN), before + 1, "{shape} at {verb}");
+        }
+    }
+}
+
+/// A wiki that holds one 300 MiB attachment can still be written to: the memory rule is sized from the store
+/// and from the change, where a fixed 1 GiB ceiling stopped `prikk verify` on exactly this shape (reader B,
+/// finding 4). Runs confined as well as unconfined; the data is incompressible so the store really is that big.
+#[test]
+fn a_wiki_with_a_300_mib_attachment_accepts_that_attachment_and_the_change_after_it() {
+    for (n, sandbox) in policies().into_iter().enumerate() {
+        let Some(f) = fixture(&format!("attachment-{n}"), sandbox.clone(), false) else {
+            println!("skipping: prikk not on PATH");
+            return;
+        };
+        let mut big = vec![0_u8; 300 << 20];
+        let mut x: u64 = 0x9E37_79B9_7F4A_7C15;
+        for chunk in big.chunks_mut(8) {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            let bytes = x.to_le_bytes();
+            chunk.copy_from_slice(bytes.get(..chunk.len()).unwrap_or_default());
+        }
+        let p = f.prepare(MAIN, vec![file("attachments/big.bin", None)], vec![]);
+        drop(p);
+        let mut change = f.prepare(MAIN, Vec::new(), vec![]);
+        change.change.files = vec![PreparedFile {
+            path: PathBuf::from("attachments/big.bin"),
+            content: Some(big),
+        }];
+        let r = f
+            .signer
+            .accept(&f.wiki, MAIN, &change.token, &change.change);
+        assert!(
+            r.is_ok(),
+            "{n}: the 300 MiB attachment was not accepted: {r:?}"
+        );
+        // The store now holds it: the next change needs `worktree-status`, `commit`, `seal` and `verify`
+        // against a 300 MiB store.
+        let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
+        let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+        assert!(
+            r.is_ok(),
+            "{n}: a change to a wiki holding the attachment failed: {r:?}"
+        );
+        // prikk itself agrees (the read driver's admission pool is not sized for a 300 MiB verify here).
+        assert_eq!(
+            f.prikk_json(&["verify", "--format", "json"])
+                .pointer("/verdict/ok")
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+    }
+}
+
 #[test]
 fn a_worktree_that_cannot_be_put_back_after_a_failed_commit_is_said_to_be_dirty() {
     let Some(f) = fixture("dirty-restore", Sandbox::Unconfined, true) else {
@@ -1011,6 +1182,88 @@ fn the_guard_answers_before_the_signer_so_much_as_tries_to_make_a_seed_directory
     std::fs::set_permissions(&f.shm.0, std::fs::Permissions::from_mode(0o700)).unwrap();
 }
 
+/// What each verb of the write sequence can see, per verb, from the inside (a stand-in that lists its own
+/// environment and the directory its seed variable names): `commit` the author seed alone, `seal` and `branch
+/// create` the maintainer seed alone, and `init`, `trust`, `mv`, `branch switch` nothing (RFC 002 C-1a, C-1c).
+#[test]
+fn each_write_verb_sees_only_the_seed_it_signs_with_and_a_verb_that_signs_nothing_sees_none() {
+    let Some(f) = fixture("verb-visibility", Sandbox::Unconfined, true) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    for verb in ["init", "trust", "mv", "branch", "commit", "seal"] {
+        f.control(&format!("probe-{verb}"));
+    }
+    // A second wiki: `init` and `trust` run with the probes on.
+    let other = WikiId::new();
+    let other_repo = f.root.prepare(&other).unwrap();
+    f.signer
+        .create_repository(&other_repo)
+        .expect("a second wiki");
+    // A view, then an acceptance on it (a `branch switch` to it) that renames a page (an `mv`).
+    f.ledger.views.lock().unwrap().insert(
+        "act-v".into(),
+        ViewCreationFacts {
+            wiki: f.wiki.clone(),
+            name: "heads/draft".into(),
+            from: MAIN.into(),
+        },
+    );
+    f.signer
+        .create_view(&f.wiki, "heads/draft", MAIN, &ViewCreationAct::new("act-v"))
+        .expect("view");
+    let p = f.prepare(
+        "heads/draft",
+        vec![file("pages/Edit.md", Some("edited\n"))],
+        vec![("pages/Rename Me.md", "pages/Renamed.md")],
+    );
+    f.signer
+        .accept(&f.wiki, "heads/draft", &p.token, &p.change)
+        .expect("accepted");
+
+    let probe = std::fs::read_to_string(f.ctl.join("probe.log")).unwrap();
+    let blocks: Vec<&str> = probe.split("== ").skip(1).collect();
+    let of = |head: &str| -> &str {
+        blocks
+            .iter()
+            .copied()
+            .find(|b| b.starts_with(head))
+            .unwrap_or_else(|| panic!("`{head}` was never probed: {probe}"))
+    };
+    let no_seed = |head: &str| {
+        let b = of(head);
+        assert!(
+            b.contains("vars: \n"),
+            "{head} was handed key variables: {b}"
+        );
+        assert!(!b.contains("dir holds"), "{head} saw a seed directory: {b}");
+    };
+    no_seed("init");
+    no_seed("trust");
+    no_seed("mv");
+    no_seed("branch switch");
+    let author_only = |head: &str| {
+        let b = of(head);
+        assert!(
+            b.contains("vars: PRIKK_AUTHOR_KEY_ID PRIKK_AUTHOR_SEED_FILE \n")
+                && b.contains("dir holds: author.seed \n"),
+            "{head}: {b}"
+        );
+    };
+    let maintainer_only = |head: &str| {
+        let b = of(head);
+        assert!(
+            b.contains("vars: PRIKK_MAINTAINER_KEY_ID PRIKK_MAINTAINER_SEED_FILE \n")
+                && b.contains("dir holds: maintainer.seed \n"),
+            "{head}: {b}"
+        );
+    };
+    author_only("commit");
+    maintainer_only("seal");
+    maintainer_only("branch create");
+    assert!(f.seed_dirs().is_empty(), "every seed directory was removed");
+}
+
 #[test]
 fn the_seeds_exist_only_while_prikk_runs_and_are_where_the_signer_says() {
     let Some(f) = fixture("seedlife", Sandbox::Unconfined, true) else {
@@ -1030,21 +1283,37 @@ fn the_seeds_exist_only_while_prikk_runs_and_are_where_the_signer_says() {
     for verb in ["commit", "seal"] {
         assert!(probe.contains(&format!("== {verb}")), "{probe}");
     }
-    // During: a private directory holding exactly the two seed files, readable only by their owner.
+    // During: each call saw a private directory holding exactly the one seed it signs with, readable only by
+    // its owner: `commit` the author's, `seal` the maintainer's.
+    let block = |verb: &str| -> &str {
+        probe
+            .split("== ")
+            .find(|b| b.starts_with(verb))
+            .unwrap_or_else(|| panic!("no probe of {verb}: {probe}"))
+    };
+    let commit = block("commit");
     assert!(
-        probe.contains("author.seed") && probe.contains("maintainer.seed"),
-        "{probe}"
+        commit.contains("vars: PRIKK_AUTHOR_KEY_ID PRIKK_AUTHOR_SEED_FILE \n")
+            && commit.contains("dir holds: author.seed \n")
+            && !commit.contains("maintainer"),
+        "{commit}"
     );
+    let seal = block("seal");
     assert!(
-        probe.contains("dir=700") && probe.contains("author=600"),
-        "{probe}"
+        seal.contains("vars: PRIKK_MAINTAINER_KEY_ID PRIKK_MAINTAINER_SEED_FILE \n")
+            && seal.contains("dir holds: maintainer.seed \n")
+            && !seal.contains("author"),
+        "{seal}"
     );
-    // What prikk read there is a seed: 64 hex characters each, and the signer's error texts never carry it.
+    for b in [commit, seal] {
+        assert!(b.contains("dir=700") && b.contains("file=600"), "{b}");
+    }
+    // What prikk read there is a seed: 64 hex characters, and the signer's error texts never carry it.
     let seeds: Vec<&str> = probe
         .lines()
         .filter(|l| l.len() == 64 && l.bytes().all(|b| b.is_ascii_hexdigit()))
         .collect();
-    assert!(seeds.len() >= 2, "{probe}");
+    assert_eq!(seeds.len(), 2, "{probe}");
     let key_file = std::fs::read_to_string(f.key_dir.join(format!("{}.key.json", f.wiki))).unwrap();
     for seed in &seeds {
         assert!(!key_file.contains(seed), "a seed is in the sealed record");
@@ -1058,6 +1327,7 @@ fn no_error_text_ever_carries_a_seed_the_secret_or_the_seed_directory() {
         return;
     };
     f.control("probe-commit");
+    f.control("probe-seal");
     f.control("fail-seal");
     let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
     let mut shown = vec![format!("{:?}", f.signer)];

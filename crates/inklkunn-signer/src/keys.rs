@@ -18,6 +18,25 @@ pub struct KeyIds {
     pub maintainer_public_key: String,
 }
 
+/// Which of a wiki's two keys a call signs with (RFC 002 C-1a, C-1c: a call sees only the seed it signs with).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Role {
+    /// The author key: signs patches (`commit`).
+    Author,
+    /// The maintainer key: signs blocks, ref states and ref updates (`seal`, `branch create`).
+    Maintainer,
+}
+
+impl Role {
+    /// The role's name in file names and prikk's variables.
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Role::Author => "author",
+            Role::Maintainer => "maintainer",
+        }
+    }
+}
+
 /// A directory holding `author.seed`, `author.seed.key-id`, `maintainer.seed`, `maintainer.seed.key-id` as
 /// prikk writes them (`prikk key generate --out`). The bootstrap signer keeps it on disk; RFC 002's store
 /// creates one on a private tmpfs for the duration of a call. The path is UTF-8 and absolute.
@@ -28,6 +47,9 @@ pub(crate) struct KeyDir {
     /// it writes no `.key-id` files, and prikk is told the ids through its environment). Without them the
     /// ids are read from the `.key-id` files prikk wrote beside generated seeds (the bootstrap signer).
     ids: Option<(String, String)>,
+    /// When set, the call this directory is handed to signs with this role only: the other role's variables are
+    /// not exported (and, for a directory made by the key store, its seed is not in it).
+    only: Option<Role>,
 }
 
 impl std::fmt::Debug for KeyDir {
@@ -51,7 +73,11 @@ impl KeyDir {
                 "the key directory path must be UTF-8".to_owned(),
             ));
         }
-        Ok(KeyDir { dir, ids: None })
+        Ok(KeyDir {
+            dir,
+            ids: None,
+            only: None,
+        })
     }
 
     /// Name a key directory whose key ids are stated rather than read from files.
@@ -63,6 +89,30 @@ impl KeyDir {
         let mut key_dir = Self::new(dir)?;
         key_dir.ids = Some((author_key_id.to_owned(), maintainer_key_id.to_owned()));
         Ok(key_dir)
+    }
+
+    /// A directory that holds one role's seed only, with that role's key id.
+    pub(crate) fn single(
+        dir: impl Into<PathBuf>,
+        role: Role,
+        key_id: &str,
+    ) -> Result<Self, SignerError> {
+        let (author, maintainer) = match role {
+            Role::Author => (key_id, ""),
+            Role::Maintainer => ("", key_id),
+        };
+        let mut key_dir = Self::with_ids(dir, author, maintainer)?;
+        key_dir.only = Some(role);
+        Ok(key_dir)
+    }
+
+    /// The same directory, for a call that signs with `role` only: the other role's variables are not exported.
+    /// (A directory the key store made holds one seed already; this is for a plain directory that holds both.)
+    pub(crate) fn restricted_to(&self, role: Role) -> Self {
+        KeyDir {
+            only: Some(role),
+            ..self.clone()
+        }
     }
 
     /// The directory.
@@ -101,25 +151,27 @@ impl KeyDir {
     /// The environment prikk needs to sign with these keys, as `--setenv` pairs: seed-file paths and key
     /// ids only (a seed never travels through the environment, prikk's rule since 0.40).
     pub(crate) fn env(&self) -> Vec<(String, String)> {
-        let mut env = vec![
-            (
-                "PRIKK_AUTHOR_SEED_FILE".to_owned(),
-                self.seed_file_text("author"),
-            ),
-            (
-                "PRIKK_MAINTAINER_SEED_FILE".to_owned(),
-                self.seed_file_text("maintainer"),
-            ),
-        ];
-        let (author, maintainer) = match &self.ids {
-            Some((a, m)) => (Some(a.clone()), Some(m.clone())),
-            None => (self.key_id("author"), self.key_id("maintainer")),
-        };
-        if let Some(id) = author {
-            env.push(("PRIKK_AUTHOR_KEY_ID".to_owned(), id));
-        }
-        if let Some(id) = maintainer {
-            env.push(("PRIKK_MAINTAINER_KEY_ID".to_owned(), id));
+        let mut env = Vec::new();
+        for role in [Role::Author, Role::Maintainer] {
+            if self.only.is_some_and(|only| only != role) {
+                continue;
+            }
+            let name = role.name().to_ascii_uppercase();
+            env.push((
+                format!("PRIKK_{name}_SEED_FILE"),
+                self.seed_file_text(role.name()),
+            ));
+            let stated = self.ids.as_ref().map(|(a, m)| match role {
+                Role::Author => a.clone(),
+                Role::Maintainer => m.clone(),
+            });
+            let id = match stated {
+                Some(id) => Some(id).filter(|id| !id.is_empty()),
+                None => self.key_id(role.name()),
+            };
+            if let Some(id) = id {
+                env.push((format!("PRIKK_{name}_KEY_ID"), id));
+            }
         }
         env
     }

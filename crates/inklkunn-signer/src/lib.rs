@@ -16,6 +16,7 @@
 //! the `bootstrap` cargo feature**, for tests; a product binary never enables it (the gate checks).
 
 // The modules stay private: the key-reachability gate keeps every other crate from naming them.
+mod cost;
 mod flock;
 mod key_store;
 mod keys;
@@ -41,7 +42,7 @@ pub use bootstrap::BootstrapSigner;
 pub use keys::KeyIds;
 pub use signer::lifecycle::{OldKey, OldKeyOutcome, Rotation};
 pub use signer::{KeyStatus, Signer, SignerConfig};
-pub use writes::{SealedIds, SignerError, WRITE_CEILING, WRITE_DEADLINE};
+pub use writes::{SealedIds, SignerError, WRITE_DEADLINE};
 
 /// The wiki-creating writes, in the signer's hands: the seam `inklkunn-core`'s *create wiki* calls. The
 /// bootstrap signer implements it in M0; RFC 002's signer implements it for service.

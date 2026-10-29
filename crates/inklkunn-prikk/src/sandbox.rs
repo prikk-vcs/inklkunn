@@ -66,6 +66,35 @@ pub struct Run {
     pub output_exceeded: bool,
 }
 
+impl Run {
+    /// Did the process die of its memory ceiling (`RLIMIT_DATA`)? Only meaningful for a run that had one.
+    ///
+    /// How a process dies under `RLIMIT_DATA` depends on where the first refused allocation lands: Rust's
+    /// allocator aborts ("memory allocation of … failed", SIGABRT, 134); the dynamic loader exits 127 with
+    /// "Cannot allocate memory", "cannot allocate TLS" or "cannot map zero-fill pages"; glibc's early TLS setup
+    /// can fault (SIGSEGV) before any message, which is what GitHub's runners showed and what bwrap reports as
+    /// exit 139 (a death by signal inside the sandbox is exit 128 + n); bwrap itself, short of memory while
+    /// setting the namespace up, says only "Out of memory" and exits 1 (ledger PK-9). prikk itself never dies
+    /// by a signal and the server's own kill is `timed_out`, so under a ceiling *any* death by signal is read
+    /// as the ceiling.
+    ///
+    /// This is the one classifier: the read driver and the signer's write verbs both use it.
+    pub fn died_of_ceiling(&self) -> bool {
+        use std::os::unix::process::ExitStatusExt;
+        let stderr = String::from_utf8_lossy(&self.stderr);
+        let stderr = stderr.trim();
+        let by_signal =
+            self.status.signal().is_some() || matches!(self.status.code(), Some(129..=192));
+        let alloc_failed = stderr.contains("memory allocation of") && stderr.contains("failed");
+        let loader_failed = self.status.code() == Some(127)
+            && (stderr.contains("Cannot allocate memory")
+                || stderr.contains("cannot allocate")
+                || stderr.contains("cannot map"));
+        let sandbox_oom = self.status.code() == Some(1) && stderr.starts_with("Out of memory");
+        by_signal || alloc_failed || loader_failed || sandbox_oom
+    }
+}
+
 /// How the prikk subprocess is confined.
 #[derive(Debug, Clone)]
 pub enum Sandbox {
@@ -182,14 +211,14 @@ impl Mounts {
         }
     }
 
-    /// A write: the repository writable, a key directory read-only, variables for prikk (`PRIKK_*_SEED_FILE`,
-    /// `PRIKK_*_KEY_ID`: paths and ids, never a seed).
-    pub fn write(repo: &Path, key_dir: &Path, env: Vec<(String, String)>) -> Self {
+    /// A write: the repository writable, a key directory read-only when the verb signs (`None` for a verb that
+    /// needs no seed), variables for prikk (`PRIKK_*_SEED_FILE`, `PRIKK_*_KEY_ID`: paths and ids, never a seed).
+    pub fn write(repo: &Path, key_dir: Option<&Path>, env: Vec<(String, String)>) -> Self {
         Mounts {
             repo: repo.to_path_buf(),
             repo_writable: true,
             scratch: None,
-            key_dir: Some(key_dir.to_path_buf()),
+            key_dir: key_dir.map(Path::to_path_buf),
             env,
         }
     }

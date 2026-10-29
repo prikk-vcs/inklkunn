@@ -12,8 +12,8 @@ use std::path::{Path, PathBuf};
 use inklkunn_prikk::sandbox::Sandbox;
 
 use crate::RepositoryBootstrap;
-use crate::keys::{KeyDir, KeyIds};
-use crate::writes::{SealedIds, SignerError, Writes};
+use crate::keys::{KeyDir, KeyIds, Role};
+use crate::writes::{SealedIds, SeedAccess, SignerError, Writes};
 
 /// The bootstrap signer.
 #[derive(Debug, Clone)]
@@ -77,17 +77,26 @@ impl BootstrapSigner {
 impl RepositoryBootstrap for BootstrapSigner {
     fn create_repository(&self, repo: &Path) -> Result<KeyIds, SignerError> {
         let ids = self.ensure_keys()?;
-        self.writes.init(repo, &self.keys)?;
-        self.writes.trust_maintainer(
-            repo,
-            &self.keys,
-            &ids.maintainer,
-            &ids.maintainer_public_key,
-        )?;
+        self.writes.init(repo)?;
+        self.writes
+            .trust_maintainer(repo, &ids.maintainer, &ids.maintainer_public_key)?;
         Ok(ids)
     }
 
     fn commit_and_seal(&self, repo: &Path, message: &str) -> Result<SealedIds, SignerError> {
         self.writes.commit_and_seal(repo, &self.keys, message)
+    }
+}
+
+/// The bootstrap signer's plain directory holds both seeds on disk (it is for tests and a developer's first
+/// wiki); a call is still handed it restricted to the role it signs with, so the other role's variables are
+/// not exported to it.
+impl SeedAccess for KeyDir {
+    fn with_role<T>(
+        &self,
+        role: Role,
+        f: impl FnOnce(&KeyDir) -> Result<T, SignerError>,
+    ) -> Result<T, SignerError> {
+        f(&self.restricted_to(role))
     }
 }

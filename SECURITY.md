@@ -14,6 +14,13 @@ changes that verify. The design bounds, detects and attributes that risk rather 
 - the seeds are sealed at rest (Argon2id from the operator's secret, XChaCha20-Poly1305 per record, with the
   wiki, key ids and times bound in, so no record can be edited or moved to another wiki), and are decrypted
   only into a fresh directory on a tmpfs for the one call that signs, overwritten and removed afterwards.
+  **A call sees only the seed it signs with**: `commit` the author seed, `seal` and `branch create` the
+  maintainer seed, and `init`, `trust`, `mv`, `branch switch`, `verify` and `log` none, so a fault in the parser
+  that reads a proposal's paths and content cannot reach the maintainer seed. **Every call runs under a memory
+  ceiling sized from the repository and the change** (measured per verb on prikk 0.55.0, in
+  `crates/inklkunn-signer/src/cost.rs`); a call that runs out of memory is reported as that, *not refused and not
+  a failed verification*, together with where the repository is (nothing committed; one patch queued; sealed,
+  not confirmed).
   **A server killed in the middle of a signing call (`SIGKILL`) cannot clean up after itself**: its
   decrypted seeds stay on the tmpfs until a later start finds them untouched for five minutes (a live call
   touches its directory before every prikk call) and removes them, so after a quick restart they can remain

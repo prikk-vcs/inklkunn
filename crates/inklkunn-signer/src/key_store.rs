@@ -36,6 +36,7 @@ mod random;
 mod record;
 mod seeds;
 
+use crate::keys::Role;
 use crypto::{KdfParams, MasterKey, NONCE_LEN, SALT_LEN};
 pub(crate) use record::{Meta, Seeds};
 pub(crate) use seeds::{DIR_PREFIX, SeedBase, SeedDir, touch};
@@ -621,16 +622,21 @@ impl KeyStore {
         record::open(&self.master, &text, wiki).map(|(meta, _seeds)| meta)
     }
 
-    /// Decrypt a wiki's seeds into a fresh seed directory under `base`, for one call. The caller **must**
-    /// call [`SeedDir::finish`] when the call is over.
+    /// Decrypt **one** of a wiki's seeds into a fresh seed directory under `base`, for one call. The caller
+    /// **must** call [`SeedDir::finish`] when the call is over.
     pub(crate) fn checkout(
         &self,
         wiki: &WikiId,
         base: &SeedBase,
+        role: Role,
     ) -> Result<(Meta, SeedDir), KeyStoreError> {
         let text = self.record_text(wiki)?;
         let (meta, seeds) = record::open(&self.master, &text, wiki)?;
-        let dir = SeedDir::create(base, &seeds, &meta.author_key_id, &meta.maintainer_key_id)?;
+        let key_id = match role {
+            Role::Author => &meta.author_key_id,
+            Role::Maintainer => &meta.maintainer_key_id,
+        };
+        let dir = SeedDir::create(base, role, &seeds, key_id)?;
         Ok((meta, dir))
     }
 

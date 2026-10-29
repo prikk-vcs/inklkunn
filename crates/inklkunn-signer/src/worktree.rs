@@ -103,6 +103,14 @@ pub(crate) struct Plan {
 }
 
 impl Plan {
+    /// The bytes of the files this change writes: what `commit` and `seal` read whole, so what their memory
+    /// ceiling is sized by.
+    pub(crate) fn change_bytes(&self) -> u64 {
+        self.writes.iter().fold(0_u64, |sum, (_, bytes)| {
+            sum.saturating_add(bytes.len() as u64)
+        })
+    }
+
     /// Validate `change`'s files and renames. Nothing is read from or written to disk.
     pub(crate) fn new(change: &PreparedChange) -> Result<Plan, &'static str> {
         if change.files.is_empty() && change.renames.is_empty() {

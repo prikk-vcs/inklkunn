@@ -67,6 +67,7 @@ fn a_leftover_seed_directory_is_added_to_a_failure_and_never_replaces_it() {
             AcceptError::Queued {
                 step: "seal",
                 detail: "q-payload".into(),
+                ceiling: None,
             },
             "q-payload",
         ),

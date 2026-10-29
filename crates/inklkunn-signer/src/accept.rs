@@ -87,6 +87,10 @@ pub enum Unconfirmed {
     /// The newest block is not the change that was written: something else sealed in between. Which block is
     /// this acceptance's is not known.
     NotOurs,
+    /// A read of the sequence (the block read back, or `verify`) was stopped by its memory ceiling
+    /// (threat model C-9a). This is **not** a failed verification and says nothing against the change: the
+    /// repository could not be checked for want of memory.
+    CeilingExceeded,
     /// `verify` could not run to a verdict.
     VerifyCouldNotRun,
     /// `verify` ran and the repository does not verify. With prikk 0.54.1 this is also what **every** change
@@ -112,6 +116,15 @@ pub enum AcceptError {
     /// The call could not run, and nothing was committed or sealed; the worktree is as it was found. The text
     /// is for operators.
     Unavailable(String),
+    /// A call was stopped by its memory ceiling (threat model C-9a) **before anything was committed**; the
+    /// worktree is as it was found. Not a refusal: nothing is wrong with the change, and a retry after the
+    /// ceiling is raised (or the repository is smaller) can succeed.
+    CeilingExceeded {
+        /// The prikk verb that was stopped.
+        verb: String,
+        /// The ceiling it ran under, in bytes.
+        bytes: u64,
+    },
     /// A failure before `commit` could not be undone: **the worktree holds uncommitted changes** that a
     /// recovery must restore before anything else is accepted. Nothing was committed or sealed.
     WorktreeDirty(String),
@@ -122,6 +135,9 @@ pub enum AcceptError {
         step: &'static str,
         /// What failed, for operators.
         detail: String,
+        /// The memory ceiling that stopped the step, in bytes, when that is what happened (C-9a): the seal was
+        /// not refused, it ran out of memory, and the same seal under a higher ceiling completes the change.
+        ceiling: Option<u64>,
     },
     /// **The change is sealed**, but something afterwards could not be confirmed. `sealed` carries the block
     /// when it was read back. A retry of the acceptance would seal it again: the caller records the block (or
@@ -153,13 +169,26 @@ impl std::fmt::Display for AcceptError {
             ),
             AcceptError::Refused(m) => write!(f, "refused, nothing committed: {m}"),
             AcceptError::Unavailable(m) => write!(f, "could not run, nothing committed: {m}"),
+            AcceptError::CeilingExceeded { verb, bytes } => write!(
+                f,
+                "`{verb}` was stopped by its memory ceiling ({bytes} bytes) before anything was committed; the worktree is as it was"
+            ),
             AcceptError::WorktreeDirty(m) => write!(
                 f,
                 "failed before the commit and the worktree could not be put back; recovery must restore it: {m}"
             ),
-            AcceptError::Queued { step, detail } => write!(
+            AcceptError::Queued {
+                step,
+                detail,
+                ceiling,
+            } => write!(
                 f,
-                "committed, `{step}` failed: one patch is queued and nothing is sealed; recovery seals it: {detail}"
+                "committed, `{step}` {}: one patch is queued and nothing is sealed; recovery seals it: {detail}",
+                if ceiling.is_some() {
+                    "was stopped by its memory ceiling"
+                } else {
+                    "failed"
+                }
             ),
             AcceptError::SealedUnconfirmed { why, detail, .. } => write!(
                 f,
@@ -167,6 +196,9 @@ impl std::fmt::Display for AcceptError {
                 match why {
                     Unconfirmed::BlockNotRead => "the block could not be read back",
                     Unconfirmed::NotOurs => "the newest block is not the change that was written",
+                    Unconfirmed::CeilingExceeded => {
+                        "a check was stopped by its memory ceiling; the change is not known to be bad"
+                    }
                     Unconfirmed::VerifyCouldNotRun => "verification could not run",
                     Unconfirmed::VerifyFailed => "the repository did not verify afterwards",
                 }

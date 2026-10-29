@@ -11,6 +11,7 @@ use inklkunn_store::RootLayout;
 use super::*;
 use crate::RepositoryBootstrap;
 use crate::accept::{AcceptanceLedger, AcceptanceToken, ExpectedMessage, LedgerError};
+use crate::keys::Role;
 use crate::message::{Message, Summary, SystemLabel};
 use crate::{SignerConfig, accept::ViewCreationAct, accept::ViewCreationFacts};
 
@@ -157,13 +158,12 @@ impl World {
             SystemLabel::inklkunn(),
         )
         .to_text();
+        let seeds = self.signer.seeds(&self.wiki);
         self.signer
-            .with_seeds(&self.wiki, |keys| {
-                self.signer
-                    .writes
-                    .commit_and_seal(&self.repo, keys, &message)
-            })
+            .writes
+            .commit_and_seal(&self.repo, &seeds, &message)
             .unwrap();
+        assert!(!seeds.left_over());
     }
 
     /// The maintainer key ids that signed the sealed blocks, as `prikk verify` lists them.
@@ -179,20 +179,22 @@ impl World {
     /// Copy the seeds in force now to a directory the test keeps, as a thief would have them.
     fn steal_seeds(&self, into: &Path) -> (String, String) {
         std::fs::create_dir_all(into).unwrap();
-        let (meta, seeds) = self
-            .signer
-            .store
-            .checkout(&self.wiki, &self.signer.seed_base)
-            .unwrap();
-        for role in ["author", "maintainer"] {
+        let mut ids = (String::new(), String::new());
+        for role in [Role::Author, Role::Maintainer] {
+            let (meta, seeds) = self
+                .signer
+                .store
+                .checkout(&self.wiki, &self.signer.seed_base, role)
+                .unwrap();
             std::fs::copy(
-                seeds.key_dir().seed_file(role),
-                into.join(format!("{role}.seed")),
+                seeds.key_dir().seed_file(role.name()),
+                into.join(format!("{}.seed", role.name())),
             )
             .unwrap();
+            seeds.finish().unwrap();
+            ids = (meta.author_key_id, meta.maintainer_key_id);
         }
-        seeds.finish().unwrap();
-        (meta.author_key_id, meta.maintainer_key_id)
+        ids
     }
 
     /// Try to commit and seal under stolen keys; the output of the failing step, or `None` when it worked.

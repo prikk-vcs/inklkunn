@@ -457,36 +457,56 @@ fn a_record_holds_the_plain_facts_and_the_seeds_come_back_exactly_in_files() {
     store.create(&meta(&wiki), &seeds()).unwrap();
     assert_eq!(store.status(&wiki).unwrap(), meta(&wiki));
     assert_eq!(store.wikis().unwrap(), vec![wiki.clone()]);
-    let (m, dir) = store.checkout(&wiki, &base).unwrap();
+    // One role at a time: the author's directory holds the author seed and the variables for it, and nothing of
+    // the maintainer (RFC 002 C-1a, C-1c).
+    let (m, dir) = store.checkout(&wiki, &base, Role::Author).unwrap();
     assert_eq!(m, meta(&wiki));
     let env = dir.key_dir().env();
-    let get = |k: &str| {
-        env.iter()
-            .find(|(n, _)| n == k)
-            .map(|(_, v)| v.clone())
-            .unwrap()
+    let get = |env: &[(String, String)], k: &str| {
+        env.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone())
     };
-    // prikk is told the ids and the paths, and nothing else.
     assert_eq!(
-        get("PRIKK_AUTHOR_KEY_ID"),
-        format!("inklkunn-{wiki}-author")
+        get(&env, "PRIKK_AUTHOR_KEY_ID"),
+        Some(format!("inklkunn-{wiki}-author"))
     );
     assert_eq!(
-        get("PRIKK_MAINTAINER_KEY_ID"),
-        format!("inklkunn-{wiki}-maintainer")
+        env.len(),
+        2,
+        "prikk is told the id and the path, nothing else: {env:?}"
     );
-    assert_eq!(env.len(), 4);
-    let author = PathBuf::from(get("PRIKK_AUTHOR_SEED_FILE"));
-    let maintainer = PathBuf::from(get("PRIKK_MAINTAINER_SEED_FILE"));
+    assert!(get(&env, "PRIKK_MAINTAINER_SEED_FILE").is_none());
+    assert!(get(&env, "PRIKK_MAINTAINER_KEY_ID").is_none());
+    let author = PathBuf::from(get(&env, "PRIKK_AUTHOR_SEED_FILE").unwrap());
     assert_eq!(std::fs::read_to_string(&author).unwrap(), AUTHOR_SEED);
+    assert_eq!(mode(&author), 0o600);
+    assert_eq!(mode(author.parent().unwrap()), 0o700);
+    assert!(author.starts_with(base.path()));
+    let files: Vec<_> = std::fs::read_dir(author.parent().unwrap())
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name())
+        .collect();
+    assert_eq!(
+        files.len(),
+        1,
+        "the maintainer seed is in the author's directory: {files:?}"
+    );
+    dir.finish().unwrap();
+
+    let (_, dir) = store.checkout(&wiki, &base, Role::Maintainer).unwrap();
+    let env = dir.key_dir().env();
+    assert_eq!(
+        get(&env, "PRIKK_MAINTAINER_KEY_ID"),
+        Some(format!("inklkunn-{wiki}-maintainer"))
+    );
+    assert_eq!(env.len(), 2, "{env:?}");
+    assert!(get(&env, "PRIKK_AUTHOR_SEED_FILE").is_none());
+    let maintainer = PathBuf::from(get(&env, "PRIKK_MAINTAINER_SEED_FILE").unwrap());
     assert_eq!(
         std::fs::read_to_string(&maintainer).unwrap(),
         MAINTAINER_SEED
     );
-    assert_eq!(mode(&author), 0o600);
     assert_eq!(mode(&maintainer), 0o600);
-    assert_eq!(mode(author.parent().unwrap()), 0o700);
-    assert!(author.starts_with(base.path()));
     dir.finish().unwrap();
 }
 
@@ -501,8 +521,8 @@ fn a_seed_file_exists_only_during_the_call() {
     store.create(&meta(&wiki), &seeds()).unwrap();
     // Before: no seed directory, and no seed text anywhere under the key store's own directory either.
     let before = seed_dirs(&base);
-    let (_, dir) = store.checkout(&wiki, &base).unwrap();
-    // During: one more directory, with exactly the two files.
+    let (_, dir) = store.checkout(&wiki, &base, Role::Maintainer).unwrap();
+    // During: one more directory, with exactly the one file the call signs with.
     let during = seed_dirs(&base);
     assert_eq!(during.len(), before.len() + 1);
     let mine: Vec<&PathBuf> = during.iter().filter(|p| !before.contains(p)).collect();
@@ -512,7 +532,7 @@ fn a_seed_file_exists_only_during_the_call() {
         .flatten()
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
-    assert_eq!(files.len(), 2, "{files:?}");
+    assert_eq!(files.len(), 1, "{files:?}");
     let path = mine_dir.clone();
     dir.finish().unwrap();
     // After: gone, with its files.
@@ -520,14 +540,14 @@ fn a_seed_file_exists_only_during_the_call() {
     assert_eq!(seed_dirs(&base), before);
     // An early return or a panic removes it as well.
     {
-        let (_, dropped) = store.checkout(&wiki, &base).unwrap();
+        let (_, dropped) = store.checkout(&wiki, &base, Role::Maintainer).unwrap();
         let p = dropped.key_dir().path().to_path_buf();
         assert!(p.exists());
         drop(dropped);
         assert!(!p.exists(), "Drop is the backstop");
     }
     let result = std::panic::catch_unwind(|| {
-        let (_, _held) = store.checkout(&wiki, &base).unwrap();
+        let (_, _held) = store.checkout(&wiki, &base, Role::Maintainer).unwrap();
         panic!("a call that dies");
     });
     assert!(result.is_err());
@@ -543,7 +563,7 @@ fn the_seed_files_are_overwritten_before_they_are_unlinked() {
     let store = store_in(&tmp.0.join("keys"));
     let wiki = WikiId::new();
     store.create(&meta(&wiki), &seeds()).unwrap();
-    let (_, dir) = store.checkout(&wiki, &base).unwrap();
+    let (_, dir) = store.checkout(&wiki, &base, Role::Author).unwrap();
     let author = dir
         .key_dir()
         .env()
@@ -575,7 +595,7 @@ fn removal_that_fails_is_reported_and_names_no_path() {
     let store = store_in(&tmp.0.join("keys"));
     let wiki = WikiId::new();
     store.create(&meta(&wiki), &seeds()).unwrap();
-    let (_, dir) = store.checkout(&wiki, &base).unwrap();
+    let (_, dir) = store.checkout(&wiki, &base, Role::Maintainer).unwrap();
     let held = dir.key_dir().path().to_path_buf();
     // A directory that cannot be written to cannot have files unlinked: the failure to test (as a user who
     // is not root; root ignores the mode).
@@ -614,8 +634,8 @@ fn two_checkouts_are_two_directories() {
     let store = store_in(&tmp.0.join("keys"));
     let wiki = WikiId::new();
     store.create(&meta(&wiki), &seeds()).unwrap();
-    let (_, a) = store.checkout(&wiki, &base).unwrap();
-    let (_, b) = store.checkout(&wiki, &base).unwrap();
+    let (_, a) = store.checkout(&wiki, &base, Role::Maintainer).unwrap();
+    let (_, b) = store.checkout(&wiki, &base, Role::Maintainer).unwrap();
     assert_ne!(a.key_dir().path(), b.key_dir().path());
     a.finish().unwrap();
     assert!(
@@ -781,7 +801,7 @@ fn a_record_cannot_be_changed_moved_or_corrupted_without_notice() {
         std::fs::write(&path_a, &text).unwrap();
         let r = store.status(&a);
         assert!(matches!(r, Err(KeyStoreError::Record(_))), "{what}: {r:?}");
-        let r = store.checkout(&a, &seed_base);
+        let r = store.checkout(&a, &seed_base, Role::Maintainer);
         assert!(matches!(r, Err(KeyStoreError::Record(_))), "{what}");
     }
     // Wiki B's record under wiki A's name is not A's keys.
@@ -919,7 +939,7 @@ fn nothing_secret_appears_in_any_error_or_debug_output() {
     if let Some((_shm, base)) = base("nothing_secret_appears_i") {
         let w2 = WikiId::new();
         store.create(&meta(&w2), &seeds()).unwrap();
-        let (_, d) = store.checkout(&w2, &base).unwrap();
+        let (_, d) = store.checkout(&w2, &base, Role::Maintainer).unwrap();
         shown.push(format!("{d:?} {:?} {base:?}", d.key_dir()));
         let path = d.key_dir().path().to_string_lossy().into_owned();
         d.finish().unwrap();

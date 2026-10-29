@@ -12,7 +12,8 @@ use inklkunn_prikk::storage::{History, HistoryBlock, Verification};
 use inklkunn_prikk::{parse_report, schema};
 use serde::Deserialize;
 
-use crate::keys::KeyDir;
+use crate::cost::{self, WriteVerb};
+use crate::keys::{KeyDir, Role};
 
 /// Why a write did not happen (or did not complete).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,6 +25,15 @@ pub enum SignerError {
     Unavailable(String),
     /// prikk's output could not be read.
     Damaged(String),
+    /// The call was stopped by its memory ceiling (`RLIMIT_DATA`; threat model C-9a). **Not a refusal and not a
+    /// failed check**: nothing is wrong with what was asked, the call needed more memory than its ceiling
+    /// allowed. Where the repository is depends on the step the caller was at.
+    CeilingExceeded {
+        /// The prikk verb that was stopped.
+        verb: String,
+        /// The ceiling it ran under, in bytes.
+        bytes: u64,
+    },
     /// `commit` succeeded and `seal` did not: a queued patch awaits recovery (RFC 004).
     Incomplete {
         /// Which step failed.
@@ -45,6 +55,10 @@ impl std::fmt::Display for SignerError {
             SignerError::Refused(m) => write!(f, "prikk refused the write: {m}"),
             SignerError::Unavailable(m) => write!(f, "the write could not run to completion: {m}"),
             SignerError::Damaged(m) => write!(f, "prikk's output could not be read: {m}"),
+            SignerError::CeilingExceeded { verb, bytes } => write!(
+                f,
+                "`{verb}` was stopped by its memory ceiling ({bytes} bytes); it is not refused and not failed, it needs more memory"
+            ),
             SignerError::Incomplete { step, detail } => {
                 write!(
                     f,
@@ -81,11 +95,6 @@ pub struct SealedIds {
 
 /// The wall-time bound for one write call.
 pub const WRITE_DEADLINE: Duration = Duration::from_secs(120);
-/// The memory ceiling for one write call (`RLIMIT_DATA`). Writes have no cost table yet; this is a fixed
-/// bound against a runaway, generous for any content a proposal may carry. RFC 002's handoff measures
-/// the write verbs and replaces it with a costed one.
-pub const WRITE_CEILING: u64 = 1 << 30;
-
 /// `status --format json`: the pinned schema name (ledger PK-27).
 pub(crate) const STATUS_REPORT: &str = "status-report-v1";
 /// `worktree-status --format json`.
@@ -112,6 +121,54 @@ pub(crate) struct QueueReport {
 pub(crate) struct WorktreeReport {
     /// No change and no declaration against the baseline.
     pub(crate) clean: bool,
+}
+
+/// Where a signing call gets its seed from. A call asks for **one role** and is handed a key directory that
+/// holds that role's seed only (RFC 002 C-1a, C-1c: `commit` parses attacker-influenced paths and content with
+/// the repository writable, and must not be able to read the maintainer seed). The key store's implementation
+/// decrypts the seed for exactly the call and removes it afterwards; the bootstrap signer's hands out its plain
+/// directory restricted to the role.
+pub(crate) trait SeedAccess {
+    /// Run `f` with the key directory of `role`.
+    fn with_role<T>(
+        &self,
+        role: Role,
+        f: impl FnOnce(&KeyDir) -> Result<T, SignerError>,
+    ) -> Result<T, SignerError>;
+}
+
+/// What a call's memory ceiling is sized by: the repository whose store a fresh walk measures, and the bytes of
+/// the change the verb reads whole (`commit`, `seal`).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Sizing<'a> {
+    pub(crate) repo: Option<&'a Path>,
+    pub(crate) change_bytes: u64,
+}
+
+impl<'a> Sizing<'a> {
+    /// Sized by the repository's store alone.
+    pub(crate) fn repo(repo: &'a Path) -> Self {
+        Sizing {
+            repo: Some(repo),
+            change_bytes: 0,
+        }
+    }
+
+    /// Sized by the repository's store and a change of `change_bytes`.
+    pub(crate) fn change(repo: &'a Path, change_bytes: u64) -> Self {
+        Sizing {
+            repo: Some(repo),
+            change_bytes,
+        }
+    }
+
+    /// No repository: a flat verb.
+    pub(crate) fn none() -> Self {
+        Sizing {
+            repo: None,
+            change_bytes: 0,
+        }
+    }
 }
 
 /// The write-verb runner over a sandbox and a key directory.
@@ -154,7 +211,7 @@ fn scrub(text: &str) -> String {
 }
 
 /// The outcome of a confined call, read in the signer's terms.
-fn outcome(verb: &str, run: Run) -> Result<Vec<u8>, SignerError> {
+fn outcome(verb: &str, run: Run, ceiling: u64) -> Result<Vec<u8>, SignerError> {
     if run.timed_out {
         return Err(SignerError::Unavailable(format!(
             "`{verb}` was stopped at its {} s bound; the repository's state must be read before a retry",
@@ -165,6 +222,13 @@ fn outcome(verb: &str, run: Run) -> Result<Vec<u8>, SignerError> {
         return Err(SignerError::Unavailable(format!(
             "`{verb}` produced more output than the server keeps"
         )));
+    }
+    if !run.status.success() && run.died_of_ceiling() {
+        // The driver's classifier (PK-9): a death of the memory ceiling is not a refusal.
+        return Err(SignerError::CeilingExceeded {
+            verb: verb.to_owned(),
+            bytes: ceiling,
+        });
     }
     if !run.status.success() {
         let stderr = scrub(String::from_utf8_lossy(&run.stderr).trim());
@@ -186,15 +250,43 @@ fn outcome(verb: &str, run: Run) -> Result<Vec<u8>, SignerError> {
     Ok(run.stdout)
 }
 
+/// Does a `verify` report say a stage failed for want of memory? The message after the exact prefix `i/o error:`
+/// must be, whole, `out of memory` (the measured shape) or `Cannot allocate memory (os error 12)`. **Never a
+/// substring match**: a message can embed a name the repository's contributors chose (a page titled "out of
+/// memory"), and that must not turn damage into a ceiling hit.
+pub(crate) fn resource_failure_in(report: &[u8]) -> bool {
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(report) else {
+        return false;
+    };
+    value
+        .get("stages")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|stages| {
+            stages.iter().any(|stage| {
+                stage.get("status").and_then(serde_json::Value::as_str) == Some("failed")
+                    && stage
+                        .get("message")
+                        .and_then(serde_json::Value::as_str)
+                        .and_then(|m| m.trim().strip_prefix("i/o error:"))
+                        .is_some_and(|rest| {
+                            matches!(
+                                rest.trim(),
+                                "out of memory" | "Cannot allocate memory (os error 12)"
+                            )
+                        })
+            })
+        })
+}
+
 /// Like [`outcome`], for a verb whose **report is the answer even when it exits 1**: `worktree-status` exits
 /// 1 on a dirty tree and `verify` on a failing verdict, each still printing its JSON report on stdout. A
 /// non-zero exit with a report on stdout is returned as the report; one without is the refusal it says.
-fn report_outcome(verb: &str, run: Run) -> Result<Vec<u8>, SignerError> {
+fn report_outcome(verb: &str, run: Run, ceiling: u64) -> Result<Vec<u8>, SignerError> {
     let has_report = run.stdout.first() == Some(&b'{');
     if has_report && !run.timed_out && !run.output_exceeded {
         return Ok(run.stdout);
     }
-    outcome(verb, run)
+    outcome(verb, run, ceiling)
 }
 
 impl Writes {
@@ -207,55 +299,99 @@ impl Writes {
         }
     }
 
-    fn limits() -> CallLimits {
-        CallLimits {
-            data_ceiling: Some(WRITE_CEILING),
-            ..CallLimits::default()
-        }
+    /// Run `args` over `mounts` under the ceiling the verb's cost rule gives for `sized_by` (the repository
+    /// whose store size the rule needs; `None` for a verb that has none).
+    fn run(
+        &self,
+        mounts: &Mounts,
+        size: Sizing<'_>,
+        args: &[&str],
+    ) -> Result<Vec<u8>, SignerError> {
+        let name = args.first().copied().unwrap_or("");
+        let run = self.run_raw(mounts, size, args)?;
+        outcome(name, run.0, run.1)
     }
 
-    fn run(&self, mounts: &Mounts, args: &[&str]) -> Result<Vec<u8>, SignerError> {
-        let verb = args.first().copied().unwrap_or("");
+    /// The run itself, and the ceiling it had.
+    fn run_raw(
+        &self,
+        mounts: &Mounts,
+        size: Sizing<'_>,
+        args: &[&str],
+    ) -> Result<(Run, u64), SignerError> {
+        // A verb with no cost rule is never run (fail closed): the table is the list of what the signer runs.
+        let verb = WriteVerb::of(args).ok_or_else(|| {
+            SignerError::Refused(format!(
+                "`{}` has no memory rule in the signer's cost table",
+                args.first().copied().unwrap_or("")
+            ))
+        })?;
+        let ceiling = cost::ceiling_in(verb, size.repo, size.change_bytes)?;
         let run = self
             .sandbox
             .run_mounts(
                 self.binary.as_os_str(),
                 mounts,
                 args,
-                Self::limits(),
+                CallLimits {
+                    data_ceiling: Some(ceiling),
+                    ..CallLimits::default()
+                },
                 Some(WRITE_DEADLINE),
             )
             .map_err(|e| SignerError::Unavailable(e.to_string()))?;
-        outcome(verb, run)
+        Ok((run, ceiling))
     }
 
-    /// A write verb: the repository writable, the key directory read-only, prikk's seed variables set.
-    fn write(&self, repo: &Path, keys: &KeyDir, args: &[&str]) -> Result<Vec<u8>, SignerError> {
-        keys.touch();
-        self.run(&Mounts::write(repo, keys.path(), keys.env()), args)
+    /// A write verb that signs: the repository writable and **the one seed it signs with** (`role`) in a key
+    /// directory mounted read-only, with that role's variables set and the other's absent.
+    fn write_signed(
+        &self,
+        repo: &Path,
+        seeds: &impl SeedAccess,
+        role: Role,
+        change_bytes: u64,
+        args: &[&str],
+    ) -> Result<Vec<u8>, SignerError> {
+        seeds.with_role(role, |keys| {
+            keys.touch();
+            self.run(
+                &Mounts::write(repo, Some(keys.path()), keys.env()),
+                Sizing::change(repo, change_bytes),
+                args,
+            )
+        })
+    }
+
+    /// A write verb that signs nothing (`init`, `trust`, `mv`, `branch switch`): the repository writable and no
+    /// seed anywhere in sight, no key variable, no key directory.
+    fn write_keyless(&self, repo: &Path, args: &[&str]) -> Result<Vec<u8>, SignerError> {
+        self.run(
+            &Mounts::write(repo, None, Vec::new()),
+            Sizing::repo(repo),
+            args,
+        )
     }
 
     /// A read the sequence needs: the repository read-only, no keys in sight.
     fn read(&self, repo: &Path, args: &[&str]) -> Result<Vec<u8>, SignerError> {
-        self.run(&Mounts::read(repo, None), args)
+        self.run(&Mounts::read(repo, None), Sizing::repo(repo), args)
     }
 
-    /// `prikk init` in `repo` (which must exist and be empty of a repository).
-    pub(crate) fn init(&self, repo: &Path, keys: &KeyDir) -> Result<(), SignerError> {
-        self.write(repo, keys, &["init"]).map(|_| ())
+    /// `prikk init` in `repo` (which must exist and be empty of a repository). Signs nothing.
+    pub(crate) fn init(&self, repo: &Path) -> Result<(), SignerError> {
+        self.write_keyless(repo, &["init"]).map(|_| ())
     }
 
     /// `prikk trust maintainer add` for the wiki's maintainer key.
     pub(crate) fn trust_maintainer(
         &self,
         repo: &Path,
-        keys: &KeyDir,
         key_id: &str,
         public_key_hex: &str,
     ) -> Result<(), SignerError> {
-        self.write(
+        self.write_keyless(
             repo,
-            keys,
             &[
                 "trust",
                 "maintainer",
@@ -272,18 +408,9 @@ impl Writes {
     /// `prikk trust maintainer remove --key-id <id>`: the key can seal nothing more, **and** (prikk 0.54.1,
     /// ledger PK-34) everything it sealed stops verifying. A retired key is the answer to a compromise, not
     /// to a routine rotation.
-    pub(crate) fn untrust_maintainer(
-        &self,
-        repo: &Path,
-        keys: &KeyDir,
-        key_id: &str,
-    ) -> Result<(), SignerError> {
-        self.write(
-            repo,
-            keys,
-            &["trust", "maintainer", "remove", "--key-id", key_id],
-        )
-        .map(|_| ())
+    pub(crate) fn untrust_maintainer(&self, repo: &Path, key_id: &str) -> Result<(), SignerError> {
+        self.write_keyless(repo, &["trust", "maintainer", "remove", "--key-id", key_id])
+            .map(|_| ())
     }
 
     /// `prikk commit -m <message>` under the author seed, then `prikk seal --allow-no-audit` under the
@@ -293,15 +420,21 @@ impl Writes {
     pub(crate) fn commit_and_seal(
         &self,
         repo: &Path,
-        keys: &KeyDir,
+        seeds: &impl SeedAccess,
         message: &str,
     ) -> Result<SealedIds, SignerError> {
-        self.write(repo, keys, &["commit", "-m", message])?;
-        self.write(repo, keys, &["seal", "--allow-no-audit"])
-            .map_err(|e| SignerError::Incomplete {
-                step: "seal",
-                detail: e.to_string(),
-            })?;
+        self.write_signed(repo, seeds, Role::Author, 0, &["commit", "-m", message])?;
+        self.write_signed(
+            repo,
+            seeds,
+            Role::Maintainer,
+            0,
+            &["seal", "--allow-no-audit"],
+        )
+        .map_err(|e| SignerError::Incomplete {
+            step: "seal",
+            detail: e.to_string(),
+        })?;
         let stdout = self
             .read(repo, &["log", "--limit", "1", "--format", "json"])
             .map_err(|e| SignerError::SealedButUnread(e.to_string()))?;
@@ -330,6 +463,7 @@ impl Writes {
         let out = keys.seed_file_text(role);
         self.run(
             &Mounts::dir_writable(keys.path()),
+            Sizing::none(),
             &["key", "generate", "--out", &out],
         )
         .map(|_| ())
@@ -342,6 +476,7 @@ impl Writes {
         let seed = keys.seed_file_text(role);
         let stdout = self.run(
             &Mounts::read(keys.path(), None),
+            Sizing::none(),
             &["key", "public", "--seed-file", &seed],
         )?;
         let text = String::from_utf8_lossy(&stdout);
@@ -368,17 +503,8 @@ impl Writes {
     /// A read whose report is the answer even on exit 1 (see [`report_outcome`]); no keys in sight.
     fn read_report(&self, repo: &Path, args: &[&str]) -> Result<Vec<u8>, SignerError> {
         let verb = args.first().copied().unwrap_or("");
-        let run = self
-            .sandbox
-            .run_mounts(
-                self.binary.as_os_str(),
-                &Mounts::read(repo, None),
-                args,
-                Self::limits(),
-                Some(WRITE_DEADLINE),
-            )
-            .map_err(|e| SignerError::Unavailable(e.to_string()))?;
-        report_outcome(verb, run)
+        let (run, ceiling) = self.run_raw(&Mounts::read(repo, None), Sizing::repo(repo), args)?;
+        report_outcome(verb, run, ceiling)
     }
 
     /// `prikk status`: the current branch and the unsealed queue.
@@ -397,39 +523,52 @@ impl Writes {
 
     /// `prikk branch switch heads/<view>`: the worktree becomes the view's tip. prikk refuses a worktree that
     /// is not clean, before changing anything.
-    pub(crate) fn switch(&self, repo: &Path, keys: &KeyDir, view: &str) -> Result<(), SignerError> {
-        self.write(repo, keys, &["branch", "switch", view])
+    pub(crate) fn switch(&self, repo: &Path, view: &str) -> Result<(), SignerError> {
+        self.write_keyless(repo, &["branch", "switch", view])
             .map(|_| ())
     }
 
     /// `prikk mv <from> <to>`: moves the file and declares the rename for the next commit. A move back
     /// cancels the declaration (ledger PK-29).
-    pub(crate) fn mv(
-        &self,
-        repo: &Path,
-        keys: &KeyDir,
-        from: &str,
-        to: &str,
-    ) -> Result<(), SignerError> {
-        self.write(repo, keys, &["mv", from, to]).map(|_| ())
+    pub(crate) fn mv(&self, repo: &Path, from: &str, to: &str) -> Result<(), SignerError> {
+        self.write_keyless(repo, &["mv", from, to]).map(|_| ())
     }
 
     /// `prikk commit --ref <view> -m <message>` under the author seed.
     pub(crate) fn commit(
         &self,
         repo: &Path,
-        keys: &KeyDir,
+        seeds: &impl SeedAccess,
         view: &str,
         message: &str,
+        change_bytes: u64,
     ) -> Result<(), SignerError> {
-        self.write(repo, keys, &["commit", "--ref", view, "-m", message])
-            .map(|_| ())
+        self.write_signed(
+            repo,
+            seeds,
+            Role::Author,
+            change_bytes,
+            &["commit", "--ref", view, "-m", message],
+        )
+        .map(|_| ())
     }
 
     /// `prikk seal --allow-no-audit --ref <view>` under the maintainer seed.
-    pub(crate) fn seal(&self, repo: &Path, keys: &KeyDir, view: &str) -> Result<(), SignerError> {
-        self.write(repo, keys, &["seal", "--allow-no-audit", "--ref", view])
-            .map(|_| ())
+    pub(crate) fn seal(
+        &self,
+        repo: &Path,
+        seeds: &impl SeedAccess,
+        view: &str,
+        change_bytes: u64,
+    ) -> Result<(), SignerError> {
+        self.write_signed(
+            repo,
+            seeds,
+            Role::Maintainer,
+            change_bytes,
+            &["seal", "--allow-no-audit", "--ref", view],
+        )
+        .map(|_| ())
     }
 
     /// The newest block of a view, read back (read-only, no keys).
@@ -453,9 +592,22 @@ impl Writes {
     }
 
     /// `prikk verify`: the verdict of the repository's own checks (read-only, no keys). A failing verdict
-    /// is a report, not an error.
+    /// is a report, not an error, **unless the failure is a stage that ran out of memory**: under a memory
+    /// ceiling `verify` can print a complete failing report whose `objects` stage failed with `i/o error: out of
+    /// memory` (ledger PK-22), which is the ceiling and says nothing about the repository, so it is
+    /// [`SignerError::CeilingExceeded`] and never a verdict. (The read driver's full rule, which also refuses
+    /// every other partial report, is the verify-verdict follow-on's; the signer needs this part now, because
+    /// a seal followed by a ceiling-failed `verify` must not read as a failed verification.)
     pub(crate) fn verify(&self, repo: &Path) -> Result<Verification, SignerError> {
-        let out = self.read_report(repo, &["verify", "--format", "json"])?;
+        let args = ["verify", "--format", "json"];
+        let (run, ceiling) = self.run_raw(&Mounts::read(repo, None), Sizing::repo(repo), &args)?;
+        if !run.timed_out && !run.output_exceeded && resource_failure_in(&run.stdout) {
+            return Err(SignerError::CeilingExceeded {
+                verb: "verify".to_owned(),
+                bytes: ceiling,
+            });
+        }
+        let out = report_outcome("verify", run, ceiling)?;
         parse_report("verify", &out, schema::VERIFY_REPORT)
             .map_err(|e| SignerError::Damaged(e.to_string()))
     }
@@ -464,12 +616,18 @@ impl Writes {
     pub(crate) fn branch_create(
         &self,
         repo: &Path,
-        keys: &KeyDir,
+        seeds: &impl SeedAccess,
         name: &str,
         from: &str,
     ) -> Result<(), SignerError> {
-        self.write(repo, keys, &["branch", "create", name, "--from", from])
-            .map(|_| ())
+        self.write_signed(
+            repo,
+            seeds,
+            Role::Maintainer,
+            0,
+            &["branch", "create", name, "--from", from],
+        )
+        .map(|_| ())
     }
 }
 

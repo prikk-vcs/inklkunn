@@ -108,7 +108,7 @@ impl Signer {
 
             // 2. Adopt the new maintainer key. Until the record changes nothing signs with it.
             self.writes
-                .trust_maintainer(repo, &keys, &maintainer_id, &maintainer_public)?;
+                .trust_maintainer(repo, &maintainer_id, &maintainer_public)?;
 
             // 3. The commit point: from here the service signs with the new keys.
             let seeds = read_seeds(&keys)?;
@@ -130,7 +130,7 @@ impl Signer {
                 OldKey::Retire => {
                     match self
                         .writes
-                        .untrust_maintainer(repo, &keys, &before.maintainer_key_id)
+                        .untrust_maintainer(repo, &before.maintainer_key_id)
                     {
                         Ok(()) => OldKeyOutcome::Retired,
                         Err(e) => OldKeyOutcome::RetireFailed(e.to_string()),

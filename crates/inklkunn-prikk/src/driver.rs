@@ -303,27 +303,13 @@ impl PrikkCli {
                 Some(c @ 129..=192) => u8::try_from(c - 128).ok(),
                 _ => None,
             });
-        if let Some(bytes) = ceiling {
-            // How a process dies under RLIMIT_DATA depends on where the first refused allocation lands:
-            // Rust's allocator aborts ("memory allocation of … failed"); the dynamic loader exits 127 with
-            // "Cannot allocate memory", "cannot allocate TLS" or "cannot map zero-fill pages"; glibc's early
-            // TLS setup can fault (SIGSEGV) before any message, which is what GitHub's runners showed and
-            // what bwrap reports as exit 139. prikk itself never dies by a signal and the server's own kill
-            // is `timed_out`, so under a ceiling *any* death by signal is read as the ceiling.
-            let alloc_failed = stderr.contains("memory allocation of") && stderr.contains("failed");
-            let loader_failed = run.status.code() == Some(127)
-                && (stderr.contains("Cannot allocate memory")
-                    || stderr.contains("cannot allocate")
-                    || stderr.contains("cannot map"));
-            // bwrap itself, short of memory while setting the namespace up, says only "Out of memory" and
-            // exits 1 (measured on 0.13.1 at 112–192 KiB): the same ceiling, never a refusal.
-            let sandbox_oom = run.status.code() == Some(1) && stderr.starts_with("Out of memory");
-            if signal.is_some() || alloc_failed || loader_failed || sandbox_oom {
-                return StorageError::Unavailable {
-                    verb: name,
-                    reason: Unavailable::CeilingExceeded { bytes },
-                };
-            }
+        if let Some(bytes) = ceiling
+            && run.died_of_ceiling()
+        {
+            return StorageError::Unavailable {
+                verb: name,
+                reason: Unavailable::CeilingExceeded { bytes },
+            };
         }
         // The sandbox tools' own failures are not prikk's refusals: bwrap and prlimit name themselves.
         if let Some(first) = stderr.lines().next()

@@ -24,7 +24,15 @@ fn a_second_holder_is_refused_and_told_who_holds_the_lock() {
         Acquired::Held(_) => panic!("two holders at once"),
     }
     drop(first);
-    assert!(matches!(try_exclusive(&path).unwrap(), Acquired::Held(_)));
+    // Released when the last descriptor closes. A thread of this very process may be forking right now (other
+    // tests spawn children), and a child holds a copy of the descriptor until it execs: so "free" is a few
+    // milliseconds away at most, never a state that lasts.
+    assert!(
+        exclusive_within(&path, Duration::from_secs(2))
+            .unwrap()
+            .is_some(),
+        "the lock was not released"
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -80,7 +88,12 @@ fn a_lock_held_by_another_process_refuses_us_and_dies_with_its_holder() {
     // Wait until the child has the lock (our own attempt is the probe).
     let started = Instant::now();
     loop {
-        if matches!(try_exclusive(&path).unwrap(), Acquired::Busy { .. }) {
+        // Busy twice, apart: a sibling test forking for a moment holds the descriptor too.
+        let busy = |p: &std::path::Path| matches!(try_exclusive(p).unwrap(), Acquired::Busy { .. });
+        if busy(&path) && {
+            std::thread::sleep(Duration::from_millis(100));
+            busy(&path)
+        } {
             break;
         }
         assert!(

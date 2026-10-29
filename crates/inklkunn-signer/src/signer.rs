@@ -34,10 +34,11 @@ use crate::accept::{
     Unconfirmed, ViewCreationAct,
 };
 use crate::key_store::{KeyStore, KeyStoreError, Meta, Secret, SeedBase, SeedDir, Seeds};
+use crate::keys::Role;
 use crate::keys::{KeyDir, KeyIds};
 use crate::message::{Kind, Message};
 use crate::worktree::{Applied, Plan};
-use crate::writes::{SealedIds, SignerError, Writes};
+use crate::writes::{SealedIds, SeedAccess, SignerError, Writes};
 
 /// A seed or scratch directory older than this is a dead call's: a call is bounded by the write deadline
 /// (two minutes), so five is safe for another process's live one.
@@ -145,6 +146,42 @@ impl std::fmt::Debug for Signer {
     }
 }
 
+/// The wiki's seeds for one operation, one role per signing call: each call decrypts the seed it signs with
+/// into a directory of its own, on the tmpfs, and removes it when the call returns. A removal that fails does
+/// not stop the sequence (a sealed change must be read back and verified whatever happened to a directory); it
+/// is remembered, and the operation reports it when it ends ([`StoreSeeds::left_over`]).
+struct StoreSeeds<'a> {
+    store: &'a KeyStore,
+    base: &'a SeedBase,
+    wiki: &'a WikiId,
+    leftover: std::cell::Cell<bool>,
+}
+
+impl StoreSeeds<'_> {
+    /// Did a seed directory fail to be removed?
+    fn left_over(&self) -> bool {
+        self.leftover.get()
+    }
+}
+
+impl SeedAccess for StoreSeeds<'_> {
+    fn with_role<T>(
+        &self,
+        role: Role,
+        f: impl FnOnce(&KeyDir) -> Result<T, SignerError>,
+    ) -> Result<T, SignerError> {
+        let (_meta, dir): (Meta, SeedDir) = self
+            .store
+            .checkout(self.wiki, self.base, role)
+            .map_err(ks)?;
+        let result = f(dir.key_dir());
+        if dir.finish().is_err() {
+            self.leftover.set(true);
+        }
+        result
+    }
+}
+
 /// A key-store failure, in the signer's terms.
 fn ks(e: KeyStoreError) -> SignerError {
     match e {
@@ -171,6 +208,9 @@ fn accept_error(e: SignerError) -> AcceptError {
             AcceptError::Unavailable(format!("prikk's output could not be read: {m}"))
         }
         SignerError::SeedsNotRemoved => AcceptError::SeedsNotRemoved { sealed: None },
+        SignerError::CeilingExceeded { verb, bytes } => {
+            AcceptError::CeilingExceeded { verb, bytes }
+        }
         other => AcceptError::Unavailable(other.to_string()),
     }
 }
@@ -299,22 +339,13 @@ impl Signer {
         Ok(id)
     }
 
-    /// Run `f` with the wiki's seeds on disk for exactly its duration. The directory is removed afterwards
-    /// and a removal that fails is [`SignerError::SeedsNotRemoved`] unless `f` failed first (then `f`'s
-    /// failure is the story and the leftover is the next start's sweep).
-    fn with_seeds<T>(
-        &self,
-        wiki: &WikiId,
-        f: impl FnOnce(&KeyDir) -> Result<T, SignerError>,
-    ) -> Result<T, SignerError> {
-        let (_meta, dir): (Meta, SeedDir) =
-            self.store.checkout(wiki, &self.seed_base).map_err(ks)?;
-        let result = f(dir.key_dir());
-        let cleanup = dir.finish();
-        match (result, cleanup) {
-            (Ok(v), Ok(())) => Ok(v),
-            (Ok(_), Err(e)) => Err(ks(e)),
-            (Err(e), _) => Err(e),
+    /// The wiki's seeds, handed out one role per call (see [`SeedAccess`]).
+    fn seeds<'a>(&'a self, wiki: &'a WikiId) -> StoreSeeds<'a> {
+        StoreSeeds {
+            store: &self.store,
+            base: &self.seed_base,
+            wiki,
+            leftover: std::cell::Cell::new(false),
         }
     }
 
@@ -322,7 +353,6 @@ impl Signer {
     fn apply(
         &self,
         repo: &Path,
-        keys: &KeyDir,
         plan: &Plan,
         applied: &mut Applied,
         moved: &mut Vec<(String, String)>,
@@ -331,7 +361,7 @@ impl Signer {
             applied
                 .ensure_parent(repo, to)
                 .map_err(SignerError::Unavailable)?;
-            self.writes.mv(repo, keys, from, to)?;
+            self.writes.mv(repo, from, to)?;
             moved.push((from.clone(), to.clone()));
         }
         for (path, bytes) in &plan.writes {
@@ -352,7 +382,6 @@ impl Signer {
     fn restore(
         &self,
         repo: &Path,
-        keys: &KeyDir,
         applied: Applied,
         moved: &[(String, String)],
         cause: SignerError,
@@ -360,7 +389,7 @@ impl Signer {
         let files_back = applied.undo();
         let mut renames_back = true;
         for (from, to) in moved.iter().rev() {
-            if self.writes.mv(repo, keys, to, from).is_err() {
+            if self.writes.mv(repo, to, from).is_err() {
                 renames_back = false;
             }
         }
@@ -376,6 +405,9 @@ impl Signer {
         }
         match cause {
             SignerError::Refused(_) => AcceptError::Refused(cause_text),
+            SignerError::CeilingExceeded { verb, bytes } => {
+                AcceptError::CeilingExceeded { verb, bytes }
+            }
             _ => AcceptError::Unavailable(format!("{cause_text}; the worktree is as it was")),
         }
     }
@@ -384,7 +416,7 @@ impl Signer {
     fn write_sequence(
         &self,
         repo: &Path,
-        keys: &KeyDir,
+        seeds: &StoreSeeds<'_>,
         view: &str,
         plan: &Plan,
         message: &str,
@@ -405,23 +437,28 @@ impl Signer {
             ));
         }
         if status.current_branch.as_deref() != Some(view) {
-            w.switch(repo, keys, view).map_err(accept_error)?;
+            w.switch(repo, view).map_err(accept_error)?;
         }
         // Apply, then commit. A failure here puts the worktree back.
         let mut applied = Applied::default();
         let mut moved: Vec<(String, String)> = Vec::new();
-        if let Err(e) = self.apply(repo, keys, plan, &mut applied, &mut moved) {
-            return Err(self.restore(repo, keys, applied, &moved, e));
+        if let Err(e) = self.apply(repo, plan, &mut applied, &mut moved) {
+            return Err(self.restore(repo, applied, &moved, e));
         }
-        if let Err(e) = w.commit(repo, keys, view, message) {
-            return Err(self.restore(repo, keys, applied, &moved, e));
+        if let Err(e) = w.commit(repo, seeds, view, message, plan.change_bytes()) {
+            return Err(self.restore(repo, applied, &moved, e));
         }
         // From here a patch is queued: until the seal succeeds a failure is `Queued`, which recovery completes;
         // after it, a failure is `SealedUnconfirmed`, which must never be retried as a new acceptance.
-        w.seal(repo, keys, view).map_err(|e| AcceptError::Queued {
-            step: "seal",
-            detail: e.to_string(),
-        })?;
+        w.seal(repo, seeds, view, plan.change_bytes())
+            .map_err(|e| AcceptError::Queued {
+                step: "seal",
+                ceiling: match &e {
+                    SignerError::CeilingExceeded { bytes, .. } => Some(*bytes),
+                    _ => None,
+                },
+                detail: e.to_string(),
+            })?;
         let unconfirmed = |sealed: Option<SealedChange>, why: Unconfirmed, detail: String| {
             AcceptError::SealedUnconfirmed {
                 sealed,
@@ -431,7 +468,14 @@ impl Signer {
         };
         let tip = w
             .tip(repo, view)
-            .map_err(|e| unconfirmed(None, Unconfirmed::BlockNotRead, e.to_string()))?
+            .map_err(|e| {
+                let why = if matches!(e, SignerError::CeilingExceeded { .. }) {
+                    Unconfirmed::CeilingExceeded
+                } else {
+                    Unconfirmed::BlockNotRead
+                };
+                unconfirmed(None, why, e.to_string())
+            })?
             .ok_or_else(|| {
                 unconfirmed(
                     None,
@@ -461,11 +505,12 @@ impl Signer {
                 .collect(),
         };
         let verification = w.verify(repo).map_err(|e| {
-            unconfirmed(
-                Some(sealed.clone()),
-                Unconfirmed::VerifyCouldNotRun,
-                e.to_string(),
-            )
+            let why = if matches!(e, SignerError::CeilingExceeded { .. }) {
+                Unconfirmed::CeilingExceeded
+            } else {
+                Unconfirmed::VerifyCouldNotRun
+            };
+            unconfirmed(Some(sealed.clone()), why, e.to_string())
         })?;
         if !verification.verdict.ok {
             return Err(unconfirmed(
@@ -508,20 +553,17 @@ impl Accept for Signer {
         }
         // 2. The change itself, validated whole before the worktree is touched.
         let plan = Plan::new(change).map_err(|why| AcceptError::Refused(why.to_owned()))?;
-        // 3. The sequence, with the seeds on disk for exactly its duration.
+        // 3. The sequence. Each signing call has the one seed it signs with on disk for exactly its duration.
         let repo = self.root.repo_dir(wiki);
-        let (_meta, seeds) = self
-            .store
-            .checkout(wiki, &self.seed_base)
-            .map_err(|e| accept_error(ks(e)))?;
-        let result = self.write_sequence(&repo, seeds.key_dir(), view, &plan, &change.message);
-        match (result, seeds.finish()) {
-            (Ok(sealed), Ok(())) => Ok(sealed),
-            (Ok(sealed), Err(_)) => Err(AcceptError::SeedsNotRemoved {
+        let seeds = self.seeds(wiki);
+        let result = self.write_sequence(&repo, &seeds, view, &plan, &change.message);
+        match (result, seeds.left_over()) {
+            (Ok(sealed), false) => Ok(sealed),
+            (Ok(sealed), true) => Err(AcceptError::SeedsNotRemoved {
                 sealed: Some(sealed),
             }),
-            (Err(e), Ok(())) => Err(e),
-            (Err(e), Err(_)) => Err(note_leftover(e)),
+            (Err(e), false) => Err(e),
+            (Err(e), true) => Err(note_leftover(e)),
         }
     }
 
@@ -548,13 +590,14 @@ impl Accept for Signer {
             return Err(AcceptError::NotPending);
         }
         let repo = self.root.repo_dir(wiki);
-        self.with_seeds(wiki, |keys| {
-            self.writes.branch_create(&repo, keys, name, from)
-        })
-        .map_err(|e| match e {
-            SignerError::SeedsNotRemoved => AcceptError::SeedsNotRemoved { sealed: None },
-            other => accept_error(other),
-        })
+        let seeds = self.seeds(wiki);
+        let result = self.writes.branch_create(&repo, &seeds, name, from);
+        match (result, seeds.left_over()) {
+            (Ok(()), false) => Ok(()),
+            (Ok(()), true) => Err(AcceptError::SeedsNotRemoved { sealed: None }),
+            (Err(e), false) => Err(accept_error(e)),
+            (Err(e), true) => Err(note_leftover(accept_error(e))),
+        }
     }
 }
 
@@ -565,9 +608,14 @@ fn note_leftover(e: AcceptError) -> AcceptError {
         AcceptError::Refused(m) => AcceptError::Refused(format!("{m}{NOTE}")),
         AcceptError::Unavailable(m) => AcceptError::Unavailable(format!("{m}{NOTE}")),
         AcceptError::WorktreeDirty(m) => AcceptError::WorktreeDirty(format!("{m}{NOTE}")),
-        AcceptError::Queued { step, detail } => AcceptError::Queued {
+        AcceptError::Queued {
+            step,
+            detail,
+            ceiling,
+        } => AcceptError::Queued {
             step,
             detail: format!("{detail}{NOTE}"),
+            ceiling,
         },
         AcceptError::SealedUnconfirmed {
             sealed,
@@ -600,13 +648,13 @@ impl Signer {
         let result = (|| -> Result<KeyIds, SignerError> {
             let keys = KeyDir::with_ids(scratch.path(), &author_id, &maintainer_id)?;
             if init {
-                self.writes.init(repo, &keys)?;
+                self.writes.init(repo)?;
             }
             self.writes.generate_key(&keys, "author")?;
             self.writes.generate_key(&keys, "maintainer")?;
             let public = self.writes.public_key(&keys, "maintainer")?;
             self.writes
-                .trust_maintainer(repo, &keys, &maintainer_id, &public)?;
+                .trust_maintainer(repo, &maintainer_id, &public)?;
             let seeds = read_seeds(&keys)?;
             let meta = Meta {
                 wiki: wiki.clone(),
@@ -686,9 +734,13 @@ impl RepositoryBootstrap for Signer {
                 "the repository already has history; changes go through an acceptance".to_owned(),
             ));
         }
-        self.with_seeds(&wiki, |keys| {
-            self.writes.commit_and_seal(repo, keys, message)
-        })
+        let seeds = self.seeds(&wiki);
+        let result = self.writes.commit_and_seal(repo, &seeds, message);
+        match (result, seeds.left_over()) {
+            (Ok(ids), false) => Ok(ids),
+            (Ok(_), true) => Err(SignerError::SeedsNotRemoved),
+            (Err(e), _) => Err(e),
+        }
     }
 }
 

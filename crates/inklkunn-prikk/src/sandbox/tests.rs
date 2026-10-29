@@ -167,7 +167,7 @@ fn resolve_binary_makes_paths_absolute() {
 fn write_mounts_bind_the_repo_rw_the_keys_ro_and_set_the_variables() {
     let m = Mounts::write(
         Path::new("/repo"),
-        Path::new("/keys"),
+        Some(Path::new("/keys")),
         vec![(
             "PRIKK_AUTHOR_SEED_FILE".to_owned(),
             "/keys/author.seed".to_owned(),
@@ -197,7 +197,7 @@ fn write_mounts_bind_the_repo_rw_the_keys_ro_and_set_the_variables() {
     let tmp = Tmp::new("write");
     let repo = tmp.0.join("repo");
     std::fs::create_dir_all(repo.join("keys")).unwrap();
-    let overlapping = Mounts::write(&repo, &repo.join("keys"), Vec::new());
+    let overlapping = Mounts::write(&repo, Some(&repo.join("keys")), Vec::new());
     assert!(matches!(
         overlapping.validate(),
         Err(MountError::Overlap(..))
@@ -205,6 +205,81 @@ fn write_mounts_bind_the_repo_rw_the_keys_ro_and_set_the_variables() {
     let one = Mounts::dir_writable(&repo);
     assert!(one.is_writable());
     assert!(one.validate().is_ok());
+}
+
+#[test]
+fn a_write_without_a_key_directory_mounts_no_keys_and_sets_no_variables() {
+    let m = Mounts::write(Path::new("/repo"), None, Vec::new());
+    let c = Sandbox::default().command_mounts(
+        OsStr::new("prikk"),
+        &m,
+        &["log", "--format", "json"],
+        CallLimits::default(),
+    );
+    let a = args_of(&c);
+    assert!(
+        a.windows(3).any(|w| w == ["--bind", "/repo", "/repo"]),
+        "{a:?}"
+    );
+    assert!(!a.iter().any(|x| x.contains("keys")), "{a:?}");
+    assert!(!a.iter().any(|x| x.starts_with("PRIKK_")), "{a:?}");
+}
+
+fn run_of(status: i32, stderr: &str) -> Run {
+    use std::os::unix::process::ExitStatusExt;
+    Run {
+        status: std::process::ExitStatus::from_raw(status),
+        stdout: Vec::new(),
+        stderr: stderr.as_bytes().to_vec(),
+        timed_out: false,
+        output_exceeded: false,
+    }
+}
+
+#[test]
+fn every_way_a_call_dies_of_its_memory_ceiling_is_read_as_the_ceiling_and_a_refusal_is_not() {
+    // from_raw takes a wait status: exit code n is n << 8; a death by signal n is n.
+    let exited = |code: i32| code << 8;
+    for (what, run) in [
+        (
+            "the allocator aborts",
+            run_of(6, "memory allocation of 629145648 bytes failed"),
+        ),
+        (
+            "the allocator aborts under bwrap",
+            run_of(exited(134), "memory allocation of 8 bytes failed"),
+        ),
+        ("a segfault before any message", run_of(11, "")),
+        ("bwrap reports a signal as 128 + n", run_of(exited(139), "")),
+        (
+            "the loader cannot allocate",
+            run_of(
+                exited(127),
+                "error while loading shared libraries: cannot allocate TLS",
+            ),
+        ),
+        (
+            "the loader cannot map",
+            run_of(exited(127), "cannot map zero-fill pages"),
+        ),
+        ("bwrap is out of memory", run_of(exited(1), "Out of memory")),
+    ] {
+        assert!(run.died_of_ceiling(), "{what}");
+    }
+    for (what, run) in [
+        (
+            "a refusal",
+            run_of(exited(1), "error: precondition not met: something"),
+        ),
+        ("a success", run_of(0, "")),
+        (
+            "an unrelated 127",
+            run_of(exited(127), "sh: prikk: not found"),
+        ),
+        ("a plain failure", run_of(exited(2), "")),
+    ] {
+        assert!(!run.died_of_ceiling(), "{what}");
+    }
 }
 
 #[test]

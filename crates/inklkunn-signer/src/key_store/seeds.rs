@@ -1,6 +1,6 @@
 //! The decrypted seeds' only home (RFC 002 D-3; operations OP-07): a directory made for **one write call**,
-//! on a tmpfs, owned by the server and nobody else, holding the two seed files prikk reads, removed when the
-//! call is over.
+//! on a tmpfs, owned by the server and nobody else, holding the **one** seed file the call signs with (the
+//! other role's seed is never in a call that does not use it), removed when the call is over.
 //!
 //! - **tmpfs, checked.** The base directory's filesystem is read from `/proc/self/mountinfo` and must be
 //!   `tmpfs` or `ramfs`; a seed is never written to a disk the operator did not choose to trust with it.
@@ -19,12 +19,10 @@ use std::path::{Path, PathBuf};
 use super::KeyStoreError;
 use super::random;
 use super::record::Seeds;
-use crate::keys::KeyDir;
+use crate::keys::{KeyDir, Role};
 
 /// What every seed directory's name starts with: the operator can find and remove a stray one by it.
 pub(crate) const DIR_PREFIX: &str = "inklkunn-seeds-";
-const AUTHOR_FILE: &str = "author";
-const MAINTAINER_FILE: &str = "maintainer";
 
 /// A tmpfs directory under which seed directories are made.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -283,12 +281,14 @@ fn remove_all(dir: &Path) -> bool {
 }
 
 impl SeedDir {
-    /// Make the directory under `base` and write the two seeds with the key ids prikk will be told.
+    /// Make the directory under `base` and write **one** seed in it, the `role`'s, with the key id prikk will be
+    /// told. A call sees only the seed it signs with (RFC 002 C-1a, C-1c): the other role's seed is not in this
+    /// directory, and its path is not in the call's environment.
     pub(crate) fn create(
         base: &SeedBase,
+        role: Role,
         seeds: &Seeds,
-        author_key_id: &str,
-        maintainer_key_id: &str,
+        key_id: &str,
     ) -> Result<Self, KeyStoreError> {
         let name = format!(
             "{DIR_PREFIX}{}",
@@ -300,26 +300,24 @@ impl SeedDir {
             .create(&dir)
             .map_err(|e| KeyStoreError::Io("the seed directory could not be made", e.kind()))?;
         let write = || -> Result<(), KeyStoreError> {
-            for (file, bytes) in [
-                (AUTHOR_FILE, &seeds.author),
-                (MAINTAINER_FILE, &seeds.maintainer),
-            ] {
-                let mut f = std::fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .mode(0o600)
-                    .open(dir.join(format!("{file}.seed")))
-                    .map_err(|e| KeyStoreError::Io("a seed file could not be made", e.kind()))?;
-                f.write_all(bytes)
-                    .map_err(|e| KeyStoreError::Io("a seed file could not be written", e.kind()))?;
-            }
-            Ok(())
+            let bytes = match role {
+                Role::Author => &seeds.author,
+                Role::Maintainer => &seeds.maintainer,
+            };
+            let mut f = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(dir.join(format!("{}.seed", role.name())))
+                .map_err(|e| KeyStoreError::Io("a seed file could not be made", e.kind()))?;
+            f.write_all(bytes)
+                .map_err(|e| KeyStoreError::Io("a seed file could not be written", e.kind()))
         };
         if let Err(e) = write() {
             let _ = remove_all(&dir);
             return Err(e);
         }
-        match KeyDir::with_ids(&dir, author_key_id, maintainer_key_id) {
+        match KeyDir::single(&dir, role, key_id) {
             Ok(key_dir) => Ok(SeedDir {
                 dir,
                 key_dir,
