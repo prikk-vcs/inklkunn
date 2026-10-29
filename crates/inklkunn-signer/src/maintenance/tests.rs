@@ -62,7 +62,7 @@ case "$1" in
   verify)
     case "$M" in
       partial) echo '{{"schema_version":"verify-report-v1","verdict":{{"ok":false}},"stages":[{{"stage":"objects","status":"failed","message":"i/o error: out of memory"}}]}}' ;;
-      *) echo '{{"schema_version":"verify-report-v1","verdict":{{"ok":true}},"stages":[]}}' ;;
+      *) echo '{{"schema_version":"verify-report-v1","verdict":{{"ok":true}},"stages":[{{"stage":"objects","status":"evaluated"}}]}}' ;;
     esac
     ;;
 esac
