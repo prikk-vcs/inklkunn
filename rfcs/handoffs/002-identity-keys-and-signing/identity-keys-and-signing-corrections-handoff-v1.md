@@ -41,6 +41,17 @@ the lock released when its holder is killed.
 **C4 — `Signer::open` never creates a key store it was not asked to create.** A mistyped key directory today yields a
 new, empty store. Opening refuses a missing store with the path named; creation is a separate, explicit call that
 `inklkunn wiki keys create` and *create wiki* make. Test: open on a missing directory is refused and creates nothing.
+**Added 2026-10-29 (IS-17, CI's first run on the pushed tree):** store creation races. `open_with` decides "new
+store" when the directory is empty, but another process's in-flight `.header.tmp-*` file makes it non-empty, so the
+loser fails with *"the directory holds files but no header; it is not a key store (or its header was removed)"* —
+untrue, and alarming to an operator (`key_store::tests::two_processes_starting_on_a_new_directory_end_with_one_store`
+failed on CI run 40795756404; the architect reproduced it 1 in 300 with the test pinned to one CPU). The same check
+also refuses forever a directory where a crash left a temporary file. Make creation one critical section: an
+exclusive `flock` on a lock file in the key directory, held across the emptiness check and the header's exclusive
+link; under it, leftover temporary files of this store's own naming are removed and do not count. Opening an existing
+header needs no lock. Test: many concurrent creators deterministically (a barrier between the check and the write,
+behind `test-knobs`) end with one store that opens for all; a planted leftover temporary file does not block
+creation.
 
 ## Mandatory before RFC 004's T4 (the acceptance orchestrator)
 
