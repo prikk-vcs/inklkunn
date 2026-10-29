@@ -230,11 +230,16 @@ if [ "$1" = "key" ] && [ "$2" = "generate" ]; then
   exit $rc
 fi
 if [ "$1" = "verify" ] && [ -e "{fail}" ]; then echo "error: injected failure" >&2; exit 1; fi
+if [ "$1" = "verify" ] && [ -e "{report}" ]; then
+  echo '{{"schema_version":"verify-report-v1","verdict":{{"ok":false}},"stages":[{{"stage":"objects","status":"failed","message":"integrity error: injected"}}]}}'
+  exit 1
+fi
 exec "$REAL" "$@"
 "#,
             real = real.display(),
             capture = capture.display(),
-            fail = dir.join("fail-verify").display()
+            fail = dir.join("fail-verify").display(),
+            report = dir.join("fail-report").display()
         );
         let path = dir.join("prikk-spy");
         std::fs::write(&path, script).unwrap();
@@ -874,8 +879,22 @@ fn a_refresh_that_fails_is_said_recorded_as_failed_and_leaves_the_request_standi
             .iter()
             .any(|(_, a, o, _)| a == "checkpoint-refresh" && o == "failed")
     );
-    // Mended, the next start does it.
+    // prikk's `verify` now runs to a complete report that says the repository is damaged: that is a verdict, the
+    // checkpoint is not recorded as refreshed, and the request stands.
     std::fs::remove_file(w.tmp.0.join("fail-verify")).unwrap();
+    std::fs::write(w.tmp.0.join("fail-report"), "").unwrap();
+    let notes = start_up(&w.store, &w.settings, &sandbox, &w.storage, 1_800_000_004);
+    assert!(
+        notes
+            .first()
+            .is_some_and(|n| n.contains("failed verification")),
+        "{notes:?}"
+    );
+    let after = w.record("notes");
+    assert_eq!(after.checkpoint.refreshed_with, None);
+    assert_eq!(after.checkpoint.refresh_requested_at, Some(1_800_000_003));
+    // Mended, the next start does it.
+    std::fs::remove_file(w.tmp.0.join("fail-report")).unwrap();
     let notes = start_up(&w.store, &w.settings, &sandbox, &w.storage, 1_800_000_005);
     assert!(
         notes.first().is_some_and(|n| n.contains("refreshed")),
