@@ -132,8 +132,10 @@
   on). IS-7's report shape was not seen on 0.55.0 (it aborts instead); the follow-on handoff stands. Records: the
   spikes report and `spikes/spike-a-prikk-0.55.0.json`, ledger PK-20 and PK-26.
 - **2026-10-29 — pushed; CI's first run on the pushed tree failed one test** (run 40795756404): concurrent key-store
-  creation (IS-17, below), reproduced by the architect; correction C4 amended. The next run (40796294165) is the
-  first to reach the shimmed run and the aarch64 build.
+  creation (IS-17, below), reproduced by the architect; correction C4 amended. The next run (40796294165) passed the
+  run with prikk on `PATH` (gates included), supply-chain and MSRV, and failed the same test in the shimmed run: **CI's
+  two-core runners lose this race in two runs of three, so `main` stays red until C4 lands**, which is why C4 now
+  comes first in the dev team's order.
 
 ## Pending on the owner
 
@@ -160,8 +162,8 @@
 ## Next
 
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and handoff 003's T1 – T3 are built and
-conditionally approved (2026-10-29). **The dev team's order now:** the driver follow-on (IS-7) and the 002 corrections
-C1 – C4 (both small, independent), then handoff 003's T4 – T6 under the 2026-10-29 notes (author HTML escaped and reads
+conditionally approved (2026-10-29). **The dev team's order now:** **correction C4 first** (IS-17 turns CI red in
+two runs of three), then the driver follow-on (IS-7) and the 002 corrections C1 – C3 (small, independent), then handoff 003's T4 – T6 under the 2026-10-29 notes (author HTML escaped and reads
 pinned first), then T7 (which needs C1 – C4) and T8 – T9 toward the 0.1.0 readiness report; C5 – C7 before RFC 004's
 T4, C8 – C10 before OpenID Connect is switched on, C11 (rotation records its point) before 0.1.0. The architect reviews
 each request as it arrives; the next re-baseline is at prikk 0.56.0. RFC 004 (proposals) is accepted and its handoff v1 is written; it is assigned when the 002 corrections C1 – C7 and
@@ -194,7 +196,7 @@ the mode requires. CI is green from `d0a8307` on ([run 40489623629](https://gith
 | IS-14 | **An author can forge an internal wiki link.** The sanitizer's allowlist is the renderer's vocabulary, so raw HTML such as `<a class="wikilink" href="https://…">Home</a>` survives looking exactly like a wiki link, without `rel="nofollow ugc"` | the architect's review of handoff 003 T3, 2026-10-29 (the dev team's open question 6) | **mandatory before handoff 003's T4 serves a page**: author raw HTML rendered as escaped, visible text while the profile's subset is empty, the renderer's output carrying an unforgeable origin (RFC 003 D-3 concretized; handoff 003 note) |
 | IS-15 | **A lost key store cannot be rebuilt under the old key ids** (prikk binds a key id to one key for good, PK-35), and RFC 002 has no path for "the repository survived, its key records did not" | dev team, handoff 002 review request, open question 3 | a `recover` operation (new keys under fresh ids, the operator's confirmation) in the operations RFC before 1.0, with the restore runbook (DUR-1) |
 | IS-16 | **Rotation cannot both remove the old maintainer key and keep the history verifying** (PK-34; prikk's `remove` is revocation) | dev team, handoff 002 T7 (reproduced by the architect, 2026-10-29) | **Resolved by DR-10 (owner, 2026-10-29, after prikk confirmed the design):** rotation keeps the old key trusted, retirement is an explicit, named act (`docs/KEYS.md`); the rotation records its point and a later seal under the old key is reported (corrections handoff C11, before 0.1.0); threat model RR-8 carries the rest as a waiting dependency with no date |
-| IS-17 | **Two processes creating a key store at once: the loser is told the directory "is not a key store (or its header was removed)"**, because the other's temporary header file makes the directory non-empty; a crash's leftover temporary file blocks creation for good | CI run 40795756404 (the first on the pushed tree, 2026-10-29), reproduced by the architect 1 in 300 on one CPU | correction C4 (amended 2026-10-29): creation under an exclusive lock, leftovers swept, a deterministic test; **mandatory before handoff 003's T7**. Fails closed (no key is exposed); the message is what is wrong, and an operator could believe their keys were tampered with |
+| IS-17 | **Two processes creating a key store at once: the loser is told the directory "is not a key store (or its header was removed)"**, because the other's temporary header file makes the directory non-empty; a crash's leftover temporary file blocks creation for good | CI runs 40795756404 and 40796294165 (two of the first three on the pushed tree, 2026-10-29), reproduced by the architect 1 in 300 on one CPU | correction C4 (amended 2026-10-29): creation under an exclusive lock, leftovers swept, a deterministic test; **the dev team's first item** (CI is red until it lands; mandatory before handoff 003's T7 in any case). Fails closed (no key is exposed); the message is what is wrong, and an operator could believe their keys were tampered with |
 
 ## Process lessons (keep)
 
