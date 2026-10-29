@@ -520,6 +520,10 @@ pub const CATALOG: &[Entry] = &[
     msg("at.banner", "This is the page as it was after {change}."),
     msg("at.current", "Go to {current}."),
     msg("at.current_label", "the current version of this page"),
+    msg(
+        "at.links",
+        "The links in this page lead to the pages as they are now, not as they were then.",
+    ),
     msg("at.missing_heading", "The page did not exist then"),
     msg(
         "at.missing_body",

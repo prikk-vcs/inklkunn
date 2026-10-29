@@ -654,6 +654,12 @@ async fn a_permalink_shows_the_page_as_it_was_with_a_banner_that_links_to_the_cu
         banner.contains("<a href=\"/handbook/Home\">the current version of this page</a>"),
         "the banner links to the current page: {banner}"
     );
+    assert!(
+        banner.contains(
+            "<p>The links in this page lead to the pages as they are now, not as they were then.</p>"
+        ),
+        "the banner says where the page's links lead: {banner}"
+    );
     // The page as it is now offers a change; the page as it was does not.
     assert!(!a.body.contains("Propose a change"));
     let now = get(&w, "/handbook/Home").await;

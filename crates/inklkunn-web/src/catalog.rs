@@ -549,6 +549,7 @@ keys! {
     AtBanner => "at.banner",
     AtCurrent => "at.current",
     AtCurrentLabel => "at.current_label",
+    AtLinks => "at.links",
     AtMissingHeading => "at.missing_heading",
     AtMissingBody => "at.missing_body",
     // handoff 003 T6: changes, feeds, search, health, backlinks, the head of a page

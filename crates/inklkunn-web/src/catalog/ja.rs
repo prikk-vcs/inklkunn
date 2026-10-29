@@ -568,6 +568,10 @@ pub const CATALOG: &[Entry] = &[
     msg("at.banner", "これは {change} の後のページです。"),
     msg("at.current", "{current} へ移動できます。"),
     msg("at.current_label", "このページの現在の版"),
+    msg(
+        "at.links",
+        "このページのリンクは、そのときのページではなく、現在のページに移動します。",
+    ),
     msg("at.missing_heading", "そのときこのページはありませんでした"),
     msg(
         "at.missing_body",

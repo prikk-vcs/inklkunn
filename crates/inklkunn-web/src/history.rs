@@ -921,6 +921,8 @@ fn render_at(
             t.msg(Key::AtCurrent)
                 .link("current", page.get(Key::AtCurrentLabel), current)
                 .html(),
+            // The page's links are drawn against today's titles, not those of the point it shows.
+            t.msg(Key::AtLinks).html(),
         ],
     };
     found_with(

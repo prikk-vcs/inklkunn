@@ -287,6 +287,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `at.banner` | the banner above a page shown as it was after a change; `{change}` is a link to that change | "This is the page as it was after {change}." | "これは {change} の後のページです。" |
 | `at.current` | under the banner above; `{current}` is a link to the page as it is now | "Go to {current}." | "{current} へ移動できます。" |
 | `at.current_label` | the words of the link in the message above | "the current version of this page" | "このページの現在の版" |
+| `at.links` | the last line of the banner above; says that the links in the page lead to the pages as they are now | "The links in this page lead to the pages as they are now, not as they were then." | "このページのリンクは、そのときのページではなく、現在のページに移動します。" |
 | `at.missing_heading` | the heading of the page for a permalink to a point before the page existed, or after it was removed | "The page did not exist then" | "そのときこのページはありませんでした" |
 | `at.missing_body` | its sentence; `{title}` is the title asked for, `{change}` the name of the change, which a link under it opens | "After {change}, this wiki had no page titled {title}." | "{change} の後、このウィキに {title} というタイトルのページはありませんでした。" |
 | `wiki.nav_changes` | a link in the navigation bar of a wiki's pages, to the recent changes | "Recent changes" | "最近の変更" |
