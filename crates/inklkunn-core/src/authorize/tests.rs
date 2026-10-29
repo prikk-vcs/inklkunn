@@ -4,7 +4,10 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use inklkunn_store::{DisplayName, MemoryAudit, MemoryStore, NewWiki, RoleGrant, Slug, WikiRecord};
+use inklkunn_store::{
+    Account, AccountStore, DisplayName, MemoryAudit, MemoryStore, NewWiki, RoleGrant, Slug,
+    WikiRecord,
+};
 
 use super::*;
 
@@ -511,6 +514,16 @@ fn the_store_backed_source_reads_the_wiki_record_and_the_role_grants() {
     new.visibility = Visibility::Restricted;
     let wiki: WikiRecord = store.create(new).unwrap();
     let member = account();
+    // A grant needs a real account (a foreign key in the SQLite store, a check in this one).
+    store
+        .add_account(&Account {
+            id: member.clone(),
+            display_name: DisplayName::new("Member").unwrap(),
+            local: None,
+            created_at: 1,
+            disabled: false,
+        })
+        .unwrap();
     let source = StoreAuthz::new(store.clone(), store.clone());
     let audit = Arc::new(MemoryAudit::new());
     let a = Authorizer::new(Arc::new(source), audit.clone());

@@ -5,10 +5,24 @@
 use std::path::PathBuf;
 
 use inklkunn_store::{
-    AccountId, AuditEvent, AuditLog, AuditOutcome, AuditSink, DisplayName, MemoryAudit,
-    MemoryStore, NewWiki, Role, RoleGrant, RoleStore, RootLayout, Slug, SqliteStore, StoreError,
-    Verification, VerificationState, Visibility, WikiId, WikiRecord, WikiStore, export_jsonl,
+    Account, AccountId, AccountStore, AuditEvent, AuditLog, AuditOutcome, AuditSink, DisplayName,
+    MemoryAudit, MemoryStore, NewWiki, Role, RoleGrant, RoleStore, RootLayout, Slug, SqliteStore,
+    StoreError, Verification, VerificationState, Visibility, WikiId, WikiRecord, WikiStore,
+    export_jsonl,
 };
+
+/// An account that exists in `store` (a role grant refers to accounts).
+fn real_account(store: &impl AccountStore) -> AccountId {
+    let account = Account {
+        id: AccountId::new(),
+        display_name: name("Somebody"),
+        local: None,
+        created_at: 1,
+        disabled: false,
+    };
+    store.add_account(&account).expect("an account");
+    account.id
+}
 
 fn slug(s: &str) -> Slug {
     Slug::new(s).unwrap_or_else(|e| panic!("{s}: {e}"))
@@ -151,14 +165,18 @@ fn invariants(store: &dyn WikiStore) {
 
 /// Role grants (RFC 002 D-2): one role per account per wiki, replaced by a new grant, isolated by wiki,
 /// refused for a wiki that is not there, in the order each was last made.
-fn role_invariants(store: &(impl WikiStore + RoleStore)) {
+fn role_invariants(store: &(impl WikiStore + RoleStore + AccountStore)) {
     let w1 = store
         .create(NewWiki::new(slug("roles-one"), name("Roles one")))
         .expect("wiki one");
     let w2 = store
         .create(NewWiki::new(slug("roles-two"), name("Roles two")))
         .expect("wiki two");
-    let (a, b, root) = (AccountId::new(), AccountId::new(), AccountId::new());
+    let (a, b, root) = (
+        real_account(store),
+        real_account(store),
+        real_account(store),
+    );
     let grant =
         |account: &AccountId, wiki: &WikiId, role: Role, by: Option<&AccountId>, at: i64| {
             RoleGrant {
@@ -231,6 +249,29 @@ fn role_invariants(store: &(impl WikiStore + RoleStore)) {
         !store
             .revoke(&AccountId::new(), &w1.id)
             .expect("unknown account")
+    );
+
+    // A grant needs real accounts, the grantor included (the foreign keys of schema version 6): refused as
+    // `AccountNotFound` by both stores, and nothing is left behind. A grant by the operator (`None`) needs
+    // no grantor.
+    let nobody = AccountId::new();
+    assert_eq!(
+        store
+            .grant(grant(&nobody, &w1.id, Role::Admin, None, 15))
+            .err(),
+        Some(StoreError::AccountNotFound)
+    );
+    assert_eq!(
+        store
+            .grant(grant(&a, &w1.id, Role::Admin, Some(&nobody), 16))
+            .err(),
+        Some(StoreError::AccountNotFound)
+    );
+    assert_eq!(store.role(&nobody, &w1.id).expect("role"), None);
+    assert_eq!(
+        store.role(&a, &w1.id).expect("role"),
+        None,
+        "a refused grant did not change the account's standing"
     );
 }
 
@@ -412,7 +453,7 @@ fn an_m0_database_is_migrated_forward_with_its_wikis_and_only_once() {
         assert_eq!(old.slug.as_str(), "old-wiki");
         assert_eq!(old.author_key_id.as_deref(), Some("ed25519-aaaa"));
         // The new tables are there and work on the old wiki.
-        let account = AccountId::new();
+        let account = real_account(&store);
         store
             .grant(RoleGrant {
                 account: account.clone(),

@@ -328,6 +328,21 @@ impl SessionStore for SqliteStore {
                 .map_err(backend)
         })
     }
+
+    fn keep_newest_sessions(&self, id: &AccountId, keep: usize, now: i64) -> Result<u64> {
+        let keep = i64::try_from(keep).unwrap_or(i64::MAX);
+        self.with(|conn| {
+            // One statement, so it is atomic. The row id grows with every insert, which is "added last".
+            conn.execute(
+                "DELETE FROM sessions WHERE account_id = ?1 AND rowid NOT IN \
+                 (SELECT rowid FROM sessions WHERE account_id = ?1 AND expires_at > ?2 \
+                  ORDER BY rowid DESC LIMIT ?3)",
+                params![id.as_str(), now, keep],
+            )
+            .map(|n| n as u64)
+            .map_err(backend)
+        })
+    }
 }
 
 const TOKEN_COLUMNS: &str =

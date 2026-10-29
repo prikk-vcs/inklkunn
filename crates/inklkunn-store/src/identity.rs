@@ -278,6 +278,11 @@ pub trait SessionStore: Send + Sync {
     fn end_sessions_of(&self, id: &AccountId) -> Result<u64>;
     /// Remove sessions that are over at `now`; how many.
     fn purge_expired_sessions(&self, now: i64) -> Result<u64>;
+    /// Keep the `keep` newest sessions of the account that are live at `now` and end every other session of
+    /// that account (the older live ones, and any that are over); how many ended. **Newest means added last
+    /// to this store**, not the larger `created_at`: a clock that moved backwards must not make a session
+    /// that was just made the oldest. One step, so concurrent callers cannot leave more than `keep`.
+    fn keep_newest_sessions(&self, id: &AccountId, keep: usize, now: i64) -> Result<u64>;
 }
 
 /// An API token as stored (RFC 002 D-1): hashed, scoped, expiring and revocable. The token itself is shown

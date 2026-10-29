@@ -194,3 +194,131 @@ fn debug_output_never_shows_a_secret() {
         "{shown}"
     );
 }
+
+/// Which of these secrets still open a session at `now`.
+fn live(sessions: &Sessions, secrets: &[String], now: i64) -> Vec<bool> {
+    secrets
+        .iter()
+        .map(|s| sessions.resolve(s, now).unwrap().is_some())
+        .collect()
+}
+
+#[test]
+fn an_account_holds_at_most_a_hundred_live_sessions_and_the_oldest_end_not_the_sign_in() {
+    assert_eq!(MAX_LIVE_PER_ACCOUNT, 100, "the tokens' hundred");
+    let (store, id) = store_with_account();
+    let other = AccountId::new();
+    store
+        .add_account(&Account {
+            id: other.clone(),
+            display_name: DisplayName::new("Bob").unwrap(),
+            local: None,
+            created_at: 1,
+            disabled: false,
+        })
+        .unwrap();
+    let sessions = Sessions::new(store, 1_000_000);
+    let bobs = sessions.start(&other, 100).unwrap();
+    // 150 sign-ins at the same instant: none is refused, the newest hundred live, the first fifty are gone.
+    let secrets: Vec<String> = (0..150)
+        .map(|_| {
+            sessions
+                .start(&id, 100)
+                .unwrap()
+                .secret()
+                .as_str()
+                .to_owned()
+        })
+        .collect();
+    let alive = live(&sessions, &secrets, 101);
+    assert_eq!(alive.iter().filter(|a| **a).count(), 100);
+    assert!(
+        alive.iter().take(50).all(|a| !a),
+        "the oldest fifty ended, in order"
+    );
+    assert!(alive.iter().skip(50).all(|a| *a), "the newest hundred live");
+    assert!(
+        sessions
+            .resolve(bobs.secret().as_str(), 101)
+            .unwrap()
+            .is_some(),
+        "another account's session is not touched"
+    );
+}
+
+#[test]
+fn the_session_just_made_is_never_the_one_that_goes_even_when_the_clock_went_backwards() {
+    let (store, id) = store_with_account();
+    let sessions = Sessions::new(store, 1_000_000);
+    for i in 0..MAX_LIVE_PER_ACCOUNT {
+        sessions
+            .start(&id, 10_000 + i64::try_from(i).unwrap())
+            .unwrap();
+    }
+    // The next sign-in is stamped long before all the others (a clock set back): it is still the newest.
+    let late = sessions.start(&id, 5).unwrap();
+    assert!(
+        sessions
+            .resolve(late.secret().as_str(), 6)
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[test]
+fn sessions_that_are_over_do_not_count_against_the_cap() {
+    let (store, id) = store_with_account();
+    let sessions = Sessions::new(store, 50);
+    let first: Vec<String> = (0..MAX_LIVE_PER_ACCOUNT)
+        .map(|_| {
+            sessions
+                .start(&id, 100)
+                .unwrap()
+                .secret()
+                .as_str()
+                .to_owned()
+        })
+        .collect();
+    // They all end at 150; a sign-in at 200 finds a clean account and ends nobody who is live.
+    let fresh: Vec<String> = (0..MAX_LIVE_PER_ACCOUNT)
+        .map(|_| {
+            sessions
+                .start(&id, 200)
+                .unwrap()
+                .secret()
+                .as_str()
+                .to_owned()
+        })
+        .collect();
+    assert!(live(&sessions, &fresh, 201).iter().all(|a| *a));
+    assert!(live(&sessions, &first, 120).iter().all(|a| !a), "gone");
+}
+
+#[test]
+fn a_burst_of_sign_ins_from_many_threads_is_never_refused_and_ends_at_the_cap() {
+    let (store, id) = store_with_account();
+    let sessions = Arc::new(Sessions::new(store, 1_000_000));
+    let secrets = std::sync::Mutex::new(Vec::new());
+    std::thread::scope(|scope| {
+        for _ in 0..8 {
+            scope.spawn(|| {
+                for _ in 0..40 {
+                    let s = sessions
+                        .start(&id, 100)
+                        .expect("a sign-in is never refused");
+                    secrets.lock().unwrap().push(s.secret().as_str().to_owned());
+                }
+            });
+        }
+    });
+    let secrets = secrets.into_inner().unwrap();
+    assert_eq!(secrets.len(), 320);
+    assert_eq!(
+        live(&sessions, &secrets, 101)
+            .iter()
+            .filter(|a| **a)
+            .count(),
+        MAX_LIVE_PER_ACCOUNT,
+        "exactly the cap is live after the burst"
+    );
+}

@@ -81,6 +81,36 @@ pub(crate) fn prepare(settings: &Settings, web: &WebSettings) -> Result<Prepared
     })
 }
 
+/// Trusted proxies the operator declared. **This build has no setting for them** (the sign-in routes do not
+/// exist yet, and `inklkunn_auth::ProxyPolicy` is not read from the environment), so none is ever declared
+/// and the warning below is shown for any address that is reachable from elsewhere.
+const TRUSTED_PROXIES_DECLARED: bool = false;
+
+/// The warning for a bind address that anybody can reach while no trusted proxy is declared (handoff 002
+/// C10), or `None`. Behind a reverse proxy that is not declared trusted, every client is the proxy's address,
+/// so the sign-in's per-address throttle (30 failures, `inklkunn_auth::ThrottlePolicy::PER_ADDRESS`) counts
+/// every failed attempt by anyone against one key and thirty of them lock everyone out. A loopback bind is
+/// not warned about: only a process on the same host reaches it.
+pub(crate) fn proxy_warning(bind: std::net::SocketAddr, declared: bool) -> Option<String> {
+    (!bind.ip().is_loopback() && !declared).then(|| {
+        format!(
+            "warning: INKLKUNN_BIND {bind} is not a loopback address and no trusted proxy is declared \
+             (INKLKUNN_TRUSTED_PROXIES, planned and not read by this build), so every client counts as \
+             the same address and thirty failed sign-ins by anyone would lock everyone out"
+        )
+    })
+}
+
+/// Print the banner and the warnings to `err`: the first thing `run` does.
+fn write_start_notes(err: &mut dyn Write, banner: &[String], web: &WebConfig) {
+    for line in banner {
+        let _ = writeln!(err, "{line}");
+    }
+    if let Some(w) = proxy_warning(web.bind, TRUSTED_PROXIES_DECLARED) {
+        let _ = writeln!(err, "{w}");
+    }
+}
+
 /// Bind and serve until `shutdown`. `on_listening` hears the bound address.
 pub(crate) fn run(
     prepared: Prepared,
@@ -88,9 +118,7 @@ pub(crate) fn run(
     err: &mut dyn Write,
     on_listening: impl FnOnce(std::net::SocketAddr),
 ) -> Result<(), String> {
-    for line in &prepared.banner {
-        let _ = writeln!(err, "{line}");
-    }
+    write_start_notes(err, &prepared.banner, &prepared.web);
     run_blocking(&prepared.web, prepared.site, shutdown, on_listening).map_err(|e| e.to_string())
 }
 

@@ -49,8 +49,14 @@ declared trusted proxy only) **in the memory of one process** (threat model RR-7
 deployment with several replicas needs the proxy to limit too. Locking a name after five failures lets someone
 who knows it lock its owner out for fifteen minutes; that is the price of refusing a correct password while
 locked, and the address throttle bounds how many names one client can lock. **Declare your reverse proxy**: behind
-one that is not declared, every client shares the proxy's address and thirty bad attempts by anyone lock everyone.
-Sessions and API tokens are stored as hashes; a copy of the database opens neither. A password change, an
+one that is not declared, every client shares the proxy's address and thirty bad attempts by anyone lock everyone;
+`inklkunn serve` prints a warning at start when it is bound to an address that is not a loopback one and no
+trusted proxy is declared (this build has no setting to declare one yet, and the warning says so).
+Sessions and API tokens are stored as hashes; a copy of the database opens neither. An account holds at most a
+hundred live sessions and a hundred live tokens; a sign-in beyond the hundredth is never refused, it ends the
+account's oldest session. The session cookie is `SameSite=Strict`; the one-shot login-state cookie of an OpenID
+Connect sign-in is `SameSite=Lax` (the provider's redirect must carry it back), and the callback is answered with
+a small page that moves the browser on, never with a redirect, so the Strict cookie is sent on the next request. A password change, an
 administrator's reset and a disabling end every session and revoke every token. OpenID Connect accounts are
 linked by issuer and subject by an administrator; nothing is created at first sign-in in this release.
 

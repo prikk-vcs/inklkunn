@@ -91,3 +91,41 @@ fn the_production_cost_signs_in_and_refuses_for_real() {
         Err(AuthError::BadCredentials)
     ));
 }
+
+#[test]
+fn at_the_cap_a_sign_in_still_succeeds_and_ends_the_accounts_oldest_session_over_sqlite() {
+    use inklkunn_auth::session::MAX_LIVE_PER_ACCOUNT;
+    let store = Arc::new(SqliteStore::open_in_memory().unwrap());
+    let auth = Authenticator::with_hasher(store, config(), Counting::new()).unwrap();
+    auth.register_local("alice", "Alice", ALICE_PASSWORD, NOW)
+        .unwrap();
+    auth.register_local("bob", "Bob", "another long password", NOW)
+        .unwrap();
+    let bobs = auth
+        .sign_in("bob", "another long password", &ip("203.0.113.9"), NOW)
+        .unwrap();
+    let secrets: Vec<String> = (0..=MAX_LIVE_PER_ACCOUNT)
+        .map(|i| {
+            auth.sign_in(
+                "alice",
+                ALICE_PASSWORD,
+                &ip("203.0.113.1"),
+                NOW + 1 + i as i64,
+            )
+            .expect("a person can always sign in")
+            .session
+            .secret()
+            .as_str()
+            .to_owned()
+        })
+        .collect();
+    assert_eq!(secrets.len(), MAX_LIVE_PER_ACCOUNT + 1);
+    let now = NOW + 1_000;
+    let open = |s: &str| auth.principal_for_session(s, now).unwrap().is_some();
+    assert!(!open(secrets.first().unwrap()), "the oldest ended");
+    assert!(
+        secrets.iter().skip(1).all(|s| open(s)),
+        "the newest hundred live"
+    );
+    assert!(open(bobs.session.secret().as_str()), "bob's is untouched");
+}

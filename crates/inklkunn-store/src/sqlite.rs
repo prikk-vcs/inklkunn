@@ -4,8 +4,10 @@
 //! knows, or one whose version cannot be read, is refused before anything is written. An older one is
 //! brought forward by [`MIGRATIONS`], in order, inside one immediate transaction that re-reads the version
 //! first (a second process may have migrated already); a fresh database gets every migration and the
-//! version row in one transaction. Every migration only **adds**, so a build one step behind can still
-//! refuse cleanly and nothing is rewritten. Every change to a record runs in an immediate transaction, so
+//! version row in one transaction. Every migration but version 6 only **adds**; version 6 rebuilds the role
+//! grants with their foreign keys to accounts, copies every row, checks the result with SQLite's own
+//! `foreign_key_check`, and **refuses** (naming the version, rolling everything back) if a grant refers to
+//! an account that does not exist. A build one step behind refuses a newer database cleanly in either case. Every change to a record runs in an immediate transaction, so
 //! a second process (a command-line run beside the service) cannot slip between a check and a write; a
 //! slug or id already taken is reported as exactly that.
 
@@ -26,7 +28,7 @@ use crate::record::{
 use crate::{Result, StoreError, WikiStore};
 
 /// The schema version this build writes and reads: the last of [`MIGRATIONS`].
-pub const SCHEMA_VERSION: i64 = 5;
+pub const SCHEMA_VERSION: i64 = 6;
 
 /// Version 1: M0's schema, the wiki records.
 const V1: &str = "
@@ -186,9 +188,37 @@ ALTER TABLE wikis ADD COLUMN checkpoint_prikk_version TEXT;
 ALTER TABLE wikis ADD COLUMN checkpoint_refresh_requested_at INTEGER;
 ";
 
+/// Version 6: the role grants gain their foreign keys (handoff 002 C10; version 4 left them out because the
+/// accounts table did not exist yet when version 2 made them): `account_id` and `granted_by` refer to
+/// `accounts(id)`. `granted_by` stays nullable: `NULL` is the operator, from the command line (there is no
+/// system principal stored; the first administrator of a wiki can only be named that way), and every other
+/// value is an account. SQLite cannot add a constraint to a table, so the table is rebuilt: the new one is
+/// made, every row copied, the old one dropped, the new one renamed, the index remade. Violations are
+/// **deferred** for this transaction only (`defer_foreign_keys` resets at its end), so a database that holds a
+/// grant to an account that is not there copies whole and is then refused by name by `apply_migration`,
+/// which runs `PRAGMA foreign_key_check(role_grants)` before the version is raised and lets the transaction
+/// roll back. The fresh-database path runs the same code.
+const V6: &str = "
+PRAGMA defer_foreign_keys = ON;
+CREATE TABLE role_grants_v6 (
+    wiki_id    TEXT NOT NULL,
+    account_id TEXT NOT NULL REFERENCES accounts(id),
+    role       TEXT NOT NULL,
+    granted_by TEXT REFERENCES accounts(id),
+    granted_at INTEGER NOT NULL,
+    seq        INTEGER NOT NULL,
+    PRIMARY KEY (wiki_id, account_id)
+);
+INSERT INTO role_grants_v6 (wiki_id, account_id, role, granted_by, granted_at, seq)
+    SELECT wiki_id, account_id, role, granted_by, granted_at, seq FROM role_grants;
+DROP TABLE role_grants;
+ALTER TABLE role_grants_v6 RENAME TO role_grants;
+CREATE INDEX role_grants_wiki ON role_grants(wiki_id, seq);
+";
+
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and
 /// [`SCHEMA_VERSION`] moves with it (a test holds the two together).
-pub const MIGRATIONS: &[(i64, &str)] = &[(1, V1), (2, V2), (3, V3), (4, V4), (5, V5)];
+pub const MIGRATIONS: &[(i64, &str)] = &[(1, V1), (2, V2), (3, V3), (4, V4), (5, V5), (6, V6)];
 
 /// The SQLite-backed store.
 #[derive(Debug)]
@@ -232,6 +262,48 @@ fn read_version(conn: &Connection) -> Result<Option<i64>> {
     }
 }
 
+/// Run one migration inside the transaction `tx`, then its check, if it has one. Version 6's check is the
+/// foreign keys of the rebuilt role grants: a row that refers to an account that is not there refuses the
+/// whole migration, by name; the caller's transaction is dropped, which rolls it back.
+fn apply_migration(tx: &rusqlite::Transaction<'_>, version: i64, sql: &str) -> Result<()> {
+    tx.execute_batch(sql).map_err(backend)?;
+    if version == 6 {
+        check_role_grants(tx, version)?;
+    }
+    Ok(())
+}
+
+/// `PRAGMA foreign_key_check(role_grants)`: refuse if any grant names an account that does not exist.
+fn check_role_grants(conn: &Connection, version: i64) -> Result<()> {
+    let mut stmt = conn
+        .prepare("PRAGMA foreign_key_check(role_grants)")
+        .map_err(backend)?;
+    let rowids: Vec<i64> = stmt
+        .query_map([], |r| r.get::<_, i64>(1))
+        .map_err(backend)?
+        .collect::<std::result::Result<_, _>>()
+        .map_err(backend)?;
+    let Some(first) = rowids.first() else {
+        return Ok(());
+    };
+    // Say which one, by the ids the person who repairs the database will look for.
+    let (wiki, account): (String, String) = conn
+        .query_row(
+            "SELECT wiki_id, account_id FROM role_grants WHERE rowid = ?1",
+            params![first],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(backend)?;
+    Err(StoreError::MigrationRefused {
+        version,
+        why: format!(
+            "{} role grant(s) refer to an account that does not exist (the first: wiki {wiki}, account {account}); \
+             remove those grants or add the accounts, then start again",
+            rowids.len()
+        ),
+    })
+}
+
 /// Bring an older database forward. The version is read **again inside the transaction**: a second process
 /// may have migrated it between our read and our lock, and migrating twice must not happen.
 fn migrate(conn: &mut Connection) -> Result<()> {
@@ -250,7 +322,7 @@ fn migrate(conn: &mut Connection) -> Result<()> {
     }
     for (version, sql) in MIGRATIONS {
         if *version > current {
-            tx.execute_batch(sql).map_err(backend)?;
+            apply_migration(&tx, *version, sql)?;
         }
     }
     tx.execute(
@@ -263,6 +335,15 @@ fn migrate(conn: &mut Connection) -> Result<()> {
 
 fn backend(e: rusqlite::Error) -> StoreError {
     StoreError::Backend(e.to_string())
+}
+
+/// Did SQLite refuse the statement because of a `REFERENCES` clause?
+fn is_foreign_key_refusal(e: &rusqlite::Error) -> bool {
+    matches!(
+        e,
+        rusqlite::Error::SqliteFailure(code, _)
+            if code.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_FOREIGNKEY
+    )
 }
 
 /// A uniqueness failure, read from SQLite's own message: which column refused.
@@ -331,8 +412,8 @@ impl SqliteStore {
                 let tx = conn
                     .transaction_with_behavior(TransactionBehavior::Immediate)
                     .map_err(backend)?;
-                for (_, sql) in MIGRATIONS {
-                    tx.execute_batch(sql).map_err(backend)?;
+                for (version, sql) in MIGRATIONS {
+                    apply_migration(&tx, *version, sql)?;
                 }
                 tx.execute(
                     "INSERT OR IGNORE INTO schema_meta (key, value) VALUES ('schema_version', ?1)",
@@ -624,7 +705,14 @@ impl RoleStore for SqliteStore {
                     grant.granted_at,
                 ],
             )
-            .map_err(backend)?;
+            .map_err(|e| {
+                // The foreign keys to `accounts` are the check: an account (or a grantor) that is not there.
+                if is_foreign_key_refusal(&e) {
+                    StoreError::AccountNotFound
+                } else {
+                    backend(e)
+                }
+            })?;
             tx.commit().map_err(backend)
         })
     }

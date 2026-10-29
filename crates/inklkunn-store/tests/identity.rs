@@ -281,6 +281,46 @@ fn session_invariants(store: &(impl SessionStore + ?Sized), a: &AccountId, b: &A
     );
     assert_eq!(store.end_sessions_of(a).expect("none left"), 0);
     store.end_session("sha256$s3").expect("clean up");
+
+    // Keeping the newest: five live (added in this order, ending at different times), one over, and one
+    // of another account. Newest is the last added, whatever the stamps say.
+    for (hash, ends, stamp) in [
+        ("sha256$k1", 9_000, 50),
+        ("sha256$k2", 9_000, 40),
+        ("sha256$k3", 9_000, 30),
+        ("sha256$k4", 100, 20),
+        ("sha256$k5", 9_000, 10),
+        ("sha256$k6", 9_000, 5),
+    ] {
+        let mut record = session(hash, a, ends);
+        record.created_at = stamp;
+        store.add_session(&record).expect("create");
+    }
+    store
+        .add_session(&session("sha256$other", b, 9_000))
+        .expect("create");
+    // At 500: k1 k2 k3 k5 k6 are live (k4 is over). Keep three: k3 k5 k6; k1, k2 and k4 end.
+    assert_eq!(store.keep_newest_sessions(a, 3, 500).expect("keep"), 3);
+    for (hash, kept) in [
+        ("sha256$k1", false),
+        ("sha256$k2", false),
+        ("sha256$k3", true),
+        ("sha256$k4", false),
+        ("sha256$k5", true),
+        ("sha256$k6", true),
+        ("sha256$other", true),
+    ] {
+        assert_eq!(
+            store.session(hash, 0).expect("get").is_some(),
+            kept,
+            "{hash}"
+        );
+    }
+    // Nothing to end; and keeping none ends every one of the account's, not the other's.
+    assert_eq!(store.keep_newest_sessions(a, 3, 500).expect("keep"), 0);
+    assert_eq!(store.keep_newest_sessions(a, 0, 500).expect("keep"), 3);
+    assert!(store.session("sha256$other", 0).expect("get").is_some());
+    store.end_session("sha256$other").expect("clean up");
 }
 
 fn token_invariants(store: &(impl TokenStore + ?Sized), a: &AccountId, b: &AccountId) {

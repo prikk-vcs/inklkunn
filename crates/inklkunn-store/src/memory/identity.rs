@@ -36,6 +36,11 @@ impl Identities {
 }
 
 impl MemoryStore {
+    /// Is there an account with this id?
+    pub(super) fn has_account(&self, id: &AccountId) -> bool {
+        self.identities().accounts.iter().any(|a| a.id == *id)
+    }
+
     fn identities(&self) -> std::sync::MutexGuard<'_, Identities> {
         self.identities
             .lock()
@@ -170,6 +175,31 @@ impl SessionStore for MemoryStore {
         let mut d = self.identities();
         let before = d.sessions.len();
         d.sessions.retain(|s| s.expires_at > now);
+        Ok((before - d.sessions.len()) as u64)
+    }
+
+    fn keep_newest_sessions(&self, id: &AccountId, keep: usize, now: i64) -> Result<u64> {
+        let mut d = self.identities();
+        let before = d.sessions.len();
+        let live = d
+            .sessions
+            .iter()
+            .filter(|s| s.account == *id && s.expires_at > now)
+            .count();
+        // The list is in the order sessions were added, so the first live ones of the account are the oldest.
+        let mut older = live.saturating_sub(keep);
+        d.sessions.retain(|s| {
+            if s.account != *id {
+                true
+            } else if s.expires_at <= now {
+                false
+            } else if older > 0 {
+                older -= 1;
+                false
+            } else {
+                true
+            }
+        });
         Ok((before - d.sessions.len()) as u64)
     }
 }

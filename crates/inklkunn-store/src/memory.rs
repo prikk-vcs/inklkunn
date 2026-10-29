@@ -143,6 +143,15 @@ impl RoleStore for MemoryStore {
         if !records.iter().any(|r| r.id == grant.wiki) {
             return Err(StoreError::NotFound);
         }
+        // The account, and the account that grants, must exist (the SQLite store's foreign keys).
+        if !self.has_account(&grant.account)
+            || grant
+                .granted_by
+                .as_ref()
+                .is_some_and(|by| !self.has_account(by))
+        {
+            return Err(StoreError::AccountNotFound);
+        }
         let mut grants = self.grants.lock().unwrap_or_else(PoisonError::into_inner);
         // A grant replaces the account's earlier one in this wiki and counts as the latest, like the SQLite
         // store's `seq`: grants are listed in the order each was last made.

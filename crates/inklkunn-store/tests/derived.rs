@@ -448,7 +448,7 @@ fn a_version_4_database_gains_the_derived_cache_and_the_checkpoint_fields_and_ke
         assert_eq!(refreshed.checkpoint.refresh_requested_at, None);
     }
     assert_eq!(version(), SCHEMA_VERSION.to_string());
-    assert_eq!(SCHEMA_VERSION, 5);
+    assert_eq!(SCHEMA_VERSION, 6);
     // Opening it again changes nothing and loses nothing.
     let store = SqliteStore::open(&db).expect("reopen");
     let w = WikiId::parse(&id).expect("id");
@@ -462,7 +462,7 @@ fn a_version_4_database_gains_the_derived_cache_and_the_checkpoint_fields_and_ke
         Some("prikk 0.54.1".to_owned())
     );
     assert!(store.title_index(&w, TIP_A).unwrap().is_some());
-    assert_eq!(version(), "5");
+    assert_eq!(version(), SCHEMA_VERSION.to_string());
 }
 
 #[test]

@@ -199,3 +199,56 @@ fn a_started_server_answers_over_a_socket_with_its_headers_and_stops_when_told()
         "{banner}"
     );
 }
+
+fn bind(text: &str) -> std::net::SocketAddr {
+    text.parse().unwrap()
+}
+
+#[test]
+fn an_address_anybody_can_reach_without_a_declared_proxy_is_warned_about_and_a_loopback_one_is_not()
+{
+    for reachable in [
+        "0.0.0.0:8080",
+        "[::]:8080",
+        "192.0.2.10:8080",
+        "[2001:db8::1]:8080",
+    ] {
+        let w = proxy_warning(bind(reachable), false).expect(reachable);
+        assert!(
+            w.starts_with("warning: ") && !w.contains('\n'),
+            "one line: {w}"
+        );
+        assert!(
+            w.contains("INKLKUNN_TRUSTED_PROXIES"),
+            "names the setting: {w}"
+        );
+        assert!(w.contains(reachable), "names the address: {w}");
+        assert!(w.contains("lock everyone out"), "says what happens: {w}");
+    }
+    for loopback in ["127.0.0.1:8080", "[::1]:8080", "127.0.0.2:1"] {
+        assert_eq!(proxy_warning(bind(loopback), false), None, "{loopback}");
+    }
+    // Once a proxy can be declared, declaring one ends the warning.
+    assert_eq!(proxy_warning(bind("0.0.0.0:8080"), true), None);
+    assert!(
+        proxy_warning(bind("0.0.0.0:8080"), false)
+            .unwrap()
+            .contains("not read by this build")
+    );
+}
+
+#[test]
+fn the_start_notes_put_the_banner_first_and_the_warning_on_stderr_only_for_a_reachable_bind() {
+    let notes = |addr: &str| {
+        let web = WebConfig::new(addr, "https://wiki.example", "https://content.example").unwrap();
+        let mut err = Vec::new();
+        write_start_notes(&mut err, &["the banner".to_owned()], &web);
+        String::from_utf8(err).unwrap()
+    };
+    let open = notes("0.0.0.0:8080");
+    let lines: Vec<&str> = open.lines().collect();
+    assert_eq!(lines.first(), Some(&"the banner"));
+    assert_eq!(lines.len(), 2, "{open}");
+    assert!(lines.get(1).unwrap().starts_with("warning: "), "{open}");
+    assert_eq!(notes("127.0.0.1:8080"), "the banner\n");
+}

@@ -59,7 +59,8 @@ pub enum StoreError {
     InvalidSlug(SlugError),
     /// A creation request's free-text field is not valid (see [`NewWikiError`]).
     InvalidRequest(NewWikiError),
-    /// No account has this id.
+    /// No account has this id. Also what a role grant is refused with when its account, or the account that
+    /// grants it, does not exist.
     AccountNotFound,
     /// Another account already signs in with this name.
     LoginTaken(String),
@@ -74,6 +75,15 @@ pub enum StoreError {
         found: String,
         /// What this build knows.
         known: i64,
+    },
+    /// A migration found data it cannot carry forward and changed nothing (the transaction was rolled
+    /// back); `why` says what to repair. Version 6 refuses a role grant that refers to an account that does
+    /// not exist.
+    MigrationRefused {
+        /// The schema version the migration was bringing the database to.
+        version: i64,
+        /// What is wrong and what to do.
+        why: String,
     },
     /// The backing store failed; the text is the backend's, without content.
     Backend(String),
@@ -98,6 +108,10 @@ impl std::fmt::Display for StoreError {
             StoreError::SchemaVersion { found, known } => write!(
                 f,
                 "the database has schema version `{found}`; this build knows {known} and will not touch it"
+            ),
+            StoreError::MigrationRefused { version, why } => write!(
+                f,
+                "the database cannot be brought to schema version {version}: {why}; nothing was changed"
             ),
             StoreError::Backend(e) => write!(f, "store backend: {e}"),
         }

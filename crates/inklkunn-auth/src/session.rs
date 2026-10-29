@@ -24,6 +24,10 @@ pub const SESSION_COOKIE: &str = "__Host-inklkunn-session";
 pub const CSRF_COOKIE: &str = "__Host-inklkunn-csrf";
 /// A session lasts seven days from sign-in.
 pub const SESSION_TTL_SECS: i64 = 7 * 24 * 3600;
+/// The most live sessions one account holds (the tokens' model, [`crate::token::MAX_LIVE_PER_ACCOUNT`]). A
+/// sign-in beyond it is **not refused**: a person must always be able to sign in, so the account's oldest
+/// session ends instead, and the browser that held it is signed out.
+pub const MAX_LIVE_PER_ACCOUNT: usize = 100;
 /// A sign-in form's token is good for an hour.
 const FORM_TOKEN_TTL_SECS: i64 = 3600;
 
@@ -180,7 +184,8 @@ impl Sessions {
     }
 
     /// Start a session for `account`: a new secret every time, so a session id never survives a sign-in
-    /// (no fixation). Also removes the sessions that have ended.
+    /// (no fixation). Also removes the sessions that have ended, and, when the account would hold more than
+    /// [`MAX_LIVE_PER_ACCOUNT`], the oldest ones: the sign-in always succeeds.
     pub(crate) fn start(&self, account: &AccountId, now: i64) -> Result<NewSession, AuthError> {
         let secret = SessionSecret(random::token()?);
         let csrf = CsrfToken::mint()?;
@@ -193,6 +198,10 @@ impl Sessions {
             created_at: now,
             expires_at,
         })?;
+        // Added first, trimmed after: the new session is the newest, so it is never the one that goes, and a
+        // crash in between leaves one session too many until the next sign-in, never one too few.
+        self.store
+            .keep_newest_sessions(account, MAX_LIVE_PER_ACCOUNT, now)?;
         Ok(NewSession {
             secret,
             csrf,
