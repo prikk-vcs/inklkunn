@@ -296,6 +296,27 @@ pub(crate) fn resource_failure_in(report: &[u8]) -> bool {
         })
 }
 
+/// The `(block id, maintainer key id)` pairs of the `sealed-block <id>: <key id>` lines of `prikk verify`'s text.
+/// A line that is not exactly that shape (a 64-character lower-case hex block id, a colon, a space, a key id
+/// prikk accepts) is not one; a block with no key id listed has an empty one.
+pub(crate) fn parse_sealed_blocks(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .filter_map(|line| {
+            let rest = line.strip_prefix("sealed-block ")?;
+            let (block, key) = rest.split_once(':')?;
+            let key = key.trim();
+            let block_ok = block.len() == 64
+                && block
+                    .bytes()
+                    .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+            let key_ok = key
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+            (block_ok && key_ok && key.len() <= 128).then(|| (block.to_owned(), key.to_owned()))
+        })
+        .collect()
+}
+
 /// Like [`outcome`], for a verb whose **report is the answer even when it exits 1**: `worktree-status` exits
 /// 1 on a dirty tree and `verify` on a failing verdict, each still printing its JSON report on stdout. A
 /// non-zero exit with a report on stdout is returned as the report; one without is the refusal it says.
@@ -625,6 +646,57 @@ impl Writes {
         let out = report_outcome("verify", run, ceiling)?;
         parse_report("verify", &out, schema::VERIFY_REPORT)
             .map_err(|e| SignerError::Damaged(e.to_string()))
+    }
+
+    /// Every view of the repository, closed ones included (`branch list --all`): what a rotation records the
+    /// tips of, and what the check of seals by superseded keys walks. Read-only, no keys.
+    pub(crate) fn all_views(&self, repo: &Path) -> Result<Vec<String>, SignerError> {
+        let stdout = self.read(repo, &["branch", "list", "--all", "--format", "json"])?;
+        let views: inklkunn_prikk::storage::Views =
+            parse_report("branch list", &stdout, schema::BRANCH_LIST)
+                .map_err(|e| SignerError::Damaged(e.to_string()))?;
+        Ok(views.views.into_iter().map(|v| v.name).collect())
+    }
+
+    /// The block ids of a view's history, newest first, at most `limit` of them (`log --ref <view> --limit`).
+    pub(crate) fn view_blocks(
+        &self,
+        repo: &Path,
+        view: &str,
+        limit: u64,
+    ) -> Result<Vec<String>, SignerError> {
+        let limit = limit.to_string();
+        let stdout = self.read(
+            repo,
+            &["log", "--ref", view, "--limit", &limit, "--format", "json"],
+        )?;
+        let history: History = parse_report("log", &stdout, schema::LOG_REPORT)
+            .map_err(|e| SignerError::Damaged(e.to_string()))?;
+        Ok(history.blocks.into_iter().map(|b| b.block_id).collect())
+    }
+
+    /// Who sealed which block, as `prikk verify` lists it: one `sealed-block <block id>: <maintainer key id>`
+    /// line per sealed block of the repository (prikk 0.55.0; **the only place prikk names a block's signer**,
+    /// ledger PK-39: no JSON report does). A repository whose verification fails (a retired key's history,
+    /// ledger PK-34) still prints them.
+    pub(crate) fn sealed_block_signers(
+        &self,
+        repo: &Path,
+    ) -> Result<Vec<(String, String)>, SignerError> {
+        let (run, _ceiling) =
+            self.run_raw(&Mounts::read(repo, None), Sizing::repo(repo), &["verify"])?;
+        if run.timed_out || run.output_exceeded {
+            return Err(SignerError::Unavailable(
+                "`verify` was stopped before it listed the sealed blocks".to_owned(),
+            ));
+        }
+        let text = String::from_utf8_lossy(&run.stdout).into_owned();
+        let signers = parse_sealed_blocks(&text);
+        if signers.is_empty() && !run.status.success() {
+            // Nothing listed and a failure: the ceiling, or a refusal, with the usual words.
+            return outcome("verify", run, 0).map(|_| Vec::new());
+        }
+        Ok(signers)
     }
 
     /// `prikk branch create heads/<name> --from <ref>`, published under the maintainer seed.

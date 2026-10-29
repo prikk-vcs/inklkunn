@@ -39,7 +39,7 @@ mod seeds;
 
 use crate::keys::Role;
 use crypto::{KdfParams, MasterKey, NONCE_LEN, SALT_LEN};
-pub(crate) use record::{Meta, Seeds};
+pub(crate) use record::{MAX_RECORDED_VIEWS, Meta, RecordedTip, Seeds, Superseded};
 pub(crate) use seeds::{DIR_PREFIX, SeedBase, SeedDir};
 
 /// The header's file name.

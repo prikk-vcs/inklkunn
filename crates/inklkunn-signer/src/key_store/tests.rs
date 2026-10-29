@@ -55,6 +55,7 @@ fn store_in(dir: &Path) -> KeyStore {
 
 fn meta(wiki: &WikiId) -> Meta {
     Meta {
+        superseded: Vec::new(),
         wiki: wiki.clone(),
         generation: 1,
         author_key_id: format!("inklkunn-{wiki}-author"),
@@ -768,8 +769,12 @@ fn a_record_cannot_be_changed_moved_or_corrupted_without_notice() {
             mutate(&|v| v["wiki"] = b.to_string().into()),
         ),
         (
-            "another format",
-            mutate(&|v| v["format"] = "inklkunn-key-record/2".into()),
+            "an unknown format",
+            mutate(&|v| v["format"] = "inklkunn-key-record/3".into()),
+        ),
+        (
+            "the older format named on a record sealed in the newer",
+            mutate(&|v| v["format"] = "inklkunn-key-record/1".into()),
         ),
         ("an extra field", mutate(&|v| v["note"] = "x".into())),
         ("a short nonce", mutate(&|v| v["nonce"] = "00".into())),
@@ -825,7 +830,7 @@ fn a_record_that_is_a_link_or_too_large_is_refused() {
     std::os::unix::fs::symlink(&real, &path).unwrap();
     assert!(matches!(store.status(&wiki), Err(KeyStoreError::Io(_, _))));
     std::fs::remove_file(&path).unwrap();
-    std::fs::write(&path, vec![b'x'; 20_000]).unwrap();
+    std::fs::write(&path, vec![b'x'; 3 * 1024 * 1024]).unwrap();
     assert!(matches!(store.status(&wiki), Err(KeyStoreError::Io(_, _))));
 }
 
@@ -1266,4 +1271,163 @@ fn a_directory_is_never_visible_unlocked_and_removal_does_not_follow_a_link() {
 
 fn seed_base_dir(base: &SeedBase) -> &Path {
     base.path()
+}
+
+// ---- superseded keys (corrections handoff C11) ----
+
+fn superseded_entry() -> Superseded {
+    Superseded {
+        generation: 1,
+        maintainer_key_id: "inklkunn-old-maintainer".to_owned(),
+        superseded_at: 1_700_000_500,
+        retired: false,
+        views: vec![RecordedTip {
+            view: "heads/main".to_owned(),
+            block_id: "ab".repeat(32),
+        }],
+    }
+}
+
+#[test]
+fn the_superseded_keys_are_kept_in_the_record_and_survive_a_reopen() {
+    let tmp = temp("superseded");
+    let store = store_in(&tmp.0.join("keys"));
+    let wiki = WikiId::new();
+    let mut m = meta(&wiki);
+    m.generation = 2;
+    m.rotated_at = Some(1_700_000_500);
+    m.superseded = vec![superseded_entry()];
+    store.create(&m, &seeds()).unwrap();
+    assert_eq!(store.status(&wiki).unwrap(), m);
+    let text = std::fs::read_to_string(tmp.0.join(format!("keys/{wiki}.key.json"))).unwrap();
+    assert!(text.contains("inklkunn-key-record/2") && text.contains("superseded"));
+    drop(store);
+    assert_eq!(
+        store_in(&tmp.0.join("keys"))
+            .status(&wiki)
+            .unwrap()
+            .superseded,
+        vec![superseded_entry()]
+    );
+}
+
+#[test]
+fn a_record_written_before_superseded_keys_existed_still_opens_as_never_rotated_under_the_rule() {
+    let tmp = temp("format-one");
+    let store = store_in(&tmp.0.join("keys"));
+    let wiki = WikiId::new();
+    let old = record::seal_v1(&store.master, &meta(&wiki), &seeds()).unwrap();
+    assert!(old.contains("inklkunn-key-record/1") && !old.contains("superseded"));
+    std::fs::write(tmp.0.join(format!("keys/{wiki}.key.json")), old).unwrap();
+    let opened = store.status(&wiki).unwrap();
+    assert_eq!(opened, meta(&wiki));
+    assert!(opened.superseded.is_empty());
+    // A rotation under the new rule rewrites it as format 2.
+    let mut m = meta(&wiki);
+    m.generation = 2;
+    m.superseded = vec![superseded_entry()];
+    store.replace(&m, &seeds()).unwrap();
+    assert!(
+        std::fs::read_to_string(tmp.0.join(format!("keys/{wiki}.key.json")))
+            .unwrap()
+            .contains("inklkunn-key-record/2")
+    );
+    assert_eq!(store.status(&wiki).unwrap().superseded.len(), 1);
+}
+
+#[test]
+fn a_superseded_entry_cannot_be_edited_added_or_dropped_without_notice() {
+    let tmp = temp("tamper-superseded");
+    let store = store_in(&tmp.0.join("keys"));
+    let wiki = WikiId::new();
+    let mut m = meta(&wiki);
+    m.generation = 2;
+    m.superseded = vec![superseded_entry()];
+    store.create(&m, &seeds()).unwrap();
+    let path = tmp.0.join(format!("keys/{wiki}.key.json"));
+    let good = std::fs::read_to_string(&path).unwrap();
+    let block = "ab".repeat(32);
+    for (what, bad) in [
+        (
+            "a recorded tip moved",
+            good.replace(&block, &"cd".repeat(32)),
+        ),
+        (
+            "the retired flag flipped",
+            good.replace("\"retired\": false", "\"retired\": true"),
+        ),
+        (
+            "the key id changed",
+            good.replace("inklkunn-old-maintainer", "inklkunn-new-maintainer"),
+        ),
+        ("the time changed", good.replace("1700000500", "1700000600")),
+        ("the entry dropped", {
+            let mut v: serde_json::Value = serde_json::from_str(&good).unwrap();
+            v.as_object_mut().unwrap().remove("superseded");
+            serde_json::to_string(&v).unwrap()
+        }),
+    ] {
+        std::fs::write(&path, &bad).unwrap();
+        let r = store.status(&wiki);
+        assert!(matches!(&r, Err(KeyStoreError::Record(_))), "{what}: {r:?}");
+    }
+    // A format-1 record cannot carry the field at all.
+    let v1_with = good.replace("inklkunn-key-record/2", "inklkunn-key-record/1");
+    std::fs::write(&path, v1_with).unwrap();
+    assert!(matches!(store.status(&wiki), Err(KeyStoreError::Record(_))));
+    std::fs::write(&path, &good).unwrap();
+    assert!(store.status(&wiki).is_ok());
+}
+
+#[test]
+fn a_record_with_a_value_prikk_would_not_issue_in_its_superseded_list_is_refused_at_sealing() {
+    let tmp = temp("check-superseded");
+    let store = store_in(&tmp.0.join("keys"));
+    let wiki = WikiId::new();
+    for (what, entry) in [
+        (
+            "a key id with a space",
+            Superseded {
+                maintainer_key_id: "a b".into(),
+                ..superseded_entry()
+            },
+        ),
+        (
+            "a block id that is not hex",
+            Superseded {
+                views: vec![RecordedTip {
+                    view: "heads/main".into(),
+                    block_id: "zz".into(),
+                }],
+                ..superseded_entry()
+            },
+        ),
+        (
+            "a view with a NUL",
+            Superseded {
+                views: vec![RecordedTip {
+                    view: "heads/\0".into(),
+                    block_id: String::new(),
+                }],
+                ..superseded_entry()
+            },
+        ),
+    ] {
+        let mut m = meta(&wiki);
+        m.superseded = vec![entry];
+        assert!(
+            matches!(store.create(&m, &seeds()), Err(KeyStoreError::Record(_))),
+            "{what}"
+        );
+    }
+    // A view with no block yet is recorded as an empty block id, which is allowed.
+    let mut m = meta(&wiki);
+    m.superseded = vec![Superseded {
+        views: vec![RecordedTip {
+            view: "heads/new".into(),
+            block_id: String::new(),
+        }],
+        ..superseded_entry()
+    }];
+    store.create(&m, &seeds()).unwrap();
 }

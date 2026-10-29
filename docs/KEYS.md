@@ -51,25 +51,47 @@ This is the choice, and prikk 0.54.1 makes it a hard one (ledger **PK-34**):
 Use the default for a routine rotation (a schedule, a change of operator): the service no longer holds the
 old seed, and nothing else is known to. Use `--retire-old` when the old seed may be in someone else's hands,
 and accept that the wiki will report *Verification failed* until prikk can keep a retired key's history
-verifiable (a request to prikk is open). The second flag exists so that cost cannot be paid by accident.
+verifiable. The second flag exists so that cost cannot be paid by accident. The owner ruled this design
+(DR-10, 2026-10-29) after prikk **confirmed** it on the same day: a leaked copy of a still-trusted key can
+seal anything that verifies, and a rotation that keeps history verifiable while removing the key **is not
+scheduled** in prikk.
+
+### What a default rotation still tells you: seals made after the rotation
+
+A copy of the repository cannot prove that a block was sealed by the old key *after* the new one was adopted
+(adoption is local and recorded nowhere a copy can check). inklkunn can, because it knows the moment. At the
+commit point of every rotation the key record keeps, for the replaced maintainer key, **the newest block of
+every view**, and `inklkunn wiki keys status <wiki>` (and every rotation, which also writes a `keys-late-seal`
+event to the audit trail for each finding) lists the superseded keys and **reports every block one of them
+sealed that is not in the history up to those points**: *sealed by a superseded key after the rotation*. It
+changes nothing by itself, and `status` exits non-zero when it finds one.
+
+**What it covers:** a leaked seed used against the wiki's own repository while the service's records are intact
+(a leaked backup, a leaked seed file). **What it does not:** a host that has been taken over (the records are
+the attacker's then; that is what `--retire-old` is for), a view's tip recorded before it existed (an
+empty tip: every block of that view is then "after"), and a repository that no longer verifies (after
+`--retire-old` prikk prints no list of who sealed what, ledger PK-39, so the check says it could not run).
 
 ## If a wiki's keys may have leaked (the compromise runbook)
 
-1. **Decide whether the seeds could have left the host.** The seeds are decrypted only for one call, on a
+1. **Look first** (`inklkunn wiki keys status <wiki>`): a block sealed by a superseded key after its rotation
+   is evidence that an old seed is in use. It is evidence of a leaked *copy* only if the service's own records
+   are intact; if the host was taken over, trust nothing this report says.
+2. **Decide whether the seeds could have left the host.** The seeds are decrypted only for one call, on a
    tmpfs, and stored sealed otherwise; an attacker needs the key records **and** the operator's secret, or a
    running service to ride. If only the operator's secret leaked and the key records did not, rotate (default)
    and change the secret. If the records and the secret both leaked, or the host was taken over, the seeds are
    gone: continue.
-2. **Stop signing** (stop the service, or the wiki's writes) and note the time the compromise could have started.
-3. **Rotate with `--retire-old --accept-unverifiable-history`.** The old key can seal nothing more.
-4. **Read what happened.** Export the audit trail (`inklkunn audit export`: JSON Lines, oldest first) and read
+3. **Stop signing** (stop the service, or the wiki's writes) and note the time the compromise could have started.
+4. **Rotate with `--retire-old --accept-unverifiable-history`.** The old key can seal nothing more.
+5. **Read what happened.** Export the audit trail (`inklkunn audit export`: JSON Lines, oldest first) and read
    the wiki's history with `prikk log` in its repository. Because the history the old key sealed no longer
    verifies, `prikk verify` cannot be the check any more. The reconciliation (RFC 002 D-7: every sealed change
    against an acceptance record, and the reverse) is the check that fits, **but it is a library function today
    and not yet a command or a schedule**, and the acceptance records it reads are RFC 004's, which do not exist
    yet: until they do, the comparison is by hand, change by change, against the proposals the wiki shows.
-5. **State what was signed during the window**, to the wiki's maintainers.
-6. **Change the operator's secret** (it re-seals nothing; plan a re-key of the key records — not yet a command).
+6. **State what was signed during the window**, to the wiki's maintainers.
+7. **Change the operator's secret** (it re-seals nothing; plan a re-key of the key records — not yet a command).
 
 **After a retirement the service reports every later change as sealed but unconfirmed.** Each acceptance still
 seals, and the wiki's history still grows, but the check that closes every acceptance (`prikk verify`) fails for

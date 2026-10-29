@@ -193,6 +193,64 @@ RFC 002 and RFC 003 — the first handoffs after M0, in progress. Still nothing 
   Lines. The write ceiling of the signer's prikk calls is **still the fixed 1 GiB** the handoff asked to
   measure and replace; that measurement was not done (see the review request).
 
+Corrections to handoff 002 (the architect's review of 2026-10-29, `identity-keys-and-signing-corrections-handoff-v1`).
+
+- **A key store is never made by accident, and its creation is one critical section** (C4, IS-17).
+  `Signer::open` refuses a key directory with no store and names the path; `Signer::open_creating_store` (what
+  `inklkunn wiki keys create` uses) makes one. Creation takes an exclusive `flock` across the emptiness check and
+  the header's link, so the loser of a race opens the winner's store instead of being told its directory "is not
+  a key store", and a crash's leftover temporary file no longer blocks creation for good. `rustix` (`fs`) joins
+  the signer for `flock(2)` (no new lock entry); `std::fs::File::lock` needs Rust 1.89 and the minimum is 1.88.
+- **A memory ceiling is never a refusal or an unconfirmed seal** (C1, threat model C-9a). Every call the signer
+  makes runs under a ceiling from a costed rule per verb, sized from the store and the bytes of the change
+  (measured on prikk 0.55.0, ledger PK-38), replacing a fixed 1 GiB that `verify` of one 300 MiB attachment
+  exceeded; a 300 MiB attachment is now accepted, and so is the change after it. A death by the ceiling uses the
+  driver's own classifier and is `CeilingExceeded` (nothing committed, worktree as it was), `Queued { ceiling }`
+  (a patch is queued) or `SealedUnconfirmed { CeilingExceeded }` (sealed, not confirmed; never "verify failed"); a
+  `verify` stage that failed with the whole message `i/o error: out of memory` is the ceiling too.
+- **Each write verb sees only the seed it signs with** (C2). `commit` the author seed; `seal` and `branch create`
+  the maintainer seed; `init`, `trust`, `mv`, `branch switch`, `verify` and `log` none (a stand-in lists what each
+  can see).
+- **One writer per wiki across processes** (C3). Every act that writes a wiki's repository or key record takes an
+  exclusive `flock` on `<root>/<shard>/<id>.lock` (never inside `.prikk/`); another process, such as the command
+  line beside a running server, is refused at once with `Busy`, naming the process that holds it. The kernel drops
+  the lock with a killed holder.
+- **The signer checks the files, not only the message** (C5). A SHA-256 over the prepared change (files sorted,
+  removals, renames in order) joins `ExpectedMessage`; a change altered after the record is `ChangeMismatch`
+  before one prikk call, seed or file. `sha2` joins the signer (no new lock entry).
+- **Seed directories are swept by liveness, not age** (C6). A seed directory is born locked and held for its
+  call; a start removes every directory it can lock, at once, and none a live call holds; removal is by handle
+  (`O_NOFOLLOW`), never following a link. The heartbeat is gone.
+- **Principals and key operations need a witness** (C7). An account principal is built only with the process's one
+  `IdentityAuthority` (held by the authenticator) and has private fields; `create_keys`, `rotate_keys` and
+  `create_repository` (so `create_wiki`) take the process's one `KeyAuthority`. Compile-fail doctests show the
+  refusals. *API changes:* `Principal::Account` holds an `AccountPrincipal`; `Authenticator::new` takes the
+  authority; `create_wiki` takes the key authority; `RepositoryBootstrap::create_repository` takes it.
+- **Outbound HTTPS is a confined `curl`** (C8, IQ-3). New lower-layer crate `inklkunn-fetch` runs `curl` in its
+  own bubblewrap vector (network shared; no repository, key or seed; `/usr` and the CA bundle read-only; fresh
+  `/tmp`; cleared environment) at exactly the addresses the egress guard pinned: https only, no redirects,
+  bounded time and bytes, no proxy, no config file. The `Authorization` header and the form body travel on
+  curl's standard input and appear in no argument, error, `Debug` output or log. No TLS crate enters the lock
+  (209 → 210: the new member). The boundary gate makes it the third crate allowed to spawn (`bwrap` or `curl`
+  only), depended on by the binary alone, and the only one that may name `curl`. The binary carries the
+  `HttpsFetcher` adapter (guard + fetcher), unused until OpenID Connect is switched on in M2.
+- **The OIDC round trip survives the browser** (C9). The callback is answered with a `Landing`, a 200 page that
+  moves the browser on with a same-site request (a `SameSite=Strict` session cookie is withheld after a redirect
+  from a cross-site-initiated navigation); the login-state cookie is `Lax`, `__Host-`, `HttpOnly`, `Secure`, ten
+  minutes, and removed by the callback. Checked once in headless Chromium 156. *API change:*
+  `Authenticator::finish_oidc` takes the path to land on and returns `OidcSignedIn { signed_in, landing }`.
+- **Smaller items from the readings** (C10). Store schema **6**: `role_grants` has foreign keys to `accounts`
+  (the migration rebuilds the table and refuses by name, rolling back, when a grant names an account that does
+  not exist); `inklkunn serve` warns on a non-loopback bind with no declared trusted proxy (no setting exists
+  yet); an account holds at most 100 live sessions (a sign-in beyond that ends the oldest, never refused).
+- **A rotation records where the old key stopped, and a seal after that point is reported** (C11, DR-10). The
+  key record (now format 2; format 1 still opens) keeps, for every maintainer key a rotation replaced, the
+  newest block of every view at that moment and whether the key was retired. `inklkunn wiki keys status` (and
+  every rotation, into the audit trail) reports every block such a key sealed that is not in the history up to
+  those points: a leaked seed used against the repository while the service's records are intact. It changes
+  nothing, `status` exits non-zero on a finding, and it cannot run on a repository that does not verify (after
+  `--retire-old`; ledger PK-39: prikk prints who sealed what only in `verify`'s text).
+
 RFC 003 — the read path, in progress (handoff 003 T1 – T3). Still no wiki page is served; the pages that exist
 are the language switcher and the notices.
 

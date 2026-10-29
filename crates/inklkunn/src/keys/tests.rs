@@ -509,6 +509,37 @@ fn a_key_directory_with_no_store_in_it_is_refused_by_status_and_rotate_and_nothi
 }
 
 #[test]
+fn status_lists_the_superseded_keys_and_checks_for_seals_made_after_their_rotation() {
+    let Some(w) = world::world("superseded-status") else {
+        return;
+    };
+    // Never rotated: nothing to list, and the check has nothing to say.
+    let (status, out, _) = w.cli("wiki keys status handbook");
+    assert_eq!(status, 0);
+    assert!(!out.contains("superseded"), "{out}");
+    let (status, _, err) = w.cli("wiki keys rotate handbook --confirm handbook");
+    assert_eq!(status, 0, "{err}");
+    let (status, out, err) = w.cli("wiki keys status handbook");
+    assert_eq!(status, 0, "{err}");
+    assert!(
+        out.contains("superseded maintainer key inklkunn-")
+            && out.contains("generation 1")
+            && out.contains("still trusted")
+            && out.contains("no block was sealed by a superseded key after its rotation")
+            && out.contains("does not help if the host itself was taken over"),
+        "{out}"
+    );
+    // Nothing was found, so nothing was written to the trail.
+    assert!(
+        !w.audit_events()
+            .iter()
+            .any(|(a, _, _)| a == "keys-late-seal"),
+        "{:?}",
+        w.audit_events()
+    );
+}
+
+#[test]
 fn a_rotation_whose_retirement_fails_is_recorded_as_a_rotation_and_says_the_old_key_is_still_trusted()
  {
     let Some(w) = world::world("retire-fails") else {

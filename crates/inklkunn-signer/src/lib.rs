@@ -42,6 +42,7 @@ pub use accept::{
 pub use bootstrap::BootstrapSigner;
 pub use keys::KeyIds;
 pub use signer::lifecycle::{OldKey, OldKeyOutcome, Rotation};
+pub use signer::superseded::{LateSeal, SupersededKey};
 pub use signer::{KeyStatus, Signer, SignerConfig};
 pub use writes::{SealedIds, SignerError, WRITE_DEADLINE};
 

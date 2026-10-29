@@ -743,6 +743,7 @@ impl Signer {
                 maintainer_key_id: maintainer_id.clone(),
                 created_at: inklkunn_store::record::now_secs(),
                 rotated_at: None,
+                superseded: Vec::new(),
             };
             self.store.create(&meta, &seeds).map_err(ks)?;
             Ok(KeyIds {
@@ -827,6 +828,7 @@ impl RepositoryBootstrap for Signer {
 }
 
 pub(crate) mod lifecycle;
+pub(crate) mod superseded;
 
 #[cfg(test)]
 mod tests;

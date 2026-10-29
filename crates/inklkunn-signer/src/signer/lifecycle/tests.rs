@@ -13,6 +13,7 @@ use crate::RepositoryBootstrap;
 use crate::accept::{AcceptanceLedger, AcceptanceToken, ExpectedMessage, LedgerError};
 use crate::keys::Role;
 use crate::message::{Message, Summary, SystemLabel};
+use crate::signer::superseded::LateSeal;
 use crate::{SignerConfig, accept::ViewCreationAct, accept::ViewCreationFacts};
 
 const SECRET: &str = "an operator secret for the lifecycle tests, long enough";
@@ -464,5 +465,137 @@ fn a_retirement_that_fails_is_a_rotation_that_happened_and_says_the_old_key_is_s
         w.verify().0,
         "the old key is still trusted: {}",
         w.verify().1
+    );
+}
+
+// ---- seals by a superseded key (corrections handoff C11, DR-10) ----
+
+impl World {
+    fn tip_block(&self) -> String {
+        self.signer
+            .writes
+            .tip(&self.repo, "heads/main")
+            .unwrap()
+            .expect("a block")
+            .block_id
+    }
+}
+
+#[test]
+fn a_seal_by_the_old_key_after_a_default_rotation_is_reported_with_its_block_and_earlier_seals_are_not()
+ {
+    let Some(w) = world("late-seal") else { return };
+    // A change sealed by the first keys before anything is stolen or rotated: history the old key really made.
+    w.seal_with_current_keys("one\n");
+    let loot = dir(Path::new("/dev/shm"), "late-loot");
+    let stolen = w.steal_seeds(&loot.0);
+    let first = w.signer.key_status(&w.wiki).unwrap();
+    // Never rotated: nothing superseded, nothing to report.
+    assert!(w.signer.superseded_keys(&w.wiki).unwrap().is_empty());
+    assert_eq!(w.signer.seals_by_superseded_keys(&w.repo).unwrap(), vec![]);
+
+    w.signer
+        .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Keep)
+        .unwrap();
+    // The rotation recorded where the old key stopped: one view, and the key is still trusted.
+    let superseded = w.signer.superseded_keys(&w.wiki).unwrap();
+    assert_eq!(superseded.len(), 1);
+    assert_eq!(superseded.first().unwrap().generation, 1);
+    assert_eq!(
+        superseded.first().unwrap().maintainer_key_id,
+        first.maintainer_key_id
+    );
+    assert!(!superseded.first().unwrap().retired);
+    assert_eq!(superseded.first().unwrap().views_recorded, 1);
+    assert_eq!(w.signer.seals_by_superseded_keys(&w.repo).unwrap(), vec![]);
+
+    // The service seals with the new keys: nothing is reported for those.
+    w.seal_with_current_keys("two\n");
+    assert_eq!(w.signer.seals_by_superseded_keys(&w.repo).unwrap(), vec![]);
+
+    // A thief with the old seed seals: reported, with the block and the key.
+    assert_eq!(w.seal_with_stolen(&loot.0, &stolen), None);
+    let forged = w.tip_block();
+    let late = w.signer.seals_by_superseded_keys(&w.repo).unwrap();
+    assert_eq!(
+        late,
+        vec![LateSeal {
+            generation: 1,
+            maintainer_key_id: first.maintainer_key_id.clone(),
+            block_id: forged.clone(),
+        }]
+    );
+    assert!(late.first().unwrap().to_string().contains(&forged));
+    // The repository still verifies (that is the cost of keeping the key) and the report does not change it.
+    assert!(w.verify().0);
+    // The service goes on sealing with its new keys; the report stays exactly the one block.
+    w.seal_with_current_keys("three\n");
+    assert_eq!(w.signer.seals_by_superseded_keys(&w.repo).unwrap(), late);
+}
+
+#[test]
+fn a_second_rotation_does_not_make_what_the_first_keys_sealed_in_between_late() {
+    let Some(w) = world("late-twice") else { return };
+    let loot = dir(Path::new("/dev/shm"), "late-twice-loot");
+    w.signer
+        .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Keep)
+        .unwrap();
+    // The second pair seals one change, is stolen, and is then rotated away too.
+    w.seal_with_current_keys("by the second pair\n");
+    let stolen_second = w.steal_seeds(&loot.0);
+    w.signer
+        .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Keep)
+        .unwrap();
+    assert_eq!(w.signer.superseded_keys(&w.wiki).unwrap().len(), 2);
+    // What the second pair sealed before its replacement is history up to its recorded point: not late.
+    assert_eq!(w.signer.seals_by_superseded_keys(&w.repo).unwrap(), vec![]);
+    // After it, the second pair's key seals: late, and attributed to generation 2 only.
+    assert_eq!(w.seal_with_stolen(&loot.0, &stolen_second), None);
+    let late = w.signer.seals_by_superseded_keys(&w.repo).unwrap();
+    assert_eq!(late.len(), 1);
+    assert_eq!(late.first().unwrap().generation, 2);
+    assert_eq!(late.first().unwrap().block_id, w.tip_block());
+}
+
+#[test]
+fn a_retirement_records_the_point_too_and_marks_the_key_retired() {
+    let Some(w) = world("late-retire") else {
+        return;
+    };
+    w.signer
+        .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
+        .unwrap();
+    let superseded = w.signer.superseded_keys(&w.wiki).unwrap();
+    assert_eq!(superseded.len(), 1);
+    assert!(
+        superseded.first().unwrap().retired,
+        "the record says the key was retired"
+    );
+    assert_eq!(superseded.first().unwrap().views_recorded, 1);
+    // After a retirement prikk cannot verify the old history (ledger PK-34) and prints no list of who sealed
+    // what (ledger PK-39), so the check cannot run: it says so and never answers "nothing found" from nothing.
+    // It does not need to: the retired key can seal nothing more.
+    let r = w.signer.seals_by_superseded_keys(&w.repo);
+    assert!(
+        matches!(&r, Err(SignerError::Refused(why)) if why.contains("publication-trust")),
+        "{r:?}"
+    );
+}
+
+#[test]
+fn the_text_of_prikks_verify_is_read_strictly() {
+    let block = "ab".repeat(32);
+    let text = format!(
+        "verified repository: /x\nsealed blocks: 2\nsealed-block {block}: inklkunn-w-maintainer-2-0a1b2c3d\n\
+         sealed-block {}: \nsealed-block {block}x: key\nsealed-block {block}: bad key\nsealed-block short: k\n\
+         sealed-blocks: {block}: k\n",
+        "cd".repeat(32)
+    );
+    assert_eq!(
+        crate::writes::parse_sealed_blocks(&text),
+        vec![
+            (block.clone(), "inklkunn-w-maintainer-2-0a1b2c3d".to_owned()),
+            ("cd".repeat(32), String::new()),
+        ]
     );
 }

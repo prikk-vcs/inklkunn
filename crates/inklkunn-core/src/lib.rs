@@ -41,7 +41,8 @@ pub use authorize::{
 };
 pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, Resolver, StdEgressGuard, StdResolver};
 pub use inklkunn_signer::{
-    KeyAuthority, KeyStatus, OldKey, OldKeyOutcome, Rotation, Signer, SignerConfig, SignerError,
+    KeyAuthority, KeyStatus, LateSeal, OldKey, OldKeyOutcome, Rotation, Signer, SignerConfig,
+    SignerError, SupersededKey,
 };
 pub use read::{
     Calls, Cause, CountingStorage, Found, Lookup, PageOutcome, PageView, Presentation, ReadConfig,

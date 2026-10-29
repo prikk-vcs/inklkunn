@@ -70,12 +70,14 @@ pub(crate) enum WriteVerb {
     Seal,
     /// `branch create`.
     BranchCreate,
+    /// `branch list`.
+    BranchList,
 }
 
 impl WriteVerb {
     /// Every verb.
     #[cfg(test)]
-    pub(crate) const ALL: [WriteVerb; 13] = [
+    pub(crate) const ALL: [WriteVerb; 14] = [
         WriteVerb::Init,
         WriteVerb::Trust,
         WriteVerb::KeyGenerate,
@@ -89,6 +91,7 @@ impl WriteVerb {
         WriteVerb::Commit,
         WriteVerb::Seal,
         WriteVerb::BranchCreate,
+        WriteVerb::BranchList,
     ];
 
     /// The verb a prikk argument vector runs, or `None` for one the signer has no cost for (and so never runs).
@@ -104,6 +107,7 @@ impl WriteVerb {
             ["verify", ..] => WriteVerb::Verify,
             ["branch", "switch", ..] => WriteVerb::Switch,
             ["branch", "create", ..] => WriteVerb::BranchCreate,
+            ["branch", "list", ..] => WriteVerb::BranchList,
             ["mv", ..] => WriteVerb::Mv,
             ["commit", ..] => WriteVerb::Commit,
             ["seal", ..] => WriteVerb::Seal,
@@ -122,7 +126,8 @@ impl WriteVerb {
             | WriteVerb::Status
             | WriteVerb::Log
             | WriteVerb::Mv
-            | WriteVerb::BranchCreate => (0, 0, 16 * MIB),
+            | WriteVerb::BranchCreate
+            | WriteVerb::BranchList => (0, 0, 16 * MIB),
             // 28 MiB for 10,000 pages; 5.0 × S where one attachment is most of the store.
             WriteVerb::WorktreeStatus => (50, 0, 48 * MIB),
             // 2.0 × S on many pages; 5.0 × S for one attachment (IS-12's 4.99).

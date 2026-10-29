@@ -21,7 +21,7 @@ fn the_table_is_bound_to_the_floor() {
 #[test]
 fn every_verb_the_signer_runs_has_a_rule_and_is_found_by_its_arguments() {
     // The argument vectors the runner is given, one per verb: each is found, none is found twice.
-    let vectors: [(&[&str], WriteVerb); 13] = [
+    let vectors: [(&[&str], WriteVerb); 14] = [
         (&["init"], WriteVerb::Init),
         (
             &["trust", "maintainer", "add", "--key-id", "k"],
@@ -44,6 +44,7 @@ fn every_verb_the_signer_runs_has_a_rule_and_is_found_by_its_arguments() {
         (&["mv", "a", "b"], WriteVerb::Mv),
         (&["commit", "-m", "m"], WriteVerb::Commit),
         (&["seal", "--allow-no-audit"], WriteVerb::Seal),
+        (&["branch", "list", "--all"], WriteVerb::BranchList),
     ];
     for (args, verb) in vectors {
         assert_eq!(WriteVerb::of(args), Some(verb), "{args:?}");

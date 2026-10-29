@@ -23,6 +23,7 @@ use inklkunn_store::WikiId;
 
 use super::{KeyDir, KeyIds, Meta, Signer, SignerError, ks, read_seeds};
 use crate::KeyAuthority;
+use crate::key_store::{MAX_RECORDED_VIEWS, RecordedTip, Superseded};
 
 /// What happens to the old maintainer key when keys are rotated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +42,10 @@ pub enum OldKeyOutcome {
     Kept,
     /// It was removed from the repository's trust, as asked.
     Retired,
+    /// The key was removed from the repository's trust, as asked, **but the key record could not say so**
+    /// (it still lists the key as superseded and not retired). Nothing is trusted that should not be; the
+    /// record's note is the only thing missing. The text is why.
+    RetiredUnrecorded(String),
     /// Removal was asked for and **failed**: the keys *were* rotated and the old maintainer key is **still
     /// trusted**. The text is prikk's, for operators; the fix is `prikk trust maintainer remove --key-id <old>`
     /// in the wiki's repository.
@@ -117,7 +122,37 @@ impl Signer {
             self.writes
                 .trust_maintainer(repo, &maintainer_id, &maintainer_public)?;
 
-            // 3. The commit point: from here the service signs with the new keys.
+            // 3. The commit point: from here the service signs with the new keys. The record also keeps where the
+            //    old maintainer key stopped: the tip block of every view now (corrections handoff C11), so that a
+            //    later seal by that key can be told from the history it really sealed.
+            let views = self.writes.all_views(repo)?;
+            if views.len() > MAX_RECORDED_VIEWS {
+                return Err(SignerError::Refused(format!(
+                    "the wiki has {} views and a rotation records the newest block of each, at most {MAX_RECORDED_VIEWS}",
+                    views.len()
+                )));
+            }
+            let mut tips = Vec::with_capacity(views.len());
+            for view in &views {
+                let block_id = self
+                    .writes
+                    .tip(repo, view)?
+                    .map(|b| b.block_id)
+                    .unwrap_or_default();
+                tips.push(RecordedTip {
+                    view: view.clone(),
+                    block_id,
+                });
+            }
+            let now = inklkunn_store::record::now_secs();
+            let mut superseded = before.superseded.clone();
+            superseded.push(Superseded {
+                generation: before.generation,
+                maintainer_key_id: before.maintainer_key_id.clone(),
+                superseded_at: now,
+                retired: false,
+                views: tips,
+            });
             let seeds = read_seeds(&keys)?;
             let meta = Meta {
                 wiki: wiki.clone(),
@@ -125,7 +160,8 @@ impl Signer {
                 author_key_id: author_id.clone(),
                 maintainer_key_id: maintainer_id.clone(),
                 created_at: before.created_at,
-                rotated_at: Some(inklkunn_store::record::now_secs()),
+                rotated_at: Some(now),
+                superseded,
             };
             self.store.replace(&meta, &seeds).map_err(ks)?;
 
@@ -139,7 +175,17 @@ impl Signer {
                         .writes
                         .untrust_maintainer(repo, &before.maintainer_key_id)
                     {
-                        Ok(()) => OldKeyOutcome::Retired,
+                        Ok(()) => {
+                            // The record says it too: a retired key is recorded the same way, marked.
+                            let mut marked = meta.clone();
+                            if let Some(last) = marked.superseded.last_mut() {
+                                last.retired = true;
+                            }
+                            match self.store.replace(&marked, &seeds) {
+                                Ok(()) => OldKeyOutcome::Retired,
+                                Err(e) => OldKeyOutcome::RetiredUnrecorded(ks(e).to_string()),
+                            }
+                        }
                         Err(e) => OldKeyOutcome::RetireFailed(e.to_string()),
                     }
                 }

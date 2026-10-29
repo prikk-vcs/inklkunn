@@ -308,7 +308,15 @@ fn run(
         Command::Status { .. } => {
             let status = signer.key_status(&record.id).map_err(|e| e.to_string())?;
             print_status(out, &record, &status);
-            Ok(())
+            let late = report_superseded(&signer, &record, &repo, out, err)?;
+            if late.is_empty() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "{} block(s) were sealed by a superseded maintainer key after the rotation that replaced it; see above",
+                    late.len()
+                ))
+            }
         }
         Command::Create { .. } => {
             // The trail first: an act that cannot be recorded is not begun (the Authorizer's rule too).
@@ -379,6 +387,9 @@ fn run(
                     let what = match &r.old_key {
                         OldKeyOutcome::Kept => "old key kept".to_owned(),
                         OldKeyOutcome::Retired => "old key retired".to_owned(),
+                        OldKeyOutcome::RetiredUnrecorded(_) => {
+                            "old key retired; the key record could not say so".to_owned()
+                        }
                         OldKeyOutcome::RetireFailed(_) => {
                             "old key retirement FAILED, the old key is still trusted".to_owned()
                         }
@@ -418,6 +429,14 @@ fn run(
                             );
                             Ok(())
                         }
+                        OldKeyOutcome::RetiredUnrecorded(why) => {
+                            let _ = writeln!(
+                                out,
+                                "previous maintainer key {previous} was removed from the repository's trust; what it sealed no longer verifies. \
+                                 The key record could not be updated to say so ({why}); nothing is trusted that should not be"
+                            );
+                            Ok(())
+                        }
                         OldKeyOutcome::RetireFailed(why) => Err(format!(
                             "the keys were rotated (generation {}) but the old maintainer key `{previous}` is STILL TRUSTED: \
                              removing it failed ({why}); remove it with `prikk trust maintainer remove --key-id {previous}` \
@@ -425,6 +444,20 @@ fn run(
                             r.status.generation
                         )),
                     };
+                    // The check runs after every rotation: it prints what it finds, and the trail keeps it.
+                    let late = report_superseded(&signer, &record, &repo, out, err);
+                    if let Ok(found) = &late {
+                        for seal in found {
+                            let _ = finish(
+                                trail,
+                                &record,
+                                now,
+                                "keys-late-seal",
+                                AuditOutcome::Failed,
+                                &seal.to_string(),
+                            );
+                        }
+                    }
                     recorded?;
                     outcome?;
                     done
@@ -441,6 +474,62 @@ fn run(
                     done.and(Err(e.to_string()))
                 }
             }
+        }
+    }
+}
+
+/// Print the superseded keys and the seals any of them made after the rotation that replaced it (corrections
+/// handoff C11). The check itself changes nothing. A check that cannot run is said on `err` and is not a
+/// finding; `Ok` carries the findings.
+fn report_superseded(
+    signer: &Signer,
+    record: &WikiRecord,
+    repo: &std::path::Path,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<Vec<inklkunn_core::LateSeal>, String> {
+    let keys = signer
+        .superseded_keys(&record.id)
+        .map_err(|e| e.to_string())?;
+    if keys.is_empty() {
+        return Ok(Vec::new());
+    }
+    for k in &keys {
+        let _ = writeln!(
+            out,
+            "superseded maintainer key {} (generation {}, replaced {}{}); the newest block of {} view(s) was recorded then",
+            k.maintainer_key_id,
+            k.generation,
+            rfc3339(k.superseded_at),
+            if k.retired {
+                ", retired"
+            } else {
+                ", still trusted"
+            },
+            k.views_recorded
+        );
+    }
+    match signer.seals_by_superseded_keys(repo) {
+        Ok(late) if late.is_empty() => {
+            let _ = writeln!(
+                out,
+                "no block was sealed by a superseded key after its rotation (this covers a leaked seed used against \
+                 the repository while these records are intact; it does not help if the host itself was taken over)"
+            );
+            Ok(late)
+        }
+        Ok(late) => {
+            for seal in &late {
+                let _ = writeln!(out, "WARNING: {seal}");
+            }
+            Ok(late)
+        }
+        Err(e) => {
+            let _ = writeln!(
+                err,
+                "inklkunn: the check for seals by superseded keys could not run: {e}"
+            );
+            Ok(Vec::new())
         }
     }
 }
