@@ -124,6 +124,10 @@
   available for CI and releases. **prikk 0.55.0 is installed** on the build host by the owner (the first re-baseline
   runs against it). **DR-7's reviewer is the owner**, who reads Japanese: the catalog's sign-off is a review request
   to the owner, not a person still to be found.
+- **2026-10-29 — release signing (IS-6) settled by the owner:** releases stay fully automated (no approval
+  click); the owner authorizes a release and the architect tags it; tags are signed by the owner's existing git
+  configuration and checked by readers; the CI signature step (which expected SSH, a mismatch with the owner's
+  OpenPGP signing) and `release-signers.toml` are removed.
 - **2026-10-29 — the first re-baseline, at prikk 0.55.0** (RFC 010 D-1; the owner installed the binary). The release
   changes nothing inklkunn pins: the suite passes whole (676 passed, 0 failed, no self-skips) in a clean worktree;
   spike A re-run on the same four wiki shapes gives every multiple unchanged, and a 64 MiB attachment shape (bare
@@ -139,8 +143,6 @@
 
 ## Pending on the owner
 
-- **Add your SSH public key line to `release-signers.toml`** (`authorized_ssh_signers`) before the first
-  release; the decision to sign tags is taken (2026-10-28), only the key is missing (IS-6).
 - **Hand the dev team its next work:** the review report (`.git-exclude/review-requests/002-003-architect-review-2026-10-29.md`);
   `rfcs/handoffs/002-identity-keys-and-signing/identity-keys-and-signing-corrections-handoff-v1.md` (C1 – C4 before
   003's T7); `rfcs/handoffs/001-foundations/verify-verdict-honesty-handoff-v1.md` (before 003's T4); then handoff 003
@@ -185,7 +187,7 @@ the mode requires. CI is green from `d0a8307` on ([run 40489623629](https://gith
 | IS-3 | prikk refuses repository paths over 1024 bytes (and components over 255), so the requirements' "depth 1,000" hierarchy target is unattainable and a deep title must be refused before `commit` | spike A generator 2026-10-27 | **a documented, stable prikk rule** (`reference/path-safety.md`, RFC 125 §3), so no letter: ledger PK-11; `title_to_path` refuses over either cap (RFC 003's handoff T3); a lint before the refusal (RFC 004's handoff) |
 | IS-4 | The cost table's first multiples were planeter's 0.52.0 guesses | T3 2026-10-27 | **closed** by spike A's measurement on 0.54.1 (ledger PK-20; `cost.rs` `PROVISIONAL = false`) |
 | IS-5 | prikk refuses non-ASCII repository paths ("deferred until Unicode NFC normalization is implemented"), so a title in another script has no native path | M0 review 2026-10-27 | **decided 2026-10-28**: prikk replied (design round in 0.56.0, implementation ≥ 0.57.0, no date); inklkunn ships with percent-encoded paths (ledger PK-21) and plans native paths as a migration when prikk's design lands; stays open as a tracked migration, not as a defect |
-| IS-6 | The release tags were called signed but no signature was verified | M0 review 2026-10-27 | **decided 2026-10-28**: tags are SSH-signed by the owner's key and `release.yml` verifies them against `release-signers.toml`; the step reports *pending* until the owner adds the public key, which closes this item |
+| IS-6 | The release tags were called signed but no signature was verified | M0 review 2026-10-27 | **Resolved 2026-10-29 (owner):** every commit and tag is already signed by the owner's git configuration (OpenPGP); readers check a tag with `git verify-tag` (`docs/RELEASING.md`); CI does not re-check it (little gain for its cost), `release-signers.toml` and the SSH step are removed; artifacts keep their keyless attestations; threat model C-11b |
 | IS-7 | **A memory ceiling can read as *Verification failed*.** Under `RLIMIT_DATA`, `verify` sometimes prints a complete failing report whose `objects` stage failed with `i/o error: out of memory` (exit 1); the driver takes any parseable failing report as a verdict, so the badge would say *Verification failed* and, by INT-6, the wiki would refuse acceptances. Latent, not live: production ceilings sit above wiki-shaped needs, so it takes a cost-table underestimate (IS-12 shows how thin some margins are); the existing ceiling test is strict but its two-block fixture never shows the shape | architect review 2026-10-28; reproduced on prikk 0.54.1 with the driver's vector (70 blocks, 2–3 MiB); planeter IS-43 (PL-7); ledger PK-22 | **follow-on handoff assignable**: `rfcs/handoffs/001-foundations/verify-verdict-honesty-handoff-v1.md` (the complete-verdict rule, a ceiling sweep on a long history that fails on today's driver); lands before RFC 003's T4 |
 | IS-8 | **RFC 003's handoff routed `prikk archive export` through the read driver**, but the verb writes lock files inside `.prikk/` and refuses on a read-only bind (measured), the boundary gate already forbids the driver to name `archive`, and it conflicts with concurrent writers | architect review 2026-10-28; ledger PK-23 | **concretized**: RFC 003 D-11 and the handoff's T7 run it in `inklkunn-signer`'s keyless writable mode, serialized with the wiki's writes (internal design SGN-6); RFC 004's lease covers it (handoff 004 note) |
 | IS-9 | **`extract` needs prikk's checkpoint record, which a read-only `verify` cannot refresh**: after a prikk upgrade, a restore or a cleared cache, `extract` of a history beyond 63 blocks refuses (`not-recorded`) until a seal or a writable `verify` | architect review 2026-10-28; measured on 0.54.1; ledger PK-24 | **concretized**: the checkpoint refresh is the keyless mode's second operation (RFC 003 D-11), run at start where the prikk version changed (the wiki record keeps it, store schema 2) and on demand; a `not-recorded` refusal is *could not be read now*, never `--allow-full-replay` from a request (handoff 003, T3 and T7 notes) |

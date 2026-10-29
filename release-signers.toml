@@ -1,8 +1,0 @@
-# Who may sign a release tag (RFC 010 D-10; the ecosystem's shape, as prikk's `release-signers.toml`).
-# The owner signs tags with an SSH key held outside CI (`git tag -s`, `gpg.format = ssh`); `release.yml`
-# verifies the tag against the public keys listed here before anything is built. While the list is empty
-# the workflow reports that signing is pending and builds anyway (docs/STATUS.md, IS-6); the first key
-# the owner adds makes verification mandatory.
-schema_version = 1
-# One entry per authorized signer: the full SSH public key line ("ssh-ed25519 AAAA… comment").
-authorized_ssh_signers = []

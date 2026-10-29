@@ -4,10 +4,9 @@
 # manifest list, the tarballs and the image are attested, the GitHub release is created from the CHANGELOG
 # section, and the crates are published in dependency order. The `rehearsal` dispatch mode exercises every
 # step against a throwaway package (ghcr.io/prikk-vcs/inklkunn-rehearsal) and can never publish anything
-# real (pin-check enforces the shape). Tagging and the real publish are the owner's acts, or the architect's
-# when delegated. The tag's SSH signature is
-# verified against release-signers.toml; while that file lists no key the step reports that signing is
-# pending (docs/STATUS.md, IS-6).
+# real (pin-check enforces the shape). The owner authorizes a release and the architect tags it (the project
+# rules); the tag is signed by the owner's git configuration, and its signature is checked by readers, not here
+# (docs/RELEASING.md; owner, 2026-10-29). Provenance for the artifacts is the attestations.
 name: Release
 
 on:
@@ -56,19 +55,6 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           V="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
           test "$TAG" = "$V" || { echo "tag $TAG != workspace version $V" >&2; exit 1; }
-      - name: Tag is signed by an authorized signer (release-signers.toml)
-        if: github.event_name == 'push'
-        run: |
-          set -euo pipefail
-          git fetch --no-tags origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}" --force
-          # The authorized SSH public keys, one per line, as git's allowed-signers file wants them.
-          grep -oE '"(ssh|sk-ssh)-[^"]+"' release-signers.toml | tr -d '"' | sed 's/^/release-signer /' > allowed-signers || true
-          if [ ! -s allowed-signers ]; then
-            echo "release-signers.toml lists no signer yet: tag signing is pending the owner's key (docs/STATUS.md IS-6); building unsigned"
-            exit 0
-          fi
-          test "$(git cat-file -t "${GITHUB_REF_NAME}")" = tag || { echo "${GITHUB_REF_NAME} is a lightweight tag; a release tag must be signed (git tag -s)" >&2; exit 1; }
-          git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile=allowed-signers verify-tag "${GITHUB_REF_NAME}"
       - name: Install prikk at the floor (checksum recorded in this file) and the sandbox tools
         run: |
           set -euo pipefail

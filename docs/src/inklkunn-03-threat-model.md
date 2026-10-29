@@ -185,6 +185,10 @@ sealed (A-RECORD, A-HISTORY).
 - **C-11** Pinned and locked dependencies, `cargo deny` and `cargo audit` at every project event, a license
   allow-list, `forbid(unsafe_code)`, measured growth, a preference for confined subprocesses over
   in-process protocol stacks (planeter's dependency policy, adopted); CI actions pinned by digest.
+- **C-11b** Release provenance: the release tag is signed by the owner's key (readers check it with
+  `git verify-tag`), and every binary and image carries a keyless build attestation naming the commit and the
+  workflow run. CI does not re-check the tag's signature (owner, 2026-10-29: little gain for its cost), so a
+  release is as trustworthy as push access to the repository.
 
 ### T-12 — Repudiation
 "I never proposed that", "I never accepted that" (A-ATTRIBUTION).

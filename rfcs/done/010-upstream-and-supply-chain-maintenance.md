@@ -88,7 +88,9 @@ and by measurement.**
   binaries and the container image, attests them, publishes the GitHub release with the CHANGELOG section,
   and publishes the crates in dependency order; a `rehearsal` dispatch mode pushes only to a throwaway
   package and can never reach the real one (pin-check enforces the shape). Tagging, publishing and the
-  release itself are the owner's acts or the architect's when delegated per release.
+  release itself are the owner's acts or the architect's when delegated per release. *(Owner, 2026-10-29:
+  the owner authorizes each release and the architect tags it; tags are signed by the owner's git
+  configuration and checked by readers, not re-checked in CI; `release-signers.toml` is removed. IS-6.)*
 
 ## What "done" means (acceptance criteria)
 

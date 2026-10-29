@@ -1,10 +1,9 @@
 # Releasing inklkunn
 
-Releases are **signed bare version tags** (`X.Y.Z`) pushed by the owner; `release.yml` does the rest. The
-signature is an SSH signature by a key the owner holds outside CI, verified against the public keys in
-`release-signers.toml` (decided 2026-10-28). Until the owner's public key is in that file the verification
-step reports *pending* and the release builds unsigned (`docs/STATUS.md`, IS-6); the first key added makes
-it mandatory. Until 1.0 the
+Releases are **bare version tags** (`X.Y.Z`); `release.yml` does the rest, with no manual step. The owner
+authorizes a release and the architect tags it (the project rules). Every commit and tag is signed by the owner's
+git configuration (OpenPGP), so a reader can check a tag by hand (below); CI does not re-check it, and the built
+artifacts carry GitHub's keyless provenance attestations (owner, 2026-10-29). Until 1.0 the
 minor version moves at each milestone (roadmap §milestones) and the patch version for fixes. Nothing is
 released from M0; this document exists so that the first release is a rehearsed act, not a first attempt.
 
@@ -26,18 +25,14 @@ released from M0; this document exists so that the first release is a rehearsed 
    commit; it builds everything, attests under a rehearsal label and pushes only the throwaway image
    package; the real image name is never touched (the `pin-check` test proves the guard).
 
-## The tag (owner)
-
-Once, on the signing machine: `git config gpg.format ssh` and `git config user.signingkey ~/.ssh/<key>.pub`;
-the same public key line goes into `release-signers.toml` (`authorized_ssh_signers`) on `main` before the tag.
+## The tag (the architect, once the owner has authorized the release)
 
 ```sh
-git tag -s X.Y.Z <release-candidate commit> -m "inklkunn X.Y.Z"
+git tag -a X.Y.Z <release-candidate commit> -m "inklkunn X.Y.Z"   # signed by the git configuration
 git push origin X.Y.Z
 ```
 
-The architect prepares; **only the owner tags** (RFC 010 D-10; the project rules). A lightweight or
-unauthorized tag fails the gates job before anything is built.
+A tag whose version differs from the workspace version fails the gates job before anything is built.
 
 ## What the workflow does
 
@@ -53,6 +48,8 @@ release run is green).
 ## Verifying a release
 
 ```sh
+curl -fsSL https://github.com/nabbisen.gpg | gpg --import   # the owner's public key, once
+git verify-tag X.Y.Z                                          # in a clone: the tag is the owner's
 sha256sum -c inklkunn-x86_64-unknown-linux-gnu.tar.gz.sha256
 gh attestation verify inklkunn-x86_64-unknown-linux-gnu.tar.gz --repo prikk-vcs/inklkunn
 ./inklkunn --version   # names the commit and the prikk floor it was built for
