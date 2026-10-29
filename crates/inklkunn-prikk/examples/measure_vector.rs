@@ -26,6 +26,9 @@ use inklkunn_prikk::{
     Admission, ExtractBounds, Point, PrikkCli, Sandbox, Storage, StorageError, Unavailable, cost,
 };
 
+/// What one verb's bisection found: the smallest working ceiling and the call's wall time there, or why not.
+type Found = Result<(u64, Duration), String>;
+
 fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(to)?;
     for entry in std::fs::read_dir(from)? {
@@ -98,7 +101,7 @@ fn smallest(
     source: &Path,
     store_bytes: u64,
     call: &dyn Fn(&PrikkCli, &Path) -> Result<(), StorageError>,
-) -> Result<(u64, Duration), String> {
+) -> Found {
     let mut hi = (store_bytes * 8).max(64 << 20);
     if !attempt(sandbox, source, hi, call)? {
         return Err(format!("still stopped at {hi} bytes"));
@@ -171,7 +174,7 @@ fn main() -> ExitCode {
         "{:<8} {:>12} {:>9} {:>9}",
         "verb", "need (MiB)", "× S", "secs"
     );
-    let mut rows: Vec<(&str, Result<(u64, Duration), String>)> = Vec::new();
+    let mut rows: Vec<(&str, Found)> = Vec::new();
     let mv = &main_view;
     let p = path.as_str();
     rows.push((
