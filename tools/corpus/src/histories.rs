@@ -3,9 +3,10 @@
 //!
 //! 1. **How often does a base move before acceptance?** A review-latency model: proposals arrive at a rate,
 //!    each is accepted after a latency; the base has moved when another acceptance landed in between.
-//! 2. **How often is a block-aware three-way merge clean?** Two edits from one baseline, pages split into
-//!    blocks (blank-line separated; frontmatter is block 0); clean when the two sides' changed block sets are
-//!    disjoint on every page.
+//! 2. **How often is a block-aware three-way merge clean?** Two edits from one baseline, merged by the
+//!    product's own function (`inklkunn_core::merge`, RFC 004 D-5): the tip's side is edit A, the proposal's
+//!    side is edit B. (Before the handoff 004 T2 the harness held its own block model here; the product
+//!    function replaced it and agrees with it on all 120 pairs of the recorded run.)
 //! 3. **Would prikk's own span anchors still apply?** The same two edits really sealed, one on `heads/main`
 //!    and one on a branch, then `prikk merge --baseline-block` from the baseline: prikk's confluence
 //!    verdict, verbatim.
@@ -13,7 +14,8 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use inklkunn_core::{PageText, merge};
+use serde::{Deserialize, Serialize};
 
 use crate::Opts;
 use crate::prikk::Prikk;
@@ -22,7 +24,7 @@ use crate::wiki::{Rng, page_path, page_text, title};
 const PAGES: usize = 40;
 const PAGE_BYTES: usize = 4096;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 enum Scenario {
     /// Both sides replace the same paragraph of the same page.
     SameParagraph,
@@ -49,7 +51,7 @@ impl Scenario {
 }
 
 /// One side's edit, described so both the real repository and the block model can apply it.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 enum Edit {
     Paragraph {
         page: usize,
@@ -74,6 +76,8 @@ struct Trial {
     a: Edit,
     b: Edit,
     block_merge_clean: bool,
+    /// Overlaps of this pair that a line-level merge would have made clean (the measurement hook; never applied).
+    line_level_clean: usize,
     prikk_outcome: String,
     prikk_detail: String,
 }
@@ -82,6 +86,8 @@ struct Trial {
 struct Tally {
     trials: usize,
     block_clean: usize,
+    /// Overlaps a line-level three-way merge of the block would have declared clean (RFC 004 D-5 hook).
+    line_level_clean_overlaps: usize,
     prikk_confluent: usize,
     prikk_refusals: BTreeMap<String, usize>,
     /// (block model says clean, prikk says confluent) → count.
@@ -106,7 +112,9 @@ struct Report {
     trials: Vec<Trial>,
 }
 
-/// Blocks of a page: block 0 is the frontmatter, then blank-line separated paragraphs/headings.
+/// The generator's own addressing of a page's paragraphs: block 0 is the frontmatter, then blank-line
+/// separated paragraphs and headings. It says which paragraph an edit replaces (`Edit::Paragraph::index`);
+/// it is **not** the merge's block model, which is the product's (`inklkunn_markup::blocks`).
 fn blocks(text: &str) -> Vec<String> {
     let (fm, body) = match text
         .strip_prefix("---\n")
@@ -115,7 +123,6 @@ fn blocks(text: &str) -> Vec<String> {
         Some((fm, body)) => (format!("---\n{fm}\n---"), body),
         None => (String::new(), text),
     };
-    // Blocks are compared trimmed, so the blank-line layout around a block never counts as a change.
     let mut out = vec![fm.trim().to_owned()];
     out.extend(
         body.split("\n\n")
@@ -126,16 +133,36 @@ fn blocks(text: &str) -> Vec<String> {
     out
 }
 
-/// Which block indices differ between `base` and `edited` (aligned by index; the generator never
-/// inserts or removes blocks, so alignment holds).
-fn changed_blocks(base: &str, edited: &str) -> Vec<usize> {
-    let b = blocks(base);
-    let e = blocks(edited);
-    (0..b.len().max(e.len()))
-        .filter(|&i| b.get(i) != e.get(i))
+/// The wiki's pages as the merge sees them: path and text, in page order.
+fn wiki_pages(titles: &[String], pages: &[String]) -> Vec<PageText> {
+    titles
+        .iter()
+        .zip(pages)
+        .map(|(t, p)| PageText::new(page_path(t).to_string_lossy(), p.clone()))
         .collect()
 }
 
+/// The three sides of the merge of two edits from one baseline: the baseline, the tip's (edit `a`) and the
+/// proposal's (edit `b`).
+fn sides(
+    titles: &[String],
+    pages: &[String],
+    a: &Edit,
+    b: &Edit,
+) -> (Vec<PageText>, Vec<PageText>, Vec<PageText>) {
+    let after = |edit: &Edit| {
+        let mut t = titles.to_vec();
+        let mut p = pages.to_vec();
+        apply_in_memory(&mut p, edit);
+        if let Edit::Rename { page, new_title } = edit
+            && let Some(slot) = t.get_mut(*page)
+        {
+            *slot = new_title.clone();
+        }
+        wiki_pages(&t, &p)
+    };
+    (wiki_pages(titles, pages), after(a), after(b))
+}
 /// Apply an edit to page texts held in memory (`pages[i]` is page i's text).
 fn apply_in_memory(pages: &mut [String], edit: &Edit) {
     match edit {
@@ -479,28 +506,12 @@ pub fn run(opts: &Opts) -> Result<(), String> {
         let baseline = prikk.tip(&repo, Some("heads/main"))?;
         let (a, b) = draw_edits(&mut rng, scenario, &pages, &titles, n);
 
-        // Block model.
-        let mut pa = pages.clone();
-        let mut pb = pages.clone();
-        apply_in_memory(&mut pa, &a);
-        apply_in_memory(&mut pb, &b);
-        let touched_a: BTreeMap<usize, Vec<usize>> = (0..PAGES)
-            .filter_map(|i| {
-                let c = changed_blocks(pages.get(i)?, pa.get(i)?);
-                (!c.is_empty()).then_some((i, c))
-            })
-            .collect();
-        let touched_b: BTreeMap<usize, Vec<usize>> = (0..PAGES)
-            .filter_map(|i| {
-                let c = changed_blocks(pages.get(i)?, pb.get(i)?);
-                (!c.is_empty()).then_some((i, c))
-            })
-            .collect();
-        let block_merge_clean = touched_a.iter().all(|(p, ca)| {
-            touched_b
-                .get(p)
-                .is_none_or(|cb| ca.iter().all(|x| !cb.contains(x)))
-        });
+        // The product's merge: A is the tip's side, B the proposal's.
+        let (base_pages, tip_pages, mine_pages) = sides(&titles, &pages, &a, &b);
+        let merged = merge(&base_pages, &tip_pages, &mine_pages);
+        let block_merge_clean = merged.is_clean();
+        // The measurement hook: of the overlaps, how many a line-level merge would have made clean.
+        let line_level_clean = merged.line_level_clean();
 
         // prikk: B on a branch, A on main, then merge from the baseline.
         let branch = format!("heads/t{n}");
@@ -550,6 +561,7 @@ pub fn run(opts: &Opts) -> Result<(), String> {
             if block_merge_clean {
                 t.block_clean += 1;
             }
+            t.line_level_clean_overlaps += line_level_clean;
             if outcome == "confluent" {
                 t.prikk_confluent += 1;
             } else {
@@ -576,6 +588,7 @@ pub fn run(opts: &Opts) -> Result<(), String> {
             a,
             b,
             block_merge_clean,
+            line_level_clean,
             prikk_outcome: outcome,
             prikk_detail: detail,
         });
@@ -606,4 +619,168 @@ pub fn run(opts: &Opts) -> Result<(), String> {
         serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())?
     );
     Ok(())
+}
+
+// ------------------------------------------------------------------------------------- the merge fixture
+
+/// What the merge fixture needs of a recorded trial.
+#[derive(Debug, Deserialize)]
+struct RecordedTrial {
+    n: usize,
+    scenario: Scenario,
+    a: Edit,
+    b: Edit,
+    block_merge_clean: bool,
+    prikk_outcome: String,
+}
+
+/// What the merge fixture needs of a recorded run (the spike's report).
+#[derive(Debug, Deserialize)]
+struct Recorded {
+    seed: u64,
+    pages: usize,
+    trials: Vec<RecordedTrial>,
+}
+
+/// A page on one side of a pair. `text` is absent when it is the base's.
+#[derive(Debug, Serialize)]
+struct FixturePage {
+    path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    text: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct FixtureBase {
+    path: String,
+    text: String,
+}
+
+#[derive(Debug, Serialize)]
+struct FixtureEntry {
+    base: FixtureBase,
+    theirs: FixturePage,
+    ours: FixturePage,
+}
+
+#[derive(Debug, Serialize)]
+struct FixturePair {
+    n: usize,
+    scenario: Scenario,
+    /// What the spike's own block model said about this pair (recorded in the report).
+    spike_block_clean: bool,
+    pages: Vec<FixtureEntry>,
+}
+
+#[derive(Debug, Serialize)]
+struct Fixture {
+    generator: &'static str,
+    source: String,
+    seed: u64,
+    pairs: Vec<FixturePair>,
+}
+
+fn edited_page(edit: &Edit) -> usize {
+    match edit {
+        Edit::Paragraph { page, .. }
+        | Edit::Frontmatter { page, .. }
+        | Edit::Rename { page, .. } => *page,
+    }
+}
+
+/// The `merge-fixture` subcommand (handoff 004 T2): rebuild, without prikk, the pairs of a recorded
+/// `histories` run as the three sides of a merge, and write them as a committed test fixture.
+///
+/// The recorded report holds the edits but not the page texts. The texts are a pure function of the seed, so
+/// the generator is replayed: the same draws, in the same order, with the wiki's state carried from trial to
+/// trial as the run carried it (edit A always landed; edit B landed when prikk's merge was confluent). The
+/// replay is checked against the report: every drawn pair of edits must equal the recorded one, or the
+/// fixture is refused.
+pub fn merge_fixture(opts: &Opts) -> Result<(), String> {
+    let report_path = opts.path("report")?;
+    let out = opts.path("out")?;
+    if out.exists() {
+        return Err(format!("{} exists; refusing to overwrite", out.display()));
+    }
+    let recorded: Recorded =
+        serde_json::from_slice(&std::fs::read(&report_path).map_err(|e| e.to_string())?)
+            .map_err(|e| format!("{}: {e}", report_path.display()))?;
+    let mut rng = Rng::new(recorded.seed);
+    let mut titles: Vec<String> = (0..recorded.pages).map(|i| title(i, 0)).collect();
+    let mut pages: Vec<String> = Vec::with_capacity(recorded.pages);
+    for i in 0..recorded.pages {
+        let t = titles.get(i).cloned().unwrap_or_default();
+        pages.push(page_text(&mut rng, i, &t, PAGE_BYTES, &titles));
+    }
+
+    let mut pairs = Vec::with_capacity(recorded.trials.len());
+    for trial in &recorded.trials {
+        let scenario = Scenario::draw(&mut rng);
+        let (a, b) = draw_edits(&mut rng, scenario, &pages, &titles, trial.n);
+        if scenario != trial.scenario || a != trial.a || b != trial.b {
+            return Err(format!(
+                "the replay diverged from the report at trial {}: drawn {scenario:?}, recorded {:?}",
+                trial.n, trial.scenario
+            ));
+        }
+        let (base, theirs, ours) = sides(&titles, &pages, &a, &b);
+        let mut touched = vec![edited_page(&a), edited_page(&b)];
+        touched.sort_unstable();
+        touched.dedup();
+        let mut entries = Vec::new();
+        for i in touched {
+            let (Some(x), Some(y), Some(z)) = (base.get(i), theirs.get(i), ours.get(i)) else {
+                return Err(format!("trial {}: page {i} is missing", trial.n));
+            };
+            let differs = |p: &PageText| (p.text != x.text).then(|| p.text.clone());
+            entries.push(FixtureEntry {
+                base: FixtureBase {
+                    path: x.path.clone(),
+                    text: x.text.clone(),
+                },
+                theirs: FixturePage {
+                    path: y.path.clone(),
+                    text: differs(y),
+                },
+                ours: FixturePage {
+                    path: z.path.clone(),
+                    text: differs(z),
+                },
+            });
+        }
+        pairs.push(FixturePair {
+            n: trial.n,
+            scenario,
+            spike_block_clean: trial.block_merge_clean,
+            pages: entries,
+        });
+        // Carry the state as the run did: A landed on the tip; B landed too when prikk merged them.
+        advance(&mut titles, &mut pages, &a);
+        if trial.prikk_outcome == "confluent" {
+            advance(&mut titles, &mut pages, &b);
+        }
+    }
+
+    let fixture = Fixture {
+        generator: "inklkunn-corpus merge-fixture (handoff 004 T2)",
+        source: report_path
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned()),
+        seed: recorded.seed,
+        pairs,
+    };
+    let json = serde_json::to_string(&fixture).map_err(|e| e.to_string())?;
+    std::fs::write(&out, json + "\n").map_err(|e| e.to_string())?;
+    eprintln!("{} pairs written to {}", fixture.pairs.len(), out.display());
+    Ok(())
+}
+
+/// Land an edit on the in-memory wiki.
+fn advance(titles: &mut [String], pages: &mut [String], edit: &Edit) {
+    apply_in_memory(pages, edit);
+    if let Edit::Rename { page, new_title } = edit
+        && let Some(slot) = titles.get_mut(*page)
+    {
+        *slot = new_title.clone();
+    }
 }

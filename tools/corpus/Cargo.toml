@@ -14,6 +14,8 @@ name = "inklkunn-corpus"
 path = "src/main.rs"
 
 [dependencies]
+# The merge the harness measures is the product's (handoff 004 T2); a workspace path edge, no new crate.
+inklkunn-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

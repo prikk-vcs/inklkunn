@@ -664,3 +664,21 @@ Follow-ups from the review of 2026-10-31 (handoff 003, S2 – S4).
   `renameat2(RENAME_NOREPLACE)` instead of a `mkdir` and a `rename`: an existing destination, an empty directory included,
   is refused by the kernel in the same step, so the race with a process that makes the destination meanwhile is closed, not
   narrowed.
+- **Proposals T2 (RFC 004 D-5; handoff 004): the block-aware three-way merge.** `inklkunn_markup::blocks` segments a body
+  into its top-level blocks from the parser's own structure (paragraph, heading, list, quotation, table, code block, HTML,
+  container, footnote), each with its `^id` (a trailing one on a paragraph, a line of its own after a table, code block,
+  list or quotation) and its whitespace-trimmed text; a container is one block, and anything the parser consumes without a
+  token (a link reference definition) is a block of its own, so only whitespace lies between blocks. `inklkunn_core::merge`
+  merges three sides (base, tip, proposal) of a set of pages: pages by page id (an edit lands on the renamed file; removed
+  on one side and changed on the other, two new paths for one page, and two pages at one path are overlaps), the
+  frontmatter key by key (unreadable frontmatter as one unit), the body block by block (matched by `^id`, then by unique
+  content, then by a bounded longest-common-subsequence alignment). A change on one side is taken, the same change on both
+  sides once, anything else is an **overlap carrying both texts and where**; the code never resolves one, and two sides
+  that add different blocks at one place overlap too. `MergeOutcome` is `Clean { pages }` or `Overlaps { overlaps }`. The
+  measurement hook says, for each overlap, whether a line-level merge of the block would have been clean
+  (`LineLevel`, `MergeOutcome::line_level_clean`), made with the same engine and no dependency, and never applied: on the
+  spike's 21 overlaps it is 0. The 120 pairs of spike B are a committed fixture
+  (`crates/inklkunn-core/tests/fixtures/merge-spike-b-pairs.json`, regenerated without prikk by
+  `inklkunn-corpus merge-fixture`, which refuses to write if its replay of the generator differs from the report) and yield
+  exactly 99 clean merges and 21 overlaps, the same verdict as the spike's own model on every pair. `tools/corpus` now
+  measures with the product function (a workspace path edge to `inklkunn-core`) and reports the hook's count.

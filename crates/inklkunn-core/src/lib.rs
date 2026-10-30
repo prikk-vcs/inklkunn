@@ -19,6 +19,8 @@
 //!   wiki's last verification, and a check that could not run kept apart from a verdict.
 //! - [`bundle`] and [`wiki`]: the repository layout (external design CT-02) and *create wiki*, which is
 //!   kill-safe (a creation mark and a start-up sweep).
+//! - [`merge`](mod@merge): the content-level three-way merge (RFC 004 D-5): frontmatter key by key, body block by block,
+//!   pages matched by page id, an overlap never resolved by the code. Pure.
 //! - [`import`] and [`export`]: `import-folder` (one accepted change under the system principal) and the
 //!   Portable Wiki Bundle export at fidelity level 3 (handoff 003 T7; RFC 003 D-11, D-12).
 
@@ -30,6 +32,7 @@ pub mod check;
 pub mod egress;
 pub mod export;
 pub mod import;
+pub mod merge;
 pub mod read;
 pub mod reconcile;
 pub mod routes;
@@ -56,6 +59,7 @@ pub use inklkunn_signer::{
     ArchiveExported, KeyAuthority, KeyStatus, LateSeal, Maintenance, OldKey, OldKeyOutcome,
     Rotation, Signer, SignerConfig, SignerError, SupersededKey,
 };
+pub use merge::{LineLevel, MergeOutcome, MergedPage, Overlap, PageRef, PageText, Place, merge};
 pub use read::{
     Calls, Cause, CountingStorage, Found, Lookup, PageOutcome, PageView, Presentation, ReadConfig,
     ReadError, ReadService, SafeHtml, Sanitizer, Tip, TitleIndex,
