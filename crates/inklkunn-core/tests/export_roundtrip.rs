@@ -691,8 +691,8 @@ fn histories_that_cannot_be_written_are_counted_in_the_manifest_not_dropped_sile
     }
     let w = world("unwritable", Sandbox::Unconfined);
     let a = create(&w, "epsilon");
-    // One page with a good id; one whose id cannot name a file; two that share an id (a second import can
-    // bring a page whose id another page already has).
+    // One page with a good id and one whose id cannot name a file. (Two pages that share an id can no longer be
+    // brought in: the import refuses a page id the wiki already keeps, R7. The export still counts them.)
     let first = dir_in(&w.tmp, "folder1");
     put(
         &first.0,
@@ -704,31 +704,19 @@ fn histories_that_cannot_be_written_are_counted_in_the_manifest_not_dropped_sile
         "pages/Bad.md",
         page_with_id("Bad", "../escape/bad").as_bytes(),
     );
-    put(
-        &first.0,
-        "pages/Twin A.md",
-        page_with_id("Twin A", "twin-1").as_bytes(),
-    );
     do_import(&w, &a, &first.0, false);
-    let second = dir_in(&w.tmp, "folder2");
-    put(
-        &second.0,
-        "pages/Twin B.md",
-        page_with_id("Twin B", "twin-1").as_bytes(),
-    );
-    do_import(&w, &a, &second.0, false);
 
     let out = dir_in(&w.tmp, "out");
     let dest = out.0.join("bundle");
     let done = export_bundle(&w.storage, &w.layout, &a.record, &dest, "0.0.0", 1)
         .unwrap_or_else(|e| panic!("{e}"));
     let files = files_of(&dest);
-    // Bad (1) and the two twins (2): three pages whose history has no file.
-    assert_eq!(done.histories_not_written, 3);
+    // Bad: one page whose history has no file.
+    assert_eq!(done.histories_not_written, 1);
     assert!(
         String::from_utf8(get(&files, "wiki-bundle.yaml").clone())
             .unwrap()
-            .contains("  histories_not_written: 3\n")
+            .contains("  histories_not_written: 1\n")
     );
     // The history that could be written (Help, Good) is there; none of the others is, and nothing escaped.
     assert!(files.contains_key("history/good-1.jsonl"));
