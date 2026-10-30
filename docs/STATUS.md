@@ -161,6 +161,11 @@
   refusals (R4, R5), the bundle manifest's checksums in wiki-commons' shape (R6). IS-18 opened (raw source of a
   restricted wiki on a separate content host, for sign-in). Three asks for the next bundled letter to prikk (below).
   Pushed.
+- **2026-10-31 — handoff 003's corrections R1 – R10 reviewed: Approved** (result
+  `.git-exclude/reviewed/003-read-path-and-rendering-corrections-review-result.md`). Gates re-run at `0f5ed3b`: **1,215
+  passed, 0 failed** in both runs, **97 self-skips**. R1 sound: a check that could not run never replaces a verdict.
+  Rulings: `rustix` in core (D1), the shared-id history count kept (D2). Four small follow-ups S1 – S4 before 0.1.0.
+  **RFC 004's handoff is now assignable.** Pushed.
 
 ## Pending on the owner
 
@@ -187,11 +192,11 @@
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and handoff 003's T1 – T3 are built and
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
-(2026-10-30).** **The dev team's order now:** handoff 003's corrections R1 – R10 (R1 first), all before 0.1.0;
-then the architect brings the 0.1.0 decision to the owner. F1, F5, F6, V1, V2 are done (in T4 – T9); F2 – F4
+(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **The dev team's order now:** handoff 003's follow-ups S1 – S4
+(before 0.1.0), then RFC 004's handoff; the architect brings the 0.1.0 decision to the owner once S1 – S4 are approved. F1, F5, F6, V1, V2 are done (in T4 – T9); F2 – F4
 before OpenID Connect is switched on. The architect reviews
-each request as it arrives; the next re-baseline is at prikk 0.56.0. RFC 004 (proposals) is accepted and its handoff v1 is written; it is assignable **once R1 is approved** (acceptance
-reads the verification verdict, INT-6), beside the rest of R2 – R10. The single-large-attachment measurement is now handoff 003's T6 (IS-12; the architect's
+each request as it arrives; the next re-baseline is at prikk 0.56.0. RFC 004 (proposals) is accepted and its handoff v1 is written; it is **assignable now** (R1, the verdict acceptance
+reads under INT-6, is approved). The single-large-attachment measurement is now handoff 003's T6 (IS-12; the architect's
 early data are in ledger PK-20). The architect drafts RFC 005 part 1 (the claim-identity investigation) when M1 is
 under way. The four kickoff documents the requirements transcript
 linked do not exist (owner, 2026-10-28): the transcripts under `.git-exclude/specs/` are the complete startup

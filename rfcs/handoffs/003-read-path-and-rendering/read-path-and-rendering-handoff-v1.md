@@ -358,3 +358,20 @@ is **Conditionally Approved**. Hand back R1 – R10 as one review request,
   discovery JSON escapes `<`, `>`, `&`; the page body's heading ids are prefixed so none collides with the template's;
   Markdown right after a closing `:::` renders; the permalink banner says its links point to today's pages; the markup
   crate's timing tests are made robust to load (a ratio over repeated runs, or a bound that a loaded runner meets).
+
+## Follow-ups from the review of 2026-10-31 (binding; all before 0.1.0)
+
+R1 – R10 are **done and approved** (`.git-exclude/reviewed/003-read-path-and-rendering-corrections-review-result.md`).
+Decision D1 is ruled yes (`rustix` in core), D2 kept. Hand back S1 – S4 as one review request,
+`003-read-path-and-rendering-follow-ups-review-request.md`.
+
+- **S1.** `rustix` (`fs`, `std`) becomes a direct dependency of `inklkunn-core` (a dependency-policy row; the lock
+  inventory). The import walk is handle-anchored from one root handle (`openat` with `O_DIRECTORY | O_NOFOLLOW`, or
+  `openat2` with `RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS`); file opens use `rustix`'s flags, so the hand-written constants
+  and the `compile_error!` go; the export's final move uses `RENAME_NOREPLACE`. The inode pins stay as the second line.
+- **S2.** A unit test of the shared-id branch of the export's history count (a shared id can still reach an export from a
+  repository the import did not write).
+- **S3.** The manifest carries the export time under wiki-commons' key `exported_at`, as an RFC 3339 date-time;
+  inklkunn's own export facts (`as_of_block`, the counts) move under the manifest's `inklkunn:` key.
+- **S4.** The start-up sweep writes its audit event **before** each removal (the act is not done if the event cannot be
+  written), and its outcome after, as every other administrative act does.
