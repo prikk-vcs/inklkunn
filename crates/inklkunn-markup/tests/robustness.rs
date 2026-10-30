@@ -6,7 +6,9 @@
 //! the time may grow at most 1.5 × as fast as the input's byte length does (for a shape whose length doubles
 //! that is 3 ×; a quadratic pass takes 4 × and more as the constant factors shrink). A shared CI runner is
 //! slow and noisy, so an absolute bound would say more about the machine than about the code; a generous
-//! ceiling only guards against a hang.
+//! ceiling only guards against a hang. A measurement that is over the bound is repeated (see [`ATTEMPTS`]):
+//! load can only slow a run down, so one measurement within the bound is the evidence, and the test does not
+//! flake on a busy runner.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::time::{Duration, Instant};
@@ -33,21 +35,35 @@ fn time(f: &dyn Fn()) -> Duration {
     best
 }
 
-/// Build the input at `n` and `2n`, run `work` on each, and require near-linear scaling.
+/// How many times a shape is measured before a ratio above the bound is believed. A pass that is quadratic
+/// is over the bound every time; a loaded runner that descheduled the larger run is over it once in a while.
+const ATTEMPTS: usize = 5;
+
+/// Build the input at `n` and `2n`, run `work` on each, and require near-linear scaling: in **one** of up to
+/// [`ATTEMPTS`] measurements (each the faster of two runs of each size). A noisy measurement can only make the
+/// ratio look worse than the code is, never better, so one good measurement is evidence that the pass is
+/// linear and a bound that holds on a quiet machine holds on a busy one.
 fn linear(label: &str, n: usize, build: impl Fn(usize) -> String, work: impl Fn(&str)) {
     let small = build(n);
     let large = build(2 * n);
-    let t_small = time(&|| work(&small));
-    let t_large = time(&|| work(&large));
-    assert!(t_large < CEILING, "{label}: {t_large:?} for 2n");
-    if t_large > NOISE {
+    let size_ratio = large.len() as f64 / small.len().max(1) as f64;
+    let mut worst = String::new();
+    for _ in 0..ATTEMPTS {
+        let t_small = time(&|| work(&small));
+        let t_large = time(&|| work(&large));
+        assert!(t_large < CEILING, "{label}: {t_large:?} for 2n");
+        if t_large <= NOISE {
+            return;
+        }
         let time_ratio = t_large.as_secs_f64() / t_small.as_secs_f64().max(0.000_5);
-        let size_ratio = large.len() as f64 / small.len().max(1) as f64;
-        assert!(
-            time_ratio <= SLACK * size_ratio,
-            "{label}: the input grew {size_ratio:.1}× and the time {time_ratio:.1}× ({t_small:?} → {t_large:?}); a linear pass grows alike"
+        if time_ratio <= SLACK * size_ratio {
+            return;
+        }
+        worst = format!(
+            "{label}: the input grew {size_ratio:.1}× and the time {time_ratio:.1}× ({t_small:?} → {t_large:?}) in each of {ATTEMPTS} measurements; a linear pass grows alike"
         );
     }
+    panic!("{worst}");
 }
 
 fn everything(text: &str) {

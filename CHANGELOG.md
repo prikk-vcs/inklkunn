@@ -629,3 +629,12 @@ RFC 003 — corrections from the review of 2026-10-30 (R1 – R10, before 0.1.0)
   nothing from a repository that already holds a sealed block (asked through the driver's `branch list` and `log`): both are
   reported as left behind, with the mark kept, for the operator. `sweep_unfinished_creations` takes the `Storage` and a
   `store_is_new` flag.
+- **Correction R10: hardening and small points.** An image source is refused when it holds a backslash or any control
+  character (tab, CR, LF among them) anywhere, so `/\host` and `/<tab>/host` no longer pass as paths. The content origin's
+  `Cross-Origin-Resource-Policy` is `same-site` (nothing of ours embeds it: the page policy's `img-src` is `'self'` and the
+  raw source is a link). The discovery documents (`site.json`, JSON-LD) write `<`, `>` and `&` as JSON escapes through the API's
+  helper. The page body's heading and block ids are prefixed `h-` (`RenderOptions::id_prefix`), with the contents list, the API's
+  `toc` and every link to one, so a heading "Main" cannot take the template's `main`; the derived cache is keyed by the prefix,
+  so rows drawn without it are drawn again. Markdown on the line right after a closing `:::` renders as Markdown. A permalink's
+  banner says that its links lead to the pages as they are now (`at.links`). The markup crate's scaling tests believe a ratio
+  over the bound only when five measurements in a row are over it.
