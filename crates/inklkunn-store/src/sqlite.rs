@@ -12,6 +12,7 @@
 //! slug or id already taken is reported as exactly that.
 
 mod acceptance;
+mod acts;
 mod derived;
 mod identity;
 mod inbox;
@@ -31,7 +32,7 @@ use crate::record::{
 use crate::{Result, StoreError, WikiStore};
 
 /// The schema version this build writes and reads: the last of [`MIGRATIONS`].
-pub const SCHEMA_VERSION: i64 = 9;
+pub const SCHEMA_VERSION: i64 = 10;
 
 /// Version 1: M0's schema, the wiki records.
 const V1: &str = "
@@ -475,6 +476,75 @@ CREATE TABLE IF NOT EXISTS inbox_events (
 CREATE INDEX IF NOT EXISTS inbox_events_account ON inbox_events(account_id, seq);
 ";
 
+/// Version 10 (RFC 004 D-4, D-6, D-14; handoff 004 T4): the message an intent means to seal (the facts a seal
+/// is bound to and the reconciliation compares are read from it), the recovery flag, the overlaps kept on a
+/// proposal and the system acts (an import, a system change), which have no proposal. The overlaps, the system
+/// acts and their ends are written once, as the acceptance records are.
+const V10: &str = "
+ALTER TABLE intents ADD COLUMN message TEXT NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS wiki_flags (
+    wiki_id TEXT PRIMARY KEY REFERENCES wikis(id),
+    reason  TEXT NOT NULL CHECK (reason IN ('queued', 'sealed-unconfirmed', 'worktree-dirty', 'interrupted')),
+    act     TEXT,
+    since   INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS proposal_overlaps (
+    seq         INTEGER PRIMARY KEY AUTOINCREMENT,
+    proposal_id TEXT NOT NULL REFERENCES proposals(id),
+    revision    INTEGER NOT NULL,
+    tip_block   TEXT NOT NULL,
+    texts       TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    FOREIGN KEY (proposal_id, revision) REFERENCES proposal_revisions(proposal_id, seq)
+);
+CREATE INDEX IF NOT EXISTS proposal_overlaps_proposal ON proposal_overlaps(proposal_id, seq);
+CREATE TRIGGER IF NOT EXISTS proposal_overlaps_no_update BEFORE UPDATE ON proposal_overlaps
+BEGIN SELECT RAISE(ABORT, 'proposal overlaps are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS proposal_overlaps_no_delete BEFORE DELETE ON proposal_overlaps
+BEGIN SELECT RAISE(ABORT, 'proposal overlaps are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS proposal_overlaps_no_replace BEFORE INSERT ON proposal_overlaps
+WHEN NEW.seq IS NOT NULL AND EXISTS (SELECT 1 FROM proposal_overlaps WHERE seq = NEW.seq)
+BEGIN SELECT RAISE(ABORT, 'proposal overlaps are append-only'); END;
+CREATE TABLE IF NOT EXISTS system_acts (
+    id             TEXT PRIMARY KEY,
+    seq            INTEGER NOT NULL,
+    wiki_id        TEXT NOT NULL REFERENCES wikis(id),
+    view           TEXT NOT NULL,
+    kind           TEXT NOT NULL CHECK (kind IN ('import', 'system')),
+    base_block     TEXT NOT NULL,
+    message        TEXT NOT NULL,
+    message_digest TEXT NOT NULL,
+    digest         TEXT NOT NULL,
+    bytes          INTEGER NOT NULL,
+    created_at     INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS system_acts_wiki ON system_acts(wiki_id, seq);
+CREATE TRIGGER IF NOT EXISTS system_acts_no_update BEFORE UPDATE ON system_acts
+BEGIN SELECT RAISE(ABORT, 'system acts are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS system_acts_no_delete BEFORE DELETE ON system_acts
+BEGIN SELECT RAISE(ABORT, 'system acts are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS system_acts_no_replace BEFORE INSERT ON system_acts
+WHEN EXISTS (SELECT 1 FROM system_acts WHERE id = NEW.id)
+BEGIN SELECT RAISE(ABORT, 'system acts are append-only'); END;
+CREATE TABLE IF NOT EXISTS system_act_ends (
+    act_id   TEXT PRIMARY KEY REFERENCES system_acts(id),
+    outcome  TEXT NOT NULL CHECK (outcome IN ('sealed', 'failed')),
+    block_id TEXT,
+    patch_id TEXT,
+    word     TEXT,
+    at       INTEGER NOT NULL,
+    CHECK ((outcome = 'sealed' AND block_id IS NOT NULL AND patch_id IS NOT NULL AND word IS NULL)
+        OR (outcome = 'failed' AND word IS NOT NULL AND block_id IS NULL AND patch_id IS NULL))
+);
+CREATE TRIGGER IF NOT EXISTS system_act_ends_no_update BEFORE UPDATE ON system_act_ends
+BEGIN SELECT RAISE(ABORT, 'system act ends are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS system_act_ends_no_delete BEFORE DELETE ON system_act_ends
+BEGIN SELECT RAISE(ABORT, 'system act ends are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS system_act_ends_no_replace BEFORE INSERT ON system_act_ends
+WHEN EXISTS (SELECT 1 FROM system_act_ends WHERE act_id = NEW.act_id)
+BEGIN SELECT RAISE(ABORT, 'system act ends are append-only'); END;
+";
+
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and
 /// [`SCHEMA_VERSION`] moves with it (a test holds the two together).
 pub const MIGRATIONS: &[(i64, &str)] = &[
@@ -487,6 +557,7 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (7, V7),
     (8, V8),
     (9, V9),
+    (10, V10),
 ];
 
 /// The SQLite-backed store.

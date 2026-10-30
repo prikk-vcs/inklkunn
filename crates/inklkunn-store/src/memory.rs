@@ -1,6 +1,7 @@
 //! The in-memory store: tests, and the reference the SQLite store must agree with.
 
 mod acceptance;
+mod acts;
 mod derived;
 mod identity;
 mod inbox;
@@ -23,6 +24,7 @@ pub struct MemoryStore {
     derived: Mutex<derived::Derived>,
     proposals: Mutex<proposal::Proposals>,
     acceptances: Mutex<acceptance::Acceptances>,
+    acts: Mutex<acts::Acts>,
     inbox: Mutex<inbox::Inbox>,
 }
 

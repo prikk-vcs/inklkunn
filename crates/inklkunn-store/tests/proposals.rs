@@ -745,7 +745,7 @@ fn table_names(db: &std::path::Path) -> Vec<String> {
 }
 
 #[test]
-fn a_version_8_database_is_migrated_to_9_keeping_its_records_and_only_once() {
+fn a_version_8_database_is_migrated_to_the_current_schema_keeping_its_records_and_only_once() {
     let tmp = temp("v8");
     let db = tmp.0.join("store.sqlite");
     let wiki_id = "019a0000-0000-7000-8000-0000000000d1";
@@ -767,8 +767,8 @@ fn a_version_8_database_is_migrated_to_9_keeping_its_records_and_only_once() {
     );
     {
         let store = SqliteStore::open(&db).expect("a version 8 database opens");
-        assert_eq!(version(), "9");
-        assert_eq!(SCHEMA_VERSION, 9);
+        assert_eq!(version(), "10");
+        assert_eq!(SCHEMA_VERSION, 10);
         // What was there is there.
         let wikis = store.list().unwrap();
         assert_eq!(wikis.len(), 1);
@@ -791,7 +791,7 @@ fn a_version_8_database_is_migrated_to_9_keeping_its_records_and_only_once() {
     }
     // Opening it again changes nothing and loses nothing.
     let store = SqliteStore::open(&db).expect("reopen");
-    assert_eq!(version(), "9");
+    assert_eq!(version(), "10");
     let old = store.list().unwrap().remove(0);
     assert_eq!(
         store
@@ -808,7 +808,7 @@ fn a_version_8_database_is_migrated_to_9_keeping_its_records_and_only_once() {
     // accepting a higher version than its own.
     let conn = rusqlite::Connection::open(&db).unwrap();
     conn.execute(
-        "UPDATE schema_meta SET value = '10' WHERE key = 'schema_version'",
+        "UPDATE schema_meta SET value = '11' WHERE key = 'schema_version'",
         [],
     )
     .unwrap();

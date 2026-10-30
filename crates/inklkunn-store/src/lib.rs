@@ -16,6 +16,8 @@
 //!   D-3), with drafts visible to their author only.
 //! - [`acceptance`]: acceptances, intents and the lease holder (RFC 004 D-4, D-7), written once and never
 //!   updated.
+//! - [`acts`]: the recovery flag, the overlaps kept on a proposal and the records of the acts the service
+//!   makes for itself (RFC 004 D-6, D-14; handoff 004 T4).
 //! - [`inbox`]: watches and inbox events (RFC 004 D-9).
 //! - [`WikiStore`] and [`RoleStore`]: the traits; [`MemoryStore`] for tests and [`SqliteStore`] for service.
 //!
@@ -23,6 +25,7 @@
 
 pub mod acceptance;
 pub mod access;
+pub mod acts;
 pub mod audit;
 pub mod derived;
 pub mod identity;
@@ -36,8 +39,13 @@ pub mod sqlite;
 pub use acceptance::{
     AcceptanceBegin, AcceptanceEntry, AcceptanceOutcome, AcceptanceRecord, AcceptanceResult,
     AcceptanceStore, IntentCompletion, IntentEnd, IntentEntry, IntentRecord, LeaseHolder,
+    SealedAcceptance,
 };
 pub use access::{Role, RoleGrant, RoleStore, Scope};
+pub use acts::{
+    ActStore, OverlapRecord, OverlapText, RecoveryFlag, RecoveryReason, SystemActEnd,
+    SystemActEntry, SystemActKind, SystemActRecord,
+};
 pub use audit::{
     AuditEvent, AuditLog, AuditOutcome, AuditRecord, AuditSink, MemoryAudit, export_jsonl,
 };
@@ -59,8 +67,8 @@ pub use proposal::{
 pub use record::{
     AcceptanceId, AccountId, Attempt, Checkpoint, CommentId, DecisionId, DisplayName,
     DisplayNameError, InboxEventId, IntentId, NewWiki, NewWikiError, NotRun, PrikkVersion,
-    ProposalId, Slug, SlugError, TokenId, Verification, VerificationState, Visibility, WikiId,
-    WikiRecord,
+    ProposalId, Slug, SlugError, SystemActId, TokenId, Verification, VerificationState, Visibility,
+    WikiId, WikiRecord,
 };
 pub use root::RootLayout;
 pub use sqlite::SqliteStore;

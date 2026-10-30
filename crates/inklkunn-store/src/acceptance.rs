@@ -110,8 +110,27 @@ pub struct IntentRecord {
     pub base_block: String,
     /// The digest of the message that will be sealed.
     pub message_digest: String,
+    /// The CT-03 message that will be sealed, exactly (schema version 10). The facts the signer is bound to
+    /// (who proposed, who accepted, the kind, the base) are read from it, and recovery and the
+    /// reconciliation compare the history with it: the names it carries are the ones the people had when the
+    /// act was made, which no later rename changes.
+    pub message: String,
     /// Unix seconds.
     pub created_at: i64,
+}
+
+/// An acceptance that sealed, with its intent and the ids it sealed: what the reconciliation compares the
+/// history with (RFC 002 D-7).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SealedAcceptance {
+    /// The acceptance.
+    pub acceptance: AcceptanceRecord,
+    /// What it meant to seal.
+    pub intent: IntentRecord,
+    /// The block.
+    pub block_id: String,
+    /// The patch.
+    pub patch_id: String,
 }
 
 /// How an intent ended.
@@ -200,6 +219,10 @@ pub trait AcceptanceStore: Send + Sync {
 
     /// The acceptances of one revision, oldest first, each with its end.
     fn acceptances_of(&self, proposal: &ProposalId, revision: u32) -> Result<Vec<AcceptanceEntry>>;
+
+    /// Every acceptance of the wiki that sealed, with its intent, oldest first. A sealed acceptance whose
+    /// intent was never written is not here (it cannot be: the intent is written before the signer is asked).
+    fn sealed_acceptances(&self, wiki: &WikiId) -> Result<Vec<SealedAcceptance>>;
 
     /// The bytes accepted for `proposer` in the wiki at or after `since` (acceptances that are pending or
     /// sealed; a failed one took nothing in), as `(when, bytes)`, oldest first: the accepted-bytes quota's

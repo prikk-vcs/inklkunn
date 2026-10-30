@@ -65,6 +65,7 @@ fn intent(a: &AcceptanceRecord, at: i64) -> IntentRecord {
         view: a.view.clone(),
         base_block: "e".repeat(64),
         message_digest: "f".repeat(64),
+        message: "A summary\n\nKind: proposal\n".to_owned(),
         created_at: at,
     }
 }
@@ -252,6 +253,22 @@ fn the_suite(store: &(impl ProposalStore + AcceptanceStore + WikiStore + Account
     assert_eq!(all.len(), 2);
     assert_eq!(nth(&all, 0).completion, Some(end));
     assert_eq!(nth(&all, 1).completion, None);
+
+    // --- The sealed acceptances, with their intents: what the reconciliation compares the history with.
+    // a1 sealed and has its intent; `second` is pending; `first` failed and has none.
+    let sealed_list = store.sealed_acceptances(&w.id).unwrap();
+    assert_eq!(sealed_list.len(), 1);
+    let only = nth(&sealed_list, 0);
+    assert_eq!(only.acceptance, a1);
+    assert_eq!(
+        only.intent, i1,
+        "the message the intent holds comes back whole"
+    );
+    assert_eq!(
+        (only.block_id.as_str(), only.patch_id.as_str()),
+        (&*"b".repeat(64), &*"c".repeat(64))
+    );
+    assert!(store.sealed_acceptances(&other_wiki.id).unwrap().is_empty());
 
     // --- The lease holder is a witness that changes hands.
     let holder = |who: &str, at: i64| LeaseHolder {
