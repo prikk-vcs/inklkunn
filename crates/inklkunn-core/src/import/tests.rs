@@ -4,7 +4,17 @@ use std::os::unix::ffi::OsStrExt;
 
 use std::cell::RefCell;
 
+use std::sync::{Arc, Mutex};
+
+use inklkunn_signer::accept::{
+    Accept, AcceptError, AcceptanceLedger, AcceptanceToken, ExpectedMessage, ViewCreationAct,
+};
+use inklkunn_signer::message::{Actor, Kind, Message};
+
 use super::*;
+use crate::acceptance::StoreLedger;
+use crate::acceptance::testing::Rig;
+use inklkunn_store::{AcceptanceStore as _, ActStore as _};
 
 /// Where the walk is when a test's hook runs: a directory is open (its handle held, not yet listed) or has just
 /// been listed (its entries known, none opened yet).
@@ -367,7 +377,7 @@ fn snapshot(root: &Path) -> Vec<(String, Vec<u8>)> {
 /// A signer stand-in that records what it was asked and accepts.
 struct Recorder {
     seen: Mutex<Option<PreparedChange>>,
-    ledger: std::sync::Arc<ImportLedger>,
+    ledger: Arc<StoreLedger>,
     pending_during: Mutex<Option<ExpectedMessage>>,
 }
 
@@ -397,14 +407,16 @@ impl Accept for Recorder {
     }
 }
 
-fn record() -> WikiRecord {
-    use inklkunn_store::{DisplayName, NewWiki, Slug, WikiId};
-    WikiRecord::from_new(
-        WikiId::new(),
-        NewWiki::new(Slug::new("imp").unwrap(), DisplayName::new("Imp").unwrap()),
-        1,
-    )
-    .unwrap()
+/// A wiki in a memory store with the lease, the service's own path over `Recorder`, and the recorder.
+fn world(tag: &str) -> (Rig, Arc<Recorder>, SystemActs) {
+    let rig = Rig::new(tag);
+    let accept = Arc::new(Recorder {
+        seen: Mutex::new(None),
+        ledger: rig.ledger.clone(),
+        pending_during: Mutex::new(None),
+    });
+    let acts = rig.system_acts(accept.clone());
+    (rig, accept, acts)
 }
 
 #[test]
@@ -413,14 +425,9 @@ fn the_run_binds_the_seal_to_the_planned_files_under_the_system_principal_and_fo
     put(&d.0, "pages/A.md", GOOD.as_bytes());
     put(&d.0, "attachments/a.bin", b"abc");
     let plan = plan_folder(&d.0, &nothing(), false).unwrap();
-    let ledger = std::sync::Arc::new(ImportLedger::new());
-    let accept = Recorder {
-        seen: Mutex::new(None),
-        ledger: ledger.clone(),
-        pending_during: Mutex::new(None),
-    };
-    let wiki = record();
-    let done = run_import(&accept, &ledger, &wiki, &plan).unwrap();
+    let (rig, accept, acts) = world("import");
+    let wiki = rig.wiki.clone();
+    let done = run_import(&acts, &wiki, &plan).unwrap();
     assert_eq!(done.files, 2);
     let change = accept.seen.lock().unwrap().clone().unwrap();
     let message = Message::parse(&change.message).unwrap();
@@ -441,12 +448,30 @@ fn the_run_binds_the_seal_to_the_planned_files_under_the_system_principal_and_fo
     assert!(during.matches(&message));
     assert_eq!(during.change_digest, done.digest);
     assert_eq!(during.view, wiki.default_view);
-    assert!(ledger.pending.lock().unwrap().is_empty());
+    // The act is recorded, ended and sealed; the signer's guard no longer finds it pending.
+    let recorded = rig.store.system_acts(&wiki.id).unwrap();
+    assert_eq!(recorded.len(), 1);
+    let act = recorded.first().unwrap();
+    assert_eq!(act.act.id, done.act);
+    assert_eq!(act.act.kind, SystemActKind::Import);
+    assert_eq!(act.act.digest, done.digest.to_hex());
+    assert!(matches!(
+        act.end.as_ref().map(|e| &e.outcome),
+        Some(inklkunn_store::AcceptanceOutcome::Sealed { block_id, .. }) if *block_id == done.sealed.block_id
+    ));
+    assert!(
+        rig.ledger
+            .pending(&AcceptanceToken::new(done.act.as_str()))
+            .unwrap()
+            .is_none()
+    );
+    // The lease was held for the act and is free again.
+    assert!(rig.store.lease_holder(&wiki.id).unwrap().is_none());
     // A plan with a refusal never reaches the signer.
     put(&d.0, "pages/CON.md", b"x");
     let bad = plan_folder(&d.0, &nothing(), false).unwrap();
     *accept.seen.lock().unwrap() = None;
-    let err = run_import(&accept, &ledger, &wiki, &bad).unwrap_err();
+    let err = run_import(&acts, &wiki, &bad).unwrap_err();
     assert!(matches!(err, ImportError::Refused(1)), "{err}");
     assert!(accept.seen.lock().unwrap().is_none());
 }
@@ -913,13 +938,8 @@ fn the_plan_is_pinned_to_the_tip_and_a_plan_without_one_is_not_run() {
     put(&d.0, "pages/A.md", GOOD.as_bytes());
     let plan = plan_folder(&d.0, &nothing(), false).unwrap();
     assert_eq!(plan.base, TIP);
-    let ledger = std::sync::Arc::new(ImportLedger::new());
-    let accept = Recorder {
-        seen: Mutex::new(None),
-        ledger: ledger.clone(),
-        pending_during: Mutex::new(None),
-    };
-    run_import(&accept, &ledger, &record(), &plan).unwrap();
+    let (rig, accept, acts) = world("pinned");
+    run_import(&acts, &rig.wiki, &plan).unwrap();
     let during = accept.pending_during.lock().unwrap().clone().unwrap();
     assert_eq!(
         during.pinned_tip.as_ref().map(BlockId::as_str),
@@ -929,7 +949,7 @@ fn the_plan_is_pinned_to_the_tip_and_a_plan_without_one_is_not_run() {
     *accept.seen.lock().unwrap() = None;
     let mut unpinned = plan.clone();
     unpinned.base = String::new();
-    let err = run_import(&accept, &ledger, &record(), &unpinned).unwrap_err();
+    let err = run_import(&acts, &rig.wiki, &unpinned).unwrap_err();
     assert!(matches!(err, ImportError::Message(_)), "{err}");
     assert!(accept.seen.lock().unwrap().is_none());
 }
@@ -953,13 +973,8 @@ fn a_folder_the_wiki_already_has_is_nothing_changed_and_a_mixed_one_writes_only_
     );
     assert_eq!(plan.unchanged, vec!["attachments/a.bin", "pages/Home.md"]);
     assert!(plan.report().contains("unchanged (2)"), "{}", plan.report());
-    let ledger = std::sync::Arc::new(ImportLedger::new());
-    let accept = Recorder {
-        seen: Mutex::new(None),
-        ledger: ledger.clone(),
-        pending_during: Mutex::new(None),
-    };
-    let err = run_import(&accept, &ledger, &record(), &plan).unwrap_err();
+    let (rig, accept, acts) = world("unchanged");
+    let err = run_import(&acts, &rig.wiki, &plan).unwrap_err();
     assert!(matches!(err, ImportError::NothingChanged(2)), "{err}");
     assert!(
         err.to_string().starts_with("nothing changed:")
@@ -983,7 +998,7 @@ fn a_folder_the_wiki_already_has_is_nothing_changed_and_a_mixed_one_writes_only_
         .collect();
     assert_eq!(written, vec![("attachments/a.bin", Action::Replace)]);
     assert_eq!(plan.unchanged, vec!["pages/Home.md"]);
-    run_import(&accept, &ledger, &record(), &plan).unwrap();
+    run_import(&acts, &rig.wiki, &plan).unwrap();
     let change = accept.seen.lock().unwrap().clone().unwrap();
     assert_eq!(change.files.len(), 1);
 }

@@ -28,16 +28,17 @@ use std::time::Duration;
 
 use inklkunn_core::export::is_checkpoint_not_recorded;
 use inklkunn_core::export::{ExportError, export_bundle};
-use inklkunn_core::import::{ImportError, ImportLedger, plan_folder, run_import, wiki_state};
+use inklkunn_core::import::{ImportError, plan_folder, run_import, wiki_state};
 use inklkunn_core::{
-    AcceptError, Maintenance, Signer, SignerConfig, SignerError, SweepAudit, create_wiki,
+    Authorizer, LeaseConfig, Maintenance, NoLedger, Signer, SignerConfig, SignerError, StoreAuthz,
+    StoreLedger, SweepAudit, SystemActFailure, SystemActs, WikiLeases, WriteLeases, create_wiki,
     sweep_unfinished_creations,
 };
 use inklkunn_prikk::sandbox::Sandbox;
-use inklkunn_prikk::{Admission, PrikkCli};
+use inklkunn_prikk::{Admission, PrikkCli, Storage};
 use inklkunn_store::{
-    AuditEvent, AuditOutcome, AuditSink, DisplayName, NewWiki, PrikkVersion, RootLayout, Slug,
-    SqliteStore, Visibility, WikiId, WikiRecord, WikiStore,
+    AuditEvent, AuditOutcome, AuditSink, DisplayName, NewWiki, PrikkVersion, RecoveryReason,
+    RootLayout, Slug, SqliteStore, Visibility, WikiId, WikiRecord, WikiStore,
 };
 
 use crate::config::{Settings, UNCONFINED_BANNER};
@@ -450,9 +451,8 @@ fn create(
             settings.store_path().display()
         );
     }
-    let signer =
-        Signer::open_creating_store(signer_config(settings, &env), Arc::new(ImportLedger::new()))
-            .map_err(|e| format!("the signer could not be opened: {e}"))?;
+    let signer = Signer::open_creating_store(signer_config(settings, &env), Arc::new(NoLedger))
+        .map_err(|e| format!("the signer could not be opened: {e}"))?;
     let swept = signer.leftover_call_directories_removed();
     if swept > 0 {
         let _ = writeln!(
@@ -527,7 +527,7 @@ fn import_folder(
     err: &mut dyn Write,
 ) -> Result<(), String> {
     let folder = absolute(dir)?;
-    let store = existing_store(settings)?;
+    let store = Arc::new(existing_store(settings)?);
     let record = find_wiki(&store, wiki)?;
     let env = environment(settings, err)?;
     // What the wiki has now, at one tip: to tell a new path from an existing one, a file that would not change
@@ -582,13 +582,41 @@ fn import_folder(
             e.kind()
         )
     })?;
-    let ledger = Arc::new(ImportLedger::new());
-    let signer = Signer::open(signer_config(settings, &env), ledger.clone())
-        .map_err(|e| format!("the signer could not be opened: {e}"))?;
+    // The service's own path (RFC 004 D-14): the wiki's write lease, taken on the lock a running server holds
+    // too, the record of the act, the signer. The command line has no other way into a history.
+    let write_leases = WriteLeases::new(env.layout.clone());
+    let ledger = Arc::new(StoreLedger::new(store.clone(), store.clone()));
+    let signer = Arc::new(
+        Signer::open(signer_config(settings, &env), ledger)
+            .map_err(|e| format!("the signer could not be opened: {e}"))?
+            .with_leases(&write_leases),
+    );
+    let leases = WikiLeases::new(
+        write_leases,
+        store.clone(),
+        format!("inklkunn-cli-{}", std::process::id()),
+        LeaseConfig::default(),
+    );
+    let storage: Arc<dyn Storage> = Arc::new(
+        PrikkCli::open(&settings.prikk, env.sandbox.clone(), admission())
+            .map_err(|e| format!("prikk is not usable ({e})"))?,
+    );
+    let acts = SystemActs::new(
+        Authorizer::new(
+            Arc::new(StoreAuthz::new(store.clone(), store.clone())),
+            store.clone(),
+        ),
+        store.clone(),
+        store.clone(),
+        storage,
+        env.layout.clone(),
+        signer,
+        leases,
+    );
     let resource = wiki_resource(&record);
-    let trail = Trail { sink: &store, now };
+    let trail = Trail { sink: &*store, now };
     trail.begin("wiki-import", &resource, "begun")?;
-    match run_import(&signer, &ledger, &record, &plan) {
+    match run_import(&acts, &record, &plan) {
         Ok(done) => {
             let _ = writeln!(
                 out,
@@ -598,12 +626,17 @@ fn import_folder(
             trail.finish("wiki-import", &resource, AuditOutcome::Allowed, "imported")
         }
         Err(e) => {
-            // Whatever state the signer says the repository is in, the trail records that the act ended badly.
+            // Whatever state the service says the repository is in, the trail records that the act ended badly.
             let detail = match &e {
-                ImportError::Accept(AcceptError::SealedUnconfirmed { .. }) => {
-                    "sealed but not confirmed; do not repeat"
+                ImportError::Act(SystemActFailure::Incomplete {
+                    reason: RecoveryReason::SealedUnconfirmed,
+                    ..
+                }) => "sealed but not confirmed; do not repeat",
+                ImportError::Act(SystemActFailure::Incomplete { .. }) => {
+                    "committed or interrupted; the wiki needs recovery"
                 }
-                ImportError::Accept(AcceptError::Queued { .. }) => "committed, not sealed",
+                ImportError::Act(SystemActFailure::NeedsRecovery(_)) => "the wiki needs recovery",
+                ImportError::Act(SystemActFailure::Busy(_)) => "the wiki is busy",
                 _ => "refused or failed",
             };
             let done = trail.finish("wiki-import", &resource, AuditOutcome::Failed, detail);
@@ -828,9 +861,7 @@ pub(crate) fn start_up(
                         e.kind()
                     )
                 })
-                .and_then(|()| {
-                    Signer::open(config, Arc::new(ImportLedger::new())).map_err(|e| e.to_string())
-                });
+                .and_then(|()| Signer::open(config, Arc::new(NoLedger)).map_err(|e| e.to_string()));
             match opened {
                 Ok(signer) => {
                     let trail = SweepTrail::new(store, now);

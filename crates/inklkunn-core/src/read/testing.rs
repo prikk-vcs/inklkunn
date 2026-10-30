@@ -218,8 +218,35 @@ impl Storage for Fake {
         Ok(answer)
     }
 
-    fn tree(&self, _: &Path, _: &Point, _: Option<&str>) -> Result<Tree> {
-        Err(unsupported("tree"))
+    fn tree(&self, _: &Path, point: &Point, prefix: Option<&str>) -> Result<Tree> {
+        // Only a block's files are listed (the acceptance's merge asks); a view's are not needed by any read.
+        if matches!(point, Point::View(_)) {
+            return Err(unsupported("tree"));
+        }
+        let s = self.state();
+        let files = files_at(&s, point).ok_or_else(|| StorageError::Refused {
+            verb: "tree",
+            message: format!("no such block: {point}"),
+            kind: None,
+            reason: None,
+        })?;
+        Ok(Tree {
+            schema_version: "tree-listing-v1".to_owned(),
+            point: point.to_string(),
+            target_block_id: point.to_string(),
+            prefix: prefix.map(str::to_owned),
+            entries: files
+                .iter()
+                .filter(|(path, _)| prefix.is_none_or(|p| path.starts_with(p)))
+                .map(|(path, bytes)| inklkunn_prikk::Entry {
+                    path: path.clone(),
+                    kind: "file".to_owned(),
+                    encoding: Some("text".to_owned()),
+                    mode: None,
+                    size: Some(bytes.len() as u64),
+                })
+                .collect(),
+        })
     }
 
     fn stat(&self, _: &Path, point: &Point, path: &str) -> Result<FileMeta> {

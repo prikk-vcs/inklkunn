@@ -19,6 +19,11 @@
 //!   wiki's last verification, and a check that could not run kept apart from a verdict.
 //! - [`proposal`]: the proposal as a record with a life (RFC 004 D-1, D-3, D-8, D-10, D-11): the service, the
 //!   state machine with every transition named, the quotas and the participation metrics (handoff 004 T1).
+//! - [`lease`] and [`acceptance`]: the per-wiki write lease (a fair bounded queue over the signer's `flock`, with a
+//!   durable holder record) and **acceptance under it** (RFC 004 D-4, D-6, D-14; handoff 004 T4): authorize,
+//!   lease, re-read the tip, re-author a moved base, record the acceptance and its intent, `Accept`, read the
+//!   outcome as typed, flag the wiki *needs recovery* when it is incomplete; the same path for the service's own
+//!   changes (import, system).
 //! - [`bundle`] and [`wiki`]: the repository layout (external design CT-02) and *create wiki*, which is
 //!   kill-safe (a creation mark and a start-up sweep).
 //! - [`merge`](mod@merge): the content-level three-way merge (RFC 004 D-5): frontmatter key by key, body block by block,
@@ -27,6 +32,7 @@
 //!   Portable Wiki Bundle export at fidelity level 3 (handoff 003 T7; RFC 003 D-11, D-12).
 
 pub mod accept;
+pub mod acceptance;
 pub mod assurance;
 pub mod authorize;
 pub mod bundle;
@@ -34,6 +40,7 @@ pub mod check;
 pub mod egress;
 pub mod export;
 pub mod import;
+pub mod lease;
 pub mod merge;
 pub mod proposal;
 pub mod read;
@@ -48,6 +55,11 @@ pub use accept::{
     LedgerError, PreparedChange, PreparedFile, SealedChange, Unconfirmed, ViewCreationAct,
     ViewCreationFacts,
 };
+pub use acceptance::{
+    AcceptFailure, AcceptanceParts, Accepted, AfterSeal, ChangeKind, ChangeKinds, NoFollowUp,
+    NoLedger, OrdinaryProposals, ProposalAcceptor, Reconciled, Signed, StoreActs, StoreLedger,
+    SystemActFailure, SystemActs, SystemRequest,
+};
 pub use assurance::Assurance;
 pub use authorize::{
     AccountPrincipal, Action, Authorizer, AuthzSource, Decision, IdentityAuthority, Principal,
@@ -60,8 +72,9 @@ pub use check::{
 pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, Resolver, StdEgressGuard, StdResolver};
 pub use inklkunn_signer::{
     ArchiveExported, KeyAuthority, KeyStatus, LateSeal, Maintenance, OldKey, OldKeyOutcome,
-    Rotation, Signer, SignerConfig, SignerError, SupersededKey,
+    Rotation, Signer, SignerConfig, SignerError, SupersededKey, WriteLeases,
 };
+pub use lease::{Busy, BusyWhy, Lease, LeaseConfig, LeaseError, Leased, Purpose, WikiLeases};
 pub use merge::{LineLevel, MergeOutcome, MergedPage, Overlap, PageRef, PageText, Place, merge};
 pub use proposal::{
     BaseSource, Invalid, Metrics, NewComment, Period, ProposalEdit, ProposalError, ProposalService,

@@ -1,6 +1,7 @@
 //! `import-folder` (RFC 003 D-12; handoff 003 T7; internal design IQ-6): a folder of pages and attachments
-//! becomes **one accepted change** under the system principal (`Kind: import`), through RFC 002's [`Accept`], so
-//! the read path ships with content before the proposal loop exists.
+//! becomes **one accepted change** under the system principal (`Kind: import`), through the service's own path
+//! ([`SystemActs`]: the wiki's write lease, the record of the act, RFC 002's `Accept`; RFC 004 D-14), so the read
+//! path ships with content before the proposal loop exists and there is no second way into a history.
 //!
 //! **A dry run is the plan.** [`plan_folder`] walks the folder without following a link, reads every page (and
 //! nothing else), and says for each entry what would be written or why it is refused: a path over prikk's caps
@@ -12,7 +13,7 @@
 //! against the wiki's files), a path the wiki already has. **Any refusal refuses the whole import** (the
 //! change is all or nothing), every reason is named, and the report never repeats a byte of a refused file's
 //! content (every reason is escaped as a name is). Running the import is the same plan, then the same checks
-//! again on the bytes actually read, then [`Accept`]; the signer validates once more before it writes a byte.
+//! again on the bytes actually read, then [`SystemActs`]; the signer validates once more before it writes a byte.
 //!
 //! **Against the wiki, at one tip.** [`wiki_state`] reads the wiki's files at the default view's tip (one
 //! extraction) and the plan is pinned to that tip's block id: [`run_import`] hands it to the signer, which
@@ -44,23 +45,22 @@ use std::io::Read as _;
 use std::os::fd::{AsFd, OwnedFd};
 use std::os::unix::ffi::OsStringExt as _;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, PoisonError};
 
 use inklkunn_markup::path::{
     MAX_COMPONENT_BYTES, MAX_PATH_BYTES, collision_key, path_to_title, title_to_path,
 };
 use inklkunn_prikk::{ExtractBounds, Point, Storage, StorageError};
-use inklkunn_signer::message::{Actor, BlockId, ImportSource, Kind, Message, Summary, SystemLabel};
+use inklkunn_signer::message::{BlockId, ImportSource, SystemLabel};
 use inklkunn_signer::{
-    Accept, AcceptError, AcceptanceLedger, AcceptanceToken, ChangeDigest, ExpectedMessage,
-    LedgerError, MAX_CHANGE_BYTES, MAX_CHANGE_FILES, PreparedChange, PreparedFile, SealedChange,
-    ViewCreationAct, ViewCreationFacts, check_change_path,
+    ChangeDigest, MAX_CHANGE_BYTES, MAX_CHANGE_FILES, PreparedChange, PreparedFile, SealedChange,
+    check_change_path,
 };
-use inklkunn_store::{RootLayout, WikiRecord};
+use inklkunn_store::{RootLayout, SystemActKind, WikiRecord};
 use rustix::fs::{AtFlags, FileType, Mode, OFlags, Stat};
 use rustix::io::Errno;
 use sha2::{Digest as _, Sha256};
 
+use crate::acceptance::{SystemActFailure, SystemActs, SystemRequest};
 use crate::read::ReadConfig;
 
 /// Folders nested deeper than this are refused (a path cap would refuse them anyway; this bounds the walk).
@@ -326,8 +326,9 @@ pub enum ImportError {
     Changed(String),
     /// The change could not be described to the signer. Nothing changed.
     Message(String),
-    /// The signer's answer, which says what state the repository is in ([`AcceptError`]).
-    Accept(AcceptError),
+    /// The service's own path refused or failed, and says what state the repository is in
+    /// ([`SystemActFailure`]).
+    Act(SystemActFailure),
 }
 
 impl std::fmt::Display for ImportError {
@@ -365,7 +366,7 @@ impl std::fmt::Display for ImportError {
                 write!(f, "{why}; nothing was changed, plan the import again")
             }
             ImportError::Message(why) => write!(f, "the import could not be described: {why}"),
-            ImportError::Accept(e) => write!(f, "{e}"),
+            ImportError::Act(e) => write!(f, "{e}"),
         }
     }
 }
@@ -1132,52 +1133,6 @@ fn read_files(plan: &ImportPlan) -> Result<Vec<PreparedFile>, ImportError> {
     Ok(files)
 }
 
-/// The acceptance records of imports in flight: the ledger the signer reads (RFC 002 D-4) for the **system
-/// principal's** import. There is no stored record for it (an import is an administrative act, audited by the
-/// caller, with no proposal); this ledger holds exactly the facts of the one change in hand, under a fresh token,
-/// for exactly the length of the call, so the signer's guard (the token, the message, the digest of the files)
-/// binds the seal to what was planned and nothing else.
-#[derive(Default)]
-pub struct ImportLedger {
-    pending: Mutex<HashMap<String, ExpectedMessage>>,
-}
-
-impl ImportLedger {
-    /// An empty ledger.
-    pub fn new() -> Self {
-        ImportLedger::default()
-    }
-
-    fn insert(&self, token: &AcceptanceToken, expected: ExpectedMessage) {
-        self.pending
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(token.as_str().to_owned(), expected);
-    }
-
-    fn remove(&self, token: &AcceptanceToken) {
-        self.pending
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(token.as_str());
-    }
-}
-
-impl AcceptanceLedger for ImportLedger {
-    fn pending(&self, token: &AcceptanceToken) -> Result<Option<ExpectedMessage>, LedgerError> {
-        Ok(self
-            .pending
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get(token.as_str())
-            .cloned())
-    }
-
-    fn view_creation(&self, _: &ViewCreationAct) -> Result<Option<ViewCreationFacts>, LedgerError> {
-        Ok(None)
-    }
-}
-
 /// What a finished import left.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Imported {
@@ -1187,15 +1142,18 @@ pub struct Imported {
     pub digest: ChangeDigest,
     /// Files written.
     pub files: usize,
+    /// The record of the act (RFC 004 D-14).
+    pub act: inklkunn_store::SystemActId,
 }
 
 /// Run an import: read the planned files (checking them again), describe the change (`Kind: import`, both people
-/// the service), bind it in `ledger` under a fresh token and to the tip the plan was made against, and hand it to
-/// `accept`. The `ledger` must be the one the signer behind `accept` was opened with. A plan with refusals, or
-/// without files, is refused here; the signer refuses it if the wiki's tip is no longer the plan's.
+/// the service) and hand it to the service's own path, [`SystemActs`] (RFC 004 D-14): the system principal's
+/// authorization, the wiki's write lease, the record of the act (with the tip the plan was made against, which
+/// the signer holds the change to), the signer, the end recorded, the reconciliation. There is no other way in.
+/// A plan with refusals, or without files, is refused here; the signer refuses it if the wiki's tip is no longer
+/// the plan's.
 pub fn run_import(
-    accept: &dyn Accept,
-    ledger: &ImportLedger,
+    acts: &SystemActs,
     wiki: &WikiRecord,
     plan: &ImportPlan,
 ) -> Result<Imported, ImportError> {
@@ -1212,47 +1170,34 @@ pub fn run_import(
     let files = read_files(plan)?;
     let (pages, attachments) = plan.counts();
     let describe = |e: inklkunn_signer::message::MessageError| ImportError::Message(e.to_string());
-    let summary = Summary::from_text(&format!(
-        "Import {pages} page(s) and {attachments} attachment(s) from a folder"
-    ))
-    .map_err(describe)?;
-    let mut change = PreparedChange {
-        files,
+    // The tip the plan was made against must be one the message grammar can name (a plan without one is not run).
+    BlockId::new(&plan.base).map_err(describe)?;
+    let digest = PreparedChange {
+        files: files.clone(),
         renames: Vec::new(),
         message: String::new(),
-    };
-    let digest = change.digest();
-    let label = SystemLabel::inklkunn();
+    }
+    .digest();
     let source = ImportSource::new(&format!("folder sha256:{digest}")).map_err(describe)?;
-    // The tip the plan was made against: the signer holds the change to it (a message of kind `import` has no
-    // `Base`, so the pin is part of the record, not of the message).
-    let pinned_tip = BlockId::new(&plan.base).map_err(describe)?;
-    let message = Message::import(summary, label.clone(), source.clone());
-    change.message = message.to_text();
-    let token = AcceptanceToken::new(inklkunn_store::record::uuid_v7());
-    ledger.insert(
-        &token,
-        ExpectedMessage {
-            wiki: wiki.id.clone(),
-            view: wiki.default_view.clone(),
-            kind: Kind::Import,
-            proposal: None,
-            proposed_by: Actor::System(label.clone()),
-            accepted_by: Actor::System(label),
-            base: None,
-            imported_from: Some(source),
-            pinned_tip: Some(pinned_tip),
-            change_digest: digest,
-        },
-    );
-    let result = accept.accept(&wiki.id, &wiki.default_view, &token, &change);
-    // The record lives for this call only.
-    ledger.remove(&token);
-    let sealed = result.map_err(ImportError::Accept)?;
+    let request = SystemRequest {
+        kind: SystemActKind::Import,
+        summary: format!("Import {pages} page(s) and {attachments} attachment(s) from a folder"),
+        files,
+        renames: Vec::new(),
+        imported_from: Some(source),
+        planned_against: Some(plan.base.clone()),
+    };
+    let signed = acts
+        .run(wiki, &SystemLabel::inklkunn(), request)
+        .map_err(ImportError::Act)?;
     Ok(Imported {
-        sealed,
+        sealed: SealedChange {
+            block_id: signed.block_id,
+            patch_ids: vec![signed.patch_id],
+        },
         digest,
         files: plan.files.len(),
+        act: signed.act,
     })
 }
 
