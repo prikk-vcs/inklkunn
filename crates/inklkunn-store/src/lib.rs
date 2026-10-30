@@ -54,7 +54,7 @@ pub use memory::MemoryStore;
 pub use proposal::{
     Anchor, Base, CommentRecord, DecisionKind, DecisionRecord, FileChange, ProposalChange,
     ProposalFilter, ProposalOp, ProposalRecord, ProposalState, ProposalStore, ProposalTransition,
-    Quote, Rename, RevisionContent, RevisionRecord,
+    Quote, Rename, RevisionContent, RevisionFlags, RevisionRecord,
 };
 pub use record::{
     AcceptanceId, AccountId, Attempt, Checkpoint, CommentId, DecisionId, DisplayName,

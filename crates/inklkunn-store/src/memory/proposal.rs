@@ -5,7 +5,8 @@ use std::sync::{MutexGuard, PoisonError};
 
 use crate::proposal::{
     CommentRecord, DecisionRecord, ProposalChange, ProposalFilter, ProposalOp, ProposalRecord,
-    ProposalState, ProposalStore, ProposalTransition, RevisionContent, RevisionRecord,
+    ProposalState, ProposalStore, ProposalTransition, RevisionContent, RevisionFlags,
+    RevisionRecord,
 };
 use crate::record::{AccountId, ProposalId, WikiId};
 use crate::{Result, StoreError};
@@ -21,6 +22,8 @@ pub(super) struct Proposals {
     transitions: Vec<ProposalTransition>,
     comments: Vec<CommentRecord>,
     decisions: Vec<DecisionRecord>,
+    /// The block each rollback proposal undoes.
+    rollbacks: HashMap<ProposalId, String>,
 }
 
 impl Proposals {
@@ -64,12 +67,13 @@ impl MemoryStore {
     }
 }
 
-impl ProposalStore for MemoryStore {
-    fn create_proposal(
+impl MemoryStore {
+    fn create_with(
         &self,
         proposal: &ProposalRecord,
         draft: &RevisionContent,
         created: &ProposalTransition,
+        undoes: Option<&str>,
     ) -> Result<()> {
         // The SQLite store's foreign keys, checked in the same order: the wiki, then the accounts.
         if !self.wiki_exists(&proposal.wiki) {
@@ -85,7 +89,69 @@ impl ProposalStore for MemoryStore {
         d.proposals.push(proposal.clone());
         d.drafts.insert(proposal.id.clone(), draft.clone());
         d.transitions.push(created.clone());
+        if let Some(undoes) = undoes {
+            d.rollbacks.insert(proposal.id.clone(), undoes.to_owned());
+        }
         Ok(())
+    }
+}
+
+impl ProposalStore for MemoryStore {
+    fn create_proposal(
+        &self,
+        proposal: &ProposalRecord,
+        draft: &RevisionContent,
+        created: &ProposalTransition,
+    ) -> Result<()> {
+        self.create_with(proposal, draft, created, None)
+    }
+
+    fn create_rollback_proposal(
+        &self,
+        proposal: &ProposalRecord,
+        draft: &RevisionContent,
+        created: &ProposalTransition,
+        undoes: &str,
+    ) -> Result<()> {
+        // The SQLite store's check, so that both refuse the same thing.
+        if undoes.len() != 64
+            || !undoes
+                .bytes()
+                .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+        {
+            return Err(StoreError::Backend(
+                "a rollback names the block it undoes by its 64-digit id".to_owned(),
+            ));
+        }
+        self.create_with(proposal, draft, created, Some(undoes))
+    }
+
+    fn rollback_of(&self, id: &ProposalId, viewer: Option<&AccountId>) -> Result<Option<String>> {
+        let d = self.proposals_lock();
+        Ok(d.visible(id, viewer)
+            .and_then(|p| d.rollbacks.get(&p.id).cloned()))
+    }
+
+    fn revision_flags(&self, ids: &[ProposalId]) -> Result<Vec<(ProposalId, RevisionFlags)>> {
+        let d = self.proposals_lock();
+        Ok(ids
+            .iter()
+            .filter_map(|id| {
+                d.revisions
+                    .iter()
+                    .filter(|r| r.proposal == *id)
+                    .max_by_key(|r| r.seq)
+                    .map(|r| {
+                        (
+                            id.clone(),
+                            RevisionFlags {
+                                minor: r.content.minor,
+                                automated: r.content.automated,
+                            },
+                        )
+                    })
+            })
+            .collect())
     }
 
     fn proposal(

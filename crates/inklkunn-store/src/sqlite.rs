@@ -31,7 +31,7 @@ use crate::record::{
 use crate::{Result, StoreError, WikiStore};
 
 /// The schema version this build writes and reads: the last of [`MIGRATIONS`].
-pub const SCHEMA_VERSION: i64 = 9;
+pub const SCHEMA_VERSION: i64 = 10;
 
 /// Version 1: M0's schema, the wiki records.
 const V1: &str = "
@@ -475,6 +475,25 @@ CREATE TABLE IF NOT EXISTS inbox_events (
 CREATE INDEX IF NOT EXISTS inbox_events_account ON inbox_events(account_id, seq);
 ";
 
+/// Version 10: which proposals are rollbacks (RFC 004 D-8; handoff 004 T6). A rollback proposal is
+/// created as one and stays one: its row says which block it undoes (64 lower-case hex), is written in the
+/// same transaction as the proposal, and is **written once** like the records of a proposal's history (the
+/// triggers abort any `UPDATE`, `DELETE` and `INSERT` over a key already taken). A proposal with no row
+/// is an ordinary one. Nothing else changes: version 9's tables are kept as they are.
+const V10: &str = "
+CREATE TABLE IF NOT EXISTS proposal_rollbacks (
+    proposal_id TEXT PRIMARY KEY REFERENCES proposals(id),
+    undoes      TEXT NOT NULL CHECK (length(undoes) = 64 AND undoes NOT GLOB '*[^0-9a-f]*')
+);
+CREATE TRIGGER IF NOT EXISTS proposal_rollbacks_no_update BEFORE UPDATE ON proposal_rollbacks
+BEGIN SELECT RAISE(ABORT, 'proposal rollbacks are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS proposal_rollbacks_no_delete BEFORE DELETE ON proposal_rollbacks
+BEGIN SELECT RAISE(ABORT, 'proposal rollbacks are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS proposal_rollbacks_no_replace BEFORE INSERT ON proposal_rollbacks
+WHEN EXISTS (SELECT 1 FROM proposal_rollbacks WHERE proposal_id = NEW.proposal_id)
+BEGIN SELECT RAISE(ABORT, 'proposal rollbacks are append-only'); END;
+";
+
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and
 /// [`SCHEMA_VERSION`] moves with it (a test holds the two together).
 pub const MIGRATIONS: &[(i64, &str)] = &[
@@ -487,6 +506,7 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (7, V7),
     (8, V8),
     (9, V9),
+    (10, V10),
 ];
 
 /// The SQLite-backed store.
