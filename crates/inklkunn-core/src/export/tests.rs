@@ -143,7 +143,7 @@ fn a_manifest_carries_the_fidelity_the_counts_the_block_the_interwiki_map_and_th
         "  pages: 3",
         "  attachments: 2",
         "  users: true",
-        "  at: 1700000000",
+        "exported_at: \"2023-11-14T22:13:20Z\"",
         "  history_changes_without_a_page: 4",
         "interwiki:\n  \"wp\": \"https://en.wikipedia.org/wiki/\"",
         "  histories_not_written: 2",
@@ -154,7 +154,7 @@ fn a_manifest_carries_the_fidelity_the_counts_the_block_the_interwiki_map_and_th
     // The creation manifest is what it was: counts at creation, no export section.
     let created = bundle::manifest(&rec, "0.0.0");
     assert!(created.contains("# Counts at creation; the export rewrites them."));
-    assert!(!created.contains("checksums:") && !created.contains("export:"));
+    assert!(!created.contains("checksums:") && !created.contains("exported_at"));
 }
 
 #[test]
@@ -214,4 +214,32 @@ fn an_empty_directory_of_ours_is_what_the_bundle_is_renamed_over_and_a_taken_nam
         0
     );
     let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
+fn a_history_file_is_written_only_for_a_safe_id_that_exactly_one_page_carries() {
+    // The shared-id branch (S2): two pages with one id cannot say whose history a file holds. The import no longer
+    // brings such a pair in, but a repository written by prikk directly, or before the import's check, can hold one.
+    assert!(history_file_allowed("good-1", 1));
+    assert!(!history_file_allowed("twin-1", 2), "a shared id");
+    assert!(!history_file_allowed("twin-1", 3), "an id shared by three");
+    assert!(
+        !history_file_allowed("gone-1", 0),
+        "an id no page of the tip carries"
+    );
+    for unsafe_id in [
+        "",
+        ".hidden",
+        "../escape",
+        "a/b",
+        "a b",
+        "tab\t",
+        "nul\0",
+        "ünï",
+        &"x".repeat(129),
+    ] {
+        assert!(!history_file_allowed(unsafe_id, 1), "{unsafe_id:?}");
+    }
+    assert!(history_file_allowed(&"x".repeat(128), 1), "the longest id");
+    assert!(history_file_allowed("A_b-c.d", 1));
 }

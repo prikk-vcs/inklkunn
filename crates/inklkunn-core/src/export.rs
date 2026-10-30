@@ -498,6 +498,20 @@ fn put_in_place(partial: &Path, dest: &Path) -> Result<(), ExportError> {
     })
 }
 
+/// May the history of the page id `id` be written as `history/<id>.jsonl`, given that `carried` pages of the tip
+/// carry that id? A page id is a plain value from a person's frontmatter: it names a file only when it is safe to,
+/// and only when exactly one page has it (a shared id cannot say whose history a file holds; an id no page of the
+/// tip carries belongs to a page since removed). The ids that are refused are counted, never dropped silently.
+fn history_file_allowed(id: &str, carried: usize) -> bool {
+    let safe = !id.is_empty()
+        && id.len() <= 128
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+        && !id.starts_with('.');
+    safe && carried == 1
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build(
     storage: &dyn Storage,
@@ -549,16 +563,8 @@ fn build(
     }
     let mut histories_not_written = 0;
     for (id, lines) in &h.lines {
-        // A page id is a plain value from a person's frontmatter: it names a file only when it is safe to, and
-        // only when one page has it.
-        let safe = !id.is_empty()
-            && id.len() <= 128
-            && id
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
-            && !id.starts_with('.');
         let carried = carriers.get(id.as_str()).copied().unwrap_or(0);
-        if !safe || carried != 1 {
+        if !history_file_allowed(id, carried) {
             // Counted in the manifest, never dropped silently.
             histories_not_written += carried;
             continue;

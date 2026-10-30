@@ -202,3 +202,18 @@ fn a_display_name_has_no_line_break_of_any_kind() {
         assert!(DisplayName::new(ok).is_ok(), "{ok:?}");
     }
 }
+
+#[test]
+fn rfc3339_writes_utc_to_the_second_across_epochs_and_leap_days() {
+    for (secs, text) in [
+        (0, "1970-01-01T00:00:00Z"),
+        (1_700_000_000, "2023-11-14T22:13:20Z"),
+        (951_782_400, "2000-02-29T00:00:00Z"),
+        (1_709_164_799, "2024-02-28T23:59:59Z"),
+        (1_709_164_800, "2024-02-29T00:00:00Z"),
+        (1_709_251_200, "2024-03-01T00:00:00Z"),
+        (-1, "1969-12-31T23:59:59Z"),
+    ] {
+        assert_eq!(rfc3339(secs), text, "{secs}");
+    }
+}

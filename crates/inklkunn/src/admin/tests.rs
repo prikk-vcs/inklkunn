@@ -809,13 +809,18 @@ fn a_start_removes_a_killed_creation_whole_and_a_create_does_the_same_before_it_
         "{notes:?}"
     );
     assert!(w.layout().creation_marks().unwrap().is_empty());
-    // One audit event for the removal, naming the wiki by its id.
+    // Two audit events for the removal, the first before it and the second after it, naming the wiki by its id.
     let swept: Vec<_> = w
         .audit()
         .into_iter()
         .filter(|(_, a, ..)| a == "creation-sweep")
         .collect();
-    assert_eq!(swept.len(), 1, "{swept:?}");
+    assert_eq!(swept.len(), 2, "{swept:?}");
+    assert!(
+        swept.iter().any(|(_, _, _, _)| true)
+            && swept.first().map(|e| e.3.as_str()) == Some(&format!("wiki:{lost}")),
+        "{swept:?}"
+    );
     assert!(
         swept.iter().all(|(p, _, o, r)| p == "system:operator-cli"
             && o == "allowed"
@@ -859,8 +864,8 @@ fn a_start_removes_a_killed_creation_whole_and_a_create_does_the_same_before_it_
             .iter()
             .filter(|(_, a, o, _)| a == "creation-sweep" && o == "allowed")
             .count(),
-        2,
-        "the create's sweep is audited as the start's is"
+        4,
+        "the create's sweep is audited as the start's is: an event before each removal and one after"
     );
     assert_eq!(w.store.list().unwrap().len(), 2);
     // Nothing but the two kept wikis' directories is under the root.

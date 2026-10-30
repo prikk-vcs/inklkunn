@@ -121,16 +121,10 @@ pub fn manifest_with(record: &WikiRecord, inklkunn_version: &str, facts: &Manife
         "  note: native; nothing was converted".to_owned(),
     ]);
     if let Some(e) = &facts.exported {
-        lines.push("export:".to_owned());
-        lines.push(format!("  at: {}", e.exported_at));
-        lines.push(format!("  as_of_block: {}", yaml_str(&e.tip)));
+        // wiki-commons' own key, an RFC 3339 date-time (S3).
         lines.push(format!(
-            "  history_changes_without_a_page: {}",
-            e.unattributed_changes
-        ));
-        lines.push(format!(
-            "  histories_not_written: {}",
-            e.histories_not_written
+            "exported_at: {}",
+            yaml_quote(&inklkunn_store::record::rfc3339(e.exported_at))
         ));
         if e.interwiki.is_empty() {
             lines.push("interwiki: {}".to_owned());
@@ -150,6 +144,18 @@ pub fn manifest_with(record: &WikiRecord, inklkunn_version: &str, facts: &Manife
             yaml_quote(&record.policy_bootstrap)
         ),
     ]);
+    // inklkunn's own facts of an export live under its own key, not under a top-level one in the schema's namespace.
+    if let Some(e) = &facts.exported {
+        lines.push(format!("  as_of_block: {}", yaml_str(&e.tip)));
+        lines.push(format!(
+            "  history_changes_without_a_page: {}",
+            e.unattributed_changes
+        ));
+        lines.push(format!(
+            "  histories_not_written: {}",
+            e.histories_not_written
+        ));
+    }
     let mut out = lines.join("\n");
     out.push('\n');
     out

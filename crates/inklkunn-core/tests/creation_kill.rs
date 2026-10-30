@@ -11,13 +11,13 @@
 use std::os::unix::fs::PermissionsExt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use inklkunn_core::{
     AcceptanceLedger, AcceptanceToken, CreationStep, ExpectedMessage, KeyAuthority, LedgerError,
-    RepositoryBootstrap, Signer, SignerConfig, ViewCreationAct, ViewCreationFacts, create_wiki,
-    create_wiki_observed, sweep_unfinished_creations,
+    NoSweepAudit, RepositoryBootstrap, Signer, SignerConfig, SweepAudit, ViewCreationAct,
+    ViewCreationFacts, create_wiki, create_wiki_observed, sweep_unfinished_creations,
 };
 use inklkunn_prikk::{Admission, PrikkCli, Sandbox, Storage};
 use inklkunn_store::{DisplayName, MemoryStore, NewWiki, RootLayout, Slug, WikiId, WikiStore};
@@ -196,8 +196,15 @@ fn a_creation_stopped_after_any_step_leaves_a_complete_wiki_or_nothing_or_a_seal
             "{step:?}"
         );
         // The next start.
-        let report = sweep_unfinished_creations(&w.store, &w.layout, &w.signer, &w.storage, false)
-            .expect("sweep");
+        let report = sweep_unfinished_creations(
+            &w.store,
+            &w.layout,
+            &w.signer,
+            &w.storage,
+            false,
+            &NoSweepAudit,
+        )
+        .expect("sweep");
         if step == CreationStep::Stored {
             assert!(report.left_behind.is_empty(), "{step:?}: {report:?}");
             // Complete: the record was stored; only the mark is removed, and the wiki is whole.
@@ -229,9 +236,15 @@ fn a_creation_stopped_after_any_step_leaves_a_complete_wiki_or_nothing_or_a_seal
             let after = leftovers(&w);
             assert_eq!(after, before, "{step:?}: the sweep changed what it refused");
             // …and so does every later start.
-            let again =
-                sweep_unfinished_creations(&w.store, &w.layout, &w.signer, &w.storage, false)
-                    .expect("sweep");
+            let again = sweep_unfinished_creations(
+                &w.store,
+                &w.layout,
+                &w.signer,
+                &w.storage,
+                false,
+                &NoSweepAudit,
+            )
+            .expect("sweep");
             assert_eq!(again.left_behind.len(), 1, "{step:?}: {again:?}");
             seen.push(step);
             continue;
@@ -245,8 +258,15 @@ fn a_creation_stopped_after_any_step_leaves_a_complete_wiki_or_nothing_or_a_seal
             assert!(w.store.list().expect("list").is_empty());
         }
         // A second start finds nothing more.
-        let again = sweep_unfinished_creations(&w.store, &w.layout, &w.signer, &w.storage, false)
-            .expect("sweep");
+        let again = sweep_unfinished_creations(
+            &w.store,
+            &w.layout,
+            &w.signer,
+            &w.storage,
+            false,
+            &NoSweepAudit,
+        )
+        .expect("sweep");
         assert!(again.is_empty(), "{step:?}: {again:?}");
         seen.push(step);
     }
@@ -273,9 +293,15 @@ fn a_creation_that_is_still_running_is_not_swept_and_goes_on_to_finish() {
         &key,
         &|step| {
             // Another process starting now (a server beside the command line) sweeps at every step.
-            let report =
-                sweep_unfinished_creations(&w.store, &w.layout, &w.signer, &w.storage, false)
-                    .expect("sweep");
+            let report = sweep_unfinished_creations(
+                &w.store,
+                &w.layout,
+                &w.signer,
+                &w.storage,
+                false,
+                &NoSweepAudit,
+            )
+            .expect("sweep");
             assert!(
                 report.removed.is_empty(),
                 "{step:?}: a live creation was removed"
@@ -331,8 +357,15 @@ fn a_sweep_that_cannot_remove_everything_keeps_the_mark_and_the_next_start_finis
     stop_after(&w, CreationStep::RepositoryCreated);
     std::panic::set_hook(hook);
     let stuck = CannotDiscard(&w.signer);
-    let report =
-        sweep_unfinished_creations(&w.store, &w.layout, &stuck, &w.storage, false).expect("sweep");
+    let report = sweep_unfinished_creations(
+        &w.store,
+        &w.layout,
+        &stuck,
+        &w.storage,
+        false,
+        &NoSweepAudit,
+    )
+    .expect("sweep");
     assert_eq!(report.left_behind.len(), 1, "{report:?}");
     assert!(report.removed.is_empty());
     assert!(
@@ -349,8 +382,15 @@ fn a_sweep_that_cannot_remove_everything_keeps_the_mark_and_the_next_start_finis
     );
     assert!(still.iter().any(|p| p.starts_with("keys/")), "{still:?}");
     // The next start, with a working key store, finishes it.
-    let report = sweep_unfinished_creations(&w.store, &w.layout, &w.signer, &w.storage, false)
-        .expect("sweep");
+    let report = sweep_unfinished_creations(
+        &w.store,
+        &w.layout,
+        &w.signer,
+        &w.storage,
+        false,
+        &NoSweepAudit,
+    )
+    .expect("sweep");
     assert_eq!(report.removed.len(), 1, "{report:?}");
     assert!(leftovers(&w).is_empty(), "{:?}", leftovers(&w));
 }
@@ -407,8 +447,15 @@ fn a_store_made_by_this_start_removes_nothing_and_the_next_start_finds_the_creat
     stop_after(&w, CreationStep::RepositoryCreated);
     std::panic::set_hook(hook);
     let before = leftovers(&w);
-    let report = sweep_unfinished_creations(&w.store, &w.layout, &w.signer, &w.storage, true)
-        .expect("sweep");
+    let report = sweep_unfinished_creations(
+        &w.store,
+        &w.layout,
+        &w.signer,
+        &w.storage,
+        true,
+        &NoSweepAudit,
+    )
+    .expect("sweep");
     assert!(report.removed.is_empty(), "{report:?}");
     assert_eq!(report.left_behind.len(), 1, "{report:?}");
     assert!(
@@ -424,8 +471,114 @@ fn a_store_made_by_this_start_removes_nothing_and_the_next_start_finds_the_creat
         "a new store's sweep removed something"
     );
     // The store is not new at the next start: the creation, with no record, goes.
-    let report = sweep_unfinished_creations(&w.store, &w.layout, &w.signer, &w.storage, false)
-        .expect("sweep");
+    let report = sweep_unfinished_creations(
+        &w.store,
+        &w.layout,
+        &w.signer,
+        &w.storage,
+        false,
+        &NoSweepAudit,
+    )
+    .expect("sweep");
     assert_eq!(report.removed.len(), 1, "{report:?}");
     assert!(leftovers(&w).is_empty(), "{:?}", leftovers(&w));
+}
+
+/// A trail that writes down what the sweep asked of it, and whether the repository was still there when it was
+/// asked.
+struct Trail {
+    layout: RootLayout,
+    refuse: bool,
+    log: Mutex<Vec<String>>,
+}
+
+impl Trail {
+    fn new(w: &World, refuse: bool) -> Trail {
+        Trail {
+            layout: RootLayout::new(w.layout.root()),
+            refuse,
+            log: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn log(&self) -> Vec<String> {
+        self.log.lock().unwrap().clone()
+    }
+}
+
+impl SweepAudit for Trail {
+    fn before(&self, id: &WikiId) -> Result<(), String> {
+        let there = self.layout.repo_dir(id).is_dir();
+        self.log
+            .lock()
+            .unwrap()
+            .push(format!("before (repository there: {there})"));
+        if self.refuse {
+            Err("the audit trail could not be written; nothing was removed".to_owned())
+        } else {
+            Ok(())
+        }
+    }
+
+    fn after(&self, _: &WikiId, removed: bool) {
+        self.log
+            .lock()
+            .unwrap()
+            .push(format!("after (removed: {removed})"));
+    }
+}
+
+#[test]
+fn the_sweep_audits_before_it_removes_and_a_trail_that_refuses_stops_the_removal() {
+    if !prikk_on_path() {
+        println!("skipping: prikk not on PATH");
+        return;
+    }
+    // The trail takes the event: it is asked while the repository is still there, and again after.
+    let w = world("audit-before");
+    stop_after(&w, CreationStep::RepositoryCreated);
+    let trail = Trail::new(&w, false);
+    let report =
+        sweep_unfinished_creations(&w.store, &w.layout, &w.signer, &w.storage, false, &trail)
+            .expect("sweep");
+    assert_eq!(report.removed.len(), 1, "{report:?}");
+    assert_eq!(
+        trail.log(),
+        ["before (repository there: true)", "after (removed: true)"]
+    );
+    assert!(leftovers(&w).is_empty(), "{:?}", leftovers(&w));
+
+    // The trail cannot take it: the act is not done, the mark stays for the next start.
+    let w = world("audit-refused");
+    stop_after(&w, CreationStep::RepositoryCreated);
+    let before = leftovers(&w);
+    let trail = Trail::new(&w, true);
+    let report =
+        sweep_unfinished_creations(&w.store, &w.layout, &w.signer, &w.storage, false, &trail)
+            .expect("sweep");
+    assert!(report.removed.is_empty(), "{report:?}");
+    assert!(
+        report
+            .left_behind
+            .first()
+            .is_some_and(|(_, why)| why.contains("audit trail")),
+        "{report:?}"
+    );
+    assert_eq!(
+        leftovers(&w),
+        before,
+        "something was removed without its event"
+    );
+    assert_eq!(
+        trail.log(),
+        ["before (repository there: true)", "after (removed: false)"]
+    );
+
+    // A creation the sweep will not touch is reported to the trail as not removed, without a `before`.
+    let w = world("audit-guarded");
+    stop_after(&w, CreationStep::RepositoryCreated);
+    let trail = Trail::new(&w, false);
+    sweep_unfinished_creations(&w.store, &w.layout, &w.signer, &w.storage, true, &trail)
+        .expect("sweep");
+    assert_eq!(trail.log(), ["after (removed: false)"]);
 }

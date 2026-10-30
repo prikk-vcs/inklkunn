@@ -80,6 +80,52 @@ fn the_manifest_an_export_writes_is_valid_and_names_the_checksums_file() {
 }
 
 #[test]
+fn the_export_time_is_wiki_commons_exported_at_and_inklkunns_own_facts_live_under_its_key() {
+    let text = manifest_with(&record(), "1.2.3", &facts());
+    assert!(
+        text.lines()
+            .any(|l| l == "exported_at: \"2023-11-14T22:13:20Z\""),
+        "{text}"
+    );
+    // No top-level `export:` and no unix time: the facts sit under `inklkunn:`.
+    assert!(!text.lines().any(|l| l.starts_with("export:")), "{text}");
+    let own = text
+        .split("\ninklkunn:\n")
+        .nth(1)
+        .expect("the inklkunn key");
+    for key in [
+        "  default_view:",
+        "  as_of_block:",
+        "  history_changes_without_a_page: 4",
+        "  histories_not_written: 1",
+    ] {
+        assert!(own.contains(key), "{key} is not under `inklkunn:`\n{text}");
+    }
+    // The creation manifest says nothing of an export.
+    let created = manifest(&record(), "1.2.3");
+    assert!(!created.contains("exported_at") && !created.contains("as_of_block"));
+}
+
+#[test]
+fn a_time_that_is_not_a_date_time_is_what_the_schema_check_catches() {
+    let good = manifest_with(&record(), "1.2.3", &facts());
+    for bad in [
+        "exported_at: \"1700000000\"",
+        "exported_at: \"2023-11-14 22:13:20Z\"",
+        "exported_at: \"2023-02-30T22:13:20Z\"",
+        "exported_at: \"2023-11-14T25:13:20Z\"",
+        "exported_at: \"2023-11-14T22:13:20\"",
+    ] {
+        let changed = good.replace("exported_at: \"2023-11-14T22:13:20Z\"", bad);
+        let problems = bundle_manifest::violations(&changed);
+        assert!(
+            problems.iter().any(|p| p.starts_with("/exported_at:")),
+            "{bad}: {problems:#?}"
+        );
+    }
+}
+
+#[test]
 fn the_old_shape_of_checksums_is_what_the_schema_check_catches() {
     // The manifest before R6 wrote `checksums` as an object; the schema says it is a path.
     let good = manifest_with(&record(), "1.2.3", &facts());

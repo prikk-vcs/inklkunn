@@ -30,14 +30,14 @@ use inklkunn_core::export::is_checkpoint_not_recorded;
 use inklkunn_core::export::{ExportError, export_bundle};
 use inklkunn_core::import::{ImportError, ImportLedger, plan_folder, run_import, wiki_state};
 use inklkunn_core::{
-    AcceptError, Maintenance, Signer, SignerConfig, SignerError, create_wiki,
+    AcceptError, Maintenance, Signer, SignerConfig, SignerError, SweepAudit, create_wiki,
     sweep_unfinished_creations,
 };
 use inklkunn_prikk::sandbox::Sandbox;
 use inklkunn_prikk::{Admission, PrikkCli};
 use inklkunn_store::{
     AuditEvent, AuditOutcome, AuditSink, DisplayName, NewWiki, PrikkVersion, RootLayout, Slug,
-    SqliteStore, Visibility, WikiRecord, WikiStore,
+    SqliteStore, Visibility, WikiId, WikiRecord, WikiStore,
 };
 
 use crate::config::{Settings, UNCONFINED_BANNER};
@@ -333,27 +333,50 @@ fn run(
     }
 }
 
-/// The audit events of a start-up sweep, after it ran: one per unfinished creation it removed (*allowed*, with
-/// the wiki's id, never its name), and one per creation it could not or would not remove (*failed*). A write
-/// that fails comes back as a line for the operator: the removal has happened, and saying so is all that is left.
-fn audit_sweep(sink: &dyn AuditSink, report: &inklkunn_core::SweepReport, now: i64) -> Vec<String> {
-    let trail = Trail { sink, now };
-    let removed = report
-        .removed
-        .iter()
-        .map(|id| (id, AuditOutcome::Allowed, "unfinished creation removed"));
-    let kept = report
-        .left_behind
-        .iter()
-        .map(|(id, _)| (id, AuditOutcome::Failed, "unfinished creation not removed"));
-    removed
-        .chain(kept)
-        .filter_map(|(id, outcome, detail)| {
-            trail
+/// The audit trail of a start-up sweep: one `creation-sweep` event **before** each removal (*allowed*, the wiki's
+/// id, never its name; the sweep removes nothing if the trail cannot take it, S4) and its outcome after (*allowed*
+/// when removed, *failed* for a creation that was left behind). A failure to write the outcome comes back as a line
+/// for the operator: the act has happened, and saying so is all that is left.
+struct SweepTrail<'a> {
+    trail: Trail<'a>,
+    problems: std::cell::RefCell<Vec<String>>,
+}
+
+impl<'a> SweepTrail<'a> {
+    fn new(sink: &'a dyn AuditSink, now: i64) -> Self {
+        SweepTrail {
+            trail: Trail { sink, now },
+            problems: std::cell::RefCell::new(Vec::new()),
+        }
+    }
+
+    /// The outcome lines that could not be written.
+    fn problems(self) -> Vec<String> {
+        self.problems.into_inner()
+    }
+}
+
+impl SweepAudit for SweepTrail<'_> {
+    fn before(&self, id: &WikiId) -> Result<(), String> {
+        self.trail
+            .begin("creation-sweep", &format!("wiki:{id}"), "removal begun")
+    }
+
+    fn after(&self, id: &WikiId, removed: bool) {
+        let (outcome, detail) = if removed {
+            (AuditOutcome::Allowed, "unfinished creation removed")
+        } else {
+            (AuditOutcome::Failed, "unfinished creation not removed")
+        };
+        if let Err(line) =
+            self.trail
                 .finish("creation-sweep", &format!("wiki:{id}"), outcome, detail)
-                .err()
-        })
-        .collect()
+        {
+            self.problems
+                .borrow_mut()
+                .push(format!("wiki {id}: {line}"));
+        }
+    }
 }
 
 /// Print what a start-up sweep found.
@@ -438,9 +461,11 @@ fn create(
         );
     }
     // What an earlier, killed creation left goes first.
-    let report = sweep_unfinished_creations(&store, &env.layout, &signer, &env.storage, fresh)?;
+    let trail = SweepTrail::new(&store, now);
+    let report =
+        sweep_unfinished_creations(&store, &env.layout, &signer, &env.storage, fresh, &trail)?;
     report_sweep(&report, err);
-    for line in audit_sweep(&store, &report, now) {
+    for line in trail.problems() {
         let _ = writeln!(err, "{line}");
     }
     let trail = Trail { sink: &store, now };
@@ -807,23 +832,29 @@ pub(crate) fn start_up(
                     Signer::open(config, Arc::new(ImportLedger::new())).map_err(|e| e.to_string())
                 });
             match opened {
-                Ok(signer) => match sweep_unfinished_creations(
-                    store,
-                    &layout,
-                    &signer,
-                    storage,
-                    store_is_new,
-                ) {
-                    Ok(report) => {
-                        let mut text = Vec::new();
-                        report_sweep(&report, &mut text);
-                        notes.extend(String::from_utf8_lossy(&text).lines().map(str::to_owned));
-                        notes.extend(audit_sweep(store, &report, now));
+                Ok(signer) => {
+                    let trail = SweepTrail::new(store, now);
+                    match sweep_unfinished_creations(
+                        store,
+                        &layout,
+                        &signer,
+                        storage,
+                        store_is_new,
+                        &trail,
+                    ) {
+                        Ok(report) => {
+                            let mut text = Vec::new();
+                            report_sweep(&report, &mut text);
+                            notes.extend(
+                                String::from_utf8_lossy(&text).lines().map(str::to_owned),
+                            );
+                            notes.extend(trail.problems());
+                        }
+                        Err(why) => notes.push(format!(
+                            "inklkunn: unfinished creations could not be examined: {why}"
+                        )),
                     }
-                    Err(why) => notes.push(format!(
-                        "inklkunn: unfinished creations could not be examined: {why}"
-                    )),
-                },
+                }
                 Err(why) => notes.push(format!(
                     "inklkunn: {} wiki creation(s) did not finish and were not removed, because the signer could not be opened ({why}); the next start tries again",
                     marks.len()

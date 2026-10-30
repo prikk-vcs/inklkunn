@@ -62,7 +62,7 @@ pub use read::{
 };
 pub use routes::{Guard, RouteEntry, RouteError, RouteTable};
 pub use wiki::{
-    Cleanup, CreateWikiError, CreatedWiki, CreationStep, RepositoryBootstrap, SweepReport,
-    create_wiki, create_wiki_observed, creation_message, sweep_unfinished_creations,
-    system_message,
+    Cleanup, CreateWikiError, CreatedWiki, CreationStep, NoSweepAudit, RepositoryBootstrap,
+    SweepAudit, SweepReport, create_wiki, create_wiki_observed, creation_message,
+    sweep_unfinished_creations, system_message,
 };

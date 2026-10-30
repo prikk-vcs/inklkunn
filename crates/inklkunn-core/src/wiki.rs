@@ -390,6 +390,30 @@ pub struct SweepReport {
     pub left_behind: Vec<(WikiId, String)>,
 }
 
+/// The audit trail of a sweep, kept by the caller (it knows the principal and the sink). **The act is audited
+/// before it is done** (S4), as every administrative act is: [`SweepAudit::before`] is asked ahead of each removal and a
+/// refusal means nothing is removed; [`SweepAudit::after`] says what became of it, and may fail without
+/// undoing anything (the caller reports it).
+pub trait SweepAudit {
+    /// Record that the unfinished creation `id` is about to be removed. `Err` (the trail cannot take it) stops
+    /// the removal: the creation is left behind, its mark kept, the reason is the error text.
+    fn before(&self, id: &WikiId) -> Result<(), String>;
+    /// Record the outcome for `id`: `removed`, or left behind (including a creation the sweep would not touch,
+    /// for which `before` was never asked).
+    fn after(&self, id: &WikiId, removed: bool);
+}
+
+/// A sweep that audits nowhere (tests of the sweep itself).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoSweepAudit;
+
+impl SweepAudit for NoSweepAudit {
+    fn before(&self, _: &WikiId) -> Result<(), String> {
+        Ok(())
+    }
+    fn after(&self, _: &WikiId, _: bool) {}
+}
+
 impl SweepReport {
     /// Did the sweep find anything at all?
     pub fn is_empty(&self) -> bool {
@@ -420,6 +444,7 @@ pub fn sweep_unfinished_creations(
     signer: &dyn RepositoryBootstrap,
     storage: &dyn Storage,
     store_is_new: bool,
+    audit: &dyn SweepAudit,
 ) -> Result<SweepReport, String> {
     let found = find_unfinished(layout).map_err(|e| e.to_string())?;
     let mut report = SweepReport {
@@ -435,16 +460,30 @@ pub fn sweep_unfinished_creations(
             }
             Err(StoreError::NotFound) => {
                 if let Some(why) = refuse_removal(storage, layout, &id, store_is_new) {
+                    audit.after(&id, false);
+                    report.left_behind.push((id, why));
+                    continue;
+                }
+                // The trail first: an act it cannot take is not done.
+                if let Err(why) = audit.before(&id) {
+                    audit.after(&id, false);
                     report.left_behind.push((id, why));
                     continue;
                 }
                 match settle(mark, discard(layout, signer, &id)) {
-                    Cleanup::Removed => report.removed.push(id),
-                    other => report.left_behind.push((id, other.to_string())),
+                    Cleanup::Removed => {
+                        audit.after(&id, true);
+                        report.removed.push(id);
+                    }
+                    other => {
+                        audit.after(&id, false);
+                        report.left_behind.push((id, other.to_string()));
+                    }
                 }
             }
             Err(e) => {
                 // The record store cannot say: removing a wiki that might exist would be worse than waiting.
+                audit.after(&id, false);
                 report
                     .left_behind
                     .push((id, format!("the record store could not be read ({e})")));

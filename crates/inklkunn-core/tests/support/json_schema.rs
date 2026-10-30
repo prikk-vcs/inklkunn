@@ -126,10 +126,16 @@ fn check(root: &Value, schema: &Value, inst: &Value, at: &str, out: &mut Vec<Str
                 )),
             }
         }
-        if let Some(format) = map.get("format").and_then(Value::as_str) {
-            out.push(format!(
+        match map.get("format").and_then(Value::as_str) {
+            None => {}
+            Some("date-time") => {
+                if !is_date_time(s) {
+                    out.push(format!("{at}: {s:?} is not an RFC 3339 date-time"));
+                }
+            }
+            Some(format) => out.push(format!(
                 "{at}: the checker does not check the format `{format}`"
-            ));
+            )),
         }
     }
     if let Some(object) = inst.as_object() {
@@ -157,5 +163,67 @@ fn check(root: &Value, schema: &Value, inst: &Value, at: &str, out: &mut Vec<Str
         for (i, value) in array.iter().enumerate() {
             check(root, items, value, &format!("{at}/{i}"), out);
         }
+    }
+}
+
+/// RFC 3339 `date-time`: `YYYY-MM-DDTHH:MM:SS`, optional fraction, then `Z` or `±HH:MM`, with the date and time in
+/// range (the month's length and leap years included; a leap second is allowed).
+fn is_date_time(s: &str) -> bool {
+    let b = s.as_bytes();
+    let digits = |from: usize, n: usize| -> Option<u32> {
+        let part = b.get(from..from + n)?;
+        if !part.iter().all(u8::is_ascii_digit) {
+            return None;
+        }
+        std::str::from_utf8(part).ok()?.parse().ok()
+    };
+    let at = |i: usize| b.get(i).copied();
+    let (Some(year), Some(month), Some(day), Some(hour), Some(minute), Some(second)) = (
+        digits(0, 4),
+        digits(5, 2),
+        digits(8, 2),
+        digits(11, 2),
+        digits(14, 2),
+        digits(17, 2),
+    ) else {
+        return false;
+    };
+    if at(4) != Some(b'-') || at(7) != Some(b'-') || !matches!(at(10), Some(b'T' | b't')) {
+        return false;
+    }
+    if at(13) != Some(b':') || at(16) != Some(b':') {
+        return false;
+    }
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let days = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => return false,
+    };
+    if day == 0 || day > days || hour > 23 || minute > 59 || second > 60 {
+        return false;
+    }
+    let mut i = 19;
+    if at(i) == Some(b'.') {
+        let start = i + 1;
+        i = start;
+        while at(i).is_some_and(|c| c.is_ascii_digit()) {
+            i += 1;
+        }
+        if i == start {
+            return false;
+        }
+    }
+    match at(i) {
+        Some(b'Z' | b'z') => i + 1 == b.len(),
+        Some(b'+' | b'-') => {
+            let (Some(h), Some(m)) = (digits(i + 1, 2), digits(i + 4, 2)) else {
+                return false;
+            };
+            at(i + 3) == Some(b':') && h <= 23 && m <= 59 && i + 6 == b.len()
+        }
+        _ => false,
     }
 }

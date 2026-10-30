@@ -638,3 +638,15 @@ RFC 003 — corrections from the review of 2026-10-30 (R1 – R10, before 0.1.0)
   so rows drawn without it are drawn again. Markdown on the line right after a closing `:::` renders as Markdown. A permalink's
   banner says that its links lead to the pages as they are now (`at.links`). The markup crate's scaling tests believe a ratio
   over the bound only when five measurements in a row are over it.
+
+Follow-ups from the review of 2026-10-31 (handoff 003, S2 – S4).
+
+- **S2 — the export's history count has a unit test of its shared-id branch.** The rule (a history file is written only for a
+  safe id that exactly one page of the tip carries) is now one function, `history_file_allowed`, tested for a shared id, an id no
+  page carries, and unsafe ids; a repository written by prikk directly can still hold two pages with one id.
+- **S3 — the manifest uses wiki-commons' key for the export time.** `exported_at` is an RFC 3339 date-time (`inklkunn_store::record::rfc3339`);
+  inklkunn's own export facts (`as_of_block`, `history_changes_without_a_page`, `histories_not_written`) are under the manifest's
+  `inklkunn:` key, and the top-level `export:` is gone. The schema check in the tests now checks `date-time`.
+- **S4 — the start-up sweep audits before it removes.** `sweep_unfinished_creations` takes a `SweepAudit`: `before` is asked ahead of each
+  removal and a refusal (the trail cannot take the event) leaves the creation in place with its mark; `after` records the outcome
+  (*allowed* when removed, *failed* when left behind). `NoSweepAudit` is for tests of the sweep itself.
