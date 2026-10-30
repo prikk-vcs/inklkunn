@@ -796,6 +796,7 @@ dependencies = [
  "inklkunn-prikk",
  "inklkunn-signer",
  "inklkunn-store",
+ "rustix",
  "serde_json",
  "sha2",
  "unicode-normalization",

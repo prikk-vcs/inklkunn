@@ -25,6 +25,10 @@ ammonia = "4"
 sha2 = "0.10"
 # Per-page history lines (`history/<page id>.jsonl`) and the report values.
 serde_json = { workspace = true }
+# The import's handle-anchored walk (`openat` with `O_NOFOLLOW`, `fstat` on the open handle) and the export's
+# `RENAME_NOREPLACE` (handoff 003 S1); `std` has neither. `fs` only, exactly as inklkunn-signer declares it; already
+# in the lock for the signer, so one workspace edge and no new crate.
+rustix = { version = "1", default-features = false, features = ["fs", "std"] }
 # Folding for search: width variants and diacritics are one letter (RFC 003 D-8). Already in the lock (the markup crate).
 unicode-normalization = { workspace = true }
 
