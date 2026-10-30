@@ -155,6 +155,21 @@ async fn the_list_of_wikis_never_names_a_wiki_the_visitor_may_not_read() {
     assert!(!a.body.contains("Secret Wiki") && !a.body.contains("/secret"));
 }
 
+#[tokio::test]
+async fn the_inbox_names_no_wiki_to_a_visitor_with_no_account() {
+    // It is an account-wide page: for a visitor with none it is the same words whatever wikis exist, and it
+    // never names the restricted one.
+    let world = restricted();
+    for method in ["GET", "POST"] {
+        let a = ask(&world, "localhost:8080", method, "/-/inbox").await;
+        assert_eq!(a.status, StatusCode::FORBIDDEN, "{method}");
+        for secret in ["Secret Wiki", "/secret", "hidden text"] {
+            assert!(!a.body.contains(secret), "{method}: leaked `{secret}`");
+        }
+        assert!(a.body.contains("An account is needed"), "{method}");
+    }
+}
+
 #[test]
 fn every_public_route_gives_a_reason_and_is_not_under_a_wiki_slug_unless_it_refuses() {
     for table in [application_table().unwrap(), content_table().unwrap()] {

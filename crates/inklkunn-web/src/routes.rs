@@ -10,7 +10,7 @@ use std::sync::Arc;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::middleware::from_fn;
-use axum::routing::{MethodRouter, get};
+use axum::routing::{MethodRouter, get, post};
 use inklkunn_core::{Action, Guard, RouteError, RouteTable};
 
 use crate::config::{Scheme, WebConfig};
@@ -19,7 +19,9 @@ use crate::headers::{self, Surface};
 use crate::origin::Dispatch;
 use crate::pages::{self, LANGUAGE_PATH, PageState};
 use crate::services::Services;
-use crate::{api, changes, discover, health, history, probe, raw, search, style, wiki};
+use crate::{
+    api, changes, discover, health, history, inbox, probe, raw, search, style, watch, wiki,
+};
 
 /// One declared entry point and the handler that serves it.
 struct Spec {
@@ -78,6 +80,23 @@ fn page_specs() -> Vec<Spec> {
             methods: &["GET", "HEAD"],
             guard: Guard::Action(Action::Read),
             handler: || get(wiki::wikis),
+        },
+        // --- handoff 004 T6: the inbox (account-wide, so outside any wiki's address) and following a page.
+        Spec {
+            path: "/-/inbox",
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Action(Action::Read),
+            handler: || {
+                get(inbox::inbox_page)
+                    .post(inbox::mark_read)
+                    .layer(DefaultBodyLimit::max(pages::FORM_LIMIT))
+            },
+        },
+        Spec {
+            path: "/{slug}/-/watch/{*title}",
+            methods: &["POST"],
+            guard: Guard::Action(Action::Read),
+            handler: || post(watch::watch).layer(DefaultBodyLimit::max(pages::FORM_LIMIT)),
         },
         Spec {
             path: "/{slug}",

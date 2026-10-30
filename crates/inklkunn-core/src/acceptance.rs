@@ -45,14 +45,14 @@ use inklkunn_signer::accept::{
 use inklkunn_signer::message::{Actor, BlockId, Message, MessageError, Summary};
 use inklkunn_store::{
     AcceptanceBegin, AcceptanceId, AcceptanceOutcome, AcceptanceRecord, AcceptanceResult,
-    AcceptanceStore, AccountId, AccountStore, ActStore, AuditSink, DisplayName, InboxEvent,
-    InboxEventId, InboxEventKind, InboxStore, IntentCompletion, IntentEnd, IntentId, IntentRecord,
-    OverlapRecord, ProposalId, ProposalRecord, RecoveryFlag, RecoveryReason, Role, RoleStore,
-    RootLayout, StoreError, Visibility, WikiRecord,
+    AcceptanceStore, AccountId, AccountStore, ActStore, AuditSink, DisplayName, IntentCompletion,
+    IntentEnd, IntentId, IntentRecord, OverlapRecord, ProposalId, ProposalRecord, RecoveryFlag,
+    RecoveryReason, Role, RoleStore, RootLayout, StoreError, WikiRecord,
 };
 
-use crate::authorize::{Action, Principal};
+use crate::authorize::Principal;
 use crate::lease::{Busy, BusyWhy, Lease, LeaseError, Purpose, WikiLeases};
+use crate::notify::Notifier;
 use crate::proposal::{ProposalError, ProposalService, QuotaLimit, QuotaRefusal, Reset, machine};
 use crate::read::ReadService;
 use crate::reconcile::Finding;
@@ -104,30 +104,12 @@ pub mod words {
     pub const NOTHING_TO_CHANGE: &str = "nothing-to-change";
 }
 
-/// What a change is recorded as: the message's `Kind` for a proposal.
+/// What a proposal's change is recorded as: the message's `Kind`. A rollback is a proposal that was created as
+/// one (RFC 004 D-8; `ProposalService::rollback_of`); its revision's base is the block it undoes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChangeKind {
-    /// An ordinary proposal.
+enum ChangeKind {
     Proposal,
-    /// A rollback proposal (D-8: an undo is a proposal).
     Rollback,
-}
-
-/// Which kind of change a proposal is: the hook that rollback (handoff 004 T6) plugs into. The default says
-/// every proposal is an ordinary one.
-pub trait ChangeKinds: Send + Sync {
-    /// The kind of the proposal's change.
-    fn kind(&self, proposal: &ProposalRecord) -> ChangeKind;
-}
-
-/// Every proposal is an ordinary proposal (until rollback exists).
-#[derive(Debug, Clone, Copy, Default)]
-pub struct OrdinaryProposals;
-
-impl ChangeKinds for OrdinaryProposals {
-    fn kind(&self, _: &ProposalRecord) -> ChangeKind {
-        ChangeKind::Proposal
-    }
 }
 
 /// What the service asks for after a seal, **off the lease**: the caller decides how and where these run (a
@@ -183,7 +165,9 @@ pub struct Signed {
     pub ids_attached: usize,
     /// What the reconciliation found.
     pub reconciliation: Reconciled,
-    /// Inbox events queued.
+    /// The pages the change wrote, removed or renamed to (paths in the repository).
+    pub paths: Vec<String>,
+    /// Accounts told that a page they watch changed ([`Notifier::page_changed`]).
     pub notified: usize,
 }
 
@@ -438,8 +422,6 @@ pub struct AcceptanceParts {
     pub acceptances: Arc<dyn AcceptanceStore>,
     /// The flag, the overlaps and the system acts.
     pub acts: Arc<dyn ActStore>,
-    /// The inbox.
-    pub inbox: Arc<dyn InboxStore>,
     /// Roles (the acceptor's role is recorded with the acceptance).
     pub roles: Arc<dyn RoleStore>,
     /// Accounts (the names a message carries).
@@ -461,7 +443,7 @@ pub struct AcceptanceParts {
 pub struct ProposalAcceptor {
     parts: AcceptanceParts,
     follow_up: Arc<dyn AfterSeal>,
-    kinds: Arc<dyn ChangeKinds>,
+    notifier: Option<Arc<Notifier>>,
     audit: Option<Arc<dyn AuditSink>>,
     reconcile: bool,
     clock: fn() -> i64,
@@ -481,7 +463,7 @@ impl ProposalAcceptor {
         ProposalAcceptor {
             parts,
             follow_up: Arc::new(NoFollowUp),
-            kinds: Arc::new(OrdinaryProposals),
+            notifier: None,
             audit: None,
             reconcile: true,
             clock: inklkunn_store::record::now_secs,
@@ -495,10 +477,12 @@ impl ProposalAcceptor {
         self
     }
 
-    /// Ask `kinds` which kind of change a proposal is (rollback, handoff 004 T6).
+    /// Tell the people involved through `notifier` (RFC 004 D-9): the proposer when the proposal is accepted or
+    /// sent back for an overlap, and the accounts that watch the pages the change wrote. Telling is best effort
+    /// and never changes the act.
     #[must_use]
-    pub fn with_kinds(mut self, kinds: Arc<dyn ChangeKinds>) -> Self {
-        self.kinds = kinds;
+    pub fn with_notifier(mut self, notifier: Arc<Notifier>) -> Self {
+        self.notifier = Some(notifier);
         self
     }
 
@@ -557,8 +541,9 @@ impl ProposalAcceptor {
             }
             Step::Stopped(failure) => {
                 drop(lease);
-                if let AcceptFailure::Overlap { .. } = failure {
-                    self.notify_overlap(wiki, &proposal, &acceptor);
+                if let (AcceptFailure::Overlap { .. }, Some(notifier)) = (&failure, &self.notifier)
+                {
+                    notifier.needs_revision(wiki, &proposal, &acceptor);
                 }
                 Err(failure)
             }
@@ -710,11 +695,12 @@ impl ProposalAcceptor {
         proposer: Actor,
         acceptor: Actor,
         base: &str,
+        kind: ChangeKind,
     ) -> Result<String, AcceptFailure> {
         let described = |e: MessageError| AcceptFailure::Unavailable(format!("the message: {e}"));
         let summary = Summary::from_text(&proposal.summary).map_err(described)?;
         let base = BlockId::new(base).map_err(described)?;
-        let message = match self.kinds.kind(proposal) {
+        let message = match kind {
             ChangeKind::Proposal => {
                 Message::proposal(summary, proposal.id.clone(), proposer, acceptor, base)
             }
@@ -813,12 +799,27 @@ impl ProposalAcceptor {
             .roles
             .role(acceptor, &wiki.id)?
             .ok_or(AcceptFailure::NotAllowed)?;
+        let kind = match self.parts.proposals.rollback_of(principal, wiki, id)? {
+            Some(_) => ChangeKind::Rollback,
+            None => ChangeKind::Proposal,
+        };
         let text = self.message(
             &proposal,
             self.actor(&proposal.author)?,
             self.actor(acceptor)?,
             &content.base.block_id,
+            kind,
         )?;
+        let paths: Vec<String> = files
+            .iter()
+            .map(|f| f.path.to_string_lossy().into_owned())
+            .chain(
+                renames
+                    .iter()
+                    .flat_map(|(a, b)| [a, b])
+                    .map(|p| p.to_string_lossy().into_owned()),
+            )
+            .collect();
         let change = PreparedChange {
             files,
             renames,
@@ -950,6 +951,7 @@ impl ProposalAcceptor {
                     seeds_left,
                     ids_attached,
                     reconciliation,
+                    paths,
                     notified: 0,
                 }))
             }
@@ -1035,92 +1037,27 @@ impl ProposalAcceptor {
         )
     }
 
-    /// After the seal and the reconciliation: release the lease, then queue what the people involved are
-    /// owed and ask for the follow-ups. Returns how many events were queued.
+    /// After the seal and the reconciliation: release the lease, then tell the proposer and the watchers and ask
+    /// for the follow-ups. Returns how many watchers were told.
     fn after_lease(
         &self,
         wiki: &WikiRecord,
         proposal: &ProposalRecord,
         acceptor: &AccountId,
         lease: Lease,
-        _signed: &Signed,
+        signed: &Signed,
     ) -> usize {
         drop(lease);
-        let notified = self.notify(
-            wiki,
-            proposal,
-            InboxEventKind::Accepted,
-            std::slice::from_ref(&proposal.author),
-            acceptor,
-        );
+        let notified = match &self.notifier {
+            Some(notifier) => {
+                notifier.accepted(wiki, proposal, acceptor);
+                notifier.page_changed(wiki, &proposal.id, &signed.paths, acceptor)
+            }
+            None => 0,
+        };
         self.follow_up.warm_title_index(wiki);
         self.follow_up.enqueue_verification(wiki);
         notified
-    }
-
-    fn notify_overlap(&self, wiki: &WikiRecord, proposal: &ProposalRecord, acceptor: &AccountId) {
-        let _ = self.notify(
-            wiki,
-            proposal,
-            InboxEventKind::NeedsRevision,
-            &[proposal.author.clone(), acceptor.clone()],
-            acceptor,
-        );
-    }
-
-    /// Queue `kind` for each recipient who is not the actor and who can read the wiki: an event carries ids and
-    /// a kind, never content, and goes to no one who could not read what it is about (RFC 004 D-9). A
-    /// failure to queue an event is not a failure of the act it tells of.
-    fn notify(
-        &self,
-        wiki: &WikiRecord,
-        proposal: &ProposalRecord,
-        kind: InboxEventKind,
-        recipients: &[AccountId],
-        actor: &AccountId,
-    ) -> usize {
-        let mut queued = 0;
-        let mut told: Vec<&AccountId> = Vec::new();
-        for who in recipients {
-            // The acceptor is told of an overlap by the answer itself, and of an acceptance by having made it.
-            if told.contains(&who) || (who == actor && kind == InboxEventKind::Accepted) {
-                continue;
-            }
-            told.push(who);
-            if !self.can_read(&wiki.id, wiki.visibility, who) {
-                continue;
-            }
-            let event = InboxEvent {
-                id: InboxEventId::new(),
-                account: who.clone(),
-                wiki: wiki.id.clone(),
-                proposal: Some(proposal.id.clone()),
-                kind,
-                actor: Some(actor.clone()),
-                created_at: (self.clock)(),
-                read_at: None,
-            };
-            if self.parts.inbox.push_event(&event).is_ok() {
-                queued += 1;
-            }
-        }
-        queued
-    }
-
-    /// Whether the account may read the wiki, by the rule `authorize` applies to a person with a full session
-    /// (RFC 002 D-2): a role in the wiki, or a wiki that is not restricted.
-    fn can_read(
-        &self,
-        wiki: &inklkunn_store::WikiId,
-        visibility: Visibility,
-        who: &AccountId,
-    ) -> bool {
-        match self.parts.roles.role(who, wiki) {
-            Ok(Some(role)) => role >= Action::Read.minimum_role(),
-            Ok(None) => visibility != Visibility::Restricted,
-            // An answer that cannot be had is no.
-            Err(_) => false,
-        }
     }
 }
 

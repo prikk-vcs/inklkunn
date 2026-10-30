@@ -18,6 +18,7 @@ use inklkunn_store::{
 use super::{AcceptanceParts, ProposalAcceptor, StoreLedger, SystemActs};
 use crate::authorize::{Authorizer, IdentityAuthority, Principal, StoreAuthz};
 use crate::lease::{LeaseConfig, WikiLeases};
+use crate::notify::Notifier;
 use crate::proposal::{BaseError, BaseSource, ProposalEdit, ProposalService, QuotaConfig};
 use crate::read::testing::{Fake, TempDir};
 use crate::read::{ReadConfig, ReadService};
@@ -153,6 +154,7 @@ pub(crate) struct Rig {
     pub(crate) ledger: Arc<StoreLedger>,
     pub(crate) double: Arc<Double>,
     pub(crate) audit: Arc<MemoryAudit>,
+    pub(crate) notifier: Arc<Notifier>,
 }
 
 impl Rig {
@@ -203,6 +205,16 @@ impl Rig {
             Arc::new(FakeBase(fake.clone())),
             quotas,
         ));
+        let notifier = Arc::new(Notifier::new(
+            store.clone(),
+            store.clone(),
+            store.clone(),
+            store.clone(),
+            Authorizer::new(
+                Arc::new(StoreAuthz::new(store.clone(), store.clone())),
+                audit.clone(),
+            ),
+        ));
         let reads = Arc::new(ReadService::new(
             fake.clone(),
             store.clone(),
@@ -226,6 +238,7 @@ impl Rig {
             ledger,
             double,
             audit,
+            notifier,
         }
     }
 
@@ -259,7 +272,9 @@ impl Rig {
     /// The acceptor over the stand-in signer, with the reconciliation off (the in-memory repository has no
     /// patch messages for it to read).
     pub(crate) fn acceptor(&self) -> ProposalAcceptor {
-        ProposalAcceptor::new(self.parts(self.double.clone())).with_reconciliation(false)
+        ProposalAcceptor::new(self.parts(self.double.clone()))
+            .with_reconciliation(false)
+            .with_notifier(self.notifier.clone())
     }
 
     pub(crate) fn parts(&self, signer: Arc<dyn Accept>) -> AcceptanceParts {
@@ -267,7 +282,6 @@ impl Rig {
             proposals: self.proposals.clone(),
             acceptances: self.store.clone(),
             acts: self.store.clone(),
-            inbox: self.store.clone(),
             roles: self.store.clone(),
             accounts: self.store.clone(),
             storage: self.fake.clone(),

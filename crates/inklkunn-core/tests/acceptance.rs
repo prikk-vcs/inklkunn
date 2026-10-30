@@ -227,7 +227,6 @@ impl World {
                 proposals: proposals.clone(),
                 acceptances: store.clone(),
                 acts: store.clone(),
-                inbox: store.clone(),
                 roles: store.clone(),
                 accounts: store.clone(),
                 storage: storage.clone(),
@@ -236,7 +235,14 @@ impl World {
                 leases: leases.clone(),
                 reads: reads.clone(),
             })
-            .with_audit(store.clone()),
+            .with_audit(store.clone())
+            .with_notifier(Arc::new(inklkunn_core::notify::Notifier::new(
+                store.clone(),
+                store.clone(),
+                store.clone(),
+                store.clone(),
+                authorizer(),
+            ))),
         );
         let acts = SystemActs::new(
             authorizer(),

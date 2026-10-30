@@ -31,11 +31,13 @@ use inklkunn_store::{
 };
 
 use crate::authorize::{Action, Authorizer, Principal, Resource};
+use crate::notify::Notifier;
 use crate::read::{ReadError, ReadService};
 
 pub mod machine;
 pub mod metrics;
 pub mod quota;
+pub mod rollback;
 
 pub use machine::{Illegal, TRANSITIONS};
 pub use metrics::{Metrics, Period, Ratio};
@@ -427,6 +429,8 @@ pub struct ProposalService {
     /// Serializes the checks of the quotas with the creation they guard, so that two requests cannot both
     /// find room for the last open proposal.
     admission: Mutex<()>,
+    /// Who is told what (RFC 004 D-9), when there is someone to tell.
+    notifier: Option<Arc<Notifier>>,
 }
 
 impl std::fmt::Debug for ProposalService {
@@ -454,6 +458,23 @@ impl ProposalService {
             quotas,
             clock: inklkunn_store::record::now_secs,
             admission: Mutex::new(()),
+            notifier: None,
+        }
+    }
+
+    /// The same, telling people what happens to their proposals (RFC 004 D-9): a review, a decline, a
+    /// request for a revision, a withdrawal, a supersession, a reply, a mention. Telling is best effort and
+    /// never changes the act ([`crate::notify`]).
+    #[must_use]
+    pub fn with_notifier(mut self, notifier: Arc<Notifier>) -> Self {
+        self.notifier = Some(notifier);
+        self
+    }
+
+    /// Tell, if there is a notifier.
+    fn notify(&self, tell: impl FnOnce(&Notifier)) {
+        if let Some(notifier) = &self.notifier {
+            tell(notifier);
         }
     }
 
@@ -577,6 +598,19 @@ impl ProposalService {
         view: Option<&str>,
         edit: ProposalEdit,
     ) -> Result<ProposalRecord> {
+        self.create_as(principal, wiki, view, edit, None)
+    }
+
+    /// [`ProposalService::create`], and, for a rollback (`undoes` is the block it undoes), the note that it
+    /// is one, written in the same step as the proposal.
+    fn create_as(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+        edit: ProposalEdit,
+        undoes: Option<&str>,
+    ) -> Result<ProposalRecord> {
         let author = account_of(principal)?;
         self.allow_pages(principal, wiki, &edit.touched())?;
         let view = view.unwrap_or(&wiki.default_view).to_owned();
@@ -615,8 +649,14 @@ impl ProposalService {
             reason: None,
             at: now,
         };
-        self.proposals
-            .create_proposal(&record, &content, &created)?;
+        match undoes {
+            Some(undoes) => self
+                .proposals
+                .create_rollback_proposal(&record, &content, &created, undoes)?,
+            None => self
+                .proposals
+                .create_proposal(&record, &content, &created)?,
+        }
         Ok(record)
     }
 
@@ -794,6 +834,7 @@ impl ProposalService {
             &comment,
             &[ProposalState::HeldForReview, ProposalState::NeedsRevision],
         )?;
+        self.notify(|n| n.commented(wiki, &p, &comment));
         Ok(comment)
     }
 
@@ -834,7 +875,10 @@ impl ProposalService {
             created_at: (self.clock)(),
         };
         match self.proposals.add_decision(&decision) {
-            Ok(()) => Ok(decision),
+            Ok(()) => {
+                self.notify(|n| n.reviewed(wiki, &p, who));
+                Ok(decision)
+            }
             Err(StoreError::AlreadyRecorded) => Err(ProposalError::AlreadyDecided),
             Err(e) => Err(e.into()),
         }
@@ -866,7 +910,15 @@ impl ProposalService {
             revision: None,
             superseded_by: None,
         };
-        Ok(self.proposals.change_proposal(&change)?)
+        let after = self.proposals.change_proposal(&change)?;
+        // Whether the proposal was ever sent for review (its record says) decides who held it.
+        self.notify(|n| match op {
+            ProposalOp::Decline => n.declined(wiki, &after, actor),
+            ProposalOp::AskForRevision => n.needs_revision(wiki, &after, actor),
+            ProposalOp::Withdraw => n.withdrawn(wiki, &after, actor),
+            _ => {}
+        });
+        Ok(after)
     }
 
     /// Send a held proposal back to its proposer with a reason (a decline with changes). An acceptor's act.
@@ -977,7 +1029,9 @@ impl ProposalService {
             revision: None,
             superseded_by: Some(new.clone()),
         };
-        Ok(self.proposals.change_proposal(&change)?)
+        let after = self.proposals.change_proposal(&change)?;
+        self.notify(|n| n.superseded(wiki, &after, who));
+        Ok(after)
     }
 
     /// *Accept* on the proposal, **first and before anything else is read** (RFC 004 D-4: the acceptance

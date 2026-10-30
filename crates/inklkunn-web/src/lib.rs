@@ -24,6 +24,7 @@ mod feed;
 pub mod headers;
 mod health;
 mod history;
+mod inbox;
 pub mod lang;
 pub mod origin;
 pub mod pages;
@@ -37,6 +38,7 @@ pub mod services;
 pub mod style;
 mod time;
 mod url;
+mod watch;
 mod wiki;
 
 /// The assembled application: both origins behind one listener (see [`routes::site`]).

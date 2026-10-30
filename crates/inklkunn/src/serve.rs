@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use inklkunn_auth::ProxyPolicy;
 use inklkunn_core::read::{ReadConfig, ReadService};
-use inklkunn_core::{Authorizer, StoreAuthz, Verifier};
+use inklkunn_core::{Authorizer, Inbox, StoreAuthz, Verifier};
 use inklkunn_prikk::sandbox::Sandbox;
 use inklkunn_prikk::{Admission, PrikkCli, SizeHints, Storage};
 use inklkunn_store::{AuditSink, RootLayout, SqliteStore};
@@ -85,28 +85,40 @@ pub(crate) fn prepare(settings: &Settings, web: &WebSettings) -> Result<Prepared
     let version = storage.version().to_owned();
     let layout = RootLayout::new(settings.wikis_root());
     let storage: Arc<dyn Storage> = Arc::new(storage);
-    let read = Arc::new(ReadService::new(
-        storage.clone(),
-        store.clone(),
-        store.clone(),
-        layout.clone(),
-        ReadConfig {
-            tip_ttl: Duration::from_secs(web.read.tip_ttl_secs),
-            page_max_bytes: web.read.page_max_kib << 10,
-            index_max_bytes: web.read.index_max_mib << 20,
-            index_max_files: web.read.index_max_files,
-        },
-        Some(hints),
-    ));
+    let read = Arc::new(
+        ReadService::new(
+            storage.clone(),
+            store.clone(),
+            store.clone(),
+            layout.clone(),
+            ReadConfig {
+                tip_ttl: Duration::from_secs(web.read.tip_ttl_secs),
+                page_max_bytes: web.read.page_max_kib << 10,
+                index_max_bytes: web.read.index_max_mib << 20,
+                index_max_files: web.read.index_max_files,
+            },
+            Some(hints),
+        )
+        // The flags of accepted changes (minor, machine-assisted) are the proposal records' (RFC 004 D-10).
+        .with_revision_flags(store.clone()),
+    );
     let authorizer = Arc::new(Authorizer::new(
         Arc::new(StoreAuthz::new(store.clone(), store.clone())),
         store.clone() as Arc<dyn AuditSink>,
+    ));
+    let inbox = Arc::new(Inbox::new(
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        (*authorizer).clone(),
     ));
     let services = Arc::new(Services {
         wikis: store.clone(),
         read,
         verifier: Arc::new(Verifier::new(storage, store, layout)),
         authorizer,
+        inbox,
         // Sign-in is not served yet (RFC 002's pages are the next surface), so every request is anonymous:
         // a public wiki is readable, an internal or restricted one is not.
         identity: Arc::new(AnonymousOnly),

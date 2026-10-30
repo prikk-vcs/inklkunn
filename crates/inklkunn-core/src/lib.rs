@@ -40,8 +40,10 @@ pub mod check;
 pub mod egress;
 pub mod export;
 pub mod import;
+pub mod inbox;
 pub mod lease;
 pub mod merge;
+pub mod notify;
 pub mod proposal;
 pub mod read;
 pub mod reconcile;
@@ -56,9 +58,8 @@ pub use accept::{
     ViewCreationFacts,
 };
 pub use acceptance::{
-    AcceptFailure, AcceptanceParts, Accepted, AfterSeal, ChangeKind, ChangeKinds, NoFollowUp,
-    NoLedger, OrdinaryProposals, ProposalAcceptor, Reconciled, Signed, StoreActs, StoreLedger,
-    SystemActFailure, SystemActs, SystemRequest,
+    AcceptFailure, AcceptanceParts, Accepted, AfterSeal, NoFollowUp, NoLedger, ProposalAcceptor,
+    Reconciled, Signed, StoreActs, StoreLedger, SystemActFailure, SystemActs, SystemRequest,
 };
 pub use assurance::Assurance;
 pub use authorize::{
@@ -70,12 +71,14 @@ pub use check::{
     Verifier,
 };
 pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, Resolver, StdEgressGuard, StdResolver};
+pub use inbox::Inbox;
 pub use inklkunn_signer::{
     ArchiveExported, KeyAuthority, KeyStatus, LateSeal, Maintenance, OldKey, OldKeyOutcome,
     Rotation, Signer, SignerConfig, SignerError, SupersededKey, WriteLeases,
 };
 pub use lease::{Busy, BusyWhy, Lease, LeaseConfig, LeaseError, Leased, Purpose, WikiLeases};
 pub use merge::{LineLevel, MergeOutcome, MergedPage, Overlap, PageRef, PageText, Place, merge};
+pub use notify::{Channel, InApp, Notifier};
 pub use proposal::{
     BaseSource, Invalid, Metrics, NewComment, Period, ProposalEdit, ProposalError, ProposalService,
     QuotaConfig, QuotaLimit, QuotaRefusal, Quotas, Reset,

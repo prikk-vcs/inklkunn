@@ -1,4 +1,4 @@
-//! The SQLite proposal records (schema version 9). Every write is one immediate transaction, so a check and
+//! The SQLite proposal records (schema versions 9 and 10). Every write is one immediate transaction, so a check and
 //! the change that follows it cannot be separated by another connection; the tables whose rows are written
 //! once carry the triggers of [`V9`](super::V9) as a second wall.
 
@@ -10,7 +10,7 @@ use super::{SqliteStore, backend};
 use crate::proposal::{
     Anchor, CommentRecord, DecisionKind, DecisionRecord, ProposalChange, ProposalFilter,
     ProposalOp, ProposalRecord, ProposalState, ProposalStore, ProposalTransition, RevisionContent,
-    RevisionRecord,
+    RevisionFlags, RevisionRecord,
 };
 use crate::record::{AccountId, CommentId, DecisionId, ProposalId, WikiId};
 use crate::{Result, StoreError};
@@ -214,24 +214,25 @@ fn insert_transition(conn: &Connection, t: &ProposalTransition) -> Result<()> {
     .map_err(write_refusal)
 }
 
-impl SqliteStore {
-    /// Is there a proposal with this id (whoever may see it)?
-    pub(super) fn proposal_known(conn: &Connection, id: &ProposalId) -> Result<bool> {
-        probe(
-            conn,
-            "SELECT 1 FROM proposals WHERE id = ?1",
-            &[id.as_str()],
-        )
-    }
+/// Is `id` a block id as prikk prints it: 64 lower-case hex characters?
+fn is_block_id(id: &str) -> bool {
+    id.len() == 64 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
-impl ProposalStore for SqliteStore {
-    fn create_proposal(
+impl SqliteStore {
+    /// Create a proposal as a draft, and, for a rollback, the note of the block it undoes, in one transaction.
+    fn create_with(
         &self,
         proposal: &ProposalRecord,
         draft: &RevisionContent,
         created: &ProposalTransition,
+        undoes: Option<&str>,
     ) -> Result<()> {
+        if undoes.is_some_and(|u| !is_block_id(u)) {
+            return Err(StoreError::Backend(
+                "a rollback names the block it undoes by its 64-digit id".to_owned(),
+            ));
+        }
         self.with(|conn| {
             let tx = conn
                 .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -274,8 +275,87 @@ impl ProposalStore for SqliteStore {
                 params![proposal.id.as_str(), to_json(draft)?],
             )
             .map_err(backend)?;
+            if let Some(undoes) = undoes {
+                tx.execute(
+                    "INSERT INTO proposal_rollbacks (proposal_id, undoes) VALUES (?1, ?2)",
+                    params![proposal.id.as_str(), undoes],
+                )
+                .map_err(write_refusal)?;
+            }
             insert_transition(&tx, created)?;
             tx.commit().map_err(backend)
+        })
+    }
+
+    /// Is there a proposal with this id (whoever may see it)?
+    pub(super) fn proposal_known(conn: &Connection, id: &ProposalId) -> Result<bool> {
+        probe(
+            conn,
+            "SELECT 1 FROM proposals WHERE id = ?1",
+            &[id.as_str()],
+        )
+    }
+}
+
+impl ProposalStore for SqliteStore {
+    fn create_proposal(
+        &self,
+        proposal: &ProposalRecord,
+        draft: &RevisionContent,
+        created: &ProposalTransition,
+    ) -> Result<()> {
+        self.create_with(proposal, draft, created, None)
+    }
+
+    fn create_rollback_proposal(
+        &self,
+        proposal: &ProposalRecord,
+        draft: &RevisionContent,
+        created: &ProposalTransition,
+        undoes: &str,
+    ) -> Result<()> {
+        self.create_with(proposal, draft, created, Some(undoes))
+    }
+
+    fn rollback_of(&self, id: &ProposalId, viewer: Option<&AccountId>) -> Result<Option<String>> {
+        self.with(|conn| {
+            conn.query_row(
+                "SELECT r.undoes FROM proposal_rollbacks r JOIN proposals p ON p.id = r.proposal_id \
+                 WHERE r.proposal_id = ?1 AND (p.submitted_at IS NOT NULL OR p.author = ?2)",
+                params![id.as_str(), viewer.map(AccountId::as_str)],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(backend)
+        })
+    }
+
+    fn revision_flags(&self, ids: &[ProposalId]) -> Result<Vec<(ProposalId, RevisionFlags)>> {
+        self.with(|conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT COALESCE(json_extract(content, '$.minor'), 0), \
+                            COALESCE(json_extract(content, '$.automated'), 0) \
+                     FROM proposal_revisions WHERE proposal_id = ?1 \
+                     ORDER BY seq DESC LIMIT 1",
+                )
+                .map_err(backend)?;
+            let mut out = Vec::new();
+            for id in ids {
+                let flags = stmt
+                    .query_row(params![id.as_str()], |r| {
+                        Ok(RevisionFlags {
+                            minor: r.get::<_, i64>(0)? != 0,
+                            automated: r.get::<_, i64>(1)? != 0,
+                        })
+                    })
+                    .optional()
+                    .map_err(backend)?;
+                if let Some(flags) = flags {
+                    out.push((id.clone(), flags));
+                }
+            }
+            Ok(out)
         })
     }
 

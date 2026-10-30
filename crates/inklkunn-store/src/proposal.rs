@@ -406,6 +406,15 @@ pub struct DecisionRecord {
     pub created_at: i64,
 }
 
+/// The flags of a proposal's latest revision (RFC 004 D-10): what a feed of accepted changes filters on.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RevisionFlags {
+    /// A minor change.
+    pub minor: bool,
+    /// Machine-assisted content.
+    pub automated: bool,
+}
+
 /// Which proposals a listing wants.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProposalFilter {
@@ -432,6 +441,26 @@ pub trait ProposalStore: Send + Sync {
         draft: &RevisionContent,
         created: &ProposalTransition,
     ) -> Result<()>;
+
+    /// [`ProposalStore::create_proposal`] for a **rollback** (RFC 004 D-8): the same records, and with them,
+    /// in the same step, the note that the proposal undoes the change `undoes` (a block id, 64 lower-case hex, which the
+    /// caller has checked: the SQLite store refuses anything else as [`crate::StoreError::Backend`]). A proposal is a rollback from its creation or never.
+    fn create_rollback_proposal(
+        &self,
+        proposal: &ProposalRecord,
+        draft: &RevisionContent,
+        created: &ProposalTransition,
+        undoes: &str,
+    ) -> Result<()>;
+
+    /// The block a proposal undoes, when it is a rollback; `None` for every other proposal, for one that does
+    /// not exist, and for a never-submitted one the viewer may not see.
+    fn rollback_of(&self, id: &ProposalId, viewer: Option<&AccountId>) -> Result<Option<String>>;
+
+    /// The flags of each given proposal's latest revision, for the **submitted** proposals among them (a
+    /// draft has no revision, so it is absent from the answer). One step for a whole list, so that a feed of
+    /// changes asks once.
+    fn revision_flags(&self, ids: &[ProposalId]) -> Result<Vec<(ProposalId, RevisionFlags)>>;
 
     /// The proposal, as `viewer` may see it: a never-submitted proposal is `None` to anyone but its author.
     fn proposal(

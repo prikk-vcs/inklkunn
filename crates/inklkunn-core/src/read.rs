@@ -60,6 +60,7 @@ mod index;
 mod linediff;
 mod links;
 mod raw;
+mod rollback;
 mod sanitize;
 mod search;
 mod tip;
@@ -81,8 +82,8 @@ use inklkunn_markup::scan::ScanOptions;
 use inklkunn_markup::{AuthorHtml, Page, ParseError, RenderOptions, render_page_with};
 use inklkunn_prikk::{ExtractBounds, Point, SizeHints, Storage, StorageError};
 use inklkunn_store::{
-    DerivedHeading, DerivedMeta, DerivedPage, DerivedStore, IndexEntry, PageKey, RootLayout,
-    StoreError, WikiId, WikiRecord, WikiStore,
+    DerivedHeading, DerivedMeta, DerivedPage, DerivedStore, IndexEntry, PageKey, ProposalStore,
+    RootLayout, StoreError, WikiId, WikiRecord, WikiStore,
 };
 
 use links::PageLinks;
@@ -110,6 +111,7 @@ pub use inklkunn_store::SearchKind;
 pub use linediff::{DiffLine, Hunk, HunkView, LineKind, MAX_WORDS, Segment};
 pub use links::Presentation;
 pub use raw::RawPage;
+pub use rollback::{MAX_ROLLBACK_PAGES, NoRollback, RollbackOutcome, RollbackPlan};
 pub use sanitize::{HTML_SUBSET, SafeHtml, Sanitizer};
 pub use search::{SearchHit, SearchOutcome, Segment as SnippetSegment, fold, highlight};
 pub use tip::Tip;
@@ -369,6 +371,9 @@ pub struct ReadService {
     block_pages: Mutex<HashMap<(WikiId, String), Vec<String>>>,
     scratch_names: AtomicU64,
     store_failures: AtomicU64,
+    /// The proposal records, asked for the flags of the accepted revisions that recent changes filter on
+    /// (RFC 004 D-10); `None` until [`ReadService::with_revision_flags`] gives them.
+    flags: Option<Arc<dyn ProposalStore>>,
     /// What history, change, diff and permalink pages hold (handoff 003 T5): log windows, the operations of
     /// blocks, a few permalink renders.
     history: history::State,
@@ -401,8 +406,18 @@ impl ReadService {
             block_pages: Mutex::new(HashMap::new()),
             scratch_names: AtomicU64::new(0),
             store_failures: AtomicU64::new(0),
+            flags: None,
             history: history::State::default(),
         }
+    }
+
+    /// The same, asking these proposal records for the flags (*minor*, *automated*) of the accepted revisions
+    /// that recent changes and feeds filter on and label (RFC 004 D-10). Without them every change is listed
+    /// as not flagged.
+    #[must_use]
+    pub fn with_revision_flags(mut self, records: Arc<dyn ProposalStore>) -> Self {
+        self.flags = Some(records);
+        self
     }
 
     /// The sanitizer every page passes through, for a surface that has other HTML of its own to clean (a diff,

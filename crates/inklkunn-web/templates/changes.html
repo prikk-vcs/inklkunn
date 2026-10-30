@@ -12,6 +12,7 @@
 <p id="filter-namespace-hint" class="hint">{{ page.get(Key::ChangesFilterNamespaceHint) }}</p>
 <p><label for="filter-view">{{ page.get(Key::ChangesFilterView) }}</label> <select id="filter-view" name="view">{% for v in views %}<option value="{{ v.value }}"{% if v.selected %} selected{% endif %}>{{ v.label }}</option>{% endfor %}</select></p>
 <p><label for="filter-automated">{{ page.get(Key::ChangesFilterAutomated) }}</label> <select id="filter-automated" name="automated">{% for o in automated %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>{% endfor %}</select></p>
+<p><label for="filter-minor">{{ minor_label }}</label> <select id="filter-minor" name="minor">{% for o in minor %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>{% endfor %}</select></p>
 <p><button type="submit">{{ page.get(Key::ChangesFilterApply) }}</button></p>
 </fieldset>
 </form>
@@ -29,7 +30,7 @@
 <tr><th scope="col">{{ page.get(Key::ChangesColChange) }}</th><th scope="col">{{ page.get(Key::ChangesColPeople) }}</th><th scope="col">{{ page.get(Key::ChangesColPages) }}</th><th scope="col">{{ page.get(Key::ChangesFilterView) }}</th><th scope="col">{{ page.get(Key::ChangesColSeen) }}</th></tr>
 </thead>
 <tbody>
-{% for r in rows %}<tr><th scope="row">{{ r.summary }}{% if let Some(text) = r.rollback %}<br><small>{{ text }}</small>{% endif %}</th><td>{% for line in r.people %}{% if !loop.first %}<br>{% endif %}{{ line }}{% endfor %}</td><td>{% if !r.pages.is_empty() %}<ul>{% for p in r.pages %}<li>{% if let Some(href) = p.href %}<a href="{{ href }}">{{ p.label }}</a>{% else %}{{ p.label }}{% endif %}</li>{% endfor %}</ul>{% endif %}{% if let Some(text) = r.pages_note %}{{ text }}{% endif %}</td><td>{{ r.view }}</td><td><time datetime="{{ r.iso }}">{{ r.when }}</time></td></tr>
+{% for r in rows %}<tr><th scope="row">{{ r.summary }}{% if let Some(text) = r.rollback %}<br><small>{{ text }}</small>{% endif %}{% for mark in r.marks %}<br><small>{{ mark }}</small>{% endfor %}</th><td>{% for line in r.people %}{% if !loop.first %}<br>{% endif %}{{ line }}{% endfor %}</td><td>{% if !r.pages.is_empty() %}<ul>{% for p in r.pages %}<li>{% if let Some(href) = p.href %}<a href="{{ href }}">{{ p.label }}</a>{% else %}{{ p.label }}{% endif %}</li>{% endfor %}</ul>{% endif %}{% if let Some(text) = r.pages_note %}{{ text }}{% endif %}</td><td>{{ r.view }}</td><td><time datetime="{{ r.iso }}">{{ r.when }}</time></td></tr>
 {% endfor %}</tbody>
 </table>
 {% endif %}{% for note in notes %}<p class="list-note" role="note">{{ note }}</p>

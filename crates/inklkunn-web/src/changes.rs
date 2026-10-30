@@ -78,6 +78,11 @@ fn query_of(filter: &ChangeFilter) -> String {
         Tri::Hide => parts.push("automated=hide".to_owned()),
         Tri::Only => parts.push("automated=only".to_owned()),
     }
+    match filter.minor {
+        Tri::Any => {}
+        Tri::Hide => parts.push("minor=hide".to_owned()),
+        Tri::Only => parts.push("minor=only".to_owned()),
+    }
     if parts.is_empty() {
         String::new()
     } else {
@@ -242,6 +247,8 @@ struct RowView {
     summary: String,
     people: Vec<String>,
     rollback: Option<String>,
+    /// The marks of the flags: minor, and machine-assisted with the person who answers for it.
+    marks: Vec<String>,
     pages: Vec<PageLink>,
     pages_note: Option<String>,
     view: String,
@@ -268,11 +275,32 @@ struct ChangesTpl<'a> {
     namespace_value: String,
     views: Vec<Opt>,
     automated: Vec<Opt>,
+    minor: Vec<Opt>,
+    minor_label: String,
     active: Vec<String>,
     clear_href: String,
     rows: Vec<RowView>,
     notes: Vec<String>,
     feed_href: String,
+}
+
+/// The marks a change carries for its flags (RFC 004 D-10; C-13a): *minor*, and *machine-assisted* naming the
+/// person who accepted it, who answers for it. Words for the page and the feed alike.
+pub(crate) fn flag_marks(t: T, row: &ChangeRow) -> Vec<String> {
+    let mut marks = Vec::new();
+    if row.minor {
+        marks.push(t.get(Key::ChangesMinorLabel));
+    }
+    if row.machine_assisted {
+        marks.push(match &row.accepted_by {
+            Some(person) => t
+                .msg(Key::ChangesMachineAssisted)
+                .with("person", person_text(t, person))
+                .text(),
+            None => t.get(Key::ChangesMachineAssistedOnly),
+        });
+    }
+    marks
 }
 
 fn row_view(t: T, page: &Page, wiki: &WikiRecord, row: &ChangeRow) -> RowView {
@@ -308,6 +336,7 @@ fn row_view(t: T, page: &Page, wiki: &WikiRecord, row: &ChangeRow) -> RowView {
         },
         people: people_lines(t, row),
         rollback: row.rollback.then(|| page.get(Key::ChangesRollback)),
+        marks: flag_marks(t, row),
         pages,
         pages_note,
         view: view_name(&row.view).to_owned(),
@@ -340,6 +369,11 @@ fn active_filters(t: T, filter: &ChangeFilter) -> Vec<String> {
         Tri::Hide => out.push(t.get(Key::ChangesActiveHide)),
         Tri::Only => out.push(t.get(Key::ChangesActiveOnly)),
     }
+    match filter.minor {
+        Tri::Any => {}
+        Tri::Hide => out.push(t.get(Key::ChangesActiveMinorHide)),
+        Tri::Only => out.push(t.get(Key::ChangesActiveMinorOnly)),
+    }
     out
 }
 
@@ -370,18 +404,22 @@ fn render_changes(page: &Page, listed: &Listed, filter: &ChangeFilter) -> Respon
         label: v.clone(),
         selected: selected_view == Some(v.as_str()),
     }));
-    let automated = [
-        ("show", Key::ChangesOptShow, Tri::Any),
-        ("hide", Key::ChangesOptHide, Tri::Hide),
-        ("only", Key::ChangesOptOnly, Tri::Only),
-    ]
-    .into_iter()
-    .map(|(value, label, tri)| Opt {
-        value: value.to_owned(),
-        label: page.get(label),
-        selected: filter.automated == tri,
-    })
-    .collect();
+    let choices = |chosen: Tri| -> Vec<Opt> {
+        [
+            ("show", Key::ChangesOptShow, Tri::Any),
+            ("hide", Key::ChangesOptHide, Tri::Hide),
+            ("only", Key::ChangesOptOnly, Tri::Only),
+        ]
+        .into_iter()
+        .map(|(value, label, tri)| Opt {
+            value: value.to_owned(),
+            label: page.get(label),
+            selected: chosen == tri,
+        })
+        .collect()
+    };
+    let automated = choices(filter.automated);
+    let minor = choices(filter.minor);
     let rendered = ChangesTpl {
         page,
         shell: &shell,
@@ -393,6 +431,8 @@ fn render_changes(page: &Page, listed: &Listed, filter: &ChangeFilter) -> Respon
         namespace_value: filter.namespace.clone().unwrap_or_default(),
         views,
         automated,
+        minor,
+        minor_label: page.get(Key::ChangesFilterMinor),
         active: active_filters(t, filter),
         clear_href: format!("/{}/-/changes", wiki.slug),
         rows: listed
@@ -488,6 +528,24 @@ fn feed_of(
                 .flatten()
                 .map(|p| p.title.as_str())
                 .collect();
+            let marks = flag_marks(t, row);
+            let mut categories = Vec::new();
+            if row.minor {
+                categories.push("minor");
+            }
+            if row.automated() {
+                categories.push("automated");
+            }
+            let pages_line = (!titles.is_empty()).then(|| {
+                t.msg(Key::FeedPages)
+                    .with("pages", titles.join(", "))
+                    .text()
+            });
+            let summary = marks
+                .into_iter()
+                .chain(pages_line)
+                .collect::<Vec<_>>()
+                .join(" ");
             Entry {
                 id: format!("urn:inklkunn:{}:{}", wiki.id, row.block_id),
                 title: if row.summary.is_empty() {
@@ -502,11 +560,8 @@ fn feed_of(
                     .accepted_by
                     .as_ref()
                     .map_or_else(|| name.to_owned(), |p| person_text(t, p)),
-                summary: (!titles.is_empty()).then(|| {
-                    t.msg(Key::FeedPages)
-                        .with("pages", titles.join(", "))
-                        .text()
-                }),
+                summary: (!summary.is_empty()).then_some(summary),
+                categories,
             }
         })
         .collect();

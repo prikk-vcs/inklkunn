@@ -295,6 +295,8 @@ fn every_route_that_can_show_wiki_data_is_guarded_by_read_and_the_rest_are_publi
         guarded,
         [
             "/-/wikis",
+            "/-/inbox",
+            "/{slug}/-/watch/{*title}",
             "/{slug}",
             "/{slug}/-/about",
             "/{slug}/-/verification",

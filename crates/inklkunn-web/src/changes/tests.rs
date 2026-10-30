@@ -24,6 +24,7 @@ fn row(view: &str, pages: Option<&[&str]>) -> ChangeRow {
         accepted_by: Some(Person::Account("Ben".into())),
         rollback: false,
         minor: false,
+        machine_assisted: false,
         first_seen: 1_700_000_000,
         pages: pages.map(|ps| {
             ps.iter()

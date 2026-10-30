@@ -1,6 +1,6 @@
 //! The recovery flag, the overlaps kept on a proposal and the system acts, on both stores (handoff 004 T4;
 //! RFC 004 D-4, D-6, D-14): the flag is set once and cleared, what is written once is refused a second time on
-//! both stores and, for SQLite, through SQL, everything survives a reopen, and a version 9 database is migrated.
+//! both stores and, for SQLite, through SQL, everything survives a reopen, and a version 10 database is migrated.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 mod support;
@@ -295,15 +295,15 @@ fn what_is_written_once_is_refused_through_sql_too() {
     }
 }
 
-/// A database exactly as build 9 left it: an intent written without a message, a wiki and an account.
-fn make_version_9(db: &std::path::Path, wiki_id: &str, account: &str) {
+/// A database exactly as build 10 left it: an intent written without a message, a wiki and an account.
+fn make_version_10(db: &std::path::Path, wiki_id: &str, account: &str) {
     let raw = rusqlite::Connection::open(db).expect("raw open");
-    for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v <= 9) {
+    for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v <= 10) {
         raw.execute_batch(sql)
             .unwrap_or_else(|e| panic!("v{version}: {e}"));
     }
     raw.execute(
-        "INSERT INTO schema_meta (key, value) VALUES ('schema_version', '9')",
+        "INSERT INTO schema_meta (key, value) VALUES ('schema_version', '10')",
         [],
     )
     .expect("version");
@@ -323,13 +323,13 @@ fn make_version_9(db: &std::path::Path, wiki_id: &str, account: &str) {
 }
 
 #[test]
-fn a_version_9_database_is_migrated_to_10_keeping_its_records_and_only_once() {
+fn a_version_10_database_is_migrated_to_11_keeping_its_records_and_only_once() {
     let tmp = temp("v9");
     let db = tmp.0.join("store.sqlite");
     let wiki_id = "019a0000-0000-7000-8000-0000000000e1";
     let account_id = "019a0000-0000-7000-8000-0000000000e2";
-    make_version_9(&db, wiki_id, account_id);
-    // An intent as build 9 wrote it: no message column.
+    make_version_10(&db, wiki_id, account_id);
+    // An intent as build 10 wrote it: no message column.
     {
         let raw = rusqlite::Connection::open(&db).unwrap();
         raw.execute_batch(&format!(
@@ -352,11 +352,11 @@ fn a_version_9_database_is_migrated_to_10_keeping_its_records_and_only_once() {
         )
         .expect("version")
     };
-    assert_eq!(version(), "9");
+    assert_eq!(version(), "10");
     {
-        let store = SqliteStore::open(&db).expect("a version 9 database opens");
+        let store = SqliteStore::open(&db).expect("a version 10 database opens");
         assert_eq!(version(), SCHEMA_VERSION.to_string());
-        assert_eq!(SCHEMA_VERSION, 10);
+        assert_eq!(SCHEMA_VERSION, 11);
         let w = store.list().unwrap().remove(0);
         let intents = inklkunn_store::AcceptanceStore::intents(&store, &w.id).unwrap();
         assert_eq!(intents.len(), 1, "the old intent is still there");

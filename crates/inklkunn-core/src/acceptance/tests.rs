@@ -45,13 +45,20 @@ fn rig_with_proposal() -> (
 #[test]
 fn an_acceptance_whose_base_is_the_tip_is_signed_with_every_record_in_place() {
     let (rig, maintainer, maintainer_id, _author, author_id, p) = rig_with_proposal();
-    let seen_by_the_reads = Arc::new(AtomicUsize::new(0));
+    let (watcher_id, _watcher) = rig.person("Wes", Some(Role::Observer));
+    rig.store
+        .watch(&inklkunn_store::WatchRecord {
+            account: watcher_id.clone(),
+            wiki: rig.wiki.id.clone(),
+            target: inklkunn_store::WatchTarget::Page("pages/Home.md".to_owned()),
+            created_at: 1,
+        })
+        .unwrap();
     let acceptor = rig.acceptor();
     let signed = match acceptor.accept(&maintainer, &rig.wiki, &p.id, 1).unwrap() {
         Accepted::Signed(s) => s,
         other => panic!("{other:?}"),
     };
-    drop(seen_by_the_reads);
     assert!(!signed.reauthored);
     assert_eq!(signed.block_id, "f".repeat(64));
     // The signer's guard read the store: the facts it is bound to, and the tip the change must still be on.
@@ -187,16 +194,19 @@ fn an_overlap_stops_before_the_signer_records_both_texts_and_sends_the_proposal_
             .map(drop),
         Ok(())
     );
-    for who in [&author_id, &maintainer_id] {
-        let kinds: Vec<_> = rig
-            .store
+    let kinds = |who| -> Vec<_> {
+        rig.store
             .inbox(who, false, 10)
             .unwrap()
             .iter()
             .map(|e| e.kind)
-            .collect();
-        assert_eq!(kinds, vec![InboxEventKind::NeedsRevision]);
-    }
+            .collect()
+    };
+    assert_eq!(kinds(&author_id), vec![InboxEventKind::NeedsRevision]);
+    assert!(
+        kinds(&maintainer_id).is_empty(),
+        "the acceptor has the answer itself"
+    );
 }
 
 #[test]
@@ -1121,4 +1131,37 @@ fn a_digest_is_sixty_four_lower_case_hex_characters_and_nothing_else() {
     let digest = digest_from_hex(&"0123456789abcdef".repeat(4)).unwrap();
     assert_eq!(digest.to_hex(), "0123456789abcdef".repeat(4));
     assert_eq!(message_digest("a").len(), 64);
+}
+
+#[test]
+fn a_rollback_proposal_is_signed_as_a_rollback_with_the_undone_block_as_its_base() {
+    use crate::read::RollbackPlan;
+    let rig = Rig::new("rollback");
+    let (_m, maintainer) = rig.person("Maya", Some(Role::Maintainer));
+    let (_a, author) = rig.person("Noor", Some(Role::Contributor));
+    let undone = rig.fake.block_id();
+    let plan = RollbackPlan {
+        undoes: undone.clone(),
+        number: 1,
+        undone_summary: "Something".to_owned(),
+        base: inklkunn_store::Base::new(&rig.fake.state_id(), &undone).unwrap(),
+        files: vec![inklkunn_store::FileChange {
+            path: "pages/Home.md".to_owned(),
+            text: Some(HOME.replace("One.", "Uno.")),
+        }],
+        summary: "Undo: Something".to_owned(),
+    };
+    let draft = rig
+        .proposals
+        .create_rollback(&author, &rig.wiki, None, &plan)
+        .unwrap();
+    let p = rig.proposals.submit(&author, &rig.wiki, &draft.id).unwrap();
+    rig.acceptor()
+        .accept(&maintainer, &rig.wiki, &p.id, 1)
+        .unwrap();
+    let call = rig.double.calls().remove(0);
+    let message = Message::parse(&call.change.message).unwrap();
+    assert_eq!(message.kind(), Kind::Rollback);
+    assert_eq!(message.base().map(|b| b.as_str().to_owned()), Some(undone));
+    assert_eq!(call.pending.unwrap().kind, Kind::Rollback);
 }

@@ -553,7 +553,7 @@ pub const CATALOG: &[Entry] = &[
     msg("changes.all_views", "All views"),
     msg(
         "changes.filter_automated",
-        "Changes made by the wiki service itself",
+        "Changes made by the wiki service itself or with the help of a machine",
     ),
     msg("changes.opt_show", "Show them"),
     msg("changes.opt_hide", "Hide them"),
@@ -565,11 +565,11 @@ pub const CATALOG: &[Entry] = &[
     msg("changes.active_view", "Only the view {view}"),
     msg(
         "changes.active_hide",
-        "Changes made by the wiki service itself are hidden",
+        "Changes made by the wiki service itself or with the help of a machine are hidden",
     ),
     msg(
         "changes.active_only",
-        "Only changes made by the wiki service itself",
+        "Only changes made by the wiki service itself or with the help of a machine",
     ),
     msg("changes.clear", "Show all changes"),
     msg("changes.caption", "Changes, newest first"),
@@ -786,4 +786,106 @@ pub const CATALOG: &[Entry] = &[
         "problem.change_not_found.hint",
         "Take the id of a change from the history of a page or from the recent changes.",
     ),
+    // the inbox, following a page, and the flags of changes (handoff 004 T6)
+    msg("title.inbox", "Inbox · {product}"),
+    msg("inbox.heading", "Inbox"),
+    msg(
+        "inbox.intro",
+        "What has happened to your proposals and to the pages you follow, newest first.",
+    ),
+    msg("inbox.none", "Nothing has happened yet that involves you."),
+    msg("inbox.new", "New"),
+    msg("inbox.mark_all_read", "Mark everything as read"),
+    msg("inbox.someone", "Someone"),
+    msg(
+        "inbox.event_reviewed",
+        "{person} reviewed your proposal {proposal} in {wiki}.",
+    ),
+    msg(
+        "inbox.event_accepted",
+        "Your proposal {proposal} in {wiki} was accepted and signed into the history.",
+    ),
+    msg(
+        "inbox.event_declined",
+        "{person} declined your proposal {proposal} in {wiki}.",
+    ),
+    msg(
+        "inbox.event_needs_revision",
+        "{person} asked for a revision of your proposal {proposal} in {wiki}.",
+    ),
+    msg(
+        "inbox.event_withdrawn",
+        "{person} withdrew the proposal {proposal} in {wiki}.",
+    ),
+    msg(
+        "inbox.event_superseded",
+        "{person} replaced your proposal {proposal} in {wiki} with a later one.",
+    ),
+    msg(
+        "inbox.event_replied",
+        "{person} commented in the discussion of {proposal} in {wiki}.",
+    ),
+    msg(
+        "inbox.event_mentioned",
+        "{person} mentioned you in the discussion of {proposal} in {wiki}.",
+    ),
+    msg(
+        "inbox.event_watched",
+        "A page you follow in {wiki} changed. The change came from the proposal {proposal}.",
+    ),
+    msg(
+        "inbox.event_unreadable",
+        "Something happened that involves you, in a wiki you can no longer read.",
+    ),
+    msg("inbox.account_heading", "An account is needed"),
+    msg(
+        "inbox.account_body",
+        "Your inbox belongs to an account. Sign in to see what has happened to your proposals and to the pages you follow.",
+    ),
+    msg("inbox.following_heading", "Pages you follow"),
+    msg("inbox.following_none", "You do not follow any page yet."),
+    msg("inbox.following_page", "{page} in {wiki}"),
+    msg(
+        "inbox.following_namespace",
+        "The pages under {page} in {wiki}",
+    ),
+    msg("inbox.unfollow", "Stop following {what}"),
+    msg("watch.heading_followed", "Following"),
+    msg("watch.heading_stopped", "No longer following"),
+    msg("watch.heading_full", "You follow as many as you can"),
+    msg(
+        "watch.page_followed",
+        "You follow the page {title}. When a change to it is signed into the history, you will be told in your inbox.",
+    ),
+    msg(
+        "watch.namespace_followed",
+        "You follow the pages under {title}. When a change to one of them is signed into the history, you will be told in your inbox.",
+    ),
+    msg(
+        "watch.page_stopped",
+        "You no longer follow the page {title}.",
+    ),
+    msg(
+        "watch.namespace_stopped",
+        "You no longer follow the pages under {title}.",
+    ),
+    msg(
+        "watch.account_body",
+        "Following a page belongs to an account. Sign in, then follow the page again.",
+    ),
+    msg(
+        "watch.full_body",
+        "You follow as many pages as you can. Stop following one of them, then try again.",
+    ),
+    msg("watch.back", "Back to {title}"),
+    msg("watch.to_inbox", "Your inbox"),
+    msg("changes.filter_minor", "Minor changes"),
+    msg("changes.active_minor_hide", "Minor changes are hidden"),
+    msg("changes.active_minor_only", "Only minor changes"),
+    msg("changes.minor_label", "Minor change"),
+    msg(
+        "changes.machine_assisted",
+        "Machine-assisted content, accepted by {person}",
+    ),
+    msg("changes.machine_assisted_only", "Machine-assisted content"),
 ];

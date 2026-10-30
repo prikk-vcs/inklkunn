@@ -711,3 +711,80 @@ Follow-ups from the review of 2026-10-31 (handoff 003, S2 – S4).
   her own proposal is not a review. Tests: one invariant suite per record family on both stores; every sequence of up to
   four acts (three on SQLite) held to the state machine; every quota at its boundary; drafts invisible to other accounts;
   reopen persistence; the metrics against a hand count.
+- **Handoff 004 T6: undo as a proposal, the inbox and following, the flags (RFC 004 D-8, D-9, D-10).** *Store schema
+  10*: `proposal_rollbacks` (a proposal is a rollback from its creation, in the same step, and the block it undoes is
+  written once; the migration from 9 adds one table and changes nothing), `ProposalStore::create_rollback_proposal`,
+  `rollback_of` and `revision_flags` (the flags of the latest revision of each proposal asked for, in one step).
+  **Propose a rollback**: `ReadService::rollback_plan` computes the inverse of a change at content level (one `show`,
+  two `cat`s per page): the pages as they were before it, byte for byte, a page the change created removed, one it
+  removed written again, one it moved put back. The plan is written against the *undone block* (its state and id are the
+  proposal's base), so the merge reads it as "take back what this block did": later edits elsewhere on a page stay and a
+  later change to the very text is an overlap for a person, and the message's `Base:` trailer names the undone change.
+  A rollback of a rollback restores the change because an accepted rollback is a change like any other. What cannot be
+  undone says why (the first change, a file that is not a page, text that is not text, more than 200 pages, a change
+  that left the pages as they were). `ProposalService::propose_rollback` plans, opens and submits it (authorized before
+  the repository is asked); `create_rollback`, `rollback_of` and `RollbackSource` are the parts. **The inbox**
+  (`inklkunn_core::notify`, `inbox`): the proposal service, given a `Notifier` (`with_notifier`), tells the proposer of
+  a review, a decline, a request for a revision and a supersession, the people who held a proposal (those who may
+  accept, and those who reviewed or commented) of its withdrawal, the author of a comment replied to and the proposer
+  of a comment on their proposal, and each account a comment mentions by sign-in name (`@name`; at most ten; the writer
+  never learns whether a name exists). Telling is best effort and counted (`Notifier::failures`); an act never fails
+  for want of an inbox record. **An event is ids and a kind** and is made only for someone who may read the proposal
+  now; the inbox then reads what it is about *as the person who opens it*, so an event about a wiki that stopped being
+  theirs to read is one sentence that names nothing. `Notifier::accepted` and `Notifier::page_changed` are what the
+  acceptance calls after the seal (a watch is told of a change that is in the history and of nothing else). Channels
+  are a trait (`Channel`) with the in-app inbox as its one implementation. Watching a page or the pages under a title
+  (`Inbox::watch`, `unwatch`, `followed`) needs the right to read it and an account, and is bounded (500). **Flags**:
+  recent changes carry the accepted revision's *minor* (real now) and *machine-assisted* flags
+  (`ReadService::with_revision_flags`), filter on them (`minor`, and `automated`, which now covers what the service
+  made itself and what a machine assisted; a filter the records cannot answer is refused, never answered as if nothing
+  were flagged), and label machine-assisted content with the person who accepted it. *Web*: `/-/inbox` (an account
+  is needed and said in words; each kind of event a sentence in the reader's language, other people's text escaped;
+  mark everything read and stop following are `POST`s from this site), `POST /<slug>/-/watch/<Title>` (the generic
+  not-found page for a wiki the visitor may not read, then an account, then a page the account may read), the *minor*
+  choice and the labels on the changes page, `minor=` on the feed and the API (`minor`, `machine_assisted` in each
+  item, drawn in the OpenAPI document), `<category term="minor|automated"/>` in the feed. Forty-one catalog
+  messages in English and the Japanese preview, with their glossary rows; three existing messages say that the
+  *automated* filter covers machine-assisted changes too. Tests: the inverse on exact text (multibyte, CRLF, no final
+  newline), a creation, a removal, a move and a rollback of a rollback; every refusal; the events of every act and who
+  is not told; a wiki restricted after the event; watches fired by the acceptance's function only (against a channel
+  that remembers); the flags on both stores, in the list, the feed and the API; the migration from 9; the structure
+  rules on every new page state in both languages; the route-enumeration harness over the new routes.
+- **Handoff 004 T4: acceptance under the lease (RFC 004 D-4, D-6, D-14).** *Store schema 11*: the message an
+  intent means to seal (`intents.message`; the facts a seal is bound to and the reconciliation compares are read from
+  it, so a later rename of a person changes nothing), `wiki_flags` (the recovery flag: set once, the first reason
+  stays, cleared by recovery), `proposal_overlaps` (both texts of every overlap, written once), `system_acts` and
+  `system_act_ends` (the service's own changes, which have no proposal; written once), `ActStore`,
+  `AcceptanceStore::pending_acceptance` and `sealed_acceptances`; the migration from 10 adds tables and one column and
+  changes nothing. **The write lease** (`inklkunn_core::lease`, `inklkunn_signer::lease`): one writer per wiki across
+  processes (the per-wiki `flock` of the 002 corrections, held for the whole act, so the command line and a running
+  server exclude each other), a fair in-process queue of at most 64 waiting per wiki, a bounded wait after which the
+  waiter is told *busy* with how many acts are ahead and an estimate from what leases of that wiki have taken, and a
+  durable holder record written at the take and cleared at the release (a record of another holder found at the take
+  is a holder that died). The acts inside a lease on one thread (the signer's `accept`, the export, the checkpoint
+  refresh) *borrow* it (`Signer::with_leases`, `Maintenance::with_leases`, `WriteLease::scope`): `Accept` is
+  unchanged. It blocks the calling thread, as every service here does; there is no async runtime in the crate.
+  `WikiLeases::export_archive` and `refresh_checkpoint` take the lease. **Acceptance** (`ProposalAcceptor::accept`):
+  `authorize(_, accept, proposal)` first, before the lease; the lease; the guard against an unfinished earlier act;
+  the tip read again through `Storage::views`; the revision as it is when its base is the tip, else re-authored by
+  the merge against the tip (only the pages whose text differs there are written, a rename the tip can still carry
+  out stays a rename); on an overlap both texts are recorded on the proposal, which needs a revision, the proposer is
+  told and nothing in prikk changes; else the acceptance record (*pending seal*, with the digest of the files) and
+  the intent, both **before** `Accept::accept`, which reads them back through `StoreLedger` (nothing is kept in
+  memory between the records and the signer). The signer's outcomes are read as typed: *sealed* (ids recorded,
+  proposal accepted, caches forgotten, reconciliation run, lease released, then the proposer and the watchers told
+  and the title index and verification asked for through `AfterSeal`), *nothing happened* (the record says *failed*
+  with a fixed word, the intent is abandoned, the proposal stays open), *queued*, *worktree dirty* or *sealed but
+  unconfirmed without ids* (the record stays pending, the intent open, the wiki is flagged *needs recovery*, writes
+  are refused with the word, reads are served, and nothing is committed again); a seal that could not be confirmed
+  but has its block is recorded as sealed and flags the wiki for a look. A retry finds the record and answers
+  `AlreadySigned`; a retry behind the first waits and finds it. A maintainer accepts their own proposal only in a
+  wiki with fewer than three; the accepted-bytes quota and the queue bound refuse by name. `^id`s are attached to
+  commented blocks that had none in the same change (CM-5; paragraphs, tables and code blocks, each checked by
+  reading the page again). A proposal created as a rollback is signed as `Kind: rollback`. **One path**:
+  `SystemActs` (authorize as the system principal, lease, record, `Accept`, end, reconciliation) is how
+  `import-folder` and any system change are made; `run_import` takes it, and `ImportLedger` is gone (the signer's
+  guard reads the store). Tests: the lease on its own (queue order, bound, estimate, the other process, the holder
+  record, export and refresh), the acceptance against an in-memory repository and a scripted signer (every outcome,
+  the race, the retry, the quotas, the flag, ids, who is told), the sides of the merge, and eleven against a real
+  repository (`tests/acceptance.rs`) including the reconciliation finding nothing after every kind of act.

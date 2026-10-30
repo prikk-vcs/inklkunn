@@ -30,6 +30,7 @@ fn a_feed_names_its_own_address_and_carries_every_entry_escaped() {
             related: Some("http://x.example/w/-/diff/a/b/Home".into()),
             author: "Aiko & Ben".into(),
             summary: Some("Pages: Home".into()),
+            categories: vec!["minor", "automated"],
         }],
     };
     let xml = feed.render();
@@ -39,6 +40,11 @@ fn a_feed_names_its_own_address_and_carries_every_entry_escaped() {
     assert!(xml.contains("<title>&lt;img src=x onerror=alert(1)&gt;</title>"));
     assert!(!xml.contains("<img"));
     assert!(xml.contains("<name>Aiko &amp; Ben</name>"));
+    // The flags are categories a reader can filter on.
+    assert!(
+        xml.contains("<category term=\"minor\"/>")
+            && xml.contains("<category term=\"automated\"/>")
+    );
     assert!(xml.contains("<updated>2023-11-14T22:13:20Z</updated>"));
     assert!(xml.ends_with("</feed>\n"));
 }
