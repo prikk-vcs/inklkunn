@@ -476,25 +476,27 @@ pub fn export_bundle(
     result
 }
 
-/// Move the finished bundle `partial` to `dest`, which must not exist. `rename(2)` replaces an empty directory,
-/// and `RENAME_NOREPLACE` (which would refuse) is not reachable from `std`, so `dest` is first made here with
-/// `mkdir` (which cannot succeed on anything that exists) and only that empty directory of ours is renamed over.
-/// What is left is a window in which another process removes our empty directory and makes its own empty one.
+/// Move the finished bundle `partial` to `dest`, which must not exist. One `renameat2(2)` with `RENAME_NOREPLACE`:
+/// the kernel refuses the move when anything is at `dest`, an empty directory and a link included, and does it
+/// in the same step otherwise, so there is no window between the check and the move (a plain `rename` replaces
+/// an empty directory). A file system that cannot do it answers with an error, and nothing is moved.
 fn put_in_place(partial: &Path, dest: &Path) -> Result<(), ExportError> {
-    std::fs::DirBuilder::new()
-        .mode(0o700)
-        .create(dest)
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::AlreadyExists {
-                ExportError::Destination("it already exists; nothing was written".to_owned())
-            } else {
-                io("the bundle could not be put in place", &e)
-            }
-        })?;
-    std::fs::rename(partial, dest).map_err(|e| {
-        // `dest` is the empty directory this call made; `remove_dir` removes nothing else.
-        let _ = std::fs::remove_dir(dest);
-        io("the bundle could not be put in place", &e)
+    rustix::fs::renameat_with(
+        rustix::fs::CWD,
+        partial,
+        rustix::fs::CWD,
+        dest,
+        rustix::fs::RenameFlags::NOREPLACE,
+    )
+    .map_err(|errno| {
+        if errno == rustix::io::Errno::EXIST {
+            ExportError::Destination("it already exists; nothing was written".to_owned())
+        } else {
+            io(
+                "the bundle could not be put in place",
+                &std::io::Error::from(errno),
+            )
+        }
     })
 }
 

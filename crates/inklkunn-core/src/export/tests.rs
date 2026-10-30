@@ -181,7 +181,7 @@ fn only_a_leftover_of_exactly_the_shape_and_of_an_ended_process_is_swept() {
 }
 
 #[test]
-fn an_empty_directory_of_ours_is_what_the_bundle_is_renamed_over_and_a_taken_name_is_refused() {
+fn a_taken_name_even_an_empty_directory_is_refused_and_a_free_one_gets_the_bundle() {
     let tmp = std::env::temp_dir().join(format!("inklkunn-export-place-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
@@ -190,7 +190,8 @@ fn an_empty_directory_of_ours_is_what_the_bundle_is_renamed_over_and_a_taken_nam
     std::fs::write(partial.join("pages/A.md"), "a").unwrap();
     // The export makes its partial bundle private; the rename carries that mode to the destination.
     std::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o700)).unwrap();
-    // A name that is taken (by an empty directory, which a plain rename would replace) is refused untouched.
+    // A name that is taken (by an empty directory, which a plain rename would replace) is refused untouched:
+    // `RENAME_NOREPLACE`.
     let taken = tmp.join("taken");
     std::fs::create_dir(&taken).unwrap();
     let err = put_in_place(&partial, &taken).unwrap_err();
