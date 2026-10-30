@@ -79,7 +79,7 @@ pub enum SystemActFailure {
     Failed {
         /// The act.
         act: SystemActId,
-        /// The fixed word ([`words`]).
+        /// The fixed word ([`super::words`]).
         word: &'static str,
         /// What happened, for operators.
         detail: String,

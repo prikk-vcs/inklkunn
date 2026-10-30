@@ -67,7 +67,7 @@ impl WriteLeases {
     }
 
     /// Take the wiki's write lock for as long as the returned lease lives, **without waiting** for the one who
-    /// has it (a short grace rides out a sibling thread's `fork`; see [`crate::locks::LOCK_GRACE`]).
+    /// has it (a short grace rides out a sibling thread's `fork`; a quarter of a second at most).
     pub fn try_acquire(self: &Arc<Self>, wiki: &WikiId) -> Result<WriteLease, LeaseRefusal> {
         if !self.locks.try_enter(wiki) {
             return Err(LeaseRefusal::ThisProcess);

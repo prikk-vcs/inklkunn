@@ -10,7 +10,7 @@
 //!    line, the durable holder record. A waiter that waited out is told *busy* with a depth and an estimate.
 //! 2. The view's tip is read again through `Storage::views` (never a held answer). If the revision's base is
 //!    the tip, the change is the revision's content; if not, it is **re-authored** against the tip by the
-//!    content-level merge ([`crate::merge`]).
+//!    content-level merge ([`mod@crate::merge`]).
 //! 3. On an **overlap** the lease is released, both texts are recorded on the proposal, the proposal is moved
 //!    to *needs a revision* and the proposer and the acceptor are told. Nothing in prikk changed.
 //! 4. Else the **acceptance record** (*pending seal*, with the digest of the merged content, which is the
