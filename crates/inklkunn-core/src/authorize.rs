@@ -488,6 +488,28 @@ impl Authorizer {
         Ok(Snapshot { visibility, role })
     }
 
+    /// May this account, **carrying the whole authority of its role** as a browser session does, do the
+    /// non-consequential `action` to `resource`? For the service's own bookkeeping about *other* people (whom
+    /// to tell something, a watch to keep): it builds no principal that leaves this crate and records
+    /// nothing. It is never the answer to a request: a request is authorized as the principal it came from,
+    /// whose credential may carry less. Fails closed, and refuses a consequential action outright.
+    pub(crate) fn account_may(
+        &self,
+        account: &AccountId,
+        action: Action,
+        resource: &Resource,
+    ) -> bool {
+        if action.is_consequential() {
+            return false;
+        }
+        let principal = Principal::Account(AccountPrincipal {
+            id: account.clone(),
+            scope: Scope::Admin,
+        });
+        self.snapshot(&principal, resource.wiki())
+            .is_ok_and(|snapshot| decide(snapshot, &principal, action).is_allowed())
+    }
+
     /// May `principal` do `action` to `resource`? **Fails closed**: if the facts cannot be read the answer is
     /// deny. A consequential action is recorded whatever the answer; an *allowed* one whose record cannot be
     /// written is denied, because nothing consequential happens unrecorded.

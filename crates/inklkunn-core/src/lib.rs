@@ -34,7 +34,9 @@ pub mod check;
 pub mod egress;
 pub mod export;
 pub mod import;
+pub mod inbox;
 pub mod merge;
+pub mod notify;
 pub mod proposal;
 pub mod read;
 pub mod reconcile;
@@ -58,11 +60,13 @@ pub use check::{
     Verifier,
 };
 pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, Resolver, StdEgressGuard, StdResolver};
+pub use inbox::Inbox;
 pub use inklkunn_signer::{
     ArchiveExported, KeyAuthority, KeyStatus, LateSeal, Maintenance, OldKey, OldKeyOutcome,
     Rotation, Signer, SignerConfig, SignerError, SupersededKey,
 };
 pub use merge::{LineLevel, MergeOutcome, MergedPage, Overlap, PageRef, PageText, Place, merge};
+pub use notify::{Channel, InApp, Notifier};
 pub use proposal::{
     BaseSource, Invalid, Metrics, NewComment, Period, ProposalEdit, ProposalError, ProposalService,
     QuotaConfig, QuotaLimit, QuotaRefusal, Quotas, Reset,
