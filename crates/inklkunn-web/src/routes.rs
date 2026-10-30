@@ -20,7 +20,8 @@ use crate::origin::Dispatch;
 use crate::pages::{self, LANGUAGE_PATH, PageState};
 use crate::services::Services;
 use crate::{
-    api, changes, discover, health, history, inbox, probe, raw, search, style, watch, wiki,
+    api, changes, discover, health, history, inbox, probe, proposals, raw, search, style, watch,
+    wiki,
 };
 
 /// One declared entry point and the handler that serves it.
@@ -46,6 +47,121 @@ fn application_specs() -> Vec<Spec> {
 
 /// The web pages' entry points.
 fn page_specs() -> Vec<Spec> {
+    let mut specs = proposal_specs();
+    specs.extend(wiki_specs());
+    specs
+}
+
+/// A write form's entry point: the reading handler, the writing one and the bound on the body.
+macro_rules! form_route {
+    ($get:expr, $post:expr, $limit:expr) => {
+        || get($get).post($post).layer(DefaultBodyLimit::max($limit))
+    };
+}
+
+/// A write that is only a post, with the bound on its body.
+macro_rules! post_route {
+    ($post:expr, $limit:expr) => {
+        || post($post).layer(DefaultBodyLimit::max($limit))
+    };
+}
+
+/// The proposals' entry points (RFC 004 D-2, D-3; handoff 004 T3). Each carries the action the proposal
+/// service authorizes it with; every handler begins with the wiki's read check, so a wiki the visitor may not
+/// read answers as one that is not there.
+fn proposal_specs() -> Vec<Spec> {
+    vec![
+        Spec {
+            path: "/{slug}/-/proposals",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(proposals::list::list),
+        },
+        Spec {
+            path: "/{slug}/-/proposals/new",
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Action(Action::Propose),
+            handler: form_route!(
+                proposals::new::new_form,
+                proposals::submit::new_post,
+                proposals::PROPOSAL_FORM_LIMIT
+            ),
+        },
+        Spec {
+            path: "/{slug}/-/proposals/{id}",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(proposals::show::proposal),
+        },
+        Spec {
+            path: "/{slug}/-/proposals/{id}/edit",
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Action(Action::Propose),
+            handler: form_route!(
+                proposals::submit::edit_form,
+                proposals::submit::edit_post,
+                proposals::PROPOSAL_FORM_LIMIT
+            ),
+        },
+        Spec {
+            path: "/{slug}/-/proposals/{id}/comment",
+            methods: &["POST"],
+            guard: Guard::Action(Action::Comment),
+            handler: post_route!(proposals::review::comment, proposals::SMALL_FORM_LIMIT),
+        },
+        Spec {
+            path: "/{slug}/-/proposals/{id}/decide",
+            methods: &["POST"],
+            guard: Guard::Action(Action::Review),
+            handler: post_route!(proposals::review::decide, proposals::SMALL_FORM_LIMIT),
+        },
+        Spec {
+            path: "/{slug}/-/proposals/{id}/accept",
+            methods: &["POST"],
+            guard: Guard::Action(Action::Accept),
+            handler: post_route!(proposals::review::accept, pages::FORM_LIMIT),
+        },
+        Spec {
+            path: "/{slug}/-/proposals/{id}/decline",
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Action(Action::Accept),
+            handler: form_route!(
+                proposals::review::decline_form,
+                proposals::review::decline_post,
+                proposals::SMALL_FORM_LIMIT
+            ),
+        },
+        Spec {
+            path: "/{slug}/-/proposals/{id}/ask",
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Action(Action::Accept),
+            handler: form_route!(
+                proposals::review::ask_form,
+                proposals::review::ask_post,
+                proposals::SMALL_FORM_LIMIT
+            ),
+        },
+        Spec {
+            path: "/{slug}/-/proposals/{id}/withdraw",
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Action(Action::Propose),
+            handler: form_route!(
+                proposals::review::withdraw_form,
+                proposals::review::withdraw_post,
+                proposals::SMALL_FORM_LIMIT
+            ),
+        },
+        Spec {
+            path: "/{slug}/-/discussion/{*title}",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(proposals::list::discussion),
+        },
+    ]
+}
+
+/// The other web pages' entry points.
+fn wiki_specs() -> Vec<Spec> {
     vec![
         Spec {
             path: "/-/health",

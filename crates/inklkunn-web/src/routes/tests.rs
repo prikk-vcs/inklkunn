@@ -283,42 +283,63 @@ fn the_switcher_and_the_stylesheet_are_public_routes_with_a_reason_under_the_res
 }
 
 #[test]
-fn every_route_that_can_show_wiki_data_is_guarded_by_read_and_the_rest_are_public() {
+fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
+    use inklkunn_core::Action::{Accept, Comment, Propose, Read, Review};
     let table = application_table().unwrap();
     // The read API's endpoints are held to the same rule by `tests/api` (description.rs); this list is the pages'.
-    let guarded: Vec<&str> = table
+    // Each carries the action its handler authorizes with: the proposals' writes are not reads (RFC 004 D-2, D-3).
+    let guarded: Vec<(&str, inklkunn_core::Action)> = table
         .guarded()
-        .map(|(e, _)| e.path)
-        .filter(|p| !p.contains("/-/api/"))
+        .map(|(e, action)| (e.path, action))
+        .filter(|(p, _)| !p.contains("/-/api/"))
         .collect();
     assert_eq!(
         guarded,
         [
-            "/-/wikis",
-            "/-/inbox",
-            "/{slug}/-/watch/{*title}",
-            "/{slug}",
-            "/{slug}/-/about",
-            "/{slug}/-/verification",
-            "/{slug}/-/history/{*title}",
-            "/{slug}/-/change/{block}",
-            "/{slug}/-/diff/{from}/{to}/{*title}",
-            "/{slug}/-/at/{block}/{*title}",
-            "/{slug}/-/changes",
-            "/{slug}/-/changes.atom",
-            "/{slug}/-/search",
-            "/{slug}/-/opensearch.xml",
-            "/{slug}/-/health",
-            "/{slug}/-/health/{list}",
-            "/{slug}/-/links/{*title}",
-            "/{slug}/-/site.json",
-            "/{slug}/-/describe/{*title}",
-            "/{slug}/-/sitemap.xml",
-            "/{slug}/{*title}"
+            ("/{slug}/-/proposals", Read),
+            ("/{slug}/-/proposals/new", Propose),
+            ("/{slug}/-/proposals/{id}", Read),
+            ("/{slug}/-/proposals/{id}/edit", Propose),
+            ("/{slug}/-/proposals/{id}/comment", Comment),
+            ("/{slug}/-/proposals/{id}/decide", Review),
+            ("/{slug}/-/proposals/{id}/accept", Accept),
+            ("/{slug}/-/proposals/{id}/decline", Accept),
+            ("/{slug}/-/proposals/{id}/ask", Accept),
+            ("/{slug}/-/proposals/{id}/withdraw", Propose),
+            ("/{slug}/-/discussion/{*title}", Read),
+            ("/-/wikis", Read),
+            ("/-/inbox", Read),
+            ("/{slug}/-/watch/{*title}", Read),
+            ("/{slug}", Read),
+            ("/{slug}/-/about", Read),
+            ("/{slug}/-/verification", Read),
+            ("/{slug}/-/history/{*title}", Read),
+            ("/{slug}/-/change/{block}", Read),
+            ("/{slug}/-/diff/{from}/{to}/{*title}", Read),
+            ("/{slug}/-/at/{block}/{*title}", Read),
+            ("/{slug}/-/changes", Read),
+            ("/{slug}/-/changes.atom", Read),
+            ("/{slug}/-/search", Read),
+            ("/{slug}/-/opensearch.xml", Read),
+            ("/{slug}/-/health", Read),
+            ("/{slug}/-/health/{list}", Read),
+            ("/{slug}/-/links/{*title}", Read),
+            ("/{slug}/-/site.json", Read),
+            ("/{slug}/-/describe/{*title}", Read),
+            ("/{slug}/-/sitemap.xml", Read),
+            ("/{slug}/{*title}", Read),
         ]
     );
-    for (e, action) in table.guarded() {
-        assert_eq!(action, inklkunn_core::Action::Read, "{}", e.path);
+    // Whatever a route writes, it declares the writing methods only where it declares a non-read action or is
+    // one of the two read pages that take a form.
+    for (e, action) in table.guarded().filter(|(e, _)| !e.path.contains("/-/api/")) {
+        if e.methods.contains(&"POST") {
+            assert!(
+                action != Read || ["/{slug}/-/verification"].contains(&e.path),
+                "{}: a write is guarded by the action it makes",
+                e.path
+            );
+        }
     }
     let public: Vec<&str> = table
         .entries()

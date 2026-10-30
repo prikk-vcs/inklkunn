@@ -7,5 +7,5 @@
 {% endfor %}{% if !choices.is_empty() %}<ul class="choices">
 {% for c in choices %}<li><a href="{{ c.href }}">{{ c.label }}</a></li>
 {% endfor %}</ul>
-{% endif %}{% if propose %}<p><button type="button" disabled>{{ page.get(Key::PageProposeDisabled) }}</button> {{ page.get(Key::PageProposeNote) }}</p>
+{% endif %}{% if let Some(p) = propose %}<p><a href="{{ p.href }}">{{ p.label }}</a></p>
 {% endif %}{% endblock %}

@@ -9,8 +9,9 @@
 use std::sync::Arc;
 
 use axum::http::HeaderMap;
+use inklkunn_core::proposal::ProposalService;
 use inklkunn_core::{Authorizer, Inbox, Principal, ReadService, Verifier};
-use inklkunn_store::WikiStore;
+use inklkunn_store::{AcceptanceStore, AccountStore, WikiStore};
 
 /// Who a request is. The only way the web layer learns a principal.
 pub trait Identify: Send + Sync {
@@ -44,6 +45,12 @@ pub struct Services {
     pub inbox: Arc<Inbox>,
     /// Who a request is.
     pub identity: Arc<dyn Identify>,
+    /// The proposal service: every call authorizes first, and a draft is its author's alone (RFC 004 D-1).
+    pub proposals: Arc<ProposalService>,
+    /// The accounts, to name the people a proposal's page mentions.
+    pub accounts: Arc<dyn AccountStore>,
+    /// The acceptance records, to link an accepted proposal to its change.
+    pub acceptances: Arc<dyn AcceptanceStore>,
     /// Where a cause meant for the operator goes (a page never shows it).
     pub log: Arc<dyn Fn(&str) + Send + Sync>,
     /// The clock, in Unix seconds.

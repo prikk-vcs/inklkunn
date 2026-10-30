@@ -231,3 +231,63 @@ code { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; 
 ins { text-decoration: underline; }
 del { text-decoration: line-through; }
 mark { background: none; color: var(--fg); font-weight: 700; text-decoration: underline double; }
+
+/* Proposals (handoff 004 T3): the form, the proposal's page, its comments and decisions. No new colour pair:
+   text is --fg or --muted on --bg, borders are --line or --control, and what marks a state or a problem is a
+   word and a heavier border, never colour alone. */
+.proposal-form .field { margin-block-end: 1rem; }
+.proposal-form label { display: block; font-weight: 600; margin-block-end: 0.25rem; }
+.proposal-form input[type="text"], .proposal-form textarea {
+  inline-size: 100%;
+  max-inline-size: 100%;
+}
+.proposal-form textarea, .comment-form textarea, .decide-form textarea {
+  inline-size: 100%;
+  max-inline-size: 100%;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.95em;
+}
+.buttons button, .decide-form button, .comment-form button {
+  margin-inline-end: 0.5rem;
+  margin-block-end: 0.5rem;
+}
+.form-problems, .form-note {
+  margin-block-end: 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--control);
+  border-inline-start-width: 4px;
+}
+.form-problems h2 { margin-block: 0 0.5rem; font-size: 1.1rem; }
+.form-problems ul { margin-block: 0; padding-inline-start: 1.25rem; }
+.form-note { margin-block-start: 0; }
+.proposal-list { list-style: none; margin: 0; padding: 0; }
+.proposal-list > li { margin-block-end: 1rem; }
+.proposal-state { font-size: 1.1rem; }
+.proposal-facts { margin-block: 0 1rem; padding-inline-start: 1.25rem; }
+.changed-page, .changed-part { margin-block-end: 1.25rem; }
+.changed-part h4 { margin-block: 0 0.5rem; font-size: 1rem; }
+.comment {
+  margin-block: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+}
+.comment p { margin-block-end: 0.5rem; }
+.comment-head { color: var(--muted); }
+.comment-body { white-space: pre-wrap; }
+.comment-quote {
+  margin-inline: 0;
+  padding-inline-start: 0.75rem;
+  border-inline-start: 3px solid var(--line);
+  color: var(--muted);
+}
+.depth-1 { margin-inline-start: 1.5rem; }
+.depth-2 { margin-inline-start: 3rem; }
+.depth-3 { margin-inline-start: 4.5rem; }
+.decision { margin-block-end: 0.75rem; }
+section > p > a, .proposal-list a, .comment a, .discussed a {
+  display: inline-block;
+  min-block-size: 24px;
+  min-inline-size: 24px;
+  padding-block: 0.15rem;
+}
+.change-links form { display: inline; }

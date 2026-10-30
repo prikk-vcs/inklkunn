@@ -188,7 +188,7 @@ async fn an_authors_markup_in_a_title_or_an_alias_is_text_in_a_search_snippet() 
 }
 
 #[tokio::test]
-async fn when_no_page_has_the_title_similar_titles_come_first_and_creating_is_offered_but_cannot_be_done()
+async fn when_no_page_has_the_title_similar_titles_come_first_and_creating_is_offered_as_a_proposal()
  {
     let w = handbook();
     let body = get(&w, &q("Getting Start")).await.body();
@@ -199,18 +199,14 @@ async fn when_no_page_has_the_title_similar_titles_come_first_and_creating_is_of
         body.find("Getting Started</a>").unwrap() < create,
         "the similar title is listed before the offer: {body}"
     );
-    // The offer is a button that cannot be pressed, said in the words of the wiki, with the reason.
+    // The offer is a link to the form that proposes the page, in the words of the wiki.
     assert!(
-        body.contains("<button type=\"button\" disabled>Create “Getting Start”</button>"),
+        body.contains(
+            "<a href=\"/handbook/-/proposals/new?new=1&#38;title=Getting%20Start\">Create “Getting Start”</a>"
+        ),
         "{body}"
     );
-    assert!(
-        body.contains("Proposals arrive with the next release."),
-        "{body}"
-    );
-    // No dead link, no form that leads to nothing.
-    let after = body.split("Create this page").nth(1).unwrap();
-    assert!(!after.contains("<a "), "{after}");
+    assert!(!body.contains("disabled"), "{body}");
     assert_eq!(
         body.matches("method=\"get\"").count(),
         1,
@@ -333,7 +329,7 @@ async fn every_health_list_shows_its_planted_case_with_what_would_resolve_it() {
         ),
         "{body}"
     );
-    assert!(body.contains("Proposals arrive with the next release."));
+    assert!(!body.contains("Proposals arrive with the next release."));
     assert!(body.contains("<caption>Wanted pages</caption>"));
 
     // Orphans: nothing links to it. Hostile is linked to nobody either, and is shown as letters.

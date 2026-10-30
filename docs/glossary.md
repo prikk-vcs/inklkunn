@@ -40,10 +40,15 @@ T6, RFC 004) take the word from here and do not choose their own.
 | A named version of the whole wiki that readers can switch between (storage: a branch) | view | ビュー | yes | A wiki reader does not know "branch"; the default view is the one shown when none is named | Named by the handoff · ja: hard term |
 | Everything that happened to a page, newest first | history | 履歴 | yes | The usual word | Reused from planeter |
 | One recorded step in a wiki's history: work that was accepted and signed in (storage: a block) | change | 変更 | yes | One word for one thing; never "commit", "block" or "patch" | Reused from planeter · ja: hard term |
-| Work someone puts forward for review before it becomes part of a page | proposal | 提案 | not yet | "Change" is taken by the recorded step; one word for two things is the confusion this page exists to remove | Reused from planeter · ja: hard term |
-| A proposal the wiki service has received and keeps: it is not part of the history yet | held for review | レビュー待ちで保持中 | not yet | Says what is true and no more: the service holds the work, nothing is approved for merging. As a label: *Held for review* (RFC 002 D-6) | Named by the handoff · ja: hard term |
-| A proposal that an authorized person took into the history | accepted | 受け入れ済み | not yet | RFC 002 D-6, WEB-09; "approved" is a reviewer's opinion about one revision and means something else. As a label: *Accepted* | Drafted · ja: hard term |
-| A proposal that an authorized person did not take into the history | declined | 見送り済み | not yet | RFC 002 D-6, WEB-09; calm, assumes good faith, and the message beside it names the next step. As a label: *Declined* | Drafted · ja: hard term |
+| Work someone puts forward for review before it becomes part of a page | proposal | 提案 | yes | "Change" is taken by the recorded step; one word for two things is the confusion this page exists to remove | Reused from planeter · ja: hard term |
+| A proposal the wiki service has received and keeps: it is not part of the history yet | held for review | レビュー待ちで保持中 | yes | Says what is true and no more: the service holds the work, nothing is approved for merging. As a label: *Held for review* (RFC 002 D-6) | Named by the handoff · ja: hard term |
+| A proposal that an authorized person took into the history | accepted | 受け入れ済み | yes | RFC 002 D-6, WEB-09; "approved" is a reviewer's opinion about one revision and means something else. As a label: *Accepted* | Drafted · ja: hard term |
+| A proposal that an authorized person did not take into the history | declined | 見送り済み | yes | RFC 002 D-6, WEB-09; calm, assumes good faith, and the message beside it names the next step. As a label: *Declined* | Drafted · ja: hard term |
+| A proposal that has not been sent for review; only its author sees it | draft | 下書き | yes | The usual word, and a respectable state (CM-9): it says that nothing has been asked of anyone. As a label: *Draft* | Drafted · ja: hard term |
+| A proposal that was sent back to its proposer for a new revision | needs a revision | 修正が必要 | yes | Says what is true and what the next step is; it does not say the proposal was refused. As a label: *Needs a revision* | Drafted · ja: hard term |
+| A proposal that its proposer took back | withdrawn | 取り下げ済み | yes | The proposer's own act, with a reason; calm, and the proposal is kept for the record. As a label: *Withdrawn* | Drafted · ja: hard term |
+| A proposal that a later proposal replaced | superseded | 置き換え済み | yes | Says that something took its place, and the page names it. As a label: *Superseded* | Drafted · ja: hard term |
+| A comment whose part is no longer in the proposal | orphaned | 孤立した | yes | The comment is kept with the text it was about; the word says only that nothing matches any more (COLL-5) | Drafted · ja: hard term |
 | A page that other pages link to and that does not exist yet | wanted page | 未作成のページ | yes | Says what the reader can do about it: write it | Named by the handoff · ja: hard term |
 | The label that prikk ran all of its checks on the wiki and found no problems | Verified | 検証済み | yes | A trust label: it never means more than the check found, and never appears without it | Reused from planeter · ja: hard term, trust label |
 | The label that prikk checked and found problems | Verification failed | 検証に失敗 | yes | "Unverified" would read as "not checked" | Reused from planeter · ja: hard term, trust label |
@@ -109,8 +114,6 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `page.stale` | a notice above a page that is the last version the server has, shown when the newest could not be read | "This page may be out of date. The server could not ask for the newest version just now, so this is the last version it has." | "このページは古い可能性があります。今は最新版を取得できなかったため、サーバーが持っている最後の版を表示しています。" |
 | `page.contents` | the name of the list of headings of a page | "On this page" | "このページの内容" |
 | `page.license` | under a page; `{license}` is the license of the page, or of the wiki when the page names none | "License: {license}" | "ライセンス: {license}" |
-| `page.propose_disabled` | the label of a button that cannot be pressed yet, under a page | "Propose a change" | "変更を提案する" |
-| `page.propose_note` | beside the button above | "Proposals arrive with the next release." | "提案の機能は、次のリリースで提供されます。" |
 | `missing.heading` | the heading of the page shown for a title no page has | "This page does not exist yet" | "このページはまだありません" |
 | `missing.body` | its sentence; `{title}` is the title asked for, `{wiki}` the wiki's name | "No page in {wiki} has the title {title}." | "{wiki} に「{title}」というタイトルのページはありません。" |
 | `missing.invite` | its second sentence, an invitation | "You can propose it when proposals arrive with the next release." | "提案の機能が次のリリースで提供されたら、このページを提案できます。" |
@@ -460,6 +463,242 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `changes.minor_label` | a mark on a change that was proposed as minor | "Minor change" | "軽微な変更" |
 | `changes.machine_assisted` | a mark on a change that was proposed as machine-assisted; `{person}` is who accepted it and answers for it | "Machine-assisted content, accepted by {person}" | "機械の補助によるコンテンツ（受け入れた人: {person}）" |
 | `changes.machine_assisted_only` | the same mark, when nobody who accepted it is known | "Machine-assisted content" | "機械の補助によるコンテンツ" |
+| `wiki.nav_proposals` | in the wiki's navigation: the link to its proposals | "Proposals" | "提案" |
+| `page.propose_change` | under a page: the link to the form that proposes a change to the page | "Propose a change" | "変更を提案する" |
+| `page.propose_part` | under a page: the link to the choice of a section or part to propose a change to | "Propose a change to a section or a part" | "セクションや一部分への変更を提案する" |
+| `page.discussion` | under a page: the link to the page's discussion | "Discussion" | "ディスカッション" |
+| `propose.new_page_link` | on the page for a title that has no page: the link to the form that proposes the page | "Propose this page" | "このページを提案する" |
+| `state.draft` | the label of a proposal that has not been sent for review; only its author sees it | "Draft" | "下書き" |
+| `state.held` | the label of a proposal sent for review and not yet decided | "Held for review" | "レビュー待ちで保持中" |
+| `state.needs_revision` | the label of a proposal sent back to its proposer | "Needs a revision" | "修正が必要" |
+| `state.accepted` | the label of a proposal that was taken into the history | "Accepted" | "受け入れ済み" |
+| `state.declined` | the label of a proposal that was not taken into the history | "Declined" | "見送り済み" |
+| `state.withdrawn` | the label of a proposal its proposer took back | "Withdrawn" | "取り下げ済み" |
+| `state.superseded` | the label of a proposal that a later proposal replaced | "Superseded" | "置き換え済み" |
+| `state_note.draft` | under the label of a draft | "A draft. Only the person who started it can see it, and nobody has been asked to review it." | "下書きです。始めた本人だけが見られます。まだ誰にもレビューを依頼していません。" |
+| `state_note.held` | under the label of a proposal held for review | "The wiki service holds this proposal for review. Nothing becomes part of a page until someone who is allowed to takes the proposal into the history." | "ウィキサービスはこの提案をレビュー待ちとして保持しています。権限のある人が提案を履歴に取り込むまで、ページには何も反映されません。" |
+| `state_note.needs_revision` | under the label of a proposal that needs a revision; `{author}` is its proposer | "This proposal needs a revision from {author} before it can be taken into the history." | "この提案は、履歴に取り込む前に {author} さんによる修正が必要です。" |
+| `state_note.accepted` | under the label of an accepted proposal | "Accepted: someone who is allowed to took this proposal into the history." | "受け入れ済み: 権限のある人がこの提案を履歴に取り込みました。" |
+| `state_note.declined` | under the label of a declined proposal | "Declined: someone who is allowed to decided not to take this proposal into the history." | "見送り済み: 権限のある人が、この提案を履歴に取り込まないと判断しました。" |
+| `state_note.withdrawn` | under the label of a withdrawn proposal | "Withdrawn by its proposer. It is kept here for the record." | "提案者が取り下げました。記録として残してあります。" |
+| `state_note.superseded` | under the label of a superseded proposal | "Superseded: a later proposal takes its place." | "置き換え済み: 後から出された提案がこの提案に代わります。" |
+| `proposal.superseded_by` | on a superseded proposal; `{proposal}` links to the one that replaced it | "It was replaced by {proposal}." | "{proposal} に置き換えられました。" |
+| `proposal.another` | the name of a proposal the reader may not see, in a link to it | "another proposal" | "別の提案" |
+| `proposal.reason_declined` | on a declined proposal: who declined it and why | "{person} declined this proposal. Reason: {reason}" | "{person} さんがこの提案を見送りました。理由: {reason}" |
+| `proposal.reason_withdrawn` | on a withdrawn proposal: who took it back and why | "{person} withdrew this proposal. Reason: {reason}" | "{person} さんがこの提案を取り下げました。理由: {reason}" |
+| `proposal.reason_asked` | on a proposal sent back: who asked for a revision and why | "{person} asked for a revision. Reason: {reason}" | "{person} さんが修正を求めました。理由: {reason}" |
+| `outcome.signed` | the outcome of an acceptance that is in the history | "Signed into the history" | "署名して履歴に記録済み" |
+| `outcome.overlap` | the outcome of an acceptance that stopped because the same text was changed twice | "Stopped: changes overlap" | "停止: 変更が重なっています" |
+| `outcome.not_allowed` | the outcome of an act the visitor's role does not include; also the heading of that refusal | "Not allowed" | "許可されていません" |
+| `outcome.busy` | the outcome of an acceptance that found the wiki busy | "The wiki is busy" | "ウィキは混み合っています" |
+| `outcome.recovery` | the outcome of an acceptance on a wiki that is being checked after an interruption | "The wiki needs recovery" | "ウィキの復旧が必要です" |
+| `outcome.refused` | the outcome of an act a limit refused; `{limit}` names the limit | "Refused: {limit}" | "拒否: {limit}" |
+| `outcome.refused_heading` | the heading of the page that says a limit refused an act | "Refused" | "拒否されました" |
+| `outcome_note.signed` | under the outcome signed into the history | "The proposal is part of the history now." | "提案は履歴に取り込まれました。" |
+| `outcome_note.overlap` | under the outcome stopped: changes overlap | "Another change touched the same text. Nothing was changed. The proposer is asked for a revision, and both texts are shown on the proposal." | "同じ箇所に別の変更が入っていました。何も変更していません。提案者に修正をお願いし、両方の文面を提案のページに表示します。" |
+| `outcome_note.not_allowed` | under the outcome not allowed, for an acceptance | "Your role in this wiki does not include accepting proposals. Nothing was changed." | "このウィキでのあなたの役割には、提案を受け入れる権限がありません。何も変更していません。" |
+| `outcome_note.busy` | under the outcome the wiki is busy | "Another change is being signed into the history. Nothing was changed; try again in a moment." | "別の変更を履歴に記録している最中です。何も変更していません。しばらくしてからもう一度お試しください。" |
+| `outcome_note.busy_depth` | under that: how many acceptances wait before this one; `{count}` is the number | "One acceptance is waiting ahead of yours." / "{count} acceptances are waiting ahead of yours." | "あなたの前に {count} 件の受け入れが待っています。" |
+| `outcome_note.recovery` | under the outcome the wiki needs recovery | "The wiki is being checked after an interruption. It can be read, but nothing can be changed until the check is done." | "ウィキは中断後の確認を行っています。読むことはできますが、確認が終わるまで変更はできません。" |
+| `accept.heading` | the heading of the page that answers the Accept button while accepting is not served | "Accepting is not available yet" | "受け入れはまだ利用できません" |
+| `accept.not_yet` | on that page | "This server does not take proposals into the history yet." | "このサーバーは、まだ提案を履歴に取り込めません。" |
+| `accept.not_yet_kept` | on that page | "The proposal stays held for review and nothing was changed." | "提案はレビュー待ちのままで、何も変更していません。" |
+| `accept.not_yet_note` | beside the Accept button | "Accepting is not available yet on this server." | "このサーバーでは、受け入れはまだ利用できません。" |
+| `quota.open_proposals` | the name of the limit on open proposals, as a clause | "too many open proposals" | "未決の提案が多すぎます" |
+| `quota.revisions` | the name of the limit on revisions of one proposal | "too many revisions of one proposal" | "1 つの提案の修正が多すぎます" |
+| `quota.accepted_bytes` | the name of the limit on text taken into the history in a day | "too much accepted text today" | "本日受け入れられた文章が多すぎます" |
+| `quota.hour_person` | the name of the limit on proposals a person opens in an hour | "too many proposals opened in the last hour" | "直近 1 時間に出した提案が多すぎます" |
+| `quota.hour_wiki` | the name of the limit on proposals opened in the wiki in an hour | "too many proposals opened in this wiki in the last hour" | "直近 1 時間にこのウィキで出された提案が多すぎます" |
+| `quota.queue` | the name of the limit on acceptances waiting | "too many acceptances waiting" | "待機中の受け入れが多すぎます" |
+| `quota.counts` | under a refusal by a limit: the limit, the count now and what was asked | "The limit is {allowed}. The count now is {current}, and this asked for {asked}." | "上限は {allowed} です。現在の数は {current} で、今回の要求は {asked} です。" |
+| `quota.reset_at` | under a refusal by a limit: when it ends; `{when}` is a time in UTC | "It resets at {when}." | "{when} にリセットされます。" |
+| `quota.reset_proposal_closes` | under a refusal by the limit on open proposals | "It resets when one of your open proposals is accepted, declined, withdrawn or superseded." | "あなたの未決の提案のどれかが、受け入れ・見送り・取り下げ・置き換えのいずれかになるとリセットされます。" |
+| `quota.reset_queue` | under a refusal by the limit on acceptances waiting | "It resets when a waiting acceptance gets its turn or gives up." | "待機中の受け入れの順番が来るか、取りやめになるとリセットされます。" |
+| `quota.reset_never_revisions` | under a refusal by the limit on revisions | "Waiting does not help: this proposal has all the revisions it can have. Open a new proposal instead." | "待っても解消しません。この提案はこれ以上修正できません。新しい提案を出してください。" |
+| `quota.reset_never_too_big` | under a refusal by a limit that one request can exceed alone | "Waiting does not help: this is more than the limit allows at any time. Make it smaller." | "待っても解消しません。この量は上限を超えています。もっと小さくしてください。" |
+| `size.mib` | a size in mebibytes; `{amount}` is the number | "{amount} MiB" | "{amount} MiB" |
+| `size.kib` | a size in kibibytes | "{amount} KiB" | "{amount} KiB" |
+| `size.bytes` | a size in bytes | "{amount} bytes" | "{amount} バイト" |
+| `needs_account.heading` | the heading of the page that tells a visitor who is not signed in that proposing needs an account | "Proposing needs an account" | "提案にはアカウントが必要です" |
+| `needs_account.body` | on that page | "You are not signed in, and proposing a change, commenting or reviewing needs an account." | "サインインしていません。変更の提案、コメント、レビューにはアカウントが必要です。" |
+| `needs_account.advice` | on that page | "Ask the person who runs this server how to get an account." | "アカウントの作り方は、このサーバーの管理者にお尋ねください。" |
+| `refused.not_allowed` | under the heading not allowed, for an act on a proposal | "Your role in this wiki does not include this. Nothing was changed." | "このウィキでのあなたの役割には、この操作が含まれていません。何も変更していません。" |
+| `refused.not_now_heading` | the heading of the page that says an act is not possible now | "Not possible now" | "今はできません" |
+| `refused.invalid_heading` | the heading of the page that says what was sent could not be used | "This could not be saved" | "保存できませんでした" |
+| `refused.not_in_this_state` | under that heading; `{state}` is the proposal's state | "This proposal is {state}, so this cannot be done now." | "この提案は「{state}」の状態なので、今はこの操作はできません。" |
+| `refused.already_decided` | when a reviewer decides twice on one revision | "You have already decided on this revision. A decision is not changed; decide again on the next revision." | "この修正にはすでに判断を記録しています。判断は変更できません。次の修正であらためて判断してください。" |
+| `refused.stale_revision` | when a decision is on a revision that is not the latest; `{latest}` is the latest | "This proposal has a newer revision, number {latest}. Read it again and decide on that one." | "この提案には新しい修正（{latest} 番）があります。読み直して、そちらについて判断してください。" |
+| `refused.superseder` | when a proposal that cannot replace another is named; `{state}` is its state | "A proposal that is {state} cannot replace another one." | "「{state}」の提案は、別の提案に代わることはできません。" |
+| `refused.changed` | when the proposal changed while a form was being filled in | "The proposal changed while you were working on it. Read it again, then try again." | "作業している間に提案が変更されました。読み直してから、もう一度お試しください。" |
+| `invalid.incomplete` | when a form is not the one a page offers | "The form was not complete. Open it again from the page and try again." | "フォームの内容が不完全でした。ページからもう一度開いて、お試しください。" |
+| `invalid.form_too_large` | when a form is larger than any form can be | "What you sent is larger than a form can carry." | "送信された内容が、フォームで扱える大きさを超えています。" |
+| `invalid.summary_missing` | when a proposal is sent without its summary | "Say in a few words what you changed and why." | "何をなぜ変更したのかを、短く書いてください。" |
+| `invalid.summary_too_long` | when the summary is too long; `{limit}` is the most characters | "The summary is longer than {limit} characters." | "要約が {limit} 文字を超えています。" |
+| `invalid.summary_not_one_line` | when the summary has a line break | "The summary must be one line of plain text." | "要約は、改行を含まない 1 行の文章にしてください。" |
+| `invalid.too_many_sources` | when there are too many sources; `{limit}` is the most | "At most {limit} sources can be named." | "出典は {limit} 件までです。" |
+| `invalid.bad_source` | when a source is empty, too long or more than one line; `{limit}` is the most bytes | "Each source must be one line, not empty and not longer than {limit} bytes." | "出典は 1 行で、空でなく、{limit} バイト以内にしてください。" |
+| `invalid.nothing_proposed` | when a proposal changes nothing | "The text is the same as the page: change it first, then send it." | "文章がページと同じです。先に変更してから送信してください。" |
+| `invalid.too_large` | when a proposal is over its size; `{limit}` is the size | "A proposal can hold at most {limit} of text in all." | "1 つの提案で扱える文章は、合計で {limit} までです。" |
+| `invalid.page_too_large` | when a page of a proposal is over its size; `{limit}` is the size | "A page can hold at most {limit} of text." | "1 ページで扱える文章は {limit} までです。" |
+| `invalid.reason_missing` | when a reason is required and empty | "A reason is needed. Say it kindly and say what could happen next." | "理由が必要です。やさしい言葉で、次にできることも書いてください。" |
+| `invalid.reason_too_long` | when a reason is too long; `{limit}` is the size | "The reason is longer than {limit}." | "理由が {limit} を超えています。" |
+| `invalid.comment_empty` | when a comment says nothing | "A comment needs some words." | "コメントには文章が必要です。" |
+| `invalid.comment_too_long` | when a comment is too long; `{limit}` is the size | "The comment is longer than {limit}." | "コメントが {limit} を超えています。" |
+| `title.proposals` | the title of the list of proposals | "Proposals · {wiki} · {product}" | "提案 · {wiki} · {product}" |
+| `proposals.heading` | its heading | "Proposals" | "提案" |
+| `proposals.intro` | under it; `{wiki}` is the wiki's name | "Changes to {wiki} are proposed here, read by others, and taken into the history by someone who is allowed to." | "{wiki} への変更はここで提案され、ほかの人に読まれ、権限のある人によって履歴に取り込まれます。" |
+| `proposals.empty` | when the list is empty | "Nobody has proposed anything yet." | "まだ提案はありません。" |
+| `proposals.new_page` | the link to the form that proposes a new page | "Propose a new page" | "新しいページを提案する" |
+| `proposals.drafts` | the heading of the reader's own drafts | "Your drafts" | "あなたの下書き" |
+| `proposals.open` | the heading of the proposals that are not decided | "Open proposals" | "未決の提案" |
+| `proposals.closed` | the heading of the proposals that are decided | "Decided proposals" | "決着済みの提案" |
+| `proposals.row_by` | under a proposal in the list; `{when}` is when it last changed | "Proposed by {author} · last changed {when}" | "提案者: {author} · 最終更新 {when}" |
+| `proposal.no_summary` | in place of the summary of a draft that has none yet | "(no summary yet)" | "（要約はまだありません）" |
+| `proposals.back` | a link back to the list of proposals | "Back to the proposals" | "提案の一覧へ戻る" |
+| `proposal.back` | a link back to the proposal | "Back to the proposal" | "提案へ戻る" |
+| `person.unknown` | in place of the name of a person who is not known | "someone" | "ある方" |
+| `title.propose_parts` | the title of the page that offers a page's sections and parts; `{page}` is its title | "Choose what to change in {page} · {wiki} · {product}" | "{page} の変更箇所を選ぶ · {wiki} · {product}" |
+| `parts.heading` | its heading | "Choose what to change in {page}" | "{page} の変更箇所を選ぶ" |
+| `parts.intro` | under it | "You can propose a change to the whole page, to one section, or to one part." | "ページ全体、1 つのセクション、または 1 つの部分への変更を提案できます。" |
+| `parts.whole` | the link to the form for the whole page | "The whole page" | "ページ全体" |
+| `parts.sections_heading` | the heading of the sections | "Sections" | "セクション" |
+| `parts.parts_heading` | the heading of the parts | "Parts" | "部分" |
+| `parts.no_sections` | when the page has no headings | "This page has no headings." | "このページには見出しがありません。" |
+| `parts.section_label` | the link to the form for one section; `{heading}` is its heading | "Section: {heading}" | "セクション: {heading}" |
+| `parts.part_label` | the link to the form for one part; `{excerpt}` is how it begins | "Part {number}: {excerpt}" | "部分 {number}: {excerpt}" |
+| `parts.cut` | under a list of parts that is cut; `{limit}` is how many are listed | "Only the first {limit} are listed." | "最初の {limit} 件のみ表示しています。" |
+| `parts.back` | a link back to the page; `{page}` is its title | "Back to {page}" | "{page} へ戻る" |
+| `title.propose_page` | the title of the form that proposes a change to a page | "Propose a change to {page} · {wiki} · {product}" | "{page} への変更を提案する · {wiki} · {product}" |
+| `title.propose_new` | the title of the form that proposes a new page | "Propose a new page · {wiki} · {product}" | "新しいページを提案する · {wiki} · {product}" |
+| `title.propose_revise` | the title of the form that revises a proposal | "Revise a proposal · {wiki} · {product}" | "提案を修正する · {wiki} · {product}" |
+| `propose.heading_page` | the heading of the form that proposes a change to a page | "Propose a change to {page}" | "{page} への変更を提案する" |
+| `propose.heading_new` | the heading of the form that proposes a new page | "Propose a new page" | "新しいページを提案する" |
+| `propose.heading_revise` | the heading of the form that revises a proposal | "Revise this proposal" | "この提案を修正する" |
+| `propose.intro` | under the heading of the form | "Edit the text, say what you changed and why, and send it for review. Nothing changes in the wiki until someone who is allowed to takes your proposal into the history." | "文章を編集し、何をなぜ変更したのかを書いて、レビューに送ってください。権限のある人があなたの提案を履歴に取り込むまで、ウィキは変わりません。" |
+| `propose.scope_whole` | on the form: what is being changed | "You are changing the whole page." | "ページ全体を変更します。" |
+| `propose.scope_section` | on the form; `{part}` is how the section begins | "You are changing one section: {part}" | "1 つのセクションを変更します: {part}" |
+| `propose.scope_part` | on the form; `{part}` is how the part begins | "You are changing one part: {part}" | "1 つの部分を変更します: {part}" |
+| `propose.choose` | on the form: the link to the choice of a section or part | "Choose a different section or part" | "別のセクションや部分を選ぶ" |
+| `propose.label_text` | the label of the text of a page; `{title}` is its title | "Text of {title}" | "{title} の文章" |
+| `propose.label_section` | the label of the text of a section | "Text of this section of {title}" | "{title} のこのセクションの文章" |
+| `propose.label_part` | the label of the text of a part | "Text of this part of {title}" | "{title} のこの部分の文章" |
+| `propose.label_title` | the label of the title of a new page | "Title of the new page" | "新しいページのタイトル" |
+| `propose.title_hint` | under it | "A slash makes a page part of a group, for example Guides/Setup." | "スラッシュを使うと、ページをグループに入れられます。例: Guides/Setup" |
+| `propose.new_page_name` | in place of the title of a new page that has none yet | "the new page" | "新しいページ" |
+| `propose.label_summary` | the label of the summary; `{limit}` is the most characters | "What and why (up to {limit} characters)" | "何をなぜ（{limit} 文字まで）" |
+| `propose.summary_hint` | under it | "One line, for example: Correct the date of the first meeting." | "1 行で書いてください。例: 最初の会合の日付を訂正。" |
+| `propose.label_sources` | the label of the sources | "Sources (one per line, optional)" | "出典（1 行に 1 件、省略可）" |
+| `propose.sources_hint` | under it | "Links or references that support the change." | "変更の裏付けとなるリンクや文献。" |
+| `propose.preview` | the button that shows how the text will look | "Preview" | "プレビュー" |
+| `propose.show_changes` | the button that shows what the text changes | "Show changes" | "変更点を表示" |
+| `propose.save_draft` | the button that keeps the work as a draft | "Save as draft" | "下書きとして保存" |
+| `propose.submit` | the button that sends the proposal for review | "Submit" | "送信" |
+| `propose.submit_revision` | the button that sends a revision of a proposal for review | "Submit the revision" | "修正を送信" |
+| `propose.saved` | after a draft is saved | "Your draft is saved. Only you can see it." | "下書きを保存しました。あなただけが見られます。" |
+| `propose.problems` | the heading of what is wrong with a form | "Please fix this first" | "先に次の点を直してください" |
+| `propose.continue_draft` | a link to the draft the proposal was kept as | "Continue with your draft" | "下書きの続きを書く" |
+| `propose.removed_note` | in place of the text of a page the proposal removes; `{title}` is its title | "This proposal removes {title}." | "この提案は {title} を削除します。" |
+| `propose.preview_heading` | the heading of a preview; `{title}` is the page's title | "Preview of {title}" | "{title} のプレビュー" |
+| `propose.preview_note` | under it | "This is how your text will look. Nothing is saved yet." | "あなたの文章はこのように表示されます。まだ何も保存されていません。" |
+| `propose.suggestions` | the heading of what could be better in a text | "Suggestions" | "改善の提案" |
+| `propose.front_unreadable` | when the information at the top of a page cannot be read | "The information at the top of the page cannot be read. Each line needs a name, a colon and a value." | "ページ先頭の情報が読み取れません。各行は「名前」「コロン」「値」の形にしてください。" |
+| `propose.front_owned` | when the information at the top of a page changes names only the service writes; `{keys}` names them | "The lines {keys} at the top of the page can only be changed by an administrator of this wiki." | "ページ先頭の {keys} の行は、このウィキの管理者だけが変更できます。" |
+| `propose.title_empty` | when a new page has no title, or a part of it is empty | "A title cannot be empty, and no part of it between slashes can be empty." | "タイトルは空にできません。スラッシュで区切った各部分も空にできません。" |
+| `propose.title_reserved` | when a part of a title is a dot or two dots | "A part of a title cannot be a single dot or two dots." | "タイトルの一部をドット 1 つや 2 つだけにすることはできません。" |
+| `propose.title_too_long` | when a part of a title is too long | "A part of the title is too long." | "タイトルの一部が長すぎます。" |
+| `propose.title_too_deep` | when the whole title is too long or has too many parts | "The title is too long, or has too many parts." | "タイトルが長すぎるか、部分が多すぎます。" |
+| `propose.title_taken` | when a new page has the title of a page that exists; `{title}` is it | "A page titled {title} exists already. Propose a change to it instead." | "{title} というタイトルのページはすでにあります。代わりにそのページへの変更を提案してください。" |
+| `changes.proposal_heading` | the heading of what a proposal changes | "What it changes" | "変更内容" |
+| `changes.proposal_none` | when every page is the page as it is | "The text is the same as the page now: there is nothing to propose." | "文章がいまのページと同じです。提案する変更はありません。" |
+| `changes.page_heading` | the heading of one page among the changes; `{title}` is its title | "Page: {title}" | "ページ: {title}" |
+| `changes.status_added` | under it: the proposal brings the page | "A new page." | "新しいページです。" |
+| `changes.status_removed` | under it: the proposal removes the page | "The page is removed." | "このページは削除されます。" |
+| `changes.status_modified` | under it: the proposal changes the page | "The page is changed." | "このページは変更されます。" |
+| `changes.info_heading` | the heading of a change to the information at the top of a page | "Information at the top of the page" | "ページ先頭の情報" |
+| `changes.part_changed` | the heading of a part that differs; `{number}` is its position | "Part {number} is changed" | "部分 {number} が変更されます" |
+| `changes.part_added` | the heading of a part that is new | "Part {number} is added" | "部分 {number} が追加されます" |
+| `changes.part_removed` | the heading of a part that is removed | "Part {number} is removed" | "部分 {number} が削除されます" |
+| `changes.unchanged_parts` | under a page: how many parts are the same on both sides | "{count} part is the same on both sides." / "{count} parts are the same on both sides." | "{count} 件の部分は変更されません。" |
+| `title.proposal` | the title of a proposal's page; `{summary}` is its summary | "Proposal: {summary} · {wiki} · {product}" | "提案: {summary} · {wiki} · {product}" |
+| `proposal.proposed_by` | a fact about a proposal; `{when}` is when it was sent | "Proposed by {author}, {when}." | "提案者: {author}、{when}。" |
+| `proposal.pages` | a fact: how many pages it changes | "It changes {count} page." / "It changes {count} pages." | "変更するページ: {count} 件。" |
+| `proposal.revision` | a fact: which revision the page shows | "This is revision {number} of {total}." | "{total} 件中の {number} 番目の修正です。" |
+| `proposal.view` | a fact: the view the proposal is for | "It is for the view {view}." | "ビュー {view} に対する提案です。" |
+| `proposal.sources_heading` | the heading of the sources | "Sources" | "出典" |
+| `proposal.signed_change` | the link from an accepted proposal to its change in the history | "See the change" | "変更を見る" |
+| `proposal.actions_heading` | the heading of what the reader can do | "What you can do" | "できること" |
+| `action.continue` | the link that continues a draft | "Continue editing" | "編集を続ける" |
+| `action.revise` | the link that revises a proposal | "Revise this proposal" | "この提案を修正する" |
+| `action.withdraw` | the link to the form that takes a proposal back | "Withdraw this proposal" | "この提案を取り下げる" |
+| `action.ask` | the link to the form that asks for a revision | "Ask for a revision" | "修正を求める" |
+| `action.decline` | the link to the form that declines a proposal | "Decline this proposal" | "この提案を見送る" |
+| `action.accept` | the button that accepts a proposal | "Accept" | "受け入れる" |
+| `thread.heading` | the heading of the discussion on a proposal | "Discussion" | "ディスカッション" |
+| `thread.none` | when nobody has commented | "Nobody has commented yet." | "まだコメントはありません。" |
+| `comment.meta` | under a comment's author: when, and the revision it was made on | "{when} · on revision {number}" | "{when} · 修正 {number} について" |
+| `comment.on_part` | on a comment about a part that is not among the changes shown | "About part {number} of {title}" | "{title} の部分 {number} について" |
+| `comment.orphaned` | on a comment whose part is no longer in the proposal; it was about the text quoted | "Orphaned: the part of {title} this comment was about is no longer in the proposal. It was about this text:" | "孤立したコメント: このコメントの対象だった {title} の部分は、提案から無くなっています。対象だった文章:" |
+| `comment.on_this_part` | the link that comments on a part; `{number}` is its position | "Comment on part {number}" | "部分 {number} にコメントする" |
+| `comment.reply` | the link that replies to a comment | "Reply to {author}" | "{author} さんに返信する" |
+| `comment_form.label` | the label of the comment text | "Add a comment" | "コメントを書く" |
+| `comment_form.button` | the button that sends a comment | "Comment" | "コメントする" |
+| `comment_form.about_part` | on the comment form: what the comment is about | "Your comment is about part {number} of {title}." | "このコメントは {title} の部分 {number} についてです。" |
+| `comment_form.reply_to` | on the comment form: whom it replies to | "Your comment is a reply to {author}." | "このコメントは {author} さんへの返信です。" |
+| `decisions.heading` | the heading of the reviewers' decisions | "Decisions" | "判断" |
+| `decisions.none` | when no reviewer has decided | "No reviewer has decided yet." | "まだ判断したレビュアーはいません。" |
+| `decision.approved` | a decision: approved; `{number}` is the revision it is on | "{reviewer} approved, on revision {number}." | "{reviewer} さんが承認しました（修正 {number} について）。" |
+| `decision.requested` | a decision: changes requested | "{reviewer} asked for changes, on revision {number}." | "{reviewer} さんが変更を求めました（修正 {number} について）。" |
+| `decision.older` | under a decision on an earlier revision | "A newer revision was written after this. The decision no longer counts toward accepting it." | "この後に新しい修正が書かれました。この判断は、受け入れの条件としてはもう数えられません。" |
+| `decide.label` | the label of the note with a decision | "A note with your decision (optional)" | "判断に添えるメモ（省略可）" |
+| `decide.approve` | the button that approves the revision | "Approve this revision" | "この修正を承認する" |
+| `decide.request` | the button that asks for changes | "Request changes" | "変更を求める" |
+| `title.decline` | the title of the form that declines a proposal | "Decline a proposal · {wiki} · {product}" | "提案を見送る · {wiki} · {product}" |
+| `title.withdraw` | the title of the form that takes a proposal back | "Withdraw a proposal · {wiki} · {product}" | "提案を取り下げる · {wiki} · {product}" |
+| `title.ask` | the title of the form that asks for a revision | "Ask for a revision · {wiki} · {product}" | "修正を求める · {wiki} · {product}" |
+| `reason.decline_heading` | the heading of the form that declines a proposal | "Decline this proposal" | "この提案を見送る" |
+| `reason.decline_intro` | under it | "Thank the proposer for the effort, say why the proposal is not taken into the history, and say what could be done next. The proposer is told, and everyone who reads the proposal sees your reason." | "提案者の労をねぎらい、履歴に取り込まない理由と、次にできることを書いてください。提案者に伝わり、提案を読む人全員に理由が表示されます。" |
+| `reason.decline_button` | the button that declines | "Decline" | "見送る" |
+| `reason.withdraw_heading` | the heading of the form that takes a proposal back | "Withdraw this proposal" | "この提案を取り下げる" |
+| `reason.withdraw_intro` | under it | "Say why you are taking the proposal back. It stays here for the record, and everyone who reads it sees your reason." | "提案を取り下げる理由を書いてください。提案は記録として残り、読む人全員に理由が表示されます。" |
+| `reason.withdraw_button` | the button that withdraws | "Withdraw" | "取り下げる" |
+| `reason.ask_heading` | the heading of the form that asks for a revision | "Ask for a revision" | "修正を求める" |
+| `reason.ask_intro` | under it | "Say what needs to change, and why, so that the proposer knows what to do. The proposer is told and can send a new revision." | "何をなぜ直す必要があるのかを書いて、提案者が次に何をすればよいか分かるようにしてください。提案者に伝わり、新しい修正を送れます。" |
+| `reason.ask_button` | the button that asks for a revision | "Ask for a revision" | "修正を求める" |
+| `reason.label` | the label of the reason | "Reason" | "理由" |
+| `title.discussion` | the title of the discussion of a page | "Discussion of {page} · {wiki} · {product}" | "{page} のディスカッション · {wiki} · {product}" |
+| `discussion.heading` | its heading | "Discussion of {page}" | "{page} のディスカッション" |
+| `discussion.intro` | under it | "What has been said about this page so far: the proposals that change it, each with its discussion." | "このページについてこれまでに語られたこと。ページを変更する提案と、それぞれのディスカッションです。" |
+| `discussion.empty` | when no proposal touches the page | "No proposal changes this page yet." | "このページを変更する提案はまだありません。" |
+| `discussion.cut` | when the proposals looked through are cut; `{limit}` is how many | "Only the newest {limit} proposals were looked through." | "新しい {limit} 件の提案のみ確認しました。" |
+| `discussion.page` | the link to the page; `{page}` is its title | "Read {page}" | "{page} を読む" |
+| `discussion.propose` | the link to the form that proposes a change to the page | "Propose a change to this page" | "このページへの変更を提案する" |
+| `lint.bom` | a suggestion for a text, from the linter's finding `MKUP-19-bom`; `{guideline}` is the guideline it comes from | "{guideline}: The text starts with a byte-order mark." | "{guideline}: テキストの先頭にバイトオーダーマークがあります。" |
+| `lint.crlf` | a suggestion for a text, from the linter's finding `MKUP-19-crlf`; `{guideline}` is the guideline it comes from | "{guideline}: The page uses CR LF line endings; LF is recommended." | "{guideline}: このページの改行は CR LF です。LF をおすすめします。" |
+| `lint.newline` | a suggestion for a text, from the linter's finding `MKUP-19-newline`; `{guideline}` is the guideline it comes from | "{guideline}: The text does not end with a line break." | "{guideline}: テキストの末尾に改行がありません。" |
+| `lint.tabs` | a suggestion for a text, from the linter's finding `MKUP-19-tabs`; `{guideline}` is the guideline it comes from | "{guideline}: A tab character is used outside code; spaces are recommended." | "{guideline}: コード以外でタブ文字が使われています。空白をおすすめします。" |
+| `lint.no_info` | a suggestion for a text, from the linter's finding `META-1-missing`; `{guideline}` is the guideline it comes from | "{guideline}: The page has no information at the top. A title there makes the page portable." | "{guideline}: ページ先頭に情報がありません。タイトルを書くと、ページを持ち運びやすくなります。" |
+| `lint.no_title` | a suggestion for a text, from the linter's finding `META-2-title`; `{guideline}` is the guideline it comes from | "{guideline}: The information at the top of the page has no title." | "{guideline}: ページ先頭の情報にタイトルがありません。" |
+| `lint.coerced` | a suggestion for a text, from the linter's finding `META-3-coerced`; `{guideline}` is the guideline it comes from | "{guideline}: A value at the top of the page was read as another kind of value than you may mean." | "{guideline}: ページ先頭の値が、意図と異なる種類の値として読まれました。" |
+| `lint.list` | a suggestion for a text, from the linter's finding `META-4-list`; `{guideline}` is the guideline it comes from | "{guideline}: A value at the top of the page that should be a list of texts is not one." | "{guideline}: ページ先頭の値のうち、文字列の一覧であるべきものが一覧になっていません。" |
+| `lint.status` | a suggestion for a text, from the linter's finding `META-6-status`; `{guideline}` is the guideline it comes from | "{guideline}: The status at the top of the page is not one of the recommended ones." | "{guideline}: ページ先頭の状態が、推奨されている値ではありません。" |
+| `lint.redirect` | a suggestion for a text, from the linter's finding `META-7-redirect`; `{guideline}` is the guideline it comes from | "{guideline}: The page is a redirect but names no page to redirect to." | "{guideline}: このページはリダイレクトですが、移動先のページが書かれていません。" |
+| `lint.visibility` | a suggestion for a text, from the linter's finding `META-13-visibility`; `{guideline}` is the guideline it comes from | "{guideline}: The visibility at the top of the page is not public, internal or restricted." | "{guideline}: ページ先頭の公開範囲が、公開・内部・制限のどれでもありません。" |
+| `lint.secret` | a suggestion for a text, from the linter's finding `META-14-secret`; `{guideline}` is the guideline it comes from | "{guideline}: A name at the top of the page looks like a secret. A page is not the place for secrets." | "{guideline}: ページ先頭に、秘密情報のように見える名前があります。ページは秘密を書く場所ではありません。" |
+| `lint.duplicate_id` | a suggestion for a text, from the linter's finding `MKUP-9-duplicate`; `{guideline}` is the guideline it comes from | "{guideline}: Two parts of the page have the same identifier." | "{guideline}: ページ内の 2 つの部分が同じ識別子を持っています。" |
+| `lint.unclosed` | a suggestion for a text, from the linter's finding `EXT-4-unclosed`; `{guideline}` is the guideline it comes from | "{guideline}: A container is opened and never closed." | "{guideline}: 開いたコンテナが閉じられていません。" |
+| `lint.callout` | a suggestion for a text, from the linter's finding `MKUP-15-callout`; `{guideline}` is the guideline it comes from | "{guideline}: A callout is not one of the usual kinds." | "{guideline}: 注意書きの種類が、よく使われるものではありません。" |
+| `lint.container` | a suggestion for a text, from the linter's finding `MKUP-15-container`; `{guideline}` is the guideline it comes from | "{guideline}: A container has a name this wiki does not know." | "{guideline}: このウィキが知らない名前のコンテナがあります。" |
+| `lint.heading_top` | a suggestion for a text, from the linter's finding `MKUP-8-h1`; `{guideline}` is the guideline it comes from | "{guideline}: The page uses a top-level heading, or skips a heading level." | "{guideline}: ページが最上位の見出しを使っているか、見出しの段階を飛ばしています。" |
+| `lint.heading_dup` | a suggestion for a text, from the linter's finding `MKUP-8-duplicate-heading`; `{guideline}` is the guideline it comes from | "{guideline}: Two headings have the same text, so their links share a name." | "{guideline}: 同じ文面の見出しが 2 つあり、リンク先の名前が重なります。" |
+| `lint.tags` | a suggestion for a text, from the linter's finding `MKUP-14-tags`; `{guideline}` is the guideline it comes from | "{guideline}: A tag is not written the usual way." | "{guideline}: タグの書き方が一般的な形ではありません。" |
+| `lint.empty_label` | a suggestion for a text, from the linter's finding `MKUP-4-empty-label`; `{guideline}` is the guideline it comes from | "{guideline}: A link has an empty label." | "{guideline}: ラベルが空のリンクがあります。" |
+| `lint.empty_target` | a suggestion for a text, from the linter's finding `MKUP-4-empty`; `{guideline}` is the guideline it comes from | "{guideline}: A link has no target." | "{guideline}: 行き先のないリンクがあります。" |
+| `lint.missing_part_ref` | a suggestion for a text, from the linter's finding `MKUP-9-missing-block`; `{guideline}` is the guideline it comes from | "{guideline}: A link to a part of this page points to a part that does not exist." | "{guideline}: このページ内の部分へのリンクが、存在しない部分を指しています。" |
+| `lint.prefix` | a suggestion for a text, from the linter's finding `MKUP-13-prefix`; `{guideline}` is the guideline it comes from | "{guideline}: A link names a place with a prefix the wiki does not use." | "{guideline}: リンクが、このウィキで使われない接頭辞で場所を指しています。" |
+| `lint.order` | a suggestion for a text, from the linter's finding `MKUP-6-order`; `{guideline}` is the guideline it comes from | "{guideline}: A link could mean more than one page; the nearest one is taken." | "{guideline}: リンクが複数のページを指しうるため、いちばん近いページが選ばれます。" |
+| `lint.dangling` | a suggestion for a text, from the linter's finding `NAV-3-dangling`; `{guideline}` is the guideline it comes from | "{guideline}: A link leads to a page that does not exist yet." | "{guideline}: まだ存在しないページへのリンクがあります。" |
+| `lint.ambiguous` | a suggestion for a text, from the linter's finding `MKUP-5-ambiguous`; `{guideline}` is the guideline it comes from | "{guideline}: A link matches several pages and none is nearer." | "{guideline}: リンクが複数のページに当てはまり、どれも近くありません。" |
+| `lint.other` | a suggestion for a text, from the linter's finding `any other code`; `{guideline}` is the guideline it comes from | "{guideline}: The linter has a suggestion for this text." | "{guideline}: このテキストについて、リンターからの提案があります。" |
 
 ## 3. Words the interface does not say
 

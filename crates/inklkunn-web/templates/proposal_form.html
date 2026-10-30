@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+{% if let Some(text) = saved %}<p class="form-note" role="status">{{ text }}</p>
+{% endif %}{% if !problems.is_empty() %}<div class="form-problems" role="alert">
+<h2 id="problems">{{ page.get(Key::ProposeProblems) }}</h2>
+<ul>
+{% for p in problems %}<li>{{ p }}</li>
+{% endfor %}</ul>
+</div>
+{% endif %}<p>{{ intro }}</p>
+{% if let Some(text) = scope %}<p>{{ text }}</p>
+{% endif %}{% if let Some(link) = choose %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
+{% endif %}<form method="post" action="{{ action }}" class="proposal-form">
+{% for h in hidden %}<input type="hidden" name="{{ h.name }}" value="{{ h.value }}">
+{% endfor %}{% for f in fields %}<div class="field">
+{% if f.editable_title %}<label for="{{ f.id_title }}">{{ page.get(Key::ProposeLabelTitle) }}</label>
+<input id="{{ f.id_title }}" name="{{ f.name_title }}" type="text" value="{{ f.title }}" aria-describedby="{{ f.id_title }}-hint">
+<p id="{{ f.id_title }}-hint" class="note">{{ f.title_hint }}</p>
+{% endif %}{% if let Some(note) = f.removed_note %}<p>{{ note }}</p>
+{% else %}<label for="{{ f.id_text }}">{{ f.label }}</label>
+<textarea id="{{ f.id_text }}" name="{{ f.name_text }}" rows="{{ f.rows }}" cols="80">
+{{ f.text }}</textarea>
+{% endif %}</div>
+{% endfor %}<div class="field">
+<label for="summary">{{ summary_label }}</label>
+<input id="summary" name="summary" type="text" maxlength="{{ summary_max }}" value="{{ summary }}" aria-describedby="summary-hint">
+<p id="summary-hint" class="note">{{ summary_hint }}</p>
+</div>
+<div class="field">
+<label for="sources">{{ page.get(Key::ProposeLabelSources) }}</label>
+<textarea id="sources" name="sources" rows="3" cols="80" aria-describedby="sources-hint">
+{{ sources }}</textarea>
+<p id="sources-hint" class="note">{{ page.get(Key::ProposeSourcesHint) }}</p>
+</div>
+<p class="buttons">{% for b in buttons %}<button type="submit" name="{{ op_name }}" value="{{ b.value }}">{{ b.label }}</button>
+{% endfor %}</p>
+</form>
+{% if !suggestions.is_empty() %}<section aria-labelledby="suggestions">
+<h2 id="suggestions">{{ page.get(Key::ProposeSuggestions) }}</h2>
+<ul>
+{% for s in suggestions %}<li>{{ s }}</li>
+{% endfor %}</ul>
+</section>
+{% endif %}{% for v in previews %}<section aria-labelledby="{{ v.id }}">
+<h2 id="{{ v.id }}">{{ v.heading }}</h2>
+<p class="note">{{ page.get(Key::ProposePreviewNote) }}</p>
+<article class="page-body preview">
+{{ v.html }}
+</article>
+</section>
+{% endfor %}{% if let Some(changes) = changes %}<section aria-labelledby="changes">
+<h2 id="changes">{{ page.get(Key::ProposalChangesHeading) }}</h2>
+{% include "proposal_changes.html" %}</section>
+{% endif %}{% endblock %}

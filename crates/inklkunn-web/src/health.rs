@@ -300,7 +300,6 @@ fn rows_of(
                     ]
                 })
                 .collect();
-            notes.push(page.get(Key::PageProposeNote));
             (
                 vec![
                     page.get(Key::HealthColWanted),
@@ -498,7 +497,7 @@ fn unavailable(page: &Page, wiki: &WikiRecord) -> Response {
         Key::UnavailableHeading,
         vec![page.get(Key::UnavailableBody)],
         Vec::<Choice>::new(),
-        false,
+        None,
     ))
 }
 

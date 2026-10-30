@@ -1,0 +1,17 @@
+<div class="proposal-changes">
+{% if let Some(text) = changes.nothing %}<p>{{ text }}</p>
+{% endif %}{% if let Some(text) = changes.refinement %}<p class="note">{{ text }}</p>
+{% endif %}{% for p in changes.pages %}<section class="changed-page" aria-labelledby="{{ p.id }}">
+<h3 id="{{ p.id }}">{{ p.heading }}</h3>
+<p>{{ p.status }}</p>
+{% if let Some(part) = p.info %}<section class="changed-part" aria-labelledby="{{ part.id }}">
+<h4 id="{{ part.id }}">{{ part.heading }}</h4>
+{% include "proposal_hunks.html" %}</section>
+{% endif %}{% for part in p.parts %}<section class="changed-part" aria-labelledby="{{ part.id }}">
+<h4 id="{{ part.id }}">{{ part.heading }}</h4>
+{% include "proposal_hunks.html" %}{% for c in part.comments %}{% include "proposal_comment.html" %}
+{% endfor %}{% if let Some(link) = part.comment %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
+{% endif %}</section>
+{% endfor %}{% if let Some(text) = p.unchanged %}<p class="note">{{ text }}</p>
+{% endif %}</section>
+{% endfor %}</div>

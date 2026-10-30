@@ -750,3 +750,33 @@ Follow-ups from the review of 2026-10-31 (handoff 003, S2 – S4).
   is not told; a wiki restricted after the event; watches fired by the acceptance's function only (against a channel
   that remembers); the flags on both stores, in the list, the feed and the API; the migration from 9; the structure
   rules on every new page state in both languages; the route-enumeration harness over the new routes.
+- **Handoff 004 T3: the propose form, the proposal's page and review (`inklkunn_web::proposals`).** Routes under
+  `/<slug>/-/proposals` and `/<slug>/-/discussion/<Title>`, each registered with the action its handler authorizes
+  (`propose`, `comment`, `review`, `accept`), and every one begins with the wiki's read check, so a wiki the visitor
+  may not read, a proposal of another wiki and a draft that is not the visitor's own are the one not-found page. The
+  **form** (a page, a section by its heading, a part by its position, or a new page; the page view and the page that
+  is not there link to it) holds the current text, a summary (required, at most 120 characters), sources, and *Preview*,
+  *Show changes*, *Save as draft* and *Submit*, all server round trips and none needing a script; a section or part goes
+  back into the **base text the form was opened on** (so the page may have moved since); a page keeps its own line
+  endings (a browser sends CR LF whatever the page had). **Sizes are judged before anything is parsed** (a page over
+  1 MiB, a proposal over 2 MiB, a body no form can be); the keys the service owns (`kind`, `visibility`, `system`) are
+  refused when a proposal changes them unless the principal administers the wiki; a new page's title goes through
+  `title_to_path` and a refusal names the rule, never the path; the linter's findings are suggestions on *Preview* and
+  *Show changes*. Everything wrong is said at once on the form, with the person's text still in it, and a refused
+  submission leaves no draft behind. **The proposal's page** shows its state in the glossary's seven words, who
+  proposed it, what it changes page by page and part by part (the history's line diff and word marks over
+  `inklkunn_markup::blocks`), the thread with comments anchored to parts, each decision with the revision it is bound
+  to ("on revision 1", and a note once a newer revision exists), and the actions the viewer's role and the state allow.
+  A comment's anchor (the part's `^id`, else a quote with its surroundings and position) is **re-anchored every time
+  the page is drawn** and shown as *orphaned*, with the text it was about, when nothing matches. Decline, withdraw and
+  ask for a revision are thin forms with a required reason; *Accept* is a form whose answer says it is **not available
+  yet** (`review::accept` is the one function the acceptance replaces; `AcceptOutcome` and `render_accept_outcome` hold
+  the words for every outcome of an acceptance). A page's discussion lists the proposals that change it with their
+  threads. An anonymous visitor is told in words that proposing needs an account. **Words:** a catalog entry in English
+  and Japanese (preview) and a glossary row, in the same order, for every state, outcome, named limit, refusal, label
+  and suggestion; the concept rows for proposal, held for review, accepted and declined are now in use, and draft,
+  needs a revision, withdrawn, superseded and orphaned are added. Additive changes outside the crate: `Services`
+  gains `proposals`, `accounts` and `acceptances`, `ReadService` gains `source_at` (a file at a block) and `preview`
+  (source text drawn and sanitized as the page would be), and the binary builds the service. The route table's unit
+  test and the route-enumeration harness now hold the proposals' writes to their actions; the structural harness
+  runs 49 more states, both languages.

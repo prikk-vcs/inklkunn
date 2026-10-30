@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+<p>{{ intro }}</p>
+{% if let Some(link) = propose %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
+{% endif %}{% if let Some(text) = empty %}<p>{{ text }}</p>
+{% endif %}{% for s in sections %}<section aria-labelledby="{{ s.id }}">
+<h2 id="{{ s.id }}">{{ s.heading }}</h2>
+<ul class="proposal-list">
+{% for r in s.rows %}<li>
+<p class="change-head"><a href="{{ r.href }}">{{ r.summary }}</a></p>
+<p class="note"><span class="proposal-state">{{ r.state }}</span> · {{ r.byline }}</p>
+</li>
+{% endfor %}</ul>
+</section>
+{% endfor %}{% endblock %}

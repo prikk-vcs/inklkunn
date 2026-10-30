@@ -21,6 +21,7 @@ use inklkunn_web::routes::{application_table, content_table, site_with};
 use tower::ServiceExt as _;
 
 const BLOCK: &str = "00000000000000000000000000000000000000000000000000000000000000b1";
+const PROPOSAL: &str = "019a0000-0000-7000-8000-00000000cccc";
 
 /// A concrete address for a registered pattern, for the wiki named `slug`.
 fn address(pattern: &str, slug: &str) -> String {
@@ -28,6 +29,7 @@ fn address(pattern: &str, slug: &str) -> String {
         .replace("{slug}", slug)
         .replace("{*title}", "Home")
         .replace("{*rest}", "pages")
+        .replace("{id}", PROPOSAL)
         .replace("{block}", BLOCK)
         .replace("{from}", BLOCK)
         .replace("{to}", BLOCK)
@@ -98,10 +100,23 @@ async fn every_guarded_route_answers_a_restricted_wiki_exactly_as_one_that_is_no
         (content_table().unwrap(), "localhost:8081"),
     ] {
         for (entry, action) in table.guarded() {
-            assert_eq!(
-                action,
-                Action::Read,
-                "{}: the routes of this release only read",
+            // The pages read; the proposals' writes carry the action their handler authorizes with (RFC 004).
+            let expected = if entry.path.contains("/-/proposals/")
+                && entry.path != "/{slug}/-/proposals/{id}"
+            {
+                [
+                    Action::Propose,
+                    Action::Comment,
+                    Action::Review,
+                    Action::Accept,
+                ]
+                .to_vec()
+            } else {
+                vec![Action::Read]
+            };
+            assert!(
+                expected.contains(&action),
+                "{}: {action:?} is not an action this route may carry",
                 entry.path
             );
             if !entry.path.contains("{slug}") {

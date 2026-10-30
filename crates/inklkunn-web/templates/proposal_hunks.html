@@ -1,0 +1,8 @@
+{% for hunk in part.hunks %}<div class="diff-hunk">
+{% for line in hunk.lines %}{% if line.removed %}<div class="diff-line diff-removed"><span class="diff-sign" aria-hidden="true">-</span><del><span class="visually-hidden">{{ changes.removed_label }} </span>{% for seg in line.segments %}{% if seg.marked %}<mark>{{ seg.text }}</mark>{% else %}{{ seg.text }}{% endif %}{% endfor %}</del></div>
+{% else if line.added %}<div class="diff-line diff-added"><span class="diff-sign" aria-hidden="true">+</span><ins><span class="visually-hidden">{{ changes.added_label }} </span>{% for seg in line.segments %}{% if seg.marked %}<mark>{{ seg.text }}</mark>{% else %}{{ seg.text }}{% endif %}{% endfor %}</ins></div>
+{% else if let Some(note) = line.note %}<div class="diff-line diff-note">{{ note }}</div>
+{% else %}<div class="diff-line diff-context">{% for seg in line.segments %}{{ seg.text }}{% endfor %}</div>
+{% endif %}{% endfor %}</div>
+{% endfor %}{% if let Some(text) = part.truncated %}<p class="note">{{ text }}</p>
+{% endif %}

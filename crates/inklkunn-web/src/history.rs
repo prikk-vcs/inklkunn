@@ -139,7 +139,7 @@ fn no_such_change(page: &Page, wiki: &WikiRecord) -> Response {
         Key::ChangeNoneHeading,
         vec![page.get(Key::ChangeNoneBody)],
         Vec::<Choice>::new(),
-        false,
+        None,
     )
 }
 
@@ -610,22 +610,22 @@ fn render_change(page: &Page, start: &Start, detail: &ChangeDetail) -> Response 
 
 // ------------------------------------------------------------------------------------ a page's difference
 
-struct SegmentView {
-    text: String,
-    marked: bool,
+pub(crate) struct SegmentView {
+    pub(crate) text: String,
+    pub(crate) marked: bool,
 }
 
-struct LineView {
-    removed: bool,
-    added: bool,
-    note: Option<String>,
-    segments: Vec<SegmentView>,
+pub(crate) struct LineView {
+    pub(crate) removed: bool,
+    pub(crate) added: bool,
+    pub(crate) note: Option<String>,
+    pub(crate) segments: Vec<SegmentView>,
 }
 
-struct HunkTpl {
-    heading: String,
-    raw: Option<String>,
-    lines: Vec<LineView>,
+pub(crate) struct HunkTpl {
+    pub(crate) heading: String,
+    pub(crate) raw: Option<String>,
+    pub(crate) lines: Vec<LineView>,
 }
 
 #[derive(Template)]
@@ -646,7 +646,7 @@ struct DiffTpl<'a> {
     current: LinkView,
 }
 
-fn hunk_view(t: T, hunk: &HunkView) -> HunkTpl {
+pub(crate) fn hunk_view(t: T, hunk: &HunkView) -> HunkTpl {
     match hunk {
         HunkView::Raw(text) => HunkTpl {
             heading: t.get(Key::DiffHunkPlain),
@@ -884,7 +884,7 @@ pub(crate) async fn at(
                     label: link.label,
                     href: link.href,
                 }],
-                false,
+                None,
             )
         }
     })

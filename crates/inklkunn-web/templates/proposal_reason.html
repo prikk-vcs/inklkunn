@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+{% if let Some(text) = problem %}<div class="form-problems" role="alert">
+<p>{{ text }}</p>
+</div>
+{% endif %}<p>{{ intro }}</p>
+<form method="post" action="{{ action }}" class="proposal-form">
+<div class="field">
+<label for="reason">{{ label }}</label>
+<textarea id="reason" name="{{ body_name }}" rows="5" cols="80">
+{{ text }}</textarea>
+</div>
+<p><button type="submit">{{ button }}</button></p>
+</form>
+<p><a href="{{ back.href }}">{{ back.label }}</a></p>
+{% endblock %}

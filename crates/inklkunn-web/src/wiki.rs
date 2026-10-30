@@ -96,6 +96,7 @@ pub(crate) struct Shell {
     pub(crate) about: String,
     pub(crate) verification: String,
     pub(crate) changes: String,
+    pub(crate) proposals: String,
     pub(crate) search: String,
     pub(crate) health: String,
     pub(crate) wikis: &'static str,
@@ -111,6 +112,7 @@ impl Shell {
             about: format!("{base}/-/about"),
             verification: format!("{base}/-/verification"),
             changes: format!("{base}/-/changes"),
+            proposals: crate::proposals::paths::list(wiki.slug.as_str()),
             search: format!("{base}/-/search"),
             health: format!("{base}/-/health"),
             front: base,
@@ -174,7 +176,14 @@ struct PageTpl<'a> {
     badge: Rich,
     history_href: String,
     banner: Option<Banner>,
-    propose: bool,
+    propose: Option<ProposeLinks>,
+}
+
+/// The ways to propose a change to a page, and to read what has been said about it.
+pub(crate) struct ProposeLinks {
+    pub(crate) change: Choice,
+    pub(crate) part: Choice,
+    pub(crate) talk: Choice,
 }
 
 /// What stands above a page that is not the page as it is now (a permalink, handoff 003 T5): sentences with
@@ -198,7 +207,7 @@ struct NoticeTpl<'a> {
     heading: String,
     paragraphs: Vec<String>,
     choices: Vec<Choice>,
-    propose: bool,
+    propose: Option<Choice>,
 }
 
 struct CheckView {
@@ -254,7 +263,7 @@ pub(crate) fn notice(
     heading: Key,
     paragraphs: Vec<String>,
     choices: Vec<Choice>,
-    propose: bool,
+    propose: Option<Choice>,
 ) -> Response {
     let shell = Shell::of(wiki);
     let page = &page.wiki_head(wiki, Subject::Wiki);
@@ -512,7 +521,10 @@ pub(crate) fn present(page: &Page, shown: Shown) -> Response {
                 page.get(Key::MissingInvite),
             ],
             Vec::new(),
-            true,
+            Some(Choice {
+                label: page.get(Key::ProposeNewPageLink),
+                href: crate::proposals::paths::new_page(wiki.slug.as_str(), Some(title.as_str())),
+            }),
         ),
         Shown::Ambiguous {
             wiki,
@@ -528,7 +540,7 @@ pub(crate) fn present(page: &Page, shown: Shown) -> Response {
                 .into_iter()
                 .map(|(label, href)| Choice { label, href })
                 .collect(),
-            false,
+            None,
         ),
         Shown::BrokenRedirect {
             wiki,
@@ -551,7 +563,7 @@ pub(crate) fn present(page: &Page, shown: Shown) -> Response {
                 Key::RedirectHeading,
                 vec![sentence],
                 Vec::new(),
-                false,
+                None,
             )
         }
         Shown::Unreadable { wiki, problem } => {
@@ -567,7 +579,7 @@ pub(crate) fn present(page: &Page, shown: Shown) -> Response {
                 Key::UnreadableHeading,
                 vec![sentence, page.get(Key::UnreadableAdvice)],
                 Vec::new(),
-                false,
+                None,
             )
         }
         Shown::NoSuchView { wiki, view } => notice(
@@ -577,7 +589,7 @@ pub(crate) fn present(page: &Page, shown: Shown) -> Response {
             Key::NoViewHeading,
             vec![t.msg(Key::NoViewBody).with("view", &view).text()],
             Vec::new(),
-            false,
+            None,
         ),
         Shown::InvalidTitle { wiki } => notice(
             page,
@@ -586,7 +598,7 @@ pub(crate) fn present(page: &Page, shown: Shown) -> Response {
             Key::InvalidTitleHeading,
             vec![page.get(Key::InvalidTitleBody)],
             Vec::new(),
-            false,
+            None,
         ),
         Shown::Unavailable { wiki } => with_retry_after(notice(
             page,
@@ -595,7 +607,7 @@ pub(crate) fn present(page: &Page, shown: Shown) -> Response {
             Key::UnavailableHeading,
             vec![page.get(Key::UnavailableBody)],
             Vec::new(),
-            false,
+            None,
         )),
     }
 }
@@ -672,7 +684,23 @@ pub(crate) fn found_with(
                 .text()
         }),
         history_href: crate::url::history_path(wiki.slug.as_str(), view_name, &heading, None),
-        propose: variant.banner.is_none(),
+        propose: variant.banner.is_none().then(|| {
+            let slug = wiki.slug.as_str();
+            ProposeLinks {
+                change: Choice {
+                    label: page.get(Key::PageProposeChange),
+                    href: crate::proposals::paths::change_page(slug, &view.meta.title, view_name),
+                },
+                part: Choice {
+                    label: page.get(Key::PageProposePart),
+                    href: crate::proposals::paths::choose_part(slug, &view.meta.title, view_name),
+                },
+                talk: Choice {
+                    label: page.get(Key::PageDiscussion),
+                    href: crate::proposals::paths::discussion(slug, &view.meta.title),
+                },
+            }
+        }),
         banner: variant.banner,
         heading,
         view_note: view_name.map(|v| t.msg(Key::WikiViewInUse).with("view", v).text()),

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+<p class="proposal-state"><strong>{{ state }}</strong></p>
+{% for n in notes %}<p>{{ n }}</p>
+{% endfor %}{% if let Some(s) = signed %}<p class="signed">{{ s.0 }}{% if let Some(link) = s.1 %} · <a href="{{ link.href }}">{{ link.label }}</a>{% endif %}</p>
+{% endif %}<ul class="proposal-facts">
+{% for f in facts %}<li>{{ f }}</li>
+{% endfor %}</ul>
+{% if !sources.is_empty() %}<section aria-labelledby="sources">
+<h2 id="sources">{{ sources_heading }}</h2>
+<ul>
+{% for s in sources %}<li>{{ s }}</li>
+{% endfor %}</ul>
+</section>
+{% endif %}{% if !actions.is_empty() || accept.is_some() %}<section aria-labelledby="actions">
+<h2 id="actions">{{ page.get(Key::ActionsHeading) }}</h2>
+<ul class="change-links">
+{% for a in actions %}<li><a href="{{ a.href }}">{{ a.label }}</a></li>
+{% endfor %}{% if let Some(a) = accept %}<li><form method="post" action="{{ a.action }}"><button type="submit">{{ a.button }}</button></form> <span class="note">{{ a.note }}</span></li>
+{% endif %}</ul>
+</section>
+{% endif %}<section aria-labelledby="changes">
+<h2 id="changes">{{ changes_heading }}</h2>
+{% if let Some(changes) = changes %}{% include "proposal_changes.html" %}{% endif %}</section>
+<section aria-labelledby="{{ thread_id }}">
+<h2 id="{{ thread_id }}">{{ thread_heading }}</h2>
+{% if let Some(text) = no_thread %}<p>{{ text }}</p>
+{% endif %}{% for c in thread %}{% include "proposal_comment.html" %}{% endfor %}{% if let Some(f) = comment_form %}<form method="post" action="{{ f.action }}" class="comment-form">
+{% for h in f.hidden %}<input type="hidden" name="{{ h.0 }}" value="{{ h.1 }}">
+{% endfor %}{% if let Some(text) = f.about %}<p>{{ text }}</p>
+{% endif %}<div class="field">
+<label for="{{ comment_id }}">{{ f.label }}</label>
+<textarea id="{{ comment_id }}" name="{{ f.body_name }}" rows="4" cols="80"></textarea>
+</div>
+<p><button type="submit">{{ f.button }}</button></p>
+</form>
+{% endif %}</section>
+<section aria-labelledby="decisions">
+<h2 id="decisions">{{ decisions_heading }}</h2>
+{% if let Some(text) = no_decisions %}<p>{{ text }}</p>
+{% endif %}{% for d in decisions %}<div class="decision">
+<p class="comment-head">{{ d.line }}</p>
+{% if let Some(note) = d.note %}<p class="note">{{ note }}</p>
+{% endif %}{% if !d.body.is_empty() %}<p class="comment-body">{{ d.body }}</p>
+{% endif %}</div>
+{% endfor %}{% if let Some(f) = decide %}<form method="post" action="{{ f.action }}" class="decide-form">
+<input type="hidden" name="{{ f.revision_name }}" value="{{ f.revision }}">
+<div class="field">
+<label for="decision-body">{{ f.label }}</label>
+<textarea id="decision-body" name="{{ f.body_name }}" rows="3" cols="80"></textarea>
+</div>
+<p><button type="submit" name="{{ f.op_name }}" value="{{ f.approve_op }}">{{ f.approve }}</button> <button type="submit" name="{{ f.op_name }}" value="{{ f.request_op }}">{{ f.request }}</button></p>
+</form>
+{% endif %}</section>
+<p><a href="{{ list.href }}">{{ list.label }}</a></p>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+<p>{{ intro }}</p>
+<p><a href="{{ whole.href }}">{{ whole.label }}</a></p>
+<section aria-labelledby="sections">
+<h2 id="sections">{{ sections_heading }}</h2>
+{% if sections.is_empty() %}<p>{{ no_sections }}</p>
+{% else %}<ul class="choices">
+{% for s in sections %}<li><a href="{{ s.href }}">{{ s.label }}</a></li>
+{% endfor %}</ul>
+{% endif %}</section>
+<section aria-labelledby="parts">
+<h2 id="parts">{{ parts_heading }}</h2>
+<ul class="choices">
+{% for p in parts %}<li><a href="{{ p.href }}">{{ p.label }}</a></li>
+{% endfor %}</ul>
+{% if let Some(text) = cut %}<p class="note">{{ text }}</p>
+{% endif %}</section>
+<p><a href="{{ back.href }}">{{ back.label }}</a></p>
+{% endblock %}

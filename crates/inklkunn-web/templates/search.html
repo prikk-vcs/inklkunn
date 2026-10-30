@@ -17,6 +17,6 @@
 {% endif %}</section>
 {% endif %}{% if let Some(offer) = create %}<section class="create-offer" aria-labelledby="create-heading">
 <h2 id="create-heading">{{ offer.heading }}</h2>
-<p><button type="button" disabled>{{ offer.label }}</button> {{ page.get(Key::PageProposeNote) }}</p>
+<p><a href="{{ offer.href }}">{{ offer.label }}</a></p>
 </section>
 {% endif %}{% endblock %}

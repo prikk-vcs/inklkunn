@@ -8,8 +8,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
+use inklkunn_core::proposal::{ProposalService, QuotaConfig};
 use inklkunn_core::read::ReadConfig;
-use inklkunn_core::{Authorizer, Inbox, ReadService, StoreAuthz, Verifier};
+use inklkunn_core::{Authorizer, Inbox, Notifier, ReadService, StoreAuthz, Verifier};
 use inklkunn_prikk::storage::PathRef;
 use inklkunn_prikk::{
     Change, Diff, ExtractBounds, FileMeta, History, HistoryBlock, Materialized, Operation, Patch,
@@ -619,6 +620,28 @@ pub fn assemble(
         )
         .with_clock(|| NOW),
     );
+    let notifier = Arc::new(
+        Notifier::new(
+            store.clone(),
+            store.clone(),
+            store.clone(),
+            store.clone(),
+            (*authorizer).clone(),
+        )
+        .with_clock(|| NOW),
+    );
+    let proposals = Arc::new(
+        ProposalService::new(
+            store.clone(),
+            store.clone(),
+            store.clone(),
+            (*authorizer).clone(),
+            read.clone(),
+            QuotaConfig::default(),
+        )
+        .with_notifier(notifier)
+        .with_clock(|| NOW),
+    );
     let services = Arc::new(Services {
         wikis: store.clone(),
         read,
@@ -626,6 +649,9 @@ pub fn assemble(
         authorizer,
         inbox,
         identity: Arc::new(AnonymousOnly),
+        proposals,
+        accounts: store.clone(),
+        acceptances: store.clone(),
         log: Arc::new(move |line| {
             sink.lock()
                 .unwrap_or_else(PoisonError::into_inner)
@@ -749,6 +775,186 @@ pub fn let_read(w: &World, account: &inklkunn_store::AccountId) {
             role: Role::Observer,
             granted_by: None,
             granted_at: NOW,
+        })
+        .unwrap();
+}
+
+/// A fixed account id for the tests of proposals: the `n`-th person.
+pub fn person(n: u8) -> inklkunn_store::AccountId {
+    inklkunn_store::AccountId::parse(&format!("019a0000-0000-7000-8000-0000000001{n:02x}")).unwrap()
+}
+
+/// Add the account `id`, named `name`, with `role` in the wiki (none: no role at all).
+pub fn add_person(
+    w: &World,
+    id: &inklkunn_store::AccountId,
+    name: &str,
+    role: Option<inklkunn_store::Role>,
+) {
+    use inklkunn_store::{Account, AccountStore, RoleGrant, RoleStore};
+    w.store
+        .add_account(&Account {
+            id: id.clone(),
+            display_name: DisplayName::new(name).unwrap(),
+            local: None,
+            created_at: NOW - 30 * 24 * 3600,
+            disabled: false,
+        })
+        .unwrap();
+    if let Some(role) = role {
+        w.store
+            .grant(RoleGrant {
+                account: id.clone(),
+                wiki: w.wiki.id.clone(),
+                role,
+                granted_by: None,
+                granted_at: NOW,
+            })
+            .unwrap();
+    }
+}
+
+/// One request to the application origin from `account` (the header the test identity reads), with a form
+/// body and the headers a form post from the site carries.
+pub async fn post_form(
+    w: &World,
+    uri: &str,
+    account: Option<&inklkunn_store::AccountId>,
+    fields: &[(&str, &str)],
+) -> Answer {
+    let body: String = fields
+        .iter()
+        .map(|(k, v)| {
+            format!(
+                "{}={}",
+                inklkunn_markup::percent_encode(k),
+                inklkunn_markup::percent_encode(v)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("&");
+    send_body(
+        w,
+        "POST",
+        uri,
+        account,
+        &[("sec-fetch-site", "same-origin")],
+        body,
+    )
+    .await
+}
+
+/// The same with the body as it is, and any extra headers.
+pub async fn send_body(
+    w: &World,
+    method: &str,
+    uri: &str,
+    account: Option<&inklkunn_store::AccountId>,
+    extra: &[(&str, &str)],
+    body: String,
+) -> Answer {
+    use tower::ServiceExt as _;
+    let mut req = axum::http::Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(axum::http::header::HOST, APP)
+        .header("content-type", "application/x-www-form-urlencoded");
+    if let Some(account) = account {
+        req = req.header("x-test-account", account.as_str());
+    }
+    for (k, v) in extra {
+        req = req.header(*k, *v);
+    }
+    let res = site(w)
+        .oneshot(req.body(axum::body::Body::from(body)).unwrap())
+        .await
+        .unwrap();
+    let (parts, body) = res.into_parts();
+    Answer {
+        status: parts.status,
+        headers: parts.headers,
+        bytes: axum::body::to_bytes(body, 1 << 26).await.unwrap().to_vec(),
+    }
+}
+
+/// The same wiki, repository and records served by services built again: a new session of the same server.
+pub fn fresh(w: &World) -> World {
+    let dir = TempDir::new("fresh");
+    let layout = RootLayout::new(dir.0.join("root"));
+    let storage: Arc<dyn Storage> = w.fake.clone();
+    let (services, audit, log) = assemble(storage, &w.store, layout);
+    with_accounts(World {
+        fake: w.fake.clone(),
+        store: w.store.clone(),
+        wiki: w.wiki.clone(),
+        services,
+        audit,
+        log,
+        _dir: dir,
+    })
+}
+
+/// `GET` from `account`.
+pub async fn get_as(w: &World, uri: &str, account: Option<&inklkunn_store::AccountId>) -> Answer {
+    match account {
+        Some(a) => request(w, APP, "GET", uri, &[("x-test-account", a.as_str())]).await,
+        None => get(w, uri).await,
+    }
+}
+
+/// A held proposal as the acceptance will leave it: the transition to accepted by `acceptor`, and a sealed
+/// acceptance record naming the change at version 2.
+pub fn accept_by_hand(
+    w: &World,
+    proposal: &inklkunn_store::ProposalId,
+    acceptor: &inklkunn_store::AccountId,
+    proposer: &inklkunn_store::AccountId,
+) {
+    use inklkunn_store::{
+        AcceptanceId, AcceptanceOutcome, AcceptanceRecord, AcceptanceResult, AcceptanceStore,
+        ProposalChange, ProposalOp, ProposalState, ProposalStore, ProposalTransition, Role,
+    };
+    w.store
+        .change_proposal(&ProposalChange {
+            transition: ProposalTransition {
+                proposal: proposal.clone(),
+                op: ProposalOp::Accept,
+                from: Some(ProposalState::HeldForReview),
+                to: ProposalState::Accepted,
+                actor: acceptor.clone(),
+                reason: None,
+                at: NOW,
+            },
+            text: None,
+            revision: None,
+            superseded_by: None,
+        })
+        .unwrap();
+    let id = AcceptanceId::new();
+    w.store
+        .begin_acceptance(&AcceptanceRecord {
+            id: id.clone(),
+            proposal: proposal.clone(),
+            revision: 1,
+            wiki: w.wiki.id.clone(),
+            view: "heads/main".to_owned(),
+            acceptor: acceptor.clone(),
+            acceptor_role: Role::Maintainer,
+            policy_version: "bootstrap".to_owned(),
+            proposer: proposer.clone(),
+            digest: "d".repeat(64),
+            bytes: 10,
+            created_at: NOW,
+        })
+        .unwrap();
+    w.store
+        .finish_acceptance(&AcceptanceResult {
+            acceptance: id,
+            outcome: AcceptanceOutcome::Sealed {
+                block_id: block_id(2),
+                patch_id: "a".repeat(64),
+            },
+            at: NOW,
         })
         .unwrap();
 }

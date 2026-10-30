@@ -155,12 +155,20 @@ async fn a_page_is_shown_with_one_main_heading_its_body_and_the_honest_badge() {
             .contains("Verification: <a href=\"/handbook/-/verification\">Not checked yet</a>")
     );
     assert!(!a.body.contains("Verified"));
-    // A proposal cannot be made yet: the affordance is there, disabled, and says why; no dead link.
+    // A proposal can be made: the ways in are links to the form, to the choice of a part and to the
+    // discussion, and nothing is disabled or leads nowhere.
     assert!(
         a.body
-            .contains("<button type=\"button\" disabled>Propose a change</button>")
+            .contains("<a href=\"/handbook/-/proposals/new?page=Home\">Propose a change</a>")
     );
-    assert!(a.body.contains("Proposals arrive with the next release."));
+    assert!(a.body.contains(
+        "<a href=\"/handbook/-/proposals/new?page=Home&#38;parts=1\">Propose a change to a section or a part</a>"
+    ));
+    assert!(
+        a.body
+            .contains("<a href=\"/handbook/-/discussion/Home\">Discussion</a>")
+    );
+    assert!(!a.body.contains("disabled"));
     assert!(!a.body.contains("/-/create"));
 }
 
@@ -268,7 +276,7 @@ async fn an_alias_a_redirect_and_a_near_title_say_how_the_reader_got_there() {
 }
 
 #[tokio::test]
-async fn a_missing_page_is_a_404_that_invites_and_offers_no_dead_link() {
+async fn a_missing_page_is_a_404_that_invites_and_leads_to_the_form_that_proposes_it() {
     let w = handbook();
     let a = get(&w, "/handbook/Not%20Written").await;
     assert_eq!(a.status, StatusCode::NOT_FOUND);
@@ -277,10 +285,10 @@ async fn a_missing_page_is_a_404_that_invites_and_offers_no_dead_link() {
         a.body
             .contains("No page in The Handbook has the title Not Written.")
     );
-    assert!(
-        a.body
-            .contains("<button type=\"button\" disabled>Propose a change</button>")
-    );
+    assert!(a.body.contains(
+        "<a href=\"/handbook/-/proposals/new?new=1&#38;title=Not%20Written\">Propose this page</a>"
+    ));
+    assert!(!a.body.contains("disabled"));
     assert_eq!(count(&a.body, "<h1"), 1);
 }
 

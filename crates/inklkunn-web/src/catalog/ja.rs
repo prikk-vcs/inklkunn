@@ -5,7 +5,7 @@
 //! English table's. The words are the glossary's (`docs/glossary.md`, section 2 and section 4); a test holds
 //! the two equal.
 
-use super::{Entry, msg};
+use super::{Entry, msg, plural_msg};
 
 /// The language's name in itself, for the switcher.
 pub const ENDONYM: &str = "日本語";
@@ -92,11 +92,6 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg("page.contents", "このページの内容"),
     msg("page.license", "ライセンス: {license}"),
-    msg("page.propose_disabled", "変更を提案する"),
-    msg(
-        "page.propose_note",
-        "提案の機能は、次のリリースで提供されます。",
-    ),
     // a page that is not there, or not one
     msg("missing.heading", "このページはまだありません"),
     msg(
@@ -963,4 +958,563 @@ pub const CATALOG: &[Entry] = &[
         "changes.machine_assisted_only",
         "機械の補助によるコンテンツ",
     ),
+    // proposals (handoff 004 T3): begin
+    msg("wiki.nav_proposals", "提案"),
+    msg("page.propose_change", "変更を提案する"),
+    msg("page.propose_part", "セクションや一部分への変更を提案する"),
+    msg("page.discussion", "ディスカッション"),
+    msg("propose.new_page_link", "このページを提案する"),
+    msg("state.draft", "下書き"),
+    msg("state.held", "レビュー待ちで保持中"),
+    msg("state.needs_revision", "修正が必要"),
+    msg("state.accepted", "受け入れ済み"),
+    msg("state.declined", "見送り済み"),
+    msg("state.withdrawn", "取り下げ済み"),
+    msg("state.superseded", "置き換え済み"),
+    msg(
+        "state_note.draft",
+        "下書きです。始めた本人だけが見られます。まだ誰にもレビューを依頼していません。",
+    ),
+    msg(
+        "state_note.held",
+        "ウィキサービスはこの提案をレビュー待ちとして保持しています。権限のある人が提案を履歴に取り込むまで、ページには何も反映されません。",
+    ),
+    msg(
+        "state_note.needs_revision",
+        "この提案は、履歴に取り込む前に {author} さんによる修正が必要です。",
+    ),
+    msg(
+        "state_note.accepted",
+        "受け入れ済み: 権限のある人がこの提案を履歴に取り込みました。",
+    ),
+    msg(
+        "state_note.declined",
+        "見送り済み: 権限のある人が、この提案を履歴に取り込まないと判断しました。",
+    ),
+    msg(
+        "state_note.withdrawn",
+        "提案者が取り下げました。記録として残してあります。",
+    ),
+    msg(
+        "state_note.superseded",
+        "置き換え済み: 後から出された提案がこの提案に代わります。",
+    ),
+    msg(
+        "proposal.superseded_by",
+        "{proposal} に置き換えられました。",
+    ),
+    msg("proposal.another", "別の提案"),
+    msg(
+        "proposal.reason_declined",
+        "{person} さんがこの提案を見送りました。理由: {reason}",
+    ),
+    msg(
+        "proposal.reason_withdrawn",
+        "{person} さんがこの提案を取り下げました。理由: {reason}",
+    ),
+    msg(
+        "proposal.reason_asked",
+        "{person} さんが修正を求めました。理由: {reason}",
+    ),
+    msg("outcome.signed", "署名して履歴に記録済み"),
+    msg("outcome.overlap", "停止: 変更が重なっています"),
+    msg("outcome.not_allowed", "許可されていません"),
+    msg("outcome.busy", "ウィキは混み合っています"),
+    msg("outcome.recovery", "ウィキの復旧が必要です"),
+    msg("outcome.refused", "拒否: {limit}"),
+    msg("outcome.refused_heading", "拒否されました"),
+    msg("outcome_note.signed", "提案は履歴に取り込まれました。"),
+    msg(
+        "outcome_note.overlap",
+        "同じ箇所に別の変更が入っていました。何も変更していません。提案者に修正をお願いし、両方の文面を提案のページに表示します。",
+    ),
+    msg(
+        "outcome_note.not_allowed",
+        "このウィキでのあなたの役割には、提案を受け入れる権限がありません。何も変更していません。",
+    ),
+    msg(
+        "outcome_note.busy",
+        "別の変更を履歴に記録している最中です。何も変更していません。しばらくしてからもう一度お試しください。",
+    ),
+    plural_msg(
+        "outcome_note.busy_depth",
+        "あなたの前に {count} 件の受け入れが待っています。",
+        "あなたの前に {count} 件の受け入れが待っています。",
+    ),
+    msg(
+        "outcome_note.recovery",
+        "ウィキは中断後の確認を行っています。読むことはできますが、確認が終わるまで変更はできません。",
+    ),
+    msg("accept.heading", "受け入れはまだ利用できません"),
+    msg(
+        "accept.not_yet",
+        "このサーバーは、まだ提案を履歴に取り込めません。",
+    ),
+    msg(
+        "accept.not_yet_kept",
+        "提案はレビュー待ちのままで、何も変更していません。",
+    ),
+    msg(
+        "accept.not_yet_note",
+        "このサーバーでは、受け入れはまだ利用できません。",
+    ),
+    msg("quota.open_proposals", "未決の提案が多すぎます"),
+    msg("quota.revisions", "1 つの提案の修正が多すぎます"),
+    msg("quota.accepted_bytes", "本日受け入れられた文章が多すぎます"),
+    msg("quota.hour_person", "直近 1 時間に出した提案が多すぎます"),
+    msg(
+        "quota.hour_wiki",
+        "直近 1 時間にこのウィキで出された提案が多すぎます",
+    ),
+    msg("quota.queue", "待機中の受け入れが多すぎます"),
+    msg(
+        "quota.counts",
+        "上限は {allowed} です。現在の数は {current} で、今回の要求は {asked} です。",
+    ),
+    msg("quota.reset_at", "{when} にリセットされます。"),
+    msg(
+        "quota.reset_proposal_closes",
+        "あなたの未決の提案のどれかが、受け入れ・見送り・取り下げ・置き換えのいずれかになるとリセットされます。",
+    ),
+    msg(
+        "quota.reset_queue",
+        "待機中の受け入れの順番が来るか、取りやめになるとリセットされます。",
+    ),
+    msg(
+        "quota.reset_never_revisions",
+        "待っても解消しません。この提案はこれ以上修正できません。新しい提案を出してください。",
+    ),
+    msg(
+        "quota.reset_never_too_big",
+        "待っても解消しません。この量は上限を超えています。もっと小さくしてください。",
+    ),
+    msg("size.mib", "{amount} MiB"),
+    msg("size.kib", "{amount} KiB"),
+    msg("size.bytes", "{amount} バイト"),
+    msg("needs_account.heading", "提案にはアカウントが必要です"),
+    msg(
+        "needs_account.body",
+        "サインインしていません。変更の提案、コメント、レビューにはアカウントが必要です。",
+    ),
+    msg(
+        "needs_account.advice",
+        "アカウントの作り方は、このサーバーの管理者にお尋ねください。",
+    ),
+    msg(
+        "refused.not_allowed",
+        "このウィキでのあなたの役割には、この操作が含まれていません。何も変更していません。",
+    ),
+    msg("refused.not_now_heading", "今はできません"),
+    msg("refused.invalid_heading", "保存できませんでした"),
+    msg(
+        "refused.not_in_this_state",
+        "この提案は「{state}」の状態なので、今はこの操作はできません。",
+    ),
+    msg(
+        "refused.already_decided",
+        "この修正にはすでに判断を記録しています。判断は変更できません。次の修正であらためて判断してください。",
+    ),
+    msg(
+        "refused.stale_revision",
+        "この提案には新しい修正（{latest} 番）があります。読み直して、そちらについて判断してください。",
+    ),
+    msg(
+        "refused.superseder",
+        "「{state}」の提案は、別の提案に代わることはできません。",
+    ),
+    msg(
+        "refused.changed",
+        "作業している間に提案が変更されました。読み直してから、もう一度お試しください。",
+    ),
+    msg(
+        "invalid.incomplete",
+        "フォームの内容が不完全でした。ページからもう一度開いて、お試しください。",
+    ),
+    msg(
+        "invalid.form_too_large",
+        "送信された内容が、フォームで扱える大きさを超えています。",
+    ),
+    msg(
+        "invalid.summary_missing",
+        "何をなぜ変更したのかを、短く書いてください。",
+    ),
+    msg(
+        "invalid.summary_too_long",
+        "要約が {limit} 文字を超えています。",
+    ),
+    msg(
+        "invalid.summary_not_one_line",
+        "要約は、改行を含まない 1 行の文章にしてください。",
+    ),
+    msg("invalid.too_many_sources", "出典は {limit} 件までです。"),
+    msg(
+        "invalid.bad_source",
+        "出典は 1 行で、空でなく、{limit} バイト以内にしてください。",
+    ),
+    msg(
+        "invalid.nothing_proposed",
+        "文章がページと同じです。先に変更してから送信してください。",
+    ),
+    msg(
+        "invalid.too_large",
+        "1 つの提案で扱える文章は、合計で {limit} までです。",
+    ),
+    msg(
+        "invalid.page_too_large",
+        "1 ページで扱える文章は {limit} までです。",
+    ),
+    msg(
+        "invalid.reason_missing",
+        "理由が必要です。やさしい言葉で、次にできることも書いてください。",
+    ),
+    msg("invalid.reason_too_long", "理由が {limit} を超えています。"),
+    msg("invalid.comment_empty", "コメントには文章が必要です。"),
+    msg(
+        "invalid.comment_too_long",
+        "コメントが {limit} を超えています。",
+    ),
+    msg("title.proposals", "提案 · {wiki} · {product}"),
+    msg("proposals.heading", "提案"),
+    msg(
+        "proposals.intro",
+        "{wiki} への変更はここで提案され、ほかの人に読まれ、権限のある人によって履歴に取り込まれます。",
+    ),
+    msg("proposals.empty", "まだ提案はありません。"),
+    msg("proposals.new_page", "新しいページを提案する"),
+    msg("proposals.drafts", "あなたの下書き"),
+    msg("proposals.open", "未決の提案"),
+    msg("proposals.closed", "決着済みの提案"),
+    msg("proposals.row_by", "提案者: {author} · 最終更新 {when}"),
+    msg("proposal.no_summary", "（要約はまだありません）"),
+    msg("proposals.back", "提案の一覧へ戻る"),
+    msg("proposal.back", "提案へ戻る"),
+    msg("person.unknown", "ある方"),
+    msg(
+        "title.propose_parts",
+        "{page} の変更箇所を選ぶ · {wiki} · {product}",
+    ),
+    msg("parts.heading", "{page} の変更箇所を選ぶ"),
+    msg(
+        "parts.intro",
+        "ページ全体、1 つのセクション、または 1 つの部分への変更を提案できます。",
+    ),
+    msg("parts.whole", "ページ全体"),
+    msg("parts.sections_heading", "セクション"),
+    msg("parts.parts_heading", "部分"),
+    msg("parts.no_sections", "このページには見出しがありません。"),
+    msg("parts.section_label", "セクション: {heading}"),
+    msg("parts.part_label", "部分 {number}: {excerpt}"),
+    msg("parts.cut", "最初の {limit} 件のみ表示しています。"),
+    msg("parts.back", "{page} へ戻る"),
+    msg(
+        "title.propose_page",
+        "{page} への変更を提案する · {wiki} · {product}",
+    ),
+    msg(
+        "title.propose_new",
+        "新しいページを提案する · {wiki} · {product}",
+    ),
+    msg(
+        "title.propose_revise",
+        "提案を修正する · {wiki} · {product}",
+    ),
+    msg("propose.heading_page", "{page} への変更を提案する"),
+    msg("propose.heading_new", "新しいページを提案する"),
+    msg("propose.heading_revise", "この提案を修正する"),
+    msg(
+        "propose.intro",
+        "文章を編集し、何をなぜ変更したのかを書いて、レビューに送ってください。権限のある人があなたの提案を履歴に取り込むまで、ウィキは変わりません。",
+    ),
+    msg("propose.scope_whole", "ページ全体を変更します。"),
+    msg(
+        "propose.scope_section",
+        "1 つのセクションを変更します: {part}",
+    ),
+    msg("propose.scope_part", "1 つの部分を変更します: {part}"),
+    msg("propose.choose", "別のセクションや部分を選ぶ"),
+    msg("propose.label_text", "{title} の文章"),
+    msg("propose.label_section", "{title} のこのセクションの文章"),
+    msg("propose.label_part", "{title} のこの部分の文章"),
+    msg("propose.label_title", "新しいページのタイトル"),
+    msg(
+        "propose.title_hint",
+        "スラッシュを使うと、ページをグループに入れられます。例: Guides/Setup",
+    ),
+    msg("propose.new_page_name", "新しいページ"),
+    msg("propose.label_summary", "何をなぜ（{limit} 文字まで）"),
+    msg(
+        "propose.summary_hint",
+        "1 行で書いてください。例: 最初の会合の日付を訂正。",
+    ),
+    msg("propose.label_sources", "出典（1 行に 1 件、省略可）"),
+    msg("propose.sources_hint", "変更の裏付けとなるリンクや文献。"),
+    msg("propose.preview", "プレビュー"),
+    msg("propose.show_changes", "変更点を表示"),
+    msg("propose.save_draft", "下書きとして保存"),
+    msg("propose.submit", "送信"),
+    msg("propose.submit_revision", "修正を送信"),
+    msg(
+        "propose.saved",
+        "下書きを保存しました。あなただけが見られます。",
+    ),
+    msg("propose.problems", "先に次の点を直してください"),
+    msg("propose.continue_draft", "下書きの続きを書く"),
+    msg("propose.removed_note", "この提案は {title} を削除します。"),
+    msg("propose.preview_heading", "{title} のプレビュー"),
+    msg(
+        "propose.preview_note",
+        "あなたの文章はこのように表示されます。まだ何も保存されていません。",
+    ),
+    msg("propose.suggestions", "改善の提案"),
+    msg(
+        "propose.front_unreadable",
+        "ページ先頭の情報が読み取れません。各行は「名前」「コロン」「値」の形にしてください。",
+    ),
+    msg(
+        "propose.front_owned",
+        "ページ先頭の {keys} の行は、このウィキの管理者だけが変更できます。",
+    ),
+    msg(
+        "propose.title_empty",
+        "タイトルは空にできません。スラッシュで区切った各部分も空にできません。",
+    ),
+    msg(
+        "propose.title_reserved",
+        "タイトルの一部をドット 1 つや 2 つだけにすることはできません。",
+    ),
+    msg("propose.title_too_long", "タイトルの一部が長すぎます。"),
+    msg(
+        "propose.title_too_deep",
+        "タイトルが長すぎるか、部分が多すぎます。",
+    ),
+    msg(
+        "propose.title_taken",
+        "{title} というタイトルのページはすでにあります。代わりにそのページへの変更を提案してください。",
+    ),
+    msg("changes.proposal_heading", "変更内容"),
+    msg(
+        "changes.proposal_none",
+        "文章がいまのページと同じです。提案する変更はありません。",
+    ),
+    msg("changes.page_heading", "ページ: {title}"),
+    msg("changes.status_added", "新しいページです。"),
+    msg("changes.status_removed", "このページは削除されます。"),
+    msg("changes.status_modified", "このページは変更されます。"),
+    msg("changes.info_heading", "ページ先頭の情報"),
+    msg("changes.part_changed", "部分 {number} が変更されます"),
+    msg("changes.part_added", "部分 {number} が追加されます"),
+    msg("changes.part_removed", "部分 {number} が削除されます"),
+    plural_msg(
+        "changes.unchanged_parts",
+        "{count} 件の部分は変更されません。",
+        "{count} 件の部分は変更されません。",
+    ),
+    msg("title.proposal", "提案: {summary} · {wiki} · {product}"),
+    msg("proposal.proposed_by", "提案者: {author}、{when}。"),
+    plural_msg(
+        "proposal.pages",
+        "変更するページ: {count} 件。",
+        "変更するページ: {count} 件。",
+    ),
+    msg(
+        "proposal.revision",
+        "{total} 件中の {number} 番目の修正です。",
+    ),
+    msg("proposal.view", "ビュー {view} に対する提案です。"),
+    msg("proposal.sources_heading", "出典"),
+    msg("proposal.signed_change", "変更を見る"),
+    msg("proposal.actions_heading", "できること"),
+    msg("action.continue", "編集を続ける"),
+    msg("action.revise", "この提案を修正する"),
+    msg("action.withdraw", "この提案を取り下げる"),
+    msg("action.ask", "修正を求める"),
+    msg("action.decline", "この提案を見送る"),
+    msg("action.accept", "受け入れる"),
+    msg("thread.heading", "ディスカッション"),
+    msg("thread.none", "まだコメントはありません。"),
+    msg("comment.meta", "{when} · 修正 {number} について"),
+    msg("comment.on_part", "{title} の部分 {number} について"),
+    msg(
+        "comment.orphaned",
+        "孤立したコメント: このコメントの対象だった {title} の部分は、提案から無くなっています。対象だった文章:",
+    ),
+    msg("comment.on_this_part", "部分 {number} にコメントする"),
+    msg("comment.reply", "{author} さんに返信する"),
+    msg("comment_form.label", "コメントを書く"),
+    msg("comment_form.button", "コメントする"),
+    msg(
+        "comment_form.about_part",
+        "このコメントは {title} の部分 {number} についてです。",
+    ),
+    msg(
+        "comment_form.reply_to",
+        "このコメントは {author} さんへの返信です。",
+    ),
+    msg("decisions.heading", "判断"),
+    msg("decisions.none", "まだ判断したレビュアーはいません。"),
+    msg(
+        "decision.approved",
+        "{reviewer} さんが承認しました（修正 {number} について）。",
+    ),
+    msg(
+        "decision.requested",
+        "{reviewer} さんが変更を求めました（修正 {number} について）。",
+    ),
+    msg(
+        "decision.older",
+        "この後に新しい修正が書かれました。この判断は、受け入れの条件としてはもう数えられません。",
+    ),
+    msg("decide.label", "判断に添えるメモ（省略可）"),
+    msg("decide.approve", "この修正を承認する"),
+    msg("decide.request", "変更を求める"),
+    msg("title.decline", "提案を見送る · {wiki} · {product}"),
+    msg("title.withdraw", "提案を取り下げる · {wiki} · {product}"),
+    msg("title.ask", "修正を求める · {wiki} · {product}"),
+    msg("reason.decline_heading", "この提案を見送る"),
+    msg(
+        "reason.decline_intro",
+        "提案者の労をねぎらい、履歴に取り込まない理由と、次にできることを書いてください。提案者に伝わり、提案を読む人全員に理由が表示されます。",
+    ),
+    msg("reason.decline_button", "見送る"),
+    msg("reason.withdraw_heading", "この提案を取り下げる"),
+    msg(
+        "reason.withdraw_intro",
+        "提案を取り下げる理由を書いてください。提案は記録として残り、読む人全員に理由が表示されます。",
+    ),
+    msg("reason.withdraw_button", "取り下げる"),
+    msg("reason.ask_heading", "修正を求める"),
+    msg(
+        "reason.ask_intro",
+        "何をなぜ直す必要があるのかを書いて、提案者が次に何をすればよいか分かるようにしてください。提案者に伝わり、新しい修正を送れます。",
+    ),
+    msg("reason.ask_button", "修正を求める"),
+    msg("reason.label", "理由"),
+    msg(
+        "title.discussion",
+        "{page} のディスカッション · {wiki} · {product}",
+    ),
+    msg("discussion.heading", "{page} のディスカッション"),
+    msg(
+        "discussion.intro",
+        "このページについてこれまでに語られたこと。ページを変更する提案と、それぞれのディスカッションです。",
+    ),
+    msg(
+        "discussion.empty",
+        "このページを変更する提案はまだありません。",
+    ),
+    msg(
+        "discussion.cut",
+        "新しい {limit} 件の提案のみ確認しました。",
+    ),
+    msg("discussion.page", "{page} を読む"),
+    msg("discussion.propose", "このページへの変更を提案する"),
+    msg(
+        "lint.bom",
+        "{guideline}: テキストの先頭にバイトオーダーマークがあります。",
+    ),
+    msg(
+        "lint.crlf",
+        "{guideline}: このページの改行は CR LF です。LF をおすすめします。",
+    ),
+    msg(
+        "lint.newline",
+        "{guideline}: テキストの末尾に改行がありません。",
+    ),
+    msg(
+        "lint.tabs",
+        "{guideline}: コード以外でタブ文字が使われています。空白をおすすめします。",
+    ),
+    msg(
+        "lint.no_info",
+        "{guideline}: ページ先頭に情報がありません。タイトルを書くと、ページを持ち運びやすくなります。",
+    ),
+    msg(
+        "lint.no_title",
+        "{guideline}: ページ先頭の情報にタイトルがありません。",
+    ),
+    msg(
+        "lint.coerced",
+        "{guideline}: ページ先頭の値が、意図と異なる種類の値として読まれました。",
+    ),
+    msg(
+        "lint.list",
+        "{guideline}: ページ先頭の値のうち、文字列の一覧であるべきものが一覧になっていません。",
+    ),
+    msg(
+        "lint.status",
+        "{guideline}: ページ先頭の状態が、推奨されている値ではありません。",
+    ),
+    msg(
+        "lint.redirect",
+        "{guideline}: このページはリダイレクトですが、移動先のページが書かれていません。",
+    ),
+    msg(
+        "lint.visibility",
+        "{guideline}: ページ先頭の公開範囲が、公開・内部・制限のどれでもありません。",
+    ),
+    msg(
+        "lint.secret",
+        "{guideline}: ページ先頭に、秘密情報のように見える名前があります。ページは秘密を書く場所ではありません。",
+    ),
+    msg(
+        "lint.duplicate_id",
+        "{guideline}: ページ内の 2 つの部分が同じ識別子を持っています。",
+    ),
+    msg(
+        "lint.unclosed",
+        "{guideline}: 開いたコンテナが閉じられていません。",
+    ),
+    msg(
+        "lint.callout",
+        "{guideline}: 注意書きの種類が、よく使われるものではありません。",
+    ),
+    msg(
+        "lint.container",
+        "{guideline}: このウィキが知らない名前のコンテナがあります。",
+    ),
+    msg(
+        "lint.heading_top",
+        "{guideline}: ページが最上位の見出しを使っているか、見出しの段階を飛ばしています。",
+    ),
+    msg(
+        "lint.heading_dup",
+        "{guideline}: 同じ文面の見出しが 2 つあり、リンク先の名前が重なります。",
+    ),
+    msg(
+        "lint.tags",
+        "{guideline}: タグの書き方が一般的な形ではありません。",
+    ),
+    msg(
+        "lint.empty_label",
+        "{guideline}: ラベルが空のリンクがあります。",
+    ),
+    msg(
+        "lint.empty_target",
+        "{guideline}: 行き先のないリンクがあります。",
+    ),
+    msg(
+        "lint.missing_part_ref",
+        "{guideline}: このページ内の部分へのリンクが、存在しない部分を指しています。",
+    ),
+    msg(
+        "lint.prefix",
+        "{guideline}: リンクが、このウィキで使われない接頭辞で場所を指しています。",
+    ),
+    msg(
+        "lint.order",
+        "{guideline}: リンクが複数のページを指しうるため、いちばん近いページが選ばれます。",
+    ),
+    msg(
+        "lint.dangling",
+        "{guideline}: まだ存在しないページへのリンクがあります。",
+    ),
+    msg(
+        "lint.ambiguous",
+        "{guideline}: リンクが複数のページに当てはまり、どれも近くありません。",
+    ),
+    msg(
+        "lint.other",
+        "{guideline}: このテキストについて、リンターからの提案があります。",
+    ),
+    // proposals (handoff 004 T3): end
 ];

@@ -143,6 +143,6 @@ pub(crate) async fn watch(
         heading,
         vec![text],
         vec![back, inbox],
-        false,
+        None,
     )
 }

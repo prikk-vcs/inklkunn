@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+<p>{{ intro }}</p>
+<p><a href="{{ page_link.href }}">{{ page_link.label }}</a></p>
+{% if let Some(link) = propose %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
+{% endif %}{% if let Some(text) = empty %}<p>{{ text }}</p>
+{% endif %}{% for d in discussed %}<section class="discussed">
+<h2><a href="{{ d.heading.href }}">{{ d.heading.label }}</a></h2>
+<p class="note">{{ d.state }}</p>
+{% for c in d.comments %}{% include "proposal_comment.html" %}{% endfor %}</section>
+{% endfor %}{% if let Some(text) = cut %}<p class="note">{{ text }}</p>
+{% endif %}{% endblock %}

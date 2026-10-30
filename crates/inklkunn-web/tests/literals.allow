@@ -20,6 +20,11 @@ scope :: headers.rs :: * :: header names and values, policy directives and the c
 scope :: lang.rs :: * :: the cookie and header names, the addresses a language switch never copies, and the cookie's format; it builds no sentence
 scope :: routes.rs :: * :: the route registry: paths, methods and the public reasons written for the reviewer of the route table; no response carries them, and no handler is defined here
 
+scope :: fields.rs :: * :: the names of a proposal's form fields, their values and the query parameters of its entry points (RFC 004 D-2): code a form and a handler agree on, no sentence a reader sees
+scope :: paths.rs :: * :: the addresses of a wiki's proposals, all under the reserved prefix: path patterns and the names of the acts at their ends; no sentence a reader sees
+
+scope :: lints.rs :: * :: the stable codes of the linter's findings and the catalog key each is said with; no sentence a reader sees
+
 # --- pages.rs: the handlers and the layout's data
 exact :: pages.rs :: /-/lang :: the address of the language page, which every switcher form posts to
 exact :: pages.rs :: version :: a placeholder name of a catalog message
@@ -231,3 +236,65 @@ exact :: watch.rs :: namespace :: the value of a form field: data, not a sentenc
 exact :: watch.rs :: unwatch :: the value of a form field: data, not a sentence
 exact :: watch.rs :: title :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
 exact :: watch.rs :: a watch could not be recorded: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+
+# --- proposals (handoff 004 T3)
+exact :: list.rs :: author :: a placeholder name of a catalog message
+exact :: list.rs :: when :: a placeholder name of a catalog message
+exact :: list.rs :: drafts :: the id of a section of the list, which its heading names
+exact :: list.rs :: open :: the id of a section of the list, which its heading names
+exact :: list.rs :: closed :: the id of a section of the list, which its heading names
+exact :: list.rs :: -/proposals :: the path of a surface of the wiki, for its canonical link
+exact :: list.rs :: wiki :: a placeholder name of a catalog message
+exact :: list.rs :: number :: a placeholder name of a catalog message
+exact :: list.rs :: page :: a placeholder name of a catalog message
+exact :: list.rs :: limit :: a placeholder name of a catalog message
+exact :: new.rs :: title :: a placeholder name of a catalog message
+exact :: new.rs :: part :: a placeholder name of a catalog message
+exact :: new.rs :: page :: a placeholder name of a catalog message
+exact :: new.rs :: wiki :: a placeholder name of a catalog message
+exact :: new.rs :: limit :: a placeholder name of a catalog message
+exact :: new.rs :: heads/ :: the prefix of a view's full name in the repository
+exact :: new.rs :: a page could not be read for a proposal: {cause} :: a line for the operator's log; no response carries it
+exact :: new.rs :: the tip's ids are not state and block ids :: the operator's text for a base that could not be made (no response carries it)
+exact :: new.rs :: heading :: a placeholder name of a catalog message
+exact :: new.rs :: number :: a placeholder name of a catalog message
+exact :: new.rs :: excerpt :: a placeholder name of a catalog message
+exact :: parts.rs :: {before}{new}{after} :: the format that puts an edited part back into its page: code, no sentence
+exact :: render.rs :: limit :: a placeholder name of a catalog message
+exact :: render.rs :: c{index} :: the id of a page among the changes, which its heading names
+exact :: render.rs :: {page_id}-info :: the id of a part among the changes, which its heading names
+exact :: render.rs :: {page_id}-p{k} :: the id of a part among the changes, which its heading names
+exact :: render.rs :: number :: a placeholder name of a catalog message
+exact :: render.rs :: title :: a placeholder name of a catalog message
+exact :: render.rs :: {index}-{ordinal} :: the value of the query parameter that names a part
+exact :: review.rs :: decisions :: the id of the section of decisions, which a redirect points to
+exact :: review.rs :: wiki :: a placeholder name of a catalog message
+exact :: show.rs :: when :: a placeholder name of a catalog message
+exact :: show.rs :: number :: a placeholder name of a catalog message
+exact :: show.rs :: author :: a placeholder name of a catalog message
+exact :: show.rs :: title :: a placeholder name of a catalog message
+exact :: show.rs :: person :: a placeholder name of a catalog message
+exact :: show.rs :: reason :: a placeholder name of a catalog message
+exact :: show.rs :: proposal :: a placeholder name of a catalog message
+exact :: show.rs :: total :: a placeholder name of a catalog message
+exact :: show.rs :: heads/ :: the prefix of a view's full name in the repository
+exact :: show.rs :: view :: a placeholder name of a catalog message
+exact :: show.rs :: reviewer :: a placeholder name of a catalog message
+exact :: show.rs :: summary :: a placeholder name of a catalog message
+exact :: show.rs :: wiki :: a placeholder name of a catalog message
+exact :: submit.rs :: keys :: a placeholder name of a catalog message
+exact :: submit.rs :: title :: a placeholder name of a catalog message
+exact :: submit.rs :: preview-{i} :: the id of a preview, which its heading names
+exact :: submit.rs :: guideline :: a placeholder name of a catalog message
+exact :: words.rs :: amount :: a placeholder name of a catalog message
+exact :: words.rs :: when :: a placeholder name of a catalog message
+exact :: words.rs :: limit :: a placeholder name of a catalog message
+exact :: words.rs :: allowed :: a placeholder name of a catalog message
+exact :: words.rs :: current :: a placeholder name of a catalog message
+exact :: words.rs :: asked :: a placeholder name of a catalog message
+exact :: words.rs :: state :: a placeholder name of a catalog message
+exact :: words.rs :: latest :: a placeholder name of a catalog message
+exact :: words.rs :: view :: a placeholder name of a catalog message
+exact :: proposals.rs :: wiki `{}`: {line} :: a line for the operator's log; no response carries it
+exact :: proposals.rs :: a proposal's base could not be read now: {cause} :: a line for the operator's log; no response carries it
+exact :: proposals.rs :: the proposal records could not be used: {cause} :: a line for the operator's log; no response carries it

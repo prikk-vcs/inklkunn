@@ -1,8 +1,7 @@
 //! The search page (RFC 003 D-8; requirements RD-9, NAV-5): titles and aliases, found by any part of them with
 //! width variants, diacritics and case folded; results with the text that matched; and, when no page has the
-//! title that was searched for, **the pages with similar titles first and then the offer to create it**,
-//! disabled: nobody can create a page until proposals arrive (RFC 004), and a link to a form that does not
-//! exist would be a dead end.
+//! title that was searched for, **the pages with similar titles first and then the offer to create it**: a link
+//! to the form that proposes a new page with that title (RFC 004 D-2).
 //!
 //! **A snippet is the author's text, escaped.** What matched is a title or an alias, which a person wrote:
 //! the segments the read service returns are plain text, each is HTML-escaped here, the matching part is
@@ -71,6 +70,7 @@ struct SearchTpl<'a> {
 struct CreateOffer {
     heading: String,
     label: String,
+    href: String,
 }
 
 fn hit_views(
@@ -130,6 +130,7 @@ fn render_search(
             create = Some(CreateOffer {
                 heading: page.get(Key::SearchCreateHeading),
                 label: t.msg(Key::SearchCreate).with("title", &o.query).text(),
+                href: crate::proposals::paths::new_page(wiki.slug.as_str(), Some(&o.query)),
             });
         }
     } else {

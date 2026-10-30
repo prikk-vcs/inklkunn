@@ -16,6 +16,7 @@
 mod common;
 mod dom;
 mod past_states;
+mod proposal_states;
 mod rules;
 mod wiki_states;
 
@@ -187,8 +188,10 @@ const ENGLISH: &[(&str, &str)] = &[];
 const JAPANESE: &[(&str, &str)] = &[("cookie", "inklkunn_lang=ja")];
 
 /// How many of the states above are pages.
-const EXPECTED_PAGES: usize =
-    VISITS.len() + wiki_states::SCENARIOS.len() + past_states::SCENARIOS.len();
+const EXPECTED_PAGES: usize = VISITS.len()
+    + wiki_states::SCENARIOS.len()
+    + past_states::SCENARIOS.len()
+    + proposal_states::count();
 
 async fn build_states(extra: &[(&str, &str)]) -> Out {
     let router = router();
@@ -238,6 +241,7 @@ async fn build_states(extra: &[(&str, &str)]) -> Out {
         }
     }
     wiki_states::build(extra, &mut out).await;
+    proposal_states::build(extra, &mut out).await;
     out
 }
 

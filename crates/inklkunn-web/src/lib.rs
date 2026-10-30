@@ -13,6 +13,7 @@
 //! - [`lang`]: which language a request wants, the cookie that remembers it, where a switch returns to.
 //! - [`pages`]: the layout, the language page and the notices; the extractor every page handler asks for.
 //! - [`style`]: the one stylesheet, served under a fingerprinted name.
+//! - [`proposals`]: the proposal form, the proposal's page and its review, a page's discussion (RFC 004; handoff 004 T3).
 //! - [`api`]: the read API under `/{slug}/-/api/v1/` and its OpenAPI description, generated from the route table.
 
 pub mod api;
@@ -30,6 +31,7 @@ pub mod origin;
 pub mod pages;
 mod present;
 mod probe;
+pub mod proposals;
 mod raw;
 pub mod routes;
 mod search;

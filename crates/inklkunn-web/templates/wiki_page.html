@@ -21,6 +21,10 @@
 <p>{{ license }}</p>
 <p class="badge">{{ badge }}</p>
 <p><a href="{{ history_href }}">{{ page.get(Key::PageLinkHistory) }}</a></p>
-{% if propose %}<p><button type="button" disabled>{{ page.get(Key::PageProposeDisabled) }}</button> {{ page.get(Key::PageProposeNote) }}</p>
+{% if let Some(p) = propose %}<ul class="propose-links change-links">
+<li><a href="{{ p.change.href }}">{{ p.change.label }}</a></li>
+<li><a href="{{ p.part.href }}">{{ p.part.label }}</a></li>
+<li><a href="{{ p.talk.href }}">{{ p.talk.label }}</a></li>
+</ul>
 {% endif %}</div>
 {% endblock %}
