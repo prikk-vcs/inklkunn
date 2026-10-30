@@ -682,3 +682,32 @@ Follow-ups from the review of 2026-10-31 (handoff 003, S2 – S4).
   `inklkunn-corpus merge-fixture`, which refuses to write if its replay of the generator differs from the report) and yield
   exactly 99 clean merges and 21 overlaps, the same verdict as the spike's own model on every pair. `tools/corpus` now
   measures with the product function (a workspace path edge to `inklkunn-core`) and reports the hook's count.
+- **Handoff 004 T1: store schema 9, the proposal records.** Explicit migration from 8, tested on a copy built from
+  `MIGRATIONS` up to 8 (and the migrated schema is compared with a fresh one): proposals, their revisions, the log of every
+  transition, comments (with their anchors: a block's `^id`, or a quote selector and an ordinal), reviewers' decisions,
+  acceptances and their results, intents and their completions, the wiki's lease holder, watches and inbox events. New ids
+  are UUID v7 (`CommentId`, `DecisionId`, `AcceptanceId`, `IntentId`, `InboxEventId`). **Revisions, transitions, comments,
+  decisions, acceptances, acceptance results, intents and intent completions are written once, in the database itself**:
+  triggers abort an `UPDATE`, a `DELETE` and an `INSERT` over a key already taken, counting every unique key of a table (a
+  replacing insert on the decisions' second key, one per reviewer per revision, removes a row without firing a delete
+  trigger). The memory store refuses the same writes through the trait; one suite runs on both. An acceptance and an intent
+  end by a second record, so nothing is updated; a retry of an accept of the same revision finds the pending or sealed
+  record and starts nothing (CON-6), and a failed one does not stand in the way. **A draft is its author's alone, in the
+  store**: every read takes the viewer, and a proposal that was never submitted (a withdrawn draft included) is absent to
+  anyone else; it is a working copy replaced by each save and turned into revision 1 by the submission, so saving does not
+  use up the revision quota.
+- **Handoff 004 T1: `inklkunn_core::proposal`.** Create (the base from `Storage::views` through the read service: the
+  view's state id and the block it belongs to), save and resume a draft, submit, revise, comment, decide (one per
+  reviewer per revision, on the latest), ask for a revision, decline, withdraw, supersede, and the reads. **The state
+  machine** (`proposal::machine`) names every transition and every other is refused (`NotInThisState`). Every act is
+  authorized first through `authorize()` (propose on each page touched, comment, review, accept); only an account acts;
+  a proposal of another wiki is as absent as one that does not exist. Refusals are typed (`ProposalError`) and carry no
+  path or text; the glossary words arrive with the pages (T3). **Quotas** (`QuotaConfig`, the RFC's defaults, halved for
+  an account in its first week): open proposals, revisions per proposal, proposals per hour per principal and per wiki,
+  accepted bytes per day, the acceptance queue; a refusal names the limit and carries the allowed value, the current
+  one, what was asked and when it resets (rolling windows). **Participation metrics** (`proposal::metrics`) are computed
+  from the records alone: proposals by state, medians to the first review and to a decision, acceptance and decline
+  rates, distinct and first-time proposers, reviewers per proposal; drafts are in no figure and a proposer's decision on
+  her own proposal is not a review. Tests: one invariant suite per record family on both stores; every sequence of up to
+  four acts (three on SQLite) held to the state machine; every quota at its boundary; drafts invisible to other accounts;
+  reopen persistence; the metrics against a hand count.

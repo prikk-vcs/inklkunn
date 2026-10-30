@@ -17,6 +17,8 @@
 //!   harness that holds the number of prikk calls to a bound.
 //! - [`check`]: the verification check (RFC 003 D-5): `verify` run on request, its outcome recorded as the
 //!   wiki's last verification, and a check that could not run kept apart from a verdict.
+//! - [`proposal`]: the proposal as a record with a life (RFC 004 D-1, D-3, D-8, D-10, D-11): the service, the
+//!   state machine with every transition named, the quotas and the participation metrics (handoff 004 T1).
 //! - [`bundle`] and [`wiki`]: the repository layout (external design CT-02) and *create wiki*, which is
 //!   kill-safe (a creation mark and a start-up sweep).
 //! - [`merge`](mod@merge): the content-level three-way merge (RFC 004 D-5): frontmatter key by key, body block by block,
@@ -33,6 +35,7 @@ pub mod egress;
 pub mod export;
 pub mod import;
 pub mod merge;
+pub mod proposal;
 pub mod read;
 pub mod reconcile;
 pub mod routes;
@@ -60,6 +63,10 @@ pub use inklkunn_signer::{
     Rotation, Signer, SignerConfig, SignerError, SupersededKey,
 };
 pub use merge::{LineLevel, MergeOutcome, MergedPage, Overlap, PageRef, PageText, Place, merge};
+pub use proposal::{
+    BaseSource, Invalid, Metrics, NewComment, Period, ProposalEdit, ProposalError, ProposalService,
+    QuotaConfig, QuotaLimit, QuotaRefusal, Quotas, Reset,
+};
 pub use read::{
     Calls, Cause, CountingStorage, Found, Lookup, PageOutcome, PageView, Presentation, ReadConfig,
     ReadError, ReadService, SafeHtml, Sanitizer, Tip, TitleIndex,

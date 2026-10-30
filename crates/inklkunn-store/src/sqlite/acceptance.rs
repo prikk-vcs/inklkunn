@@ -134,18 +134,15 @@ impl AcceptanceStore for SqliteStore {
             let tx = conn
                 .transaction_with_behavior(TransactionBehavior::Immediate)
                 .map_err(backend)?;
-            if !probe(&tx, "SELECT 1 FROM wikis WHERE id = ?1", &[a.wiki.as_str()])?
-                || !Self::proposal_known(&tx, &a.proposal)?
-                || !tx
-                    .query_row(
-                        "SELECT 1 FROM proposal_revisions WHERE proposal_id = ?1 AND seq = ?2",
-                        params![a.proposal.as_str(), a.revision],
-                        |_| Ok(()),
-                    )
-                    .optional()
-                    .map_err(backend)?
-                    .is_some()
-            {
+            // The revision is looked up by its number as text: a column of integer affinity compares it as a number.
+            let known = probe(&tx, "SELECT 1 FROM wikis WHERE id = ?1", &[a.wiki.as_str()])?
+                && Self::proposal_known(&tx, &a.proposal)?
+                && probe(
+                    &tx,
+                    "SELECT 1 FROM proposal_revisions WHERE proposal_id = ?1 AND seq = ?2",
+                    &[a.proposal.as_str(), &a.revision.to_string()],
+                )?;
+            if !known {
                 return Err(StoreError::NotFound);
             }
             for who in [&a.acceptor, &a.proposer] {

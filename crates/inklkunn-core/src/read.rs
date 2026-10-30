@@ -68,7 +68,7 @@ mod tip;
 mod api;
 
 #[cfg(test)]
-mod testing;
+pub(crate) mod testing;
 
 use std::collections::HashMap;
 use std::path::Path;
