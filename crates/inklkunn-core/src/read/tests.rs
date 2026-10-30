@@ -34,5 +34,6 @@ mod flags;
 mod history;
 mod pinned;
 mod rollback;
+mod preview;
 mod safety;
 mod stale;

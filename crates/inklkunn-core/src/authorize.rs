@@ -142,6 +142,15 @@ impl Principal {
         Principal::System(SystemPrincipal { label })
     }
 
+    /// The account behind the principal, if it is one: what a surface needs to say whose a draft is, without
+    /// being able to name (and so to build) an account principal.
+    pub fn account_id(&self) -> Option<&AccountId> {
+        match self {
+            Principal::Account(a) => Some(&a.id),
+            Principal::Anonymous | Principal::System(_) => None,
+        }
+    }
+
     /// The audit name: `anonymous`, `account:<id>` or `system:<label>`.
     pub fn audit_name(&self) -> String {
         match self {
