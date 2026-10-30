@@ -32,5 +32,6 @@ mod counts;
 mod failures;
 mod history;
 mod pinned;
+mod rollback;
 mod safety;
 mod stale;

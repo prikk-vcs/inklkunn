@@ -84,6 +84,20 @@ impl Fake {
         s.snapshots.insert(version, files);
     }
 
+    /// Write some files and remove others in one block: the tip moves once (a change that moves a page).
+    pub(crate) fn change_files(&self, write: &[(String, String)], remove: &[&str]) {
+        let mut s = self.state();
+        for (path, text) in write {
+            s.files.insert(path.clone(), text.as_bytes().to_vec());
+        }
+        for path in remove {
+            s.files.remove(*path);
+        }
+        s.version += 1;
+        let (version, files) = (s.version, s.files.clone());
+        s.snapshots.insert(version, files);
+    }
+
     pub(crate) fn set_bytes(&self, path: &str, bytes: &[u8]) {
         let mut s = self.state();
         s.files.insert(path.to_owned(), bytes.to_vec());

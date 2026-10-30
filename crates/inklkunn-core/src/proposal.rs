@@ -35,6 +35,7 @@ use crate::read::{ReadError, ReadService};
 pub mod machine;
 pub mod metrics;
 pub mod quota;
+pub mod rollback;
 
 pub use machine::{Illegal, TRANSITIONS};
 pub use metrics::{Metrics, Period, Ratio};
@@ -576,6 +577,19 @@ impl ProposalService {
         view: Option<&str>,
         edit: ProposalEdit,
     ) -> Result<ProposalRecord> {
+        self.create_as(principal, wiki, view, edit, None)
+    }
+
+    /// [`ProposalService::create`], and, for a rollback (`undoes` is the block it undoes), the note that it
+    /// is one, written in the same step as the proposal.
+    fn create_as(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+        edit: ProposalEdit,
+        undoes: Option<&str>,
+    ) -> Result<ProposalRecord> {
         let author = account_of(principal)?;
         self.allow_pages(principal, wiki, &edit.touched())?;
         let view = view.unwrap_or(&wiki.default_view).to_owned();
@@ -614,8 +628,14 @@ impl ProposalService {
             reason: None,
             at: now,
         };
-        self.proposals
-            .create_proposal(&record, &content, &created)?;
+        match undoes {
+            Some(undoes) => self
+                .proposals
+                .create_rollback_proposal(&record, &content, &created, undoes)?,
+            None => self
+                .proposals
+                .create_proposal(&record, &content, &created)?,
+        }
         Ok(record)
     }
 

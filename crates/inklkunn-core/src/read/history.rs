@@ -844,6 +844,24 @@ impl ReadService {
         })))
     }
 
+    /// The change in the view's history with this block id, as the held log describes it (no `show`): `None`
+    /// when the view's history has no such block. What a rollback is planned from.
+    pub(super) fn change_info(
+        &self,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+        block_id: &str,
+    ) -> Result<Option<ChangeInfo>, ReadError> {
+        if !is_block_id(block_id) {
+            return Ok(None);
+        }
+        let tip = self.tip(wiki, view)?;
+        let Some((window, at)) = self.find_block(wiki, &tip, block_id)? else {
+            return Ok(None);
+        };
+        Ok(window.blocks.get(at).cloned())
+    }
+
     /// The change in the view's history with this block id, and what it did: one `show` (the log window it is
     /// found in is held per tip).
     pub fn change(
