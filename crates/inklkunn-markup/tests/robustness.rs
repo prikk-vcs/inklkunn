@@ -14,7 +14,7 @@
 use std::time::{Duration, Instant};
 
 use inklkunn_markup::frontmatter::{YamlError, parse_yaml};
-use inklkunn_markup::{LintContext, NoLinks, Page, lint, render_html, scan};
+use inklkunn_markup::{LintContext, NoLinks, Page, blocks, lint, render_html, scan};
 use proptest::prelude::*;
 
 /// No single run may take longer than this, whatever the machine (a hang guard, not a performance claim).
@@ -68,6 +68,7 @@ fn linear(label: &str, n: usize, build: impl Fn(usize) -> String, work: impl Fn(
 
 fn everything(text: &str) {
     let _ = scan(text);
+    let _ = blocks(text);
     let _ = render_html(text, &NoLinks);
     if let Ok(page) = Page::parse(text) {
         let _ = lint(&page, text, LintContext::default());
@@ -188,6 +189,40 @@ fn many_keys_headings_tags_and_block_ids_are_linear() {
     );
 }
 
+#[test]
+fn the_block_segmentation_is_linear() {
+    linear(
+        "paragraphs",
+        20_000,
+        |n| "para ^id\n\n".repeat(n),
+        |t| assert!(blocks(t).len() >= 20_000),
+    );
+    linear(
+        "containers opened and never closed",
+        10_000,
+        |n| "::: note\ntext\n\n".repeat(n),
+        |t| assert_eq!(blocks(t).len(), 1),
+    );
+    linear(
+        "containers opened and closed",
+        10_000,
+        |n| "::: note\ntext\n:::\n\n".repeat(n),
+        |t| assert!(blocks(t).len() >= 10_000),
+    );
+    linear(
+        "references the parser consumes",
+        10_000,
+        |n| (0..n).map(|i| format!("[r{i}]: /u\n\n")).collect(),
+        |t| assert!(blocks(t).len() >= 10_000),
+    );
+    linear(
+        "trailers after lists and tables",
+        5_000,
+        |n| "- item\n\n^l\n\n| a |\n|---|\n| 1 |\n^t\n\n".repeat(n),
+        |t| assert!(blocks(t).len() >= 10_000),
+    );
+}
+
 /// Three pages that include each other as a generated body says.
 struct Trio(Vec<String>);
 
@@ -285,5 +320,41 @@ proptest! {
     ) {
         let text: String = text.concat();
         everything(&text);
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(256))]
+
+    /// Whatever the text is, the blocks are in order, do not overlap, are trimmed, say what they hold, and
+    /// leave only whitespace between them: a merge that carries blocks and gaps carries every character.
+    #[test]
+    fn blocks_tile_the_body_whatever_it_is(
+        text in proptest::collection::vec(
+            prop_oneof![
+                Just("::: note\n"), Just(":::\n"), Just("```\n"), Just("~~~\n"), Just("<!--"), Just("-->"),
+                Just("^id"), Just(" ^id\n"), Just("\n"), Just("\n\n"), Just("- "), Just("> "), Just("| a |\n|-|\n"),
+                Just("# "), Just("[r]: /u\n"), Just("text"), Just("é"), Just("編"), Just("\r\n"), Just("    "),
+                Just("[^n]: n\n"), Just("---\n"), Just("\t"), Just("\u{feff}"), Just("\u{2028}"),
+            ],
+            0..80,
+        )
+    ) {
+        let body: String = text.concat();
+        let found = blocks(&body);
+        let mut end = 0usize;
+        for b in &found {
+            prop_assert!(b.range.start >= end);
+            prop_assert!(body.get(end..b.range.start).is_some_and(|gap| gap.trim().is_empty()));
+            prop_assert_eq!(body.get(b.range.clone()), Some(b.text));
+            prop_assert_eq!(b.text, b.text.trim());
+            prop_assert!(!b.text.is_empty());
+            if let Some(id) = b.id {
+                let marked = format!("^{id}");
+                prop_assert!(b.text.contains(&marked));
+            }
+            end = b.range.end;
+        }
+        prop_assert!(body.get(end..).is_some_and(|t| t.trim().is_empty()));
     }
 }

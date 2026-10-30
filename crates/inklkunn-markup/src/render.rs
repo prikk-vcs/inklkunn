@@ -27,7 +27,7 @@ use pulldown_cmark::{CowStr, Event, HeadingLevel, Parser, Tag, TagEnd, html};
 
 use crate::anchor::{Anchors, github_anchor};
 use crate::scan::{self, FragmentKind, Link, ScanOptions};
-use crate::structure::{Structure, level_u8, options};
+use crate::structure::{ContainerLine, Hidden, Structure, container_marker, level_u8, options};
 use crate::text::{LineIndex, escape_href, escape_html, href_is_allowed, sl};
 
 mod blocks;
@@ -459,21 +459,8 @@ fn escape_author_html<'a>(
 /// their line breaks): the renderer's own HTML, as distinct from whatever the page's author typed.
 fn containers_pre_pass(body: &str) -> (String, Vec<Range<usize>>) {
     let structure = Structure::of(body);
-    let mut hidden: Vec<Range<usize>> = structure
-        .code
-        .iter()
-        .chain(&structure.html)
-        .cloned()
-        .collect();
-    hidden.sort_by_key(|r| (r.start, r.end));
     // Lines come in offset order, so one cursor over the sorted ranges answers every line in all linear time.
-    let mut cursor = 0usize;
-    let mut is_hidden = |offset: usize| {
-        while hidden.get(cursor).is_some_and(|r| r.end <= offset) {
-            cursor += 1;
-        }
-        hidden.get(cursor).is_some_and(|r| r.contains(&offset))
-    };
+    let mut hidden = Hidden::of(&structure);
     let mut out = String::with_capacity(body.len() + 64);
     let mut written: Vec<Range<usize>> = Vec::new();
     let mut stack: Vec<&'static str> = Vec::new();
@@ -483,13 +470,12 @@ fn containers_pre_pass(body: &str) -> (String, Vec<Range<usize>>) {
         offset += line.len();
         let content = line.trim_end_matches(['\n', '\r']);
         let first_non_space = line_start + (content.len() - content.trim_start().len());
-        if is_hidden(line_start) || is_hidden(first_non_space) {
+        if hidden.contains(line_start) || hidden.contains(first_non_space) {
             out.push_str(line);
             continue;
         }
-        if let Some(rest) = content.strip_prefix(":::") {
-            let rest_trim = rest.trim_start_matches([' ', '\t']);
-            if rest_trim.trim().is_empty() {
+        if let Some((marker, rest_trim)) = container_marker(content) {
+            if marker == ContainerLine::Close {
                 if let Some(closer) = stack.pop() {
                     let from = out.len();
                     out.push('\n');
@@ -500,7 +486,7 @@ fn containers_pre_pass(body: &str) -> (String, Vec<Range<usize>>) {
                     written.push(from..out.len());
                     continue;
                 }
-            } else if rest_trim.starts_with(|c: char| c.is_ascii_alphabetic()) {
+            } else {
                 let name_end = rest_trim
                     .char_indices()
                     .find(|(_, c)| !(c.is_alphanumeric() || *c == '_' || *c == '-'))

@@ -121,3 +121,50 @@ fn a_repeated_key_is_named_by_line_and_rule_and_never_by_the_key() {
         "{text}"
     );
 }
+
+#[test]
+fn locate_tiles_the_head_of_the_text_the_way_split_reads_it() {
+    let text = "\u{feff}---\ntitle: A\n---\n\nBody\n";
+    let l = locate(text).unwrap();
+    assert_eq!(text.get(l.open.clone()), Some("\u{feff}---\n"));
+    assert_eq!(text.get(l.yaml.clone()), Some("title: A\n"));
+    assert_eq!(text.get(l.close.clone()), Some("---\n"));
+    let (yaml, body, _) = split(text);
+    assert_eq!(text.get(l.yaml), yaml);
+    assert_eq!(text.get(l.close.end..), Some(body));
+    assert_eq!(locate("No frontmatter\n"), None);
+    assert_eq!(locate("---\nunclosed\n"), None);
+    // A closing fence at the very end of the file has no line break.
+    let l = locate("---\na: 1\n...").unwrap();
+    assert_eq!(l.close, 9..12);
+}
+
+#[test]
+fn entries_cut_a_mapping_at_its_top_level_keys() {
+    let yaml = "# a comment\ntitle: A\ntags:\n  - one\n  - two\n\nnote: |\n  line\n  more\nid: 7\n";
+    let found = entries(yaml).unwrap();
+    let keys: Vec<&str> = found.iter().map(|e| e.key.as_str()).collect();
+    assert_eq!(keys, ["", "title", "tags", "note", "id"]);
+    assert_eq!(
+        found.get(2).map(|e| e.text),
+        Some("tags:\n  - one\n  - two\n\n")
+    );
+    // The entries join to the text.
+    assert_eq!(found.iter().map(|e| e.text).collect::<String>(), yaml);
+    assert_eq!(entries("").unwrap(), []);
+}
+
+#[test]
+fn entries_refuse_what_the_parser_does_not_read_as_a_mapping() {
+    assert_eq!(entries("- a\n- b\n"), None);
+    assert_eq!(entries("title: A\ntitle: B\n"), None);
+    assert_eq!(entries("a: &x 1\n"), None);
+    assert_eq!(entries("just text\n"), None);
+}
+
+#[test]
+fn entries_unquote_keys_and_keep_nested_keys_in_their_entry() {
+    let found = entries("\"quoted key\": 1\next:\n  inner: 2\n").unwrap();
+    let keys: Vec<&str> = found.iter().map(|e| e.key.as_str()).collect();
+    assert_eq!(keys, ["quoted key", "ext"]);
+}

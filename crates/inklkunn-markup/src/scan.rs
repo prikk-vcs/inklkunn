@@ -616,7 +616,7 @@ fn heading_text<'a>(masked_line: &str, raw_line: &'a str) -> Option<(u8, &'a str
 }
 
 /// `(?:^|(?<=[ \t]))\^([A-Za-z0-9][A-Za-z0-9_-]*)[ \t]*$` → the id and the byte offset of the `^`.
-fn block_id(line: &str) -> Option<(&str, usize)> {
+pub(crate) fn block_id(line: &str) -> Option<(&str, usize)> {
     let trimmed = line.trim_end_matches([' ', '\t']);
     let caret = trimmed.rfind('^')?;
     if caret > 0 && !matches!(byte(trimmed, caret - 1), b' ' | b'\t') {

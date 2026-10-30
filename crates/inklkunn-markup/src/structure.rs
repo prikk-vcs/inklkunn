@@ -90,6 +90,64 @@ impl Structure {
     }
 }
 
+/// The regions of a body in which Layer 2 line syntax (a container's `:::`) is not syntax: code and HTML. A
+/// cursor over the sorted regions answers every question about a line in all linear time, provided the
+/// offsets come in increasing order.
+pub(crate) struct Hidden {
+    ranges: Vec<Range<usize>>,
+    cursor: usize,
+}
+
+impl Hidden {
+    pub(crate) fn of(structure: &Structure) -> Self {
+        let mut ranges: Vec<Range<usize>> = structure
+            .code
+            .iter()
+            .chain(&structure.html)
+            .cloned()
+            .collect();
+        ranges.sort_by_key(|r| (r.start, r.end));
+        Hidden { ranges, cursor: 0 }
+    }
+
+    /// Is `offset` inside code or HTML? Offsets must not decrease between calls.
+    pub(crate) fn contains(&mut self, offset: usize) -> bool {
+        while self
+            .ranges
+            .get(self.cursor)
+            .is_some_and(|r| r.end <= offset)
+        {
+            self.cursor += 1;
+        }
+        self.ranges
+            .get(self.cursor)
+            .is_some_and(|r| r.contains(&offset))
+    }
+}
+
+/// What a container line is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ContainerLine {
+    /// `::: name key=value`: opens a container.
+    Open,
+    /// `:::` alone: closes the innermost open one (and is text when none is open).
+    Close,
+}
+
+/// Is the line (without its line break) a container marker? The text after the `:::` is returned with its
+/// leading blanks removed.
+pub(crate) fn container_marker(content: &str) -> Option<(ContainerLine, &str)> {
+    let rest = content.strip_prefix(":::")?;
+    let rest_trim = rest.trim_start_matches([' ', '\t']);
+    if rest_trim.trim().is_empty() {
+        Some((ContainerLine::Close, rest_trim))
+    } else if rest_trim.starts_with(|c: char| c.is_ascii_alphabetic()) {
+        Some((ContainerLine::Open, rest_trim))
+    } else {
+        None
+    }
+}
+
 pub(crate) fn level_u8(level: pulldown_cmark::HeadingLevel) -> u8 {
     use pulldown_cmark::HeadingLevel::*;
     match level {

@@ -6,6 +6,7 @@
 //! (wiki-commons corpus case 013).
 
 use std::collections::BTreeSet;
+use std::ops::Range;
 
 use serde_json::json;
 
@@ -203,6 +204,109 @@ pub fn split(text: &str) -> (Option<&str>, &str, usize) {
     }
     // An opening fence with no closing one is not frontmatter: the page is body only.
     (None, text, 1)
+}
+
+/// Where the parts of a page's frontmatter are in the file, as byte ranges that tile the head of the text:
+/// `open`, `yaml` and `close` follow each other, and the body starts at `close.end`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Layout {
+    /// The byte-order mark, if any, and the opening `---` line with its line break.
+    pub open: Range<usize>,
+    /// The lines between the fences.
+    pub yaml: Range<usize>,
+    /// The closing `---` (or `...`) line with its line break, if it has one.
+    pub close: Range<usize>,
+}
+
+/// Locate the frontmatter of `text` with the same rule as [`split`]. `None` when the file has none; the body
+/// then starts after the byte-order mark, if there is one.
+pub fn locate(text: &str) -> Option<Layout> {
+    let bom = text.len() - text.strip_prefix('\u{feff}').unwrap_or(text).len();
+    let rest = text.get(bom..)?;
+    let mut lines = rest.split_inclusive('\n');
+    let first = lines.next()?;
+    if first.trim_end() != "---" {
+        return None;
+    }
+    let yaml_start = bom + first.len();
+    let mut offset = yaml_start;
+    for line in lines {
+        if line.trim_end() == "---" || line.trim_end() == "..." {
+            return Some(Layout {
+                open: 0..yaml_start,
+                yaml: yaml_start..offset,
+                close: offset..offset + line.len(),
+            });
+        }
+        offset += line.len();
+    }
+    None
+}
+
+/// One top-level key of a frontmatter mapping with the lines it owns: its own line, the lines nested under
+/// it, and the comments and blank lines after them up to the next key. Text before the first key (comments,
+/// blank lines) is an entry of its own whose key is empty.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Entry<'a> {
+    /// The key, unquoted; empty for the text before the first key.
+    pub key: String,
+    /// The lines, as written, with their line breaks. The entries of a frontmatter join to its text.
+    pub text: &'a str,
+}
+
+/// Cut a frontmatter mapping into its top-level entries without parsing it a second time: the parser decides
+/// what the keys are ([`parse_yaml`]), and the lines that start them are found and checked against it. `None`
+/// when `yaml` is not a mapping in the subset, or when the lines do not agree with the parser about the keys
+/// (the caller then treats the frontmatter as one unit).
+pub fn entries(yaml: &str) -> Option<Vec<Entry<'_>>> {
+    let Value::Map(keys) = parse_yaml(yaml).ok()? else {
+        return None;
+    };
+    let mut starts: Vec<(usize, String)> = Vec::new();
+    let mut top: Option<usize> = None;
+    let mut offset = 0;
+    for raw in yaml.split_inclusive('\n') {
+        let at = offset;
+        offset += raw.len();
+        let line = strip_comment(raw.trim_end_matches(['\n', '\r']));
+        if line.trim().is_empty() {
+            continue;
+        }
+        let indent = line.len() - line.trim_start().len();
+        let top = *top.get_or_insert(indent);
+        if indent != top {
+            continue;
+        }
+        let body = line.trim_start();
+        if body == "-" || body.starts_with("- ") {
+            return None;
+        }
+        let (k, _) = key_split(body)?;
+        starts.push((at, unquote_key(k)));
+    }
+    if !starts
+        .iter()
+        .map(|(_, k)| k)
+        .eq(keys.iter().map(|(k, _)| k))
+    {
+        return None;
+    }
+    let mut out = Vec::with_capacity(starts.len() + 1);
+    let first = starts.first().map_or(yaml.len(), |(at, _)| *at);
+    if first > 0 {
+        out.push(Entry {
+            key: String::new(),
+            text: yaml.get(..first)?,
+        });
+    }
+    for (i, (at, key)) in starts.iter().enumerate() {
+        let end = starts.get(i + 1).map_or(yaml.len(), |(next, _)| *next);
+        out.push(Entry {
+            key: key.clone(),
+            text: yaml.get(*at..end)?,
+        });
+    }
+    Some(out)
 }
 
 struct Line<'a> {

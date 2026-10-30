@@ -16,6 +16,8 @@
 //! - [`path`]: where does a page with this title live under `pages/`?
 //! - [`render`]: what HTML does this page become? (Block identifiers as `id` attributes, transclusion to
 //!   depth two with cycles refused, and the vocabulary of everything it may write.)
+//! - [`segment`]: which top-level blocks does a body have, and what are their `^id`s? (What the content-level
+//!   merge compares.)
 //! - [`lint`](mod@lint): what could be better, as a suggestion, never a blocker (AUTH-13)?
 
 pub mod anchor;
@@ -25,6 +27,7 @@ pub mod path;
 pub mod render;
 pub mod resolve;
 pub mod scan;
+pub mod segment;
 pub(crate) mod structure;
 pub(crate) mod text;
 
@@ -38,6 +41,7 @@ pub use render::{
 };
 pub use resolve::{Index, PageEntry, Resolution, Via, resolve};
 pub use scan::{Link, ScanOptions, ScanReport, scan, scan_with};
+pub use segment::{Block, BlockKind, blocks};
 pub use text::{
     ALLOWED_SCHEMES, escape_href, escape_html, href_is_allowed, nfc_trim, normalize, percent_encode,
 };
