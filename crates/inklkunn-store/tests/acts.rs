@@ -124,6 +124,8 @@ fn the_suite(store: &(impl ActStore + ProposalStore + WikiStore + AccountStore))
         store.begin_system_act(&act(&WikiId::new(), SystemActKind::Import, 1)),
         Err(StoreError::NotFound)
     );
+    assert_eq!(store.open_system_act(&a1.id).unwrap(), Some(a1.clone()));
+    assert_eq!(store.open_system_act(&SystemActId::new()).unwrap(), None);
     let open = store.system_acts(&w.id).unwrap();
     assert_eq!(
         open.iter().map(|e| &e.act).collect::<Vec<_>>(),
@@ -140,6 +142,11 @@ fn the_suite(store: &(impl ActStore + ProposalStore + WikiStore + AccountStore))
         at: 52,
     };
     store.finish_system_act(&sealed).unwrap();
+    assert_eq!(
+        store.open_system_act(&a1.id).unwrap(),
+        None,
+        "an act that has ended is not open"
+    );
     assert_eq!(
         store.finish_system_act(&SystemActEnd {
             outcome: AcceptanceOutcome::Failed {

@@ -5,7 +5,7 @@ use std::sync::{MutexGuard, PoisonError};
 use crate::acts::{
     ActStore, OverlapRecord, RecoveryFlag, SystemActEnd, SystemActEntry, SystemActRecord,
 };
-use crate::record::{ProposalId, WikiId};
+use crate::record::{ProposalId, SystemActId, WikiId};
 use crate::{Result, StoreError};
 
 use super::MemoryStore;
@@ -96,6 +96,14 @@ impl ActStore for MemoryStore {
         }
         d.ends.push(end.clone());
         Ok(())
+    }
+
+    fn open_system_act(&self, id: &SystemActId) -> Result<Option<SystemActRecord>> {
+        let d = self.acts_lock();
+        if d.ends.iter().any(|e| e.act == *id) {
+            return Ok(None);
+        }
+        Ok(d.acts.iter().find(|a| a.id == *id).cloned())
     }
 
     fn system_acts(&self, wiki: &WikiId) -> Result<Vec<SystemActEntry>> {

@@ -231,6 +231,24 @@ impl ActStore for SqliteStore {
         })
     }
 
+    fn open_system_act(&self, id: &SystemActId) -> Result<Option<SystemActRecord>> {
+        self.with(|conn| {
+            let found = conn
+                .query_row(
+                    &format!(
+                        "SELECT {ACT_COLUMNS} FROM system_acts a \
+                         LEFT JOIN system_act_ends e ON e.act_id = a.id \
+                         WHERE a.id = ?1 AND e.act_id IS NULL"
+                    ),
+                    params![id.as_str()],
+                    row_to_act,
+                )
+                .optional()
+                .map_err(backend)?;
+            Ok(found.map(|e| e.act))
+        })
+    }
+
     fn system_acts(&self, wiki: &WikiId) -> Result<Vec<SystemActEntry>> {
         self.with(|conn| {
             let mut stmt = conn

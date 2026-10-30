@@ -6,7 +6,7 @@ use crate::acceptance::{
     AcceptanceBegin, AcceptanceEntry, AcceptanceOutcome, AcceptanceRecord, AcceptanceResult,
     AcceptanceStore, IntentCompletion, IntentEntry, IntentRecord, LeaseHolder, SealedAcceptance,
 };
-use crate::record::{AccountId, ProposalId, WikiId};
+use crate::record::{AcceptanceId, AccountId, ProposalId, WikiId};
 use crate::{Result, StoreError};
 
 use super::MemoryStore;
@@ -98,6 +98,26 @@ impl AcceptanceStore for MemoryStore {
             .filter(|a| a.proposal == *proposal && a.revision == revision)
             .map(|a| d.entry(a))
             .collect())
+    }
+
+    fn pending_acceptance(
+        &self,
+        id: &AcceptanceId,
+    ) -> Result<Option<(AcceptanceRecord, IntentRecord)>> {
+        let d = self.acceptances_lock();
+        let Some(a) = d.acceptances.iter().find(|a| a.id == *id) else {
+            return Ok(None);
+        };
+        if d.results.iter().any(|r| r.acceptance == *id) {
+            return Ok(None);
+        }
+        let Some(i) = d.intents.iter().find(|i| i.acceptance == *id) else {
+            return Ok(None);
+        };
+        if d.completions.iter().any(|c| c.intent == i.id) {
+            return Ok(None);
+        }
+        Ok(Some((a.clone(), i.clone())))
     }
 
     fn sealed_acceptances(&self, wiki: &WikiId) -> Result<Vec<SealedAcceptance>> {

@@ -229,6 +229,38 @@ impl AcceptanceStore for SqliteStore {
         self.with(|conn| entries_of(conn, proposal, revision))
     }
 
+    fn pending_acceptance(
+        &self,
+        id: &AcceptanceId,
+    ) -> Result<Option<(AcceptanceRecord, IntentRecord)>> {
+        self.with(|conn| {
+            let found = conn
+                .query_row(
+                    &format!(
+                        "SELECT {ACCEPTANCE_COLUMNS} FROM acceptances a \
+                         LEFT JOIN acceptance_results r ON r.acceptance_id = a.id \
+                         WHERE a.id = ?1 AND r.acceptance_id IS NULL"
+                    ),
+                    params![id.as_str()],
+                    row_to_entry,
+                )
+                .optional()
+                .map_err(backend)?;
+            let Some(entry) = found else {
+                return Ok(None);
+            };
+            let intent = conn
+                .query_row(
+                    &format!("{INTENT_SELECT} WHERE i.acceptance_id = ?1 AND c.intent_id IS NULL"),
+                    params![id.as_str()],
+                    row_to_intent,
+                )
+                .optional()
+                .map_err(backend)?;
+            Ok(intent.map(|i| (entry.acceptance, i.intent)))
+        })
+    }
+
     fn sealed_acceptances(&self, wiki: &WikiId) -> Result<Vec<SealedAcceptance>> {
         self.with(|conn| {
             let mut stmt = conn

@@ -204,6 +204,9 @@ pub trait ActStore: Send + Sync {
     /// Record how a system act ended. Once: a second end is `AlreadyRecorded`.
     fn finish_system_act(&self, end: &SystemActEnd) -> Result<()>;
 
+    /// The system act `id` names, **only if it has not ended**: the question the signer's guard asks.
+    fn open_system_act(&self, id: &SystemActId) -> Result<Option<SystemActRecord>>;
+
     /// Every system act of the wiki with its end, oldest first.
     fn system_acts(&self, wiki: &WikiId) -> Result<Vec<SystemActEntry>>;
 }

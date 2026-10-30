@@ -220,6 +220,14 @@ pub trait AcceptanceStore: Send + Sync {
     /// The acceptances of one revision, oldest first, each with its end.
     fn acceptances_of(&self, proposal: &ProposalId, revision: u32) -> Result<Vec<AcceptanceEntry>>;
 
+    /// The acceptance `id` names, **only if it is pending seal and its intent is open**, with that intent: the
+    /// one question the signer's guard asks (RFC 002 D-4; threat model C-1b). `None` for an unknown id, an
+    /// acceptance that has ended, or one whose intent was never written or has ended.
+    fn pending_acceptance(
+        &self,
+        id: &AcceptanceId,
+    ) -> Result<Option<(AcceptanceRecord, IntentRecord)>>;
+
     /// Every acceptance of the wiki that sealed, with its intent, oldest first. A sealed acceptance whose
     /// intent was never written is not here (it cannot be: the intent is written before the signer is asked).
     fn sealed_acceptances(&self, wiki: &WikiId) -> Result<Vec<SealedAcceptance>>;
