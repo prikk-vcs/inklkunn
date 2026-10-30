@@ -20,23 +20,29 @@
 //! file the wiki already has with exactly these bytes is *unchanged* and is not written; a folder of nothing
 //! but unchanged files is [`ImportError::NothingChanged`], not a failed commit.
 //!
-//! **The folder is not trusted between the plan and the run.** The plan records the identity (device and
-//! inode) of every directory it walked and every file it found. The run checks, for each file, that each
-//! directory above it is still the directory that was walked (not a link, the same inode), opens the file
-//! without following a link and without blocking on a pipe, and compares the open handle's identity with the
-//! one that was planned; a file with more than one hard link is refused. Bytes from anywhere but the planned
-//! inodes never reach the signer. (Standard-library `open` flags and procedure only: `openat` with a directory
-//! handle needs a crate this one does not depend on; see the correction R4 note in the changelog.)
+//! **The folder is not trusted, during the walk or between the plan and the run.** The folder the operator named
+//! is opened once (a link there is followed, as the operator asked, and its identity is recorded); every
+//! directory below it is then opened with `openat` relative to the handle of its parent, with `O_NOFOLLOW`, and
+//! listed through its own handle; every file is opened the same way (`O_NOFOLLOW | O_NONBLOCK`, so a link is
+//! refused and a pipe does not wait for a writer) and examined with `fstat` on the open handle. Nothing is looked
+//! at by path after the folder's own, so a directory swapped for a link, or moved, while the walk is under way
+//! cannot redirect it: the walk goes on in the directory it holds. The plan records the identity (device and
+//! inode) of every directory and file it found. The run opens each file again the same way from a fresh handle on
+//! the folder, component by component, checking each directory's identity against the plan's, then the file's
+//! identity against the planned one (a file with more than one hard link is refused), and reads from that
+//! handle. Bytes from anywhere but the planned inodes never reach the signer. The identities are the second line;
+//! the handles are the first.
 //!
 //! **What a folder is.** The layout an export writes: `pages/**/*.md` and `attachments/**`. Everything else at the
 //! top (the manifest, `SHA256SUMS`, `users.yaml`, `history/`, `knowledge/`, `governance/`) is *not imported* and is listed as
 //! such: a Portable Wiki Bundle's import with its history is RFC 007's.
 
 use std::collections::{BTreeMap, HashMap};
-use std::ffi::OsString;
-use std::fs::{File, Metadata, OpenOptions};
+use std::ffi::{OsStr, OsString};
+use std::fs::File;
 use std::io::Read as _;
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+use std::os::fd::{AsFd, OwnedFd};
+use std::os::unix::ffi::OsStringExt as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 
@@ -51,6 +57,8 @@ use inklkunn_signer::{
     ViewCreationAct, ViewCreationFacts, check_change_path,
 };
 use inklkunn_store::{RootLayout, WikiRecord};
+use rustix::fs::{AtFlags, FileType, Mode, OFlags, Stat};
+use rustix::io::Errno;
 use sha2::{Digest as _, Sha256};
 
 use crate::read::ReadConfig;
@@ -81,25 +89,6 @@ const NOT_IMPORTED: &[(&str, &str)] = &[
     (".prikkignore", "service-local"),
 ];
 
-/// How a file of the folder is opened: `O_NOFOLLOW` (a link in the last component is refused, not followed) and
-/// `O_NONBLOCK` (opening a pipe returns at once instead of waiting for a writer to appear). The standard library
-/// has no names for them and this crate has no `libc`; the values are the kernel's, per architecture, and a test
-/// opens a link and a pipe with them (`open_refuses_a_link_and_does_not_wait_for_a_pipe`).
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-const OPEN_FLAGS: i32 = 0o4000 | 0o400_000;
-#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-const OPEN_FLAGS: i32 = 0o4000 | 0o100_000;
-#[cfg(not(all(
-    target_os = "linux",
-    any(target_arch = "x86_64", target_arch = "aarch64")
-)))]
-compile_error!(
-    "import-folder opens files with O_NOFOLLOW | O_NONBLOCK, spelled per architecture in import.rs; add this target's values"
-);
-
-/// `ELOOP`: what `open` answers for a link when `O_NOFOLLOW` is set.
-const ELOOP: i32 = 40;
-
 /// A file system object's identity: the device and the inode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Identity {
@@ -108,10 +97,12 @@ struct Identity {
 }
 
 impl Identity {
-    fn of(m: &Metadata) -> Self {
+    // The width of the fields of `Stat` differs by target; `u64` is what the identity keeps.
+    #[allow(clippy::useless_conversion)]
+    fn of(st: &Stat) -> Self {
         Identity {
-            dev: m.dev(),
-            ino: m.ino(),
+            dev: u64::from(st.st_dev),
+            ino: u64::from(st.st_ino),
         }
     }
 }
@@ -404,33 +395,98 @@ fn lossy(name: &std::ffi::OsStr) -> String {
     shown(&name.to_string_lossy())
 }
 
-/// Open a file of the folder for reading: a link in the last component is refused, a pipe does not block the
-/// open, and the open handle must be a regular file with exactly the identity that was planned and no other
-/// hard link. The handle is what is read; no path is consulted again.
-fn open_checked(path: &Path, expect: Identity) -> Result<File, String> {
-    let read_error = |e: std::io::Error| {
-        if e.raw_os_error() == Some(ELOOP) {
+/// How a directory below the folder is opened, relative to its parent's handle: a link is refused, not followed.
+const DIR_FLAGS: OFlags = OFlags::RDONLY
+    .union(OFlags::DIRECTORY)
+    .union(OFlags::NOFOLLOW)
+    .union(OFlags::CLOEXEC);
+
+/// How a file of the folder is opened, relative to its directory's handle: a link is refused (`NOFOLLOW`), and a
+/// pipe does not make the open wait for a writer (`NONBLOCK`; a regular file is not affected by it).
+const FILE_FLAGS: OFlags = OFlags::RDONLY
+    .union(OFlags::NOFOLLOW)
+    .union(OFlags::NONBLOCK)
+    .union(OFlags::CLOEXEC);
+
+/// What an error of the operating system is called in a reason: its kind, never its text.
+fn kind_of(errno: Errno) -> std::io::ErrorKind {
+    std::io::Error::from(errno).kind()
+}
+
+/// The folder the operator named, opened once. A link there is followed (the operator asked for that place); the
+/// handle is what the walk and the run hold, and nothing below it is reached by a path again.
+fn open_root(folder: &Path) -> Result<OwnedFd, Errno> {
+    rustix::fs::open(
+        folder,
+        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
+        Mode::empty(),
+    )
+}
+
+/// The directory `name` of the open directory `parent`; a link in its place is refused.
+fn open_dir_at(parent: &impl AsFd, name: &OsStr) -> Result<OwnedFd, Errno> {
+    rustix::fs::openat(parent, name, DIR_FLAGS, Mode::empty())
+}
+
+/// Does this error say that what was opened is not a directory (a link in its place answers `ELOOP` or `ENOTDIR`,
+/// by kernel and flags)?
+fn is_not_a_directory(errno: Errno) -> bool {
+    errno == Errno::LOOP || errno == Errno::NOTDIR
+}
+
+/// The identity of an open directory, or `ENOTDIR` when the handle is something else.
+fn dir_identity(dir: &OwnedFd) -> Result<Identity, Errno> {
+    let st = rustix::fs::fstat(dir)?;
+    if FileType::from_raw_mode(st.st_mode) == FileType::Directory {
+        Ok(Identity::of(&st))
+    } else {
+        Err(Errno::NOTDIR)
+    }
+}
+
+/// An open regular file, as `fstat` on its handle sees it.
+struct Opened {
+    file: File,
+    identity: Identity,
+    nlink: u64,
+    size: u64,
+}
+
+/// Open the file `name` of the open directory `dir` and look at the handle: a link is refused, a pipe does not
+/// block the open, and what was opened must be a regular file.
+#[allow(clippy::useless_conversion)] // the width of `st_nlink` differs by target
+fn open_regular(dir: &impl AsFd, name: &OsStr) -> Result<Opened, String> {
+    let read_error = |e: Errno| {
+        if e == Errno::LOOP {
             "is a symbolic link now (it changed while being read)".to_owned()
         } else {
-            format!("cannot be read ({})", e.kind())
+            format!("cannot be read ({})", kind_of(e))
         }
     };
-    let file = OpenOptions::new()
-        .read(true)
-        .custom_flags(OPEN_FLAGS)
-        .open(path)
-        .map_err(read_error)?;
-    let opened = file.metadata().map_err(read_error)?;
-    if !opened.is_file() {
+    let fd = rustix::fs::openat(dir, name, FILE_FLAGS, Mode::empty()).map_err(read_error)?;
+    let st = rustix::fs::fstat(&fd).map_err(read_error)?;
+    if FileType::from_raw_mode(st.st_mode) != FileType::RegularFile {
         return Err("is no longer a regular file".to_owned());
     }
-    if Identity::of(&opened) != expect {
+    Ok(Opened {
+        file: File::from(fd),
+        identity: Identity::of(&st),
+        nlink: u64::from(st.st_nlink),
+        size: u64::try_from(st.st_size).unwrap_or_default(),
+    })
+}
+
+/// Open a file of the folder for reading: [`open_regular`], and the open handle must have exactly the identity
+/// that was planned and no other hard link. The handle is what is read; no path is consulted again.
+fn open_checked(dir: &impl AsFd, name: &OsStr, expect: Identity) -> Result<File, String> {
+    let opened = open_regular(dir, name)?;
+    if opened.identity != expect {
         return Err("is not the file that was listed (it changed while being read)".to_owned());
     }
-    if opened.nlink() > 1 {
+    if opened.nlink > 1 {
         return Err("has more than one hard link".to_owned());
     }
-    Ok(file)
+    Ok(opened.file)
 }
 
 /// At most `cap` bytes of an open file; a longer file is refused by size.
@@ -467,46 +523,92 @@ fn hash_all(mut file: File, cap: u64) -> Result<Digest, String> {
 }
 
 /// Read a regular file as the plan found it: [`open_checked`], then at most `cap` bytes.
-fn read_regular(path: &Path, expect: Identity, cap: u64) -> Result<Vec<u8>, String> {
-    read_all(open_checked(path, expect)?, cap)
+fn read_regular(
+    dir: &impl AsFd,
+    name: &OsStr,
+    expect: Identity,
+    cap: u64,
+) -> Result<Vec<u8>, String> {
+    read_all(open_checked(dir, name, expect)?, cap)
 }
 
-/// Every directory between the folder and `file` is still the directory the walk entered: not a link, the same
-/// inode. (The folder itself is looked at through a link once, as the operator named it, and must be the same
-/// inode.)
-fn verify_chain(
+/// Open the directory that holds `file` again, from a fresh handle on the folder, one component at a time with
+/// `openat`, and check each directory against the identity the walk recorded for it (the folder itself is
+/// reached through a link once, as the operator named it, and must be the same inode). Returns the handle on the
+/// directory and the file's name in it. No path below the folder is consulted, so a directory replaced by a link
+/// or by another directory since the walk is refused, and nothing can be redirected while this opens.
+fn open_chain(
     root: &Path,
     dirs: &BTreeMap<PathBuf, Identity>,
     file: &Path,
-) -> Result<(), String> {
-    for dir in file.ancestors().skip(1) {
-        let name = || {
-            dir.strip_prefix(root)
-                .ok()
-                .filter(|p| !p.as_os_str().is_empty())
-                .map_or_else(|| "the folder".to_owned(), |p| lossy(p.as_os_str()))
-        };
-        let moved = || {
-            format!(
-                "is reached through `{}`, which is no longer the directory that was planned",
-                name()
-            )
-        };
-        let expect = dirs.get(dir).ok_or_else(moved)?;
-        let now = if dir == root {
-            std::fs::metadata(dir)
-        } else {
-            std::fs::symlink_metadata(dir)
-        };
-        match now {
-            Ok(m) if m.is_dir() && Identity::of(&m) == *expect => {}
-            _ => return Err(moved()),
-        }
-        if dir == root {
-            return Ok(());
+) -> Result<(OwnedFd, OsString), String> {
+    let outside = || "is outside the folder that was planned".to_owned();
+    let rel = file.strip_prefix(root).map_err(|_| outside())?;
+    let mut parts: Vec<&OsStr> = rel.components().map(|c| c.as_os_str()).collect();
+    let name = parts.pop().ok_or_else(outside)?;
+    let moved = |at: &Path| {
+        let shown_at = at
+            .strip_prefix(root)
+            .ok()
+            .filter(|p| !p.as_os_str().is_empty())
+            .map_or_else(|| "the folder".to_owned(), |p| lossy(p.as_os_str()));
+        format!(
+            "is reached through `{shown_at}`, which is no longer the directory that was planned"
+        )
+    };
+    let still = |fd: &OwnedFd, at: &Path| match (dirs.get(at), dir_identity(fd)) {
+        (Some(expect), Ok(now)) if *expect == now => Ok(()),
+        _ => Err(moved(at)),
+    };
+    let mut at = root.to_path_buf();
+    let mut fd = open_root(root).map_err(|_| moved(&at))?;
+    still(&fd, &at)?;
+    for part in parts {
+        at.push(part);
+        fd = open_dir_at(&fd, part).map_err(|_| moved(&at))?;
+        still(&fd, &at)?;
+    }
+    Ok((fd, name.to_owned()))
+}
+
+/// The entries of an open directory (never `.` and `..`), each with its type, or the error that said the type
+/// could not be told. `failed` is the error that stopped the listing short, if one did.
+struct Listing {
+    entries: Vec<(OsString, Result<FileType, Errno>)>,
+    failed: Option<Errno>,
+}
+
+/// List the open directory `dir` through its handle. A type the file system leaves unsaid is asked of the entry
+/// itself, without following a link.
+fn list_dir(dir: &OwnedFd) -> Result<Listing, Errno> {
+    let mut stream = rustix::fs::Dir::read_from(dir)?;
+    let mut listing = Listing {
+        entries: Vec::new(),
+        failed: None,
+    };
+    while let Some(next) = stream.read() {
+        match next {
+            Ok(entry) => {
+                let raw = entry.file_name();
+                if raw == c"." || raw == c".." {
+                    continue;
+                }
+                let kind = match entry.file_type() {
+                    FileType::Unknown => rustix::fs::statat(dir, raw, AtFlags::SYMLINK_NOFOLLOW)
+                        .map(|st| FileType::from_raw_mode(st.st_mode)),
+                    known => Ok(known),
+                };
+                listing
+                    .entries
+                    .push((OsString::from_vec(raw.to_bytes().to_vec()), kind));
+            }
+            Err(e) => {
+                listing.failed = Some(e);
+                break;
+            }
         }
     }
-    Err("is outside the folder that was planned".to_owned())
+    Ok(listing)
 }
 
 /// What a page must be to be imported: UTF-8 text whose frontmatter the parser accepts. Returns the page's `id`
@@ -544,51 +646,46 @@ impl Walk<'_> {
         });
     }
 
-    fn dir(&mut self, dir: &Path, rel: &str, depth: usize) {
-        // The directory is what the parent's listing said it was, before it is listed and after.
-        let before = match std::fs::symlink_metadata(dir) {
-            Ok(m) if m.is_dir() => Identity::of(&m),
-            Ok(_) => {
-                self.refuse(
-                    rel,
-                    "is no longer a directory (it changed while the folder was walked)",
-                );
+    /// Open the directory `name` of `parent` (a link in its place is refused) and walk it.
+    fn descend(&mut self, parent: &OwnedFd, name: &OsStr, path: &Path, rel: &str, depth: usize) {
+        match open_dir_at(parent, name) {
+            Ok(handle) => self.dir(&handle, path, rel, depth),
+            Err(e) if is_not_a_directory(e) => self.refuse(
+                rel,
+                "is no longer a directory (it changed while the folder was walked)",
+            ),
+            Err(e) => self.refuse(rel, format!("cannot be examined ({})", kind_of(e))),
+        }
+    }
+
+    /// Walk the open directory `handle`, which is `path` (`rel` in the folder). It is listed through the handle
+    /// and every entry is opened relative to it, so what is walked is the directory that was opened, whatever
+    /// happens to its path meanwhile.
+    fn dir(&mut self, handle: &OwnedFd, path: &Path, rel: &str, depth: usize) {
+        match dir_identity(handle) {
+            Ok(identity) => {
+                self.plan.dirs.insert(path.to_path_buf(), identity);
+            }
+            Err(e) => {
+                self.refuse(rel, format!("cannot be examined ({})", kind_of(e)));
                 return;
             }
-            Err(err) => {
-                self.refuse(rel, format!("cannot be examined ({})", err.kind()));
+        }
+        #[cfg(test)]
+        tests::at_directory(path, tests::Stage::Opened);
+        let listing = match list_dir(handle) {
+            Ok(l) => l,
+            Err(e) => {
+                self.refuse(rel, format!("cannot be listed ({})", kind_of(e)));
                 return;
             }
         };
-        self.plan.dirs.insert(dir.to_path_buf(), before);
-        let mut entries: Vec<(OsString, std::fs::FileType)> = Vec::new();
-        match std::fs::read_dir(dir) {
-            Ok(rd) => {
-                for e in rd {
-                    match e {
-                        Ok(e) => match e.file_type() {
-                            Ok(t) => entries.push((e.file_name(), t)),
-                            Err(err) => self.refuse(
-                                &format!("{rel}/{}", lossy(&e.file_name())),
-                                format!("cannot be examined ({})", err.kind()),
-                            ),
-                        },
-                        Err(err) => {
-                            self.refuse(rel, format!("cannot be listed ({})", err.kind()));
-                        }
-                    }
-                }
-            }
-            Err(err) => {
-                self.refuse(rel, format!("cannot be listed ({})", err.kind()));
-                return;
-            }
+        if let Some(e) = listing.failed {
+            self.refuse(rel, format!("cannot be listed ({})", kind_of(e)));
         }
-        let after = std::fs::symlink_metadata(dir).ok().filter(Metadata::is_dir);
-        if after.as_ref().map(Identity::of) != Some(before) {
-            self.refuse(rel, "changed while it was listed");
-            return;
-        }
+        #[cfg(test)]
+        tests::at_directory(path, tests::Stage::Listed);
+        let mut entries = listing.entries;
         entries.sort_by(|a, b| a.0.cmp(&b.0));
         for (name, kind) in entries {
             let Some(part) = name.to_str() else {
@@ -599,33 +696,33 @@ impl Walk<'_> {
                 continue;
             };
             let child_rel = format!("{rel}/{part}");
-            let child = dir.join(&name);
-            if kind.is_symlink() {
-                self.refuse(
+            let child = path.join(&name);
+            match kind {
+                Err(e) => self.refuse(&child_rel, format!("cannot be examined ({})", kind_of(e))),
+                Ok(FileType::Symlink) => self.refuse(
                     &child_rel,
                     "is a symbolic link; links are never followed, so it is not imported",
-                );
-            } else if kind.is_dir() {
-                if depth >= MAX_DEPTH {
-                    self.refuse(
-                        &child_rel,
-                        format!("is nested deeper than {MAX_DEPTH} folders"),
-                    );
-                } else {
-                    self.dir(&child, &child_rel, depth + 1);
+                ),
+                Ok(FileType::Directory) => {
+                    if depth >= MAX_DEPTH {
+                        self.refuse(
+                            &child_rel,
+                            format!("is nested deeper than {MAX_DEPTH} folders"),
+                        );
+                    } else {
+                        self.descend(handle, &name, &child, &child_rel, depth + 1);
+                    }
                 }
-            } else if kind.is_file() {
-                self.file(&child, &child_rel);
-            } else {
-                self.refuse(
+                Ok(FileType::RegularFile) => self.file(handle, &name, &child, &child_rel),
+                Ok(_) => self.refuse(
                     &child_rel,
                     "is not a regular file (a device, a pipe or a socket)",
-                );
+                ),
             }
         }
     }
 
-    fn file(&mut self, source: &Path, rel: &str) {
+    fn file(&mut self, parent: &OwnedFd, name: &OsStr, source: &Path, rel: &str) {
         // The caps first, with the numbers: prikk's own (`inklkunn_markup::path`).
         if rel.len() > MAX_PATH_BYTES {
             self.refuse(
@@ -673,25 +770,24 @@ impl Walk<'_> {
                 return;
             }
         }
-        let listed = match std::fs::symlink_metadata(source) {
-            Ok(m) if m.is_file() => m,
-            Ok(_) => {
-                self.refuse(rel, "is not a regular file");
-                return;
-            }
-            Err(e) => {
-                self.refuse(rel, format!("cannot be examined ({})", e.kind()));
+        // Opened relative to its directory's handle and looked at through the open handle: what is examined, and
+        // read below, is that file.
+        let opened = match open_regular(parent, name) {
+            Ok(o) => o,
+            Err(why) => {
+                self.refuse(rel, why);
                 return;
             }
         };
-        if listed.nlink() > 1 {
+        if opened.nlink > 1 {
             self.refuse(
                 rel,
                 "has more than one hard link (another name could change it after it was checked)",
             );
             return;
         }
-        let identity = Identity::of(&listed);
+        let identity = opened.identity;
+        let size = opened.size;
         let key = collision_key(rel);
         if let Some(first) = self.keys.get(&key) {
             let first = first.clone();
@@ -721,7 +817,7 @@ impl Walk<'_> {
         } else {
             MAX_CHANGE_BYTES
         };
-        if listed.len() > cap {
+        if size > cap {
             self.refuse(
                 rel,
                 format!(
@@ -737,9 +833,7 @@ impl Walk<'_> {
         let want_digest = have.is_some() && self.replace_existing;
         let mut digest: Option<Digest> = None;
         if is_page {
-            match read_regular(source, identity, cap)
-                .and_then(|b| inspect_page(&b).map(|id| (b, id)))
-            {
+            match read_all(opened.file, cap).and_then(|b| inspect_page(&b).map(|id| (b, id))) {
                 Err(why) => {
                     self.refuse(rel, why);
                     return;
@@ -763,7 +857,7 @@ impl Walk<'_> {
             }
             self.pages.push(rel.to_owned());
         } else if want_digest {
-            match open_checked(source, identity).and_then(|f| hash_all(f, cap)) {
+            match hash_all(opened.file, cap) {
                 Ok(d) => digest = Some(d),
                 Err(why) => {
                     self.refuse(rel, why);
@@ -789,7 +883,7 @@ impl Walk<'_> {
         };
         self.plan.files.push(PlannedFile {
             path: rel.to_owned(),
-            size: listed.len(),
+            size,
             action,
             source: source.to_path_buf(),
             identity,
@@ -825,11 +919,16 @@ pub fn plan_folder(
     existing: &Existing,
     replace_existing: bool,
 ) -> Result<ImportPlan, ImportError> {
-    let root = std::fs::metadata(folder)
-        .map_err(|e| ImportError::Folder(format!("it cannot be read ({})", e.kind())))?;
-    if !root.is_dir() {
-        return Err(ImportError::Folder("it is not a directory".to_owned()));
-    }
+    // The folder is opened once; everything below it is reached through this handle.
+    let root = open_root(folder).map_err(|e| {
+        if e == Errno::NOTDIR {
+            ImportError::Folder("it is not a directory".to_owned())
+        } else {
+            ImportError::Folder(format!("it cannot be read ({})", kind_of(e)))
+        }
+    })?;
+    let root_identity = dir_identity(&root)
+        .map_err(|e| ImportError::Folder(format!("it cannot be read ({})", kind_of(e))))?;
     let mut walk = Walk {
         existing,
         replace_existing,
@@ -843,26 +942,28 @@ pub fn plan_folder(
         ids: HashMap::new(),
         pages: Vec::new(),
     };
-    walk.plan
-        .dirs
-        .insert(folder.to_path_buf(), Identity::of(&root));
-    let mut top: Vec<(OsString, Option<std::fs::FileType>)> = std::fs::read_dir(folder)
-        .map_err(|e| ImportError::Folder(format!("it cannot be listed ({})", e.kind())))?
-        .filter_map(Result::ok)
-        .map(|e| (e.file_name(), e.file_type().ok()))
-        .collect();
+    walk.plan.dirs.insert(folder.to_path_buf(), root_identity);
+    let listing = list_dir(&root)
+        .map_err(|e| ImportError::Folder(format!("it cannot be listed ({})", kind_of(e))))?;
+    if let Some(e) = listing.failed {
+        return Err(ImportError::Folder(format!(
+            "it cannot be listed ({})",
+            kind_of(e)
+        )));
+    }
+    let mut top = listing.entries;
     top.sort_by(|a, b| a.0.cmp(&b.0));
     for (name, kind) in top {
         let shown_name = lossy(&name);
-        match (name.to_str(), kind) {
+        match (name.to_str(), kind.ok()) {
             (Some(n @ ("pages" | "attachments")), Some(t)) => {
                 let path = folder.join(n);
-                if t.is_symlink() {
-                    walk.refuse(n, "is a symbolic link; links are never followed");
-                } else if t.is_dir() {
-                    walk.dir(&path, n, 0);
-                } else {
-                    walk.refuse(n, "is not a directory");
+                match t {
+                    FileType::Symlink => {
+                        walk.refuse(n, "is a symbolic link; links are never followed");
+                    }
+                    FileType::Directory => walk.descend(&root, &name, &path, n, 0),
+                    _ => walk.refuse(n, "is not a directory"),
                 }
             }
             (Some(n), _) => {
@@ -1009,19 +1110,14 @@ fn read_files(plan: &ImportPlan) -> Result<Vec<PreparedFile>, ImportError> {
     let changed =
         |f: &PlannedFile, why: String| ImportError::Changed(format!("`{}` {why}", f.path));
     for f in &plan.files {
-        verify_chain(&plan.root, &plan.dirs, &f.source).map_err(|why| changed(f, why))?;
-        let listed = std::fs::symlink_metadata(&f.source)
-            .map_err(|e| changed(f, format!("cannot be examined ({})", e.kind())))?;
-        if !listed.is_file() {
-            return Err(changed(f, "is no longer a regular file".to_owned()));
-        }
+        let (parent, name) =
+            open_chain(&plan.root, &plan.dirs, &f.source).map_err(|why| changed(f, why))?;
         let cap = if f.is_page() {
             page_cap
         } else {
             MAX_CHANGE_BYTES
         };
-        let bytes = read_regular(&f.source, f.identity, cap).map_err(|why| changed(f, why))?;
-        verify_chain(&plan.root, &plan.dirs, &f.source).map_err(|why| changed(f, why))?;
+        let bytes = read_regular(&parent, &name, f.identity, cap).map_err(|why| changed(f, why))?;
         if bytes.len() as u64 != f.size {
             return Err(changed(f, "changed size since it was planned".to_owned()));
         }

@@ -2,7 +2,45 @@
 
 use std::os::unix::ffi::OsStrExt;
 
+use std::cell::RefCell;
+
 use super::*;
+
+/// Where the walk is when a test's hook runs: a directory is open (its handle held, not yet listed) or has just
+/// been listed (its entries known, none opened yet).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Stage {
+    Opened,
+    Listed,
+}
+
+type Hook = Box<dyn FnMut(&Path, Stage)>;
+
+thread_local! {
+    static HOOK: RefCell<Option<Hook>> = const { RefCell::new(None) };
+}
+
+/// Called by the walk at each directory (only in a test build); runs the hook this thread's test installed.
+pub(super) fn at_directory(path: &Path, stage: Stage) {
+    HOOK.with(|h| {
+        if let Some(hook) = h.borrow_mut().as_mut() {
+            hook(path, stage);
+        }
+    });
+}
+
+/// Run `f` with `hook` installed for the walks of this thread.
+fn with_hook<T>(hook: impl FnMut(&Path, Stage) + 'static, f: impl FnOnce() -> T) -> T {
+    struct Remove;
+    impl Drop for Remove {
+        fn drop(&mut self) {
+            HOOK.with(|h| *h.borrow_mut() = None);
+        }
+    }
+    HOOK.with(|h| *h.borrow_mut() = Some(Box::new(hook)));
+    let _remove = Remove;
+    f()
+}
 
 struct Dir(PathBuf);
 
@@ -190,10 +228,22 @@ fn a_component_over_255_bytes_and_a_path_over_1024_are_refused_by_prikks_caps_wi
         pages: Vec::new(),
     };
     let long_name = format!("attachments/{}.bin", "x".repeat(256));
-    walk.file(Path::new("/nonexistent"), &long_name);
+    // Both are refused before anything is opened, so any directory handle will do.
+    let nowhere = open_root(Path::new("/")).unwrap();
+    walk.file(
+        &nowhere,
+        OsStr::new("x"),
+        Path::new("/nonexistent"),
+        &long_name,
+    );
     let long_path = format!("attachments/{}/f.bin", vec!["d".repeat(200); 6].join("/"));
     assert!(long_path.len() > 1024);
-    walk.file(Path::new("/nonexistent"), &long_path);
+    walk.file(
+        &nowhere,
+        OsStr::new("x"),
+        Path::new("/nonexistent"),
+        &long_path,
+    );
     let reasons: Vec<&str> = walk
         .plan
         .refused
@@ -289,10 +339,7 @@ fn a_planning_and_a_dry_run_write_nothing_and_a_file_swapped_for_a_link_is_not_f
     std::os::unix::fs::symlink(secret.0.join("s.txt"), d.0.join("attachments/a.bin")).unwrap();
     let err = read_files(&plan).unwrap_err();
     assert!(matches!(err, ImportError::Changed(_)), "{err}");
-    assert!(
-        err.to_string().contains("no longer a regular file"),
-        "{err}"
-    );
+    assert!(err.to_string().contains("is a symbolic link now"), "{err}");
 }
 
 fn snapshot(root: &Path) -> Vec<(String, Vec<u8>)> {
@@ -513,9 +560,14 @@ fn a_pipe_swapped_in_for_a_file_between_the_plan_and_the_run_is_refused_not_wait
     assert!(why.contains("no longer a regular file"), "{why}");
 
     // The same, past the check that precedes the open (the race): the open itself must not wait for a writer.
-    let pipe = d.0.join("attachments/a.bin");
+    let attachments = open_root(&d.0.join("attachments")).unwrap();
     let why = within(10, move || {
-        read_regular(&pipe, Identity { dev: 0, ino: 0 }, 1024)
+        read_regular(
+            &attachments,
+            OsStr::new("a.bin"),
+            Identity { dev: 0, ino: 0 },
+            1024,
+        )
     })
     .unwrap_err();
     assert!(why.contains("no longer a regular file"), "{why}");
@@ -533,18 +585,113 @@ fn a_pipe_swapped_in_for_a_file_between_the_plan_and_the_run_is_refused_not_wait
 
 #[test]
 fn open_refuses_a_link_and_does_not_wait_for_a_pipe() {
-    // The flags are spelled per architecture in this file; this is what says they mean what they claim.
+    // The open flags are rustix's; this is what says they mean what the import relies on.
     let d = dir("flags");
     put(&d.0, "f", b"abc");
     std::os::unix::fs::symlink(d.0.join("f"), d.0.join("l")).unwrap();
-    let id = Identity::of(&std::fs::symlink_metadata(d.0.join("f")).unwrap());
-    assert!(open_checked(&d.0.join("f"), id).is_ok());
-    let why = open_checked(&d.0.join("l"), id).unwrap_err();
+    std::fs::create_dir(d.0.join("sub")).unwrap();
+    std::os::unix::fs::symlink(d.0.join("sub"), d.0.join("sublink")).unwrap();
+    let root = open_root(&d.0).unwrap();
+    let id = Identity::of(&rustix::fs::statat(&root, "f", AtFlags::SYMLINK_NOFOLLOW).unwrap());
+    assert!(open_checked(&root, OsStr::new("f"), id).is_ok());
+    let why = open_checked(&root, OsStr::new("l"), id).unwrap_err();
     assert!(why.contains("symbolic link"), "{why}");
+    assert!(open_dir_at(&root, OsStr::new("sub")).is_ok());
+    let err = open_dir_at(&root, OsStr::new("sublink")).unwrap_err();
+    assert!(is_not_a_directory(err), "{err}");
     mkfifo(&d.0.join("p"));
-    let pipe = d.0.join("p");
-    let why = within(10, move || open_checked(&pipe, id)).unwrap_err();
+    let why = within(10, move || open_checked(&root, OsStr::new("p"), id)).unwrap_err();
     assert!(why.contains("no longer a regular file"), "{why}");
+}
+
+// ---- S1: the walk is anchored at one handle ----
+
+/// A page the folder does not have, in the twin a test swaps in.
+const EVIL: &str = "---\ntitle: Evil\nid: e-1\n---\n\nNot in the folder.\n";
+
+#[test]
+fn a_directory_swapped_for_a_link_while_the_walk_is_in_it_is_still_walked_as_the_directory_it_was()
+{
+    let d = dir("walk-open");
+    put(&d.0, "pages/Sub/A.md", GOOD.as_bytes());
+    put(&d.0, "attachments/x/y.bin", b"abc");
+    let twin = dir("walk-open-twin");
+    put(&twin.0, "Evil.md", EVIL.as_bytes());
+    let (root, twin_path) = (d.0.clone(), twin.0.clone());
+    let mut done = false;
+    let plan = with_hook(
+        move |path, stage| {
+            if stage == Stage::Opened && path.ends_with("pages/Sub") && !done {
+                done = true;
+                // Between opening the directory and listing it, its place becomes a link to the twin.
+                std::fs::rename(root.join("pages/Sub"), root.join("pages/Sub.moved")).unwrap();
+                std::os::unix::fs::symlink(&twin_path, root.join("pages/Sub")).unwrap();
+            }
+        },
+        || plan_folder(&d.0, &nothing(), false).unwrap(),
+    );
+    // The walk went on in the directory it held: the folder's own page, not the twin's.
+    let paths: Vec<&str> = plan.files.iter().map(|f| f.path.as_str()).collect();
+    assert!(
+        paths.contains(&"pages/Sub/A.md") && !paths.iter().any(|p| p.contains("Evil")),
+        "{}",
+        plan.report()
+    );
+    assert!(!plan.report().contains("Evil"), "{}", plan.report());
+    // The path is a link now, so the run refuses it (the identities are the second line).
+    let why = changed(read_files(&plan).unwrap_err());
+    assert!(
+        why.contains("`pages/Sub`") && why.contains("no longer the directory that was planned"),
+        "{why}"
+    );
+}
+
+#[test]
+fn a_directory_swapped_for_a_link_after_it_was_listed_is_refused_and_not_entered() {
+    let d = dir("walk-listed");
+    put(&d.0, "pages/Sub/A.md", GOOD.as_bytes());
+    let twin = dir("walk-listed-twin");
+    put(&twin.0, "Evil.md", EVIL.as_bytes());
+    let (root, twin_path) = (d.0.clone(), twin.0.clone());
+    let mut done = false;
+    let plan = with_hook(
+        move |path, stage| {
+            if stage == Stage::Listed && path.ends_with("pages") && !done {
+                done = true;
+                // The listing of `pages` said `Sub` is a directory; now it is a link.
+                std::fs::rename(root.join("pages/Sub"), root.join("pages/Sub.moved")).unwrap();
+                std::os::unix::fs::symlink(&twin_path, root.join("pages/Sub")).unwrap();
+            }
+        },
+        || plan_folder(&d.0, &nothing(), false).unwrap(),
+    );
+    assert!(
+        plan.refused
+            .iter()
+            .any(|r| r.name == "pages/Sub" && r.reason.contains("no longer a directory")),
+        "{}",
+        plan.report()
+    );
+    assert!(!plan.report().contains("Evil"), "{}", plan.report());
+    assert!(!plan.is_importable());
+}
+
+#[test]
+fn the_folder_named_through_a_link_is_walked_and_its_replacement_is_refused_at_the_run() {
+    // The operator may name a link to the folder (that is their choice of place); what is under it is not
+    // followed. The run reaches it the same way and checks it is the same inode.
+    let d = dir("rootlink");
+    put(&d.0, "real/pages/A.md", GOOD.as_bytes());
+    let link = d.0.join("link");
+    std::os::unix::fs::symlink(d.0.join("real"), &link).unwrap();
+    let plan = plan_folder(&link, &nothing(), false).unwrap();
+    assert!(plan.is_importable(), "{}", plan.report());
+    assert_eq!(read_files(&plan).unwrap().len(), 1);
+    put(&d.0, "other/pages/A.md", GOOD.as_bytes());
+    std::fs::remove_file(&link).unwrap();
+    std::os::unix::fs::symlink(d.0.join("other"), &link).unwrap();
+    let why = changed(read_files(&plan).unwrap_err());
+    assert!(why.contains("`the folder`"), "{why}");
 }
 
 #[test]

@@ -650,3 +650,17 @@ Follow-ups from the review of 2026-10-31 (handoff 003, S2 – S4).
 - **S4 — the start-up sweep audits before it removes.** `sweep_unfinished_creations` takes a `SweepAudit`: `before` is asked ahead of each
   removal and a refusal (the trail cannot take the event) leaves the creation in place with its mark; `after` records the outcome
   (*allowed* when removed, *failed* when left behind). `NoSweepAudit` is for tests of the sweep itself.
+- **S1 (follow-up of the review of handoff 003's corrections): `rustix` in core; the import walk anchored at one
+  handle; the export's move with `RENAME_NOREPLACE`.** `rustix` 1 (`fs`, `std`, no default features, as the signer declares
+  it) is a direct dependency of `inklkunn-core` (no crate added to the lock; a row in `docs/dependency-policy.md`, the
+  inventory regenerated). `import-folder` opens the folder the operator named once (a link there is followed, as before, and its
+  identity recorded), then opens every directory with `openat` relative to its parent's handle (`O_DIRECTORY | O_NOFOLLOW`),
+  lists it through its own handle, and opens every file the same way (`O_NOFOLLOW | O_NONBLOCK`) and examines it with `fstat`
+  on the handle; at the run each planned file is reached again from a fresh handle on the folder, component by component, each
+  directory checked against the identity the plan recorded, the file against its identity and link count. A directory swapped
+  for a link or another directory while the walk is in it can no longer redirect the walk. The inode pins stay as the second
+  line; the reasons are the same, except that a file swapped for a link now says it is a symbolic link. The hand-written open
+  flags and the `compile_error!` for two architectures are gone. The export puts the finished bundle in place with one
+  `renameat2(RENAME_NOREPLACE)` instead of a `mkdir` and a `rename`: an existing destination, an empty directory included,
+  is refused by the kernel in the same step, so the race with a process that makes the destination meanwhile is closed, not
+  narrowed.
