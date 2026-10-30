@@ -331,11 +331,17 @@ fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
         ]
     );
     // Whatever a route writes, it declares the writing methods only where it declares a non-read action or is
-    // one of the two read pages that take a form.
+    // one of the read pages that take a form (the verification check, marking the inbox read, following a page).
     for (e, action) in table.guarded().filter(|(e, _)| !e.path.contains("/-/api/")) {
         if e.methods.contains(&"POST") {
             assert!(
-                action != Read || ["/{slug}/-/verification"].contains(&e.path),
+                action != Read
+                    || [
+                        "/{slug}/-/verification",
+                        "/-/inbox",
+                        "/{slug}/-/watch/{*title}"
+                    ]
+                    .contains(&e.path),
                 "{}: a write is guarded by the action it makes",
                 e.path
             );

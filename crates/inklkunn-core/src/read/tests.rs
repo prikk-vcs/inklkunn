@@ -33,7 +33,7 @@ mod failures;
 mod flags;
 mod history;
 mod pinned;
-mod rollback;
 mod preview;
+mod rollback;
 mod safety;
 mod stale;
