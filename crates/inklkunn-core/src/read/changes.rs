@@ -12,20 +12,28 @@
 //! - *No touched pages in the log.* A change's pages come from one `show` per block, which is immutable and so
 //!   remembered, and which is asked for only as many blocks as a request needs: the rows to be listed, or, when
 //!   the request filters by page or namespace, the blocks of the scan window ([`SCAN_WINDOW`] per view).
-//! - *No minor flag.* The patch message (CT-03) has no such trailer, so no change is minor; the filter exists
-//!   and every change passes it as "not minor". A later message revision can set it.
+//! - *The flags are not in the message.* CT-03 has no trailer for *minor* or *automated* (the message is strict
+//!   and says what a person needs to read in the history). The flags are the proposal's: the message names the
+//!   proposal (`Proposal:`), and the **accepted revision's** flags are read from the proposal records, in one
+//!   step for the whole list ([`ReadService::with_revision_flags`]). A change with no proposal (an import, the
+//!   creation of a wiki) has none, and a service with no records to ask lists every change as not flagged. A
+//!   filter on a flag that the records cannot answer is refused ([`Cause::Store`]), never answered as if no
+//!   change were flagged.
+//! - *Machine-assisted content* (RFC 004 D-10, C-13a) is a proposal flagged *automated*: it is labelled in the
+//!   list ([`ChangeRow::machine_assisted`]) and the person who accepted it is named as the one who answers for
+//!   it; the *automated* filter covers both what the service made itself and what a machine assisted.
 //!
 //! A change whose message is not the service's canonical text (sealed by someone else, INV-1) is listed, with
 //! its first line as the summary and no people: [`ChangeKind::Foreign`].
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use inklkunn_markup::path::{PAGES_DIR, path_to_title};
 use inklkunn_prikk::{HistoryBlock, Point};
 use inklkunn_signer::message::{Actor, Kind, Message};
-use inklkunn_store::{WikiId, WikiRecord};
+use inklkunn_store::{ProposalId, RevisionFlags, WikiId, WikiRecord};
 
-use super::{ReadError, ReadService};
+use super::{Cause, ReadError, ReadService};
 
 /// How many of a view's newest changes a request looks through at most.
 pub const SCAN_WINDOW: u64 = 100;
@@ -64,9 +72,9 @@ pub struct ChangeFilter {
     pub namespace: Option<String>,
     /// Only changes that touched the page this title leads to.
     pub page: Option<String>,
-    /// Changes the service made itself (imports, creating the wiki).
+    /// Changes made by the service itself (imports, creating the wiki) or flagged *automated*: machine-assisted.
     pub automated: Tri,
-    /// Minor changes (none are marked, see the module's note).
+    /// Changes flagged *minor*.
     pub minor: Tri,
 }
 
@@ -160,8 +168,11 @@ pub struct ChangeRow {
     pub accepted_by: Option<Person>,
     /// Is it an undo?
     pub rollback: bool,
-    /// Marked minor (never, see the module's note).
+    /// The accepted proposal was flagged *minor*.
     pub minor: bool,
+    /// The accepted proposal was flagged *automated*: machine-assisted content. The person who accepted it
+    /// ([`ChangeRow::accepted_by`]) answers for it.
+    pub machine_assisted: bool,
     /// When this service first saw the block, in Unix seconds.
     pub first_seen: i64,
     /// What it touched; `None` when `show` could not be asked just now.
@@ -170,8 +181,14 @@ pub struct ChangeRow {
 
 impl ChangeRow {
     /// Did the service make this change itself?
-    pub fn automated(&self) -> bool {
+    pub fn by_service(&self) -> bool {
         self.kind.is_automated()
+    }
+
+    /// Is this change automated: made by the service itself, or machine-assisted? What the *automated* filter
+    /// asks.
+    pub fn automated(&self) -> bool {
+        self.by_service() || self.machine_assisted
     }
 }
 
@@ -191,6 +208,8 @@ pub struct ChangeList {
 
 /// The message of a block as a row's head: kind, summary and people.
 struct Described {
+    /// The proposal the message names (a proposal or a rollback).
+    proposal: Option<ProposalId>,
     kind: ChangeKind,
     summary: String,
     proposed_by: Option<Person>,
@@ -204,6 +223,7 @@ fn describe(block: &HistoryBlock) -> Described {
     for patch in &block.patch_messages {
         if let Ok(message) = Message::parse(&patch.message) {
             return Described {
+                proposal: message.proposal_id().cloned(),
                 kind: match message.kind() {
                     Kind::Proposal => ChangeKind::Proposal,
                     Kind::Rollback => ChangeKind::Rollback,
@@ -232,6 +252,7 @@ fn describe(block: &HistoryBlock) -> Described {
         summary.push('…');
     }
     Described {
+        proposal: None,
         kind: ChangeKind::Foreign,
         summary,
         proposed_by: None,
@@ -260,6 +281,37 @@ fn in_namespace(title: &str, namespace: &str) -> bool {
 }
 
 impl ReadService {
+    /// The flags of the accepted revisions of these proposals, in one step. Without records to ask, none.
+    /// When the records fail, the answer is none and the failure is counted, unless the caller's filter is
+    /// *on* the flags (`needed`): then the list cannot be trusted and is refused.
+    fn flags_of(
+        &self,
+        proposals: impl Iterator<Item = ProposalId>,
+        needed: bool,
+    ) -> Result<HashMap<ProposalId, RevisionFlags>, ReadError> {
+        let Some(records) = &self.flags else {
+            return Ok(HashMap::new());
+        };
+        let mut ids: Vec<ProposalId> = proposals.collect();
+        ids.sort();
+        ids.dedup();
+        if ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        match records.revision_flags(&ids) {
+            Ok(found) => Ok(found.into_iter().collect()),
+            Err(e) => {
+                self.store_failures
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                if needed {
+                    Err(ReadError::CouldNotBeReadNow(Cause::Store(e)))
+                } else {
+                    Ok(HashMap::new())
+                }
+            }
+        }
+    }
+
     /// The wiki's open views by full name (`heads/main`), the default view first. Asks prikk unless the
     /// views are held.
     pub fn open_views(&self, wiki: &WikiRecord) -> Result<Vec<String>, ReadError> {
@@ -417,13 +469,30 @@ impl ReadService {
         let mut indexes: Vec<(String, Option<std::sync::Arc<super::index::TitleIndex>>)> =
             Vec::new();
 
+        let flags = self.flags_of(
+            ordered
+                .iter()
+                .filter_map(|(_, c)| describe(&c.block).proposal),
+            filter.automated != Tri::Any || filter.minor != Tri::Any,
+        )?;
+
         let mut rows = Vec::new();
         let mut pages_missing = false;
         let mut cut = false;
         for (first_seen, c) in ordered {
             let head = describe(&c.block);
             let rollback = c.block.rollback_block || head.kind == ChangeKind::Rollback;
-            if !filter.automated.admits(head.kind.is_automated()) || !filter.minor.admits(false) {
+            let flagged = head
+                .proposal
+                .as_ref()
+                .and_then(|p| flags.get(p))
+                .copied()
+                .unwrap_or_default();
+            if !filter
+                .automated
+                .admits(head.kind.is_automated() || flagged.automated)
+                || !filter.minor.admits(flagged.minor)
+            {
                 continue;
             }
             let wants_pages = filter.needs_pages() || rows.len() < limit;
@@ -491,7 +560,8 @@ impl ReadService {
                 proposed_by: head.proposed_by,
                 accepted_by: head.accepted_by,
                 rollback,
-                minor: false,
+                minor: flagged.minor,
+                machine_assisted: flagged.automated,
                 first_seen,
                 pages: titled,
             });

@@ -30,6 +30,7 @@ fn ttl_zero() -> ReadConfig {
 mod cache;
 mod counts;
 mod failures;
+mod flags;
 mod history;
 mod pinned;
 mod rollback;
