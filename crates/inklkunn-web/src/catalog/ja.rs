@@ -602,7 +602,10 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg("changes.filter_view", "ビュー"),
     msg("changes.all_views", "すべてのビュー"),
-    msg("changes.filter_automated", "ウィキサービス自身による変更"),
+    msg(
+        "changes.filter_automated",
+        "ウィキサービス自身または機械の補助による変更",
+    ),
     msg("changes.opt_show", "表示する"),
     msg("changes.opt_hide", "表示しない"),
     msg("changes.opt_only", "それらのみ表示する"),
@@ -616,9 +619,12 @@ pub const CATALOG: &[Entry] = &[
     msg("changes.active_view", "ビュー {view} のみ"),
     msg(
         "changes.active_hide",
-        "ウィキサービス自身による変更は表示していません",
+        "ウィキサービス自身または機械の補助による変更は表示していません",
     ),
-    msg("changes.active_only", "ウィキサービス自身による変更のみ"),
+    msg(
+        "changes.active_only",
+        "ウィキサービス自身または機械の補助による変更のみ",
+    ),
     msg("changes.clear", "すべての変更を表示"),
     msg("changes.caption", "変更の一覧（新しい順）"),
     msg("changes.col_change", "変更"),
@@ -848,5 +854,113 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "problem.change_not_found.hint",
         "変更の ID は、ページの履歴または最近の変更から取ってください。",
+    ),
+    // the inbox, following a page, and the flags of changes (handoff 004 T6)
+    msg("title.inbox", "受信箱 · {product}"),
+    msg("inbox.heading", "受信箱"),
+    msg(
+        "inbox.intro",
+        "あなたの提案と、フォローしているページに起きたことを、新しい順に表示します。",
+    ),
+    msg("inbox.none", "あなたに関わる出来事はまだありません。"),
+    msg("inbox.new", "新着"),
+    msg("inbox.mark_all_read", "すべて既読にする"),
+    msg("inbox.someone", "だれか"),
+    msg(
+        "inbox.event_reviewed",
+        "{person} さんが {wiki} のあなたの提案 {proposal} をレビューしました。",
+    ),
+    msg(
+        "inbox.event_accepted",
+        "{wiki} のあなたの提案 {proposal} は受け入れられ、署名して履歴に記録されました。",
+    ),
+    msg(
+        "inbox.event_declined",
+        "{person} さんが {wiki} のあなたの提案 {proposal} を見送りました。",
+    ),
+    msg(
+        "inbox.event_needs_revision",
+        "{person} さんが {wiki} のあなたの提案 {proposal} の修正を依頼しました。",
+    ),
+    msg(
+        "inbox.event_withdrawn",
+        "{person} さんが {wiki} の提案 {proposal} を取り下げました。",
+    ),
+    msg(
+        "inbox.event_superseded",
+        "{person} さんが {wiki} のあなたの提案 {proposal} を、あとの提案に置き換えました。",
+    ),
+    msg(
+        "inbox.event_replied",
+        "{person} さんが {wiki} の {proposal} の議論にコメントしました。",
+    ),
+    msg(
+        "inbox.event_mentioned",
+        "{person} さんが {wiki} の {proposal} の議論であなたに言及しました。",
+    ),
+    msg(
+        "inbox.event_watched",
+        "{wiki} でフォローしているページが変更されました。変更のもとになった提案は {proposal} です。",
+    ),
+    msg(
+        "inbox.event_unreadable",
+        "あなたに関わる出来事がありましたが、そのウィキはもう読むことができません。",
+    ),
+    msg("inbox.account_heading", "アカウントが必要です"),
+    msg(
+        "inbox.account_body",
+        "受信箱はアカウントごとのものです。サインインすると、あなたの提案やフォローしているページに起きたことを確認できます。",
+    ),
+    msg("inbox.following_heading", "フォローしているページ"),
+    msg(
+        "inbox.following_none",
+        "フォローしているページはまだありません。",
+    ),
+    msg("inbox.following_page", "{wiki} の {page}"),
+    msg(
+        "inbox.following_namespace",
+        "{wiki} の {page} の下にあるページ",
+    ),
+    msg("inbox.unfollow", "{what} のフォローをやめる"),
+    msg("watch.heading_followed", "フォロー中"),
+    msg("watch.heading_stopped", "フォローをやめました"),
+    msg("watch.heading_full", "フォローできる数の上限です"),
+    msg(
+        "watch.page_followed",
+        "ページ「{title}」をフォローしました。このページへの変更が署名して履歴に記録されると、受信箱でお知らせします。",
+    ),
+    msg(
+        "watch.namespace_followed",
+        "「{title}」の下にあるページをフォローしました。それらへの変更が署名して履歴に記録されると、受信箱でお知らせします。",
+    ),
+    msg(
+        "watch.page_stopped",
+        "ページ「{title}」のフォローをやめました。",
+    ),
+    msg(
+        "watch.namespace_stopped",
+        "「{title}」の下にあるページのフォローをやめました。",
+    ),
+    msg(
+        "watch.account_body",
+        "ページのフォローはアカウントごとの機能です。サインインしてから、もう一度フォローしてください。",
+    ),
+    msg(
+        "watch.full_body",
+        "フォローできるページの数の上限に達しています。どれかのフォローをやめてから、もう一度お試しください。",
+    ),
+    msg("watch.back", "{title} に戻る"),
+    msg("watch.to_inbox", "受信箱を開く"),
+    msg("changes.filter_minor", "軽微な変更"),
+    msg("changes.active_minor_hide", "軽微な変更は表示していません"),
+    msg("changes.active_minor_only", "軽微な変更のみ"),
+    msg("changes.minor_label", "軽微な変更"),
+    msg(
+        "changes.machine_assisted",
+        "機械の補助によるコンテンツ（受け入れた人: {person}）",
+    ),
+    msg(
+        "changes.machine_assisted_only",
+        "機械の補助によるコンテンツ",
     ),
 ];

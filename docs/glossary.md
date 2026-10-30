@@ -302,7 +302,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `changes.filter_namespace_hint` | the hint of that field | "For example Guides shows changes to Guides/Setup. Leave it empty for all pages." | "たとえば Guides と入力すると、Guides/Setup への変更が表示されます。空欄にするとすべてのページが対象になります。" |
 | `changes.filter_view` | the label of the view choice, and the heading of the column that names a change's view | "View" | "ビュー" |
 | `changes.all_views` | the choice that shows the changes of every view | "All views" | "すべてのビュー" |
-| `changes.filter_automated` | the label of the choice about changes the wiki service made itself (imports, creating the wiki) | "Changes made by the wiki service itself" | "ウィキサービス自身による変更" |
+| `changes.filter_automated` | the label of the choice about changes the wiki service made itself (imports, creating the wiki) | "Changes made by the wiki service itself or with the help of a machine" | "ウィキサービス自身または機械の補助による変更" |
 | `changes.opt_show` | a choice: show those changes together with the others | "Show them" | "表示する" |
 | `changes.opt_hide` | a choice: leave those changes out | "Hide them" | "表示しない" |
 | `changes.opt_only` | a choice: show only those changes | "Show only them" | "それらのみ表示する" |
@@ -311,8 +311,8 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `changes.active_namespace` | an item of the filters in use; `{namespace}` is the title typed | "Only pages under {namespace}" | "{namespace} の下にあるページのみ" |
 | `changes.active_page` | an item of the filters in use on a page's own list of changes; `{page}` is its title | "Only changes to the page {page}" | "ページ {page} への変更のみ" |
 | `changes.active_view` | an item of the filters in use; `{view}` is the view's name | "Only the view {view}" | "ビュー {view} のみ" |
-| `changes.active_hide` | an item of the filters in use | "Changes made by the wiki service itself are hidden" | "ウィキサービス自身による変更は表示していません" |
-| `changes.active_only` | an item of the filters in use | "Only changes made by the wiki service itself" | "ウィキサービス自身による変更のみ" |
+| `changes.active_hide` | an item of the filters in use | "Changes made by the wiki service itself or with the help of a machine are hidden" | "ウィキサービス自身または機械の補助による変更は表示していません" |
+| `changes.active_only` | an item of the filters in use | "Only changes made by the wiki service itself or with the help of a machine" | "ウィキサービス自身または機械の補助による変更のみ" |
 | `changes.clear` | a link that removes every filter | "Show all changes" | "すべての変更を表示" |
 | `changes.caption` | the caption of the table of changes | "Changes, newest first" | "変更の一覧（新しい順）" |
 | `changes.col_change` | the heading of the column with each change's summary | "Change" | "変更" |
@@ -419,6 +419,47 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `problem.change_not_found.title` | the API's problem detail `change-not-found`: the title | "Change not found" | "変更が見つかりません" |
 | `problem.change_not_found.detail` | the API's problem detail `change-not-found`: the detail | "This wiki has no change with this id in this view." | "このウィキのこのビューには、この ID の変更がありません。" |
 | `problem.change_not_found.hint` | the API's problem detail `change-not-found`: the hint | "Take the id of a change from the history of a page or from the recent changes." | "変更の ID は、ページの履歴または最近の変更から取ってください。" |
+| `title.inbox` | the title of the inbox | "Inbox · {product}" | "受信箱 · {product}" |
+| `inbox.heading` | the heading of the inbox | "Inbox" | "受信箱" |
+| `inbox.intro` | under the heading of the inbox | "What has happened to your proposals and to the pages you follow, newest first." | "あなたの提案と、フォローしているページに起きたことを、新しい順に表示します。" |
+| `inbox.none` | shown instead of the list when nothing has happened that involves the reader | "Nothing has happened yet that involves you." | "あなたに関わる出来事はまだありません。" |
+| `inbox.new` | a mark before an event that has not been read | "New" | "新着" |
+| `inbox.mark_all_read` | the button under the list of events | "Mark everything as read" | "すべて既読にする" |
+| `inbox.someone` | in an event, in place of the name of a person who is not known | "Someone" | "だれか" |
+| `inbox.event_reviewed` | an event; `{person}` is who reviewed, `{proposal}` the proposal (a link), `{wiki}` the wiki | "{person} reviewed your proposal {proposal} in {wiki}." | "{person} さんが {wiki} のあなたの提案 {proposal} をレビューしました。" |
+| `inbox.event_accepted` | an event; `{proposal}` is the proposal (a link), `{wiki}` the wiki | "Your proposal {proposal} in {wiki} was accepted and signed into the history." | "{wiki} のあなたの提案 {proposal} は受け入れられ、署名して履歴に記録されました。" |
+| `inbox.event_declined` | an event; `{person}` is who declined | "{person} declined your proposal {proposal} in {wiki}." | "{person} さんが {wiki} のあなたの提案 {proposal} を見送りました。" |
+| `inbox.event_needs_revision` | an event; `{person}` is who asked | "{person} asked for a revision of your proposal {proposal} in {wiki}." | "{person} さんが {wiki} のあなたの提案 {proposal} の修正を依頼しました。" |
+| `inbox.event_withdrawn` | an event, for the people who held the proposal; `{person}` is who took it back | "{person} withdrew the proposal {proposal} in {wiki}." | "{person} さんが {wiki} の提案 {proposal} を取り下げました。" |
+| `inbox.event_superseded` | an event; `{person}` is who put a later proposal in its place | "{person} replaced your proposal {proposal} in {wiki} with a later one." | "{person} さんが {wiki} のあなたの提案 {proposal} を、あとの提案に置き換えました。" |
+| `inbox.event_replied` | an event; `{person}` is who commented | "{person} commented in the discussion of {proposal} in {wiki}." | "{person} さんが {wiki} の {proposal} の議論にコメントしました。" |
+| `inbox.event_mentioned` | an event; `{person}` is who wrote the comment | "{person} mentioned you in the discussion of {proposal} in {wiki}." | "{person} さんが {wiki} の {proposal} の議論であなたに言及しました。" |
+| `inbox.event_watched` | an event; `{proposal}` is the proposal the change came from (a link) | "A page you follow in {wiki} changed. The change came from the proposal {proposal}." | "{wiki} でフォローしているページが変更されました。変更のもとになった提案は {proposal} です。" |
+| `inbox.event_unreadable` | an event about something the reader may not read any more | "Something happened that involves you, in a wiki you can no longer read." | "あなたに関わる出来事がありましたが、そのウィキはもう読むことができません。" |
+| `inbox.account_heading` | the heading of the page that says an account is needed (the inbox, and following a page) | "An account is needed" | "アカウントが必要です" |
+| `inbox.account_body` | its sentence, on the inbox | "Your inbox belongs to an account. Sign in to see what has happened to your proposals and to the pages you follow." | "受信箱はアカウントごとのものです。サインインすると、あなたの提案やフォローしているページに起きたことを確認できます。" |
+| `inbox.following_heading` | the heading of the list of what the reader follows, on the inbox | "Pages you follow" | "フォローしているページ" |
+| `inbox.following_none` | shown instead of that list when it is empty | "You do not follow any page yet." | "フォローしているページはまだありません。" |
+| `inbox.following_page` | an item of that list; `{page}` is the page's title (a link), `{wiki}` the wiki | "{page} in {wiki}" | "{wiki} の {page}" |
+| `inbox.following_namespace` | an item of that list; `{page}` is the title the pages are under (a link), `{wiki}` the wiki | "The pages under {page} in {wiki}" | "{wiki} の {page} の下にあるページ" |
+| `inbox.unfollow` | the label of the button beside an item of that list; `{what}` is the item in words | "Stop following {what}" | "{what} のフォローをやめる" |
+| `watch.heading_followed` | the heading of the answer to following a page | "Following" | "フォロー中" |
+| `watch.heading_stopped` | the heading of the answer to stopping | "No longer following" | "フォローをやめました" |
+| `watch.heading_full` | the heading of the answer when the reader follows as many as they may | "You follow as many as you can" | "フォローできる数の上限です" |
+| `watch.page_followed` | the answer to following a page; `{title}` is its title | "You follow the page {title}. When a change to it is signed into the history, you will be told in your inbox." | "ページ「{title}」をフォローしました。このページへの変更が署名して履歴に記録されると、受信箱でお知らせします。" |
+| `watch.namespace_followed` | the answer to following the pages under a title; `{title}` is the title | "You follow the pages under {title}. When a change to one of them is signed into the history, you will be told in your inbox." | "「{title}」の下にあるページをフォローしました。それらへの変更が署名して履歴に記録されると、受信箱でお知らせします。" |
+| `watch.page_stopped` | the answer to stopping following a page; `{title}` is its title | "You no longer follow the page {title}." | "ページ「{title}」のフォローをやめました。" |
+| `watch.namespace_stopped` | the answer to stopping following the pages under a title | "You no longer follow the pages under {title}." | "「{title}」の下にあるページのフォローをやめました。" |
+| `watch.account_body` | the sentence under the heading that says an account is needed, when the reader tried to follow a page | "Following a page belongs to an account. Sign in, then follow the page again." | "ページのフォローはアカウントごとの機能です。サインインしてから、もう一度フォローしてください。" |
+| `watch.full_body` | its sentence, when the reader follows as many pages as they may | "You follow as many pages as you can. Stop following one of them, then try again." | "フォローできるページの数の上限に達しています。どれかのフォローをやめてから、もう一度お試しください。" |
+| `watch.back` | a link back to the page that was followed; `{title}` is its title | "Back to {title}" | "{title} に戻る" |
+| `watch.to_inbox` | a link to the inbox | "Your inbox" | "受信箱を開く" |
+| `changes.filter_minor` | the label of the choice that shows, hides or isolates the minor changes, on the recent changes | "Minor changes" | "軽微な変更" |
+| `changes.active_minor_hide` | in the list of filters in use, on the recent changes | "Minor changes are hidden" | "軽微な変更は表示していません" |
+| `changes.active_minor_only` | in the list of filters in use, on the recent changes | "Only minor changes" | "軽微な変更のみ" |
+| `changes.minor_label` | a mark on a change that was proposed as minor | "Minor change" | "軽微な変更" |
+| `changes.machine_assisted` | a mark on a change that was proposed as machine-assisted; `{person}` is who accepted it and answers for it | "Machine-assisted content, accepted by {person}" | "機械の補助によるコンテンツ（受け入れた人: {person}）" |
+| `changes.machine_assisted_only` | the same mark, when nobody who accepted it is known | "Machine-assisted content" | "機械の補助によるコンテンツ" |
 
 ## 3. Words the interface does not say
 

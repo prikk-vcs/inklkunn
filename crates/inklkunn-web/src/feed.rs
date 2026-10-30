@@ -22,6 +22,8 @@ pub(crate) struct Entry {
     pub related: Option<String>,
     pub author: String,
     pub summary: Option<String>,
+    /// What the change is flagged as (`minor`, `automated`): a category each, so a reader can filter on it.
+    pub categories: Vec<&'static str>,
 }
 
 /// A feed.
@@ -103,6 +105,9 @@ impl Feed {
                 );
             }
             let _ = writeln!(x, "<author><name>{}</name></author>", escape(&e.author));
+            for term in &e.categories {
+                let _ = writeln!(x, "<category term=\"{}\"/>", escape(term));
+            }
             if let Some(summary) = &e.summary {
                 let _ = writeln!(x, "<summary type=\"text\">{}</summary>", escape(summary));
             }

@@ -840,7 +840,7 @@ async fn the_filters_narrow_the_list_and_what_they_do_not_take_is_refused() {
         ("changes?limit=0", "limit"),
         ("changes?limit=500", "limit"),
         ("changes?page=Home", "page"),
-        ("changes?minor=hide", "minor"),
+        ("changes?minor=maybe", "minor"),
         ("changes?namespace=a&namespace=b", "namespace"),
     ] {
         let a = get(&w, &api(tail)).await;

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+<h1>{{ heading }}</h1>
+{% if let Some(text) = account_needed %}<p>{{ text }}</p>
+{% else %}<p>{{ intro }}</p>
+{% if events.is_empty() %}<p>{{ none }}</p>
+{% else %}<ul class="inbox">
+{% for e in events %}<li>{% if e.unread %}<strong>{{ new_mark }}</strong> {% endif %}{{ e.sentence }} <time datetime="{{ e.iso }}">{{ e.when }}</time></li>
+{% endfor %}</ul>
+{% if any_unread %}<form method="post" action="/-/inbox"><p><button type="submit">{{ mark_all }}</button></p></form>
+{% endif %}{% endif %}<h2>{{ following_heading }}</h2>
+{% if following.is_empty() %}<p>{{ following_none }}</p>
+{% else %}<ul class="following">
+{% for f in following %}<li>{{ f.label }} <form method="post" action="{{ f.action }}"><input type="hidden" name="scope" value="{{ f.scope }}"><input type="hidden" name="do" value="unwatch"><button type="submit">{{ f.button }}</button></form></li>
+{% endfor %}</ul>
+{% endif %}{% endif %}<p><a href="/-/wikis">{{ wikis_link }}</a></p>
+{% endblock %}

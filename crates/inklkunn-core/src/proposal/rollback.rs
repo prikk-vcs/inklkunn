@@ -6,7 +6,7 @@
 //!
 //! What an acceptance needs of a rollback is two facts: that the proposal *is* one (so the message says
 //! `Kind: rollback`), and which block it undoes. Both are [`ProposalService::rollback_of`]; the block is also
-//! the revision's base (see [`crate::read::rollback`]), which is the message's `Base:` trailer, so the history
+//! the revision's base (see [`crate::read::RollbackPlan`]), which is the message's `Base:` trailer, so the history
 //! names the undone change.
 
 use inklkunn_store::{AccountId, ProposalId, WikiRecord};

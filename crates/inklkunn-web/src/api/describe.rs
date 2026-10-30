@@ -227,7 +227,15 @@ const AUTOMATED: Param = Param {
     kind: Kind::Choice(&["show", "hide", "only"]),
     required: false,
     missing: Code::InvalidParameter,
-    description: "The changes the wiki service made itself (imports, creating the wiki): `show` them (the default), `hide` them, or list `only` them.",
+    description: "The changes the wiki service made itself (imports, creating the wiki) or that were proposed as machine-assisted: `show` them (the default), `hide` them, or list `only` them.",
+};
+
+const MINOR: Param = Param {
+    name: "minor",
+    kind: Kind::Choice(&["show", "hide", "only"]),
+    required: false,
+    missing: Code::InvalidParameter,
+    description: "The changes that were proposed as minor: `show` them (the default), `hide` them, or list `only` them.",
 };
 
 // ------------------------------------------------------------------------------------ the endpoints
@@ -240,7 +248,7 @@ const REVISION_PARAMS: &[Param] = &[VIEW, REVISION_TITLE];
 const SEARCH_PARAMS: &[Param] = &[QUERY, VIEW, LIMIT];
 const DIFF_PARAMS: &[Param] = &[PATH, FROM, TO, VIEW];
 const HEALTH_PARAMS: &[Param] = &[HEALTH_LIST, VIEW, LIMIT, CURSOR];
-const CHANGES_PARAMS: &[Param] = &[VIEW, LIMIT, CURSOR, CHANGES_NAMESPACE, AUTOMATED];
+const CHANGES_PARAMS: &[Param] = &[VIEW, LIMIT, CURSOR, CHANGES_NAMESPACE, AUTOMATED, MINOR];
 
 const PAGE_PROBLEMS: &[Code] = &[
     Code::PageNotFound,

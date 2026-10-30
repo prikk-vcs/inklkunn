@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use axum::http::HeaderMap;
-use inklkunn_core::{Authorizer, Principal, ReadService, Verifier};
+use inklkunn_core::{Authorizer, Inbox, Principal, ReadService, Verifier};
 use inklkunn_store::WikiStore;
 
 /// Who a request is. The only way the web layer learns a principal.
@@ -40,6 +40,8 @@ pub struct Services {
     pub verifier: Arc<Verifier>,
     /// May this principal read this wiki?
     pub authorizer: Arc<Authorizer>,
+    /// The inbox and the watches of accounts (RFC 004 D-9): what the person is told, read as the person.
+    pub inbox: Arc<Inbox>,
     /// Who a request is.
     pub identity: Arc<dyn Identify>,
     /// Where a cause meant for the operator goes (a page never shows it).

@@ -167,13 +167,13 @@ async fn a_filter_narrows_the_list_and_the_page_says_it_is_filtered() {
             "automated=hide",
             "Update the Home page",
             "Import the handbook",
-            "Changes made by the wiki service itself are hidden",
+            "Changes made by the wiki service itself or with the help of a machine are hidden",
         ),
         (
             "automated=only",
             "Import the handbook",
             "Update the Home page",
-            "Only changes made by the wiki service itself",
+            "Only changes made by the wiki service itself or with the help of a machine",
         ),
         (
             "page=Home",

@@ -4,7 +4,9 @@
 //! about page, the verification page (before and after a check, each way a check can end), the list of wikis,
 //! the recent changes (plain, filtered, one page's), the search (empty, results, similar titles with the disabled
 //! offer to create, an exact title, nothing found), the six health lists and the index, the backlinks (of a page,
-//! of a wanted title, of nothing),
+//! of a wanted title, of nothing), the inbox (no account, empty, with an event of every kind and one about
+//! a wiki the reader may not read, and the pages followed) and the answers to following a page (followed, no
+//! account, too many, a form from another site),
 //! and an address that does not take the method. Each is a page the structural rules run on.
 
 use axum::body::Body;
@@ -55,6 +57,92 @@ fn attempt(w: &World) {
             },
         )
         .unwrap();
+}
+
+/// The account of the signed-in scenarios (the test identity reads it from `x-test-account`).
+const ME: &str = "019a0000-0000-7000-8000-0000000000c1";
+const AS_ME: &[(&str, &str)] = &[("x-test-account", ME)];
+const AS_ME_SAME_SITE: &[(&str, &str)] = &[
+    ("content-type", "application/x-www-form-urlencoded"),
+    ("sec-fetch-site", "same-origin"),
+    ("x-test-account", ME),
+];
+const AS_ME_CROSS_SITE: &[(&str, &str)] = &[
+    ("content-type", "application/x-www-form-urlencoded"),
+    ("sec-fetch-site", "cross-site"),
+    ("x-test-account", ME),
+];
+
+/// The account, who may read the wiki.
+fn me(w: &World) -> inklkunn_store::AccountId {
+    let id = inklkunn_store::AccountId::parse(ME).unwrap();
+    common::let_read(w, &id);
+    id
+}
+
+/// An event of every kind about a proposal of the wiki, one about a wiki the reader may not read, and two
+/// things followed.
+fn events(w: &World) {
+    use inklkunn_store::{
+        InboxEvent, InboxEventId, InboxEventKind, InboxStore, NewWiki, Slug, Visibility,
+        WatchRecord, WatchTarget,
+    };
+    let id = me(w);
+    let p = common::held_proposal(w, &id, "Fix the introduction");
+    for (n, kind) in InboxEventKind::ALL.into_iter().enumerate() {
+        common::tell(w, &id, kind, &p, None, NOW - 100 + n as i64);
+    }
+    let vault = w
+        .store
+        .create(NewWiki {
+            visibility: Visibility::Restricted,
+            ..NewWiki::new(
+                Slug::new("vault").unwrap(),
+                inklkunn_store::DisplayName::new("The Vault").unwrap(),
+            )
+        })
+        .unwrap();
+    w.store
+        .push_event(&InboxEvent {
+            id: InboxEventId::new(),
+            account: id.clone(),
+            wiki: vault.id,
+            proposal: None,
+            kind: InboxEventKind::Mentioned,
+            actor: None,
+            created_at: NOW - 200,
+            read_at: None,
+        })
+        .unwrap();
+    for target in [
+        WatchTarget::Page("pages/Home.md".to_owned()),
+        WatchTarget::Namespace("pages/Guides/".to_owned()),
+    ] {
+        w.store
+            .watch(&WatchRecord {
+                account: id.clone(),
+                wiki: w.wiki.id.clone(),
+                target,
+                created_at: NOW - 300,
+            })
+            .unwrap();
+    }
+}
+
+/// As many watches as an account may keep.
+fn full(w: &World) {
+    use inklkunn_store::{InboxStore, WatchRecord, WatchTarget};
+    let id = me(w);
+    for i in 0..inklkunn_core::inbox::MAX_WATCHES {
+        w.store
+            .watch(&WatchRecord {
+                account: id.clone(),
+                wiki: w.wiki.id.clone(),
+                target: WatchTarget::Page(format!("pages/Followed {i}.md")),
+                created_at: NOW - 300,
+            })
+            .unwrap();
+    }
 }
 
 const SAME_SITE: &[(&str, &str)] = &[
@@ -544,6 +632,92 @@ pub(super) const SCENARIOS: &[Scenario] = &[
         headers: &[],
     },
     Scenario {
+        id: "inbox-no-account",
+        identity: "inbox",
+        status: 403,
+        warm: &[],
+        setup: nothing,
+        method: "GET",
+        uri: "/-/inbox",
+        headers: &[],
+    },
+    Scenario {
+        id: "inbox-empty",
+        identity: "inbox",
+        status: 200,
+        warm: &[],
+        setup: |w| {
+            me(w);
+        },
+        method: "GET",
+        uri: "/-/inbox",
+        headers: AS_ME,
+    },
+    Scenario {
+        id: "inbox-with-events",
+        identity: "inbox",
+        status: 200,
+        warm: &[],
+        setup: events,
+        method: "GET",
+        uri: "/-/inbox",
+        headers: AS_ME,
+    },
+    Scenario {
+        id: "watch-followed",
+        identity: "watch-followed",
+        status: 200,
+        warm: &[],
+        setup: |w| {
+            me(w);
+        },
+        method: "POST",
+        uri: "/handbook/-/watch/Home",
+        headers: AS_ME_SAME_SITE,
+    },
+    Scenario {
+        id: "watch-namespace-followed",
+        identity: "watch-followed",
+        status: 200,
+        warm: &[],
+        setup: |w| {
+            me(w);
+        },
+        method: "POST",
+        uri: "/handbook/-/watch/Guides",
+        headers: AS_ME_SAME_SITE,
+    },
+    Scenario {
+        id: "watch-no-account",
+        identity: "watch-no-account",
+        status: 403,
+        warm: &[],
+        setup: nothing,
+        method: "POST",
+        uri: "/handbook/-/watch/Home",
+        headers: SAME_SITE,
+    },
+    Scenario {
+        id: "watch-full",
+        identity: "watch-full",
+        status: 409,
+        warm: &[],
+        setup: full,
+        method: "POST",
+        uri: "/handbook/-/watch/Home",
+        headers: AS_ME_SAME_SITE,
+    },
+    Scenario {
+        id: "watch-from-another-site",
+        identity: "form-refused",
+        status: 403,
+        warm: &[],
+        setup: nothing,
+        method: "POST",
+        uri: "/handbook/-/watch/Home",
+        headers: AS_ME_CROSS_SITE,
+    },
+    Scenario {
         id: "method-not-allowed",
         identity: "method-not-allowed",
         status: 405,
@@ -623,7 +797,7 @@ pub(super) async fn build(extra: &[(&str, &str)], out: &mut Out) {
     )
     .unwrap();
     for sc in SCENARIOS.iter().chain(super::past_states::SCENARIOS) {
-        let w = handbook();
+        let w = common::with_accounts(handbook());
         let router = site_with(&config, Some(w.services.clone())).unwrap();
         let request = |method: &str, uri: &str, headers: &[(&str, &str)]| {
             let mut b = Request::builder()

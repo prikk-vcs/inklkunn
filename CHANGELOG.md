@@ -711,3 +711,42 @@ Follow-ups from the review of 2026-10-31 (handoff 003, S2 – S4).
   her own proposal is not a review. Tests: one invariant suite per record family on both stores; every sequence of up to
   four acts (three on SQLite) held to the state machine; every quota at its boundary; drafts invisible to other accounts;
   reopen persistence; the metrics against a hand count.
+- **Handoff 004 T6: undo as a proposal, the inbox and following, the flags (RFC 004 D-8, D-9, D-10).** *Store schema
+  10*: `proposal_rollbacks` (a proposal is a rollback from its creation, in the same step, and the block it undoes is
+  written once; the migration from 9 adds one table and changes nothing), `ProposalStore::create_rollback_proposal`,
+  `rollback_of` and `revision_flags` (the flags of the latest revision of each proposal asked for, in one step).
+  **Propose a rollback**: `ReadService::rollback_plan` computes the inverse of a change at content level (one `show`,
+  two `cat`s per page): the pages as they were before it, byte for byte, a page the change created removed, one it
+  removed written again, one it moved put back. The plan is written against the *undone block* (its state and id are the
+  proposal's base), so the merge reads it as "take back what this block did": later edits elsewhere on a page stay and a
+  later change to the very text is an overlap for a person, and the message's `Base:` trailer names the undone change.
+  A rollback of a rollback restores the change because an accepted rollback is a change like any other. What cannot be
+  undone says why (the first change, a file that is not a page, text that is not text, more than 200 pages, a change
+  that left the pages as they were). `ProposalService::propose_rollback` plans, opens and submits it (authorized before
+  the repository is asked); `create_rollback`, `rollback_of` and `RollbackSource` are the parts. **The inbox**
+  (`inklkunn_core::notify`, `inbox`): the proposal service, given a `Notifier` (`with_notifier`), tells the proposer of
+  a review, a decline, a request for a revision and a supersession, the people who held a proposal (those who may
+  accept, and those who reviewed or commented) of its withdrawal, the author of a comment replied to and the proposer
+  of a comment on their proposal, and each account a comment mentions by sign-in name (`@name`; at most ten; the writer
+  never learns whether a name exists). Telling is best effort and counted (`Notifier::failures`); an act never fails
+  for want of an inbox record. **An event is ids and a kind** and is made only for someone who may read the proposal
+  now; the inbox then reads what it is about *as the person who opens it*, so an event about a wiki that stopped being
+  theirs to read is one sentence that names nothing. `Notifier::accepted` and `Notifier::page_changed` are what the
+  acceptance calls after the seal (a watch is told of a change that is in the history and of nothing else). Channels
+  are a trait (`Channel`) with the in-app inbox as its one implementation. Watching a page or the pages under a title
+  (`Inbox::watch`, `unwatch`, `followed`) needs the right to read it and an account, and is bounded (500). **Flags**:
+  recent changes carry the accepted revision's *minor* (real now) and *machine-assisted* flags
+  (`ReadService::with_revision_flags`), filter on them (`minor`, and `automated`, which now covers what the service
+  made itself and what a machine assisted; a filter the records cannot answer is refused, never answered as if nothing
+  were flagged), and label machine-assisted content with the person who accepted it. *Web*: `/-/inbox` (an account
+  is needed and said in words; each kind of event a sentence in the reader's language, other people's text escaped;
+  mark everything read and stop following are `POST`s from this site), `POST /<slug>/-/watch/<Title>` (the generic
+  not-found page for a wiki the visitor may not read, then an account, then a page the account may read), the *minor*
+  choice and the labels on the changes page, `minor=` on the feed and the API (`minor`, `machine_assisted` in each
+  item, drawn in the OpenAPI document), `<category term="minor|automated"/>` in the feed. Forty-one catalog
+  messages in English and the Japanese preview, with their glossary rows; three existing messages say that the
+  *automated* filter covers machine-assisted changes too. Tests: the inverse on exact text (multibyte, CRLF, no final
+  newline), a creation, a removal, a move and a rollback of a rollback; every refusal; the events of every act and who
+  is not told; a wiki restricted after the event; watches fired by the acceptance's function only (against a channel
+  that remembers); the flags on both stores, in the list, the feed and the API; the migration from 9; the structure
+  rules on every new page state in both languages; the route-enumeration harness over the new routes.

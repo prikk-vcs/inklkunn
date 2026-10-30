@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use inklkunn_core::read::ReadConfig;
-use inklkunn_core::{Authorizer, ReadService, StoreAuthz, Verifier};
+use inklkunn_core::{Authorizer, Inbox, ReadService, StoreAuthz, Verifier};
 use inklkunn_prikk::storage::PathRef;
 use inklkunn_prikk::{
     Change, Diff, ExtractBounds, FileMeta, History, HistoryBlock, Materialized, Operation, Patch,
@@ -22,7 +22,10 @@ use inklkunn_store::{
 };
 use inklkunn_web::{AnonymousOnly, Services};
 
+mod inbox;
 mod past;
+#[allow(unused_imports)]
+pub use inbox::*;
 #[allow(unused_imports)]
 pub use past::*;
 
@@ -584,17 +587,20 @@ pub fn assemble(
     store: &Arc<MemoryStore>,
     layout: RootLayout,
 ) -> (Arc<Services>, Arc<MemoryAudit>, Arc<Mutex<Vec<String>>>) {
-    let read = Arc::new(ReadService::new(
-        storage.clone(),
-        store.clone(),
-        store.clone(),
-        layout.clone(),
-        ReadConfig {
-            tip_ttl: std::time::Duration::ZERO,
-            ..ReadConfig::default()
-        },
-        None,
-    ));
+    let read = Arc::new(
+        ReadService::new(
+            storage.clone(),
+            store.clone(),
+            store.clone(),
+            layout.clone(),
+            ReadConfig {
+                tip_ttl: std::time::Duration::ZERO,
+                ..ReadConfig::default()
+            },
+            None,
+        )
+        .with_revision_flags(store.clone()),
+    );
     let verifier = Arc::new(Verifier::new(storage, store.clone(), layout).with_clock(|| NOW));
     let audit = Arc::new(MemoryAudit::new());
     let authorizer = Arc::new(Authorizer::new(
@@ -603,11 +609,22 @@ pub fn assemble(
     ));
     let log = Arc::new(Mutex::new(Vec::new()));
     let sink = log.clone();
+    let inbox = Arc::new(
+        Inbox::new(
+            store.clone(),
+            store.clone(),
+            store.clone(),
+            store.clone(),
+            (*authorizer).clone(),
+        )
+        .with_clock(|| NOW),
+    );
     let services = Arc::new(Services {
         wikis: store.clone(),
         read,
         verifier,
         authorizer,
+        inbox,
         identity: Arc::new(AnonymousOnly),
         log: Arc::new(move |line| {
             sink.lock()

@@ -243,7 +243,11 @@ pub(super) async fn changes(
                     Some("only") => Tri::Only,
                     _ => Tri::Any,
                 },
-                minor: Tri::Any,
+                minor: match params.text("minor") {
+                    Some("hide") => Tri::Hide,
+                    Some("only") => Tri::Only,
+                    _ => Tri::Any,
+                },
             };
             let page = services
                 .read
@@ -262,6 +266,8 @@ pub(super) async fn changes(
                         "people": people_lines(ctx.t, row),
                         "rollback": row.rollback,
                         "automated": row.automated(),
+                        "minor": row.minor,
+                        "machine_assisted": row.machine_assisted,
                         "first_seen": (row.first_seen > 0).then_some(row.first_seen),
                         "pages": row.pages.as_ref().map(|pages| pages.iter().map(|p| json!({
                             "title": p.title,

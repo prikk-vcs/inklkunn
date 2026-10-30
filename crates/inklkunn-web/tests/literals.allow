@@ -212,3 +212,22 @@ exact :: history.rs :: undo :: the read API's code for a mark of a change (a sta
 exact :: history.rs :: import :: the read API's code for a mark of a change (a stable word of the API; the pages say it in the catalog's words)
 exact :: history.rs :: service :: the read API's code for a mark of a change (a stable word of the API; the pages say it in the catalog's words)
 exact :: history.rs :: first :: the read API's code for a mark of a change (a stable word of the API; the pages say it in the catalog's words)
+# --- handoff 004 T6: the inbox, following a page, and the flags of changes
+exact :: changes.rs :: minor=hide :: a machine-readable value: no sentence a reader sees
+exact :: changes.rs :: minor=only :: a machine-readable value: no sentence a reader sees
+exact :: inbox.rs :: /-/inbox :: an address of the site's own surfaces: no sentence a reader sees
+exact :: inbox.rs :: /{slug}/-/proposals/{} :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: inbox.rs :: /{slug} :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: inbox.rs :: /{}/-/watch/{} :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: inbox.rs :: {prefix}x.md :: a repository path built to read a title back from it: no sentence a reader sees
+exact :: inbox.rs :: person :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: inbox.rs :: proposal :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: inbox.rs :: wiki :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: inbox.rs :: page :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: inbox.rs :: namespace :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: inbox.rs :: what :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: watch.rs :: scope :: the name of a form field: data, not a sentence
+exact :: watch.rs :: namespace :: the value of a form field: data, not a sentence
+exact :: watch.rs :: unwatch :: the value of a form field: data, not a sentence
+exact :: watch.rs :: title :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: watch.rs :: a watch could not be recorded: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
