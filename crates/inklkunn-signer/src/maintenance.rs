@@ -22,6 +22,7 @@ use std::ffi::OsString;
 use std::io::Write as _;
 use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use inklkunn_prikk::sandbox::Sandbox;
 use inklkunn_prikk::storage::Verification;
@@ -52,7 +53,7 @@ pub struct ArchiveExported {
 pub struct Maintenance {
     writes: Writes,
     root: RootLayout,
-    locks: WikiLocks,
+    locks: Arc<WikiLocks>,
 }
 
 impl std::fmt::Debug for Maintenance {
@@ -68,8 +69,17 @@ impl Maintenance {
         Maintenance {
             writes: Writes::new(prikk, sandbox),
             root,
-            locks: WikiLocks::default(),
+            locks: Arc::new(WikiLocks::default()),
         }
+    }
+
+    /// Take the wiki's write turns from `leases` instead of keeping a set of its own: the export and the
+    /// refresh then borrow a lease held on their thread (`WriteLease::scope`) and wait for one held elsewhere.
+    /// Open the leases over the same root as this handle.
+    #[must_use]
+    pub fn with_leases(mut self, leases: &Arc<crate::WriteLeases>) -> Self {
+        self.locks = Arc::clone(leases.locks());
+        self
     }
 
     fn repo_of(&self, wiki: &WikiId) -> Result<PathBuf, SignerError> {

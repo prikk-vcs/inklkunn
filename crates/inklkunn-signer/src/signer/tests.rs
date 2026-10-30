@@ -163,6 +163,7 @@ fn the_in_process_turn_is_given_up_only_after_the_file_lock_is_released() {
             locks: &locks,
             wiki: wiki.clone(),
             file: Some(file),
+            borrowed: false,
         };
         std::thread::scope(|s| {
             let waiter = s.spawn(|| {

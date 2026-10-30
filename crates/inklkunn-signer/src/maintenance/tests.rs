@@ -384,3 +384,39 @@ fn a_destination_that_appeared_meanwhile_is_refused_and_not_removed() {
         "a file this call did not make was removed"
     );
 }
+
+#[test]
+fn an_export_and_a_refresh_inside_a_lease_borrow_it_and_a_handle_outside_it_is_told_busy() {
+    use crate::{LeaseRefusal, WriteLeases};
+    let f = fixture("leased");
+    let leases = WriteLeases::new(f.root.clone());
+    let leased = f.maintenance().with_leases(&leases);
+    let lease = leases.try_acquire(&f.wiki).unwrap();
+    {
+        let _scope = lease.scope();
+        leased
+            .archive_export(&f.wiki, &f.destination())
+            .expect("the export borrows the lease it runs inside");
+        leased
+            .refresh_checkpoint(&f.wiki)
+            .expect("so does the refresh");
+    }
+    // The acts gave nothing up: the lease is still held.
+    assert_eq!(
+        leases.try_acquire(&f.wiki).unwrap_err(),
+        LeaseRefusal::ThisProcess
+    );
+    // The command line beside the server (a handle with turns of its own) finds the file lock held: busy, and
+    // nothing was done.
+    let cli = f.maintenance();
+    assert!(matches!(
+        cli.refresh_checkpoint(&f.wiki),
+        Err(SignerError::Busy { .. })
+    ));
+    let before = f.log();
+    assert!(matches!(
+        cli.archive_export(&f.wiki, &f.dir.join("second.prikk")),
+        Err(SignerError::Busy { .. })
+    ));
+    assert_eq!(f.log(), before, "prikk was not run");
+}

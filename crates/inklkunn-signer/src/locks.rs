@@ -14,8 +14,12 @@
 //!    waits for it.
 //!
 //! The kernel drops the lock with its holder, so a killed process leaves nothing to clear. RFC 004's lease is
-//! built on this lock.
+//! built on this lock ([`crate::lease`]): a lease takes the turn and the file lock for the length of an
+//! acceptance, and the acts that run inside it (the signer's `accept`, the keyless export and checkpoint
+//! refresh) **borrow** it instead of taking it a second time, which would find their own process busy. A borrow
+//! is by scope on one thread, made only from a live lease ([`crate::lease::LeaseScope`]).
 
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::sync::{Condvar, Mutex, PoisonError};
 use std::time::Duration;
@@ -36,15 +40,51 @@ pub(crate) struct WikiLocks {
     turn: Condvar,
 }
 
-/// A wiki's write lock, held for one act.
+thread_local! {
+    /// The leases the current thread is inside of: the address of the [`WikiLocks`] a lease belongs to and the
+    /// wiki. Pushed by a [`crate::lease::LeaseScope`] and popped when it drops.
+    static BORROWABLE: RefCell<Vec<(usize, WikiId)>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Put `(locks, wiki)` among the leases this thread may borrow.
+pub(crate) fn lend(locks: &WikiLocks, wiki: &WikiId) {
+    BORROWABLE.with(|b| b.borrow_mut().push((address(locks), wiki.clone())));
+}
+
+/// Take it out again (the most recent one).
+pub(crate) fn unlend(locks: &WikiLocks, wiki: &WikiId) {
+    BORROWABLE.with(|b| {
+        let mut b = b.borrow_mut();
+        let key = (address(locks), wiki.clone());
+        if let Some(at) = b.iter().rposition(|k| *k == key) {
+            b.remove(at);
+        }
+    });
+}
+
+fn address(locks: &WikiLocks) -> usize {
+    std::ptr::from_ref(locks) as usize
+}
+
+pub(crate) fn is_lent(locks: &WikiLocks, wiki: &WikiId) -> bool {
+    let key = (address(locks), wiki.clone());
+    BORROWABLE.with(|b| b.borrow().contains(&key))
+}
+
+/// A wiki's write lock, held for one act (or, when `borrowed`, the lease an enclosing scope holds: nothing is
+/// released when it drops).
 pub(crate) struct WriteGuard<'a> {
     pub(crate) locks: &'a WikiLocks,
     pub(crate) wiki: WikiId,
     pub(crate) file: Option<FileLock>,
+    pub(crate) borrowed: bool,
 }
 
 impl Drop for WriteGuard<'_> {
     fn drop(&mut self) {
+        if self.borrowed {
+            return;
+        }
         // The file first: the in-process turn must not be given up while the file lock is still held, or the
         // next thread would find its own process "busy".
         drop(self.file.take());
@@ -71,6 +111,12 @@ impl WikiLocks {
         held.insert(wiki.clone());
     }
 
+    /// Take the turn if nobody has it, without waiting.
+    pub(crate) fn try_enter(&self, wiki: &WikiId) -> bool {
+        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        held.insert(wiki.clone())
+    }
+
     pub(crate) fn leave(&self, wiki: &WikiId) {
         let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
         held.remove(wiki);
@@ -83,12 +129,21 @@ impl WikiLocks {
         root: &RootLayout,
         wiki: &WikiId,
     ) -> Result<WriteGuard<'a>, SignerError> {
+        if is_lent(self, wiki) {
+            return Ok(WriteGuard {
+                locks: self,
+                wiki: wiki.clone(),
+                file: None,
+                borrowed: true,
+            });
+        }
         self.enter(wiki);
         match flock::exclusive_within(&root.lock_file(wiki), LOCK_GRACE) {
             Ok(Acquired::Held(file)) => Ok(WriteGuard {
                 locks: self,
                 wiki: wiki.clone(),
                 file: Some(file),
+                borrowed: false,
             }),
             Ok(Acquired::Busy { holder }) => {
                 self.leave(wiki);

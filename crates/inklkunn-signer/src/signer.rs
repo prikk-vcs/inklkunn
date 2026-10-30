@@ -120,7 +120,7 @@ pub struct Signer {
     seed_base: SeedBase,
     root: RootLayout,
     ledger: Arc<dyn AcceptanceLedger>,
-    locks: WikiLocks,
+    locks: Arc<WikiLocks>,
     swept: usize,
 }
 
@@ -289,9 +289,18 @@ impl Signer {
             seed_base,
             root: config.root,
             ledger,
-            locks: WikiLocks::default(),
+            locks: Arc::new(WikiLocks::default()),
             swept,
         })
+    }
+
+    /// Take the wiki's write turns from `leases` instead of keeping a set of its own, so that an act of this signer
+    /// inside a [`crate::WriteLease`] scope borrows the lease and an act outside one waits for it. Open the
+    /// leases over the same root as this signer.
+    #[must_use]
+    pub fn with_leases(mut self, leases: &Arc<crate::WriteLeases>) -> Self {
+        self.locks = Arc::clone(leases.locks());
+        self
     }
 
     /// How many temporary directories of a killed call (the keys a write had on the tmpfs) were found and
