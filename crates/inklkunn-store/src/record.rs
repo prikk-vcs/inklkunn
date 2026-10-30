@@ -185,6 +185,31 @@ uuid_id! {
 }
 
 uuid_id! {
+    /// The opaque id of a comment on a proposal (RFC 004 D-1, D-3).
+    CommentId
+}
+
+uuid_id! {
+    /// The opaque id of a reviewer's decision on one revision of a proposal (RFC 004 D-3).
+    DecisionId
+}
+
+uuid_id! {
+    /// The opaque id of an acceptance record (RFC 004 D-4): the act of taking one revision into the history.
+    AcceptanceId
+}
+
+uuid_id! {
+    /// The opaque id of an intent (RFC 004 D-4, CON-3): what the service meant to seal, written before it asks.
+    IntentId
+}
+
+uuid_id! {
+    /// The opaque id of an inbox event (RFC 004 D-9).
+    InboxEventId
+}
+
+uuid_id! {
     /// The opaque id of an API token: what a listing and a revocation name. It is not the token, which is
     /// shown once at issue and kept only as a hash.
     TokenId

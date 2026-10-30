@@ -11,8 +11,11 @@
 //! a second process (a command-line run beside the service) cannot slip between a check and a write; a
 //! slug or id already taken is reported as exactly that.
 
+mod acceptance;
 mod derived;
 mod identity;
+mod inbox;
+mod proposal;
 
 use std::path::Path;
 use std::sync::{Mutex, PoisonError};
@@ -28,7 +31,7 @@ use crate::record::{
 use crate::{Result, StoreError, WikiStore};
 
 /// The schema version this build writes and reads: the last of [`MIGRATIONS`].
-pub const SCHEMA_VERSION: i64 = 8;
+pub const SCHEMA_VERSION: i64 = 9;
 
 /// Version 1: M0's schema, the wiki records.
 const V1: &str = "
@@ -262,6 +265,216 @@ UPDATE wikis SET attempt_at = verification_at, attempt_why = 'unavailable',
     WHERE verification_state = 'could-not-check';
 ";
 
+/// Version 9: proposals and review (RFC 004 D-1, D-3, D-4, D-9). **Only adds.** The proposal row is the one
+/// thing that changes (its state, its text while it is shaped, the times it was submitted and closed), always
+/// in one transaction with the `proposal_transitions` row that explains the change. Revisions, transitions,
+/// comments, decisions, acceptances, acceptance results, intents and intent completions are **written once, in
+/// the database itself**: triggers abort any `UPDATE`, any `DELETE` and any `INSERT` over a key already taken
+/// (the audit log's device, version 3), counting every unique key of the table, because a replacing `INSERT`
+/// removes the row it collides with without firing a delete trigger. As there, this is a guard against code
+/// paths, not against someone with the file. A draft's working copy, the lease holder, watches and inbox events
+/// are mutable on purpose. Accounts and wikis are referenced by foreign keys.
+const V9: &str = "
+CREATE TABLE IF NOT EXISTS proposals (
+    id            TEXT PRIMARY KEY,
+    seq           INTEGER NOT NULL,
+    wiki_id       TEXT NOT NULL REFERENCES wikis(id),
+    view          TEXT NOT NULL,
+    state         TEXT NOT NULL CHECK (state IN ('draft', 'held-for-review', 'needs-revision', 'accepted',
+                                                 'declined', 'withdrawn', 'superseded')),
+    author        TEXT NOT NULL REFERENCES accounts(id),
+    summary       TEXT NOT NULL,
+    sources       TEXT NOT NULL,
+    superseded_by TEXT REFERENCES proposals(id),
+    created_at    INTEGER NOT NULL,
+    updated_at    INTEGER NOT NULL,
+    submitted_at  INTEGER,
+    closed_at     INTEGER
+);
+CREATE INDEX IF NOT EXISTS proposals_wiki ON proposals(wiki_id, seq);
+CREATE INDEX IF NOT EXISTS proposals_author ON proposals(wiki_id, author);
+CREATE TABLE IF NOT EXISTS proposal_drafts (
+    proposal_id TEXT PRIMARY KEY REFERENCES proposals(id),
+    content     TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS proposal_revisions (
+    proposal_id TEXT NOT NULL REFERENCES proposals(id),
+    seq         INTEGER NOT NULL CHECK (seq >= 1),
+    content     TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    PRIMARY KEY (proposal_id, seq)
+);
+CREATE TRIGGER IF NOT EXISTS proposal_revisions_no_update BEFORE UPDATE ON proposal_revisions
+BEGIN SELECT RAISE(ABORT, 'proposal revisions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS proposal_revisions_no_delete BEFORE DELETE ON proposal_revisions
+BEGIN SELECT RAISE(ABORT, 'proposal revisions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS proposal_revisions_no_replace BEFORE INSERT ON proposal_revisions
+WHEN EXISTS (SELECT 1 FROM proposal_revisions WHERE proposal_id = NEW.proposal_id AND seq = NEW.seq)
+BEGIN SELECT RAISE(ABORT, 'proposal revisions are append-only'); END;
+CREATE TABLE IF NOT EXISTS proposal_transitions (
+    seq         INTEGER PRIMARY KEY AUTOINCREMENT,
+    proposal_id TEXT NOT NULL REFERENCES proposals(id),
+    op          TEXT NOT NULL,
+    from_state  TEXT,
+    to_state    TEXT NOT NULL,
+    actor       TEXT NOT NULL REFERENCES accounts(id),
+    reason      TEXT,
+    at          INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS proposal_transitions_proposal ON proposal_transitions(proposal_id, seq);
+CREATE TRIGGER IF NOT EXISTS proposal_transitions_no_update BEFORE UPDATE ON proposal_transitions
+BEGIN SELECT RAISE(ABORT, 'the proposal log is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS proposal_transitions_no_delete BEFORE DELETE ON proposal_transitions
+BEGIN SELECT RAISE(ABORT, 'the proposal log is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS proposal_transitions_no_replace BEFORE INSERT ON proposal_transitions
+WHEN NEW.seq IS NOT NULL AND EXISTS (SELECT 1 FROM proposal_transitions WHERE seq = NEW.seq)
+BEGIN SELECT RAISE(ABORT, 'the proposal log is append-only'); END;
+CREATE TABLE IF NOT EXISTS proposal_comments (
+    id          TEXT PRIMARY KEY,
+    seq         INTEGER NOT NULL,
+    proposal_id TEXT NOT NULL REFERENCES proposals(id),
+    revision    INTEGER NOT NULL,
+    author      TEXT NOT NULL REFERENCES accounts(id),
+    parent      TEXT REFERENCES proposal_comments(id),
+    body        TEXT NOT NULL,
+    anchor      TEXT,
+    created_at  INTEGER NOT NULL,
+    FOREIGN KEY (proposal_id, revision) REFERENCES proposal_revisions(proposal_id, seq)
+);
+CREATE INDEX IF NOT EXISTS proposal_comments_proposal ON proposal_comments(proposal_id, seq);
+CREATE TRIGGER IF NOT EXISTS proposal_comments_no_update BEFORE UPDATE ON proposal_comments
+BEGIN SELECT RAISE(ABORT, 'proposal comments are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS proposal_comments_no_delete BEFORE DELETE ON proposal_comments
+BEGIN SELECT RAISE(ABORT, 'proposal comments are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS proposal_comments_no_replace BEFORE INSERT ON proposal_comments
+WHEN EXISTS (SELECT 1 FROM proposal_comments WHERE id = NEW.id)
+BEGIN SELECT RAISE(ABORT, 'proposal comments are append-only'); END;
+CREATE TABLE IF NOT EXISTS proposal_decisions (
+    id          TEXT PRIMARY KEY,
+    seq         INTEGER NOT NULL,
+    proposal_id TEXT NOT NULL REFERENCES proposals(id),
+    revision    INTEGER NOT NULL,
+    reviewer    TEXT NOT NULL REFERENCES accounts(id),
+    kind        TEXT NOT NULL CHECK (kind IN ('approve', 'request-changes')),
+    body        TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    UNIQUE (proposal_id, revision, reviewer),
+    FOREIGN KEY (proposal_id, revision) REFERENCES proposal_revisions(proposal_id, seq)
+);
+CREATE INDEX IF NOT EXISTS proposal_decisions_proposal ON proposal_decisions(proposal_id, seq);
+CREATE TRIGGER IF NOT EXISTS proposal_decisions_no_update BEFORE UPDATE ON proposal_decisions
+BEGIN SELECT RAISE(ABORT, 'decisions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS proposal_decisions_no_delete BEFORE DELETE ON proposal_decisions
+BEGIN SELECT RAISE(ABORT, 'decisions are append-only'); END;
+-- Two unique keys: the id, and one decision per reviewer per revision. A replacing insert on either would
+-- remove the row it collides with without firing the delete trigger.
+CREATE TRIGGER IF NOT EXISTS proposal_decisions_no_replace BEFORE INSERT ON proposal_decisions
+WHEN EXISTS (SELECT 1 FROM proposal_decisions WHERE id = NEW.id
+             OR (proposal_id = NEW.proposal_id AND revision = NEW.revision AND reviewer = NEW.reviewer))
+BEGIN SELECT RAISE(ABORT, 'decisions are append-only'); END;
+CREATE TABLE IF NOT EXISTS acceptances (
+    id             TEXT PRIMARY KEY,
+    seq            INTEGER NOT NULL,
+    proposal_id    TEXT NOT NULL REFERENCES proposals(id),
+    revision       INTEGER NOT NULL,
+    wiki_id        TEXT NOT NULL REFERENCES wikis(id),
+    view           TEXT NOT NULL,
+    acceptor       TEXT NOT NULL REFERENCES accounts(id),
+    acceptor_role  TEXT NOT NULL,
+    policy_version TEXT NOT NULL,
+    proposer       TEXT NOT NULL REFERENCES accounts(id),
+    digest         TEXT NOT NULL,
+    bytes          INTEGER NOT NULL,
+    created_at     INTEGER NOT NULL,
+    FOREIGN KEY (proposal_id, revision) REFERENCES proposal_revisions(proposal_id, seq)
+);
+CREATE INDEX IF NOT EXISTS acceptances_revision ON acceptances(proposal_id, revision);
+CREATE INDEX IF NOT EXISTS acceptances_proposer ON acceptances(wiki_id, proposer, created_at);
+CREATE TRIGGER IF NOT EXISTS acceptances_no_update BEFORE UPDATE ON acceptances
+BEGIN SELECT RAISE(ABORT, 'acceptances are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS acceptances_no_delete BEFORE DELETE ON acceptances
+BEGIN SELECT RAISE(ABORT, 'acceptances are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS acceptances_no_replace BEFORE INSERT ON acceptances
+WHEN EXISTS (SELECT 1 FROM acceptances WHERE id = NEW.id)
+BEGIN SELECT RAISE(ABORT, 'acceptances are append-only'); END;
+CREATE TABLE IF NOT EXISTS acceptance_results (
+    acceptance_id TEXT PRIMARY KEY REFERENCES acceptances(id),
+    outcome       TEXT NOT NULL CHECK (outcome IN ('sealed', 'failed')),
+    block_id      TEXT,
+    patch_id      TEXT,
+    word          TEXT,
+    at            INTEGER NOT NULL,
+    CHECK ((outcome = 'sealed' AND block_id IS NOT NULL AND patch_id IS NOT NULL AND word IS NULL)
+        OR (outcome = 'failed' AND word IS NOT NULL AND block_id IS NULL AND patch_id IS NULL))
+);
+CREATE TRIGGER IF NOT EXISTS acceptance_results_no_update BEFORE UPDATE ON acceptance_results
+BEGIN SELECT RAISE(ABORT, 'acceptance results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS acceptance_results_no_delete BEFORE DELETE ON acceptance_results
+BEGIN SELECT RAISE(ABORT, 'acceptance results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS acceptance_results_no_replace BEFORE INSERT ON acceptance_results
+WHEN EXISTS (SELECT 1 FROM acceptance_results WHERE acceptance_id = NEW.acceptance_id)
+BEGIN SELECT RAISE(ABORT, 'acceptance results are append-only'); END;
+CREATE TABLE IF NOT EXISTS intents (
+    id             TEXT PRIMARY KEY,
+    seq            INTEGER NOT NULL,
+    acceptance_id  TEXT NOT NULL UNIQUE REFERENCES acceptances(id),
+    wiki_id        TEXT NOT NULL REFERENCES wikis(id),
+    view           TEXT NOT NULL,
+    base_block     TEXT NOT NULL,
+    message_digest TEXT NOT NULL,
+    created_at     INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS intents_wiki ON intents(wiki_id, seq);
+CREATE TRIGGER IF NOT EXISTS intents_no_update BEFORE UPDATE ON intents
+BEGIN SELECT RAISE(ABORT, 'intents are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS intents_no_delete BEFORE DELETE ON intents
+BEGIN SELECT RAISE(ABORT, 'intents are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS intents_no_replace BEFORE INSERT ON intents
+WHEN EXISTS (SELECT 1 FROM intents WHERE id = NEW.id OR acceptance_id = NEW.acceptance_id)
+BEGIN SELECT RAISE(ABORT, 'intents are append-only'); END;
+CREATE TABLE IF NOT EXISTS intent_completions (
+    intent_id TEXT PRIMARY KEY REFERENCES intents(id),
+    how       TEXT NOT NULL CHECK (how IN ('completed', 'abandoned', 'discarded')),
+    at        INTEGER NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS intent_completions_no_update BEFORE UPDATE ON intent_completions
+BEGIN SELECT RAISE(ABORT, 'intent completions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS intent_completions_no_delete BEFORE DELETE ON intent_completions
+BEGIN SELECT RAISE(ABORT, 'intent completions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS intent_completions_no_replace BEFORE INSERT ON intent_completions
+WHEN EXISTS (SELECT 1 FROM intent_completions WHERE intent_id = NEW.intent_id)
+BEGIN SELECT RAISE(ABORT, 'intent completions are append-only'); END;
+CREATE TABLE IF NOT EXISTS lease_holders (
+    wiki_id       TEXT PRIMARY KEY REFERENCES wikis(id),
+    holder        TEXT NOT NULL,
+    purpose       TEXT NOT NULL,
+    acceptance_id TEXT REFERENCES acceptances(id),
+    since         INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS watches (
+    account_id TEXT NOT NULL REFERENCES accounts(id),
+    wiki_id    TEXT NOT NULL REFERENCES wikis(id),
+    kind       TEXT NOT NULL CHECK (kind IN ('page', 'namespace')),
+    target     TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    seq        INTEGER NOT NULL,
+    PRIMARY KEY (account_id, wiki_id, kind, target)
+);
+CREATE INDEX IF NOT EXISTS watches_wiki ON watches(wiki_id, seq);
+CREATE TABLE IF NOT EXISTS inbox_events (
+    id          TEXT PRIMARY KEY,
+    seq         INTEGER NOT NULL,
+    account_id  TEXT NOT NULL REFERENCES accounts(id),
+    wiki_id     TEXT NOT NULL REFERENCES wikis(id),
+    proposal_id TEXT REFERENCES proposals(id),
+    kind        TEXT NOT NULL,
+    actor       TEXT REFERENCES accounts(id),
+    created_at  INTEGER NOT NULL,
+    read_at     INTEGER
+);
+CREATE INDEX IF NOT EXISTS inbox_events_account ON inbox_events(account_id, seq);
+";
+
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and
 /// [`SCHEMA_VERSION`] moves with it (a test holds the two together).
 pub const MIGRATIONS: &[(i64, &str)] = &[
@@ -273,6 +486,7 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (6, V6),
     (7, V7),
     (8, V8),
+    (9, V9),
 ];
 
 /// The SQLite-backed store.

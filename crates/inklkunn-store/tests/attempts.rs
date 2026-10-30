@@ -179,5 +179,5 @@ fn a_version_7_database_that_held_could_not_check_says_unknown_and_keeps_the_att
             why: NotRun::Unavailable
         })
     );
-    assert_eq!(SCHEMA_VERSION, 8);
+    assert_eq!(SCHEMA_VERSION, 9);
 }

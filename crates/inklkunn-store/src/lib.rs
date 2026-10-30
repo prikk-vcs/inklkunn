@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 //! `inklkunn-store` — inklkunn's service store behind traits, SQLite first (RFC 001 D-8; internal design
 //! DM-1, IQ-5). It holds the **wiki record**, the **on-disk root layout**, accounts and the audit trail, and
-//! the **derived cache**; proposals and review state arrive with RFC 004.
+//! the **derived cache**, and the **proposal, review, acceptance and inbox records** (RFC 004).
 //!
 //! - [`record`]: the wiki record and its vocabulary; validated slugs, display names and ids, and what the
 //!   service knows about prikk's checkpoint record.
@@ -12,19 +12,31 @@
 //! - [`audit`]: the shape of the audit trail and its sink trait (RFC 002 D-9).
 //! - [`derived`]: the derived cache, rendered pages and the title index of a view's tip (RFC 003 D-2; DM-6,
 //!   DM-7): keyed by prikk's ids, never authoritative, with no field for a verification result.
+//! - [`proposal`]: proposals, revisions, comments, decisions and the log of every transition (RFC 004 D-1,
+//!   D-3), with drafts visible to their author only.
+//! - [`acceptance`]: acceptances, intents and the lease holder (RFC 004 D-4, D-7), written once and never
+//!   updated.
+//! - [`inbox`]: watches and inbox events (RFC 004 D-9).
 //! - [`WikiStore`] and [`RoleStore`]: the traits; [`MemoryStore`] for tests and [`SqliteStore`] for service.
 //!
 //! The store never holds a key seed (threat model INV-2 for this crate's part): key *ids* only.
 
+pub mod acceptance;
 pub mod access;
 pub mod audit;
 pub mod derived;
 pub mod identity;
+pub mod inbox;
 pub mod memory;
+pub mod proposal;
 pub mod record;
 pub mod root;
 pub mod sqlite;
 
+pub use acceptance::{
+    AcceptanceBegin, AcceptanceEntry, AcceptanceOutcome, AcceptanceRecord, AcceptanceResult,
+    AcceptanceStore, IntentCompletion, IntentEnd, IntentEntry, IntentRecord, LeaseHolder,
+};
 pub use access::{Role, RoleGrant, RoleStore, Scope};
 pub use audit::{
     AuditEvent, AuditLog, AuditOutcome, AuditRecord, AuditSink, MemoryAudit, export_jsonl,
@@ -37,11 +49,18 @@ pub use identity::{
     Account, AccountStore, ExternalIdentity, ExternalIdentityError, LocalCredential, LoginName,
     LoginNameError, SessionRecord, SessionStore, TokenRecord, TokenStore,
 };
+pub use inbox::{InboxEvent, InboxEventKind, InboxStore, WatchRecord, WatchTarget};
 pub use memory::MemoryStore;
+pub use proposal::{
+    Anchor, Base, CommentRecord, DecisionKind, DecisionRecord, FileChange, ProposalChange,
+    ProposalFilter, ProposalOp, ProposalRecord, ProposalState, ProposalStore, ProposalTransition,
+    Quote, Rename, RevisionContent, RevisionRecord,
+};
 pub use record::{
-    AccountId, Attempt, Checkpoint, DisplayName, DisplayNameError, NewWiki, NewWikiError, NotRun,
-    PrikkVersion, ProposalId, Slug, SlugError, TokenId, Verification, VerificationState,
-    Visibility, WikiId, WikiRecord,
+    AcceptanceId, AccountId, Attempt, Checkpoint, CommentId, DecisionId, DisplayName,
+    DisplayNameError, InboxEventId, IntentId, NewWiki, NewWikiError, NotRun, PrikkVersion,
+    ProposalId, Slug, SlugError, TokenId, Verification, VerificationState, Visibility, WikiId,
+    WikiRecord,
 };
 pub use root::RootLayout;
 pub use sqlite::SqliteStore;
@@ -86,6 +105,13 @@ pub enum StoreError {
         /// What is wrong and what to do.
         why: String,
     },
+    /// A change was made against a record that is no longer as the change assumed (a proposal that left the
+    /// state the change needs, a revision that is no longer the latest); nothing was changed. The caller
+    /// reads the record again and decides.
+    StateChanged,
+    /// A record that is written once already exists under its key (a second decision by one reviewer on one
+    /// revision, a second end of an acceptance); nothing was changed.
+    AlreadyRecorded,
     /// The backing store failed; the text is the backend's, without content.
     Backend(String),
 }
@@ -114,6 +140,18 @@ impl std::fmt::Display for StoreError {
                 f,
                 "the database cannot be brought to schema version {version}: {why}; nothing was changed"
             ),
+            StoreError::StateChanged => {
+                write!(
+                    f,
+                    "the record changed since it was read; nothing was changed"
+                )
+            }
+            StoreError::AlreadyRecorded => {
+                write!(
+                    f,
+                    "that record is written once and already exists; nothing was changed"
+                )
+            }
             StoreError::Backend(e) => write!(f, "store backend: {e}"),
         }
     }

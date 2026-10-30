@@ -1,7 +1,10 @@
 //! The in-memory store: tests, and the reference the SQLite store must agree with.
 
+mod acceptance;
 mod derived;
 mod identity;
+mod inbox;
+mod proposal;
 
 use std::sync::{Mutex, PoisonError};
 
@@ -18,6 +21,9 @@ pub struct MemoryStore {
     grants: Mutex<Vec<RoleGrant>>,
     identities: Mutex<identity::Identities>,
     derived: Mutex<derived::Derived>,
+    proposals: Mutex<proposal::Proposals>,
+    acceptances: Mutex<acceptance::Acceptances>,
+    inbox: Mutex<inbox::Inbox>,
 }
 
 impl MemoryStore {
