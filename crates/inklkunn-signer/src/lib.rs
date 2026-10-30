@@ -23,6 +23,7 @@ mod cost;
 mod flock;
 mod key_store;
 mod keys;
+mod lease;
 mod locks;
 mod writes;
 
@@ -49,6 +50,7 @@ pub use accept::{
 pub use bootstrap::BootstrapSigner;
 pub use creation::{CreationMark, Unfinished, find_unfinished};
 pub use keys::KeyIds;
+pub use lease::{LeaseRefusal, LeaseScope, WriteLease, WriteLeases};
 pub use maintenance::{ArchiveExported, Maintenance};
 pub use signer::lifecycle::{OldKey, OldKeyOutcome, Rotation};
 pub use signer::superseded::{LateSeal, SupersededKey};

@@ -4,9 +4,9 @@ use std::sync::{MutexGuard, PoisonError};
 
 use crate::acceptance::{
     AcceptanceBegin, AcceptanceEntry, AcceptanceOutcome, AcceptanceRecord, AcceptanceResult,
-    AcceptanceStore, IntentCompletion, IntentEntry, IntentRecord, LeaseHolder,
+    AcceptanceStore, IntentCompletion, IntentEntry, IntentRecord, LeaseHolder, SealedAcceptance,
 };
-use crate::record::{AccountId, ProposalId, WikiId};
+use crate::record::{AcceptanceId, AccountId, ProposalId, WikiId};
 use crate::{Result, StoreError};
 
 use super::MemoryStore;
@@ -97,6 +97,47 @@ impl AcceptanceStore for MemoryStore {
             .iter()
             .filter(|a| a.proposal == *proposal && a.revision == revision)
             .map(|a| d.entry(a))
+            .collect())
+    }
+
+    fn pending_acceptance(
+        &self,
+        id: &AcceptanceId,
+    ) -> Result<Option<(AcceptanceRecord, IntentRecord)>> {
+        let d = self.acceptances_lock();
+        let Some(a) = d.acceptances.iter().find(|a| a.id == *id) else {
+            return Ok(None);
+        };
+        if d.results.iter().any(|r| r.acceptance == *id) {
+            return Ok(None);
+        }
+        let Some(i) = d.intents.iter().find(|i| i.acceptance == *id) else {
+            return Ok(None);
+        };
+        if d.completions.iter().any(|c| c.intent == i.id) {
+            return Ok(None);
+        }
+        Ok(Some((a.clone(), i.clone())))
+    }
+
+    fn sealed_acceptances(&self, wiki: &WikiId) -> Result<Vec<SealedAcceptance>> {
+        let d = self.acceptances_lock();
+        Ok(d.acceptances
+            .iter()
+            .filter(|a| a.wiki == *wiki)
+            .filter_map(|a| {
+                let result = d.results.iter().find(|r| r.acceptance == a.id)?;
+                let AcceptanceOutcome::Sealed { block_id, patch_id } = &result.outcome else {
+                    return None;
+                };
+                let intent = d.intents.iter().find(|i| i.acceptance == a.id)?;
+                Some(SealedAcceptance {
+                    acceptance: a.clone(),
+                    intent: intent.clone(),
+                    block_id: block_id.clone(),
+                    patch_id: patch_id.clone(),
+                })
+            })
             .collect())
     }
 

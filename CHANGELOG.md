@@ -780,3 +780,41 @@ Follow-ups from the review of 2026-10-31 (handoff 003, S2 – S4).
   (source text drawn and sanitized as the page would be), and the binary builds the service. The route table's unit
   test and the route-enumeration harness now hold the proposals' writes to their actions; the structural harness
   runs 49 more states, both languages.
+- **Handoff 004 T4: acceptance under the lease (RFC 004 D-4, D-6, D-14).** *Store schema 11*: the message an
+  intent means to seal (`intents.message`; the facts a seal is bound to and the reconciliation compares are read from
+  it, so a later rename of a person changes nothing), `wiki_flags` (the recovery flag: set once, the first reason
+  stays, cleared by recovery), `proposal_overlaps` (both texts of every overlap, written once), `system_acts` and
+  `system_act_ends` (the service's own changes, which have no proposal; written once), `ActStore`,
+  `AcceptanceStore::pending_acceptance` and `sealed_acceptances`; the migration from 10 adds tables and one column and
+  changes nothing. **The write lease** (`inklkunn_core::lease`, `inklkunn_signer::lease`): one writer per wiki across
+  processes (the per-wiki `flock` of the 002 corrections, held for the whole act, so the command line and a running
+  server exclude each other), a fair in-process queue of at most 64 waiting per wiki, a bounded wait after which the
+  waiter is told *busy* with how many acts are ahead and an estimate from what leases of that wiki have taken, and a
+  durable holder record written at the take and cleared at the release (a record of another holder found at the take
+  is a holder that died). The acts inside a lease on one thread (the signer's `accept`, the export, the checkpoint
+  refresh) *borrow* it (`Signer::with_leases`, `Maintenance::with_leases`, `WriteLease::scope`): `Accept` is
+  unchanged. It blocks the calling thread, as every service here does; there is no async runtime in the crate.
+  `WikiLeases::export_archive` and `refresh_checkpoint` take the lease. **Acceptance** (`ProposalAcceptor::accept`):
+  `authorize(_, accept, proposal)` first, before the lease; the lease; the guard against an unfinished earlier act;
+  the tip read again through `Storage::views`; the revision as it is when its base is the tip, else re-authored by
+  the merge against the tip (only the pages whose text differs there are written, a rename the tip can still carry
+  out stays a rename); on an overlap both texts are recorded on the proposal, which needs a revision, the proposer is
+  told and nothing in prikk changes; else the acceptance record (*pending seal*, with the digest of the files) and
+  the intent, both **before** `Accept::accept`, which reads them back through `StoreLedger` (nothing is kept in
+  memory between the records and the signer). The signer's outcomes are read as typed: *sealed* (ids recorded,
+  proposal accepted, caches forgotten, reconciliation run, lease released, then the proposer and the watchers told
+  and the title index and verification asked for through `AfterSeal`), *nothing happened* (the record says *failed*
+  with a fixed word, the intent is abandoned, the proposal stays open), *queued*, *worktree dirty* or *sealed but
+  unconfirmed without ids* (the record stays pending, the intent open, the wiki is flagged *needs recovery*, writes
+  are refused with the word, reads are served, and nothing is committed again); a seal that could not be confirmed
+  but has its block is recorded as sealed and flags the wiki for a look. A retry finds the record and answers
+  `AlreadySigned`; a retry behind the first waits and finds it. A maintainer accepts their own proposal only in a
+  wiki with fewer than three; the accepted-bytes quota and the queue bound refuse by name. `^id`s are attached to
+  commented blocks that had none in the same change (CM-5; paragraphs, tables and code blocks, each checked by
+  reading the page again). A proposal created as a rollback is signed as `Kind: rollback`. **One path**:
+  `SystemActs` (authorize as the system principal, lease, record, `Accept`, end, reconciliation) is how
+  `import-folder` and any system change are made; `run_import` takes it, and `ImportLedger` is gone (the signer's
+  guard reads the store). Tests: the lease on its own (queue order, bound, estimate, the other process, the holder
+  record, export and refresh), the acceptance against an in-memory repository and a scripted signer (every outcome,
+  the race, the retry, the quotas, the flag, ids, who is told), the sides of the merge, and eleven against a real
+  repository (`tests/acceptance.rs`) including the reconciliation finding nothing after every kind of act.

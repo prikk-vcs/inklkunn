@@ -6,8 +6,9 @@
 //!
 //! **Not here** (handoff 004's later tasks): the merge (T2), the acceptance and its lease and recovery (T4,
 //! T5), the routes and pages (T3), the inbox events and the rollback (T6), the write API (T7). A proposal
-//! reaches *accepted* only through `ProposalService::record_accepted` (crate-private), which T4 calls once the signer has
-//! sealed; nothing in this module touches a repository.
+//! reaches *accepted* only through `ProposalService::record_accepted` (crate-private), which the acceptance
+//! ([`crate::acceptance`], handoff 004 T4) calls once the signer has sealed; nothing in this module touches a
+//! repository.
 //!
 //! **Every call is authorized first**, through the one [`Authorizer`], before any record is read: *propose*
 //! on each page the change touches (or on the wiki, for a draft that touches none yet), *comment*, *review*
@@ -1033,26 +1034,67 @@ impl ProposalService {
         Ok(after)
     }
 
+    /// *Accept* on the proposal, **first and before anything else is read** (RFC 004 D-4: the acceptance
+    /// authorizes before it takes the lease): the account that may accept it, or *not allowed*. Only an
+    /// account accepts; the system principal's changes have no proposal.
+    pub(crate) fn authorize_accept(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        id: &ProposalId,
+    ) -> Result<AccountId> {
+        let who = account_of(principal)?;
+        self.allow(
+            principal,
+            Action::Accept,
+            &Self::proposal_resource(wiki, id),
+        )?;
+        Ok(who.clone())
+    }
+
     /// Record that a proposal's acceptance sealed: held for review becomes accepted. **Called by the
     /// acceptance (handoff 004 T4) after the signer has sealed, and by nothing else**: it does not
     /// authorize, because the acceptance already did, under the lease.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn record_accepted(
         &self,
         wiki: &WikiRecord,
         id: &ProposalId,
         acceptor: &AccountId,
     ) -> Result<ProposalRecord> {
-        let p = self.load(wiki, id, Some(acceptor))?;
-        let to = next(Some(p.state), ProposalOp::Accept)?;
+        self.record_step(wiki, id, acceptor, ProposalOp::Accept, None)
+    }
+
+    /// Send a held proposal back to its proposer because the acceptance found overlaps (RFC 004 D-4 step 3):
+    /// *needs a revision*, with `reason` (the fixed word of the outcome). Called by the acceptance, under the
+    /// lease, after it recorded both texts; it does not authorize, because the acceptance already did.
+    pub(crate) fn record_needs_revision(
+        &self,
+        wiki: &WikiRecord,
+        id: &ProposalId,
+        acceptor: &AccountId,
+        reason: &str,
+    ) -> Result<ProposalRecord> {
+        self.record_step(wiki, id, acceptor, ProposalOp::AskForRevision, Some(reason))
+    }
+
+    fn record_step(
+        &self,
+        wiki: &WikiRecord,
+        id: &ProposalId,
+        actor: &AccountId,
+        op: ProposalOp,
+        reason: Option<&str>,
+    ) -> Result<ProposalRecord> {
+        let p = self.load(wiki, id, Some(actor))?;
+        let to = next(Some(p.state), op)?;
         let change = ProposalChange {
             transition: ProposalTransition {
                 proposal: id.clone(),
-                op: ProposalOp::Accept,
+                op,
                 from: Some(p.state),
                 to,
-                actor: acceptor.clone(),
-                reason: None,
+                actor: actor.clone(),
+                reason: reason.map(str::to_owned),
                 at: (self.clock)(),
             },
             text: None,

@@ -177,8 +177,7 @@ mod world {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use inklkunn_core::import::ImportLedger;
-    use inklkunn_core::{CreationStep, Signer, SignerConfig, create_wiki_observed};
+    use inklkunn_core::{CreationStep, NoLedger, Signer, SignerConfig, create_wiki_observed};
     use inklkunn_prikk::sandbox::Sandbox;
     use inklkunn_prikk::{Admission, Point, PrikkCli, Storage};
     use inklkunn_store::{
@@ -403,7 +402,7 @@ exec "$REAL" "$@"
                     &self.settings.secret_file,
                     &self.settings.seed_dir,
                 ),
-                Arc::new(ImportLedger::new()),
+                Arc::new(NoLedger),
             )
             .unwrap();
             let hook = std::panic::take_hook();

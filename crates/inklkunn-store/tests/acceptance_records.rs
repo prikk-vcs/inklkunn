@@ -65,6 +65,7 @@ fn intent(a: &AcceptanceRecord, at: i64) -> IntentRecord {
         view: a.view.clone(),
         base_block: "e".repeat(64),
         message_digest: "f".repeat(64),
+        message: "A summary\n\nKind: proposal\n".to_owned(),
         created_at: at,
     }
 }
@@ -252,6 +253,66 @@ fn the_suite(store: &(impl ProposalStore + AcceptanceStore + WikiStore + Account
     assert_eq!(all.len(), 2);
     assert_eq!(nth(&all, 0).completion, Some(end));
     assert_eq!(nth(&all, 1).completion, None);
+
+    // --- The sealed acceptances, with their intents: what the reconciliation compares the history with.
+    // a1 sealed and has its intent; `second` is pending; `first` failed and has none.
+    let sealed_list = store.sealed_acceptances(&w.id).unwrap();
+    assert_eq!(sealed_list.len(), 1);
+    let only = nth(&sealed_list, 0);
+    assert_eq!(only.acceptance, a1);
+    assert_eq!(
+        only.intent, i1,
+        "the message the intent holds comes back whole"
+    );
+    assert_eq!(
+        (only.block_id.as_str(), only.patch_id.as_str()),
+        (&*"b".repeat(64), &*"c".repeat(64))
+    );
+    assert!(store.sealed_acceptances(&other_wiki.id).unwrap().is_empty());
+
+    // --- The signer's guard asks for a pending acceptance with an open intent, and for nothing else.
+    assert_eq!(
+        store.pending_acceptance(&second.id).unwrap(),
+        Some((second.clone(), i2.clone())),
+        "pending seal with its intent open"
+    );
+    assert_eq!(
+        store.pending_acceptance(&a1.id).unwrap(),
+        None,
+        "sealed, and its intent ended"
+    );
+    assert_eq!(
+        store.pending_acceptance(&first.id).unwrap(),
+        None,
+        "failed, with no intent"
+    );
+    assert_eq!(
+        store.pending_acceptance(&AcceptanceId::new()).unwrap(),
+        None
+    );
+    let no_intent = submit(store, &open_draft(store, &w.id, &author, 60), 61);
+    let bare = acceptance(&no_intent, 1, &maintainer, 5, 62);
+    store.begin_acceptance(&bare).unwrap();
+    assert_eq!(
+        store.pending_acceptance(&bare.id).unwrap(),
+        None,
+        "a record the intent was never written for is not a pending seal"
+    );
+    let ended = intent(&bare, 63);
+    store.record_intent(&ended).unwrap();
+    assert!(store.pending_acceptance(&bare.id).unwrap().is_some());
+    store
+        .complete_intent(&IntentCompletion {
+            intent: ended.id.clone(),
+            end: IntentEnd::Abandoned,
+            at: 64,
+        })
+        .unwrap();
+    assert_eq!(
+        store.pending_acceptance(&bare.id).unwrap(),
+        None,
+        "its intent ended"
+    );
 
     // --- The lease holder is a witness that changes hands.
     let holder = |who: &str, at: i64| LeaseHolder {

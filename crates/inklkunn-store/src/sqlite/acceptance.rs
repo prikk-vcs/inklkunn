@@ -9,6 +9,7 @@ use super::{SqliteStore, backend};
 use crate::acceptance::{
     AcceptanceBegin, AcceptanceEntry, AcceptanceOutcome, AcceptanceRecord, AcceptanceResult,
     AcceptanceStore, IntentCompletion, IntentEnd, IntentEntry, IntentRecord, LeaseHolder,
+    SealedAcceptance,
 };
 use crate::access::Role;
 use crate::record::{AcceptanceId, AccountId, IntentId, ProposalId, WikiId};
@@ -105,6 +106,7 @@ fn row_to_intent(row: &Row<'_>) -> rusqlite::Result<IntentEntry> {
             view: row.get(3)?,
             base_block: row.get(4)?,
             message_digest: row.get(5)?,
+            message: row.get(9)?,
             created_at: row.get(8)?,
         },
         completion,
@@ -112,7 +114,7 @@ fn row_to_intent(row: &Row<'_>) -> rusqlite::Result<IntentEntry> {
 }
 
 const INTENT_SELECT: &str = "SELECT i.id, i.acceptance_id, i.wiki_id, i.view, i.base_block, \
-     i.message_digest, c.how, c.at, i.created_at FROM intents i \
+     i.message_digest, c.how, c.at, i.created_at, i.message FROM intents i \
      LEFT JOIN intent_completions c ON c.intent_id = i.id";
 
 fn intents_where(conn: &Connection, clause: &str, wiki: &WikiId) -> Result<Vec<IntentEntry>> {
@@ -227,6 +229,83 @@ impl AcceptanceStore for SqliteStore {
         self.with(|conn| entries_of(conn, proposal, revision))
     }
 
+    fn pending_acceptance(
+        &self,
+        id: &AcceptanceId,
+    ) -> Result<Option<(AcceptanceRecord, IntentRecord)>> {
+        self.with(|conn| {
+            let found = conn
+                .query_row(
+                    &format!(
+                        "SELECT {ACCEPTANCE_COLUMNS} FROM acceptances a \
+                         LEFT JOIN acceptance_results r ON r.acceptance_id = a.id \
+                         WHERE a.id = ?1 AND r.acceptance_id IS NULL"
+                    ),
+                    params![id.as_str()],
+                    row_to_entry,
+                )
+                .optional()
+                .map_err(backend)?;
+            let Some(entry) = found else {
+                return Ok(None);
+            };
+            let intent = conn
+                .query_row(
+                    &format!("{INTENT_SELECT} WHERE i.acceptance_id = ?1 AND c.intent_id IS NULL"),
+                    params![id.as_str()],
+                    row_to_intent,
+                )
+                .optional()
+                .map_err(backend)?;
+            Ok(intent.map(|i| (entry.acceptance, i.intent)))
+        })
+    }
+
+    fn sealed_acceptances(&self, wiki: &WikiId) -> Result<Vec<SealedAcceptance>> {
+        self.with(|conn| {
+            let mut stmt = conn
+                .prepare(&format!(
+                    "SELECT {ACCEPTANCE_COLUMNS} FROM acceptances a \
+                     JOIN acceptance_results r ON r.acceptance_id = a.id \
+                     WHERE a.wiki_id = ?1 AND r.outcome = 'sealed' ORDER BY a.seq"
+                ))
+                .map_err(backend)?;
+            let rows = stmt
+                .query_map(params![wiki.as_str()], row_to_entry)
+                .map_err(backend)?;
+            let entries = rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|_| {
+                StoreError::Backend("a stored acceptance could not be read".to_owned())
+            })?;
+            let mut out = Vec::with_capacity(entries.len());
+            for entry in entries {
+                let Some(AcceptanceResult {
+                    outcome: AcceptanceOutcome::Sealed { block_id, patch_id },
+                    ..
+                }) = entry.result
+                else {
+                    continue;
+                };
+                let intent = conn
+                    .query_row(
+                        &format!("{INTENT_SELECT} WHERE i.acceptance_id = ?1"),
+                        params![entry.acceptance.id.as_str()],
+                        row_to_intent,
+                    )
+                    .optional()
+                    .map_err(backend)?;
+                if let Some(intent) = intent {
+                    out.push(SealedAcceptance {
+                        acceptance: entry.acceptance,
+                        intent: intent.intent,
+                        block_id,
+                        patch_id,
+                    });
+                }
+            }
+            Ok(out)
+        })
+    }
+
     fn accepted_bytes_since(
         &self,
         wiki: &WikiId,
@@ -265,8 +344,8 @@ impl AcceptanceStore for SqliteStore {
             }
             tx.execute(
                 "INSERT INTO intents (id, seq, acceptance_id, wiki_id, view, base_block, message_digest, \
-                 created_at) VALUES (?1, (SELECT COALESCE(MAX(seq), 0) + 1 FROM intents), ?2, ?3, ?4, \
-                 ?5, ?6, ?7)",
+                 created_at, message) VALUES (?1, (SELECT COALESCE(MAX(seq), 0) + 1 FROM intents), ?2, \
+                 ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     intent.id.as_str(),
                     intent.acceptance.as_str(),
@@ -274,7 +353,8 @@ impl AcceptanceStore for SqliteStore {
                     intent.view,
                     intent.base_block,
                     intent.message_digest,
-                    intent.created_at
+                    intent.created_at,
+                    intent.message
                 ],
             )
             .map_err(write_refusal)?;

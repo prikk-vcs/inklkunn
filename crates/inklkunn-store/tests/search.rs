@@ -274,7 +274,7 @@ fn a_version_6_database_gains_the_search_index_and_the_observed_times_and_keeps_
         assert_eq!(store.first_seen(&w, &["b".to_owned()], 5).unwrap(), [5]);
     }
     assert_eq!(version(), SCHEMA_VERSION.to_string());
-    assert_eq!(SCHEMA_VERSION, 10);
+    assert_eq!(SCHEMA_VERSION, 11);
     // Opening again changes nothing and loses nothing.
     let store = SqliteStore::open(&db).expect("reopen");
     let w = WikiId::parse(id).expect("id");

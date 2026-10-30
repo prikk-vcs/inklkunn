@@ -11,12 +11,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use inklkunn_core::export::{ExportError, export_bundle};
-use inklkunn_core::import::{ImportError, ImportLedger, plan_folder, run_import, wiki_state};
+use inklkunn_core::import::{ImportError, plan_folder, run_import, wiki_state};
 use inklkunn_core::message::{Actor, BlockId, Message, Summary};
 use inklkunn_core::{
-    AcceptError, AcceptanceLedger, AcceptanceToken, CreatedWiki, ExpectedMessage, KeyAuthority,
-    LedgerError, PreparedChange, PreparedFile, Signer, SignerConfig, ViewCreationAct,
-    ViewCreationFacts, create_wiki,
+    AcceptanceLedger, AcceptanceToken, Authorizer, CreatedWiki, ExpectedMessage, KeyAuthority,
+    LeaseConfig, LedgerError, PreparedChange, PreparedFile, Signer, SignerConfig, StoreAuthz,
+    StoreLedger, SystemActFailure, SystemActs, ViewCreationAct, ViewCreationFacts, WikiLeases,
+    create_wiki,
 };
 use inklkunn_prikk::sandbox::probe_bwrap;
 use inklkunn_prikk::storage::{
@@ -24,7 +25,9 @@ use inklkunn_prikk::storage::{
 };
 use inklkunn_prikk::{Admission, ExtractBounds, Point, PrikkCli, Sandbox, Storage, StorageError};
 use inklkunn_signer::Accept;
-use inklkunn_store::{AccountId, DisplayName, MemoryStore, NewWiki, ProposalId, RootLayout, Slug};
+use inklkunn_store::{
+    AccountId, DisplayName, MemoryAudit, MemoryStore, NewWiki, ProposalId, RootLayout, Slug,
+};
 use sha2::{Digest, Sha256};
 
 #[path = "support/bundle_manifest.rs"]
@@ -63,16 +66,16 @@ fn policies() -> Vec<Sandbox> {
     }
 }
 
-/// The import ledger and a second one for the accepted proposal the test makes.
-#[derive(Default)]
+/// The store's ledger (what the service's own path writes) and a second one for the accepted proposal the test
+/// makes by hand.
 struct Ledgers {
-    import: Arc<ImportLedger>,
+    store: StoreLedger,
     extra: Mutex<HashMap<String, ExpectedMessage>>,
 }
 
 impl AcceptanceLedger for Ledgers {
     fn pending(&self, token: &AcceptanceToken) -> Result<Option<ExpectedMessage>, LedgerError> {
-        match self.import.pending(token)? {
+        match self.store.pending(token)? {
             Some(e) => Ok(Some(e)),
             None => Ok(self.extra.lock().unwrap().get(token.as_str()).cloned()),
         }
@@ -87,10 +90,12 @@ struct World {
     _shm: Dir,
     tmp: PathBuf,
     layout: RootLayout,
-    signer: Signer,
+    signer: Arc<Signer>,
     storage: PrikkCli,
-    store: MemoryStore,
+    store: Arc<MemoryStore>,
     ledgers: Arc<Ledgers>,
+    /// The service's own path (RFC 004 D-14): the lease, the record of the act, the signer.
+    acts: SystemActs,
 }
 
 fn world(tag: &str, sandbox: Sandbox) -> World {
@@ -99,7 +104,11 @@ fn world(tag: &str, sandbox: Sandbox) -> World {
     let secret = tmp.0.join("secret");
     std::fs::write(&secret, "an operator secret long enough for the tests").expect("secret");
     let layout = RootLayout::new(tmp.0.join("root"));
-    let ledgers = Arc::new(Ledgers::default());
+    let store = Arc::new(MemoryStore::new());
+    let ledgers = Arc::new(Ledgers {
+        store: StoreLedger::new(store.clone(), store.clone()),
+        extra: Mutex::new(HashMap::new()),
+    });
     let mut cfg = SignerConfig::new(
         "prikk",
         sandbox.clone(),
@@ -109,13 +118,33 @@ fn world(tag: &str, sandbox: Sandbox) -> World {
         &shm.0,
     );
     cfg.cheap_derivation = true;
-    let signer = Signer::open_creating_store(cfg, ledgers.clone()).expect("signer");
-    let storage = PrikkCli::open(
-        "prikk",
-        sandbox,
-        Admission::new(1 << 30, 64 << 20, Duration::from_millis(200)),
-    )
-    .expect("prikk at the floor");
+    let write_leases = inklkunn_core::WriteLeases::new(layout.clone());
+    let signer = Arc::new(
+        Signer::open_creating_store(cfg, ledgers.clone())
+            .expect("signer")
+            .with_leases(&write_leases),
+    );
+    let admission = || Admission::new(1 << 30, 64 << 20, Duration::from_millis(200));
+    let storage =
+        PrikkCli::open("prikk", sandbox.clone(), admission()).expect("prikk at the floor");
+    let leases = WikiLeases::new(
+        write_leases,
+        store.clone(),
+        "round-trip",
+        LeaseConfig::default(),
+    );
+    let acts = SystemActs::new(
+        Authorizer::new(
+            Arc::new(StoreAuthz::new(store.clone(), store.clone())),
+            Arc::new(MemoryAudit::new()),
+        ),
+        store.clone(),
+        store.clone(),
+        Arc::new(PrikkCli::open("prikk", sandbox, admission()).expect("prikk at the floor")),
+        layout.clone(),
+        signer.clone(),
+        leases,
+    );
     World {
         tmp: tmp.0.clone(),
         _tmp: tmp,
@@ -123,16 +152,17 @@ fn world(tag: &str, sandbox: Sandbox) -> World {
         layout,
         signer,
         storage,
-        store: MemoryStore::new(),
+        store,
         ledgers,
+        acts,
     }
 }
 
 fn create(w: &World, slug: &str) -> CreatedWiki {
     create_wiki(
-        &w.store,
+        &*w.store,
         &w.layout,
-        &w.signer,
+        &*w.signer,
         &w.storage,
         NewWiki::new(
             Slug::new(slug).unwrap(),
@@ -177,7 +207,7 @@ fn do_import(
     let have = wiki_state(&w.storage, &w.layout, &wiki.record).unwrap();
     let plan = plan_folder(folder, &have, replace).unwrap();
     assert!(plan.is_importable(), "{}", plan.report());
-    run_import(&w.signer, &w.ledgers.import, &wiki.record, &plan).unwrap_or_else(|e| panic!("{e}"))
+    run_import(&w.acts, &wiki.record, &plan).unwrap_or_else(|e| panic!("{e}"))
 }
 
 /// An accepted proposal by two accounts that edits the Home page.
@@ -440,8 +470,7 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
         assert!(
             !refused.is_importable() && refused.refused.iter().any(|r| r.name == "pages/Help.md")
         );
-        run_import(&w.signer, &w.ledgers.import, &b.record, &plan)
-            .unwrap_or_else(|e| panic!("{e}"));
+        run_import(&w.acts, &b.record, &plan).unwrap_or_else(|e| panic!("{e}"));
         assert!(w.storage.verify(&b.repo).unwrap().verdict.ok);
         let out2 = dir_in(&w.tmp, "out2");
         let dir2 = out2.0.join("bundle");
@@ -666,7 +695,7 @@ fn a_dry_run_writes_nothing_to_the_wiki_the_folder_or_anywhere() {
         .unwrap();
     assert_eq!(log_before, log_after, "a dry run changed the history");
     // The same plan, run, is the one change the report promised.
-    let done = run_import(&w.signer, &w.ledgers.import, &a.record, &plan).unwrap();
+    let done = run_import(&w.acts, &a.record, &plan).unwrap();
     let log_run = w
         .storage
         .history(&a.repo, &Point::View(a.record.default_view.clone()), None)
@@ -885,7 +914,7 @@ fn an_import_is_held_to_the_tip_it_was_planned_against_and_an_unchanged_reimport
     let again = plan_folder(&folder.0, &have, true).unwrap();
     assert!(again.is_unchanged(), "{}", again.report());
     assert_eq!(again.unchanged.len(), 5);
-    let err = run_import(&w.signer, &w.ledgers.import, &a.record, &again).unwrap_err();
+    let err = run_import(&w.acts, &a.record, &again).unwrap_err();
     assert!(matches!(err, ImportError::NothingChanged(5)), "{err}");
     assert_eq!(blocks(&w), before);
 
@@ -905,9 +934,9 @@ fn an_import_is_held_to_the_tip_it_was_planned_against_and_an_unchanged_reimport
     );
     do_import(&w, &a, &other.0, false);
     let after_other = blocks(&w);
-    let err = run_import(&w.signer, &w.ledgers.import, &a.record, &mixed).unwrap_err();
+    let err = run_import(&w.acts, &a.record, &mixed).unwrap_err();
     assert!(
-        matches!(&err, ImportError::Accept(AcceptError::Refused(m)) if m.contains("tip moved")),
+        matches!(&err, ImportError::Act(SystemActFailure::Failed { word: "refused", detail, .. }) if detail.contains("tip moved")),
         "{err}"
     );
     assert_eq!(blocks(&w), after_other, "a refused import moved the view");
@@ -917,6 +946,6 @@ fn an_import_is_held_to_the_tip_it_was_planned_against_and_an_unchanged_reimport
     let have = wiki_state(&w.storage, &w.layout, &a.record).unwrap();
     let replan = plan_folder(&folder.0, &have, true).unwrap();
     assert_eq!(replan.files.len(), 1);
-    run_import(&w.signer, &w.ledgers.import, &a.record, &replan).unwrap();
+    run_import(&w.acts, &a.record, &replan).unwrap();
     assert_eq!(blocks(&w), after_other + 1);
 }

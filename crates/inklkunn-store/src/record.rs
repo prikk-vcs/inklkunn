@@ -200,6 +200,12 @@ uuid_id! {
 }
 
 uuid_id! {
+    /// The opaque id of an act the service makes for itself (RFC 004 D-14): an import or a system change, which
+    /// has no proposal and so no acceptance record.
+    SystemActId
+}
+
+uuid_id! {
     /// The opaque id of an intent (RFC 004 D-4, CON-3): what the service meant to seal, written before it asks.
     IntentId
 }
