@@ -259,7 +259,7 @@ any write is served from the web** (the sign-in handoff's last task); P7 – P12
 ## Corrections from the review of 2026-11-01 (binding; **P2′ before writes are switched on (U6)**, P13 – P16 with it)
 
 P1, P3 – P12, 003's T1, T2 and the spike's K1 are **approved** (`.git-exclude/reviewed/004-proposals-corrections-review-result.md`).
-Hand back P2′ and P13 – P16 as one request, `004-proposals-corrections-2-review-request.md`.
+Hand back P2′ and P13 – P17 as one request, `004-proposals-corrections-2-review-request.md`.
 
 - **P2′ — the excuse is the retirement's own recorded set, nothing wider.** At a retirement (`lifecycle.rs`, `OldKey::Retire`):
   run `verify` **just before** the untrust (it must pass; if it does not, refuse to retire and say the wiki needs recovery
@@ -277,6 +277,11 @@ Hand back P2′ and P13 – P16 as one request, `004-proposals-corrections-2-rev
 - **P15.** Recovery answers `PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING` with prikk's own recommendation (`seal --allow-no-audit`
   once, only when `doctor` names exactly that code and the published block is the intent's), recorded and audited as a step;
   the empty lock file and a lone `ACTIVE-REF-METADATA-DEBRIS` stay fail-closed with their operator steps in `docs/RECOVERY.md`.
+- **P17 (first; CI on `a26dccd` failed on it).** `signer::tests::the_in_process_turn_is_given_up_only_after_the_file_lock_is_released`
+  takes the file lock with `try_exclusive` (no wait) right after another thread released it, so a sibling test's `fork`
+  holding a copy of the descriptor makes it fail (*round 3: the lock was busy for the first holder*). Take it as the product
+  does, with `exclusive_within` and the grace, or run the test in its own process; keep what it asserts (the turn is given
+  up only after the file lock is released).
 - **P16.** `docs/RECOVERY.md`'s way out of an orphan queued patch is tested against the state the kill matrix's *inside prikk
   commit* row leaves; the auth crate's timing test is made robust to load (as R10 did for the markup crate).
 
