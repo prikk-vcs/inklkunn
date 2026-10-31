@@ -776,7 +776,7 @@ fn a_wiki_the_command_line_holds_makes_the_servers_acceptance_busy_and_it_accept
 }
 
 #[test]
-fn a_wiki_the_server_is_signing_is_refused_to_the_command_line_by_name() {
+fn a_wiki_the_server_is_signing_makes_the_command_line_wait_its_turn() {
     let Some(world) = World::new("server-holds", true) else {
         return;
     };
@@ -791,35 +791,28 @@ fn a_wiki_the_server_is_signing_is_refused_to_the_command_line_by_name() {
     until("the signing call to be inside seal", || {
         world.ctl.join("inside-seal").exists()
     });
-    // The command line beside the running server is told the wiki is busy, and nothing of it is touched.
+    // The command line beside the running server takes its place in the wiki's line (handoff 004 P9: maintenance
+    // goes through the lease): it does not run while the server's signing call holds the wiki, and does after.
     let archive = world.tmp.0.join("busy.prikk");
-    let (status, _, err) = world.cli(&[
-        "wiki",
-        "export",
-        "handbook",
-        "--archive",
-        &archive.display().to_string(),
-    ]);
-    assert_eq!(status, 1, "{err}");
-    assert!(
-        err.contains(&format!(
-            "is being written by process {}",
-            std::process::id()
-        )) && err.contains("nothing was done"),
-        "{err}"
-    );
-    assert!(!archive.exists());
+    let export = {
+        let archive = archive.display().to_string();
+        std::thread::scope(|scope| {
+            let cli =
+                scope.spawn(|| world.cli(&["wiki", "export", "handbook", "--archive", &archive]));
+            // While the signing call is inside `seal` (it is held there for seconds) nothing of the archive exists.
+            std::thread::sleep(Duration::from_millis(1500));
+            assert!(
+                !archive_exists(&world),
+                "the export ran while the server was signing"
+            );
+            cli.join().unwrap()
+        })
+    };
     let done = signing.join().unwrap();
     assert_eq!(done.status, 200, "{}", done.body);
-    // Once the server lets go, the command line has the wiki again.
-    let (status, _, err) = world.cli(&[
-        "wiki",
-        "export",
-        "handbook",
-        "--archive",
-        &archive.display().to_string(),
-    ]);
+    let (status, _, err) = export;
     assert_eq!(status, 0, "{err}");
+    assert!(archive.exists(), "the export ran after the server let go");
     running.stop();
 }
 
@@ -891,4 +884,9 @@ fn the_acceptor_is_built_after_the_start_up_work_has_recovered_a_flagged_wiki() 
     assert_eq!(accepted.status, 200, "{}", accepted.body);
     assert_eq!(world.blocks(), before + 1);
     running.stop();
+}
+
+/// Does the archive the export test waits for exist yet?
+fn archive_exists(world: &World) -> bool {
+    world.tmp.0.join("busy.prikk").exists()
 }
