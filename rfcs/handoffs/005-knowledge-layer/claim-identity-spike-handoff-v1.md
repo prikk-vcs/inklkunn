@@ -85,3 +85,13 @@ The tool's own tests (the fetcher's refusal to request user fields, the pinning,
 replay on a small hand-made history, each measure on a hand-labelled fixture); every gate green with prikk on `PATH` and
 shimmed off; the committed files contain no text of an article (a test greps the committed spike folder for any line of
 the cached text) and no user name or address.
+
+## Follow-up from the review of 2026-10-31 (binding; with the next package)
+
+The spike is **done and approved** (`.git-exclude/reviewed/005-claim-identity-spike-review-result.md`).
+
+- **K1.** `inklkunn_core::align_blocks` goes behind a non-default feature that only `tools/corpus` enables (the spike
+  stays reproducible); the boundary gate lists it as a tool-only feature and refuses it in a product crate's
+  dependencies. D-1 (a) makes the claim block's explicit `^id` the identity signal, so no product path needs the
+  alignment exposed.
+
