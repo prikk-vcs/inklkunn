@@ -62,7 +62,7 @@
 
 ## Runtime prerequisites (not crates, but part of the supply chain)
 
-prikk ≥ 0.54.0 (the floor; checksum-verified release asset in the image), bubblewrap, prlimit (util-linux), curl (outbound HTTPS for OpenID Connect, run only by `inklkunn-fetch`; needed from M2, when OpenID Connect is switched on) and a system CA bundle.
+prikk ≥ 0.54.0 (the floor; checksum-verified release asset in the image), bubblewrap, prlimit (util-linux), curl (outbound HTTPS for OpenID Connect, run only by `inklkunn-fetch`, in its own bubblewrap under `prlimit`; needed when OpenID Connect is configured, `INKLKUNN_OIDC_ISSUER`; in the image) and a system CA bundle.
 
 ## Appendix — lock inventory
 

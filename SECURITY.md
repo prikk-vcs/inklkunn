@@ -67,7 +67,13 @@ account's oldest session. The session cookie is `SameSite=Strict`; the one-shot 
 Connect sign-in is `SameSite=Lax` (the provider's redirect must carry it back), and the callback is answered with
 a small page that moves the browser on, never with a redirect, so the Strict cookie is sent on the next request. A password change, an
 administrator's reset and a disabling end every session and revoke every token. OpenID Connect accounts are
-linked by issuer and subject by an administrator; nothing is created at first sign-in in this release.
+reached by the provider's issuer and subject and by nothing else (**never by e-mail address**: the provider's other
+claims are not read): the operator links one (`inklkunn account link`, audited), an invitation may be redeemed with
+the provider instead of a password, and a first sign-in makes an account only where `INKLKUNN_JOIN` is `provider` or
+`anyone` (off by default; **a public provider makes `provider` open registration**). The provider is switched on by
+`INKLKUNN_OIDC_ISSUER` and `INKLKUNN_OIDC_CLIENT_ID`; the client secret is read from the file
+`INKLKUNN_OIDC_CLIENT_SECRET_FILE` names (readable by the server's user only). The server reaches the provider only
+through its egress guard and a confined, memory-limited `curl`.
 
 The **operator's secret** opens every wiki's keys: it is a file named by the operator (never stored beside the
 records), 16 to 1024 bytes, and anyone who holds both it and the key records holds every wiki's keys. Keep it

@@ -553,6 +553,71 @@ Serving sign-in and accepting, U5: the server's acceptor (decision D1 of the rev
   name; a wiki flagged *needs recovery* refuses the accept with the signer open, and a flagged wiki is recovered before the acceptor
   exists. SECURITY.md says where the secret file lives and what the signer checks of it, the key directory and the seed directory.
 
+Serving sign-in, U3 (handoff `serve-sign-in-and-accept-handoff-v1`) with handoff 002's follow-ups F2, F3 and F4: **OpenID Connect switched on**.
+
+- **U3 — the provider's sign-in, from the settings.** `INKLKUNN_OIDC_ISSUER` (an `https` address, no query or fragment) and
+  `INKLKUNN_OIDC_CLIENT_ID` switch it on, together or not at all (half a provider is refused naming the missing setting);
+  `INKLKUNN_OIDC_CLIENT_SECRET_FILE` names the file the client secret is read from once at start (absolute; a link is followed;
+  at most 4 KiB, one line, trailing line breaks dropped, never printed; none means a public client with the PKCE proof alone);
+  `INKLKUNN_OIDC_SCOPES` adds scopes to the `openid` that is always asked (default: nothing more, only `iss` and `sub` are ever
+  read). The start checks the secret file and probes the vector (`curl`, the CA bundle, `prlimit`, bubblewrap) **before anything
+  is opened**, and says at every start that the provider is on and which redirect address to register
+  (`<app origin>/-/sign-in/oidc/callback`). Routes: `GET /-/sign-in/oidc` (start; `?next=` is a local path), `GET
+  /-/sign-in/oidc/callback`, `GET /-/invite/{secret}/oidc` (an invitation's start). They are **links, not forms**: browsers
+  apply the page policy's `form-action 'self'` to the redirects that follow a form submission, so a form that ends at the
+  provider would be refused. Without a provider all three are the generic not-found page and no page offers the button.
+- **A login in flight remembers what it is for, on the server.** `Authenticator::begin_oidc(OidcPurpose, client, now)` takes
+  `SignIn { next, after_joining }` or `Invitation { secret, next }` and keeps it with the state (ten minutes, one-shot): the
+  invitation's secret and the landing path are in no cookie, no callback address and no provider log, and `OidcPurpose`'s
+  `Debug` prints neither. `finish_oidc(state, cookies, code, client, now)` decides by the purpose: a linked identity signs in (a
+  disabled account does not); **an identity nobody linked makes an account only where `INKLKUNN_JOIN` is `provider` or `anyone`**
+  (counted per client address with the join throttle, no password, a placeholder name `member-xxxxxx` to change on the account
+  page, no role in any wiki, the new-account quotas from that moment) and otherwise is `OidcSignInError::NotLinked`, which
+  the page says in a sentence of its own (*ask for an invitation*); never matched or linked by e-mail address (the provider's
+  claims other than `iss` and `sub` are not read, not even a name). An **invitation may be redeemed with the provider instead
+  of a password**: the person who opens the link chooses (the invitation page offers the button only when a provider is
+  configured), the account is made with the identity and the role the invitation named and the link is spent in one store
+  step; a provider identity that already has an account spends nothing (`IdentityTaken`, *sign in with it instead*); a link
+  used meanwhile is the one *unusable* page. `inklkunn-store`: `AccountStore::add_account_with_identity` and
+  `InvitationStore::redeem_invitation_with_identity` (memory and SQLite, one transaction each; **no schema change**).
+- **`inklkunn account link <login | account id> <issuer> <subject>`** is the administrative link: audited before it is done
+  (`account-link`, principal `system:operator-cli`, the issuer and subject in the detail) and again when it ends; an identity
+  another account holds is refused (*one person has one account*); the usage and the all-commands trail test include it.
+- **C9 — the login-state cookie and the session cookie are checked in a real browser (F2).** The state cookie is `__Host-`,
+  `Secure`, `HttpOnly`, **`SameSite=Lax`**, ten minutes, removed by the answer that uses it (and by every refusal); the
+  session cookie stays `SameSite=Strict`. `rfcs/handoffs/002-identity-keys-and-signing/evidence/c9-browser-run.py` drives a
+  headless Chromium 156 over the DevTools protocol (a WebSocket client and a request matcher in the standard library; no new
+  crate) against the real router on a real port and a stand-in provider on `https://idp.example` (a different site); Chromium
+  reports which cookies each request sent or had blocked. 33 checks pass (`c9-browser-run.out.txt`): the Lax cookie is carried
+  back by the provider's cross-site redirect, the callback is a 200 page, the browser's own follow-up request carries the Strict
+  session, a cross-site navigation into the wiki is sent without it (so a redirect would have landed the person signed out), a
+  callback this browser did not start and a replayed one sign nobody in. The same script against a build with the state
+  cookie `Strict` fails (`...mutated-strict-state-cookie.out.txt`, 6 checks). The run needs `cargo`, `openssl` and `chromium`; its
+  server is the ignored test `browser::the_server_the_real_browser_run_drives` of the `signin` tests, which normal runs skip.
+- **F3 — `prlimit` on the `curl` vector.** `prlimit --data=<N> --` goes in front of `bwrap` (and of `curl` in the tests'
+  unconfined mode), as on the driver's vector; the wrapper is **one function**, `inklkunn_prikk::sandbox::with_data_ceiling`,
+  now used by both (so the fetch crate still has no `Command::new` of its own for the gate to count). The default ceiling is
+  256 MiB (`DEFAULT_DATA_CEILING`, `CurlFetcher::with_data_ceiling`); `probe()` checks `prlimit`; a `prlimit` that cannot run its
+  command is the typed `SandboxUnavailable` (`Spawn` when unconfined and it is `curl` that cannot start). Tests: a stand-in
+  `curl` reports the limit it runs under (the configured one, in the unconfined vector and inside the real bubblewrap), a child
+  that allocates past a small ceiling is stopped, and the real `curl` is stopped by a 1 MiB ceiling before it connects. The
+  `Dockerfile`'s runtime image gains `curl` (with `ca-certificates`, as before) and checks both are usable.
+- **F4 — the landing page is drawn by the web layer from the catalog.** `inklkunn_auth::Landing` no longer writes a sentence: it
+  hands over the status (always 200), the target path, the cookies and the headers; `templates/landing.html` draws the page in
+  the reader's language (`title.landing`, `landing.body`, `landing.continue`; English and a Japanese preview, glossary rows).
+  The page is standalone, has no script, style or sub-resource, and says `<meta name="referrer" content="no-referrer">`,
+  because the site's header layer sends `Referrer-Policy: same-origin` and the callback's address holds the provider's code.
+- **Catalog.** Twelve messages, appended at the tails (`sign_in.provider`, `.provider_joins`, `.provider_failed`,
+  `.provider_state`, `.provider_not_linked`, `.provider_unreachable`; `invite.provider_intro`, `.provider_link`,
+  `.provider_taken`; `title.landing`, `landing.body`, `landing.continue`) with glossary rows in the same order, and a concept
+  row for *provider* (プロバイダー). The structural rules and the retired-words test hold every new state in both languages
+  (`tests/signin/provider_states.rs`: 11 states each); the route enumeration lists the three routes with their public reasons.
+- **Tests that fail without each behaviour (mutated, see the handoff report):** a callback without the state cookie (the
+  comparison removed), a replayed state (the state kept after use), the Lax cookie and its single use (Strict; the removal
+  dropped), linking only where the policy says (the join check made `true`), the button hidden when unconfigured (a provider
+  name always present), the ceiling (`prlimit` removed, a wrong number), the store's one-step redemption, and the audit of
+  `account link` (taken out).
+
 ## [0.1.0] — 2026-10-31
 
 **M1 — read a wiki.** The first release: a standalone server that serves a prikk repository as a wiki. Pages in the

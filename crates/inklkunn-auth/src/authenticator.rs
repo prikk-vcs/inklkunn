@@ -16,7 +16,7 @@
 //!
 //! **What cannot be made outside this crate.** [`SignedIn`] and [`SessionPrincipal`] are `#[non_exhaustive]`,
 //! [`NewSession`] and the OpenID Connect
-//! [`VerifiedIdentity`] have no public constructor, the session and token stores
+//! [`crate::oidc::VerifiedIdentity`] have no public constructor, the session and token stores
 //! are reachable only through this type, and a [`ClientAddress`] comes only from the trusted-proxy rule. A
 //! [`Principal`] is `inklkunn-core`'s type, and core's gate (not the type system) keeps web sources from naming
 //! how one is made.
@@ -736,15 +736,8 @@ impl Authenticator {
         {
             return Err(OidcSignInError::InvitationUnusable);
         }
-        // One person, one account: an identity that has one is told to sign in, and the link is not spent.
-        if self
-            .accounts
-            .account_by_identity(identity)
-            .map_err(|e| OidcSignInError::Auth(e.into()))?
-            .is_some()
-        {
-            return Err(OidcSignInError::IdentityTaken);
-        }
+        // One person, one account: an identity that has one is refused by the store in the same step that would
+        // spend the invitation, so the link is not spent and the person is told to sign in.
         let account = self.external_account(now)?;
         self.redemption
             .redeem_invitation_with_identity(&hash, &account, identity, now)

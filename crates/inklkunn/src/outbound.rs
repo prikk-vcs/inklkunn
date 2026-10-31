@@ -112,8 +112,8 @@ pub(crate) fn provider(oidc: &OidcSettings, app_origin: &str) -> Result<OidcProv
         .transpose()?;
     transport.probe().map_err(|e| {
         format!(
-            "INKLKUNN_OIDC_ISSUER is set, and provider sign-in needs curl, the system CA bundle, prlimit and \
-             bubblewrap on this host ({e})"
+            "INKLKUNN_OIDC_ISSUER is set, and provider sign-in needs outbound HTTPS to work on this host: the fetcher, \
+             the system CA bundle, prlimit and bubblewrap ({e})"
         )
     })?;
     Ok(provider_over(
