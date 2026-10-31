@@ -24,6 +24,11 @@
 //!   lease, re-read the tip, re-author a moved base, record the acceptance and its intent, `Accept`, read the
 //!   outcome as typed, flag the wiki *needs recovery* when it is incomplete; the same path for the service's own
 //!   changes (import, system).
+//! - [`recovery`]: no half-state survives a crash (RFC 004 D-7; handoff 004 T5): under the lease, the witnesses are
+//!   read, a pure function makes the plan (steps, or a *stop* with a fixed word), the plan is recorded as a recovery
+//!   act before any step and every step is audited before it is taken; a queued patch that is an unfinished act's
+//!   change is sealed alone, a torn commit is discarded, stale locks are cleared on the lease record's word (never
+//!   prikk's liveness line), the records are ended as what happened, then `verify`, the reconciliation, the flag.
 //! - [`bundle`] and [`wiki`]: the repository layout (external design CT-02) and *create wiki*, which is
 //!   kill-safe (a creation mark and a start-up sweep).
 //! - [`merge`](mod@merge): the content-level three-way merge (RFC 004 D-5): frontmatter key by key, body block by block,
