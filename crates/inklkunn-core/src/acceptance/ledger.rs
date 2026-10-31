@@ -17,10 +17,11 @@ use std::sync::Arc;
 use inklkunn_signer::accept::{ChangeDigest, ExpectedMessage};
 use inklkunn_signer::message::{BlockId, Message};
 use inklkunn_signer::{
-    AcceptanceLedger, AcceptanceToken, LedgerError, ViewCreationAct, ViewCreationFacts,
+    AcceptanceLedger, AcceptanceToken, LedgerError, RecoveryFacts, RecoveryToken, ViewCreationAct,
+    ViewCreationFacts,
 };
 use inklkunn_store::{
-    AcceptanceId, AcceptanceOutcome, AcceptanceStore, ActStore, SystemActId, WikiId,
+    AcceptanceId, AcceptanceOutcome, AcceptanceStore, ActStore, RecoveryActId, SystemActId, WikiId,
 };
 use sha2::{Digest as _, Sha256};
 
@@ -146,6 +147,17 @@ impl AcceptanceLedger for StoreLedger {
     fn view_creation(&self, _: &ViewCreationAct) -> Result<Option<ViewCreationFacts>, LedgerError> {
         // View creation has its own recorded act (a later handoff); until it does, none is pending.
         Ok(None)
+    }
+
+    fn recovery(&self, act: &RecoveryToken) -> Result<Option<RecoveryFacts>, LedgerError> {
+        let Some(id) = RecoveryActId::parse(act.as_str()) else {
+            return Ok(None);
+        };
+        let open = self
+            .acts
+            .open_recovery_act(&id)
+            .map_err(|e| LedgerError(format!("the recovery act record: {e}")))?;
+        Ok(open.and_then(|record| crate::recovery::facts_of(&record.wiki, &record.plan)))
     }
 }
 

@@ -229,6 +229,21 @@ impl AcceptanceStore for SqliteStore {
         self.with(|conn| entries_of(conn, proposal, revision))
     }
 
+    fn acceptance_entry(&self, id: &AcceptanceId) -> Result<Option<AcceptanceEntry>> {
+        self.with(|conn| {
+            conn.query_row(
+                &format!(
+                    "SELECT {ACCEPTANCE_COLUMNS} FROM acceptances a \
+                     LEFT JOIN acceptance_results r ON r.acceptance_id = a.id WHERE a.id = ?1"
+                ),
+                params![id.as_str()],
+                row_to_entry,
+            )
+            .optional()
+            .map_err(backend)
+        })
+    }
+
     fn pending_acceptances(&self, wiki: &WikiId) -> Result<Vec<AcceptanceRecord>> {
         self.with(|conn| {
             let mut stmt = conn

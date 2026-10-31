@@ -228,6 +228,11 @@ impl WikiLeases {
         &self.signer
     }
 
+    /// The name this process gives itself in the holder record: a record of any other name is another process's.
+    pub fn holder_name(&self) -> &str {
+        &self.holder
+    }
+
     /// The limits and times in force.
     pub fn config(&self) -> &LeaseConfig {
         &self.config

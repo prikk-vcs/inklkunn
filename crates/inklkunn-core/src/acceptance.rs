@@ -59,7 +59,7 @@ use crate::reconcile::Finding;
 
 mod ledger;
 mod prepare;
-mod shared;
+pub(crate) mod shared;
 mod system;
 #[cfg(test)]
 pub(crate) mod testing;
@@ -100,6 +100,9 @@ pub mod words {
     pub const UNAVAILABLE: &str = "unavailable";
     /// A call was stopped by its memory ceiling before anything was committed.
     pub const MEMORY_LIMIT: &str = "memory-limit";
+    /// The act was interrupted (its process died) and recovery found nothing of it in the repository: it is
+    /// recorded as failed with this word, and the proposal stays open (handoff 004 T5).
+    pub const INTERRUPTED: &str = "interrupted";
     /// The tip already has everything the revision asks for.
     pub const NOTHING_TO_CHANGE: &str = "nothing-to-change";
 }
@@ -110,6 +113,66 @@ pub mod words {
 enum ChangeKind {
     Proposal,
     Rollback,
+}
+
+/// The steps of D-4, named so that a test can stop an acceptance at any of them: the kill test of handoff 004 T5
+/// runs the acceptance in a child process and `SIGKILL`s it at each step in turn. Observing is all the hook
+/// does; nothing in production sets one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AcceptStep {
+    /// Step 1 is done: the lease is held (and its holder recorded).
+    LeaseTaken,
+    /// Step 2 is done: the tip was read and the change authored (or found as it was); no record exists yet.
+    Prepared,
+    /// The acceptance record (*pending seal*) is written; the intent is not.
+    AcceptanceRecorded,
+    /// The intent is written and the lease is attached to the acceptance: the signer has not been asked.
+    IntentRecorded,
+    /// The signer answered (whatever it answered); nothing of the answer is recorded yet.
+    SignerReturned,
+    /// The acceptance's end (*sealed*, with the block and the patch) is written.
+    AcceptanceSealed,
+    /// The intent's end (*completed*) is written.
+    IntentCompleted,
+    /// The proposal is *accepted*.
+    ProposalAccepted,
+    /// The caches are forgotten and the reconciliation is done; the lease is still held.
+    Reconciled,
+}
+
+impl AcceptStep {
+    /// Every step, in the order an acceptance takes them.
+    pub const ALL: [AcceptStep; 9] = [
+        AcceptStep::LeaseTaken,
+        AcceptStep::Prepared,
+        AcceptStep::AcceptanceRecorded,
+        AcceptStep::IntentRecorded,
+        AcceptStep::SignerReturned,
+        AcceptStep::AcceptanceSealed,
+        AcceptStep::IntentCompleted,
+        AcceptStep::ProposalAccepted,
+        AcceptStep::Reconciled,
+    ];
+
+    /// The step's name.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            AcceptStep::LeaseTaken => "lease-taken",
+            AcceptStep::Prepared => "prepared",
+            AcceptStep::AcceptanceRecorded => "acceptance-recorded",
+            AcceptStep::IntentRecorded => "intent-recorded",
+            AcceptStep::SignerReturned => "signer-returned",
+            AcceptStep::AcceptanceSealed => "acceptance-sealed",
+            AcceptStep::IntentCompleted => "intent-completed",
+            AcceptStep::ProposalAccepted => "proposal-accepted",
+            AcceptStep::Reconciled => "reconciled",
+        }
+    }
+
+    /// The step a name is of.
+    pub fn parse(name: &str) -> Option<Self> {
+        AcceptStep::ALL.into_iter().find(|s| s.as_str() == name)
+    }
 }
 
 /// What the service asks for after a seal, **off the lease**: the caller decides how and where these run (a
@@ -447,6 +510,7 @@ pub struct ProposalAcceptor {
     audit: Option<Arc<dyn AuditSink>>,
     reconcile: bool,
     clock: fn() -> i64,
+    observer: Option<Arc<dyn Fn(AcceptStep) + Send + Sync>>,
 }
 
 impl std::fmt::Debug for ProposalAcceptor {
@@ -467,6 +531,21 @@ impl ProposalAcceptor {
             audit: None,
             reconcile: true,
             clock: inklkunn_store::record::now_secs,
+            observer: None,
+        }
+    }
+
+    /// Call `observer` as each step of D-4 is done (see [`AcceptStep`]). For tests that stop an acceptance at a
+    /// step; the observer runs on the acceptance's thread and may never return.
+    #[must_use]
+    pub fn with_observer(mut self, observer: Arc<dyn Fn(AcceptStep) + Send + Sync>) -> Self {
+        self.observer = Some(observer);
+        self
+    }
+
+    fn observe(&self, step: AcceptStep) {
+        if let Some(observer) = &self.observer {
+            observer(step);
         }
     }
 
@@ -534,6 +613,7 @@ impl ProposalAcceptor {
             .leases
             .acquire(&wiki.id, Purpose::Acceptance, None)
             .map_err(|e| self.lease_failure(e))?;
+        self.observe(AcceptStep::LeaseTaken);
         match self.under_lease(principal, wiki, id, revision, &acceptor, &lease)? {
             Step::Done(signed) => {
                 let notified = self.after_lease(wiki, &proposal, &acceptor, lease, &signed);
@@ -782,6 +862,7 @@ impl ProposalAcceptor {
                 reauthored,
             } => (files, renames, reauthored),
         };
+        self.observe(AcceptStep::Prepared);
         // CM-5: the blocks the proposal's comments are about carry their ids into the history.
         let comments = self.parts.proposals.comments(principal, wiki, id)?;
         let ids_attached = prepare::attach_ids(&mut files, &comments);
@@ -840,7 +921,7 @@ impl ProposalAcceptor {
             created_at: (self.clock)(),
         };
         match self.parts.acceptances.begin_acceptance(&record)? {
-            AcceptanceBegin::Started => {}
+            AcceptanceBegin::Started => self.observe(AcceptStep::AcceptanceRecorded),
             AcceptanceBegin::Existing(found) => {
                 return match found.result.map(|r| r.outcome) {
                     Some(AcceptanceOutcome::Sealed { block_id, patch_id }) => {
@@ -878,6 +959,7 @@ impl ProposalAcceptor {
                 detail: e.to_string(),
             });
         }
+        self.observe(AcceptStep::IntentRecorded);
 
         // 5. The signer, on this thread, inside the lease.
         let token = AcceptanceToken::new(record.id.as_str());
@@ -887,6 +969,7 @@ impl ProposalAcceptor {
                 .signer
                 .accept(&wiki.id, &proposal.view, &token, &change)
         };
+        self.observe(AcceptStep::SignerReturned);
         match settle(answer) {
             Settled::Failed { word, detail } => {
                 self.fail_record(&record, Some(&intent), word);
@@ -942,6 +1025,7 @@ impl ProposalAcceptor {
                 let _ = flagged;
                 self.parts.reads.forget_wiki(wiki);
                 let reconciliation = self.reconcile(wiki);
+                self.observe(AcceptStep::Reconciled);
                 Ok(Step::Done(Signed {
                     acceptance: record.id,
                     block_id,
@@ -1006,15 +1090,17 @@ impl ProposalAcceptor {
                 },
                 at,
             })?;
+        self.observe(AcceptStep::AcceptanceSealed);
         self.parts.acceptances.complete_intent(&IntentCompletion {
             intent: intent.id.clone(),
             end: IntentEnd::Completed,
             at,
         })?;
+        self.observe(AcceptStep::IntentCompleted);
         self.parts
             .proposals
             .record_accepted(wiki, &proposal.id, acceptor)
-            .map(|_| ())
+            .map(|_| self.observe(AcceptStep::ProposalAccepted))
             .map_err(|e| match e {
                 ProposalError::Store(s) => s,
                 other => StoreError::Backend(other.to_string()),

@@ -47,6 +47,7 @@ pub mod notify;
 pub mod proposal;
 pub mod read;
 pub mod reconcile;
+pub mod recovery;
 pub mod routes;
 pub mod wiki;
 
@@ -58,8 +59,9 @@ pub use accept::{
     ViewCreationFacts,
 };
 pub use acceptance::{
-    AcceptFailure, AcceptanceParts, Accepted, AfterSeal, NoFollowUp, NoLedger, ProposalAcceptor,
-    Reconciled, Signed, StoreActs, StoreLedger, SystemActFailure, SystemActs, SystemRequest,
+    AcceptFailure, AcceptStep, AcceptanceParts, Accepted, AfterSeal, NoFollowUp, NoLedger,
+    ProposalAcceptor, Reconciled, Signed, StoreActs, StoreLedger, SystemActFailure, SystemActs,
+    SystemRequest,
 };
 pub use assurance::Assurance;
 pub use authorize::{
@@ -75,7 +77,7 @@ pub use inbox::Inbox;
 pub use inklkunn_signer::{
     ArchiveExported, KeyAuthority, KeyStatus, LateSeal, Maintenance, OldKey, OldKeyOutcome,
     Recover, RecoverError, RecoveryFacts, RecoveryOp, RecoveryToken, Rotation, Signer,
-    SignerConfig, SignerError, SupersededKey, Witnesses, WriteLeases,
+    SignerConfig, SignerError, SupersededKey, Witnesses, WorktreeState, WriteLeases,
 };
 pub use lease::{Busy, BusyWhy, Lease, LeaseConfig, LeaseError, Leased, Purpose, WikiLeases};
 pub use merge::{LineLevel, MergeOutcome, MergedPage, Overlap, PageRef, PageText, Place, merge};
@@ -87,6 +89,10 @@ pub use proposal::{
 pub use read::{
     Calls, Cause, CountingStorage, Found, Lookup, PageOutcome, PageView, Presentation, ReadConfig,
     ReadError, ReadService, SafeHtml, Sanitizer, Tip, TitleIndex,
+};
+pub use recovery::{
+    Mode as RecoveryMode, Outcome as RecoveryOutcome, Recovery, RecoveryError, RecoveryParts,
+    RecoveryReport,
 };
 pub use routes::{Guard, RouteEntry, RouteError, RouteTable};
 pub use wiki::{

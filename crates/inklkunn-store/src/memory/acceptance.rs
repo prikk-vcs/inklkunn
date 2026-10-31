@@ -120,6 +120,14 @@ impl AcceptanceStore for MemoryStore {
         Ok(Some((a.clone(), i.clone())))
     }
 
+    fn acceptance_entry(&self, id: &AcceptanceId) -> Result<Option<AcceptanceEntry>> {
+        let d = self.acceptances_lock();
+        Ok(d.acceptances
+            .iter()
+            .find(|a| a.id == *id)
+            .map(|a| d.entry(a)))
+    }
+
     fn pending_acceptances(&self, wiki: &WikiId) -> Result<Vec<AcceptanceRecord>> {
         let d = self.acceptances_lock();
         Ok(d.acceptances

@@ -154,8 +154,16 @@ fn pending_suite(store: &(impl ProposalStore + AcceptanceStore + WikiStore + Acc
 
     // An acceptance with no intent is pending: the process died between its record and its intent.
     let a = acceptance(&p, &maintainer, 20);
+    assert_eq!(store.acceptance_entry(&a.id).unwrap(), None, "not yet");
     store.begin_acceptance(&a).unwrap();
     assert_eq!(store.pending_acceptances(&w.id).unwrap(), vec![a.clone()]);
+    assert_eq!(
+        store
+            .acceptance_entry(&a.id)
+            .unwrap()
+            .map(|e| (e.acceptance, e.result)),
+        Some((a.clone(), None))
+    );
     assert!(store.open_intents(&w.id).unwrap().is_empty());
     assert!(
         store.pending_acceptances(&other.id).unwrap().is_empty(),
@@ -172,6 +180,17 @@ fn pending_suite(store: &(impl ProposalStore + AcceptanceStore + WikiStore + Acc
         })
         .unwrap();
     assert!(store.pending_acceptances(&w.id).unwrap().is_empty());
+    assert!(
+        matches!(
+            store
+                .acceptance_entry(&a.id)
+                .unwrap()
+                .and_then(|e| e.result)
+                .map(|r| r.outcome),
+            Some(AcceptanceOutcome::Failed { .. })
+        ),
+        "an ended acceptance is found, with its end"
+    );
     let b = acceptance(&p, &maintainer, 30);
     store.begin_acceptance(&b).unwrap();
     assert_eq!(store.pending_acceptances(&w.id).unwrap(), vec![b.clone()]);
