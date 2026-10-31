@@ -807,6 +807,7 @@ name = "inklkunn-corpus"
 version = "0.1.0"
 dependencies = [
  "inklkunn-core",
+ "inklkunn-markup",
  "serde",
  "serde_json",
 ]

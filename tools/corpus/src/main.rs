@@ -5,6 +5,14 @@
 //! inklkunn-corpus wiki      --out DIR --keys DIR --pages N --total-bytes B [--depth D] [--blocks K] [--seed S]
 //! inklkunn-corpus histories --out DIR --keys DIR --trials N [--seed S] [--report FILE]
 //! inklkunn-corpus merge-fixture --report FILE --out FILE
+//! inklkunn-corpus claims plan    --articles FILE --window N --out FILE [--cache DIR]
+//! inklkunn-corpus claims get     --revisions FILE --report FILE [--cache DIR]
+//! inklkunn-corpus claims convert --revisions FILE --wikicommons DIR --report FILE [--cache DIR]
+//! inklkunn-corpus claims replay  --revisions FILE --out-dir DIR --counts FILE [--cache DIR]
+//! inklkunn-corpus claims pool    --events-dir DIR --seed S --size N --out FILE --packets-dir DIR
+//!                                [--packet-size 40] [--shuffle-order yes|no] [--cache DIR]
+//! inklkunn-corpus claims measure --pool FILE --events-dir DIR --labels FILE --labels FILE
+//!                                [--sample 400] --report-json FILE
 //! ```
 //!
 //! `wiki` builds a prikk repository holding a Portable Wiki Bundle of `N` pages whose text totals about `B`
@@ -17,6 +25,11 @@
 //! moves. `merge-fixture` replays a recorded `histories` report without prikk and writes its pairs as the
 //! three sides of a merge: the committed fixture of `inklkunn-core`'s merge test (handoff 004 T2).
 //!
+//! `claims` is spike C's measurement (RFC 005 part 1; `src/claims/`, `CLAIMS.md`): it fetches pinned revision
+//! ids of public wiki articles (ids only; no editor identity), converts them, replays each history through the
+//! product's own block functions, draws a pool for two labellers and computes the measures M-1 … M-6. No
+//! article text is ever written outside the cache directory.
+//!
 //! Keys: `--keys` names a directory this tool fills with a throwaway author and maintainer pair
 //! (`prikk setup` with `HOME` pointed there); never a real key directory.
 
@@ -25,6 +38,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+mod claims;
 mod histories;
 mod prikk;
 mod wiki;
@@ -43,13 +57,16 @@ fn main() {
 
 /// `--key value` pairs after the subcommand.
 pub struct Opts {
-    /// The pairs as given.
+    /// The pairs as given (the last of a repeated key).
     pub values: BTreeMap<String, String>,
+    /// Every pair in order, for the keys that may repeat (`--labels`).
+    pub pairs: Vec<(String, String)>,
 }
 
 impl Opts {
     fn parse(args: &[String]) -> Result<Self, String> {
         let mut values = BTreeMap::new();
+        let mut pairs = Vec::new();
         let mut it = args.iter();
         while let Some(k) = it.next() {
             let Some(key) = k.strip_prefix("--") else {
@@ -59,8 +76,18 @@ impl Opts {
                 return Err(format!("`--{key}` needs a value"));
             };
             values.insert(key.to_owned(), v.clone());
+            pairs.push((key.to_owned(), v.clone()));
         }
-        Ok(Opts { values })
+        Ok(Opts { values, pairs })
+    }
+
+    /// Every value given for `key`, in order.
+    pub fn all(&self, key: &str) -> Vec<&str> {
+        self.pairs
+            .iter()
+            .filter(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+            .collect()
     }
 
     /// A required absolute path.
@@ -93,9 +120,18 @@ impl Opts {
 fn run(args: &[String]) -> Result<(), String> {
     let Some((sub, rest)) = args.split_first() else {
         return Err(
-            "usage: inklkunn-corpus wiki|histories|merge-fixture --out DIR --keys DIR …".to_owned(),
+            "usage: inklkunn-corpus wiki|histories|merge-fixture|claims … (see the module comment)"
+                .to_owned(),
         );
     };
+    if sub == "claims" {
+        let Some((verb, rest)) = rest.split_first() else {
+            return Err(
+                "usage: inklkunn-corpus claims plan|get|convert|replay|pool|measure …".to_owned(),
+            );
+        };
+        return claims::run(verb, &Opts::parse(rest)?);
+    }
     let opts = Opts::parse(rest)?;
     match sub.as_str() {
         "wiki" => wiki::build_wiki(&opts),

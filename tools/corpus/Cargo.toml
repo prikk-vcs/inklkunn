@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Generators for inklkunn's measurement corpora (RFC 001 D-10): wiki-shaped repositories of a given size, and wiki-shaped edit histories for the content-merge spike. Measurement only; not product code."
+description = "Generators for inklkunn's measurement corpora (RFC 001 D-10): wiki-shaped repositories of a given size, and wiki-shaped edit histories for the content-merge spike, and the claim-identity measurement (RFC 005 part 1). Measurement only; not product code."
 publish = false
 
 [[bin]]
@@ -16,6 +16,8 @@ path = "src/main.rs"
 [dependencies]
 # The merge the harness measures is the product's (handoff 004 T2); a workspace path edge, no new crate.
 inklkunn-core = { workspace = true }
+# Spike C replays histories through the product's own block segmentation (RFC 005 part 1); a workspace path edge, no new crate.
+inklkunn-markup = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

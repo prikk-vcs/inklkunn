@@ -281,6 +281,15 @@ Handoff 004 T8 (RFC 004: proposals).
 - **Two retired words.** *conflict* (コンフリクト) and *merge* (マージ) join the retired-words table; the one message that said
   "Nothing was merged" says "Nothing was changed".
 
+Spike C, the measurement tool (RFC 005 part 1; no product crate changes).
+
+- **`inklkunn-corpus claims`** (`tools/corpus`, see `CLAIMS.md`): `plan` pins the newest N revision ids of listed public-wiki
+  articles (ids and parent ids only, through `curl`, one request a second, no editor identity requested), `get` fetches exactly those
+  ids into a cache outside any repository and counts the ones deleted upstream, `convert` runs wiki-commons' converter as a
+  subprocess, `replay` walks each history through `inklkunn_markup::blocks` and `inklkunn_core::align_blocks` and writes one event
+  per edited block (metrics, never text), `pool` draws the seeded, language-balanced, per-article-equal items the two labellers see,
+  and `measure` computes M-1 … M-6 (and M-2b, Cohen's kappa) from their labels. `inklkunn-markup` is a workspace edge of the tool.
+
 ## [0.1.0] — 2026-10-31
 
 **M1 — read a wiki.** The first release: a standalone server that serves a prikk repository as a wiki. Pages in the
