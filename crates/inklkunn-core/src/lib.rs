@@ -33,6 +33,8 @@
 //!   kill-safe (a creation mark and a start-up sweep).
 //! - [`merge`](mod@merge): the content-level three-way merge (RFC 004 D-5): frontmatter key by key, body block by block,
 //!   pages matched by page id, an overlap never resolved by the code. Pure.
+//! - [`knowledge`]: the claim and source files beside the pages, their reader, validator and merge, and the derived
+//!   knowledge index of a tip (RFC 005 part 2; handoff K-T1 … K-T4).
 //! - [`import`] and [`export`]: `import-folder` (one accepted change under the system principal) and the
 //!   Portable Wiki Bundle export at fidelity level 3 (handoff 003 T7; RFC 003 D-11, D-12).
 
@@ -46,6 +48,7 @@ pub mod egress;
 pub mod export;
 pub mod import;
 pub mod inbox;
+pub mod knowledge;
 pub mod lease;
 pub mod merge;
 pub mod notify;

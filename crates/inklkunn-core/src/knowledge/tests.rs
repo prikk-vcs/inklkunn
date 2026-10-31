@@ -1,0 +1,26 @@
+//! The knowledge layer's files: the reader, the writer, the digest, the refusals, and (as they land) the
+//! validator, the merge and the index.
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
+use super::*;
+
+/// A claim id with a distinguishing tail (a valid version-7 UUID).
+pub(crate) fn claim_id(n: u8) -> ClaimId {
+    ClaimId::parse(&format!("01930000-0000-7000-8000-0000000000{n:02x}")).expect("a claim id")
+}
+
+/// A source id with a distinguishing tail.
+pub(crate) fn source_id(n: u8) -> SourceId {
+    SourceId::parse(&format!("01931111-0000-7000-8000-0000000000{n:02x}")).expect("a source id")
+}
+
+pub(crate) fn digest_of(text: &str) -> Digest {
+    // A real digest of some text: the tests need valid ones, not particular ones.
+    let body = format!("{text} ^x");
+    let found = inklkunn_markup::blocks(&body);
+    block_digest(found.first().expect("a block"))
+}
+
+mod digest;
+mod refusals;
+mod roundtrip;
