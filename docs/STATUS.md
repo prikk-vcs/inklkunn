@@ -227,6 +227,19 @@
   and above create views). Handoff `rfcs/handoffs/005-knowledge-layer/knowledge-layer-handoff-v1.md`: **K-T1 … K-T4**
   (the files, the validator, the merge, the index; no surface) assignable now; K-T5 … K-T11 (the surfaces, views,
   freshness, threads, API) after 0.2.0 is cut.
+- **2026-11-01 — four packages reviewed** (one tree, `c61e6b2`; 2,012 tests in both runs, 165 self-skips; two areas also
+  read by independent reviewers, every finding confirmed):
+  - **handoff 004's corrections P1 – P12: Conditionally Approved** — all done as asked except **P2**, whose excuse after a
+    key retirement is wider than ruled (any block before the recorded point, ref updates by count, ref states by the number
+    of views now: a rollback after a retirement would be excused). **P2′** records the exact set of findings the retirement
+    creates and excuses only those; **it is owed before writes are switched on (U6)**, with P13 – P16.
+  - **the sign-in U1 – U4: Conditionally Approved** — no High finding; G1 – G10 before 0.2.0, chiefly the throttles under the
+    likely deployment (a local TLS proxy with no trusted proxy declared puts every client on one key: G1) and provider
+    starts never refunded (G2), and a **password change** (G10).
+  - **the server's acceptor U5: Approved** (the keys enter the serving process as designed); follow-ups A1 – A4 (no core
+    dumps, a warning for a readable secret file, two doc fixes, a sturdier follow-up worker).
+  - **the knowledge layer K-T1 – K-T4: Approved**; one tidy-up K2.
+  Results in `.git-exclude/reviewed/`; corrections in handoff 004, the sign-in handoff and the knowledge handoff. Pushed.
 
 ## Pending on the owner
 
@@ -250,19 +263,9 @@
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and handoff 003's T1 – T3 are built and
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
-(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **The dev team's order now:**
-handoff 004's corrections P1 – P12 (with 003's tidy-ups T1, T2) beside the sign-in handoff's U1 – U5; U6 (writes on)
-after P1 – P6 are approved; RFC 005 part 2's K-T1 … K-T4 (with spike C's K1) beside them, as room allows. F1, F5, F6, V1, V2 are done (in T4 – T9); F2 – F4
-before OpenID Connect is switched on. The architect reviews
-each request as it arrives; the next re-baseline is at prikk 0.56.0. RFC 004 (proposals) is accepted and its handoff v1 is written; it is **assignable now** (R1, the verdict acceptance
-reads under INT-6, is approved). The single-large-attachment measurement is now handoff 003's T6 (IS-12; the architect's
-early data are in ledger PK-20). The architect drafts RFC 005 part 1 (the claim-identity investigation) when M1 is
-under way. The four kickoff documents the requirements transcript
-linked do not exist (owner, 2026-10-28): the transcripts under `.git-exclude/specs/` are the complete startup
-input, all in English. The reworked `release.yml` was rehearsed on `d90f901`
-([run 40490072717](https://github.com/prikk-vcs/inklkunn/actions/runs/40490072717)): gates with both test
-passes, binaries for both architectures, images for both, the manifest list; release and crates skipped as
-the mode requires. CI is green from `d0a8307` on ([run 40489623629](https://github.com/prikk-vcs/inklkunn/actions/runs/40489623629)).
+(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **The dev team's order now:** handoff 004's **P2′** and P13 – P16 (P2′ is the condition for U6); the sign-in's G1 – G10
+and A1 – A4 and the knowledge layer's K2 beside them; **U6** (writes on) once P2′ is approved; then the 0.2.0 readiness report
+and the release rehearsal, and the architect brings the 0.2.0 decision to the owner. K-T5 onward after 0.2.0.
 
 ## Issue register
 

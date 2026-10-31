@@ -84,3 +84,34 @@ One idea for people: **you are invited, or — where the server is open — you 
 
 No new crate (the auth stack is in the lock); no second signer process (IQ-4 stays v1); no anonymous proposing (ID-2:
 off by default, a later policy option); no change to the acceptance path itself beyond wiring.
+
+## Corrections from the review of 2026-11-01 (binding)
+
+U1 – U4 are **Conditionally Approved** (`.git-exclude/reviewed/004-serve-sign-in-u1-u4-review-result.md`) and U5 **Approved**
+(`.git-exclude/reviewed/004-serve-acceptor-u5-review-result.md`). **U6 may start once handoff 004's P2′ is approved**; G1 – G10
+and A1 – A4 land before 0.2.0 is cut. Hand back as one request, `004-serve-sign-in-corrections-review-request.md` (U6 has its
+own).
+
+- **G1.** The proxy warning also fires for a loopback bind with no trusted proxy declared, and the server logs once, at run
+  time, when a loopback peer sends `X-Forwarded-For` while no proxy is trusted (*every client counts as one address*).
+  SECURITY.md's deployment notes lead with `INKLKUNN_TRUSTED_PROXIES`.
+- **G2.** A provider sign-in start keeps its client key with the pending login and is refunded when the callback succeeds;
+  the start requires `Sec-Fetch-Mode: navigate` and `Sec-Fetch-Dest: document` when the browser sends them; the pending
+  logins are bounded per address as well as overall, so one network cannot evict everyone's.
+- **G3.** Redeeming an invitation is throttled like joining, and checks that the login is free before hashing (the
+  transaction checks again).
+- **G4.** The CSRF layer decides with `for_write` (which fails closed) and passes only a request that is signed out; the
+  principal it decided on reaches the handlers through the request's extensions, so no handler resolves it twice.
+- **G5.** Sign-out with a bearer token does nothing to any cookie session (or answers *invalid token*).
+- **G6.** Minting a token asks for the password again (or a fresh provider sign-in), as the key commands do.
+- **G7.** `X-Forwarded-For` is read from the right, stopping at the first valid hop that is not a trusted proxy; junk further
+  left is ignored.
+- **G8.** Signing in while signed in ends the session presented.
+- **G9.** The OpenAPI document describes cookie clients' `X-CSRF-Token` (with its drift test); one term, *the person who runs
+  this wiki*, replaces *server* in the needs-account messages (glossary).
+- **G10.** A password change on the account page (the current password asked; every other session of the account ended).
+- **A1 – A4** (U5's follow-ups): the server made non-dumpable at start (`PR_SET_DUMPABLE` 0 through `rustix`) and
+  `LimitCORE=0` in the operator notes; a start-up warning for a secret file readable by group or others or owned by another
+  user than the server's or root; the docs say the secret is read *at start* and that a server without a signer refuses
+  *every change to the history*; the follow-up worker survives a panicking job and logs once if its channel closes.
+

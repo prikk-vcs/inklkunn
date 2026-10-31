@@ -94,3 +94,9 @@
 
 No new crate; no score, rank or truth field anywhere; no outbound fetch; no change to the history, the signer or the
 verification badge's meaning.
+
+## Review of K-T1 – K-T4 (2026-11-01)
+
+**Approved** (`.git-exclude/reviewed/005-knowledge-layer-k-t1-k-t4-review-result.md`). Follow-up **K2** with the next package: one list
+of owned page keys (`knowledge/check.rs` uses the proposal service's `OWNED_KEYS`). K-T5 onward after 0.2.0, as before.
+

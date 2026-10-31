@@ -29,7 +29,9 @@ staying true to all three (RFC 010 D-1, D-2, D-8). The record of what each upstr
   milestone table when a schedule or ruling moved, and a hold note in the affected handoff. The letters are
   the source; the ledger is what a reader relies on.
 - **Candidates for the next bundled letter:** the block id in `branch list` (saves one call per new tip; held back as
-  not worth a letter of its own).
+  not worth a letter of its own); two states the kill matrix found after a `seal` killed inside prikk, which recovery
+  cannot answer and leaves fail-closed (handoff 004 P15): an **empty lock file** (`unlock` lists it with an unparseable
+  pid) and a **lone `ACTIVE-REF-METADATA-DEBRIS` warning** — what is the right handling of each?
 - **Open asks as of 2026-10-31: none outstanding; prikk will write about 0.57.0.**
   `send/2026-10-31-block-signer-time-path-history-and-an-orphan-queued-patch.md` (sent by the owner; four asks) was
   answered the same day (`receive/2026-10-31-four-asks-where-each-lands.md`): each block's `sealed_by` in `log` and

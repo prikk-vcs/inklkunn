@@ -255,3 +255,28 @@ any write is served from the web** (the sign-in handoff's last task); P7 – P12
   per-wiki hourly quota exempts reviewer-and-up roles, does not count unsubmitted drafts, and does not show its current
   count; the web forms take the raw body and parse it after the checks.
 - **P12.** `PRAGMA synchronous = FULL` set explicitly on every connection, with a test.
+
+## Corrections from the review of 2026-11-01 (binding; **P2′ before writes are switched on (U6)**, P13 – P16 with it)
+
+P1, P3 – P12, 003's T1, T2 and the spike's K1 are **approved** (`.git-exclude/reviewed/004-proposals-corrections-review-result.md`).
+Hand back P2′ and P13 – P16 as one request, `004-proposals-corrections-2-review-request.md`.
+
+- **P2′ — the excuse is the retirement's own recorded set, nothing wider.** At a retirement (`lifecycle.rs`, `OldKey::Retire`):
+  run `verify` **just before** the untrust (it must pass; if it does not, refuse to retire and say the wiki needs recovery
+  first) and keep, from its text, the signer of every sealed block; untrust; run `verify` **just after**, and record in the
+  authenticated key record the exact set of subjects it now names (`block | ref-state | ref-update` and id), each block's
+  signer among them being the retired key's id. A later failing `verify` is excused **only if** its report has no failed
+  condition but publication trust and **every subject it names is in that recorded set** (one run gives both the JSON verdict
+  and the text: P14). Nothing is excused by count or by position. The counting rules and the `views` allowance go. Tests:
+  a rollback of `heads/main` to an old block after a retirement, a branch published from an old block, and a block sealed by
+  a third key before the rotation are each **not** excused; ordinary writes after a retirement still are. The verification
+  page says, when it is so, that *the only failures are those the retirement of key … recorded* (the badge stays *Verification
+  failed*, as DR-10 ruled).
+- **P13.** Recovery removes only the `doctor` diagnostics whose subject ids are in the excused set.
+- **P14.** Exactly one `publication trust issues:` line or the text is refused; the verdict and the text from one `verify` run.
+- **P15.** Recovery answers `PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING` with prikk's own recommendation (`seal --allow-no-audit`
+  once, only when `doctor` names exactly that code and the published block is the intent's), recorded and audited as a step;
+  the empty lock file and a lone `ACTIVE-REF-METADATA-DEBRIS` stay fail-closed with their operator steps in `docs/RECOVERY.md`.
+- **P16.** `docs/RECOVERY.md`'s way out of an orphan queued patch is tested against the state the kill matrix's *inside prikk
+  commit* row leaves; the auth crate's timing test is made robust to load (as R10 did for the markup crate).
+
