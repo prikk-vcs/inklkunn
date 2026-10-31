@@ -34,6 +34,8 @@ pub const CSRF_FIELD: &str = "csrf";
 pub const CSRF_HEADER: &str = "x-csrf-token";
 /// The media type of a form.
 pub(crate) const FORM_MEDIA_TYPE: &str = "application/x-www-form-urlencoded";
+/// What an address of the API has in it: `/{slug}/-/api/v1/…`.
+pub(crate) const API_SEGMENT: &str = "/-/api/";
 /// The `Authorization` scheme of an API token.
 pub(crate) const BEARER: &str = "bearer";
 /// The header a trusted proxy reports the client address in.

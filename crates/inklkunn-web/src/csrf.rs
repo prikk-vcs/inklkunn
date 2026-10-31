@@ -30,7 +30,7 @@ use axum::response::Response;
 use crate::catalog::T;
 use crate::pages::{PageState, answer, render_form_expired};
 use crate::services::{Services, WriteIdentity};
-use crate::signin::names::{FORM_MEDIA_TYPE, INVITE_PREFIX, JOIN_PATH, SIGN_IN_PATH};
+use crate::signin::names::{API_SEGMENT, FORM_MEDIA_TYPE, INVITE_PREFIX, JOIN_PATH, SIGN_IN_PATH};
 
 pub use crate::signin::names::{CSRF_FIELD as FIELD, CSRF_HEADER as HEADER};
 
@@ -40,9 +40,6 @@ pub use crate::signin::names::{CSRF_FIELD as FIELD, CSRF_HEADER as HEADER};
 const EXEMPT: &[&str] = &[crate::pages::LANGUAGE_PATH, SIGN_IN_PATH, JOIN_PATH];
 /// The invitation page's prefix (its address carries the one-time secret).
 const EXEMPT_PREFIX: &str = INVITE_PREFIX;
-
-/// What an address of the API has in it: `/{slug}/-/api/v1/…`.
-const API_SEGMENT: &str = "/-/api/";
 
 /// The most a body is read to: the largest form there is.
 const BODY_LIMIT: usize = crate::proposals::PROPOSAL_FORM_LIMIT;
