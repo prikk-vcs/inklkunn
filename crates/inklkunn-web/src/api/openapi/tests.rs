@@ -78,6 +78,7 @@ fn a_description_without_a_route_is_drift() {
         description: "x",
         query: &[],
         answer: Answer::Fragment,
+        write: None,
         problems: &[],
     };
     let mut all = docs();
@@ -116,18 +117,71 @@ fn an_api_route_guarded_by_another_action_is_refused() {
 }
 
 #[test]
+fn a_write_guarded_by_another_action_than_its_description_names_is_refused() {
+    // A write that is registered as a read, or as another act of the proposal's life, is drift: what the
+    // document says a token needs and what the router checks must be one thing.
+    for wrong in [Action::Read, Action::Review, Action::Comment, Action::Admin] {
+        let mut table = RouteTable::new();
+        for entry in real_table().entries() {
+            let guard = if entry.path == "/{slug}/-/api/v1/proposals" {
+                Guard::Action(wrong)
+            } else {
+                entry.guard
+            };
+            table.register(entry.path, entry.methods, guard).unwrap();
+        }
+        assert_eq!(
+            document(&table, &docs()).unwrap_err(),
+            Drift::Unguarded("/{slug}/-/api/v1/proposals".to_owned()),
+            "{wrong:?}"
+        );
+    }
+}
+
+#[test]
+fn a_write_with_no_description_is_drift() {
+    let mut table = real_table();
+    table
+        .register(
+            "/{slug}/-/api/v1/planted-write",
+            &["POST"],
+            Guard::Action(Action::Propose),
+        )
+        .unwrap();
+    assert_eq!(
+        document(&table, &docs()).unwrap_err(),
+        Drift::Undocumented("/{slug}/-/api/v1/planted-write".to_owned())
+    );
+}
+
+#[test]
 fn every_operation_carries_the_guard_the_registry_declares() {
     let table = real_table();
     let document = document(&table, &docs()).unwrap();
     for (path, item) in document.at("/paths").as_object().unwrap() {
-        let op = &item.at("/get");
-        let read = op.get("x-inklkunn-action").and_then(Value::as_str);
+        // One method per path: a read is a `get` guarded by `read`, a write a `post` guarded by its action.
+        let methods: Vec<&String> = item.as_object().unwrap().keys().collect();
+        let [method] = methods.as_slice() else {
+            panic!("{path}: one method a path, not {methods:?}");
+        };
+        let op = &item.at(&format!("/{method}"));
+        let action = op.get("x-inklkunn-action").and_then(Value::as_str);
         let public = op.get("x-inklkunn-public").and_then(Value::as_str);
-        match (read, public) {
-            (Some("read"), None) => {}
-            (None, Some(reason)) => {
+        match (method.as_str(), action, public) {
+            ("get", Some("read"), None) => {}
+            ("get", None, Some(reason)) => {
                 assert_eq!(path, super::super::OPENAPI_PATH);
                 assert!(reason.len() >= 16);
+            }
+            ("post", Some("propose" | "comment" | "review" | "accept"), None) => {
+                assert!(
+                    op.get("security").is_some(),
+                    "{path}: a write names its security"
+                );
+                assert!(
+                    op.get("requestBody").is_some(),
+                    "{path}: a write has a body"
+                );
             }
             other => panic!("{path}: {other:?}"),
         }

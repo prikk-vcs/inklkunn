@@ -101,9 +101,12 @@ async fn every_guarded_route_answers_a_restricted_wiki_exactly_as_one_that_is_no
     ] {
         for (entry, action) in table.guarded() {
             // The pages read; the proposals' writes carry the action their handler authorizes with (RFC 004).
-            let expected = if entry.path.contains("/-/proposals/")
-                && entry.path != "/{slug}/-/proposals/{id}"
-            {
+            // (The write API's endpoints are the same acts under the API's prefix, and take `POST`.)
+            let writes = (entry.path.contains("/-/proposals/")
+                && entry.path != "/{slug}/-/proposals/{id}")
+                || (entry.path.starts_with("/{slug}/-/api/v1/proposals")
+                    && entry.methods == ["POST"]);
+            let expected = if writes {
                 [
                     Action::Propose,
                     Action::Comment,

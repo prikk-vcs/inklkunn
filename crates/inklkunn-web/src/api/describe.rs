@@ -7,6 +7,7 @@
 //! log lines and start-up refusals, and not a sentence a reader of the wiki sees (`tests/literals.allow` says
 //! so). The problem details a caller can get are catalog messages in the caller's language.
 
+use inklkunn_core::Action;
 use inklkunn_core::read::{DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE};
 
 use super::problem::Code;
@@ -35,6 +36,32 @@ pub(crate) struct Param {
     pub description: &'static str,
 }
 
+/// What a write is made against: the state the caller saw, named in `If-Match` (RFC 004 D-13).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Base {
+    /// The state id of the view's tip, for a proposal that does not exist yet.
+    View,
+    /// The ETag of the proposal's revision.
+    Proposal,
+}
+
+/// What a write endpoint takes besides the path: a JSON body of a named schema, a base, and a bound on the
+/// body that is judged before a byte of it is parsed.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Write {
+    /// The action the endpoint is guarded by, which the route registry declares and the handler consults before
+    /// it reads the body (the scope of a token and the role of the account are intersected by it).
+    pub action: Action,
+    /// The schema of the body, in `components`.
+    pub request: &'static str,
+    /// What `If-Match` names.
+    pub base: Base,
+    /// The status of a success: `200`, or `201` when the write made something.
+    pub success: u16,
+    /// The most bytes of body the endpoint reads.
+    pub limit: usize,
+}
+
 /// What an endpoint answers on success.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Answer {
@@ -56,6 +83,8 @@ pub(crate) struct Doc {
     pub description: &'static str,
     pub query: &'static [Param],
     pub answer: Answer,
+    /// `Some` for a `POST` of the write API: its body, its base and its bound. A read is `None`.
+    pub write: Option<Write>,
     /// Problems the endpoint can answer besides the ones every endpoint can (`not-found`, `unavailable`,
     /// `failed`, `method-not-allowed`).
     pub problems: &'static [Code],
@@ -67,6 +96,19 @@ pub(crate) const EVERY_ENDPOINT: &[Code] = &[
     Code::Unavailable,
     Code::Failed,
     Code::MethodNotAllowed,
+];
+
+/// The problems any write can answer besides those of every endpoint.
+pub(crate) const EVERY_WRITE: &[Code] = &[
+    Code::AuthenticationRequired,
+    Code::InvalidToken,
+    Code::Forbidden,
+    Code::BaseRequired,
+    Code::StaleBase,
+    Code::InvalidBody,
+    Code::BodyTooLarge,
+    Code::UnsupportedMediaType,
+    Code::InvalidParameter,
 ];
 
 /// What a path parameter is, for the document: its description and what it may hold.
@@ -81,7 +123,7 @@ pub(crate) fn path_param(name: &str) -> Option<(&'static str, &'static str)> {
             "string",
         )),
         "id" => Some((
-            "The id of one recorded change: 1 to 64 lower-case hexadecimal digits.",
+            "The id of one recorded change (1 to 64 lower-case hexadecimal digits), or of a proposal (a UUID).",
             "string",
         )),
         _ => None,
@@ -268,6 +310,7 @@ pub(crate) const OPENAPI: Doc = Doc {
     description: "The OpenAPI 3.1 document of the read API, generated from the server's own route table. One document for the whole site: every path in it begins with the wiki's slug as a parameter.",
     query: &[],
     answer: Answer::Description,
+    write: None,
     problems: &[],
 };
 
@@ -279,6 +322,7 @@ pub(crate) const PAGES: Doc = Doc {
     description: "The pages of the view's tip, one page of the list at a time, in a fixed order. Follow `next_cursor` until it is `null`: a walk visits every matching page once, whatever changes meanwhile to the pages already passed. Redirects and pages whose information could not be read are listed (`kind`, `problem`).",
     query: LIST_PARAMS,
     answer: Answer::Schema("PageList"),
+    write: None,
     problems: &[
         Code::InvalidParameter,
         Code::InvalidCursor,
@@ -295,6 +339,7 @@ pub(crate) const PAGE: Doc = Doc {
     description: "A page's metadata, its table of contents and its body as a sanitized HTML fragment (the same HTML a page view shows; its headings begin at `h2`). `stale` is true when the server could not ask for the newest version and answers with the last one it has.",
     query: VIEW_ONLY,
     answer: Answer::Schema("Page"),
+    write: None,
     problems: PAGE_PROBLEMS,
 };
 
@@ -306,6 +351,7 @@ pub(crate) const RAW: Doc = Doc {
     description: "The page's title, its kind, the tip it was found at and its storage path. The source text itself is served only from the content origin (RFC 003 D-3) and never by this API.",
     query: VIEW_ONLY,
     answer: Answer::Schema("Raw"),
+    write: None,
     problems: PAGE_PROBLEMS,
 };
 
@@ -317,6 +363,7 @@ pub(crate) const FRAGMENT: Doc = Doc {
     description: "Only the sanitized HTML of the page body, as `text/html`: a fragment to place inside a document of your own, not a document. Links in it are the wiki's own page addresses.",
     query: VIEW_ONLY,
     answer: Answer::Fragment,
+    write: None,
     problems: PAGE_PROBLEMS,
 };
 
@@ -328,6 +375,7 @@ pub(crate) const HISTORY: Doc = Doc {
     description: "The changes that touched the page, newest first, one step of at most 20 rows at a time. A step looks at as many changes as one request may, so it can hold no row and still have a `next_cursor`: follow it until it is `null`. `beyond_window` is true when the history is longer than the server reads, so the oldest changes are not listed. A row says what the change did to the page (`events`) and what its message says about the people (`provenance`, and `people` in the words the pages use): the wiki service signs the history, and no row says that a person signed. A message that is not in the service's form names nobody. There is no time: the history carries none.",
     query: HISTORY_PARAMS,
     answer: Answer::Schema("History"),
+    write: None,
     problems: &[
         Code::AmbiguousTitle,
         Code::InvalidTitle,
@@ -345,6 +393,7 @@ pub(crate) const REVISION: Doc = Doc {
     description: "One change of the view's history, by the `id` a history or a list of changes gave: what it did (`did`, at most 200 things, `omitted` counts the rest), what its message says about the people, and, when `title` is given, the page as it stood after the change (the permalink of the page's version; a title that had no page then is `page-not-found`). A change whose operations are too large to list says so (`too_large`). An id that is not a change of this view is `change-not-found`, whatever the reason.",
     query: REVISION_PARAMS,
     answer: Answer::Schema("Revision"),
+    write: None,
     problems: &[
         Code::ChangeNotFound,
         Code::PageNotFound,
@@ -364,6 +413,7 @@ pub(crate) const DIFF: Doc = Doc {
     description: "`path` is required and is the page's title: a diff is always for one page, and the API has no diff of a whole tree. The lines are the version control's own; `marked` segments are the wiki's word-level refinement of a removed line followed by an added one, and never change a character of a line. At most 4000 lines are returned (`truncated`). A page that is the same at both points is `unchanged`, one that exists at `to` only is `added`, at `from` only is `removed`.",
     query: DIFF_PARAMS,
     answer: Answer::Schema("Diff"),
+    write: None,
     problems: &[
         Code::DiffPathRequired,
         Code::ChangeNotFound,
@@ -382,6 +432,7 @@ pub(crate) const BACKLINKS: Doc = Doc {
     description: "The pages that link to the page the title leads to (an alias or a redirect leads to the page it names), each with the line of its source that makes the link, in the order of the linking pages' storage paths. For a title that leads to no page but is linked to, the pages that link to it (`exists` is false: a wanted title). The cursor is an offset into the list of the tip it was given for; once the wiki has changed it is refused with `invalid-cursor` and the walk starts again. The graph keeps at most 500 links for a title (`cut`).",
     query: VIEW_PAGED,
     answer: Answer::Schema("Backlinks"),
+    write: None,
     problems: &[
         Code::PageNotFound,
         Code::AmbiguousTitle,
@@ -400,6 +451,7 @@ pub(crate) const HEALTH: Doc = Doc {
     description: "What can be improved in the wiki, from the link graph of the tip: one of six lists, each row with the `action` that would resolve it as a code (`add-a-link-to-it`, `retarget-the-redirect`, …; the words are the client's to choose). These are opportunities, not faults. The list is walked by `next_cursor` like the backlinks. The stale list looks only through the newest changes (`scan`), because the history does not say which pages a change touched until it is asked. (The liveness check of the server is `/-/health`, a different thing.)",
     query: HEALTH_PARAMS,
     answer: Answer::Schema("Health"),
+    write: None,
     problems: &[
         Code::InvalidParameter,
         Code::InvalidCursor,
@@ -415,6 +467,7 @@ pub(crate) const SEARCH: Doc = Doc {
     description: "Search over titles and aliases: any part of them matches, with width variants, diacritics and case folded. Best first: an exact title, an exact alias, a title that begins with the query, an alias that does, a title that contains it, an alias that does. A hit says whether its title or an alias matched (`kind`) and shows the text that matched as `snippet`: a list of segments of plain text, `marked` for the part that matched. A snippet is never HTML; write it with your own escaping. At most 50 pages are found whatever `limit` is (`truncated` says there were more): narrow the query for the others. `names_a_page` is true when the query is itself a title, an alias or a redirect.",
     query: SEARCH_PARAMS,
     answer: Answer::Schema("Search"),
+    write: None,
     problems: &[Code::InvalidParameter, Code::NoSuchView],
 };
 
@@ -426,6 +479,7 @@ pub(crate) const CHANGES: Doc = Doc {
     description: "The changes of the wiki's open views, newest first (the order they were first seen by this server), looking through the newest 100 changes of each view (`beyond_window` says there are older ones). What the caller may not read is left out and counted in `left_out`, without saying which; a change is left out when it touched pages and the caller may read none of them. Each row says what its message says about the people (`proposed_by`, `accepted_by`, `kind`, and `people` in the words the pages use) and no more: the wiki service signs the history, and no row says a person signed. `first_seen` is when this server first saw the change, not when it was made. The cursor names the last change of the page; one that names a change no longer in the list is `invalid-cursor`.",
     query: CHANGES_PARAMS,
     answer: Answer::Schema("Changes"),
+    write: None,
     problems: &[
         Code::InvalidParameter,
         Code::InvalidCursor,
@@ -435,3 +489,6 @@ pub(crate) const CHANGES: Doc = Doc {
 
 /// The default and the largest size of a page of a list, for the document.
 pub(crate) const SIZES: (usize, usize) = (DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+
+mod write;
+pub(crate) use write::*;

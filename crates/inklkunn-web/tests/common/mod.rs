@@ -650,10 +650,10 @@ pub fn assemble(
         inbox,
         identity: Arc::new(AnonymousOnly),
         proposals,
+        acceptor: None,
         accounts: store.clone(),
         acceptances: store.clone(),
         acts: store.clone(),
-        acceptor: None,
         log: Arc::new(move |line| {
             sink.lock()
                 .unwrap_or_else(PoisonError::into_inner)
@@ -734,11 +734,30 @@ pub async fn get(w: &World, uri: &str) -> Answer {
 }
 
 /// Who a request is, for the tests of readers who are not anonymous: the account named by the header
-/// `x-test-account`, else anonymous.
+/// `x-test-account` (a session, which carries every scope), else anonymous. A request that presents
+/// `Authorization: Bearer <scope>.<account id>` is that account with a token of that scope, whatever else it
+/// carries; a token in any other form does not authenticate, so the request is anonymous (as the real
+/// implementation answers for a token that is unknown, expired or revoked).
 pub struct HeaderAccount(inklkunn_core::IdentityAuthority);
 
 impl inklkunn_web::Identify for HeaderAccount {
     fn principal(&self, headers: &axum::http::HeaderMap) -> inklkunn_core::Principal {
+        if let Some(auth) = headers.get("authorization") {
+            return auth
+                .to_str()
+                .ok()
+                .and_then(|v| v.split_once(' '))
+                .and_then(|(_, token)| token.split_once('.'))
+                .and_then(|(scope, account)| {
+                    Some((
+                        inklkunn_store::Scope::parse(scope)?,
+                        inklkunn_store::AccountId::parse(account)?,
+                    ))
+                })
+                .map_or(inklkunn_core::Principal::Anonymous, |(scope, id)| {
+                    inklkunn_core::Principal::token(&self.0, id, scope)
+                });
+        }
         headers
             .get("x-test-account")
             .and_then(|v| v.to_str().ok())

@@ -78,6 +78,16 @@ scope :: across.rs :: * :: the endpoints of the links, health, search and change
 scope :: past.rs :: * :: the endpoints of a page's past: JSON member names and codes (statuses, kinds); every sentence a caller reads is a problem detail or a catalog message chosen by the pages' own functions
 scope :: shape.rs :: * :: the JSON shapes the endpoints share: member names and codes (person kinds, events, line kinds); the sentences in them are the pages' own catalog messages
 scope :: shapes.rs :: * :: the OpenAPI schemas of the answers: English descriptions by decision, like describe.rs; machine-readable member names
+# --- T7: the write API (handoff 004)
+scope :: write.rs :: * :: the write API's shared start and finish, and its descriptions (English by decision, like describe.rs): header names, media types, the order of the checks in prose; every sentence a caller reads is a problem detail in problem.rs
+scope :: base.rs :: * :: the form of the proposal revision's ETag, the names of the members a stale base carries and the header names; no sentence a reader sees
+scope :: body.rs :: * :: the strict reading of a write's JSON body: the names of the members it takes; every refusal is the problem `invalid-body`, a catalog message
+scope :: refuse.rs :: * :: the stable words of what a refusal names (`summary-missing`, `at`, `never`, ...) and the members that carry the numbers of a limit; every sentence is a catalog message or the pages' own words
+scope :: files.rs :: * :: the pages of a proposal sent as JSON: member names and the stable words of what was wrong with a page; every sentence is a catalog message the form uses as well
+scope :: answer.rs :: * :: the JSON member names of a proposal as the write API tells it; no sentence a reader sees
+scope :: propose.rs :: * :: the write API's proposals: JSON member names and the operator's log lines (English by decision: operator vocabulary); every sentence a caller reads is a problem detail
+scope :: decide.rs :: * :: the write API's review: JSON member names, the words of an acceptance's outcome (`signed`, `already-signed`) and the feature a build lacks; every sentence a caller reads is a problem detail
+scope :: writes.rs :: * :: the OpenAPI schemas of the write API: English descriptions by decision, like describe.rs; machine-readable member names
 exact :: request.rs :: api :: a segment of the API's address
 exact :: request.rs :: parameter :: the name of a placeholder of a catalog message and of the member that carries the same value
 exact :: request.rs :: view :: the name of a placeholder of a catalog message and of the member that carries the same value

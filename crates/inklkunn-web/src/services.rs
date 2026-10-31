@@ -17,7 +17,13 @@ use inklkunn_store::{AcceptanceStore, AccountStore, ActStore, ProposalId, WikiRe
 
 /// Who a request is. The only way the web layer learns a principal.
 pub trait Identify: Send + Sync {
-    /// The principal of the request with these headers: the account of its session, else anonymous. Never a
+    /// The principal of the request with these headers: the account of its session, or of the API token it
+    /// presents as `Authorization: Bearer …` (RFC 004 D-13); else anonymous. **A request that presents a token
+    /// is its token's, whatever cookies it also carries**: a stale session must not widen or narrow what a token
+    /// may do, and the write API tells a request that presented a credential that did not authenticate (it
+    /// answers `invalid-token`) from one that presented none by the header, so an implementation answers
+    /// anonymous for a token that is unknown, expired, revoked or of a disabled account. The principal of a
+    /// token carries the token's scope, which the authorizer intersects with the account's role (AZ-3). Never a
     /// system principal.
     fn principal(&self, headers: &HeaderMap) -> Principal;
 }

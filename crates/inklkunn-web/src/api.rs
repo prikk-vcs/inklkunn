@@ -1,5 +1,6 @@
-//! The read API (RFC 003 D-13; handoff 003 T8; external design API-01, API-02, API-04): the GET half of IX-4, a
-//! JSON description of what the pages show, under a **versioned path**, described by an OpenAPI 3.1 document
+//! The API: a JSON description of what the pages show (RFC 003 D-13; handoff 003 T8; external design API-01,
+//! API-02, API-04: the GET half of IX-4) and the writes that propose, review and accept changes (RFC 004 D-13;
+//! handoff 004 T7; API-03 … API-05), under a **versioned path**, described by an OpenAPI 3.1 document
 //! that is **generated from the router's route table** and never kept in parallel.
 //!
 //! # Where it lives
@@ -38,7 +39,17 @@
 //! * **Strict.** An unknown or repeated query parameter is `invalid-parameter`: a mistyped `limt=5` is told so.
 //!
 //! The browser's same-origin policy keeps other sites from reading these answers (`Cross-Origin-Resource-Policy:
-//! same-origin`); there is no CORS. Machine credentials (API-05) arrive with RFC 004.
+//! same-origin`); there is no CORS.
+//!
+//! # The write half (RFC 004 D-13; handoff 004 T7)
+//!
+//! `POST` endpoints for proposals, revisions, comments, decisions, acceptances, declines and withdrawals
+//! (`propose`, `decide`), registered with the `Action` each performs and described beside the reads. The
+//! shared start and finish is `write`: the credential (a bearer token, whose scope is intersected with the
+//! account's role by the authorizer, or a session held to the same-site check), the existence-neutral wiki, the
+//! action, the base named in `If-Match` (a stale one is `409 stale-base`), a JSON body bounded before it is parsed
+//! and read strictly. Everything is written by the proposal service and the acceptance: there is no second write
+//! path. Refusals are problem details with `Retry-After` where waiting helps.
 
 use axum::http::{HeaderMap, Uri};
 use axum::response::Response;
@@ -47,13 +58,16 @@ use inklkunn_core::Guard;
 
 use crate::pages::{self, Page, PageState};
 
+pub(crate) mod decide;
 pub(crate) mod describe;
 pub(crate) mod endpoints;
 pub(crate) mod openapi;
 pub(crate) mod problem;
+pub(crate) mod propose;
 pub(crate) mod reply;
 mod request;
 mod shape;
+pub(crate) mod write;
 
 pub use inklkunn_core::read::MAX_PAGE_SIZE;
 
@@ -77,6 +91,8 @@ pub const PROBLEM_MEDIA_TYPE: &str = "application/problem+json";
 pub(crate) struct Endpoint {
     /// The registry key.
     pub path: &'static str,
+    /// The methods the endpoint takes: `GET` and `HEAD` for a read, `POST` for a write.
+    pub methods: &'static [&'static str],
     /// What the endpoint is, for the description. `None` for the two catch-alls that answer the not-found
     /// problem for an address under the API that is not an endpoint.
     pub doc: Option<&'static describe::Doc>,

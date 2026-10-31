@@ -10,7 +10,7 @@ use inklkunn_web::api::{OPENAPI_MEDIA_TYPE, OPENAPI_PATH};
 use inklkunn_web::routes::application_table;
 use serde_json::{Value, json};
 
-use super::{Answer, At, get, handbook_world, put};
+use super::{Answer, At, get, handbook_world, put, send};
 
 const METHODS: [&str; 8] = [
     "get", "put", "post", "delete", "options", "head", "patch", "trace",
@@ -481,8 +481,24 @@ async fn the_description_names_every_route_the_router_serves_under_the_api_and_n
     // The router really serves each documented operation with an API handler (only they set the link to the
     // description), and the catch-alls and nothing else answer the rest.
     for (path, item) in document.at("/paths").as_object().unwrap() {
-        let url = concrete(path, item.at("/get"));
-        let a = get(&w, &url).await;
+        let method = if item.get("get").is_some() {
+            "get"
+        } else {
+            "post"
+        };
+        let url = concrete(path, item.at(&format!("/{method}")));
+        let a = if method == "get" {
+            get(&w, &url).await
+        } else {
+            // A write, asked with no credential: the API's own handler answers, with a problem.
+            send(
+                &w,
+                axum::http::Method::POST,
+                &url,
+                &[("content-type", "application/json")],
+            )
+            .await
+        };
         assert!(
             a.header("link").is_some_and(|l| l.contains("service-desc")),
             "{url} is not served by an API handler: {} {}",
@@ -492,7 +508,7 @@ async fn the_description_names_every_route_the_router_serves_under_the_api_and_n
         // An answer of the shape the document promises: a success of a stated media type, or a problem of
         // a code the document lists for that operation.
         let promised: Vec<String> = item
-            .at("/get/responses")
+            .at(&format!("/{method}/responses"))
             .as_object()
             .unwrap()
             .keys()
@@ -516,9 +532,32 @@ fn every_endpoint_is_in_the_route_registry_with_its_action() {
         .collect();
     assert!(api.len() >= 14, "{}", api.len());
     for entry in &api {
-        assert_eq!(entry.methods, ["GET", "HEAD"], "{}", entry.path);
         match entry.guard {
-            Guard::Action(action) => assert_eq!(action, Action::Read, "{}", entry.path),
+            // A read takes GET (and HEAD) and is guarded by `read`; a write takes POST, guarded by the action
+            // of the proposal's life it performs.
+            Guard::Action(Action::Read) => {
+                assert_eq!(entry.methods, ["GET", "HEAD"], "{}", entry.path);
+            }
+            Guard::Action(action) => {
+                assert_eq!(entry.methods, ["POST"], "{}", entry.path);
+                assert!(
+                    [
+                        Action::Propose,
+                        Action::Comment,
+                        Action::Review,
+                        Action::Accept
+                    ]
+                    .contains(&action),
+                    "{}: {action:?}",
+                    entry.path
+                );
+            }
+            Guard::Public { .. } => {
+                assert_eq!(entry.methods, ["GET", "HEAD"], "{}", entry.path);
+            }
+        }
+        match entry.guard {
+            Guard::Action(_) => {}
             Guard::Public { reason } => {
                 assert!(reason.len() >= 16, "{}", entry.path);
                 assert!(

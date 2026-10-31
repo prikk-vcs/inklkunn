@@ -844,3 +844,42 @@ Follow-ups from the review of 2026-10-31 (handoff 003, S2 – S4).
   not accept or a form from elsewhere, the log, the overlaps; the creation against a repository double (steps, the
   act, the kill after the record, a store that cannot take the act, the sweep's refusals), and against a real
   repository (the reconciliation of a created wiki, the kill test over the new step).
+- **The write API (handoff 004 T7; RFC 004 D-13; API-03 … API-05).** `POST` under the versioned path
+  `/{slug}/-/api/v1/`: `proposals` (open one: a draft, or sent for review at once), `proposals/{id}/draft` (save),
+  `…/submission` (send a draft), `…/revisions`, `…/comments`, `…/decisions`, `…/acceptances`, `…/declines`,
+  `…/withdrawals`, and `GET proposals/{id}` (the proposal and the base to write against). Each is registered in
+  `routes.rs` with its `Action` (the one its description names, so the router and the document cannot say two things),
+  and appears in the OpenAPI document, which now has request bodies, an `If-Match` header, the scope each needs
+  (`x-inklkunn-scope`), a bearer security scheme and the problems each can answer; the drift tests hold the table and
+  the document both ways, for writes as for reads. **Each write names its base** in `If-Match`: the proposal
+  revision's `ETag` (`"<id>-r<n>"`, `-r0` for a draft; one strong tag, never `*` or a list), or for a new proposal
+  the `state_id` of the view's tip (now in the read API's `tip`). No header is `428 base-required`, a tag that is not
+  one is `invalid-parameter`, and a base that is not the current one is **`409 stale-base`** carrying the current
+  value; nothing is recorded. **Credentials**: a request that presents `Authorization: Bearer …` is the token's
+  account with the token's scope whatever cookies it carries, and a token that does not authenticate is `401
+  invalid-token` (the header says it was presented), before any wiki is looked at; a request with only a session cookie
+  must pass the pages' same-site check and send JSON, which a form cannot; none is needed for a token. The web layer
+  still never makes a principal: `Identify::principal` is the seam, now documented to resolve the bearer token
+  (the binary's implementation over `Authenticator::principal_for_token` comes with sign-in; `AnonymousOnly` stays
+  until then). **Order of the checks** (each stops the request and none depends on a fact a caller must not learn):
+  credential, wiki (absent and unreadable are the same `404`, byte for byte), an account (`401
+  authentication-required`), the action for this principal (a token's scope intersected with the account's role, AZ-3:
+  a `propose` token is `403 forbidden` at `accept` whatever its account is, before the body is read), the base, the
+  body. **Bodies** are JSON objects, bounded before a byte is parsed (a declared length over the bound is refused
+  unread; the bound is the form's texts, six bytes a byte, for a proposal and for a comment or a reason), read
+  strictly (an unknown, repeated, missing or mistyped member is `400 invalid-body` naming it, at any depth), and the
+  texts are carried as they are; the pages follow the proposal form's rules (a page over 1 MiB or a proposal over
+  2 MiB before the parser, the keys the service owns, a title that is taken, a path inside `pages/`). **Refusals** are
+  problem details with stable `type`s (eighteen new: `authentication-required`, `invalid-token`, `forbidden`,
+  `base-required`, `stale-base`, `invalid-body`, `body-too-large`, `unsupported-media-type`, `unacceptable` with a
+  `reason` word and the pages' own sentence, `not-in-this-state`, `already-decided`, `refused-limit` with the limit's
+  name, `allowed`/`current`/`asked` and `reset`, `busy`, `needs-recovery`, `overlap`, `nothing-to-change`,
+  `acceptance-in-progress`, `acceptance-failed`), each with a catalog entry and a glossary row; a quota that waiting
+  lifts carries **`Retry-After`** (a rate: the seconds to its reset; a full queue; a busy or recovering wiki), one that
+  waiting cannot lift does not. Problem bodies now write `<`, `>` and `&` as escapes like every answer of the API.
+  `Services` gains `acceptor: Option<Arc<ProposalAcceptor>>`. Tests: the document names every write (and drift both
+  ways, and a write guarded by another action is drift), every endpoint is in the route registry and the
+  enumeration harness walks the writes, the stale base (new proposal, revision, decision, draft), a token with
+  `propose` cannot accept, `Retry-After` on a refused rate, a private wiki's writes answer `404` as an absent one
+  for four kinds of caller, multibyte JSON round trips, hostile content is data, the bounds, the strict body, the
+  same-site check, and an acceptance through a real `ProposalAcceptor` over a scripted signer.

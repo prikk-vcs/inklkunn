@@ -56,7 +56,7 @@ impl Ctx {
 
 /// `/{slug}/-/api/v1/<endpoint>[/<rest>]`, split into the raw slug, the endpoint's word and the raw rest.
 /// `None` when the path does not have that shape.
-fn parse_path(path: &str) -> Option<(&str, &str, &str)> {
+pub(super) fn parse_path(path: &str) -> Option<(&str, &str, &str)> {
     let mut parts = path.strip_prefix('/')?.splitn(6, '/');
     let slug = parts.next()?;
     if (parts.next()?, parts.next()?, parts.next()?) != ("-", "api", "v1") {

@@ -38,7 +38,7 @@ fn application_specs() -> Vec<Spec> {
     let mut specs = page_specs();
     specs.extend(api::endpoints().into_iter().map(|endpoint| Spec {
         path: endpoint.path,
-        methods: &["GET", "HEAD"],
+        methods: endpoint.methods,
         guard: endpoint.guard,
         handler: endpoint.handler,
     }));

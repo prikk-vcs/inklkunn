@@ -48,9 +48,21 @@ fn every_endpoint_declares_a_guard_and_a_documented_one_names_its_path() {
     let all = endpoints();
     assert!(all.len() >= 12);
     for endpoint in &all {
-        match endpoint.guard {
-            Guard::Action(action) => assert_eq!(action, Action::Read, "{}", endpoint.path),
-            Guard::Public { reason } => assert!(reason.len() >= 16, "{}", endpoint.path),
+        match (endpoint.guard, endpoint.doc.and_then(|d| d.write)) {
+            // A read is guarded by `read`; a write by the action its description names, and takes `POST`.
+            (Guard::Action(action), None) => {
+                assert_eq!(action, Action::Read, "{}", endpoint.path);
+                assert_eq!(endpoint.methods, ["GET", "HEAD"], "{}", endpoint.path);
+            }
+            (Guard::Action(action), Some(write)) => {
+                assert_eq!(action, write.action, "{}", endpoint.path);
+                assert_ne!(action, Action::Read, "{}", endpoint.path);
+                assert_eq!(endpoint.methods, ["POST"], "{}", endpoint.path);
+            }
+            (Guard::Public { reason }, None) => assert!(reason.len() >= 16, "{}", endpoint.path),
+            (Guard::Public { .. }, Some(_)) => {
+                panic!("{}: a write cannot be public", endpoint.path)
+            }
         }
         if let Some(doc) = endpoint.doc {
             assert_eq!(doc.path, endpoint.path);

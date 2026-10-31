@@ -6,7 +6,7 @@ use serde_json::{Map, Value, json};
 
 use crate::api::describe::SIZES;
 
-fn schema_ref(name: &str) -> Value {
+pub(super) fn schema_ref(name: &str) -> Value {
     json!({"$ref": format!("#/components/schemas/{name}")})
 }
 
@@ -19,7 +19,7 @@ fn or_null(name: &str) -> Value {
 }
 
 /// An object schema whose `required` members are all its properties but the ones in `optional`.
-fn object(description: &str, properties: Value, optional: &[&str]) -> Value {
+pub(super) fn object(description: &str, properties: Value, optional: &[&str]) -> Value {
     let required: Vec<String> = properties
         .as_object()
         .map(|map| {

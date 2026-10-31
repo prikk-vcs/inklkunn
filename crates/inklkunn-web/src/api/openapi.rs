@@ -13,7 +13,9 @@ use std::sync::OnceLock;
 use inklkunn_core::{Guard, RouteTable};
 use serde_json::{Map, Value, json};
 
-use super::describe::{Answer, Doc, EVERY_ENDPOINT, Kind, Param, SIZES, path_param};
+use super::describe::{
+    Answer, Base, Doc, EVERY_ENDPOINT, EVERY_WRITE, Kind, Param, SIZES, Write, path_param,
+};
 use super::problem::Code;
 use super::{PROBLEM_MEDIA_TYPE, SITE_PREFIX, WIKI_PREFIX, endpoints};
 use crate::catalog::{EN, T};
@@ -119,13 +121,22 @@ fn problem_response(codes: &[Code]) -> Value {
     })
 }
 
-fn success_response(answer: Answer) -> Value {
-    let validators = json!({
-        "ETag": {
-            "description": "A strong validator of the body. Send it back as `If-None-Match` to get `304` while the answer has not changed.",
-            "schema": {"type": "string"},
-        },
-    });
+fn success_response(answer: Answer, write: Option<Write>) -> Value {
+    let validators = if write.is_some() {
+        json!({
+            "ETag": {
+                "description": "The proposal's revision, as the base of the next write: send it back as `If-Match`. It names the revision, not these bytes.",
+                "schema": {"type": "string"},
+            },
+        })
+    } else {
+        json!({
+            "ETag": {
+                "description": "A strong validator of the body. Send it back as `If-None-Match` to get `304` while the answer has not changed.",
+                "schema": {"type": "string"},
+            },
+        })
+    };
     match answer {
         Answer::Schema(name) => json!({
             "description": "The answer.",
@@ -145,18 +156,50 @@ fn success_response(answer: Answer) -> Value {
     }
 }
 
+/// The `If-Match` header of a write: what it names depends on what the write is made against.
+fn if_match_parameter(base: Base) -> Value {
+    let (description, pattern) = match base {
+        Base::View => (
+            "The state of the view's tip the proposal was written against: the `state_id` of the `tip` the read endpoints give, in quotes. A tip that has moved on is `409 stale-base` carrying the current one.",
+            "^\"[0-9a-f]{64}\"$",
+        ),
+        Base::Proposal => (
+            "The proposal's revision this write is made against: the `etag` the proposal was last read with, in quotes. An older revision is `409 stale-base` carrying the current one. One strong tag; `*` and lists are refused.",
+            "^\"[0-9a-f-]{36}-r[0-9]+\"$",
+        ),
+    };
+    json!({
+        "name": "If-Match",
+        "in": "header",
+        "required": true,
+        "description": description,
+        "schema": {"type": "string", "pattern": pattern},
+    })
+}
+
 fn operation(doc: &Doc, path: &str, guard: Guard) -> Value {
     let mut parameters: Vec<Value> = path_params(path).into_iter().map(path_parameter).collect();
+    if let Some(write) = doc.write {
+        parameters.push(if_match_parameter(write.base));
+    }
     parameters.extend(doc.query.iter().map(query_parameter));
 
     let mut responses: BTreeMap<String, Value> = BTreeMap::new();
-    responses.insert("200".to_owned(), success_response(doc.answer));
-    responses.insert(
-        "304".to_owned(),
-        json!({"description": "Not modified: the `If-None-Match` matched the answer's `ETag`."}),
-    );
+    let success = doc.write.map_or(200, |w| w.success);
+    responses.insert(success.to_string(), success_response(doc.answer, doc.write));
+    if doc.write.is_none() {
+        responses.insert(
+            "304".to_owned(),
+            json!({"description": "Not modified: the `If-None-Match` matched the answer's `ETag`."}),
+        );
+    }
+    let writes: &[Code] = if doc.write.is_some() {
+        EVERY_WRITE
+    } else {
+        &[]
+    };
     let mut by_status: BTreeMap<u16, Vec<Code>> = BTreeMap::new();
-    for code in EVERY_ENDPOINT.iter().chain(doc.problems) {
+    for code in EVERY_ENDPOINT.iter().chain(writes).chain(doc.problems) {
         let codes = by_status.entry(code.status().as_u16()).or_default();
         if !codes.contains(code) {
             codes.push(*code);
@@ -172,6 +215,21 @@ fn operation(doc: &Doc, path: &str, guard: Guard) -> Value {
     op.insert("summary".to_owned(), json!(doc.summary));
     op.insert("description".to_owned(), json!(doc.description));
     op.insert("parameters".to_owned(), Value::Array(parameters));
+    if let Some(write) = doc.write {
+        op.insert(
+            "requestBody".to_owned(),
+            json!({
+                "required": true,
+                "description": format!("A JSON object, at most {} bytes. Every member is named, typed and used: one that is unknown, repeated or of the wrong type is `invalid-body`.", write.limit),
+                "content": {"application/json": {"schema": {"$ref": format!("#/components/schemas/{}", write.request)}}},
+            }),
+        );
+        op.insert("security".to_owned(), json!([{"bearerAuth": []}]));
+        op.insert(
+            "x-inklkunn-scope".to_owned(),
+            json!(write.action.required_scope().as_str()),
+        );
+    }
     op.insert("responses".to_owned(), json!(responses));
     match guard {
         Guard::Action(action) => {
@@ -191,10 +249,11 @@ fn components() -> Value {
     let tip = json!({
         "type": "object",
         "description": "Where the answer was read: the view and the id of the change at its tip (`null` when the answer is the last one the server had, because the newest could not be asked for).",
-        "required": ["view", "block_id"],
+        "required": ["view", "block_id", "state_id"],
         "properties": {
             "view": {"type": "string"},
             "block_id": {"type": ["string", "null"]},
+            "state_id": {"type": ["string", "null"], "description": "The view's state at that change (64 lower-case hexadecimal digits): what a write that opens a proposal names in `If-Match`. `null` like `block_id`."},
         },
     });
     let mut schemas = json!({
@@ -286,8 +345,18 @@ fn components() -> Value {
     });
     if let Some(map) = schemas.as_object_mut() {
         map.extend(shapes::schemas());
+        map.extend(writes::schemas());
     }
-    json!({"schemas": schemas})
+    json!({
+        "schemas": schemas,
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "description": "An API token (`ink_…`) issued to an account, with a scope (`read`, `propose`, `review`, `accept`, `admin`). The scope is intersected with the account's role in the wiki: a token never does more than either allows.",
+            },
+        },
+    })
 }
 
 fn problem_types() -> Value {
@@ -308,7 +377,7 @@ fn problem_types() -> Value {
     )
 }
 
-const INTRO: &str = "The read API of an inklkunn site: what the pages show, as JSON. Every wiki's endpoints are under `/{slug}/-/api/v1/`, the version is in the path, and this description is generated from the server's route table. Every answer is a success of the stated shape or a problem detail (RFC 9457) whose `type` is stable (`x-inklkunn-problems` lists them) and whose `title`, `detail` and `hint` follow the language cookie or `Accept-Language`. A wiki that does not exist and a wiki you may not read answer the same `not-found`. Every success has an `ETag` and `304` answers a matching `If-None-Match`. HEAD is answered like GET without the body. There is no cross-origin access; sign-in is the site's own session, and machine credentials arrive with proposals (RFC 004).";
+const INTRO: &str = "The API of an inklkunn site: what the pages show, as JSON, and the writes that propose, review and accept changes. Every wiki's endpoints are under `/{slug}/-/api/v1/`, the version is in the path, and this description is generated from the server's route table. Every answer is a success of the stated shape or a problem detail (RFC 9457) whose `type` is stable (`x-inklkunn-problems` lists them) and whose `title`, `detail` and `hint` follow the language cookie or `Accept-Language`. A wiki that does not exist and a wiki you may not read answer the same `not-found`. Every success has an `ETag` and `304` answers a matching `If-None-Match`. HEAD is answered like GET without the body. There is no cross-origin access. The reads take the site's session or an API token; **a write takes a JSON body (`application/json`, bounded before it is parsed) and names its base in `If-Match`** — the proposal revision's `etag`, or for a new proposal the `state_id` of the view's tip — and a stale base is `409 stale-base`, which carries the current one. A write is authenticated by an API token (`Authorization: Bearer …`), whose scope (`propose`, `review`, `accept`) is intersected with the account's role in the wiki, or by the site's own session from the site's own pages. Where waiting helps, a refusal carries `Retry-After`.";
 
 /// Build the document from the route `table` and the endpoints' `docs`.
 pub(crate) fn document(table: &RouteTable, docs: &[&'static Doc]) -> Result<Value, Drift> {
@@ -322,13 +391,15 @@ pub(crate) fn document(table: &RouteTable, docs: &[&'static Doc]) -> Result<Valu
             .iter()
             .find(|d| d.path == entry.path)
             .ok_or_else(|| Drift::Undocumented(entry.path.to_owned()))?;
-        match entry.guard {
-            Guard::Action(inklkunn_core::Action::Read) | Guard::Public { .. } => {}
-            Guard::Action(_) => return Err(Drift::Unguarded(entry.path.to_owned())),
-        }
+        // A read is guarded by `Read` (or says why it is public); a write by the action its description names.
+        let method = match (doc.write, entry.guard) {
+            (None, Guard::Action(inklkunn_core::Action::Read) | Guard::Public { .. }) => "get",
+            (Some(write), Guard::Action(action)) if action == write.action => "post",
+            _ => return Err(Drift::Unguarded(entry.path.to_owned())),
+        };
         paths.insert(
             openapi_path(entry.path),
-            json!({"get": operation(doc, entry.path, entry.guard)}),
+            json!({method: operation(doc, entry.path, entry.guard)}),
         );
     }
     if let Some(doc) = docs.iter().find(|d| table.find(d.path).is_none()) {
@@ -337,9 +408,9 @@ pub(crate) fn document(table: &RouteTable, docs: &[&'static Doc]) -> Result<Valu
     Ok(json!({
         "openapi": "3.1.0",
         "info": {
-            "title": "inklkunn read API",
+            "title": "inklkunn API",
             "version": "1.0.0",
-            "summary": "Read access to wikis: pages, their rendering, their history, links and search.",
+            "summary": "Wikis over HTTP: pages, their rendering, their history, links and search; proposals, review and acceptance.",
             "description": INTRO,
             "license": {"name": "Apache-2.0", "identifier": "Apache-2.0"},
         },
@@ -348,6 +419,8 @@ pub(crate) fn document(table: &RouteTable, docs: &[&'static Doc]) -> Result<Valu
             {"name": "history", "description": "A page's history, one change, the difference between two changes of a page, and the wiki's recent changes."},
             {"name": "links", "description": "The pages that link to a page, and the wiki's link health lists."},
             {"name": "search", "description": "Search over titles and aliases."},
+            {"name": "proposals", "description": "Opening, reading, revising and taking back proposals (writes: scope `propose`)."},
+            {"name": "review", "description": "Comments, decisions, acceptance and declining (scopes `propose`, `review`, `accept`)."},
             {"name": "description", "description": "This document."},
         ],
         "paths": paths,
@@ -373,6 +446,7 @@ pub(crate) fn served() -> Result<&'static [u8], super::problem::Problem> {
 }
 
 mod shapes;
+mod writes;
 
 #[cfg(test)]
 mod tests;

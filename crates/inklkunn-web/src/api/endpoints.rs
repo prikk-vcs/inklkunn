@@ -11,7 +11,7 @@
 use axum::extract::State;
 use axum::http::{HeaderMap, Uri};
 use axum::response::Response;
-use axum::routing::get;
+use axum::routing::{get, post};
 use inklkunn_core::read::{Cursor, DEFAULT_PAGE_SIZE, PageFilter, PageOutcome, PageView};
 use inklkunn_core::{Action, Guard};
 use inklkunn_store::{IndexEntry, WikiRecord};
@@ -22,6 +22,7 @@ use super::problem::{Code, Problem};
 use super::reply::{self, Reply};
 use super::request::{Params, from_api, from_read, language, serve};
 use super::{Endpoint, OPENAPI_MEDIA_TYPE, openapi, shape};
+use super::{decide, propose};
 use crate::pages::PageState;
 use crate::present::WikiLinks;
 use crate::services::Services;
@@ -39,12 +40,24 @@ pub(super) fn all() -> Vec<Endpoint> {
     let read = Guard::Action(Action::Read);
     let documented = |doc: &'static Doc, guard, handler| Endpoint {
         path: doc.path,
+        methods: &["GET", "HEAD"],
         doc: Some(doc),
         guard,
         handler,
     };
+    // A write is guarded by the action its description names: the one place it is written down.
+    let written = |doc: &'static Doc, handler| Endpoint {
+        path: doc.path,
+        methods: &["POST"],
+        doc: Some(doc),
+        guard: doc
+            .write
+            .map_or(Guard::Action(Action::Read), |w| Guard::Action(w.action)),
+        handler,
+    };
     let unlisted = |path, handler| Endpoint {
         path,
+        methods: &["GET", "HEAD"],
         doc: None,
         guard: Guard::Public {
             reason: "an address under the API that is not an endpoint: it reads nothing and answers every caller the same not-found problem",
@@ -70,6 +83,17 @@ pub(super) fn all() -> Vec<Endpoint> {
         documented(&describe::HEALTH, read, || get(across::health)),
         documented(&describe::SEARCH, read, || get(across::search)),
         documented(&describe::CHANGES, read, || get(across::changes)),
+        // --- the write API (handoff 004 T7)
+        written(&describe::CREATE_PROPOSAL, || post(propose::create)),
+        documented(&describe::GET_PROPOSAL, read, || get(propose::get)),
+        written(&describe::SAVE_DRAFT, || post(propose::save_draft)),
+        written(&describe::SUBMIT_DRAFT, || post(propose::submit_draft)),
+        written(&describe::REVISE, || post(propose::revise)),
+        written(&describe::COMMENT, || post(decide::comment)),
+        written(&describe::DECIDE, || post(decide::decide)),
+        written(&describe::ACCEPT, || post(decide::accept)),
+        written(&describe::DECLINE, || post(decide::decline)),
+        written(&describe::WITHDRAW, || post(propose::withdraw)),
         unlisted(NOT_ENDPOINTS[0], || get(unknown)),
         unlisted(NOT_ENDPOINTS[1], || get(unknown)),
     ]
@@ -108,6 +132,9 @@ pub(super) fn tip_json(tip: &inklkunn_core::read::Tip) -> Value {
         "view": short(&tip.view),
         // A page served from what the server last had is not pinned to a block.
         "block_id": (!tip.block_id.is_empty()).then_some(&tip.block_id),
+        // What a write that opens a proposal names in `If-Match` (RFC 004 D-13); like the block, it is not
+        // known for an answer served from what the server last had.
+        "state_id": (!tip.block_id.is_empty()).then_some(&tip.state_id),
     })
 }
 
