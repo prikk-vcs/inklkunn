@@ -13,18 +13,9 @@ pub fn utc_minutes(secs: i64) -> String {
     )
 }
 
-/// `secs` as RFC 3339 in UTC, to the second: `2026-10-29T14:03:09Z` (Atom's `updated`, sitemaps).
-pub fn rfc3339(secs: i64) -> String {
-    let days = secs.div_euclid(86_400);
-    let rem = secs.rem_euclid(86_400);
-    let (year, month, day) = civil_from_days(days);
-    format!(
-        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
-        rem / 3600,
-        (rem % 3600) / 60,
-        rem % 60
-    )
-}
+/// `secs` as RFC 3339 in UTC, to the second: `2026-10-29T14:03:09Z` (Atom's `updated`, sitemaps). The one
+/// function is the store's; this re-export is the web crate's name for it.
+pub use inklkunn_store::record::rfc3339;
 
 /// `secs` as an HTTP date (RFC 9110 IMF-fixdate): `Thu, 29 Oct 2026 14:03:09 GMT` (`Last-Modified`).
 pub fn http_date(secs: i64) -> String {
