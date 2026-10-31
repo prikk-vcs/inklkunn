@@ -505,6 +505,42 @@ async fn the_keys_the_service_owns_are_refused_to_a_contributor_as_they_are_on_t
     assert_eq!(allowed.status, 201, "{}", allowed.text());
 }
 
+#[tokio::test]
+async fn a_proposers_own_decision_is_refused_as_own_proposal_and_their_comment_is_not() {
+    let c = cast();
+    let p = open(&c, &c.reviewer, true).await;
+    let id = id_of(&p);
+    for decision in ["approve", "request-changes"] {
+        let a = post(
+            &c.w,
+            &format!("{API}/proposals/{id}/decisions"),
+            &[token("review", &c.reviewer), tag_header(&p)],
+            json!({"decision": decision}).to_string(),
+        )
+        .await;
+        assert_eq!(a.status, 403, "{decision}: {}", a.text());
+        assert_eq!(problem_type(&a), urn("own-proposal"));
+        assert!(!a.json().at("/detail").as_str().unwrap().is_empty());
+    }
+    let comment = post(
+        &c.w,
+        &format!("{API}/proposals/{id}/comments"),
+        &[token("propose", &c.reviewer), tag_header(&p)],
+        json!({"body": "A note"}).to_string(),
+    )
+    .await;
+    assert_eq!(comment.status, 201, "{}", comment.text());
+    // Another reviewer's decision is taken.
+    let other = post(
+        &c.w,
+        &format!("{API}/proposals/{id}/decisions"),
+        &[token("review", &c.maintainer), tag_header(&p)],
+        json!({"decision": "approve"}).to_string(),
+    )
+    .await;
+    assert_eq!(other.status, 201, "{}", other.text());
+}
+
 /// A proposal of `files` and `renames` as `who`, against version 2 of the repository.
 async fn propose_files(c: &Cast, who: &AccountId, files: Value, renames: Value) -> Answer {
     post(
@@ -1734,6 +1770,7 @@ async fn the_description_names_every_write_with_its_base_its_scope_and_the_probl
         "unacceptable",
         "not-in-this-state",
         "already-decided",
+        "own-proposal",
         "refused-limit",
         "busy",
         "needs-recovery",

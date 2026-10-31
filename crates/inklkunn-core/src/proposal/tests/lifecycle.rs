@@ -297,6 +297,52 @@ fn decline_withdraw_and_a_request_for_revision_need_a_reason_and_change_nothing_
     });
 }
 
+/// Ruling D9: a self-review would be recorded and not counted, which confuses everyone, so a proposer's own
+/// approve or request for changes is refused by name; a comment on one's own proposal stays.
+#[test]
+fn a_proposers_own_approve_or_request_for_changes_is_refused_by_name_and_recorded_nowhere() {
+    on_both(|e| {
+        let (w, s) = (&e.wiki, &e.service);
+        for who in [&e.reviewer, &e.maintainer, &e.admin] {
+            let p = e.held(who, "Mine", "pages/a.md");
+            for kind in [DecisionKind::Approve, DecisionKind::RequestChanges] {
+                assert_eq!(
+                    s.decide(&who.principal, w, &p.id, 1, kind, "I say so"),
+                    Err(ProposalError::OwnProposal),
+                    "{kind:?}"
+                );
+            }
+            assert!(
+                s.decisions(&who.principal, w, &p.id).unwrap().is_empty(),
+                "nothing was recorded"
+            );
+            // Commenting on one's own proposal stays.
+            assert!(
+                s.comment(
+                    &who.principal,
+                    w,
+                    &p.id,
+                    NewComment {
+                        body: "A note to myself".to_owned(),
+                        ..NewComment::default()
+                    },
+                )
+                .is_ok()
+            );
+            // Someone else's decision on it is taken.
+            let other = if who.id == e.reviewer.id {
+                &e.maintainer
+            } else {
+                &e.reviewer
+            };
+            assert!(
+                s.decide(&other.principal, w, &p.id, 1, DecisionKind::Approve, "")
+                    .is_ok()
+            );
+        }
+    });
+}
+
 #[test]
 fn a_decision_is_one_per_reviewer_per_revision_and_bound_to_the_latest() {
     on_both(|e| {

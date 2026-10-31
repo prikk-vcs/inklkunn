@@ -244,6 +244,9 @@ pub enum ProposalError {
     /// The edit adds, changes or removes keys only an administrator of the wiki may change (they are named);
     /// removing or renaming a page that carries one counts (P5).
     OwnedKeys(Vec<&'static str>),
+    /// The reviewer is the proposer: a proposal's own approve or request for changes is refused by name (ruling
+    /// D9). A comment on one's own proposal stays.
+    OwnProposal,
     /// This reviewer has decided on this revision already; a decision is not changed, the next revision is
     /// decided on again.
     AlreadyDecided,
@@ -290,6 +293,9 @@ impl std::fmt::Display for ProposalError {
                 "refused: only an administrator may change {}",
                 keys.join(", ")
             ),
+            ProposalError::OwnProposal => {
+                write!(f, "a proposer cannot decide on their own proposal")
+            }
             ProposalError::AlreadyDecided => write!(f, "already decided on this revision"),
             ProposalError::StaleRevision { latest } => {
                 write!(f, "revision {latest} is the latest")
@@ -922,6 +928,11 @@ impl ProposalService {
         )?;
         let p = self.load(wiki, id, Some(who))?;
         next(Some(p.state), ProposalOp::Decide)?;
+        // A review of one's own proposal would be recorded and not counted, which confuses everyone (ruling D9):
+        // it is refused, by name. Commenting on one's own proposal stays.
+        if p.author == *who {
+            return Err(ProposalError::OwnProposal);
+        }
         let body = body.trim();
         if body.len() > MAX_COMMENT_BYTES {
             return Err(Invalid::CommentTooLong.into());

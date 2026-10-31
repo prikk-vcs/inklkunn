@@ -477,6 +477,9 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `problem.already_decided.title` | the API's problem detail `already-decided`: the title | "Already decided" | "すでに判断しています" |
 | `problem.already_decided.detail` | the API's problem detail `already-decided`: the detail | "You have decided on this revision already, and a decision is not changed." | "このリビジョンにはすでに判断を出しており、判断は変更できません。" |
 | `problem.already_decided.hint` | the API's problem detail `already-decided`: the hint | "Decide again on the next revision, when there is one." | "次のリビジョンができたら、そのときにあらためて判断してください。" |
+| `problem.own_proposal.title` | the API's problem detail `own-proposal`: the title | "Your own proposal" | "自分の提案です" |
+| `problem.own_proposal.detail` | the API's problem detail `own-proposal`: the detail | "A proposer cannot approve or ask for changes on their own proposal." | "提案者は、自分の提案を承認したり、修正を求めたりすることはできません。" |
+| `problem.own_proposal.hint` | the API's problem detail `own-proposal`: the hint | "Ask a reviewer to decide on it. You can still comment on your own proposal." | "ほかのレビュー担当者に判断を依頼してください。自分の提案にコメントすることはできます。" |
 | `problem.refused_limit.title` | the API's problem detail `refused-limit`: the title | "Refused: a limit" | "拒否: 上限に達しました" |
 | `problem.refused_limit.detail` | the API's problem detail `refused-limit`: the detail | "A limit was reached: {limit}. The members allowed, current and asked give the numbers, and reset says when it will be possible again." | "上限に達しました: {limit}。allowed、current、asked の各メンバーが数を示し、reset がまた可能になる時刻を示します。" |
 | `problem.refused_limit.hint` | the API's problem detail `refused-limit`: the hint | "Where waiting helps, Retry-After says how long. Otherwise close a proposal of yours, or ask for less." | "待てば解消する場合は Retry-After が待つ秒数を示します。そうでない場合は、ご自身の提案を閉じるか、求める量を減らしてください。" |
@@ -632,6 +635,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `refused.invalid_heading` | the heading of the page that says what was sent could not be used | "This could not be saved" | "保存できませんでした" |
 | `refused.not_in_this_state` | under that heading; `{state}` is the proposal's state | "This proposal is {state}, so this cannot be done now." | "この提案は「{state}」の状態なので、今はこの操作はできません。" |
 | `refused.already_decided` | when a reviewer decides twice on one revision | "You have already decided on this revision. A decision is not changed; decide again on the next revision." | "この修正にはすでに判断を記録しています。判断は変更できません。次の修正であらためて判断してください。" |
+| `refused.own_proposal` | when a proposer tries to approve or ask for changes on their own proposal | "You cannot approve or ask for changes on your own proposal. Ask a reviewer to decide on it; you can still comment." | "自分の提案を承認したり、修正を求めたりすることはできません。ほかのレビュー担当者に判断を依頼してください。コメントはできます。" |
 | `refused.stale_revision` | when a decision is on a revision that is not the latest; `{latest}` is the latest | "This proposal has a newer revision, number {latest}. Read it again and decide on that one." | "この提案には新しい修正（{latest} 番）があります。読み直して、そちらについて判断してください。" |
 | `refused.superseder` | when a proposal that cannot replace another is named; `{state}` is its state | "A proposal that is {state} cannot replace another one." | "「{state}」の提案は、別の提案に代わることはできません。" |
 | `refused.changed` | when the proposal changed while a form was being filled in | "The proposal changed while you were working on it. Read it again, then try again." | "作業している間に提案が変更されました。読み直してから、もう一度お試しください。" |

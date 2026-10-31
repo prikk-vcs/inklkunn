@@ -144,7 +144,7 @@ pub(crate) const DECIDE: Doc = Doc {
     operation_id: "decideOnProposal",
     tag: "review",
     summary: "Approve a revision, or ask for changes",
-    description: "A decision bound to the revision named by `If-Match` (the latest, or `stale-base`). One decision per reviewer per revision; a decision is not changed (`already-decided`). Scope `review`.",
+    description: "A decision bound to the revision named by `If-Match` (the latest, or `stale-base`). One decision per reviewer per revision; a decision is not changed (`already-decided`). A proposer's own decision is refused (`own-proposal`); a comment on one's own proposal is not. Scope `review`.",
     query: &[],
     answer: Answer::Schema("Decision"),
     write: Some(Write {
@@ -158,6 +158,7 @@ pub(crate) const DECIDE: Doc = Doc {
         Code::Unacceptable,
         Code::NotInThisState,
         Code::AlreadyDecided,
+        Code::OwnProposal,
     ],
 };
 

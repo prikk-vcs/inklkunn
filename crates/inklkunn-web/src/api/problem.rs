@@ -69,6 +69,8 @@ pub(crate) enum Code {
     NotInThisState,
     /// This reviewer decided on this revision already.
     AlreadyDecided,
+    /// The reviewer is the proposer: a proposal's own approval or request for changes is refused (ruling D9).
+    OwnProposal,
     /// A limit was reached.
     RefusedLimit,
     /// The wiki is busy.
@@ -115,6 +117,7 @@ impl Code {
         Code::Unacceptable,
         Code::NotInThisState,
         Code::AlreadyDecided,
+        Code::OwnProposal,
         Code::RefusedLimit,
         Code::Busy,
         Code::NeedsRecovery,
@@ -153,6 +156,7 @@ impl Code {
             Code::Unacceptable => "unacceptable",
             Code::NotInThisState => "not-in-this-state",
             Code::AlreadyDecided => "already-decided",
+            Code::OwnProposal => "own-proposal",
             Code::RefusedLimit => "refused-limit",
             Code::Busy => "busy",
             Code::NeedsRecovery => "needs-recovery",
@@ -187,7 +191,7 @@ impl Code {
             Code::Failed => StatusCode::INTERNAL_SERVER_ERROR,
             Code::MethodNotAllowed => StatusCode::METHOD_NOT_ALLOWED,
             Code::AuthenticationRequired | Code::InvalidToken => StatusCode::UNAUTHORIZED,
-            Code::Forbidden => StatusCode::FORBIDDEN,
+            Code::Forbidden | Code::OwnProposal => StatusCode::FORBIDDEN,
             Code::BaseRequired => StatusCode::PRECONDITION_REQUIRED,
             Code::StaleBase
             | Code::NotInThisState
@@ -346,6 +350,11 @@ impl Code {
                 Key::ProblemAlreadyDecidedTitle,
                 Key::ProblemAlreadyDecidedDetail,
                 Key::ProblemAlreadyDecidedHint,
+            ),
+            Code::OwnProposal => (
+                Key::ProblemOwnProposalTitle,
+                Key::ProblemOwnProposalDetail,
+                Key::ProblemOwnProposalHint,
             ),
             Code::RefusedLimit => (
                 Key::ProblemRefusedLimitTitle,

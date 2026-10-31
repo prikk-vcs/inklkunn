@@ -1026,6 +1026,15 @@ pub const CATALOG: &[Entry] = &[
         "problem.already_decided.hint",
         "次のリビジョンができたら、そのときにあらためて判断してください。",
     ),
+    msg("problem.own_proposal.title", "自分の提案です"),
+    msg(
+        "problem.own_proposal.detail",
+        "提案者は、自分の提案を承認したり、修正を求めたりすることはできません。",
+    ),
+    msg(
+        "problem.own_proposal.hint",
+        "ほかのレビュー担当者に判断を依頼してください。自分の提案にコメントすることはできます。",
+    ),
     msg("problem.refused_limit.title", "拒否: 上限に達しました"),
     msg(
         "problem.refused_limit.detail",
@@ -1417,6 +1426,10 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "refused.already_decided",
         "この修正にはすでに判断を記録しています。判断は変更できません。次の修正であらためて判断してください。",
+    ),
+    msg(
+        "refused.own_proposal",
+        "自分の提案を承認したり、修正を求めたりすることはできません。ほかのレビュー担当者に判断を依頼してください。コメントはできます。",
     ),
     msg(
         "refused.stale_revision",

@@ -209,6 +209,39 @@ async fn replies_are_nested_under_the_comment_they_answer() {
 }
 
 #[tokio::test]
+async fn a_proposers_own_decision_is_refused_in_words_and_their_comment_is_taken() {
+    let c = cast();
+    let p = propose(&c, &c.reviewer, "Improve").await;
+    for op in ["approve", "request-changes"] {
+        let a = post_form(
+            &c.w,
+            &format!("{p}/decide"),
+            Some(&c.reviewer),
+            &[("op", op), ("revision", "1"), ("body", "I say so")],
+        )
+        .await;
+        assert_eq!(a.status, StatusCode::FORBIDDEN, "{op}: {}", a.body());
+        assert!(
+            a.body().contains(
+                "You cannot approve or ask for changes on your own proposal. Ask a reviewer to decide on it; you can still comment."
+            ),
+            "{}",
+            a.body()
+        );
+    }
+    let page = read(&c, &p, None).await.body();
+    assert!(!page.contains("I say so"), "no decision was recorded");
+    let a = post_form(
+        &c.w,
+        &format!("{p}/comment"),
+        Some(&c.reviewer),
+        &[("body", "A note to myself")],
+    )
+    .await;
+    assert!(a.status.is_redirection(), "{}", a.body());
+}
+
+#[tokio::test]
 async fn a_decision_is_bound_to_its_revision_and_still_says_so_after_the_next() {
     let c = cast();
     let p = propose(&c, &c.contributor, "Improve").await;

@@ -948,6 +948,15 @@ pub const CATALOG: &[Entry] = &[
         "problem.already_decided.hint",
         "Decide again on the next revision, when there is one.",
     ),
+    msg("problem.own_proposal.title", "Your own proposal"),
+    msg(
+        "problem.own_proposal.detail",
+        "A proposer cannot approve or ask for changes on their own proposal.",
+    ),
+    msg(
+        "problem.own_proposal.hint",
+        "Ask a reviewer to decide on it. You can still comment on your own proposal.",
+    ),
     msg("problem.refused_limit.title", "Refused: a limit"),
     msg(
         "problem.refused_limit.detail",
@@ -1342,6 +1351,10 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "refused.already_decided",
         "You have already decided on this revision. A decision is not changed; decide again on the next revision.",
+    ),
+    msg(
+        "refused.own_proposal",
+        "You cannot approve or ask for changes on your own proposal. Ask a reviewer to decide on it; you can still comment.",
     ),
     msg(
         "refused.stale_revision",

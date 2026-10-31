@@ -206,6 +206,11 @@ pub(crate) fn refusal(t: T, error: &ProposalError) -> Option<Refusal> {
             Key::OutcomeRefusedHeading,
             quota_paragraphs(t, q),
         ),
+        ProposalError::OwnProposal => page(
+            StatusCode::FORBIDDEN,
+            Key::OutcomeNotAllowed,
+            vec![t.get(Key::RefusedOwnProposal)],
+        ),
         ProposalError::AlreadyDecided => page(
             StatusCode::CONFLICT,
             Key::RefusedNotNowHeading,

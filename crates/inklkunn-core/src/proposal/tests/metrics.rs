@@ -80,7 +80,18 @@ fn fixture(e: &Env) -> Fixture {
 
     let p3 = submitted(e, &b, 1400, 3);
     at(e, 1450);
-    s.decide(&b.principal, w, &p3, 1, DecisionKind::Approve, "")
+    // A decision by the proposer herself, as a record from before ruling D9 had the service refuse it (the
+    // service cannot write one now): old records are still read, and still are no review.
+    e.store
+        .add_decision(&inklkunn_store::DecisionRecord {
+            id: inklkunn_store::DecisionId::new(),
+            proposal: p3.clone(),
+            revision: 1,
+            reviewer: b.id.clone(),
+            kind: DecisionKind::Approve,
+            body: String::new(),
+            created_at: 1450,
+        })
         .unwrap();
     at(e, 1700);
     s.decide(&r1.principal, w, &p3, 1, DecisionKind::RequestChanges, "")

@@ -106,6 +106,7 @@ fn the_registry_is_complete() {
         | Code::Unacceptable
         | Code::NotInThisState
         | Code::AlreadyDecided
+        | Code::OwnProposal
         | Code::RefusedLimit
         | Code::Busy
         | Code::NeedsRecovery
@@ -114,7 +115,7 @@ fn the_registry_is_complete() {
         | Code::AcceptanceInProgress
         | Code::AcceptanceFailed => 1,
     };
-    assert_eq!(Code::ALL.iter().map(|c| named(*c)).sum::<usize>(), 33);
+    assert_eq!(Code::ALL.iter().map(|c| named(*c)).sum::<usize>(), 34);
 }
 
 #[test]

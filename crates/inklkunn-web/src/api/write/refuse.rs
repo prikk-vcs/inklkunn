@@ -76,6 +76,7 @@ impl Request {
             }
             ProposalError::Quota(q) => self.quota(&q),
             ProposalError::AlreadyDecided => Problem::new(Code::AlreadyDecided),
+            ProposalError::OwnProposal => Problem::new(Code::OwnProposal),
             ProposalError::StaleRevision { latest } => self.stale_at(latest),
             // Another act got there first: say what the proposal is now, so the caller can read and send again.
             ProposalError::Changed => match self.id.as_ref().map(|id| self.current_tag(id)) {
