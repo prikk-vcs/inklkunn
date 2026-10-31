@@ -124,8 +124,12 @@ Credential stuffing, session theft, OpenID Connect misconfiguration, token leaka
   the provider's keys; constant-work sign-in so account existence does not leak by timing (planeter's IS-31
   lesson, adopted from the start).
 - **C-2b** Per-account and per-client-IP throttles; the client IP only from a declared trusted proxy.
-- **C-2c** `Secure`, `HttpOnly`, `SameSite` cookies; CSRF double-submit on every cookie write; scoped, hashed,
-  expiring, revocable tokens; re-authentication for key operations and role grants.
+- **C-2c** `Secure`, `HttpOnly`, `SameSite` cookies (the session cookie is `__Host-`); the session's CSRF synchronizer
+  token on every cookie-authenticated write, checked in one layer in front of every route and before any wiki is looked
+  up, with the same-site check as the second wall (a double-submit token guards only the pages that make a session:
+  sign-in, joining, an invitation); a request that presents a bearer token is judged by the token alone and never also by
+  a cookie; scoped, hashed, expiring, revocable tokens; one-time, expiring, hashed invitations (accounts are never
+  matched or linked by e-mail address); re-authentication for key operations and role grants.
 - **C-2d** A second factor is a stated gap for v1 (RR-4); an OpenID Connect provider that enforces it is the
   interim answer.
 

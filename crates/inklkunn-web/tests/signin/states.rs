@@ -261,6 +261,10 @@ async fn states(extra: &[(&str, &str)]) -> Vec<State> {
         go(&r, "GET", "/garden/Home", signed, &[], "", &merge).await,
     );
     add(
+        "verification-signed-in",
+        go(&r, "GET", "/garden/-/verification", signed, &[], "", &merge).await,
+    );
+    add(
         "account",
         go(&r, "GET", "/-/account", signed, &[], "", &merge).await,
     );
@@ -403,6 +407,7 @@ async fn every_state_passes(extra: &[(&str, &str)], tag: &str) {
         ("account-token-problem", 422),
         ("account-token-made", 200),
         ("wiki-page-signed-in", 200),
+        ("verification-signed-in", 200),
         ("wiki-page-signed-out", 200),
     ] {
         assert_eq!(status(id), Some(want), "{id}");

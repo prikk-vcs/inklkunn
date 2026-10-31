@@ -102,9 +102,17 @@ pub fn run_blocking(
         if let Ok(addr) = listener.local_addr() {
             on_listening(addr);
         }
-        axum::serve(listener, site)
-            .with_graceful_shutdown(shutdown.0)
-            .await
-            .map_err(ServeError::Io)
+        // With the peer of each connection attached to its requests: the sign-in's per-address throttle counts the
+        // peer (or the client a declared trusted proxy forwards), and without it everyone would be one address.
+        axum::serve(
+            listener,
+            site.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(shutdown.0)
+        .await
+        .map_err(ServeError::Io)
     })
 }
+
+#[cfg(test)]
+mod tests;

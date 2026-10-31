@@ -183,6 +183,8 @@ pub(crate) fn prepare(
     });
     let site = routes::site_with(&config, Some(services.clone()))
         .map_err(|e| format!("the routes are inconsistent: {e}"))?;
+    let mut notes = notes;
+    notes.extend(join_note(web.join));
     let banner = vec![
         format!(
             "inklkunn {} serving {} (content {}) on {}",
@@ -210,6 +212,25 @@ pub(crate) fn prepare(
         notes,
         _services: services,
     })
+}
+
+/// What the start says about who may join, or `None` when joining is off (the default, which needs no word). An
+/// open door is the operator's choice and is said at every start, so it is never forgotten.
+pub(crate) fn join_note(policy: inklkunn_auth::JoinPolicy) -> Option<String> {
+    use inklkunn_auth::JoinPolicy;
+    match policy {
+        JoinPolicy::Off => None,
+        JoinPolicy::Provider => Some(
+            "INKLKUNN_JOIN=provider: a first sign-in through the configured provider makes an account; a public \
+             provider makes this open registration (no provider is switched on in this build yet, so nobody joins)"
+                .to_owned(),
+        ),
+        JoinPolicy::Anyone => Some(
+            "INKLKUNN_JOIN=anyone: anyone who can reach this server can make an account with a password \
+             (no role beyond what each wiki gives everyone; the new-account quotas apply)"
+                .to_owned(),
+        ),
+    }
 }
 
 /// The warning for a bind address that anybody can reach while no trusted proxy is declared (handoff 002

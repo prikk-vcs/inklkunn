@@ -306,3 +306,17 @@ fn a_declared_trusted_proxy_ends_the_warning_and_a_typo_stops_the_start() {
 fn web_settings() -> WebSettings {
     web("127.0.0.1:1", "http://localhost:1", "http://localhost:2")
 }
+
+#[test]
+fn an_open_door_is_said_at_every_start_and_a_closed_one_needs_no_word() {
+    use inklkunn_auth::JoinPolicy;
+    assert_eq!(join_note(JoinPolicy::Off), None);
+    let anyone = join_note(JoinPolicy::Anyone).unwrap();
+    assert!(
+        anyone.contains("INKLKUNN_JOIN=anyone")
+            && anyone.contains("anyone who can reach this server"),
+        "{anyone}"
+    );
+    let provider = join_note(JoinPolicy::Provider).unwrap();
+    assert!(provider.contains("open registration"), "{provider}");
+}
