@@ -1219,9 +1219,7 @@ fn a_sigkill_at_each_step_of_an_acceptance_is_recovered_with_nothing_lost_or_mad
             "{label}: verify"
         );
         let blocks = log(&s, &f.repo);
-        let sealed = expect
-            .sealed
-            .unwrap_or_else(|| blocks.len() > f.base_blocks);
+        let sealed = expect.sealed.unwrap_or(blocks.len() > f.base_blocks);
         let expected_len = f.base_blocks + usize::from(sealed);
         assert_eq!(blocks.len(), expected_len, "{label}: the blocks in the log");
         if !sealed {
