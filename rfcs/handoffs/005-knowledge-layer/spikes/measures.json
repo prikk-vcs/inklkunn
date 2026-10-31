@@ -1,0 +1,814 @@
+{
+  "sample": {
+    "pool_items": 1200,
+    "target": 400,
+    "size": 400,
+    "scanned": 830,
+    "skipped_not_factual": 430,
+    "unlabelled": 0,
+    "factual_first": 401,
+    "factual_second": 401
+  },
+  "overall": {
+    "sample_size": 400,
+    "m1": {
+      "both_same_claim": {
+        "n": 146,
+        "of": 158,
+        "share": 0.9241
+      },
+      "first_same_claim": {
+        "n": 147,
+        "of": 158,
+        "share": 0.9304
+      },
+      "second_same_claim": {
+        "n": 148,
+        "of": 158,
+        "share": 0.9367
+      }
+    },
+    "m2": {
+      "formula": "reconfirmations = (changed events in the replay) x (pool items of kind changed that both labellers marked factual / pool items of kind changed that both labelled); overall = the sum over languages",
+      "edits": 2134,
+      "edited_blocks": 26635,
+      "changed_events": 5821,
+      "factual_share": {
+        "n": 168,
+        "of": 236,
+        "share": 0.7119
+      },
+      "reconfirmations_estimate": 3996.6069,
+      "per_100_revisions": 187.2824,
+      "per_100_edited_blocks": 15.0051
+    },
+    "m2b": {
+      "both": {
+        "id_survived": {
+          "n": 8,
+          "of": 32,
+          "share": 0.25
+        }
+      },
+      "first": {
+        "id_survived": {
+          "n": 10,
+          "of": 34,
+          "share": 0.2941
+        }
+      },
+      "second": {
+        "id_survived": {
+          "n": 9,
+          "of": 34,
+          "share": 0.2647
+        }
+      },
+      "check": {
+        "items": 8,
+        "old_new_differ": 8,
+        "all_differ": true
+      }
+    },
+    "m3": {
+      "disagreement": {
+        "n": 4,
+        "of": 400,
+        "share": 0.01
+      },
+      "per_label": {
+        "cannot-tell": {
+          "first_labelled": 16,
+          "disagreed": 0,
+          "share": 0.0
+        },
+        "contradicts": {
+          "first_labelled": 1,
+          "disagreed": 0,
+          "share": 0.0
+        },
+        "new-claim": {
+          "first_labelled": 24,
+          "disagreed": 0,
+          "share": 0.0
+        },
+        "refines": {
+          "first_labelled": 7,
+          "disagreed": 2,
+          "share": 0.2857
+        },
+        "same-claim": {
+          "first_labelled": 350,
+          "disagreed": 2,
+          "share": 0.0057
+        },
+        "supersedes": {
+          "first_labelled": 2,
+          "disagreed": 0,
+          "share": 0.0
+        }
+      },
+      "confusion": {
+        "cannot-tell": {
+          "cannot-tell": 16,
+          "contradicts": 0,
+          "new-claim": 0,
+          "refines": 0,
+          "same-claim": 0,
+          "supersedes": 0
+        },
+        "contradicts": {
+          "cannot-tell": 0,
+          "contradicts": 1,
+          "new-claim": 0,
+          "refines": 0,
+          "same-claim": 0,
+          "supersedes": 0
+        },
+        "new-claim": {
+          "cannot-tell": 0,
+          "contradicts": 0,
+          "new-claim": 24,
+          "refines": 0,
+          "same-claim": 0,
+          "supersedes": 0
+        },
+        "refines": {
+          "cannot-tell": 0,
+          "contradicts": 0,
+          "new-claim": 0,
+          "refines": 5,
+          "same-claim": 2,
+          "supersedes": 0
+        },
+        "same-claim": {
+          "cannot-tell": 0,
+          "contradicts": 0,
+          "new-claim": 0,
+          "refines": 2,
+          "same-claim": 348,
+          "supersedes": 0
+        },
+        "supersedes": {
+          "cannot-tell": 0,
+          "contradicts": 0,
+          "new-claim": 0,
+          "refines": 0,
+          "same-claim": 0,
+          "supersedes": 2
+        }
+      },
+      "kappa": 0.9563,
+      "splits": {
+        "refines/same-claim": 4
+      },
+      "splits_by_kind": {
+        "changed": {
+          "refines/same-claim": 3
+        },
+        "replaced": {
+          "refines/same-claim": 1
+        }
+      }
+    },
+    "m4": {
+      "ids_minted": 26318,
+      "chains_with_changes": 2057,
+      "changes_per_chain": {
+        "mean": 2.8298,
+        "median": 1.0,
+        "p90": 6.0,
+        "max": 53.0
+      },
+      "changes_per_id": 0.2212,
+      "wording_only": {
+        "n": 146,
+        "of": 158,
+        "share": 0.9241
+      }
+    },
+    "m5": {
+      "changed": {
+        "chains": 2057,
+        "per_100_revisions": {
+          "mean": 3.1882,
+          "median": 1.1364,
+          "p90": 6.7416,
+          "max": 60.2273
+        }
+      },
+      "changed_or_ended": {
+        "chains": 2057,
+        "per_100_revisions": {
+          "mean": 3.7541,
+          "median": 2.2472,
+          "p90": 7.8652,
+          "max": 60.2273
+        }
+      }
+    },
+    "m6": {
+      "agreed": {
+        "cannot-tell": 16,
+        "contradicts": 1,
+        "new-claim": 24,
+        "refines": 5,
+        "same-claim": 348,
+        "supersedes": 2
+      },
+      "to_place_by_hand": [
+        {
+          "item": 107,
+          "first": "cannot-tell",
+          "second": "cannot-tell"
+        },
+        {
+          "item": 126,
+          "first": "cannot-tell",
+          "second": "cannot-tell"
+        },
+        {
+          "item": 128,
+          "first": "cannot-tell",
+          "second": "cannot-tell"
+        },
+        {
+          "item": 145,
+          "first": "cannot-tell",
+          "second": "cannot-tell"
+        },
+        {
+          "item": 287,
+          "first": "cannot-tell",
+          "second": "cannot-tell"
+        },
+        {
+          "item": 307,
+          "first": "cannot-tell",
+          "second": "cannot-tell"
+        },
+        {
+          "item": 325,
+          "first": "contradicts",
+          "second": "contradicts"
+        },
+        {
+          "item": 343,
+          "first": "cannot-tell",
+          "second": "cannot-tell"
+        },
+        {
+          "item": 371,
+          "first": "cannot-tell",
+          "second": "cannot-tell"
+        },
+        {
+          "item": 387,
+          "first": "cannot-tell",
+          "second": "cannot-tell"
+        },
+        {
+          "item": 411,
+          "first": "cannot-tell",
+          "second": "cannot-tell"
+        },
+        {
+          "item": 426,
+          "first": "cannot-tell",
+          "second": "cannot-tell"
+        },
+        {
+          "item": 552,
+          "first": "cannot-tell",
+          "second": "cannot-tell"
+        },
+        {
+          "item": 647,
+          "first": "cannot-tell",
+          "second": "cannot-tell"
+        },
+        {
+          "item": 718,
+          "first": "cannot-tell",
+          "second": "cannot-tell"
+        },
+        {
+          "item": 756,
+          "first": "cannot-tell",
+          "second": "cannot-tell"
+        },
+        {
+          "item": 789,
+          "first": "cannot-tell",
+          "second": "cannot-tell"
+        }
+      ]
+    }
+  },
+  "languages": {
+    "en": {
+      "sample_size": 182,
+      "m1": {
+        "both_same_claim": {
+          "n": 53,
+          "of": 61,
+          "share": 0.8689
+        },
+        "first_same_claim": {
+          "n": 54,
+          "of": 61,
+          "share": 0.8852
+        },
+        "second_same_claim": {
+          "n": 53,
+          "of": 61,
+          "share": 0.8689
+        }
+      },
+      "m2": {
+        "formula": "reconfirmations = (changed events in the replay) x (pool items of kind changed that both labellers marked factual / pool items of kind changed that both labelled); overall = the sum over languages",
+        "edits": 1066,
+        "edited_blocks": 14785,
+        "changed_events": 3355,
+        "factual_share": {
+          "n": 65,
+          "of": 116,
+          "share": 0.5603
+        },
+        "reconfirmations_estimate": 1879.9569,
+        "per_100_revisions": 176.3562,
+        "per_100_edited_blocks": 12.7153
+      },
+      "m2b": {
+        "both": {
+          "id_survived": {
+            "n": 6,
+            "of": 17,
+            "share": 0.3529
+          }
+        },
+        "first": {
+          "id_survived": {
+            "n": 6,
+            "of": 17,
+            "share": 0.3529
+          }
+        },
+        "second": {
+          "id_survived": {
+            "n": 7,
+            "of": 18,
+            "share": 0.3889
+          }
+        },
+        "check": {
+          "items": 6,
+          "old_new_differ": 6,
+          "all_differ": true
+        }
+      },
+      "m3": {
+        "disagreement": {
+          "n": 1,
+          "of": 182,
+          "share": 0.0055
+        },
+        "per_label": {
+          "cannot-tell": {
+            "first_labelled": 5,
+            "disagreed": 0,
+            "share": 0.0
+          },
+          "contradicts": {
+            "first_labelled": 1,
+            "disagreed": 0,
+            "share": 0.0
+          },
+          "new-claim": {
+            "first_labelled": 11,
+            "disagreed": 0,
+            "share": 0.0
+          },
+          "refines": {
+            "first_labelled": 3,
+            "disagreed": 0,
+            "share": 0.0
+          },
+          "same-claim": {
+            "first_labelled": 160,
+            "disagreed": 1,
+            "share": 0.0063
+          },
+          "supersedes": {
+            "first_labelled": 2,
+            "disagreed": 0,
+            "share": 0.0
+          }
+        },
+        "confusion": {
+          "cannot-tell": {
+            "cannot-tell": 5,
+            "contradicts": 0,
+            "new-claim": 0,
+            "refines": 0,
+            "same-claim": 0,
+            "supersedes": 0
+          },
+          "contradicts": {
+            "cannot-tell": 0,
+            "contradicts": 1,
+            "new-claim": 0,
+            "refines": 0,
+            "same-claim": 0,
+            "supersedes": 0
+          },
+          "new-claim": {
+            "cannot-tell": 0,
+            "contradicts": 0,
+            "new-claim": 11,
+            "refines": 0,
+            "same-claim": 0,
+            "supersedes": 0
+          },
+          "refines": {
+            "cannot-tell": 0,
+            "contradicts": 0,
+            "new-claim": 0,
+            "refines": 3,
+            "same-claim": 0,
+            "supersedes": 0
+          },
+          "same-claim": {
+            "cannot-tell": 0,
+            "contradicts": 0,
+            "new-claim": 0,
+            "refines": 1,
+            "same-claim": 159,
+            "supersedes": 0
+          },
+          "supersedes": {
+            "cannot-tell": 0,
+            "contradicts": 0,
+            "new-claim": 0,
+            "refines": 0,
+            "same-claim": 0,
+            "supersedes": 2
+          }
+        },
+        "kappa": 0.9758,
+        "splits": {
+          "refines/same-claim": 1
+        },
+        "splits_by_kind": {
+          "changed": {
+            "refines/same-claim": 1
+          }
+        }
+      },
+      "m4": {
+        "ids_minted": 14230,
+        "chains_with_changes": 1123,
+        "changes_per_chain": {
+          "mean": 2.9875,
+          "median": 2.0,
+          "p90": 6.0,
+          "max": 53.0
+        },
+        "changes_per_id": 0.2358,
+        "wording_only": {
+          "n": 53,
+          "of": 61,
+          "share": 0.8689
+        }
+      },
+      "m5": {
+        "changed": {
+          "chains": 1123,
+          "per_100_revisions": {
+            "mean": 3.3725,
+            "median": 2.2472,
+            "p90": 6.7416,
+            "max": 60.2273
+          }
+        },
+        "changed_or_ended": {
+          "chains": 1123,
+          "per_100_revisions": {
+            "mean": 3.9558,
+            "median": 2.2727,
+            "p90": 7.8652,
+            "max": 60.2273
+          }
+        }
+      },
+      "m6": {
+        "agreed": {
+          "cannot-tell": 5,
+          "contradicts": 1,
+          "new-claim": 11,
+          "refines": 3,
+          "same-claim": 159,
+          "supersedes": 2
+        },
+        "to_place_by_hand": [
+          {
+            "item": 107,
+            "first": "cannot-tell",
+            "second": "cannot-tell"
+          },
+          {
+            "item": 145,
+            "first": "cannot-tell",
+            "second": "cannot-tell"
+          },
+          {
+            "item": 307,
+            "first": "cannot-tell",
+            "second": "cannot-tell"
+          },
+          {
+            "item": 325,
+            "first": "contradicts",
+            "second": "contradicts"
+          },
+          {
+            "item": 426,
+            "first": "cannot-tell",
+            "second": "cannot-tell"
+          },
+          {
+            "item": 789,
+            "first": "cannot-tell",
+            "second": "cannot-tell"
+          }
+        ]
+      }
+    },
+    "ja": {
+      "sample_size": 218,
+      "m1": {
+        "both_same_claim": {
+          "n": 93,
+          "of": 97,
+          "share": 0.9588
+        },
+        "first_same_claim": {
+          "n": 93,
+          "of": 97,
+          "share": 0.9588
+        },
+        "second_same_claim": {
+          "n": 95,
+          "of": 97,
+          "share": 0.9794
+        }
+      },
+      "m2": {
+        "formula": "reconfirmations = (changed events in the replay) x (pool items of kind changed that both labellers marked factual / pool items of kind changed that both labelled); overall = the sum over languages",
+        "edits": 1068,
+        "edited_blocks": 11850,
+        "changed_events": 2466,
+        "factual_share": {
+          "n": 103,
+          "of": 120,
+          "share": 0.8583
+        },
+        "reconfirmations_estimate": 2116.65,
+        "per_100_revisions": 198.1882,
+        "per_100_edited_blocks": 17.862
+      },
+      "m2b": {
+        "both": {
+          "id_survived": {
+            "n": 2,
+            "of": 15,
+            "share": 0.1333
+          }
+        },
+        "first": {
+          "id_survived": {
+            "n": 4,
+            "of": 17,
+            "share": 0.2353
+          }
+        },
+        "second": {
+          "id_survived": {
+            "n": 2,
+            "of": 16,
+            "share": 0.125
+          }
+        },
+        "check": {
+          "items": 2,
+          "old_new_differ": 2,
+          "all_differ": true
+        }
+      },
+      "m3": {
+        "disagreement": {
+          "n": 3,
+          "of": 218,
+          "share": 0.0138
+        },
+        "per_label": {
+          "cannot-tell": {
+            "first_labelled": 11,
+            "disagreed": 0,
+            "share": 0.0
+          },
+          "contradicts": {
+            "first_labelled": 0,
+            "disagreed": 0,
+            "share": null
+          },
+          "new-claim": {
+            "first_labelled": 13,
+            "disagreed": 0,
+            "share": 0.0
+          },
+          "refines": {
+            "first_labelled": 4,
+            "disagreed": 2,
+            "share": 0.5
+          },
+          "same-claim": {
+            "first_labelled": 190,
+            "disagreed": 1,
+            "share": 0.0053
+          },
+          "supersedes": {
+            "first_labelled": 0,
+            "disagreed": 0,
+            "share": null
+          }
+        },
+        "confusion": {
+          "cannot-tell": {
+            "cannot-tell": 11,
+            "contradicts": 0,
+            "new-claim": 0,
+            "refines": 0,
+            "same-claim": 0,
+            "supersedes": 0
+          },
+          "contradicts": {
+            "cannot-tell": 0,
+            "contradicts": 0,
+            "new-claim": 0,
+            "refines": 0,
+            "same-claim": 0,
+            "supersedes": 0
+          },
+          "new-claim": {
+            "cannot-tell": 0,
+            "contradicts": 0,
+            "new-claim": 13,
+            "refines": 0,
+            "same-claim": 0,
+            "supersedes": 0
+          },
+          "refines": {
+            "cannot-tell": 0,
+            "contradicts": 0,
+            "new-claim": 0,
+            "refines": 2,
+            "same-claim": 2,
+            "supersedes": 0
+          },
+          "same-claim": {
+            "cannot-tell": 0,
+            "contradicts": 0,
+            "new-claim": 0,
+            "refines": 1,
+            "same-claim": 189,
+            "supersedes": 0
+          },
+          "supersedes": {
+            "cannot-tell": 0,
+            "contradicts": 0,
+            "new-claim": 0,
+            "refines": 0,
+            "same-claim": 0,
+            "supersedes": 0
+          }
+        },
+        "kappa": 0.9402,
+        "splits": {
+          "refines/same-claim": 3
+        },
+        "splits_by_kind": {
+          "changed": {
+            "refines/same-claim": 2
+          },
+          "replaced": {
+            "refines/same-claim": 1
+          }
+        }
+      },
+      "m4": {
+        "ids_minted": 12088,
+        "chains_with_changes": 934,
+        "changes_per_chain": {
+          "mean": 2.6403,
+          "median": 1.0,
+          "p90": 7.0,
+          "max": 22.0
+        },
+        "changes_per_id": 0.204,
+        "wording_only": {
+          "n": 93,
+          "of": 97,
+          "share": 0.9588
+        }
+      },
+      "m5": {
+        "changed": {
+          "chains": 934,
+          "per_100_revisions": {
+            "mean": 2.9666,
+            "median": 1.1236,
+            "p90": 7.8652,
+            "max": 24.7191
+          }
+        },
+        "changed_or_ended": {
+          "chains": 934,
+          "per_100_revisions": {
+            "mean": 3.5115,
+            "median": 2.2472,
+            "p90": 7.8652,
+            "max": 25.8427
+          }
+        }
+      },
+      "m6": {
+        "agreed": {
+          "cannot-tell": 11,
+          "contradicts": 0,
+          "new-claim": 13,
+          "refines": 2,
+          "same-claim": 189,
+          "supersedes": 0
+        },
+        "to_place_by_hand": [
+          {
+            "item": 126,
+            "first": "cannot-tell",
+            "second": "cannot-tell"
+          },
+          {
+            "item": 128,
+            "first": "cannot-tell",
+            "second": "cannot-tell"
+          },
+          {
+            "item": 287,
+            "first": "cannot-tell",
+            "second": "cannot-tell"
+          },
+          {
+            "item": 343,
+            "first": "cannot-tell",
+            "second": "cannot-tell"
+          },
+          {
+            "item": 371,
+            "first": "cannot-tell",
+            "second": "cannot-tell"
+          },
+          {
+            "item": 387,
+            "first": "cannot-tell",
+            "second": "cannot-tell"
+          },
+          {
+            "item": 411,
+            "first": "cannot-tell",
+            "second": "cannot-tell"
+          },
+          {
+            "item": 552,
+            "first": "cannot-tell",
+            "second": "cannot-tell"
+          },
+          {
+            "item": 647,
+            "first": "cannot-tell",
+            "second": "cannot-tell"
+          },
+          {
+            "item": 718,
+            "first": "cannot-tell",
+            "second": "cannot-tell"
+          },
+          {
+            "item": 756,
+            "first": "cannot-tell",
+            "second": "cannot-tell"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,110 @@
+{
+ "sample_size": 400,
+ "by_kind": {
+  "changed (the id survived)": {
+   "n": 158,
+   "both_same_claim": 146,
+   "meaning_change_by_both": 8,
+   "cannot_tell_by_both": 1,
+   "both_same_claim_wilson95": [
+    0.872,
+    0.956
+   ]
+  },
+  "replaced (the id did not survive)": {
+   "n": 242,
+   "both_same_claim": 202,
+   "meaning_change_by_both": 24,
+   "cannot_tell_by_both": 15
+  }
+ },
+ "changed_by_edit_size": {
+  "medium (3-20)": {
+   "n": 23,
+   "both_same_claim": 22,
+   "meaning_change_by_both": 0,
+   "cannot_tell_by_both": 1,
+   "both_same_claim_wilson95": [
+    0.79,
+    0.992
+   ]
+  },
+  "small (0-2 other edited blocks)": {
+   "n": 56,
+   "both_same_claim": 47,
+   "meaning_change_by_both": 6,
+   "cannot_tell_by_both": 0,
+   "both_same_claim_wilson95": [
+    0.722,
+    0.913
+   ]
+  },
+  "sweeping (over 20)": {
+   "n": 79,
+   "both_same_claim": 77,
+   "meaning_change_by_both": 2,
+   "cannot_tell_by_both": 0,
+   "both_same_claim_wilson95": [
+    0.912,
+    0.993
+   ]
+  }
+ },
+ "changed_by_wording_size": {
+  "few characters (<= 10)": {
+   "n": 99,
+   "both_same_claim": 95,
+   "meaning_change_by_both": 3,
+   "cannot_tell_by_both": 0
+  },
+  "many (over 60)": {
+   "n": 13,
+   "both_same_claim": 12,
+   "meaning_change_by_both": 0,
+   "cannot_tell_by_both": 1
+  },
+  "some (11-60)": {
+   "n": 46,
+   "both_same_claim": 39,
+   "meaning_change_by_both": 5,
+   "cannot_tell_by_both": 0
+  }
+ },
+ "replaced_by_edit_size": {
+  "medium (3-20)": {
+   "n": 17,
+   "both_same_claim": 12,
+   "meaning_change_by_both": 5,
+   "cannot_tell_by_both": 0
+  },
+  "small (0-2 other edited blocks)": {
+   "n": 7,
+   "both_same_claim": 7,
+   "meaning_change_by_both": 0,
+   "cannot_tell_by_both": 0
+  },
+  "sweeping (over 20)": {
+   "n": 218,
+   "both_same_claim": 183,
+   "meaning_change_by_both": 19,
+   "cannot_tell_by_both": 15
+  }
+ },
+ "replay": {
+  "revisions": 2158,
+  "events": 26635,
+  "sweeping_revisions": 228,
+  "events_in_sweeping_revisions": 23114,
+  "share_of_events_in_sweeping_revisions": 0.8678,
+  "share_of_revisions_sweeping": 0.1057
+ },
+ "m2_without_sweeping_revisions": {
+  "ordinary_revisions": 1930,
+  "changed_events_in_them": 2231,
+  "pool_changed_items_labelled": 110,
+  "factual_share_of_those": 0.7909,
+  "reconfirmations_estimate": 1764.5,
+  "per_100_ordinary_revisions": 91.43,
+  "note": "an upper bound: every factual block is counted as if it held a claim"
+ }
+}

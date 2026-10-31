@@ -963,3 +963,12 @@ Follow-ups from the review of 2026-10-31 (handoff 003, S2 – S4).
   `renameat2(RENAME_NOREPLACE)` instead of a `mkdir` and a `rename`: an existing destination, an empty directory included,
   is refused by the kernel in the same step, so the race with a process that makes the destination meanwhile is closed, not
   narrowed.
+
+Spike C (RFC 005 part 1: claim identity), measurement only.
+
+- **`inklkunn-corpus claims`** (`plan`, `get`, `convert`, `replay`, `pool`, `measure`) replays real revision histories (24 articles,
+  English and Japanese, 2,160 pinned revisions) through the product's own block segmentation and the merge's own alignment,
+  with two labellers under a published rule sheet; the results and the report are in `rfcs/handoffs/005-knowledge-layer/spikes/`.
+  No article text and no editor identity is in the repository; the text lives in a cache outside it.
+- **`inklkunn_core::align_blocks`**: the merge's own block alignment between a base page and a side, exposed for measurement tools
+  (no behaviour changed).

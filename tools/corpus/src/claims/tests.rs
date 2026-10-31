@@ -2,6 +2,7 @@
 //! The `claims` tests. Every text in them is invented; nothing touches the network (a scripted fetcher stands in
 //! for `curl`) and nothing reads a real wiki.
 
+mod committed;
 mod convert;
 mod get;
 mod measure;
