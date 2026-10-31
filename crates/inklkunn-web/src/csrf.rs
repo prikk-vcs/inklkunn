@@ -41,6 +41,9 @@ const EXEMPT: &[&str] = &[crate::pages::LANGUAGE_PATH, SIGN_IN_PATH, JOIN_PATH];
 /// The invitation page's prefix (its address carries the one-time secret).
 const EXEMPT_PREFIX: &str = INVITE_PREFIX;
 
+/// What an address of the API has in it: `/{slug}/-/api/v1/…`.
+const API_SEGMENT: &str = "/-/api/";
+
 /// The most a body is read to: the largest form there is.
 const BODY_LIMIT: usize = crate::proposals::PROPOSAL_FORM_LIMIT;
 
@@ -114,6 +117,7 @@ pub(crate) async fn layer(State(state): State<PageState>, req: Request, next: Ne
         return next.run(req).await;
     }
     // Only a live session has anything to forge; look before reading a body.
+    let path = req.uri().path().to_owned();
     let (probe, headers) = (services.clone(), req.headers().clone());
     let live = tokio::task::spawn_blocking(move || probe.identity.session(&headers))
         .await
@@ -123,13 +127,13 @@ pub(crate) async fn layer(State(state): State<PageState>, req: Request, next: Ne
         Ok(false) => return next.run(req).await,
         Ok(true) => {}
         // The check could not run: closed.
-        Err(()) => return expired(req.headers()),
+        Err(()) => return expired_for(req.headers(), &path),
     }
     let (req, token) = presented(req).await;
     let decision = check(&services, req.headers().clone(), token).await;
     match decision {
         Some(WriteIdentity::Principal(_) | WriteIdentity::InvalidToken) => next.run(req).await,
-        Some(WriteIdentity::CsrfMismatch) | None => expired(req.headers()),
+        Some(WriteIdentity::CsrfMismatch) | None => expired_for(req.headers(), &path),
     }
 }
 
@@ -143,6 +147,21 @@ async fn check(
     tokio::task::spawn_blocking(move || services.identity.for_write(&headers, token.as_deref()))
         .await
         .ok()
+}
+
+/// The refusal of a request to `path`: for the API a problem detail (`forbidden`, as its cookie-only writes from
+/// another site are), else the page.
+fn expired_for(headers: &HeaderMap, path: &str) -> Response {
+    if path.contains(API_SEGMENT) {
+        return crate::api::reply::finish(
+            T::new(crate::lang::negotiate_from_headers(headers)),
+            None,
+            Err(crate::api::problem::Problem::new(
+                crate::api::problem::Code::Forbidden,
+            )),
+        );
+    }
+    expired(headers)
 }
 
 /// The refusal: 403, the same page for every wiki and for none, in the visitor's language.

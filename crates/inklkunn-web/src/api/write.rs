@@ -35,7 +35,7 @@ use super::reply::{self, Reply};
 use super::request::{language, parse_path};
 use crate::catalog::T;
 use crate::pages::PageState;
-use crate::services::Services;
+use crate::services::{Services, WriteIdentity};
 use crate::url::decode;
 use crate::wiki::{blocking, open};
 
@@ -167,11 +167,22 @@ fn admit(
     if !presented && !crate::lang::from_this_site(headers) {
         return Err(Problem::new(Code::Forbidden));
     }
-    if presented && matches!(services.identity.principal(headers), Principal::Anonymous) {
+    // Who the request is, the one way a write learns it: a token alone if one is presented (one that does not
+    // authenticate is `invalid-token`, never a fall back to a cookie), else the session **and its CSRF token**
+    // (the page layer has checked them too, in front of every route; this is the same question asked again by
+    // the endpoint that acts on the answer).
+    let csrf = headers
+        .get(crate::csrf::HEADER)
+        .and_then(|v| v.to_str().ok());
+    let principal = match services.identity.for_write(headers, csrf) {
+        WriteIdentity::Principal(p) => p,
+        WriteIdentity::InvalidToken => return Err(Problem::new(Code::InvalidToken)),
+        WriteIdentity::CsrfMismatch => return Err(Problem::new(Code::Forbidden)),
+    };
+    if presented && matches!(principal, Principal::Anonymous) {
         return Err(Problem::new(Code::InvalidToken));
     }
     let wiki = open(services, headers, slug).ok_or_else(|| Problem::new(Code::NotFound))?;
-    let principal = services.identity.principal(headers);
     if matches!(principal, Principal::Anonymous) {
         return Err(Problem::new(Code::AuthenticationRequired));
     }
