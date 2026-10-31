@@ -8,7 +8,7 @@ use inklkunn_prikk::sandbox::Sandbox;
 use inklkunn_prikk::{Admission, MIN_PRIKK_VERSION, PrikkCli};
 
 use crate::config::{self, Settings, WebSettings};
-use crate::{admin, audit, keys, serve};
+use crate::{account, admin, audit, keys, serve};
 
 /// The commit the release workflow built from (`INKLKUNN_COMMIT` at build time), or `unknown`.
 const COMMIT: &str = match option_env!("INKLKUNN_COMMIT") {
@@ -59,6 +59,7 @@ pub(crate) fn run(
         }
         ["serve", rest @ ..] => serve_command(rest, get_env, dev_unconfined, err),
         ["audit", "export"] => audit::export(get_env, out, err),
+        ["account", rest @ ..] => account::run(rest, get_env, now, out, err),
         ["wiki", "keys", ..] => {
             let rest: Vec<String> = args.iter().skip(2).cloned().collect();
             let command = match keys::parse(&rest) {
@@ -102,12 +103,13 @@ pub(crate) fn run(
         other => {
             let _ = writeln!(
                 err,
-                "inklkunn: unknown command `{}`; there are `--version`, `serve`, `audit export`, `wiki keys`, `wiki create`, `wiki import-folder`, `wiki export`, `wiki recover` and `wiki metrics`\n{}\n{}\n{}",
+                "inklkunn: unknown command `{}`; there are `--version`, `serve`, `audit export`, `account`, `wiki keys`, `wiki create`, `wiki import-folder`, `wiki export`, `wiki recover` and `wiki metrics`\n{}\n{}\n{}",
                 other.join(" "),
                 SERVE_USAGE,
                 keys::USAGE,
                 admin::USAGE
             );
+            let _ = writeln!(err, "{}", account::USAGE);
             2
         }
     }
@@ -165,7 +167,11 @@ fn serve_command(
     if dev_unconfined {
         let _ = writeln!(err, "{}", config::UNCONFINED_BANNER);
     }
-    let prepared = match serve::prepare(&settings, &web) {
+    // The process's one right to say who a request is, claimed here and nowhere else (corrections handoff C7).
+    let Some(authority) = inklkunn_core::IdentityAuthority::claim() else {
+        return fail(err, &"the identity authority was claimed already");
+    };
+    let prepared = match serve::prepare(&settings, &web, authority) {
         Ok(p) => p,
         Err(e) => return fail(err, &e),
     };

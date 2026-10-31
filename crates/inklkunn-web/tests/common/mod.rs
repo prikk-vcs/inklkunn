@@ -691,6 +691,7 @@ pub fn assemble(
         accounts: store.clone(),
         acceptances: store.clone(),
         acts: store.clone(),
+        auth: None,
         log: Arc::new(move |line| {
             sink.lock()
                 .unwrap_or_else(PoisonError::into_inner)
@@ -777,7 +778,47 @@ pub async fn get(w: &World, uri: &str) -> Answer {
 /// implementation answers for a token that is unknown, expired or revoked).
 pub struct HeaderAccount(inklkunn_core::IdentityAuthority);
 
+/// The CSRF synchronizer token of every test session. A write made as a test account must present it (the
+/// real implementation checks the token of the session the cookie names); `post_form` adds it.
+pub const TEST_CSRF: &str = "test-session-token";
+
+/// An extra header name `send_body` takes to mean "present no session token with this write", and does not send.
+pub const NO_TOKEN: &str = "x-test-no-token";
+
 impl inklkunn_web::Identify for HeaderAccount {
+    fn session(&self, headers: &axum::http::HeaderMap) -> Option<inklkunn_web::SessionView> {
+        if headers.contains_key("authorization") {
+            return None;
+        }
+        let account = headers
+            .get("x-test-account")
+            .and_then(|v| v.to_str().ok())
+            .and_then(inklkunn_store::AccountId::parse)?;
+        Some(inklkunn_web::SessionView {
+            account,
+            display_name: "A test person".to_owned(),
+            csrf: TEST_CSRF.to_owned(),
+        })
+    }
+
+    fn for_write(
+        &self,
+        headers: &axum::http::HeaderMap,
+        csrf: Option<&str>,
+    ) -> inklkunn_web::WriteIdentity {
+        // A token judges a request alone; a session needs its token.
+        if headers.contains_key("authorization") {
+            return match self.principal(headers) {
+                inklkunn_core::Principal::Anonymous => inklkunn_web::WriteIdentity::InvalidToken,
+                p => inklkunn_web::WriteIdentity::Principal(p),
+            };
+        }
+        match self.session(headers) {
+            Some(_) if csrf != Some(TEST_CSRF) => inklkunn_web::WriteIdentity::CsrfMismatch,
+            _ => inklkunn_web::WriteIdentity::Principal(self.principal(headers)),
+        }
+    }
+
     fn principal(&self, headers: &axum::http::HeaderMap) -> inklkunn_core::Principal {
         if let Some(auth) = headers.get("authorization") {
             return auth
@@ -880,8 +921,12 @@ pub async fn post_form(
     account: Option<&inklkunn_store::AccountId>,
     fields: &[(&str, &str)],
 ) -> Answer {
+    // A signed-in person's form carries the session's token, as every form the pages draw does.
+    let token = account.map(|_| ("csrf", TEST_CSRF));
     let body: String = fields
         .iter()
+        .copied()
+        .chain(token)
         .map(|(k, v)| {
             format!(
                 "{}={}",
@@ -896,7 +941,7 @@ pub async fn post_form(
         "POST",
         uri,
         account,
-        &[("sec-fetch-site", "same-origin")],
+        &[("sec-fetch-site", "same-origin"), (NO_TOKEN, "")],
         body,
     )
     .await
@@ -917,10 +962,16 @@ pub async fn send_body(
         .uri(uri)
         .header(axum::http::header::HOST, APP)
         .header("content-type", "application/x-www-form-urlencoded");
+    // A signed-in person's write presents the session's token (here in the header a client that is not a
+    // form uses), unless the test is about a write that does not.
+    let without_token = extra.iter().any(|(k, _)| *k == NO_TOKEN);
     if let Some(account) = account {
         req = req.header("x-test-account", account.as_str());
+        if !without_token {
+            req = req.header(inklkunn_web::CSRF_HEADER, TEST_CSRF);
+        }
     }
-    for (k, v) in extra {
+    for (k, v) in extra.iter().filter(|(k, _)| *k != NO_TOKEN) {
         req = req.header(*k, *v);
     }
     let res = site(w)

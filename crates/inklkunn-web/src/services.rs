@@ -2,7 +2,8 @@
 //! these and nothing else; the binary builds them, a test builds them over doubles.
 //!
 //! The web crate **never makes a principal**: [`Identify`] is the one seam through which a request becomes one
-//! (the binary implements it over the sign-in), and [`AnonymousOnly`] is the answer until it does. A handler
+//! (the binary builds the real one over the sign-in, [`crate::identity::AuthIdentity`]), and [`AnonymousOnly`]
+//! is the answer where no sign-in is served. A handler
 //! gets a [`inklkunn_core::Principal`] and asks [`inklkunn_core::Authorizer::authorize`] about it; it cannot
 //! build an account principal (the compiler and the boundary gate agree).
 
@@ -15,17 +16,60 @@ use inklkunn_core::{
 };
 use inklkunn_store::{AcceptanceStore, AccountStore, ActStore, ProposalId, WikiRecord, WikiStore};
 
+/// A request's live session, for drawing a page: whose it is and the token every form of it must carry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionView {
+    /// The account the session is of. The account page acts on this one and no other.
+    pub account: inklkunn_store::AccountId,
+    /// The name the header shows (the account's display name).
+    pub display_name: String,
+    /// The session's CSRF synchronizer token: the hidden field of every form a signed-in person can submit.
+    pub csrf: String,
+}
+
+/// Who a request that changes something is (handoff 004 P6; the sign-in handoff's U4).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WriteIdentity {
+    /// The request's principal: anonymous when it presents no credential (or a session that is over), the
+    /// token's account when it presents a bearer token that authenticates, the session's account when it
+    /// presents a session **and the session's CSRF token**.
+    Principal(Principal),
+    /// A live session, and the token that must come with it is missing or is another session's: refuse the
+    /// write and say the form expired.
+    CsrfMismatch,
+    /// The request presents a bearer token that does not authenticate (or one that cannot be read as a token):
+    /// `invalid-token`, never a fallback to a cookie it may also carry.
+    InvalidToken,
+}
+
 /// Who a request is. The only way the web layer learns a principal.
 pub trait Identify: Send + Sync {
-    /// The principal of the request with these headers: the account of its session, or of the API token it
-    /// presents as `Authorization: Bearer …` (RFC 004 D-13); else anonymous. **A request that presents a token
-    /// is its token's, whatever cookies it also carries**: a stale session must not widen or narrow what a token
-    /// may do, and the write API tells a request that presented a credential that did not authenticate (it
-    /// answers `invalid-token`) from one that presented none by the header, so an implementation answers
-    /// anonymous for a token that is unknown, expired, revoked or of a disabled account. The principal of a
-    /// token carries the token's scope, which the authorizer intersects with the account's role (AZ-3). Never a
-    /// system principal.
+    /// The principal of the request with these headers, **for reading**: the account of its session, or of the
+    /// API token it presents as `Authorization: Bearer …` (RFC 004 D-13); else anonymous. **A request that
+    /// presents a token is its token's, whatever cookies it also carries**: a stale session must not widen or
+    /// narrow what a token may do, and the write API tells a request that presented a credential that did not
+    /// authenticate (it answers `invalid-token`) from one that presented none by the header, so an
+    /// implementation answers anonymous for a token that is unknown, expired, revoked or of a disabled account.
+    /// The principal of a token carries the token's scope, which the authorizer intersects with the account's
+    /// role (AZ-3). Never a system principal.
     fn principal(&self, headers: &HeaderMap) -> Principal;
+
+    /// A cheap answer, with no lookup, to "could this request have a live session?": `false` only when it
+    /// certainly has none (no session cookie, or a bearer token that judges it alone). A page and the CSRF layer
+    /// ask [`Identify::session`] only when this is `true`. The conservative default is `true`.
+    fn may_be_signed_in(&self, _headers: &HeaderMap) -> bool {
+        true
+    }
+
+    /// The live session of the request, for drawing a page. `None` for a request that presents a bearer token
+    /// (the token alone judges it), and for one with no live session.
+    fn session(&self, headers: &HeaderMap) -> Option<SessionView>;
+
+    /// Who a request that **changes something** is. `csrf` is the token the request presented (the form's
+    /// hidden field, or the header of a client that is not a form). A session is never believed on its cookie
+    /// alone: the cookie and the token are checked together. The caller checks this **before it looks at any
+    /// wiki**, so a refusal says nothing about which wikis exist.
+    fn for_write(&self, headers: &HeaderMap, csrf: Option<&str>) -> WriteIdentity;
 }
 
 /// Everyone is anonymous: a deployment before sign-in is served, and every test of a public wiki.
@@ -35,6 +79,18 @@ pub struct AnonymousOnly;
 impl Identify for AnonymousOnly {
     fn principal(&self, _: &HeaderMap) -> Principal {
         Principal::Anonymous
+    }
+
+    fn may_be_signed_in(&self, _: &HeaderMap) -> bool {
+        false
+    }
+
+    fn session(&self, _: &HeaderMap) -> Option<SessionView> {
+        None
+    }
+
+    fn for_write(&self, _: &HeaderMap, _: Option<&str>) -> WriteIdentity {
+        WriteIdentity::Principal(Principal::Anonymous)
     }
 }
 
@@ -94,6 +150,9 @@ pub struct Services {
     pub log: Arc<dyn Fn(&str) + Send + Sync>,
     /// The clock, in Unix seconds.
     pub clock: fn() -> i64,
+    /// Sign-in, sessions and tokens (the sign-in handoff's U1, U2). `None`: no sign-in is served, and no page
+    /// offers it.
+    pub auth: Option<Arc<inklkunn_auth::Authenticator>>,
 }
 
 impl std::fmt::Debug for Services {

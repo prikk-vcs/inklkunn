@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
-use axum::middleware::from_fn;
+use axum::middleware::{from_fn, from_fn_with_state};
 use axum::routing::{MethodRouter, get, post};
 use inklkunn_core::{Action, Guard, RouteError, RouteTable};
 
@@ -20,8 +20,8 @@ use crate::origin::Dispatch;
 use crate::pages::{self, LANGUAGE_PATH, PageState};
 use crate::services::Services;
 use crate::{
-    api, changes, discover, health, history, inbox, probe, proposals, raw, search, style, watch,
-    wiki,
+    account, api, changes, csrf, discover, health, history, inbox, probe, proposals, raw, search,
+    signin, style, watch, wiki,
 };
 
 /// One declared entry point and the handler that serves it.
@@ -48,6 +48,7 @@ fn application_specs() -> Vec<Spec> {
 /// The web pages' entry points.
 fn page_specs() -> Vec<Spec> {
     let mut specs = proposal_specs();
+    specs.extend(account_specs());
     specs.extend(wiki_specs());
     specs
 }
@@ -158,6 +159,111 @@ fn proposal_specs() -> Vec<Spec> {
             handler: || get(proposals::list::discussion),
         },
     ]
+}
+
+/// Signing in and out, joining, an invitation and the account page (the sign-in handoff's U1 and U2). None
+/// serves wiki data: they are the visitor's own sign-in, and the signed-in person's own account. Where sign-in
+/// is not served by this build every one of them is the generic not-found page.
+fn account_specs() -> Vec<Spec> {
+    vec![
+        Spec {
+            path: signin::SIGN_IN_PATH,
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Public {
+                reason: "sign-in: it asks for a name and a password and serves no wiki data; what it answers never says whether an account exists",
+            },
+            handler: || {
+                get(signin::sign_in_page)
+                    .post(signin::sign_in_post)
+                    .layer(DefaultBodyLimit::max(signin::FORM_LIMIT))
+            },
+        },
+        Spec {
+            path: signin::SIGN_OUT_PATH,
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Public {
+                reason: "sign-out: it ends this browser's own session and serves no wiki data; its form carries the session's token like every write",
+            },
+            handler: || {
+                get(signin::sign_out_page)
+                    .post(signin::sign_out_post)
+                    .layer(DefaultBodyLimit::max(pages::FORM_LIMIT))
+            },
+        },
+        Spec {
+            path: signin::JOIN_PATH,
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Public {
+                reason: "joining: where the operator opened it to anyone a person makes an account; it serves no wiki data, and says joining is not open otherwise",
+            },
+            handler: || {
+                get(signin::join_page)
+                    .post(signin::join_post)
+                    .layer(DefaultBodyLimit::max(signin::FORM_LIMIT))
+            },
+        },
+        Spec {
+            path: signin::INVITE_ROUTE,
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Public {
+                reason: "an invitation: the one-time link an operator made, opened to make an account; it serves no wiki data and answers the same for a link that was used, one that ended and one that never was",
+            },
+            handler: || {
+                get(signin::invite_page)
+                    .post(signin::invite_post)
+                    .layer(DefaultBodyLimit::max(signin::FORM_LIMIT))
+            },
+        },
+        Spec {
+            path: account::PATH,
+            methods: &["GET", "HEAD"],
+            guard: Guard::Public {
+                reason: "the signed-in person's own account (name, sessions, tokens); it serves no wiki data, and a visitor with no session is sent to sign in",
+            },
+            handler: || get(account::account_page),
+        },
+        Spec {
+            path: account::NAME_PATH,
+            methods: &["POST"],
+            guard: Guard::Public {
+                reason: "saves the signed-in person's own display name; it serves no wiki data and needs a session and its token",
+            },
+            handler: || post_route_for_account(account::save_name),
+        },
+        Spec {
+            path: account::SESSIONS_END_PATH,
+            methods: &["POST"],
+            guard: Guard::Public {
+                reason: "ends one of the signed-in person's own sessions; it serves no wiki data and needs a session and its token",
+            },
+            handler: || post_route_for_account(account::end_session),
+        },
+        Spec {
+            path: account::TOKENS_PATH,
+            methods: &["POST"],
+            guard: Guard::Public {
+                reason: "makes an API token for the signed-in person's own account and shows it once; it serves no wiki data and needs a session and its token",
+            },
+            handler: || post_route_for_account(account::make_token),
+        },
+        Spec {
+            path: account::TOKENS_REVOKE_PATH,
+            methods: &["POST"],
+            guard: Guard::Public {
+                reason: "revokes one of the signed-in person's own API tokens; it serves no wiki data and needs a session and its token",
+            },
+            handler: || post_route_for_account(account::revoke_token),
+        },
+    ]
+}
+
+/// A write of the account page, with the bound on its body.
+fn post_route_for_account<H, T>(handler: H) -> MethodRouter<PageState>
+where
+    H: axum::handler::Handler<T, PageState>,
+    T: 'static,
+{
+    post(handler).layer(DefaultBodyLimit::max(account::FORM_LIMIT))
 }
 
 /// The other web pages' entry points.
@@ -383,6 +489,11 @@ pub(crate) fn application_with(
 ) -> Result<Router, RouteError> {
     application_table()?;
     let https = origins.app_origin().scheme() == Scheme::Https;
+    let state = PageState {
+        https,
+        services,
+        origins: Arc::new(origins),
+    };
     let mut router = Router::new();
     for spec in application_specs() {
         router = router.route(spec.path, (spec.handler)());
@@ -390,11 +501,10 @@ pub(crate) fn application_with(
     Ok(router
         .fallback(api::fallback_not_found)
         .method_not_allowed_fallback(api::fallback_method_not_allowed)
-        .with_state(PageState {
-            https,
-            services,
-            origins: Arc::new(origins),
-        })
+        .with_state(state.clone())
+        // Inside the headers: a refusal of a write carries them too. Before every handler: the session's CSRF
+        // token is checked before any wiki is looked up (handoff 004 P6).
+        .layer(from_fn_with_state(state, csrf::layer))
         .layer(from_fn(move |req, next| {
             headers::layer(Surface::Application { https }, req, next)
         })))

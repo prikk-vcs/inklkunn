@@ -764,6 +764,7 @@ dependencies = [
  "inklkunn-prikk",
  "inklkunn-store",
  "inklkunn-web",
+ "rusqlite",
 ]
 
 [[package]]
@@ -882,6 +883,7 @@ dependencies = [
  "askama",
  "axum",
  "html5ever",
+ "inklkunn-auth",
  "inklkunn-core",
  "inklkunn-markup",
  "inklkunn-prikk",

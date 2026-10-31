@@ -12,7 +12,18 @@
 <a class="skip-link" href="#main">{{ page.get(Key::LayoutSkip) }}</a>
 <header>
 <p class="brand">{{ page.product() }}</p>
-</header>
+{% if let Some(line) = page.signed_in_line() %}<nav class="account" aria-label="{{ page.get(Key::HeaderAccountNav) }}">
+<ul>
+<li><a href="{{ page.account_path() }}">{{ line }}</a></li>
+<li><form method="post" action="{{ page.sign_out_path() }}">{% include "csrf.html" %}<button type="submit">{{ page.get(Key::HeaderSignOut) }}</button></form></li>
+</ul>
+</nav>
+{% else if page.offers_sign_in() %}<nav class="account" aria-label="{{ page.get(Key::HeaderAccountNav) }}">
+<ul>
+<li><a href="{{ page.sign_in_href() }}">{{ page.get(Key::HeaderSignIn) }}</a></li>
+</ul>
+</nav>
+{% endif %}</header>
 <main id="main">
 {% block body %}{% endblock %}
 </main>

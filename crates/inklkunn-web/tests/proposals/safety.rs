@@ -548,7 +548,8 @@ async fn show_changes_draws_hostile_lines_as_letters() {
 #[tokio::test]
 async fn a_form_from_another_site_is_refused_before_anything_is_looked_up() {
     let c = cast();
-    let body = "op=submit".to_owned();
+    // With the session's token: the same-site check is the second wall, and it refuses.
+    let body = "op=submit&csrf=test-session-token".to_owned();
     for uri in [
         "/handbook/-/proposals/new",
         "/handbook/-/proposals/019a0000-0000-7000-8000-00000000dddd/comment",

@@ -49,6 +49,7 @@ fn web(bind: &str, app: &str, content: &str) -> WebSettings {
         admission_wait_ms: 200,
         read: crate::config::ReadSettings::default(),
         trusted_proxies: Vec::new(),
+        join: inklkunn_auth::JoinPolicy::Off,
     }
 }
 
@@ -82,7 +83,9 @@ fn a_refusal_names_the_setting_before_anything_is_opened() {
             "own host name",
         ),
     ] {
-        let e = prepare(&s, &w).err().unwrap();
+        let e = prepare(&s, &w, IdentityAuthority::for_tests())
+            .err()
+            .unwrap();
         assert!(e.contains(why), "{why}: {e}");
     }
     assert!(
@@ -101,6 +104,7 @@ fn without_the_dev_flag_a_host_that_cannot_confine_prikk_refuses_to_start() {
     let e = prepare(
         &settings(&d.0, false),
         &web("127.0.0.1:1", "http://localhost:1", "http://localhost:2"),
+        IdentityAuthority::for_tests(),
     )
     .err()
     .unwrap();
@@ -118,6 +122,7 @@ fn a_missing_prikk_is_named() {
     let e = prepare(
         &s,
         &web("127.0.0.1:1", "http://localhost:1", "http://localhost:2"),
+        IdentityAuthority::for_tests(),
     )
     .err()
     .unwrap();
@@ -155,7 +160,7 @@ fn a_started_server_answers_over_a_socket_with_its_headers_and_stops_when_told()
         &format!("http://localhost:{app}"),
         &format!("http://localhost:{content}"),
     );
-    let prepared = prepare(&s, &w).unwrap();
+    let prepared = prepare(&s, &w, IdentityAuthority::for_tests()).unwrap();
     assert!(
         prepared.banner.iter().any(|l| l.contains("UNCONFINED")),
         "{:?}",
@@ -192,6 +197,29 @@ fn a_started_server_answers_over_a_socket_with_its_headers_and_stops_when_told()
     assert!(misdirected.starts_with("HTTP/1.1 421"), "{misdirected}");
     let missing = request(app, &format!("localhost:{app}"), "/handbook/Home");
     assert!(missing.starts_with("HTTP/1.1 404"), "{missing}");
+    // Sign-in is served (with the double-submit cookie and its token), joining is not open by default, and a
+    // visitor who is not signed in has no account page.
+    let sign_in = request(app, &format!("localhost:{app}"), "/-/sign-in");
+    assert!(sign_in.starts_with("HTTP/1.1 200"), "{sign_in}");
+    assert!(
+        sign_in
+            .to_ascii_lowercase()
+            .contains("set-cookie: __host-inklkunn-csrf="),
+        "{sign_in}"
+    );
+    assert!(
+        sign_in.contains("Ask the person who runs this wiki for an invitation."),
+        "{sign_in}"
+    );
+    assert!(!sign_in.contains("Join this wiki"), "{sign_in}");
+    let join = request(app, &format!("localhost:{app}"), "/-/join");
+    assert!(join.starts_with("HTTP/1.1 404"), "{join}");
+    let account = request(app, &format!("localhost:{app}"), "/-/account");
+    assert!(account.starts_with("HTTP/1.1 303"), "{account}");
+    assert!(
+        account.contains("location: /-/sign-in?next=/-/account"),
+        "{account}"
+    );
 
     stop.stop();
     let (result, banner) = server.join().unwrap();
@@ -265,7 +293,9 @@ fn a_declared_trusted_proxy_ends_the_warning_and_a_typo_stops_the_start() {
     let d = dir("proxies");
     let mut w = web_settings();
     w.trusted_proxies = vec!["10.0.0.0/8".into(), "not a network".into()];
-    let e = prepare(&settings(&d.0, true), &w).err().unwrap();
+    let e = prepare(&settings(&d.0, true), &w, IdentityAuthority::for_tests())
+        .err()
+        .unwrap();
     assert!(
         e.contains("INKLKUNN_TRUSTED_PROXIES") && e.contains("not a network"),
         "{e}"

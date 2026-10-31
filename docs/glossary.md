@@ -70,6 +70,11 @@ T6, RFC 004) take the word from here and do not choose their own.
 | A page that links to no other page | dead-end page | 行き止まりのページ | yes | The usual wiki word; the health list says what would resolve it | Drafted |
 | The lists of what can be improved in a wiki | wiki health | ウィキの健全性 | yes | Names the lists as opportunities, never as faults (NAV-15) | Drafted |
 | When this server first saw a change | first seen here | 初めて確認した日時 | yes | The history carries no time, so the only time shown is the server's own observation, named so it is never read as the time of the change | Drafted |
+| What a person has so that what they do is theirs | account | アカウント | yes | One person, one account: it is never matched or linked by e-mail address (the sign-in handoff U2) | Drafted |
+| Proving who you are to the server, and being let in | sign in | サインイン | yes | The usual word; never "log in" in one place and "sign in" in another | Drafted · ja: loanword |
+| A browser that is signed in to an account | session | セッション | yes | The account page lists them so a person can end one; no other word for the same thing | Drafted · ja: loanword |
+| A link made for one person to make their account | invitation | 招待 | yes | One-time and ending; the server's operator makes it (DR-11) | Drafted |
+| A secret a program uses to act as an account, with a scope | API token | API トークン | yes | Shown once; it can do no more than its scope and the account's roles allow (RFC 002 D-1) | Drafted · ja: loanword |
 
 ## 2. Messages
 
@@ -810,6 +815,99 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `lint.dangling` | a suggestion for a text, from the linter's finding `NAV-3-dangling`; `{guideline}` is the guideline it comes from | "{guideline}: A link leads to a page that does not exist yet." | "{guideline}: まだ存在しないページへのリンクがあります。" |
 | `lint.ambiguous` | a suggestion for a text, from the linter's finding `MKUP-5-ambiguous`; `{guideline}` is the guideline it comes from | "{guideline}: A link matches several pages and none is nearer." | "{guideline}: リンクが複数のページに当てはまり、どれも近くありません。" |
 | `lint.other` | a suggestion for a text, from the linter's finding `any other code`; `{guideline}` is the guideline it comes from | "{guideline}: The linter has a suggestion for this text." | "{guideline}: このテキストについて、リンターからの提案があります。" |
+| `header.account_nav` | the label of the account strip in the banner (for a screen reader) | "Account" | "アカウント" |
+| `header.signed_in` | the banner, a link to the account page; `{name}` is the signed-in person's name | "Signed in as {name}" | "{name} としてサインイン中" |
+| `header.sign_out` | the banner and the sign-out page, the button that signs the browser out | "Sign out" | "サインアウト" |
+| `header.sign_in` | the banner of a signed-out visitor, a link to the sign-in page; shown only where sign-in is served | "Sign in" | "サインイン" |
+| `title.form_expired` | the title of the page that says a form did not match the sign-in it was sent from | "Form expired · {product}" | "フォームの有効期限が切れました · {product}" |
+| `form_expired.heading` | its heading | "The form has expired" | "フォームの有効期限が切れました" |
+| `form_expired.body` | its sentence | "This form could not be matched to your sign-in, so nothing was changed. It may be old, or you may have signed in or out since you opened it. Go back, reload the page and try again." | "このフォームをあなたのサインインと照合できなかったため、何も変更していません。フォームが古いか、開いたあとにサインインまたはサインアウトした可能性があります。前のページに戻り、再読み込みしてからもう一度お試しください。" |
+| `problem.unavailable` | under a form of the sign-in pages when the server could not do what was asked; nothing was changed | "That did not work this time, and nothing was changed. Try again in a while; if it keeps happening, tell the person who runs this server." | "今回は処理できず、何も変更していません。しばらくしてからもう一度お試しください。何度も起きる場合は、このサーバーの管理者に知らせてください。" |
+| `title.sign_in` | the title of the sign-in page | "Sign in · {product}" | "サインイン · {product}" |
+| `sign_in.heading` | the heading of the sign-in page | "Sign in" | "サインイン" |
+| `sign_in.login_label` | the label of the sign-in name field, on the sign-in page and the pages that make an account | "Sign-in name" | "サインイン名" |
+| `sign_in.password_label` | the label of the password field of the sign-in page | "Password" | "パスワード" |
+| `sign_in.button` | the button of the sign-in page | "Sign in" | "サインインする" |
+| `sign_in.failed` | on the sign-in page after a sign-in that did not work; it never says whether the name exists | "That sign-in name and password did not match. Check both and try again." | "サインイン名とパスワードが一致しませんでした。両方を確かめて、もう一度お試しください。" |
+| `sign_in.locked` | on the sign-in page when there have been too many attempts from this name or this address | "There have been too many attempts. Wait a while before trying again." | "試行回数が多すぎます。しばらく待ってからもう一度お試しください。" |
+| `sign_in.busy` | on the sign-in page when the server is checking as many passwords as it allows | "The server is busy right now. Try again in a moment." | "サーバーがただいま混み合っています。少し待ってからもう一度お試しください。" |
+| `sign_in.already` | on the sign-in page of someone who is signed in; `{name}` is their name | "You are signed in as {name}." | "{name} としてサインインしています。" |
+| `sign_in.to_account` | a link on that page to the account page | "Go to your account" | "アカウントへ移動" |
+| `sign_in.invitation_only` | under the sign-in form when accounts come only from invitations | "Ask the person who runs this wiki for an invitation." | "招待が必要な場合は、このウィキを運営している人にお願いしてください。" |
+| `sign_in.join` | under the sign-in form, a link to the page that makes an account; shown only where anyone may join | "Join this wiki" | "このウィキに参加する" |
+| `title.sign_out` | the title of the sign-out page | "Sign out · {product}" | "サインアウト · {product}" |
+| `sign_out.heading` | the heading of the sign-out page | "Sign out" | "サインアウト" |
+| `sign_out.body` | its sentence, above the button | "This signs this browser out. Other browsers that are signed in to your account stay signed in." | "このブラウザをサインアウトします。ほかのブラウザでのサインインはそのまま続きます。" |
+| `sign_out.not_signed_in` | on the sign-out page of a visitor who is not signed in | "You are not signed in." | "サインインしていません。" |
+| `title.join` | the title of the page where anyone may make an account | "Join · {product}" | "参加 · {product}" |
+| `join.heading` | its heading | "Join this wiki" | "このウィキに参加する" |
+| `join.intro` | under that heading | "Choose a sign-in name and a password to make your account. Nobody, including the person who runs this server, can read your password." | "サインイン名とパスワードを決めて、アカウントを作ります。パスワードは、このサーバーの管理者を含め、誰にも読まれません。" |
+| `join.button` | the button of that page | "Join" | "参加する" |
+| `join_closed.heading` | the heading of the page shown where joining is not open | "Joining is not open" | "参加は受け付けていません" |
+| `join_closed.body` | its sentence | "Accounts here are made from invitations. Ask the person who runs this wiki for an invitation." | "ここでのアカウントは、招待から作られます。このウィキを運営している人に招待をお願いしてください。" |
+| `title.invite` | the title of the page an invitation link opens | "Invitation · {product}" | "招待 · {product}" |
+| `invite.heading` | its heading | "You are invited" | "招待されています" |
+| `invite.intro` | under that heading | "Choose a sign-in name and a password to make your account. This link works once. Nobody, including the person who runs this server, can read your password." | "サインイン名とパスワードを決めて、アカウントを作ります。このリンクは 1 回だけ使えます。パスワードは、このサーバーの管理者を含め、誰にも読まれません。" |
+| `invite.button` | the button of that page | "Make my account" | "アカウントを作る" |
+| `invite_unusable.heading` | the heading of the page an invitation link opens when it cannot be used | "This invitation cannot be used" | "この招待は使えません" |
+| `invite_unusable.body` | its sentence; the same for a link that was used, one that ended and one that never existed | "It may have been used already, or it may have ended. Ask the person who runs this wiki for a new one." | "すでに使われたか、期限が切れた可能性があります。新しい招待を、このウィキを運営している人にお願いしてください。" |
+| `account_form.name_label` | the label of the name field of the pages that make an account | "Your name" | "あなたの名前" |
+| `account_form.name_hint` | under that field | "The name other people see next to what you write. Any script is fine." | "あなたが書いたものの横に、ほかの人へ表示される名前です。どの文字でも使えます。" |
+| `account_form.login_hint` | under the sign-in name field of the pages that make an account | "3 to 64 characters: letters a to z, digits, dots, underscores and hyphens. Capital letters count as small ones." | "3 から 64 文字で、英字 a から z、数字、ドット、アンダースコア、ハイフンが使えます。大文字は小文字として扱われます。" |
+| `account_form.password_label` | the label of the password field of the pages that make an account | "Choose a password" | "パスワードを決める" |
+| `account_form.password_hint` | under that field; `{min}` is the fewest characters | "At least {min} characters. There are no other rules; a long sentence makes a good password." | "{min} 文字以上です。ほかの決まりはありません。長い文章は、よいパスワードになります。" |
+| `account_form.login_taken` | a problem: the sign-in name belongs to another account | "That sign-in name is taken. Choose another one." | "そのサインイン名は使われています。別の名前を選んでください。" |
+| `account_form.login_length` | a problem: the sign-in name is too short or too long | "A sign-in name has 3 to 64 characters." | "サインイン名は 3 から 64 文字です。" |
+| `account_form.login_characters` | a problem: the sign-in name has a character it may not | "A sign-in name uses letters a to z, digits, dots, underscores and hyphens, and starts with a letter or a digit." | "サインイン名には、英字 a から z、数字、ドット、アンダースコア、ハイフンだけを使い、先頭は英字か数字にします。" |
+| `account_form.name_length` | a problem: the name is empty or too long | "A name has 1 to 120 characters." | "名前は 1 から 120 文字です。" |
+| `account_form.name_control` | a problem: the name has a line break or a control character | "A name cannot contain line breaks or control characters." | "名前に改行や制御文字は使えません。" |
+| `account_form.name_space` | a problem: the name starts or ends with a space | "A name cannot start or end with a space." | "名前の先頭と末尾に空白は使えません。" |
+| `account_form.password_short` | a problem: the password is too short; `{min}` is the fewest characters | "A password needs at least {min} characters." | "パスワードは {min} 文字以上にしてください。" |
+| `account_form.password_long` | a problem: the password is too long | "That password is too long." | "そのパスワードは長すぎます。" |
+| `title.account` | the title of the account page | "Your account · {product}" | "あなたのアカウント · {product}" |
+| `account.heading` | the heading of the account page | "Your account" | "あなたのアカウント" |
+| `account.name_heading` | the heading of its first section | "Your name" | "あなたの名前" |
+| `account.name_label` | the label of the field in that section | "Name" | "名前" |
+| `account.name_hint` | under that field | "The name other people see next to what you write." | "あなたが書いたものの横に、ほかの人へ表示される名前です。" |
+| `account.name_button` | the button of that section | "Save name" | "名前を保存" |
+| `account.name_saved` | a note at the top of the page after the name was saved | "Your name was saved." | "名前を保存しました。" |
+| `account.sessions_heading` | the heading of the section that lists where the account is signed in | "Where you are signed in" | "サインインしている場所" |
+| `account.sessions_intro` | under that heading | "Each line is a browser that is signed in to your account now. Ending a session signs that browser out." | "各行は、いまあなたのアカウントにサインインしているブラウザです。セッションを終了すると、そのブラウザはサインアウトされます。" |
+| `account.session_line` | one line of that list; `{started}` and `{ends}` are moments | "Started {started}; ends {ends}" | "開始 {started}、終了予定 {ends}" |
+| `account.session_current` | beside the line of the browser being used | "This is the browser you are using." | "いま使っているブラウザです。" |
+| `account.session_end` | the button on each line of that list | "End this session" | "このセッションを終了" |
+| `account.session_ended` | a note at the top of the page after a session was ended | "That session was ended." | "そのセッションを終了しました。" |
+| `account.tokens_heading` | the heading of the section on API tokens | "API tokens" | "API トークン" |
+| `account.tokens_intro` | under that heading | "An API token lets a program act as you through the write API. It can do no more than the scope you give it, and no more than your roles allow. It is shown once, when you make it." | "API トークンを使うと、プログラムがあなたとして書き込み API を使えます。トークンにできるのは、与えたスコープの範囲と、あなたの役割で許される範囲までです。作成したときに 1 度だけ表示されます。" |
+| `account.tokens_none` | instead of the list when the account has no tokens | "You have no tokens." | "トークンはありません。" |
+| `account.token_unlabelled` | the name of a token that was given no note | "A token with no note" | "メモのないトークン" |
+| `account.token_scope` | one line of the list of tokens; `{scope}` is one of the five scopes | "Scope: {scope}" | "スコープ: {scope}" |
+| `account.token_live` | one line of the list of tokens; `{when}` is a moment | "Works until {when}" | "{when} まで使えます" |
+| `account.token_expired` | the same for a token that has ended | "Ended {when}" | "{when} に期限が切れました" |
+| `account.token_revoked` | the same for a token its owner revoked | "Revoked {when}" | "{when} に取り消しました" |
+| `account.token_revoke` | the button on each live token | "Revoke" | "取り消す" |
+| `account.token_revoked_note` | a note at the top of the page after a token was revoked | "That token was revoked." | "そのトークンを取り消しました。" |
+| `account.token_new_heading` | the heading of the form that makes a token | "Make a token" | "トークンを作る" |
+| `account.token_label` | the label of the note field of that form | "What is it for?" | "用途" |
+| `account.token_label_hint` | under that field | "A short note to recognise it by, up to 80 characters." | "見分けるための短いメモです。80 文字までです。" |
+| `account.token_scope_label` | the label of the scope field of that form | "Scope" | "スコープ" |
+| `account.scope_read` | an option of that field and the name of the scope on the list | "Read: pages, history and proposals" | "読み取り: ページ、履歴、提案" |
+| `account.scope_propose` | an option of that field | "Propose: also comment and propose changes" | "提案: コメントと変更の提案も可能" |
+| `account.scope_review` | an option of that field | "Review: also review proposals" | "レビュー: 提案のレビューも可能" |
+| `account.scope_accept` | an option of that field | "Accept: also accept proposals" | "受け入れ: 提案の受け入れも可能" |
+| `account.scope_admin` | an option of that field | "Admin: everything your roles allow" | "管理: あなたの役割で許されるすべて" |
+| `account.token_lifetime_label` | the label of the lifetime field of that form | "Works for" | "有効期間" |
+| `account.lifetime_day` | an option of that field | "1 day" | "1 日" |
+| `account.lifetime_week` | an option of that field | "7 days" | "7 日" |
+| `account.lifetime_month` | an option of that field | "30 days" | "30 日" |
+| `account.lifetime_quarter` | an option of that field | "90 days" | "90 日" |
+| `account.lifetime_year` | an option of that field | "1 year" | "1 年" |
+| `account.token_button` | the button of that form | "Make token" | "トークンを作る" |
+| `account.token_made_heading` | the heading of the box that shows a token once, at the top of the page | "Your new token" | "新しいトークン" |
+| `account.token_made_body` | in that box | "Copy it now. It is shown only this once and cannot be shown again." | "いまコピーしてください。表示されるのは今回 1 度だけで、あとから再表示することはできません。" |
+| `account.token_made_use` | in that box | "A program sends it in the Authorization header, as Bearer followed by the token." | "プログラムは、Authorization ヘッダーに Bearer とトークンを続けて送ります。" |
+| `account.token_too_many` | a problem: the account holds as many live tokens as it may; `{max}` is the most | "You already have {max} live tokens. Revoke one first." | "有効なトークンがすでに {max} 個あります。先に 1 つ取り消してください。" |
+| `account.token_label_long` | a problem: the note is too long | "The note is too long: at most 80 characters." | "メモが長すぎます。80 文字までです。" |
 
 ## 3. Words the interface does not say
 

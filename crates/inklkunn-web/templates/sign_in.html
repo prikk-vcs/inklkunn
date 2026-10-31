@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+<h1>{{ heading }}</h1>
+{% if let Some(text) = problem %}<p class="problem" role="alert">{{ text }}</p>
+{% endif %}{% if let Some(text) = already %}<p>{{ text }}</p>
+<p><a href="{{ account_href }}">{{ to_account }}</a></p>
+{% else %}<form method="post" action="{{ action }}" class="sign-in-form">
+<input type="hidden" name="{{ page.csrf_field() }}" value="{{ token }}">
+<input type="hidden" name="next" value="{{ next }}">
+<div class="field">
+<label for="login">{{ login_label }}</label>
+<input id="login" name="login" type="text" value="{{ login }}" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+</div>
+<div class="field">
+<label for="password">{{ password_label }}</label>
+<input id="password" name="password" type="password" autocomplete="current-password" required>
+</div>
+<p><button type="submit">{{ button }}</button></p>
+</form>
+{% if let Some(href) = join_href %}<p><a href="{{ href }}">{{ join_label }}</a></p>
+{% else %}<p>{{ invitation_only }}</p>
+{% endif %}{% endif %}{% endblock %}

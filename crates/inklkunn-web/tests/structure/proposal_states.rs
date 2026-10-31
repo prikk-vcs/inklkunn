@@ -773,6 +773,9 @@ pub(super) async fn build(extra: &[(&str, &str)], out: &mut Out) {
         }
         if let Some(a) = &req.account {
             b = b.header("x-test-account", a.as_str());
+            if req.method == "POST" {
+                b = b.header(inklkunn_web::CSRF_HEADER, crate::common::TEST_CSRF);
+            }
         }
         let body = if req.method == "POST" {
             b = b

@@ -54,7 +54,7 @@ use crate::config::{Settings, UNCONFINED_BANNER};
 use crate::keys::{find_wiki, key_authority, make_private_directory};
 
 /// The operator at the host, in the audit trail.
-const PRINCIPAL: &str = "system:operator-cli";
+pub(crate) const PRINCIPAL: &str = "system:operator-cli";
 
 /// What was asked.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -241,9 +241,16 @@ pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
 }
 
 /// The audit trail for one act. `begin` first: an act the trail cannot take is not begun.
-struct Trail<'a> {
+pub(crate) struct Trail<'a> {
     sink: &'a dyn AuditSink,
     now: i64,
+}
+
+impl<'a> Trail<'a> {
+    /// A trail that writes to `sink`, stamped `now`.
+    pub(crate) fn new(sink: &'a dyn AuditSink, now: i64) -> Self {
+        Trail { sink, now }
+    }
 }
 
 impl Trail<'_> {
@@ -257,14 +264,14 @@ impl Trail<'_> {
         AuditEvent::new(self.now, PRINCIPAL, action, resource, outcome, detail)
     }
 
-    fn begin(&self, action: &str, resource: &str, detail: &str) -> Result<(), String> {
+    pub(crate) fn begin(&self, action: &str, resource: &str, detail: &str) -> Result<(), String> {
         self.sink
             .record(&self.event(action, resource, AuditOutcome::Allowed, detail))
             .map_err(|e| format!("the audit trail could not be written ({e}); nothing was done"))
     }
 
     /// The act has happened either way, so a failure here is an error the operator sees.
-    fn finish(
+    pub(crate) fn finish(
         &self,
         action: &str,
         resource: &str,

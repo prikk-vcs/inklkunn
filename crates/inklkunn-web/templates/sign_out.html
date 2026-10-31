@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+<h1>{{ heading }}</h1>
+{% if signed_in %}<p>{{ body }}</p>
+<form method="post" action="{{ page.sign_out_path() }}">{% include "csrf.html" %}<p><button type="submit">{{ button }}</button></p></form>
+{% else %}<p>{{ body }}</p>
+{% if let Some(href) = sign_in_href %}<p><a href="{{ href }}">{{ sign_in_label }}</a></p>
+{% endif %}{% endif %}{% endblock %}

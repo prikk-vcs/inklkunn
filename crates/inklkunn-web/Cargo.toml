@@ -10,6 +10,9 @@ description = "inklkunn's HTTP surface: the server-rendered UI, the read and wri
 
 [dependencies]
 inklkunn-core = { workspace = true }
+# Who is asking: sessions, tokens, sign-in and invitations. The web layer renders and routes; the Authenticator
+# does the work and makes every principal (corrections handoff C7).
+inklkunn-auth = { workspace = true }
 # The wiki record, its store and the validated slug: what a request resolves before it reads anything.
 inklkunn-store = { workspace = true }
 # The one percent-encoding of titles (the same function the renderer writes its links with).
@@ -30,6 +33,8 @@ askama = { version = "0.16", default-features = false, features = ["derive", "st
 tower-service = "0.3"
 
 [dev-dependencies]
+# Test-only: the authenticator with a cheap password hash, to sign in over the real pages.
+inklkunn-auth = { workspace = true, features = ["test-knobs"] }
 # Test-only: build account principals, to show a reader of a restricted wiki what an anonymous visitor is refused.
 # (A dev-dependency feature: the boundary gate refuses it in a product dependency only.)
 inklkunn-core = { workspace = true, features = ["test-authority"] }

@@ -14,6 +14,7 @@
 {% if let Some(text) = scope %}<p>{{ text }}</p>
 {% endif %}{% if let Some(link) = choose %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
 {% endif %}<form method="post" action="{{ action }}" class="proposal-form">
+{% include "csrf.html" %}
 {% for h in hidden %}<input type="hidden" name="{{ h.name }}" value="{{ h.value }}">
 {% endfor %}{% for f in fields %}<div class="field">
 {% if f.editable_title %}<label for="{{ f.id_title }}">{{ page.get(Key::ProposeLabelTitle) }}</label>

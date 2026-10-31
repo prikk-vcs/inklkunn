@@ -6,6 +6,7 @@
 //! removes the creations that were killed, refreshes prikk's checkpoint records and serves (RFC 003; its pages
 //! arrive task by task).
 
+mod account;
 mod admin;
 mod audit;
 mod cli;

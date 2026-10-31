@@ -25,6 +25,28 @@ scope :: paths.rs :: * :: the addresses of a wiki's proposals, all under the res
 
 scope :: lints.rs :: * :: the stable codes of the linter's findings and the catalog key each is said with; no sentence a reader sees
 
+# --- the sign-in pages, the account page and the CSRF layer (the sign-in handoff U1, U2; handoff 004 P6)
+scope :: names.rs :: * :: the addresses, form fields, query values and header names the sign-in pages, the account page and the CSRF layer agree on, and the cookie format; code a form and a handler share, no sentence a reader sees
+exact :: signin.rs :: min :: a placeholder name of a catalog message
+exact :: signin.rs :: name :: a placeholder name of a catalog message
+exact :: signin.rs :: a sign-in could not be completed: {other} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: signin.rs :: a session could not be ended: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: signin.rs :: an account could not be made: {other} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: signin.rs :: an invitation could not be checked: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: account.rs :: started :: a placeholder name of a catalog message
+exact :: account.rs :: ends :: a placeholder name of a catalog message
+exact :: account.rs :: when :: a placeholder name of a catalog message
+exact :: account.rs :: scope :: a placeholder name of a catalog message
+exact :: account.rs :: max :: a placeholder name of a catalog message
+exact :: account.rs :: an account's records could not be read: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: account.rs :: a name could not be saved: {error} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: account.rs :: a session could not be ended: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: account.rs :: a token could not be made: {error} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: account.rs :: a token could not be revoked: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: identity.rs :: AuthIdentity :: the name in the type's Debug output
+exact :: identity.rs :: a credential could not be checked: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: identity.rs :: a session could not be checked: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+
 # --- pages.rs: the handlers and the layout's data
 exact :: pages.rs :: /-/lang :: the address of the language page, which every switcher form posts to
 exact :: pages.rs :: version :: a placeholder name of a catalog message

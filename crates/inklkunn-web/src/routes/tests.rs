@@ -357,6 +357,16 @@ fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
     assert_eq!(
         public,
         [
+            // The sign-in handoff (U1, U2): the visitor's own sign-in and the signed-in person's own account.
+            "/-/sign-in",
+            "/-/sign-out",
+            "/-/join",
+            "/-/invite/{secret}",
+            "/-/account",
+            "/-/account/name",
+            "/-/account/sessions/end",
+            "/-/account/tokens",
+            "/-/account/tokens/revoke",
             "/-/health",
             "/-/lang",
             "/-/assets/{file}",

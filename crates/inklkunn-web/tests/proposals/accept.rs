@@ -114,8 +114,8 @@ async fn accept(
 }
 
 /// The hidden field of the accept form (not of the decision form, which carries one too).
-const ACCEPT_FORM_REVISION: &str =
-    "/accept\"><input type=\"hidden\" name=\"revision\" value=\"1\">";
+/// It carries the session's token first, as every form of a signed-in person does (P6).
+const ACCEPT_FORM_REVISION: &str = "/accept\"><input type=\"hidden\" name=\"csrf\" value=\"test-session-token\"><input type=\"hidden\" name=\"revision\" value=\"1\">";
 
 const SAME_SITE: &[(&str, &str)] = &[("sec-fetch-site", "same-origin")];
 const JAPANESE: &[(&str, &str)] = &[

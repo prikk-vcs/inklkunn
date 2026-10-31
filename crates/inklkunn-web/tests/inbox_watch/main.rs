@@ -88,7 +88,9 @@ async fn send(
         req = req.header("content-type", "application/x-www-form-urlencoded");
     }
     if let Some(who) = who {
-        req = req.header("x-test-account", who.as_str());
+        req = req
+            .header("x-test-account", who.as_str())
+            .header(inklkunn_web::CSRF_HEADER, common::TEST_CSRF);
     }
     for (k, v) in headers {
         req = req.header(*k, *v);

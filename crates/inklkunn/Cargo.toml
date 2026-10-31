@@ -21,6 +21,12 @@ inklkunn-store = { path = "../inklkunn-store", version = "0.1.0" }
 inklkunn-web = { path = "../inklkunn-web", version = "0.1.0" }
 
 [dev-dependencies]
+# Test-only, already in the lock for the store: the account tests break the audit trail to show that an act the
+# trail cannot take is not begun.
+rusqlite = { workspace = true }
+# The tests that prepare a server more than once in a process need an authority each (`claim` answers once);
+# the product build never enables it.
+inklkunn-core = { path = "../inklkunn-core", version = "0.1.0", features = ["test-authority"] }
 # The outbound wiring's tests run the fetcher unconfined with a stand-in curl; the product build never enables it.
 inklkunn-fetch = { path = "../inklkunn-fetch", version = "0.1.0", features = ["test-knobs"] }
 

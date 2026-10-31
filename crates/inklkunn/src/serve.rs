@@ -5,15 +5,15 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
-use inklkunn_auth::ProxyPolicy;
+use inklkunn_auth::{AuthConfig, Authenticator, ProxyPolicy};
 use inklkunn_core::proposal::{ProposalService, QuotaConfig};
 use inklkunn_core::read::{ReadConfig, ReadService};
-use inklkunn_core::{Authorizer, Inbox, Notifier, StoreAuthz, Verifier};
+use inklkunn_core::{Authorizer, IdentityAuthority, Inbox, Notifier, StoreAuthz, Verifier};
 use inklkunn_prikk::sandbox::Sandbox;
 use inklkunn_prikk::{Admission, PrikkCli, SizeHints, Storage};
 use inklkunn_store::{AuditSink, RootLayout, SqliteStore};
 use inklkunn_web::serve::{Shutdown, run_blocking};
-use inklkunn_web::{AnonymousOnly, Services, Site, WebConfig, routes};
+use inklkunn_web::{AuthIdentity, Services, Site, WebConfig, routes};
 
 use crate::admin;
 use crate::config::{ConfigError, Settings, WebSettings};
@@ -38,8 +38,14 @@ fn refusal(e: ConfigError) -> String {
     e.to_string()
 }
 
-/// Validate the settings, find prikk at the floor, open the store, build the site.
-pub(crate) fn prepare(settings: &Settings, web: &WebSettings) -> Result<Prepared, String> {
+/// Validate the settings, find prikk at the floor, open the store, build the site. `authority` is the process's
+/// one right to say who a request is (`IdentityAuthority::claim`, made once by the caller, corrections handoff
+/// C7): the authenticator takes it and keeps it, so no other code can build an account principal.
+pub(crate) fn prepare(
+    settings: &Settings,
+    web: &WebSettings,
+    authority: IdentityAuthority,
+) -> Result<Prepared, String> {
     let config = WebConfig::new(&web.bind, &web.app_origin, &web.content_origin)
         .map_err(|e| e.to_string())?;
     let sandbox = settings.sandbox().map_err(refusal)?;
@@ -49,10 +55,10 @@ pub(crate) fn prepare(settings: &Settings, web: &WebSettings) -> Result<Prepared
         64 << 20,
         Duration::from_millis(web.admission_wait_ms),
     );
-    // The networks of the trusted proxies are checked now, so a typo stops the start (the policy itself is
-    // read by the sign-in's throttle when that is served).
+    // The networks of the trusted proxies are checked now, so a typo stops the start; the policy is what the
+    // sign-in's per-address throttle counts addresses by.
     let proxy_networks: Vec<&str> = web.trusted_proxies.iter().map(String::as_str).collect();
-    ProxyPolicy::trusting(&proxy_networks).map_err(|e| {
+    let proxies = ProxyPolicy::trusting(&proxy_networks).map_err(|e| {
         format!("INKLKUNN_TRUSTED_PROXIES must be addresses or networks like 10.0.0.0/8 ({e})")
     })?;
     let hints = SizeHints::new();
@@ -132,6 +138,22 @@ pub(crate) fn prepare(settings: &Settings, web: &WebSettings) -> Result<Prepared
         )
         .with_notifier(notifier),
     );
+    let auth = Arc::new(
+        Authenticator::new(
+            store.clone(),
+            AuthConfig {
+                proxies,
+                join: web.join,
+                ..AuthConfig::default()
+            },
+            authority,
+        )
+        .map_err(|e| format!("sign-in could not be set up ({e})"))?
+        .with_audit(store.clone() as Arc<dyn AuditSink>),
+    );
+    let log: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(|line| {
+        let _ = writeln!(std::io::stderr(), "inklkunn: {line}");
+    });
     let services = Arc::new(Services {
         wikis: store.clone(),
         read,
@@ -141,18 +163,22 @@ pub(crate) fn prepare(settings: &Settings, web: &WebSettings) -> Result<Prepared
         proposals,
         accounts: store.clone(),
         acceptances: store.clone(),
-        acts: store,
-        // No acceptor yet, on purpose: sign-in is not served, so no visitor is an account and nobody may accept,
-        // and the server holds no write signer (the keys are the command line's, behind `serve`'s confinement).
-        // The Accept button answers "accepting is not available yet" until both are decided (RFC 002 D-10;
-        // handoff 004 T4b's decision request).
+        acts: store.clone(),
+        // No acceptor yet, on purpose: people can sign in now, but the server holds no write signer (the keys are
+        // the command line's, behind `serve`'s confinement) until the acceptor is wired (the sign-in handoff's U5;
+        // RFC 002 D-10). The Accept button answers "accepting is not available yet" until then.
         acceptor: None,
-        // Sign-in is not served yet (RFC 002's pages are the next surface), so every request is anonymous:
-        // a public wiki is readable, an internal or restricted one is not.
-        identity: Arc::new(AnonymousOnly),
-        log: Arc::new(|line| {
-            let _ = writeln!(std::io::stderr(), "inklkunn: {line}");
-        }),
+        // A request is who its credential says: a session cookie (a write only with the session's CSRF token), or
+        // a bearer token judged alone (the sign-in handoff's U4). The Accept button still waits for the
+        // acceptor (U5).
+        identity: Arc::new(AuthIdentity::new(
+            auth.clone(),
+            store.clone(),
+            inklkunn_store::record::now_secs,
+            log.clone(),
+        )),
+        auth: Some(auth),
+        log,
         clock: inklkunn_store::record::now_secs,
     });
     let site = routes::site_with(&config, Some(services.clone()))

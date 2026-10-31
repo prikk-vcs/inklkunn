@@ -17,6 +17,7 @@
 //! | `INKLKUNN_INDEX_MAX_MIB` | (`serve`) the largest wiki, in MiB of everything it holds (attachments too), the title index is built from; a larger one is "could not be read now" until this is raised. **The build extracts the whole wiki into `<data dir>/wikis/…/scratch` for a moment, so the data directory needs that much free disk.** | `4096` |
 //! | `INKLKUNN_INDEX_MAX_FILES` | (`serve`) the most files the title index is built from | `200000` |
 //! | `INKLKUNN_PAGE_MAX_KIB` | (`serve`) the largest page source read, in KiB | `1024` |
+//! | `INKLKUNN_JOIN` | (`serve`) who may make an account without an invitation: `off` (accounts come only from invitations), `provider` (a first sign-in through the configured OpenID Connect provider makes one; **a public provider makes this open registration**) or `anyone` (also a local account with a password) | `off` |
 //! | `INKLKUNN_TRUSTED_PROXIES` | (`serve`) the reverse proxies whose `X-Forwarded-For` is believed: comma-separated addresses or networks (`10.0.0.0/8`); none by default | none |
 //!
 //! `serve --config FILE` reads the same names from a file, one `NAME=value` per line (`#` comments); the
@@ -31,6 +32,7 @@ use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::path::PathBuf;
 
+use inklkunn_auth::JoinPolicy;
 use inklkunn_prikk::sandbox::{BwrapConfig, Sandbox, probe_bwrap};
 
 /// A setting that cannot be used, and why.
@@ -160,6 +162,9 @@ pub struct WebSettings {
     pub read: ReadSettings,
     /// `INKLKUNN_TRUSTED_PROXIES`: networks of reverse proxies, as written (validated at start).
     pub trusted_proxies: Vec<String>,
+    /// `INKLKUNN_JOIN`: who may make an account without an invitation. **Off unless the operator says
+    /// otherwise.**
+    pub join: JoinPolicy,
 }
 
 /// The read service's settings (RFC 003 D-2; handoff 003 T4).
@@ -226,6 +231,14 @@ impl WebSettings {
                 index_max_files: number("INKLKUNN_INDEX_MAX_FILES", 200_000, 1, 100_000_000)?,
                 page_max_kib: number("INKLKUNN_PAGE_MAX_KIB", 1024, 1, 1_048_576)?,
             },
+            join: match text("INKLKUNN_JOIN")? {
+                None => JoinPolicy::Off,
+                Some(t) => JoinPolicy::parse(&t).ok_or_else(|| {
+                    ConfigError(format!(
+                        "INKLKUNN_JOIN must be off, provider or anyone (it is `{t}`)"
+                    ))
+                })?,
+            },
             trusted_proxies: match text("INKLKUNN_TRUSTED_PROXIES")? {
                 None => Vec::new(),
                 Some(list) => list
@@ -256,6 +269,7 @@ pub const KNOWN: &[&str] = &[
     "INKLKUNN_INDEX_MAX_FILES",
     "INKLKUNN_PAGE_MAX_KIB",
     "INKLKUNN_TRUSTED_PROXIES",
+    "INKLKUNN_JOIN",
 ];
 
 /// Read a configuration file: one `NAME=value` per line, `#` comments and blank lines allowed, no quoting, no

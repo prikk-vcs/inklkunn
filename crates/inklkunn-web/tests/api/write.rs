@@ -100,6 +100,13 @@ async fn send(
     for (k, v) in headers {
         req = req.header(*k, v.as_str());
     }
+    // A session's write presents the session's token, as the pages' forms do (a client that is not a form
+    // sends it in this header).
+    if headers.iter().any(|(k, _)| *k == "x-test-account")
+        && !headers.iter().any(|(k, _)| *k == "x-csrf-token")
+    {
+        req = req.header(inklkunn_web::CSRF_HEADER, super::common::TEST_CSRF);
+    }
     let res = router(w).oneshot(req.body(body).unwrap()).await.unwrap();
     let (parts, body) = res.into_parts();
     Answer {

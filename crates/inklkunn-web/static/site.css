@@ -302,3 +302,39 @@ section > p > a, .proposal-list a, .comment a, .discussed a {
   padding-block: 0.15rem;
 }
 .change-links form { display: inline; }
+
+/* The account strip in the banner: who is signed in and the way out, or the way in. Nothing here is told by
+   colour alone. */
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+}
+nav.account ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+}
+nav.account form { display: inline; margin: 0; }
+
+/* The account page: its sections, the lists of sessions and tokens, and a token shown once. */
+.account-section { margin-block-end: 2rem; }
+.account-list { list-style: none; margin: 0 0 1rem; padding: 0; }
+.account-list > li { margin-block-end: 0.75rem; }
+.account-list form { display: inline; }
+.token-once {
+  padding: 0.75rem 1rem;
+  margin-block-end: 1.5rem;
+  border: 2px solid var(--fg);
+  border-radius: 4px;
+}
+.token-once code { display: block; overflow-wrap: anywhere; font-size: 1.05em; }
+.sign-in-form .field, .account-section .field { margin-block-end: 0.75rem; }
+.sign-in-form label, .account-section label { display: block; }
+.problem { font-weight: 600; }

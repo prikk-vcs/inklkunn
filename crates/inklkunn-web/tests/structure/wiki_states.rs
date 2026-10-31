@@ -835,6 +835,10 @@ pub(super) async fn build(extra: &[(&str, &str)], out: &mut Out) {
             for (k, v) in extra.iter().chain(headers) {
                 b = b.header(*k, *v);
             }
+            // A signed-in person's write presents the session's token, as the pages' forms do.
+            if method == "POST" && headers.iter().any(|(k, _)| *k == "x-test-account") {
+                b = b.header(inklkunn_web::CSRF_HEADER, common::TEST_CSRF);
+            }
             b.body(Body::empty()).unwrap()
         };
         for uri in sc.warm {

@@ -19,7 +19,7 @@
 <h2 id="actions">{{ page.get(Key::ActionsHeading) }}</h2>
 <ul class="change-links">
 {% for a in actions %}<li><a href="{{ a.href }}">{{ a.label }}</a></li>
-{% endfor %}{% if let Some(a) = accept %}<li><form method="post" action="{{ a.action }}"><input type="hidden" name="{{ a.revision_name }}" value="{{ a.revision }}"><button type="submit">{{ a.button }}</button></form>{% if let Some(note) = a.note %} <span class="note">{{ note }}</span>{% endif %}</li>
+{% endfor %}{% if let Some(a) = accept %}<li><form method="post" action="{{ a.action }}">{% include "csrf.html" %}<input type="hidden" name="{{ a.revision_name }}" value="{{ a.revision }}"><button type="submit">{{ a.button }}</button></form>{% if let Some(note) = a.note %} <span class="note">{{ note }}</span>{% endif %}</li>
 {% endif %}</ul>
 </section>
 {% endif %}<section aria-labelledby="changes">
@@ -29,6 +29,7 @@
 <h2 id="{{ thread_id }}">{{ thread_heading }}</h2>
 {% if let Some(text) = no_thread %}<p>{{ text }}</p>
 {% endif %}{% for c in thread %}{% include "proposal_comment.html" %}{% endfor %}{% if let Some(f) = comment_form %}<form method="post" action="{{ f.action }}" class="comment-form">
+{% include "csrf.html" %}
 {% for h in f.hidden %}<input type="hidden" name="{{ h.0 }}" value="{{ h.1 }}">
 {% endfor %}{% if let Some(text) = f.about %}<p>{{ text }}</p>
 {% endif %}<div class="field">
@@ -47,6 +48,7 @@
 {% endif %}{% if !d.body.is_empty() %}<p class="comment-body">{{ d.body }}</p>
 {% endif %}</div>
 {% endfor %}{% if let Some(f) = decide %}<form method="post" action="{{ f.action }}" class="decide-form">
+{% include "csrf.html" %}
 <input type="hidden" name="{{ f.revision_name }}" value="{{ f.revision }}">
 <div class="field">
 <label for="decision-body">{{ f.label }}</label>

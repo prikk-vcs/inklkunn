@@ -225,6 +225,35 @@ fn the_read_settings_have_the_defaults_the_design_names_and_named_refusals() {
 }
 
 #[test]
+fn joining_is_off_unless_the_operator_opens_it_and_only_three_words_open_it() {
+    let base = [
+        ("INKLKUNN_APP_ORIGIN", "https://a.example"),
+        ("INKLKUNN_CONTENT_ORIGIN", "https://b.example"),
+    ];
+    let with = |extra: &[(&str, &str)]| {
+        let mut all = base.to_vec();
+        all.extend_from_slice(extra);
+        WebSettings::load(&env(&all))
+    };
+    assert_eq!(with(&[]).unwrap().join, JoinPolicy::Off, "the default");
+    for (word, policy) in [
+        ("off", JoinPolicy::Off),
+        ("provider", JoinPolicy::Provider),
+        ("anyone", JoinPolicy::Anyone),
+    ] {
+        assert_eq!(with(&[("INKLKUNN_JOIN", word)]).unwrap().join, policy);
+    }
+    for bad in ["", "on", "open", "true", "Anyone", "everyone", "off "] {
+        let e = with(&[("INKLKUNN_JOIN", bad)]).unwrap_err().0;
+        assert!(
+            e.contains("INKLKUNN_JOIN") && e.contains("off, provider or anyone"),
+            "{bad:?}: {e}"
+        );
+    }
+    assert!(KNOWN.contains(&"INKLKUNN_JOIN"), "a file may carry it");
+}
+
+#[test]
 fn a_configuration_file_is_name_equals_value_and_a_typo_is_refused() {
     let file = read_file(
         "# a comment\n\nINKLKUNN_DATA_DIR = /var/lib/inklkunn\nINKLKUNN_BIND=0.0.0.0:80\n",

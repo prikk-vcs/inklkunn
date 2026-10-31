@@ -8,6 +8,7 @@
 </div>
 {% endif %}<p>{{ intro }}</p>
 <form method="post" action="{{ action }}" class="proposal-form">
+{% include "csrf.html" %}
 <div class="field">
 <label for="reason">{{ label }}</label>
 <textarea id="reason" name="{{ body_name }}" rows="5" cols="80">

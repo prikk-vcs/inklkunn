@@ -14,17 +14,23 @@
 //! - [`pages`]: the layout, the language page and the notices; the extractor every page handler asks for.
 //! - [`style`]: the one stylesheet, served under a fingerprinted name.
 //! - [`proposals`]: the proposal form, the proposal's page and its review, a page's discussion (RFC 004; handoff 004 T3).
+//! - `signin` and `account`: signing in and out, joining, an invitation, and the account page (the sign-in handoff).
+//! - `csrf`: the one check that every write of a signed-in person carries the session's token (handoff 004 P6).
+//! - [`identity`]: the real `Identify`, over the authenticator.
 //! - [`api`]: the read API under `/{slug}/-/api/v1/` and its OpenAPI description, generated from the route table.
 
+mod account;
 pub mod api;
 pub mod catalog;
 mod changes;
 pub mod config;
+mod csrf;
 mod discover;
 mod feed;
 pub mod headers;
 mod health;
 mod history;
+pub mod identity;
 mod inbox;
 pub mod lang;
 pub mod origin;
@@ -37,6 +43,7 @@ pub mod routes;
 mod search;
 pub mod serve;
 pub mod services;
+mod signin;
 pub mod style;
 mod time;
 mod url;
@@ -47,4 +54,6 @@ mod wiki;
 pub type Site = axum::Router;
 
 pub use config::{ConfigRefusal, Origin, OriginError, Scheme, WebConfig};
-pub use services::{Acceptor, AnonymousOnly, Identify, Services};
+pub use csrf::{FIELD as CSRF_FIELD, HEADER as CSRF_HEADER};
+pub use identity::AuthIdentity;
+pub use services::{Acceptor, AnonymousOnly, Identify, Services, SessionView, WriteIdentity};

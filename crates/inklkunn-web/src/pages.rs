@@ -72,6 +72,10 @@ pub struct Page {
     pub(crate) noindex: bool,
     /// The site's origins, when the page was built for a request.
     pub(crate) origins: Option<std::sync::Arc<crate::discover::Origins>>,
+    /// The person signed in, whom the header names and whose session token every form carries.
+    pub(crate) who: Option<crate::services::SessionView>,
+    /// Is sign-in served here? Then a signed-out visitor is offered *Sign in*, because it leads somewhere.
+    pub(crate) sign_in: bool,
 }
 
 impl Page {
@@ -85,6 +89,8 @@ impl Page {
             head: Vec::new(),
             noindex: false,
             origins: None,
+            who: None,
+            sign_in: false,
         }
     }
 
@@ -140,6 +146,46 @@ impl Page {
         self.noindex
     }
 
+    /// The session's CSRF token, for the hidden field of every form a signed-in person can submit; `None` for a
+    /// visitor with no session (their forms have nothing to carry).
+    pub(crate) fn csrf(&self) -> Option<&str> {
+        self.who.as_ref().map(|w| w.csrf.as_str())
+    }
+
+    /// The name of the hidden field that carries the session's token.
+    pub(crate) fn csrf_field(&self) -> &'static str {
+        crate::csrf::FIELD
+    }
+
+    /// The signed-in person's name, for the header.
+    pub(crate) fn signed_in_as(&self) -> Option<&str> {
+        self.who.as_ref().map(|w| w.display_name.as_str())
+    }
+
+    /// The header's sentence for the person signed in, with their name in it.
+    pub(crate) fn signed_in_line(&self) -> Option<String> {
+        self.signed_in_as()
+            .map(|name| self.t.msg(Key::HeaderSignedIn).with("name", name).text())
+    }
+
+    pub(crate) fn account_path(&self) -> &'static str {
+        crate::account::PATH
+    }
+
+    pub(crate) fn sign_out_path(&self) -> &'static str {
+        crate::signin::SIGN_OUT_PATH
+    }
+
+    /// Where *Sign in* goes: the sign-in page, which returns to the page the visitor is on.
+    pub(crate) fn sign_in_href(&self) -> String {
+        crate::signin::sign_in_href(&self.back)
+    }
+
+    /// Does the header offer *Sign in*: sign-in is served and nobody is signed in.
+    pub(crate) fn offers_sign_in(&self) -> bool {
+        self.sign_in && self.who.is_none()
+    }
+
     pub(crate) fn footer_line(&self) -> String {
         self.t
             .msg(Key::LayoutFooter)
@@ -180,6 +226,18 @@ impl FromRequestParts<PageState> for Page {
         let language = lang::negotiate_from_headers(&parts.headers);
         let mut page = Page::new(T::new(language), &lang::back_for(&parts.method, &parts.uri));
         page.origins = Some(state.origins.clone());
+        if let Some(services) = &state.services {
+            page.sign_in = services.auth.is_some();
+            // Who is signed in is a lookup, so it is made on a blocking thread, and only for a request that
+            // could have a session at all.
+            if services.identity.may_be_signed_in(&parts.headers) {
+                let (services, headers) = (services.clone(), parts.headers.clone());
+                page.who = tokio::task::spawn_blocking(move || services.identity.session(&headers))
+                    .await
+                    .ok()
+                    .flatten();
+            }
+        }
         Ok(page)
     }
 }
@@ -254,6 +312,37 @@ pub(crate) fn render_form_refused(page: &Page) -> Result<String, askama::Error> 
         heading: page.get(Key::FormRefusedHeading),
         body: page.get(Key::FormRefusedBody),
         link: None,
+    }
+    .render()
+}
+
+/// The page for a form whose session token is missing or is not the session's (P6): 403, and the same page
+/// whatever the form was for and whichever wiki it named.
+pub(crate) fn render_form_expired(page: &Page) -> Result<String, askama::Error> {
+    NoticeTpl {
+        page,
+        title: page.title(Key::TitleFormExpired),
+        heading: page.get(Key::FormExpiredHeading),
+        body: page.get(Key::FormExpiredBody),
+        link: None,
+    }
+    .render()
+}
+
+/// A notice made of catalog messages: a title, a heading, a sentence and perhaps one link (`href`, label).
+pub(crate) fn render_notice(
+    page: &Page,
+    title: Key,
+    heading: Key,
+    body: Key,
+    link: Option<(&'static str, String)>,
+) -> Result<String, askama::Error> {
+    NoticeTpl {
+        page,
+        title: page.title(title),
+        heading: page.get(heading),
+        body: page.get(body),
+        link: link.map(|(href, label)| NoticeLink { href, label }),
     }
     .render()
 }
