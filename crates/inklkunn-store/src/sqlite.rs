@@ -32,7 +32,7 @@ use crate::record::{
 use crate::{Result, StoreError, WikiStore};
 
 /// The schema version this build writes and reads: the last of [`MIGRATIONS`].
-pub const SCHEMA_VERSION: i64 = 12;
+pub const SCHEMA_VERSION: i64 = 13;
 
 /// Version 1: M0's schema, the wiki records.
 const V1: &str = "
@@ -598,6 +598,81 @@ WHEN EXISTS (SELECT 1 FROM recovery_act_ends WHERE act_id = NEW.act_id)
 BEGIN SELECT RAISE(ABORT, 'recovery act ends are append-only'); END;
 ";
 
+/// Version 13 (RFC 005 part 2 D-6; handoff K-T4): the derived knowledge index of a tip. Seven tables, all derived
+/// from the claim and source files of the tip's one extract and droppable and rebuildable like the title index
+/// (INV-5): `knowledge_tips` says an index is whole (the number of rows the other tables hold for it), and the
+/// others hold the claims, the sources, the claim-to-claim relations, the claim-to-source links with whether each was
+/// judged on the wording the claim has now, the expressions with what their blocks are now, and the files that
+/// cannot be read. No column is numeric but the counts that say an index is whole, and none holds a score, a rank
+/// or a verdict of truth. Nothing else changes: version 12's tables are kept as they are.
+const V13: &str = "
+CREATE TABLE IF NOT EXISTS knowledge_tips (
+    wiki_id  TEXT NOT NULL,
+    tip      TEXT NOT NULL,
+    row_count INTEGER NOT NULL,
+    built_at INTEGER NOT NULL,
+    PRIMARY KEY (wiki_id, tip)
+);
+CREATE TABLE IF NOT EXISTS knowledge_claims (
+    wiki_id            TEXT NOT NULL,
+    tip                TEXT NOT NULL,
+    id                 TEXT NOT NULL,
+    kind               TEXT NOT NULL,
+    lifecycle          TEXT NOT NULL,
+    standing           TEXT NOT NULL,
+    standing_proposal  TEXT,
+    standing_judgement TEXT NOT NULL,
+    PRIMARY KEY (wiki_id, tip, id)
+);
+CREATE TABLE IF NOT EXISTS knowledge_sources (
+    wiki_id       TEXT NOT NULL,
+    tip           TEXT NOT NULL,
+    id            TEXT NOT NULL,
+    kind          TEXT NOT NULL,
+    availability  TEXT NOT NULL,
+    last_reviewed TEXT,
+    superseded_by TEXT,
+    PRIMARY KEY (wiki_id, tip, id)
+);
+CREATE TABLE IF NOT EXISTS knowledge_relations (
+    wiki_id TEXT NOT NULL,
+    tip     TEXT NOT NULL,
+    claim   TEXT NOT NULL,
+    kind    TEXT NOT NULL,
+    other   TEXT NOT NULL,
+    PRIMARY KEY (wiki_id, tip, claim, kind, other)
+);
+CREATE TABLE IF NOT EXISTS knowledge_links (
+    wiki_id   TEXT NOT NULL,
+    tip       TEXT NOT NULL,
+    claim     TEXT NOT NULL,
+    source    TEXT NOT NULL,
+    relation  TEXT NOT NULL,
+    bearing   TEXT NOT NULL,
+    judgement TEXT NOT NULL,
+    PRIMARY KEY (wiki_id, tip, claim, source)
+);
+CREATE INDEX IF NOT EXISTS knowledge_links_source ON knowledge_links(wiki_id, tip, source);
+CREATE TABLE IF NOT EXISTS knowledge_anchors (
+    wiki_id   TEXT NOT NULL,
+    tip       TEXT NOT NULL,
+    claim     TEXT NOT NULL,
+    page_id   TEXT NOT NULL,
+    block     TEXT NOT NULL,
+    page_path TEXT,
+    state     TEXT NOT NULL,
+    digest    TEXT,
+    PRIMARY KEY (wiki_id, tip, claim, page_id, block)
+);
+CREATE TABLE IF NOT EXISTS knowledge_invalid (
+    wiki_id TEXT NOT NULL,
+    tip     TEXT NOT NULL,
+    path    TEXT NOT NULL,
+    rule    TEXT NOT NULL,
+    PRIMARY KEY (wiki_id, tip, path)
+);
+";
+
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and
 /// [`SCHEMA_VERSION`] moves with it (a test holds the two together).
 pub const MIGRATIONS: &[(i64, &str)] = &[
@@ -613,6 +688,7 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (10, V10),
     (11, V11),
     (12, V12),
+    (13, V13),
 ];
 
 /// The SQLite-backed store.

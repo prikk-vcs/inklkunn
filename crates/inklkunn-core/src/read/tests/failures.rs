@@ -292,6 +292,22 @@ impl DerivedStore for BrokenStore {
     ) -> inklkunn_store::Result<Option<Vec<inklkunn_store::SearchHit>>> {
         Err(StoreError::Backend("down".into()))
     }
+    fn knowledge_index(
+        &self,
+        _: &WikiId,
+        _: &str,
+    ) -> inklkunn_store::Result<Option<inklkunn_store::KnowledgeRows>> {
+        Err(StoreError::Backend("down".into()))
+    }
+    fn put_knowledge_index(
+        &self,
+        _: &WikiId,
+        _: &str,
+        _: &inklkunn_store::KnowledgeRows,
+        _: i64,
+    ) -> inklkunn_store::Result<()> {
+        Err(StoreError::Backend("down".into()))
+    }
     fn first_seen(&self, _: &WikiId, _: &[String], _: i64) -> inklkunn_store::Result<Vec<i64>> {
         Err(StoreError::Backend("down".into()))
     }

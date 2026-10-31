@@ -11,6 +11,7 @@ use std::sync::Arc;
 use inklkunn_store::{IndexEntry, WikiRecord};
 
 use super::{ApiError, Cursor, MAX_PAGE_SIZE, Position, change_key, list_stamp};
+use crate::knowledge::Rule;
 use crate::read::graph::MAX_BACKLINKS;
 use crate::read::{
     Backlink, ChangeFilter, ChangeRow, GraphPage, LinkGraph, Lookup, ReadError, ReadService,
@@ -78,7 +79,7 @@ pub enum BacklinkAnswer {
 
 // ------------------------------------------------------------------------------------ health
 
-/// The six health lists.
+/// The health lists: the six of RFC 003, and the one that RFC 005 part 2 D-5 adds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HealthList {
     /// Titles that links lead to and no page has.
@@ -93,17 +94,21 @@ pub enum HealthList {
     WantsHelp,
     /// Pages that have gone longest without a change.
     Stale,
+    /// Knowledge files (claims and sources) that cannot be read (RFC 005 part 2 D-5): nothing is read from them,
+    /// and the pages are served all the same.
+    KnowledgeFiles,
 }
 
 impl HealthList {
     /// Every list, in the order the pages show them.
-    pub const ALL: [HealthList; 6] = [
+    pub const ALL: [HealthList; 7] = [
         HealthList::Wanted,
         HealthList::Orphans,
         HealthList::DeadEnds,
         HealthList::Redirects,
         HealthList::WantsHelp,
         HealthList::Stale,
+        HealthList::KnowledgeFiles,
     ];
 
     /// The stable word the web address and the API's `list` parameter end with.
@@ -115,6 +120,7 @@ impl HealthList {
             HealthList::Redirects => "redirects",
             HealthList::WantsHelp => "wants-help",
             HealthList::Stale => "stale",
+            HealthList::KnowledgeFiles => "knowledge-files",
         }
     }
 
@@ -139,6 +145,19 @@ pub enum HealthRows {
     WantsHelp(Vec<GraphPage>),
     /// Pages untouched in the changes looked through first, then the oldest touch first.
     Stale(Vec<StalePage>),
+    /// Knowledge files that cannot be read, by path.
+    KnowledgeFiles(Vec<UnreadableKnowledgeFile>),
+}
+
+/// A file under `knowledge/` that cannot be read, and the rule it broke. The path is the repository's, labelled as
+/// one wherever it is shown; nothing the file said is here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnreadableKnowledgeFile {
+    /// The file's repository path.
+    pub path: String,
+    /// The rule it broke. A code this build does not know (written by a newer build) is read as a syntax fault:
+    /// the file is listed all the same.
+    pub rule: Rule,
 }
 
 /// How far the stale list looked.
@@ -273,6 +292,25 @@ impl ReadService {
                 Some(scan),
             ));
         }
+        if list == HealthList::KnowledgeFiles {
+            let knowledge = self.knowledge_index(wiki, view)?;
+            let all: Vec<UnreadableKnowledgeFile> = knowledge
+                .invalid()
+                .iter()
+                .map(|row| UnreadableKnowledgeFile {
+                    path: row.path.clone(),
+                    rule: Rule::from_code(&row.rule).unwrap_or(Rule::Syntax),
+                })
+                .collect();
+            let stamp = list_stamp(&tip.state_id, "health:knowledge-files");
+            let (rows, next) = offset_page(&all, &stamp, after, limit)?;
+            return Ok(page(
+                HealthRows::KnowledgeFiles(rows),
+                all.len(),
+                next,
+                None,
+            ));
+        }
         let graph: Arc<LinkGraph> = self.link_graph(wiki, view)?;
         let stamp = |name: &str| list_stamp(graph.tip(), &format!("health:{name}"));
         let pages =
@@ -298,7 +336,7 @@ impl ReadService {
                 let (rows, next) = offset_page(&all, &stamp("dead-ends"), after, limit)?;
                 (HealthRows::DeadEnds(rows), all.len(), next)
             }
-            HealthList::WantsHelp | HealthList::Stale => {
+            HealthList::WantsHelp | HealthList::Stale | HealthList::KnowledgeFiles => {
                 let all = pages(graph.wants_help());
                 let (rows, next) = offset_page(&all, &stamp("wants-help"), after, limit)?;
                 (HealthRows::WantsHelp(rows), all.len(), next)

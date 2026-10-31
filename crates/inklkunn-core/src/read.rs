@@ -83,11 +83,13 @@ use inklkunn_markup::scan::ScanOptions;
 use inklkunn_markup::{AuthorHtml, Page, ParseError, RenderOptions, render_page_with};
 use inklkunn_prikk::{ExtractBounds, Point, SizeHints, Storage, StorageError};
 use inklkunn_store::{
-    DerivedHeading, DerivedMeta, DerivedPage, DerivedStore, IndexEntry, PageKey, ProposalStore,
-    RootLayout, StoreError, WikiId, WikiRecord, WikiStore,
+    DerivedHeading, DerivedMeta, DerivedPage, DerivedStore, IndexEntry, KnowledgeRows, PageKey,
+    ProposalStore, RootLayout, StoreError, WikiId, WikiRecord, WikiStore,
 };
 
 use links::PageLinks;
+
+use crate::knowledge::index::{self as knowledge_index, KnowledgeIndex};
 
 pub use changes::{
     ChangeFilter, ChangeKind, ChangeList, ChangeRow, ChangedPage, Person, SCAN_WINDOW, StaleList,
@@ -122,7 +124,7 @@ pub use tip::Tip;
 pub use api::{
     ApiError, BacklinkAnswer, BacklinkPage, ChangePage, Cursor, DEFAULT_PAGE_SIZE, Feature,
     HealthList, HealthPage, HealthRows, HistoryAnswer, ListedPage, MAX_PAGE_SIZE, PageFilter,
-    PageList, RawInfo, StaleScan,
+    PageList, RawInfo, StaleScan, UnreadableKnowledgeFile,
 };
 
 /// Plain-data views of what a page carries, as the derived cache keeps them.
@@ -369,6 +371,9 @@ pub struct ReadService {
     refused_builds: Mutex<HashMap<WikiId, (Instant, String, ReadError)>>,
     /// The link graph of a tip, built on demand from one extract (backlinks and the health views), newest last.
     graphs: Mutex<Vec<(WikiId, Arc<LinkGraph>)>>,
+    /// The knowledge index of a tip (RFC 005 part 2 D-6), newest last: built in the same pass over the same extract
+    /// as the title index, or on demand from one when the derived store has the title index and not this.
+    knowledge: Mutex<Vec<(WikiId, Arc<KnowledgeIndex>)>>,
     /// The pages each block touched (`show` is immutable: a block's change never changes), by wiki and block.
     block_pages: Mutex<HashMap<(WikiId, String), Vec<String>>>,
     scratch_names: AtomicU64,
@@ -405,6 +410,7 @@ impl ReadService {
             builds: Mutex::new(HashMap::new()),
             refused_builds: Mutex::new(HashMap::new()),
             graphs: Mutex::new(Vec::new()),
+            knowledge: Mutex::new(Vec::new()),
             block_pages: Mutex::new(HashMap::new()),
             scratch_names: AtomicU64::new(0),
             store_failures: AtomicU64::new(0),
@@ -454,6 +460,10 @@ impl ReadService {
             .unwrap_or_else(PoisonError::into_inner)
             .retain(|(w, _)| *w != wiki.id);
         self.graphs
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .retain(|(w, _)| *w != wiki.id);
+        self.knowledge
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .retain(|(w, _)| *w != wiki.id);
@@ -527,6 +537,105 @@ impl ReadService {
     ) -> Result<Arc<TitleIndex>, ReadError> {
         let tip = self.tip(wiki, view)?;
         self.index_at(wiki, &tip)
+    }
+
+    /// The knowledge index of the view's tip (RFC 005 part 2 D-6): from memory, else from the derived store, else
+    /// built from **one extract of the tip** (when the tip's title index was built, the same pass built this too).
+    pub fn knowledge_index(
+        &self,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+    ) -> Result<Arc<KnowledgeIndex>, ReadError> {
+        let tip = self.tip(wiki, view)?;
+        let titles = self.index_at(wiki, &tip)?;
+        if let Some(k) = self.remembered_knowledge(&wiki.id, &tip.state_id) {
+            return Ok(k);
+        }
+        if let Some(k) = self.stored_knowledge(wiki, &tip) {
+            return Ok(k);
+        }
+        let lock = self.build_lock(&wiki.id);
+        let _building = lock.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(k) = self.remembered_knowledge(&wiki.id, &tip.state_id) {
+            return Ok(k);
+        }
+        if let Some(k) = self.stored_knowledge(wiki, &tip) {
+            return Ok(k);
+        }
+        let rows = self.with_tree(wiki, &tip, |root| {
+            knowledge_index::build(
+                root,
+                titles.entries(),
+                self.config.index_max_files,
+                self.config.page_max_bytes,
+            )
+            .map_err(|e| match e {
+                crate::knowledge::TreeError::Io(e) => ReadError::CouldNotBeReadNow(Cause::Scratch(
+                    format!("reading the extracted knowledge files: {e}"),
+                )),
+                bound => ReadError::CouldNotBeReadNow(Cause::IndexBounds(bound.to_string())),
+            })
+        })?;
+        Ok(self.keep_knowledge(wiki, &tip, rows))
+    }
+
+    /// Store a built knowledge index and hold it in memory.
+    fn keep_knowledge(
+        &self,
+        wiki: &WikiRecord,
+        tip: &Tip,
+        rows: KnowledgeRows,
+    ) -> Arc<KnowledgeIndex> {
+        if self
+            .derived
+            .put_knowledge_index(
+                &wiki.id,
+                &tip.state_id,
+                &rows,
+                inklkunn_store::record::now_secs(),
+            )
+            .is_err()
+        {
+            self.store_failures.fetch_add(1, Ordering::Relaxed);
+        }
+        self.hold_knowledge(&wiki.id, KnowledgeIndex::new(tip.state_id.clone(), rows))
+    }
+
+    /// Hold a knowledge index in memory (the newest [`MAX_MEMORY_INDEXES`] over all wikis).
+    fn hold_knowledge(&self, wiki: &WikiId, index: KnowledgeIndex) -> Arc<KnowledgeIndex> {
+        let index = Arc::new(index);
+        let mut held = self
+            .knowledge
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        held.retain(|(w, k)| !(w == wiki && k.tip() == index.tip()));
+        held.push((wiki.clone(), Arc::clone(&index)));
+        let excess = held.len().saturating_sub(MAX_MEMORY_INDEXES);
+        held.drain(..excess);
+        index
+    }
+
+    fn remembered_knowledge(&self, wiki: &WikiId, tip: &str) -> Option<Arc<KnowledgeIndex>> {
+        self.knowledge
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .find(|(w, k)| w == wiki && k.tip() == tip)
+            .map(|(_, k)| Arc::clone(k))
+    }
+
+    /// The knowledge index the derived store has for the tip, put in memory. A store that cannot answer is a miss.
+    fn stored_knowledge(&self, wiki: &WikiRecord, tip: &Tip) -> Option<Arc<KnowledgeIndex>> {
+        match self.derived.knowledge_index(&wiki.id, &tip.state_id) {
+            Ok(Some(rows)) => {
+                Some(self.hold_knowledge(&wiki.id, KnowledgeIndex::new(tip.state_id.clone(), rows)))
+            }
+            Ok(None) => None,
+            Err(_) => {
+                self.store_failures.fetch_add(1, Ordering::Relaxed);
+                None
+            }
+        }
     }
 
     /// Where `title` leads at the view's tip, without reading the page.
@@ -777,13 +886,18 @@ impl ReadService {
         if let Some(refusal) = self.recently_refused(&wiki.id, &tip.state_id) {
             return Err(refusal);
         }
-        let entries = match self.build_entries(wiki, tip) {
-            Ok(entries) => entries,
+        let (entries, knowledge) = match self.build_entries(wiki, tip) {
+            Ok(built) => built,
             Err(e) => {
                 self.note_refusal(&wiki.id, &tip.state_id, &e);
                 return Err(e);
             }
         };
+        // The knowledge index came out of the same extract. One that could not be built (the bounds) costs the
+        // knowledge views and never a page: it is asked for again, and refused again, by `knowledge_index`.
+        if let Some(rows) = knowledge {
+            self.keep_knowledge(wiki, tip, rows);
+        }
         if self
             .derived
             .put_title_index(
@@ -882,19 +996,37 @@ impl ReadService {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .retain(|(w, ix)| *w != wiki.id || keep.iter().any(|t| t == ix.tip()));
+        self.knowledge
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .retain(|(w, k)| *w != wiki.id || keep.iter().any(|t| t == k.tip()));
     }
 
-    /// One `extract` of the tip into the wiki's scratch directory, read, and the directory removed.
-    fn build_entries(&self, wiki: &WikiRecord, tip: &Tip) -> Result<Vec<IndexEntry>, ReadError> {
+    /// One `extract` of the tip into the wiki's scratch directory, read, and the directory removed: the title
+    /// index's entries and, from the same tree, the knowledge index's rows (`None` when they could not be read).
+    fn build_entries(
+        &self,
+        wiki: &WikiRecord,
+        tip: &Tip,
+    ) -> Result<(Vec<IndexEntry>, Option<KnowledgeRows>), ReadError> {
         self.with_tree(wiki, tip, |root| {
-            entries_from_tree(root, self.config.index_max_files).map_err(|e| match e {
-                TreeError::TooManyEntries(n) => ReadError::CouldNotBeReadNow(Cause::IndexBounds(
-                    format!("more than {n} entries under `pages/`"),
-                )),
-                TreeError::Io(e) => ReadError::CouldNotBeReadNow(Cause::Scratch(format!(
-                    "reading the extracted tree: {e}"
-                ))),
-            })
+            let entries =
+                entries_from_tree(root, self.config.index_max_files).map_err(|e| match e {
+                    TreeError::TooManyEntries(n) => ReadError::CouldNotBeReadNow(
+                        Cause::IndexBounds(format!("more than {n} entries under `pages/`")),
+                    ),
+                    TreeError::Io(e) => ReadError::CouldNotBeReadNow(Cause::Scratch(format!(
+                        "reading the extracted tree: {e}"
+                    ))),
+                })?;
+            let knowledge = knowledge_index::build(
+                root,
+                &entries,
+                self.config.index_max_files,
+                self.config.page_max_bytes,
+            )
+            .ok();
+            Ok((entries, knowledge))
         })
     }
 
@@ -944,6 +1076,25 @@ impl ReadService {
         // build; what was read is good.
         remove_tree(&scratch.join(&name));
         result
+    }
+
+    /// Run `work` over one extract of the block `block_id` of the wiki (not necessarily the tip this service holds:
+    /// the acceptance judges the tip it has just read), under the wiki's build lock so that it never meets another
+    /// extract of the wiki in the scratch directory.
+    pub(crate) fn with_block_tree<R>(
+        &self,
+        wiki: &WikiRecord,
+        block_id: &str,
+        work: impl FnOnce(&Path, &ReadConfig) -> R,
+    ) -> Result<R, ReadError> {
+        let lock = self.build_lock(&wiki.id);
+        let _building = lock.lock().unwrap_or_else(PoisonError::into_inner);
+        let at = Tip {
+            view: String::new(),
+            state_id: String::new(),
+            block_id: block_id.to_owned(),
+        };
+        self.with_tree(wiki, &at, |root| Ok(work(root, &self.config)))
     }
 
     // ------------------------------------------------------------------------------------ errors

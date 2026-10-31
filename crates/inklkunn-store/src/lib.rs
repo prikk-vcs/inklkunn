@@ -51,8 +51,10 @@ pub use audit::{
     AuditEvent, AuditLog, AuditOutcome, AuditRecord, AuditSink, MemoryAudit, export_jsonl,
 };
 pub use derived::{
-    DerivedHeading, DerivedLinks, DerivedMeta, DerivedPage, DerivedStore, IndexEntry, PageKey,
-    SearchDoc, SearchHit, SearchKind,
+    DerivedHeading, DerivedLinks, DerivedMeta, DerivedPage, DerivedStore, IndexEntry,
+    KnowledgeAnchorRow, KnowledgeClaimRow, KnowledgeInvalidRow, KnowledgeLinkRow,
+    KnowledgeRelationRow, KnowledgeRows, KnowledgeSourceRow, PageKey, SearchDoc, SearchHit,
+    SearchKind,
 };
 pub use identity::{
     Account, AccountStore, ExternalIdentity, ExternalIdentityError, LocalCredential, LoginName,

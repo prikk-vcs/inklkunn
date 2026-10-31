@@ -173,6 +173,137 @@ pub struct SearchHit {
     pub text: String,
 }
 
+/// A claim in the derived knowledge index of a tip (RFC 005 part 2 D-6). Words are the knowledge format's own
+/// (`kind`, `lifecycle`, `standing`); the store keeps them as text and judges none of them. **Nothing numeric and
+/// nothing that ranks**: the columns are the claim's own words and where its judgements stand.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct KnowledgeClaimRow {
+    /// The claim's id (the file's name).
+    pub id: String,
+    /// What kind of statement.
+    pub kind: String,
+    /// Where it stands in its life.
+    pub lifecycle: String,
+    /// What the community has decided.
+    pub standing: String,
+    /// The proposal that decided it, when one did.
+    pub standing_proposal: Option<String>,
+    /// Whether the standing was judged on the wording the claim has now: `current`, `earlier` or `none`.
+    pub standing_judgement: String,
+}
+
+/// A source in the derived knowledge index.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct KnowledgeSourceRow {
+    /// The source's id.
+    pub id: String,
+    /// What kind of source.
+    pub kind: String,
+    /// Whether it can be had, as a person who checked says.
+    pub availability: String,
+    /// The day a person last checked it, as written, when one did.
+    pub last_reviewed: Option<String>,
+    /// The source that replaces it.
+    pub superseded_by: Option<String>,
+}
+
+/// A claim's relation to another claim.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct KnowledgeRelationRow {
+    /// The claim.
+    pub claim: String,
+    /// `refines`, `supersedes`, …
+    pub kind: String,
+    /// The other claim.
+    pub other: String,
+}
+
+/// A claim's relation to a source, and whether it was judged on the claim's wording as it is now.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct KnowledgeLinkRow {
+    /// The claim.
+    pub claim: String,
+    /// The source.
+    pub source: String,
+    /// `supports` or `challenges`.
+    pub relation: String,
+    /// `direct`, `partial` or `indirect`: how directly, never how true.
+    pub bearing: String,
+    /// `current` when the digest it was judged on is the digest of an expression's text now, else `earlier`.
+    pub judgement: String,
+}
+
+/// Where a claim is said, and what the block is now.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct KnowledgeAnchorRow {
+    /// The claim.
+    pub claim: String,
+    /// The page's id as the expression names it.
+    pub page_id: String,
+    /// The block's `^id`.
+    pub block: String,
+    /// The page's path at the tip, when exactly one page has the id.
+    pub page_path: Option<String>,
+    /// `present`, `page-missing`, `page-repeated`, `block-missing` or `block-repeated`.
+    pub state: String,
+    /// The digest of the block's text now, when `present`.
+    pub digest: Option<String>,
+}
+
+/// A file under `knowledge/` that cannot be read as a claim or a source.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct KnowledgeInvalidRow {
+    /// The file's repository path.
+    pub path: String,
+    /// The stable code of the rule it broke.
+    pub rule: String,
+}
+
+/// The derived knowledge index of one tip, as the store keeps it (all of it or none).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct KnowledgeRows {
+    /// The readable claims, by id.
+    pub claims: Vec<KnowledgeClaimRow>,
+    /// The readable sources, by id.
+    pub sources: Vec<KnowledgeSourceRow>,
+    /// Claim to claim.
+    pub relations: Vec<KnowledgeRelationRow>,
+    /// Claim to source.
+    pub links: Vec<KnowledgeLinkRow>,
+    /// Where each claim is said.
+    pub anchors: Vec<KnowledgeAnchorRow>,
+    /// The files that cannot be read, by path.
+    pub invalid: Vec<KnowledgeInvalidRow>,
+}
+
+impl KnowledgeRows {
+    /// Every list in its one order (the order the stores read back in).
+    pub fn sorted(mut self) -> Self {
+        self.claims.sort();
+        self.sources.sort();
+        self.relations.sort();
+        self.links.sort();
+        self.anchors.sort();
+        self.invalid.sort();
+        self
+    }
+
+    /// How many rows there are in all.
+    pub fn len(&self) -> usize {
+        self.claims.len()
+            + self.sources.len()
+            + self.relations.len()
+            + self.links.len()
+            + self.anchors.len()
+            + self.invalid.len()
+    }
+
+    /// Is there nothing at all?
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
 /// The derived cache. Every implementation passes the same invariant tests (`tests/derived.rs`).
 ///
 /// **A row that cannot be read back is a miss**, never an error and never a made-up value: the cache is
@@ -194,7 +325,7 @@ pub trait DerivedStore: Send + Sync {
         built_at: i64,
     ) -> Result<()>;
     /// Drop everything cached for `wiki` at any tip **not** in `keep`; how many cached items went (a page
-    /// counts once and so does a whole index). Called after a tip moves, with the tips every view of the
+    /// counts once and so does a whole index; the knowledge index counts once too). Called after a tip moves, with the tips every view of the
     /// wiki has now, so the cache holds the present and not the past.
     fn retain_tips(&self, wiki: &WikiId, keep: &[String]) -> Result<u64>;
     /// Drop everything cached for `wiki` (the derived store cleared, ENF-5); how many cached items went,
@@ -221,6 +352,19 @@ pub trait DerivedStore: Send + Sync {
         folded_query: &str,
         limit: usize,
     ) -> Result<Option<Vec<SearchHit>>>;
+
+    /// The derived knowledge index of `wiki` at `tip` (schema version 13), if it was stored complete. Built from
+    /// the same extract of the tip as the title index and dropped and rebuilt the same way; never a source of truth.
+    fn knowledge_index(&self, wiki: &WikiId, tip: &str) -> Result<Option<KnowledgeRows>>;
+    /// Store the complete knowledge index of `wiki` at `tip`, replacing what was there. It becomes visible all at
+    /// once: a reader sees all of it or none.
+    fn put_knowledge_index(
+        &self,
+        wiki: &WikiId,
+        tip: &str,
+        rows: &KnowledgeRows,
+        built_at: i64,
+    ) -> Result<()>;
 
     /// When this service first saw each block of `wiki`, in Unix seconds, in the order asked: a block not
     /// seen before is recorded as seen at `now`. **An observation, not a fact about the change**: prikk's

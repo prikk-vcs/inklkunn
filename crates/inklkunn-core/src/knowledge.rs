@@ -19,11 +19,14 @@
 //!   title index and the link graph.
 
 mod anchor;
+pub mod check;
 mod claim;
 mod fault;
+pub mod index;
 mod model;
 mod path;
 mod source;
+mod tree;
 mod yaml;
 
 pub use anchor::{AnchorState, anchor_state};
@@ -37,6 +40,7 @@ pub use path::{
     CLAIMS_DIR, Family, File, KNOWLEDGE_DIR, MAX_FILE_BYTES, SOURCES_DIR, claim_path, family_of,
     is_knowledge_path, read_file, source_path,
 };
+pub use tree::{MAX_TREE_BYTES, TreeError, TreeFile, list_tree, read_head, read_tree};
 pub use yaml::{MAX_EXPRESSIONS, MAX_LINKS, MAX_TEXT_CHARS};
 
 #[cfg(test)]

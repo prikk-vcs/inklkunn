@@ -6,7 +6,9 @@ use rusqlite::{OptionalExtension, Row, TransactionBehavior, params};
 use super::{SqliteStore, backend};
 use crate::Result;
 use crate::derived::{
-    DerivedPage, DerivedStore, IndexEntry, PageKey, SearchDoc, SearchHit, SearchKind,
+    DerivedPage, DerivedStore, IndexEntry, KnowledgeAnchorRow, KnowledgeClaimRow,
+    KnowledgeInvalidRow, KnowledgeLinkRow, KnowledgeRelationRow, KnowledgeRows, KnowledgeSourceRow,
+    PageKey, SearchDoc, SearchHit, SearchKind,
 };
 use crate::record::WikiId;
 
@@ -233,6 +235,7 @@ impl DerivedStore for SqliteStore {
                 "SELECT DISTINCT tip FROM derived_pages WHERE wiki_id = ?1",
                 "SELECT tip FROM title_index_tips WHERE wiki_id = ?1",
                 "SELECT tip FROM search_tips WHERE wiki_id = ?1",
+                "SELECT tip FROM knowledge_tips WHERE wiki_id = ?1",
             ] {
                 let mut stmt = tx.prepare(sql).map_err(backend)?;
                 let tips = stmt
@@ -277,8 +280,9 @@ impl DerivedStore for SqliteStore {
                 )
                 .map_err(backend)?;
             let searches = delete_search(&tx, wiki, None)?;
+            let knowledge = delete_knowledge(&tx, wiki, None)?;
             tx.commit().map_err(backend)?;
-            Ok(u64::try_from(pages + indexes + searches).unwrap_or(u64::MAX))
+            Ok(u64::try_from(pages + indexes + searches + knowledge).unwrap_or(u64::MAX))
         })
     }
 
@@ -379,6 +383,119 @@ impl DerivedStore for SqliteStore {
                 )?
             };
             Ok(Some(hits))
+        })
+    }
+
+    fn knowledge_index(&self, wiki: &WikiId, tip: &str) -> Result<Option<KnowledgeRows>> {
+        self.with(|conn| {
+            let expected: Option<i64> = conn
+                .query_row(
+                    "SELECT row_count FROM knowledge_tips WHERE wiki_id = ?1 AND tip = ?2",
+                    params![wiki.as_str(), tip],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(backend)?;
+            let Some(expected) = expected else {
+                return Ok(None);
+            };
+            let rows = read_knowledge(conn, wiki, tip)?;
+            // The tip row is written last, in the same transaction as the rows: a count that disagrees means a
+            // table was altered, and an index that is not whole is a miss.
+            Ok((i64::try_from(rows.len()).ok() == Some(expected)).then_some(rows))
+        })
+    }
+
+    fn put_knowledge_index(
+        &self,
+        wiki: &WikiId,
+        tip: &str,
+        rows: &KnowledgeRows,
+        built_at: i64,
+    ) -> Result<()> {
+        self.with(|conn| {
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(backend)?;
+            delete_knowledge(&tx, wiki, Some(tip))?;
+            let (w, t) = (wiki.as_str(), tip);
+            for c in &rows.claims {
+                tx.execute(
+                    "INSERT OR REPLACE INTO knowledge_claims \
+                     (wiki_id, tip, id, kind, lifecycle, standing, standing_proposal, standing_judgement) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    params![
+                        w,
+                        t,
+                        c.id,
+                        c.kind,
+                        c.lifecycle,
+                        c.standing,
+                        c.standing_proposal,
+                        c.standing_judgement
+                    ],
+                )
+                .map_err(backend)?;
+            }
+            for s in &rows.sources {
+                tx.execute(
+                    "INSERT OR REPLACE INTO knowledge_sources \
+                     (wiki_id, tip, id, kind, availability, last_reviewed, superseded_by) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![
+                        w,
+                        t,
+                        s.id,
+                        s.kind,
+                        s.availability,
+                        s.last_reviewed,
+                        s.superseded_by
+                    ],
+                )
+                .map_err(backend)?;
+            }
+            for r in &rows.relations {
+                tx.execute(
+                    "INSERT OR REPLACE INTO knowledge_relations (wiki_id, tip, claim, kind, other) \
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![w, t, r.claim, r.kind, r.other],
+                )
+                .map_err(backend)?;
+            }
+            for l in &rows.links {
+                tx.execute(
+                    "INSERT OR REPLACE INTO knowledge_links \
+                     (wiki_id, tip, claim, source, relation, bearing, judgement) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![w, t, l.claim, l.source, l.relation, l.bearing, l.judgement],
+                )
+                .map_err(backend)?;
+            }
+            for a in &rows.anchors {
+                tx.execute(
+                    "INSERT OR REPLACE INTO knowledge_anchors \
+                     (wiki_id, tip, claim, page_id, block, page_path, state, digest) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    params![w, t, a.claim, a.page_id, a.block, a.page_path, a.state, a.digest],
+                )
+                .map_err(backend)?;
+            }
+            for i in &rows.invalid {
+                tx.execute(
+                    "INSERT OR REPLACE INTO knowledge_invalid (wiki_id, tip, path, rule) \
+                     VALUES (?1, ?2, ?3, ?4)",
+                    params![w, t, i.path, i.rule],
+                )
+                .map_err(backend)?;
+            }
+            // `INSERT OR REPLACE` keeps one row per key, so the count is of the rows that landed.
+            let landed = count_knowledge(&tx, wiki, tip)?;
+            tx.execute(
+                "INSERT INTO knowledge_tips (wiki_id, tip, row_count, built_at) VALUES (?1, ?2, ?3, ?4)",
+                params![w, t, landed, built_at],
+            )
+            .map_err(backend)?;
+            tx.commit().map_err(backend)
         })
     }
 
@@ -507,7 +624,189 @@ fn delete_tip(tx: &rusqlite::Transaction<'_>, wiki: &WikiId, tip: &str) -> Resul
         )
         .map_err(backend)?;
     let searches = delete_search(tx, wiki, Some(tip))?;
-    Ok(u64::try_from(pages + indexes + searches).unwrap_or(u64::MAX))
+    let knowledge = delete_knowledge(tx, wiki, Some(tip))?;
+    Ok(u64::try_from(pages + indexes + searches + knowledge).unwrap_or(u64::MAX))
+}
+
+/// The tables of the knowledge index (all but the tips row).
+const KNOWLEDGE_TABLES: [&str; 6] = [
+    "knowledge_claims",
+    "knowledge_sources",
+    "knowledge_relations",
+    "knowledge_links",
+    "knowledge_anchors",
+    "knowledge_invalid",
+];
+
+/// Drop the knowledge index of one tip (`Some`) or of every tip (`None`) of a wiki; how many indexes went.
+fn delete_knowledge(
+    tx: &rusqlite::Transaction<'_>,
+    wiki: &WikiId,
+    tip: Option<&str>,
+) -> Result<usize> {
+    for table in KNOWLEDGE_TABLES {
+        match tip {
+            Some(tip) => tx.execute(
+                &format!("DELETE FROM {table} WHERE wiki_id = ?1 AND tip = ?2"),
+                params![wiki.as_str(), tip],
+            ),
+            None => tx.execute(
+                &format!("DELETE FROM {table} WHERE wiki_id = ?1"),
+                params![wiki.as_str()],
+            ),
+        }
+        .map_err(backend)?;
+    }
+    match tip {
+        Some(tip) => tx.execute(
+            "DELETE FROM knowledge_tips WHERE wiki_id = ?1 AND tip = ?2",
+            params![wiki.as_str(), tip],
+        ),
+        None => tx.execute(
+            "DELETE FROM knowledge_tips WHERE wiki_id = ?1",
+            params![wiki.as_str()],
+        ),
+    }
+    .map_err(backend)
+}
+
+/// How many rows the tables hold for the tip.
+fn count_knowledge(conn: &rusqlite::Connection, wiki: &WikiId, tip: &str) -> Result<i64> {
+    let mut total = 0;
+    for table in KNOWLEDGE_TABLES {
+        let n: i64 = conn
+            .query_row(
+                &format!("SELECT COUNT(*) FROM {table} WHERE wiki_id = ?1 AND tip = ?2"),
+                params![wiki.as_str(), tip],
+                |r| r.get(0),
+            )
+            .map_err(backend)?;
+        total += n;
+    }
+    Ok(total)
+}
+
+/// The rows of a tip's knowledge index, each table in its key order.
+fn read_knowledge(conn: &rusqlite::Connection, wiki: &WikiId, tip: &str) -> Result<KnowledgeRows> {
+    let (w, t) = (wiki.as_str(), tip);
+    let mut rows = KnowledgeRows::default();
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, kind, lifecycle, standing, standing_proposal, standing_judgement \
+             FROM knowledge_claims WHERE wiki_id = ?1 AND tip = ?2 ORDER BY id",
+        )
+        .map_err(backend)?;
+    for row in stmt
+        .query_map(params![w, t], |r| {
+            Ok(KnowledgeClaimRow {
+                id: r.get(0)?,
+                kind: r.get(1)?,
+                lifecycle: r.get(2)?,
+                standing: r.get(3)?,
+                standing_proposal: r.get(4)?,
+                standing_judgement: r.get(5)?,
+            })
+        })
+        .map_err(backend)?
+    {
+        rows.claims.push(row.map_err(backend)?);
+    }
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, kind, availability, last_reviewed, superseded_by \
+             FROM knowledge_sources WHERE wiki_id = ?1 AND tip = ?2 ORDER BY id",
+        )
+        .map_err(backend)?;
+    for row in stmt
+        .query_map(params![w, t], |r| {
+            Ok(KnowledgeSourceRow {
+                id: r.get(0)?,
+                kind: r.get(1)?,
+                availability: r.get(2)?,
+                last_reviewed: r.get(3)?,
+                superseded_by: r.get(4)?,
+            })
+        })
+        .map_err(backend)?
+    {
+        rows.sources.push(row.map_err(backend)?);
+    }
+    let mut stmt = conn
+        .prepare(
+            "SELECT claim, kind, other FROM knowledge_relations \
+             WHERE wiki_id = ?1 AND tip = ?2 ORDER BY claim, kind, other",
+        )
+        .map_err(backend)?;
+    for row in stmt
+        .query_map(params![w, t], |r| {
+            Ok(KnowledgeRelationRow {
+                claim: r.get(0)?,
+                kind: r.get(1)?,
+                other: r.get(2)?,
+            })
+        })
+        .map_err(backend)?
+    {
+        rows.relations.push(row.map_err(backend)?);
+    }
+    let mut stmt = conn
+        .prepare(
+            "SELECT claim, source, relation, bearing, judgement FROM knowledge_links \
+             WHERE wiki_id = ?1 AND tip = ?2 ORDER BY claim, source",
+        )
+        .map_err(backend)?;
+    for row in stmt
+        .query_map(params![w, t], |r| {
+            Ok(KnowledgeLinkRow {
+                claim: r.get(0)?,
+                source: r.get(1)?,
+                relation: r.get(2)?,
+                bearing: r.get(3)?,
+                judgement: r.get(4)?,
+            })
+        })
+        .map_err(backend)?
+    {
+        rows.links.push(row.map_err(backend)?);
+    }
+    let mut stmt = conn
+        .prepare(
+            "SELECT claim, page_id, block, page_path, state, digest FROM knowledge_anchors \
+             WHERE wiki_id = ?1 AND tip = ?2 ORDER BY claim, page_id, block",
+        )
+        .map_err(backend)?;
+    for row in stmt
+        .query_map(params![w, t], |r| {
+            Ok(KnowledgeAnchorRow {
+                claim: r.get(0)?,
+                page_id: r.get(1)?,
+                block: r.get(2)?,
+                page_path: r.get(3)?,
+                state: r.get(4)?,
+                digest: r.get(5)?,
+            })
+        })
+        .map_err(backend)?
+    {
+        rows.anchors.push(row.map_err(backend)?);
+    }
+    let mut stmt = conn
+        .prepare(
+            "SELECT path, rule FROM knowledge_invalid WHERE wiki_id = ?1 AND tip = ?2 ORDER BY path",
+        )
+        .map_err(backend)?;
+    for row in stmt
+        .query_map(params![w, t], |r| {
+            Ok(KnowledgeInvalidRow {
+                path: r.get(0)?,
+                rule: r.get(1)?,
+            })
+        })
+        .map_err(backend)?
+    {
+        rows.invalid.push(row.map_err(backend)?);
+    }
+    Ok(rows)
 }
 
 fn backend_text(what: &str) -> crate::StoreError {

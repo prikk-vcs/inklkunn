@@ -36,9 +36,11 @@
 //!
 //! **The words** (D-12) are fixed keys, never prikk's text and never a path: [`words`].
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use inklkunn_prikk::Storage;
+use inklkunn_signer::PreparedFile;
 use inklkunn_signer::accept::{
     Accept, AcceptError, AcceptanceToken, PreparedChange, SealedChange, Unconfirmed,
 };
@@ -51,6 +53,7 @@ use inklkunn_store::{
 };
 
 use crate::authorize::Principal;
+use crate::knowledge::check::Refusal as KnowledgeRefusal;
 use crate::lease::{Busy, BusyWhy, Lease, LeaseError, Purpose, WikiLeases};
 use crate::notify::Notifier;
 use crate::proposal::{ProposalError, ProposalService, QuotaLimit, QuotaRefusal, Reset, machine};
@@ -105,6 +108,9 @@ pub mod words {
     pub const INTERRUPTED: &str = "interrupted";
     /// The tip already has everything the revision asks for.
     pub const NOTHING_TO_CHANGE: &str = "nothing-to-change";
+    /// A knowledge file the change writes, or leaves broken, is refused before the signer is asked (RFC 005 part 2
+    /// D-5); the files and rules are in the refusal.
+    pub const KNOWLEDGE_INVALID: &str = "knowledge-invalid";
 }
 
 /// What a proposal's change is recorded as: the message's `Kind`. A rollback is a proposal that was created as
@@ -281,6 +287,10 @@ pub enum AcceptFailure {
     },
     /// The tip already has everything the revision asks for. Nothing was done.
     NothingToChange,
+    /// A knowledge file (a claim or a source) the change writes is not sound, or the change leaves one broken
+    /// (RFC 005 part 2 D-5): each is named with the rule it breaks and never with what it said. Refused **before the
+    /// signer was asked**; nothing in prikk changed and the proposal stays open.
+    KnowledgeInvalid(Vec<KnowledgeRefusal>),
     /// Failed **before `commit`**: nothing in prikk changed, the acceptance is recorded as failed with `word`,
     /// and the proposal stays open.
     Failed {
@@ -324,6 +334,7 @@ impl AcceptFailure {
             }
             AcceptFailure::Overlap { .. } => words::OVERLAP,
             AcceptFailure::NothingToChange => words::NOTHING_TO_CHANGE,
+            AcceptFailure::KnowledgeInvalid(_) => words::KNOWLEDGE_INVALID,
             AcceptFailure::Failed { word, .. } => word,
             AcceptFailure::Proposal(_)
             | AcceptFailure::InProgress { .. }
@@ -359,6 +370,17 @@ impl std::fmt::Display for AcceptFailure {
                 write!(f, "stopped: changes overlap ({overlaps} place(s))")
             }
             AcceptFailure::NothingToChange => write!(f, "the tip already has these changes"),
+            AcceptFailure::KnowledgeInvalid(refusals) => {
+                write!(
+                    f,
+                    "refused: {} knowledge file(s) are not sound",
+                    refusals.len()
+                )?;
+                for r in refusals {
+                    write!(f, "; {r}")?;
+                }
+                Ok(())
+            }
             AcceptFailure::Failed {
                 word,
                 detail,
@@ -744,6 +766,32 @@ impl ProposalAcceptor {
         })
     }
 
+    /// Judge the knowledge files the change writes, and those it leaves behind (RFC 005 part 2 D-5).
+    fn check_knowledge(
+        &self,
+        wiki: &WikiRecord,
+        repo: &std::path::Path,
+        tip: &str,
+        files: &[PreparedFile],
+        renames: &[(PathBuf, PathBuf)],
+    ) -> Result<(), AcceptFailure> {
+        let refusals = crate::knowledge::check::check_change(
+            &self.parts.reads,
+            &*self.parts.storage,
+            repo,
+            wiki,
+            tip,
+            files,
+            renames,
+        )
+        .map_err(|e| AcceptFailure::Unavailable(e.to_string()))?;
+        if refusals.is_empty() {
+            Ok(())
+        } else {
+            Err(AcceptFailure::KnowledgeInvalid(refusals))
+        }
+    }
+
     /// The view's tip block, read now.
     fn tip_block(&self, wiki: &WikiRecord, view: &str) -> Result<String, AcceptFailure> {
         let repo = self.parts.layout.repo_dir(&wiki.id);
@@ -862,6 +910,8 @@ impl ProposalAcceptor {
                 reauthored,
             } => (files, renames, reauthored),
         };
+        // RFC 005 part 2 D-5: the knowledge files are judged before the signer is asked.
+        self.check_knowledge(wiki, &repo, &tip, &files, &renames)?;
         self.observe(AcceptStep::Prepared);
         // CM-5: the blocks the proposal's comments are about carry their ids into the history.
         let comments = self.parts.proposals.comments(principal, wiki, id)?;

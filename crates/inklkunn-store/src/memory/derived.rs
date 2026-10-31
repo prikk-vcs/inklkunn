@@ -4,7 +4,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::PoisonError;
 
 use crate::Result;
-use crate::derived::{DerivedPage, DerivedStore, IndexEntry, PageKey, SearchDoc, SearchHit};
+use crate::derived::{
+    DerivedPage, DerivedStore, IndexEntry, KnowledgeRows, PageKey, SearchDoc, SearchHit,
+};
 use crate::record::WikiId;
 
 use super::MemoryStore;
@@ -20,6 +22,8 @@ pub(super) struct Derived {
     indexes: HashMap<(WikiId, String), BTreeMap<String, IndexEntry>>,
     /// `(wiki, tip)` → the complete search index, in the order stored.
     searches: HashMap<(WikiId, String), Vec<SearchDoc>>,
+    /// `(wiki, tip)` → the complete knowledge index.
+    knowledge: HashMap<(WikiId, String), KnowledgeRows>,
     /// `(wiki, block)` → when the block was first seen. Kept when the cache is cleared.
     seen: HashMap<(WikiId, String), i64>,
 }
@@ -78,21 +82,27 @@ impl DerivedStore for MemoryStore {
     fn retain_tips(&self, wiki: &WikiId, keep: &[String]) -> Result<u64> {
         let mut d = self.derived();
         let keeps = |tip: &String| keep.contains(tip);
-        let before = d.pages.len() + d.indexes.len() + d.searches.len();
+        let count =
+            |d: &Derived| d.pages.len() + d.indexes.len() + d.searches.len() + d.knowledge.len();
+        let before = count(&d);
         d.pages.retain(|(w, tip, ..), _| w != wiki || keeps(tip));
         d.indexes.retain(|(w, tip), _| w != wiki || keeps(tip));
         d.searches.retain(|(w, tip), _| w != wiki || keeps(tip));
-        let removed = before - (d.pages.len() + d.indexes.len() + d.searches.len());
+        d.knowledge.retain(|(w, tip), _| w != wiki || keeps(tip));
+        let removed = before - count(&d);
         Ok(u64::try_from(removed).unwrap_or(u64::MAX))
     }
 
     fn clear(&self, wiki: &WikiId) -> Result<u64> {
         let mut d = self.derived();
-        let before = d.pages.len() + d.indexes.len() + d.searches.len();
+        let count =
+            |d: &Derived| d.pages.len() + d.indexes.len() + d.searches.len() + d.knowledge.len();
+        let before = count(&d);
         d.pages.retain(|(w, ..), _| w != wiki);
         d.indexes.retain(|(w, _), _| w != wiki);
         d.searches.retain(|(w, _), _| w != wiki);
-        let removed = before - (d.pages.len() + d.indexes.len() + d.searches.len());
+        d.knowledge.retain(|(w, _), _| w != wiki);
+        let removed = before - count(&d);
         Ok(u64::try_from(removed).unwrap_or(u64::MAX))
     }
 
@@ -131,6 +141,27 @@ impl DerivedStore for MemoryStore {
                     })
                     .collect()
             }))
+    }
+
+    fn knowledge_index(&self, wiki: &WikiId, tip: &str) -> Result<Option<KnowledgeRows>> {
+        Ok(self
+            .derived()
+            .knowledge
+            .get(&(wiki.clone(), tip.to_owned()))
+            .cloned())
+    }
+
+    fn put_knowledge_index(
+        &self,
+        wiki: &WikiId,
+        tip: &str,
+        rows: &KnowledgeRows,
+        _built_at: i64,
+    ) -> Result<()> {
+        self.derived()
+            .knowledge
+            .insert((wiki.clone(), tip.to_owned()), rows.clone().sorted());
+        Ok(())
     }
 
     fn first_seen(&self, wiki: &WikiId, blocks: &[String], now: i64) -> Result<Vec<i64>> {

@@ -375,7 +375,7 @@ impl std::error::Error for ImportError {}
 
 /// A name as an operator's terminal may safely show it: control characters escaped, non-UTF-8 bytes shown as
 /// replacement characters.
-fn shown(name: &str) -> String {
+pub(crate) fn shown(name: &str) -> String {
     name.escape_debug().to_string()
 }
 

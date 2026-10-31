@@ -1,0 +1,555 @@
+//! Validation at acceptance (RFC 005 part 2, D-5): a change that touches the knowledge layer is judged **before the
+//! signer is asked**, on the files as the change would leave them.
+//!
+//! What is judged, for the knowledge files the change writes:
+//!
+//! - the schema and the ids ([`read_file`](super::read_file): the path, the size, the YAML subset, the closed
+//!   words, no number anywhere);
+//! - every source and claim a file names is present, and readable, in the same view (the tip with the change on
+//!   it);
+//! - every expression names a page the view has once, and a block that page has once (`^id`), **at the proposal's
+//!   result**;
+//! - and, whenever the change touches the knowledge layer, no key that only the service writes
+//!   ([`OWNED_PAGE_KEYS`]) is changed in any page the change writes.
+//!
+//! And for what the change leaves behind: a claim file the change does not write is judged again where the change
+//! touched a page it is anchored in (a block taken out of a page cannot leave a claim pointing at nothing), and a
+//! knowledge file the change removes must not be named by another file.
+//!
+//! A repository that already holds invalid files is not made unusable by them: only the change's own files, and
+//! what it breaks, are refused. The files that are invalid are listed by the derived index
+//! ([`crate::knowledge::index`]) and reported on the health list.
+//!
+//! **A refusal names the file and the rule, never what the file said** ([`Refusal`]); the name is escaped as the
+//! import escapes a name.
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
+
+use inklkunn_markup::{Value, frontmatter, parse_metadata};
+use inklkunn_prikk::{Point, Storage, StorageError};
+use inklkunn_signer::PreparedFile;
+use inklkunn_store::WikiRecord;
+
+use super::tree::{TreeError, read_tree};
+use super::{
+    AnchorState, Expression, Fault, File, KNOWLEDGE_DIR, Rule, anchor_state, claim_path, family_of,
+    is_knowledge_path, read_file, source_path,
+};
+use crate::import::shown;
+use crate::read::{ReadError, ReadService, entries_from_tree};
+
+/// The page keys only the service writes (RFC 004 D-2; threat model C-4b). A change to the knowledge layer may not
+/// alter them in any page it writes.
+pub const OWNED_PAGE_KEYS: [&str; 3] = ["kind", "visibility", "system"];
+
+/// A file the change would write or leave, and the one rule it breaks. Plain text, safe to show: the file's name is
+/// escaped, and nothing the file said is in it.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Refusal {
+    /// The file, escaped as the import escapes a name.
+    pub file: String,
+    /// The rule.
+    pub rule: Rule,
+    /// The key of the format the rule was about, from the format's own vocabulary, or empty.
+    pub field: &'static str,
+    /// The YAML line, when the parser gave one.
+    pub line: Option<usize>,
+}
+
+impl Refusal {
+    /// A refusal of `path` for `fault`.
+    pub fn of(path: &str, fault: Fault) -> Refusal {
+        Refusal {
+            file: shown(path),
+            rule: fault.rule,
+            field: fault.field,
+            line: fault.line,
+        }
+    }
+
+    fn rule(path: &str, rule: Rule, field: &'static str) -> Refusal {
+        Refusal::of(path, Fault::at(rule, field))
+    }
+}
+
+impl std::fmt::Display for Refusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.file, self.rule.sentence())?;
+        if !self.field.is_empty() {
+            write!(f, " (`{}`)", self.field)?;
+        }
+        if let Some(line) = self.line {
+            write!(f, " (line {line})")?;
+        }
+        Ok(())
+    }
+}
+
+/// Which page has a given `id` in the view the change would leave.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PageLookup {
+    /// Exactly one page, at this path.
+    One(String),
+    /// No page.
+    None,
+    /// More than one page claims the id: the anchor does not say which.
+    Several,
+}
+
+/// The pages of the view the change would leave.
+pub trait Pages {
+    /// The page whose frontmatter `id` is `id`.
+    fn with_id(&self, id: &str) -> PageLookup;
+    /// The whole text of the page at `path`, `None` when it has none or cannot be read.
+    fn text(&self, path: &str) -> Option<String>;
+}
+
+/// The change, as the validator needs it.
+#[derive(Debug, Default)]
+pub struct Touched {
+    /// Knowledge paths the change writes (they are in the result's files).
+    pub written: BTreeSet<String>,
+    /// Knowledge paths the change removes.
+    pub removed: BTreeSet<String>,
+    /// The ids of the pages the change writes, removes or renames, at either side of it.
+    pub page_ids: BTreeSet<String>,
+    /// Paths of the pages the change writes whose owned keys it alters.
+    pub owned: BTreeSet<String>,
+}
+
+/// Judge a change. `files` is every knowledge file of the view as the change would leave it (path, first bytes),
+/// `touched` what the change did, `pages` the pages as it would leave them and `tip_pages` as they are now (a file
+/// the change does not write is refused only for an anchor the change broke, not for one that was already broken).
+/// The refusals are in file order and empty when the change is sound.
+pub fn validate(
+    files: &BTreeMap<String, Vec<u8>>,
+    touched: &Touched,
+    pages: &dyn Pages,
+    tip_pages: &dyn Pages,
+) -> Vec<Refusal> {
+    let read: BTreeMap<&str, Result<File, Fault>> = files
+        .iter()
+        .map(|(path, bytes)| (path.as_str(), read_file(path, bytes)))
+        .collect();
+    let readable = |path: String| matches!(read.get(path.as_str()), Some(Ok(_)));
+    let mut out: BTreeSet<Refusal> = BTreeSet::new();
+
+    // The files the change writes: all of it.
+    for path in &touched.written {
+        match read.get(path.as_str()) {
+            Some(Ok(file)) => {
+                out.extend(references(path, file, &readable));
+                if !broken(file, pages, None).is_empty() {
+                    out.insert(Refusal::rule(path, Rule::Anchor, "expressions"));
+                }
+            }
+            Some(Err(fault)) => {
+                out.insert(Refusal::of(path, fault.clone()));
+            }
+            // Not in the result: it was written as nothing; the change itself is not sound.
+            None => {
+                out.insert(Refusal::rule(path, Rule::Path, ""));
+            }
+        }
+    }
+
+    // The files the change leaves alone but may have broken: a page it touched, a file it removed.
+    for (path, file) in &read {
+        if touched.written.contains(*path) {
+            continue;
+        }
+        let Ok(file) = file else { continue };
+        let now = broken(file, pages, Some(&touched.page_ids));
+        if !now.is_empty() {
+            let before = broken(file, tip_pages, Some(&touched.page_ids));
+            if now.iter().any(|e| !before.contains(e)) {
+                out.insert(Refusal::rule(path, Rule::Anchor, "expressions"));
+            }
+        }
+    }
+    for path in &touched.removed {
+        let Some(name) = path
+            .rsplit('/')
+            .next()
+            .and_then(|n| n.strip_suffix(".yaml"))
+        else {
+            continue;
+        };
+        let named = |file: &File| match (family_of(path), file) {
+            (Some(super::Family::Claim), File::Claim(c)) => {
+                c.relations.iter().any(|r| r.claim.as_str() == name)
+            }
+            (Some(super::Family::Claim), File::Source(_)) => false,
+            (Some(super::Family::Source), File::Claim(c)) => {
+                c.sources.iter().any(|s| s.source.as_str() == name)
+            }
+            (Some(super::Family::Source), File::Source(s)) => {
+                s.superseded_by.as_ref().is_some_and(|b| b.as_str() == name)
+            }
+            (None, _) => false,
+        };
+        let in_use = read.iter().any(|(other, file)| {
+            !touched.written.contains(*other) && file.as_ref().is_ok_and(named)
+        });
+        if in_use {
+            out.insert(Refusal::rule(path, Rule::InUse, ""));
+        }
+    }
+
+    // Owned keys, whenever the knowledge layer is touched at all.
+    if !touched.written.is_empty() || !touched.removed.is_empty() {
+        for path in &touched.owned {
+            out.insert(Refusal::rule(path, Rule::Owned, ""));
+        }
+    }
+    out.into_iter().collect()
+}
+
+/// A written file's references to other files: each must be present and readable in the view.
+fn references(path: &str, file: &File, readable: &dyn Fn(String) -> bool) -> Vec<Refusal> {
+    let mut out = Vec::new();
+    match file {
+        File::Claim(claim) => {
+            for link in &claim.sources {
+                if !readable(source_path(&link.source)) {
+                    out.push(Refusal::rule(path, Rule::Reference, "sources"));
+                }
+            }
+            for relation in &claim.relations {
+                if !readable(claim_path(&relation.claim)) {
+                    out.push(Refusal::rule(path, Rule::Reference, "relations"));
+                }
+            }
+        }
+        File::Source(source) => {
+            if let Some(later) = &source.superseded_by
+                && !readable(source_path(later))
+            {
+                out.push(Refusal::rule(path, Rule::Reference, "superseded_by"));
+            }
+        }
+    }
+    out
+}
+
+/// A claim's expressions that do not name a page the view has once and a block that page has once. With `only`,
+/// just the expressions in the pages with these ids (for a file the change did not write).
+fn broken<'a>(
+    file: &'a File,
+    pages: &dyn Pages,
+    only: Option<&BTreeSet<String>>,
+) -> Vec<&'a Expression> {
+    let File::Claim(claim) = file else {
+        return Vec::new();
+    };
+    claim
+        .expressions
+        .iter()
+        .filter(|e| {
+            if only.is_some_and(|ids| !ids.contains(&e.page_id)) {
+                return false;
+            }
+            match pages.with_id(&e.page_id) {
+                PageLookup::One(at) => !pages.text(&at).is_some_and(|text| {
+                    matches!(anchor_state(&text, &e.block), AnchorState::Present(_))
+                }),
+                PageLookup::None | PageLookup::Several => true,
+            }
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------------------------- the change
+
+/// Why a change could not be judged (not why it is unsound: that is a list of [`Refusal`]s).
+#[derive(Debug)]
+pub enum CheckError {
+    /// prikk could not be asked.
+    Storage(StorageError),
+    /// The tip could not be extracted or read.
+    Read(ReadError),
+    /// The extracted knowledge files could not be read.
+    Tree(TreeError),
+}
+
+impl std::fmt::Display for CheckError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CheckError::Storage(e) => write!(f, "{e}"),
+            CheckError::Read(e) => write!(f, "{e}"),
+            CheckError::Tree(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for CheckError {}
+
+/// The pages of the tip with the change on them: every page of the extracted tree, a rename moving a page, a
+/// written file replacing one, a removal taking one out.
+struct ResultPages {
+    root: PathBuf,
+    /// Where each page of the result is: in the extracted tree, or written by the change.
+    at: BTreeMap<String, Origin>,
+    ids: BTreeMap<String, Vec<String>>,
+}
+
+enum Origin {
+    Tree(String),
+    Written(String),
+}
+
+impl Pages for ResultPages {
+    fn with_id(&self, id: &str) -> PageLookup {
+        match self.ids.get(id).map(Vec::as_slice) {
+            Some([one]) => PageLookup::One(one.clone()),
+            Some([]) | None => PageLookup::None,
+            Some(_) => PageLookup::Several,
+        }
+    }
+
+    fn text(&self, path: &str) -> Option<String> {
+        match self.at.get(path)? {
+            Origin::Written(text) => Some(text.clone()),
+            Origin::Tree(from) => std::fs::read(self.root.join(from))
+                .ok()
+                .and_then(|bytes| String::from_utf8(bytes).ok()),
+        }
+    }
+}
+
+/// The paths that have each page id.
+fn by_id(ids_at: &BTreeMap<String, Option<String>>) -> BTreeMap<String, Vec<String>> {
+    let mut ids: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (path, id) in ids_at {
+        if let Some(id) = id {
+            ids.entry(id.clone()).or_default().push(path.clone());
+        }
+    }
+    ids
+}
+
+fn page_id_of(text: &str) -> Option<String> {
+    parse_metadata(text)
+        .ok()
+        .and_then(|m| m.id)
+        .filter(|id| !id.is_empty())
+}
+
+/// The owned keys of a page text as JSON text, `None` for a text whose information block is not readable.
+fn owned_keys(text: &str) -> Option<BTreeMap<&'static str, String>> {
+    let (yaml, _, _) = frontmatter::split(text);
+    let Some(yaml) = yaml else {
+        return Some(BTreeMap::new());
+    };
+    let Value::Map(pairs) = frontmatter::parse_yaml(yaml).ok()? else {
+        return Some(BTreeMap::new());
+    };
+    Some(
+        OWNED_PAGE_KEYS
+            .into_iter()
+            .filter_map(|key| {
+                pairs
+                    .iter()
+                    .find(|(k, _)| k == key)
+                    .map(|(_, v)| (key, v.to_json().to_string()))
+            })
+            .collect(),
+    )
+}
+
+fn read_bounded(path: &Path, max: u64) -> Option<String> {
+    let meta = std::fs::metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > max {
+        return None;
+    }
+    String::from_utf8(std::fs::read(path).ok()?).ok()
+}
+
+/// Judge a prepared change against the tip `tip_block`: `Ok(vec![])` when it is sound.
+///
+/// Free of cost for a wiki that has no knowledge layer: when neither the change nor the tip holds a path under
+/// `knowledge/`, one `tree` call answers and nothing is extracted. Otherwise the tip is extracted once (the read
+/// service's extract, under its build lock) and the change laid over it.
+pub fn check_change(
+    reads: &ReadService,
+    storage: &dyn Storage,
+    repo: &Path,
+    wiki: &WikiRecord,
+    tip_block: &str,
+    files: &[PreparedFile],
+    renames: &[(PathBuf, PathBuf)],
+) -> Result<Vec<Refusal>, CheckError> {
+    let path_text = |p: &Path| p.to_string_lossy().into_owned();
+    let touches = files.iter().any(|f| is_knowledge_path(&path_text(&f.path)))
+        || renames
+            .iter()
+            .any(|(a, b)| is_knowledge_path(&path_text(a)) || is_knowledge_path(&path_text(b)));
+    if !touches {
+        let listing = storage
+            .tree(
+                repo,
+                &Point::Block(tip_block.to_owned()),
+                Some(KNOWLEDGE_DIR),
+            )
+            .map_err(CheckError::Storage)?;
+        if !listing.entries.iter().any(|e| e.kind == "file") {
+            return Ok(Vec::new());
+        }
+    }
+    reads
+        .with_block_tree(wiki, tip_block, |root, config| {
+            judge(
+                root,
+                config.index_max_files,
+                config.page_max_bytes,
+                files,
+                renames,
+            )
+        })
+        .map_err(CheckError::Read)?
+}
+
+fn judge(
+    root: &Path,
+    max_entries: u64,
+    page_max_bytes: u64,
+    files: &[PreparedFile],
+    renames: &[(PathBuf, PathBuf)],
+) -> Result<Vec<Refusal>, CheckError> {
+    let path_text = |p: &Path| p.to_string_lossy().into_owned();
+    // The knowledge files of the result: the tip's, the change on them.
+    let mut knowledge: BTreeMap<String, Vec<u8>> = read_tree(root, max_entries)
+        .map_err(CheckError::Tree)?
+        .into_iter()
+        .map(|f| (f.path, f.bytes))
+        .collect();
+    let mut touched = Touched::default();
+    for (from, to) in renames {
+        let (from, to) = (path_text(from), path_text(to));
+        if is_knowledge_path(&from)
+            && let Some(bytes) = knowledge.remove(&from)
+        {
+            touched.removed.insert(from.clone());
+            if is_knowledge_path(&to) {
+                touched.written.insert(to.clone());
+                knowledge.insert(to.clone(), bytes);
+            }
+        }
+    }
+    for f in files {
+        let path = path_text(&f.path);
+        if !is_knowledge_path(&path) {
+            continue;
+        }
+        match &f.content {
+            Some(bytes) => {
+                knowledge.insert(
+                    path.clone(),
+                    bytes
+                        .iter()
+                        .take(super::MAX_FILE_BYTES + 1)
+                        .copied()
+                        .collect(),
+                );
+                touched.written.insert(path);
+            }
+            None => {
+                knowledge.remove(&path);
+                touched.written.remove(&path);
+                touched.removed.insert(path);
+            }
+        }
+    }
+
+    // The pages of the result.
+    let tip_pages = entries_from_tree(root, max_entries).map_err(|e| match e {
+        crate::read::TreeError::TooManyEntries(n) => CheckError::Tree(TreeError::TooMany(n)),
+        crate::read::TreeError::Io(e) => CheckError::Tree(TreeError::Io(e)),
+    })?;
+    let mut at: BTreeMap<String, Origin> = BTreeMap::new();
+    let mut ids_at: BTreeMap<String, Option<String>> = BTreeMap::new();
+    for entry in &tip_pages {
+        at.insert(entry.path.clone(), Origin::Tree(entry.path.clone()));
+        ids_at.insert(entry.path.clone(), entry.page_id.clone());
+    }
+    let tip_ids = ids_at.clone();
+    let tip = ResultPages {
+        root: root.to_path_buf(),
+        at: at
+            .keys()
+            .map(|p| (p.clone(), Origin::Tree(p.clone())))
+            .collect(),
+        ids: by_id(&ids_at),
+    };
+    let mut changed_pages: BTreeSet<String> = BTreeSet::new();
+    for (from, to) in renames {
+        let (from, to) = (path_text(from), path_text(to));
+        changed_pages.insert(from.clone());
+        changed_pages.insert(to.clone());
+        if let Some(origin) = at.remove(&from) {
+            at.insert(to.clone(), origin);
+            let id = ids_at.remove(&from).flatten();
+            ids_at.insert(to, id);
+        }
+    }
+    let mut owned_candidates: Vec<(String, String)> = Vec::new();
+    for f in files {
+        let path = path_text(&f.path);
+        if is_knowledge_path(&path) {
+            continue;
+        }
+        changed_pages.insert(path.clone());
+        match f.content.as_deref().map(|b| String::from_utf8(b.to_vec())) {
+            Some(Ok(text)) => {
+                ids_at.insert(path.clone(), page_id_of(&text));
+                owned_candidates.push((path.clone(), text.clone()));
+                at.insert(path, Origin::Written(text));
+            }
+            Some(Err(_)) => {
+                // Not text: not a page the view can anchor in.
+                at.remove(&path);
+                ids_at.remove(&path);
+            }
+            None => {
+                at.remove(&path);
+                ids_at.remove(&path);
+            }
+        }
+    }
+    let ids = by_id(&ids_at);
+    // Page ids on either side of the change, for the pages it touched.
+    for path in &changed_pages {
+        for id in [
+            tip_ids.get(path).cloned().flatten(),
+            ids_at.get(path).cloned().flatten(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            touched.page_ids.insert(id);
+        }
+    }
+    // Owned keys: a page the change writes that differs from the tip's in any of them.
+    for (path, new) in owned_candidates {
+        let old = read_bounded(&root.join(&path), page_max_bytes);
+        let before = old.as_deref().and_then(owned_keys).unwrap_or_default();
+        if let Some(after) = owned_keys(&new)
+            && before != after
+        {
+            touched.owned.insert(path);
+        }
+    }
+    let pages = ResultPages {
+        root: root.to_path_buf(),
+        at,
+        ids,
+    };
+    Ok(validate(&knowledge, &touched, &pages, &tip))
+}
+
+impl From<ReadError> for CheckError {
+    fn from(e: ReadError) -> Self {
+        CheckError::Read(e)
+    }
+}

@@ -768,7 +768,7 @@ fn a_version_8_database_is_migrated_to_the_current_schema_keeping_its_records_an
     {
         let store = SqliteStore::open(&db).expect("a version 8 database opens");
         assert_eq!(version(), "12");
-        assert_eq!(SCHEMA_VERSION, 12);
+        assert_eq!(SCHEMA_VERSION, 13);
         // What was there is there.
         let wikis = store.list().unwrap();
         assert_eq!(wikis.len(), 1);

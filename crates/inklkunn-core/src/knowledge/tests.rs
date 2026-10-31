@@ -21,6 +21,16 @@ pub(crate) fn digest_of(text: &str) -> Digest {
     block_digest(found.first().expect("a block"))
 }
 
+/// The digest of a block as a page has it: the text of the block, its `^id` marker included.
+pub(crate) fn digest_of_block(block: &str) -> Digest {
+    let found = inklkunn_markup::blocks(block);
+    block_digest(found.first().expect("a block"))
+}
+
+mod acceptance;
+mod check;
 mod digest;
+mod health;
+mod index;
 mod refusals;
 mod roundtrip;
