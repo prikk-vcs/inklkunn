@@ -218,19 +218,14 @@
   retirement too); **no time is recorded** on any prikk record (PK-41: *First seen here* is the honest view for good);
   `log --path` a candidate, not scheduled (PK-42: the remembered `show` per block stays); a verb that discards a sound
   queued patch on purpose, undoable, in **0.57.0** (PK-43: recovery stops and tells the operator until then).
+- **2026-10-31 — RFC 005 part 1's decisions D-1 … D-4 accepted by the owner** (*"All the four are accepted."*):
+  identity continues exactly while a claim block's explicit `^id` is in the text, trust never moves silently, a
+  sweeping change is one re-confirmation, reviewers' decisions measured in use (D-1); pages first, claims and shared
+  evidence as files in `knowledge/` (D-2); one accepted proposal, one change, notifications per change (D-3); four
+  state fields with `unknown`, no aggregate (D-4). **Part 2 is the architect's next work.**
 
 ## Pending on the owner
 
-- **Accept RFC 005 part 1's decisions D-1 … D-4?** (`rfcs/accepted/005-knowledge-layer-part-1-claim-identity.md`,
-  "Decisions from spike C".) The spike's key finding: the default "a kept block id is the same claim" agreed with the
-  labellers 92 % overall but only **84 % for small human edits**, and **one change of meaning in four kept its id**.
-  So: **(D-1)** H-1 stands, made safe by *trust never moves silently* whatever that figure is, and refined — continuity
-  is the claim block's explicit `^id` still in the text (an observable fact, not the merge's pairing); the propose
-  form keeps that marker out of a newcomer's way; a sweeping change is one re-confirmation, not one per block; and
-  reviewers' decisions are recorded so the participation metrics measure the human figure on real proposals.
-  **(D-2)** pages first; claims and shared evidence as files in `knowledge/`; never anchored to footnotes.
-  **(D-3)** one accepted proposal, one change; notifications per accepted change. **(D-4)** the four state fields
-  with `unknown`, no aggregate. *Not required:* a human relabelling now (it remains available if you want it).
 - **Review the Japanese catalog** when the dev team files it (DR-7; the owner is the reviewer): one request listing
   every message in English and Japanese with where it appears. It waits for RFC 004's words (about 300 more messages
   now); until your sign-off Japanese stays a preview that only a reader's own choice turns on.

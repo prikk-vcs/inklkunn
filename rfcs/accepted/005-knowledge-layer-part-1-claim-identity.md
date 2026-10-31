@@ -1,6 +1,7 @@
 # RFC 005 part 1 — The knowledge layer's ground: when a claim stays the same claim, how claims attach to pages, and what one change is
 
-**Status.** **Accepted by the owner 2026-10-31** (*"Yes. Accepted."*, after the corpus section and H-1 were revised at
+**Status.** **Decided:** D-1 … D-4 accepted by the owner 2026-10-31 (*"All the four are accepted."*); part 2 is designed on
+them. **Accepted by the owner 2026-10-31** (*"Yes. Accepted."*, after the corpus section and H-1 were revised at
 the owner's request the same day). Handoff: `../handoffs/005-knowledge-layer/claim-identity-spike-handoff-v1.md`.
 Proposed by the architect on 2026-10-31 (ROADMAP §7: "the claim-identity and patch-granularity
 investigation", due once M1 is under way; M1 shipped as 0.1.0 the same day). An **investigation** RFC: it fixes
@@ -124,7 +125,7 @@ The architect writes the results report and, with it, the **identity rule** (H-1
 **storage shape** of `knowledge/` (H-2), the **change rule** (H-3) and the **state fields** (H-4), as decisions D-1 …
 D-4 of this RFC, for the owner's acceptance. Part 2 is designed on them.
 
-## Decisions from spike C (proposed by the architect 2026-10-31, for the owner's acceptance)
+## Decisions from spike C (proposed by the architect 2026-10-31; **all four accepted by the owner the same day**)
 
 The spike's report (`../handoffs/005-knowledge-layer/spikes/claim-identity-report.md`): M-1 **92.4 %** overall but **84 %**
 (interval 72 – 91 %) for small, human-sized edits, where the merge's one-for-one block pairing is a poor identity signal;
