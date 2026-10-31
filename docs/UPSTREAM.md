@@ -28,12 +28,14 @@ staying true to all three (RFC 010 D-1, D-2, D-8). The record of what each upstr
   upstream ledger (status, evidence, the letter named in the version line), ROADMAP's dependency notes and
   milestone table when a schedule or ruling moved, and a hold note in the affected handoff. The letters are
   the source; the ledger is what a reader relies on.
-- **Candidates for the next bundled letter (none sent; bundle when one more matters):** a machine-readable block
-  signer in `log` or `show` (PK-39); the block id in `branch list` (the fourth call on a new tip, handoff 003 T4); a
-  commit time in `log`/`show` and a path-filtered `log` (history shows *First seen here* and costs a `show` per block,
-  handoff 003 T5/T6); a verb that discards a sound queued patch no intent accounts for (today recovery can only stop,
-  handoff 004 D3).
-- **Open asks as of 2026-10-29: none outstanding; two things prikk will write about.**
+- **Candidates for the next bundled letter:** the block id in `branch list` (saves one call per new tip; held back as
+  not worth a letter of its own).
+- **Open asks as of 2026-10-31: none outstanding; prikk will write about 0.57.0.**
+  `send/2026-10-31-block-signer-time-path-history-and-an-orphan-queued-patch.md` (sent by the owner; four asks) was
+  answered the same day (`receive/2026-10-31-four-asks-where-each-lands.md`): each block's `sealed_by` in `log` and
+  `verify-report-v1` in **0.57.0** (PK-39); no time is recorded anywhere (PK-41, *First seen here* stays); `log --path`
+  a candidate, not scheduled (PK-42); a verb to discard a sound queued patch, undoable, in **0.57.0** (PK-43).
+- **Earlier (2026-10-29):**
   `send/2026-10-29-maintainer-key-rotation-log-by-block-and-extract-scope.md` (sent by the owner; one question, one
   report, one wish) was answered the same day (`receive/2026-10-29-key-rotation-log-by-block-and-extract-scope.md`):
   the interim rotation design confirmed and rotation that keeps history verifiable not scheduled (PK-34, DR-10 ruled,

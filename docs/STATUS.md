@@ -213,6 +213,11 @@
   `.git-exclude/reviewed/005-claim-identity-spike-review-result.md`; 1,715 tests in both runs, 139 self-skips; the
   committed data checked by hand: ids, labels and counts only). The architect's **D-1 … D-4** are in the RFC for the
   owner (below). One follow-up, K1 (the exposed alignment behind a tool-only feature).
+- **2026-10-31 — the bundled letter to prikk sent and answered the same day** (ledger v1.4): each block's `sealed_by`
+  in `log --format json` and `verify-report-v1` in **0.57.0** (PK-39: the superseded-key check then runs after a
+  retirement too); **no time is recorded** on any prikk record (PK-41: *First seen here* is the honest view for good);
+  `log --path` a candidate, not scheduled (PK-42: the remembered `show` per block stays); a verb that discards a sound
+  queued patch on purpose, undoable, in **0.57.0** (PK-43: recovery stops and tells the operator until then).
 
 ## Pending on the owner
 
@@ -226,13 +231,6 @@
   **(D-2)** pages first; claims and shared evidence as files in `knowledge/`; never anchored to footnotes.
   **(D-3)** one accepted proposal, one change; notifications per accepted change. **(D-4)** the four state fields
   with `unknown`, no aggregate. *Not required:* a human relabelling now (it remains available if you want it).
-- **A bundled letter to prikk, drafted** (four asks, each with a working fallback today, so nothing waits on it): a
-  block's sealing key id in a JSON report (PK-39: the superseded-key check parses `verify`'s text and cannot run after a
-  retirement); a block's time, if a seal records one (*first seen here* today); `log --path` (a page's history costs a
-  `show` per block); a way to discard a sound queued patch no one accepted (recovery can only stop). A fifth candidate
-  (the block id in `branch list`) is left out as not worth your time. Checked against prikk `main`'s reference the
-  same day. `.git-exclude/upstream/prikk/send/draft/2026-10-31-block-signer-time-path-history-and-an-orphan-queued-patch.md`.
-  Send, adjust or hold.
 - **Review the Japanese catalog** when the dev team files it (DR-7; the owner is the reviewer): one request listing
   every message in English and Japanese with where it appears. It waits for RFC 004's words (about 300 more messages
   now); until your sign-off Japanese stays a preview that only a reader's own choice turns on.
@@ -243,6 +241,7 @@
 |---|---|---|
 | prikk 0.54.1 | the M1 floor (`extract`, `diff`, `tree`, `cat`, the `show <block-id>` fix); RFC 170 (library) and RFC 154 unscheduled; **non-ASCII paths: a design round in 0.56.0, implementation ≥ 0.57.0** (letter of 2026-10-28, PK-21) | pin 0.54; re-baseline at each release (RFC 010); ship with percent-encoded paths, migrate when prikk's design lands |
 | prikk 0.55.0 (**released 2026-10-29, re-baselined the same day**) / 0.56.0 (scheduled) | 0.55.0: `extract`'s refusal ids 13 → 15, bundle reads stream, the checkpoint record documented; 0.56.0: the Unicode-path design round, a received ref that would move backwards refused by default, the signer in `branch --format json` (PK-26) | 0.55.0: **done**, nothing changes, floor stays 0.54.0; 0.56.0: re-baseline at its release (check `branch-list-v1`'s id with the signer added) |
+| prikk **0.57.0** (scheduled; reply of 2026-10-31) | each block's `sealed_by` (PK-39); a verb to discard a sound queued patch (PK-43) | at its re-baseline: C11's check reads `sealed_by`; recovery offers the discard as an operator-confirmed step |
 | prikk, reply of 2026-10-29 | `log --ref <block id>`'s empty success is a defect, fixed in a release prikk will name (PK-36); a rotation that keeps history verifiable is not scheduled (PK-34, RR-8); `extract --path-prefix` or a per-entry content id is a candidate (PK-37) | re-check each at every re-baseline; nothing in 0.1.0 waits on them |
 | planeter **0.5.0** (released 2026-10-31; re-baselined the same day, ledger PL-14: Rust 1.99.1 adopted, 0.1.0 unaffected by the FFI `bool` miscompilation; the pushed-image check a candidate for 0.2.0) — earlier: 0.4.0 | no module mechanism; OQ-4 unruled (re-checked 2026-10-28); RFC 012's catalog pattern, glossary, RFC 011's admission and RFC 004's recovery reused as patterns; new: the complete-verdict rule (PL-7), `unlock` in a PID namespace (PL-8), the output cap (PL-9, already bounded here), the advisories and the `aws_lc_rs` measurement (PL-10, IS-54 waits for the owner), kill-safe creation (PL-11) | joint RFC 008 after M2's design; a letter through the owner then; DR-9 ruled `aws_lc_rs` (2026-10-28), put as one ruling with planeter's IS-54 |
 | wiki-commons 0.4 | the conformance corpus is CR-markup's fixture set; identifiers may change before its 1.0 | claims versioned `@0.4` |
