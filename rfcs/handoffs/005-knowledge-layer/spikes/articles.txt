@@ -1,0 +1,27 @@
+# lang<TAB>title<TAB>reason (spike C, RFC 005 part 1). No biography of a living person.
+# English
+en	Mount Everest	height, first ascents and measurement dates are corrected and disputed over time
+en	Eiffel Tower	dates, heights and figures corrected; a landmark with many small factual edits
+en	Panama Canal	construction dates, lengths and traffic figures revised; history in dated steps
+en	Krakatoa	eruption dates, death tolls and dimensions revised
+en	Hoover Dam	dimensions, dates and capacity figures revised
+en	Great Wall of China	lengths and dynasties' attributions corrected and disputed
+en	Amazon River	length and discharge, a classic corrected-and-disputed figure
+en	Lake Baikal	depth, area and age figures revised
+en	Pluto	classification and discovery facts; an edit-war-prone natural-science article
+en	Titanic	dates, counts and attributions corrected
+en	Tower Bridge	construction dates and dimensions revised
+en	Suez Canal	opening dates, lengths and traffic figures revised
+# Japanese
+ja	東京スカイツリー	高さ・開業日・数値の修正が多い建造物
+ja	富士山	標高・噴火年・面積などの数値の修正
+ja	瀬戸大橋	開通日・全長・諸元の修正
+ja	青函トンネル	延長・工期・開業日の修正
+ja	明石海峡大橋	橋長・中央支間長などの数値の修正
+ja	琵琶湖	面積・水深・貯水量の数値の修正
+ja	姫路城	築城年・改修年・文化財指定の記述の修正
+ja	万里の長城	全長・時代区分の記述の修正と論争
+ja	黒部ダム	堤高・竣工年・出力などの数値の修正
+ja	関門橋	橋長・開通日の修正
+ja	東京タワー	高さ・開業日・数値の修正
+ja	阿蘇山	噴火年・カルデラの寸法の修正
