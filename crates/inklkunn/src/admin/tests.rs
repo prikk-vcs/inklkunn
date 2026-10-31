@@ -1404,6 +1404,157 @@ fn a_start_recovers_every_wiki_that_needs_it_before_it_serves_and_says_so() {
     );
 }
 
+/// Corrections P9: a maintenance act writes in the repository, so it queues for the wiki's lease like an acceptance
+/// and does not run beside one. A lease held elsewhere (another holder name, the same lock file) makes it wait its
+/// turn; the old direct call met the lock and gave up at once.
+#[test]
+fn a_checkpoint_refresh_waits_in_the_wikis_queue_behind_a_lease_held_elsewhere_and_then_runs() {
+    use inklkunn_core::{LeaseConfig, Purpose, WikiLeases, WriteLeases};
+    use inklkunn_store::AcceptanceStore as _;
+    let Some(w) = world("refresh-lease") else {
+        return;
+    };
+    let (status, _, err) = w.cli(&["wiki", "create", "notes", "--name", "Notes"]);
+    assert_eq!(status, 0, "{err}");
+    let record = w.record("notes");
+    let store = Arc::new(SqliteStore::open(&w.settings.store_path()).unwrap());
+    let elsewhere = WikiLeases::new(
+        WriteLeases::new(w.layout()),
+        store.clone(),
+        "someone-else",
+        LeaseConfig::default(),
+    );
+    let held = elsewhere
+        .acquire(&record.id, Purpose::Acceptance, None)
+        .unwrap();
+    let maintained = Maintained::over(
+        &w.settings,
+        &inklkunn_prikk::sandbox::Sandbox::Unconfined,
+        &w.layout(),
+        &store,
+        "inklkunn-cli-test".to_owned(),
+    );
+    std::thread::scope(|scope| {
+        let refresh = scope.spawn(|| {
+            refresh_checkpoint(&w.store, &maintained, &w.storage, &record, 1_800_000_001)
+        });
+        // It takes its place in the line, with the other holder's record standing, and does not run.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while maintained.leases.waiting(&record.id) == 0 && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(maintained.leases.waiting(&record.id), 1, "it did not queue");
+        assert_eq!(
+            store.lease_holder(&record.id).unwrap().map(|h| h.holder),
+            Some("someone-else".to_owned())
+        );
+        assert!(!refresh.is_finished());
+        assert_eq!(w.record("notes").checkpoint.refreshed_with, None);
+        drop(held);
+        assert_eq!(refresh.join().unwrap(), Ok(()));
+    });
+    assert!(w.record("notes").checkpoint.refreshed_with.is_some());
+    assert_eq!(
+        store.lease_holder(&record.id).unwrap(),
+        None,
+        "the lease record is cleared when the act ends"
+    );
+}
+
+/// The same for the archive export, through the command: it waits for the lease held elsewhere and then writes.
+#[test]
+fn an_archive_export_waits_for_the_wikis_lease_and_does_not_give_up_on_a_lock() {
+    use inklkunn_core::{LeaseConfig, Purpose, WikiLeases, WriteLeases};
+    let Some(w) = world("archive-lease") else {
+        return;
+    };
+    let (status, _, err) = w.cli(&["wiki", "create", "notes", "--name", "Notes"]);
+    assert_eq!(status, 0, "{err}");
+    let record = w.record("notes");
+    let store = Arc::new(SqliteStore::open(&w.settings.store_path()).unwrap());
+    let elsewhere = WikiLeases::new(
+        WriteLeases::new(w.layout()),
+        store,
+        "someone-else",
+        LeaseConfig::default(),
+    );
+    let held = elsewhere
+        .acquire(&record.id, Purpose::Acceptance, None)
+        .unwrap();
+    let archive = w.tmp.0.join("waited.prikk");
+    let archive_arg = archive.to_str().unwrap().to_owned();
+    std::thread::scope(|scope| {
+        let export = scope.spawn(|| w.cli(&["wiki", "export", "notes", "--archive", &archive_arg]));
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        assert!(
+            !export.is_finished(),
+            "the export did not wait for its turn"
+        );
+        assert!(!archive.exists());
+        drop(held);
+        let (status, out, err) = export.join().unwrap();
+        assert_eq!(status, 0, "{out}\n{err}");
+    });
+    assert!(std::fs::metadata(&archive).unwrap().len() > 0);
+}
+
+/// Corrections P9: the start-up refresh leaves a wiki alone whose recovery stopped.
+#[test]
+fn the_start_up_refresh_skips_a_wiki_whose_recovery_stopped_and_refreshes_the_others() {
+    let Some(w) = world("refresh-skips") else {
+        return;
+    };
+    for slug in ["fine", "stuck"] {
+        let (status, _, err) = w.cli(&["wiki", "create", slug, "--name", slug]);
+        assert_eq!(status, 0, "{err}");
+    }
+    plant_lock(
+        &w,
+        "stuck",
+        "trust/policy.lock",
+        2_147_483_000,
+        "container:trust-policy",
+    );
+    flag(&w, "stuck");
+    let stuck = w.record("stuck");
+    w.store
+        .request_checkpoint_refresh(&stuck.id, 1_800_000_003)
+        .unwrap();
+    let sandbox = inklkunn_prikk::sandbox::Sandbox::Unconfined;
+    let notes = start_up(
+        &w.store,
+        &w.settings,
+        &sandbox,
+        &w.storage,
+        false,
+        1_800_000_004,
+    );
+    assert!(
+        notes
+            .iter()
+            .any(|n| n.contains("wiki stuck was not refreshed")
+                && n.contains("needs recovery")
+                && n.contains("wiki recover stuck --plan")),
+        "{notes:?}"
+    );
+    assert!(
+        notes
+            .iter()
+            .any(|n| n.contains("refreshed prikk's checkpoint record for wiki fine")),
+        "{notes:?}"
+    );
+    let after = w.record("stuck");
+    assert_eq!(after.checkpoint.refreshed_with, None);
+    assert_eq!(after.checkpoint.refresh_requested_at, Some(1_800_000_003));
+    assert!(
+        w.audit()
+            .iter()
+            .all(|(_, a, _, r)| a != "checkpoint-refresh" || *r != format!("wiki:{}", stuck.id)),
+        "no refresh was begun for the wiki that needs recovery"
+    );
+    assert!(flagged(&w, "stuck"));
+}
+
 #[test]
 fn metrics_parses_a_period_one_way_or_the_other_and_a_usage_error_shows_the_usage() {
     assert_eq!(

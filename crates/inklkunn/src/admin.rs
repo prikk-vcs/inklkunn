@@ -38,8 +38,8 @@ use inklkunn_core::import::{ImportError, plan_folder, run_import, wiki_state};
 use inklkunn_core::proposal::{Period, operator_metrics};
 use inklkunn_core::recovery::needs_recovery;
 use inklkunn_core::{
-    Authorizer, LeaseConfig, Maintenance, NoLedger, Recover, Recovery, RecoveryError, RecoveryMode,
-    RecoveryOutcome, RecoveryParts, Signer, SignerConfig, SignerError, StoreAuthz, StoreLedger,
+    Authorizer, LeaseConfig, Leased, Maintenance, NoLedger, Recover, Recovery, RecoveryError,
+    RecoveryMode, RecoveryOutcome, RecoveryParts, Signer, SignerConfig, StoreAuthz, StoreLedger,
     SweepAudit, SystemActFailure, SystemActs, WikiLeases, Witnesses, WriteLeases, create_wiki,
     sweep_unfinished_creations,
 };
@@ -668,12 +668,14 @@ fn import_folder(
             err,
             "inklkunn: prikk's checkpoint record is missing; refreshing it before the import"
         );
-        let maintenance = Maintenance::new(
-            settings.prikk.clone(),
-            env.sandbox.clone(),
-            env.layout.clone(),
+        let maintained = Maintained::over(
+            settings,
+            &env.sandbox,
+            &env.layout,
+            &store,
+            format!("inklkunn-cli-{}", std::process::id()),
         );
-        refresh_checkpoint(&store, &maintenance, &env.storage, &record, now)?;
+        refresh_checkpoint(&store, &maintained, &env.storage, &record, now)?;
         have = wiki_state(&env.storage, &env.layout, &record);
     }
     let have = have.map_err(|e| e.to_string())?;
@@ -784,15 +786,17 @@ fn export(
     // Destinations are resolved before anything is read or written.
     let bundle = bundle.map(absolute).transpose()?;
     let archive = archive.map(absolute).transpose()?;
-    let store = existing_store(settings)?;
+    let store = Arc::new(existing_store(settings)?);
     let record = find_wiki(&store, wiki)?;
     let env = environment(settings, err)?;
     let resource = wiki_resource(&record);
-    let trail = Trail { sink: &store, now };
-    let maintenance = Maintenance::new(
-        settings.prikk.clone(),
-        env.sandbox.clone(),
-        env.layout.clone(),
+    let trail = Trail { sink: &*store, now };
+    let maintained = Maintained::over(
+        settings,
+        &env.sandbox,
+        &env.layout,
+        &store,
+        format!("inklkunn-cli-{}", std::process::id()),
     );
     let mut failure: Option<String> = None;
     if let Some(dest) = &bundle {
@@ -811,7 +815,7 @@ fn export(
                 err,
                 "inklkunn: prikk's checkpoint record is missing; refreshing it before the export"
             );
-            match refresh_checkpoint(&store, &maintenance, &env.storage, &record, now) {
+            match refresh_checkpoint(&store, &maintained, &env.storage, &record, now) {
                 Ok(()) => {
                     result = export_bundle(
                         &env.storage,
@@ -878,7 +882,12 @@ fn export(
     }
     if let (Some(dest), None) = (&archive, &failure) {
         trail.begin("wiki-export-archive", &resource, "begun")?;
-        match maintenance.archive_export(&record.id, dest) {
+        // Under the wiki's lease, with its holder record and its place in the queue, like every act that writes in
+        // the repository (corrections P9).
+        match maintained
+            .leases
+            .export_archive(&maintained.maintenance, &record.id, dest)
+        {
             Ok(done) => {
                 let _ = writeln!(
                     out,
@@ -1031,12 +1040,42 @@ fn prikk_version(storage: &PrikkCli) -> Option<PrikkVersion> {
     PrikkVersion::parse(storage.version())
 }
 
+/// The keyless maintenance handle (the checkpoint refresh, the archive export) together with the wiki leases it
+/// runs inside (corrections P9): a maintenance act writes in the repository, so it takes the wiki's lease like an
+/// acceptance does, with the holder record in the store and its place in the queue, and never meets a lock that
+/// another act of this deployment holds.
+pub(crate) struct Maintained {
+    pub(crate) leases: Arc<WikiLeases>,
+    pub(crate) maintenance: Maintenance,
+}
+
+impl Maintained {
+    /// Maintenance over `layout`, leased through `store`'s holder records under the name `holder` (two
+    /// processes with one name could clear each other's record).
+    pub(crate) fn over(
+        settings: &Settings,
+        sandbox: &Sandbox,
+        layout: &RootLayout,
+        store: &Arc<SqliteStore>,
+        holder: String,
+    ) -> Self {
+        let write_leases = WriteLeases::new(layout.clone());
+        let maintenance = Maintenance::new(settings.prikk.clone(), sandbox.clone(), layout.clone())
+            .with_leases(&write_leases);
+        let leases = WikiLeases::new(write_leases, store.clone(), holder, LeaseConfig::default());
+        Maintained {
+            leases,
+            maintenance,
+        }
+    }
+}
+
 /// Refresh prikk's checkpoint record for one wiki (the keyless writable mode), and record it: the wiki record
-/// says which prikk version did it, and the request is cleared. Audited like any act on a repository. `Ok` only
-/// when the refresh ran to a passing, complete verification.
+/// says which prikk version did it, and the request is cleared. Audited like any act on a repository, and done
+/// under the wiki's lease. `Ok` only when the refresh ran to a passing, complete verification.
 fn refresh_checkpoint(
     store: &SqliteStore,
-    maintenance: &Maintenance,
+    maintained: &Maintained,
     storage: &PrikkCli,
     record: &WikiRecord,
     now: i64,
@@ -1046,7 +1085,10 @@ fn refresh_checkpoint(
     let resource = wiki_resource(record);
     let trail = Trail { sink: store, now };
     trail.begin("checkpoint-refresh", &resource, "begun")?;
-    let outcome = match maintenance.refresh_checkpoint(&record.id) {
+    let outcome = match maintained
+        .leases
+        .refresh_checkpoint(&maintained.maintenance, &record.id)
+    {
         Ok(v) if v.verdict.ok => store
             .record_checkpoint_refresh(&record.id, &version)
             .map(|_| ())
@@ -1055,10 +1097,10 @@ fn refresh_checkpoint(
             "the repository failed verification, so the checkpoint was not refreshed; run `prikk verify` in it"
                 .to_owned(),
         ),
-        Err(SignerError::Busy { .. }) => Err(
-            "another act is writing the wiki; the refresh is tried again at the next start".to_owned(),
-        ),
-        Err(e) => Err(e.to_string()),
+        Err(Leased::NotLeased(e)) => Err(format!(
+            "the wiki's lease was not given ({e}); the refresh is tried again at the next start"
+        )),
+        Err(Leased::Failed(e)) => Err(e.to_string()),
     };
     let (audit, detail) = match &outcome {
         Ok(()) => (AuditOutcome::Allowed, "refreshed"),
@@ -1281,14 +1323,58 @@ pub(crate) fn start_up(
             return notes;
         }
     };
-    let maintenance = Maintenance::new(settings.prikk.clone(), sandbox.clone(), layout);
+    // The leases need the store as a shared handle: a second connection, opened when the first wiki wants one.
+    let mut maintained: Option<Maintained> = None;
     for record in records {
         let stale = record.checkpoint.refreshed_with.as_ref() != Some(&version)
             || record.checkpoint.refresh_requested_at.is_some();
         if !stale {
             continue;
         }
-        match refresh_checkpoint(store, &maintenance, storage, &record, now) {
+        // A wiki whose recovery stopped (or has not run) is left as it is: a maintenance act would write in a
+        // repository that is in a state a person has yet to decide about (corrections P9).
+        match needs_recovery(store, store, &record.id, None) {
+            Ok(reasons) if reasons.is_empty() => {}
+            Ok(reasons) => {
+                notes.push(format!(
+                    "inklkunn: the checkpoint record of wiki {} was not refreshed: the wiki needs recovery ({}); see `inklkunn wiki recover {} --plan`",
+                    record.slug,
+                    reasons.join(", "),
+                    record.slug
+                ));
+                continue;
+            }
+            Err(e) => {
+                notes.push(format!(
+                    "inklkunn: the checkpoint record of wiki {} was not refreshed: whether it needs recovery could not be read ({e})",
+                    record.slug
+                ));
+                continue;
+            }
+        }
+        if maintained.is_none() {
+            match SqliteStore::open(&settings.store_path()) {
+                Ok(shared) => {
+                    maintained = Some(Maintained::over(
+                        settings,
+                        sandbox,
+                        &layout,
+                        &Arc::new(shared),
+                        format!("inklkunn-serve-{}", std::process::id()),
+                    ));
+                }
+                Err(e) => {
+                    notes.push(format!(
+                        "inklkunn: the checkpoint records were not refreshed: the store could not be opened for the leases ({e})"
+                    ));
+                    return notes;
+                }
+            }
+        }
+        let Some(maintenance) = maintained.as_ref() else {
+            return notes;
+        };
+        match refresh_checkpoint(store, maintenance, storage, &record, now) {
             Ok(()) => notes.push(format!(
                 "inklkunn: refreshed prikk's checkpoint record for wiki {} ({})",
                 record.slug, version
