@@ -198,6 +198,11 @@
   `release/0.1` is merged back into `main` (`8c18f90`): the workspace at 0.1.0, the CHANGELOG's 0.1.0 section, the
   newer work under `[Unreleased]`. `docs/RELEASING.md` records the lessons. **The image was made public by the owner the same day**; verified anonymously: the `0.1.0` manifest list
   is served (200) and the amd64 image's attestation verifies (SLSA v1 provenance).
+- **2026-10-31 — planeter 0.5.0 re-baselined** (RFC 010 D-2; ledger PL-14). One thing touched inklkunn directly:
+  **Rust 1.99.1** fixes a miscompilation of Rust functions exported to C that return `bool` (x86_64). inklkunn exports
+  nothing to C and a scan of every registry crate in the lock found none, so **0.1.0 is not affected**; CI, the
+  supply-chain workflow and the release move to 1.99.1. The rest agrees with what inklkunn already does (wording,
+  the accept's memory) or was met independently the same day (the glibc of the image).
 
 ## Pending on the owner
 
@@ -212,7 +217,7 @@
 | prikk 0.54.1 | the M1 floor (`extract`, `diff`, `tree`, `cat`, the `show <block-id>` fix); RFC 170 (library) and RFC 154 unscheduled; **non-ASCII paths: a design round in 0.56.0, implementation ≥ 0.57.0** (letter of 2026-10-28, PK-21) | pin 0.54; re-baseline at each release (RFC 010); ship with percent-encoded paths, migrate when prikk's design lands |
 | prikk 0.55.0 (**released 2026-10-29, re-baselined the same day**) / 0.56.0 (scheduled) | 0.55.0: `extract`'s refusal ids 13 → 15, bundle reads stream, the checkpoint record documented; 0.56.0: the Unicode-path design round, a received ref that would move backwards refused by default, the signer in `branch --format json` (PK-26) | 0.55.0: **done**, nothing changes, floor stays 0.54.0; 0.56.0: re-baseline at its release (check `branch-list-v1`'s id with the signer added) |
 | prikk, reply of 2026-10-29 | `log --ref <block id>`'s empty success is a defect, fixed in a release prikk will name (PK-36); a rotation that keeps history verifiable is not scheduled (PK-34, RR-8); `extract --path-prefix` or a per-entry content id is a candidate (PK-37) | re-check each at every re-baseline; nothing in 0.1.0 waits on them |
-| planeter 0.4.0 (+ unreleased work to 2026-10-28) | no module mechanism; OQ-4 unruled (re-checked 2026-10-28); RFC 012's catalog pattern, glossary, RFC 011's admission and RFC 004's recovery reused as patterns; new: the complete-verdict rule (PL-7), `unlock` in a PID namespace (PL-8), the output cap (PL-9, already bounded here), the advisories and the `aws_lc_rs` measurement (PL-10, IS-54 waits for the owner), kill-safe creation (PL-11) | joint RFC 008 after M2's design; a letter through the owner then; DR-9 ruled `aws_lc_rs` (2026-10-28), put as one ruling with planeter's IS-54 |
+| planeter **0.5.0** (released 2026-10-31; re-baselined the same day, ledger PL-14: Rust 1.99.1 adopted, 0.1.0 unaffected by the FFI `bool` miscompilation; the pushed-image check a candidate for 0.2.0) — earlier: 0.4.0 | no module mechanism; OQ-4 unruled (re-checked 2026-10-28); RFC 012's catalog pattern, glossary, RFC 011's admission and RFC 004's recovery reused as patterns; new: the complete-verdict rule (PL-7), `unlock` in a PID namespace (PL-8), the output cap (PL-9, already bounded here), the advisories and the `aws_lc_rs` measurement (PL-10, IS-54 waits for the owner), kill-safe creation (PL-11) | joint RFC 008 after M2's design; a letter through the owner then; DR-9 ruled `aws_lc_rs` (2026-10-28), put as one ruling with planeter's IS-54 |
 | wiki-commons 0.4 | the conformance corpus is CR-markup's fixture set; identifiers may change before its 1.0 | claims versioned `@0.4` |
 
 ## Next

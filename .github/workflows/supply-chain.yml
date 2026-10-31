@@ -16,8 +16,8 @@ jobs:
       - name: Rust toolchain (pinned, one compiler for CI and release)
         run: |
           set -euo pipefail
-          rustup toolchain install 1.99.0 --profile minimal --no-self-update
-          rustup default 1.99.0
+          rustup toolchain install 1.99.1 --profile minimal --no-self-update
+          rustup default 1.99.1
       - name: Install cargo-deny and cargo-audit (pinned)
         run: cargo install cargo-deny@0.20.2 cargo-audit@0.22.2 --locked
       - name: cargo-deny (fresh database)

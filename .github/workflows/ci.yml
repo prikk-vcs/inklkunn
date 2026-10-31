@@ -31,8 +31,8 @@ jobs:
       - name: Rust toolchain (pinned, one compiler for CI and release)
         run: |
           set -euo pipefail
-          rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy --no-self-update
-          rustup default 1.99.0
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy --no-self-update
+          rustup default 1.99.1
           rustc --version && cargo --version
       - name: Install prikk at the floor (checksum recorded in this file) and the sandbox tools
         run: |
@@ -88,8 +88,8 @@ jobs:
       - name: Rust toolchain (pinned, one compiler for CI and release)
         run: |
           set -euo pipefail
-          rustup toolchain install 1.99.0 --profile minimal --no-self-update
-          rustup default 1.99.0
+          rustup toolchain install 1.99.1 --profile minimal --no-self-update
+          rustup default 1.99.1
       - name: Install cargo-deny and cargo-audit (pinned)
         run: cargo install cargo-deny@0.20.2 cargo-audit@0.22.2 --locked
       - name: cargo-deny
