@@ -317,24 +317,7 @@ impl Sandbox {
         };
         match limits.data_ceiling {
             None => inner,
-            Some(bytes) => {
-                let mut c = Command::new(prlimit);
-                c.arg(format!("--data={bytes}"))
-                    .arg("--")
-                    .arg(inner.get_program())
-                    .args(inner.get_args());
-                if let Some(dir) = inner.get_current_dir() {
-                    c.current_dir(dir);
-                }
-                // `prlimit` passes its environment through; it gets exactly the inner one.
-                c.env_clear();
-                for (k, v) in inner.get_envs() {
-                    if let Some(v) = v {
-                        c.env(k, v);
-                    }
-                }
-                c
-            }
+            Some(bytes) => with_data_ceiling(inner, &prlimit, bytes),
         }
     }
 
@@ -567,6 +550,28 @@ fn killed(guard: &mut Reap, timed_out: bool, output_exceeded: bool) -> Run {
         timed_out,
         output_exceeded,
     }
+}
+
+/// `prlimit --data=<bytes> -- <inner>`: `inner` with a data-segment ceiling set in front of it, before it is
+/// exec'd and inherited by everything under it. `prlimit` passes its environment through, so it gets exactly the
+/// inner command's (cleared) one, and the working directory is kept. **One copy for every vector that runs under
+/// a ceiling**: the driver's here, and the fetcher's `curl` (handoff 002's F3).
+pub fn with_data_ceiling(inner: Command, prlimit: &OsStr, bytes: u64) -> Command {
+    let mut c = Command::new(prlimit);
+    c.arg(format!("--data={bytes}"))
+        .arg("--")
+        .arg(inner.get_program())
+        .args(inner.get_args());
+    if let Some(dir) = inner.get_current_dir() {
+        c.current_dir(dir);
+    }
+    c.env_clear();
+    for (k, v) in inner.get_envs() {
+        if let Some(v) = v {
+            c.env(k, v);
+        }
+    }
+    c
 }
 
 /// `<binary> --version` runs: the check for `prlimit` at start.

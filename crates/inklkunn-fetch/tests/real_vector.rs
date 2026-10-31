@@ -175,3 +175,39 @@ printf '\n200'
     assert!(marker.exists());
     let _ = std::fs::remove_file(&marker);
 }
+
+#[test]
+fn the_real_vector_runs_under_the_ceiling_and_the_real_curl_is_stopped_by_a_small_one() {
+    if !available() {
+        return;
+    }
+    // Inside bubblewrap, what a child of the vector sees is the ceiling `prlimit` set in front of `bwrap`.
+    let d = Dir::new("real-ceiling");
+    let curl = d.script(
+        "curl",
+        r#"awk '/Max data size/ {printf "%s", $4}' /proc/self/limits; printf '\n200'"#,
+    );
+    let ca = d.raw_script("ca.pem", "x", 0o644);
+    let fetcher = CurlFetcher::new()
+        .with_programs(BWRAP, &curl)
+        .with_ca_bundle(&ca)
+        .with_data_ceiling(300 << 20);
+    let body = fetch(&fetcher, &request("203.0.113.7", 443, "203.0.113.7", false)).expect("ran");
+    assert_eq!(String::from_utf8(body).unwrap(), (300u64 << 20).to_string());
+
+    // The real curl, at the default ceiling, gets as far as the connection (a closed port is a typed
+    // connect failure); under a ceiling too small to start it, it does not.
+    let started = CurlFetcher::new()
+        .fetch(&request("127.0.0.1", 1, "127.0.0.1", true))
+        .unwrap_err();
+    assert!(matches!(started, CurlError::Connect(_)), "{started:?}");
+    let stopped = CurlFetcher::new()
+        .with_data_ceiling(1 << 20)
+        .fetch(&request("127.0.0.1", 1, "127.0.0.1", true))
+        .unwrap_err();
+    assert!(
+        !matches!(stopped, CurlError::Connect(_)),
+        "a 1 MiB ceiling must stop curl before it connects: {stopped:?}"
+    );
+    assert_no_secret(&stopped);
+}

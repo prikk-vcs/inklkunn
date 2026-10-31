@@ -4,14 +4,16 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use inklkunn_prikk::sandbox::{BWRAP, probe_bwrap, resolve_binary, run_command};
+use inklkunn_prikk::sandbox::{
+    BWRAP, PRLIMIT, probe_bwrap, probe_prlimit, resolve_binary, run_command, with_data_ceiling,
+};
 
 use crate::args::{TRAILER_LEN, invocation};
 use crate::error::CurlError;
 use crate::request::CurlRequest;
 use crate::scrub::scrub;
 use crate::vector::{VECTOR_CA_PATH, bwrap_command, find_ca_bundle};
-use crate::{CURL, DEFAULT_MAX_BYTES};
+use crate::{CURL, DEFAULT_DATA_CEILING, DEFAULT_MAX_BYTES};
 
 /// The bounds of one exchange.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +52,8 @@ enum Confinement {
 pub struct CurlFetcher {
     bwrap: OsString,
     curl: OsString,
+    prlimit: OsString,
+    data_ceiling: u64,
     ca_bundle: Option<PathBuf>,
     limits: FetchLimits,
     confinement: Confinement,
@@ -67,6 +71,8 @@ impl CurlFetcher {
         CurlFetcher {
             bwrap: OsString::from(BWRAP),
             curl: OsString::from(CURL),
+            prlimit: OsString::from(PRLIMIT),
+            data_ceiling: DEFAULT_DATA_CEILING,
             ca_bundle: None,
             limits: FetchLimits::default(),
             confinement: Confinement::Bwrap,
@@ -85,6 +91,21 @@ impl CurlFetcher {
     pub fn with_programs(mut self, bwrap: impl Into<OsString>, curl: impl Into<OsString>) -> Self {
         self.bwrap = bwrap.into();
         self.curl = curl.into();
+        self
+    }
+
+    /// Another `prlimit` (an absolute path, or a name found on `PATH`).
+    #[must_use]
+    pub fn with_prlimit(mut self, prlimit: impl Into<OsString>) -> Self {
+        self.prlimit = prlimit.into();
+        self
+    }
+
+    /// Another data-segment ceiling for `curl` and `bwrap`, in bytes (`RLIMIT_DATA`, set by `prlimit` in front
+    /// of the vector). The default is [`DEFAULT_DATA_CEILING`].
+    #[must_use]
+    pub fn with_data_ceiling(mut self, bytes: u64) -> Self {
+        self.data_ceiling = bytes;
         self
     }
 
@@ -109,11 +130,18 @@ impl CurlFetcher {
         self.limits
     }
 
-    /// Everything the vector needs is there: `curl` found, a CA bundle found, and `bwrap` able to confine a
-    /// process here. For the start-up probe; a failure says what to install or permit.
+    /// The data-segment ceiling in force, in bytes.
+    pub fn data_ceiling(&self) -> u64 {
+        self.data_ceiling
+    }
+
+    /// Everything the vector needs is there: `curl` found, a CA bundle found, `prlimit` able to run, and `bwrap`
+    /// able to confine a process here. For the start-up probe; a failure says what to install or permit.
     pub fn probe(&self) -> Result<(), CurlError> {
         self.curl_path()?;
         self.ca_path()?;
+        probe_prlimit(&self.prlimit)
+            .map_err(|e| CurlError::SandboxUnavailable(scrub(e.as_bytes(), &[])))?;
         match self.confinement {
             Confinement::Bwrap => probe_bwrap(&self.bwrap)
                 .map_err(|e| CurlError::SandboxUnavailable(scrub(e.as_bytes(), &[]))),
@@ -170,6 +198,8 @@ impl CurlFetcher {
                 )
             }
         };
+        // The ceiling goes in front of the whole vector, in both modes.
+        let command = with_data_ceiling(command, &self.prlimit, self.data_ceiling);
         let program = command.get_program().to_string_lossy().into_owned();
         let cap =
             u64::try_from(self.limits.max_bytes.saturating_add(TRAILER_LEN)).unwrap_or(u64::MAX);
@@ -195,9 +225,21 @@ impl CurlFetcher {
             }));
         };
         if code != 0 {
-            // bubblewrap's own refusals come in its own voice, whatever the inner exit code.
+            // The wrappers' own refusals come in their own voice, whatever the inner exit code.
             if run.stderr.starts_with(b"bwrap:") {
                 return Err(CurlError::SandboxUnavailable(excerpt()));
+            }
+            if run.stderr.starts_with(b"prlimit:") {
+                // `prlimit` could not run what follows it: in the confined mode that is `bwrap` (the sandbox is
+                // unavailable); unconfined, it is `curl` itself, which could not be started.
+                let confined = self.confinement == Confinement::Bwrap;
+                return Err(
+                    if confined || !run.stderr.starts_with(b"prlimit: failed to execute") {
+                        CurlError::SandboxUnavailable(excerpt())
+                    } else {
+                        CurlError::Spawn(excerpt())
+                    },
+                );
             }
             return Err(classify(code, excerpt()));
         }

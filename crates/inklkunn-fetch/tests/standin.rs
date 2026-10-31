@@ -363,3 +363,96 @@ fn the_probe_reports_a_sandbox_that_cannot_confine() {
         .unwrap_err();
     assert!(matches!(e, CurlError::SandboxUnavailable(_)), "{e:?}");
 }
+
+// ---- the memory ceiling (handoff 002's F3) ----
+
+/// A stand-in `curl` that answers with the data-segment limit it was started under, in bytes.
+fn reports_its_limit(d: &Dir) -> std::path::PathBuf {
+    d.script(
+        "curl",
+        r#"awk '/Max data size/ {printf "%s", $4}' /proc/self/limits; printf '\n200'"#,
+    )
+}
+
+#[test]
+fn the_vector_runs_under_prlimit_data_and_the_ceiling_in_force_is_the_configured_one() {
+    let d = Dir::new("ceiling");
+    let r = request("idp.example.org", 443, "203.0.113.7", true);
+    let curl = reports_its_limit(&d);
+    let limits = FetchLimits {
+        max_time: Duration::from_secs(5),
+        ..quick()
+    };
+    // The default is what `DEFAULT_DATA_CEILING` says.
+    let body = fetch(&fetcher(&curl).with_limits(limits), &r).expect("under the default ceiling");
+    assert_eq!(
+        String::from_utf8(body).unwrap(),
+        inklkunn_fetch::DEFAULT_DATA_CEILING.to_string()
+    );
+    // Another ceiling is the one the child sees: the wrapper sets it, and it is inherited.
+    for bytes in [64u64 << 20, 1 << 30] {
+        let body = fetch(
+            &fetcher(&curl).with_limits(limits).with_data_ceiling(bytes),
+            &r,
+        )
+        .expect("under a set ceiling");
+        assert_eq!(String::from_utf8(body).unwrap(), bytes.to_string());
+    }
+}
+
+#[test]
+fn a_child_that_allocates_past_the_ceiling_is_stopped_and_the_failure_is_typed() {
+    let d = Dir::new("allocates");
+    let r = request("idp.example.org", 443, "203.0.113.7", true);
+    // Hold about 40 MiB in one shell variable: fine under 256 MiB, impossible under 16 MiB.
+    let curl = d.script(
+        "curl",
+        r#"v=$(head -c 41943040 /dev/zero | tr '\0' a) || exit 70; test "${#v}" -eq 41943040 || exit 71; printf 'held'; printf '\n200'"#,
+    );
+    let limits = FetchLimits {
+        max_time: Duration::from_secs(10),
+        ..quick()
+    };
+    let ok = fetch(&fetcher(&curl).with_limits(limits), &r).expect("room enough by default");
+    assert_eq!(ok, b"held");
+    let e = fetch(
+        &fetcher(&curl)
+            .with_limits(limits)
+            .with_data_ceiling(16 << 20),
+        &r,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(
+            e,
+            CurlError::Curl { .. } | CurlError::Killed(_) | CurlError::Spawn(_)
+        ),
+        "{e:?}"
+    );
+    assert_no_secret(&e);
+}
+
+#[test]
+fn a_prlimit_that_cannot_run_is_a_typed_error_found_at_the_probe_and_before_anything_runs() {
+    let d = Dir::new("noprlimit");
+    let r = request("idp.example.org", 443, "203.0.113.7", true);
+    let curl = d.script("curl", "printf '\\n200'");
+    let ca = d.raw_script("ca.pem", "x", 0o644);
+    let missing = fetcher(&curl)
+        .with_ca_bundle(&ca)
+        .with_prlimit("/nonexistent/dir/prlimit");
+    let e = missing.probe().unwrap_err();
+    assert!(matches!(e, CurlError::SandboxUnavailable(_)), "{e:?}");
+    let e = fetch(&missing, &r).unwrap_err();
+    assert!(matches!(e, CurlError::SandboxUnavailable(_)), "{e:?}");
+    assert!(e.to_string().contains("prlimit"), "{e}");
+    assert_no_secret(&e);
+    // A prlimit that refuses (its own voice, whatever curl would have done) is the same typed error.
+    let refuses = d.raw_script(
+        "prlimit",
+        "#!/bin/sh\necho 'prlimit: failed to set the DATA resource limit' >&2\nexit 1\n",
+        0o755,
+    );
+    let e = fetch(&fetcher(&curl).with_prlimit(&refuses), &r).unwrap_err();
+    assert!(matches!(e, CurlError::SandboxUnavailable(_)), "{e:?}");
+}

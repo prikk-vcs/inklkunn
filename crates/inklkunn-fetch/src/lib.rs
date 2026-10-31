@@ -22,8 +22,11 @@
 //!   (secrets removed, control characters dropped, length bounded).
 //! - No TLS crate is in the dependency tree: TLS is `curl`'s, confined.
 //!
-//! The crate spawns two programs and no others: `bwrap` (whose only job is to run `curl`) and, in tests,
-//! `curl` itself unconfined. The boundary gate checks both facts (`tools/boundary-check`).
+//! - **Memory**: `prlimit --data=<N> --` in front of the whole vector, as on the driver's, so the ceiling is
+//!   set before `bwrap` is exec'd and inherited by `curl` ([`DEFAULT_DATA_CEILING`]; handoff 002's F3).
+//!
+//! The crate spawns three programs and no others: `prlimit` (which only sets the ceiling and runs what follows),
+//! `bwrap` (whose only job is to run `curl`) and, in tests, `curl` itself unconfined. The boundary gate checks both facts (`tools/boundary-check`).
 //!
 //! The seam is [`CurlFetcher::fetch`]. `inklkunn-auth`'s `HttpsFetcher` is implemented one layer up, by the
 //! binary's wiring, because this crate is a lower layer and may not name a core crate (the layering gate).
@@ -41,6 +44,11 @@ pub use request::{CurlRequest, FetchTarget};
 
 /// The program the vector runs.
 pub const CURL: &str = "curl";
+
+/// The default data-segment ceiling of the vector, in bytes (`prlimit --data`): `curl` with TLS and the system
+/// CA bundle needs a few tens of megabytes, so this leaves room and still stops a runaway allocation long
+/// before the host feels it.
+pub const DEFAULT_DATA_CEILING: u64 = 256 << 20;
 
 /// The default cap on a response body, in bytes: a discovery document, a key set or a token response is a
 /// few kilobytes. (`inklkunn-auth` calls the same number `MAX_RESPONSE_BYTES`; the binary's wiring test

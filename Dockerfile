@@ -1,9 +1,12 @@
 # inklkunn server image. Built by .github/workflows/release.yml from the PREBUILT, attested release binaries
 # (staged under ctx/<arch>/inklkunn); this file never compiles Rust. It bundles the runtime prerequisites a
 # bare binary needs on the host: a pinned prikk release (the floor, RFC 010 D-3, checked against the checksum
-# inklkunn recorded, not one fetched beside it), bubblewrap (the sandbox, RFC 001 D-4) and prlimit
-# (util-linux, the memory ceiling). The fetch happens in a separate stage so the runtime image carries no
-# download tool. Running it: bubblewrap needs user namespaces (see docs/RELEASING.md).
+# inklkunn recorded, not one fetched beside it), bubblewrap (the sandbox, RFC 001 D-4), prlimit (util-linux,
+# the memory ceiling) and, for OpenID Connect sign-in, curl with the system CA bundle (ca-certificates): the
+# server runs curl only inside its own bubblewrap vector, under prlimit, at the addresses its egress guard
+# pinned (handoff 002 C8, F3); it never fetches anything else. The prikk download happens in a separate stage,
+# so nothing is downloaded by the runtime image. Running it: bubblewrap needs user namespaces (see
+# docs/RELEASING.md).
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS fetch
 
 ARG TARGETARCH
@@ -34,9 +37,11 @@ FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595
 ARG TARGETARCH
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends bubblewrap ca-certificates \
+ && apt-get install -y --no-install-recommends bubblewrap ca-certificates curl \
  && rm -rf /var/lib/apt/lists/* \
- && prlimit --version
+ && prlimit --version \
+ && curl --version \
+ && test -s /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=fetch /out/prikk /usr/local/bin/prikk
 COPY ctx/${TARGETARCH}/inklkunn /usr/local/bin/inklkunn

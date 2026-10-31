@@ -13,7 +13,10 @@
 //! - `--die-with-parent`, `--new-session`, `--cap-drop ALL`.
 //!
 //! The time and byte bounds are curl's own flags *and* the server's: the runner kills the child at a deadline
-//! and reads at most the cap from its standard output.
+//! and reads at most the cap from its standard output. **The memory ceiling is `prlimit --data=<N> --` in
+//! front of the vector**, as on the driver's (`inklkunn-prikk`'s `sandbox`): set before `bwrap` is exec'd and
+//! inherited by everything under it, so a `curl` that is made to allocate without end is stopped at the
+//! ceiling and the host is not (handoff 002's F3).
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
