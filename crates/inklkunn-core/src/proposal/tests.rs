@@ -8,6 +8,7 @@
 mod authorization;
 mod bases;
 mod drafts;
+mod files;
 mod lifecycle;
 mod machine;
 mod metrics;

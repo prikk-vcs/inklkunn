@@ -3,6 +3,7 @@
 //! each test body runs on both (`on_both`).
 
 use std::cell::Cell;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -35,6 +36,8 @@ pub(super) fn set_now(t: i64) {
 pub(super) struct Bases {
     n: AtomicU64,
     fail: Mutex<Option<BaseError>>,
+    /// The pages the repository holds at every base (path and text).
+    pages: Mutex<BTreeMap<String, String>>,
 }
 
 impl Bases {
@@ -44,6 +47,14 @@ impl Bases {
 
     pub(super) fn current(&self) -> Base {
         base(self.n.load(Ordering::SeqCst))
+    }
+
+    /// Put a page in the repository the bases are of.
+    pub(super) fn put_page(&self, path: &str, text: &str) {
+        self.pages
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(path.to_owned(), text.to_owned());
     }
 
     pub(super) fn fail_with(&self, e: Option<BaseError>) {
@@ -62,6 +73,33 @@ impl BaseSource for Bases {
             return Err(e);
         }
         Ok(self.current())
+    }
+
+    fn page_paths(&self, _: &WikiRecord, _: &Base) -> Result<BTreeSet<String>, BaseError> {
+        if let Some(e) = self
+            .fail
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+        {
+            return Err(e);
+        }
+        Ok(self
+            .pages
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .keys()
+            .cloned()
+            .collect())
+    }
+
+    fn page_text(&self, _: &WikiRecord, _: &Base, path: &str) -> Result<Option<String>, BaseError> {
+        Ok(self
+            .pages
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(path)
+            .cloned())
     }
 }
 

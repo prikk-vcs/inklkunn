@@ -191,7 +191,6 @@ exact :: search.rs :: query :: a placeholder name of a catalog message, or the n
 exact :: search.rs :: title :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
 exact :: search.rs :: wiki :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
 exact :: search.rs :: /{}/-/search :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
-exact :: time.rs :: {year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z :: a format of a machine-readable value (an address, a date or a header value): no sentence a reader sees
 exact :: time.rs :: Sun :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
 exact :: time.rs :: Mon :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
 exact :: time.rs :: Tue :: an abbreviation fixed by the HTTP date format (RFC 9110), in every language
@@ -329,6 +328,7 @@ exact :: words.rs :: asked :: a placeholder name of a catalog message
 exact :: words.rs :: state :: a placeholder name of a catalog message
 exact :: words.rs :: latest :: a placeholder name of a catalog message
 exact :: words.rs :: view :: a placeholder name of a catalog message
+exact :: words.rs :: keys :: a placeholder name of a catalog message
 exact :: proposals.rs :: wiki `{}`: {line} :: a line for the operator's log; no response carries it
 exact :: proposals.rs :: a proposal's base could not be read now: {cause} :: a line for the operator's log; no response carries it
 exact :: proposals.rs :: the proposal records could not be used: {cause} :: a line for the operator's log; no response carries it

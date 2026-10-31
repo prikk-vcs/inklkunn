@@ -8,6 +8,7 @@ mod accept;
 mod common;
 mod flows;
 mod review;
+mod rules;
 mod safety;
 
 use axum::http::StatusCode;

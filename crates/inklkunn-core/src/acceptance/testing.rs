@@ -1,10 +1,11 @@
 //! Test support for the acceptance path: a wiki over the in-memory repository, a memory store, the lease and the
 //! services, and a signer stand-in whose answers a test scripts. Nothing here is compiled outside tests.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
+use inklkunn_prikk::{Point, Storage};
 use inklkunn_signer::accept::{
     Accept, AcceptError, AcceptanceLedger, AcceptanceToken, ExpectedMessage, PreparedChange,
     SealedChange, ViewCreationAct,
@@ -134,6 +135,35 @@ impl BaseSource for FakeBase {
     fn base(&self, _: &WikiRecord, _: &str) -> Result<Base, BaseError> {
         Base::new(&self.0.state_id(), &self.0.block_id())
             .ok_or_else(|| BaseError::Unavailable("not ids".to_owned()))
+    }
+
+    fn page_paths(&self, _: &WikiRecord, base: &Base) -> Result<BTreeSet<String>, BaseError> {
+        let tree = self
+            .0
+            .tree(
+                std::path::Path::new(""),
+                &Point::Block(base.block_id.clone()),
+                Some("pages"),
+            )
+            .map_err(|e| BaseError::Unavailable(e.to_string()))?;
+        Ok(tree.entries.into_iter().map(|e| e.path).collect())
+    }
+
+    fn page_text(
+        &self,
+        _: &WikiRecord,
+        base: &Base,
+        path: &str,
+    ) -> Result<Option<String>, BaseError> {
+        match self.0.read(
+            std::path::Path::new(""),
+            &Point::Block(base.block_id.clone()),
+            path,
+            u64::MAX,
+        ) {
+            Ok(bytes) => Ok(String::from_utf8(bytes).ok()),
+            Err(_) => Ok(None),
+        }
     }
 }
 

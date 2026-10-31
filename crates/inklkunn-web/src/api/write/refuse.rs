@@ -32,6 +32,10 @@ pub(crate) const fn invalid_word(why: Invalid) -> &'static str {
         Invalid::BadPath => "bad-path",
         Invalid::DuplicatePath => "duplicate-path",
         Invalid::RenameToSelf => "rename-to-self",
+        Invalid::PathOutsidePages => "path-outside-pages",
+        Invalid::PathNotCanonical => "path-not-canonical",
+        Invalid::PathCollides => "path-collides",
+        Invalid::FrontUnreadable => "front-unreadable",
         Invalid::BadBase => "bad-base",
         Invalid::ReasonMissing => "reason-missing",
         Invalid::ReasonTooLong => "reason-too-long",
@@ -67,6 +71,9 @@ impl Request {
                 Problem::new(Code::NotInThisState).named("state", state.as_str())
             }
             ProposalError::Invalid(why) => self.unacceptable(why),
+            ProposalError::OwnedKeys(keys) => {
+                self.unacceptable_with("front-owned", words::owned_keys_text(self.t, &keys))
+            }
             ProposalError::Quota(q) => self.quota(&q),
             ProposalError::AlreadyDecided => Problem::new(Code::AlreadyDecided),
             ProposalError::StaleRevision { latest } => self.stale_at(latest),

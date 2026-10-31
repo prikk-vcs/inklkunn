@@ -636,6 +636,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `refused.superseder` | when a proposal that cannot replace another is named; `{state}` is its state | "A proposal that is {state} cannot replace another one." | "「{state}」の提案は、別の提案に代わることはできません。" |
 | `refused.changed` | when the proposal changed while a form was being filled in | "The proposal changed while you were working on it. Read it again, then try again." | "作業している間に提案が変更されました。読み直してから、もう一度お試しください。" |
 | `invalid.incomplete` | when a form is not the one a page offers | "The form was not complete. Open it again from the page and try again." | "フォームの内容が不完全でした。ページからもう一度開いて、お試しください。" |
+| `invalid.path_collides` | when a new page's path or the target of a move collides with a page that stays, or with another new path of the same proposal | "A page whose name differs from this one only in capital letters, or the page you are moving onto, exists already. Choose another title." | "大文字と小文字の違いしかない名前のページ、または移動先のページがすでにあります。別のタイトルにしてください。" |
 | `invalid.form_too_large` | when a form is larger than any form can be | "What you sent is larger than a form can carry." | "送信された内容が、フォームで扱える大きさを超えています。" |
 | `invalid.summary_missing` | when a proposal is sent without its summary | "Say in a few words what you changed and why." | "何をなぜ変更したのかを、短く書いてください。" |
 | `invalid.summary_too_long` | when the summary is too long; `{limit}` is the most characters | "The summary is longer than {limit} characters." | "要約が {limit} 文字を超えています。" |

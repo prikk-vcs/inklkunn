@@ -34,6 +34,7 @@ use crate::authorize::{Action, Authorizer, Principal, Resource};
 use crate::notify::Notifier;
 use crate::read::{ReadError, ReadService};
 
+pub mod files;
 pub mod machine;
 pub mod metrics;
 pub mod quota;
@@ -67,6 +68,23 @@ pub trait BaseSource: Send + Sync {
     /// `Storage::views` (and one `log --limit 1` for the block), so a base is always a pair prikk named
     /// together.
     fn base(&self, wiki: &WikiRecord, view: &str) -> std::result::Result<Base, BaseError>;
+
+    /// Every file under `pages/` at `base`, as repository paths. What a path "absent at the base" and a case
+    /// collision are judged against (P4).
+    fn page_paths(
+        &self,
+        wiki: &WikiRecord,
+        base: &Base,
+    ) -> std::result::Result<BTreeSet<String>, BaseError>;
+
+    /// The text of the file at `path` at `base`; `None` when there was no such file then, or it is not text.
+    /// What a changed, removed or renamed page is judged against (P5).
+    fn page_text(
+        &self,
+        wiki: &WikiRecord,
+        base: &Base,
+        path: &str,
+    ) -> std::result::Result<Option<String>, BaseError>;
 }
 
 /// Why no base could be had.
@@ -87,6 +105,25 @@ impl BaseSource for ReadService {
             Err(ReadError::NoSuchView(v)) => Err(BaseError::NoSuchView(v)),
             Err(other) => Err(BaseError::Unavailable(other.to_string())),
         }
+    }
+
+    fn page_paths(
+        &self,
+        wiki: &WikiRecord,
+        base: &Base,
+    ) -> std::result::Result<BTreeSet<String>, BaseError> {
+        self.page_paths_at(wiki, &base.block_id)
+            .map_err(|e| BaseError::Unavailable(e.to_string()))
+    }
+
+    fn page_text(
+        &self,
+        wiki: &WikiRecord,
+        base: &Base,
+        path: &str,
+    ) -> std::result::Result<Option<String>, BaseError> {
+        self.source_at(wiki, &base.block_id, path)
+            .map_err(|e| BaseError::Unavailable(e.to_string()))
     }
 }
 
@@ -159,6 +196,16 @@ pub enum Invalid {
     DuplicatePath,
     /// A rename moves a page to itself.
     RenameToSelf,
+    /// A page or either end of a rename is not a `.md` file inside `pages/` (P4).
+    PathOutsidePages,
+    /// A page that is not at the base has a path other than the one its title gives (P4).
+    PathNotCanonical,
+    /// A new path collides, on a case-insensitive file system, with a page that stays or with another new path;
+    /// or a rename lands on a page that stays (P4).
+    PathCollides,
+    /// The information at the top of a page cannot be read, so the keys only an administrator may change cannot
+    /// be told (P5).
+    FrontUnreadable,
     /// The base is not a pair of state and block ids.
     BadBase,
     /// A reason is required and is empty.
@@ -194,6 +241,9 @@ pub enum ProposalError {
     Invalid(Invalid),
     /// *Refused: (the named limit)* (D-11).
     Quota(QuotaRefusal),
+    /// The edit adds, changes or removes keys only an administrator of the wiki may change (they are named);
+    /// removing or renaming a page that carries one counts (P5).
+    OwnedKeys(Vec<&'static str>),
     /// This reviewer has decided on this revision already; a decision is not changed, the next revision is
     /// decided on again.
     AlreadyDecided,
@@ -234,6 +284,11 @@ impl std::fmt::Display for ProposalError {
                 q.allowed,
                 q.current,
                 q.asked
+            ),
+            ProposalError::OwnedKeys(keys) => write!(
+                f,
+                "refused: only an administrator may change {}",
+                keys.join(", ")
             ),
             ProposalError::AlreadyDecided => write!(f, "already decided on this revision"),
             ProposalError::StaleRevision { latest } => {
@@ -363,6 +418,9 @@ fn validate(
         if !path_ok(&f.path) {
             return Err(Invalid::BadPath);
         }
+        if !files::is_page_path(&f.path) {
+            return Err(Invalid::PathOutsidePages);
+        }
         if !seen.insert(f.path.as_str()) {
             return Err(Invalid::DuplicatePath);
         }
@@ -375,6 +433,9 @@ fn validate(
     for r in &content.renames {
         if !path_ok(&r.from) || !path_ok(&r.to) {
             return Err(Invalid::BadPath);
+        }
+        if !files::is_page_path(&r.from) || !files::is_page_path(&r.to) {
+            return Err(Invalid::PathOutsidePages);
         }
         if r.from == r.to {
             return Err(Invalid::RenameToSelf);
@@ -617,6 +678,7 @@ impl ProposalService {
         let base = Self::base_of(&edit, || Ok(self.bases.base(wiki, &view)?))?;
         let content = self.content_of(&edit, base);
         validate(&edit.summary, &edit.sources, &content, Finish::Draft)?;
+        self.judge_files(principal, wiki, &content)?;
         let state = next(None, ProposalOp::Create)?;
 
         let _admission = self
@@ -683,6 +745,7 @@ impl ProposalService {
         let base = Self::base_of(&edit, || Ok(current.base.clone()))?;
         let content = self.content_of(&edit, base);
         validate(&edit.summary, &edit.sources, &content, Finish::Draft)?;
+        self.judge_files(principal, wiki, &content)?;
         let now = (self.clock)();
         self.proposals
             .save_draft(id, edit.summary.trim(), &edit.sources, &content, now)?;
@@ -724,6 +787,7 @@ impl ProposalService {
             .collect();
         self.allow_pages(principal, wiki, &touched)?;
         validate(&p.summary, &p.sources, &draft, Finish::Submit)?;
+        self.judge_files(principal, wiki, &draft)?;
         let now = (self.clock)();
         let change = ProposalChange {
             transition: ProposalTransition {
@@ -770,6 +834,7 @@ impl ProposalService {
         let base = Self::base_of(&edit, || Ok(previous.content.base.clone()))?;
         let content = self.content_of(&edit, base);
         validate(&edit.summary, &edit.sources, &content, Finish::Submit)?;
+        self.judge_files(principal, wiki, &content)?;
         let now = (self.clock)();
         let change = ProposalChange {
             transition: ProposalTransition {

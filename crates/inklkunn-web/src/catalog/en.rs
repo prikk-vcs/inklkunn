@@ -1360,6 +1360,10 @@ pub const CATALOG: &[Entry] = &[
         "The form was not complete. Open it again from the page and try again.",
     ),
     msg(
+        "invalid.path_collides",
+        "A page whose name differs from this one only in capital letters, or the page you are moving onto, exists already. Choose another title.",
+    ),
+    msg(
         "invalid.form_too_large",
         "What you sent is larger than a form can carry.",
     ),

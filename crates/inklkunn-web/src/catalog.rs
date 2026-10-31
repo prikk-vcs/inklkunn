@@ -898,6 +898,7 @@ keys! {
     RefusedSuperseder => "refused.superseder",
     RefusedChanged => "refused.changed",
     InvalidIncomplete => "invalid.incomplete",
+    InvalidPathCollides => "invalid.path_collides",
     InvalidFormTooLarge => "invalid.form_too_large",
     InvalidSummaryMissing => "invalid.summary_missing",
     InvalidSummaryTooLong => "invalid.summary_too_long",

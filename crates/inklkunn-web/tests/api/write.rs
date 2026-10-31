@@ -505,6 +505,130 @@ async fn the_keys_the_service_owns_are_refused_to_a_contributor_as_they_are_on_t
     assert_eq!(allowed.status, 201, "{}", allowed.text());
 }
 
+/// A proposal of `files` and `renames` as `who`, against version 2 of the repository.
+async fn propose_files(c: &Cast, who: &AccountId, files: Value, renames: Value) -> Answer {
+    post(
+        &c.w,
+        &format!("{API}/proposals"),
+        &[session(who), quoted(&state_id(2))],
+        json!({"summary": "x", "submit": false, "files": files, "renames": renames}).to_string(),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn the_service_judges_renames_removals_and_new_paths_the_api_did_not_check_first() {
+    let c = cast();
+    c.w.fake.set(
+        "pages/Hidden.md",
+        &page(&["title: Hidden", "visibility: restricted"], "Secret.\n"),
+    );
+    let refused = |a: &Answer, reason: &str| {
+        assert_eq!(a.status, 422, "{reason}: {}", a.text());
+        assert_eq!(problem_type(a), urn("unacceptable"));
+        assert_eq!(a.json().at("/reason"), reason, "{}", a.text());
+    };
+    // Both ends of a rename must be pages.
+    for (from, to) in [
+        ("pages/Home.md", "governance/Home.md"),
+        ("governance/rules.md", "pages/Rules.md"),
+        ("pages/Home.md", "pages/Home.txt"),
+    ] {
+        let a = propose_files(
+            &c,
+            &c.contributor,
+            json!([]),
+            json!([{"from": from, "to": to}]),
+        )
+        .await;
+        refused(&a, "path-outside-pages");
+    }
+    // A path the title would not give, a case collision with a page that stays, a move onto a page that stays.
+    let a = propose_files(
+        &c,
+        &c.contributor,
+        json!([{"path": "pages/%47uide2.md", "text": "x"}]),
+        json!([]),
+    )
+    .await;
+    refused(&a, "path-not-canonical");
+    let a = propose_files(
+        &c,
+        &c.contributor,
+        json!([{"path": "pages/guide.md", "text": "x"}]),
+        json!([]),
+    )
+    .await;
+    refused(&a, "path-collides");
+    let a = propose_files(
+        &c,
+        &c.contributor,
+        json!([]),
+        json!([{"from": "pages/Home.md", "to": "pages/guide.md"}]),
+    )
+    .await;
+    refused(&a, "path-collides");
+    // A page that carries an owned key cannot be removed or moved by a contributor; an administrator may.
+    let removal = json!([{"path": "pages/Hidden.md", "text": null}]);
+    let a = propose_files(&c, &c.contributor, removal.clone(), json!([])).await;
+    refused(&a, "front-owned");
+    assert!(
+        a.json()
+            .at("/detail")
+            .as_str()
+            .unwrap()
+            .contains("visibility")
+    );
+    let a = propose_files(
+        &c,
+        &c.contributor,
+        json!([]),
+        json!([{"from": "pages/Hidden.md", "to": "pages/Moved.md"}]),
+    )
+    .await;
+    refused(&a, "front-owned");
+    let a = propose_files(&c, &c.admin, removal, json!([])).await;
+    assert_eq!(a.status, 201, "{}", a.text());
+    // A rename of an ordinary page is a rename.
+    let a = propose_files(
+        &c,
+        &c.contributor,
+        json!([]),
+        json!([{"from": "pages/Guide.md", "to": "pages/Handbook.md"}]),
+    )
+    .await;
+    assert_eq!(a.status, 201, "{}", a.text());
+}
+
+#[tokio::test]
+async fn a_contributor_may_propose_a_redirect_and_no_other_kind() {
+    let c = cast();
+    let body = |front: &[&str]| {
+        let mut lines = vec!["title: Home"];
+        lines.extend_from_slice(front);
+        json!({"summary": "x", "submit": true,
+               "files": [{"path": "pages/Home.md", "text": page(&lines, "Body.\n")}]})
+        .to_string()
+    };
+    let redirect = post(
+        &c.w,
+        &format!("{API}/proposals"),
+        &[session(&c.contributor), tip()],
+        body(&["kind: redirect", "redirect: Guide"]),
+    )
+    .await;
+    assert_eq!(redirect.status, 201, "{}", redirect.text());
+    let category = post(
+        &c.w,
+        &format!("{API}/proposals"),
+        &[session(&c.contributor), tip()],
+        body(&["kind: category"]),
+    )
+    .await;
+    assert_eq!(category.status, 422, "{}", category.text());
+    assert_eq!(category.json().at("/reason"), "front-owned");
+}
+
 // ------------------------------------------------------------------------------------ the base
 
 #[tokio::test]

@@ -6,6 +6,8 @@
 //! Both are reads. Neither writes, neither caches: a preview is the text one person is typing, and the base
 //! of a proposal is read once per page view.
 
+use std::collections::BTreeSet;
+
 use inklkunn_markup::path::title_to_path;
 use inklkunn_prikk::{Point, StorageError};
 use inklkunn_store::{DerivedHeading, IndexEntry, WikiRecord};
@@ -49,6 +51,26 @@ impl ReadService {
             }
             Err(e) => Err(self.storage_error(wiki, e)),
         }
+    }
+
+    /// Every file under `pages/` at the block `block_id`. What a proposal's new paths are judged against.
+    pub fn page_paths_at(
+        &self,
+        wiki: &WikiRecord,
+        block_id: &str,
+    ) -> Result<BTreeSet<String>, ReadError> {
+        let repo = self.layout.repo_dir(&wiki.id);
+        let point = Point::Block(block_id.to_owned());
+        let tree = self
+            .storage
+            .tree(&repo, &point, Some("pages"))
+            .map_err(|e| self.storage_error(wiki, e))?;
+        Ok(tree
+            .entries
+            .into_iter()
+            .filter(|e| e.kind == "file")
+            .map(|e| e.path)
+            .collect())
     }
 
     /// Draw `text` as the page titled `title` stored at `path` would be drawn at the tip of the view (the

@@ -99,6 +99,13 @@ pub(crate) fn quota_paragraphs(t: T, q: &QuotaRefusal) -> Vec<String> {
     ]
 }
 
+/// The sentence that names the keys at the top of a page that only an administrator may change.
+pub(crate) fn owned_keys_text(t: T, keys: &[&str]) -> String {
+    t.msg(Key::ProposeFrontOwned)
+        .with("keys", keys.join(", "))
+        .text()
+}
+
 /// What went wrong with what a person sent, in one sentence.
 pub(crate) fn invalid_text(t: T, why: Invalid) -> String {
     match why {
@@ -125,7 +132,11 @@ pub(crate) fn invalid_text(t: T, why: Invalid) -> String {
             .msg(Key::InvalidPageTooLarge)
             .with("limit", size_label(t, MAX_PAGE_BYTES as u64))
             .text(),
+        Invalid::PathCollides => t.get(Key::InvalidPathCollides),
+        Invalid::FrontUnreadable => t.get(Key::ProposeFrontUnreadable),
         Invalid::BadPath
+        | Invalid::PathOutsidePages
+        | Invalid::PathNotCanonical
         | Invalid::DuplicatePath
         | Invalid::RenameToSelf
         | Invalid::BadBase
@@ -184,6 +195,11 @@ pub(crate) fn refusal(t: T, error: &ProposalError) -> Option<Refusal> {
             StatusCode::UNPROCESSABLE_ENTITY,
             Key::RefusedInvalidHeading,
             vec![invalid_text(t, *why)],
+        ),
+        ProposalError::OwnedKeys(keys) => page(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Key::RefusedInvalidHeading,
+            vec![owned_keys_text(t, keys)],
         ),
         ProposalError::Quota(q) => page(
             StatusCode::TOO_MANY_REQUESTS,

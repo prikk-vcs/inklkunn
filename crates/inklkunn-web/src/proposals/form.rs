@@ -11,8 +11,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use inklkunn_core::proposal::files::{changed_owned_keys, front_keys};
 use inklkunn_core::proposal::{MAX_PAGE_BYTES, MAX_PROPOSAL_BYTES};
-use inklkunn_markup::frontmatter;
 use inklkunn_store::{Base, Rename};
 
 use super::fields;
@@ -239,19 +239,7 @@ pub(crate) struct Markup;
 
 impl Frontmatter for Markup {
     fn keys(&self, text: &str) -> Option<BTreeMap<String, String>> {
-        let (yaml, _, _) = frontmatter::split(text);
-        let Some(yaml) = yaml else {
-            return Some(BTreeMap::new());
-        };
-        match frontmatter::parse_yaml(yaml).ok()? {
-            frontmatter::Value::Map(pairs) => Some(
-                pairs
-                    .into_iter()
-                    .map(|(k, v)| (k, v.to_json().to_string()))
-                    .collect(),
-            ),
-            _ => Some(BTreeMap::new()),
-        }
+        front_keys(text)
     }
 }
 
@@ -277,10 +265,9 @@ pub(crate) fn check_owned_keys(
     let after = parser.keys(new).ok_or(Front::Unreadable)?;
     // A page that is already unreadable is not made worse by being read as having no keys.
     let before = old.and_then(|t| parser.keys(t)).unwrap_or_default();
-    let changed: Vec<&'static str> = fields::OWNED_KEYS
-        .into_iter()
-        .filter(|k| before.get(*k) != after.get(*k))
-        .collect();
+    // The rule is the service's (`changed_owned_keys`, with the ruling that a redirect is ordinary work); this is
+    // the first line, which says it before the service is asked.
+    let changed = changed_owned_keys(&before, &after);
     if changed.is_empty() || allowed() {
         Ok(())
     } else {

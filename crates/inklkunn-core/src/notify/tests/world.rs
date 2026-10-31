@@ -85,6 +85,18 @@ impl BaseSource for Tip {
         )
         .expect("a base"))
     }
+
+    fn page_paths(
+        &self,
+        _: &WikiRecord,
+        _: &Base,
+    ) -> Result<std::collections::BTreeSet<String>, BaseError> {
+        Ok(std::collections::BTreeSet::new())
+    }
+
+    fn page_text(&self, _: &WikiRecord, _: &Base, _: &str) -> Result<Option<String>, BaseError> {
+        Ok(None)
+    }
 }
 
 /// A person: the account and a session principal for it.

@@ -254,7 +254,7 @@ async fn the_keys_the_service_owns_are_refused_unless_the_role_allows() {
     let c = cast();
     let owned = HOME.replace(
         "title: Home",
-        "title: Home\nvisibility: public\nkind: redirect",
+        "title: Home\nvisibility: public\nkind: system",
     );
     let a = send(
         &c,
