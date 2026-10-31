@@ -422,6 +422,60 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `problem.change_not_found.title` | the API's problem detail `change-not-found`: the title | "Change not found" | "変更が見つかりません" |
 | `problem.change_not_found.detail` | the API's problem detail `change-not-found`: the detail | "This wiki has no change with this id in this view." | "このウィキのこのビューには、この ID の変更がありません。" |
 | `problem.change_not_found.hint` | the API's problem detail `change-not-found`: the hint | "Take the id of a change from the history of a page or from the recent changes." | "変更の ID は、ページの履歴または最近の変更から取ってください。" |
+| `problem.authentication_required.title` | the API's problem detail `authentication-required`: the title | "Sign-in needed" | "サインインが必要です" |
+| `problem.authentication_required.detail` | the API's problem detail `authentication-required`: the detail | "This request carries no credential, and writing needs an account." | "このリクエストには認証情報がなく、書き込みにはアカウントが必要です。" |
+| `problem.authentication_required.hint` | the API's problem detail `authentication-required`: the hint | "Send an API token in an Authorization header, as Bearer followed by the token." | "Authorization ヘッダーに、Bearer に続けて API トークンを付けて送ってください。" |
+| `problem.invalid_token.title` | the API's problem detail `invalid-token`: the title | "Token not accepted" | "トークンを受け付けられません" |
+| `problem.invalid_token.detail` | the API's problem detail `invalid-token`: the detail | "The token in the Authorization header is not one this server accepts: it may be unknown, expired or revoked, or its account may be disabled." | "Authorization ヘッダーのトークンは、このサーバーが受け付けるものではありません。未知、期限切れ、失効済みのいずれか、またはアカウントが無効になっている可能性があります。" |
+| `problem.invalid_token.hint` | the API's problem detail `invalid-token`: the hint | "Issue a new token and send that one." | "新しいトークンを発行して、そちらを送ってください。" |
+| `problem.forbidden.title` | the API's problem detail `forbidden`: the title | "Not allowed" | "許可されていません" |
+| `problem.forbidden.detail` | the API's problem detail `forbidden`: the detail | "This credential may not do this: the account's role in this wiki or the scope the token was issued with does not allow it, or a request made with a session cookie came from another site." | "この認証情報ではこの操作はできません。このウィキでのアカウントの役割か、トークンの発行時のスコープが許していないか、セッション Cookie を伴うリクエストが別のサイトから来ています。" |
+| `problem.forbidden.hint` | the API's problem detail `forbidden`: the hint | "Ask a maintainer of the wiki for the role, or use a token issued with a wider scope." | "ウィキのメンテナーに役割を依頼するか、より広いスコープで発行したトークンを使ってください。" |
+| `problem.base_required.title` | the API's problem detail `base-required`: the title | "Base needed" | "基準が必要です" |
+| `problem.base_required.detail` | the API's problem detail `base-required`: the detail | "A write names the state it was written against, and this request has no If-Match header." | "書き込みは、書いた時点の状態を示す必要がありますが、このリクエストには If-Match ヘッダーがありません。" |
+| `problem.base_required.hint` | the API's problem detail `base-required`: the hint | "Send the ETag of the proposal's revision as If-Match; for a new proposal, send the state id of the view's tip." | "If-Match に提案のリビジョンの ETag を付けて送ってください。新しい提案では、ビューの先頭の状態 ID を送ってください。" |
+| `problem.stale_base.title` | the API's problem detail `stale-base`: the title | "The base is out of date" | "基準が古くなっています" |
+| `problem.stale_base.detail` | the API's problem detail `stale-base`: the detail | "What this write was made against is no longer the current state: someone else got there first. Nothing was recorded." | "この書き込みの基準は、もう現在の状態ではありません。先に別の操作がありました。何も記録されていません。" |
+| `problem.stale_base.hint` | the API's problem detail `stale-base`: the hint | "Read the current state, check your change against it, and send again with the current value in If-Match. This problem carries that value." | "現在の状態を読み、変更を照らし合わせてから、If-Match に現在の値を付けて送り直してください。この問題の応答にその値が含まれています。" |
+| `problem.invalid_body.title` | the API's problem detail `invalid-body`: the title | "Body not accepted" | "本文を受け付けられません" |
+| `problem.invalid_body.detail` | the API's problem detail `invalid-body`: the detail | "The body is not a JSON object of the shape this endpoint takes: the member {member} is missing, repeated, unknown or has a value it may not have." | "本文が、このエンドポイントの形の JSON オブジェクトではありません。メンバー {member} が、ない、重複している、未知である、または許されない値です。" |
+| `problem.invalid_body.hint` | the API's problem detail `invalid-body`: the hint | "Send the members the description of this endpoint lists, and no others." | "このエンドポイントの説明にあるメンバーだけを送ってください。" |
+| `problem.body_too_large.title` | the API's problem detail `body-too-large`: the title | "Body too large" | "本文が大きすぎます" |
+| `problem.body_too_large.detail` | the API's problem detail `body-too-large`: the detail | "The body is larger than this endpoint takes: at most {limit} bytes. Nothing was read of it." | "本文が、このエンドポイントの受け付ける大きさ（最大 {limit} バイト）を超えています。内容は読み込まれていません。" |
+| `problem.body_too_large.hint` | the API's problem detail `body-too-large`: the hint | "Send less: split the change, or shorten the text." | "送る量を減らしてください。変更を分けるか、テキストを短くします。" |
+| `problem.unsupported_media_type.title` | the API's problem detail `unsupported-media-type`: the title | "Not sent as JSON" | "JSON として送られていません" |
+| `problem.unsupported_media_type.detail` | the API's problem detail `unsupported-media-type`: the detail | "The body must be JSON, sent with the content type application/json." | "本文は JSON で、コンテンツタイプ application/json で送る必要があります。" |
+| `problem.unsupported_media_type.hint` | the API's problem detail `unsupported-media-type`: the hint | "Set the Content-Type header to application/json." | "Content-Type ヘッダーを application/json にしてください。" |
+| `problem.unacceptable.title` | the API's problem detail `unacceptable`: the title | "Not acceptable as sent" | "このままでは受け付けられません" |
+| `problem.unacceptable.detail` | the API's problem detail `unacceptable`: the detail | "{explanation}" | "{explanation}" |
+| `problem.unacceptable.hint` | the API's problem detail `unacceptable`: the hint | "Correct what the reason names and send again. Nothing was recorded." | "reason が示す点を直して、もう一度送ってください。何も記録されていません。" |
+| `problem.not_in_this_state.title` | the API's problem detail `not-in-this-state`: the title | "Not possible now" | "今はできません" |
+| `problem.not_in_this_state.detail` | the API's problem detail `not-in-this-state`: the detail | "This cannot be done while the proposal is {state}." | "提案が {state} の間は、これはできません。" |
+| `problem.not_in_this_state.hint` | the API's problem detail `not-in-this-state`: the hint | "Read the proposal: what is possible depends on its state." | "提案を読んでください。できることは提案の状態によって決まります。" |
+| `problem.already_decided.title` | the API's problem detail `already-decided`: the title | "Already decided" | "すでに判断しています" |
+| `problem.already_decided.detail` | the API's problem detail `already-decided`: the detail | "You have decided on this revision already, and a decision is not changed." | "このリビジョンにはすでに判断を出しており、判断は変更できません。" |
+| `problem.already_decided.hint` | the API's problem detail `already-decided`: the hint | "Decide again on the next revision, when there is one." | "次のリビジョンができたら、そのときにあらためて判断してください。" |
+| `problem.refused_limit.title` | the API's problem detail `refused-limit`: the title | "Refused: a limit" | "拒否: 上限に達しました" |
+| `problem.refused_limit.detail` | the API's problem detail `refused-limit`: the detail | "A limit was reached: {limit}. The members allowed, current and asked give the numbers, and reset says when it will be possible again." | "上限に達しました: {limit}。allowed、current、asked の各メンバーが数を示し、reset がまた可能になる時刻を示します。" |
+| `problem.refused_limit.hint` | the API's problem detail `refused-limit`: the hint | "Where waiting helps, Retry-After says how long. Otherwise close a proposal of yours, or ask for less." | "待てば解消する場合は Retry-After が待つ秒数を示します。そうでない場合は、ご自身の提案を閉じるか、求める量を減らしてください。" |
+| `problem.busy.title` | the API's problem detail `busy`: the title | "The wiki is busy" | "ウィキは混み合っています" |
+| `problem.busy.detail` | the API's problem detail `busy`: the detail | "Another act on this wiki is running or waiting. Acts ahead of this one: {waiting}. Nothing was done." | "このウィキでは別の操作が実行中または待機中で、この操作の前に {waiting} 件あります。何も行われていません。" |
+| `problem.busy.hint` | the API's problem detail `busy`: the hint | "Send it again after the time Retry-After gives." | "Retry-After が示す時間のあとで、もう一度送ってください。" |
+| `problem.needs_recovery.title` | the API's problem detail `needs-recovery`: the title | "The wiki needs recovery" | "ウィキの復旧が必要です" |
+| `problem.needs_recovery.detail` | the API's problem detail `needs-recovery`: the detail | "A write to this wiki did not finish. The wiki accepts no more changes until recovery has looked at it, and reading still works." | "このウィキへの書き込みが完了しませんでした。復旧が確認するまで、ウィキは新しい変更を受け付けませんが、読み取りはできます。" |
+| `problem.needs_recovery.hint` | the API's problem detail `needs-recovery`: the hint | "Tell the person who runs this server. This request did nothing." | "このサーバーを運用している人に知らせてください。このリクエストでは何も行われていません。" |
+| `problem.overlap.title` | the API's problem detail `overlap`: the title | "Changes overlap" | "変更が重なっています" |
+| `problem.overlap.detail` | the API's problem detail `overlap`: the detail | "Stopped: the proposal and the wiki changed the same places, {overlaps} of them. The proposal now needs a revision, and the wiki is as it was." | "停止しました。提案とウィキが同じ箇所を変更しており、{overlaps} 件あります。提案は改訂が必要な状態になり、ウィキは変わっていません。" |
+| `problem.overlap.hint` | the API's problem detail `overlap`: the hint | "Read the overlap on the proposal, write a revision that takes both texts into account, and send it." | "提案に記録された重なりを読み、両方のテキストを踏まえた改訂を書いて送ってください。" |
+| `problem.nothing_to_change.title` | the API's problem detail `nothing-to-change`: the title | "Nothing to change" | "変更するものがありません" |
+| `problem.nothing_to_change.detail` | the API's problem detail `nothing-to-change`: the detail | "The wiki already has everything this revision asks for." | "このリビジョンが求める内容は、すでにウィキにあります。" |
+| `problem.nothing_to_change.hint` | the API's problem detail `nothing-to-change`: the hint | "Decline or withdraw the proposal, or revise it." | "提案を却下または取り下げるか、改訂してください。" |
+| `problem.acceptance_in_progress.title` | the API's problem detail `acceptance-in-progress`: the title | "Acceptance already underway" | "受け入れがすでに進行中です" |
+| `problem.acceptance_in_progress.detail` | the API's problem detail `acceptance-in-progress`: the detail | "An earlier acceptance of this revision has not finished." | "このリビジョンの先の受け入れが、まだ署名を終えていません。" |
+| `problem.acceptance_in_progress.hint` | the API's problem detail `acceptance-in-progress`: the hint | "Wait and ask again. Recovery settles it if the earlier one was interrupted." | "しばらく待ってから、もう一度試してください。先の受け入れが中断されていた場合は、復旧が解決します。" |
+| `problem.acceptance_failed.title` | the API's problem detail `acceptance-failed`: the title | "Acceptance failed" | "受け入れに失敗しました" |
+| `problem.acceptance_failed.detail` | the API's problem detail `acceptance-failed`: the detail | "The change was not made: {word}. The proposal stays open and the history is as it was." | "変更は行われませんでした: {word}。提案は開いたままで、履歴は変わっていません。" |
+| `problem.acceptance_failed.hint` | the API's problem detail `acceptance-failed`: the hint | "Try again, or tell the person who runs this server." | "もう一度試すか、このサーバーを運用している人に知らせてください。" |
 | `title.inbox` | the title of the inbox | "Inbox · {product}" | "受信箱 · {product}" |
 | `inbox.heading` | the heading of the inbox | "Inbox" | "受信箱" |
 | `inbox.intro` | under the heading of the inbox | "What has happened to your proposals and to the pages you follow, newest first." | "あなたの提案と、フォローしているページに起きたことを、新しい順に表示します。" |

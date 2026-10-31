@@ -46,6 +46,43 @@ pub(crate) enum Code {
     MethodNotAllowed,
     /// The view's history has no change with this id (also: a diff asked for the change before the first).
     ChangeNotFound,
+    // --- the write API (RFC 004 D-13; handoff 004 T7)
+    /// Authentication required: the request carries no credential, and writing needs an account.
+    AuthenticationRequired,
+    /// The token in the Authorization header does not authenticate.
+    InvalidToken,
+    /// The credential may not do this.
+    Forbidden,
+    /// The write names no base: no If-Match.
+    BaseRequired,
+    /// The base the write names is not the current state.
+    StaleBase,
+    /// The body is not a JSON object of the endpoint's shape.
+    InvalidBody,
+    /// The body is over the endpoint's bound.
+    BodyTooLarge,
+    /// The body is not sent as application/json.
+    UnsupportedMediaType,
+    /// What was sent cannot be taken as it is.
+    Unacceptable,
+    /// The proposal's state does not allow the act.
+    NotInThisState,
+    /// This reviewer decided on this revision already.
+    AlreadyDecided,
+    /// A limit was reached.
+    RefusedLimit,
+    /// The wiki is busy.
+    Busy,
+    /// The wiki needs recovery.
+    NeedsRecovery,
+    /// The proposal and the wiki changed the same places.
+    Overlap,
+    /// The wiki already has what the revision asks for.
+    NothingToChange,
+    /// An earlier acceptance of this revision has not finished.
+    AcceptanceInProgress,
+    /// The change was not made.
+    AcceptanceFailed,
 }
 
 impl Code {
@@ -67,6 +104,24 @@ impl Code {
         Code::Failed,
         Code::MethodNotAllowed,
         Code::ChangeNotFound,
+        Code::AuthenticationRequired,
+        Code::InvalidToken,
+        Code::Forbidden,
+        Code::BaseRequired,
+        Code::StaleBase,
+        Code::InvalidBody,
+        Code::BodyTooLarge,
+        Code::UnsupportedMediaType,
+        Code::Unacceptable,
+        Code::NotInThisState,
+        Code::AlreadyDecided,
+        Code::RefusedLimit,
+        Code::Busy,
+        Code::NeedsRecovery,
+        Code::Overlap,
+        Code::NothingToChange,
+        Code::AcceptanceInProgress,
+        Code::AcceptanceFailed,
     ];
 
     /// The stable name: lower case, hyphenated.
@@ -87,6 +142,24 @@ impl Code {
             Code::Failed => "failed",
             Code::MethodNotAllowed => "method-not-allowed",
             Code::ChangeNotFound => "change-not-found",
+            Code::AuthenticationRequired => "authentication-required",
+            Code::InvalidToken => "invalid-token",
+            Code::Forbidden => "forbidden",
+            Code::BaseRequired => "base-required",
+            Code::StaleBase => "stale-base",
+            Code::InvalidBody => "invalid-body",
+            Code::BodyTooLarge => "body-too-large",
+            Code::UnsupportedMediaType => "unsupported-media-type",
+            Code::Unacceptable => "unacceptable",
+            Code::NotInThisState => "not-in-this-state",
+            Code::AlreadyDecided => "already-decided",
+            Code::RefusedLimit => "refused-limit",
+            Code::Busy => "busy",
+            Code::NeedsRecovery => "needs-recovery",
+            Code::Overlap => "overlap",
+            Code::NothingToChange => "nothing-to-change",
+            Code::AcceptanceInProgress => "acceptance-in-progress",
+            Code::AcceptanceFailed => "acceptance-failed",
         }
     }
 
@@ -113,6 +186,31 @@ impl Code {
             Code::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
             Code::Failed => StatusCode::INTERNAL_SERVER_ERROR,
             Code::MethodNotAllowed => StatusCode::METHOD_NOT_ALLOWED,
+            Code::AuthenticationRequired | Code::InvalidToken => StatusCode::UNAUTHORIZED,
+            Code::Forbidden => StatusCode::FORBIDDEN,
+            Code::BaseRequired => StatusCode::PRECONDITION_REQUIRED,
+            Code::StaleBase
+            | Code::NotInThisState
+            | Code::AlreadyDecided
+            | Code::Overlap
+            | Code::NothingToChange
+            | Code::AcceptanceInProgress => StatusCode::CONFLICT,
+            Code::InvalidBody => StatusCode::BAD_REQUEST,
+            Code::BodyTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
+            Code::UnsupportedMediaType => StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            Code::Unacceptable => StatusCode::UNPROCESSABLE_ENTITY,
+            Code::RefusedLimit => StatusCode::TOO_MANY_REQUESTS,
+            Code::Busy | Code::NeedsRecovery => StatusCode::SERVICE_UNAVAILABLE,
+            Code::AcceptanceFailed => StatusCode::BAD_GATEWAY,
+        }
+    }
+
+    /// The `WWW-Authenticate` challenge of an answer that asks for a credential (RFC 9110, 11.6.1).
+    pub(crate) const fn challenge(self) -> Option<&'static str> {
+        match self {
+            Code::AuthenticationRequired => Some("Bearer"),
+            Code::InvalidToken => Some("Bearer error=\"invalid_token\""),
+            _ => None,
         }
     }
 
@@ -194,6 +292,96 @@ impl Code {
                 Key::ProblemChangeNotFoundDetail,
                 Key::ProblemChangeNotFoundHint,
             ),
+            Code::AuthenticationRequired => (
+                Key::ProblemAuthenticationRequiredTitle,
+                Key::ProblemAuthenticationRequiredDetail,
+                Key::ProblemAuthenticationRequiredHint,
+            ),
+            Code::InvalidToken => (
+                Key::ProblemInvalidTokenTitle,
+                Key::ProblemInvalidTokenDetail,
+                Key::ProblemInvalidTokenHint,
+            ),
+            Code::Forbidden => (
+                Key::ProblemForbiddenTitle,
+                Key::ProblemForbiddenDetail,
+                Key::ProblemForbiddenHint,
+            ),
+            Code::BaseRequired => (
+                Key::ProblemBaseRequiredTitle,
+                Key::ProblemBaseRequiredDetail,
+                Key::ProblemBaseRequiredHint,
+            ),
+            Code::StaleBase => (
+                Key::ProblemStaleBaseTitle,
+                Key::ProblemStaleBaseDetail,
+                Key::ProblemStaleBaseHint,
+            ),
+            Code::InvalidBody => (
+                Key::ProblemInvalidBodyTitle,
+                Key::ProblemInvalidBodyDetail,
+                Key::ProblemInvalidBodyHint,
+            ),
+            Code::BodyTooLarge => (
+                Key::ProblemBodyTooLargeTitle,
+                Key::ProblemBodyTooLargeDetail,
+                Key::ProblemBodyTooLargeHint,
+            ),
+            Code::UnsupportedMediaType => (
+                Key::ProblemUnsupportedMediaTypeTitle,
+                Key::ProblemUnsupportedMediaTypeDetail,
+                Key::ProblemUnsupportedMediaTypeHint,
+            ),
+            Code::Unacceptable => (
+                Key::ProblemUnacceptableTitle,
+                Key::ProblemUnacceptableDetail,
+                Key::ProblemUnacceptableHint,
+            ),
+            Code::NotInThisState => (
+                Key::ProblemNotInThisStateTitle,
+                Key::ProblemNotInThisStateDetail,
+                Key::ProblemNotInThisStateHint,
+            ),
+            Code::AlreadyDecided => (
+                Key::ProblemAlreadyDecidedTitle,
+                Key::ProblemAlreadyDecidedDetail,
+                Key::ProblemAlreadyDecidedHint,
+            ),
+            Code::RefusedLimit => (
+                Key::ProblemRefusedLimitTitle,
+                Key::ProblemRefusedLimitDetail,
+                Key::ProblemRefusedLimitHint,
+            ),
+            Code::Busy => (
+                Key::ProblemBusyTitle,
+                Key::ProblemBusyDetail,
+                Key::ProblemBusyHint,
+            ),
+            Code::NeedsRecovery => (
+                Key::ProblemNeedsRecoveryTitle,
+                Key::ProblemNeedsRecoveryDetail,
+                Key::ProblemNeedsRecoveryHint,
+            ),
+            Code::Overlap => (
+                Key::ProblemOverlapTitle,
+                Key::ProblemOverlapDetail,
+                Key::ProblemOverlapHint,
+            ),
+            Code::NothingToChange => (
+                Key::ProblemNothingToChangeTitle,
+                Key::ProblemNothingToChangeDetail,
+                Key::ProblemNothingToChangeHint,
+            ),
+            Code::AcceptanceInProgress => (
+                Key::ProblemAcceptanceInProgressTitle,
+                Key::ProblemAcceptanceInProgressDetail,
+                Key::ProblemAcceptanceInProgressHint,
+            ),
+            Code::AcceptanceFailed => (
+                Key::ProblemAcceptanceFailedTitle,
+                Key::ProblemAcceptanceFailedDetail,
+                Key::ProblemAcceptanceFailedHint,
+            ),
         }
     }
 }
@@ -206,6 +394,10 @@ pub(crate) struct Problem {
     named: Vec<(&'static str, String)>,
     /// A member that no sentence names.
     members: Vec<(&'static str, Value)>,
+    /// A value a sentence names that is not a member (a number or a sentence of the pages' own words).
+    said: Vec<(&'static str, String)>,
+    /// How long waiting is advised, in seconds: the `Retry-After` header.
+    retry_after: Option<u64>,
 }
 
 impl Problem {
@@ -214,6 +406,8 @@ impl Problem {
             code,
             named: Vec::new(),
             members: Vec::new(),
+            said: Vec::new(),
+            retry_after: None,
         }
     }
 
@@ -231,12 +425,31 @@ impl Problem {
         self
     }
 
+    /// A value the sentences name (`{name}`) that is not a member of the problem.
+    #[must_use]
+    pub(crate) fn said(mut self, name: &'static str, value: impl ToString) -> Problem {
+        self.said.push((name, value.to_string()));
+        self
+    }
+
+    /// Waiting this many seconds is advised: the answer carries `Retry-After`.
+    #[must_use]
+    pub(crate) fn retry_after(mut self, seconds: u64) -> Problem {
+        self.retry_after = Some(seconds.max(1));
+        self
+    }
+
+    /// The seconds `Retry-After` says, if the problem advises waiting.
+    pub(crate) fn retry_after_secs(&self) -> Option<u64> {
+        self.retry_after
+    }
+
     /// The body, in the language of `t`: `type`, `title`, `status`, `detail`, `hint`, then the members.
     pub(crate) fn body(&self, t: T) -> Value {
         let (title, detail, hint) = self.code.keys();
         let say = |key: Key| {
             let mut msg = t.msg(key);
-            for (name, value) in &self.named {
+            for (name, value) in self.named.iter().chain(&self.said) {
                 msg = msg.with(name, value);
             }
             msg.text()

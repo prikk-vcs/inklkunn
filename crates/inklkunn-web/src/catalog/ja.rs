@@ -850,6 +850,184 @@ pub const CATALOG: &[Entry] = &[
         "problem.change_not_found.hint",
         "変更の ID は、ページの履歴または最近の変更から取ってください。",
     ),
+    // the write API's problems (handoff 004 T7)
+    msg(
+        "problem.authentication_required.title",
+        "サインインが必要です",
+    ),
+    msg(
+        "problem.authentication_required.detail",
+        "このリクエストには認証情報がなく、書き込みにはアカウントが必要です。",
+    ),
+    msg(
+        "problem.authentication_required.hint",
+        "Authorization ヘッダーに、Bearer に続けて API トークンを付けて送ってください。",
+    ),
+    msg(
+        "problem.invalid_token.title",
+        "トークンを受け付けられません",
+    ),
+    msg(
+        "problem.invalid_token.detail",
+        "Authorization ヘッダーのトークンは、このサーバーが受け付けるものではありません。未知、期限切れ、失効済みのいずれか、またはアカウントが無効になっている可能性があります。",
+    ),
+    msg(
+        "problem.invalid_token.hint",
+        "新しいトークンを発行して、そちらを送ってください。",
+    ),
+    msg("problem.forbidden.title", "許可されていません"),
+    msg(
+        "problem.forbidden.detail",
+        "この認証情報ではこの操作はできません。このウィキでのアカウントの役割か、トークンの発行時のスコープが許していないか、セッション Cookie を伴うリクエストが別のサイトから来ています。",
+    ),
+    msg(
+        "problem.forbidden.hint",
+        "ウィキのメンテナーに役割を依頼するか、より広いスコープで発行したトークンを使ってください。",
+    ),
+    msg("problem.base_required.title", "基準が必要です"),
+    msg(
+        "problem.base_required.detail",
+        "書き込みは、書いた時点の状態を示す必要がありますが、このリクエストには If-Match ヘッダーがありません。",
+    ),
+    msg(
+        "problem.base_required.hint",
+        "If-Match に提案のリビジョンの ETag を付けて送ってください。新しい提案では、ビューの先頭の状態 ID を送ってください。",
+    ),
+    msg("problem.stale_base.title", "基準が古くなっています"),
+    msg(
+        "problem.stale_base.detail",
+        "この書き込みの基準は、もう現在の状態ではありません。先に別の操作がありました。何も記録されていません。",
+    ),
+    msg(
+        "problem.stale_base.hint",
+        "現在の状態を読み、変更を照らし合わせてから、If-Match に現在の値を付けて送り直してください。この問題の応答にその値が含まれています。",
+    ),
+    msg("problem.invalid_body.title", "本文を受け付けられません"),
+    msg(
+        "problem.invalid_body.detail",
+        "本文が、このエンドポイントの形の JSON オブジェクトではありません。メンバー {member} が、ない、重複している、未知である、または許されない値です。",
+    ),
+    msg(
+        "problem.invalid_body.hint",
+        "このエンドポイントの説明にあるメンバーだけを送ってください。",
+    ),
+    msg("problem.body_too_large.title", "本文が大きすぎます"),
+    msg(
+        "problem.body_too_large.detail",
+        "本文が、このエンドポイントの受け付ける大きさ（最大 {limit} バイト）を超えています。内容は読み込まれていません。",
+    ),
+    msg(
+        "problem.body_too_large.hint",
+        "送る量を減らしてください。変更を分けるか、テキストを短くします。",
+    ),
+    msg(
+        "problem.unsupported_media_type.title",
+        "JSON として送られていません",
+    ),
+    msg(
+        "problem.unsupported_media_type.detail",
+        "本文は JSON で、コンテンツタイプ application/json で送る必要があります。",
+    ),
+    msg(
+        "problem.unsupported_media_type.hint",
+        "Content-Type ヘッダーを application/json にしてください。",
+    ),
+    msg(
+        "problem.unacceptable.title",
+        "このままでは受け付けられません",
+    ),
+    msg("problem.unacceptable.detail", "{explanation}"),
+    msg(
+        "problem.unacceptable.hint",
+        "reason が示す点を直して、もう一度送ってください。何も記録されていません。",
+    ),
+    msg("problem.not_in_this_state.title", "今はできません"),
+    msg(
+        "problem.not_in_this_state.detail",
+        "提案が {state} の間は、これはできません。",
+    ),
+    msg(
+        "problem.not_in_this_state.hint",
+        "提案を読んでください。できることは提案の状態によって決まります。",
+    ),
+    msg("problem.already_decided.title", "すでに判断しています"),
+    msg(
+        "problem.already_decided.detail",
+        "このリビジョンにはすでに判断を出しており、判断は変更できません。",
+    ),
+    msg(
+        "problem.already_decided.hint",
+        "次のリビジョンができたら、そのときにあらためて判断してください。",
+    ),
+    msg("problem.refused_limit.title", "拒否: 上限に達しました"),
+    msg(
+        "problem.refused_limit.detail",
+        "上限に達しました: {limit}。allowed、current、asked の各メンバーが数を示し、reset がまた可能になる時刻を示します。",
+    ),
+    msg(
+        "problem.refused_limit.hint",
+        "待てば解消する場合は Retry-After が待つ秒数を示します。そうでない場合は、ご自身の提案を閉じるか、求める量を減らしてください。",
+    ),
+    msg("problem.busy.title", "ウィキは混み合っています"),
+    msg(
+        "problem.busy.detail",
+        "このウィキでは別の操作が実行中または待機中で、この操作の前に {waiting} 件あります。何も行われていません。",
+    ),
+    msg(
+        "problem.busy.hint",
+        "Retry-After が示す時間のあとで、もう一度送ってください。",
+    ),
+    msg("problem.needs_recovery.title", "ウィキの復旧が必要です"),
+    msg(
+        "problem.needs_recovery.detail",
+        "このウィキへの書き込みが完了しませんでした。復旧が確認するまで、ウィキは新しい変更を受け付けませんが、読み取りはできます。",
+    ),
+    msg(
+        "problem.needs_recovery.hint",
+        "このサーバーを運用している人に知らせてください。このリクエストでは何も行われていません。",
+    ),
+    msg("problem.overlap.title", "変更が重なっています"),
+    msg(
+        "problem.overlap.detail",
+        "停止しました。提案とウィキが同じ箇所を変更しており、{overlaps} 件あります。提案は改訂が必要な状態になり、ウィキは変わっていません。",
+    ),
+    msg(
+        "problem.overlap.hint",
+        "提案に記録された重なりを読み、両方のテキストを踏まえた改訂を書いて送ってください。",
+    ),
+    msg(
+        "problem.nothing_to_change.title",
+        "変更するものがありません",
+    ),
+    msg(
+        "problem.nothing_to_change.detail",
+        "このリビジョンが求める内容は、すでにウィキにあります。",
+    ),
+    msg(
+        "problem.nothing_to_change.hint",
+        "提案を却下または取り下げるか、改訂してください。",
+    ),
+    msg(
+        "problem.acceptance_in_progress.title",
+        "受け入れがすでに進行中です",
+    ),
+    msg(
+        "problem.acceptance_in_progress.detail",
+        "このリビジョンの先の受け入れが、まだ署名を終えていません。",
+    ),
+    msg(
+        "problem.acceptance_in_progress.hint",
+        "しばらく待ってから、もう一度試してください。先の受け入れが中断されていた場合は、復旧が解決します。",
+    ),
+    msg("problem.acceptance_failed.title", "受け入れに失敗しました"),
+    msg(
+        "problem.acceptance_failed.detail",
+        "変更は行われませんでした: {word}。提案は開いたままで、履歴は変わっていません。",
+    ),
+    msg(
+        "problem.acceptance_failed.hint",
+        "もう一度試すか、このサーバーを運用している人に知らせてください。",
+    ),
     // the inbox, following a page, and the flags of changes (handoff 004 T6)
     msg("title.inbox", "受信箱 · {product}"),
     msg("inbox.heading", "受信箱"),

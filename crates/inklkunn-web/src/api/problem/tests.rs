@@ -94,22 +94,46 @@ fn the_registry_is_complete() {
         | Code::Unavailable
         | Code::Failed
         | Code::MethodNotAllowed
-        | Code::ChangeNotFound => 1,
+        | Code::ChangeNotFound
+        | Code::AuthenticationRequired
+        | Code::InvalidToken
+        | Code::Forbidden
+        | Code::BaseRequired
+        | Code::StaleBase
+        | Code::InvalidBody
+        | Code::BodyTooLarge
+        | Code::UnsupportedMediaType
+        | Code::Unacceptable
+        | Code::NotInThisState
+        | Code::AlreadyDecided
+        | Code::RefusedLimit
+        | Code::Busy
+        | Code::NeedsRecovery
+        | Code::Overlap
+        | Code::NothingToChange
+        | Code::AcceptanceInProgress
+        | Code::AcceptanceFailed => 1,
     };
-    assert_eq!(Code::ALL.iter().map(|c| named(*c)).sum::<usize>(), 15);
+    assert_eq!(Code::ALL.iter().map(|c| named(*c)).sum::<usize>(), 33);
 }
 
 #[test]
 fn every_code_has_a_title_a_detail_and_a_hint_in_both_languages_with_no_stray_marker() {
     for code in Code::ALL {
-        let body_en = Problem::new(*code)
-            .named("parameter", "limit")
-            .named("view", "draft")
-            .body(en());
-        let body_ja = Problem::new(*code)
-            .named("parameter", "limit")
-            .named("view", "draft")
-            .body(ja());
+        let filled = || {
+            Problem::new(*code)
+                .named("parameter", "limit")
+                .named("view", "draft")
+                .named("member", "summary")
+                .named("limit", "open-proposals")
+                .named("state", "draft")
+                .named("word", "refused")
+                .said("explanation", "A sentence.")
+                .said("waiting", 2)
+                .said("overlaps", 3)
+        };
+        let body_en = filled().body(en());
+        let body_ja = filled().body(ja());
         for (lang, body) in [("en", &body_en), ("ja", &body_ja)] {
             for member in ["title", "detail", "hint"] {
                 let words = text(body, member);
@@ -135,6 +159,10 @@ fn the_type_and_status_are_the_same_in_every_language_and_the_words_are_not() {
         assert_eq!(a.get("type"), b.get("type"), "{code:?}");
         assert_eq!(a.get("status"), b.get("status"), "{code:?}");
         for member in ["title", "detail", "hint"] {
+            // `unacceptable` says nothing of its own: its detail is the sentence the pages use.
+            if *code == Code::Unacceptable && member == "detail" {
+                continue;
+            }
             assert_ne!(a.get(member), b.get(member), "{code:?} {member}");
         }
     }

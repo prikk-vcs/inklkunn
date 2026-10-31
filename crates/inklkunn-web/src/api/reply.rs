@@ -15,6 +15,13 @@ use crate::catalog::T;
 pub(crate) struct Reply {
     pub(crate) content_type: &'static str,
     pub(crate) body: Vec<u8>,
+    /// The status of a success: 200, or 201 for a write that made something.
+    pub(crate) status: StatusCode,
+    /// A validator the endpoint names itself, instead of the body's hash: the base a write sends back as
+    /// `If-Match`. It names a state of a proposal, not these bytes, so it never answers `304`.
+    pub(crate) etag: Option<String>,
+    /// Where what a write made lives.
+    pub(crate) location: Option<String>,
 }
 
 impl Reply {
@@ -23,25 +30,40 @@ impl Reply {
     /// HTML, a body pasted into a page). They can only be inside a string, so no other byte changes.
     pub(crate) fn json(value: &Value) -> Result<Reply, Problem> {
         match serde_json::to_vec(value) {
-            Ok(body) => Ok(Reply {
-                content_type: "application/json",
-                body: no_markup(&body),
-            }),
+            Ok(body) => Ok(Reply::bytes("application/json", no_markup(&body))),
             Err(_) => Err(Problem::new(super::problem::Code::Failed)),
         }
     }
 
     /// An HTML fragment (the page body, already sanitized).
     pub(crate) fn html(fragment: &str) -> Reply {
-        Reply {
-            content_type: "text/html; charset=utf-8",
-            body: fragment.as_bytes().to_vec(),
-        }
+        Reply::bytes("text/html; charset=utf-8", fragment.as_bytes().to_vec())
     }
 
     /// Bytes of a stated media type.
     pub(crate) fn bytes(content_type: &'static str, body: Vec<u8>) -> Reply {
-        Reply { content_type, body }
+        Reply {
+            content_type,
+            body,
+            status: StatusCode::OK,
+            etag: None,
+            location: None,
+        }
+    }
+
+    /// The same answer with this validator (a base) in place of the body's hash.
+    #[must_use]
+    pub(crate) fn with_etag(mut self, etag: String) -> Reply {
+        self.etag = Some(etag);
+        self
+    }
+
+    /// The same answer as a `201`, naming what it made.
+    #[must_use]
+    pub(crate) fn created(mut self, location: String) -> Reply {
+        self.status = StatusCode::CREATED;
+        self.location = Some(location);
+        self
     }
 }
 
@@ -99,6 +121,9 @@ pub(crate) fn matches(if_none_match: &str, etag: &str) -> bool {
 /// `concat!` cannot take a constant; a test holds it to `OPENAPI_PATH` and `OPENAPI_MEDIA_TYPE`.
 pub(crate) const SERVICE_DESC: &str = "</-/api/v1/openapi.json>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi+json;version=3.1.0\"";
 
+/// The seconds a caller is told to wait when the wiki could not be read just now.
+const UNAVAILABLE_RETRY: u64 = 30;
+
 fn plain_failure() -> Response {
     let mut response = Response::new(Body::empty());
     *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
@@ -115,28 +140,33 @@ pub(crate) fn finish(
     let language = HeaderValue::from_static(t.lang().tag());
     let mut response = match outcome {
         Ok(reply) => {
-            let etag = etag_of(&reply.body);
+            let named = reply.etag.is_some();
+            let etag = reply.etag.clone().unwrap_or_else(|| etag_of(&reply.body));
             let validator = HeaderValue::from_str(&etag);
-            let unchanged = if_none_match.is_some_and(|value| matches(value, &etag));
+            let unchanged = !named && if_none_match.is_some_and(|value| matches(value, &etag));
             let mut response = if unchanged {
                 let mut response = Response::new(Body::empty());
                 *response.status_mut() = StatusCode::NOT_MODIFIED;
                 response
             } else {
                 let mut response = Response::new(Body::from(reply.body));
+                *response.status_mut() = reply.status;
                 response.headers_mut().insert(
                     header::CONTENT_TYPE,
                     HeaderValue::from_static(reply.content_type),
                 );
                 response
             };
+            if let Some(Ok(location)) = reply.location.as_deref().map(HeaderValue::from_str) {
+                response.headers_mut().insert(header::LOCATION, location);
+            }
             if let Ok(validator) = validator {
                 response.headers_mut().insert(header::ETAG, validator);
             }
             response
         }
         Err(problem) => {
-            let body = serde_json::to_vec(&problem.body(t)).unwrap_or_default();
+            let body = no_markup(&serde_json::to_vec(&problem.body(t)).unwrap_or_default());
             if body.is_empty() {
                 return plain_failure();
             }
@@ -146,10 +176,19 @@ pub(crate) fn finish(
                 header::CONTENT_TYPE,
                 HeaderValue::from_static(PROBLEM_MEDIA_TYPE),
             );
-            if problem.code == super::problem::Code::Unavailable {
+            let waiting = problem.retry_after_secs().or_else(|| {
+                (problem.code == super::problem::Code::Unavailable).then_some(UNAVAILABLE_RETRY)
+            });
+            if let Some(seconds) = waiting {
                 response
                     .headers_mut()
-                    .insert(header::RETRY_AFTER, HeaderValue::from_static("30"));
+                    .insert(header::RETRY_AFTER, HeaderValue::from(seconds));
+            }
+            if let Some(challenge) = problem.code.challenge() {
+                response.headers_mut().insert(
+                    header::WWW_AUTHENTICATE,
+                    HeaderValue::from_static(challenge),
+                );
             }
             response
         }

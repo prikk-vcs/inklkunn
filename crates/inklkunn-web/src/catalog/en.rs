@@ -781,6 +781,169 @@ pub const CATALOG: &[Entry] = &[
         "problem.change_not_found.hint",
         "Take the id of a change from the history of a page or from the recent changes.",
     ),
+    // the write API's problems (handoff 004 T7)
+    msg("problem.authentication_required.title", "Sign-in needed"),
+    msg(
+        "problem.authentication_required.detail",
+        "This request carries no credential, and writing needs an account.",
+    ),
+    msg(
+        "problem.authentication_required.hint",
+        "Send an API token in an Authorization header, as Bearer followed by the token.",
+    ),
+    msg("problem.invalid_token.title", "Token not accepted"),
+    msg(
+        "problem.invalid_token.detail",
+        "The token in the Authorization header is not one this server accepts: it may be unknown, expired or revoked, or its account may be disabled.",
+    ),
+    msg(
+        "problem.invalid_token.hint",
+        "Issue a new token and send that one.",
+    ),
+    msg("problem.forbidden.title", "Not allowed"),
+    msg(
+        "problem.forbidden.detail",
+        "This credential may not do this: the account's role in this wiki or the scope the token was issued with does not allow it, or a request made with a session cookie came from another site.",
+    ),
+    msg(
+        "problem.forbidden.hint",
+        "Ask a maintainer of the wiki for the role, or use a token issued with a wider scope.",
+    ),
+    msg("problem.base_required.title", "Base needed"),
+    msg(
+        "problem.base_required.detail",
+        "A write names the state it was written against, and this request has no If-Match header.",
+    ),
+    msg(
+        "problem.base_required.hint",
+        "Send the ETag of the proposal's revision as If-Match; for a new proposal, send the state id of the view's tip.",
+    ),
+    msg("problem.stale_base.title", "The base is out of date"),
+    msg(
+        "problem.stale_base.detail",
+        "What this write was made against is no longer the current state: someone else got there first. Nothing was recorded.",
+    ),
+    msg(
+        "problem.stale_base.hint",
+        "Read the current state, check your change against it, and send again with the current value in If-Match. This problem carries that value.",
+    ),
+    msg("problem.invalid_body.title", "Body not accepted"),
+    msg(
+        "problem.invalid_body.detail",
+        "The body is not a JSON object of the shape this endpoint takes: the member {member} is missing, repeated, unknown or has a value it may not have.",
+    ),
+    msg(
+        "problem.invalid_body.hint",
+        "Send the members the description of this endpoint lists, and no others.",
+    ),
+    msg("problem.body_too_large.title", "Body too large"),
+    msg(
+        "problem.body_too_large.detail",
+        "The body is larger than this endpoint takes: at most {limit} bytes. Nothing was read of it.",
+    ),
+    msg(
+        "problem.body_too_large.hint",
+        "Send less: split the change, or shorten the text.",
+    ),
+    msg("problem.unsupported_media_type.title", "Not sent as JSON"),
+    msg(
+        "problem.unsupported_media_type.detail",
+        "The body must be JSON, sent with the content type application/json.",
+    ),
+    msg(
+        "problem.unsupported_media_type.hint",
+        "Set the Content-Type header to application/json.",
+    ),
+    msg("problem.unacceptable.title", "Not acceptable as sent"),
+    msg("problem.unacceptable.detail", "{explanation}"),
+    msg(
+        "problem.unacceptable.hint",
+        "Correct what the reason names and send again. Nothing was recorded.",
+    ),
+    msg("problem.not_in_this_state.title", "Not possible now"),
+    msg(
+        "problem.not_in_this_state.detail",
+        "This cannot be done while the proposal is {state}.",
+    ),
+    msg(
+        "problem.not_in_this_state.hint",
+        "Read the proposal: what is possible depends on its state.",
+    ),
+    msg("problem.already_decided.title", "Already decided"),
+    msg(
+        "problem.already_decided.detail",
+        "You have decided on this revision already, and a decision is not changed.",
+    ),
+    msg(
+        "problem.already_decided.hint",
+        "Decide again on the next revision, when there is one.",
+    ),
+    msg("problem.refused_limit.title", "Refused: a limit"),
+    msg(
+        "problem.refused_limit.detail",
+        "A limit was reached: {limit}. The members allowed, current and asked give the numbers, and reset says when it will be possible again.",
+    ),
+    msg(
+        "problem.refused_limit.hint",
+        "Where waiting helps, Retry-After says how long. Otherwise close a proposal of yours, or ask for less.",
+    ),
+    msg("problem.busy.title", "The wiki is busy"),
+    msg(
+        "problem.busy.detail",
+        "Another act on this wiki is running or waiting. Acts ahead of this one: {waiting}. Nothing was done.",
+    ),
+    msg(
+        "problem.busy.hint",
+        "Send it again after the time Retry-After gives.",
+    ),
+    msg("problem.needs_recovery.title", "The wiki needs recovery"),
+    msg(
+        "problem.needs_recovery.detail",
+        "A write to this wiki did not finish. The wiki accepts no more changes until recovery has looked at it, and reading still works.",
+    ),
+    msg(
+        "problem.needs_recovery.hint",
+        "Tell the person who runs this server. This request did nothing.",
+    ),
+    msg("problem.overlap.title", "Changes overlap"),
+    msg(
+        "problem.overlap.detail",
+        "Stopped: the proposal and the wiki changed the same places, {overlaps} of them. The proposal now needs a revision, and the wiki is as it was.",
+    ),
+    msg(
+        "problem.overlap.hint",
+        "Read the overlap on the proposal, write a revision that takes both texts into account, and send it.",
+    ),
+    msg("problem.nothing_to_change.title", "Nothing to change"),
+    msg(
+        "problem.nothing_to_change.detail",
+        "The wiki already has everything this revision asks for.",
+    ),
+    msg(
+        "problem.nothing_to_change.hint",
+        "Decline or withdraw the proposal, or revise it.",
+    ),
+    msg(
+        "problem.acceptance_in_progress.title",
+        "Acceptance already underway",
+    ),
+    msg(
+        "problem.acceptance_in_progress.detail",
+        "An earlier acceptance of this revision has not finished.",
+    ),
+    msg(
+        "problem.acceptance_in_progress.hint",
+        "Wait and ask again. Recovery settles it if the earlier one was interrupted.",
+    ),
+    msg("problem.acceptance_failed.title", "Acceptance failed"),
+    msg(
+        "problem.acceptance_failed.detail",
+        "The change was not made: {word}. The proposal stays open and the history is as it was.",
+    ),
+    msg(
+        "problem.acceptance_failed.hint",
+        "Try again, or tell the person who runs this server.",
+    ),
     // the inbox, following a page, and the flags of changes (handoff 004 T6)
     msg("title.inbox", "Inbox · {product}"),
     msg("inbox.heading", "Inbox"),
