@@ -37,8 +37,8 @@ subjects not yet written: 005 knowledge layer
 |---|---|---|---|
 | 001 | [Foundations: the workspace and its gates, the storage driver, and the wiki repository layout](done/001-foundations.md) | M0 → M1 | **done** 2026-10-28 (approved after review; handoff review request v2); follow-on handoff (verification verdicts under a memory ceiling, IS-7) **done and approved 2026-10-29**; follow-ups V1, V2 before 003's T4 badge |
 | 002 | [Identity, keys and signing](accepted/002-identity-keys-and-signing.md) | M0 → M2 (DR-4) | **accepted** 2026-10-27; handoff built and **Conditionally Approved 2026-10-29**; corrections C1 – C11 **done and approved 2026-10-29** (follow-ups F1 – F7 at the steps they name); D-8 ruled (DR-10) |
-| 003 | [Read path and rendering](accepted/003-read-path-and-rendering.md) | M1 | **accepted** 2026-10-27; T1 – T9 built and approved with their corrections (R1 – R10 approved 2026-10-31); follow-ups S1 – S4 before 0.1.0 |
-| 004 | [Proposals: propose, review, accept and seal; re-author a moved base gently; never lose a half-state](accepted/004-proposals.md) | M2 | **accepted** 2026-10-28; handoff v1 **assignable now** (2026-10-31) |
+| 003 | [Read path and rendering](accepted/003-read-path-and-rendering.md) | M1 | **accepted** 2026-10-27; T1 – T9 with every correction and follow-up **approved** (S1 – S4 on 2026-10-31); the 0.1.0 candidate is `95ab12c` |
+| 004 | [Proposals: propose, review, accept and seal; re-author a moved base gently; never lose a half-state](accepted/004-proposals.md) | M2 | **accepted** 2026-10-28; T1 – T8 built and **Conditionally Approved 2026-10-31** (corrections P1 – P12); the follow-on handoff `serve-sign-in-and-accept` (sign-in served, the server's acceptor) assignable |
 | 010 | [Upstream tracking and supply-chain maintenance](done/010-upstream-and-supply-chain-maintenance.md) | all | **done** 2026-10-28 (approved after review); its procedures run at every release and re-baseline |
 
 ## Current state

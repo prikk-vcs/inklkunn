@@ -166,16 +166,47 @@
   passed, 0 failed** in both runs, **97 self-skips**. R1 sound: a check that could not run never replaces a verdict.
   Rulings: `rustix` in core (D1), the shared-id history count kept (D2). Four small follow-ups S1 – S4 before 0.1.0.
   **RFC 004's handoff is now assignable.** Pushed.
+- **2026-10-31 — handoff 003's follow-ups S1 – S4 reviewed: Approved** (result
+  `.git-exclude/reviewed/003-read-path-and-rendering-follow-ups-review-result.md`; 1,223 tests in both runs, 98
+  self-skips, at `95ab12c`). **Handoff 003 is complete; `95ab12c` is the 0.1.0 candidate.**
+- **2026-10-31 — handoff 004 (RFC 004: proposals) T1 – T8 reviewed: Conditionally Approved** (result
+  `.git-exclude/reviewed/004-proposals-review-result.md`; 1,651 tests in both runs, 139 self-skips, at `ccbfb77`;
+  two areas also read by independent reviewers, every finding confirmed). No double seal, no lost change, the kill
+  test real. Corrections P1 – P12 in handoff 004 (P1 – P6 before any write is served: an ambiguous commit must stay
+  queued, a retired key must not freeze writes, recovery must keep the flag on disagreement, every path and owned key
+  checked in the service, CSRF tokens on cookie writes). Nothing is live: the server cannot accept until sign-in is
+  served (D1), so the architect wrote **`rfcs/handoffs/004-proposals/serve-sign-in-and-accept-handoff-v1.md`**
+  (sign-in pages, accounts, OpenID Connect switched on, a real `Identify`, the server's acceptor, then writes on).
+  Pushed.
 
 ## Pending on the owner
 
-- **Hand the dev team its next work:** the review results (`.git-exclude/reviewed/002-identity-keys-and-signing-review-result.md`, `…/003-read-path-and-rendering-review-result.md`);
-  `rfcs/handoffs/002-identity-keys-and-signing/identity-keys-and-signing-corrections-handoff-v1.md` (C1 – C4 before
-  003's T7); `rfcs/handoffs/001-foundations/verify-verdict-honesty-handoff-v1.md` (before 003's T4); then handoff 003
-  from T4 under its dated notes.
-- **Review the Japanese catalog** when the dev team files it (DR-7; the owner is the reviewer, 2026-10-29): one
-  review request listing every message in English and Japanese with where it appears, before 0.1.0. Until the
-  owner signs off, Japanese stays a preview that only a reader's own choice turns on.
+- **Authorize 0.1.0 (M1: read a wiki)?** Candidate: **`95ab12c`** (handoff 003 complete, every gate green there:
+  1,223 tests in both runs, 98 self-skips; CI green on `c610227` below it). `main` has since moved on to RFC 004's
+  proposals, which are not part of 0.1.0, so the release is cut from a branch `release/0.1` at `95ab12c` with one
+  commit (workspace version `0.1.0`; the CHANGELOG's `[Unreleased]` becomes `## 0.1.0`, saying proposals are not in it),
+  then the release rehearsal, then the tag (signed by your git configuration), then `release.yml` publishes: the
+  Linux binaries (x86_64, aarch64), the container image `ghcr.io/prikk-vcs/inklkunn:0.1.0`, the GitHub release —
+  **and the crates to crates.io, which cannot be deleted, only yanked**. *Readiness:* green — every gate, every page
+  state in two languages, the existence-neutral refusals, the honest badge (R1), serve-stale, kill-safe creation,
+  import/export with hostile-folder refusals, the read API with its OpenAPI document; done by a person — nothing
+  (accessibility is tool-checked only, and the Japanese is a labelled preview until your review); risks — a very
+  large wiki's first visit at a new tip costs an `extract` bounded by `INKLKUNN_INDEX_MAX_MIB`; every visitor is
+  anonymous (sign-in comes with 0.2.0). *One thing needs you either way:* the repository has **no
+  `CARGO_REGISTRY_TOKEN` secret**, so the crates.io step would fail after everything else is published. Either add
+  the secret, or let 0.1.0 ship without crates.io (`release.yml` then skips that step with a notice; the architect
+  makes that change). *Recommendation:* authorize, without crates.io for 0.1.0.
+- **DR-11 — How accounts come into being** (decision request; handoff `serve-sign-in-and-accept-handoff-v1.md` U2).
+  RFC 002 decided sign-in, not who may make an account. *Options:* **(a)** the operator only (`inklkunn account create`,
+  a one-time set-password link) — no spam, but every newcomer needs an operator; **(b)** open self-registration with a
+  local password, under the new-account quotas — the easiest start, and the most spam; **(c)** a server setting: the
+  operator path always; self-registration **off** by default; **an account made at first sign-in through the
+  configured OpenID Connect provider, on** by default when a provider is configured (the provider vouches for the
+  person, and a newcomer needs no operator). *Recommendation:* **(c)**. *Deadline:* before 0.2.0 serves writes.
+  *If deferred:* only the operator path is built.
+- **Review the Japanese catalog** when the dev team files it (DR-7; the owner is the reviewer): one request listing
+  every message in English and Japanese with where it appears. It waits for RFC 004's words (about 300 more messages
+  now); until your sign-off Japanese stays a preview that only a reader's own choice turns on.
 
 ## Pending upstream
 
@@ -192,8 +223,9 @@
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and handoff 003's T1 – T3 are built and
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
-(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **The dev team's order now:** handoff 003's follow-ups S1 – S4
-(before 0.1.0), then RFC 004's handoff; the architect brings the 0.1.0 decision to the owner once S1 – S4 are approved. F1, F5, F6, V1, V2 are done (in T4 – T9); F2 – F4
+(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **The dev team's order now:**
+handoff 004's corrections P1 – P12 (with 003's tidy-ups T1, T2) beside the sign-in handoff's U1 – U5; U6 (writes on)
+after P1 – P6 are approved. The 0.1.0 decision is the owner's (above). F1, F5, F6, V1, V2 are done (in T4 – T9); F2 – F4
 before OpenID Connect is switched on. The architect reviews
 each request as it arrives; the next re-baseline is at prikk 0.56.0. RFC 004 (proposals) is accepted and its handoff v1 is written; it is **assignable now** (R1, the verdict acceptance
 reads under INT-6, is approved). The single-large-attachment measurement is now handoff 003's T6 (IS-12; the architect's

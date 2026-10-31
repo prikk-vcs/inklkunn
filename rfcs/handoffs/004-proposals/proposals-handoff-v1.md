@@ -210,3 +210,48 @@ questions for the architect. The architect reviews against RFC 004, the two lens
 security and evidence, and answers Approved, Conditionally Approved, Corrections Required, Design
 Reconsideration Required, Requirements Clarification Required or Owner Decision Required. The 0.2.0 cut is
 proposed to the owner with the readiness report and executed only on the owner's authorization (ROADMAP §5).
+
+## Corrections from the review of 2026-10-31 (binding)
+
+T1 – T8 are **Conditionally Approved** (`.git-exclude/reviewed/004-proposals-review-result.md`). Hand back P1 – P12,
+with handoff 003's tidy-ups T1 and T2, as one request: `004-proposals-corrections-review-request.md`. **P1 – P6 before
+any write is served from the web** (the sign-in handoff's last task); P7 – P12 before 0.2.0.
+
+- **P1 — an ambiguous commit is queued, never undone.** After a `commit` error, read `status` before touching the
+  worktree: if a patch is queued, leave the files as they are and answer `Queued` (recovery seals it alone); undo only
+  when nothing was queued. Test: a commit killed by its deadline after the patch is durable is completed by recovery.
+- **P2 — a retired key never freezes the wiki (DR-10).** After a retirement, a `verify` that fails **exactly and only**
+  by publication trust for blocks the retired key sealed (the signer knows the retired ids and their recorded points,
+  C11) is the known cost: the acceptance is confirmed, recovery's `Verify` step passes with a note, and the badge still
+  says *Verification failed* as DR-10 ruled. Any other failed condition, or an untrusted block outside the retired
+  key's, still blocks. Tests: writes continue after a retirement; a planted second failure still stops.
+- **P3 — recovery keeps the flag on disagreement.** A reconciliation finding that touches a block newer than the
+  earliest open act's base stops the recovery with the flag kept and the finding named; older findings are reported and
+  do not block.
+- **P4 — every path is checked in the proposal service.** Both ends of a rename and every file path must be inside
+  `pages/` and end in `.md` (attachments when they arrive get their own rule); a path absent at the base must equal
+  `title_to_path(path_to_title(path))`; case collisions are refused with `collision_key` against the base. The surfaces
+  keep their checks as the first line.
+- **P5 — the owned-keys rule lives in the service** and applies to every edit, rollback plans included; removing or
+  renaming a page that carries an owned key counts as changing it. Owned keys are admin-only, **except `kind:
+  redirect`**, which any contributor may propose (D8).
+- **P6 — CSRF tokens on every cookie-authenticated write** (RFC 002 D-1): the session's synchronizer token in every form
+  and checked before the wiki is looked up, the same-site check kept as the second wall; a bearer-token request is
+  never also authenticated by the cookie (the `Identify` contract, with its test).
+- **P7 — the inline reconciliation is bounded** to the blocks since the intent's base; the full pass stays in recovery
+  and on its schedule.
+- **P8 — recovery and acceptance edges.** An unclean precondition (queued patch or dirty worktree with no record) is its
+  own error and flags the wiki; the foreign-process witness stops every step, not only lock clearing; a lease holder is
+  named by pid **and** process start time (or a random instance id), and `recovery_guard` also sees pending
+  acceptances; `is_lent` also requires the lease to be held (a generation number); the `AlreadySigned` path marks a
+  sealed proposal still *held for review* as accepted; the creation act and the wiki record are inserted in **one store
+  transaction** (D6); a proposer's own approve / request-changes is refused by name (D9); `docs/` gains the operator's
+  way out of a stop on a queued patch that matches no intent (D3).
+- **P9 — maintenance through the lease.** The CLI's checkpoint refresh and archive export go through the wiki leases
+  (holder record, queue), and the start-up refresh skips a wiki whose recovery stopped.
+- **P10 — the kill matrix reaches inside prikk.** Kill a few milliseconds into the real `commit` and `seal`; add the
+  system act's rows and a kill during recovery after `seal-queued`.
+- **P11 — abuse bounds.** A per-principal comment quota; a cap on mention events one actor may send one recipient; the
+  per-wiki hourly quota exempts reviewer-and-up roles, does not count unsubmitted drafts, and does not show its current
+  count; the web forms take the raw body and parse it after the checks.
+- **P12.** `PRAGMA synchronous = FULL` set explicitly on every connection, with a test.
