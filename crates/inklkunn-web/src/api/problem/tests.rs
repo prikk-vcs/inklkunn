@@ -116,7 +116,7 @@ fn the_registry_is_complete() {
         | Code::AcceptanceFailed
         | Code::SigningNotConfigured => 1,
     };
-    assert_eq!(Code::ALL.iter().map(|c| named(*c)).sum::<usize>(), 34);
+    assert_eq!(Code::ALL.iter().map(|c| named(*c)).sum::<usize>(), 35);
 }
 
 #[test]

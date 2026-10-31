@@ -224,7 +224,6 @@ fn prepare_with(
     });
     let site = routes::site_with(&config, Some(services.clone()))
         .map_err(|e| format!("the routes are inconsistent: {e}"))?;
-    let mut notes = notes;
     notes.extend(join_note(web.join));
     notes.extend(outbound::start_notes(web));
     let signing_on = signing.signing;
