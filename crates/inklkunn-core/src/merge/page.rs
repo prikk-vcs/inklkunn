@@ -6,7 +6,7 @@ use std::ops::Range;
 use inklkunn_markup::frontmatter::{self, Entry};
 use inklkunn_markup::{Block, blocks};
 
-use super::engine::{Piece, Unit, Verdict, pieces, slice, verdict};
+use super::engine::{Piece, Unit, Verdict, align, pieces, slice, verdict};
 use super::line::line_level;
 use super::{Overlap, PageRef, Place};
 
@@ -90,6 +90,12 @@ struct Parts<'a> {
     gaps: Vec<&'a str>,
     /// The whitespace after the last block (the whole body when it has none).
     tail: &'a str,
+}
+
+/// For each block of the page `base`, the index of the block of the page `other` that the merge's alignment says it
+/// is (`None`: removed). The alignment the merge makes between a base and a side, exposed for measurement.
+pub(super) fn align_blocks(base: &str, other: &str) -> Vec<Option<usize>> {
+    align(&Parts::of(base).units(), &Parts::of(other).units(), true)
 }
 
 impl<'a> Parts<'a> {

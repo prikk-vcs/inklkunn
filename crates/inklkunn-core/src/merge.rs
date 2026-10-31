@@ -37,6 +37,16 @@ use inklkunn_markup::parse_metadata;
 
 use page::merge_text;
 
+/// Which block of the page text `other` is the same block as each block of the page text `base` (their top-level
+/// blocks, [`inklkunn_markup::blocks`]), by **the alignment the merge itself makes** between a base and a side: the same
+/// `^id`, then the same unique text, then a bounded longest-common-subsequence of what remains, where a stretch of one
+/// block on each side is one block that changed. `None`: the block has no counterpart (removed). The merge is not
+/// run and nothing is decided; this is for measurement tools that must use the product's own matching (spike C),
+/// never a copy of it.
+pub fn align_blocks(base: &str, other: &str) -> Vec<Option<usize>> {
+    page::align_blocks(base, other)
+}
+
 /// A page's path and text, as one side of a merge has it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PageText {

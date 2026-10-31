@@ -1131,3 +1131,31 @@ fn the_merge_is_linear_in_the_length_of_the_pages() {
         (body("a"), body("b"), body("a"))
     });
 }
+
+#[test]
+fn align_blocks_is_the_alignment_the_merge_makes_between_a_base_and_a_side() {
+    use super::align_blocks;
+    let base = "---\ntitle: T\n---\n\nThe bridge opened in 1950.\n\nIt crosses the river.\n\nIt is 300 m long.\n";
+    // Identical: every block is itself.
+    assert_eq!(align_blocks(base, base), [Some(0), Some(1), Some(2)]);
+    // A reworded block between two unchanged ones is the same block, changed (a stretch of one and one).
+    let reworded = "---\ntitle: T\n---\n\nThe bridge was opened in 1950.\n\nIt crosses the river.\n\nIt is 300 m long.\n";
+    assert_eq!(align_blocks(base, &reworded), [Some(0), Some(1), Some(2)]);
+    // A removed block has no counterpart; the others keep theirs, renumbered.
+    let removed = "---\ntitle: T\n---\n\nThe bridge opened in 1950.\n\nIt is 300 m long.\n";
+    assert_eq!(align_blocks(base, removed), [Some(0), None, Some(1)]);
+    // A block added is not in the base's map; the base's blocks still find theirs.
+    let added = "---\ntitle: T\n---\n\nThe bridge opened in 1950.\n\nA new fact.\n\nIt crosses the river.\n\nIt is 300 m long.\n";
+    assert_eq!(align_blocks(base, added), [Some(0), Some(2), Some(3)]);
+    // An `^id` keeps a block through a rewording that unique text could not follow.
+    let with_ids =
+        "The bridge opened in 1950. ^b1\n\nIt crosses the river. ^b2\n\nIt is 300 m long. ^b3\n";
+    let rewritten =
+        "Completely different words. ^b1\n\nAnother sentence. ^b2\n\nAnd a third. ^b3\n";
+    assert_eq!(
+        align_blocks(with_ids, rewritten),
+        [Some(0), Some(1), Some(2)]
+    );
+    // No page, no blocks.
+    assert_eq!(align_blocks("", ""), Vec::<Option<usize>>::new());
+}
