@@ -36,6 +36,7 @@ pub const RULES: &[&str] = &[
     "link-text",
     "title",
     "form-in-phrasing",
+    "form-token",
     "no-inline-script-or-style",
     "unique-ids",
     "id-references",
@@ -438,6 +439,39 @@ pub fn check(dom: &Dom) -> Vec<Violation> {
                     "a <form> inside {}, whose content model is phrasing only",
                     p.describe()
                 ),
+            ));
+        }
+    }
+    // A form a signed-in person can submit carries the session's token (handoff 004 P6), and a form that makes a
+    // session carries its double-submit token (the sign-in handoff's U1, U2). The language buttons change a
+    // cookie of the visitor's own and carry none. A page is a signed-in person's when its banner offers the way
+    // out.
+    let posts: Vec<Handle> = elements(dom, "form")
+        .into_iter()
+        .filter(|f| {
+            f.attr("method")
+                .is_some_and(|m| m.eq_ignore_ascii_case("post"))
+                && f.attr("action").as_deref() != Some("/-/lang")
+        })
+        .collect();
+    let signed_in = posts
+        .iter()
+        .any(|f| f.attr("action").as_deref() == Some("/-/sign-out"));
+    for f in &posts {
+        let action = f.attr("action").unwrap_or_default();
+        let makes_a_session = ["/-/sign-in", "/-/join", "/-/invite/"]
+            .iter()
+            .any(|p| action.starts_with(p));
+        let carries = f.descendants().into_iter().any(|n| {
+            n.tag() == Some("input")
+                && n.attr("type").as_deref() == Some("hidden")
+                && n.attr("name").as_deref() == Some("csrf")
+                && n.attr("value").is_some_and(|v| !v.is_empty())
+        });
+        if (signed_in || makes_a_session) && !carries {
+            out.push(v(
+                "form-token",
+                format!("the form to {action} carries no hidden `csrf` token"),
             ));
         }
     }

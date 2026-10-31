@@ -624,6 +624,21 @@ fn every_rule_has_a_planted_failure_and_each_plant_trips_its_rule() {
             "<span><form></form></span></main>",
         ),
         (
+            "form-token",
+            "</main>",
+            r#"<form method="post" action="/-/sign-out"><button type="submit">Out</button></form></main>"#,
+        ),
+        (
+            "form-token",
+            "</main>",
+            r#"<form method="post" action="/-/sign-in"><button type="submit">In</button></form></main>"#,
+        ),
+        (
+            "form-token",
+            "</main>",
+            r#"<form method="post" action="/-/sign-out"><input type="hidden" name="csrf" value=""><button type="submit">Out</button></form></main>"#,
+        ),
+        (
             "no-inline-script-or-style",
             "</main>",
             "<script>x()</script></main>",

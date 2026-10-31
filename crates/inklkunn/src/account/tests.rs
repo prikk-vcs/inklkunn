@@ -265,19 +265,34 @@ fn an_act_the_trail_cannot_take_is_not_begun() {
         .unwrap();
     assert_eq!(made, 0, "the invitation was made before the trail took it");
 
-    // The same for an account act.
+    // The same for an account act: a role held and an account disabled before the trail broke stay as they were.
     let alice = store_account(&d, &store, "alice");
+    let bob = store_account(&d, &store, "bobby");
+    let wiki = store.by_slug(&Slug::new("garden").unwrap()).unwrap();
+    store
+        .grant(RoleGrant {
+            account: bob.clone(),
+            wiki: wiki.id.clone(),
+            role: Role::Reviewer,
+            granted_by: None,
+            granted_at: NOW,
+        })
+        .unwrap();
+    store.set_disabled(&bob, true).unwrap();
     for args in [
-        "disable alice".to_owned(),
-        "grant alice maintainer garden".to_owned(),
+        "disable alice",
+        "grant alice maintainer garden",
+        "revoke-grant bobby garden",
+        "enable bobby",
     ] {
-        let (status, _, err) = cli(&d, &args, &[]);
+        let (status, _, err) = cli(&d, args, &[]);
         assert_eq!(status, 1, "{args}: {err}");
         assert!(err.contains("nothing was done"), "{args}: {err}");
     }
     assert!(!store.account(&alice).unwrap().unwrap().disabled);
-    let wiki = store.by_slug(&Slug::new("garden").unwrap()).unwrap();
     assert_eq!(store.role(&alice, &wiki.id).unwrap(), None);
+    assert_eq!(store.role(&bob, &wiki.id).unwrap(), Some(Role::Reviewer));
+    assert!(store.account(&bob).unwrap().unwrap().disabled);
 }
 
 fn store_account(_d: &Dir, store: &SqliteStore, login: &str) -> inklkunn_store::AccountId {

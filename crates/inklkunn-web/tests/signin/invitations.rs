@@ -36,10 +36,12 @@ fn link(r: &Real, wiki_role: Option<Role>, lifetime: i64) -> (String, String) {
 #[tokio::test]
 async fn an_invitation_makes_an_account_once_signs_the_person_in_and_grants_the_role_it_named() {
     let r = real(config());
-    let (uri, _) = link(&r, Some(Role::Admin), DEFAULT_LIFETIME_SECS);
+    let (uri, secret) = link(&r, Some(Role::Admin), DEFAULT_LIFETIME_SECS);
     let page = r.get(&uri, &[]).await;
     assert_eq!(page.status, 200);
     let body = page.body();
+    // The secret is in the form's address and nowhere else: not in the language buttons' return address.
+    assert_eq!(body.matches(secret.as_str()).count(), 1, "{body}");
     for want in [
         "<h1>You are invited</h1>",
         "name=\"login\"",

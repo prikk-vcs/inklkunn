@@ -19,9 +19,9 @@ const COOKIE_MAX_AGE_SECS: u64 = 31_536_000;
 /// The longest address a switch will carry back (anything longer returns to the start).
 const MAX_BACK: usize = 1024;
 
-/// Addresses whose query may hold something that must not be copied into another page (a sign-in's one-time
-/// code), and the switcher's own page: a language switch never returns to them with their query.
-const NEVER_COPIED: &[&str] = &["/-/sign-in", "/-/lang"];
+/// Addresses whose query or path may hold something that must not be copied into another page (a sign-in's
+/// one-time code, an invitation's secret), and the switcher's own page: a language switch never returns to them with their query.
+const NEVER_COPIED: &[&str] = &["/-/sign-in", "/-/lang", "/-/invite"];
 
 /// The value of cookie `name` from the request's `Cookie` header(s), if present.
 pub fn get_cookie<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {

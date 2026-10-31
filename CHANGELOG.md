@@ -366,6 +366,71 @@ Corrections from the review of 2026-10-31 (handoff 004, P4, P5, P8, P9, P11, P12
 - **Spike K1 — `align_blocks` is tool-only.** `inklkunn_core::align_blocks` is behind the non-default `measurement-alignment`
   feature, which only `tools/corpus` enables; the boundary gate lists it as a tool-only feature and refuses it in a product
   crate's dependencies.
+Serving sign-in (the sign-in and acceptance handoff U1, U2, U4; handoff 004's P6).
+
+- **U4: a real `Identify`, and the identity authority claimed once.** `inklkunn_web::AuthIdentity` replaces `AnonymousOnly` in
+  the binary. A **session cookie** resolves through `Authenticator::principal_for_session` for a read and **only** through
+  `principal_for_write` (the cookie and the session's CSRF token, checked together) for a write; a **bearer token** resolves
+  through `principal_for_token` (a hashed lookup; scope intersected with the account's role); and **a request that presents a
+  bearer token is judged by the token alone**: a token that is unknown, expired, revoked, of a disabled account or malformed
+  is *invalid token* (a write) or an anonymous visitor (a read), never a fall back to a cookie the request also carries,
+  and a valid one is not widened or narrowed by one. Another scheme in `Authorization` (a proxy's Basic) is not a token of
+  ours and does not stop a cookie. `Identify` gains `session` (the live session for drawing a page; none for a token's
+  request), `may_be_signed_in` (a cheap no-lookup answer) and `for_write` (`WriteIdentity`: a principal, *CSRF mismatch*, or
+  *invalid token*). `serve` claims the `IdentityAuthority` once (`cli.rs`) and the authenticator keeps it (C7); the
+  authenticator is built over the store with the declared trusted proxies (`INKLKUNN_TRUSTED_PROXIES`, which now also decide
+  which address the sign-in throttle counts) and the audit sink. Tested for: cookie only, token only, both (the token wins),
+  an invalid token with a valid cookie (refused; and not "forbidden" or "authentication required"), an expired session, a
+  revoked token, an expired token, a disabled account, and a Basic header beside a cookie.
+- **P6: one CSRF mechanism for every write a signed-in person can make.** A layer in front of **every route** of the
+  application origin (`crate::csrf`; the only place it is decided, so a new route is covered the day it is registered) asks a
+  request that changes something and carries a live session for the session's synchronizer token: the form's hidden field
+  `csrf`, or the header `X-CSRF-Token` for a client that is not a form. It is checked **before any handler runs, so before the
+  wiki is looked up**: the refusal (403, *the form has expired*; for the API a `forbidden` problem) is byte-for-byte the same for a
+  wiki that is there, one that is private and one that is not there. The token of another session, an empty one, a prefix of the
+  right one and none are all refused. The same-site check stays in every handler as the second wall. The posts that need no
+  session token are listed in one place and each has its reason: the language form (a cookie of the visitor's own), and the
+  three pages that make a session (sign-in, joining, an invitation), which carry a double-submit token in a `__Host-` cookie.
+  The body is read in the layer only for a request with a **live** session (a stranger's flood costs a lookup, not a buffer).
+  Every form the pages draw (proposals, comments, decisions, accept, decline, ask, withdraw, the inbox, the check-now
+  verification, following, and the account page) includes `templates/csrf.html`; a structural rule over every page state
+  (`form-token`, with planted failures) finds a form that does not. The write API asks `for_write` too. A test walks the route
+  registry and posts to every write route with a live cookie and no token.
+- **U1: the sign-in pages.** `/-/sign-in` (a sign-in name and a password; constant-work and throttled as built; the client
+  address is the peer's, or the one a *declared* trusted proxy forwards, so a forged `X-Forwarded-For` buys nothing; the
+  refusal is one sentence for a wrong password, an unknown name, a disabled account and a name nobody could have, and the
+  pages are the same but for the typed name and the fresh token), `/-/sign-out` (a button; a form with the session's token),
+  `/-/account` (the display name; the account's live sessions, newest first, with *End this session* each, the one in use marked;
+  API tokens made with a scope and an expiry of 1, 7, 30, 90 or 365 days, **shown once** on a page that is never cached, listed
+  and revoked), no script anywhere. The session cookie is `__Host-inklkunn-session`, `Secure`, `HttpOnly`, `SameSite=Strict`,
+  no `Domain`. The banner names who is signed in and offers *Sign out*; a signed-out visitor is offered *Sign in* only where
+  sign-in is served. A token alone has no account page and cannot make another token. The authenticator gains `sessions`,
+  `end_session_of` (by a handle that is a piece of the stored hash, never the cookie) and `set_display_name`; the store gains
+  `SessionStore::sessions_of` and `AccountStore::set_display_name`. 93 catalog messages in English and a Japanese preview
+  (the glossary's rows in the catalog's order, five concept rows: account, sign in, session, invitation, API token); the
+  structural rules and the retired-words test hold every new state in both languages.
+- **U2: how accounts come into being (DR-11).** Store schema **14**: `invitations` and `invitation_uses`, **written once in
+  the database itself** (triggers abort an `UPDATE`, a `DELETE` and an `INSERT` over a key already taken, counting every
+  unique key), the link's secret kept only as its SHA-256, a wiki and a role together or neither, an end after the beginning,
+  and one account from at most one invitation. Redeeming is **one store step** that checks the invitation, adds the account,
+  grants the role it named (granted by no account: the operator did) and records the use, all or none: a taken name or a short
+  password spends nothing, and eight threads opening one link make one account on either store. (Version 13 is the
+  knowledge tables'; `MIGRATIONS` skips it here, and the migration-chain tests allow that one gap and no longer pin the schema
+  number.) `inklkunn account invite [--role <role> --wiki <wiki>] [--days <1-30>]` makes a one-time link, seven days by
+  default, and shows it **once** on standard output (under `INKLKUNN_APP_ORIGIN` when it is set; never in the audit trail or
+  the error stream); `/-/invite/<secret>` is where the person who opens it chooses a sign-in name, a display name and a
+  password (the form checks the invitation before it hashes anything, so a stranger's bad link costs a lookup), and is the
+  same page for a link that was used, one that ended and one that never was. No password is ever sent or printed. The first
+  administrator is made this way (`--role admin --wiki <wiki>`). `INKLKUNN_JOIN = off | provider | anyone`, **default
+  `off`**: a first sign-in through the configured provider makes an account (for an organization's own provider; a public
+  provider makes this open registration), and `anyone` also lets a person make a local account with a password at `/-/join`,
+  throttled per client address; a joined account has no role beyond what the wiki gives everyone and the new-account quotas.
+  Accounts are never matched or linked by e-mail address. The sign-in page shows only what exists: *Join* only where joining
+  is open, otherwise the one sentence *Ask the person who runs this wiki for an invitation.* The seam for a provider is the
+  next task's: an invitation names no credential. `account disable | enable <login or id>`, `account grant <login or id>
+  <role> <wiki>` and `account revoke-grant <login or id> <wiki>`: **every act is audited before it is done** (an act the trail
+  cannot take is not begun) and again when it ends, principal `system:operator-cli`; the store must exist (a typo in the data
+  directory never makes an empty one).
 
 ## [0.1.0] — 2026-10-31
 

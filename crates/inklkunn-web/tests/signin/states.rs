@@ -1,9 +1,9 @@
 //! **The structural rules over every state the sign-in handoff adds**, in English and in Japanese (RFC 003 D-6):
 //! each state is rendered through the real router and the real authenticator and parsed with the same HTML5
-//! parser and held to the same rules as every other page (`tests/structure`). On top of the rules, the one
-//! this handoff adds: every form a signed-in person can submit, and every form that makes a session, carries a
-//! token. The retired words and the glossary are the catalog's own tests, which hold every message these pages
-//! say (`tests/retired_words.rs`, `tests/glossary.rs`).
+//! parser and held to the same rules as every other page (`tests/structure`), among them the rule this handoff
+//! adds: every form a signed-in person can submit, and every form that makes a session, carries a token. The
+//! retired words and the glossary are the catalog's own tests, which hold every message these pages say
+//! (`tests/retired_words.rs`, `tests/glossary.rs`).
 
 #[path = "../structure/dom.rs"]
 mod dom;
@@ -364,29 +364,6 @@ impl ByLogin for std::sync::Arc<inklkunn_store::MemoryStore> {
     }
 }
 
-/// The post forms of the page that are not the language buttons.
-fn post_forms(dom: &dom::Dom) -> Vec<dom::Handle> {
-    dom.document
-        .descendants()
-        .into_iter()
-        .filter(|n| n.tag() == Some("form"))
-        .filter(|n| {
-            n.attr("method")
-                .is_some_and(|m| m.eq_ignore_ascii_case("post"))
-        })
-        .filter(|n| n.attr("action").as_deref() != Some("/-/lang"))
-        .collect()
-}
-
-fn has_token(form: &dom::Handle) -> bool {
-    form.descendants().into_iter().any(|n| {
-        n.tag() == Some("input")
-            && n.attr("type").as_deref() == Some("hidden")
-            && n.attr("name").as_deref() == Some("csrf")
-            && n.attr("value").is_some_and(|v| !v.is_empty())
-    })
-}
-
 async fn every_state_passes(extra: &[(&str, &str)], tag: &str) {
     let all = states(extra).await;
     assert!(all.len() >= 25, "{} states", all.len());
@@ -401,18 +378,6 @@ async fn every_state_passes(extra: &[(&str, &str)], tag: &str) {
         let d = dom::parse(&s.html);
         for v in rules::check(&d) {
             problems.push(format!("{}: {} {}", s.id, v.rule, v.detail));
-        }
-        // The one rule this handoff adds: a form a signed-in person can submit, and a form that makes a
-        // session, carries its token.
-        let signed_in = s.html.contains("action=\"/-/sign-out\"");
-        for f in post_forms(&d) {
-            let action = f.attr("action").unwrap_or_default();
-            let pre_session = ["/-/sign-in", "/-/join", "/-/invite/"]
-                .iter()
-                .any(|p| action.starts_with(p));
-            if (signed_in || pre_session) && !has_token(&f) {
-                problems.push(format!("{}: the form to {action} carries no token", s.id));
-            }
         }
         // A page of a person's own never offers a form that would change something without a button.
         assert!(!s.html.contains("<script"), "{}", s.id);
@@ -476,24 +441,4 @@ async fn every_sign_in_state_passes_every_rule_in_english() {
 #[tokio::test]
 async fn every_sign_in_state_passes_every_rule_in_japanese() {
     every_state_passes(&[("cookie", "inklkunn_lang=ja")], "ja").await;
-}
-
-/// The rule can fail: a form that carries no token is found.
-#[test]
-fn the_token_rule_finds_a_form_without_one() {
-    let good = dom::parse(
-        "<form method=\"post\" action=\"/-/inbox\"><input type=\"hidden\" name=\"csrf\" value=\"t\"><button>Go</button></form>",
-    );
-    let bad = dom::parse("<form method=\"post\" action=\"/-/inbox\"><button>Go</button></form>");
-    let empty = dom::parse(
-        "<form method=\"post\" action=\"/-/inbox\"><input type=\"hidden\" name=\"csrf\" value=\"\"><button>Go</button></form>",
-    );
-    let lang = dom::parse("<form method=\"post\" action=\"/-/lang\"><button>Go</button></form>");
-    assert!(post_forms(&good).iter().all(has_token));
-    assert!(!post_forms(&bad).iter().all(has_token));
-    assert!(!post_forms(&empty).iter().all(has_token));
-    assert!(
-        post_forms(&lang).is_empty(),
-        "the language buttons are not counted"
-    );
 }
