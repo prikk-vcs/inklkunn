@@ -218,6 +218,17 @@ pub trait Recover: Send + Sync {
     ) -> Result<usize, RecoverError>;
 }
 
+/// How the worktree differs from its baseline: counts, and nothing that names a path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WorktreeState {
+    /// No change and no declared rename.
+    pub clean: bool,
+    /// How many paths differ.
+    pub changes: usize,
+    /// How many renames are declared and not yet committed.
+    pub declarations: usize,
+}
+
 /// The keyless, read-only side of recovery: prikk's `doctor` and its lock listing, which have no JSON form, read by
 /// the strict readers of [`text`]. Nothing here writes, signs or takes a lock. Runs confined with the repository
 /// read-only.
@@ -249,5 +260,15 @@ impl Witnesses {
     /// `prikk unlock` with no argument: the locks that are held, with their recorded process ids.
     pub fn locks(&self, wiki: &WikiId) -> Result<Vec<HeldLock>, SignerError> {
         self.writes.locks(&self.root.repo_dir(wiki))
+    }
+
+    /// `prikk worktree-status`: whether the worktree is the baseline, and how far it is from it.
+    pub fn worktree(&self, wiki: &WikiId) -> Result<WorktreeState, SignerError> {
+        let w = self.writes.worktree_full(&self.root.repo_dir(wiki))?;
+        Ok(WorktreeState {
+            clean: w.clean,
+            changes: w.changes.len(),
+            declarations: w.declarations.len(),
+        })
     }
 }

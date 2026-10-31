@@ -38,6 +38,9 @@ inklkunn-signer = { path = ".", version = "0.0.0", features = ["bootstrap", "tes
 # The fixed-ceiling knob: the verdict sweep (tests/verify_verdicts.rs) drives the read driver at chosen ceilings.
 inklkunn-prikk = { path = "../inklkunn-prikk", version = "0.0.0", features = ["test-knobs"] }
 proptest = { workspace = true }
+# The kill test runs the service's own acceptance in a child process, killed for real at each of its steps; only a
+# crate that may spawn a process can, and the service is `inklkunn-core` (tests only: a dev-dependency cycle).
+inklkunn-core = { path = "../inklkunn-core", version = "0.0.0" }
 
 [lints]
 workspace = true

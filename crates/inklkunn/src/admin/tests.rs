@@ -1145,3 +1145,260 @@ fn an_unknown_wiki_a_missing_store_and_a_missing_folder_are_refused_in_plain_wor
     assert_eq!(status, 2);
     assert!(err.contains("usage:"), "{err}");
 }
+
+fn plant_lock(
+    w: &world::World,
+    slug: &str,
+    relative: &str,
+    pid: u32,
+    kind: &str,
+) -> std::path::PathBuf {
+    let repo = w.layout().repo_dir(&w.record(slug).id);
+    let path = repo.join(".prikk").join(relative);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, format!("pid={pid}\nkind={kind}\nnote=planted\n")).unwrap();
+    path
+}
+
+fn flag(w: &world::World, slug: &str) {
+    use inklkunn_store::ActStore;
+    w.store
+        .set_recovery_flag(&inklkunn_store::RecoveryFlag {
+            wiki: w.record(slug).id,
+            reason: inklkunn_store::RecoveryReason::Interrupted,
+            act: None,
+            since: 1,
+        })
+        .unwrap();
+}
+
+fn flagged(w: &world::World, slug: &str) -> bool {
+    use inklkunn_store::ActStore;
+    w.store.recovery_flag(&w.record(slug).id).unwrap().is_some()
+}
+
+#[test]
+fn recover_parses_and_a_usage_error_shows_the_usage() {
+    assert_eq!(
+        parse(&args(&["recover", "docs"])).unwrap(),
+        Command::Recover {
+            wiki: "docs".into(),
+            plan_only: false
+        }
+    );
+    assert_eq!(
+        parse(&args(&["recover", "docs", "--plan"])).unwrap(),
+        Command::Recover {
+            wiki: "docs".into(),
+            plan_only: true
+        }
+    );
+    for bad in [
+        vec!["recover"],
+        vec!["recover", "--plan"],
+        vec!["recover", "docs", "--force"],
+        vec!["recover", "docs", "--plan", "--yes"],
+    ] {
+        let e = parse(&args(&bad)).unwrap_err();
+        assert!(
+            e.0.contains("usage:") && e.0.contains("wiki recover"),
+            "{bad:?}: {}",
+            e.0
+        );
+    }
+}
+
+#[test]
+fn recover_shows_its_plan_and_changes_nothing_then_runs_it_audited_and_says_nothing_to_recover_after()
+ {
+    let Some(w) = world("recover") else { return };
+    let (status, _, err) = w.cli(&["wiki", "create", "notes", "--name", "Notes"]);
+    assert_eq!(status, 0, "{err}");
+    // A flagged wiki with a stale lock that prikk thinks is held by a live process (this test's own).
+    let lock = plant_lock(
+        &w,
+        "notes",
+        "active/default/active.lock",
+        std::process::id(),
+        "active",
+    );
+    flag(&w, "notes");
+    let events_before = w.audit().len();
+
+    // --plan: the plan is shown, nothing is done, nothing is audited.
+    let (status, out, err) = w.cli(&["wiki", "recover", "notes", "--plan"]);
+    assert_eq!(status, 0, "{err}");
+    assert!(out.contains("recovery plan for wiki"), "{out}");
+    assert!(out.contains("step 1: clear 1 stale lock(s)"), "{out}");
+    assert!(out.contains("plan only: nothing was done"), "{out}");
+    assert!(lock.exists() && flagged(&w, "notes"));
+    assert_eq!(w.audit().len(), events_before, "a plan shown is not an act");
+
+    // The run: exit 0, the plan again and what was done, the lock gone and the flag cleared.
+    let (status, out, err) = w.cli(&["wiki", "recover", "notes"]);
+    assert_eq!(status, 0, "{out}\n{err}");
+    assert!(
+        out.contains("done: clear-locks: 1 lock(s) cleared"),
+        "{out}"
+    );
+    assert!(
+        out.contains("recovered: the wiki takes writes again"),
+        "{out}"
+    );
+    assert!(!lock.exists() && !flagged(&w, "notes"));
+    assert_eq!(w.blocks("notes"), 1, "the history is untouched");
+    // Audited: the operator's act before and after, and recovery's own steps.
+    let audit = w.audit();
+    let mine: Vec<_> = audit
+        .iter()
+        .filter(|(p, a, ..)| p == "system:operator-cli" && a == "wiki-recover")
+        .collect();
+    assert_eq!(mine.len(), 2, "{audit:?}");
+    assert!(
+        audit
+            .iter()
+            .any(|(p, a, ..)| p == "system:recovery" && a == "recovery-plan")
+    );
+    assert!(
+        audit
+            .iter()
+            .filter(|(p, a, ..)| p == "system:recovery" && a == "recovery-step")
+            .count()
+            >= 4
+    );
+
+    // Nothing is flagged any more: said so, exit 0, and only the operator's own begin and finish are recorded.
+    let before = w.audit().len();
+    let (status, out, err) = w.cli(&["wiki", "recover", "notes"]);
+    assert_eq!(status, 0, "{err}");
+    assert!(out.contains("nothing needed recovering"), "{out}");
+    assert_eq!(w.audit().len(), before + 2);
+}
+
+#[test]
+fn recover_stops_on_what_no_verb_answers_exit_one_and_the_wiki_stays_flagged() {
+    let Some(w) = world("recover-stop") else {
+        return;
+    };
+    let (status, _, err) = w.cli(&["wiki", "create", "notes", "--name", "Notes"]);
+    assert_eq!(status, 0, "{err}");
+    // A lock of a kind an acceptance does not leave.
+    let lock = plant_lock(
+        &w,
+        "notes",
+        "trust/policy.lock",
+        2_147_483_000,
+        "container:trust-policy",
+    );
+    flag(&w, "notes");
+    let (status, out, err) = w.cli(&["wiki", "recover", "notes"]);
+    assert_eq!(status, 1, "{out}");
+    assert!(out.contains("STOP (unknown-lock)"), "{out}");
+    assert!(
+        err.contains("recovery stopped and the wiki stays flagged"),
+        "{err}"
+    );
+    assert!(lock.exists() && flagged(&w, "notes"));
+    let finished = w
+        .audit()
+        .into_iter()
+        .find(|(p, a, o, _)| p == "system:operator-cli" && a == "wiki-recover" && o == "failed");
+    assert!(
+        finished.is_some(),
+        "the operator's act is recorded as failed"
+    );
+    // A wiki that does not exist is refused in plain words.
+    let (status, _, err) = w.cli(&["wiki", "recover", "nowhere"]);
+    assert_eq!(status, 1);
+    assert!(err.contains("no wiki `nowhere`"), "{err}");
+}
+
+#[test]
+fn a_start_recovers_every_wiki_that_needs_it_before_it_serves_and_says_so() {
+    let Some(w) = world("recover-start") else {
+        return;
+    };
+    for slug in ["fine", "broken", "stuck"] {
+        let (status, _, err) = w.cli(&["wiki", "create", slug, "--name", slug]);
+        assert_eq!(status, 0, "{err}");
+    }
+    let lock = plant_lock(
+        &w,
+        "broken",
+        "active/default/active.lock",
+        2_147_483_000,
+        "active",
+    );
+    flag(&w, "broken");
+    plant_lock(
+        &w,
+        "stuck",
+        "trust/policy.lock",
+        2_147_483_000,
+        "container:trust-policy",
+    );
+    flag(&w, "stuck");
+    let sandbox = inklkunn_prikk::sandbox::Sandbox::Unconfined;
+    let notes = start_up(
+        &w.store,
+        &w.settings,
+        &sandbox,
+        &w.storage,
+        false,
+        1_800_000_000,
+    );
+    assert!(
+        notes
+            .iter()
+            .any(|n| n.contains("wiki broken needed recovery") && n.contains("was recovered")),
+        "{notes:?}"
+    );
+    assert!(
+        notes.iter().any(|n| n.contains("wiki stuck needs recovery")
+            && n.contains("recovery stopped")
+            && n.contains("wiki recover stuck --plan")),
+        "{notes:?}"
+    );
+    assert!(
+        !notes
+            .iter()
+            .any(|n| n.contains("wiki fine") && n.contains("recover")),
+        "{notes:?}"
+    );
+    assert!(
+        !lock.exists() && !flagged(&w, "broken"),
+        "recovered before it serves"
+    );
+    assert!(
+        flagged(&w, "stuck"),
+        "a stop is a flag that stays: reads served, writes refused"
+    );
+    // The start's own recoveries are audited like the command's.
+    let audit = w.audit();
+    assert_eq!(
+        audit
+            .iter()
+            .filter(|(p, a, ..)| p == "system:operator-cli" && a == "wiki-recover")
+            .count(),
+        4,
+        "{audit:?}"
+    );
+    // A second start has only the stuck one to say anything about.
+    let notes = start_up(
+        &w.store,
+        &w.settings,
+        &sandbox,
+        &w.storage,
+        false,
+        1_800_000_001,
+    );
+    assert!(notes.iter().all(|n| !n.contains("broken")), "{notes:?}");
+    assert_eq!(
+        notes
+            .iter()
+            .filter(|n| n.contains("recovery stopped"))
+            .count(),
+        1,
+        "{notes:?}"
+    );
+}

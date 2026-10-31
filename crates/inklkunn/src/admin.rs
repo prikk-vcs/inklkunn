@@ -17,6 +17,12 @@
 //!   a folder the wiki already has, byte for byte, is *nothing changed* (exit 0, no act begun).
 //! - `wiki export <wiki> [--bundle <dir>] [--archive <file>]`: a Portable Wiki Bundle at fidelity level 3, and/or
 //!   prikk's own archive, written by the signer's keyless writable mode, serialized with the wiki's writes.
+//! - `wiki recover <wiki> [--plan]`: recovery of a wiki that is flagged *needs recovery* or was left half-done
+//!   (RFC 004 D-7; handoff 004 T5), under the wiki's write lease: the witnesses are read, the plan is shown and
+//!   recorded, then taken step by step (a queued patch is sealed, a torn commit is discarded, stale locks are cleared,
+//!   the records are ended as what happened, the repository is verified, the flag is cleared). `--plan` shows the plan
+//!   and does nothing else. A state no verb can answer is a *stop*: nothing is changed and a person decides. The
+//!   start of the service runs the same recovery for every wiki that needs it.
 //!
 //! The M0 bootstrap signer is not here and cannot be: this crate does not enable the `bootstrap` feature of the
 //! signer, and a test reads the manifest to say so.
@@ -29,9 +35,11 @@ use std::time::Duration;
 use inklkunn_core::export::is_checkpoint_not_recorded;
 use inklkunn_core::export::{ExportError, export_bundle};
 use inklkunn_core::import::{ImportError, plan_folder, run_import, wiki_state};
+use inklkunn_core::recovery::needs_recovery;
 use inklkunn_core::{
-    Authorizer, LeaseConfig, Maintenance, NoLedger, Signer, SignerConfig, SignerError, StoreAuthz,
-    StoreLedger, SweepAudit, SystemActFailure, SystemActs, WikiLeases, WriteLeases, create_wiki,
+    Authorizer, LeaseConfig, Maintenance, NoLedger, Recover, Recovery, RecoveryError, RecoveryMode,
+    RecoveryOutcome, RecoveryParts, Signer, SignerConfig, SignerError, StoreAuthz, StoreLedger,
+    SweepAudit, SystemActFailure, SystemActs, WikiLeases, Witnesses, WriteLeases, create_wiki,
     sweep_unfinished_creations,
 };
 use inklkunn_prikk::sandbox::Sandbox;
@@ -68,6 +76,10 @@ pub(crate) enum Command {
         bundle: Option<String>,
         archive: Option<String>,
     },
+    Recover {
+        wiki: String,
+        plan_only: bool,
+    },
 }
 
 /// The command line was not understood (exit status 2).
@@ -76,8 +88,9 @@ pub(crate) struct Usage(pub String);
 
 pub(crate) const USAGE: &str = "usage: inklkunn [--dev-unconfined] wiki create <slug> --name <name> [--license <spdx>] [--lang <tag>]... [--visibility public|private]\n       \
 inklkunn [--dev-unconfined] wiki import-folder <wiki> <dir> [--dry-run] [--replace-existing]\n       \
-inklkunn [--dev-unconfined] wiki export <wiki> [--bundle <dir>] [--archive <file>]\n\
-<wiki> is the wiki's slug or id. An export's destination must not exist.";
+inklkunn [--dev-unconfined] wiki export <wiki> [--bundle <dir>] [--archive <file>]\n       \
+inklkunn [--dev-unconfined] wiki recover <wiki> [--plan]\n\
+<wiki> is the wiki's slug or id. An export's destination must not exist. `recover --plan` shows what recovery would do and changes nothing.";
 
 /// Parse what follows `wiki` for `create`, `import-folder` and `export`.
 pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
@@ -159,6 +172,21 @@ pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
                 wiki: first,
                 bundle,
                 archive,
+            })
+        }
+        "recover" => {
+            let mut plan_only = false;
+            for flag in flags {
+                match flag.as_str() {
+                    "--plan" => plan_only = true,
+                    other => {
+                        return Err(usage(&format!("`{other}` is not an option of `recover`")));
+                    }
+                }
+            }
+            Ok(Command::Recover {
+                wiki: first,
+                plan_only,
             })
         }
         other => Err(usage(&format!("`{other}` is not a command"))),
@@ -331,6 +359,7 @@ fn run(
             out,
             err,
         ),
+        Command::Recover { wiki, plan_only } => recover(settings, now, wiki, *plan_only, out, err),
     }
 }
 
@@ -786,6 +815,119 @@ fn export(
     failure.map_or(Ok(()), Err)
 }
 
+/// Recovery over the deployment's real parts: the real signer over the real key store, the wiki's write lease on the
+/// lock a running server holds too, the store's records, the audit trail. `holder` names this process in the lease
+/// record (two processes with one name could clear each other's record).
+fn recovery_for(
+    settings: &Settings,
+    sandbox: &Sandbox,
+    storage: &PrikkCli,
+    store: &Arc<SqliteStore>,
+    layout: &RootLayout,
+    holder: String,
+) -> Result<Recovery, String> {
+    make_private_directory(&settings.seed_dir).map_err(|e| {
+        format!(
+            "the seed directory could not be made private ({})",
+            e.kind()
+        )
+    })?;
+    let write_leases = WriteLeases::new(layout.clone());
+    let ledger = Arc::new(StoreLedger::new(store.clone(), store.clone()));
+    let config = SignerConfig::new(
+        settings.prikk.clone(),
+        sandbox.clone(),
+        layout.clone(),
+        &settings.key_dir,
+        &settings.secret_file,
+        &settings.seed_dir,
+    );
+    let signer = Arc::new(
+        Signer::open(config, ledger)
+            .map_err(|e| format!("the signer could not be opened: {e}"))?
+            .with_leases(&write_leases),
+    );
+    let leases = WikiLeases::new(write_leases, store.clone(), holder, LeaseConfig::default());
+    Ok(Recovery::new(RecoveryParts {
+        acceptances: store.clone(),
+        acts: store.clone(),
+        proposals: store.clone(),
+        storage: Arc::new(storage.clone()),
+        witnesses: Arc::new(Witnesses::new(
+            settings.prikk.clone(),
+            sandbox.clone(),
+            layout.clone(),
+        )),
+        signer: signer as Arc<dyn Recover>,
+        leases,
+        layout: layout.clone(),
+        audit: store.clone(),
+    }))
+}
+
+fn recover(
+    settings: &Settings,
+    now: i64,
+    wiki: &str,
+    plan_only: bool,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), String> {
+    let store = Arc::new(existing_store(settings)?);
+    let record = find_wiki(&store, wiki)?;
+    let env = environment(settings, err)?;
+    let recovery = recovery_for(
+        settings,
+        &env.sandbox,
+        &env.storage,
+        &store,
+        &env.layout,
+        format!("inklkunn-cli-{}", std::process::id()),
+    )?;
+    let resource = wiki_resource(&record);
+    // A plan shown changes nothing, so it is not an act to audit; a recovery is, before and after.
+    let trail = Trail { sink: &*store, now };
+    if !plan_only {
+        trail.begin("wiki-recover", &resource, "begun")?;
+    }
+    let mode = if plan_only {
+        RecoveryMode::PlanOnly
+    } else {
+        RecoveryMode::Run
+    };
+    let result = recovery.recover(&record, mode);
+    let (outcome, detail, message) = match &result {
+        Ok(report) => {
+            for line in report.lines() {
+                let _ = writeln!(out, "{line}");
+            }
+            match &report.outcome {
+                RecoveryOutcome::Stopped { .. } => (
+                    AuditOutcome::Failed,
+                    "stopped",
+                    Some(
+                        "recovery stopped and the wiki stays flagged: the plan above says why and what a person decides"
+                            .to_owned(),
+                    ),
+                ),
+                RecoveryOutcome::NothingToDo => (AuditOutcome::Allowed, "nothing to recover", None),
+                RecoveryOutcome::Planned => (AuditOutcome::Allowed, "planned", None),
+                RecoveryOutcome::Recovered => (AuditOutcome::Allowed, "recovered", None),
+            }
+        }
+        Err(RecoveryError::Busy(_)) => (
+            AuditOutcome::Failed,
+            "the wiki is busy",
+            result.as_ref().err().map(ToString::to_string),
+        ),
+        Err(e) => (AuditOutcome::Failed, "failed", Some(e.to_string())),
+    };
+    if !plan_only {
+        trail.finish("wiki-recover", &resource, outcome, detail)?;
+    }
+    message.map_or(Ok(()), Err)
+}
+
 /// The prikk version the driver found, as the record keeps it.
 fn prikk_version(storage: &PrikkCli) -> Option<PrikkVersion> {
     PrikkVersion::parse(storage.version())
@@ -826,6 +968,129 @@ fn refresh_checkpoint(
     };
     trail.finish("checkpoint-refresh", &resource, audit, detail)?;
     outcome
+}
+
+/// Recover every wiki that needs it, at start. One line per wiki that did; a wiki that could not be recovered says
+/// why and keeps refusing writes (reads are served). Nothing here stops the server.
+fn recover_at_start(
+    store: &SqliteStore,
+    settings: &Settings,
+    sandbox: &Sandbox,
+    storage: &PrikkCli,
+    now: i64,
+) -> Vec<String> {
+    let records = match store.list() {
+        Ok(r) => r,
+        Err(e) => {
+            return vec![format!(
+                "inklkunn: the wikis could not be listed for recovery ({e})"
+            )];
+        }
+    };
+    let mut needing = Vec::new();
+    for record in records {
+        match needs_recovery(store, store, &record.id, None) {
+            Ok(reasons) if reasons.is_empty() => {}
+            Ok(reasons) => needing.push((record, reasons)),
+            Err(e) => {
+                return vec![format!(
+                    "inklkunn: whether wiki {} needs recovery could not be read ({e})",
+                    record.slug
+                )];
+            }
+        }
+    }
+    if needing.is_empty() {
+        return Vec::new();
+    }
+    let layout = RootLayout::new(settings.wikis_root());
+    // A second connection to the same store, shared by the parts recovery is made of.
+    let shared = match SqliteStore::open(&settings.store_path()) {
+        Ok(s) => Arc::new(s),
+        Err(e) => {
+            return vec![format!(
+                "inklkunn: {} wiki(s) need recovery and the store could not be opened for it ({e}); they refuse writes until `inklkunn wiki recover`",
+                needing.len()
+            )];
+        }
+    };
+    let recovery = match recovery_for(
+        settings,
+        sandbox,
+        storage,
+        &shared,
+        &layout,
+        format!("inklkunn-serve-{}", std::process::id()),
+    ) {
+        Ok(r) => r,
+        Err(why) => {
+            return vec![format!(
+                "inklkunn: {} wiki(s) need recovery and it could not begin ({why}); they refuse writes until `inklkunn wiki recover`",
+                needing.len()
+            )];
+        }
+    };
+    let trail = Trail {
+        sink: &*shared,
+        now,
+    };
+    let mut notes = Vec::new();
+    for (record, reasons) in needing {
+        let resource = wiki_resource(&record);
+        let slug = &record.slug;
+        if let Err(why) = trail.begin("wiki-recover", &resource, "begun at start") {
+            notes.push(format!(
+                "inklkunn: wiki {slug} needs recovery and was left alone: {why}"
+            ));
+            continue;
+        }
+        let reasons = reasons.join(", ");
+        let (outcome, detail, note) = match recovery.recover(&record, RecoveryMode::Run) {
+            Ok(report) => match &report.outcome {
+                RecoveryOutcome::Recovered => (
+                    AuditOutcome::Allowed,
+                    "recovered",
+                    format!(
+                        "inklkunn: wiki {slug} needed recovery ({reasons}) and was recovered: {} step(s) taken",
+                        report.done.len()
+                    ),
+                ),
+                RecoveryOutcome::NothingToDo => (
+                    AuditOutcome::Allowed,
+                    "nothing to recover",
+                    format!("inklkunn: wiki {slug} had nothing to recover"),
+                ),
+                RecoveryOutcome::Stopped { at, why } => (
+                    AuditOutcome::Failed,
+                    "stopped",
+                    format!(
+                        "inklkunn: wiki {slug} needs recovery ({reasons}) and recovery stopped{}: {why}; it refuses writes and serves reads until a person runs `inklkunn wiki recover {slug} --plan` and decides",
+                        at.map(|s| format!(" at {s}")).unwrap_or_default()
+                    ),
+                ),
+                RecoveryOutcome::Planned => (AuditOutcome::Allowed, "planned", String::new()),
+            },
+            Err(RecoveryError::Busy(_)) => (
+                AuditOutcome::Failed,
+                "the wiki is busy",
+                format!(
+                    "inklkunn: wiki {slug} needs recovery ({reasons}) and another process is writing it; recovery is tried again at the next start or by `inklkunn wiki recover {slug}`"
+                ),
+            ),
+            Err(e) => (
+                AuditOutcome::Failed,
+                "failed",
+                format!(
+                    "inklkunn: wiki {slug} needs recovery ({reasons}) and recovery could not be done: {e}; it refuses writes and serves reads"
+                ),
+            ),
+        };
+        notes.push(note);
+        if let Err(line) = trail.finish("wiki-recover", &resource, outcome, detail) {
+            notes.push(format!("inklkunn: wiki {slug}: {line}"));
+        }
+    }
+    notes
 }
 
 /// The work every start does before it serves (handoff 003 T7): remove the creations that were killed, and
@@ -898,6 +1163,10 @@ pub(crate) fn start_up(
             e.kind()
         )),
     }
+    // 1b. Recovery: a wiki whose last write did not finish (flagged, an unfinished act, a lease holder that died) is
+    //     recovered before anything is served, by the same procedure as `wiki recover`. Asking is a few queries; the
+    //     signer is opened only when some wiki needs it.
+    notes.extend(recover_at_start(store, settings, sandbox, storage, now));
     // 2. The checkpoint refresh.
     let Some(version) = prikk_version(storage) else {
         notes.push(

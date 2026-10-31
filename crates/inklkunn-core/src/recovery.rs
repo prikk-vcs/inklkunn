@@ -301,11 +301,12 @@ impl Recovery {
     /// cannot be taken); an export's or a refresh's leaves nothing in the repository and is not a reason.
     pub fn needs_recovery(&self, wiki: &WikiId) -> Result<Vec<&'static str>, RecoveryError> {
         let p = &self.parts;
-        let dead = p
-            .acceptances
-            .lease_holder(wiki)?
-            .filter(|h| h.holder != p.leases.holder_name());
-        Ok(self.reasons(wiki, dead.as_ref())?)
+        Ok(needs_recovery(
+            &*p.acceptances,
+            &*p.acts,
+            wiki,
+            Some(p.leases.holder_name()),
+        )?)
     }
 
     fn reasons(
@@ -313,29 +314,7 @@ impl Recovery {
         wiki: &WikiId,
         dead: Option<&LeaseHolder>,
     ) -> Result<Vec<&'static str>, StoreError> {
-        let p = &self.parts;
-        let mut out = Vec::new();
-        if p.acts.recovery_flag(wiki)?.is_some() {
-            out.push("flagged");
-        }
-        if !p.acceptances.open_intents(wiki)?.is_empty() {
-            out.push("open-intent");
-        }
-        if !p.acceptances.pending_acceptances(wiki)?.is_empty() {
-            out.push("pending-acceptance");
-        }
-        if p.acts.system_acts(wiki)?.iter().any(|e| e.end.is_none()) {
-            out.push("open-system-act");
-        }
-        if dead.is_some_and(|h| {
-            h.purpose != Purpose::Export.as_str() && h.purpose != Purpose::Refresh.as_str()
-        }) {
-            out.push("dead-holder");
-        }
-        if p.acts.recovery_acts(wiki)?.iter().any(|e| e.end.is_none()) {
-            out.push("interrupted-recovery");
-        }
-        Ok(out)
+        reasons_of(&*self.parts.acceptances, &*self.parts.acts, wiki, dead)
     }
 
     // --- the witnesses
@@ -1038,6 +1017,52 @@ impl Recovery {
             format!("block {block_id}: {}", did.join("; "))
         })
     }
+}
+
+/// Why `wiki` needs recovery, as fixed words; empty when it does not. The records alone, no prikk: cheap enough to
+/// ask of every wiki at every start. A lease-holder record is a holder that died when it is not `own_holder`'s (a
+/// process that holds a lease says so under its own name; at start-up it has none, and passes `None`).
+pub fn needs_recovery(
+    acceptances: &dyn AcceptanceStore,
+    acts: &dyn ActStore,
+    wiki: &WikiId,
+    own_holder: Option<&str>,
+) -> Result<Vec<&'static str>, StoreError> {
+    let dead = acceptances
+        .lease_holder(wiki)?
+        .filter(|h| Some(h.holder.as_str()) != own_holder);
+    reasons_of(acceptances, acts, wiki, dead.as_ref())
+}
+
+fn reasons_of(
+    acceptances: &dyn AcceptanceStore,
+    acts: &dyn ActStore,
+    wiki: &WikiId,
+    dead: Option<&LeaseHolder>,
+) -> Result<Vec<&'static str>, StoreError> {
+    let mut out = Vec::new();
+    if acts.recovery_flag(wiki)?.is_some() {
+        out.push("flagged");
+    }
+    if !acceptances.open_intents(wiki)?.is_empty() {
+        out.push("open-intent");
+    }
+    if !acceptances.pending_acceptances(wiki)?.is_empty() {
+        out.push("pending-acceptance");
+    }
+    if acts.system_acts(wiki)?.iter().any(|e| e.end.is_none()) {
+        out.push("open-system-act");
+    }
+    // An export's or a refresh's record that was left leaves nothing in the repository to recover.
+    if dead.is_some_and(|h| {
+        h.purpose != Purpose::Export.as_str() && h.purpose != Purpose::Refresh.as_str()
+    }) {
+        out.push("dead-holder");
+    }
+    if acts.recovery_acts(wiki)?.iter().any(|e| e.end.is_none()) {
+        out.push("interrupted-recovery");
+    }
+    Ok(out)
 }
 
 /// A plan that has nothing to do: what recovery shows for a wiki that needs none.

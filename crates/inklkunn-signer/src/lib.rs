@@ -54,7 +54,9 @@ pub use creation::{CreationMark, Unfinished, find_unfinished};
 pub use keys::KeyIds;
 pub use lease::{LeaseRefusal, LeaseScope, WriteLease, WriteLeases};
 pub use maintenance::{ArchiveExported, Maintenance};
-pub use recover::{Recover, RecoverError, RecoveryFacts, RecoveryOp, RecoveryToken, Witnesses};
+pub use recover::{
+    Recover, RecoverError, RecoveryFacts, RecoveryOp, RecoveryToken, Witnesses, WorktreeState,
+};
 pub use signer::lifecycle::{OldKey, OldKeyOutcome, Rotation};
 pub use signer::superseded::{LateSeal, SupersededKey};
 pub use signer::{KeyStatus, Signer, SignerConfig};
