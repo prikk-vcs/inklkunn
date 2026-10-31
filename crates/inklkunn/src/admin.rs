@@ -618,12 +618,6 @@ fn create(
             let _ = writeln!(out, "  name:            {}", c.record.display_name);
             let _ = writeln!(out, "  repository:      {}", c.repo.display());
             let _ = writeln!(out, "  first block:     {}", c.first_block_id);
-            if !c.first_change_recorded {
-                let _ = writeln!(
-                    err,
-                    "inklkunn: the wiki is whole, but the record of its first change could not be kept now; the next start keeps it"
-                );
-            }
             let _ = writeln!(
                 out,
                 "  author key:      {}",

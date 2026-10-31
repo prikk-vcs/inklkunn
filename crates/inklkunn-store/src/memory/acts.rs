@@ -6,7 +6,7 @@ use crate::acts::{
     ActStore, MAX_RECOVERY_PLAN_BYTES, OverlapRecord, RecoveryActEnd, RecoveryActEntry,
     RecoveryActRecord, RecoveryFlag, SystemActEnd, SystemActEntry, SystemActRecord,
 };
-use crate::record::{ProposalId, RecoveryActId, SystemActId, WikiId};
+use crate::record::{ProposalId, RecoveryActId, SystemActId, WikiId, WikiRecord};
 use crate::{Result, StoreError};
 
 use super::MemoryStore;
@@ -119,6 +119,35 @@ impl ActStore for MemoryStore {
                 end: d.ends.iter().find(|e| e.act == a.id).cloned(),
             })
             .collect())
+    }
+
+    fn insert_wiki_with_creation_act(
+        &self,
+        record: WikiRecord,
+        begin: &SystemActRecord,
+        end: &SystemActEnd,
+    ) -> Result<WikiRecord> {
+        if begin.wiki != record.id || end.act != begin.id {
+            return Err(StoreError::Backend(
+                "the creation act is not of this wiki".to_owned(),
+            ));
+        }
+        // Both locks, records first (nothing takes them the other way round), held until both are written.
+        let mut records = self.records.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut d = self.acts_lock();
+        if records.iter().any(|r| r.id == record.id) {
+            return Err(StoreError::IdTaken(record.id.to_string()));
+        }
+        if records.iter().any(|r| r.slug == record.slug) {
+            return Err(StoreError::SlugTaken(record.slug.to_string()));
+        }
+        if d.acts.iter().any(|a| a.id == begin.id) {
+            return Err(StoreError::AlreadyRecorded);
+        }
+        records.push(record.clone());
+        d.acts.push(begin.clone());
+        d.ends.push(end.clone());
+        Ok(record)
     }
 
     fn begin_recovery_act(&self, act: &RecoveryActRecord) -> Result<()> {

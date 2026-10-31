@@ -169,7 +169,6 @@ impl World {
         .unwrap_or_else(|e| panic!("{e}"));
         let wiki = created.record.clone();
         // `create_wiki` keeps the creation as a sealed system act, so the first block is a recorded one.
-        assert!(created.first_change_recorded);
 
         let leases = WikiLeases::new(
             write_leases.clone(),

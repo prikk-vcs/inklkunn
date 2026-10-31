@@ -194,6 +194,111 @@ fn the_sqlite_store_holds_the_act_invariants() {
     the_suite(&SqliteStore::open_in_memory().expect("open"));
 }
 
+fn new_record(slug: &str) -> inklkunn_store::WikiRecord {
+    inklkunn_store::WikiRecord::from_new(
+        WikiId::new(),
+        inklkunn_store::NewWiki::new(
+            inklkunn_store::Slug::new(slug).unwrap(),
+            inklkunn_store::DisplayName::new(slug).unwrap(),
+        ),
+        7,
+    )
+    .unwrap()
+}
+
+fn ended(begin: &SystemActRecord) -> SystemActEnd {
+    SystemActEnd {
+        act: begin.id.clone(),
+        outcome: AcceptanceOutcome::Sealed {
+            block_id: "b".repeat(64),
+            patch_id: "c".repeat(64),
+        },
+        at: 9,
+    }
+}
+
+/// Corrections P8 (D6): the wiki's record and its creation act are one transaction, on both stores.
+fn the_creation_is_one_transaction(store: &(impl ActStore + WikiStore)) {
+    let record = new_record("born");
+    let begin = act(&record.id, SystemActKind::System, 8);
+    let stored = store
+        .insert_wiki_with_creation_act(record.clone(), &begin, &ended(&begin))
+        .unwrap();
+    assert_eq!(stored, record);
+    assert_eq!(store.get(&record.id).unwrap(), record);
+    let acts = store.system_acts(&record.id).unwrap();
+    assert_eq!(acts.len(), 1);
+    assert_eq!(nth(&acts, 0).act, begin);
+    assert_eq!(nth(&acts, 0).end, Some(ended(&begin)));
+
+    // A taken slug: nothing is written, neither the wiki nor the act.
+    let clash = new_record("born");
+    let clash_act = act(&clash.id, SystemActKind::System, 8);
+    assert_eq!(
+        store.insert_wiki_with_creation_act(clash.clone(), &clash_act, &ended(&clash_act)),
+        Err(StoreError::SlugTaken("born".to_owned()))
+    );
+    assert_eq!(store.get(&clash.id), Err(StoreError::NotFound));
+    assert!(store.system_acts(&clash.id).unwrap().is_empty());
+
+    // An act id that is recorded already: the act's start is refused after the wiki row is written, and the
+    // wiki goes with it. This is the half-done state the single transaction exists to rule out.
+    let fresh = new_record("fresh");
+    let reused = SystemActRecord {
+        wiki: fresh.id.clone(),
+        ..begin.clone()
+    };
+    assert_eq!(
+        store.insert_wiki_with_creation_act(fresh.clone(), &reused, &ended(&reused)),
+        Err(StoreError::AlreadyRecorded)
+    );
+    assert_eq!(store.get(&fresh.id), Err(StoreError::NotFound));
+    assert_eq!(store.by_slug(&fresh.slug), Err(StoreError::NotFound));
+    assert!(store.system_acts(&fresh.id).unwrap().is_empty());
+
+    // An act that is not of this record, or an end that is not of this act: refused, nothing written.
+    let other = new_record("other");
+    let foreign = act(&WikiId::new(), SystemActKind::System, 8);
+    assert!(matches!(
+        store.insert_wiki_with_creation_act(other.clone(), &foreign, &ended(&foreign)),
+        Err(StoreError::Backend(_))
+    ));
+    let mine = act(&other.id, SystemActKind::System, 8);
+    let stranger = ended(&act(&other.id, SystemActKind::System, 8));
+    assert!(matches!(
+        store.insert_wiki_with_creation_act(other.clone(), &mine, &stranger),
+        Err(StoreError::Backend(_))
+    ));
+    assert_eq!(store.get(&other.id), Err(StoreError::NotFound));
+}
+
+#[test]
+fn the_memory_store_creates_a_wiki_and_its_act_in_one_step() {
+    the_creation_is_one_transaction(&MemoryStore::new());
+}
+
+#[test]
+fn the_sqlite_store_creates_a_wiki_and_its_act_in_one_transaction() {
+    the_creation_is_one_transaction(&SqliteStore::open_in_memory().expect("open"));
+}
+
+#[test]
+fn a_wiki_created_with_its_act_survives_a_reopen_whole() {
+    let tmp = temp("creation-reopen");
+    let db = tmp.0.join("store.sqlite");
+    let record = new_record("durable");
+    let begin = act(&record.id, SystemActKind::System, 8);
+    {
+        let store = SqliteStore::open(&db).expect("open");
+        store
+            .insert_wiki_with_creation_act(record.clone(), &begin, &ended(&begin))
+            .unwrap();
+    }
+    let store = SqliteStore::open(&db).expect("reopen");
+    assert_eq!(store.get(&record.id).unwrap(), record);
+    assert_eq!(store.system_acts(&record.id).unwrap().len(), 1);
+}
+
 #[test]
 fn the_flag_the_overlaps_and_the_acts_survive_a_reopen() {
     let tmp = temp("acts-reopen");

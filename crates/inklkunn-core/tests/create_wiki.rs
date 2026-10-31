@@ -90,7 +90,6 @@ fn a_created_wikis_first_change_is_a_recorded_act_and_the_reconciliation_reports
             &inklkunn_core::KeyAuthority::for_tests(),
         )
         .unwrap_or_else(|e| panic!("{e}"));
-        assert!(created.first_change_recorded);
 
         // One act, a system change, sealed as the history's one block and its one patch.
         let acts = store.system_acts(&created.record.id).expect("acts");

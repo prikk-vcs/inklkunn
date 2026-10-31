@@ -216,6 +216,27 @@ impl Rig {
         .unwrap()
     }
 
+    /// What a build that stored the record and the act in two steps left when a kill came between them: the
+    /// wiki's record stored, its sealed first change in the history, no act, and the mark. (The creation now
+    /// stores both in one transaction, so this state can only come from an earlier build; the sweep's repair
+    /// is its second line.)
+    fn legacy_wiki_without_its_act(&self, repo: &Repo) -> WikiRecord {
+        let hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let killed = catch_unwind(AssertUnwindSafe(|| {
+            self.create(repo, &*self.store, &|s| {
+                if s == CreationStep::Verified {
+                    panic!("stopped after {s:?}");
+                }
+            })
+        }));
+        std::panic::set_hook(hook);
+        assert!(killed.is_err());
+        let [wiki] = self.layout.creation_marks().unwrap().try_into().unwrap();
+        let record = WikiRecord::from_new(wiki, new_wiki(), 1).unwrap();
+        self.store.insert(record).unwrap()
+    }
+
     fn findings(&self, repo: &Repo, wiki: &WikiRecord) -> Vec<Finding> {
         let acts = StoreActs::new(self.store.clone(), self.store.clone());
         reconcile(&wiki.id, &self.layout.repo_dir(&wiki.id), repo, &acts)
@@ -225,7 +246,7 @@ impl Rig {
 }
 
 #[test]
-fn the_first_change_is_kept_as_a_sealed_system_act_after_the_record_and_the_reconciliation_reports_nothing()
+fn the_first_change_is_kept_as_a_sealed_system_act_with_the_record_and_the_reconciliation_reports_nothing()
  {
     let rig = rig("recorded");
     let repo = Repo::new();
@@ -234,7 +255,6 @@ fn the_first_change_is_kept_as_a_sealed_system_act_after_the_record_and_the_reco
         .create(&repo, &*rig.store, &|s| steps.borrow_mut().push(s))
         .unwrap();
     assert_eq!(steps.into_inner(), CreationStep::ALL.to_vec());
-    assert!(created.first_change_recorded);
     let acts = rig.store.system_acts(&created.record.id).unwrap();
     let [entry] = acts.as_slice() else {
         panic!("one act, not {}", acts.len());
@@ -255,84 +275,171 @@ fn the_first_change_is_kept_as_a_sealed_system_act_after_the_record_and_the_reco
 }
 
 #[test]
-fn a_store_that_cannot_take_the_act_leaves_the_mark_and_the_sweep_keeps_the_act() {
+fn a_wiki_stored_without_its_act_by_an_earlier_build_leaves_the_mark_and_the_sweep_keeps_the_act() {
     let rig = rig("unrecorded");
     let repo = Repo::new();
-    // A store that has never heard of the wiki cannot begin an act for it.
-    let elsewhere = MemoryStore::new();
-    let steps = RefCell::new(Vec::new());
-    let created = rig
-        .create(&repo, &elsewhere, &|s| steps.borrow_mut().push(s))
-        .unwrap();
-    assert!(!created.first_change_recorded);
-    assert_eq!(steps.into_inner().last(), Some(&CreationStep::Stored));
-    // The wiki is whole and stored; its first block has no record, and the reconciliation says so.
-    let found = rig.findings(&repo, &created.record);
+    let record = rig.legacy_wiki_without_its_act(&repo);
+    // The wiki is stored; its first block has no record, and the reconciliation says so.
+    let found = rig.findings(&repo, &record);
     assert!(
         matches!(found.as_slice(), [Finding::UnrecordedSystemChange { .. }]),
         "{found:?}"
     );
     assert_eq!(
         rig.layout.creation_marks().unwrap(),
-        std::slice::from_ref(&created.record.id)
+        std::slice::from_ref(&record.id)
     );
     // The next start keeps the act, removes the mark, and reconciles clean.
     let report = rig.sweep(&repo);
-    assert_eq!(report.completed, std::slice::from_ref(&created.record.id));
+    assert_eq!(report.completed, std::slice::from_ref(&record.id));
     assert!(report.left_behind.is_empty() && report.removed.is_empty());
-    assert_eq!(rig.findings(&repo, &created.record), Vec::<Finding>::new());
+    assert_eq!(rig.findings(&repo, &record), Vec::<Finding>::new());
     assert!(rig.layout.creation_marks().unwrap().is_empty());
     assert!(rig.sweep(&repo).is_empty());
 }
 
 #[test]
-fn a_creation_killed_after_the_record_is_stored_is_made_whole_by_the_sweep_and_one_after_the_act_needs_nothing()
+fn a_creation_killed_after_the_record_is_stored_has_its_act_already_and_the_sweep_only_removes_the_mark()
  {
-    for (step, tag) in [
-        (CreationStep::Stored, "killed-stored"),
-        (CreationStep::ActRecorded, "killed-recorded"),
-    ] {
-        let rig = rig(tag);
-        let repo = Repo::new();
-        let hook = std::panic::take_hook();
-        std::panic::set_hook(Box::new(|_| {}));
-        let killed = catch_unwind(AssertUnwindSafe(|| {
-            rig.create(&repo, &*rig.store, &|s| {
-                if s == step {
-                    panic!("stopped after {s:?}");
-                }
-            })
-        }));
-        std::panic::set_hook(hook);
-        assert!(killed.is_err(), "{step:?}");
-        let record = rig.store.list().unwrap().remove(0);
-        let before = rig.store.system_acts(&record.id).unwrap().len();
-        assert_eq!(
-            before,
-            usize::from(step == CreationStep::ActRecorded),
-            "{step:?}"
-        );
-        let report = rig.sweep(&repo);
-        assert_eq!(
-            report.completed,
-            std::slice::from_ref(&record.id),
-            "{step:?}"
-        );
-        assert!(report.left_behind.is_empty() && report.removed.is_empty());
-        // Exactly one act, whichever side of the kill it was written on.
-        assert_eq!(
-            rig.store.system_acts(&record.id).unwrap().len(),
-            1,
-            "{step:?}"
-        );
-        assert_eq!(
-            rig.findings(&repo, &record),
-            Vec::<Finding>::new(),
-            "{step:?}"
-        );
-        assert!(rig.layout.creation_marks().unwrap().is_empty());
-        assert!(rig.sweep(&repo).is_empty());
+    let rig = rig("killed-stored");
+    let repo = Repo::new();
+    let hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let killed = catch_unwind(AssertUnwindSafe(|| {
+        rig.create(&repo, &*rig.store, &|s| {
+            if s == CreationStep::Stored {
+                panic!("stopped after {s:?}");
+            }
+        })
+    }));
+    std::panic::set_hook(hook);
+    assert!(killed.is_err());
+    // The record and the act were stored together: a kill right after leaves both.
+    let record = rig.store.list().unwrap().remove(0);
+    assert_eq!(rig.store.system_acts(&record.id).unwrap().len(), 1);
+    let report = rig.sweep(&repo);
+    assert_eq!(report.completed, std::slice::from_ref(&record.id));
+    assert!(report.left_behind.is_empty() && report.removed.is_empty());
+    // Exactly one act: the sweep wrote none.
+    assert_eq!(rig.store.system_acts(&record.id).unwrap().len(), 1);
+    assert_eq!(rig.findings(&repo, &record), Vec::<Finding>::new());
+    assert!(rig.layout.creation_marks().unwrap().is_empty());
+    assert!(rig.sweep(&repo).is_empty());
+}
+
+/// A wiki store whose plain `insert` must never be used by a creation: everything else is the memory store's.
+struct NoPlainInsert<'a>(&'a MemoryStore);
+
+impl WikiStore for NoPlainInsert<'_> {
+    fn insert(&self, _: WikiRecord) -> Result<WikiRecord, StoreError> {
+        panic!("a creation stored the record by itself, outside the transaction with its act");
     }
+    fn get(&self, id: &WikiId) -> Result<WikiRecord, StoreError> {
+        self.0.get(id)
+    }
+    fn by_slug(&self, slug: &Slug) -> Result<WikiRecord, StoreError> {
+        self.0.by_slug(slug)
+    }
+    fn list(&self) -> Result<Vec<WikiRecord>, StoreError> {
+        self.0.list()
+    }
+    fn rename(
+        &self,
+        id: &WikiId,
+        slug: Option<Slug>,
+        name: Option<DisplayName>,
+    ) -> Result<WikiRecord, StoreError> {
+        self.0.rename(id, slug, name)
+    }
+    fn set_verification(
+        &self,
+        id: &WikiId,
+        v: inklkunn_store::Verification,
+    ) -> Result<WikiRecord, StoreError> {
+        self.0.set_verification(id, v)
+    }
+    fn record_attempt(
+        &self,
+        id: &WikiId,
+        a: inklkunn_store::Attempt,
+    ) -> Result<WikiRecord, StoreError> {
+        self.0.record_attempt(id, a)
+    }
+    fn set_keys(
+        &self,
+        id: &WikiId,
+        a: Option<String>,
+        m: Option<String>,
+        f: Option<String>,
+    ) -> Result<WikiRecord, StoreError> {
+        self.0.set_keys(id, a, m, f)
+    }
+    fn request_checkpoint_refresh(&self, id: &WikiId, at: i64) -> Result<WikiRecord, StoreError> {
+        self.0.request_checkpoint_refresh(id, at)
+    }
+    fn record_checkpoint_refresh(
+        &self,
+        id: &WikiId,
+        prikk: &inklkunn_store::PrikkVersion,
+    ) -> Result<WikiRecord, StoreError> {
+        self.0.record_checkpoint_refresh(id, prikk)
+    }
+}
+
+/// Corrections P8 (D6): a creation stores the record and the act through the one transaction, never the record
+/// alone (a kill between the two is what the transaction rules out).
+#[test]
+fn a_creation_never_stores_the_record_outside_the_transaction_with_its_act() {
+    let rig = rig("one-transaction");
+    let repo = Repo::new();
+    let created = create_wiki_observed(
+        &NoPlainInsert(&rig.store),
+        &*rig.store,
+        &rig.layout,
+        &repo,
+        &repo,
+        new_wiki(),
+        "0.0.0",
+        &KeyAuthority::for_tests(),
+        &|_| {},
+    )
+    .unwrap();
+    assert_eq!(rig.store.system_acts(&created.record.id).unwrap().len(), 1);
+    assert_eq!(rig.store.get(&created.record.id).unwrap(), created.record);
+}
+
+/// Corrections P8 (D6): a store that refuses the creation's transaction leaves no wiki and no act, and the
+/// attempt is removed whole.
+#[test]
+fn a_store_that_refuses_the_record_and_act_together_leaves_neither_and_nothing_on_disk() {
+    let rig = rig("refused");
+    let repo = Repo::new();
+    // The slug is taken by the time the transaction runs (a race the early check cannot see).
+    let hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let raced = rig.create(&repo, &*rig.store, &|s| {
+        if s == CreationStep::Verified {
+            rig.store
+                .create(NewWiki::new(
+                    Slug::new("created").unwrap(),
+                    DisplayName::new("First").unwrap(),
+                ))
+                .unwrap();
+        }
+    });
+    std::panic::set_hook(hook);
+    assert!(matches!(
+        raced,
+        Err(CreateWikiError::Store(StoreError::SlugTaken(_)))
+    ));
+    let wikis = rig.store.list().unwrap();
+    assert_eq!(wikis.len(), 1, "only the one that won the slug");
+    assert_eq!(wikis[0].display_name.as_str(), "First");
+    assert!(
+        rig.store.system_acts(&wikis[0].id).unwrap().is_empty(),
+        "the loser's act was not stored"
+    );
+    assert!(rig.layout.creation_marks().unwrap().is_empty());
 }
 
 #[test]
@@ -358,23 +465,18 @@ fn the_sweep_writes_no_act_it_cannot_tie_to_a_system_first_change_and_keeps_the_
     for (tag, make, why) in cases {
         let rig = rig(tag);
         let first = Repo::new();
-        let elsewhere = MemoryStore::new();
-        let created = rig.create(&first, &elsewhere, &|_| {}).unwrap();
-        assert!(!created.first_change_recorded);
+        let record = rig.legacy_wiki_without_its_act(&first);
         let other = make();
         let report = rig.sweep(&other);
         assert!(report.completed.is_empty(), "{tag}: {report:?}");
         let [(wiki, text)] = report.left_behind.as_slice() else {
             panic!("{tag}: {report:?}");
         };
-        assert_eq!(wiki, &created.record.id);
+        assert_eq!(wiki, &record.id);
         assert!(text.contains(why), "{tag}: {text}");
         // Nothing was written, and the mark stays for the next start.
         assert!(
-            rig.store
-                .system_acts(&created.record.id)
-                .unwrap()
-                .is_empty(),
+            rig.store.system_acts(&record.id).unwrap().is_empty(),
             "{tag}"
         );
         assert_eq!(rig.layout.creation_marks().unwrap().len(), 1, "{tag}");

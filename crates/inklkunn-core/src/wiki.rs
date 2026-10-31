@@ -15,10 +15,11 @@
 //! [`create_wiki_observed`] names the steps so that a test can stop the process
 //! (or panic, which runs no cleanup either) after each one.
 //!
-//! **The first change is a recorded act** (handoff 004 T4b): once the wiki's record is stored, the creation is
-//! kept as a sealed system act (`act`), so the reconciliation finds a record behind the first block. A creation
-//! killed between the two leaves a stored wiki whose act is missing, and the sweep writes it from the history
-//! before it removes the mark.
+//! **The first change is a recorded act** (handoff 004 T4b): the creation is kept as a sealed system act (`act`),
+//! so the reconciliation finds a record behind the first block, and the act is stored **in the same transaction**
+//! as the wiki's record (corrections P8, D6), so a kill cannot leave one without the other. The sweep still
+//! writes a missing act from the history before it removes the mark: the second line, for a wiki that an
+//! earlier build stored in two steps.
 
 use std::path::{Path, PathBuf};
 
@@ -164,10 +165,6 @@ pub struct CreatedWiki {
     pub repo: PathBuf,
     /// The first sealed block.
     pub first_block_id: String,
-    /// The creation is kept as a sealed system act. `false`: the wiki is whole and its history is sound, the
-    /// record could not be kept now (the store failed), the creation mark stays and the next start's sweep
-    /// keeps it. The caller says so to the operator.
-    pub first_change_recorded: bool,
 }
 
 pub use inklkunn_signer::message::SUMMARY_MAX_CHARS;
@@ -231,16 +228,14 @@ pub enum CreationStep {
     Sealed,
     /// The new repository verified.
     Verified,
-    /// The wiki's record is stored. The wiki exists from here; the record of its first change is still to be
-    /// kept (a kill now is made whole by the next start's sweep).
+    /// The wiki's record and the record of its first change (a sealed system act) are stored, in one transaction.
+    /// The wiki is complete from here and only the mark remains.
     Stored,
-    /// The first change is kept as a sealed system act: from here the wiki is complete and only the mark remains.
-    ActRecorded,
 }
 
 impl CreationStep {
     /// Every step, in order.
-    pub const ALL: [CreationStep; 8] = [
+    pub const ALL: [CreationStep; 7] = [
         CreationStep::Marked,
         CreationStep::Prepared,
         CreationStep::RepositoryCreated,
@@ -248,14 +243,13 @@ impl CreationStep {
         CreationStep::Sealed,
         CreationStep::Verified,
         CreationStep::Stored,
-        CreationStep::ActRecorded,
     ];
 }
 
 /// Create a wiki (an act that brings keys into being, so it takes the process's [`KeyAuthority`]): check the
 /// slug, build the record, **mark the creation**, make the directories, create the repository, write the
-/// bundle files, seal the first change, verify, and only then store the record, keep the first change as a
-/// system act in `acts` and remove the mark.
+/// bundle files, seal the first change, verify, and only then store the record together with the first change as
+/// a system act (one transaction in `acts`, which must be the store `store` reads) and remove the mark.
 #[allow(clippy::too_many_arguments)]
 pub fn create_wiki(
     store: &dyn WikiStore,
@@ -378,8 +372,17 @@ pub fn create_wiki_observed(
         state: VerificationState::Verified,
         at: Some(inklkunn_store::record::now_secs()),
     };
-    // 9. The record, last. A lost slug race is reported as the slug being taken, and the attempt removed.
-    let record = match store.insert(record) {
+    // 9. The record and the first change's act, last and together: one transaction, so a kill leaves both or
+    //    neither. A lost slug race is reported as the slug being taken, and the attempt removed.
+    let message = creation_message(&record);
+    let (begin, end) = act::entries(
+        &record,
+        &message,
+        &sealed.block_id,
+        sealed.patch_ids.first().map_or("", String::as_str),
+        inklkunn_store::record::now_secs(),
+    );
+    let record = match acts.insert_wiki_with_creation_act(record, &begin, &end) {
         Ok(r) => r,
         Err(e) => {
             settle(mark, discard(layout, signer, &id));
@@ -387,29 +390,13 @@ pub fn create_wiki_observed(
         }
     };
     observe(CreationStep::Stored);
-    // 10. The first change, kept as a sealed system act (it refers to the wiki's record, so it cannot come
-    //     before it). If the store cannot take it now the mark stays, and the next start's sweep keeps it.
-    let message = creation_message(&record);
-    let first_change_recorded = act::record(
-        acts,
-        &record,
-        &message,
-        &sealed.block_id,
-        sealed.patch_ids.first().map_or("", String::as_str),
-        inklkunn_store::record::now_secs(),
-    )
-    .is_ok();
-    if first_change_recorded {
-        observe(CreationStep::ActRecorded);
-        // 11. The mark goes last. One that cannot be removed is harmless: the record and the act exist, so the
-        //     sweep removes the mark and nothing else.
-        let _ = mark.finish();
-    }
+    // 10. The mark goes last. One that cannot be removed is harmless: the record and the act exist, so the sweep
+    //     removes the mark and nothing else.
+    let _ = mark.finish();
     Ok(CreatedWiki {
         record,
         repo,
         first_block_id: sealed.block_id,
-        first_change_recorded,
     })
 }
 

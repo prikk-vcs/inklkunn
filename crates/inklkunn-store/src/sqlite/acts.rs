@@ -5,14 +5,14 @@
 use rusqlite::{OptionalExtension, Row, TransactionBehavior, params};
 
 use super::proposal::{count, from_json, invalid, probe, to_json, write_refusal};
-use super::{SqliteStore, backend};
+use super::{SqliteStore, backend, insert_wiki_row};
 use crate::acceptance::AcceptanceOutcome;
 use crate::acts::{
     ActStore, MAX_RECOVERY_PLAN_BYTES, OverlapRecord, OverlapText, RecoveryActEnd,
     RecoveryActEntry, RecoveryActRecord, RecoveryEnding, RecoveryFlag, RecoveryReason,
     SystemActEnd, SystemActEntry, SystemActKind, SystemActRecord,
 };
-use crate::record::{ProposalId, RecoveryActId, SystemActId, WikiId};
+use crate::record::{ProposalId, RecoveryActId, SystemActId, WikiId, WikiRecord};
 use crate::{Result, StoreError};
 
 fn row_to_flag(row: &Row<'_>) -> rusqlite::Result<RecoveryFlag> {
@@ -94,6 +94,60 @@ fn row_to_recovery(row: &Row<'_>) -> rusqlite::Result<RecoveryActEntry> {
         },
         end,
     })
+}
+
+/// The start of a system act, inside `tx`: the wiki must be there, the id new.
+fn insert_act_row(tx: &rusqlite::Transaction<'_>, act: &SystemActRecord) -> Result<()> {
+    if !probe(
+        tx,
+        "SELECT 1 FROM wikis WHERE id = ?1",
+        &[act.wiki.as_str()],
+    )? {
+        return Err(StoreError::NotFound);
+    }
+    tx.execute(
+        "INSERT INTO system_acts (id, seq, wiki_id, view, kind, base_block, message, \
+         message_digest, digest, bytes, created_at) VALUES (?1, \
+         (SELECT COALESCE(MAX(seq), 0) + 1 FROM system_acts), ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![
+            act.id.as_str(),
+            act.wiki.as_str(),
+            act.view,
+            act.kind.as_str(),
+            act.base_block,
+            act.message,
+            act.message_digest,
+            act.digest,
+            i64::try_from(act.bytes).unwrap_or(i64::MAX),
+            act.created_at
+        ],
+    )
+    .map_err(write_refusal)?;
+    Ok(())
+}
+
+/// The end of a system act, inside `tx`: the act must be there, and not ended.
+fn insert_act_end_row(tx: &rusqlite::Transaction<'_>, end: &SystemActEnd) -> Result<()> {
+    if !probe(
+        tx,
+        "SELECT 1 FROM system_acts WHERE id = ?1",
+        &[end.act.as_str()],
+    )? {
+        return Err(StoreError::NotFound);
+    }
+    let (outcome, block, patch, word) = match &end.outcome {
+        AcceptanceOutcome::Sealed { block_id, patch_id } => {
+            ("sealed", Some(block_id), Some(patch_id), None)
+        }
+        AcceptanceOutcome::Failed { word } => ("failed", None, None, Some(word)),
+    };
+    tx.execute(
+        "INSERT INTO system_act_ends (act_id, outcome, block_id, patch_id, word, at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![end.act.as_str(), outcome, block, patch, word, end.at],
+    )
+    .map_err(write_refusal)?;
+    Ok(())
 }
 
 impl ActStore for SqliteStore {
@@ -202,31 +256,7 @@ impl ActStore for SqliteStore {
             let tx = conn
                 .transaction_with_behavior(TransactionBehavior::Immediate)
                 .map_err(backend)?;
-            if !probe(
-                &tx,
-                "SELECT 1 FROM wikis WHERE id = ?1",
-                &[act.wiki.as_str()],
-            )? {
-                return Err(StoreError::NotFound);
-            }
-            tx.execute(
-                "INSERT INTO system_acts (id, seq, wiki_id, view, kind, base_block, message, \
-                 message_digest, digest, bytes, created_at) VALUES (?1, \
-                 (SELECT COALESCE(MAX(seq), 0) + 1 FROM system_acts), ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-                params![
-                    act.id.as_str(),
-                    act.wiki.as_str(),
-                    act.view,
-                    act.kind.as_str(),
-                    act.base_block,
-                    act.message,
-                    act.message_digest,
-                    act.digest,
-                    i64::try_from(act.bytes).unwrap_or(i64::MAX),
-                    act.created_at
-                ],
-            )
-            .map_err(write_refusal)?;
+            insert_act_row(&tx, act)?;
             tx.commit().map_err(backend)
         })
     }
@@ -236,26 +266,33 @@ impl ActStore for SqliteStore {
             let tx = conn
                 .transaction_with_behavior(TransactionBehavior::Immediate)
                 .map_err(backend)?;
-            if !probe(
-                &tx,
-                "SELECT 1 FROM system_acts WHERE id = ?1",
-                &[end.act.as_str()],
-            )? {
-                return Err(StoreError::NotFound);
-            }
-            let (outcome, block, patch, word) = match &end.outcome {
-                AcceptanceOutcome::Sealed { block_id, patch_id } => {
-                    ("sealed", Some(block_id), Some(patch_id), None)
-                }
-                AcceptanceOutcome::Failed { word } => ("failed", None, None, Some(word)),
-            };
-            tx.execute(
-                "INSERT INTO system_act_ends (act_id, outcome, block_id, patch_id, word, at) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![end.act.as_str(), outcome, block, patch, word, end.at],
-            )
-            .map_err(write_refusal)?;
+            insert_act_end_row(&tx, end)?;
             tx.commit().map_err(backend)
+        })
+    }
+
+    fn insert_wiki_with_creation_act(
+        &self,
+        record: WikiRecord,
+        begin: &SystemActRecord,
+        end: &SystemActEnd,
+    ) -> Result<WikiRecord> {
+        if begin.wiki != record.id || end.act != begin.id {
+            return Err(StoreError::Backend(
+                "the creation act is not of this wiki".to_owned(),
+            ));
+        }
+        self.with(|conn| {
+            // One transaction: the wiki's row, the act's start and its end. Dropping it on any refusal rolls all
+            // of it back.
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(backend)?;
+            insert_wiki_row(&tx, &record)?;
+            insert_act_row(&tx, begin)?;
+            insert_act_end_row(&tx, end)?;
+            tx.commit().map_err(backend)?;
+            Ok(record)
         })
     }
 

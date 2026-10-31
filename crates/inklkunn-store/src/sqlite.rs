@@ -977,15 +977,11 @@ fn row_to_record(row: &Row<'_>) -> rusqlite::Result<WikiRecord> {
     })
 }
 
-impl WikiStore for SqliteStore {
-    fn insert(&self, record: WikiRecord) -> Result<WikiRecord> {
-        self.with(|conn| {
-            let tx = conn
-                .transaction_with_behavior(TransactionBehavior::Immediate)
-                .map_err(backend)?;
-            let languages =
-                serde_json::to_string(&record.languages).unwrap_or_else(|_| "[]".to_owned());
-            let r = tx.execute(
+/// The `INSERT` of a wiki's row inside `tx`: the refusals of [`WikiStore::insert`] (a taken slug or id) as typed
+/// errors. Nothing is committed here.
+pub(crate) fn insert_wiki_row(tx: &rusqlite::Transaction<'_>, record: &WikiRecord) -> Result<()> {
+    let languages = serde_json::to_string(&record.languages).unwrap_or_else(|_| "[]".to_owned());
+    let r = tx.execute(
                 "INSERT INTO wikis (id, slug, display_name, default_view, default_license, languages, visibility, \
                  policy_bootstrap, prikk_format_version, verification_state, verification_at, author_key_id, \
                  maintainer_key_id, created_at, checkpoint_prikk_version, checkpoint_refresh_requested_at, \
@@ -1013,9 +1009,19 @@ impl WikiStore for SqliteStore {
                     record.last_attempt.map(|a| a.why.as_str()),
                 ],
             );
-            if let Err(e) = r {
-                return Err(constraint(&e, &record).unwrap_or_else(|| backend(e)));
-            }
+    if let Err(e) = r {
+        return Err(constraint(&e, record).unwrap_or_else(|| backend(e)));
+    }
+    Ok(())
+}
+
+impl WikiStore for SqliteStore {
+    fn insert(&self, record: WikiRecord) -> Result<WikiRecord> {
+        self.with(|conn| {
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(backend)?;
+            insert_wiki_row(&tx, &record)?;
             tx.commit().map_err(backend)?;
             Ok(record)
         })

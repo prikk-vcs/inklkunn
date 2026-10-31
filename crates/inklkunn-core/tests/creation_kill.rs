@@ -195,7 +195,7 @@ fn a_creation_stopped_after_any_step_leaves_a_complete_wiki_or_nothing_or_a_seal
             before.iter().any(|p| p.ends_with(".creating")),
             "{step:?}: no creation mark among {before:?}"
         );
-        let has_record = matches!(step, CreationStep::Stored | CreationStep::ActRecorded);
+        let has_record = step == CreationStep::Stored;
         assert_eq!(stored, usize::from(has_record), "{step:?}");
         // The next start.
         let report = sweep_unfinished_creations(
@@ -216,8 +216,8 @@ fn a_creation_stopped_after_any_step_leaves_a_complete_wiki_or_nothing_or_a_seal
             let record = w.store.list().expect("list").remove(0);
             let repo = w.layout.repo_dir(&record.id);
             assert!(w.storage.verify(&repo).expect("verify").verdict.ok);
-            // The first change is a recorded act: written by the creation (after `ActRecorded`) or by the
-            // sweep (after `Stored`), once either way, and the reconciliation finds nothing.
+            // The first change is a recorded act, stored by the creation in the same transaction as the record
+            // (the sweep wrote none), once, and the reconciliation finds nothing.
             let acts = w.store.system_acts(&record.id).expect("acts");
             assert_eq!(acts.len(), 1, "{step:?}: {acts:?}");
             assert!(

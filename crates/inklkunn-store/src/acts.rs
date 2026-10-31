@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::Result;
 use crate::acceptance::AcceptanceOutcome;
-use crate::record::{ProposalId, RecoveryActId, SystemActId, WikiId};
+use crate::record::{ProposalId, RecoveryActId, SystemActId, WikiId, WikiRecord};
 
 /// Why a wiki is flagged *needs recovery* (RFC 004 D-6): which incomplete state the last act left. Every
 /// reason is a fixed word; none is prikk's text.
@@ -276,6 +276,19 @@ pub trait ActStore: Send + Sync {
 
     /// Every system act of the wiki with its end, oldest first.
     fn system_acts(&self, wiki: &WikiId) -> Result<Vec<SystemActEntry>>;
+
+    /// Store a new wiki's record **and** the sealed system act of its creation in one transaction (corrections
+    /// P8, D6): either both are there afterwards or neither is. The act must be of this record
+    /// (`begin.wiki == record.id`, `end.act == begin.id`, otherwise
+    /// [`Backend`](crate::StoreError::Backend)); the refusals of [`crate::WikiStore::insert`]
+    /// (`SlugTaken`, `IdTaken`) and of [`begin_system_act`](ActStore::begin_system_act) (`AlreadyRecorded`) apply,
+    /// and nothing is written then. This must be the same store as the one the wiki's records live in.
+    fn insert_wiki_with_creation_act(
+        &self,
+        record: WikiRecord,
+        begin: &SystemActRecord,
+        end: &SystemActEnd,
+    ) -> Result<WikiRecord>;
 
     /// Start a recovery act: its plan, written before the signer is asked to do any of it (RFC 004 D-7). The wiki
     /// must be there; the id must be new ([`AlreadyRecorded`](crate::StoreError::AlreadyRecorded) otherwise); a
