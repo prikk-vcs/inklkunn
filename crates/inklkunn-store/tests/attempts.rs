@@ -126,7 +126,7 @@ fn an_attempt_survives_a_reopen() {
 
 #[test]
 fn a_version_7_database_that_held_could_not_check_says_unknown_and_keeps_the_attempt() {
-    use inklkunn_store::sqlite::{MIGRATIONS, SCHEMA_VERSION};
+    use inklkunn_store::sqlite::MIGRATIONS;
     let tmp = temp("v7");
     let db = tmp.0.join("store.sqlite");
     let (checked, uncheckable) = (
@@ -179,5 +179,4 @@ fn a_version_7_database_that_held_could_not_check_says_unknown_and_keeps_the_att
             why: NotRun::Unavailable
         })
     );
-    assert_eq!(SCHEMA_VERSION, 13);
 }

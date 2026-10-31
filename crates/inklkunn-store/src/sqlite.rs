@@ -16,6 +16,7 @@ mod acts;
 mod derived;
 mod identity;
 mod inbox;
+mod invitation;
 mod proposal;
 
 use std::path::Path;
@@ -32,7 +33,7 @@ use crate::record::{
 use crate::{Result, StoreError, WikiStore};
 
 /// The schema version this build writes and reads: the last of [`MIGRATIONS`].
-pub const SCHEMA_VERSION: i64 = 13;
+pub const SCHEMA_VERSION: i64 = 14;
 
 /// Version 1: M0's schema, the wiki records.
 const V1: &str = "
@@ -671,6 +672,44 @@ CREATE TABLE IF NOT EXISTS knowledge_invalid (
     rule    TEXT NOT NULL,
     PRIMARY KEY (wiki_id, tip, path)
 );
+
+/// Version 14 (the sign-in handoff's U2; the owner's ruling DR-11): invitations, the one-time links an account is
+/// made from. The link's secret is kept as its SHA-256, so a copy of this file opens no invitation. An
+/// invitation names a wiki and a role together or neither (`CHECK`). Both tables are **written once, in the
+/// database itself**: triggers abort any `UPDATE`, any `DELETE` and any `INSERT` over a key already taken
+/// (version 3's device, counting every unique key). The use of an invitation is a second record keyed by the
+/// invitation, so it can exist once, and its account is unique too: one account is made from at most one
+/// invitation. Accounts and wikis are referenced by foreign keys.
+const V14: &str = "
+CREATE TABLE IF NOT EXISTS invitations (
+    id         TEXT PRIMARY KEY,
+    hash       TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    wiki_id    TEXT REFERENCES wikis(id),
+    role       TEXT CHECK (role IN ('observer', 'questioner', 'contributor', 'reviewer', 'maintainer', 'admin')),
+    CHECK ((wiki_id IS NULL) = (role IS NULL)),
+    CHECK (expires_at > created_at)
+);
+CREATE TRIGGER IF NOT EXISTS invitations_no_update BEFORE UPDATE ON invitations
+BEGIN SELECT RAISE(ABORT, 'invitations are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS invitations_no_delete BEFORE DELETE ON invitations
+BEGIN SELECT RAISE(ABORT, 'invitations are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS invitations_no_replace BEFORE INSERT ON invitations
+WHEN EXISTS (SELECT 1 FROM invitations WHERE id = NEW.id OR hash = NEW.hash)
+BEGIN SELECT RAISE(ABORT, 'invitations are append-only'); END;
+CREATE TABLE IF NOT EXISTS invitation_uses (
+    invitation_id TEXT PRIMARY KEY REFERENCES invitations(id),
+    account_id    TEXT NOT NULL UNIQUE REFERENCES accounts(id),
+    at            INTEGER NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS invitation_uses_no_update BEFORE UPDATE ON invitation_uses
+BEGIN SELECT RAISE(ABORT, 'invitation uses are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS invitation_uses_no_delete BEFORE DELETE ON invitation_uses
+BEGIN SELECT RAISE(ABORT, 'invitation uses are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS invitation_uses_no_replace BEFORE INSERT ON invitation_uses
+WHEN EXISTS (SELECT 1 FROM invitation_uses WHERE invitation_id = NEW.invitation_id OR account_id = NEW.account_id)
+BEGIN SELECT RAISE(ABORT, 'invitation uses are append-only'); END;
 ";
 
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and
@@ -689,6 +728,7 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (11, V11),
     (12, V12),
     (13, V13),
+    (14, V14),
 ];
 
 /// The SQLite-backed store.

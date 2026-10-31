@@ -620,3 +620,56 @@ fn a_version_3_database_gains_the_identity_tables_and_keeps_its_audit_trail() {
         .expect("version");
     assert_eq!(version, SCHEMA_VERSION.to_string());
 }
+
+/// The account page's two needs (the sign-in handoff's U1): the sessions an account holds, newest first and
+/// live only, and a changed display name.
+fn account_page_invariants(store: &(impl AccountStore + SessionStore)) {
+    let alice = account("Alice", Some("alice"));
+    let bob = account("Bob", Some("bobby"));
+    store.add_account(&alice).expect("create");
+    store.add_account(&bob).expect("create");
+    store.add_session(&session("old", &alice.id, 500)).unwrap();
+    store.add_session(&session("a", &alice.id, 10_000)).unwrap();
+    store.add_session(&session("b", &bob.id, 10_000)).unwrap();
+    store.add_session(&session("c", &alice.id, 20_000)).unwrap();
+    let mine: Vec<String> = store
+        .sessions_of(&alice.id, 1_000)
+        .expect("sessions")
+        .into_iter()
+        .map(|s| s.id_hash)
+        .collect();
+    assert_eq!(
+        mine,
+        ["c", "a"],
+        "live ones only, the newest first, none of Bob's"
+    );
+    assert!(store.sessions_of(&AccountId::new(), 0).unwrap().is_empty());
+
+    let new_name = DisplayName::new("Alice B.").expect("a name");
+    store
+        .set_display_name(&alice.id, &new_name)
+        .expect("rename");
+    assert_eq!(
+        store.account(&alice.id).unwrap().unwrap().display_name,
+        new_name
+    );
+    assert_eq!(
+        store
+            .account(&bob.id)
+            .unwrap()
+            .unwrap()
+            .display_name
+            .as_str(),
+        "Bob"
+    );
+    assert_eq!(
+        store.set_display_name(&AccountId::new(), &new_name).err(),
+        Some(StoreError::AccountNotFound)
+    );
+}
+
+#[test]
+fn the_account_page_records_agree_on_both_stores() {
+    account_page_invariants(&MemoryStore::new());
+    account_page_invariants(&SqliteStore::open_in_memory().expect("store"));
+}

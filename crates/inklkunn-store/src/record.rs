@@ -222,6 +222,12 @@ uuid_id! {
 }
 
 uuid_id! {
+    /// The opaque id of an invitation (the sign-in handoff's U2): what the audit trail names. It is not the
+    /// link, whose secret is shown once at the command line and kept only as a hash.
+    InvitationId
+}
+
+uuid_id! {
     /// The opaque id of an API token: what a listing and a revocation name. It is not the token, which is
     /// shown once at issue and kept only as a hash.
     TokenId

@@ -45,6 +45,44 @@ fn exists(tx: &rusqlite::Transaction<'_>, sql: &str, value: &str) -> Result<bool
         .map_err(backend)
 }
 
+/// Add an account inside the caller's transaction (the account store's `add_account` and an invitation's
+/// redemption share it). The password hash has been checked by the caller.
+pub(super) fn insert_account(tx: &rusqlite::Transaction<'_>, account: &Account) -> Result<()> {
+    let login = account.local.as_ref().map(|l| &l.login);
+    // The id is checked before the name, so the refusal does not depend on which index SQLite
+    // happens to trip first (the in-memory store answers in this order too).
+    if exists(
+        tx,
+        "SELECT 1 FROM accounts WHERE id = ?1",
+        account.id.as_str(),
+    )? {
+        return Err(StoreError::IdTaken(account.id.to_string()));
+    }
+    if let Some(login) = login
+        && exists(
+            tx,
+            "SELECT 1 FROM accounts WHERE login = ?1",
+            login.as_str(),
+        )?
+    {
+        return Err(StoreError::LoginTaken(login.to_string()));
+    }
+    tx.execute(
+        "INSERT INTO accounts (id, display_name, login, password_hash, created_at, disabled) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            account.id.as_str(),
+            account.display_name.as_str(),
+            login.map(LoginName::as_str),
+            account.local.as_ref().map(|l| l.password_hash.as_str()),
+            account.created_at,
+            i64::from(account.disabled),
+        ],
+    )
+    .map_err(|e| map_account_write(e, &account.id, login))?;
+    Ok(())
+}
+
 const ACCOUNT_COLUMNS: &str = "id, display_name, login, password_hash, created_at, disabled";
 
 fn row_to_account(row: &Row<'_>) -> rusqlite::Result<Account> {
@@ -91,34 +129,11 @@ impl AccountStore for SqliteStore {
         {
             return Err(StoreError::InvalidCredential);
         }
-        let login = account.local.as_ref().map(|l| &l.login);
         self.with(|conn| {
             let tx = conn
                 .transaction_with_behavior(TransactionBehavior::Immediate)
                 .map_err(backend)?;
-            // The id is checked before the name, so the refusal does not depend on which index SQLite
-            // happens to trip first (the in-memory store answers in this order too).
-            if exists(&tx, "SELECT 1 FROM accounts WHERE id = ?1", account.id.as_str())? {
-                return Err(StoreError::IdTaken(account.id.to_string()));
-            }
-            if let Some(login) = login
-                && exists(&tx, "SELECT 1 FROM accounts WHERE login = ?1", login.as_str())?
-            {
-                return Err(StoreError::LoginTaken(login.to_string()));
-            }
-            tx.execute(
-                "INSERT INTO accounts (id, display_name, login, password_hash, created_at, disabled) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![
-                    account.id.as_str(),
-                    account.display_name.as_str(),
-                    login.map(LoginName::as_str),
-                    account.local.as_ref().map(|l| l.password_hash.as_str()),
-                    account.created_at,
-                    i64::from(account.disabled),
-                ],
-            )
-            .map_err(|e| map_account_write(e, &account.id, login))?;
+            insert_account(&tx, account)?;
             tx.commit().map_err(backend)
         })
     }
@@ -240,6 +255,21 @@ impl AccountStore for SqliteStore {
             Ok(())
         })
     }
+
+    fn set_display_name(&self, id: &AccountId, display_name: &DisplayName) -> Result<()> {
+        self.with(|conn| {
+            let n = conn
+                .execute(
+                    "UPDATE accounts SET display_name = ?1 WHERE id = ?2",
+                    params![display_name.as_str(), id.as_str()],
+                )
+                .map_err(backend)?;
+            if n == 0 {
+                return Err(StoreError::AccountNotFound);
+            }
+            Ok(())
+        })
+    }
 }
 
 fn row_to_session(row: &Row<'_>) -> rusqlite::Result<SessionRecord> {
@@ -318,6 +348,22 @@ impl SessionStore for SqliteStore {
             )
             .map(|n| n as u64)
             .map_err(backend)
+        })
+    }
+
+    fn sessions_of(&self, id: &AccountId, now: i64) -> Result<Vec<SessionRecord>> {
+        self.with(|conn| {
+            // The row id grows with every insert, which is "added last".
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id_hash, account_id, csrf, created_at, expires_at FROM sessions \
+                     WHERE account_id = ?1 AND expires_at > ?2 ORDER BY rowid DESC",
+                )
+                .map_err(backend)?;
+            let rows = stmt
+                .query_map(params![id.as_str(), now], row_to_session)
+                .map_err(backend)?;
+            rows.collect::<rusqlite::Result<Vec<_>>>().map_err(backend)
         })
     }
 

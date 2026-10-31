@@ -2,11 +2,13 @@
 
 use std::sync::PoisonError;
 
+use crate::access::RoleGrant;
 use crate::identity::{
     Account, AccountStore, ExternalIdentity, LocalCredential, LoginName, SessionRecord,
     SessionStore, TokenRecord, TokenStore, looks_like_an_argon2id_hash,
 };
-use crate::record::{AccountId, TokenId};
+use crate::invitation::{InvitationRecord, InvitationStore, InvitationUse};
+use crate::record::{AccountId, DisplayName, TokenId};
 use crate::{Result, StoreError};
 
 use super::MemoryStore;
@@ -18,6 +20,7 @@ pub(super) struct Identities {
     links: Vec<(ExternalIdentity, AccountId)>,
     sessions: Vec<SessionRecord>,
     tokens: Vec<TokenRecord>,
+    invitations: Vec<InvitationRecord>,
 }
 
 impl Identities {
@@ -133,6 +136,11 @@ impl AccountStore for MemoryStore {
         self.identities().account_mut(id)?.disabled = disabled;
         Ok(())
     }
+
+    fn set_display_name(&self, id: &AccountId, display_name: &DisplayName) -> Result<()> {
+        self.identities().account_mut(id)?.display_name = display_name.clone();
+        Ok(())
+    }
 }
 
 impl SessionStore for MemoryStore {
@@ -169,6 +177,18 @@ impl SessionStore for MemoryStore {
         let before = d.sessions.len();
         d.sessions.retain(|s| s.account != *id);
         Ok((before - d.sessions.len()) as u64)
+    }
+
+    fn sessions_of(&self, id: &AccountId, now: i64) -> Result<Vec<SessionRecord>> {
+        // The list is in the order sessions were added; the newest is last.
+        Ok(self
+            .identities()
+            .sessions
+            .iter()
+            .rev()
+            .filter(|s| s.account == *id && s.expires_at > now)
+            .cloned()
+            .collect())
     }
 
     fn purge_expired_sessions(&self, now: i64) -> Result<u64> {
@@ -271,5 +291,96 @@ impl TokenStore for MemoryStore {
             n += 1;
         }
         Ok(n)
+    }
+}
+
+impl InvitationStore for MemoryStore {
+    fn add_invitation(&self, invitation: &InvitationRecord) -> Result<()> {
+        if invitation.used.is_some() {
+            return Err(StoreError::AlreadyRecorded);
+        }
+        if let Some((wiki, _)) = &invitation.grant {
+            let records = self.records.lock().unwrap_or_else(PoisonError::into_inner);
+            if !records.iter().any(|r| r.id == *wiki) {
+                return Err(StoreError::NotFound);
+            }
+        }
+        let mut d = self.identities();
+        if d.invitations
+            .iter()
+            .any(|i| i.id == invitation.id || i.hash == invitation.hash)
+        {
+            return Err(StoreError::IdTaken(invitation.id.to_string()));
+        }
+        d.invitations.push(invitation.clone());
+        Ok(())
+    }
+
+    fn invitation_by_hash(&self, hash: &str) -> Result<Option<InvitationRecord>> {
+        Ok(self
+            .identities()
+            .invitations
+            .iter()
+            .find(|i| i.hash == hash)
+            .cloned())
+    }
+
+    fn redeem_invitation(
+        &self,
+        hash: &str,
+        account: &Account,
+        now: i64,
+    ) -> Result<Option<RoleGrant>> {
+        if let Some(local) = &account.local
+            && !looks_like_an_argon2id_hash(&local.password_hash)
+        {
+            return Err(StoreError::InvalidCredential);
+        }
+        // The order every multi-record step takes: wikis, then identities, then grants.
+        let records = self.records.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut d = self.identities();
+        let position = d
+            .invitations
+            .iter()
+            .position(|i| i.hash == hash && i.usable_at(now))
+            .ok_or(StoreError::InvitationUnusable)?;
+        let grant = d
+            .invitations
+            .get(position)
+            .and_then(|i| i.grant.clone())
+            .map(|(wiki, role)| RoleGrant {
+                account: account.id.clone(),
+                wiki,
+                role,
+                granted_by: None,
+                granted_at: now,
+            });
+        if let Some(g) = &grant
+            && !records.iter().any(|r| r.id == g.wiki)
+        {
+            return Err(StoreError::NotFound);
+        }
+        // The account store's own checks, in its order.
+        if d.accounts.iter().any(|a| a.id == account.id) {
+            return Err(StoreError::IdTaken(account.id.to_string()));
+        }
+        if let Some(local) = &account.local
+            && d.login_taken(&local.login, None)
+        {
+            return Err(StoreError::LoginTaken(local.login.to_string()));
+        }
+        d.accounts.push(account.clone());
+        if let Some(i) = d.invitations.get_mut(position) {
+            i.used = Some(InvitationUse {
+                account: account.id.clone(),
+                at: now,
+            });
+        }
+        if let Some(g) = &grant {
+            let mut grants = self.grants.lock().unwrap_or_else(PoisonError::into_inner);
+            grants.retain(|x| !(x.account == g.account && x.wiki == g.wiki));
+            grants.push(g.clone());
+        }
+        Ok(grant)
     }
 }

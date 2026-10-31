@@ -238,6 +238,8 @@ pub trait AccountStore: Send + Sync {
     ) -> Result<()>;
     /// Disable or re-enable an account.
     fn set_disabled(&self, id: &AccountId, disabled: bool) -> Result<()>;
+    /// Change the name readers see. [`crate::StoreError::AccountNotFound`] when the account is not there.
+    fn set_display_name(&self, id: &AccountId, display_name: &DisplayName) -> Result<()>;
 }
 
 /// A browser session as stored: the **hash** of the id the cookie holds, the account, the CSRF token that
@@ -276,6 +278,8 @@ pub trait SessionStore: Send + Sync {
     fn end_session(&self, id_hash: &str) -> Result<bool>;
     /// End every session of an account (a password change, a disabling); how many there were.
     fn end_sessions_of(&self, id: &AccountId) -> Result<u64>;
+    /// The account's sessions that are live at `now`, newest first (added last first).
+    fn sessions_of(&self, id: &AccountId, now: i64) -> Result<Vec<SessionRecord>>;
     /// Remove sessions that are over at `now`; how many.
     fn purge_expired_sessions(&self, now: i64) -> Result<u64>;
     /// Keep the `keep` newest sessions of the account that are live at `now` and end every other session of

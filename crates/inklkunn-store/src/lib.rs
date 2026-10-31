@@ -19,6 +19,7 @@
 //! - [`acts`]: the recovery flag, the overlaps kept on a proposal, the records of the acts the service
 //!   makes for itself (RFC 004 D-6, D-14; handoff 004 T4) and the recovery acts (D-7; handoff 004 T5).
 //! - [`inbox`]: watches and inbox events (RFC 004 D-9).
+//! - [`invitation`]: the one-time links an account is made from (the sign-in handoff's U2), written once.
 //! - [`WikiStore`] and [`RoleStore`]: the traits; [`MemoryStore`] for tests and [`SqliteStore`] for service.
 //!
 //! The store never holds a key seed (threat model INV-2 for this crate's part): key *ids* only.
@@ -30,6 +31,7 @@ pub mod audit;
 pub mod derived;
 pub mod identity;
 pub mod inbox;
+pub mod invitation;
 pub mod memory;
 pub mod proposal;
 pub mod record;
@@ -61,6 +63,7 @@ pub use identity::{
     LoginNameError, SessionRecord, SessionStore, TokenRecord, TokenStore,
 };
 pub use inbox::{InboxEvent, InboxEventKind, InboxStore, WatchRecord, WatchTarget};
+pub use invitation::{InvitationRecord, InvitationStore, InvitationUse};
 pub use memory::MemoryStore;
 pub use proposal::{
     Anchor, Base, CommentRecord, DecisionKind, DecisionRecord, FileChange, ProposalChange,
@@ -69,8 +72,8 @@ pub use proposal::{
 };
 pub use record::{
     AcceptanceId, AccountId, Attempt, Checkpoint, CommentId, DecisionId, DisplayName,
-    DisplayNameError, InboxEventId, IntentId, NewWiki, NewWikiError, NotRun, PrikkVersion,
-    ProposalId, RecoveryActId, Slug, SlugError, SystemActId, TokenId, Verification,
+    DisplayNameError, InboxEventId, IntentId, InvitationId, NewWiki, NewWikiError, NotRun,
+    PrikkVersion, ProposalId, RecoveryActId, Slug, SlugError, SystemActId, TokenId, Verification,
     VerificationState, Visibility, WikiId, WikiRecord,
 };
 pub use root::RootLayout;
@@ -123,6 +126,9 @@ pub enum StoreError {
     /// A record that is written once already exists under its key (a second decision by one reviewer on one
     /// revision, a second end of an acceptance); nothing was changed.
     AlreadyRecorded,
+    /// An invitation is unknown, already used or over: one answer for all three, so a link says nothing about
+    /// which. Nothing was changed.
+    InvitationUnusable,
     /// The backing store failed; the text is the backend's, without content.
     Backend(String),
 }
@@ -162,6 +168,9 @@ impl std::fmt::Display for StoreError {
                     f,
                     "that record is written once and already exists; nothing was changed"
                 )
+            }
+            StoreError::InvitationUnusable => {
+                write!(f, "that invitation is unknown, used or over")
             }
             StoreError::Backend(e) => write!(f, "store backend: {e}"),
         }
