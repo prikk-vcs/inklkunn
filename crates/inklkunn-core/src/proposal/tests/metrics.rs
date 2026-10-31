@@ -283,6 +283,11 @@ fn the_figures_are_an_administrators_and_a_draft_is_in_none_of_them() {
     });
 }
 
+/// One member of a parsed JSON record by pointer (tests may not index).
+fn member<'a>(v: &'a serde_json::Value, pointer: &str) -> &'a serde_json::Value {
+    v.pointer(pointer).unwrap()
+}
+
 #[test]
 fn the_operator_gets_the_same_figures_as_one_line_of_json() {
     on_both(|e| {
@@ -310,28 +315,28 @@ fn the_operator_gets_the_same_figures_as_one_line_of_json() {
         let line = by_operator.json_line();
         assert!(!line.contains('\n'), "one record is one line: {line}");
         let v: serde_json::Value = serde_json::from_str(&line).unwrap();
-        assert_eq!(v["kind"], "participation");
-        assert_eq!(v["wiki"], e.wiki.id.as_str());
+        assert_eq!(member(&v, "/kind"), "participation");
+        assert_eq!(member(&v, "/wiki"), e.wiki.id.as_str());
         assert_eq!(
-            (v["from"].as_i64(), v["to"].as_i64()),
+            (member(&v, "/from").as_i64(), member(&v, "/to").as_i64()),
             (Some(1000), Some(2000))
         );
-        assert_eq!(v["submitted"], 4);
-        assert_eq!(v["median_secs_to_first_review"], 100);
-        assert_eq!(v["median_secs_to_decision"], 60);
+        assert_eq!(member(&v, "/submitted"), 4);
+        assert_eq!(member(&v, "/median_secs_to_first_review"), 100);
+        assert_eq!(member(&v, "/median_secs_to_decision"), 60);
         // A share is the two whole numbers, never a rounded figure.
-        assert_eq!(v["acceptance_rate"]["num"], 1);
-        assert_eq!(v["acceptance_rate"]["den"], 2);
-        assert_eq!(v["reviewers_per_proposal"]["den"], 4);
+        assert_eq!(member(&v, "/acceptance_rate/num"), 1);
+        assert_eq!(member(&v, "/acceptance_rate/den"), 2);
+        assert_eq!(member(&v, "/reviewers_per_proposal/den"), 4);
         // Every state is present, by its stored name.
-        let states = v["by_state"].as_object().unwrap();
+        let states = member(&v, "/by_state").as_object().unwrap();
         assert_eq!(states.len(), 7, "{states:?}");
-        assert_eq!(states["accepted"], 1);
-        assert_eq!(states["draft"], 0);
+        assert_eq!(states.get("accepted").unwrap(), 1);
+        assert_eq!(states.get("draft").unwrap(), 0);
         assert_eq!(
             (
-                v["distinct_proposers"].as_u64(),
-                v["first_time_proposers"].as_u64()
+                member(&v, "/distinct_proposers").as_u64(),
+                member(&v, "/first_time_proposers").as_u64()
             ),
             (Some(3), Some(2))
         );
@@ -345,7 +350,10 @@ fn the_operator_gets_the_same_figures_as_one_line_of_json() {
         .unwrap()
         .json_line();
         let v: serde_json::Value = serde_json::from_str(&empty).unwrap();
-        assert!(v["median_secs_to_first_review"].is_null() && v["acceptance_rate"].is_null());
-        assert_eq!(v["submitted"], 0);
+        assert!(
+            member(&v, "/median_secs_to_first_review").is_null()
+                && member(&v, "/acceptance_rate").is_null()
+        );
+        assert_eq!(member(&v, "/submitted"), 0);
     });
 }
