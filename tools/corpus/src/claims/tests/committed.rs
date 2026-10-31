@@ -81,14 +81,21 @@ fn the_committed_folder_names_no_editor_and_no_address() {
         let Ok(text) = std::fs::read_to_string(&f) else {
             continue;
         };
-        for banned in [
-            "\"user\"",
-            "\"userid\"",
-            "\"comment\"",
-            "contributor",
-            "User:",
-            "Special:Contributions",
-        ] {
+        // The documents and the script describe these fields in prose; the data files (JSON, JSON Lines, the lists)
+        // must not carry them.
+        let data = !matches!(f.extension().and_then(|e| e.to_str()), Some("md" | "py"));
+        for banned in data
+            .then_some([
+                "\"user\"",
+                "\"userid\"",
+                "\"comment\"",
+                "contributor",
+                "User:",
+                "Special:Contributions",
+            ])
+            .into_iter()
+            .flatten()
+        {
             assert!(!text.contains(banned), "`{banned}` in {}", f.display());
         }
         // An IPv4 address literal.
