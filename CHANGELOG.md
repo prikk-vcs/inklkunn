@@ -431,6 +431,101 @@ Serving sign-in (the sign-in and acceptance handoff U1, U2, U4; handoff 004's P6
   <role> <wiki>` and `account revoke-grant <login or id> <wiki>`: **every act is audited before it is done** (an act the trail
   cannot take is not begun) and again when it ends, principal `system:operator-cli`; the store must exist (a typo in the data
   directory never makes an empty one).
+Corrections from the review of 2026-10-31 (handoff 004, P1 – P3, P7, P8, P10).
+
+- **P1 — an ambiguous `commit` is queued, never undone.** After a `commit` error the signer reads `status` before it touches the
+  worktree (`Signer::after_commit_error`): a patch that is queued leaves the files exactly as they are and answers
+  `AcceptError::Queued { step: "commit" }` (recovery seals it alone); nothing queued and nothing torn puts the worktree back, as
+  before; a torn log, or a `status` that cannot be read, undoes nothing and answers `WorktreeDirty`. Before this, a `commit`
+  stopped at its deadline (or over its output bound, or by its ceiling) *after* its patch was durable had its files put back,
+  and the queued patch then matched no worktree: `seal-queued` and `restore-worktree` both refused and the wiki was flagged for
+  good. Tests: the signer's `a_commit_that_fails_after_its_patch_is_durable_is_queued_and_its_files_are_left_never_undone` and
+  `a_commit_error_with_nothing_queued_is_undone_and_one_with_an_unreadable_state_is_not`; core's
+  `an_ambiguous_commit_is_queued_never_undone_and_recovery_seals_it` (a stand-in that runs the real `commit` and then fails);
+  the kill matrix's `prikk commit #0 done` rows (the real `commit` ran to completion and its caller was never answered).
+- **P2 — a retired key never freezes the wiki (DR-10).** What the check reads, in prikk 0.55.0's own output (measured; ledger
+  PK-34): after `trust maintainer remove`, `prikk verify --format json` has `verdict.ok` false and **one** failed condition,
+  `{"id": "publication-trust"}`, with every stage `evaluated`; `prikk verify` (text) prints `publication trust issues: N` and N
+  lines of exactly `publication-trust [PRIKK-TRUST-PUBLICATION-UNTRUSTED]: <block|ref-state|ref-update> <64 hex> has no trusted
+  MAINTAINER signature`, one for each block, ref state and ref update the removed key signed; `doctor` prints the same N as
+  errors with the code `PRIKK-TRUST-PUBLICATION-UNTRUSTED`. **"Exactly and only by publication trust" is: the report is complete
+  (no partial stage); its failed conditions are that one condition and no other; every `publication-trust` line is of that one
+  shape and they are as many as prikk counts; every named block is in the history up to a tip the key record kept for a
+  *retired* key when the rotation replaced it (handoff 002 C11), so a block newer than that point, or a third key's, is not
+  excused; a ref state that follows a block follows an excused block; a ref state that follows no block (a branch's publication)
+  is excused up to one per view, and ref updates (which prikk's reports give no link to a block) up to the number of ref states.**
+  A retirement with no recorded point excuses nothing. Then an acceptance whose `verify` fails that way is **confirmed**
+  (`Ok(SealedChange)`, not `SealedUnconfirmed { VerifyFailed }`), recovery's plan takes `doctor`'s publication-trust errors for a
+  note instead of `DoctorTrouble` and its `verify` step passes with that note (`Recover::verify_after_retirement`, new, read-only,
+  default "no"); the badge still says *Verification failed*, as DR-10 ruled. Any other failed condition, an unreadable line, or
+  an untrusted block outside the retired key's point still stops. Tests: `signer/retirement/tests.rs` (every row of the
+  judgement, no repository); the signer's `after_a_retirement_writes_continue_and_the_repository_still_fails_its_verification`
+  (three acceptances after a retirement; prikk's own verify still fails; the canary for PK-34) and
+  `a_second_failure_planted_after_a_retirement_still_stops_the_wiki` (a real block sealed by a stranger's key that is then
+  removed from trust); core's `a_retirement_never_freezes_the_wiki_and_recovery_passes_verify_with_a_note` and
+  `a_failure_the_signer_does_not_excuse_keeps_the_flag_even_after_a_retirement`. `docs/KEYS.md` says so.
+- **P3 — recovery keeps the flag on disagreement.** The reconciliation step judges its findings against the act being finished:
+  a finding that names the act's record, or a block of the act's view newer than the block the act was made on, **stops the
+  recovery** (`Stopped { at: reconcile }`, the flag kept, the findings named by their audit words); a finding about an older
+  block is reported (audit trail, `RecoveryReport::reconciliation`, the step's detail) and does not block; a base that cannot be
+  found in the part of the history read stops it too. `Finding` gains `block_id`, `record_id` and `describe`. Tests (core's
+  `tests/recovery.rs`): `a_disagreement_that_touches_what_the_act_did_stops_the_recovery_with_the_flag_kept` and
+  `a_disagreement_older_than_the_act_is_reported_and_does_not_block_the_recovery`.
+- **P7 — the inline reconciliation is bounded.** After a seal, the acceptance and the system act reconcile only the blocks of the
+  act's view since the block the intent was made on (`reconcile::reconcile_since`, `ReconcileError::BaseNotFound`): the history is
+  read from the tip as far as the base, the first read small and each four times larger; a record whose block was not read is
+  not a missing block here. The records are still read in full (a store query; no prikk call). The full pass stays in recovery
+  and on its schedule. Tests: core's `tests/reconcile.rs` (a bound too small for the whole history refuses the full pass and
+  not the bounded one; a lost record for a block read is found, one far below the base is not this pass's to find; a base the
+  view does not hold is an error) and `tests/recovery.rs` (`the_inline_reconciliation_reads_the_blocks_since_the_base_and_the_full_pass_still_finds_the_rest`).
+- **P8 — recovery and acceptance edges (the parts the review listed for this change).**
+  - *An unclean precondition is its own error and flags the wiki.* `AcceptError::Unclean { queued, detail }` (a patch is queued, or
+    the worktree has changes, when the act begins and no record explains it) is settled as *incomplete*: the wiki is flagged
+    `queued` or `worktree-dirty` and recovery looks first. It was `Refused`, which flagged nothing.
+  - *The foreign-process witness stops every step.* A `prikk` or `bwrap` of somebody else's in the repository is the plan's first
+    stop (`foreign-process`), before any seal, restore, discard or lock is attempted. Note for operators and tests: a process of
+    another user that is a `prikk` or a `bwrap` and whose working directory cannot be read counts as foreign, as it did for
+    locks, and now holds every recovery.
+  - *A lease holder is named by pid and start time and an instance id.* `WikiLeases::new` records `<name>@<start time>-<random>`
+    (`lease::instance_name`; `/proc/self/stat` field 22, and 64 random bits from the standard library's seeded hasher), so the
+    record an earlier process left under the same pid is another holder's and a holder that died, not this process's own.
+    `recovery_guard` also sees pending acceptances, whether or not their intent was written.
+  - *`is_lent` also requires the lease to be held.* Every in-process turn has a generation; a loan (`LeaseScope`) records the
+    generation of the lease it was made under and counts only while that turn is the one held (a leaked scope no longer lets an
+    act on that thread believe a lease it does not hold, after the lease or after another lease of the same wiki).
+  - *The `AlreadySigned` path settles the proposal.* A retry that finds a sealed acceptance of a proposal still *held for review*
+    marks it accepted (by the acceptor of the sealed acceptance) before it answers.
+  Tests: signer `a_loan_is_good_only_while_the_lease_it_was_made_under_is_the_one_held`; core `lease/tests.rs`
+  (`a_holder_is_named_by_its_pid_and_start_time_and_an_instance_id_…`), `recovery/plan/tests.rs`
+  (`a_foreign_process_stops_the_seal_the_restore_and_the_tail_too`) and `tests/recovery.rs`
+  (`an_unclean_repository_at_the_start_of_an_acceptance_flags_the_wiki_and_names_what_it_found`,
+  `a_foreign_process_in_the_repository_stops_every_step_of_a_recovery_not_only_a_lock`,
+  `an_acceptance_with_no_end_blocks_the_next_act_even_when_its_intent_was_never_written`,
+  `a_retry_of_a_sealed_acceptance_settles_a_proposal_still_held_for_review`).
+- **P10 — the kill matrix reaches inside prikk.** `tests/acceptance_kill.rs` now kills the child's whole **process group** (a shell
+  already waiting on its input sends the signal, so nothing the child had begun goes on to write) at 33 points (14 before; 19 new): the acceptance's
+  steps and prikk calls as before; **`done` rows** where the stand-in runs the real `commit` / `seal` to completion and then
+  holds (the effect durable, the caller never answered: deterministic); **`inside` rows** where the stand-in starts the real verb,
+  waits half a millisecond (`INKLKUNN_AK_INSIDE` changes it) and the parent kills the whole group at once (the state is whatever
+  the verb had got to; the plan is checked against what the kill left, and every other invariant is asserted as in the other
+  rows); **the system act's rows** (`SystemActs::with_observer`, `SystemStep`, and the same prikk calls); and **a kill of recovery
+  itself** after its `seal-queued` step sealed (the real seal ran, none of it recorded, a recovery act begun and never ended): the
+  next recovery ends the interrupted act as stopped and finishes the records. What the rows that kill inside a verb found (100
+  runs of the matrix: 0 failures; the classes below are asserted, not avoided): most kills leave a queued patch or a sealed
+  block, and recovery finishes them as in any other row; about one `seal` kill in ten lands before the seal has finished; and three
+  states recovery has no answer for, each of which it meets by **failing closed** (nothing changed, the wiki stays flagged, the
+  stop or the error named) rather than guessing:
+  (1) a kill at the instant prikk creates a lock file leaves it **empty** (`prikk unlock` lists `kind:` empty and `recorded pid:
+  (unparseable)`), which the strict reader of `unlock` refuses (a witness error) until an operator clears the file; the rows
+  assert the refusal, clear the empty lock as an operator would, and go on;
+  (2) a `seal` killed just after it published the block and drained the queue leaves only a `doctor` *warning* about stale
+  reference metadata ("no repair is required") beside a stale `active` lock: the plan stops at `doctor-trouble`, because
+  `Diagnostic::is_metadata_debris` rides along only with an acknowledged damage;
+  (3) a `seal` killed after it published the block and before it drained the queue leaves `prikk status --format json`
+  refusing with an integrity error (the queued patch replayed on a tip that already has it) while `doctor` says
+  `PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING` and recommends *run `prikk seal --allow-no-audit` for the affected ref*: recovery
+  cannot read `status` and stops; a second `seal` is prikk's own answer. These three are decision requests in the handoff
+  report; `INKLKUNN_AK_KEEP=<dir>` keeps a copy of the repository of a row that stopped or failed closed, for study.
 
 ## [0.1.0] — 2026-10-31
 

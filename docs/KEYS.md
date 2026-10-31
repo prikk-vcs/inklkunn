@@ -51,7 +51,10 @@ This is the choice, and prikk 0.54.1 makes it a hard one (ledger **PK-34**):
 Use the default for a routine rotation (a schedule, a change of operator): the service no longer holds the
 old seed, and nothing else is known to. Use `--retire-old` when the old seed may be in someone else's hands,
 and accept that the wiki will report *Verification failed* until prikk can keep a retired key's history
-verifiable. The second flag exists so that cost cannot be paid by accident. The owner ruled this design
+verifiable. **The wiki goes on taking changes** (handoff 004, P2): an acceptance whose `verify` fails exactly and only by
+publication trust, for blocks the retired key sealed before it was replaced, is confirmed, and recovery's `verify` step
+passes with a note. Any other failed condition, or an untrusted block that no retired key could have sealed (one newer
+than the point the key record kept), still stops the wiki. The second flag exists so that cost cannot be paid by accident. The owner ruled this design
 (DR-10, 2026-10-29) after prikk **confirmed** it on the same day: a leaked copy of a still-trusted key can
 seal anything that verifies, and a rotation that keeps history verifiable while removing the key **is not
 scheduled** in prikk.
