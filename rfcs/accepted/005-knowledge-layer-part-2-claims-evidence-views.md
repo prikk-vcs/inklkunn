@@ -1,6 +1,7 @@
 # RFC 005 part 2 — Claims, sources, views: what a reader can ask of a sentence, and how a community records disagreement without a truth mark
 
-**Status.** **Proposed** by the architect on 2026-10-31, on part 1's decisions D-1 … D-4 (accepted by the owner the same
+**Status.** **Accepted by the owner 2026-10-31** (*"Accepted."*; the open question ruled as recommended: reviewers and
+above create views by default). Handoff: `../handoffs/005-knowledge-layer/knowledge-layer-handoff-v1.md`. Proposed by the architect on 2026-10-31, on part 1's decisions D-1 … D-4 (accepted by the owner the same
 day). Reviewed by the architect against the owner's two lenses before proposing (see *How this was checked*). **Tracks.** ROADMAP M3 (0.3.0), theme T5, risk R4. Requirements `KN-1 … KN-9`, `CM-5`, `CM-7`, `CM-11`, `NG-3`,
 `PU-6`, `PR-1`; the requirements register's items **3** (evidence), **4** (state classes), **5** (discussion kinds),
 **6** (fork kinds), **10** (no "canonical"); external design `WEB-11`; RFC 005 part 1 (D-1 … D-4); RFC 004 (every change
@@ -139,7 +140,7 @@ suggest "true". A newcomer who never touches a claim sees an ordinary wiki with 
   question (RFC 002 C8's confinement exists, but crawling third parties on a schedule is a policy matter), and "a person
   checked" is the honest freshness signal.
 
-## Open question for the owner
+## Open question (ruled by the owner, 2026-10-31: as recommended)
 
 1. **Who may create an alternative view** (D-9)? *Recommendation:* reviewers and above by default (a view is a lasting
    community object, and it is named on every claim page that differs in it); anyone may propose a change in a view

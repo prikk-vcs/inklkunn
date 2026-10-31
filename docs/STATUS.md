@@ -223,17 +223,13 @@
   sweeping change is one re-confirmation, reviewers' decisions measured in use (D-1); pages first, claims and shared
   evidence as files in `knowledge/` (D-2); one accepted proposal, one change, notifications per change (D-3); four
   state fields with `unknown`, no aggregate (D-4). Part 2 proposed the same day (below).
+- **2026-10-31 — RFC 005 part 2 accepted by the owner** (*"Accepted."*; the open question as recommended: reviewers
+  and above create views). Handoff `rfcs/handoffs/005-knowledge-layer/knowledge-layer-handoff-v1.md`: **K-T1 … K-T4**
+  (the files, the validator, the merge, the index; no surface) assignable now; K-T5 … K-T11 (the surfaces, views,
+  freshness, threads, API) after 0.2.0 is cut.
 
 ## Pending on the owner
 
-- **RFC 005 part 2 proposed** (M3: claims, sources, views): `rfcs/proposed/005-knowledge-layer-part-2-claims-evidence-views.md`.
-  Claims and sources are small YAML files beside the pages, changed only by proposals, read through the derived index
-  the title index already builds; a reader sees one quiet *Sources and views* link on a paragraph that holds a claim and
-  one *Why is this here?* link per page; sources are described by their relation and *bearing* in words, never a score,
-  and never the words *true*, *verified* or *canonical*; disagreement lives in alternative views (*experimental* or
-  *interpretation*); freshness is a person's review, no crawler. Checked against your two lenses before proposing (its
-  *How this was checked* section). **One open question:** who may create an alternative view? *Recommendation:*
-  reviewers and above by default. Accept, amend or hold.
 - **Review the Japanese catalog** when the dev team files it (DR-7; the owner is the reviewer): one request listing
   every message in English and Japanese with where it appears. It waits for RFC 004's words (about 300 more messages
   now); until your sign-off Japanese stays a preview that only a reader's own choice turns on.
@@ -256,7 +252,7 @@ conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done a
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
 (2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **The dev team's order now:**
 handoff 004's corrections P1 – P12 (with 003's tidy-ups T1, T2) beside the sign-in handoff's U1 – U5; U6 (writes on)
-after P1 – P6 are approved; RFC 005's spike C beside them (it touches no product crate). F1, F5, F6, V1, V2 are done (in T4 – T9); F2 – F4
+after P1 – P6 are approved; RFC 005 part 2's K-T1 … K-T4 (with spike C's K1) beside them, as room allows. F1, F5, F6, V1, V2 are done (in T4 – T9); F2 – F4
 before OpenID Connect is switched on. The architect reviews
 each request as it arrives; the next re-baseline is at prikk 0.56.0. RFC 004 (proposals) is accepted and its handoff v1 is written; it is **assignable now** (R1, the verdict acceptance
 reads under INT-6, is approved). The single-large-attachment measurement is now handoff 003's T6 (IS-12; the architect's

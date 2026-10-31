@@ -39,14 +39,14 @@ subjects not yet written: 005 knowledge layer
 | 002 | [Identity, keys and signing](accepted/002-identity-keys-and-signing.md) | M0 → M2 (DR-4) | **accepted** 2026-10-27; handoff built and **Conditionally Approved 2026-10-29**; corrections C1 – C11 **done and approved 2026-10-29** (follow-ups F1 – F7 at the steps they name); D-8 ruled (DR-10) |
 | 003 | [Read path and rendering](accepted/003-read-path-and-rendering.md) | M1 | **accepted** 2026-10-27; T1 – T9 with every correction and follow-up **approved** (S1 – S4 on 2026-10-31); the 0.1.0 candidate is `95ab12c` |
 | 004 | [Proposals: propose, review, accept and seal; re-author a moved base gently; never lose a half-state](accepted/004-proposals.md) | M2 | **accepted** 2026-10-28; T1 – T8 built and **Conditionally Approved 2026-10-31** (corrections P1 – P12); the follow-on handoff `serve-sign-in-and-accept` (sign-in served, the server's acceptor) assignable |
-| 005 | [Knowledge layer, part 1: claim identity, attachment to pages, one change, epistemic state (an investigation)](accepted/005-knowledge-layer-part-1-claim-identity.md) | M3 | **part 1 accepted** 2026-10-31 (spike C approved; D-1 … D-4 accepted); **part 2 proposed** the same day ([claims, sources, views](proposed/005-knowledge-layer-part-2-claims-evidence-views.md)) |
+| 005 | [Knowledge layer, part 1: claim identity, attachment to pages, one change, epistemic state (an investigation)](accepted/005-knowledge-layer-part-1-claim-identity.md) | M3 | **part 1 accepted** 2026-10-31 (spike C approved; D-1 … D-4 accepted); **part 2 accepted** the same day ([claims, sources, views](accepted/005-knowledge-layer-part-2-claims-evidence-views.md)); handoff K-T1 … K-T4 assignable now, K-T5 on after 0.2.0 |
 | 010 | [Upstream tracking and supply-chain maintenance](done/010-upstream-and-supply-chain-maintenance.md) | all | **done** 2026-10-28 (approved after review); its procedures run at every release and re-baseline |
 
 ## Current state
 
 | State | RFCs |
 |---|---|
-| Proposed | [005 part 2](proposed/005-knowledge-layer-part-2-claims-evidence-views.md) — proposed 2026-10-31 (claims, sources, views) |
-| Accepted | [005 part 1](accepted/005-knowledge-layer-part-1-claim-identity.md) — accepted 2026-10-31; [002](accepted/002-identity-keys-and-signing.md), [003](accepted/003-read-path-and-rendering.md) — accepted 2026-10-27; [004](accepted/004-proposals.md) — accepted 2026-10-28 |
+| Proposed | *(none)* |
+| Accepted | [005 part 1](accepted/005-knowledge-layer-part-1-claim-identity.md), [005 part 2](accepted/005-knowledge-layer-part-2-claims-evidence-views.md) — accepted 2026-10-31; [002](accepted/002-identity-keys-and-signing.md), [003](accepted/003-read-path-and-rendering.md) — accepted 2026-10-27; [004](accepted/004-proposals.md) — accepted 2026-10-28 |
 | Done | [000 — RFC lifecycle policy](done/000-rfc-lifecycle-policy.md) (adopted 2026-10-24); [001](done/001-foundations.md), [010](done/010-upstream-and-supply-chain-maintenance.md) (M0, approved 2026-10-28) |
 | Archived | *(none yet)* |
