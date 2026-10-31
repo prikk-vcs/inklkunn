@@ -11,7 +11,7 @@
 
 use std::collections::HashMap;
 
-use axum::extract::rejection::{FormRejection, PathRejection, QueryRejection};
+use axum::extract::rejection::{PathRejection, QueryRejection};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
@@ -41,7 +41,7 @@ use crate::present::WikiLinks;
 use crate::wiki::{Body, Choice, generic_not_found, services_of};
 
 type Params = Result<Query<HashMap<String, String>>, QueryRejection>;
-type Fields = Result<axum::extract::Form<HashMap<String, String>>, FormRejection>;
+type Fields = super::urlencoded::Raw;
 
 // ------------------------------------------------------------------------------------ the entry points
 
@@ -66,7 +66,7 @@ pub(crate) async fn new_post(
         if let Some(response) = needs_account(page, &ctx) {
             return response;
         }
-        match fields_of(page, &ctx, form) {
+        match fields_of(page, &ctx, &headers, form) {
             Ok(fields) => post(page, &ctx, &fields, None),
             Err(response) => *response,
         }
@@ -130,7 +130,7 @@ pub(crate) async fn edit_post(
         if let Some(response) = needs_account(page, &ctx) {
             return response;
         }
-        match fields_of(page, &ctx, form) {
+        match fields_of(page, &ctx, &headers, form) {
             Ok(fields) => post(page, &ctx, &fields, Some(id)),
             Err(response) => *response,
         }

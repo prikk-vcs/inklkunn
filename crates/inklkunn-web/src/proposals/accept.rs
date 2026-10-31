@@ -12,9 +12,7 @@
 //! A server without an acceptor (`Services::acceptor` is `None`: the binary builds none until sign-in is
 //! served) answers [`AcceptOutcome::NotYetAvailable`], after the same checks.
 
-use std::collections::HashMap;
-
-use axum::extract::rejection::{FormRejection, PathRejection};
+use axum::extract::rejection::PathRejection;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::Response;
@@ -31,7 +29,7 @@ use crate::catalog::Key;
 use crate::pages::{Page, PageState};
 use crate::wiki::{Choice, generic_not_found, notice, services_of, with_retry_after};
 
-type Fields = Result<axum::extract::Form<HashMap<String, String>>, FormRejection>;
+type Fields = super::urlencoded::Raw;
 type Ids = Result<Path<(String, String)>, PathRejection>;
 
 /// The longest a visitor is told to wait before asking again, in seconds.
@@ -314,8 +312,14 @@ fn retry_after_secs(mut response: Response, secs: u64) -> Response {
 }
 
 /// The revision the form says it was drawn from, or the page that says the form was not complete.
-fn revision_of(page: &Page, ctx: &Ctx, id: &ProposalId, form: Fields) -> Result<u32, Stop> {
-    let fields = fields_of(page, ctx, form)?;
+fn revision_of(
+    page: &Page,
+    ctx: &Ctx,
+    headers: &HeaderMap,
+    id: &ProposalId,
+    form: Fields,
+) -> Result<u32, Stop> {
+    let fields = fields_of(page, ctx, headers, form)?;
     fields
         .get(fields::REVISION)
         .and_then(|v| v.trim().parse::<u32>().ok())
@@ -366,7 +370,7 @@ pub(crate) async fn accept(
         let outcome = if !ctx.may_on(Action::Accept, &id) {
             AcceptOutcome::NotAllowed
         } else if let Some(acceptor) = ctx.services.acceptor.clone() {
-            let revision = match revision_of(page, &ctx, &id, form) {
+            let revision = match revision_of(page, &ctx, &headers, &id, form) {
                 Ok(revision) => revision,
                 Err(response) => return *response,
             };

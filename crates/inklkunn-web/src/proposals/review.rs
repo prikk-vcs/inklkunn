@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use askama::Template;
-use axum::extract::rejection::{FormRejection, PathRejection};
+use axum::extract::rejection::PathRejection;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
@@ -22,7 +22,7 @@ use crate::discover::Subject;
 use crate::pages::{Page, PageState, answer};
 use crate::wiki::{Choice, Shell, generic_not_found, services_of};
 
-type Fields = Result<axum::extract::Form<HashMap<String, String>>, FormRejection>;
+type Fields = super::urlencoded::Raw;
 type Ids = Result<Path<(String, String)>, PathRejection>;
 
 /// The way back to a proposal.
@@ -91,7 +91,7 @@ pub(crate) async fn comment(
         if let Some(response) = needs_account(page, &ctx) {
             return response;
         }
-        let fields = match fields_of(page, &ctx, begun.form) {
+        let fields = match fields_of(page, &ctx, &headers, begun.form) {
             Ok(f) => f,
             Err(response) => return *response,
         };
@@ -183,7 +183,7 @@ pub(crate) async fn decide(
         if let Some(response) = needs_account(page, &ctx) {
             return response;
         }
-        let fields = match fields_of(page, &ctx, begun.form) {
+        let fields = match fields_of(page, &ctx, &headers, begun.form) {
             Ok(f) => f,
             Err(response) => return *response,
         };
@@ -407,7 +407,7 @@ pub(crate) async fn reason_post(
         if let Some(response) = needs_account(page, &ctx) {
             return response;
         }
-        let fields = match fields_of(page, &ctx, begun.form) {
+        let fields = match fields_of(page, &ctx, &headers, begun.form) {
             Ok(f) => f,
             Err(response) => return *response,
         };

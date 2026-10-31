@@ -4,6 +4,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 mod accept;
+mod bodies;
 #[path = "../common/mod.rs"]
 mod common;
 mod flows;

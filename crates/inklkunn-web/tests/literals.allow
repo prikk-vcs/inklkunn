@@ -33,6 +33,7 @@ exact :: pages.rs :: next :: the name of the form field and of the query paramet
 exact :: pages.rs :: lang :: the name of the form field that carries the language code
 exact :: pages.rs :: text/html; charset=utf-8 :: a media type
 exact :: pages.rs :: text/plain; charset=utf-8 :: a media type
+exact :: urlencoded.rs :: application/x-www-form-urlencoded :: a media type (the only body a write form is taken from)
 
 # --- style.rs: the stylesheet's route
 exact :: style.rs :: ../static/site.css :: the path of the file embedded with include_str!

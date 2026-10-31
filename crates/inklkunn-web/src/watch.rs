@@ -12,10 +12,8 @@
 //! A title that cannot name a page is the same not-found page, and so is a page the account may not read (the
 //! rule that decides is the one every read goes through), so following is no way to find out what exists.
 
-use std::collections::HashMap;
-
-use axum::extract::rejection::{FormRejection, PathRejection};
-use axum::extract::{Form, Path, State};
+use axum::extract::rejection::PathRejection;
+use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use inklkunn_core::inbox::{InboxError, namespace_target, page_target};
@@ -42,7 +40,7 @@ pub(crate) async fn watch(
     page: Page,
     headers: HeaderMap,
     path: Result<Path<(String, String)>, PathRejection>,
-    form: Result<Form<HashMap<String, String>>, FormRejection>,
+    form: crate::proposals::urlencoded::Raw,
 ) -> Response {
     let page = page.without_switcher();
     let Ok(Path((slug, title))) = path else {
@@ -54,7 +52,8 @@ pub(crate) async fn watch(
     let Some((services, wiki)) = resolve(&state, headers.clone(), slug).await else {
         return generic_not_found(&page);
     };
-    let Ok(Form(form)) = form else {
+    // The body is read as fields only now, after the checks above (corrections P11).
+    let Ok(form) = crate::proposals::urlencoded::fields(&headers, form) else {
         return generic_not_found(&page);
     };
     let namespace = form.get("scope").is_some_and(|v| v == "namespace");

@@ -50,6 +50,7 @@ pub(crate) mod render;
 pub(crate) mod review;
 pub(crate) mod show;
 pub(crate) mod submit;
+pub(crate) mod urlencoded;
 pub(crate) mod words;
 
 pub use accept::{AcceptOutcome, Unchanged, render_accept_outcome};
@@ -232,19 +233,17 @@ pub(crate) fn parse_id(raw: &str) -> Option<ProposalId> {
 /// A response that ends a request early (boxed: a response is large).
 pub(crate) type Stop = Box<Response>;
 
-/// The fields of a form, or the page that says the form was not one (wrong type) or too large.
+/// The fields of a form, parsed now (after the checks the handler made first: corrections P11), or the page that
+/// says the form was not one (wrong type, not text) or too large.
 pub(crate) fn fields_of(
     page: &Page,
     ctx: &Ctx,
-    form: Result<
-        axum::extract::Form<HashMap<String, String>>,
-        axum::extract::rejection::FormRejection,
-    >,
+    headers: &HeaderMap,
+    form: urlencoded::Raw,
 ) -> Result<HashMap<String, String>, Stop> {
-    match form {
-        Ok(axum::extract::Form(fields)) => Ok(fields),
-        Err(rejection) => {
-            let status = rejection.status();
+    match urlencoded::fields(headers, form) {
+        Ok(fields) => Ok(fields),
+        Err(status) => {
             let key = if status == StatusCode::PAYLOAD_TOO_LARGE {
                 Key::InvalidFormTooLarge
             } else {
