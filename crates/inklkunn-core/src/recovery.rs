@@ -641,7 +641,19 @@ impl Recovery {
                 since: (self.clock)(),
             })?;
         }
-        let witness = self.gather(wiki, dead, true)?;
+        let witness = match self.gather(wiki, dead, true) {
+            Ok(w) => w,
+            Err(e) => {
+                // Nothing is concluded from what could not be read; the flag stays, and the trail says it ended.
+                let _ = self.trail(
+                    "recovery",
+                    &resource,
+                    AuditOutcome::Failed,
+                    "a witness could not be read",
+                );
+                return Err(e);
+            }
+        };
         let plan = build(&witness);
 
         // 3. The plan, recorded before any of it is done; an earlier recovery that was itself interrupted is ended.

@@ -28,6 +28,11 @@ use inklkunn_store::{AccountId, DisplayName, ProposalId, RootLayout, WikiId};
 const SECRET: &str = "an operator secret for the recovery tests, long enough";
 const MAIN: &str = "heads/main";
 
+/// The `i`-th of a list that must have it (tests may not index).
+fn nth<T>(items: &[T], i: usize) -> &T {
+    items.get(i).expect("an element")
+}
+
 fn real_prikk() -> Option<PathBuf> {
     std::env::var_os("PATH").and_then(|p| {
         std::env::split_paths(&p)
@@ -483,14 +488,14 @@ fn every_operation_refuses_without_the_lease_without_a_record_and_without_the_ac
     }
     // Lent and recorded, but the act names only the discard: the other three refuse.
     let rs = run(&narrow);
-    assert_eq!(rs[0], Err(RecoverError::NotRecorded));
+    assert_eq!(nth(&rs, 0), &Err(RecoverError::NotRecorded));
     assert_ne!(
-        rs[1],
-        Err(RecoverError::NotRecorded),
+        nth(&rs, 1),
+        &Err(RecoverError::NotRecorded),
         "the discard is named"
     );
-    assert_eq!(rs[2], Err(RecoverError::NotRecorded));
-    assert_eq!(rs[3], Err(RecoverError::NotRecorded));
+    assert_eq!(nth(&rs, 2), &Err(RecoverError::NotRecorded));
+    assert_eq!(nth(&rs, 3), &Err(RecoverError::NotRecorded));
     // An act of another wiki is not this wiki's.
     let foreign = RecoveryToken::new("foreign");
     f.ledger.acts.lock().unwrap().insert(
@@ -593,7 +598,10 @@ fn a_stale_lock_is_cleared_on_the_record_and_prikks_own_liveness_check_decides_n
     assert!(f.witnesses.locks(&f.wiki).unwrap().is_empty());
     // A lock that is already gone is not an error, and is not listed as cleared.
     let again = f
-        .leased(|| f.signer.clear_locks(&f.wiki, &act, &[live.clone()]))
+        .leased(|| {
+            f.signer
+                .clear_locks(&f.wiki, &act, std::slice::from_ref(&live))
+        })
         .unwrap();
     assert!(again.is_empty());
 }
@@ -634,7 +642,10 @@ fn a_lock_the_plan_did_not_name_or_of_a_kind_an_acceptance_does_not_leave_is_not
     let narrow = f.act(vec![RecoveryOp::ClearLocks {
         paths: vec![ours.clone()],
     }]);
-    let r = f.leased(|| f.signer.clear_locks(&f.wiki, &narrow, &[policy.clone()]));
+    let r = f.leased(|| {
+        f.signer
+            .clear_locks(&f.wiki, &narrow, std::slice::from_ref(&policy))
+    });
     assert_eq!(r, Err(RecoverError::NotRecorded));
     assert_eq!(f.witnesses.locks(&f.wiki).unwrap().len(), 2);
 }

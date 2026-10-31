@@ -135,6 +135,11 @@ fn lock(kind: &str, pid: u32, liveness: &str) -> HeldLock {
 
 const TAIL: [&str; 3] = ["verify", "reconcile", "clear-flag"];
 
+/// The `i`-th of a list that must have it (tests may not index).
+fn nth<T>(items: &[T], i: usize) -> &T {
+    items.get(i).expect("an element")
+}
+
 #[test]
 fn a_wiki_that_needs_nothing_has_an_empty_plan_and_a_flagged_one_with_nothing_else_is_only_checked()
 {
@@ -200,7 +205,7 @@ fn a_queued_patch_that_is_the_change_of_the_unfinished_act_is_completed_with_sea
     sys.proposal_state = None;
     sys.intent_open = false;
     w.acts = vec![sys];
-    assert_eq!(names(&build(&w))[0], "seal-queued");
+    assert_eq!(nth(&names(&build(&w)), 0), &"seal-queued");
 }
 
 #[test]
@@ -330,7 +335,10 @@ fn a_torn_commit_is_discarded_with_the_act_ended_as_discarded_or_reported_when_n
         block_id: "c".repeat(64),
         patch_id: "d".repeat(64),
     })];
-    assert_eq!(names(&build(&w))[..2], ["discard-damaged", "end-sealed"]);
+    assert_eq!(
+        names(&build(&w)).get(..2),
+        Some(&["discard-damaged", "end-sealed"][..])
+    );
     // Other trouble beside the damage: a stop.
     let mut w = flagged();
     w.doctor = doctor(vec![
@@ -381,7 +389,7 @@ fn an_act_with_nothing_queued_is_abandoned_when_not_in_the_history_and_recorded_
     no_intent.intent_open = false;
     let mut w = flagged();
     w.acts = vec![no_intent];
-    assert_eq!(names(&build(&w))[0], "end-failed");
+    assert_eq!(nth(&names(&build(&w)), 0), &"end-failed");
     // Killed after the seal and before the records: the change is in the history.
     let mut w = flagged();
     w.acts = vec![act(Chain::Sealed {
@@ -439,8 +447,8 @@ fn stale_locks_are_cleared_first_on_the_lease_record_and_prikks_liveness_words_c
         let plan = build(&w);
         assert_eq!(plan.stop, None, "{liveness}");
         assert_eq!(
-            names(&plan)[0],
-            "clear-locks",
+            nth(&names(&plan), 0),
+            &"clear-locks",
             "locks first, so seal and discard can take them"
         );
         let Some(Step::ClearLocks { locks }) = plan.steps.first() else {
@@ -448,9 +456,11 @@ fn stale_locks_are_cleared_first_on_the_lease_record_and_prikks_liveness_words_c
         };
         assert_eq!(locks.len(), 2);
         // What prikk said is kept in the plan for the record.
-        assert_eq!(locks[0].prikk_liveness, liveness);
-        assert_eq!(locks[0].recorded_pid, 2);
-        assert!(matches!(&plan.ops()[0], RecoveryOp::ClearLocks { paths } if paths.len() == 2));
+        assert_eq!(nth(locks, 0).prikk_liveness, liveness);
+        assert_eq!(nth(locks, 0).recorded_pid, 2);
+        assert!(
+            matches!(nth(&plan.ops(), 0), RecoveryOp::ClearLocks { paths } if paths.len() == 2)
+        );
     }
     // A lock of a kind an acceptance does not leave: a stop, and nothing is cleared.
     let mut w = flagged();

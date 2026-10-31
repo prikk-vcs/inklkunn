@@ -37,6 +37,11 @@ use inklkunn_store::{
 
 const MAIN: &str = "heads/main";
 
+/// The `i`-th of a list that must have it (tests may not index).
+fn nth<T>(items: &[T], i: usize) -> &T {
+    items.get(i).expect("an element")
+}
+
 fn authority() -> &'static IdentityAuthority {
     static AUTHORITY: std::sync::OnceLock<IdentityAuthority> = std::sync::OnceLock::new();
     AUTHORITY.get_or_init(|| IdentityAuthority::claim().expect("claimed once"))
@@ -798,10 +803,10 @@ fn a_planted_queued_patch_that_matches_no_intent_is_reported_and_never_sealed_or
     let acts = w.store.recovery_acts(&w.wiki.id).unwrap();
     assert_eq!(acts.len(), 1, "the plan is recorded, and ended as stopped");
     assert_eq!(
-        acts[0].end.as_ref().map(|e| e.ending),
+        nth(&acts, 0).end.as_ref().map(|e| e.ending),
         Some(RecoveryEnding::Stopped)
     );
-    assert!(acts[0].act.plan.contains("foreign-queued-patch"));
+    assert!(nth(&acts, 0).act.plan.contains("foreign-queued-patch"));
     let audit = w.audit();
     assert!(
         audit.iter().any(|(a, o, d)| a == "recovery"
@@ -961,12 +966,12 @@ fn a_planted_stale_lock_is_cleared_and_reported_even_when_prikk_thinks_its_proce
         "the setup: prikk thinks the planted lock's process is running ({listed:?})"
     );
     let shown = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
-    assert_eq!(step_names(&shown)[0], "clear-locks");
+    assert_eq!(nth(&step_names(&shown), 0), &"clear-locks");
     let r = w.recover();
     assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());
-    assert_eq!(step_names(&r)[0], "clear-locks");
+    assert_eq!(nth(&step_names(&r), 0), &"clear-locks");
     assert!(
-        r.done[0].detail.contains("2 lock(s) cleared"),
+        nth(&r.done, 0).detail.contains("2 lock(s) cleared"),
         "{:?}",
         r.done
     );
@@ -1136,13 +1141,13 @@ fn a_recovery_that_was_itself_interrupted_is_ended_and_the_next_one_goes_on() {
     assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());
     let acts = w.store.recovery_acts(&w.wiki.id).unwrap();
     assert_eq!(acts.len(), 2);
-    assert_eq!(acts[0].act, earlier);
+    assert_eq!(nth(&acts, 0).act, earlier);
     assert_eq!(
-        acts[0].end.as_ref().map(|e| e.ending),
+        nth(&acts, 0).end.as_ref().map(|e| e.ending),
         Some(RecoveryEnding::Stopped)
     );
     assert_eq!(
-        acts[1].end.as_ref().map(|e| e.ending),
+        nth(&acts, 1).end.as_ref().map(|e| e.ending),
         Some(RecoveryEnding::Recovered)
     );
     assert!(w.recovery.needs_recovery(&w.wiki.id).unwrap().is_empty());
@@ -1245,6 +1250,15 @@ fn a_doctor_report_of_a_shape_nobody_knows_stops_recovery_before_anything_is_pla
     assert!(
         w.store.recovery_acts(&w.wiki.id).unwrap().is_empty(),
         "no plan was made from what could not be read"
+    );
+    // The trail says it began and that it ended without a plan.
+    let actions: Vec<(String, String)> = w.audit().into_iter().map(|(a, o, _)| (a, o)).collect();
+    assert_eq!(
+        actions,
+        [
+            ("recovery-begin".to_owned(), "allowed".to_owned()),
+            ("recovery".to_owned(), "failed".to_owned())
+        ]
     );
 }
 

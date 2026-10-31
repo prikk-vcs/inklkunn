@@ -4,6 +4,11 @@
 
 use super::*;
 
+/// The `i`-th of a list that must have it (tests may not index).
+fn nth<T>(items: &[T], i: usize) -> &T {
+    items.get(i).expect("an element")
+}
+
 const DOCTOR_OK: &str = "\
 doctor repository: /srv/r/.prikk
 verified repository: /srv/r/.prikk
@@ -56,8 +61,8 @@ fn a_clean_doctor_report_is_read() {
     assert!(!r.has_acknowledged_damage());
     assert!(r.others().is_empty());
     assert_eq!(r.diagnostics.len(), 1);
-    assert_eq!(r.diagnostics[0].code, "PRIKK-DOCTOR-VERIFY-OK");
-    assert_eq!(r.diagnostics[0].severity, Severity::Info);
+    assert_eq!(nth(&r.diagnostics, 0).code, "PRIKK-DOCTOR-VERIFY-OK");
+    assert_eq!(nth(&r.diagnostics, 0).severity, Severity::Info);
 }
 
 #[test]
@@ -88,7 +93,7 @@ fn an_acknowledged_damage_is_read_and_its_companion_warning_does_not_hide_other_
     let more = parse_doctor_output(&more).unwrap();
     assert!(more.has_acknowledged_damage());
     assert_eq!(more.others().len(), 1);
-    assert_eq!(more.others()[0].code, "PRIKK-DOCTOR-OBJECT-MISSING");
+    assert_eq!(nth(&more.others(), 0).code, "PRIKK-DOCTOR-OBJECT-MISSING");
     // A lost acknowledged commit is the other thing the discard answers; a warning of the damage's code is not.
     let lost = "doctor repository: /x\nerror [PRIKK-DOCTOR-COMMIT-WITNESS-ACKNOWLEDGED-LOSS]: gone\nissue summary: errors=1, warnings=0, info=0\n";
     assert!(parse_doctor_output(lost).unwrap().has_acknowledged_damage());
@@ -113,7 +118,7 @@ fn an_unreached_object_warning_is_a_note_that_does_not_block_and_nothing_else_is
         "warning",
         "  recommendation: the bytes stay; no command removes them yet\n",
     );
-    assert!(note.diagnostics[0].is_unreached_note());
+    assert!(nth(&note.diagnostics, 0).is_unreached_note());
     assert_eq!(note.unreached_notes(), 1);
     assert!(note.is_clean_for_recovery());
     assert!(note.others().is_empty());
@@ -156,18 +161,21 @@ fn a_doctor_report_of_an_unknown_shape_is_refused() {
 fn the_unlock_listing_is_read_with_its_locks_and_its_advisory_kept_but_not_used() {
     let locks = parse_unlock_output(UNLOCK_TWO).unwrap();
     assert_eq!(locks.len(), 2);
-    assert_eq!(locks[0].path, "/srv/r/.prikk/active/default/active.lock");
-    assert_eq!(locks[0].kind, "active");
-    assert_eq!(locks[0].recorded_pid, 408_657);
+    assert_eq!(
+        nth(&locks, 0).path,
+        "/srv/r/.prikk/active/default/active.lock"
+    );
+    assert_eq!(nth(&locks, 0).kind, "active");
+    assert_eq!(nth(&locks, 0).recorded_pid, 408_657);
     assert!(
-        locks[0]
+        nth(&locks, 0)
             .liveness
             .starts_with("does not appear to be running")
     );
     // The second says a process "appears running": read, kept, and nothing here changes with it (ledger PL-8).
-    assert_eq!(locks[1].kind, "container:object-store");
-    assert_eq!(locks[1].recorded_pid, 2);
-    assert!(locks[1].liveness.starts_with("appears running"));
+    assert_eq!(nth(&locks, 1).kind, "container:object-store");
+    assert_eq!(nth(&locks, 1).recorded_pid, 2);
+    assert!(nth(&locks, 1).liveness.starts_with("appears running"));
     assert!(
         parse_unlock_output("no locks currently held\n")
             .unwrap()

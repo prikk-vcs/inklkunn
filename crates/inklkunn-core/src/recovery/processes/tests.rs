@@ -8,6 +8,11 @@ use super::*;
 const REPO: &str = "/srv/wikis/01/01a1";
 const OURS: u32 = 100;
 
+/// The `i`-th of a list that must have it (tests may not index).
+fn nth<T>(items: &[T], i: usize) -> &T {
+    items.get(i).expect("an element")
+}
+
 fn p(pid: u32, parent: u32, argv: &[&str], cwd: Option<&str>) -> ProcessInfo {
     ProcessInfo {
         pid,
@@ -102,8 +107,8 @@ fn a_tool_that_could_not_be_read_is_counted_and_a_tool_with_no_directory_may_be_
     // Not being able to see is not seeing nothing.
     let out = foreign(&[unreadable, no_cwd], Path::new(REPO), OURS);
     assert_eq!(out.len(), 2);
-    assert_eq!(out[0].tool, "unreadable");
-    assert_eq!(out[1].tool, "prikk");
+    assert_eq!(nth(&out, 0).tool, "unreadable");
+    assert_eq!(nth(&out, 1).tool, "prikk");
     // A process with no tool in its words and no directory read is not a tool.
     assert!(found(&[p(502, 1, &["sleep", "60"], None)]).is_empty());
 }
