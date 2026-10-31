@@ -222,10 +222,18 @@
   identity continues exactly while a claim block's explicit `^id` is in the text, trust never moves silently, a
   sweeping change is one re-confirmation, reviewers' decisions measured in use (D-1); pages first, claims and shared
   evidence as files in `knowledge/` (D-2); one accepted proposal, one change, notifications per change (D-3); four
-  state fields with `unknown`, no aggregate (D-4). **Part 2 is the architect's next work.**
+  state fields with `unknown`, no aggregate (D-4). Part 2 proposed the same day (below).
 
 ## Pending on the owner
 
+- **RFC 005 part 2 proposed** (M3: claims, sources, views): `rfcs/proposed/005-knowledge-layer-part-2-claims-evidence-views.md`.
+  Claims and sources are small YAML files beside the pages, changed only by proposals, read through the derived index
+  the title index already builds; a reader sees one quiet *Sources and views* link on a paragraph that holds a claim and
+  one *Why is this here?* link per page; sources are described by their relation and *bearing* in words, never a score,
+  and never the words *true*, *verified* or *canonical*; disagreement lives in alternative views (*experimental* or
+  *interpretation*); freshness is a person's review, no crawler. Checked against your two lenses before proposing (its
+  *How this was checked* section). **One open question:** who may create an alternative view? *Recommendation:*
+  reviewers and above by default. Accept, amend or hold.
 - **Review the Japanese catalog** when the dev team files it (DR-7; the owner is the reviewer): one request listing
   every message in English and Japanese with where it appears. It waits for RFC 004's words (about 300 more messages
   now); until your sign-off Japanese stays a preview that only a reader's own choice turns on.
