@@ -124,6 +124,42 @@ The architect writes the results report and, with it, the **identity rule** (H-1
 **storage shape** of `knowledge/` (H-2), the **change rule** (H-3) and the **state fields** (H-4), as decisions D-1 …
 D-4 of this RFC, for the owner's acceptance. Part 2 is designed on them.
 
+## Decisions from spike C (proposed by the architect 2026-10-31, for the owner's acceptance)
+
+The spike's report (`../handoffs/005-knowledge-layer/spikes/claim-identity-report.md`): M-1 **92.4 %** overall but **84 %**
+(interval 72 – 91 %) for small, human-sized edits, where the merge's one-for-one block pairing is a poor identity signal;
+M-2 not met if every factual block were a claim (so only explicit claims may carry identity); **M-2b: one change of meaning
+in four kept its block id** (so H-1 point 3 is necessary); M-3 kappa 0.956, **between two models**; M-4, M-5 small; M-6
+met. The decisive reading: **H-1 point 3 makes the design safe whatever M-1 is** — a wrong default cannot pass support or
+standing to a changed sentence; M-1 decides only how often a reviewer re-confirms.
+
+- **D-1 — The identity rule: H-1 points 1 – 7, with four refinements.**
+  (a) **Continuity is an observable fact:** a block that holds a claim carries an explicit `^id` in the page source
+  (CM-5); the claim's expression continues exactly when that marker is still in the new text. The merge's block
+  pairing is never the identity signal (the spike measured it as a poor one: 84 % for small edits).
+  (b) **The newcomer never handles the marker:** the propose form keeps a claim block's `^id` out of the text box, says in
+  one sentence that others rely on this paragraph, and re-attaches the marker on submit; removing such a paragraph is an
+  explicit act the reviewer sees as *removes the expression of claim …*.
+  (c) **A sweeping change is one decision:** a proposal that touches many claim blocks asks its reviewer **one**
+  re-confirmation step listing them, never a question per block.
+  (d) **The rule is measured in use:** every reviewer's identity decision and re-confirmation is recorded with the
+  accepted change, and the participation metrics (RFC 004 D-10) report how often reviewers override the default — the
+  human M-1, measured on real proposals instead of by model labellers. A high rate reopens D-1.
+- **D-2 — The storage shape: H-2.** Pages stay the stored artifact. Claims are `knowledge/claims/<id>.yaml`; evidence is
+  `knowledge/evidence/<id>.yaml` (shared across claims, KN-4) referenced from claims, never anchored to a page's footnotes
+  (the spike lost ids on references; a footnote may be cited as a source). Expressions anchor to prose blocks. Relations
+  live in claim files. Any graph is a derived index rebuilt at a tip.
+- **D-3 — The change rule: H-3.** One accepted proposal is one sealed change; an annotation travels with the page edit it
+  belongs to; curation is its own small proposal. Notifications are **per accepted change**, never per claim; provenance
+  offers a *wording only* filter (92 % of a surviving claim's changes are wording).
+- **D-4 — The state fields: H-4.** Lifecycle, community status, evidence state and scope, each with `unknown`; no
+  aggregate; community status changes only by a recorded decision; *retired* without a successor is allowed (a removed
+  claim).
+
+**Not required before part 2:** the human relabelling and a rerun on a faithful conversion the report suggests. D-1 (a)
+makes continuity independent of the converter's and the alignment's limits, and D-1 (d) measures the human figure on the
+product itself; both remain available if the owner wants them.
+
 ## Alternatives considered
 
 - **Claims-first now** (register item 11, option A): pages generated from claims. Faithful to "knowledge is a set of
