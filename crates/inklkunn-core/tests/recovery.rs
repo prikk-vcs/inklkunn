@@ -187,6 +187,7 @@ impl World {
         );
         let created = create_wiki(
             &*store,
+            &*store,
             &layout,
             &*signer,
             &*storage,

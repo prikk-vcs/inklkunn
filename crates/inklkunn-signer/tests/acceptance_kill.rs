@@ -468,6 +468,7 @@ fn fixture(tag: &str) -> Option<Fixture> {
     let s = open_services(&paths, "parent", true);
     let created = create_wiki(
         &*s.store,
+        &*s.store,
         &s.layout,
         &*s.signer,
         &*s.storage,
