@@ -488,16 +488,26 @@ fn put_in_place(partial: &Path, dest: &Path) -> Result<(), ExportError> {
         dest,
         rustix::fs::RenameFlags::NOREPLACE,
     )
-    .map_err(|errno| {
-        if errno == rustix::io::Errno::EXIST {
-            ExportError::Destination("it already exists; nothing was written".to_owned())
-        } else {
-            io(
-                "the bundle could not be put in place",
-                &std::io::Error::from(errno),
-            )
-        }
-    })
+    .map_err(placement_error)
+}
+
+/// What a refused `renameat2` says. `EXIST`: something is at the destination. `EINVAL` and `ENOTSUP`: the file
+/// system cannot move without replacing, so the move was not tried, and that is said in words and not as an
+/// opaque kind. Anything else is the file operation's own failure.
+fn placement_error(errno: rustix::io::Errno) -> ExportError {
+    if errno == rustix::io::Errno::EXIST {
+        ExportError::Destination("it already exists; nothing was written".to_owned())
+    } else if errno == rustix::io::Errno::INVAL || errno == rustix::io::Errno::NOTSUP {
+        ExportError::Io(
+            "this file system cannot place the bundle without the risk of replacing an existing one; nothing was written"
+                .to_owned(),
+        )
+    } else {
+        io(
+            "the bundle could not be put in place",
+            &std::io::Error::from(errno),
+        )
+    }
 }
 
 /// May the history of the page id `id` be written as `history/<id>.jsonl`, given that `carried` pages of the tip

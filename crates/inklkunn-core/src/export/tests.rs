@@ -244,3 +244,33 @@ fn a_history_file_is_written_only_for_a_safe_id_that_exactly_one_page_carries() 
     assert!(history_file_allowed(&"x".repeat(128), 1), "the longest id");
     assert!(history_file_allowed("A_b-c.d", 1));
 }
+
+/// 003 T2: a file system that cannot move without replacing (`renameat2` answers `EINVAL` or `ENOTSUP`) is
+/// said in words; a taken name is still the destination's refusal; any other failure keeps its own message.
+#[test]
+fn a_file_system_that_cannot_move_without_replacing_says_so_in_words() {
+    for errno in [rustix::io::Errno::INVAL, rustix::io::Errno::NOTSUP] {
+        let ExportError::Io(what) = placement_error(errno) else {
+            panic!("{errno:?}: not an I/O refusal");
+        };
+        assert!(
+            what.contains(
+                "this file system cannot place the bundle without the risk of replacing an existing one"
+            ),
+            "{errno:?}: {what}"
+        );
+        assert!(!what.contains("could not be put in place"), "{what}");
+    }
+    assert!(matches!(
+        placement_error(rustix::io::Errno::EXIST),
+        ExportError::Destination(_)
+    ));
+    let ExportError::Io(other) = placement_error(rustix::io::Errno::NOSPC) else {
+        panic!("not an I/O refusal");
+    };
+    assert!(other.contains("could not be put in place"), "{other}");
+    assert!(
+        !other.contains("cannot place the bundle"),
+        "an unrelated failure is not blamed on the file system: {other}"
+    );
+}
