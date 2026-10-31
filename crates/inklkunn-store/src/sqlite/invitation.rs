@@ -4,11 +4,11 @@
 
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 
-use super::identity::insert_account;
+use super::identity::{insert_account, insert_link};
 use super::proposal::{invalid, probe, write_refusal};
 use super::{SqliteStore, backend, is_foreign_key_refusal};
 use crate::access::{Role, RoleGrant};
-use crate::identity::{Account, looks_like_an_argon2id_hash};
+use crate::identity::{Account, ExternalIdentity, looks_like_an_argon2id_hash};
 use crate::invitation::{InvitationRecord, InvitationStore, InvitationUse};
 use crate::record::{AccountId, InvitationId, WikiId};
 use crate::{Result, StoreError};
@@ -114,6 +114,30 @@ impl InvitationStore for SqliteStore {
         account: &Account,
         now: i64,
     ) -> Result<Option<RoleGrant>> {
+        self.redeem(hash, account, None, now)
+    }
+
+    fn redeem_invitation_with_identity(
+        &self,
+        hash: &str,
+        account: &Account,
+        identity: &ExternalIdentity,
+        now: i64,
+    ) -> Result<Option<RoleGrant>> {
+        self.redeem(hash, account, Some(identity), now)
+    }
+}
+
+impl SqliteStore {
+    /// The one redemption: the invitation is checked, the account is added (and linked to `identity`, if one
+    /// is given), the role is granted and the use is recorded, in one immediate transaction.
+    fn redeem(
+        &self,
+        hash: &str,
+        account: &Account,
+        identity: Option<&ExternalIdentity>,
+        now: i64,
+    ) -> Result<Option<RoleGrant>> {
         if let Some(local) = &account.local
             && !looks_like_an_argon2id_hash(&local.password_hash)
         {
@@ -126,8 +150,12 @@ impl InvitationStore for SqliteStore {
             let invitation = read(&tx, hash)?
                 .filter(|i| i.usable_at(now))
                 .ok_or(StoreError::InvitationUnusable)?;
-            // The account first (its refusals are the account store's own), then the role, then the use.
+            // The account first (its refusals are the account store's own), then its identity, the role and
+            // the use.
             insert_account(&tx, account)?;
+            if let Some(identity) = identity {
+                insert_link(&tx, &account.id, identity, now)?;
+            }
             let grant = invitation.grant.as_ref().map(|(wiki, role)| RoleGrant {
                 account: account.id.clone(),
                 wiki: wiki.clone(),

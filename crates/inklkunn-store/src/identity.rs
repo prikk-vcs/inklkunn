@@ -227,6 +227,16 @@ pub trait AccountStore: Send + Sync {
     /// [`crate::StoreError::IdentityTaken`] when another account holds it,
     /// [`crate::StoreError::AccountNotFound`] when the account is not there.
     fn link_identity(&self, id: &AccountId, identity: &ExternalIdentity, at: i64) -> Result<()>;
+    /// Store a new account **and** link an external identity to it, in one step: a person who joins through a
+    /// provider has an account exactly when the identity is theirs. [`crate::StoreError::IdentityTaken`] when
+    /// another account holds the identity, and the refusals of [`AccountStore::add_account`]; nothing is stored
+    /// then.
+    fn add_account_with_identity(
+        &self,
+        account: &Account,
+        identity: &ExternalIdentity,
+        at: i64,
+    ) -> Result<()>;
     /// Replace (or, with `None`, remove) the account's local password.
     /// [`crate::StoreError::AccountNotFound`] when the account is not there (checked first),
     /// [`crate::StoreError::InvalidCredential`] for a hash that is not shaped like an Argon2id string,

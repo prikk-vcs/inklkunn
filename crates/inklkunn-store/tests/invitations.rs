@@ -8,9 +8,9 @@ mod support;
 
 use inklkunn_store::sqlite::{MIGRATIONS, SCHEMA_VERSION};
 use inklkunn_store::{
-    Account, AccountId, AccountStore, DisplayName, InvitationId, InvitationRecord, InvitationStore,
-    LocalCredential, LoginName, MemoryStore, Role, RoleStore, SqliteStore, StoreError, WikiId,
-    WikiStore,
+    Account, AccountId, AccountStore, DisplayName, ExternalIdentity, InvitationId,
+    InvitationRecord, InvitationStore, LocalCredential, LoginName, MemoryStore, Role, RoleStore,
+    SqliteStore, StoreError, WikiId, WikiStore,
 };
 use support::{temp, wiki};
 
@@ -194,6 +194,76 @@ fn invariants(store: &(impl InvitationStore + AccountStore + RoleStore + WikiSto
 fn invitations_obey_the_same_invariants_on_both_stores() {
     invariants(&MemoryStore::new());
     invariants(&SqliteStore::open_in_memory().expect("store"));
+}
+
+/// Redeeming with a provider identity: the account, its identity, the role and the use are one step.
+fn redeem_with_identity(store: &(impl InvitationStore + AccountStore + RoleStore + WikiStore)) {
+    let w = wiki(store, "garden");
+    let idp = ExternalIdentity::new("https://idp.example", "subject-1").expect("identity");
+    store
+        .add_invitation(&invitation("ffff", Some((w.id.clone(), Role::Reviewer))))
+        .expect("add");
+    let dana = person(None);
+    let grant = store
+        .redeem_invitation_with_identity("sha256$ffff", &dana, &idp, MADE + 50)
+        .expect("redeem");
+    assert_eq!(grant.map(|g| g.role), Some(Role::Reviewer));
+    assert_eq!(
+        store.account_by_identity(&idp).expect("by"),
+        Some(dana.clone())
+    );
+    assert_eq!(
+        store.role(&dana.id, &w.id).expect("role"),
+        Some(Role::Reviewer)
+    );
+    let used = store
+        .invitation_by_hash("sha256$ffff")
+        .expect("find")
+        .expect("there");
+    assert_eq!(used.used.map(|u| u.account), Some(dana.id.clone()));
+
+    // An identity another account holds: nothing is spent, made or granted; the link works for someone else.
+    store
+        .add_invitation(&invitation("gggg", Some((w.id.clone(), Role::Admin))))
+        .expect("add");
+    let erin = person(None);
+    assert_eq!(
+        store
+            .redeem_invitation_with_identity("sha256$gggg", &erin, &idp, MADE + 60)
+            .err(),
+        Some(StoreError::IdentityTaken)
+    );
+    assert_eq!(store.account(&erin.id).expect("get"), None);
+    assert_eq!(store.role(&erin.id, &w.id).expect("role"), None);
+    assert!(
+        store
+            .invitation_by_hash("sha256$gggg")
+            .expect("find")
+            .expect("there")
+            .usable_at(MADE + 61)
+    );
+
+    // A link that is used, over or unknown is the one answer, before the identity is looked at.
+    assert_eq!(
+        store
+            .redeem_invitation_with_identity("sha256$ffff", &erin, &idp, MADE + 70)
+            .err(),
+        Some(StoreError::InvitationUnusable)
+    );
+    let other = ExternalIdentity::new("https://idp.example", "subject-2").expect("identity");
+    assert_eq!(
+        store
+            .redeem_invitation_with_identity("sha256$none", &erin, &other, MADE + 70)
+            .err(),
+        Some(StoreError::InvitationUnusable)
+    );
+    assert_eq!(store.account_by_identity(&other).expect("by"), None);
+}
+
+#[test]
+fn redeeming_with_a_provider_identity_is_one_step_on_both_stores() {
+    redeem_with_identity(&MemoryStore::new());
+    redeem_with_identity(&SqliteStore::open_in_memory().expect("store"));
 }
 
 /// Two people open one link at the same moment: exactly one gets an account.

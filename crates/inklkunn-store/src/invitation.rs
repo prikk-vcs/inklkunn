@@ -15,7 +15,7 @@ use std::fmt;
 
 use crate::Result;
 use crate::access::{Role, RoleGrant};
-use crate::identity::Account;
+use crate::identity::{Account, ExternalIdentity};
 use crate::record::{AccountId, InvitationId, WikiId};
 
 /// When and by whom an invitation was used.
@@ -81,6 +81,18 @@ pub trait InvitationStore: Send + Sync {
         &self,
         hash: &str,
         account: &Account,
+        now: i64,
+    ) -> Result<Option<RoleGrant>>;
+    /// As [`InvitationStore::redeem_invitation`], and the account is linked to `identity` in the same step: a
+    /// person who opened the link and signed in with a provider has an account that provider identity reaches,
+    /// and the link is spent exactly then. [`crate::StoreError::IdentityTaken`] when another account holds the
+    /// identity (the invitation is then not spent: the person should sign in with it instead). An invitation
+    /// that is unusable is [`crate::StoreError::InvitationUnusable`] before the identity is looked at.
+    fn redeem_invitation_with_identity(
+        &self,
+        hash: &str,
+        account: &Account,
+        identity: &ExternalIdentity,
         now: i64,
     ) -> Result<Option<RoleGrant>>;
 }

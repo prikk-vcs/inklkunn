@@ -112,6 +112,34 @@ impl AccountStore for MemoryStore {
         }
     }
 
+    fn add_account_with_identity(
+        &self,
+        account: &Account,
+        identity: &ExternalIdentity,
+        _at: i64,
+    ) -> Result<()> {
+        if let Some(local) = &account.local
+            && !looks_like_an_argon2id_hash(&local.password_hash)
+        {
+            return Err(StoreError::InvalidCredential);
+        }
+        let mut d = self.identities();
+        if d.links.iter().any(|(i, _)| i == identity) {
+            return Err(StoreError::IdentityTaken);
+        }
+        if d.accounts.iter().any(|a| a.id == account.id) {
+            return Err(StoreError::IdTaken(account.id.to_string()));
+        }
+        if let Some(local) = &account.local
+            && d.login_taken(&local.login, None)
+        {
+            return Err(StoreError::LoginTaken(local.login.to_string()));
+        }
+        d.accounts.push(account.clone());
+        d.links.push((identity.clone(), account.id.clone()));
+        Ok(())
+    }
+
     fn set_local_credential(
         &self,
         id: &AccountId,
@@ -331,6 +359,29 @@ impl InvitationStore for MemoryStore {
         account: &Account,
         now: i64,
     ) -> Result<Option<RoleGrant>> {
+        self.redeem(hash, account, None, now)
+    }
+
+    fn redeem_invitation_with_identity(
+        &self,
+        hash: &str,
+        account: &Account,
+        identity: &ExternalIdentity,
+        now: i64,
+    ) -> Result<Option<RoleGrant>> {
+        self.redeem(hash, account, Some(identity), now)
+    }
+}
+
+impl MemoryStore {
+    /// The one redemption (as the SQLite store's): all or none.
+    fn redeem(
+        &self,
+        hash: &str,
+        account: &Account,
+        identity: Option<&ExternalIdentity>,
+        now: i64,
+    ) -> Result<Option<RoleGrant>> {
         if let Some(local) = &account.local
             && !looks_like_an_argon2id_hash(&local.password_hash)
         {
@@ -368,6 +419,12 @@ impl InvitationStore for MemoryStore {
             && d.login_taken(&local.login, None)
         {
             return Err(StoreError::LoginTaken(local.login.to_string()));
+        }
+        if let Some(identity) = identity {
+            if d.links.iter().any(|(i, _)| i == identity) {
+                return Err(StoreError::IdentityTaken);
+            }
+            d.links.push((identity.clone(), account.id.clone()));
         }
         d.accounts.push(account.clone());
         if let Some(i) = d.invitations.get_mut(position) {

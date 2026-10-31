@@ -83,6 +83,42 @@ pub(super) fn insert_account(tx: &rusqlite::Transaction<'_>, account: &Account) 
     Ok(())
 }
 
+/// The account an external identity is linked to, inside the caller's transaction.
+fn identity_owner(
+    tx: &rusqlite::Transaction<'_>,
+    identity: &ExternalIdentity,
+) -> Result<Option<String>> {
+    tx.query_row(
+        "SELECT account_id FROM account_identities WHERE issuer = ?1 AND subject = ?2",
+        params![identity.issuer(), identity.subject()],
+        |r| r.get(0),
+    )
+    .optional()
+    .map_err(backend)
+}
+
+/// Link an external identity to an account that exists, inside the caller's transaction: idempotent for the
+/// same account, [`StoreError::IdentityTaken`] for another's. (The account store's `link_identity` and the steps
+/// that make an account with its identity share it.)
+pub(super) fn insert_link(
+    tx: &rusqlite::Transaction<'_>,
+    id: &AccountId,
+    identity: &ExternalIdentity,
+    at: i64,
+) -> Result<()> {
+    match identity_owner(tx, identity)? {
+        Some(o) if o == id.as_str() => return Ok(()),
+        Some(_) => return Err(StoreError::IdentityTaken),
+        None => {}
+    }
+    tx.execute(
+        "INSERT INTO account_identities (issuer, subject, account_id, linked_at) VALUES (?1, ?2, ?3, ?4)",
+        params![identity.issuer(), identity.subject(), id.as_str(), at],
+    )
+    .map_err(backend)?;
+    Ok(())
+}
+
 const ACCOUNT_COLUMNS: &str = "id, display_name, login, password_hash, created_at, disabled";
 
 fn row_to_account(row: &Row<'_>) -> rusqlite::Result<Account> {
@@ -166,34 +202,35 @@ impl AccountStore for SqliteStore {
             let tx = conn
                 .transaction_with_behavior(TransactionBehavior::Immediate)
                 .map_err(backend)?;
-            let exists = tx
-                .query_row("SELECT 1 FROM accounts WHERE id = ?1", params![id.as_str()], |_| {
-                    Ok(())
-                })
-                .optional()
-                .map_err(backend)?
-                .is_some();
-            if !exists {
+            if !exists(&tx, "SELECT 1 FROM accounts WHERE id = ?1", id.as_str())? {
                 return Err(StoreError::AccountNotFound);
             }
-            let owner: Option<String> = tx
-                .query_row(
-                    "SELECT account_id FROM account_identities WHERE issuer = ?1 AND subject = ?2",
-                    params![identity.issuer(), identity.subject()],
-                    |r| r.get(0),
-                )
-                .optional()
+            insert_link(&tx, id, identity, at)?;
+            tx.commit().map_err(backend)
+        })
+    }
+
+    fn add_account_with_identity(
+        &self,
+        account: &Account,
+        identity: &ExternalIdentity,
+        at: i64,
+    ) -> Result<()> {
+        if let Some(local) = &account.local
+            && !looks_like_an_argon2id_hash(&local.password_hash)
+        {
+            return Err(StoreError::InvalidCredential);
+        }
+        self.with(|conn| {
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
                 .map_err(backend)?;
-            match owner {
-                Some(o) if o == id.as_str() => return Ok(()),
-                Some(_) => return Err(StoreError::IdentityTaken),
-                None => {}
+            // The identity is looked at first: a taken one must leave no account behind.
+            if identity_owner(&tx, identity)?.is_some() {
+                return Err(StoreError::IdentityTaken);
             }
-            tx.execute(
-                "INSERT INTO account_identities (issuer, subject, account_id, linked_at) VALUES (?1, ?2, ?3, ?4)",
-                params![identity.issuer(), identity.subject(), id.as_str(), at],
-            )
-            .map_err(backend)?;
+            insert_account(&tx, account)?;
+            insert_link(&tx, &account.id, identity, at)?;
             tx.commit().map_err(backend)
         })
     }

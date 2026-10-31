@@ -673,3 +673,54 @@ fn the_account_page_records_agree_on_both_stores() {
     account_page_invariants(&MemoryStore::new());
     account_page_invariants(&SqliteStore::open_in_memory().expect("store"));
 }
+
+/// An account is made together with its provider identity, or not at all (the OpenID Connect handoff's U3).
+fn account_with_identity_invariants(store: &(impl AccountStore + SessionStore)) {
+    let one = identity("https://idp.example", "subject-1");
+    let first = account("Provider person", None);
+    store
+        .add_account_with_identity(&first, &one, 200)
+        .expect("made with its identity");
+    assert_eq!(store.account(&first.id).expect("get"), Some(first.clone()));
+    assert_eq!(
+        store.account_by_identity(&one).expect("by"),
+        Some(first.clone())
+    );
+
+    // The identity is taken: the second account is not made, and the first is as it was.
+    let second = account("Second", None);
+    assert_eq!(
+        store.add_account_with_identity(&second, &one, 201).err(),
+        Some(StoreError::IdentityTaken)
+    );
+    assert_eq!(store.account(&second.id).expect("get"), None);
+    assert_eq!(
+        store.account_by_identity(&one).expect("by"),
+        Some(first.clone())
+    );
+
+    // A refusal of the account (a taken id, a taken sign-in name) leaves no link behind.
+    let other = identity("https://idp.example", "subject-2");
+    let mut same_id = account("Same id", None);
+    same_id.id = first.id.clone();
+    assert!(matches!(
+        store.add_account_with_identity(&same_id, &other, 202),
+        Err(StoreError::IdTaken(_))
+    ));
+    store
+        .add_account(&account("Has a name", Some("taken-name")))
+        .expect("add");
+    let clash = account("Clash", Some("taken-name"));
+    assert!(matches!(
+        store.add_account_with_identity(&clash, &other, 203),
+        Err(StoreError::LoginTaken(_))
+    ));
+    assert_eq!(store.account_by_identity(&other).expect("by"), None);
+    assert_eq!(store.account(&clash.id).expect("get"), None);
+}
+
+#[test]
+fn an_account_with_its_identity_is_one_step_on_both_stores() {
+    account_with_identity_invariants(&MemoryStore::new());
+    account_with_identity_invariants(&SqliteStore::open_in_memory().expect("store"));
+}
