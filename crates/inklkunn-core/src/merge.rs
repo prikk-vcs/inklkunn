@@ -18,6 +18,9 @@
 //!   changed alike on both sides is taken once; **one changed on both sides differently is an overlap**.
 //!   Two sides that each add a different block at the same place overlap too: which comes first is a
 //!   decision for a person.
+//! - **The knowledge files are a third family** (RFC 005 part 2 D-4): a claim's and a source's file, matched by
+//!   path, merged key by key with their lists by the identity of their entries, a value changed on both sides an
+//!   overlap with both texts ([`crate::knowledge::merge`]).
 //! - **An overlap is never resolved here** (MRG-2, INT-7). The outcome carries both texts and where they are;
 //!   the proposal's author revises.
 //! - **Within a block nothing is merged.** The measurement hook only counts how many overlaps a line-level
@@ -105,6 +108,13 @@ pub enum Place {
         theirs: Option<usize>,
         /// Its number in the proposal's page.
         ours: Option<usize>,
+    },
+    /// A place in a knowledge file (RFC 005 part 2 D-4): a key (`kind`, `community_status`, `identity/title`, …),
+    /// a source link or one of its keys (`sources/<id>`, `sources/<id>/bearing`), or the empty key for the file as
+    /// a whole (removed on one side and changed on the other, added differently on both, or not readable).
+    Knowledge {
+        /// Where, in the file's own words.
+        key: String,
     },
     /// The page itself: removed on one side, changed on the other.
     Page,
@@ -213,8 +223,35 @@ fn identify(pages: &[PageText]) -> BTreeMap<Identity, &PageText> {
     out
 }
 
-/// The three-way merge of a set of pages.
+/// The three-way merge of a set of files: the pages, and the knowledge files beside them.
 pub fn merge(base: &[PageText], theirs: &[PageText], ours: &[PageText]) -> MergeOutcome {
+    use crate::knowledge::merge::{is_merged_here, merge_files};
+    let split = |side: &[PageText]| -> (Vec<PageText>, Vec<PageText>) {
+        side.iter().cloned().partition(|p| is_merged_here(&p.path))
+    };
+    let ((kb, pb), (kt, pt), (ko, po)) = (split(base), split(theirs), split(ours));
+    if kb.is_empty() && kt.is_empty() && ko.is_empty() {
+        return merge_pages(&pb, &pt, &po);
+    }
+    let (files, mut overlaps) = merge_files(&kb, &kt, &ko);
+    match merge_pages(&pb, &pt, &po) {
+        MergeOutcome::Clean { mut pages } if overlaps.is_empty() => {
+            pages.extend(files);
+            pages.sort_by(|a, b| a.path.cmp(&b.path));
+            MergeOutcome::Clean { pages }
+        }
+        MergeOutcome::Clean { .. } => MergeOutcome::Overlaps { overlaps },
+        MergeOutcome::Overlaps {
+            overlaps: mut found,
+        } => {
+            found.append(&mut overlaps);
+            MergeOutcome::Overlaps { overlaps: found }
+        }
+    }
+}
+
+/// The three-way merge of a set of pages.
+fn merge_pages(base: &[PageText], theirs: &[PageText], ours: &[PageText]) -> MergeOutcome {
     let (b, t, o) = (identify(base), identify(theirs), identify(ours));
     let identities: BTreeSet<&Identity> = b.keys().chain(t.keys()).chain(o.keys()).collect();
     let mut merged: Vec<(Identity, MergedPage)> = Vec::new();

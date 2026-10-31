@@ -30,7 +30,7 @@ pub(super) fn line_level(
                 LineLevel::WouldConflict
             }
         }
-        Place::Page | Place::Path => LineLevel::NotText,
+        Place::Knowledge { .. } | Place::Page | Place::Path => LineLevel::NotText,
     }
 }
 

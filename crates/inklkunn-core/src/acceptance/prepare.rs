@@ -109,6 +109,8 @@ fn describe(place: &Place) -> String {
             Some(n) => format!("block {n}"),
             None => "block".to_owned(),
         },
+        Place::Knowledge { key } if key.is_empty() => "knowledge file".to_owned(),
+        Place::Knowledge { key } => format!("knowledge {key}"),
         Place::Page => "page".to_owned(),
         Place::Path => "path".to_owned(),
     }

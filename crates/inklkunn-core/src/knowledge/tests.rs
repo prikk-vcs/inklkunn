@@ -32,5 +32,6 @@ mod check;
 mod digest;
 mod health;
 mod index;
+mod merge;
 mod refusals;
 mod roundtrip;

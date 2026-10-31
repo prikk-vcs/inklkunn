@@ -23,6 +23,7 @@ pub mod check;
 mod claim;
 mod fault;
 pub mod index;
+pub mod merge;
 mod model;
 mod path;
 mod source;
