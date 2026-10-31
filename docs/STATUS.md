@@ -196,14 +196,11 @@
   hand-written predicate GitHub refuses; the rehearsal does not run that step) before publishing anything, so with the
   owner's agreement the tag was moved to the fix (option A). The release list also lacked `inklkunn-fetch` (fixed).
   `release/0.1` is merged back into `main` (`8c18f90`): the workspace at 0.1.0, the CHANGELOG's 0.1.0 section, the
-  newer work under `[Unreleased]`. `docs/RELEASING.md` records the lessons.
+  newer work under `[Unreleased]`. `docs/RELEASING.md` records the lessons. **The image was made public by the owner the same day**; verified anonymously: the `0.1.0` manifest list
+  is served (200) and the amd64 image's attestation verifies (SLSA v1 provenance).
 
 ## Pending on the owner
 
-- **Make the container image public** (once): GitHub → the `prikk-vcs` organization → Packages → `inklkunn` →
-  Package settings → Change visibility → Public. A new organization package is private, so today
-  `docker pull ghcr.io/prikk-vcs/inklkunn:0.1.0` is refused to everyone else (verified anonymously: 401). The
-  rehearsal package `inklkunn-rehearsal` can stay private.
 - **Review the Japanese catalog** when the dev team files it (DR-7; the owner is the reviewer): one request listing
   every message in English and Japanese with where it appears. It waits for RFC 004's words (about 300 more messages
   now); until your sign-off Japanese stays a preview that only a reader's own choice turns on.
