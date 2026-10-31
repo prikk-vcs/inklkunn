@@ -31,15 +31,34 @@ it, and the measures that accept or reject each one.
 
 ## Working hypotheses (to be validated, not decided)
 
-- **H-1 — A claim's identity is a recorded human decision, never a computed one.** A claim is a small file
-  `knowledge/claims/<id>.yaml` with an id minted when it is first proposed. Its **expressions** are block anchors
-  (`[[Page#^id]]`, in a view). **Editing an expression's wording keeps the claim by default.** When the meaning
-  changes, the proposer says how — *refines*, *supersedes*, *contradicts*, *splits*, *merges with* — and the
-  reviewer sees it as part of the change. The service may **suggest** (the block's `^id` survived the edit; the
-  wording changed little), but it never decides, and it never shows a suggestion as a fact.
-  *Rejected:* identity as a hash of normalized text (every rewording would make a new claim: exactly the failure
-  the register warns of); identity by automatic semantic equivalence (opaque, language-dependent, wrong in the cases
-  that matter, and a truth judgement by machine, NG-3).
+- **H-1 — A claim's identity is a recorded human decision, never a computed one; and trust never moves silently.**
+  (Revised 2026-10-31 at the owner's request, against the owner's two lenses: a safe, clean end state, and nothing a
+  person can misread.)
+  1. **Only explicit claims have an identity.** Most text is not a claim anyone will contest. A claim exists where
+     someone made it one (by attaching evidence, or marking it contested), as a small file `knowledge/claims/<id>.yaml`
+     with an id minted when it is first proposed; its **expressions** are block anchors (`[[Page#^id]]`, in a view, in
+     any language). Ordinary text carries nothing.
+  2. **An edit to a claim's wording keeps the claim** (its id and its history): rewording is the common case, and a new
+     claim per edit would scatter its history (the register's failure).
+  3. **Trust is never carried over silently.** Evidence relations and community status are bound to the **wording they
+     were judged on**. When that wording changes, they are shown as *judged on an earlier wording* until a reviewer
+     confirms them again. A change of meaning that nobody noticed therefore cannot borrow the support or the standing
+     the old wording had: the danger of the default in point 2 is closed by this point, not by asking everyone.
+  4. **A change of meaning is a decision inside the accepted change.** *Refines*, *supersedes*, *contradicts*,
+     *splits*, *merges with* are recorded in the claim files of the proposal that makes them, so the existing review
+     and acceptance decide it (no new authority), the history shows who decided, and a later proposal can correct it
+     (succession is a relation, never a deletion).
+  5. **The service states observable facts, never meaning.** It may show that a block's anchor was kept and how much
+     of its wording changed; it never suggests *same* or *different* (a suggestion about meaning biases the person
+     and reads as a fact; and automatic equivalence is wrong exactly in the cases that matter, NG-3).
+  6. **No newcomer is asked about identity.** A person editing a page edits text. The identity question appears
+     **only to reviewers**, on the proposal page, **only for blocks that hold claims**, with the default (point 2)
+     stated and the trust consequence (point 3) visible.
+  7. **Across views and languages**, a claim keeps one id; two views that decided differently about one claim are an
+     overlap when they meet, never resolved by the service (as RFC 004's merge).
+  *Rejected:* identity as a hash of normalized text (every rewording a new claim); identity by automatic semantic
+  equivalence (opaque, language-dependent, a truth judgement by machine); asking every editor (confusing, and most
+  text is not a claim).
 - **H-2 — Hybrid, pages first** (register item 11, option C; DR-1). Pages stay the stored artifact. Claims and
   evidence are files in `knowledge/`, pointing to block anchors and to each other; relations live in the claim
   files. A **view** is a prikk view, so "disagreement as branches" uses what exists. Any graph query (what refines
@@ -57,10 +76,23 @@ it, and the measures that accept or reject each one.
 ## The investigation (spike C)
 
 **Corpus.** Real revision histories of a small set of encyclopedic articles, in **English and Japanese**, chosen for
-factual statements that people corrected over time (dates, figures, attributions) — fetched at run time from a
-public wiki under CC BY-SA 4.0, **with only the measurements, the labels by revision id and an attribution file
-committed** (no article text in the repository). Plus M0's seeded generator for volume. Target: about 2,000
-consecutive edits across 20 – 30 articles.
+factual statements that people corrected over time (dates, figures, attributions), from a public wiki under CC BY-SA
+4.0; plus M0's seeded generator for volume. Target: about 2,000 consecutive edits across 20 – 30 articles.
+
+*What real histories are good for:* (a) **the ratio of rewording to change of meaning** — H-1's default and the
+reviewers' burden stand or fall on it, and a generator would return only the ratio written into it; (b) **real
+structure in two scripts** — lists, tables, references, Japanese without spaces between words — through the product's
+own block segmentation, which is what a claim's anchor rests on; (c) **the hard cases** — edit wars, reverts, partial
+corrections (*1950* → *the early 1950s*) — which the relations and the *contested* / *unresolved* states must express;
+(d) **volume** — changes per claim, and so notifications. *What they are not good for:* they **estimate, they do not
+predict**: those edits were made directly, not as reviewed proposals, so inklkunn's numbers will differ and the
+report says so.
+
+*Handling.* Fetched at run time through the wiki's public API, politely (a stated user agent, a rate limit), pinned by
+revision id (a revision deleted upstream is skipped and counted, never silently replaced). **No editor identity is
+read or kept** (user names and IP addresses are personal data; only revision ids and text are used). **No article text
+is committed** (share-alike would bind any stored adaptation); the repository keeps the measurements, the labels by
+revision id, the list of revision ids and an attribution file.
 
 **Prototype.** A tool (`tools/corpus`, a new `claims` subcommand) replays each history as a sequence of proposals
 through the product's own block segmentation and merge (`inklkunn_markup::blocks`, `inklkunn_core::merge`), carries
@@ -74,7 +106,8 @@ or *cannot tell*.
 | # | Measure | Accepts | If not |
 |---|---|---|---|
 | M-1 | How often H-1's default (a surviving `^id` with a wording edit is the same claim) agrees with the labellers | ≥ 90 % | the default becomes "ask", and part 2 designs the question |
-| M-2 | How many identity questions a proposer would face per 100 edits under H-1 | ≤ 5 | identity is asked only at adoption, not at every edit |
+| M-2 | How many identity questions **reviewers** would face per 100 edits under H-1 (only blocks that hold claims) | ≤ 5 | the question is asked only when evidence or status is re-confirmed |
+| M-2b | How often a labelled change of meaning would have kept evidence or status attached (the trust that point 3 stops from moving silently) | reported; every such case shown as *judged on an earlier wording* | point 3 is wrong and part 2 redesigns the binding |
 | M-3 | How often the two labellers disagree | reported; above 15 % the rule sheet is the problem, and part 2's words are designed for the cases they split on |
 | M-4 | How many changes a typical claim's history has, and how many touch only its wording (H-3: provenance readable) | reported | a "wording only" filter in provenance (part 2) |
 | M-5 | Notifications per watched claim per 100 edits under H-3 | reported against RFC 004's inbox bound | grouping of curation notices (part 2) |
@@ -101,12 +134,13 @@ D-4 of this RFC, for the owner's acceptance. Part 2 is designed on them.
 
 ## Open questions for the owner
 
-1. **The corpus:** may the investigation use real revision histories of a public wiki under CC BY-SA 4.0, English and
-   Japanese, fetched at run time, with only measurements, labels by revision id and an attribution file committed?
-   *Recommendation:* yes; synthetic edits alone would measure the generator, not people.
-2. **The principle of H-1:** is "a claim's identity is a recorded human decision; the service may suggest, never
-   decide" the principle you want the layer built on? *Recommendation:* yes; it is the one that cannot mislead a reader
-   about what the system knows.
+1. **The corpus** (the owner, 2026-10-31: "almost approved", asking what it is good for; answered in *Corpus* above):
+   real revision histories of a public wiki under CC BY-SA 4.0, English and Japanese, fetched at run time, no editor
+   identity read, no text committed. *Recommendation:* yes.
+2. **The principle of H-1** (the owner, 2026-10-31: "sounds good", asking for a careful review; revised above with
+   points 1 – 7: only explicit claims have identity; wording edits keep it; **trust never moves silently**; meaning
+   changes are decided inside the accepted change; the service states facts, never meaning; no newcomer is asked).
+   *Recommendation:* yes.
 
 ## Sequencing and handoff
 

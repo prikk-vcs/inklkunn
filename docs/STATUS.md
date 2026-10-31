@@ -206,13 +206,12 @@
 
 ## Pending on the owner
 
-- **RFC 005 part 1 proposed** (the knowledge layer's ground for M3: when a claim stays the same claim, how claims
-  attach to pages, what one change is, the epistemic states — as hypotheses tested by a prototype on real edit
-  histories): `rfcs/proposed/005-knowledge-layer-part-1-claim-identity.md`. **Two open questions:** (1) may the
-  investigation use real revision histories of a public wiki under CC BY-SA 4.0 (English and Japanese), fetched at
-  run time, with only measurements, labels and an attribution file committed? (2) is "a claim's identity is a
-  recorded human decision; the service may suggest, never decide" the principle to build on? *Recommendation:* yes
-  to both. Accept, amend or hold.
+- **RFC 005 part 1 proposed** (`rfcs/proposed/005-knowledge-layer-part-1-claim-identity.md`). *Owner, 2026-10-31:*
+  both questions "almost approved", asking what the real corpus is good for and for a careful review of the identity
+  principle. **Revised the same day:** the corpus section says what real histories measure and what they cannot
+  (estimates, not predictions; no editor identity read; no text committed); H-1 gains *trust never moves silently*
+  (evidence and status bound to the wording they were judged on), *only explicit claims have identity*, *the service
+  states facts, never meaning*, and *no newcomer is asked*. **Awaiting the owner's acceptance.**
 - **Review the Japanese catalog** when the dev team files it (DR-7; the owner is the reviewer): one request listing
   every message in English and Japanese with where it appears. It waits for RFC 004's words (about 300 more messages
   now); until your sign-off Japanese stays a preview that only a reader's own choice turns on.
