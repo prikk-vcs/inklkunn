@@ -190,6 +190,11 @@ impl<S: Storage> Storage for CountingStorage<S> {
         count(&self.verify);
         self.inner.verify(repo)
     }
+
+    /// Passed through uncounted: the counts are the read service's, and the read service never asks `status`.
+    fn status(&self, repo: &Path) -> Result<inklkunn_prikk::RepoStatus> {
+        self.inner.status(repo)
+    }
 }
 
 #[cfg(test)]

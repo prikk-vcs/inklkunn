@@ -12,6 +12,7 @@
 use inklkunn_store::{ProposalId, WikiId};
 
 use crate::message::{Actor, BlockId, ImportSource, Kind, Message};
+use crate::recover::{RecoveryFacts, RecoveryToken};
 
 /// The id of an acceptance record in state *pending seal* (RFC 004's records; the guard is RFC 002 D-4's).
 /// Holding one proves nothing by itself: the signer re-reads the record the id names and refuses unless it
@@ -425,6 +426,13 @@ pub trait AcceptanceLedger: Send + Sync {
         &self,
         act: &ViewCreationAct,
     ) -> Result<Option<ViewCreationFacts>, LedgerError>;
+    /// What the recorded recovery act `act` names allows (RFC 004 D-7), **only if the act has not ended**; `None`
+    /// for an unknown or an ended one. A ledger that records no recovery acts answers `None` to all, which is the
+    /// default: the signer then refuses every recovery operation.
+    fn recovery(&self, act: &RecoveryToken) -> Result<Option<RecoveryFacts>, LedgerError> {
+        let _ = act;
+        Ok(None)
+    }
 }
 
 #[cfg(test)]

@@ -228,6 +228,16 @@ pub trait AcceptanceStore: Send + Sync {
         id: &AcceptanceId,
     ) -> Result<Option<(AcceptanceRecord, IntentRecord)>>;
 
+    /// The acceptance `id` names, with its end if it has one, whatever state it is in. `None` for an unknown id.
+    /// Recovery reads an intent's acceptance through this: an intent can be open beside an acceptance that has
+    /// ended, when the process died between the two writes.
+    fn acceptance_entry(&self, id: &AcceptanceId) -> Result<Option<AcceptanceEntry>>;
+
+    /// Every acceptance of the wiki that has no end yet (*pending seal*), oldest first, **whether or not its
+    /// intent was written**: recovery starts from these and from the open intents (an acceptance whose process
+    /// died between its record and its intent has no intent, and stands in the way of a retry until it is ended).
+    fn pending_acceptances(&self, wiki: &WikiId) -> Result<Vec<AcceptanceRecord>>;
+
     /// Every acceptance of the wiki that sealed, with its intent, oldest first. A sealed acceptance whose
     /// intent was never written is not here (it cannot be: the intent is written before the signer is asked).
     fn sealed_acceptances(&self, wiki: &WikiId) -> Result<Vec<SealedAcceptance>>;

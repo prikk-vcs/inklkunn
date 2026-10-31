@@ -20,6 +20,10 @@ fn the_table_is_bound_to_the_floor() {
 #[test]
 fn costs_have_floors_and_multiples() {
     assert_eq!(ReadVerb::Branch.cost(1 << 30), COST_FLOOR);
+    // `status` reads the active WAL and nothing of the store: flat, so it never walks `.prikk`.
+    assert_eq!(ReadVerb::Status.cost(1 << 30), COST_FLOOR);
+    assert_eq!(ReadVerb::Status.rule().store_tenths, 0);
+    assert_eq!(ReadVerb::Status.name(), "status");
     assert_eq!(ReadVerb::Tree.cost(100 * MIB), 210 * MIB);
     assert_eq!(ReadVerb::Show.cost(0), SHOW_FLOOR);
     assert_eq!(ReadVerb::Verify.cost(10 * MIB), 41 * MIB);

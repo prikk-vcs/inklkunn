@@ -8,12 +8,16 @@ use std::path::Path;
 use std::time::Duration;
 
 use inklkunn_prikk::sandbox::{CallLimits, Mounts, Run, Sandbox};
-use inklkunn_prikk::storage::{History, HistoryBlock, Verification};
-use inklkunn_prikk::{parse_report, schema};
+use inklkunn_prikk::storage::{History, HistoryBlock, RepoStatus, Verification};
+use inklkunn_prikk::{parse_report, parse_status, schema};
 use serde::Deserialize;
 
 use crate::cost::{self, WriteVerb};
 use crate::keys::{KeyDir, Role};
+use crate::recover::text::{
+    Discarded, DoctorReport, HeldLock, parse_discard_output, parse_doctor_output,
+    parse_unlock_output,
+};
 
 /// Why a write did not happen (or did not complete).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -155,6 +159,37 @@ pub(crate) struct QueueReport {
 pub(crate) struct WorktreeReport {
     /// No change and no declaration against the baseline.
     pub(crate) clean: bool,
+}
+
+/// What recovery reads from `worktree-status`: where the worktree is, and how it differs from its baseline. The
+/// fields beyond `clean` are the report's own (`worktree-status-report-v1`, measured on prikk 0.55.0); a report that
+/// lacks one is damaged and nothing is restored from it.
+#[derive(Debug, Deserialize)]
+pub(crate) struct WorktreeFull {
+    /// The ref the worktree is a copy of.
+    #[serde(rename = "ref")]
+    pub(crate) reference: Option<String>,
+    /// No change and no declaration against the baseline.
+    pub(crate) clean: bool,
+    /// Every path that differs.
+    pub(crate) changes: Vec<WorktreeChange>,
+    /// Every rename declared with `mv` and not yet committed.
+    pub(crate) declarations: Vec<WorktreeDeclaration>,
+}
+
+/// One path that differs from the baseline.
+#[derive(Debug, Deserialize)]
+pub(crate) struct WorktreeChange {
+    pub(crate) path: String,
+    /// `modified`, `missing`, `untracked`, or a kind this build does not know (and so does not restore).
+    pub(crate) kind: String,
+}
+
+/// One declared rename.
+#[derive(Debug, Deserialize)]
+pub(crate) struct WorktreeDeclaration {
+    pub(crate) old_path: String,
+    pub(crate) new_path: String,
 }
 
 /// Where a signing call gets its seed from. A call asks for **one role** and is handed a key directory that
@@ -563,6 +598,79 @@ impl Writes {
     pub(crate) fn status(&self, repo: &Path) -> Result<StatusReport, SignerError> {
         let out = self.read_report(repo, &["status", "--format", "json"])?;
         parse_report("status", &out, STATUS_REPORT).map_err(|e| SignerError::Damaged(e.to_string()))
+    }
+
+    /// `prikk status` in full: the queue with its patches, the torn bytes, the interrupted states (read-only, no
+    /// keys). The report is the answer even on exit 1.
+    pub(crate) fn status_full(&self, repo: &Path) -> Result<RepoStatus, SignerError> {
+        let out = self.read_report(repo, &["status", "--format", "json"])?;
+        parse_status(&out).map_err(|e| SignerError::Damaged(e.to_string()))
+    }
+
+    /// `prikk worktree-status` in full (read-only, no keys).
+    pub(crate) fn worktree_full(&self, repo: &Path) -> Result<WorktreeFull, SignerError> {
+        let out = self.read_report(repo, &["worktree-status", "--format", "json"])?;
+        parse_report("worktree-status", &out, WORKTREE_REPORT)
+            .map_err(|e| SignerError::Damaged(e.to_string()))
+    }
+
+    /// `prikk doctor` with no repair flag, read-only and keyless. **The report is the answer on exit 1** (prikk
+    /// exits 1 when it found errors, and prints the report all the same); a text that is not a report is an
+    /// error, and nothing is concluded from it.
+    pub(crate) fn doctor(&self, repo: &Path) -> Result<DoctorReport, SignerError> {
+        let (run, ceiling) =
+            self.run_raw(&Mounts::read(repo, None), Sizing::repo(repo), &["doctor"])?;
+        if !run.timed_out
+            && !run.output_exceeded
+            && matches!(run.status.code(), Some(0 | 1))
+            && let Ok(report) = parse_doctor_output(&String::from_utf8_lossy(&run.stdout))
+        {
+            return Ok(report);
+        }
+        let stdout = String::from_utf8_lossy(&run.stdout).into_owned();
+        outcome("doctor", run, ceiling)?;
+        // It ran and succeeded, and what it printed is not a report: say so.
+        parse_doctor_output(&stdout).map_err(SignerError::Damaged)
+    }
+
+    /// `prikk unlock` with no argument: the locks that are held, read-only and keyless.
+    pub(crate) fn locks(&self, repo: &Path) -> Result<Vec<HeldLock>, SignerError> {
+        let out = self.read(repo, &["unlock"])?;
+        parse_unlock_output(&String::from_utf8_lossy(&out)).map_err(SignerError::Damaged)
+    }
+
+    /// `prikk doctor --discard-damaged-commits`: remove an acknowledged commit that the active WAL no longer holds
+    /// soundly (prikk saves the removed bytes first; it refuses over anything else). Signs nothing.
+    pub(crate) fn discard_damaged(&self, repo: &Path) -> Result<Discarded, SignerError> {
+        let out = self.write_keyless(repo, &["doctor", "--discard-damaged-commits"])?;
+        parse_discard_output(&String::from_utf8_lossy(&out)).ok_or_else(|| {
+            SignerError::Damaged(
+                "`doctor` did not say that the damaged commit was discarded".to_owned(),
+            )
+        })
+    }
+
+    /// `prikk unlock --lock <path> --yes`: clear one lock file. **The caller has decided** (recovery, from the
+    /// lease record; never from the liveness line). Signs nothing.
+    pub(crate) fn unlock(&self, repo: &Path, path: &str) -> Result<(), SignerError> {
+        self.write_keyless(repo, &["unlock", "--lock", path, "--yes"])
+            .map(|_| ())
+    }
+
+    /// `prikk cat --path <path> --ref <view>`: the bytes of one file at a view's tip (read-only, no keys),
+    /// refused beyond `max_bytes`.
+    pub(crate) fn cat(
+        &self,
+        repo: &Path,
+        view: &str,
+        path: &str,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>, SignerError> {
+        let max = max_bytes.to_string();
+        self.read(
+            repo,
+            &["cat", "--path", path, "--ref", view, "--max-bytes", &max],
+        )
     }
 
     /// Is the worktree exactly the baseline (no change, no declared rename)?

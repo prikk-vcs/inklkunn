@@ -229,6 +229,41 @@ impl AcceptanceStore for SqliteStore {
         self.with(|conn| entries_of(conn, proposal, revision))
     }
 
+    fn acceptance_entry(&self, id: &AcceptanceId) -> Result<Option<AcceptanceEntry>> {
+        self.with(|conn| {
+            conn.query_row(
+                &format!(
+                    "SELECT {ACCEPTANCE_COLUMNS} FROM acceptances a \
+                     LEFT JOIN acceptance_results r ON r.acceptance_id = a.id WHERE a.id = ?1"
+                ),
+                params![id.as_str()],
+                row_to_entry,
+            )
+            .optional()
+            .map_err(backend)
+        })
+    }
+
+    fn pending_acceptances(&self, wiki: &WikiId) -> Result<Vec<AcceptanceRecord>> {
+        self.with(|conn| {
+            let mut stmt = conn
+                .prepare(&format!(
+                    "SELECT {ACCEPTANCE_COLUMNS} FROM acceptances a \
+                     LEFT JOIN acceptance_results r ON r.acceptance_id = a.id \
+                     WHERE a.wiki_id = ?1 AND r.acceptance_id IS NULL ORDER BY a.seq"
+                ))
+                .map_err(backend)?;
+            let rows = stmt
+                .query_map(params![wiki.as_str()], row_to_entry)
+                .map_err(backend)?;
+            rows.map(|r| r.map(|e| e.acceptance))
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(|_| {
+                    StoreError::Backend("a stored acceptance could not be read".to_owned())
+                })
+        })
+    }
+
     fn pending_acceptance(
         &self,
         id: &AcceptanceId,

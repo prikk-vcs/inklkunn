@@ -417,6 +417,69 @@ impl Verification {
     }
 }
 
+/// One patch waiting in the repository's queue: committed, **not sealed**. `status-report-v1`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueuedPatch {
+    /// The patch id.
+    pub patch_id: String,
+    /// The message the patch was committed with (the CT-03 text inklkunn composed, when the patch is ours).
+    pub message: String,
+    /// What the patch does, in order: `create-file`, `edit-text`, `delete-node`, `rename-path`, …
+    pub operations: Vec<Operation>,
+}
+
+/// The queue of committed, unsealed patches. `status-report-v1`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Queue {
+    /// How many patches wait for a seal. Must equal the length of `patches`.
+    pub count: u64,
+    /// The view the queue will be sealed into, when there is a queue.
+    pub target_ref: Option<String>,
+    /// prikk's word on the target (`null` when it is as it should be); kept as sent.
+    #[serde(default)]
+    pub target_ref_status: Option<String>,
+    /// The patches, oldest first.
+    pub patches: Vec<QueuedPatch>,
+}
+
+/// What `status` says about the repository and its active write-ahead log: the witness recovery reads to tell a
+/// queued patch from a damaged one (handoff 004 T5). `status-report-v1`, pinned; a report of any other shape is
+/// [`StorageError::Damaged`], never a guess.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RepoStatus {
+    /// Pinned schema name.
+    pub schema_version: String,
+    /// The repository's current branch (`heads/<name>`), `None` in a repository with none.
+    pub current_branch: Option<String>,
+    /// Records in the active WAL.
+    pub active_wal_records: u64,
+    /// Bytes at the end of the active WAL that are not a whole record: a torn write. Nonzero beside an empty
+    /// queue is what a damaged acknowledged commit looks like (prikk's `doctor` names it).
+    pub trailing_partial_wal_bytes: u64,
+    /// A provisional worktree (an interrupted checkout), `null` normally; kept as sent, and any value is a
+    /// state only a person decides about.
+    pub provisional_worktree: Option<serde_json::Value>,
+    /// An interrupted materialization, `null` normally; kept as sent.
+    pub interrupted_materialization: Option<serde_json::Value>,
+    /// The unsealed queue.
+    pub queue: Queue,
+}
+
+impl RepoStatus {
+    /// Check what the shape cannot: the queue's count is its patches. A report that disagrees with itself is not
+    /// read.
+    pub(crate) fn checked(self) -> Result<Self> {
+        let patches = u64::try_from(self.queue.patches.len()).unwrap_or(u64::MAX);
+        if self.queue.count != patches {
+            return Err(StorageError::Damaged {
+                verb: "status",
+                detail: "the queue's count is not the number of patches it lists".to_owned(),
+            });
+        }
+        Ok(self)
+    }
+}
+
 /// Bounds for materializing a point.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExtractBounds {
@@ -636,4 +699,14 @@ pub trait Storage: Send + Sync {
     /// [`Unavailable::CeilingExceeded`] when a memory ceiling was set (every production call sets one) and
     /// [`StorageError::Damaged`] when none was. A resource limit is never shown as damage to the repository.
     fn verify(&self, repo: &Path) -> Result<Verification>;
+    /// The repository's active write-ahead log and its unsealed queue (`prikk status`): what recovery reads to
+    /// tell a patch waiting for its seal from a torn one. The default is **unable**, so that a storage that does
+    /// not implement it can never be mistaken for one that found nothing.
+    fn status(&self, repo: &Path) -> Result<RepoStatus> {
+        let _ = repo;
+        Err(StorageError::Driver {
+            verb: "status",
+            detail: "this storage cannot report the repository's status".to_owned(),
+        })
+    }
 }

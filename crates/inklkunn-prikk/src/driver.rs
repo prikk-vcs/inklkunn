@@ -17,8 +17,8 @@ use crate::sandbox::{
     CallLimits, Mounts, Run, Sandbox, probe_bwrap, probe_prlimit, resolve_binary,
 };
 use crate::storage::{
-    Change, Diff, ExtractBounds, FileMeta, History, Materialized, Point, Result, Storage,
-    StorageError, Tree, Unavailable, Verification, Views,
+    Change, Diff, ExtractBounds, FileMeta, History, Materialized, Point, RepoStatus, Result,
+    Storage, StorageError, Tree, Unavailable, Verification, Views,
 };
 
 /// The pinned report schemas (RFC 001 D-3): one name per verb. A report naming anything else is refused.
@@ -39,6 +39,8 @@ pub mod schema {
     pub const EXTRACT_REPORT: &str = "extract-report-v1";
     /// `verify --format json`.
     pub const VERIFY_REPORT: &str = "verify-report-v1";
+    /// `status --format json` (prikk 0.55.0; handoff 004 T5).
+    pub const STATUS_REPORT: &str = "status-report-v1";
 }
 
 /// `history` lists this many blocks when the caller gives no limit.
@@ -429,6 +431,13 @@ pub fn parse_report<T: DeserializeOwned>(
     })
 }
 
+/// Read the stdout of `prikk status --format json` as `status-report-v1`: the pinned schema name first, then the
+/// shape, then the report's own consistency. Anything else is an error, never a guess. The signer reads its
+/// witness through this too, so there is one reader of the report.
+pub fn parse_status(stdout: &[u8]) -> Result<RepoStatus> {
+    parse_report::<RepoStatus>("status", stdout, schema::STATUS_REPORT)?.checked()
+}
+
 // ---- argument shapes: checked here so that nothing user-shaped reaches prikk's parser ----
 
 fn is_ref_name(s: &str) -> bool {
@@ -718,6 +727,25 @@ impl Storage for PrikkCli {
             )),
         }
     }
+
+    fn status(&self, repo: &Path) -> Result<RepoStatus> {
+        let (run, ceiling) = self.execute(
+            ReadVerb::Status,
+            repo,
+            None,
+            &["status", "--format", "json"],
+            MAX_REPORT_BYTES,
+        )?;
+        if !run.status.success() || run.timed_out || run.output_exceeded {
+            return Err(Self::failure(
+                ReadVerb::Status,
+                &run,
+                ceiling,
+                self.deadline_for(ReadVerb::Status),
+            ));
+        }
+        parse_status(&run.stdout)
+    }
 }
 
 impl PrikkCli {
@@ -776,5 +804,7 @@ impl PrikkCli {
     }
 }
 
+#[cfg(test)]
+mod status_tests;
 #[cfg(test)]
 mod tests;

@@ -883,3 +883,47 @@ Follow-ups from the review of 2026-10-31 (handoff 003, S2 – S4).
   `propose` cannot accept, `Retry-After` on a refused rate, a private wiki's writes answer `404` as an absent one
   for four kinds of caller, multibyte JSON round trips, hostile content is data, the bounds, the strict body, the
   same-site check, and an acceptance through a real `ProposalAcceptor` over a scripted signer.
+
+- **Proposals T5 (RFC 004 D-7; handoff 004): recovery and the kill test.** *Two reads in the driver and the signer.*
+  `Storage::status` (the read driver's ninth verb: a flat cost rule, measured at 2 MiB on 3,000 pages; `status-report-v1`
+  pinned; the queue's patches with their messages and operations, the torn bytes at the end of the log, the interrupted
+  states; a report of another schema is refused, one of another shape or that disagrees with itself is `Damaged`; the
+  default method fails closed, so a storage that cannot report is never taken for one that found nothing). `doctor` and
+  the lock listing have no JSON form, and the boundary gate keeps `doctor` and `unlock` out of the read driver, so they are
+  `Witnesses` in the signer (keyless, read-only, cost rules for `doctor` as `verify`'s, `unlock` flat, `cat` as the read
+  driver's) with strict readers that refuse a shape they do not know; unreached-object warnings are a note, never damage
+  (ledger PL-12). *The signer's recovery operations* (`Recover`: `seal` alone on the one queued patch, `doctor
+  --discard-damaged-commits`, `unlock --lock <path> --yes` for the five lock kinds an acceptance leaves, and putting a
+  worktree back to the tip) are bound as an acceptance is: each is given a token naming a **recorded recovery act**, read
+  back through the ledger, and does nothing unless the act is the wiki's, still open, and names this very operation;
+  sealing is also bound to the pending acceptance or system act whose change is queued (its message, its base, and its files
+  by the digest, with the renames' order proven, because prikk lists them sorted); and none runs unless the wiki's write
+  lease is lent to the calling thread. **A lock's liveness is decided by the lease record, never by prikk's process check**
+  (ledger PL-8): the listing's `liveness` line is read, kept in the plan and used for nothing. *The procedure*
+  (`Recovery::recover`, at start and on demand, `RecoveryMode::PlanOnly | Run`): under the lease, the witnesses are read
+  (the flag, the open intents, acceptances with no end with or without an intent, system acts with no end, the record of a
+  holder that died, `status`, `doctor`, the locks, the history, the worktree, and processes of somebody else's that may be
+  working in the repository), a pure function makes the plan (`recovery::build`: steps in order, or a *stop* with a fixed
+  word), the plan is recorded as a recovery act before any step and every step is an audit record before it is taken. A
+  queued patch that is the change of the unfinished act is sealed alone and its records ended; a commit prikk calls torn
+  is discarded and its act ended as failed (`interrupted`) with its intent `discarded`; stale locks are cleared first;
+  a worktree that is not the baseline is put back; then `verify`, the reconciliation, and the flag is cleared. **A sound
+  queued patch that matches no recorded act is a stop, not a discard**: prikk 0.55.0 has no verb that removes one
+  (`--discard-damaged-commits` answers an acknowledged commit the log no longer holds soundly and refuses over anything
+  else), and sealing it would put an unaccepted change in the history. *The surfaces:* `inklkunn wiki recover <wiki>
+  [--plan]` (the plan alone changes nothing and writes nothing; a stop is exit 1) and a recovery of every wiki that needs
+  it in the start-up work, before anything is served; a wiki that stays flagged serves reads and refuses writes with the
+  word. *API and records:* store **schema 12** (`recovery_acts` and their ends, written once, with the triggers of the
+  acceptance records; a version 11 database migrates with its data) and `AcceptanceStore::{pending_acceptances,
+  acceptance_entry}`; `ProposalAcceptor::with_observer` and `AcceptStep` (the nine steps of D-4, observed and nothing
+  more; nothing in production sets one); `words::INTERRUPTED`; `WikiLeases::holder_name`. **The kill test**
+  (`inklkunn-signer/tests/acceptance_kill.rs`: the one crate besides the driver that may spawn a process, with a
+  dev-dependency on core): the acceptance runs in a child process that is `SIGKILL`ed at each of D-4's steps and at
+  each prikk call of the signer's write sequence, held by a stand-in `prikk`; after each of fourteen kills a fresh
+  recovery leaves `verify` green, exactly the expected blocks in `log`, the acceptance record and the intent
+  consistent with them, the plan recorded and ended, the reconciliation clean, and the wiki taking writes (a retry of a
+  sealed acceptance seals nothing twice). Also tested against a real repository: a planted queued patch that no intent
+  describes (a stop, the repository untouched), the same torn (discarded and reported), a planted lock whose recorded
+  pid this namespace shows as alive (cleared all the same), a lock of another kind (a stop), recovery refused without the
+  lease, a step that fails (the flag kept, the plan ended as stopped), an interrupted recovery, a doctor report of an
+  unknown shape.

@@ -41,7 +41,7 @@ fn the_table_is_bound_to_the_floor() {
 #[test]
 fn every_verb_the_signer_runs_has_a_rule_and_is_found_by_its_arguments() {
     // The argument vectors the runner is given, one per verb: each is found, none is found twice.
-    let vectors: [(&[&str], WriteVerb); 16] = [
+    let vectors: [(&[&str], WriteVerb); 21] = [
         (&["init"], WriteVerb::Init),
         (
             &["trust", "maintainer", "add", "--key-id", "k"],
@@ -70,6 +70,15 @@ fn every_verb_the_signer_runs_has_a_rule_and_is_found_by_its_arguments() {
             WriteVerb::ArchiveExport,
         ),
         (&["archive", "export", "/x/a.tmp"], WriteVerb::ArchiveExport),
+        // Recovery's verbs (handoff 004 T5).
+        (&["doctor"], WriteVerb::Doctor),
+        (&["doctor", "--discard-damaged-commits"], WriteVerb::Doctor),
+        (&["unlock"], WriteVerb::Unlock),
+        (&["unlock", "--lock", "/x/y", "--yes"], WriteVerb::Unlock),
+        (
+            &["cat", "--path", "p", "--ref", "heads/main"],
+            WriteVerb::Cat,
+        ),
     ];
     for (args, verb) in vectors {
         assert_eq!(WriteVerb::of(args), Some(verb), "{args:?}");

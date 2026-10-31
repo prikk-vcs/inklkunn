@@ -9,7 +9,8 @@
 //! writable mode** (no key store, no secret, no seed): `archive export` and the checkpoint refresh, nothing
 //! else (handoff 003 T7); [`CreationMark`] is the state a wiki is in while it is being created, which the
 //! start-up sweep reads (a kill at any step leaves nothing behind); [`message`] is the attribution
-//! contract the signer enforces; [`KeyIds`], [`KeyStatus`] and [`SealedIds`] carry ids and dates (never
+//! contract the signer enforces; [`Recover`] is recovery's way in, bound to a recorded act as an acceptance is,
+//! and [`Witnesses`] its keyless, read-only eyes (`doctor` and the lock listing; handoff 004 T5); [`KeyIds`], [`KeyStatus`] and [`SealedIds`] carry ids and dates (never
 //! seeds); [`SignerError`] says what did not happen. The write-verb runner, the key directory and the
 //! key store are private to the crate.
 //!
@@ -35,6 +36,7 @@ pub mod creation;
 pub mod message;
 
 mod maintenance;
+pub mod recover;
 
 #[cfg(feature = "bootstrap")]
 pub mod bootstrap;
@@ -52,6 +54,9 @@ pub use creation::{CreationMark, Unfinished, find_unfinished};
 pub use keys::KeyIds;
 pub use lease::{LeaseRefusal, LeaseScope, WriteLease, WriteLeases};
 pub use maintenance::{ArchiveExported, Maintenance};
+pub use recover::{
+    Recover, RecoverError, RecoveryFacts, RecoveryOp, RecoveryToken, Witnesses, WorktreeState,
+};
 pub use signer::lifecycle::{OldKey, OldKeyOutcome, Rotation};
 pub use signer::superseded::{LateSeal, SupersededKey};
 pub use signer::{KeyStatus, Signer, SignerConfig};

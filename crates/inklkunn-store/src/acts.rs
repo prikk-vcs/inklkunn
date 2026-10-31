@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::Result;
 use crate::acceptance::AcceptanceOutcome;
-use crate::record::{ProposalId, SystemActId, WikiId};
+use crate::record::{ProposalId, RecoveryActId, SystemActId, WikiId};
 
 /// Why a wiki is flagged *needs recovery* (RFC 004 D-6): which incomplete state the last act left. Every
 /// reason is a fixed word; none is prikk's text.
@@ -176,8 +176,75 @@ pub struct SystemActEntry {
     pub end: Option<SystemActEnd>,
 }
 
-/// The flag, the overlaps and the system acts. Every implementation passes the same invariant tests
-/// (`tests/acts.rs`). The errors are the plain facts of [`crate::StoreError`].
+/// The longest plan a recovery act keeps, in bytes: a bound against a runaway, generous for any plan (one line
+/// per witness and per step).
+pub const MAX_RECOVERY_PLAN_BYTES: usize = 256 * 1024;
+
+/// A recovery act's plan, recorded **before** the signer is asked to do any of it (RFC 004 D-7; handoff 004 T5):
+/// recovery is recorded like an acceptance. `plan` is the text the service made (the witnesses it read and the
+/// steps it will take, in its own fixed vocabulary); the store keeps it whole and does not read it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecoveryActRecord {
+    /// The id; the signer's recovery operations name it.
+    pub id: RecoveryActId,
+    /// The wiki.
+    pub wiki: WikiId,
+    /// The plan, as the service wrote it (at most [`MAX_RECOVERY_PLAN_BYTES`]).
+    pub plan: String,
+    /// Unix seconds.
+    pub created_at: i64,
+}
+
+/// How a recovery act ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RecoveryEnding {
+    /// Every step of the plan was done and the wiki was cleared to take writes again.
+    Recovered,
+    /// A step was refused or failed, or the witnesses did not allow the plan: the wiki stays flagged and a
+    /// person decides. Nothing was guessed.
+    Stopped,
+}
+
+impl RecoveryEnding {
+    /// The stored name.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            RecoveryEnding::Recovered => "recovered",
+            RecoveryEnding::Stopped => "stopped",
+        }
+    }
+
+    /// Parse the stored name.
+    pub fn parse(s: &str) -> Option<Self> {
+        [RecoveryEnding::Recovered, RecoveryEnding::Stopped]
+            .into_iter()
+            .find(|v| v.as_str() == s)
+    }
+}
+
+/// The end of a recovery act, written once.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecoveryActEnd {
+    /// The act.
+    pub act: RecoveryActId,
+    /// How it ended.
+    pub ending: RecoveryEnding,
+    /// Unix seconds.
+    pub at: i64,
+}
+
+/// A recovery act with its end, if it has one. `end` is `None` while it is **open**: a recovery that was itself
+/// interrupted, which the next recovery reads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecoveryActEntry {
+    /// The start.
+    pub act: RecoveryActRecord,
+    /// The end.
+    pub end: Option<RecoveryActEnd>,
+}
+
+/// The flag, the overlaps, the system acts and the recovery acts. Every implementation passes the same invariant
+/// tests (`tests/acts.rs`). The errors are the plain facts of [`crate::StoreError`].
 pub trait ActStore: Send + Sync {
     /// The wiki's recovery flag, if it is flagged.
     fn recovery_flag(&self, wiki: &WikiId) -> Result<Option<RecoveryFlag>>;
@@ -209,4 +276,19 @@ pub trait ActStore: Send + Sync {
 
     /// Every system act of the wiki with its end, oldest first.
     fn system_acts(&self, wiki: &WikiId) -> Result<Vec<SystemActEntry>>;
+
+    /// Start a recovery act: its plan, written before the signer is asked to do any of it (RFC 004 D-7). The wiki
+    /// must be there; the id must be new ([`AlreadyRecorded`](crate::StoreError::AlreadyRecorded) otherwise); a
+    /// plan longer than [`MAX_RECOVERY_PLAN_BYTES`] is refused ([`Backend`](crate::StoreError::Backend), nothing
+    /// written).
+    fn begin_recovery_act(&self, act: &RecoveryActRecord) -> Result<()>;
+
+    /// Record how a recovery act ended. Once: a second end is `AlreadyRecorded`.
+    fn finish_recovery_act(&self, end: &RecoveryActEnd) -> Result<()>;
+
+    /// The recovery act `id` names, **only if it has not ended**: the question the signer's recovery guard asks.
+    fn open_recovery_act(&self, id: &RecoveryActId) -> Result<Option<RecoveryActRecord>>;
+
+    /// Every recovery act of the wiki with its end, oldest first.
+    fn recovery_acts(&self, wiki: &WikiId) -> Result<Vec<RecoveryActEntry>>;
 }

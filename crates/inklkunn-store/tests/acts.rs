@@ -356,7 +356,7 @@ fn a_version_10_database_is_migrated_to_11_keeping_its_records_and_only_once() {
     {
         let store = SqliteStore::open(&db).expect("a version 10 database opens");
         assert_eq!(version(), SCHEMA_VERSION.to_string());
-        assert_eq!(SCHEMA_VERSION, 11);
+        assert_eq!(SCHEMA_VERSION, 12);
         let w = store.list().unwrap().remove(0);
         let intents = inklkunn_store::AcceptanceStore::intents(&store, &w.id).unwrap();
         assert_eq!(intents.len(), 1, "the old intent is still there");

@@ -77,7 +77,11 @@ pub(crate) fn run(
             };
             keys::execute(&command, &settings, now, out, err)
         }
-        ["wiki", "create" | "import-folder" | "export", ..] => {
+        [
+            "wiki",
+            "create" | "import-folder" | "export" | "recover",
+            ..,
+        ] => {
             let rest: Vec<String> = args.iter().skip(1).cloned().collect();
             let command = match admin::parse(&rest) {
                 Ok(c) => c,
@@ -98,7 +102,7 @@ pub(crate) fn run(
         other => {
             let _ = writeln!(
                 err,
-                "inklkunn: unknown command `{}`; there are `--version`, `serve`, `audit export`, `wiki keys`, `wiki create`, `wiki import-folder` and `wiki export`\n{}\n{}\n{}",
+                "inklkunn: unknown command `{}`; there are `--version`, `serve`, `audit export`, `wiki keys`, `wiki create`, `wiki import-folder`, `wiki export` and `wiki recover`\n{}\n{}\n{}",
                 other.join(" "),
                 SERVE_USAGE,
                 keys::USAGE,
