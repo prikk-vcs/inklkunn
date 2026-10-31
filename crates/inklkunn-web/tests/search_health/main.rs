@@ -77,8 +77,18 @@ fn files() -> Vec<(String, String)> {
             ],
             "A [[Home]] link; and <script>alert(2)</script> here.\n",
         ),
+        // Knowledge files that cannot be read (RFC 005 part 2 D-5): a key the format does not have, a repeated
+        // key, and two that are in no place the format has, one named with markup.
+        (CLAIM.to_owned(), "kind: observation\nscore: 3\n".to_owned()),
+        (SOURCE.to_owned(), "kind: primary\nkind: other\n".to_owned()),
+        ("knowledge/stray.txt".to_owned(), "x".to_owned()),
+        (HOSTILE.to_owned(), "x".to_owned()),
     ]
 }
+
+const CLAIM: &str = "knowledge/claims/01930000-0000-7000-8000-000000000001.yaml";
+const SOURCE: &str = "knowledge/sources/01931111-0000-7000-8000-000000000002.yaml";
+const HOSTILE: &str = "knowledge/<img src=x onerror=alert(1)>.txt";
 
 fn world_with(visibility: Visibility, slug: &str, name: &str) -> World {
     let owned = files();
@@ -402,7 +412,45 @@ async fn every_health_list_shows_its_planted_case_with_what_would_resolve_it() {
     );
     assert!(body.contains("Read the page, and update it if it is out of date."));
 
-    // The index names the six, each with what it shows; an unknown list is not a page.
+    // Knowledge files that cannot be read: each with the rule it broke and what would resolve it; the name of a file
+    // is shown as letters, whatever it holds.
+    let body = list("knowledge-files").await;
+    let r = rows(&body);
+    assert_eq!(r.len(), 4, "{body}");
+    // In path order: the file named with markup (a `<` sorts first) is shown as letters.
+    let is_path_rule = "not in knowledge/claims or knowledge/sources";
+    assert!(
+        r.first()
+            .unwrap()
+            .contains("knowledge/&#60;img src=x onerror=alert(1)&#62;.txt")
+            && r.first().unwrap().contains(is_path_rule),
+        "{body}"
+    );
+    assert!(!body.contains("<img src=x"), "{body}");
+    assert!(
+        r.get(1).unwrap().contains(CLAIM)
+            && r.get(1)
+                .unwrap()
+                .contains("The file has a key the format does not have."),
+        "{body}"
+    );
+    assert!(
+        r.get(2).unwrap().contains(SOURCE)
+            && r.get(2)
+                .unwrap()
+                .contains("The text is not in the plain YAML subset the wiki reads."),
+        "{body}"
+    );
+    assert!(
+        r.get(3).unwrap().contains("knowledge/stray.txt")
+            && r.get(3).unwrap().contains(is_path_rule),
+        "{body}"
+    );
+    assert!(body.contains("Propose a corrected file, or propose to remove it."));
+    // Nothing a file said is on the page.
+    assert!(!body.contains("score"), "{body}");
+
+    // The index names the seven, each with what it shows; an unknown list is not a page.
     let body = get(&w, "/handbook/-/health").await.body();
     for name in [
         "wanted",
@@ -411,6 +459,7 @@ async fn every_health_list_shows_its_planted_case_with_what_would_resolve_it() {
         "redirects",
         "wants-help",
         "stale",
+        "knowledge-files",
     ] {
         assert!(
             body.contains(&format!("href=\"/handbook/-/health/{name}\"")),
@@ -458,6 +507,7 @@ async fn a_list_with_nothing_in_it_says_so_in_words() {
         ("dead-ends", "Every page links to another page."),
         ("redirects", "Every redirect leads to a page."),
         ("wants-help", "No page is marked as needing help."),
+        ("knowledge-files", "Every knowledge file can be read."),
     ] {
         let a = get(&w, &format!("/tidy/-/health/{name}")).await;
         assert_eq!(a.status, 200, "{name}");

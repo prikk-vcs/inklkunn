@@ -119,6 +119,13 @@ fn failure_problem(failure: AcceptFailure) -> (Problem, Vec<String>) {
     (problem, logged.into_inner())
 }
 
+fn knowledge_refusal() -> inklkunn_core::knowledge::check::Refusal {
+    inklkunn_core::knowledge::check::Refusal::of(
+        "knowledge/stray.txt",
+        inklkunn_core::knowledge::Fault::whole(inklkunn_core::knowledge::Rule::Path),
+    )
+}
+
 #[test]
 fn each_way_an_acceptance_can_stop_is_one_problem_a_program_can_act_on() {
     let flag = RecoveryFlag {
@@ -174,6 +181,11 @@ fn each_way_an_acceptance_can_stop_is_one_problem_a_program_can_act_on() {
             Code::Unavailable,
             None,
         ),
+        (
+            AcceptFailure::KnowledgeInvalid(vec![knowledge_refusal()]),
+            Code::AcceptanceFailed,
+            None,
+        ),
     ];
     for (failure, code, wait) in cases {
         let shown = failure.to_string();
@@ -206,6 +218,17 @@ fn each_way_an_acceptance_can_stop_is_one_problem_a_program_can_act_on() {
     );
     let (overlap, _) = failure_problem(AcceptFailure::Overlap { overlaps: 2 });
     assert_eq!(at(&body(&overlap), "overlaps"), 2);
+    // A knowledge file the change would write is refused before the signer: the caller gets the word, the files and
+    // rules go to the log.
+    let (refused, logged) =
+        failure_problem(AcceptFailure::KnowledgeInvalid(vec![knowledge_refusal()]));
+    assert_eq!(at(&body(&refused), "word"), "knowledge-invalid");
+    assert_eq!(logged.len(), 1);
+    assert!(
+        logged.first().unwrap().contains("knowledge/stray.txt"),
+        "{logged:?}"
+    );
+    assert!(!body(&refused).to_string().contains("stray"));
     let (failed, logged) = failure_problem(AcceptFailure::Failed {
         acceptance: AcceptanceId::new(),
         word: "memory-limit",

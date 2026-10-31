@@ -592,6 +592,34 @@ pub(super) const SCENARIOS: &[Scenario] = &[
         headers: &[],
     },
     Scenario {
+        id: "wiki-health-knowledge-files",
+        identity: "wiki-health-knowledge-files",
+        status: 200,
+        warm: &[],
+        setup: |w| {
+            w.fake.set_files(&[
+                (
+                    "knowledge/claims/01930000-0000-7000-8000-000000000001.yaml",
+                    "kind: observation\nscore: 3\n",
+                ),
+                ("knowledge/stray.txt", "x"),
+            ]);
+        },
+        method: "GET",
+        uri: "/handbook/-/health/knowledge-files",
+        headers: &[],
+    },
+    Scenario {
+        id: "wiki-health-knowledge-files-none",
+        identity: "wiki-health-knowledge-files",
+        status: 200,
+        warm: &[],
+        setup: nothing,
+        method: "GET",
+        uri: "/handbook/-/health/knowledge-files",
+        headers: &[],
+    },
+    Scenario {
         id: "wiki-links",
         identity: "wiki-links-guide",
         status: 200,

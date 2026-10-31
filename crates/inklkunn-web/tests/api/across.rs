@@ -78,6 +78,16 @@ fn pages() -> Vec<(String, String)> {
             ],
             "A [[Home]] link; and <script>alert(2)</script> here.\n",
         ),
+        // Knowledge files that cannot be read (RFC 005 part 2 D-5).
+        (
+            "knowledge/claims/01930000-0000-7000-8000-000000000001.yaml".to_owned(),
+            "kind: observation\nscore: 3\n".to_owned(),
+        ),
+        (
+            "knowledge/sources/01931111-0000-7000-8000-000000000002.yaml".to_owned(),
+            "kind: primary\nkind: other\n".to_owned(),
+        ),
+        ("knowledge/stray.txt".to_owned(), "x".to_owned()),
     ]
 }
 
@@ -370,6 +380,29 @@ async fn every_health_list_shows_its_planted_case_with_what_would_resolve_it_as_
     assert_eq!(marks, ["draft", "stub", "wip"]);
     assert_eq!(help.at("/items/0/action"), "finish-and-unmark");
 
+    // Knowledge files that cannot be read: the file's path, the rule's code, and what would resolve it.
+    let files = list("knowledge-files").await;
+    assert_eq!(
+        titles(&files),
+        [
+            "knowledge/claims/01930000-0000-7000-8000-000000000001.yaml",
+            "knowledge/sources/01931111-0000-7000-8000-000000000002.yaml",
+            "knowledge/stray.txt"
+        ]
+    );
+    assert_eq!(files.at("/items/0/rule"), "unknown-key");
+    assert_eq!(files.at("/items/1/rule"), "syntax");
+    assert_eq!(files.at("/items/2/rule"), "path");
+    assert!(
+        files
+            .at("/items")
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|i| i.at("/action") == "fix-or-remove-file")
+    );
+    assert_eq!(files.at("/total"), 3);
+
     // Stale: no change touched any page, so none has a last change in the window.
     let stale = list("stale").await;
     assert!(
@@ -405,6 +438,10 @@ async fn the_rows_are_the_ones_the_health_pages_show_in_the_order_they_show_them
         ("dead-ends", "Lonely"),
         ("redirects", "Older"),
         ("wants-help", "Stubby"),
+        (
+            "knowledge-files",
+            "knowledge/claims/01930000-0000-7000-8000-000000000001.yaml",
+        ),
     ] {
         let api_rows = titles(&ok(&get(&w, &api(&format!("health?list={slug}"))).await));
         let web = get(&w, &format!("/handbook/-/health/{slug}")).await.text();

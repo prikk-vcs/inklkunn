@@ -756,6 +756,76 @@ pub const CATALOG: &[Entry] = &[
     msg("health.none_redirects", "Every redirect leads to a page."),
     msg("health.none_help", "No page is marked as needing help."),
     msg("health.none_stale", "There are no pages to list."),
+    msg(
+        "health.knowledge_name",
+        "Knowledge files that cannot be read",
+    ),
+    msg(
+        "health.knowledge_desc",
+        "Claim and source files that are not in the form the wiki reads. Nothing is read from them, and the pages are not affected.",
+    ),
+    msg("health.col_file", "File"),
+    msg("health.col_rule", "What is wrong"),
+    msg(
+        "health.knowledge_action",
+        "Propose a corrected file, or propose to remove it.",
+    ),
+    msg("health.none_knowledge", "Every knowledge file can be read."),
+    msg(
+        "health.rule_path",
+        "The file is not in knowledge/claims or knowledge/sources, or its name is not a well formed id followed by .yaml.",
+    ),
+    msg("health.rule_not_text", "The file is not UTF-8 text."),
+    msg(
+        "health.rule_too_long",
+        "The file is longer than a knowledge file may be.",
+    ),
+    msg(
+        "health.rule_syntax",
+        "The text is not in the plain YAML subset the wiki reads.",
+    ),
+    msg(
+        "health.rule_missing",
+        "A key the format requires is missing.",
+    ),
+    msg(
+        "health.rule_unknown",
+        "The file has a key the format does not have.",
+    ),
+    msg(
+        "health.rule_type",
+        "A value is not of the shape its key needs.",
+    ),
+    msg(
+        "health.rule_number",
+        "A number appears where the format has none. Write dates and years as text.",
+    ),
+    msg(
+        "health.rule_value",
+        "A value is outside the words, or the form, its key allows.",
+    ),
+    msg("health.rule_id", "An identifier is not well formed."),
+    msg("health.rule_duplicate", "The same entry appears twice."),
+    msg(
+        "health.rule_bounds",
+        "A list or a text is longer than the format allows.",
+    ),
+    msg(
+        "health.rule_reference",
+        "The file names a source or a claim the wiki does not have.",
+    ),
+    msg(
+        "health.rule_anchor",
+        "An expression names a page, or a paragraph of a page, that the wiki does not have.",
+    ),
+    msg(
+        "health.rule_in_use",
+        "The file is removed while another file still names it.",
+    ),
+    msg(
+        "health.rule_owned",
+        "The change also changes a page key that only the service writes.",
+    ),
     msg("title.links", "Links to {page} · {wiki} · {product}"),
     msg("links.heading", "Pages that link to {page}"),
     msg(
@@ -1143,6 +1213,14 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "outcome_note.unchanged_refused",
         "The history did not accept this change as it was prepared. Nothing was changed, and the proposal is still held for review.",
+    ),
+    msg(
+        "outcome.knowledge_invalid",
+        "Not signed: a claim or source file is not acceptable",
+    ),
+    msg(
+        "outcome_note.knowledge_invalid",
+        "A claim or source file in this proposal is not in the form the wiki reads, or the change would leave another file pointing at something that is not there. Nothing was changed, and the proposal is still held for review. Correct the file and accept again.",
     ),
     msg("outcome.too_large", "Too large to sign now"),
     msg(

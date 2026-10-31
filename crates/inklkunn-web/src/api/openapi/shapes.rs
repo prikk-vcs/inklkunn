@@ -257,25 +257,26 @@ pub(super) fn schemas() -> Map<String, Value> {
     out.insert(
         "HealthItem".to_owned(),
         object(
-            "One row of a health list. `action` is what would resolve it, as a code: `add-page-or-fix-links` (wanted), `link-to-it` (orphans), `link-from-it` (dead-ends), `retarget-or-remove`, `break-the-loop`, `point-at-final-page` (redirects), `finish-and-unmark` (wants-help), `review` (stale). The other members depend on the list.",
+            "One row of a health list. `action` is what would resolve it, as a code: `add-page-or-fix-links` (wanted), `link-to-it` (orphans), `link-from-it` (dead-ends), `retarget-or-remove`, `break-the-loop`, `point-at-final-page` (redirects), `finish-and-unmark` (wants-help), `review` (stale), `fix-or-remove-file` (knowledge-files). The other members depend on the list. For `knowledge-files` the `title` is the file's path in the repository (a storage path, not a page).",
             json!({
                 "title": {"type": "string"},
-                "action": {"type": "string", "enum": ["add-page-or-fix-links", "link-to-it", "link-from-it", "retarget-or-remove", "break-the-loop", "point-at-final-page", "finish-and-unmark", "review"]},
+                "action": {"type": "string", "enum": ["add-page-or-fix-links", "link-to-it", "link-from-it", "retarget-or-remove", "break-the-loop", "point-at-final-page", "finish-and-unmark", "review", "fix-or-remove-file"]},
                 "linked_from": {"type": "integer", "description": "`wanted`: how many different pages link to the title."},
                 "target": {"type": "string", "description": "`redirects`: the target as the redirect page wrote it."},
                 "problem": {"type": "string", "enum": ["broken", "loop", "too-long", "double"], "description": "`redirects`: what is wrong."},
                 "mark": {"type": "string", "enum": ["wip", "draft", "stub"], "description": "`wants-help`: how the page is marked."},
                 "last_touched": {"type": ["integer", "null"], "description": "`stale`: when this server first saw the newest change that touched the page, in Unix seconds; `null` when none of the changes looked through touched it."},
+                "rule": {"type": "string", "enum": ["path", "not-text", "too-long", "syntax", "missing-key", "unknown-key", "wrong-type", "number", "bad-value", "bad-id", "duplicate", "bounds", "reference", "anchor", "in-use", "owned-key"], "description": "`knowledge-files`: the rule the file broke."},
             }),
-            &["linked_from", "target", "problem", "mark", "last_touched"],
+            &["linked_from", "target", "problem", "mark", "last_touched", "rule"],
         ),
     );
     out.insert(
         "Health".to_owned(),
         object(
-            "One page of one of the link health lists.",
+            "One page of one of the health lists.",
             json!({
-                "list": {"type": "string", "enum": ["wanted", "orphans", "dead-ends", "redirects", "wants-help", "stale"]},
+                "list": {"type": "string", "enum": ["wanted", "orphans", "dead-ends", "redirects", "wants-help", "stale", "knowledge-files"]},
                 "tip": tip.clone(),
                 "items": {"type": "array", "maxItems": SIZES.1, "items": schema_ref("HealthItem")},
                 "total": {"type": "integer", "minimum": 0, "description": "How many rows the whole list has."},

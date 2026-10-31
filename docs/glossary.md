@@ -407,6 +407,28 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `health.none_redirects` | in place of the list of redirect problems when there are none | "Every redirect leads to a page." | "すべてのリダイレクトがページにつながっています。" |
 | `health.none_help` | in place of the list of pages that want help when there are none | "No page is marked as needing help." | "手助けが必要と示されているページはありません。" |
 | `health.none_stale` | in place of the list of pages unchanged longest when the wiki has no page | "There are no pages to list." | "表示できるページはありません。" |
+| `health.knowledge_name` | the name of the list of claim and source files that cannot be read | "Knowledge files that cannot be read" | "読み取れない知識ファイル" |
+| `health.knowledge_desc` | what that list shows | "Claim and source files that are not in the form the wiki reads. Nothing is read from them, and the pages are not affected." | "ウィキが読める形になっていない、主張と出典のファイル。これらからは何も読み取られず、ページには影響しません。" |
+| `health.col_file` | the heading of the column with a file's place in the repository | "File" | "ファイル" |
+| `health.col_rule` | the heading of the column that says what is wrong with a file | "What is wrong" | "問題の内容" |
+| `health.knowledge_action` | in each row of that list: what would resolve it | "Propose a corrected file, or propose to remove it." | "修正したファイルを提案するか、ファイルの削除を提案してください。" |
+| `health.none_knowledge` | in place of that list when there is no file to list | "Every knowledge file can be read." | "読み取れない知識ファイルはありません。" |
+| `health.rule_path` | a reason in that list: the file is in the wrong place or has a badly formed id | "The file is not in knowledge/claims or knowledge/sources, or its name is not a well formed id followed by .yaml." | "ファイルが knowledge/claims にも knowledge/sources にもないか、ファイル名が「正しい形式の id + .yaml」になっていません。" |
+| `health.rule_not_text` | a reason in that list | "The file is not UTF-8 text." | "ファイルが UTF-8 のテキストではありません。" |
+| `health.rule_too_long` | a reason in that list | "The file is longer than a knowledge file may be." | "ファイルが、知識ファイルとして許される長さを超えています。" |
+| `health.rule_syntax` | a reason in that list | "The text is not in the plain YAML subset the wiki reads." | "テキストが、ウィキが読む単純な YAML の範囲に収まっていません。" |
+| `health.rule_missing` | a reason in that list | "A key the format requires is missing." | "形式で必須のキーがありません。" |
+| `health.rule_unknown` | a reason in that list | "The file has a key the format does not have." | "形式にないキーがあります。" |
+| `health.rule_type` | a reason in that list | "A value is not of the shape its key needs." | "値の形が、そのキーに必要な形ではありません。" |
+| `health.rule_number` | a reason in that list | "A number appears where the format has none. Write dates and years as text." | "形式に数値はありません。日付や年は文字列で書いてください。" |
+| `health.rule_value` | a reason in that list | "A value is outside the words, or the form, its key allows." | "値が、そのキーで許される語や形式の外にあります。" |
+| `health.rule_id` | a reason in that list | "An identifier is not well formed." | "識別子の形式が正しくありません。" |
+| `health.rule_duplicate` | a reason in that list | "The same entry appears twice." | "同じ項目が 2 回現れています。" |
+| `health.rule_bounds` | a reason in that list | "A list or a text is longer than the format allows." | "リストまたはテキストが、形式で許される長さを超えています。" |
+| `health.rule_reference` | a reason in that list | "The file names a source or a claim the wiki does not have." | "ウィキにない出典または主張が指定されています。" |
+| `health.rule_anchor` | a reason in that list | "An expression names a page, or a paragraph of a page, that the wiki does not have." | "表現が、ウィキにないページまたはページ内の段落を指しています。" |
+| `health.rule_in_use` | a reason in that list | "The file is removed while another file still names it." | "別のファイルから指定されているファイルが削除されています。" |
+| `health.rule_owned` | a reason in that list | "The change also changes a page key that only the service writes." | "サービスだけが書くページのキーも変更されています。" |
 | `title.links` | the title of the page that lists the pages linking to a page; `{page}` is its title | "Links to {page} · {wiki} · {product}" | "{page} へのリンク · {wiki} · {product}" |
 | `links.heading` | its heading | "Pages that link to {page}" | "{page} へのリンク元のページ" |
 | `links.missing` | under that heading when no page has the title | "No page has this title yet. These pages link to it." | "このタイトルのページはまだありません。次のページがリンクしています。" |
@@ -556,6 +578,8 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `outcome_note.recovery` | under the outcome the wiki needs recovery | "The wiki is being checked after an interruption. It can be read, but nothing can be changed until the check is done." | "ウィキは中断後の確認を行っています。読むことはできますが、確認が終わるまで変更はできません。" |
 | `outcome.unchanged_refused` | the outcome of an acceptance the history refused as it was prepared; nothing was changed | "Not signed: the history refused it" | "署名されませんでした: 履歴が受け付けませんでした" |
 | `outcome_note.unchanged_refused` | under the outcome not signed: the history refused it | "The history did not accept this change as it was prepared. Nothing was changed, and the proposal is still held for review." | "履歴は、用意された変更をそのままでは受け付けませんでした。何も変更しておらず、提案はレビュー待ちのままです。" |
+| `outcome.knowledge_invalid` | the outcome of an acceptance refused before signing because a claim or source file in the proposal is not acceptable; nothing was changed | "Not signed: a claim or source file is not acceptable" | "署名されませんでした: 主張または出典のファイルを受け付けられません" |
+| `outcome_note.knowledge_invalid` | under that outcome | "A claim or source file in this proposal is not in the form the wiki reads, or the change would leave another file pointing at something that is not there. Nothing was changed, and the proposal is still held for review. Correct the file and accept again." | "この提案の主張または出典のファイルが、ウィキが読める形になっていないか、この変更によって別のファイルが存在しないものを指すことになります。何も変更しておらず、提案はレビュー待ちのままです。ファイルを直してから、もう一度受け入れてください。" |
 | `outcome.too_large` | the outcome of an acceptance that needed more memory than one signing may use | "Too large to sign now" | "大きすぎて今は署名できません" |
 | `outcome_note.too_large` | under the outcome too large to sign now | "This change needs more memory than one signing may use. Nothing was changed, and the proposal is still held for review." | "この変更の署名には、1 回の署名で使える量を超えるメモリが必要です。何も変更しておらず、提案はレビュー待ちのままです。" |
 | `outcome.unavailable` | the outcome of an acceptance that could not be done now, before anything was changed | "Could not be done now" | "今は実行できません" |

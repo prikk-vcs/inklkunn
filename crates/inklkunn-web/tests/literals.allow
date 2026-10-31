@@ -162,6 +162,8 @@ exact :: health.rs :: dead-ends :: a machine-readable value: no sentence a reade
 exact :: health.rs :: redirects :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
 exact :: health.rs :: wants-help :: a machine-readable value: no sentence a reader sees
 exact :: health.rs :: stale :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: health.rs :: knowledge-files :: a machine-readable value: no sentence a reader sees
+exact :: health.rs :: fix-or-remove-file :: a machine-readable value: no sentence a reader sees
 exact :: health.rs :: -/health :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
 exact :: health.rs :: wiki :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
 exact :: health.rs :: /{}/-/health/{} :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
@@ -258,6 +260,7 @@ exact :: accept.rs :: acceptance {acceptance} of this revision is pending :: a l
 exact :: accept.rs :: acceptance {acceptance} failed ({word}): {detail} :: a line for the operator's log; no response carries it
 exact :: accept.rs :: an acceptance could not be done now: {why} :: a line for the operator's log; no response carries it
 exact :: accept.rs :: the records failed during an acceptance: {error} :: a line for the operator's log; no response carries it
+exact :: accept.rs :: an acceptance was refused before signing: {failure} :: a line for the operator's log; no response carries it
 exact :: overlaps.rs :: the overlaps of a proposal could not be read: {error} :: a line for the operator's log; no response carries it
 exact :: overlaps.rs :: page :: a placeholder name of a catalog message, or the description of a place that the acceptance recorded: data, not a sentence
 exact :: overlaps.rs :: place :: a placeholder name of a catalog message

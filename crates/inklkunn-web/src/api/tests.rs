@@ -179,7 +179,8 @@ fn a_choice_parameter_documents_its_words_as_an_enum() {
             "dead-ends",
             "redirects",
             "wants-help",
-            "stale"
+            "stale",
+            "knowledge-files"
         ]
     );
     for word in &words {

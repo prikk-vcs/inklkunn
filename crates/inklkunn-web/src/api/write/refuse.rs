@@ -160,6 +160,20 @@ pub(crate) fn acceptance_problem(failure: AcceptFailure, log: &dyn Fn(&str)) -> 
             .member("overlaps", json!(overlaps))
             .said("overlaps", overlaps),
         AcceptFailure::NothingToChange => Problem::new(Code::NothingToChange),
+        // Refused before the signer was asked (RFC 005 part 2 D-5): the files and rules are the operator's, in the
+        // log; the caller is told the word, as for any acceptance that did not put its change in the history.
+        AcceptFailure::KnowledgeInvalid(refusals) => {
+            log(&format!(
+                "an acceptance was refused before signing: {} knowledge file(s): {}",
+                refusals.len(),
+                refusals
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ));
+            Problem::new(Code::AcceptanceFailed).named("word", "knowledge-invalid")
+        }
         AcceptFailure::Failed { word, detail, .. } => {
             log(&format!("an acceptance failed ({word}): {detail}"));
             Problem::new(Code::AcceptanceFailed).named("word", word)

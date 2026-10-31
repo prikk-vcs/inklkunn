@@ -230,6 +230,7 @@ async fn samples() -> Vec<(String, String, Value)> {
         "redirects",
         "wants-help",
         "stale",
+        "knowledge-files",
     ] {
         asked.push(("health", format!("health?list={list}&limit=2")));
     }

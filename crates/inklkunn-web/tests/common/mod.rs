@@ -271,8 +271,41 @@ impl Storage for Fake {
         })
     }
 
-    fn tree(&self, _: &Path, _: &Point, _: Option<&str>) -> Result<Tree> {
-        unsupported("tree")
+    fn tree(&self, _: &Path, point: &Point, prefix: Option<&str>) -> Result<Tree> {
+        // A block's files are listed (the acceptance asks whether the tip has any knowledge files); a view's are not
+        // needed by any test.
+        let Point::Block(id) = point else {
+            return unsupported("tree");
+        };
+        let s = self.state();
+        let files = s
+            .snapshots
+            .iter()
+            .find(|(v, _)| block_id(**v) == *id)
+            .map(|(_, f)| f)
+            .ok_or_else(|| StorageError::Refused {
+                verb: "tree",
+                message: format!("no such block: {point}"),
+                kind: None,
+                reason: None,
+            })?;
+        Ok(Tree {
+            schema_version: "tree-listing-v1".to_owned(),
+            point: point.to_string(),
+            target_block_id: id.clone(),
+            prefix: prefix.map(str::to_owned),
+            entries: files
+                .iter()
+                .filter(|(path, _)| prefix.is_none_or(|p| path.starts_with(p)))
+                .map(|(path, bytes)| inklkunn_prikk::Entry {
+                    path: path.clone(),
+                    kind: "file".to_owned(),
+                    encoding: Some("text".to_owned()),
+                    mode: None,
+                    size: Some(bytes.len() as u64),
+                })
+                .collect(),
+        })
     }
 
     fn stat(&self, _: &Path, point: &Point, path: &str) -> Result<FileMeta> {

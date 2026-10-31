@@ -822,6 +822,73 @@ pub const CATALOG: &[Entry] = &[
         "手助けが必要と示されているページはありません。",
     ),
     msg("health.none_stale", "表示できるページはありません。"),
+    msg("health.knowledge_name", "読み取れない知識ファイル"),
+    msg(
+        "health.knowledge_desc",
+        "ウィキが読める形になっていない、主張と出典のファイル。これらからは何も読み取られず、ページには影響しません。",
+    ),
+    msg("health.col_file", "ファイル"),
+    msg("health.col_rule", "問題の内容"),
+    msg(
+        "health.knowledge_action",
+        "修正したファイルを提案するか、ファイルの削除を提案してください。",
+    ),
+    msg(
+        "health.none_knowledge",
+        "読み取れない知識ファイルはありません。",
+    ),
+    msg(
+        "health.rule_path",
+        "ファイルが knowledge/claims にも knowledge/sources にもないか、ファイル名が「正しい形式の id + .yaml」になっていません。",
+    ),
+    msg(
+        "health.rule_not_text",
+        "ファイルが UTF-8 のテキストではありません。",
+    ),
+    msg(
+        "health.rule_too_long",
+        "ファイルが、知識ファイルとして許される長さを超えています。",
+    ),
+    msg(
+        "health.rule_syntax",
+        "テキストが、ウィキが読む単純な YAML の範囲に収まっていません。",
+    ),
+    msg("health.rule_missing", "形式で必須のキーがありません。"),
+    msg("health.rule_unknown", "形式にないキーがあります。"),
+    msg(
+        "health.rule_type",
+        "値の形が、そのキーに必要な形ではありません。",
+    ),
+    msg(
+        "health.rule_number",
+        "形式に数値はありません。日付や年は文字列で書いてください。",
+    ),
+    msg(
+        "health.rule_value",
+        "値が、そのキーで許される語や形式の外にあります。",
+    ),
+    msg("health.rule_id", "識別子の形式が正しくありません。"),
+    msg("health.rule_duplicate", "同じ項目が 2 回現れています。"),
+    msg(
+        "health.rule_bounds",
+        "リストまたはテキストが、形式で許される長さを超えています。",
+    ),
+    msg(
+        "health.rule_reference",
+        "ウィキにない出典または主張が指定されています。",
+    ),
+    msg(
+        "health.rule_anchor",
+        "表現が、ウィキにないページまたはページ内の段落を指しています。",
+    ),
+    msg(
+        "health.rule_in_use",
+        "別のファイルから指定されているファイルが削除されています。",
+    ),
+    msg(
+        "health.rule_owned",
+        "サービスだけが書くページのキーも変更されています。",
+    ),
     msg("title.links", "{page} へのリンク · {wiki} · {product}"),
     msg("links.heading", "{page} へのリンク元のページ"),
     msg(
@@ -1230,6 +1297,14 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "outcome_note.unchanged_refused",
         "履歴は、用意された変更をそのままでは受け付けませんでした。何も変更しておらず、提案はレビュー待ちのままです。",
+    ),
+    msg(
+        "outcome.knowledge_invalid",
+        "署名されませんでした: 主張または出典のファイルを受け付けられません",
+    ),
+    msg(
+        "outcome_note.knowledge_invalid",
+        "この提案の主張または出典のファイルが、ウィキが読める形になっていないか、この変更によって別のファイルが存在しないものを指すことになります。何も変更しておらず、提案はレビュー待ちのままです。ファイルを直してから、もう一度受け入れてください。",
     ),
     msg("outcome.too_large", "大きすぎて今は署名できません"),
     msg(

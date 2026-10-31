@@ -167,6 +167,18 @@ pub(super) async fn health(
                         )
                     })
                     .collect(),
+                // The file's repository path stands where a page's title does, and `rule` is the code of what is
+                // wrong with it (the words are the client's).
+                HealthRows::KnowledgeFiles(rows) => rows
+                    .iter()
+                    .map(|f| {
+                        item(
+                            &f.path,
+                            Resolve::KnowledgeFile,
+                            json!({"rule": f.rule.code()}),
+                        )
+                    })
+                    .collect(),
             };
             Reply::json(&json!({
                 "list": page.list.slug(),

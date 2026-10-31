@@ -45,6 +45,8 @@ pub enum Unchanged {
     Refused,
     /// The change needs more memory than one signing may use.
     TooLarge,
+    /// A claim or source file in the proposal is not acceptable (RFC 005 part 2 D-5): refused before the signer was asked.
+    KnowledgeInvalid,
     /// The signer was busy.
     Busy,
 }
@@ -151,6 +153,12 @@ pub(crate) fn outcome_of(
         }
         Err(AcceptFailure::Overlap { .. }) => AcceptOutcome::Overlap,
         Err(AcceptFailure::NothingToChange) => AcceptOutcome::NothingToChange,
+        Err(failure @ AcceptFailure::KnowledgeInvalid(_)) => {
+            log(&format!(
+                "an acceptance was refused before signing: {failure}"
+            ));
+            AcceptOutcome::Unchanged(Unchanged::KnowledgeInvalid)
+        }
         Err(AcceptFailure::Failed {
             acceptance,
             word,
@@ -231,6 +239,11 @@ pub fn render_accept_outcome(
             StatusCode::UNPROCESSABLE_ENTITY,
             Key::OutcomeUnchangedRefused,
             vec![t.get(Key::OutcomeNoteUnchangedRefused)],
+        ),
+        AcceptOutcome::Unchanged(Unchanged::KnowledgeInvalid) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Key::OutcomeKnowledgeInvalid,
+            vec![t.get(Key::OutcomeNoteKnowledgeInvalid)],
         ),
         AcceptOutcome::Unchanged(Unchanged::TooLarge) => (
             StatusCode::PAYLOAD_TOO_LARGE,
@@ -368,3 +381,6 @@ pub(crate) async fn accept(
     })
     .await
 }
+
+#[cfg(test)]
+mod tests;

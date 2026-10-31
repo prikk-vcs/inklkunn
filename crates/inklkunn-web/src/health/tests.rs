@@ -13,7 +13,8 @@ fn every_list_has_its_address_and_the_address_leads_back_to_it() {
             "dead-ends",
             "redirects",
             "wants-help",
-            "stale"
+            "stale",
+            "knowledge-files"
         ]
     );
     for kind in Kind::ALL {
@@ -44,6 +45,7 @@ fn what_resolves_a_row_is_one_word_in_the_pages_and_one_code_in_the_api() {
         Resolve::Double,
         Resolve::Help,
         Resolve::Review,
+        Resolve::KnowledgeFile,
     ];
     let ja = crate::catalog::Lang::from_tag("ja").unwrap();
     for resolve in all {

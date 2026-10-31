@@ -1,7 +1,7 @@
 //! The health lists and the backlinks (RFC 003 D-9; requirements RD-5, RD-6; NAV-15): what can be improved in a
 //! wiki, from the link graph of the tip, **each row with what would resolve it**, framed as opportunities and
-//! never as faults. `-/health` names the six lists; `-/health/{wanted,orphans,dead-ends,redirects,wants-help,
-//! stale}` shows one; `-/links/<Title>` shows the pages that link to a page, each with the line that makes the
+//! never as faults. `-/health` names the lists; `-/health/{wanted,orphans,dead-ends,redirects,wants-help,
+//! stale,knowledge-files}` shows one (the last, RFC 005 part 2 D-5, from the knowledge index of the tip); `-/links/<Title>` shows the pages that link to a page, each with the line that makes the
 //! link.
 //!
 //! Nobody can create a page until proposals arrive (RFC 004), so the action beside a row is said in words and
@@ -13,6 +13,10 @@ use axum::extract::rejection::PathRejection;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
+use std::sync::Arc;
+
+use inklkunn_core::knowledge::Rule;
+use inklkunn_core::knowledge::index::KnowledgeIndex;
 use inklkunn_core::read::{
     Backlink, BacklinkKind, LinkGraph, Lookup, ReadError, RedirectIssueKind,
 };
@@ -27,7 +31,7 @@ use crate::wiki::{
     Choice, Shell, blocking, generic_not_found, notice, render_failed, with_retry_after,
 };
 
-/// The six lists, by the word the address ends with.
+/// The lists, by the word the address ends with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
     Wanted,
@@ -36,16 +40,18 @@ enum Kind {
     Redirects,
     WantsHelp,
     Stale,
+    KnowledgeFiles,
 }
 
 impl Kind {
-    const ALL: [Kind; 6] = [
+    const ALL: [Kind; 7] = [
         Kind::Wanted,
         Kind::Orphans,
         Kind::DeadEnds,
         Kind::Redirects,
         Kind::WantsHelp,
         Kind::Stale,
+        Kind::KnowledgeFiles,
     ];
 
     const fn slug(self) -> &'static str {
@@ -56,6 +62,7 @@ impl Kind {
             Kind::Redirects => "redirects",
             Kind::WantsHelp => "wants-help",
             Kind::Stale => "stale",
+            Kind::KnowledgeFiles => "knowledge-files",
         }
     }
 
@@ -71,6 +78,7 @@ impl Kind {
             Kind::Redirects => Key::HealthRedirectsName,
             Kind::WantsHelp => Key::HealthHelpName,
             Kind::Stale => Key::HealthStaleName,
+            Kind::KnowledgeFiles => Key::HealthKnowledgeName,
         }
     }
 
@@ -82,6 +90,7 @@ impl Kind {
             Kind::Redirects => Key::HealthRedirectsDesc,
             Kind::WantsHelp => Key::HealthHelpDesc,
             Kind::Stale => Key::HealthStaleDesc,
+            Kind::KnowledgeFiles => Key::HealthKnowledgeDesc,
         }
     }
 
@@ -93,6 +102,7 @@ impl Kind {
             Kind::Redirects => Key::HealthNoneRedirects,
             Kind::WantsHelp => Key::HealthNoneHelp,
             Kind::Stale => Key::HealthNoneStale,
+            Kind::KnowledgeFiles => Key::HealthNoneKnowledge,
         }
     }
 }
@@ -119,6 +129,8 @@ pub(crate) enum Resolve {
     Help,
     /// A page that has gone long without a change.
     Review,
+    /// A knowledge file that cannot be read.
+    KnowledgeFile,
 }
 
 impl Resolve {
@@ -133,6 +145,7 @@ impl Resolve {
             Resolve::Double => Key::HealthActionDouble,
             Resolve::Help => Key::HealthHelpAction,
             Resolve::Review => Key::HealthStaleAction,
+            Resolve::KnowledgeFile => Key::HealthKnowledgeAction,
         }
     }
 
@@ -147,6 +160,7 @@ impl Resolve {
             Resolve::Long | Resolve::Double => "point-at-final-page",
             Resolve::Help => "finish-and-unmark",
             Resolve::Review => "review",
+            Resolve::KnowledgeFile => "fix-or-remove-file",
         }
     }
 
@@ -168,6 +182,28 @@ impl Resolve {
             Resolve::Double => Key::HealthProblemDouble,
             _ => Key::HealthProblemBroken,
         }
+    }
+}
+
+/// The catalog sentence for the rule a knowledge file broke.
+pub(crate) const fn rule_key(rule: Rule) -> Key {
+    match rule {
+        Rule::Path => Key::HealthRulePath,
+        Rule::NotText => Key::HealthRuleNotText,
+        Rule::TooLong => Key::HealthRuleTooLong,
+        Rule::Syntax => Key::HealthRuleSyntax,
+        Rule::Missing => Key::HealthRuleMissing,
+        Rule::Unknown => Key::HealthRuleUnknown,
+        Rule::Type => Key::HealthRuleType,
+        Rule::Number => Key::HealthRuleNumber,
+        Rule::Value => Key::HealthRuleValue,
+        Rule::Id => Key::HealthRuleId,
+        Rule::Duplicate => Key::HealthRuleDuplicate,
+        Rule::Bounds => Key::HealthRuleBounds,
+        Rule::Reference => Key::HealthRuleReference,
+        Rule::Anchor => Key::HealthRuleAnchor,
+        Rule::InUse => Key::HealthRuleInUse,
+        Rule::Owned => Key::HealthRuleOwned,
     }
 }
 
@@ -381,6 +417,8 @@ fn rows_of(
                 rows,
             )
         }
+        // Its rows come from the knowledge index, not from the link graph: see `knowledge_rows`.
+        Kind::KnowledgeFiles => (Vec::new(), Vec::new()),
         Kind::Stale => {
             let rows = stale
                 .map(|s| {
@@ -425,6 +463,39 @@ fn rows_of(
     }
 }
 
+/// The rows of the list of knowledge files that cannot be read: the file's place in the repository (a storage path,
+/// plain text), what is wrong with it, and what would resolve it.
+fn knowledge_rows(page: &Page, index: &KnowledgeIndex) -> (Vec<String>, Vec<Vec<Cell>>) {
+    let rows = index
+        .invalid()
+        .iter()
+        .map(|row| {
+            let rule = Rule::from_code(&row.rule).unwrap_or(Rule::Syntax);
+            vec![
+                Cell::text(row.path.clone()),
+                Cell::text(page.get(rule_key(rule))),
+                Cell::text(page.get(Resolve::KnowledgeFile.key())),
+            ]
+        })
+        .collect();
+    (
+        vec![
+            page.get(Key::HealthColFile),
+            page.get(Key::HealthColRule),
+            page.get(Key::HealthColAction),
+        ],
+        rows,
+    )
+}
+
+/// What the page of one list is made from.
+enum Built {
+    /// The link graph (and, for the stale list, the changes).
+    Links(Arc<LinkGraph>, Option<inklkunn_core::read::StaleList>),
+    /// The knowledge index.
+    Knowledge(Arc<KnowledgeIndex>),
+}
+
 /// `GET /{slug}/-/health/{list}`.
 pub(crate) async fn health_list(
     State(state): State<PageState>,
@@ -443,16 +514,21 @@ pub(crate) async fn health_list(
     };
     let for_work = wiki.clone();
     let built = blocking(move || -> Result<_, ReadError> {
+        if kind == Kind::KnowledgeFiles {
+            return Ok(Built::Knowledge(
+                services.read.knowledge_index(&for_work, None)?,
+            ));
+        }
         let graph = services.read.link_graph(&for_work, None)?;
         let stale = if kind == Kind::Stale {
             Some(services.read.stale_pages(&for_work)?)
         } else {
             None
         };
-        Ok((graph, stale))
+        Ok(Built::Links(graph, stale))
     })
     .await;
-    let (graph, stale) = match built {
+    let built = match built {
         Some(Ok(built)) => built,
         Some(Err(_)) => return unavailable(&page, &wiki),
         None => return render_failed(&page),
@@ -464,7 +540,12 @@ pub(crate) async fn health_list(
         Subject::Surface(&format!("-/health/{}", kind.slug())),
     );
     let mut notes = Vec::new();
-    let (headers, rows) = rows_of(&page, t, &wiki, kind, &graph, stale.as_ref(), &mut notes);
+    let (headers, rows) = match &built {
+        Built::Links(graph, stale) => {
+            rows_of(&page, t, &wiki, kind, graph, stale.as_ref(), &mut notes)
+        }
+        Built::Knowledge(index) => knowledge_rows(&page, index),
+    };
     let name = wiki.display_name.as_str();
     let rendered = ListTpl {
         page: &page,
