@@ -10,7 +10,7 @@
 //! pages, a 500-deep chain; the smallest working `RLIMIT_DATA`, which is what the ceiling counts):**
 //! `branch` and `log` are flat (7 MiB); `tree` and `cat` need 1.0 × S; `show` of a small patch is flat
 //! (10 MiB) and follows the patch's content otherwise; `diff` of the whole history needs **4.6 × S**;
-//! `extract` 0.9 × S; `verify` 2.0 × S. The table keeps the **larger** of inklkunn's measurement and
+//! `extract` 0.9 × S; `verify` 2.0 × S. `status` (handoff 004 T5, prikk 0.55.0): flat, 2 MiB at 3,000 pages. The table keeps the **larger** of inklkunn's measurement and
 //! planeter's single-large-file worst case on 0.52.0 (`tree`/`cat` 2.1 ×, `show` 3.6 ×, `verify` 4.1 ×),
 //! because an attachment is exactly that shape and M0 had none to measure; the single-large-attachment
 //! shape joins the re-baseline corpus when attachments arrive (M1). `diff` has no planeter precedent and
@@ -68,6 +68,8 @@ pub enum ReadVerb {
     Extract,
     /// `verify`.
     Verify,
+    /// `status` (the unsealed queue, the interrupted states; recovery's witness).
+    Status,
 }
 
 /// How a verb's cost is derived: `max(floor, S × store_tenths / 10)`.
@@ -81,7 +83,7 @@ pub struct CostRule {
 
 impl ReadVerb {
     /// Every verb.
-    pub const ALL: [ReadVerb; 8] = [
+    pub const ALL: [ReadVerb; 9] = [
         ReadVerb::Branch,
         ReadVerb::Tree,
         ReadVerb::Cat,
@@ -90,6 +92,7 @@ impl ReadVerb {
         ReadVerb::Diff,
         ReadVerb::Extract,
         ReadVerb::Verify,
+        ReadVerb::Status,
     ];
 
     /// The prikk subcommand.
@@ -103,14 +106,17 @@ impl ReadVerb {
             ReadVerb::Diff => "diff",
             ReadVerb::Extract => "extract",
             ReadVerb::Verify => "verify",
+            ReadVerb::Status => "status",
         }
     }
 
     /// The one table.
     pub const fn rule(self) -> CostRule {
         let (store_tenths, floor) = match self {
-            // Measured flat: 7 MiB of data at every size.
-            ReadVerb::Branch | ReadVerb::Log => (0, COST_FLOOR),
+            // Measured flat: 7 MiB of data at every size. `status` reads the active WAL's records and nothing of the
+            // store: 2 MiB on a 3,000-page repository and on an empty one (prikk 0.55.0, the smallest working
+            // `RLIMIT_DATA`), so it is flat at the floor.
+            ReadVerb::Branch | ReadVerb::Log | ReadVerb::Status => (0, COST_FLOOR),
             // Measured 1.0 × S on many small pages; 2.1 × S is the single-large-file worst case (planeter).
             ReadVerb::Tree | ReadVerb::Cat => (21, COST_FLOOR),
             // Measured flat for a small patch; follows the patch's content, up to 3.6 × S for large text.
@@ -143,9 +149,12 @@ impl ReadVerb {
     /// The server's wall-time bound for this verb, in seconds.
     pub const fn deadline_secs(self) -> u64 {
         match self {
-            ReadVerb::Branch | ReadVerb::Log | ReadVerb::Cat | ReadVerb::Tree | ReadVerb::Show => {
-                30
-            }
+            ReadVerb::Branch
+            | ReadVerb::Log
+            | ReadVerb::Cat
+            | ReadVerb::Tree
+            | ReadVerb::Show
+            | ReadVerb::Status => 30,
             ReadVerb::Diff | ReadVerb::Extract => 120,
             ReadVerb::Verify => 300,
         }

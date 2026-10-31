@@ -366,6 +366,60 @@ fn verify_reports_a_verdict() {
 }
 
 #[test]
+fn status_reports_an_empty_queue_and_no_torn_bytes_on_a_sealed_repository() {
+    if !prikk_on_path() {
+        println!("{SKIP_PRIKK}");
+        return;
+    }
+    for sandbox in policies() {
+        let tmp = TempDir::new("status");
+        let (repo, _) = fixture(&tmp);
+        let d = driver(sandbox);
+        let s = d.status(&repo).expect("status runs");
+        assert_eq!(s.schema_version, inklkunn_prikk::schema::STATUS_REPORT);
+        assert_eq!(s.queue.count, 0, "{s:?}");
+        assert!(s.queue.patches.is_empty());
+        assert_eq!(s.trailing_partial_wal_bytes, 0);
+        assert_eq!(s.current_branch.as_deref(), Some("heads/main"));
+        assert!(s.provisional_worktree.is_none() && s.interrupted_materialization.is_none());
+    }
+}
+
+#[test]
+fn a_status_report_of_another_schema_or_shape_is_refused_through_the_driver() {
+    let tmp = TempDir::new("status-shapes");
+    let repo = tmp.0.join("repo");
+    fs::create_dir_all(repo.join(".prikk")).unwrap();
+    for (n, (body, schema_refused)) in [
+        (r#"{"schema_version": "status-report-v9", "queue": {}}"#, true),
+        (r#"{"schema_version": "status-report-v1", "queue": {}}"#, false),
+        (
+            r#"{"schema_version": "status-report-v1", "current_branch": null, "active_wal_records": 0, "trailing_partial_wal_bytes": 0, "provisional_worktree": null, "interrupted_materialization": null, "queue": {"count": 3, "target_ref": null, "patches": []}}"#,
+            false,
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let fake = shim_named(
+            &tmp.0,
+            &format!("prikk-{n}"),
+            &format!("case \"$1\" in\n  --version) echo 'prikk 0.54.0' ;;\n  status) echo '{body}' ;;\nesac"),
+        );
+        let d = open_shim(&fake).expect("open");
+        let r = retry(|| d.status(&repo));
+        if schema_refused {
+            assert!(
+                matches!(&r, Err(StorageError::UnsupportedSchema { found, .. }) if found == "status-report-v9"),
+                "{r:?}"
+            );
+        } else {
+            assert!(matches!(&r, Err(StorageError::Damaged { .. })), "{body}: {r:?}");
+        }
+    }
+}
+
+#[test]
 fn refusals_carry_prikks_text_and_a_missing_repository_is_refused() {
     if !prikk_on_path() {
         println!("{SKIP_PRIKK}");

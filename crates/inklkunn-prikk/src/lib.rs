@@ -25,8 +25,8 @@ pub use driver::{
 pub use sandbox::{BwrapConfig, CallLimits, Mounts, Run, Sandbox};
 pub use storage::{
     Change, Diff, DiffEntry, Entry, ExtractBounds, FileMeta, History, HistoryBlock, Materialized,
-    Operation, Patch, PatchMessage, Point, Result, Stage, StageOutcome, Storage, StorageError,
-    Tree, Unavailable, Verdict, Verification, View, Views,
+    Operation, Patch, PatchMessage, Point, Queue, QueuedPatch, RepoStatus, Result, Stage,
+    StageOutcome, Storage, StorageError, Tree, Unavailable, Verdict, Verification, View, Views,
 };
 
 /// The prikk floor (RFC 001 D-3 / RFC 010 D-3): the oldest prikk the driver accepts. One value with the

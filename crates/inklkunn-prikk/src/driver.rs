@@ -17,8 +17,8 @@ use crate::sandbox::{
     CallLimits, Mounts, Run, Sandbox, probe_bwrap, probe_prlimit, resolve_binary,
 };
 use crate::storage::{
-    Change, Diff, ExtractBounds, FileMeta, History, Materialized, Point, Result, Storage,
-    StorageError, Tree, Unavailable, Verification, Views,
+    Change, Diff, ExtractBounds, FileMeta, History, Materialized, Point, RepoStatus, Result,
+    Storage, StorageError, Tree, Unavailable, Verification, Views,
 };
 
 /// The pinned report schemas (RFC 001 D-3): one name per verb. A report naming anything else is refused.
@@ -39,6 +39,8 @@ pub mod schema {
     pub const EXTRACT_REPORT: &str = "extract-report-v1";
     /// `verify --format json`.
     pub const VERIFY_REPORT: &str = "verify-report-v1";
+    /// `status --format json` (prikk 0.55.0; handoff 004 T5).
+    pub const STATUS_REPORT: &str = "status-report-v1";
 }
 
 /// `history` lists this many blocks when the caller gives no limit.
@@ -718,6 +720,17 @@ impl Storage for PrikkCli {
             )),
         }
     }
+
+    fn status(&self, repo: &Path) -> Result<RepoStatus> {
+        self.run_json::<RepoStatus>(
+            ReadVerb::Status,
+            repo,
+            None,
+            &["status", "--format", "json"],
+            schema::STATUS_REPORT,
+        )?
+        .checked()
+    }
 }
 
 impl PrikkCli {
@@ -776,5 +789,7 @@ impl PrikkCli {
     }
 }
 
+#[cfg(test)]
+mod status_tests;
 #[cfg(test)]
 mod tests;
