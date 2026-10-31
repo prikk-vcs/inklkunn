@@ -137,8 +137,10 @@ pub struct Witness {
     pub status: RepoStatus,
     /// `prikk doctor`.
     pub doctor: DoctorReport,
-    /// `prikk worktree-status`.
-    pub worktree: WorktreeState,
+    /// `prikk worktree-status`; `None` when it could not be asked because the log is torn (prikk refuses to
+    /// report a worktree over a log with trailing partial bytes, and says to repair the log first): the worktree
+    /// is then taken to need putting back after the torn commit is discarded.
+    pub worktree: Option<WorktreeState>,
     /// The locks that are held.
     pub locks: Vec<HeldLock>,
     /// Processes of somebody else's that may be working in the repository.
@@ -560,13 +562,13 @@ pub fn build(w: &Witness) -> Plan {
             ""
         }
     ));
-    wit.push(if w.worktree.clean {
-        "the worktree is the baseline".to_owned()
-    } else {
-        format!(
+    wit.push(match &w.worktree {
+        Some(s) if s.clean => "the worktree is the baseline".to_owned(),
+        Some(s) => format!(
             "the worktree differs from its baseline ({} path(s), {} declared rename(s))",
-            w.worktree.changes, w.worktree.declarations
-        )
+            s.changes, s.declarations
+        ),
+        None => "the worktree could not be compared with its baseline: the log is torn".to_owned(),
     });
     wit.push(format!("{} lock(s) held", w.locks.len()));
     if !w.foreign.is_empty() {
@@ -636,7 +638,7 @@ pub fn build(w: &Witness) -> Plan {
     }
     let view = plan.view.clone();
     let restore = |steps: &mut Vec<Step>| {
-        if !w.worktree.clean
+        if w.worktree.is_none_or(|s| !s.clean)
             && let Some(view) = &view
         {
             steps.push(Step::RestoreWorktree { view: view.clone() });

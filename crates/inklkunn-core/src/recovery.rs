@@ -532,6 +532,11 @@ impl Recovery {
             h.purpose != Purpose::Export.as_str() && h.purpose != Purpose::Refresh.as_str()
         });
         let acts = self.unfinished_acts(wiki, dead.as_ref())?;
+        let status = p
+            .storage
+            .status(&repo)
+            .map_err(|e| witness_error("prikk status", e))?;
+        let torn = status.trailing_partial_wal_bytes > 0;
         let table = self.processes.processes();
         Ok(Witness {
             wiki: wiki.id.clone(),
@@ -544,18 +549,21 @@ impl Recovery {
                 .filter(|e| e.end.is_none())
                 .count(),
             acts,
-            status: p
-                .storage
-                .status(&repo)
-                .map_err(|e| witness_error("prikk status", e))?,
+            status,
             doctor: p
                 .witnesses
                 .doctor(&wiki.id)
                 .map_err(|e| witness_error("prikk doctor", e))?,
-            worktree: p
-                .witnesses
-                .worktree(&wiki.id)
-                .map_err(|e| witness_error("prikk worktree-status", e))?,
+            worktree: if torn {
+                // prikk refuses to compare a worktree over a torn log; the plan puts it back after the discard.
+                None
+            } else {
+                Some(
+                    p.witnesses
+                        .worktree(&wiki.id)
+                        .map_err(|e| witness_error("prikk worktree-status", e))?,
+                )
+            },
             locks: p
                 .witnesses
                 .locks(&wiki.id)

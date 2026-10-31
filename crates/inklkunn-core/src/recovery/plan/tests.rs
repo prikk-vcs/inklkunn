@@ -109,11 +109,11 @@ fn flagged() -> Witness {
         acts: Vec::new(),
         status: status(Vec::new(), 0),
         doctor: doctor(vec![diag(Severity::Info, "PRIKK-DOCTOR-VERIFY-OK", None)]),
-        worktree: WorktreeState {
+        worktree: Some(WorktreeState {
             clean: true,
             changes: 0,
             declarations: 0,
-        },
+        }),
         locks: Vec::new(),
         foreign: Vec::new(),
         lease_held: true,
@@ -271,11 +271,7 @@ fn a_torn_commit_is_discarded_with_the_act_ended_as_discarded_or_reported_when_n
     let mut w = flagged();
     w.status = status(Vec::new(), 900);
     w.doctor = torn();
-    w.worktree = WorktreeState {
-        clean: false,
-        changes: 1,
-        declarations: 0,
-    };
+    w.worktree = None; // prikk will not compare a worktree over a torn log
     w.acts = vec![act(Chain::NotSealed)];
     let plan = build(&w);
     assert_eq!(plan.stop, None);
@@ -362,11 +358,11 @@ fn an_act_with_nothing_queued_is_abandoned_when_not_in_the_history_and_recorded_
         })
     ));
     // Killed with the files written and not committed: the worktree is put back first.
-    w.worktree = WorktreeState {
+    w.worktree = Some(WorktreeState {
         clean: false,
         changes: 2,
         declarations: 1,
-    };
+    });
     assert_eq!(
         names(&build(&w)),
         [
@@ -527,11 +523,11 @@ fn the_plan_is_kept_as_json_and_read_back_as_what_the_signer_may_do_and_nothing_
     w.status = status(vec![patch(MESSAGE)], 0);
     let a = act(Chain::NotSealed);
     w.acts = vec![a.clone()];
-    w.worktree = WorktreeState {
+    w.worktree = Some(WorktreeState {
         clean: false,
         changes: 1,
         declarations: 0,
-    };
+    });
     let plan = build(&w);
     let facts = facts_of(&plan.wiki, &plan.to_json()).expect("a plan of this version");
     assert_eq!(facts.wiki, plan.wiki);
