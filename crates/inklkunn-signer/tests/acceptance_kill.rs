@@ -2,11 +2,23 @@
 //! `SIGKILL`ed at each of D-4's steps in turn**, and recovery then leaves `prikk verify` green, exactly the expected
 //! blocks in `log`, the acceptance record and the intent consistent with them, and the plan recorded.
 //!
-//! A step is named two ways. The acceptor's own steps ([`inklkunn_core::AcceptStep`]) are named by its test observer,
-//! which the child sets to stop the process there. The prikk calls inside the signer's write sequence (`status`,
-//! `worktree-status`, `commit`, `seal`, `verify`) are held by a **stand-in `prikk`** that tells the parent it is there
-//! and sleeps until killed (the house pattern of `creation_kill.rs`). The parent then kills the child and the held
-//! stand-in, and a fresh recovery, as the next start would run it, reads the witnesses the kill left.
+//! A step is named in five ways. The acceptor's own steps ([`inklkunn_core::AcceptStep`]) and the system act's
+//! ([`inklkunn_core::SystemStep`]) are named by their test observers, which the child sets to stop the process there.
+//! The prikk calls inside the signer's write sequence (`status`, `worktree-status`, `commit`, `seal`, `verify`) are
+//! reached by a **stand-in `prikk`** (the house pattern of `creation_kill.rs`), in three ways:
+//!
+//! - *before*: it tells the parent it is there and sleeps until killed, **before** the real verb runs;
+//! - *after* (handoff 004, P10): it runs the **real verb to completion**, then tells the parent it is there and sleeps
+//!   until killed, so the kill lands with the verb's effect durable and its caller waiting for an answer that never
+//!   comes (a `commit` whose patch is queued; a `seal` that sealed). Deterministic: the state is the same every time;
+//! - *inside* (P10): it starts the **real verb**, waits a couple of milliseconds, tells the parent, and waits for the
+//!   verb; the parent kills the child and the verb as fast as it can, so the kill lands inside prikk's own write. Not
+//!   deterministic by nature (it depends on how far the verb got), so these rows assert every invariant of the matrix
+//!   and read **what the kill left** from the witnesses instead of naming a plan beforehand.
+//!
+//! The parent then kills the child and what it held, and a fresh recovery, as the next start would run it, reads the
+//! witnesses the kill left. One row kills **the recovery itself** after its `seal-queued` step has sealed (the
+//! stand-in runs the real seal, then waits), and a third recovery finishes what the second left.
 //!
 //! The child is this test executable run again with an environment variable; it is here and not in
 //! `inklkunn-core` because only this crate may spawn a process (the boundary gate). Self-skips with a visible line
@@ -19,13 +31,15 @@ use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use inklkunn_core::message::{Kind, SystemLabel};
 use inklkunn_core::proposal::{ProposalEdit, ProposalService, QuotaConfig};
 use inklkunn_core::reconcile::reconcile;
 use inklkunn_core::{
     AcceptStep, AcceptanceParts, Authorizer, IdentityAuthority, KeyAuthority, LeaseConfig,
-    Principal, ProposalAcceptor, ReadConfig, ReadService, Recover, Recovery, RecoveryMode,
-    RecoveryOutcome, RecoveryParts, Signer, SignerConfig, StoreActs, StoreAuthz, StoreLedger,
-    SystemActs, WikiLeases, Witnesses, WriteLeases, create_wiki,
+    PreparedFile, Principal, ProposalAcceptor, ReadConfig, ReadService, Recover, Recovery,
+    RecoveryError, RecoveryMode, RecoveryOutcome, RecoveryParts, Signer, SignerConfig, StoreActs,
+    StoreAuthz, StoreLedger, SystemActs, SystemRequest, SystemStep, WikiLeases, Witnesses,
+    WriteLeases, create_wiki,
 };
 use inklkunn_prikk::{Admission, Point, PrikkCli, Sandbox, Storage};
 use inklkunn_store::{
@@ -67,12 +81,27 @@ fn dir_under(base: &Path, tag: &str) -> Dir {
     Dir(p)
 }
 
-/// The stand-in `prikk`: counts its calls per verb and, when `block-<verb>` names the call's index, writes its own
-/// process id to `blocked-<verb>-<n>` and becomes a sleep until killed. Every other call goes to the real prikk.
+/// How long the stand-in lets the real verb run before it tells the parent it is inside (`inside-` rows), in seconds
+/// (`INKLKUNN_AK_INSIDE` overrides it, to look at where the kill lands for other delays).
+fn inside_seconds() -> String {
+    std::env::var("INKLKUNN_AK_INSIDE").unwrap_or_else(|_| "0.0005".to_owned())
+}
+
+/// The stand-in `prikk`: counts its calls per verb and, when a control file names the call's index, holds it:
+///
+/// - `block-<verb>` = n: writes its own process id to `blocked-<verb>-<n>` and becomes a sleep until killed, **before**
+///   the real verb runs;
+/// - `after-<verb>` = n: runs the real verb **to completion**, then writes its id to `blocked-after-<verb>-<n>` and
+///   becomes a sleep until killed (the verb's effect is durable, its caller has not been answered);
+/// - `inside-<verb>` = n: starts the real verb, waits [`inside_seconds`], writes its id and the verb's to
+///   `blocked-inside-<verb>-<n>` and waits for the verb (the parent kills both as fast as it can).
+///
+/// Every other call goes to the real prikk.
 fn write_standin(ctl: &Path, real: &Path) -> PathBuf {
     let script = format!(
         r#"#!/bin/sh
 CTL="{ctl}"
+REAL="{real}"
 verb="$1"
 n="$(cat "$CTL/count-$verb" 2>/dev/null || echo 0)"
 echo "$((n + 1))" > "$CTL/count-$verb"
@@ -80,10 +109,24 @@ if [ -e "$CTL/block-$verb" ] && [ "$(cat "$CTL/block-$verb")" = "$n" ]; then
   echo "$$" > "$CTL/blocked-$verb-$n"
   exec sleep 3600
 fi
-exec "{real}" "$@"
+if [ -e "$CTL/after-$verb" ] && [ "$(cat "$CTL/after-$verb")" = "$n" ]; then
+  "$REAL" "$@"
+  echo "$$" > "$CTL/blocked-after-$verb-$n"
+  exec sleep 3600
+fi
+if [ -e "$CTL/inside-$verb" ] && [ "$(cat "$CTL/inside-$verb")" = "$n" ]; then
+  "$REAL" "$@" &
+  real_pid=$!
+  sleep {inside}
+  echo "$$ $real_pid" > "$CTL/blocked-inside-$verb-$n"
+  wait "$real_pid"
+  exit $?
+fi
+exec "$REAL" "$@"
 "#,
         ctl = ctl.display(),
-        real = real.display()
+        real = real.display(),
+        inside = inside_seconds()
     );
     let path = ctl.join("prikk");
     std::fs::write(&path, script).expect("stand-in");
@@ -200,6 +243,22 @@ impl Services {
         .with_audit(self.store.clone())
     }
 
+    fn system_acts(&self) -> SystemActs {
+        SystemActs::new(
+            Authorizer::new(
+                Arc::new(StoreAuthz::new(self.store.clone(), self.store.clone())),
+                self.store.clone(),
+            ),
+            self.store.clone(),
+            self.store.clone(),
+            self.storage.clone(),
+            self.layout.clone(),
+            self.signer.clone(),
+            self.leases.clone(),
+        )
+        .with_audit(self.store.clone())
+    }
+
     fn recovery(&self) -> Recovery {
         Recovery::new(RecoveryParts {
             acceptances: self.store.clone(),
@@ -216,7 +275,11 @@ impl Services {
     }
 }
 
-/// The child: accept the proposal the spec names, and stop where the spec says. It has no way to finish.
+/// The summary of the system act the child makes, which finds it again in the records.
+const SYSTEM_SUMMARY: &str = "Add a system page";
+
+/// The child: do what the spec says (accept the proposal it names, make a system act, or run a recovery) and stop
+/// where the spec says. It has no way to finish.
 #[test]
 fn child_accepts_and_is_stopped() {
     let Some(spec) = std::env::var_os("INKLKUNN_AK_CHILD") else {
@@ -235,26 +298,93 @@ fn child_accepts_and_is_stopped() {
     let s = open_services(&paths, &format!("child-{}", std::process::id()), false);
     let ctl = PathBuf::from(text("ctl"));
     let step = spec.get("step").and_then(|v| v.as_str()).map(str::to_owned);
-    let mut acceptor = s.acceptor();
-    if let Some(step) = step {
-        let reached = ctl.join("reached");
-        acceptor = acceptor.with_observer(Arc::new(move |at: AcceptStep| {
-            if at.as_str() == step {
-                std::fs::write(&reached, at.as_str()).unwrap();
-                std::thread::sleep(Duration::from_secs(3600));
-            }
-        }));
-    }
     let wiki = s.store.get(&WikiId::parse(&text("wiki")).unwrap()).unwrap();
-    let who = Principal::session(authority(), AccountId::parse(&text("maintainer")).unwrap());
-    let outcome = acceptor.accept(
-        &who,
-        &wiki,
-        &ProposalId::parse(&text("proposal")).unwrap(),
-        1,
-    );
+    // Stop at the step the spec names: write the marker and sleep.
+    let stop_at = move |name: &'static str, step: Option<String>, ctl: PathBuf| {
+        if step.as_deref() == Some(name) {
+            std::fs::write(ctl.join("reached"), name).unwrap();
+            std::thread::sleep(Duration::from_secs(3600));
+        }
+    };
+    let outcome = match text("mode").as_str() {
+        "accept" => {
+            let mut acceptor = s.acceptor();
+            if step.is_some() {
+                let (ctl, step) = (ctl.clone(), step.clone());
+                acceptor = acceptor.with_observer(Arc::new(move |at: AcceptStep| {
+                    stop_at(at.as_str(), step.clone(), ctl.clone());
+                }));
+            }
+            let who =
+                Principal::session(authority(), AccountId::parse(&text("maintainer")).unwrap());
+            format!(
+                "{:?}",
+                acceptor.accept(
+                    &who,
+                    &wiki,
+                    &ProposalId::parse(&text("proposal")).unwrap(),
+                    1
+                )
+            )
+        }
+        "system" => {
+            let mut acts = s.system_acts();
+            if step.is_some() {
+                let (ctl, step) = (ctl.clone(), step.clone());
+                acts = acts.with_observer(Arc::new(move |at: SystemStep| {
+                    stop_at(at.as_str(), step.clone(), ctl.clone());
+                }));
+            }
+            format!(
+                "{:?}",
+                acts.run(&wiki, &SystemLabel::inklkunn(), system_request())
+            )
+        }
+        "recover" => format!("{:?}", s.recovery().recover(&wiki, RecoveryMode::Run)),
+        other => panic!("unknown mode {other}"),
+    };
     // Reaching here means the child was not stopped: tell the parent, which treats it as a failure of the test.
-    std::fs::write(ctl.join("finished"), format!("{outcome:?}")).unwrap();
+    std::fs::write(ctl.join("finished"), outcome).unwrap();
+}
+
+/// The system act the child makes: one page, written through the service's own path.
+fn system_request() -> SystemRequest {
+    SystemRequest {
+        kind: inklkunn_store::SystemActKind::System,
+        summary: SYSTEM_SUMMARY.to_owned(),
+        files: vec![PreparedFile {
+            path: PathBuf::from("pages/Sys.md"),
+            content: Some(b"---\ntitle: Sys\nid: p-sys\n---\n\nA system page.\n".to_vec()),
+        }],
+        renames: Vec::new(),
+        imported_from: None,
+        planned_against: None,
+    }
+}
+
+/// Which act the child makes.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Who {
+    /// A proposal's acceptance.
+    Acceptance,
+    /// A change the service makes for itself.
+    System,
+}
+
+impl Who {
+    fn label(self) -> &'static str {
+        match self {
+            Who::Acceptance => "acceptance",
+            Who::System => "system act",
+        }
+    }
+
+    fn mode(self) -> &'static str {
+        match self {
+            Who::Acceptance => "accept",
+            Who::System => "system",
+        }
+    }
 }
 
 /// How a kill point is named.
@@ -262,166 +392,253 @@ fn child_accepts_and_is_stopped() {
 enum At {
     /// One of the acceptor's steps (D-4), by the observer.
     Step(AcceptStep),
-    /// The `n`-th call of a prikk verb since the child began (0-based), held by the stand-in before it runs.
+    /// One of the system act's steps, by the observer.
+    SysStep(SystemStep),
+    /// The `n`-th call of a prikk verb since the child began (0-based), held by the stand-in **before** it runs.
     Prikk(&'static str, u32),
+    /// The same call, held **after** the real verb ran to completion: its effect is durable, its caller waits.
+    After(&'static str, u32),
+    /// The same call, killed a couple of milliseconds **inside** the real verb.
+    Inside(&'static str, u32),
+    /// The acceptance is killed before the seal (a patch is queued); then **recovery** is killed after its
+    /// `seal-queued` step sealed (the real seal ran to completion), before any record of it was written.
+    RecoveryAfterSeal,
 }
 
 impl At {
     fn label(self) -> String {
         match self {
             At::Step(s) => s.as_str().to_owned(),
+            At::SysStep(s) => s.as_str().to_owned(),
             At::Prikk(verb, n) => format!("prikk {verb} #{n}"),
+            At::After(verb, n) => format!("prikk {verb} #{n} done"),
+            At::Inside(verb, n) => format!("inside prikk {verb} #{n}"),
+            At::RecoveryAfterSeal => "recovery, after seal-queued".to_owned(),
         }
     }
 }
 
 /// What recovery must have made of a kill at one point.
 struct Expect {
-    /// The steps of the recorded plan, in order.
-    steps: &'static [&'static str],
-    /// The change is in the history afterwards (one block more).
-    sealed: bool,
-    /// An acceptance record exists afterwards (the kill came after it was written).
+    /// The steps of the recorded plan, in order (`None` for a kill inside a real verb: whatever the state was).
+    steps: Option<&'static [&'static str]>,
+    /// The change is in the history afterwards (one block more). `None` for a kill inside a real verb: read from the
+    /// log, and every invariant is checked against what is found.
+    sealed: Option<bool>,
+    /// An acceptance record (or system act record) exists afterwards (the kill came after it was written).
     record: bool,
+    /// How many recovery acts are recorded afterwards: one, or two when a recovery was itself killed.
+    recoveries: usize,
 }
 
 const TAIL: [&str; 3] = ["verify", "reconcile", "clear-flag"];
 
+const fn fixed(steps: &'static [&'static str], sealed: bool, record: bool) -> Expect {
+    Expect {
+        steps: Some(steps),
+        sealed: Some(sealed),
+        record,
+        recoveries: 1,
+    }
+}
+
+const FAILED: &[&str] = &["end-failed", "verify", "reconcile", "clear-flag"];
+const RESTORED: &[&str] = &[
+    "restore-worktree",
+    "end-failed",
+    "verify",
+    "reconcile",
+    "clear-flag",
+];
+const QUEUED: &[&str] = &[
+    "seal-queued",
+    "end-sealed",
+    "verify",
+    "reconcile",
+    "clear-flag",
+];
+const SEALED: &[&str] = &["end-sealed", "verify", "reconcile", "clear-flag"];
+
 /// The matrix: D-4's steps in turn, then the prikk calls of the signer's write sequence between the intent and the
-/// signer's return.
-fn matrix() -> Vec<(At, Expect)> {
+/// signer's return (before the call, after the real call, and inside it), then the system act's, then a recovery
+/// that is itself killed.
+fn matrix() -> Vec<(Who, At, Expect)> {
+    use Who::{Acceptance, System};
     vec![
         // 1 – 2: only the lease holder's record exists; nothing else was written.
         (
+            Acceptance,
             At::Step(AcceptStep::LeaseTaken),
-            Expect {
-                steps: &TAIL,
-                sealed: false,
-                record: false,
-            },
+            fixed(&TAIL, false, false),
         ),
         (
+            Acceptance,
             At::Step(AcceptStep::Prepared),
-            Expect {
-                steps: &TAIL,
-                sealed: false,
-                record: false,
-            },
+            fixed(&TAIL, false, false),
         ),
         // 4: the acceptance record is written and the intent is not: the signer was never asked.
         (
+            Acceptance,
             At::Step(AcceptStep::AcceptanceRecorded),
-            Expect {
-                steps: &["end-failed", "verify", "reconcile", "clear-flag"],
-                sealed: false,
-                record: true,
-            },
+            fixed(FAILED, false, true),
         ),
         // The intent is written; the signer has not been asked, or was asked and had done nothing yet.
         (
+            Acceptance,
             At::Step(AcceptStep::IntentRecorded),
-            Expect {
-                steps: &["end-failed", "verify", "reconcile", "clear-flag"],
-                sealed: false,
-                record: true,
-            },
+            fixed(FAILED, false, true),
         ),
         (
+            Acceptance,
             At::Prikk("status", 0),
-            Expect {
-                steps: &["end-failed", "verify", "reconcile", "clear-flag"],
-                sealed: false,
-                record: true,
-            },
+            fixed(FAILED, false, true),
         ),
         (
+            Acceptance,
             At::Prikk("worktree-status", 0),
-            Expect {
-                steps: &["end-failed", "verify", "reconcile", "clear-flag"],
-                sealed: false,
-                record: true,
-            },
+            fixed(FAILED, false, true),
         ),
         // The files are in the worktree and `commit` has not run: the worktree is put back.
         (
+            Acceptance,
             At::Prikk("commit", 0),
-            Expect {
-                steps: &[
-                    "restore-worktree",
-                    "end-failed",
-                    "verify",
-                    "reconcile",
-                    "clear-flag",
-                ],
-                sealed: false,
-                record: true,
-            },
+            fixed(RESTORED, false, true),
+        ),
+        // `commit` ran to completion and its caller was never answered (a deadline after the patch is durable, P1):
+        // a patch is queued, and recovery completes it with `seal` alone.
+        (
+            Acceptance,
+            At::After("commit", 0),
+            fixed(QUEUED, true, true),
         ),
         // Committed, not sealed: a patch is queued, and recovery completes it with `seal` alone.
-        (
-            At::Prikk("seal", 0),
-            Expect {
-                steps: &[
-                    "seal-queued",
-                    "end-sealed",
-                    "verify",
-                    "reconcile",
-                    "clear-flag",
-                ],
-                sealed: true,
-                record: true,
-            },
-        ),
+        (Acceptance, At::Prikk("seal", 0), fixed(QUEUED, true, true)),
+        // Sealed in prikk, the caller never answered, none of it recorded.
+        (Acceptance, At::After("seal", 0), fixed(SEALED, true, true)),
         // Sealed in prikk, none of it recorded.
         (
+            Acceptance,
             At::Prikk("verify", 0),
-            Expect {
-                steps: &["end-sealed", "verify", "reconcile", "clear-flag"],
-                sealed: true,
-                record: true,
-            },
+            fixed(SEALED, true, true),
         ),
         (
+            Acceptance,
             At::Step(AcceptStep::SignerReturned),
-            Expect {
-                steps: &["end-sealed", "verify", "reconcile", "clear-flag"],
-                sealed: true,
-                record: true,
-            },
+            fixed(SEALED, true, true),
         ),
         // The acceptance's end is written; the intent's and the proposal's are not.
         (
+            Acceptance,
             At::Step(AcceptStep::AcceptanceSealed),
-            Expect {
-                steps: &["end-sealed", "verify", "reconcile", "clear-flag"],
-                sealed: true,
-                record: true,
-            },
+            fixed(SEALED, true, true),
         ),
         // The intent is complete; the proposal is not yet accepted.
         (
+            Acceptance,
             At::Step(AcceptStep::IntentCompleted),
-            Expect {
-                steps: &["end-sealed", "verify", "reconcile", "clear-flag"],
-                sealed: true,
-                record: true,
-            },
+            fixed(SEALED, true, true),
         ),
         // Every record is written; the caches, the reconciliation and the lease are what was left.
         (
+            Acceptance,
             At::Step(AcceptStep::ProposalAccepted),
+            fixed(&TAIL, true, true),
+        ),
+        (
+            Acceptance,
+            At::Step(AcceptStep::Reconciled),
+            fixed(&TAIL, true, true),
+        ),
+        // The kill lands inside the real `commit` and the real `seal` (P10): whichever way they had got, the
+        // invariants hold.
+        (
+            Acceptance,
+            At::Inside("commit", 0),
             Expect {
-                steps: &TAIL,
-                sealed: true,
+                steps: None,
+                sealed: None,
                 record: true,
+                recoveries: 1,
             },
         ),
         (
-            At::Step(AcceptStep::Reconciled),
+            Acceptance,
+            At::Inside("seal", 0),
             Expect {
-                steps: &TAIL,
-                sealed: true,
+                steps: None,
+                sealed: None,
                 record: true,
+                recoveries: 1,
+            },
+        ),
+        // A recovery killed after its `seal-queued` step: the patch is sealed, none of it recorded, a recovery act
+        // begun and never ended. The next recovery finishes what is left (and ends the one that was interrupted).
+        (
+            Acceptance,
+            At::RecoveryAfterSeal,
+            Expect {
+                steps: Some(SEALED),
+                sealed: Some(true),
+                record: true,
+                recoveries: 2,
+            },
+        ),
+        // ---- the system act: the same path, with a record of its own and no proposal.
+        (
+            System,
+            At::SysStep(SystemStep::LeaseTaken),
+            fixed(&TAIL, false, false),
+        ),
+        (
+            System,
+            At::SysStep(SystemStep::ActRecorded),
+            fixed(FAILED, false, true),
+        ),
+        (System, At::Prikk("status", 0), fixed(FAILED, false, true)),
+        (
+            System,
+            At::Prikk("worktree-status", 0),
+            fixed(FAILED, false, true),
+        ),
+        (System, At::Prikk("commit", 0), fixed(RESTORED, false, true)),
+        (System, At::After("commit", 0), fixed(QUEUED, true, true)),
+        (System, At::Prikk("seal", 0), fixed(QUEUED, true, true)),
+        (System, At::After("seal", 0), fixed(SEALED, true, true)),
+        (System, At::Prikk("verify", 0), fixed(SEALED, true, true)),
+        (
+            System,
+            At::SysStep(SystemStep::SignerReturned),
+            fixed(SEALED, true, true),
+        ),
+        // The act's end is written; the caches, the reconciliation and the lease are what was left.
+        (
+            System,
+            At::SysStep(SystemStep::ActEnded),
+            fixed(&TAIL, true, true),
+        ),
+        (
+            System,
+            At::SysStep(SystemStep::Reconciled),
+            fixed(&TAIL, true, true),
+        ),
+        (
+            System,
+            At::Inside("commit", 0),
+            Expect {
+                steps: None,
+                sealed: None,
+                record: true,
+                recoveries: 1,
+            },
+        ),
+        (
+            System,
+            At::Inside("seal", 0),
+            Expect {
+                steps: None,
+                sealed: None,
+                record: true,
+                recoveries: 1,
             },
         ),
     ]
@@ -597,27 +814,34 @@ fn fixture(tag: &str) -> Option<Fixture> {
 }
 
 impl Fixture {
-    /// Run the child to the kill point and kill it. Returns once nothing of it is left.
-    fn kill_at(&self, at: At) {
+    /// The spec of a child that makes `mode`'s act (or runs a recovery) and stops at `step`.
+    fn spec(&self, mode: &str, step: Option<String>) -> serde_json::Value {
+        serde_json::json!({
+            "root": self.paths.root, "keys": self.paths.keys, "secret": self.paths.secret,
+            "shm": self.paths.shm, "store": self.paths.store, "prikk": self.paths.prikk,
+            "ctl": self.ctl, "wiki": self.wiki.id.as_str(), "maintainer": self.maintainer.as_str(),
+            "proposal": self.first.id.as_str(), "step": step, "mode": mode,
+        })
+    }
+
+    fn clear_ctl(&self) {
         for entry in std::fs::read_dir(&self.ctl).unwrap().flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
             if name != "prikk" {
                 std::fs::remove_file(entry.path()).unwrap();
             }
         }
-        let (step, marker) = match at {
-            At::Step(s) => (Some(s.as_str().to_owned()), self.ctl.join("reached")),
-            At::Prikk(verb, n) => {
-                std::fs::write(self.ctl.join(format!("block-{verb}")), n.to_string()).unwrap();
-                (None, self.ctl.join(format!("blocked-{verb}-{n}")))
-            }
-        };
-        let spec = serde_json::json!({
-            "root": self.paths.root, "keys": self.paths.keys, "secret": self.paths.secret,
-            "shm": self.paths.shm, "store": self.paths.store, "prikk": self.paths.prikk,
-            "ctl": self.ctl, "wiki": self.wiki.id.as_str(), "maintainer": self.maintainer.as_str(),
-            "proposal": self.first.id.as_str(), "step": step,
-        });
+    }
+
+    /// Run a child with `spec` until `marker` appears, then kill **its whole process group** (the child, the stand-in
+    /// prikk it was waiting for, the real verb that stand-in started, a sleep) in one signal, so that nothing the
+    /// child had begun goes on to write after it is gone. Returns once nothing of the group is left.
+    ///
+    /// The signal is sent by a shell that is already running and waiting on its input (`kill` is a builtin there): a
+    /// kill inside a real verb is as late as the signal is slow.
+    fn run_and_kill(&self, spec: &serde_json::Value, marker: &Path, label: &str) {
+        use std::io::Write as _;
+        use std::os::unix::process::CommandExt as _;
         let mut child = Command::new(std::env::current_exe().unwrap())
             .args([
                 "child_accepts_and_is_stopped",
@@ -628,43 +852,114 @@ impl Fixture {
             .env("INKLKUNN_AK_CHILD", spec.to_string())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
+            // Its own process group, the child its leader: the group is the child and what it started.
+            .process_group(0)
             .spawn()
             .expect("child");
+        let group = child.id();
+        assert!(group > 1, "{label}: a group to kill");
+        let group_text = group.to_string();
+        let mut killer = Command::new("sh")
+            .args(["-c", "read _; kill -s KILL -- \"-$0\"", &group_text])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("the shell that sends the signal");
         let deadline = Instant::now() + Duration::from_secs(120);
         while !marker.exists() {
             assert!(
                 Instant::now() < deadline,
-                "{}: the child never reached the kill point",
-                at.label()
+                "{label}: the child never reached the kill point"
             );
             if let Ok(Some(status)) = child.try_wait() {
                 let finished =
                     std::fs::read_to_string(self.ctl.join("finished")).unwrap_or_default();
-                panic!(
-                    "{}: the child ended ({status}) without being stopped: {finished}",
-                    at.label()
-                );
+                // The group may still hold what the child started; it is not left to run.
+                let _ = Command::new("kill")
+                    .args(["-s", "KILL", "--", &format!("-{group}")])
+                    .status();
+                panic!("{label}: the child ended ({status}) without being stopped: {finished}");
             }
-            std::thread::sleep(Duration::from_millis(20));
+            std::thread::sleep(Duration::from_millis(1));
         }
-        // The held stand-in, if that is where it is: the one process this test started that is not the child.
-        let held: Option<String> = match at {
-            At::Prikk(..) => std::fs::read_to_string(&marker)
-                .ok()
-                .map(|p| p.trim().to_owned()),
-            At::Step(_) => None,
-        };
-        child.kill().expect("SIGKILL");
+        {
+            let mut input = killer.stdin.take().expect("the shell's input");
+            let _ = input.write_all(b"\n");
+        }
+        let _ = killer.wait();
+        let _ = child.kill();
         let _ = child.wait();
-        if let Some(pid) = held {
-            // Exactly that process, by its id: it was started by the child and outlives it.
-            let _ = Command::new("kill").args(["-9", &pid]).status();
+        // Nothing of the group is left: signal 0 reaches a group that still has a member.
+        let alive = || {
+            Command::new("kill")
+                .args(["-s", "0", "--", &format!("-{group}")])
+                .stderr(Stdio::null())
+                .status()
+                .is_ok_and(|s| s.success())
+        };
+        let until = Instant::now() + Duration::from_secs(10);
+        while alive() {
+            assert!(
+                Instant::now() < until,
+                "{label}: the process group is still there"
+            );
+            let _ = Command::new("kill")
+                .args(["-s", "KILL", "--", &format!("-{group}")])
+                .stderr(Stdio::null())
+                .status();
+            std::thread::sleep(Duration::from_millis(5));
         }
-        // Nothing of the kill may go on to write: let the stand-in's block be a pass-through again.
-        let _ = std::fs::remove_file(self.ctl.join(match at {
-            At::Prikk(verb, _) => format!("block-{verb}"),
-            At::Step(_) => "none".to_owned(),
-        }));
+    }
+
+    /// Run the child that makes `who`'s act to the kill point and kill it.
+    fn kill_at(&self, who: Who, at: At) {
+        self.clear_ctl();
+        let (step, marker) = match at {
+            At::Step(s) => (Some(s.as_str().to_owned()), self.ctl.join("reached")),
+            At::SysStep(s) => (Some(s.as_str().to_owned()), self.ctl.join("reached")),
+            At::Prikk(verb, n) => {
+                std::fs::write(self.ctl.join(format!("block-{verb}")), n.to_string()).unwrap();
+                (None, self.ctl.join(format!("blocked-{verb}-{n}")))
+            }
+            At::After(verb, n) => {
+                std::fs::write(self.ctl.join(format!("after-{verb}")), n.to_string()).unwrap();
+                (None, self.ctl.join(format!("blocked-after-{verb}-{n}")))
+            }
+            At::Inside(verb, n) => {
+                std::fs::write(self.ctl.join(format!("inside-{verb}")), n.to_string()).unwrap();
+                (None, self.ctl.join(format!("blocked-inside-{verb}-{n}")))
+            }
+            At::RecoveryAfterSeal => unreachable!("a recovery is killed by `kill_recovery`"),
+        };
+        let label = format!("{}: {}", who.label(), at.label());
+        self.run_and_kill(&self.spec(who.mode(), step), &marker, &label);
+        // Nothing of the kill may go on to write: the stand-in's hold is a pass-through again.
+        for verb in ["block", "after", "inside"] {
+            for name in ["status", "worktree-status", "commit", "seal", "verify"] {
+                let _ = std::fs::remove_file(self.ctl.join(format!("{verb}-{name}")));
+            }
+        }
+    }
+
+    /// Kill the **recovery**: run it in a child, with the next `seal` held after the real seal ran to completion.
+    /// Call it after `kill_at` has left a patch queued (the acceptance killed at its `seal`).
+    fn kill_recovery(&self) {
+        // The stand-in counts its calls per verb across processes: the next `seal` is the one it has counted.
+        let next: u32 = std::fs::read_to_string(self.ctl.join("count-seal"))
+            .expect("the acceptance's seal was counted")
+            .trim()
+            .parse()
+            .unwrap();
+        std::fs::write(self.ctl.join("after-seal"), next.to_string()).unwrap();
+        let marker = self.ctl.join(format!("blocked-after-seal-{next}"));
+        let _ = std::fs::remove_file(self.ctl.join("finished"));
+        self.run_and_kill(
+            &self.spec("recover", None),
+            &marker,
+            "recovery, after seal-queued",
+        );
+        let _ = std::fs::remove_file(self.ctl.join("after-seal"));
     }
 }
 
@@ -675,18 +970,76 @@ fn log(s: &Services, repo: &Path) -> Vec<inklkunn_prikk::HistoryBlock> {
         .blocks
 }
 
+/// Keep a copy of a repository a kill left in a state recovery stops at or fails closed on, to study it afterwards:
+/// when `INKLKUNN_AK_KEEP` names a directory, the copy goes to `<that directory>/<label with no spaces>`.
+fn keep_for_study(repo: &Path, label: &str) {
+    let Some(dir) = std::env::var_os("INKLKUNN_AK_KEEP") else {
+        return;
+    };
+    let name: String = label
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    let to = PathBuf::from(dir).join(name);
+    let _ = std::fs::remove_dir_all(&to);
+    let _ = Command::new("cp").arg("-r").arg(repo).arg(&to).status();
+}
+
+/// Remove every empty `*.lock` file under `dir`, as an operator would clear a lock that a killed prikk created and
+/// never wrote a word to. Returns how many.
+fn clear_empty_locks(dir: &Path) -> usize {
+    let mut removed = 0;
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(meta) = std::fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if meta.is_dir() {
+            removed += clear_empty_locks(&path);
+        } else if meta.is_file()
+            && meta.len() == 0
+            && path.extension().is_some_and(|e| e == "lock")
+            && std::fs::remove_file(&path).is_ok()
+        {
+            removed += 1;
+        }
+    }
+    removed
+}
+
+/// What the kill left in prikk, read before recovery looked: the three states a kill of `commit` or `seal` can leave.
+fn left_by_the_kill(base: usize, killed: usize, queued: u64) -> &'static str {
+    if killed > base {
+        "a sealed block"
+    } else if queued > 0 {
+        "a queued patch"
+    } else {
+        "nothing in the log"
+    }
+}
+
 #[test]
 fn a_sigkill_at_each_step_of_an_acceptance_is_recovered_with_nothing_lost_or_made_twice() {
     if std::env::var_os("INKLKUNN_AK_CHILD").is_some() {
         return; // the child runs `child_accepts_and_is_stopped`, not this test
     }
     let mut table = Vec::new();
-    for (at, expect) in matrix() {
+    for (who, at, expect) in matrix() {
         let Some(f) = fixture(&format!("k{}", table.len())) else {
             return;
         };
-        let label = at.label();
-        f.kill_at(at);
+        let label = format!("{}: {}", who.label(), at.label());
+        match at {
+            // The acceptance dies at its seal (a patch is queued); then the recovery that finds it dies after sealing.
+            At::RecoveryAfterSeal => {
+                f.kill_at(who, At::Prikk("seal", 0));
+                f.kill_recovery();
+            }
+            other => f.kill_at(who, other),
+        }
 
         // What the next start finds: a wiki that needs recovery, by its witnesses, in a process that knows nothing
         // of the one that died.
@@ -697,23 +1050,156 @@ fn a_sigkill_at_each_step_of_an_acceptance_is_recovered_with_nothing_lost_or_mad
             !reasons.is_empty(),
             "{label}: the kill left no witness at all"
         );
-        // The plan, shown first, changes nothing and is the plan the run then records.
-        let shown = recovery.recover(&f.wiki, RecoveryMode::PlanOnly).unwrap();
-        assert_eq!(
-            shown
-                .plan
-                .steps
-                .iter()
-                .map(|x| x.name())
-                .collect::<Vec<_>>(),
-            expect.steps,
-            "{label}: the plan shown"
-        );
-        assert!(
-            s.store.recovery_acts(&f.wiki.id).unwrap().is_empty(),
-            "{label}: a plan shown is not recorded"
-        );
         let blocks_killed = log(&s, &f.repo);
+        let timed = expect.steps.is_none();
+        // A kill inside a real verb can leave prikk in a state its own `status` refuses (an integrity error); the
+        // rows that kill at a step or between verbs never do.
+        let status_killed = s.storage.status(&f.repo);
+        let queued_killed = status_killed.as_ref().map_or(0, |st| st.queue.count);
+        let left = left_by_the_kill(f.base_blocks, blocks_killed.len(), queued_killed);
+        if let Err(e) = &status_killed {
+            assert!(
+                timed,
+                "{label}: prikk status refuses a state no step-kill makes: {e}"
+            );
+            // Recovery cannot read a witness and fails closed, in a plan and in a run, changing nothing.
+            for mode in [RecoveryMode::PlanOnly, RecoveryMode::Run] {
+                let r = recovery.recover(&f.wiki, mode);
+                assert!(
+                    matches!(&r, Err(RecoveryError::Witness(_))),
+                    "{label}: recovery must fail closed on a status prikk refuses: {r:?}"
+                );
+            }
+            assert_eq!(
+                log(&s, &f.repo),
+                blocks_killed,
+                "{label}: nothing was written"
+            );
+            assert!(
+                !recovery.needs_recovery(&f.wiki.id).unwrap().is_empty(),
+                "{label}: the wiki stays flagged"
+            );
+            keep_for_study(&f.repo, &label);
+            table.push((
+                label,
+                "no outcome: prikk status itself refuses (integrity error); recovery fails closed, nothing changed, a person decides".to_owned(),
+                String::new(),
+            ));
+            continue;
+        }
+        // The plan, shown first, changes nothing and is the plan the run then records.
+        //
+        // A kill inside a real verb can land at the instant prikk creates a lock file, before it has written a word
+        // to it: `prikk unlock` then lists a lock of no kind and a pid that is "(unparseable)". Recovery's reader
+        // refuses a shape it does not know, so the recovery **fails closed**: it reports that it could not read a
+        // witness, changes nothing, and the wiki stays flagged. That is the right answer for this state (what that
+        // lock belongs to is not known), and the operator's way out is to clear the empty lock file; the row then
+        // goes on as any other, with every invariant asserted. (Only the rows that kill inside a verb can see it.)
+        let mut failed_closed = false;
+        let shown = match recovery.recover(&f.wiki, RecoveryMode::PlanOnly) {
+            Ok(shown) => shown,
+            Err(RecoveryError::Witness(why))
+                if timed && why.contains("a recorded pid is not a number") =>
+            {
+                failed_closed = true;
+                let run = recovery.recover(&f.wiki, RecoveryMode::Run);
+                assert!(
+                    matches!(&run, Err(RecoveryError::Witness(_))),
+                    "{label}: a run must fail closed too: {run:?}"
+                );
+                assert_eq!(
+                    log(&s, &f.repo),
+                    blocks_killed,
+                    "{label}: nothing was written"
+                );
+                assert!(
+                    !recovery.needs_recovery(&f.wiki.id).unwrap().is_empty(),
+                    "{label}: the wiki stays flagged"
+                );
+                assert!(
+                    clear_empty_locks(&f.repo.join(".prikk")) > 0,
+                    "{label}: the torn lock is an empty file ({why})"
+                );
+                recovery.recover(&f.wiki, RecoveryMode::PlanOnly).unwrap()
+            }
+            Err(e) => panic!("{label}: {e}"),
+        };
+        // A kill inside a real verb can also leave a state recovery has no answer for, and **names** that: the plan
+        // stops (a `doctor` warning about stale reference metadata that asks for nothing, say, when `seal` was killed
+        // just after it published the block). The recovery changes nothing, the wiki stays flagged, a person decides.
+        if timed && let Some(stop) = shown.plan.stop {
+            let run = recovery
+                .recover(&f.wiki, RecoveryMode::Run)
+                .unwrap_or_else(|e| panic!("{label}: {e}"));
+            assert!(
+                matches!(&run.outcome, RecoveryOutcome::Stopped { at: None, .. }),
+                "{label}: {:#?}",
+                run.lines()
+            );
+            assert_eq!(run.plan.stop, Some(stop), "{label}");
+            assert!(run.done.is_empty(), "{label}: a stopped plan takes no step");
+            assert_eq!(
+                log(&s, &f.repo),
+                blocks_killed,
+                "{label}: nothing was written"
+            );
+            assert_eq!(
+                s.storage.status(&f.repo).unwrap().queue.count,
+                queued_killed,
+                "{label}: nothing was sealed or discarded"
+            );
+            assert!(
+                s.store.recovery_flag(&f.wiki.id).unwrap().is_some(),
+                "{label}: the wiki stays flagged"
+            );
+            let recorded = s.store.recovery_acts(&f.wiki.id).unwrap();
+            assert_eq!(
+                recorded
+                    .last()
+                    .and_then(|a| a.end.as_ref())
+                    .map(|e| e.ending),
+                Some(RecoveryEnding::Stopped),
+                "{label}: the stop is recorded"
+            );
+            keep_for_study(&f.repo, &label);
+            table.push((
+                label,
+                format!(
+                    "STOPPED, a person decides ({}); the kill left {left}; nothing changed",
+                    stop.as_str()
+                ),
+                String::new(),
+            ));
+            continue;
+        }
+        let shown_steps: Vec<&str> = shown.plan.steps.iter().map(|x| x.name()).collect();
+        if let Some(steps) = expect.steps {
+            assert_eq!(shown_steps, steps, "{label}: the plan shown");
+        } else {
+            // A kill inside a real verb: the plan is whatever the state was, and it must be the right one for it.
+            let has = |name: &str| shown_steps.contains(&name);
+            match left {
+                "a sealed block" => assert!(
+                    has("end-sealed") && !has("seal-queued"),
+                    "{label}: {shown_steps:?}"
+                ),
+                "a queued patch" => assert!(
+                    has("seal-queued") && has("end-sealed"),
+                    "{label}: {shown_steps:?}"
+                ),
+                _ => assert!(
+                    has("end-failed") && !has("end-sealed"),
+                    "{label}: {shown_steps:?}"
+                ),
+            }
+            assert!(shown.plan.stop.is_none(), "{label}: {:#?}", shown.lines());
+        }
+        let earlier = usize::from(matches!(at, At::RecoveryAfterSeal));
+        assert_eq!(
+            s.store.recovery_acts(&f.wiki.id).unwrap().len(),
+            earlier,
+            "{label}: a plan shown is not recorded (only the killed recovery's own act is there)"
+        );
 
         let report = recovery
             .recover(&f.wiki, RecoveryMode::Run)
@@ -724,16 +1210,8 @@ fn a_sigkill_at_each_step_of_an_acceptance_is_recovered_with_nothing_lost_or_mad
             "{label}: {:#?}",
             report.lines()
         );
-        assert_eq!(
-            report
-                .plan
-                .steps
-                .iter()
-                .map(|x| x.name())
-                .collect::<Vec<_>>(),
-            expect.steps,
-            "{label}: the plan run"
-        );
+        let ran: Vec<&str> = report.plan.steps.iter().map(|x| x.name()).collect();
+        assert_eq!(ran, shown_steps, "{label}: the plan run is the plan shown");
 
         // `prikk verify` is green, and exactly the expected blocks are in the log.
         assert!(
@@ -741,9 +1219,12 @@ fn a_sigkill_at_each_step_of_an_acceptance_is_recovered_with_nothing_lost_or_mad
             "{label}: verify"
         );
         let blocks = log(&s, &f.repo);
-        let expected_len = f.base_blocks + usize::from(expect.sealed);
+        let sealed = expect
+            .sealed
+            .unwrap_or_else(|| blocks.len() > f.base_blocks);
+        let expected_len = f.base_blocks + usize::from(sealed);
         assert_eq!(blocks.len(), expected_len, "{label}: the blocks in the log");
-        if !expect.sealed {
+        if !sealed {
             assert_eq!(
                 blocks, blocks_killed,
                 "{label}: the history is as the kill left it"
@@ -755,13 +1236,7 @@ fn a_sigkill_at_each_step_of_an_acceptance_is_recovered_with_nothing_lost_or_mad
             "{label}: nothing is left queued"
         );
 
-        // The acceptance record and the intent agree with the log.
-        let entries = s.store.acceptances_of(&f.first.id, 1).unwrap();
-        assert_eq!(
-            entries.len(),
-            usize::from(expect.record),
-            "{label}: acceptance records"
-        );
+        // The records agree with the log.
         assert!(
             s.store.open_intents(&f.wiki.id).unwrap().is_empty(),
             "{label}: an intent is still open"
@@ -770,78 +1245,151 @@ fn a_sigkill_at_each_step_of_an_acceptance_is_recovered_with_nothing_lost_or_mad
             s.store.pending_acceptances(&f.wiki.id).unwrap().is_empty(),
             "{label}: an acceptance is still pending"
         );
-        let proposal = s
-            .proposals
-            .get(
-                &Principal::session(authority(), f.maintainer.clone()),
-                &f.wiki,
-                &f.first.id,
-            )
-            .unwrap();
-        if expect.sealed {
-            let newest = blocks.first().unwrap();
-            let message = inklkunn_core::message::Message::parse(
-                &newest.patch_messages.first().unwrap().message,
-            )
-            .unwrap();
-            assert_eq!(
-                message.proposal_id(),
-                Some(&f.first.id),
-                "{label}: the newest block is the proposal's"
-            );
-            let entry = entries.first().unwrap();
-            assert!(
-                matches!(entry.result.as_ref().map(|r| &r.outcome), Some(AcceptanceOutcome::Sealed { block_id, .. }) if *block_id == newest.block_id),
-                "{label}: the acceptance names the block: {:?}",
-                entry.result
-            );
-            let intent = s.store.intents(&f.wiki.id).unwrap();
-            assert_eq!(
-                intent.last().unwrap().completion.as_ref().map(|c| c.end),
-                Some(IntentEnd::Completed),
-                "{label}"
-            );
-            assert_eq!(proposal.state, ProposalState::Accepted, "{label}");
-        } else {
-            assert_eq!(
-                proposal.state,
-                ProposalState::HeldForReview,
-                "{label}: the proposal stays open"
-            );
-            if let Some(entry) = entries.first() {
-                assert!(
-                    matches!(entry.result.as_ref().map(|r| &r.outcome), Some(AcceptanceOutcome::Failed { word }) if word == "interrupted"),
-                    "{label}: {:?}",
-                    entry.result
+        assert!(
+            s.store
+                .system_acts(&f.wiki.id)
+                .unwrap()
+                .iter()
+                .all(|e| e.end.is_some()),
+            "{label}: a system act has no end"
+        );
+        let newest_message = |block: &inklkunn_prikk::HistoryBlock| {
+            inklkunn_core::message::Message::parse(&block.patch_messages.first().unwrap().message)
+                .unwrap()
+        };
+        match who {
+            Who::Acceptance => {
+                let entries = s.store.acceptances_of(&f.first.id, 1).unwrap();
+                assert_eq!(
+                    entries.len(),
+                    usize::from(expect.record),
+                    "{label}: acceptance records"
                 );
-                if let Some(i) = s.store.intents(&f.wiki.id).unwrap().last() {
+                let proposal = s
+                    .proposals
+                    .get(
+                        &Principal::session(authority(), f.maintainer.clone()),
+                        &f.wiki,
+                        &f.first.id,
+                    )
+                    .unwrap();
+                if sealed {
+                    let newest = blocks.first().unwrap();
                     assert_eq!(
-                        i.completion.as_ref().map(|c| c.end),
-                        Some(IntentEnd::Abandoned),
+                        newest_message(newest).proposal_id(),
+                        Some(&f.first.id),
+                        "{label}: the newest block is the proposal's"
+                    );
+                    let entry = entries.first().unwrap();
+                    assert!(
+                        matches!(entry.result.as_ref().map(|r| &r.outcome), Some(AcceptanceOutcome::Sealed { block_id, .. }) if *block_id == newest.block_id),
+                        "{label}: the acceptance names the block: {:?}",
+                        entry.result
+                    );
+                    let intent = s.store.intents(&f.wiki.id).unwrap();
+                    assert_eq!(
+                        intent.last().unwrap().completion.as_ref().map(|c| c.end),
+                        Some(IntentEnd::Completed),
                         "{label}"
                     );
+                    assert_eq!(proposal.state, ProposalState::Accepted, "{label}");
+                } else {
+                    assert_eq!(
+                        proposal.state,
+                        ProposalState::HeldForReview,
+                        "{label}: the proposal stays open"
+                    );
+                    if let Some(entry) = entries.first() {
+                        assert!(
+                            matches!(entry.result.as_ref().map(|r| &r.outcome), Some(AcceptanceOutcome::Failed { word }) if word == "interrupted"),
+                            "{label}: {:?}",
+                            entry.result
+                        );
+                        if let Some(i) = s.store.intents(&f.wiki.id).unwrap().last() {
+                            assert_eq!(
+                                i.completion.as_ref().map(|c| c.end),
+                                Some(IntentEnd::Abandoned),
+                                "{label}"
+                            );
+                        }
+                    }
                 }
+                assert_eq!(
+                    std::fs::read_to_string(f.repo.join("pages/Home.md"))
+                        .unwrap()
+                        .contains("Uno."),
+                    sealed,
+                    "{label}: the worktree is the tip"
+                );
+            }
+            Who::System => {
+                let ours: Vec<_> = s
+                    .store
+                    .system_acts(&f.wiki.id)
+                    .unwrap()
+                    .into_iter()
+                    .filter(|e| e.act.message.contains(SYSTEM_SUMMARY))
+                    .collect();
+                assert_eq!(
+                    ours.len(),
+                    usize::from(expect.record),
+                    "{label}: system act records"
+                );
+                if sealed {
+                    let newest = blocks.first().unwrap();
+                    assert_eq!(
+                        newest_message(newest).kind(),
+                        Kind::System,
+                        "{label}: the newest block is the system act's"
+                    );
+                    assert!(
+                        newest
+                            .patch_messages
+                            .first()
+                            .unwrap()
+                            .message
+                            .contains(SYSTEM_SUMMARY),
+                        "{label}"
+                    );
+                    let end = ours.first().and_then(|e| e.end.as_ref());
+                    assert!(
+                        matches!(end.map(|e| &e.outcome), Some(AcceptanceOutcome::Sealed { block_id, .. }) if *block_id == newest.block_id),
+                        "{label}: the system act names the block: {end:?}"
+                    );
+                } else if let Some(entry) = ours.first() {
+                    assert!(
+                        matches!(entry.end.as_ref().map(|e| &e.outcome), Some(AcceptanceOutcome::Failed { word }) if word == "interrupted"),
+                        "{label}: {:?}",
+                        entry.end
+                    );
+                }
+                assert_eq!(
+                    f.repo.join("pages/Sys.md").exists(),
+                    sealed,
+                    "{label}: the worktree is the tip"
+                );
             }
         }
-        assert_eq!(
-            std::fs::read_to_string(f.repo.join("pages/Home.md"))
-                .unwrap()
-                .contains("Uno."),
-            expect.sealed,
-            "{label}: the worktree is the tip"
-        );
 
         // The plan is recorded, and ended.
         let acts = s.store.recovery_acts(&f.wiki.id).unwrap();
-        assert_eq!(acts.len(), 1, "{label}: recovery acts");
-        let act = acts.first().unwrap();
+        assert_eq!(acts.len(), expect.recoveries, "{label}: recovery acts");
+        let act = acts.last().unwrap();
         assert_eq!(
             act.end.as_ref().map(|e| e.ending),
             Some(RecoveryEnding::Recovered),
             "{label}"
         );
+        if expect.recoveries > 1 {
+            // The recovery that was killed is ended as stopped by the next one, and not left open.
+            assert_eq!(
+                acts.first().unwrap().end.as_ref().map(|e| e.ending),
+                Some(RecoveryEnding::Stopped),
+                "{label}: the killed recovery"
+            );
+        }
         assert_eq!(Some(&act.act.id), report.act.as_ref(), "{label}");
-        for step in expect.steps {
+        for step in &ran {
             assert!(
                 act.act.plan.contains(&format!("\"step\":\"{step}\"")),
                 "{label}: {step} in {}",
@@ -871,53 +1419,64 @@ fn a_sigkill_at_each_step_of_an_acceptance_is_recovered_with_nothing_lost_or_mad
             "{label}: reconciliation"
         );
 
-        // And the wiki takes writes: the other proposal is accepted, and a retry of the first is told what is true.
+        // And the wiki takes writes: the other proposal is accepted, and (for an acceptance) a retry of the first is
+        // told what is true.
         let acceptor = s.acceptor();
-        let who = Principal::session(authority(), f.maintainer.clone());
+        let maintainer = Principal::session(authority(), f.maintainer.clone());
         acceptor
-            .accept(&who, &f.wiki, &f.second.id, 1)
+            .accept(&maintainer, &f.wiki, &f.second.id, 1)
             .unwrap_or_else(|e| panic!("{label}: a write after recovery: {e}"));
         assert_eq!(log(&s, &f.repo).len(), expected_len + 1, "{label}");
-        let retry = acceptor.accept(&who, &f.wiki, &f.first.id, 1);
-        if expect.sealed {
-            assert!(
-                matches!(retry, Ok(inklkunn_core::Accepted::AlreadySigned { .. })),
-                "{label}: {retry:?}"
-            );
-            assert_eq!(
-                log(&s, &f.repo).len(),
-                expected_len + 1,
-                "{label}: a retry seals nothing twice"
-            );
-        } else {
-            assert!(
-                retry.is_ok(),
-                "{label}: the proposal that was not accepted can be: {retry:?}"
-            );
-            assert_eq!(log(&s, &f.repo).len(), expected_len + 2, "{label}");
+        if who == Who::Acceptance {
+            let retry = acceptor.accept(&maintainer, &f.wiki, &f.first.id, 1);
+            if sealed {
+                assert!(
+                    matches!(retry, Ok(inklkunn_core::Accepted::AlreadySigned { .. })),
+                    "{label}: {retry:?}"
+                );
+                assert_eq!(
+                    log(&s, &f.repo).len(),
+                    expected_len + 1,
+                    "{label}: a retry seals nothing twice"
+                );
+            } else {
+                assert!(
+                    retry.is_ok(),
+                    "{label}: the proposal that was not accepted can be: {retry:?}"
+                );
+                assert_eq!(log(&s, &f.repo).len(), expected_len + 2, "{label}");
+            }
         }
         table.push((
             label,
-            expect.sealed,
-            report
-                .plan
-                .steps
-                .iter()
-                .map(|x| x.name())
-                .collect::<Vec<_>>()
-                .join(" > "),
+            format!(
+                "{}{}{}",
+                if sealed {
+                    "change in the history, records completed"
+                } else {
+                    "nothing in the history, act failed (interrupted)"
+                },
+                if timed {
+                    format!(" (the kill left {left})")
+                } else {
+                    String::new()
+                },
+                if failed_closed {
+                    " [first failed closed on a torn lock file; the operator cleared it]"
+                } else {
+                    ""
+                },
+            ),
+            ran.join(" > "),
         ));
     }
     println!("kill-test matrix (step killed -> recovery outcome):");
-    for (label, sealed, steps) in &table {
-        println!(
-            "  {label:<26} -> {} ; plan: {steps}",
-            if *sealed {
-                "change in the history, records completed"
-            } else {
-                "nothing in the history, act failed (interrupted)"
-            }
-        );
+    for (label, outcome, steps) in &table {
+        if steps.is_empty() {
+            println!("  {label:<46} -> {outcome}");
+        } else {
+            println!("  {label:<46} -> {outcome} ; plan: {steps}");
+        }
     }
     assert_eq!(table.len(), matrix().len());
 }
