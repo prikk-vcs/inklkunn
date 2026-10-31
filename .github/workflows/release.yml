@@ -287,6 +287,11 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
           set -euo pipefail
-          for c in inklkunn-markup inklkunn-prikk inklkunn-store inklkunn-signer inklkunn-auth inklkunn-core inklkunn-web inklkunn; do
+          # crates.io is optional per release (owner, 2026-10-31): with no token the release ships without it.
+          if [ -z "${CARGO_REGISTRY_TOKEN}" ]; then
+            echo "::notice::no CARGO_REGISTRY_TOKEN secret: the crates are not published to crates.io for ${GITHUB_REF_NAME}"
+            exit 0
+          fi
+          for c in inklkunn-markup inklkunn-prikk inklkunn-fetch inklkunn-store inklkunn-signer inklkunn-auth inklkunn-core inklkunn-web inklkunn; do
             cargo publish --locked -p "$c"
           done

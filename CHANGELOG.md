@@ -5,7 +5,21 @@ Releases are bare version tags; each section is the release's notes (assembled i
 
 ## [Unreleased]
 
-M0 — foundations (RFC 001, RFC 010). Nothing serves pages yet.
+## [0.1.0] — 2026-10-31
+
+**M1 — read a wiki.** The first release: a standalone server that serves a prikk repository as a wiki. Pages in the
+Portable Wiki Markdown profile with free links, backlinks, dangling links, redirects and aliases; history, differences
+and permalinks read from prikk; an honest verification badge on every page (*Verified*, *Verification failed*, or
+*Could not be checked now*, never a guess); serve-stale when prikk cannot be asked; search, recent changes and Atom
+feeds; the raw source of each page on a separate content origin; export as a Portable Wiki Bundle and as a prikk
+archive; `inklkunn wiki create`, `import-folder` and the key lifecycle on the command line; a read API with an OpenAPI
+3.1 document; English, and Japanese as a labelled preview. **Not in this release:** signing in, proposing and
+accepting changes (M2, 0.2.0). Every visitor is anonymous, and only public wikis are readable. Runtime: prikk ≥ 0.54.0,
+bubblewrap and prlimit on the host, or the container image.
+
+The entries below are in the order the work landed, M0's foundations first.
+
+M0 — foundations (RFC 001, RFC 010).
 
 - **The workspace and its gates.** Eight crates in three layers (`inklkunn-prikk`, `inklkunn-signer`,
   `inklkunn-store`; `inklkunn-markup`, `inklkunn-core`, `inklkunn-auth`; `inklkunn-web`, `inklkunn`) and four

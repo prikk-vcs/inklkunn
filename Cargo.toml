@@ -27,10 +27,10 @@ default-members = [
     "crates/inklkunn",
 ]
 
-# Shared metadata every crate inherits (RFC 001 D-1). One version for the whole workspace; nothing is
-# tagged until M1 (ROADMAP §5), so the version stays 0.0.0 through M0.
+# Shared metadata every crate inherits (RFC 001 D-1). One version for the whole workspace: the release's (ROADMAP §5;
+# 0.1.0 is M1, a wiki you can read).
 [workspace.package]
-version = "0.0.0"
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.88.0"
 license = "Apache-2.0"
@@ -38,14 +38,14 @@ authors = ["nabbisen"]
 repository = "https://github.com/prikk-vcs/inklkunn"
 
 [workspace.dependencies]
-inklkunn-prikk  = { version = "0.0.0", path = "crates/inklkunn-prikk" }
-inklkunn-signer = { version = "0.0.0", path = "crates/inklkunn-signer" }
-inklkunn-fetch  = { version = "0.0.0", path = "crates/inklkunn-fetch" }
-inklkunn-store  = { version = "0.0.0", path = "crates/inklkunn-store" }
-inklkunn-markup = { version = "0.0.0", path = "crates/inklkunn-markup" }
-inklkunn-core   = { version = "0.0.0", path = "crates/inklkunn-core" }
-inklkunn-auth   = { version = "0.0.0", path = "crates/inklkunn-auth" }
-inklkunn-web    = { version = "0.0.0", path = "crates/inklkunn-web" }
+inklkunn-prikk  = { version = "0.1.0", path = "crates/inklkunn-prikk" }
+inklkunn-signer = { version = "0.1.0", path = "crates/inklkunn-signer" }
+inklkunn-fetch  = { version = "0.1.0", path = "crates/inklkunn-fetch" }
+inklkunn-store  = { version = "0.1.0", path = "crates/inklkunn-store" }
+inklkunn-markup = { version = "0.1.0", path = "crates/inklkunn-markup" }
+inklkunn-core   = { version = "0.1.0", path = "crates/inklkunn-core" }
+inklkunn-auth   = { version = "0.1.0", path = "crates/inklkunn-auth" }
+inklkunn-web    = { version = "0.1.0", path = "crates/inklkunn-web" }
 
 # Third-party dependencies are added by the task that needs them, each measured first
 # (RFC 010 D-6; docs/dependency-policy.md records the delta).
