@@ -81,12 +81,18 @@ pub(crate) enum WriteVerb {
     BranchList,
     /// `archive export` (keyless writable mode; handoff 003 T7, IS-8).
     ArchiveExport,
+    /// `doctor`: the read-only diagnostics, and `--discard-damaged-commits` (recovery; handoff 004 T5).
+    Doctor,
+    /// `unlock`: the listing, and `--lock <path> --yes` (recovery; handoff 004 T5).
+    Unlock,
+    /// `cat`: one file's bytes at a ref (recovery restores a worktree from the tip).
+    Cat,
 }
 
 impl WriteVerb {
     /// Every verb.
     #[cfg(test)]
-    pub(crate) const ALL: [WriteVerb; 15] = [
+    pub(crate) const ALL: [WriteVerb; 18] = [
         WriteVerb::Init,
         WriteVerb::Trust,
         WriteVerb::KeyGenerate,
@@ -102,6 +108,9 @@ impl WriteVerb {
         WriteVerb::BranchCreate,
         WriteVerb::BranchList,
         WriteVerb::ArchiveExport,
+        WriteVerb::Doctor,
+        WriteVerb::Unlock,
+        WriteVerb::Cat,
     ];
 
     /// The verb a prikk argument vector runs, or `None` for one the signer has no cost for (and so never runs).
@@ -119,6 +128,9 @@ impl WriteVerb {
             ["branch", "create", ..] => WriteVerb::BranchCreate,
             ["branch", "list", ..] => WriteVerb::BranchList,
             ["archive", "export", ..] => WriteVerb::ArchiveExport,
+            ["doctor", ..] => WriteVerb::Doctor,
+            ["unlock", ..] => WriteVerb::Unlock,
+            ["cat", ..] => WriteVerb::Cat,
             ["mv", ..] => WriteVerb::Mv,
             ["commit", ..] => WriteVerb::Commit,
             ["seal", ..] => WriteVerb::Seal,
@@ -154,6 +166,14 @@ impl WriteVerb {
             // 0.4 MiB for one 64 or 200 MiB attachment, 0.7 MiB at 3 MiB, 3.5 MiB at 29 and 87 MiB (10,000
             // pages): it streams, and its need does not follow S. Flat, at four times the largest need.
             WriteVerb::ArchiveExport => (0, 0, 16 * MIB),
+            // `doctor` runs the 17 stages of `verify` and prints their counts: 8 MiB where `verify` needed 8 MiB (3,000
+            // pages, a 2 MiB store, prikk 0.55.0), so it takes `verify`'s rule. `--discard-damaged-commits` reads the
+            // WAL and rewrites it, which the store does not size.
+            WriteVerb::Doctor => (50, 0, 32 * MIB),
+            // Lists the lock files and reads their bodies; clears one by path. 2 MiB at 3,000 pages; flat.
+            WriteVerb::Unlock => (0, 0, 16 * MIB),
+            // Reads one file out of the replay: `tree`'s and `cat`'s rule in the read driver (2.1 × S).
+            WriteVerb::Cat => (21, 0, 16 * MIB),
         };
         WriteRule {
             store_tenths,

@@ -74,7 +74,8 @@ pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, Resolver, StdEgressGu
 pub use inbox::Inbox;
 pub use inklkunn_signer::{
     ArchiveExported, KeyAuthority, KeyStatus, LateSeal, Maintenance, OldKey, OldKeyOutcome,
-    Rotation, Signer, SignerConfig, SignerError, SupersededKey, WriteLeases,
+    Recover, RecoverError, RecoveryFacts, RecoveryOp, RecoveryToken, Rotation, Signer,
+    SignerConfig, SignerError, SupersededKey, Witnesses, WriteLeases,
 };
 pub use lease::{Busy, BusyWhy, Lease, LeaseConfig, LeaseError, Leased, Purpose, WikiLeases};
 pub use merge::{LineLevel, MergeOutcome, MergedPage, Overlap, PageRef, PageText, Place, merge};

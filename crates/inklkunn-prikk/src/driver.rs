@@ -431,6 +431,13 @@ pub fn parse_report<T: DeserializeOwned>(
     })
 }
 
+/// Read the stdout of `prikk status --format json` as `status-report-v1`: the pinned schema name first, then the
+/// shape, then the report's own consistency. Anything else is an error, never a guess. The signer reads its
+/// witness through this too, so there is one reader of the report.
+pub fn parse_status(stdout: &[u8]) -> Result<RepoStatus> {
+    parse_report::<RepoStatus>("status", stdout, schema::STATUS_REPORT)?.checked()
+}
+
 // ---- argument shapes: checked here so that nothing user-shaped reaches prikk's parser ----
 
 fn is_ref_name(s: &str) -> bool {
@@ -722,14 +729,22 @@ impl Storage for PrikkCli {
     }
 
     fn status(&self, repo: &Path) -> Result<RepoStatus> {
-        self.run_json::<RepoStatus>(
+        let (run, ceiling) = self.execute(
             ReadVerb::Status,
             repo,
             None,
             &["status", "--format", "json"],
-            schema::STATUS_REPORT,
-        )?
-        .checked()
+            MAX_REPORT_BYTES,
+        )?;
+        if !run.status.success() || run.timed_out || run.output_exceeded {
+            return Err(Self::failure(
+                ReadVerb::Status,
+                &run,
+                ceiling,
+                self.deadline_for(ReadVerb::Status),
+            ));
+        }
+        parse_status(&run.stdout)
     }
 }
 

@@ -20,7 +20,8 @@ pub mod storage;
 pub use admission::{Admission, Permit, Refusal};
 pub use cost::{ReadVerb, SizeHints};
 pub use driver::{
-    DEFAULT_HISTORY_LIMIT, PrikkCli, is_repo_path, parse_report, parse_version, schema,
+    DEFAULT_HISTORY_LIMIT, PrikkCli, is_repo_path, parse_report, parse_status, parse_version,
+    schema,
 };
 pub use sandbox::{BwrapConfig, CallLimits, Mounts, Run, Sandbox};
 pub use storage::{

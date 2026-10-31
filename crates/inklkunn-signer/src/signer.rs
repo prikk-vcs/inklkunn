@@ -765,6 +765,7 @@ impl RepositoryBootstrap for Signer {
 }
 
 pub(crate) mod lifecycle;
+mod recover;
 pub(crate) mod superseded;
 
 #[cfg(test)]
