@@ -1,13 +1,13 @@
 C9 real-browser run (handoff 002, follow-up F2)
-  date        2026-11-01 01:30:43 JST
-  repository  e2a6ec5
+  date        2026-11-01 01:41:48 JST
+  repository  b1b759f
   host        Linux-7.3.0-5-cachyos-x86_64-with-glibc2.44; python 3.14.8
-  server      the inklkunn router and authenticator on http://localhost:54313 (cargo test, ignored test browser::…)
+  server      the inklkunn router and authenticator on http://localhost:55439 (cargo test, ignored test browser::…)
   browser     Chrome/156.0.8078.79 (Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36)
-  sites       wiki http://localhost:54313  provider https://idp.example:50739  (cross-site)
+  sites       wiki http://localhost:55439  provider https://idp.example:50083  (cross-site)
 
 S1  sign in with the provider, as a person does
-  [PASS] the sign-in page offers the provider  ('Sign in with idp.example:50739')
+  [PASS] the sign-in page offers the provider  ('Sign in with idp.example:50083')
   [PASS] the login-state cookie is stored when the browser is sent away
   [PASS]   ... SameSite=Lax  (Lax)
   [PASS]   ... HttpOnly
@@ -16,11 +16,11 @@ S1  sign in with the provider, as a person does
   [PASS] no session exists yet
   [PASS] the provider was sent no Referer by the wiki (the wiki's address does not travel)  (None)
   [PASS] the provider saw none of the wiki's cookies
-      GET  http://localhost:54313/-/sign-in/oidc -> 303  cookies sent: __Host-inklkunn-csrf  set: __Host-inklkunn-oidc  referer: http://localhost:54313/-/sign-in
-      GET  https://idp.example:50739/authorize?response_type=code&client_id=inklkunn-wiki&redirect_uri=http%3A%2F%2Flocalhost%3A54313%2F-%2Fsign-in%2Foidc%2Fcallback&scope=openid&state=zoyo…&nonce=r2T9…&code_challenge=tv1j…&code_challenge_method=S256 -> 200  cookies sent: none
-      POST https://idp.example:50739/approve -> 302  cookies sent: none  referer: https://idp.example:50739/authorize?response_type=code&client_id=inklkunn-wiki&redirect_uri=http%3A%2F%2Flocalhost%3A54313%2F-%2Fsign-in%2Foidc%2Fcallback&scope=openid&state=zoyo…&nonce=r2T9…&code_challenge=tv1j…&code_challenge_method=S256
-      GET  http://localhost:54313/-/sign-in/oidc/callback?code=stand-in-code&state=zoyo… -> 200  cookies sent: __Host-inklkunn-oidc  blocked: __Host-inklkunn-csrf:SchemefulSameSiteStrict  set: __Host-inklkunn-session,__Host-inklkunn-oidc
-      GET  http://localhost:54313/-/account -> 200  cookies sent: __Host-inklkunn-csrf,__Host-inklkunn-session
+      GET  http://localhost:55439/-/sign-in/oidc -> 303  cookies sent: __Host-inklkunn-csrf  set: __Host-inklkunn-oidc  referer: http://localhost:55439/-/sign-in
+      GET  https://idp.example:50083/authorize?response_type=code&client_id=inklkunn-wiki&redirect_uri=http%3A%2F%2Flocalhost%3A55439%2F-%2Fsign-in%2Foidc%2Fcallback&scope=openid&state=V7zv…&nonce=DNdJ…&code_challenge=ClMX…&code_challenge_method=S256 -> 200  cookies sent: none
+      POST https://idp.example:50083/approve -> 302  cookies sent: none  referer: https://idp.example:50083/authorize?response_type=code&client_id=inklkunn-wiki&redirect_uri=http%3A%2F%2Flocalhost%3A55439%2F-%2Fsign-in%2Foidc%2Fcallback&scope=openid&state=V7zv…&nonce=DNdJ…&code_challenge=ClMX…&code_challenge_method=S256
+      GET  http://localhost:55439/-/sign-in/oidc/callback?code=stand-in-code&state=V7zv… -> 200  cookies sent: __Host-inklkunn-oidc  blocked: __Host-inklkunn-csrf:SchemefulSameSiteStrict  set: __Host-inklkunn-session,__Host-inklkunn-oidc
+      GET  http://localhost:55439/-/account -> 200  cookies sent: __Host-inklkunn-csrf,__Host-inklkunn-session
   [PASS] the provider's redirect back reached the callback
   [PASS] the callback was answered 200 (a page, not a redirect)  (200)
   [PASS] the login-state cookie was SENT on that cross-site redirect (it is Lax)  (['__Host-inklkunn-oidc'])
@@ -31,27 +31,27 @@ S1  sign in with the provider, as a person does
   [PASS] that request carried the Strict session cookie  (['__Host-inklkunn-csrf', '__Host-inklkunn-session'])
   [PASS] ... without a Referer (the callback's address held the provider's code)  (None)
   [PASS] ... and was answered 200, the account page  (200)
-  [PASS] the person is signed in on the page they landed on  (Skip to the main content |  | inklkunn |  | Signed in as member-031dfa | Sign out | Your account | Y)
+  [PASS] the person is signed in on the page they landed on  (Skip to the main content |  | inklkunn |  | Signed in as member-4a3092 | Sign out | Your account | Y)
   [PASS] the state cookie is gone afterwards (single use)
   [PASS] the session cookie is stored: Strict, HttpOnly, Secure  (Strict)
 
 S2  a cross-site navigation into the wiki does not carry the Strict session cookie
-      GET  http://localhost:54313/-/account -> 303  cookies sent: none  blocked: __Host-inklkunn-csrf:SchemefulSameSiteStrict;__Host-inklkunn-session:SchemefulSameSiteStrict
-      GET  http://localhost:54313/-/sign-in?next=/-/account -> 200  cookies sent: none  blocked: __Host-inklkunn-csrf:SchemefulSameSiteStrict;__Host-inklkunn-session:SchemefulSameSiteStrict  set: __Host-inklkunn-csrf
+      GET  http://localhost:55439/-/account -> 303  cookies sent: none  blocked: __Host-inklkunn-csrf:SchemefulSameSiteStrict;__Host-inklkunn-session:SchemefulSameSiteStrict
+      GET  http://localhost:55439/-/sign-in?next=/-/account -> 200  cookies sent: none  blocked: __Host-inklkunn-csrf:SchemefulSameSiteStrict;__Host-inklkunn-session:SchemefulSameSiteStrict  set: __Host-inklkunn-csrf
   [PASS] the request into the wiki from the provider's page was made
   [PASS] Chromium blocked the Strict session cookie on it (a same-site-strict block)  ({'__Host-inklkunn-csrf': ['SchemefulSameSiteStrict'], '__Host-inklkunn-session': ['SchemefulSameSiteStrict']})
-  [PASS] so the person would have landed signed out  (http://localhost:54313/-/sign-in?next=/-/account)
+  [PASS] so the person would have landed signed out  (http://localhost:55439/-/sign-in?next=/-/account)
   [PASS] a same-site navigation made right after carries it, and the person is signed in  (['__Host-inklkunn-session', '__Host-inklkunn-csrf'])
 
 S3  a callback this browser did not start
-      GET  http://localhost:54313/-/sign-in/oidc/callback?code=stand-in-code&state=jsK7… -> 403  cookies sent: none  set: __Host-inklkunn-csrf,__Host-inklkunn-oidc
+      GET  http://localhost:55439/-/sign-in/oidc/callback?code=stand-in-code&state=Ry4b… -> 403  cookies sent: none  set: __Host-inklkunn-csrf,__Host-inklkunn-oidc
   [PASS] the victim's browser (no login-state cookie) is refused with 403  (403)
   [PASS] ... with the sentence that says the sign-in did not start here  (Skip to the main content |  | inklkunn |  | Sign in | Sign in |  | This sign-in did not start in thi)
   [PASS] ... and no session was set
   [PASS] the browser that did start that login can still finish it (nothing was spent)  (Skip to the main content |  | inklkunn |  | Signed in as mem)
 
 S4  the callback of S1 again, with its state cookie put back by hand
-      GET  http://localhost:54313/-/sign-in/oidc/callback?code=stand-in-code&state=zoyo… -> 403  cookies sent: __Host-inklkunn-oidc  set: __Host-inklkunn-csrf,__Host-inklkunn-oidc
+      GET  http://localhost:55439/-/sign-in/oidc/callback?code=stand-in-code&state=V7zv… -> 403  cookies sent: __Host-inklkunn-oidc  set: __Host-inklkunn-csrf,__Host-inklkunn-oidc
   [PASS] the browser sent the state cookie with the replayed address  (['__Host-inklkunn-oidc'])
   [PASS] ... and the server refused it, 403 (it forgot the state when it was used)  (403)
   [PASS] ... nobody was signed in

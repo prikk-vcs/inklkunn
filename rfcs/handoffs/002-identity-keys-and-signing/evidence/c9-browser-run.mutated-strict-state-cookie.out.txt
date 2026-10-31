@@ -1,13 +1,13 @@
 C9 real-browser run (handoff 002, follow-up F2)
-  date        2026-11-01 01:31:01 JST
-  repository  e2a6ec5
+  date        2026-11-01 01:42:01 JST
+  repository  b1b759f
   host        Linux-7.3.0-5-cachyos-x86_64-with-glibc2.44; python 3.14.8
-  server      the inklkunn router and authenticator on http://localhost:59827 (cargo test, ignored test browser::…)
+  server      the inklkunn router and authenticator on http://localhost:56579 (cargo test, ignored test browser::…)
   browser     Chrome/156.0.8078.79 (Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36)
-  sites       wiki http://localhost:59827  provider https://idp.example:57543  (cross-site)
+  sites       wiki http://localhost:56579  provider https://idp.example:42021  (cross-site)
 
 S1  sign in with the provider, as a person does
-  [PASS] the sign-in page offers the provider  ('Sign in with idp.example:57543')
+  [PASS] the sign-in page offers the provider  ('Sign in with idp.example:42021')
   [PASS] the login-state cookie is stored when the browser is sent away
   [FAIL]   ... SameSite=Lax  (Strict)
   [PASS]   ... HttpOnly
@@ -19,15 +19,15 @@ S1  sign in with the provider, as a person does
   [FAIL] S1 ran to its end  (TimeoutError: the tab to reach /-/account)
 
 S2  a cross-site navigation into the wiki does not carry the Strict session cookie
-      GET  http://localhost:59827/-/account -> 303  cookies sent: none  blocked: __Host-inklkunn-csrf:SchemefulSameSiteStrict
-      GET  http://localhost:59827/-/sign-in?next=/-/account -> 200  cookies sent: none  blocked: __Host-inklkunn-csrf:SchemefulSameSiteStrict  set: __Host-inklkunn-csrf
+      GET  http://localhost:56579/-/account -> 303  cookies sent: none  blocked: __Host-inklkunn-csrf:SchemefulSameSiteStrict
+      GET  http://localhost:56579/-/sign-in?next=/-/account -> 200  cookies sent: none  blocked: __Host-inklkunn-csrf:SchemefulSameSiteStrict  set: __Host-inklkunn-csrf
   [PASS] the request into the wiki from the provider's page was made
   [FAIL] Chromium blocked the Strict session cookie on it (a same-site-strict block)  ({'__Host-inklkunn-csrf': ['SchemefulSameSiteStrict']})
-  [PASS] so the person would have landed signed out  (http://localhost:59827/-/sign-in?next=/-/account)
+  [PASS] so the person would have landed signed out  (http://localhost:56579/-/sign-in?next=/-/account)
   [FAIL] a same-site navigation made right after carries it, and the person is signed in  (['__Host-inklkunn-csrf'])
 
 S3  a callback this browser did not start
-      GET  http://localhost:59827/-/sign-in/oidc/callback?code=stand-in-code&state=lAPR… -> 403  cookies sent: none  set: __Host-inklkunn-csrf,__Host-inklkunn-oidc
+      GET  http://localhost:56579/-/sign-in/oidc/callback?code=stand-in-code&state=6hBe… -> 403  cookies sent: none  set: __Host-inklkunn-csrf,__Host-inklkunn-oidc
   [PASS] the victim's browser (no login-state cookie) is refused with 403  (403)
   [PASS] ... with the sentence that says the sign-in did not start here  (Skip to the main content |  | inklkunn |  | Sign in | Sign in |  | This sign-in did not start in thi)
   [PASS] ... and no session was set
