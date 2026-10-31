@@ -1140,7 +1140,7 @@ fn align_blocks_is_the_alignment_the_merge_makes_between_a_base_and_a_side() {
     assert_eq!(align_blocks(base, base), [Some(0), Some(1), Some(2)]);
     // A reworded block between two unchanged ones is the same block, changed (a stretch of one and one).
     let reworded = "---\ntitle: T\n---\n\nThe bridge was opened in 1950.\n\nIt crosses the river.\n\nIt is 300 m long.\n";
-    assert_eq!(align_blocks(base, &reworded), [Some(0), Some(1), Some(2)]);
+    assert_eq!(align_blocks(base, reworded), [Some(0), Some(1), Some(2)]);
     // A removed block has no counterpart; the others keep theirs, renumbered.
     let removed = "---\ntitle: T\n---\n\nThe bridge opened in 1950.\n\nIt is 300 m long.\n";
     assert_eq!(align_blocks(base, removed), [Some(0), None, Some(1)]);
