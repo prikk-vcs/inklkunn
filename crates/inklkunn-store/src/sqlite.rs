@@ -672,6 +672,7 @@ CREATE TABLE IF NOT EXISTS knowledge_invalid (
     rule    TEXT NOT NULL,
     PRIMARY KEY (wiki_id, tip, path)
 );
+";
 
 /// Version 14 (the sign-in handoff's U2; the owner's ruling DR-11): invitations, the one-time links an account is
 /// made from. The link's secret is kept as its SHA-256, so a copy of this file opens no invitation. An

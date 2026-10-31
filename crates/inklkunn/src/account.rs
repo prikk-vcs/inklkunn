@@ -305,7 +305,7 @@ pub(crate) fn execute(
             let _ = writeln!(
                 out,
                 "An invitation was made. It works once and ends at {} (UTC).",
-                crate::keys::rfc3339(issued.expires_at)
+                inklkunn_store::record::rfc3339(issued.expires_at)
             );
             let _ = writeln!(out, "{}", link(get_env, issued.secret.as_str()));
             let _ = writeln!(
