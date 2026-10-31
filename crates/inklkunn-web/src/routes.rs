@@ -215,6 +215,30 @@ fn account_specs() -> Vec<Spec> {
             },
         },
         Spec {
+            path: signin::OIDC_PATH,
+            methods: &["GET", "HEAD"],
+            guard: Guard::Public {
+                reason: "starts a sign-in with the configured provider: it sends the browser to the provider and serves no wiki data; where no provider is configured it is the generic not-found page",
+            },
+            handler: || get(signin::oidc::start),
+        },
+        Spec {
+            path: signin::OIDC_CALLBACK_PATH,
+            methods: &["GET", "HEAD"],
+            guard: Guard::Public {
+                reason: "where the provider sends the browser back: it finishes the sign-in only for the browser that started it (the login-state cookie and the state must agree, once) and serves no wiki data",
+            },
+            handler: || get(signin::oidc::callback),
+        },
+        Spec {
+            path: signin::INVITE_OIDC_ROUTE,
+            methods: &["GET", "HEAD"],
+            guard: Guard::Public {
+                reason: "starts an invitation with the configured provider instead of a password: it sends the browser to the provider and serves no wiki data, and answers the same for a link that was used, one that ended and one that never was",
+            },
+            handler: || get(signin::oidc::start_invitation),
+        },
+        Spec {
             path: account::PATH,
             methods: &["GET", "HEAD"],
             guard: Guard::Public {

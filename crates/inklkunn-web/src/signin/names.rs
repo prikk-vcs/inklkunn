@@ -12,10 +12,16 @@ pub(crate) const SIGN_IN_PATH: &str = "/-/sign-in";
 pub(crate) const SIGN_OUT_PATH: &str = "/-/sign-out";
 /// Where a person makes an account where joining is open.
 pub(crate) const JOIN_PATH: &str = "/-/join";
+/// Where a person starts signing in with the configured provider.
+pub const OIDC_PATH: &str = "/-/sign-in/oidc";
+/// Where the provider sends the browser back to. The operator registers this address, in full, at the provider.
+pub const OIDC_CALLBACK_PATH: &str = "/-/sign-in/oidc/callback";
 /// What an invitation link starts with; the secret follows.
 pub(crate) const INVITE_PREFIX: &str = "/-/invite/";
 /// The route pattern of an invitation link.
 pub(crate) const INVITE_ROUTE: &str = "/-/invite/{secret}";
+/// The route pattern where an invitation is started with the provider instead of a password.
+pub(crate) const INVITE_OIDC_ROUTE: &str = "/-/invite/{secret}/oidc";
 
 /// The account page.
 pub(crate) const ACCOUNT_PATH: &str = "/-/account";
@@ -52,6 +58,23 @@ pub(crate) const F_SCOPE: &str = "scope";
 pub(crate) const F_DAYS: &str = "days";
 pub(crate) const F_ID: &str = "id";
 
+/// The query parameters the provider's callback carries.
+pub(crate) const Q_STATE: &str = "state";
+pub(crate) const Q_CODE: &str = "code";
+pub(crate) const Q_ERROR: &str = "error";
+
+/// The address of the link that starts a sign-in with the provider and returns to `next` (a local address).
+pub(crate) fn oidc_start_href(next: &str) -> String {
+    if next == "/" || next.is_empty() {
+        OIDC_PATH.to_owned()
+    } else {
+        format!(
+            "{OIDC_PATH}?{F_NEXT}={}",
+            inklkunn_markup::percent_encode(next)
+        )
+    }
+}
+
 /// The query parameter of the account page that says what was just done, and its values.
 pub(crate) const Q_DONE: &str = "done";
 pub(crate) const DONE_NAME: &str = "name";
@@ -69,6 +92,11 @@ pub(crate) fn sign_in_href(back: &str) -> String {
             inklkunn_markup::percent_encode(back)
         )
     }
+}
+
+/// The address that starts the invitation at `invite_action` with the provider.
+pub(crate) fn invite_oidc_action(invite_action: &str) -> String {
+    format!("{invite_action}/oidc")
 }
 
 /// The address of the invitation whose secret is `secret`.

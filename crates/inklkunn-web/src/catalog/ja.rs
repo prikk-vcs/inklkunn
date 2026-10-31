@@ -2051,4 +2051,45 @@ pub const CATALOG: &[Entry] = &[
         "メモが長すぎます。80 文字までです。",
     ),
     // sign-in and accounts (the sign-in handoff U1, U2): end
+    // sign-in through a provider (the OpenID Connect handoff U3): begin
+    msg("sign_in.provider", "{provider} でサインイン"),
+    msg(
+        "sign_in.provider_joins",
+        "{provider} で初めてサインインすると、アカウントが作られます。",
+    ),
+    msg(
+        "sign_in.provider_failed",
+        "{provider} でのサインインがうまくいきませんでした。何も変更されていません。もう一度お試しください。繰り返し起きる場合は、このサーバーの管理者にお知らせください。",
+    ),
+    msg(
+        "sign_in.provider_state",
+        "このサインインは、このブラウザーで始めたものではないか、すでに使われたか、時間がかかりすぎました。このページからもう一度始めてください。",
+    ),
+    msg(
+        "sign_in.provider_not_linked",
+        "プロバイダーはあなたを確認しましたが、そのサインインに結び付いたアカウントがここにはありません。招待が必要です。このウィキを運営している人にお願いしてください。",
+    ),
+    msg(
+        "sign_in.provider_unreachable",
+        "いまプロバイダーに接続できません。何も変更されていません。しばらくしてからもう一度お試しください。",
+    ),
+    msg(
+        "invite.provider_intro",
+        "パスワードの代わりに、プロバイダーに本人確認を任せることもできます。その場合、アカウントはそのサインインに結び付き、パスワードを覚える必要はありません。",
+    ),
+    msg(
+        "invite.provider_link",
+        "パスワードの代わりに {provider} を使う",
+    ),
+    msg(
+        "invite.provider_taken",
+        "{provider} でのサインインにはすでにここのアカウントがあるため、この招待は使われていません。代わりに {provider} でサインインしてください。",
+    ),
+    msg("title.landing", "サインインしています · {product}"),
+    msg(
+        "landing.body",
+        "サインインしています。このページが自動で切り替わらない場合は、{link}。",
+    ),
+    msg("landing.continue", "続きのページへ進んでください"),
+    // sign-in through a provider (the OpenID Connect handoff U3): end
 ];

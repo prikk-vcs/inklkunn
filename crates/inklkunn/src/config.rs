@@ -18,6 +18,10 @@
 //! | `INKLKUNN_INDEX_MAX_FILES` | (`serve`) the most files the title index is built from | `200000` |
 //! | `INKLKUNN_PAGE_MAX_KIB` | (`serve`) the largest page source read, in KiB | `1024` |
 //! | `INKLKUNN_JOIN` | (`serve`) who may make an account without an invitation: `off` (accounts come only from invitations), `provider` (a first sign-in through the configured OpenID Connect provider makes one; **a public provider makes this open registration**) or `anyone` (also a local account with a password) | `off` |
+//! | `INKLKUNN_OIDC_ISSUER` | (`serve`) the OpenID Connect provider's issuer, an `https` address exactly as the provider publishes it (its discovery document is at `<issuer>/.well-known/openid-configuration`); switches provider sign-in on. Needs `curl`, the system CA bundle, `prlimit` and bubblewrap on the host | none (no provider) |
+//! | `INKLKUNN_OIDC_CLIENT_ID` | (`serve`) the client id registered at the provider; required with the issuer | none |
+//! | `INKLKUNN_OIDC_CLIENT_SECRET_FILE` | (`serve`) the file with the client secret (absolute; read once at start, trailing line breaks dropped, never printed); none for a public client (the PKCE proof alone) | none |
+//! | `INKLKUNN_OIDC_SCOPES` | (`serve`) the scopes to ask besides `openid`, which is always asked; separated by spaces or commas. Only the provider's `iss` and `sub` are ever read, so the default asks for nothing more | `openid` only |
 //! | `INKLKUNN_TRUSTED_PROXIES` | (`serve`) the reverse proxies whose `X-Forwarded-For` is believed: comma-separated addresses or networks (`10.0.0.0/8`); none by default | none |
 //!
 //! `serve --config FILE` reads the same names from a file, one `NAME=value` per line (`#` comments); the
@@ -165,6 +169,103 @@ pub struct WebSettings {
     /// `INKLKUNN_JOIN`: who may make an account without an invitation. **Off unless the operator says
     /// otherwise.**
     pub join: JoinPolicy,
+    /// `INKLKUNN_OIDC_*`: the OpenID Connect provider, if the operator configured one.
+    pub oidc: Option<OidcSettings>,
+}
+
+/// The OpenID Connect provider the operator configured (`INKLKUNN_OIDC_*`). All or nothing: the issuer and the
+/// client id come together, and the secret file and the scopes mean nothing without them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OidcSettings {
+    /// `INKLKUNN_OIDC_ISSUER`: an `https` address, no query or fragment.
+    pub issuer: String,
+    /// `INKLKUNN_OIDC_CLIENT_ID`.
+    pub client_id: String,
+    /// `INKLKUNN_OIDC_CLIENT_SECRET_FILE`: where the client secret is read from at start (never the secret
+    /// itself: a setting is printed, logged and put in a process listing; a file is a file).
+    pub client_secret_file: Option<PathBuf>,
+    /// `INKLKUNN_OIDC_SCOPES`: besides `openid`.
+    pub scopes: Vec<String>,
+}
+
+/// Is `s` a scope token (RFC 6749 section 3.3): one or more of `%x21 / %x23-5B / %x5D-7E`?
+fn is_scope_token(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 128
+        && s.bytes()
+            .all(|b| b == 0x21 || (0x23..=0x5B).contains(&b) || (0x5D..=0x7E).contains(&b))
+}
+
+impl OidcSettings {
+    /// Read the provider settings through `get`: `None` when no `INKLKUNN_OIDC_*` is set.
+    fn load(get: &dyn Fn(&str) -> Option<OsString>) -> Result<Option<Self>, ConfigError> {
+        const ISSUER: &str = "INKLKUNN_OIDC_ISSUER";
+        const CLIENT: &str = "INKLKUNN_OIDC_CLIENT_ID";
+        const SECRET: &str = "INKLKUNN_OIDC_CLIENT_SECRET_FILE";
+        const SCOPES: &str = "INKLKUNN_OIDC_SCOPES";
+        let text = |name: &str| -> Result<Option<String>, ConfigError> {
+            get(name)
+                .map(|v| {
+                    v.into_string()
+                        .map_err(|_| ConfigError(format!("{name} must be UTF-8 text")))
+                })
+                .transpose()
+        };
+        let (issuer, client_id) = (text(ISSUER)?, text(CLIENT)?);
+        let (secret, scopes) = (get(SECRET), text(SCOPES)?);
+        let (Some(issuer), Some(client_id)) = (issuer, client_id) else {
+            // Half a provider is a mistake to name, not a provider to switch on or off silently.
+            let present = [
+                (ISSUER, get(ISSUER).is_some()),
+                (CLIENT, get(CLIENT).is_some()),
+                (SECRET, secret.is_some()),
+                (SCOPES, scopes.is_some()),
+            ];
+            return match present.iter().find(|(_, set)| *set) {
+                None => Ok(None),
+                Some((name, _)) => Err(ConfigError(format!(
+                    "{name} is set, but a provider needs both {ISSUER} and {CLIENT}"
+                ))),
+            };
+        };
+        let issuer = issuer.trim().to_owned();
+        let bad_issuer = issuer
+            .strip_prefix("https://")
+            .is_none_or(|rest| rest.is_empty() || rest.starts_with('/'))
+            || issuer.len() > 512
+            || issuer.chars().any(|c| c.is_control() || c.is_whitespace())
+            || issuer.contains(['?', '#']);
+        if bad_issuer {
+            return Err(ConfigError(format!(
+                "{ISSUER} must be an https address with no query or fragment, like https://accounts.example.org (it is `{issuer}`)"
+            )));
+        }
+        let client_id = client_id.trim().to_owned();
+        if client_id.is_empty() || client_id.len() > 256 || client_id.chars().any(char::is_control)
+        {
+            return Err(ConfigError(format!(
+                "{CLIENT} must be the client id the provider gave, one line of up to 256 characters"
+            )));
+        }
+        let client_secret_file = secret.map(|v| absolute_setting(SECRET, &v)).transpose()?;
+        let scopes: Vec<String> = scopes
+            .unwrap_or_default()
+            .split([' ', ','])
+            .filter(|t| !t.is_empty())
+            .map(str::to_owned)
+            .collect();
+        if scopes.len() > 16 || scopes.iter().any(|t| !is_scope_token(t)) {
+            return Err(ConfigError(format!(
+                "{SCOPES} must be up to 16 scopes separated by spaces or commas, like `profile groups`"
+            )));
+        }
+        Ok(Some(OidcSettings {
+            issuer,
+            client_id,
+            client_secret_file,
+            scopes,
+        }))
+    }
 }
 
 /// The read service's settings (RFC 003 D-2; handoff 003 T4).
@@ -239,6 +340,7 @@ impl WebSettings {
                     ))
                 })?,
             },
+            oidc: OidcSettings::load(get)?,
             trusted_proxies: match text("INKLKUNN_TRUSTED_PROXIES")? {
                 None => Vec::new(),
                 Some(list) => list
@@ -270,6 +372,10 @@ pub const KNOWN: &[&str] = &[
     "INKLKUNN_PAGE_MAX_KIB",
     "INKLKUNN_TRUSTED_PROXIES",
     "INKLKUNN_JOIN",
+    "INKLKUNN_OIDC_ISSUER",
+    "INKLKUNN_OIDC_CLIENT_ID",
+    "INKLKUNN_OIDC_CLIENT_SECRET_FILE",
+    "INKLKUNN_OIDC_SCOPES",
 ];
 
 /// Read a configuration file: one `NAME=value` per line, `#` comments and blank lines allowed, no quoting, no

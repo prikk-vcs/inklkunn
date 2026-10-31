@@ -66,6 +66,15 @@ pub(crate) fn real(config: AuthConfig) -> Real {
 }
 
 pub(crate) fn real_with(config: AuthConfig, visibility: Visibility) -> Real {
+    real_built(config, visibility, |auth| auth)
+}
+
+/// As [`real_with`], with the authenticator passed through `finish` (to switch a provider on).
+pub(crate) fn real_built(
+    config: AuthConfig,
+    visibility: Visibility,
+    finish: impl FnOnce(Authenticator) -> Authenticator,
+) -> Real {
     let mut w = World::with_visibility(
         "garden",
         "The Garden",
@@ -79,11 +88,11 @@ pub(crate) fn real_with(config: AuthConfig, visibility: Visibility) -> Real {
         inner: Argon2idHasher::with_cost(64, 1, 1).unwrap(),
         verifies: AtomicUsize::new(0),
     });
-    let auth = Arc::new(
+    let auth = Arc::new(finish(
         Authenticator::with_hasher(w.store.clone(), config, hasher.clone())
             .unwrap()
             .with_audit(w.audit.clone()),
-    );
+    ));
     let log = w.services.log.clone();
     let identity = AuthIdentity::new(auth.clone(), w.store.clone(), || NOW, log);
     w.services = Arc::new(Services {

@@ -50,6 +50,7 @@ fn web(bind: &str, app: &str, content: &str) -> WebSettings {
         read: crate::config::ReadSettings::default(),
         trusted_proxies: Vec::new(),
         join: inklkunn_auth::JoinPolicy::Off,
+        oidc: None,
     }
 }
 

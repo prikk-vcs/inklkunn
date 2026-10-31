@@ -289,3 +289,128 @@ fn the_environment_wins_over_the_file() {
     assert_eq!(get("INKLKUNN_PRIKK"), Some(OsString::from("/opt/prikk")));
     assert_eq!(get("INKLKUNN_DATA_DIR"), None);
 }
+
+#[test]
+fn a_provider_is_all_or_nothing_and_every_part_of_it_is_checked() {
+    let base = [
+        ("INKLKUNN_APP_ORIGIN", "https://a.example"),
+        ("INKLKUNN_CONTENT_ORIGIN", "https://b.example"),
+    ];
+    let with = |extra: &[(&str, &str)]| {
+        let mut all = base.to_vec();
+        all.extend_from_slice(extra);
+        WebSettings::load(&env(&all))
+    };
+    // None set: no provider.
+    assert_eq!(with(&[]).unwrap().oidc, None);
+    // The two that make one.
+    let w = with(&[
+        ("INKLKUNN_OIDC_ISSUER", "https://accounts.example.org"),
+        ("INKLKUNN_OIDC_CLIENT_ID", "inklkunn-wiki"),
+    ])
+    .unwrap();
+    assert_eq!(
+        w.oidc,
+        Some(OidcSettings {
+            issuer: "https://accounts.example.org".into(),
+            client_id: "inklkunn-wiki".into(),
+            client_secret_file: None,
+            scopes: Vec::new(),
+        })
+    );
+    // All of them, scopes split on spaces and commas.
+    let w = with(&[
+        (
+            "INKLKUNN_OIDC_ISSUER",
+            "https://accounts.example.org/realms/main",
+        ),
+        ("INKLKUNN_OIDC_CLIENT_ID", "inklkunn-wiki"),
+        ("INKLKUNN_OIDC_CLIENT_SECRET_FILE", "/run/secrets/oidc"),
+        ("INKLKUNN_OIDC_SCOPES", "profile, groups  email"),
+    ])
+    .unwrap()
+    .oidc
+    .unwrap();
+    assert_eq!(
+        w.client_secret_file,
+        Some(PathBuf::from("/run/secrets/oidc"))
+    );
+    assert_eq!(w.scopes, ["profile", "groups", "email"]);
+    // Half a provider names what is missing.
+    for (set, named) in [
+        ("INKLKUNN_OIDC_ISSUER", "INKLKUNN_OIDC_ISSUER"),
+        ("INKLKUNN_OIDC_CLIENT_ID", "INKLKUNN_OIDC_CLIENT_ID"),
+        (
+            "INKLKUNN_OIDC_CLIENT_SECRET_FILE",
+            "INKLKUNN_OIDC_CLIENT_SECRET_FILE",
+        ),
+        ("INKLKUNN_OIDC_SCOPES", "INKLKUNN_OIDC_SCOPES"),
+    ] {
+        let value = if set.ends_with("FILE") {
+            "/run/secrets/oidc"
+        } else if set.ends_with("ISSUER") {
+            "https://accounts.example.org"
+        } else {
+            "x"
+        };
+        let e = with(&[(set, value)]).unwrap_err().0;
+        assert!(
+            e.contains(named)
+                && e.contains("INKLKUNN_OIDC_ISSUER")
+                && e.contains("INKLKUNN_OIDC_CLIENT_ID"),
+            "{set}: {e}"
+        );
+    }
+    // The issuer is an https address with no query or fragment.
+    for bad in [
+        "http://accounts.example.org",
+        "accounts.example.org",
+        "https://",
+        "https:///x",
+        "https://a.example/?x=1",
+        "https://a.example/#frag",
+        "https://a .example",
+        "ftp://a.example",
+    ] {
+        let e = with(&[
+            ("INKLKUNN_OIDC_ISSUER", bad),
+            ("INKLKUNN_OIDC_CLIENT_ID", "c"),
+        ])
+        .unwrap_err()
+        .0;
+        assert!(
+            e.contains("INKLKUNN_OIDC_ISSUER") && e.contains("https"),
+            "{bad}: {e}"
+        );
+    }
+    // The secret is in a file, by an absolute path; the scopes are scope tokens.
+    let e = with(&[
+        ("INKLKUNN_OIDC_ISSUER", "https://a.example"),
+        ("INKLKUNN_OIDC_CLIENT_ID", "c"),
+        ("INKLKUNN_OIDC_CLIENT_SECRET_FILE", "oidc-secret"),
+    ])
+    .unwrap_err()
+    .0;
+    assert!(
+        e.contains("INKLKUNN_OIDC_CLIENT_SECRET_FILE") && e.contains("absolute"),
+        "{e}"
+    );
+    for bad in ["bad\"scope", "back\\slash", "tab\tscope"] {
+        let e = with(&[
+            ("INKLKUNN_OIDC_ISSUER", "https://a.example"),
+            ("INKLKUNN_OIDC_CLIENT_ID", "c"),
+            ("INKLKUNN_OIDC_SCOPES", bad),
+        ])
+        .unwrap_err()
+        .0;
+        assert!(e.contains("INKLKUNN_OIDC_SCOPES"), "{bad:?}: {e}");
+    }
+    for name in [
+        "INKLKUNN_OIDC_ISSUER",
+        "INKLKUNN_OIDC_CLIENT_ID",
+        "INKLKUNN_OIDC_CLIENT_SECRET_FILE",
+        "INKLKUNN_OIDC_SCOPES",
+    ] {
+        assert!(KNOWN.contains(&name), "a file may carry {name}");
+    }
+}

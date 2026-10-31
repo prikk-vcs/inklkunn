@@ -17,6 +17,10 @@
 //! anything else; the same-site check stays beside it as the second wall. The session cookie that a success
 //! sets is `__Host-`, `Secure`, `HttpOnly` and `SameSite=Strict`; the double-submit cookie is removed.
 //!
+//! * **`/-/sign-in/oidc`**, its callback and **`/-/invite/{secret}/oidc`** (`signin/oidc.rs`): the same two
+//!   pages offer the configured provider, only when there is one. Joining through it is the server's
+//!   `INKLKUNN_JOIN` setting and nothing else.
+//!
 //! Nothing here needs a script, and a page here is never cached or indexed.
 
 use std::collections::HashMap;
@@ -40,11 +44,14 @@ use crate::services::Services;
 use crate::wiki::{blocking, generic_not_found, redirect, render_failed};
 
 pub(crate) mod names;
+pub(crate) mod oidc;
 
 use names::{F_LOGIN, F_NAME, F_NEXT, F_PASSWORD, FORWARDED_FOR, clear_form_cookie, invite_action};
 pub(crate) use names::{
-    INVITE_ROUTE, JOIN_PATH, SIGN_IN_PATH, SIGN_OUT_PATH, no_store, sign_in_href,
+    INVITE_OIDC_ROUTE, INVITE_ROUTE, JOIN_PATH, OIDC_CALLBACK_PATH, OIDC_PATH, SIGN_IN_PATH,
+    SIGN_OUT_PATH, no_store, sign_in_href,
 };
+pub(crate) use oidc::{ProviderLink, provider_name};
 
 /// The most bytes one of these forms may carry: a name, a display name and a password, each percent-encoded.
 pub(crate) const FORM_LIMIT: usize = 16 * 1024;
@@ -176,13 +183,15 @@ struct SignInTpl<'a> {
     login_label: String,
     password_label: String,
     button: String,
+    provider: Option<ProviderLink>,
+    provider_joins: Option<String>,
     join_href: Option<&'static str>,
     join_label: String,
     invitation_only: String,
 }
 
 struct SignInView<'a> {
-    problem: Option<Key>,
+    problem: Option<String>,
     login: &'a str,
     next: &'a str,
 }
@@ -197,11 +206,12 @@ fn sign_in_form(
         return render_failed(page);
     };
     let open_to_all = auth.join_policy().lets_anyone_join_with_a_password();
+    let provider = oidc::sign_in_link(page, view.next);
     let rendered = SignInTpl {
         page,
         title: page.title(Key::TitleSignIn),
         heading: page.get(Key::SignInHeading),
-        problem: view.problem.map(|k| page.get(k)),
+        problem: view.problem.clone(),
         already: page
             .signed_in_as()
             .map(|name| page.t().msg(Key::SignInAlready).with("name", name).text()),
@@ -214,6 +224,9 @@ fn sign_in_form(
         login_label: page.get(Key::SignInLoginLabel),
         password_label: page.get(Key::SignInPasswordLabel),
         button: page.get(Key::SignInButton),
+        provider_joins: (provider.is_some() && auth.join_policy().lets_a_provider_sign_in_join())
+            .then(|| oidc::provider_joins(page)),
+        provider,
         join_href: open_to_all.then_some(JOIN_PATH),
         join_label: page.get(Key::SignInJoin),
         invitation_only: page.get(Key::SignInInvitationOnly),
@@ -290,7 +303,7 @@ pub(crate) async fn sign_in_post(
             &auth,
             status,
             &SignInView {
-                problem: Some(problem),
+                problem: Some(page.get(problem)),
                 login: &shown.0,
                 next: &shown.1,
             },
@@ -406,6 +419,8 @@ struct NewAccountTpl<'a> {
     password_label: String,
     password_hint: String,
     button: String,
+    provider: Option<ProviderLink>,
+    provider_intro: String,
 }
 
 /// What a page that makes an account is for.
@@ -447,6 +462,11 @@ fn new_account_form(
             Key::InviteButton,
         ),
     };
+    // Only an invitation offers the provider here: a person who joins without one signs in with it from the
+    // sign-in page, where joining through it is the server's own setting.
+    let provider = (making == Making::Invitation)
+        .then(|| oidc::invitation_link(page, &action))
+        .flatten();
     let rendered = NewAccountTpl {
         page,
         title: page.title(title),
@@ -468,6 +488,8 @@ fn new_account_form(
             .with("min", PASSWORD_MIN_CHARS.to_string())
             .text(),
         button: page.get(button),
+        provider,
+        provider_intro: oidc::invitation_intro(page),
     }
     .render();
     no_store(with_cookie(

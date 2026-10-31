@@ -76,6 +76,9 @@ pub struct Page {
     pub(crate) who: Option<crate::services::SessionView>,
     /// Is sign-in served here? Then a signed-out visitor is offered *Sign in*, because it leads somewhere.
     pub(crate) sign_in: bool,
+    /// The provider's name for a page to offer (its host), when one is configured: the sign-in page and an
+    /// invitation offer *Sign in with …* only then.
+    pub(crate) provider: Option<String>,
 }
 
 impl Page {
@@ -91,6 +94,7 @@ impl Page {
             origins: None,
             who: None,
             sign_in: false,
+            provider: None,
         }
     }
 
@@ -228,6 +232,11 @@ impl FromRequestParts<PageState> for Page {
         page.origins = Some(state.origins.clone());
         if let Some(services) = &state.services {
             page.sign_in = services.auth.is_some();
+            page.provider = services
+                .auth
+                .as_ref()
+                .and_then(|auth| auth.oidc_issuer())
+                .map(crate::signin::provider_name);
             // Who is signed in is a lookup, so it is made on a blocking thread, and only for a request that
             // could have a session at all.
             if services.identity.may_be_signed_in(&parts.headers) {

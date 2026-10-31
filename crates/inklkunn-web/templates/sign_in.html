@@ -18,6 +18,8 @@
 </div>
 <p><button type="submit">{{ button }}</button></p>
 </form>
-{% if let Some(href) = join_href %}<p><a href="{{ href }}">{{ join_label }}</a></p>
+{% if let Some(p) = provider %}<p><a href="{{ p.href }}">{{ p.label }}</a></p>
+{% if let Some(text) = provider_joins %}<p class="hint">{{ text }}</p>
+{% endif %}{% endif %}{% if let Some(href) = join_href %}<p><a href="{{ href }}">{{ join_label }}</a></p>
 {% else %}<p>{{ invitation_only }}</p>
 {% endif %}{% endif %}{% endblock %}

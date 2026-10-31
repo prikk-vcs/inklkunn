@@ -6,9 +6,9 @@
 //! (`tests/retired_words.rs`, `tests/glossary.rs`).
 
 #[path = "../structure/dom.rs"]
-mod dom;
+pub(crate) mod dom;
 #[path = "../structure/rules.rs"]
-mod rules;
+pub(crate) mod rules;
 
 use inklkunn_auth::{AuthConfig, JoinPolicy, ThrottlePolicy};
 use inklkunn_store::Role;

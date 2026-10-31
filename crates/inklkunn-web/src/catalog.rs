@@ -1174,6 +1174,20 @@ keys! {
     AccountTokenTooMany => "account.token_too_many",
     AccountTokenLabelLong => "account.token_label_long",
     // sign-in and accounts (the sign-in handoff U1, U2): end
+    // sign-in through a provider (the OpenID Connect handoff U3): begin
+    SignInProvider => "sign_in.provider",
+    SignInProviderJoins => "sign_in.provider_joins",
+    SignInProviderFailed => "sign_in.provider_failed",
+    SignInProviderState => "sign_in.provider_state",
+    SignInProviderNotLinked => "sign_in.provider_not_linked",
+    SignInProviderUnreachable => "sign_in.provider_unreachable",
+    InviteProviderIntro => "invite.provider_intro",
+    InviteProviderLink => "invite.provider_link",
+    InviteProviderTaken => "invite.provider_taken",
+    TitleLanding => "title.landing",
+    LandingBody => "landing.body",
+    LandingContinue => "landing.continue",
+    // sign-in through a provider (the OpenID Connect handoff U3): end
 }
 
 /// A typed value for a placeholder. Text is HTML-escaped; a link is an escaped label plus an `href` the

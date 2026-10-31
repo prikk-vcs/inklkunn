@@ -33,6 +33,13 @@ exact :: signin.rs :: a sign-in could not be completed: {other} :: a line for th
 exact :: signin.rs :: a session could not be ended: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
 exact :: signin.rs :: an account could not be made: {other} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
 exact :: signin.rs :: an invitation could not be checked: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: oidc.rs :: https:// :: the scheme of the issuer, taken off to show its host name; no sentence
+exact :: oidc.rs :: provider :: a placeholder name of a catalog message
+exact :: oidc.rs :: link :: a placeholder name of a catalog message
+exact :: oidc.rs :: a sign-in through the provider could not start: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: oidc.rs :: a sign-in through the provider could not start: {other} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: oidc.rs :: a sign-in through the provider did not complete: {error} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: oidc.rs :: the provider answered with an error :: the reason for the operator's log when the provider's callback carries an error; no response carries it
 exact :: account.rs :: started :: a placeholder name of a catalog message
 exact :: account.rs :: ends :: a placeholder name of a catalog message
 exact :: account.rs :: when :: a placeholder name of a catalog message

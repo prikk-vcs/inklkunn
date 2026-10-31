@@ -1982,4 +1982,45 @@ pub const CATALOG: &[Entry] = &[
         "The note is too long: at most 80 characters.",
     ),
     // sign-in and accounts (the sign-in handoff U1, U2): end
+    // sign-in through a provider (the OpenID Connect handoff U3): begin
+    msg("sign_in.provider", "Sign in with {provider}"),
+    msg(
+        "sign_in.provider_joins",
+        "The first time you sign in with {provider}, an account is made for you.",
+    ),
+    msg(
+        "sign_in.provider_failed",
+        "The sign-in with {provider} did not work, and nothing was changed. Try again; if it keeps happening, tell the person who runs this server.",
+    ),
+    msg(
+        "sign_in.provider_state",
+        "This sign-in did not start in this browser, or it has been used already, or it took too long. Start it again from this page.",
+    ),
+    msg(
+        "sign_in.provider_not_linked",
+        "The provider knows you, but no account here is linked to your sign-in there. Ask the person who runs this wiki for an invitation.",
+    ),
+    msg(
+        "sign_in.provider_unreachable",
+        "The provider could not be reached right now, and nothing was changed. Try again in a while.",
+    ),
+    msg(
+        "invite.provider_intro",
+        "Or, instead of a password, let your provider vouch for you. Your account is then tied to that sign-in, and there is no password to remember.",
+    ),
+    msg(
+        "invite.provider_link",
+        "Use {provider} instead of a password",
+    ),
+    msg(
+        "invite.provider_taken",
+        "Your sign-in with {provider} already has an account here, so this invitation was not used. Sign in with {provider} instead.",
+    ),
+    msg("title.landing", "Signing in · {product}"),
+    msg(
+        "landing.body",
+        "Signing you in. If this page does not move on by itself, {link}.",
+    ),
+    msg("landing.continue", "continue to the page you asked for"),
+    // sign-in through a provider (the OpenID Connect handoff U3): end
 ];

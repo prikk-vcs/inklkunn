@@ -12,8 +12,7 @@ mod audit;
 mod cli;
 mod config;
 mod keys;
-// Compiled and tested, constructed by nothing yet: OpenID Connect is switched on in M2 (handoff 002 C8).
-#[allow(dead_code)]
+// Outbound HTTPS for OpenID Connect (handoff 002 C8): the provider `serve` builds when one is configured.
 mod outbound;
 mod serve;
 

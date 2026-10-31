@@ -334,7 +334,7 @@ fn an_invitation_that_names_a_role_grants_it_in_the_same_step() {
 fn an_identity_that_has_an_account_spends_no_invitation_and_is_told_to_sign_in() {
     let r = rig(JoinPolicy::Provider);
     r.person_at_the_provider("existing");
-    r.sign_in("203.0.113.1", NOW).unwrap();
+    let _ = r.sign_in("203.0.113.1", NOW).unwrap();
     let secret = invite(&r, Some(Role::Admin));
     let e = r
         .round_trip(

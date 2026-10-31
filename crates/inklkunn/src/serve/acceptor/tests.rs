@@ -374,6 +374,7 @@ impl Running {
             read: crate::config::ReadSettings::default(),
             trusted_proxies: Vec::new(),
             join: inklkunn_auth::JoinPolicy::Off,
+            oidc: None,
         };
         let log = Arc::new(Mutex::new(Vec::new()));
         let sink = log.clone();

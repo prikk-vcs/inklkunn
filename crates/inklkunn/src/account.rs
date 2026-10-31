@@ -1,4 +1,4 @@
-//! `inklkunn account invite | disable | enable | grant | revoke-grant`: how accounts come into being and what
+//! `inklkunn account invite | link | disable | enable | grant | revoke-grant`: how accounts come into being and what
 //! they may do, from the command line of the host that runs the service (the sign-in handoff's U2; the owner's
 //! ruling DR-11).
 //!
@@ -13,6 +13,11 @@
 //!   **once**, here. The person who opens it chooses a password (or, when OpenID Connect is on, a provider) and
 //!   the account is made in that step with the role, if one was named; the first administrator of a wiki is made
 //!   this way. No password is ever sent or printed.
+//! - `account link <login | id> <issuer> <subject>`: bind an OpenID Connect identity (the provider's `iss` and
+//!   `sub`, nothing else: never an e-mail address) to an account, so that person can sign in with the provider.
+//!   This is the **administrative** way to link; the person's own is an invitation redeemed with the provider
+//!   (or, where `INKLKUNN_JOIN` lets a first provider sign-in make an account, that first sign-in). An identity
+//!   that another account holds is refused. Audited before it is done.
 //! - `account disable <login | id>` / `account enable <login | id>`: a disabled account cannot sign in, its
 //!   sessions end and its API tokens are revoked; its history stays attributed to it.
 //! - `account grant <login | id> <role> <wiki>` / `account revoke-grant <login | id> <wiki>`: the role the account
@@ -22,11 +27,11 @@ use std::ffi::OsString;
 use std::io::Write;
 
 use inklkunn_auth::invitation::{DEFAULT_LIFETIME_SECS, MAX_LIFETIME_SECS};
-use inklkunn_auth::{AuthConfig, Authenticator, InviteError};
+use inklkunn_auth::{AccountError, AuthConfig, Authenticator, InviteError};
 use inklkunn_core::IdentityAuthority;
 use inklkunn_store::{
-    Account, AccountId, AccountStore, AuditOutcome, AuditSink, LoginName, Role, RoleGrant,
-    RoleStore, SqliteStore, WikiRecord,
+    Account, AccountId, AccountStore, AuditOutcome, AuditSink, ExternalIdentity, LoginName, Role,
+    RoleGrant, RoleStore, SqliteStore, WikiRecord,
 };
 
 use crate::admin::Trail;
@@ -35,12 +40,14 @@ use crate::keys::find_wiki;
 
 /// The usage text.
 pub(crate) const USAGE: &str = "usage: inklkunn account invite [--role <role> --wiki <wiki>] [--days <n>]\n       \
+inklkunn account link <login | account id> <issuer> <subject>\n       \
 inklkunn account disable <login | account id>\n       \
 inklkunn account enable <login | account id>\n       \
 inklkunn account grant <login | account id> <role> <wiki>\n       \
 inklkunn account revoke-grant <login | account id> <wiki>\n\
 <role> is one of observer, questioner, contributor, reviewer, maintainer, admin. <wiki> is the wiki's slug or id. \
-An invitation lasts 7 days unless --days says otherwise (1 to 30); its link is shown once.";
+An invitation lasts 7 days unless --days says otherwise (1 to 30); its link is shown once. <issuer> and <subject> \
+are the provider's own (its `iss` and the person's `sub`), exactly as it reports them; an e-mail address is neither.";
 
 /// What was asked.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +55,11 @@ pub(crate) enum Command {
     Invite {
         grant: Option<(Role, String)>,
         days: i64,
+    },
+    Link {
+        who: String,
+        issuer: String,
+        subject: String,
     },
     Disable {
         who: String,
@@ -125,6 +137,11 @@ pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
             };
             Ok(Command::Invite { grant, days })
         }
+        ["link", who, issuer, subject] => Ok(Command::Link {
+            who: (*who).to_owned(),
+            issuer: (*issuer).to_owned(),
+            subject: (*subject).to_owned(),
+        }),
         ["disable", who] => Ok(Command::Disable {
             who: (*who).to_owned(),
         }),
@@ -311,6 +328,37 @@ pub(crate) fn execute(
             let _ = writeln!(
                 out,
                 "This link is shown only now and cannot be shown again. Pass it on to the person it is for."
+            );
+            Ok(())
+        }
+        Command::Link {
+            who,
+            issuer,
+            subject,
+        } => {
+            let identity = ExternalIdentity::new(issuer, subject).map_err(|e| {
+                format!("that is not an identity a provider could report ({e}); give the issuer and the subject exactly as the provider does")
+            })?;
+            let account = find_account(&store, who)?;
+            let resource = account_resource(&account);
+            let detail = format!("issuer {issuer} subject {subject}");
+            trail.begin("account-link", &resource, &detail)?;
+            let auth = authenticator(&store, claim)?;
+            if let Err(e) = auth.link_external(&account.id, &identity, now) {
+                let _ = trail.finish("account-link", &resource, AuditOutcome::Failed, "not done");
+                return Err(match e {
+                    AccountError::IdentityTaken => {
+                        "another account is linked to that identity already; one person has one account"
+                            .to_owned()
+                    }
+                    other => format!("the identity could not be linked ({other})"),
+                });
+            }
+            trail.finish("account-link", &resource, AuditOutcome::Allowed, &detail)?;
+            let _ = writeln!(
+                out,
+                "The account {} can now sign in with {issuer} as {subject}.",
+                account.id
             );
             Ok(())
         }

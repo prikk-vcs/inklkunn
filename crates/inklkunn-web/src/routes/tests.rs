@@ -362,6 +362,10 @@ fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
             "/-/sign-out",
             "/-/join",
             "/-/invite/{secret}",
+            // The OpenID Connect handoff (U3): the provider's start, its callback, and an invitation's start.
+            "/-/sign-in/oidc",
+            "/-/sign-in/oidc/callback",
+            "/-/invite/{secret}/oidc",
             "/-/account",
             "/-/account/name",
             "/-/account/sessions/end",

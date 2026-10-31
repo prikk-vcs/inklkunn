@@ -62,3 +62,4 @@ pub use identity::AuthIdentity;
 pub use services::{
     Acceptor, AnonymousOnly, Identify, NoSigner, Services, SessionView, WriteIdentity,
 };
+pub use signin::names::OIDC_CALLBACK_PATH;

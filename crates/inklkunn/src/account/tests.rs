@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use inklkunn_auth::{AuthConfig, Authenticator};
 use inklkunn_core::IdentityAuthority;
 use inklkunn_store::{
-    AccountStore, AuditLog, DisplayName, InvitationStore, NewWiki, Role, RoleStore, Slug,
-    SqliteStore, WikiStore,
+    AccountStore, AuditLog, DisplayName, ExternalIdentity, InvitationStore, NewWiki, Role,
+    RoleStore, Slug, SqliteStore, WikiStore,
 };
 
 use super::*;
@@ -117,6 +117,8 @@ fn a_command_line_that_is_not_understood_is_a_usage_error_before_the_store_is_lo
         "invite --frobnicate",
         "invite --role",
         "disable",
+        "link alice",
+        "link alice https://idp.example",
         "grant alice admin",
         "grant alice owner garden",
         "revoke-grant alice",
@@ -281,6 +283,7 @@ fn an_act_the_trail_cannot_take_is_not_begun() {
     store.set_disabled(&bob, true).unwrap();
     for args in [
         "disable alice",
+        "link alice https://idp.example subject-9",
         "grant alice maintainer garden",
         "revoke-grant bobby garden",
         "enable bobby",
@@ -290,6 +293,15 @@ fn an_act_the_trail_cannot_take_is_not_begun() {
         assert!(err.contains("nothing was done"), "{args}: {err}");
     }
     assert!(!store.account(&alice).unwrap().unwrap().disabled);
+    assert!(
+        store
+            .account_by_identity(
+                &ExternalIdentity::new("https://idp.example", "subject-9").unwrap()
+            )
+            .unwrap()
+            .is_none(),
+        "the link was made before the trail took it"
+    );
     assert_eq!(store.role(&alice, &wiki.id).unwrap(), None);
     assert_eq!(store.role(&bob, &wiki.id).unwrap(), Some(Role::Reviewer));
     assert!(store.account(&bob).unwrap().unwrap().disabled);
@@ -436,4 +448,82 @@ fn a_role_is_granted_and_taken_away_and_each_is_audited() {
         let (status, _, err) = cli(&d, args, &[]);
         assert_eq!(status, 1, "{args}: {err}");
     }
+}
+
+#[test]
+fn an_identity_is_linked_by_login_or_id_audited_and_one_identity_has_one_account() {
+    let (d, store, _) = world("link");
+    let alice = store_account(&d, &store, "alice");
+    let bob = store_account(&d, &store, "bobby");
+    let identity = ExternalIdentity::new("https://idp.example", "subject-1").unwrap();
+
+    let (status, out, err) = cli(&d, "link ALICE https://idp.example subject-1", &[]);
+    assert_eq!(status, 0, "{err}");
+    assert!(
+        out.contains(&alice.to_string()) && out.contains("subject-1"),
+        "{out}"
+    );
+    assert_eq!(
+        store.account_by_identity(&identity).unwrap().map(|a| a.id),
+        Some(alice.clone())
+    );
+    // Again for the same account is fine; another account is refused, and nothing moves.
+    let (status, _, err) = cli(
+        &d,
+        &format!("link {alice} https://idp.example subject-1"),
+        &[],
+    );
+    assert_eq!(status, 0, "{err}");
+    let (status, out, err) = cli(&d, "link bobby https://idp.example subject-1", &[]);
+    assert_eq!((status, out.as_str()), (1, ""), "{err}");
+    assert!(err.contains("one person has one account"), "{err}");
+    assert_eq!(
+        store.account_by_identity(&identity).unwrap().map(|a| a.id),
+        Some(alice.clone())
+    );
+    // By id, as well as by sign-in name.
+    let (status, _, err) = cli(
+        &d,
+        &format!("link {bob} https://idp.example subject-2"),
+        &[],
+    );
+    assert_eq!(status, 0, "{err}");
+    // An account that is not there and an identity no provider could report change nothing, and the second
+    // never reaches the trail.
+    let too_long = "s".repeat(300);
+    for args in [
+        "link nobody https://idp.example subject-3".to_owned(),
+        format!("link alice https://idp.example {too_long}"),
+    ] {
+        let (status, out, err) = cli(&d, &args, &[]);
+        assert_eq!((status, out.as_str()), (1, ""), "{args}");
+        assert!(!err.is_empty(), "{args}");
+    }
+    assert!(
+        store
+            .account_by_identity(
+                &ExternalIdentity::new("https://idp.example", "subject-3").unwrap()
+            )
+            .unwrap()
+            .is_none()
+    );
+    // Audited before it is done and again when it ends: the refused one as failed.
+    let seen: Vec<String> = actions(&store)
+        .into_iter()
+        .filter(|e| e.0 == "account-link")
+        .map(|e| format!("{} {}", e.1, e.2))
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            format!("account:{alice} allowed"),
+            format!("account:{alice} allowed"),
+            format!("account:{alice} allowed"),
+            format!("account:{alice} allowed"),
+            format!("account:{bob} allowed"),
+            format!("account:{bob} failed"),
+            format!("account:{bob} allowed"),
+            format!("account:{bob} allowed"),
+        ]
+    );
 }

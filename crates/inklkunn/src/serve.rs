@@ -17,6 +17,7 @@ use inklkunn_web::{AuthIdentity, Services, Site, WebConfig, routes};
 
 use crate::admin;
 use crate::config::{ConfigError, Settings, WebSettings};
+use crate::outbound;
 
 mod acceptor;
 mod follow_up;
@@ -81,6 +82,8 @@ fn prepare_with(
     let proxies = ProxyPolicy::trusting(&proxy_networks).map_err(|e| {
         format!("INKLKUNN_TRUSTED_PROXIES must be addresses or networks like 10.0.0.0/8 ({e})")
     })?;
+    // The provider (its secret read, its vector probed) is checked now too, before anything is opened.
+    let provider = outbound::provider_if_configured(web)?;
     let hints = SizeHints::new();
     let storage = PrikkCli::open(&settings.prikk, sandbox.clone(), admission)
         .map_err(|e| {
@@ -163,7 +166,7 @@ fn prepare_with(
         )
         .with_notifier(notifier),
     );
-    let auth = Arc::new(
+    let auth = Arc::new(outbound::attach(
         Authenticator::new(
             store.clone(),
             AuthConfig {
@@ -175,7 +178,8 @@ fn prepare_with(
         )
         .map_err(|e| format!("sign-in could not be set up ({e})"))?
         .with_audit(store.clone() as Arc<dyn AuditSink>),
-    );
+        provider,
+    ));
     // The acceptor comes last among the parts and only after `admin::start_up` ran above: recovery has looked at
     // every wiki that needed it before anything can be accepted (a wiki it could not recover stays flagged and
     // refuses writes). Without the secret file the server still serves reads (RR-1; handoff U5).
@@ -222,6 +226,7 @@ fn prepare_with(
         .map_err(|e| format!("the routes are inconsistent: {e}"))?;
     let mut notes = notes;
     notes.extend(join_note(web.join));
+    notes.extend(outbound::start_notes(web));
     let signing_on = signing.signing;
     let mut banner = vec![
         format!(
@@ -266,7 +271,7 @@ pub(crate) fn join_note(policy: inklkunn_auth::JoinPolicy) -> Option<String> {
         JoinPolicy::Off => None,
         JoinPolicy::Provider => Some(
             "INKLKUNN_JOIN=provider: a first sign-in through the configured provider makes an account; a public \
-             provider makes this open registration (no provider is switched on in this build yet, so nobody joins)"
+             provider makes this open registration"
                 .to_owned(),
         ),
         JoinPolicy::Anyone => Some(

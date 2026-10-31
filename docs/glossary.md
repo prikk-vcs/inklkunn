@@ -75,6 +75,7 @@ T6, RFC 004) take the word from here and do not choose their own.
 | A browser that is signed in to an account | session | セッション | yes | The account page lists them so a person can end one; no other word for the same thing | Drafted · ja: loanword |
 | A link made for one person to make their account | invitation | 招待 | yes | One-time and ending; the server's operator makes it (DR-11) | Drafted |
 | A secret a program uses to act as an account, with a scope | API token | API トークン | yes | Shown once; it can do no more than its scope and the account's roles allow (RFC 002 D-1) | Drafted · ja: loanword |
+| The service that vouches for who a person is, when the operator has set one up (OpenID Connect) | provider | プロバイダー | yes | Named by its host (`Sign in with accounts.example.org`) and otherwise just "the provider": a person who has one knows it; never "identity provider" or "SSO", which only an administrator says (the OpenID Connect handoff U3) | Drafted · ja: loanword |
 
 ## 2. Messages
 
@@ -914,6 +915,18 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `account.token_made_use` | in that box | "A program sends it in the Authorization header, as Bearer followed by the token." | "プログラムは、Authorization ヘッダーに Bearer とトークンを続けて送ります。" |
 | `account.token_too_many` | a problem: the account holds as many live tokens as it may; `{max}` is the most | "You already have {max} live tokens. Revoke one first." | "有効なトークンがすでに {max} 個あります。先に 1 つ取り消してください。" |
 | `account.token_label_long` | a problem: the note is too long | "The note is too long: at most 80 characters." | "メモが長すぎます。80 文字までです。" |
+| `sign_in.provider` | the link on the sign-in page that signs in through the provider; `{provider}` is the provider's host name | "Sign in with {provider}" | "{provider} でサインイン" |
+| `sign_in.provider_joins` | under that link, where the server lets a first sign-in through the provider make an account | "The first time you sign in with {provider}, an account is made for you." | "{provider} で初めてサインインすると、アカウントが作られます。" |
+| `sign_in.provider_failed` | a problem on the sign-in page after a sign-in through the provider did not work (the reason is for the operator's log) | "The sign-in with {provider} did not work, and nothing was changed. Try again; if it keeps happening, tell the person who runs this server." | "{provider} でのサインインがうまくいきませんでした。何も変更されていません。もう一度お試しください。繰り返し起きる場合は、このサーバーの管理者にお知らせください。" |
+| `sign_in.provider_state` | a problem: the provider sent the browser back with a sign-in that this browser did not start, that was used already, or that took too long | "This sign-in did not start in this browser, or it has been used already, or it took too long. Start it again from this page." | "このサインインは、このブラウザーで始めたものではないか、すでに使われたか、時間がかかりすぎました。このページからもう一度始めてください。" |
+| `sign_in.provider_not_linked` | a problem: the provider vouched for the person, no account is linked to that sign-in and the server does not let a first sign-in make one | "The provider knows you, but no account here is linked to your sign-in there. Ask the person who runs this wiki for an invitation." | "プロバイダーはあなたを確認しましたが、そのサインインに結び付いたアカウントがここにはありません。招待が必要です。このウィキを運営している人にお願いしてください。" |
+| `sign_in.provider_unreachable` | a problem: the server could not reach the provider | "The provider could not be reached right now, and nothing was changed. Try again in a while." | "いまプロバイダーに接続できません。何も変更されていません。しばらくしてからもう一度お試しください。" |
+| `invite.provider_intro` | on an invitation page, above the link that uses the provider instead of a password | "Or, instead of a password, let your provider vouch for you. Your account is then tied to that sign-in, and there is no password to remember." | "パスワードの代わりに、プロバイダーに本人確認を任せることもできます。その場合、アカウントはそのサインインに結び付き、パスワードを覚える必要はありません。" |
+| `invite.provider_link` | the link on an invitation page that makes the account through the provider | "Use {provider} instead of a password" | "パスワードの代わりに {provider} を使う" |
+| `invite.provider_taken` | a problem on the sign-in page: the person's sign-in through the provider has an account already, so the invitation was not used | "Your sign-in with {provider} already has an account here, so this invitation was not used. Sign in with {provider} instead." | "{provider} でのサインインにはすでにここのアカウントがあるため、この招待は使われていません。代わりに {provider} でサインインしてください。" |
+| `title.landing` | the title of the page that moves the browser on after a sign-in through the provider | "Signing in · {product}" | "サインインしています · {product}" |
+| `landing.body` | on that page; `{link}` is the next message | "Signing you in. If this page does not move on by itself, {link}." | "サインインしています。このページが自動で切り替わらない場合は、{link}。" |
+| `landing.continue` | the link in that sentence, to the page the person asked for | "continue to the page you asked for" | "続きのページへ進んでください" |
 
 ## 3. Words the interface does not say
 

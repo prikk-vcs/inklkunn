@@ -23,4 +23,6 @@
 </div>
 <p><button type="submit">{{ button }}</button></p>
 </form>
-{% endblock %}
+{% if let Some(p) = provider %}<p>{{ provider_intro }}</p>
+<p><a href="{{ p.href }}">{{ p.label }}</a></p>
+{% endif %}{% endblock %}

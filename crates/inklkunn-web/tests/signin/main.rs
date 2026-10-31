@@ -22,5 +22,7 @@ mod account;
 mod harness;
 mod identify;
 mod invitations;
+mod provider;
+mod provider_states;
 mod sign_in;
 mod states;
