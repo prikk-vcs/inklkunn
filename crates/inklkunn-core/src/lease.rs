@@ -38,6 +38,33 @@ use inklkunn_signer::{
 };
 use inklkunn_store::{AcceptanceId, AcceptanceStore, LeaseHolder, StoreError, WikiId};
 
+/// This process's start time, in clock ticks since the boot (`/proc/self/stat`, field 22): with its pid, it names
+/// one process and not the next one that is given the same number. `0` when `/proc` cannot say.
+fn start_time() -> u64 {
+    std::fs::read_to_string("/proc/self/stat")
+        .ok()
+        .and_then(|stat| {
+            // `pid (comm) state ...`: the command may hold spaces and parentheses, so read after the last `)`.
+            let after = stat.rsplit_once(')')?.1;
+            // `state` is field 3, so field 22 is the 20th word after the command.
+            after.split_whitespace().nth(19)?.parse().ok()
+        })
+        .unwrap_or(0)
+}
+
+/// A name for this process in the lease-holder record: the caller's name for it (its pid, say), the process's start
+/// time and a random instance id (handoff 004, P8). Two processes that were given the same pid, one after the
+/// other, are two holders: the record the first left behind is a holder that died, not this process's own.
+pub fn instance_name(base: &str) -> String {
+    use std::hash::{BuildHasher, Hasher};
+    // The standard library seeds this from the operating system's randomness, once per thread and then counting:
+    // no two calls give one name.
+    let random = std::collections::hash_map::RandomState::new()
+        .build_hasher()
+        .finish();
+    format!("{base}@{}-{random:016x}", start_time())
+}
+
 /// How the lease queues and waits.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LeaseConfig {
@@ -205,7 +232,9 @@ impl std::fmt::Debug for WikiLeases {
 impl WikiLeases {
     /// The leases of the wikis `signer` locks, recorded in `store`. `holder` names this process in the holder
     /// record (the binary gives each process its own: `inklkunn-<pid>`, say; two processes with one name could
-    /// clear each other's record).
+    /// clear each other's record). **The name that is recorded is `holder` and this process's start time and a
+    /// random instance id** ([`instance_name`]): a pid is reused (in a container, the same number every start), and
+    /// a record of an earlier process with the pid of this one must be another holder's, not this one's own.
     pub fn new(
         signer: Arc<WriteLeases>,
         store: Arc<dyn AcceptanceStore>,
@@ -215,7 +244,7 @@ impl WikiLeases {
         Arc::new(WikiLeases {
             signer,
             store,
-            holder: holder.into(),
+            holder: instance_name(&holder.into()),
             config,
             lines: Mutex::new(HashMap::new()),
             turn: Condvar::new(),

@@ -116,7 +116,36 @@ pub struct DoctorReport {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+/// The code `doctor` gives a block, ref state or ref update with no trusted signature (the same finding as
+/// `verify`'s `publication-trust` line; after a retirement, ledger PK-34, one for each thing the retired key signed).
+pub const PUBLICATION_UNTRUSTED_CODE: &str = "PRIKK-TRUST-PUBLICATION-UNTRUSTED";
+
 impl DoctorReport {
+    /// The same report without the diagnostics of `code`, the counts recomputed, and how many were taken out. For a
+    /// finding that something else has already accounted for (handoff 004, P2: a retired key's publication trust).
+    #[must_use]
+    pub fn without_code(&self, code: &str) -> (DoctorReport, usize) {
+        let kept: Vec<Diagnostic> = self
+            .diagnostics
+            .iter()
+            .filter(|d| d.code != code)
+            .cloned()
+            .collect();
+        let count = |s: Severity| {
+            u32::try_from(kept.iter().filter(|d| d.severity == s).count()).unwrap_or(u32::MAX)
+        };
+        let removed = self.diagnostics.len() - kept.len();
+        (
+            DoctorReport {
+                errors: count(Severity::Error),
+                warnings: count(Severity::Warning),
+                info: count(Severity::Info),
+                diagnostics: kept,
+            },
+            removed,
+        )
+    }
+
     /// How many diagnostics are [`Diagnostic::is_unreached_note`]s.
     pub fn unreached_notes(&self) -> u32 {
         let n = self

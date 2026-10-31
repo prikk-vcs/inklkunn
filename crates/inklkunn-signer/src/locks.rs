@@ -20,7 +20,8 @@
 //! is by scope on one thread, made only from a live lease ([`crate::lease::LeaseScope`]).
 
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Condvar, Mutex, PoisonError};
 use std::time::Duration;
 
@@ -33,29 +34,36 @@ use crate::writes::SignerError;
 /// descriptor just released (the child closes it at `exec`). Not a wait for the holder's work.
 pub(crate) const LOCK_GRACE: Duration = Duration::from_millis(250);
 
-/// The in-process turns, one per wiki.
+/// The in-process turns, one per wiki. **Each turn has a generation**: a number that is new every time the turn
+/// is taken, so that a loan ([`lend`]) made under one turn is not mistaken for a loan under the next (handoff
+/// 004, P8: a scope that outlives its lease, by a leak, would otherwise let an act on that thread believe a lease
+/// it does not hold).
 #[derive(Default)]
 pub(crate) struct WikiLocks {
-    held: Mutex<HashSet<WikiId>>,
+    held: Mutex<HashMap<WikiId, u64>>,
     turn: Condvar,
+    generations: AtomicU64,
 }
 
 thread_local! {
-    /// The leases the current thread is inside of: the address of the [`WikiLocks`] a lease belongs to and the
-    /// wiki. Pushed by a [`crate::lease::LeaseScope`] and popped when it drops.
-    static BORROWABLE: RefCell<Vec<(usize, WikiId)>> = const { RefCell::new(Vec::new()) };
+    /// The leases the current thread is inside of: the address of the [`WikiLocks`] a lease belongs to, the wiki and
+    /// the generation of the turn the lease holds. Pushed by a [`crate::lease::LeaseScope`] and popped when it drops.
+    static BORROWABLE: RefCell<Vec<(usize, WikiId, u64)>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Put `(locks, wiki)` among the leases this thread may borrow.
-pub(crate) fn lend(locks: &WikiLocks, wiki: &WikiId) {
-    BORROWABLE.with(|b| b.borrow_mut().push((address(locks), wiki.clone())));
+/// Put `(locks, wiki, generation)` among the leases this thread may borrow.
+pub(crate) fn lend(locks: &WikiLocks, wiki: &WikiId, generation: u64) {
+    BORROWABLE.with(|b| {
+        b.borrow_mut()
+            .push((address(locks), wiki.clone(), generation));
+    });
 }
 
 /// Take it out again (the most recent one).
-pub(crate) fn unlend(locks: &WikiLocks, wiki: &WikiId) {
+pub(crate) fn unlend(locks: &WikiLocks, wiki: &WikiId, generation: u64) {
     BORROWABLE.with(|b| {
         let mut b = b.borrow_mut();
-        let key = (address(locks), wiki.clone());
+        let key = (address(locks), wiki.clone(), generation);
         if let Some(at) = b.iter().rposition(|k| *k == key) {
             b.remove(at);
         }
@@ -66,8 +74,13 @@ fn address(locks: &WikiLocks) -> usize {
     std::ptr::from_ref(locks) as usize
 }
 
+/// Is the wiki's lease lent to this thread **and** is that lease the one held now? A loan whose lease has been
+/// given up (or given up and taken again by someone else) is not a loan.
 pub(crate) fn is_lent(locks: &WikiLocks, wiki: &WikiId) -> bool {
-    let key = (address(locks), wiki.clone());
+    let Some(now) = locks.generation_of(wiki) else {
+        return false;
+    };
+    let key = (address(locks), wiki.clone(), now);
     BORROWABLE.with(|b| b.borrow().contains(&key))
 }
 
@@ -103,18 +116,39 @@ impl Drop for WriteGuard<'_> {
 }
 
 impl WikiLocks {
-    pub(crate) fn enter(&self, wiki: &WikiId) {
-        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
-        while held.contains(wiki) {
-            held = self.turn.wait(held).unwrap_or_else(PoisonError::into_inner);
-        }
-        held.insert(wiki.clone());
+    /// The next generation: never zero, never repeated.
+    fn next_generation(&self) -> u64 {
+        self.generations
+            .fetch_add(1, Ordering::Relaxed)
+            .wrapping_add(1)
     }
 
-    /// Take the turn if nobody has it, without waiting.
-    pub(crate) fn try_enter(&self, wiki: &WikiId) -> bool {
+    /// The generation of the turn held on `wiki` now, if one is held.
+    pub(crate) fn generation_of(&self, wiki: &WikiId) -> Option<u64> {
+        let held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        held.get(wiki).copied()
+    }
+
+    /// Wait for the turn and take it. Returns the turn's generation.
+    pub(crate) fn enter(&self, wiki: &WikiId) -> u64 {
         let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
-        held.insert(wiki.clone())
+        while held.contains_key(wiki) {
+            held = self.turn.wait(held).unwrap_or_else(PoisonError::into_inner);
+        }
+        let generation = self.next_generation();
+        held.insert(wiki.clone(), generation);
+        generation
+    }
+
+    /// Take the turn if nobody has it, without waiting. Returns the turn's generation.
+    pub(crate) fn try_enter(&self, wiki: &WikiId) -> Option<u64> {
+        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        if held.contains_key(wiki) {
+            return None;
+        }
+        let generation = self.next_generation();
+        held.insert(wiki.clone(), generation);
+        Some(generation)
     }
 
     pub(crate) fn leave(&self, wiki: &WikiId) {

@@ -221,8 +221,20 @@ pub enum AcceptError {
     /// A failure before `commit` could not be undone: **the worktree holds uncommitted changes** that a
     /// recovery must restore before anything else is accepted. Nothing was committed or sealed.
     WorktreeDirty(String),
+    /// The repository was **not clean when the act began**: a patch is queued (`queued`) or the worktree holds
+    /// uncommitted changes, and no record of this act explains it (a previous act's leftover that nothing flagged,
+    /// or somebody working in the repository). Nothing was written by this call. **The wiki is flagged**: this is
+    /// not a refusal of the change but a repository that recovery has not looked at (handoff 004, P8).
+    Unclean {
+        /// A patch is queued (otherwise: the worktree is dirty).
+        queued: bool,
+        /// For operators.
+        detail: String,
+    },
     /// `commit` succeeded and `seal` did not: **one patch is queued, nothing is sealed.** Sealing it completes
-    /// the acceptance (RFC 004's recovery); retrying the acceptance would commit the change a second time.
+    /// the acceptance (RFC 004's recovery); retrying the acceptance would commit the change a second time. Also
+    /// the answer for a `commit` that **failed ambiguously** (stopped at its bound, its output too long, a
+    /// ceiling) when `status` shows the patch queued: it is queued, never undone (handoff 004, P1).
     Queued {
         /// The step that failed.
         step: &'static str,
@@ -281,6 +293,15 @@ impl std::fmt::Display for AcceptError {
             AcceptError::WorktreeDirty(m) => write!(
                 f,
                 "failed before the commit and the worktree could not be put back; recovery must restore it: {m}"
+            ),
+            AcceptError::Unclean { queued, detail } => write!(
+                f,
+                "the repository was not clean ({}); nothing was written, and recovery looks at it first: {detail}",
+                if *queued {
+                    "a patch is queued"
+                } else {
+                    "the worktree has uncommitted changes"
+                }
             ),
             AcceptError::Queued {
                 step,

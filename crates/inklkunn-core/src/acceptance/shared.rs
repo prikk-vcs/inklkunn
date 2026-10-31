@@ -12,7 +12,9 @@ use inklkunn_store::{
 
 use super::{Reconciled, StoreActs};
 use crate::lease::{Lease, Purpose};
-use crate::reconcile::{ReadBounds, reconcile_with, record_findings};
+use crate::reconcile::{
+    ReadBounds, ReconcileError, Report, reconcile_since, reconcile_with, record_findings,
+};
 
 /// Why a write was not started.
 #[derive(Debug)]
@@ -63,6 +65,12 @@ pub(crate) fn recovery_guard(
         return Err(Blocked::Flagged(flag));
     }
     let open_acceptance = acceptances.open_intents(&wiki.id)?.into_iter().next();
+    // An acceptance with no end is an unfinished act whether or not its intent was written (P8): a process that
+    // died between the two left no intent to find, and the next act must not take its place in the queue.
+    let pending = acceptances
+        .pending_acceptances(&wiki.id)?
+        .into_iter()
+        .next();
     let open_act = acts
         .system_acts(&wiki.id)?
         .into_iter()
@@ -71,12 +79,14 @@ pub(crate) fn recovery_guard(
     let died = lease.replaced().filter(|h| {
         h.purpose != Purpose::Export.as_str() && h.purpose != Purpose::Refresh.as_str()
     });
-    let interrupted = open_acceptance.is_some() || open_act.is_some() || died.is_some();
+    let interrupted =
+        open_acceptance.is_some() || pending.is_some() || open_act.is_some() || died.is_some();
     if !interrupted {
         return Ok(());
     }
     let act = open_acceptance
         .map(|i| i.intent.acceptance.to_string())
+        .or_else(|| pending.map(|a| a.id.to_string()))
         .or_else(|| open_act.map(|a| a.act.id.to_string()))
         .or_else(|| died.and_then(|h| h.acceptance.as_ref().map(ToString::to_string)));
     flag(acts, wiki, RecoveryReason::Interrupted, act, at);
@@ -134,7 +144,47 @@ pub(crate) fn reconcile_wiki(
 ) -> Reconciled {
     let records = StoreActs::new(Arc::clone(acceptances), Arc::clone(acts));
     let repo = layout.repo_dir(&wiki.id);
-    match reconcile_with(&wiki.id, &repo, storage, &records, ReadBounds::default()) {
+    outcome(
+        reconcile_with(&wiki.id, &repo, storage, &records, ReadBounds::default()),
+        audit,
+        at,
+    )
+}
+
+/// The **bounded** reconciliation an act runs inline after its seal (handoff 004, P7): only the blocks of `view`
+/// newer than `since`, the block the act was made on, so that the lease is held for a time that does not grow with
+/// the wiki. The full pass ([`reconcile_wiki`]) stays in recovery and on its schedule.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn reconcile_since_wiki(
+    storage: &dyn Storage,
+    layout: &RootLayout,
+    wiki: &WikiRecord,
+    acceptances: &Arc<dyn AcceptanceStore>,
+    acts: &Arc<dyn ActStore>,
+    audit: Option<&Arc<dyn AuditSink>>,
+    (view, since): (&str, &str),
+    at: i64,
+) -> Reconciled {
+    let records = StoreActs::new(Arc::clone(acceptances), Arc::clone(acts));
+    let repo = layout.repo_dir(&wiki.id);
+    // The act wrote a block or a few: the first read is small.
+    let bounds = ReadBounds {
+        first_read: 16,
+        ..ReadBounds::default()
+    };
+    outcome(
+        reconcile_since(&wiki.id, &repo, storage, &records, view, since, bounds),
+        audit,
+        at,
+    )
+}
+
+fn outcome(
+    result: Result<Report, ReconcileError>,
+    audit: Option<&Arc<dyn AuditSink>>,
+    at: i64,
+) -> Reconciled {
+    match result {
         Ok(report) if report.is_clean() => Reconciled::Clean,
         Ok(report) => {
             if let Some(audit) = audit {

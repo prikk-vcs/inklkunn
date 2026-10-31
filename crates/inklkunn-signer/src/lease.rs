@@ -69,13 +69,14 @@ impl WriteLeases {
     /// Take the wiki's write lock for as long as the returned lease lives, **without waiting** for the one who
     /// has it (a short grace rides out a sibling thread's `fork`; a quarter of a second at most).
     pub fn try_acquire(self: &Arc<Self>, wiki: &WikiId) -> Result<WriteLease, LeaseRefusal> {
-        if !self.locks.try_enter(wiki) {
+        let Some(generation) = self.locks.try_enter(wiki) else {
             return Err(LeaseRefusal::ThisProcess);
-        }
+        };
         match flock::exclusive_within(&self.root.lock_file(wiki), LOCK_GRACE) {
             Ok(Acquired::Held(file)) => Ok(WriteLease {
                 leases: Arc::clone(self),
                 wiki: wiki.clone(),
+                generation,
                 file: Some(file),
             }),
             Ok(Acquired::Busy { holder }) => {
@@ -98,6 +99,9 @@ impl WriteLeases {
 pub struct WriteLease {
     leases: Arc<WriteLeases>,
     wiki: WikiId,
+    /// The generation of the in-process turn this lease holds ([`crate::locks::WikiLocks`]): a loan is good only
+    /// while this is the turn held.
+    generation: u64,
     file: Option<FileLock>,
 }
 
@@ -116,7 +120,7 @@ impl WriteLease {
     /// Lend the lease to this thread: until the scope drops, an act on this thread for this wiki through a
     /// signer or a maintenance handle opened over the same [`WriteLeases`] borrows it.
     pub fn scope(&self) -> LeaseScope<'_> {
-        locks::lend(&self.leases.locks, &self.wiki);
+        locks::lend(&self.leases.locks, &self.wiki, self.generation);
         LeaseScope {
             lease: self,
             _this_thread: PhantomData,
@@ -141,7 +145,11 @@ pub struct LeaseScope<'a> {
 
 impl Drop for LeaseScope<'_> {
     fn drop(&mut self) {
-        locks::unlend(&self.lease.leases.locks, &self.lease.wiki);
+        locks::unlend(
+            &self.lease.leases.locks,
+            &self.lease.wiki,
+            self.lease.generation,
+        );
     }
 }
 

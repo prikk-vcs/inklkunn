@@ -138,6 +138,50 @@ impl From<StoreError> for SystemActFailure {
     }
 }
 
+/// The steps of a system act, named so that a test can stop it at any of them (the kill test of handoff 004 P10 runs the
+/// act in a child process and `SIGKILL`s it at each step in turn). Observing is all the hook does; nothing in
+/// production sets one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SystemStep {
+    /// The lease is held (and its holder recorded).
+    LeaseTaken,
+    /// The act's record is written: the signer has not been asked.
+    ActRecorded,
+    /// The signer answered (whatever it answered); nothing of the answer is recorded yet.
+    SignerReturned,
+    /// The act's end (*sealed*, with the block and the patch) is written.
+    ActEnded,
+    /// The caches are forgotten and the reconciliation is done; the lease is still held.
+    Reconciled,
+}
+
+impl SystemStep {
+    /// Every step, in the order an act takes them.
+    pub const ALL: [SystemStep; 5] = [
+        SystemStep::LeaseTaken,
+        SystemStep::ActRecorded,
+        SystemStep::SignerReturned,
+        SystemStep::ActEnded,
+        SystemStep::Reconciled,
+    ];
+
+    /// The step's name.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            SystemStep::LeaseTaken => "lease-taken",
+            SystemStep::ActRecorded => "act-recorded",
+            SystemStep::SignerReturned => "signer-returned",
+            SystemStep::ActEnded => "act-ended",
+            SystemStep::Reconciled => "reconciled",
+        }
+    }
+
+    /// The step a name is of.
+    pub fn parse(name: &str) -> Option<Self> {
+        SystemStep::ALL.into_iter().find(|s| s.as_str() == name)
+    }
+}
+
 /// The path of the service's own changes.
 pub struct SystemActs {
     authorizer: Authorizer,
@@ -152,6 +196,7 @@ pub struct SystemActs {
     audit: Option<Arc<dyn AuditSink>>,
     reconcile: bool,
     clock: fn() -> i64,
+    observer: Option<Arc<dyn Fn(SystemStep) + Send + Sync>>,
 }
 
 impl std::fmt::Debug for SystemActs {
@@ -187,6 +232,21 @@ impl SystemActs {
             audit: None,
             reconcile: true,
             clock: inklkunn_store::record::now_secs,
+            observer: None,
+        }
+    }
+
+    /// Call `observer` as each step is done (see [`SystemStep`]). For tests that stop an act at a step; the observer
+    /// runs on the act's thread and may never return.
+    #[must_use]
+    pub fn with_observer(mut self, observer: Arc<dyn Fn(SystemStep) + Send + Sync>) -> Self {
+        self.observer = Some(observer);
+        self
+    }
+
+    fn observe(&self, step: SystemStep) {
+        if let Some(observer) = &self.observer {
+            observer(step);
         }
     }
 
@@ -281,6 +341,7 @@ impl SystemActs {
                 LeaseError::Busy(busy) => SystemActFailure::Busy(busy),
                 LeaseError::Unavailable(why) => SystemActFailure::Unavailable(why),
             })?;
+        self.observe(SystemStep::LeaseTaken);
         shared::recovery_guard(
             &*self.acts,
             &*self.acceptances,
@@ -325,6 +386,7 @@ impl SystemActs {
             created_at: (self.clock)(),
         };
         self.acts.begin_system_act(&act)?;
+        self.observe(SystemStep::ActRecorded);
 
         // 5. The signer, on this thread, inside the lease.
         let token = AcceptanceToken::new(act.id.as_str());
@@ -333,6 +395,7 @@ impl SystemActs {
             self.signer
                 .accept(&wiki.id, &wiki.default_view, &token, &change)
         };
+        self.observe(SystemStep::SignerReturned);
         match settle(answer) {
             Settled::Failed { word, detail } => {
                 let _ = self.acts.finish_system_act(&SystemActEnd {
@@ -377,6 +440,9 @@ impl SystemActs {
                     },
                     at: (self.clock)(),
                 });
+                if ended.is_ok() {
+                    self.observe(SystemStep::ActEnded);
+                }
                 if unconfirmed.is_some() || ended.is_err() {
                     // Sealed, and a person looks at why it could not be confirmed (or recorded).
                     shared::flag(
@@ -401,18 +467,21 @@ impl SystemActs {
                     reads.forget_wiki(wiki);
                 }
                 let reconciliation = if self.reconcile {
-                    shared::reconcile_wiki(
+                    // Bounded to the blocks since the act's base (P7); the full pass is recovery's.
+                    shared::reconcile_since_wiki(
                         &*self.storage,
                         &self.layout,
                         wiki,
                         &self.acceptances,
                         &self.acts,
                         self.audit.as_ref(),
+                        (&act.view, &act.base_block),
                         (self.clock)(),
                     )
                 } else {
                     Reconciled::Skipped
                 };
+                self.observe(SystemStep::Reconciled);
                 drop(lease);
                 self.follow_up.warm_title_index(wiki);
                 self.follow_up.enqueue_verification(wiki);

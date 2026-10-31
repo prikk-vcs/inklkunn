@@ -11,7 +11,7 @@ use std::time::Duration;
 use inklkunn_core::message::{Actor, BlockId, Kind, Message, Summary, SystemLabel};
 use inklkunn_core::reconcile::{
     AcceptedRecord, Finding, ReadBounds, RecordedActs, RecordsError, SystemActRecord, reconcile,
-    reconcile_with, record_findings,
+    reconcile_since, reconcile_with, record_findings,
 };
 use inklkunn_core::{
     Accept, AcceptanceLedger, AcceptanceToken, ExpectedMessage, LedgerError, PreparedChange,
@@ -359,5 +359,71 @@ fn a_history_longer_than_the_first_read_is_reconciled_in_full_against_a_real_pri
     assert!(matches!(
         reconcile_with(&w.wiki, &w.repo, &w.storage, w.books.as_ref(), tiny),
         Err(inklkunn_core::reconcile::ReconcileError::TooLarge { .. })
+    ));
+}
+
+#[test]
+fn the_bounded_reconciliation_reads_the_history_only_as_far_as_the_base_and_concludes_only_what_it_read()
+ {
+    // P7. With a bound far too small for the whole history (150 blocks against a 64-block ceiling) the full pass
+    // refuses, and the bounded pass since a block near the tip reads two blocks and says what it found there.
+    let Some(w) = world("since") else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    for n in 1..=150 {
+        w.accept(n, true);
+    }
+    let tiny = ReadBounds {
+        first_read: 2,
+        max_read: 4,
+    };
+    assert!(matches!(
+        reconcile_with(&w.wiki, &w.repo, &w.storage, w.books.as_ref(), tiny),
+        Err(inklkunn_core::reconcile::ReconcileError::TooLarge { .. })
+    ));
+    let blocks = w.tip();
+    let base = blocks.get(2).expect("a block two behind the tip").clone();
+    let since = || {
+        reconcile_since(
+            &w.wiki,
+            &w.repo,
+            &w.storage,
+            w.books.as_ref(),
+            "heads/main",
+            &base,
+            tiny,
+        )
+    };
+    let r = since().expect("two blocks are read");
+    assert_eq!(r.blocks, 2, "the blocks newer than the base");
+    assert!(r.is_clean(), "{:?}", r.findings);
+    // A record lost for one of those blocks is found; one lost far below the base is not this pass's to find, and
+    // a record whose block was not read is not called a missing block.
+    let lost = w.books.accepted.lock().unwrap().remove(0);
+    assert!(since().expect("still bounded").is_clean());
+    w.books.accepted.lock().unwrap().insert(0, lost);
+    let newest = w.books.accepted.lock().unwrap().pop().expect("a record");
+    let r = since().expect("bounded");
+    assert!(
+        matches!(r.findings.as_slice(), [Finding::UnrecordedSeal { block_id, .. }] if *block_id == newest.block_id),
+        "{:?}",
+        r.findings
+    );
+    // A base the view does not hold is an error, never a clean answer.
+    assert!(matches!(
+        reconcile_since(
+            &w.wiki,
+            &w.repo,
+            &w.storage,
+            w.books.as_ref(),
+            "heads/main",
+            &"f".repeat(64),
+            ReadBounds {
+                first_read: 64,
+                max_read: 1_000_000
+            },
+        ),
+        Err(inklkunn_core::reconcile::ReconcileError::BaseNotFound { .. })
     ));
 }

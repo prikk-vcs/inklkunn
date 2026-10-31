@@ -135,8 +135,13 @@ pub struct Witness {
     pub acts: Vec<ActWitness>,
     /// `prikk status`.
     pub status: RepoStatus,
-    /// `prikk doctor`.
+    /// `prikk doctor`. When [`Witness::retirement`] is set, the publication-trust findings a retired key accounts
+    /// for are already taken out of it.
     pub doctor: DoctorReport,
+    /// What the signer said of a repository that does not verify **only because of a retired key** (P2, DR-10),
+    /// when that is the case: `verify` and `doctor` fail by publication trust for what the retired key sealed and
+    /// by nothing else. The wiki is not frozen for it.
+    pub retirement: Option<String>,
     /// `prikk worktree-status`; `None` when it could not be asked because the log is torn (prikk refuses to
     /// report a worktree over a log with trailing partial bytes, and says to repair the log first): the worktree
     /// is then taken to need putting back after the torn commit is discarded.
@@ -168,7 +173,7 @@ pub enum Stop {
     DoctorTrouble,
     /// A lock of a kind an acceptance does not leave.
     UnknownLock,
-    /// A `prikk` or `bwrap` of somebody else's may be working in the repository, so a lock is not cleared.
+    /// A `prikk` or `bwrap` of somebody else's may be working in the repository, so no step is taken.
     ForeignProcess,
     /// The history could not be read as far as the question needs.
     HistoryUnreadable,
@@ -577,6 +582,11 @@ pub fn build(w: &Witness) -> Plan {
             w.foreign.len()
         ));
     }
+    if let Some(note) = &w.retirement {
+        plan.notes.push(format!(
+            "prikk does not verify the repository, and only because of a retired maintainer key (DR-10): {note}"
+        ));
+    }
     let unreached = w.doctor.unreached_notes();
     if unreached > 0 {
         plan.notes.push(format!(
@@ -594,6 +604,12 @@ pub fn build(w: &Witness) -> Plan {
         .first()
         .map(|a| a.view.clone())
         .or_else(|| w.status.current_branch.clone());
+    // A prikk or bwrap of somebody else's that may be working in the repository stops **every** step, not only the
+    // clearing of a lock (P8): a seal, a restore or a discard beside it would be a second writer.
+    if !w.foreign.is_empty() {
+        stop(&mut plan, Stop::ForeignProcess);
+        return plan;
+    }
     if w.status.provisional_worktree.is_some() || w.status.interrupted_materialization.is_some() {
         stop(&mut plan, Stop::InterruptedState);
         return plan;
@@ -617,10 +633,6 @@ pub fn build(w: &Witness) -> Plan {
             .any(|l| !ACCEPTANCE_LOCK_KINDS.contains(&l.kind.as_str()))
         {
             stop(&mut plan, Stop::UnknownLock);
-            return plan;
-        }
-        if !w.foreign.is_empty() {
-            stop(&mut plan, Stop::ForeignProcess);
             return plan;
         }
         steps.push(Step::ClearLocks {

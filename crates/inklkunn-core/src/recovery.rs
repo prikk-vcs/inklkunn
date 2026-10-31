@@ -22,10 +22,12 @@
 //!
 //! `doctor`'s unreached-object warnings are recorded and do not block (ledger PL-12).
 
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::Arc;
 
 use inklkunn_prikk::{Point, Storage};
+use inklkunn_signer::recover::text::PUBLICATION_UNTRUSTED_CODE;
 use inklkunn_signer::{AcceptanceToken, Recover, RecoveryToken, Witnesses};
 use inklkunn_store::{
     AcceptanceOutcome, AcceptanceResult, AcceptanceStore, ActStore, AuditEvent, AuditOutcome,
@@ -40,6 +42,7 @@ use crate::lease::{Busy, LeaseError, Purpose, WikiLeases};
 use crate::notify::Notifier;
 use crate::proposal::machine;
 use crate::read::ReadService;
+use crate::reconcile::Finding;
 
 pub mod plan;
 pub mod processes;
@@ -238,6 +241,24 @@ pub struct Recovery {
 impl std::fmt::Debug for Recovery {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("Recovery")
+    }
+}
+
+/// The act a recovery is finishing, as far as the reconciliation's findings are judged against it (P3): its record's
+/// id as a finding names it, the view, and the block it was made on.
+struct ActBase {
+    token: String,
+    view: String,
+    base: Option<String>,
+}
+
+impl ActBase {
+    fn of(a: &ActWitness) -> Self {
+        ActBase {
+            token: a.act.token(),
+            view: a.view.clone(),
+            base: a.base_block.clone(),
+        }
     }
 }
 
@@ -517,6 +538,23 @@ impl Recovery {
             .map_err(|e| witness_error("prikk status", e))?;
         let torn = status.trailing_partial_wal_bytes > 0;
         let table = self.processes.processes();
+        let mut doctor = p
+            .witnesses
+            .doctor(&wiki.id)
+            .map_err(|e| witness_error("prikk doctor", e))?;
+        // A retired key never freezes the wiki (P2, DR-10): `doctor` reports each thing the retired key signed as an
+        // error. When the signer says that `verify` fails exactly and only for them, they are a note and not damage;
+        // any other answer (or no answer) leaves them where they are, and the plan stops on them.
+        let mut retirement = None;
+        if doctor
+            .diagnostics
+            .iter()
+            .any(|d| d.code == PUBLICATION_UNTRUSTED_CODE)
+            && let Ok(Some(note)) = p.signer.verify_after_retirement(&wiki.id)
+        {
+            doctor = doctor.without_code(PUBLICATION_UNTRUSTED_CODE).0;
+            retirement = Some(note);
+        }
         Ok(Witness {
             wiki: wiki.id.clone(),
             flag: p.acts.recovery_flag(&wiki.id)?,
@@ -529,10 +567,8 @@ impl Recovery {
                 .count(),
             acts,
             status,
-            doctor: p
-                .witnesses
-                .doctor(&wiki.id)
-                .map_err(|e| witness_error("prikk doctor", e))?,
+            doctor,
+            retirement,
             worktree: if torn {
                 // prikk refuses to compare a worktree over a torn log; the plan puts it back after the discard.
                 None
@@ -727,6 +763,7 @@ impl Recovery {
 
         // 4. The steps, each one recorded before it is taken.
         let token = RecoveryToken::new(act.to_string());
+        let bases: Vec<ActBase> = witness.acts.iter().map(ActBase::of).collect();
         let mut sealed_something = false;
         for step in &plan.steps {
             self.trail(
@@ -735,7 +772,7 @@ impl Recovery {
                 AuditOutcome::Allowed,
                 step.name(),
             )?;
-            match self.run_step(wiki, &token, step, &mut report.reconciliation) {
+            match self.run_step(wiki, &token, step, &bases, &mut report.reconciliation) {
                 Ok(detail) => {
                     sealed_something |= matches!(step, Step::EndSealed { .. });
                     report.done.push(StepDone {
@@ -771,12 +808,73 @@ impl Recovery {
         Ok(report)
     }
 
+    /// What the reconciliation found, judged against the acts this recovery is finishing (handoff 004, P3).
+    ///
+    /// A finding **touches** an act when it names the act's own record, or a block of the act's view that is newer
+    /// than the block the act was made on: the history and the records disagree about what the act did, and
+    /// calling the wiki *recovered* would put writes on top of a disagreement. That is a stop, with the flag kept
+    /// and the findings named (by their audit words, which are ids and fixed words). A finding about a block at or
+    /// below the act's base was there before the act, is already in the audit trail, and does not block: it is
+    /// reported. When the act's base cannot be found in the part of the view's history that was read, nothing is
+    /// concluded and the recovery stops.
+    fn judge_findings(
+        &self,
+        wiki: &WikiRecord,
+        findings: &[Finding],
+        acts: &[ActBase],
+    ) -> Result<String, String> {
+        let repo = self.parts.layout.repo_dir(&wiki.id);
+        let mut touching: Vec<&Finding> = Vec::new();
+        let mut newer: BTreeSet<String> = BTreeSet::new();
+        for act in acts {
+            let Some(base) = &act.base else { continue };
+            let history = self
+                .parts
+                .storage
+                .history(&repo, &Point::View(act.view.clone()), Some(HISTORY_WINDOW))
+                .map_err(|e| format!("the history could not be read to judge the findings: {e}"))?;
+            let at = history
+                .blocks
+                .iter()
+                .position(|b| &b.block_id == base)
+                .ok_or_else(|| {
+                    "the block the act was made on is not in the part of the history that was read, so the reconciliation's findings cannot be judged"
+                        .to_owned()
+                })?;
+            newer.extend(history.blocks.iter().take(at).map(|b| b.block_id.clone()));
+        }
+        for f in findings {
+            let names_act = f
+                .record_id()
+                .is_some_and(|r| acts.iter().any(|a| a.token == r));
+            if names_act || newer.contains(f.block_id()) {
+                touching.push(f);
+            }
+        }
+        if touching.is_empty() {
+            return Ok(format!(
+                "{} older finding(s) reported to the audit trail; none touches what this recovery finished, so they do not block",
+                findings.len()
+            ));
+        }
+        Err(format!(
+            "the reconciliation found {} disagreement(s) between the history and the records that touch what this recovery finished ({}); the flag is kept for a person to look",
+            touching.len(),
+            touching
+                .iter()
+                .map(|f| f.describe())
+                .collect::<Vec<_>>()
+                .join("; ")
+        ))
+    }
+
     /// Take one step. The answer is what it did, or why it could not (operator text).
     fn run_step(
         &self,
         wiki: &WikiRecord,
         token: &RecoveryToken,
         step: &Step,
+        acts: &[ActBase],
         reconciliation: &mut Option<Reconciled>,
     ) -> Result<String, String> {
         let p = &self.parts;
@@ -829,7 +927,21 @@ impl Recovery {
                 if v.verdict.ok {
                     Ok("the repository verifies".to_owned())
                 } else {
-                    Err("prikk verify reports failed conditions; the flag is kept".to_owned())
+                    // A retired key never freezes the wiki (P2, DR-10): a verify that fails exactly and only by
+                    // publication trust for what a retired key sealed passes, with a note. Anything else, or a
+                    // check that cannot be made, keeps the flag.
+                    match p.signer.verify_after_retirement(&wiki.id) {
+                        Ok(Some(note)) => Ok(format!(
+                            "the repository does not verify, and only because of a retired key: {note}"
+                        )),
+                        Ok(None) => {
+                            Err("prikk verify reports failed conditions; the flag is kept"
+                                .to_owned())
+                        }
+                        Err(e) => Err(format!(
+                            "prikk verify reports failed conditions, and whether a retired key accounts for them could not be told ({e}); the flag is kept"
+                        )),
+                    }
                 }
             }
             Step::Reconcile => {
@@ -844,10 +956,9 @@ impl Recovery {
                 );
                 let text = match &r {
                     Reconciled::Clean => Ok("the history and the records agree".to_owned()),
-                    Reconciled::Findings(f) => Ok(format!(
-                        "{} finding(s) reported to the audit trail",
-                        f.len()
-                    )),
+                    // A disagreement that touches what the unfinished act did stops the recovery with the flag
+                    // kept; one that was there before the act is reported and does not block (P3).
+                    Reconciled::Findings(f) => self.judge_findings(wiki, f, acts),
                     Reconciled::NotRun(why) => {
                         Err(format!("the reconciliation could not be run: {why}"))
                     }

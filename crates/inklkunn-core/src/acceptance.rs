@@ -48,8 +48,8 @@ use inklkunn_signer::message::{Actor, BlockId, Message, MessageError, Summary};
 use inklkunn_store::{
     AcceptanceBegin, AcceptanceId, AcceptanceOutcome, AcceptanceRecord, AcceptanceResult,
     AcceptanceStore, AccountId, AccountStore, ActStore, AuditSink, DisplayName, IntentCompletion,
-    IntentEnd, IntentId, IntentRecord, OverlapRecord, ProposalId, ProposalRecord, RecoveryFlag,
-    RecoveryReason, Role, RoleStore, RootLayout, StoreError, WikiRecord,
+    IntentEnd, IntentId, IntentRecord, OverlapRecord, ProposalId, ProposalRecord, ProposalState,
+    RecoveryFlag, RecoveryReason, Role, RoleStore, RootLayout, StoreError, WikiRecord,
 };
 
 use crate::authorize::Principal;
@@ -68,7 +68,7 @@ mod system;
 pub(crate) mod testing;
 
 pub use ledger::{NoLedger, StoreActs, StoreLedger, digest_from_hex, message_digest};
-pub use system::{SystemActFailure, SystemActs, SystemRequest, SystemSigned};
+pub use system::{SystemActFailure, SystemActs, SystemRequest, SystemSigned, SystemStep};
 
 use prepare::{PrepareError, Prepared};
 use shared::{Blocked, TipError};
@@ -474,6 +474,15 @@ pub(crate) fn settle(result: Result<SealedChange, AcceptError>) -> Settled {
             reason: RecoveryReason::WorktreeDirty,
             detail: e.to_string(),
         },
+        // The repository was not clean when the signer began (P8): the wiki is flagged, nothing is guessed.
+        Err(e @ AcceptError::Unclean { queued, .. }) => Settled::Incomplete {
+            reason: if queued {
+                RecoveryReason::Queued
+            } else {
+                RecoveryReason::WorktreeDirty
+            },
+            detail: e.to_string(),
+        },
         Err(e @ AcceptError::Busy { .. }) => Settled::Failed {
             word: words::BUSY,
             detail: e.to_string(),
@@ -623,7 +632,7 @@ impl ProposalAcceptor {
         let acceptor = self.parts.proposals.authorize_accept(principal, wiki, id)?;
         let proposal = self.parts.proposals.get(principal, wiki, id)?;
         // A retry of an acceptance that finished answers without taking the lease.
-        if let Some(done) = self.sealed_before(&proposal, revision)? {
+        if let Some(done) = self.sealed_before(wiki, &proposal, revision)? {
             return Ok(done);
         }
         self.check_revision(principal, wiki, &proposal, revision)?;
@@ -671,9 +680,13 @@ impl ProposalAcceptor {
         }
     }
 
-    /// An acceptance of the revision that sealed, if there is one: the answer of a retry.
+    /// An acceptance of the revision that sealed, if there is one: the answer of a retry. **A proposal that is
+    /// still *held for review* beside a sealed acceptance is marked accepted here** (handoff 004, P8): the seal
+    /// is in the history and its record says so, and the writes that move the proposal on (the end of the
+    /// intent, the proposal's state) can both fail after it; a retry is how the proposal is finally settled.
     fn sealed_before(
         &self,
+        wiki: &WikiRecord,
         proposal: &ProposalRecord,
         revision: u32,
     ) -> Result<Option<Accepted>, AcceptFailure> {
@@ -682,9 +695,11 @@ impl ProposalAcceptor {
             .acceptances
             .acceptances_of(&proposal.id, revision)?;
         for e in entries {
+            let acceptor = e.acceptance.acceptor.clone();
             if let Some(AcceptanceOutcome::Sealed { block_id, patch_id }) =
                 e.result.map(|r| r.outcome)
             {
+                self.settle_signed_proposal(wiki, proposal, &acceptor)?;
                 return Ok(Some(Accepted::AlreadySigned {
                     acceptance: e.acceptance.id,
                     block_id,
@@ -693,6 +708,22 @@ impl ProposalAcceptor {
             }
         }
         Ok(None)
+    }
+
+    /// A proposal whose acceptance sealed is *accepted*; one that is still *held for review* is moved there, by the
+    /// acceptor of the sealed acceptance.
+    fn settle_signed_proposal(
+        &self,
+        wiki: &WikiRecord,
+        proposal: &ProposalRecord,
+        acceptor: &AccountId,
+    ) -> Result<(), AcceptFailure> {
+        if proposal.state == ProposalState::HeldForReview {
+            self.parts
+                .proposals
+                .record_accepted(wiki, &proposal.id, acceptor)?;
+        }
+        Ok(())
     }
 
     /// The revision is the latest and the proposal may be accepted in the state it is in.
@@ -853,7 +884,7 @@ impl ProposalAcceptor {
         self.recovery_guard(wiki, lease)?;
         // What the lease waited for may have settled it: a retry behind the first finds its record.
         let proposal = self.parts.proposals.get(principal, wiki, id)?;
-        if let Some(done) = self.sealed_before(&proposal, revision)? {
+        if let Some(done) = self.sealed_before(wiki, &proposal, revision)? {
             return Ok(Step::AlreadySigned(done));
         }
         if let Some(pending) = self
@@ -975,6 +1006,7 @@ impl ProposalAcceptor {
             AcceptanceBegin::Existing(found) => {
                 return match found.result.map(|r| r.outcome) {
                     Some(AcceptanceOutcome::Sealed { block_id, patch_id }) => {
+                        self.settle_signed_proposal(wiki, &proposal, &found.acceptance.acceptor)?;
                         Ok(Step::AlreadySigned(Accepted::AlreadySigned {
                             acceptance: found.acceptance.id,
                             block_id,
@@ -1074,7 +1106,7 @@ impl ProposalAcceptor {
                 }
                 let _ = flagged;
                 self.parts.reads.forget_wiki(wiki);
-                let reconciliation = self.reconcile(wiki);
+                let reconciliation = self.reconcile(wiki, &intent.view, &intent.base_block);
                 self.observe(AcceptStep::Reconciled);
                 Ok(Step::Done(Signed {
                     acceptance: record.id,
@@ -1157,18 +1189,20 @@ impl ProposalAcceptor {
             })
     }
 
-    /// The reconciliation (RFC 002 D-7), with the lease still held.
-    fn reconcile(&self, wiki: &WikiRecord) -> Reconciled {
+    /// The reconciliation (RFC 002 D-7), with the lease still held: **bounded** to the blocks of `view` since the
+    /// intent's base (handoff 004, P7). The full pass is recovery's and the schedule's.
+    fn reconcile(&self, wiki: &WikiRecord, view: &str, base: &str) -> Reconciled {
         if !self.reconcile {
             return Reconciled::Skipped;
         }
-        shared::reconcile_wiki(
+        shared::reconcile_since_wiki(
             &*self.parts.storage,
             &self.parts.layout,
             wiki,
             &self.parts.acceptances,
             &self.parts.acts,
             self.audit.as_ref(),
+            (view, base),
             (self.clock)(),
         )
     }

@@ -109,6 +109,7 @@ fn flagged() -> Witness {
         acts: Vec::new(),
         status: status(Vec::new(), 0),
         doctor: doctor(vec![diag(Severity::Info, "PRIKK-DOCTOR-VERIFY-OK", None)]),
+        retirement: None,
         worktree: Some(WorktreeState {
             clean: true,
             changes: 0,
@@ -479,9 +480,42 @@ fn stale_locks_are_cleared_first_on_the_lease_record_and_prikks_liveness_words_c
         tool: "prikk".to_owned(),
     }];
     assert_eq!(build(&w).stop, Some(Stop::ForeignProcess));
-    // ... but such a process is no reason to stop when no lock is held.
+    // ... and it stops every step, not only the clearing of a lock (P8): with no lock held the plan still stops.
     w.locks.clear();
-    assert_eq!(build(&w).stop, None);
+    let plan = build(&w);
+    assert_eq!(plan.stop, Some(Stop::ForeignProcess));
+    assert!(plan.steps.is_empty());
+}
+
+#[test]
+fn a_foreign_process_stops_the_seal_the_restore_and_the_tail_too() {
+    let foreign = || {
+        vec![Foreign {
+            pid: 77,
+            tool: "bwrap".to_owned(),
+        }]
+    };
+    // A queued patch that is the act's change: the seal waits.
+    let mut w = flagged();
+    w.status = status(vec![patch(MESSAGE)], 0);
+    w.acts = vec![act(Chain::NotSealed)];
+    w.foreign = foreign();
+    let plan = build(&w);
+    assert_eq!(plan.stop, Some(Stop::ForeignProcess));
+    assert!(plan.steps.is_empty() && plan.ops().is_empty());
+    // A dirty worktree: the restore waits.
+    let mut w = flagged();
+    w.worktree = Some(WorktreeState {
+        clean: false,
+        changes: 1,
+        declarations: 0,
+    });
+    w.foreign = foreign();
+    assert_eq!(build(&w).stop, Some(Stop::ForeignProcess));
+    // A flag alone (the tail: verify, reconcile, clear the flag) waits as well.
+    let mut w = flagged();
+    w.foreign = foreign();
+    assert_eq!(build(&w).stop, Some(Stop::ForeignProcess));
 }
 
 #[test]

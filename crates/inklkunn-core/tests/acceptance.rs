@@ -555,7 +555,10 @@ fn two_acceptances_racing_on_one_wiki_serialize_and_the_second_is_told_busy_with
     // While it is inside, the durable record names the holder and the acceptance.
     let held = w.leases.recorded_holder(&w.wiki.id).unwrap().unwrap();
     assert_eq!(
-        (held.purpose.as_str(), held.holder.as_str()),
+        (
+            held.purpose.as_str(),
+            held.holder.rsplit_once('@').map_or("", |(name, _)| name)
+        ),
         ("acceptance", "acceptance-test")
     );
     assert!(held.acceptance.is_some());

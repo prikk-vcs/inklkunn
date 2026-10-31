@@ -349,6 +349,21 @@ fn a_failure_after_the_commit_flags_the_wiki_and_nothing_is_committed_again() {
             AcceptError::WorktreeDirty("x".to_owned()),
             RecoveryReason::WorktreeDirty,
         ),
+        // The repository was not clean when the signer began (P8): flagged, with the reason that names what was found.
+        (
+            AcceptError::Unclean {
+                queued: true,
+                detail: "x".to_owned(),
+            },
+            RecoveryReason::Queued,
+        ),
+        (
+            AcceptError::Unclean {
+                queued: false,
+                detail: "x".to_owned(),
+            },
+            RecoveryReason::WorktreeDirty,
+        ),
         (
             AcceptError::SealedUnconfirmed {
                 sealed: None,
@@ -694,7 +709,10 @@ fn two_acceptances_racing_on_one_wiki_serialize_and_the_second_is_told_busy() {
     // The durable record names the holder and the acceptance while it is inside.
     let holder = rig.store.lease_holder(&rig.wiki.id).unwrap().unwrap();
     assert_eq!(
-        (holder.purpose.as_str(), holder.holder.as_str()),
+        (
+            holder.purpose.as_str(),
+            holder.holder.rsplit_once('@').map_or("", |(name, _)| name)
+        ),
         ("acceptance", "test-process")
     );
     assert!(holder.acceptance.is_some());

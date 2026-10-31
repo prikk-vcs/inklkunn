@@ -65,6 +65,13 @@ fn a_leftover_seed_directory_is_added_to_a_failure_and_never_replaces_it() {
         (AcceptError::Refused("r-payload".into()), "r-payload"),
         (AcceptError::WorktreeDirty("d-payload".into()), "d-payload"),
         (
+            AcceptError::Unclean {
+                queued: true,
+                detail: "c-payload".into(),
+            },
+            "c-payload",
+        ),
+        (
             AcceptError::Queued {
                 step: "seal",
                 detail: "q-payload".into(),

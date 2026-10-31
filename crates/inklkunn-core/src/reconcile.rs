@@ -96,6 +96,14 @@ pub enum ReconcileError {
         /// The most blocks that would have been read.
         limit: u64,
     },
+    /// A bounded reconciliation ([`reconcile_since`]) was asked for the blocks since a block that the view's history
+    /// does not hold. Nothing was concluded.
+    BaseNotFound {
+        /// The view.
+        view: String,
+        /// The block the read was to go back to.
+        base: String,
+    },
 }
 
 impl std::fmt::Display for ReconcileError {
@@ -106,6 +114,10 @@ impl std::fmt::Display for ReconcileError {
             ReconcileError::TooLarge { view, limit } => write!(
                 f,
                 "the view `{view}` has at least {limit} blocks, more than a reconciliation reads; nothing was concluded"
+            ),
+            ReconcileError::BaseNotFound { view, base } => write!(
+                f,
+                "the view `{view}` does not hold the block {base} that the bounded reconciliation goes back to; nothing was concluded"
             ),
         }
     }
@@ -155,6 +167,34 @@ pub enum Finding {
 }
 
 impl Finding {
+    /// The block the finding is about.
+    pub fn block_id(&self) -> &str {
+        match self {
+            Finding::UnreadableBlock { block_id }
+            | Finding::UnrecordedSeal { block_id, .. }
+            | Finding::UnrecordedSystemChange { block_id, .. }
+            | Finding::MissingBlock { block_id, .. }
+            | Finding::Mismatch { block_id, .. } => block_id,
+        }
+    }
+
+    /// The record the finding is about, when it is about one.
+    pub fn record_id(&self) -> Option<&str> {
+        match self {
+            Finding::MissingBlock { record_id, .. } | Finding::Mismatch { record_id, .. } => {
+                Some(record_id)
+            }
+            Finding::UnreadableBlock { .. }
+            | Finding::UnrecordedSeal { .. }
+            | Finding::UnrecordedSystemChange { .. } => None,
+        }
+    }
+
+    /// The finding as the audit trail words it: a fixed word and ids, nothing else.
+    pub fn describe(&self) -> String {
+        self.detail()
+    }
+
     /// The audit detail: a fixed word and ids, nothing else.
     fn detail(&self) -> String {
         match self {
@@ -273,15 +313,92 @@ pub fn reconcile_with(
     let accepted = records.accepted(wiki).map_err(ReconcileError::Records)?;
     let system_acts = records.system_acts(wiki).map_err(ReconcileError::Records)?;
     let (blocks, views) = blocks_of(storage, repo, bounds)?;
+    Ok(examine(wiki, &blocks, views, &accepted, &system_acts, true))
+}
 
+/// The blocks of `view` **newer than** `since` (the block an act was made on), newest first: the history is read
+/// from its tip only as far as `since`, each read four times larger than the one before while `since` is not in it.
+fn blocks_since(
+    storage: &dyn Storage,
+    repo: &Path,
+    view: &str,
+    since: &str,
+    bounds: ReadBounds,
+) -> Result<BlockIndex, ReconcileError> {
+    let mut limit = bounds.first_read.max(1);
+    loop {
+        let history = storage
+            .history(repo, &Point::View(view.to_owned()), Some(limit))
+            .map_err(ReconcileError::Storage)?;
+        let found = history.blocks.iter().position(|b| b.block_id == since);
+        if let Some(at) = found {
+            let mut blocks = BlockIndex::new();
+            for block in history.blocks.into_iter().take(at) {
+                blocks
+                    .entry(block.block_id.clone())
+                    .or_insert_with(|| (block, BTreeSet::new()))
+                    .1
+                    .insert(view.to_owned());
+            }
+            return Ok(blocks);
+        }
+        if (history.blocks.len() as u64) < limit {
+            return Err(ReconcileError::BaseNotFound {
+                view: view.to_owned(),
+                base: since.to_owned(),
+            });
+        }
+        if limit >= bounds.max_read {
+            return Err(ReconcileError::TooLarge {
+                view: view.to_owned(),
+                limit,
+            });
+        }
+        limit = limit.saturating_mul(4).min(bounds.max_read);
+    }
+}
+
+/// The **bounded** reconciliation an acceptance runs inline after its seal, under the lease (handoff 004, P7): only
+/// the blocks of `view` newer than `since`, the block the act was made on. Every block it reads is checked as the
+/// full pass checks it (a recorded act behind it, a message that agrees), and the accepted records that name one of
+/// those blocks are checked against it; what it cannot see, it does not conclude: a record whose block is older
+/// than `since`, or in another view, is not a *missing block* here. The full pass stays in recovery and on its
+/// schedule, so the lease is held for a time that grows with what the act wrote, not with the wiki.
+///
+/// The records are read in full (a store query; no prikk call), the history is not.
+pub fn reconcile_since(
+    wiki: &WikiId,
+    repo: &Path,
+    storage: &dyn Storage,
+    records: &dyn RecordedActs,
+    view: &str,
+    since: &str,
+    bounds: ReadBounds,
+) -> Result<Report, ReconcileError> {
+    let accepted = records.accepted(wiki).map_err(ReconcileError::Records)?;
+    let system_acts = records.system_acts(wiki).map_err(ReconcileError::Records)?;
+    let blocks = blocks_since(storage, repo, view, since, bounds)?;
+    Ok(examine(wiki, &blocks, 1, &accepted, &system_acts, false))
+}
+
+/// The checks, over the blocks that were read. `full` says the blocks are the whole history, so that a record whose
+/// block is not among them is a *missing block*; a bounded read concludes nothing of the kind.
+fn examine(
+    wiki: &WikiId,
+    blocks: &BlockIndex,
+    views: usize,
+    accepted: &[AcceptedRecord],
+    system_acts: &[SystemActRecord],
+    full: bool,
+) -> Report {
     let mut findings: Vec<Finding> = Vec::new();
     let mut by_block: BTreeMap<&str, Vec<&AcceptedRecord>> = BTreeMap::new();
-    for r in &accepted {
+    for r in accepted {
         by_block.entry(r.block_id.as_str()).or_default().push(r);
     }
     let mut acts_by_block: BTreeMap<&str, Vec<&SystemActRecord>> = BTreeMap::new();
     let mut unbound: Vec<&SystemActRecord> = Vec::new();
-    for a in &system_acts {
+    for a in system_acts {
         match a.block_id.as_deref() {
             Some(b) => acts_by_block.entry(b).or_default().push(a),
             None => unbound.push(a),
@@ -291,7 +408,7 @@ pub fn reconcile_with(
     let mut claimed_unbound: BTreeSet<&str> = BTreeSet::new();
 
     // 1. Every block has a recorded act behind it.
-    for (block_id, (block, in_views)) in &blocks {
+    for (block_id, (block, in_views)) in blocks {
         if block.patch_messages.is_empty() {
             findings.push(Finding::UnreadableBlock {
                 block_id: block_id.clone(),
@@ -365,12 +482,15 @@ pub fn reconcile_with(
     }
 
     // 2. Every recorded act has its block.
-    for r in &accepted {
+    for r in accepted {
         if !blocks.contains_key(&r.block_id) {
-            findings.push(Finding::MissingBlock {
-                record_id: r.id.clone(),
-                block_id: r.block_id.clone(),
-            });
+            // A bounded read has not seen the whole history, so a block it did not read is not a missing one.
+            if full {
+                findings.push(Finding::MissingBlock {
+                    record_id: r.id.clone(),
+                    block_id: r.block_id.clone(),
+                });
+            }
         } else if !claimed_records.contains(r.id.as_str()) {
             findings.push(Finding::Mismatch {
                 record_id: r.id.clone(),
@@ -379,8 +499,9 @@ pub fn reconcile_with(
             });
         }
     }
-    for a in &system_acts {
+    for a in system_acts {
         if let Some(b) = &a.block_id
+            && full
             && !blocks.contains_key(b)
         {
             findings.push(Finding::MissingBlock {
@@ -389,16 +510,16 @@ pub fn reconcile_with(
             });
         }
     }
-    findings.sort_by_key(|f| f.detail());
+    findings.sort_by_key(Finding::detail);
     findings.dedup();
-    Ok(Report {
+    Report {
         wiki: wiki.clone(),
         views,
         blocks: blocks.len(),
         accepted: accepted.len(),
         system_acts: system_acts.len(),
         findings,
-    })
+    }
 }
 
 /// Append one `reported` event per finding **that the previous run did not already report** to the audit

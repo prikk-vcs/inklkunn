@@ -19,7 +19,7 @@ use inklkunn_prikk::{Admission, Point, PrikkCli, Sandbox, Storage};
 use inklkunn_signer::message::{Actor, BlockId, Message, Summary, SystemLabel};
 use inklkunn_signer::{
     Accept, AcceptError, AcceptanceLedger, AcceptanceToken, ExpectedMessage, LedgerError,
-    PreparedChange, PreparedFile, RepositoryBootstrap, Signer, SignerConfig, SignerError,
+    PreparedChange, PreparedFile, Recover, RepositoryBootstrap, Signer, SignerConfig, SignerError,
     Unconfirmed, ViewCreationAct, ViewCreationFacts,
 };
 use inklkunn_store::{AccountId, DisplayName, ProposalId, RootLayout, WikiId};
@@ -175,6 +175,10 @@ fi
 if [ -e "$CTL/say-$verb" ]; then cat "$CTL/say-$verb"; exit 0; fi
 if [ -e "$CTL/lockseeds-$verb" ]; then chmod 0500 "$(dirname "${{PRIKK_AUTHOR_SEED_FILE:-$PRIKK_MAINTAINER_SEED_FILE}}")"; fi
 if [ -e "$CTL/report-$verb" ]; then cat "$CTL/report-$verb"; exit 1; fi
+if [ -e "$CTL/runfail-$verb" ]; then
+  "$REAL" "$@" > /dev/null 2>&1
+  echo "error: the call was stopped after $verb had done its work" >&2; exit 1
+fi
 if [ -e "$CTL/block-$verb" ]; then : > "$CTL/blocked-$verb"; sleep 20; fi
 exec "$REAL" "$@"
 "#,
@@ -869,10 +873,74 @@ fn a_failure_after_commit_is_queued_leaves_one_queued_patch_and_blocks_the_next_
     let next = f.prepare(MAIN, vec![file("pages/Home.md", Some("home\n"))], vec![]);
     let r = f.signer.accept(&f.wiki, MAIN, &next.token, &next.change);
     assert!(
-        matches!(&r, Err(AcceptError::Refused(m)) if m.contains("unsealed")),
+        matches!(&r, Err(AcceptError::Unclean { queued: true, detail }) if detail.contains("unsealed")),
         "{r:?}"
     );
     assert_eq!(f.queue_count(), 1);
+}
+
+#[test]
+fn a_commit_that_fails_after_its_patch_is_durable_is_queued_and_its_files_are_left_never_undone() {
+    // P1. A `commit` stopped at its deadline, over its output bound or by its ceiling may have made its patch
+    // durable first. Putting the files back then would leave a queued patch no worktree matches: recovery could
+    // neither seal it nor restore anything. The stand-in runs the real commit and then fails.
+    let Some(f) = fixture("ambiguous-commit", Sandbox::Unconfined, true) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
+    let before = f.history_len(MAIN);
+    f.control("runfail-commit");
+    let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+    assert!(
+        matches!(&r, Err(AcceptError::Queued { step: "commit", .. })),
+        "{r:?}"
+    );
+    // One patch is queued, nothing is sealed, and the files are exactly what the patch says: the worktree is
+    // the baseline the commit made, which `worktree-status` confirms.
+    assert_eq!(f.queue_count(), 1);
+    assert_eq!(f.history_len(MAIN), before);
+    assert_eq!(
+        std::fs::read_to_string(f.repo.join("pages/Edit.md")).unwrap(),
+        "edited\n",
+        "the files were not put back"
+    );
+    assert!(f.worktree_clean());
+    assert!(f.seed_dirs().is_empty());
+}
+
+#[test]
+fn a_commit_error_with_nothing_queued_is_undone_and_one_with_an_unreadable_state_is_not() {
+    let Some(f) = fixture("commit-state", Sandbox::Unconfined, true) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    // Nothing queued after the error: undone, as for any failure before the commit (the existing restore test
+    // covers the files; this one the state read first).
+    let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
+    f.control("fail-commit");
+    let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+    assert!(matches!(&r, Err(AcceptError::Refused(_))), "{r:?}");
+    assert_eq!(
+        std::fs::read_to_string(f.repo.join("pages/Edit.md")).unwrap(),
+        "---\ntitle: Edit\n---\n\nbefore\n"
+    );
+    // The state cannot be read after the error (the first `status` is the precondition, the second is ours):
+    // nothing is known, so nothing is undone, and the wiki is told the worktree is dirty.
+    std::fs::write(f.ctl.join("failafter-status"), "1").unwrap();
+    let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+    assert!(
+        matches!(&r, Err(AcceptError::WorktreeDirty(m)) if m.contains("could not be read")),
+        "{r:?}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(f.repo.join("pages/Edit.md")).unwrap(),
+        "edited\n",
+        "an unknown state is not undone"
+    );
+    f.uncontrol("failafter-status");
+    f.uncontrol("fail-commit");
+    assert_eq!(f.queue_count(), 0);
 }
 
 #[test]
@@ -885,8 +953,10 @@ fn a_dirty_worktree_blocks_an_acceptance_instead_of_riding_along() {
     let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
     let before = f.history_len(MAIN);
     let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+    // Its own error (P8), not a refusal of the change: the repository is not as a finished act leaves it, and the
+    // orchestrator flags the wiki.
     assert!(
-        matches!(&r, Err(AcceptError::Refused(m)) if m.contains("uncommitted")),
+        matches!(&r, Err(AcceptError::Unclean { queued: false, detail }) if detail.contains("uncommitted")),
         "{r:?}"
     );
     assert_eq!(f.history_len(MAIN), before);
@@ -1877,12 +1947,12 @@ fn opening_the_signer_checks_the_secret_and_the_tmpfs() {
 }
 
 #[test]
-fn after_a_retirement_every_acceptance_is_sealed_but_cannot_be_confirmed_until_prikk_can_verify_it()
-{
-    // Ledger PK-34: removing a maintainer key from trust makes what it sealed unverifiable, so the verify that
-    // closes every acceptance fails. The change IS sealed and the error says which block, which is what an
-    // orchestrator needs to record it instead of retrying. When prikk keeps a retired key's history
-    // verifiable this test fails and the runbook and the ledger row are due a change.
+fn after_a_retirement_writes_continue_and_the_repository_still_fails_its_verification() {
+    // Ledger PK-34: removing a maintainer key from trust makes what it sealed unverifiable. DR-10 accepted the lost
+    // *Verified* label, not a frozen wiki (handoff 004, P2): a `verify` that fails exactly and only by publication
+    // trust for blocks the retired key sealed confirms the acceptance. The failure itself stays what it is, and
+    // when prikk keeps a retired key's history verifiable the canary below fails and the runbook and the ledger
+    // row are due a change.
     let Some(f) = fixture("retired", Sandbox::Unconfined, false) else {
         println!("skipping: prikk not on PATH");
         return;
@@ -1896,6 +1966,166 @@ fn after_a_retirement_every_acceptance_is_sealed_but_cannot_be_confirmed_until_p
         .expect("rotation");
     let before = f.history_len(MAIN);
     let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
+    let sealed = f
+        .signer
+        .accept(&f.wiki, MAIN, &p.token, &p.change)
+        .unwrap_or_else(|e| panic!("a retirement froze the wiki: {e}"));
+    assert_eq!(f.history_len(MAIN), before + 1);
+    assert_eq!(f.tip_block(MAIN), sealed.block_id);
+    assert_eq!(f.queue_count(), 0);
+    // ... and the next one, and the one after it.
+    for text in ["again\n", "and again\n"] {
+        let next = f.prepare(MAIN, vec![file("pages/Edit.md", Some(text))], vec![]);
+        f.signer
+            .accept(&f.wiki, MAIN, &next.token, &next.change)
+            .unwrap_or_else(|e| panic!("writes stopped after a retirement: {e}"));
+    }
+    assert_eq!(f.history_len(MAIN), before + 3);
+    // The canary and the known cost: prikk's own verify still fails, by publication trust and nothing else.
+    let verdict = f.prikk_json(&["verify", "--format", "json"]);
+    assert_eq!(
+        field(field(&verdict, "verdict"), "ok"),
+        &serde_json::Value::Bool(false),
+        "prikk now verifies history sealed by a retired key; see PK-34: {verdict}"
+    );
+    let conditions: Vec<&str> = field(field(&verdict, "verdict"), "failed_conditions")
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|c| field(c, "id").as_str())
+        .collect();
+    assert_eq!(conditions, ["publication-trust"]);
+    // Recovery asks the signer the same question and gets the same answer, with a note for its report.
+    let note = Recover::verify_after_retirement(&f.signer, &f.wiki).expect("asked");
+    assert!(
+        note.as_deref().is_some_and(|n| n.contains("retired")),
+        "{note:?}"
+    );
+}
+
+#[test]
+fn a_repository_that_verifies_or_whose_key_was_only_rotated_has_nothing_to_excuse() {
+    let Some(f) = fixture("not-retired", Sandbox::Unconfined, false) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    assert_eq!(
+        Recover::verify_after_retirement(&f.signer, &f.wiki),
+        Ok(None)
+    );
+    f.signer
+        .rotate_keys(
+            &inklkunn_signer::KeyAuthority::for_tests(),
+            &f.repo,
+            inklkunn_signer::OldKey::Keep,
+        )
+        .expect("rotation");
+    assert_eq!(
+        Recover::verify_after_retirement(&f.signer, &f.wiki),
+        Ok(None)
+    );
+    // An untrusted key's block is a failure; with no retired key of this wiki it is nobody's to excuse.
+    plant_a_block_sealed_by_an_untrusted_key(&f);
+    assert_eq!(
+        Recover::verify_after_retirement(&f.signer, &f.wiki),
+        Ok(None)
+    );
+}
+
+/// A key of a stranger, adopted in the repository by hand and then removed from trust again, with one block it
+/// sealed in between: after this the repository fails publication trust for a block no retired key sealed.
+fn plant_a_block_sealed_by_an_untrusted_key(f: &Fixture) {
+    use std::process::Stdio;
+    let dir = f.ctl.join("stranger");
+    std::fs::create_dir_all(&dir).unwrap();
+    let run = |args: &[&str], envs: &[(&str, &Path)]| {
+        let mut c = Command::new(&f.prikk);
+        c.args(args)
+            .current_dir(&f.repo)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        for (k, v) in envs {
+            c.env(k, v);
+        }
+        let out = c.output().expect("prikk runs");
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    let (author, maintainer) = (dir.join("a.seed"), dir.join("m.seed"));
+    run(&["key", "generate", "--out", author.to_str().unwrap()], &[]);
+    run(
+        &["key", "generate", "--out", maintainer.to_str().unwrap()],
+        &[],
+    );
+    let id = std::fs::read_to_string(dir.join("m.seed.key-id")).unwrap();
+    let id = id.trim();
+    let public = run(
+        &["key", "public", "--seed-file", maintainer.to_str().unwrap()],
+        &[],
+    );
+    let public = public
+        .lines()
+        .find_map(|l| l.strip_prefix("public key: "))
+        .unwrap()
+        .trim()
+        .to_owned();
+    run(
+        &[
+            "trust",
+            "maintainer",
+            "add",
+            "--key-id",
+            id,
+            "--public-key",
+            &public,
+        ],
+        &[],
+    );
+    std::fs::write(
+        f.repo.join("pages/Stranger.md"),
+        "---\ntitle: Stranger\n---\n\nhi\n",
+    )
+    .unwrap();
+    let envs: [(&str, &Path); 2] = [
+        ("PRIKK_AUTHOR_SEED_FILE", author.as_path()),
+        ("PRIKK_MAINTAINER_SEED_FILE", maintainer.as_path()),
+    ];
+    run(&["commit", "-m", "A stranger's change"], &envs);
+    run(&["seal", "--allow-no-audit"], &envs);
+    run(&["trust", "maintainer", "remove", "--key-id", id], &[]);
+}
+
+#[test]
+fn a_second_failure_planted_after_a_retirement_still_stops_the_wiki() {
+    // P2's other half: the excuse is for the retired key's blocks and nothing else. A block sealed by a key that
+    // is not trusted and is no retired key of this wiki fails publication trust too, and is not excused; the
+    // acceptance is sealed but not confirmed, as before.
+    let Some(f) = fixture("retired-plus", Sandbox::Unconfined, false) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    f.signer
+        .rotate_keys(
+            &inklkunn_signer::KeyAuthority::for_tests(),
+            &f.repo,
+            inklkunn_signer::OldKey::Retire,
+        )
+        .expect("rotation");
+    // Writes continue first (the retired key alone is excused) ...
+    let ok = f.prepare(MAIN, vec![file("pages/Edit.md", Some("one\n"))], vec![]);
+    assert!(
+        f.signer
+            .accept(&f.wiki, MAIN, &ok.token, &ok.change)
+            .is_ok()
+    );
+    // ... then the stranger's block is planted and the next acceptance cannot be confirmed.
+    plant_a_block_sealed_by_an_untrusted_key(&f);
+    let before = f.history_len(MAIN);
+    let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("two\n"))], vec![]);
     let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
     let Err(AcceptError::SealedUnconfirmed {
         sealed: Some(sealed),
@@ -1903,11 +2133,15 @@ fn after_a_retirement_every_acceptance_is_sealed_but_cannot_be_confirmed_until_p
         ..
     }) = &r
     else {
-        panic!("expected a sealed change that did not verify: {r:?}");
+        panic!("a planted second failure was excused: {r:?}");
     };
     assert_eq!(f.history_len(MAIN), before + 1);
     assert_eq!(f.tip_block(MAIN), sealed.block_id);
-    assert_eq!(f.queue_count(), 0);
+    // Recovery's question gets "no" as well.
+    assert_eq!(
+        Recover::verify_after_retirement(&f.signer, &f.wiki),
+        Ok(None)
+    );
 }
 
 #[test]

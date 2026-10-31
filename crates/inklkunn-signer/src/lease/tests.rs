@@ -152,3 +152,34 @@ fn a_loan_is_for_that_wiki_that_thread_and_those_locks_only() {
     assert_eq!(got.ok(), Some(false), "and took a lock of its own");
     waiter.join().unwrap();
 }
+
+#[test]
+fn a_loan_is_good_only_while_the_lease_it_was_made_under_is_the_one_held() {
+    // P8: a scope that outlives its lease (here by a leak) must not let the thread believe a lease it does not
+    // hold, neither after the lease is given up nor after another lease of the same wiki is taken.
+    let (_dir, root, leases) = leases("generation");
+    let wiki = WikiId::new();
+    root.prepare(&wiki).unwrap();
+    let first = leases.try_acquire(&wiki).unwrap();
+    std::mem::forget(first.scope());
+    assert!(
+        is_lent(leases.locks(), &wiki),
+        "lent while the lease is held"
+    );
+    drop(first);
+    assert!(
+        !is_lent(leases.locks(), &wiki),
+        "a loan of a lease that was given up is not a loan"
+    );
+    // The wiki's lease is taken again (by whoever): the leaked loan is not a loan under the new one.
+    let second = leases.try_acquire(&wiki).unwrap();
+    assert!(
+        !is_lent(leases.locks(), &wiki),
+        "a loan under an earlier lease is not a loan under this one"
+    );
+    // ... and the second lease's own scope is.
+    let scope = second.scope();
+    assert!(is_lent(leases.locks(), &wiki));
+    drop(scope);
+    assert!(!is_lent(leases.locks(), &wiki));
+}

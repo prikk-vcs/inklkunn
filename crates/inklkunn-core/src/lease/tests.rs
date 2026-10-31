@@ -64,7 +64,7 @@ fn the_holder_is_recorded_when_the_lease_is_taken_and_cleared_when_it_is_release
     let held = w.store.lease_holder(&w.wiki.id).unwrap().unwrap();
     assert_eq!(
         (
-            held.holder.as_str(),
+            held.holder.rsplit_once('@').map_or("", |(name, _)| name),
             held.purpose.as_str(),
             held.acceptance.as_ref()
         ),
@@ -109,6 +109,49 @@ fn a_record_of_another_holder_found_at_the_take_is_a_holder_that_died_holding_th
         .acquire(&w.wiki.id, Purpose::Acceptance, None)
         .unwrap();
     assert_eq!(next.replaced(), None);
+}
+
+#[test]
+fn a_holder_is_named_by_its_pid_and_start_time_and_an_instance_id_so_a_reused_pid_is_another_holder()
+ {
+    // P8: in a container the same pid comes back at every start. The record an earlier process left under the
+    // very name this one was given is another holder's, and a holder that died.
+    let w = world("reused-pid", quick(100));
+    let name = w.leases.holder_name();
+    let (base, instance) = name.split_once('@').expect("a name with an instance");
+    assert_eq!(base, "this-process");
+    let (start, random) = instance
+        .split_once('-')
+        .expect("a start time and a random id");
+    assert!(start.parse::<u64>().is_ok(), "{name}");
+    assert_eq!(random.len(), 16, "{name}");
+    // Two processes (two sets of leases) with one given name are two holders.
+    let other = WikiLeases::new(
+        inklkunn_signer::WriteLeases::new(w.layout.clone()),
+        w.store.clone(),
+        "this-process",
+        quick(100),
+    );
+    assert_ne!(other.holder_name(), name);
+    // A record under the very name the caller gave (a previous process with the same pid) is a holder that died.
+    w.store
+        .record_lease_holder(&LeaseHolder {
+            wiki: w.wiki.id.clone(),
+            holder: "this-process".to_owned(),
+            purpose: "acceptance".to_owned(),
+            acceptance: None,
+            since: 5,
+        })
+        .unwrap();
+    let lease = w
+        .leases
+        .acquire(&w.wiki.id, Purpose::Acceptance, None)
+        .unwrap();
+    assert_eq!(
+        lease.replaced().map(|h| h.holder.as_str()),
+        Some("this-process"),
+        "the record of an earlier process with the same pid was taken for this one's own"
+    );
 }
 
 #[test]

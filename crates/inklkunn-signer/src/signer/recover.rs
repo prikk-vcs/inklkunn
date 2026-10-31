@@ -226,6 +226,16 @@ impl Recover for Signer {
         }
     }
 
+    fn verify_after_retirement(&self, wiki: &WikiId) -> Result<Option<String>, RecoverError> {
+        let repo = self.root.repo_dir(wiki);
+        let report = self.writes.verify(&repo)?;
+        Ok(self.retirement_explains(&repo, wiki, &report)?.map(|n| {
+            format!(
+                "only publication trust fails, {n} finding(s), all for what a retired maintainer key sealed; the badge still says Verification failed (DR-10)"
+            )
+        }))
+    }
+
     fn discard_damaged(
         &self,
         wiki: &WikiId,

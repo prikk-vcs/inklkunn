@@ -216,6 +216,16 @@ pub trait Recover: Send + Sync {
         view: &str,
         act: &RecoveryToken,
     ) -> Result<usize, RecoverError>;
+
+    /// A failed `verify` that a **retired key** accounts for exactly and only (handoff 004, P2; DR-10): `Some(note)`
+    /// when `prikk verify` fails by publication trust alone, for blocks the wiki's retired maintainer key sealed
+    /// before it was replaced, and by nothing else; `None` for anything else, including a verify that passes. The
+    /// note is for the recovery report. Read-only and keyless: it needs no recorded act and no lease. The default
+    /// excuses nothing.
+    fn verify_after_retirement(&self, wiki: &WikiId) -> Result<Option<String>, RecoverError> {
+        let _ = wiki;
+        Ok(None)
+    }
 }
 
 /// How the worktree differs from its baseline: counts, and nothing that names a path.

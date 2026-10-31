@@ -13,7 +13,10 @@
 //! A failure **before `commit` succeeds** puts the worktree back (originals restored, renames moved back)
 //! and says so, or says plainly that it could not ([`AcceptError::WorktreeDirty`]); a failure **after** it is
 //! [`AcceptError::Queued`] (nothing sealed yet) or [`AcceptError::SealedUnconfirmed`] (sealed; do not retry),
-//! because a patch is queued and RFC 004's recovery completes it.
+//! because a patch is queued and RFC 004's recovery completes it. **An ambiguous `commit` is queued, never
+//! undone**: after a `commit` error `status` is read first, and a patch that is queued is left with its files
+//! (handoff 004, P1). A repository that is not clean when the act begins is [`AcceptError::Unclean`], and the
+//! wiki is flagged for it.
 //!
 //! **The unguarded entry** is [`RepositoryBootstrap`], which creates a wiki's repository and keys and seals
 //! the very first change. It refuses any change but a `system` message to a repository with no history
@@ -413,6 +416,46 @@ impl Signer {
         }
     }
 
+    /// A `commit` that returned an error: **what it left is read before anything is touched** (handoff 004, P1). A
+    /// `commit` stopped at its deadline, over its output bound or by its ceiling may have made its patch durable
+    /// before it was stopped, and putting the files back then would leave a queued patch that no worktree matches:
+    /// recovery could neither seal it nor restore anything, and the wiki would be flagged for good. So `status`
+    /// is read first.
+    ///
+    /// - A patch is **queued**: the files stay as they are and the answer is `Queued` (recovery seals it alone).
+    /// - **Nothing** is queued and nothing torn: the worktree is put back, as for any failure before the commit.
+    /// - A **torn** log, or a `status` that cannot be read: the state is not known, so nothing is undone, and the
+    ///   answer is `WorktreeDirty` (recovery discards the torn commit and restores the files).
+    fn after_commit_error(
+        &self,
+        repo: &Path,
+        applied: Applied,
+        moved: &[(String, String)],
+        cause: SignerError,
+    ) -> AcceptError {
+        match self.writes.status_full(repo) {
+            Ok(status) if status.queue.count != 0 => AcceptError::Queued {
+                step: "commit",
+                ceiling: match &cause {
+                    SignerError::CeilingExceeded { bytes, .. } => Some(*bytes),
+                    _ => None,
+                },
+                detail: format!(
+                    "`commit` returned an error ({cause}) but its patch is queued; the files are left as they are"
+                ),
+            },
+            Ok(status) if status.trailing_partial_wal_bytes == 0 => {
+                self.restore(repo, applied, moved, cause)
+            }
+            Ok(_) => AcceptError::WorktreeDirty(format!(
+                "`commit` returned an error ({cause}) and left a torn log; nothing was undone, recovery discards the torn commit and restores the files"
+            )),
+            Err(read) => AcceptError::WorktreeDirty(format!(
+                "`commit` returned an error ({cause}) and the repository's state could not be read ({read}); nothing was undone"
+            )),
+        }
+    }
+
     /// The whole write sequence of an acceptance, with the seeds on disk.
     fn write_sequence(
         &self,
@@ -427,15 +470,19 @@ impl Signer {
         // would be committed with it. Both are a previous call's leftovers, which recovery owns.
         let status = w.status(repo).map_err(accept_error)?;
         if status.queue.count != 0 {
-            return Err(AcceptError::Refused(
-                "the repository holds unsealed work; recovery completes or discards it first"
-                    .to_owned(),
-            ));
+            return Err(AcceptError::Unclean {
+                queued: true,
+                detail:
+                    "the repository holds unsealed work; recovery completes or discards it first"
+                        .to_owned(),
+            });
         }
         if !w.worktree_clean(repo).map_err(accept_error)? {
-            return Err(AcceptError::Refused(
-                "the worktree has uncommitted changes; recovery restores it first".to_owned(),
-            ));
+            return Err(AcceptError::Unclean {
+                queued: false,
+                detail: "the worktree has uncommitted changes; recovery restores it first"
+                    .to_owned(),
+            });
         }
         if status.current_branch.as_deref() != Some(view) {
             w.switch(repo, view).map_err(accept_error)?;
@@ -447,7 +494,7 @@ impl Signer {
             return Err(self.restore(repo, applied, &moved, e));
         }
         if let Err(e) = w.commit(repo, seeds, view, message, plan.change_bytes()) {
-            return Err(self.restore(repo, applied, &moved, e));
+            return Err(self.after_commit_error(repo, applied, &moved, e));
         }
         // From here a patch is queued: until the seal succeeds a failure is `Queued`, which recovery completes;
         // after it, a failure is `SealedUnconfirmed`, which must never be retried as a new acceptance.
@@ -514,11 +561,17 @@ impl Signer {
             unconfirmed(Some(sealed.clone()), why, e.to_string())
         })?;
         if !verification.verdict.ok {
-            return Err(unconfirmed(
-                Some(sealed),
-                Unconfirmed::VerifyFailed,
-                "prikk's verify reported failed conditions".to_owned(),
-            ));
+            // A retired key never freezes the wiki (P2, DR-10): a verify that fails exactly and only by
+            // publication trust for blocks a retired key sealed is the known cost and confirms the change. Any
+            // other failure, and a failure that cannot be read, is a stop.
+            return match self.retirement_explains(repo, seeds.wiki, &verification) {
+                Ok(Some(_)) => Ok(sealed),
+                Ok(None) | Err(_) => Err(unconfirmed(
+                    Some(sealed),
+                    Unconfirmed::VerifyFailed,
+                    "prikk's verify reported failed conditions".to_owned(),
+                )),
+            };
         }
         Ok(sealed)
     }
@@ -626,6 +679,10 @@ fn note_leftover(e: AcceptError) -> AcceptError {
         AcceptError::Refused(m) => AcceptError::Refused(format!("{m}{NOTE}")),
         AcceptError::Unavailable(m) => AcceptError::Unavailable(format!("{m}{NOTE}")),
         AcceptError::WorktreeDirty(m) => AcceptError::WorktreeDirty(format!("{m}{NOTE}")),
+        AcceptError::Unclean { queued, detail } => AcceptError::Unclean {
+            queued,
+            detail: format!("{detail}{NOTE}"),
+        },
         AcceptError::Queued {
             step,
             detail,
@@ -766,6 +823,7 @@ impl RepositoryBootstrap for Signer {
 
 pub(crate) mod lifecycle;
 mod recover;
+mod retirement;
 pub(crate) mod superseded;
 
 #[cfg(test)]

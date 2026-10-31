@@ -5,7 +5,8 @@
 //! `tests/acceptance_kill.rs`; the core crate may not spawn a process.
 //!
 //! A stand-in `prikk` passes every call to the real one unless a control file names the verb: `fail-<verb>` makes it
-//! fail, `say-<verb>` makes it print a canned answer.
+//! fail, `say-<verb>` makes it print a canned answer, `runfail-<verb>` makes the real verb do its work and the call
+//! then report a failure (what a call stopped at its bound after its effect was durable looks like).
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::collections::HashMap;
@@ -18,11 +19,12 @@ use inklkunn_core::import::{plan_folder, run_import, wiki_state};
 use inklkunn_core::message::{Actor, BlockId, Message, Summary};
 use inklkunn_core::proposal::{ProposalEdit, ProposalService, QuotaConfig};
 use inklkunn_core::reconcile::{Report, reconcile};
+use inklkunn_core::recovery::processes::{ProcessInfo, ProcessTable};
 use inklkunn_core::recovery::{Step, Stop};
 use inklkunn_core::{
     AcceptFailure, AcceptanceLedger, AcceptanceParts, AcceptanceToken, Authorizer, ExpectedMessage,
-    IdentityAuthority, KeyAuthority, LeaseConfig, LedgerError, PreparedChange, PreparedFile,
-    Principal, ProposalAcceptor, Purpose, ReadConfig, ReadService, Recover, Recovery,
+    IdentityAuthority, KeyAuthority, LeaseConfig, LedgerError, OldKey, PreparedChange,
+    PreparedFile, Principal, ProposalAcceptor, Purpose, ReadConfig, ReadService, Recover, Recovery,
     RecoveryError, RecoveryMode, RecoveryOutcome, RecoveryParts, Signer, SignerConfig, StoreActs,
     StoreAuthz, StoreLedger, SystemActFailure, SystemActs, ViewCreationAct, ViewCreationFacts,
     WikiLeases, Witnesses, WriteLeases, create_wiki,
@@ -79,6 +81,10 @@ verb="$1"
 echo "$verb" >> "$CTL/calls.log"
 if [ -e "$CTL/fail-$verb" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
 if [ -e "$CTL/say-$verb" ]; then cat "$CTL/say-$verb"; exit 0; fi
+if [ -e "$CTL/runfail-$verb" ]; then
+  "{real}" "$@" > /dev/null 2>&1
+  echo "error: the call was stopped after $verb had done its work" >&2; exit 1
+fi
 exec "{real}" "$@"
 "#,
         ctl = ctl.display(),
@@ -113,6 +119,7 @@ struct World {
     _tmp: Dir,
     _shm: Dir,
     ctl: PathBuf,
+    standin: PathBuf,
     store: Arc<SqliteStore>,
     storage: Arc<PrikkCli>,
     leases: Arc<WikiLeases>,
@@ -319,6 +326,7 @@ impl World {
             _tmp: tmp,
             _shm: shm,
             ctl,
+            standin,
             store,
             storage,
             leases,
@@ -472,6 +480,19 @@ impl World {
     /// Plant a change that the service's records know nothing of, queued and not sealed: what a stranger's
     /// `commit`, or a record that was lost, leaves.
     fn plant_queued_patch(&self, page: &str, text: &str) {
+        self.plant_change(page, text, false);
+        assert_eq!(self.queue_count(), 1);
+    }
+
+    /// Plant a change the records know nothing of **and seal it**: a block in the history that no act explains
+    /// (the reconciliation calls it an unrecorded seal). Returns its block.
+    fn plant_sealed_block(&self, page: &str, text: &str) -> String {
+        self.plant_change(page, text, true);
+        assert_eq!(self.queue_count(), 0);
+        self.tip()
+    }
+
+    fn plant_change(&self, page: &str, text: &str, seal: bool) {
         let proposal = inklkunn_store::ProposalId::new();
         let base = BlockId::new(&self.tip()).unwrap();
         let who = |n: &str| Actor::Account {
@@ -511,14 +532,19 @@ impl World {
                 change_digest: change.digest(),
             },
         );
-        self.control("fail-seal", "");
+        if !seal {
+            self.control("fail-seal", "");
+        }
         let r = inklkunn_core::Accept::accept(&self.planter, &self.wiki.id, MAIN, &token, &change);
         self.uncontrol("fail-seal");
-        assert!(
-            matches!(r, Err(inklkunn_core::AcceptError::Queued { .. })),
-            "{r:?}"
-        );
-        assert_eq!(self.queue_count(), 1);
+        if seal {
+            assert!(r.is_ok(), "{r:?}");
+        } else {
+            assert!(
+                matches!(r, Err(inklkunn_core::AcceptError::Queued { .. })),
+                "{r:?}"
+            );
+        }
     }
 
     fn flag(&self, reason: RecoveryReason) {
@@ -1364,4 +1390,585 @@ fn an_acceptance_that_stopped_before_commit_is_abandoned_and_a_dirty_worktree_is
         "the proposal stays open"
     );
     assert!(w.accept(&q).is_ok(), "and may be accepted");
+}
+
+// ---- the corrections of the review of 2026-10-31 (handoff 004, P1 – P3, P7, P8) ----
+
+impl World {
+    /// A recovery that sees `table` as the host's processes.
+    fn recovery_seeing(&self, table: Arc<dyn ProcessTable>) -> Recovery {
+        Recovery::new(RecoveryParts {
+            acceptances: self.store.clone(),
+            acts: self.store.clone(),
+            proposals: self.store.clone(),
+            storage: self.storage.clone(),
+            witnesses: Arc::new(Witnesses::new(
+                &self.standin,
+                Sandbox::Unconfined,
+                self.layout.clone(),
+            )),
+            signer: self.signer.clone() as Arc<dyn Recover>,
+            leases: self.leases.clone(),
+            layout: self.layout.clone(),
+            audit: self.store.clone(),
+        })
+        .with_reads(self.reads.clone())
+        .with_processes(table)
+    }
+
+    /// An acceptance whose `seal` did its work and then reported a failure: the change is in the history, the
+    /// records are not written, the wiki is flagged.
+    fn sealed_but_not_recorded(&self, p: &ProposalRecord) {
+        self.control("runfail-seal", "");
+        let err = self.accept(p).unwrap_err();
+        self.uncontrol("runfail-seal");
+        assert!(
+            matches!(
+                &err,
+                AcceptFailure::Incomplete {
+                    reason: RecoveryReason::Queued,
+                    flagged: true,
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
+        assert_eq!(self.queue_count(), 0, "the seal did its work");
+    }
+}
+
+/// A table of processes that is only what a test put on it.
+struct Table(Vec<ProcessInfo>);
+
+impl ProcessTable for Table {
+    fn processes(&self) -> Vec<ProcessInfo> {
+        self.0.clone()
+    }
+}
+
+#[test]
+fn an_ambiguous_commit_is_queued_never_undone_and_recovery_seals_it() {
+    // P1. `commit` did its work (its patch is durable) and the call reported a failure, as a call stopped at its
+    // deadline does. The files stay, the answer is `Queued`, and recovery completes the change with `seal` alone.
+    let Some(w) = World::new("ambiguous-commit", LeaseConfig::default()) else {
+        return;
+    };
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    let before = w.history();
+    w.control("runfail-commit", "");
+    let err = w.accept(&p).unwrap_err();
+    w.uncontrol("runfail-commit");
+    assert!(
+        matches!(
+            &err,
+            AcceptFailure::Incomplete {
+                reason: RecoveryReason::Queued,
+                flagged: true,
+                ..
+            }
+        ),
+        "{err:?}"
+    );
+    assert_eq!(w.queue_count(), 1, "the patch is durable");
+    assert!(
+        std::fs::read_to_string(w.repo.join("pages/Home.md"))
+            .unwrap()
+            .contains("Uno."),
+        "the files were not undone"
+    );
+    assert_eq!(w.history(), before);
+    let r = w.recover();
+    assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());
+    assert_eq!(
+        step_names(&r),
+        [
+            "seal-queued",
+            "end-sealed",
+            "verify",
+            "reconcile",
+            "clear-flag"
+        ]
+    );
+    assert_eq!(w.history().len(), before.len() + 1);
+    assert!(w.page("pages/Home.md").contains("Uno."));
+    assert_eq!(w.state(&p), ProposalState::Accepted);
+    assert_eq!(w.queue_count(), 0);
+    assert!(w.verifies() && w.reconciled().is_clean());
+}
+
+#[test]
+fn a_retirement_never_freezes_the_wiki_and_recovery_passes_verify_with_a_note() {
+    // P2 (DR-10). After a retirement `prikk verify` fails by publication trust for what the retired key sealed.
+    // Writes go on, and recovery's `verify` step passes with a note; prikk itself still says the repository does
+    // not verify (the badge's *Verification failed* is the known cost).
+    let Some(w) = World::new("retired", LeaseConfig::default()) else {
+        return;
+    };
+    w.signer
+        .rotate_keys(&KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
+        .expect("a rotation that retires the old key");
+    assert!(
+        !w.verifies(),
+        "the canary: prikk cannot verify what a retired key sealed (PK-34)"
+    );
+    for (n, text) in ["Uno.", "Dos.", "Tres."].into_iter().enumerate() {
+        let p = w.propose(
+            &format!("Change {n}"),
+            &[("pages/Home.md", Some(&HOME.replace("One.", text)))],
+        );
+        match w.accept(&p) {
+            Ok(inklkunn_core::Accepted::Signed(s)) => {
+                assert_eq!(s.unconfirmed, None, "the change {n} was confirmed");
+            }
+            other => panic!("a retirement froze the wiki at change {n}: {other:?}"),
+        }
+        assert_eq!(w.state(&p), ProposalState::Accepted);
+    }
+    assert_eq!(w.store.recovery_flag(&w.wiki.id).unwrap(), None);
+    // A queued patch beside the retirement: recovery completes it and its verify step passes with the note.
+    let q = w.propose(
+        "Half done",
+        &[("pages/Other.md", Some(&OTHER.replace("Hello.", "Hola.")))],
+    );
+    w.queued_acceptance(&q);
+    let r = w.recover();
+    assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());
+    let verify = r
+        .done
+        .iter()
+        .find(|d| d.step == "verify")
+        .expect("verify ran");
+    assert!(
+        verify.detail.contains("only because of a retired key"),
+        "{}",
+        verify.detail
+    );
+    assert_eq!(w.store.recovery_flag(&w.wiki.id).unwrap(), None);
+    assert_eq!(w.state(&q), ProposalState::Accepted);
+}
+
+/// The real signer for everything but the one question of a retired key, which it answers truthfully as many
+/// times as it is told to and "no" after that.
+struct ExcusesFirst(Arc<Signer>, std::sync::atomic::AtomicUsize);
+
+impl Recover for ExcusesFirst {
+    fn verify_after_retirement(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+    ) -> Result<Option<String>, inklkunn_core::RecoverError> {
+        use std::sync::atomic::Ordering;
+        let left = self.1.load(Ordering::SeqCst);
+        if left == 0 {
+            return Ok(None);
+        }
+        self.1.store(left - 1, Ordering::SeqCst);
+        self.0.verify_after_retirement(wiki)
+    }
+
+    fn seal_queued(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+        view: &str,
+        act: &inklkunn_core::RecoveryToken,
+        acceptance: &AcceptanceToken,
+    ) -> Result<(), inklkunn_core::RecoverError> {
+        self.0.seal_queued(wiki, view, act, acceptance)
+    }
+
+    fn discard_damaged(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+        act: &inklkunn_core::RecoveryToken,
+    ) -> Result<inklkunn_signer::recover::text::Discarded, inklkunn_core::RecoverError> {
+        self.0.discard_damaged(wiki, act)
+    }
+
+    fn clear_locks(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+        act: &inklkunn_core::RecoveryToken,
+        locks: &[String],
+    ) -> Result<Vec<String>, inklkunn_core::RecoverError> {
+        self.0.clear_locks(wiki, act, locks)
+    }
+
+    fn restore_worktree(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+        view: &str,
+        act: &inklkunn_core::RecoveryToken,
+    ) -> Result<usize, inklkunn_core::RecoverError> {
+        self.0.restore_worktree(wiki, view, act)
+    }
+}
+
+#[test]
+fn a_failure_the_signer_does_not_excuse_keeps_the_flag_even_after_a_retirement() {
+    // The recovery honours the signer's answer, at the plan (where `doctor`'s errors are damage unless the signer
+    // excuses them) and again at the `verify` step: when it does not say a retired key accounts for the failure (a
+    // second failure beside it, say), the recovery stops and the flag is kept.
+    let Some(w) = World::new("retired-plus", LeaseConfig::default()) else {
+        return;
+    };
+    w.signer
+        .rotate_keys(&KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
+        .expect("a rotation that retires the old key");
+    let q = w.propose(
+        "Half done",
+        &[("pages/Other.md", Some(&OTHER.replace("Hello.", "Hola.")))],
+    );
+    w.queued_acceptance(&q);
+    let recovery_with = |excuses: usize| {
+        Recovery::new(RecoveryParts {
+            acceptances: w.store.clone(),
+            acts: w.store.clone(),
+            proposals: w.store.clone(),
+            storage: w.storage.clone(),
+            witnesses: Arc::new(Witnesses::new(
+                &w.standin,
+                Sandbox::Unconfined,
+                w.layout.clone(),
+            )),
+            signer: Arc::new(ExcusesFirst(
+                w.signer.clone(),
+                std::sync::atomic::AtomicUsize::new(excuses),
+            )) as Arc<dyn Recover>,
+            leases: w.leases.clone(),
+            layout: w.layout.clone(),
+            audit: w.store.clone(),
+        })
+    };
+    // Never excused: `doctor`'s publication-trust errors are damage, and the plan stops on them.
+    let r = recovery_with(0)
+        .recover(&w.wiki, RecoveryMode::Run)
+        .unwrap();
+    assert_eq!(r.plan.stop, Some(Stop::DoctorTrouble), "{:#?}", r.lines());
+    assert_eq!(w.queue_count(), 1, "nothing was sealed");
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
+    // Excused at the plan and not at the `verify` step: the steps run up to it, and it stops there.
+    let r = recovery_with(1)
+        .recover(&w.wiki, RecoveryMode::Run)
+        .unwrap();
+    assert!(
+        matches!(
+            &r.outcome,
+            RecoveryOutcome::Stopped {
+                at: Some("verify"),
+                ..
+            }
+        ),
+        "{:#?}",
+        r.lines()
+    );
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
+}
+
+#[test]
+fn a_disagreement_that_touches_what_the_act_did_stops_the_recovery_with_the_flag_kept() {
+    // P3. The act's change is in the history (its seal did its work and reported a failure) and a block that no
+    // record explains was sealed after it: the history and the records disagree about a block newer than the
+    // act's base, so the wiki is not called recovered.
+    let Some(w) = World::new("find-newer", LeaseConfig::default()) else {
+        return;
+    };
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    w.sealed_but_not_recorded(&p);
+    let stranger = w.plant_sealed_block("pages/Other.md", "planted\n");
+    let r = w.recover();
+    let RecoveryOutcome::Stopped { at, why } = &r.outcome else {
+        panic!("a disagreement was called recovered: {:#?}", r.lines());
+    };
+    assert_eq!(*at, Some("reconcile"), "{why}");
+    assert!(
+        why.contains("unrecorded-seal") && why.contains(&stranger),
+        "the finding is named: {why}"
+    );
+    assert!(
+        w.store.recovery_flag(&w.wiki.id).unwrap().is_some(),
+        "the flag is kept"
+    );
+    // The wiki still refuses writes; the records the recovery did write stay written.
+    let q = w.propose(
+        "Another",
+        &[(
+            "pages/Another.md",
+            Some("---\ntitle: Another\nid: pn\n---\n\na\n"),
+        )],
+    );
+    assert!(matches!(
+        w.accept(&q).unwrap_err(),
+        AcceptFailure::NeedsRecovery(_)
+    ));
+    assert_eq!(w.state(&p), ProposalState::Accepted);
+    // The finding is in the audit trail, once.
+    let reported = w
+        .store
+        .read(0, 10_000)
+        .unwrap()
+        .into_iter()
+        .filter(|r| {
+            r.event.principal == "system:reconciliation" && r.event.detail.contains(&stranger)
+        })
+        .count();
+    assert_eq!(reported, 1);
+}
+
+#[test]
+fn a_disagreement_older_than_the_act_is_reported_and_does_not_block_the_recovery() {
+    // P3's other half: the same unrecorded block, but sealed before the act began. It is in the audit trail and
+    // in the report, and the recovery that finished the act is not held hostage by it.
+    let Some(w) = World::new("find-older", LeaseConfig::default()) else {
+        return;
+    };
+    let stranger = w.plant_sealed_block("pages/Other.md", "planted\n");
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    w.sealed_but_not_recorded(&p);
+    let r = w.recover();
+    assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());
+    assert!(
+        matches!(
+            &r.reconciliation,
+            Some(inklkunn_core::Reconciled::Findings(f)) if f.len() == 1 && f.first().is_some_and(|f| f.block_id() == stranger)
+        ),
+        "{:?}",
+        r.reconciliation
+    );
+    let reconcile = r.done.iter().find(|d| d.step == "reconcile").unwrap();
+    assert!(
+        reconcile.detail.contains("do not block"),
+        "{}",
+        reconcile.detail
+    );
+    assert_eq!(w.store.recovery_flag(&w.wiki.id).unwrap(), None);
+    assert_eq!(w.state(&p), ProposalState::Accepted);
+}
+
+#[test]
+fn the_inline_reconciliation_reads_the_blocks_since_the_base_and_the_full_pass_still_finds_the_rest()
+ {
+    // P7. A block nobody explains, sealed long ago, is the full pass's to find (recovery's and the schedule's);
+    // the reconciliation an acceptance runs under the lease looks at what the act wrote and says it is clean.
+    let Some(w) = World::new("bounded", LeaseConfig::default()) else {
+        return;
+    };
+    let stranger = w.plant_sealed_block("pages/Other.md", "planted\n");
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    let signed = match w.accept(&p) {
+        Ok(inklkunn_core::Accepted::Signed(s)) => s,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        signed.reconciliation,
+        inklkunn_core::Reconciled::Clean,
+        "the inline pass looks at the blocks since the base only"
+    );
+    let full = w.reconciled();
+    assert!(
+        full.findings.iter().any(|f| f.block_id() == stranger),
+        "the full pass finds the old block: {:?}",
+        full.findings
+    );
+}
+
+#[test]
+fn an_unclean_repository_at_the_start_of_an_acceptance_flags_the_wiki_and_names_what_it_found() {
+    // P8: a queued patch no record explains, and a dirty worktree no record explains, are each their own error
+    // (not a refusal of the change) and flag the wiki.
+    let Some(w) = World::new("unclean-queued", LeaseConfig::default()) else {
+        return;
+    };
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    w.plant_queued_patch("pages/Other.md", "planted\n");
+    assert_eq!(w.store.recovery_flag(&w.wiki.id).unwrap(), None);
+    let err = w.accept(&p).unwrap_err();
+    assert!(
+        matches!(
+            &err,
+            AcceptFailure::Incomplete {
+                reason: RecoveryReason::Queued,
+                flagged: true,
+                ..
+            }
+        ),
+        "{err:?}"
+    );
+    let flag = w.store.recovery_flag(&w.wiki.id).unwrap().expect("flagged");
+    assert_eq!(flag.reason, RecoveryReason::Queued);
+
+    let Some(w) = World::new("unclean-dirty", LeaseConfig::default()) else {
+        return;
+    };
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    std::fs::write(w.repo.join("pages/Stray.md"), "left behind\n").unwrap();
+    let err = w.accept(&p).unwrap_err();
+    assert!(
+        matches!(
+            &err,
+            AcceptFailure::Incomplete {
+                reason: RecoveryReason::WorktreeDirty,
+                flagged: true,
+                ..
+            }
+        ),
+        "{err:?}"
+    );
+    assert_eq!(
+        w.store.recovery_flag(&w.wiki.id).unwrap().map(|f| f.reason),
+        Some(RecoveryReason::WorktreeDirty)
+    );
+    // Recovery puts it back and the wiki takes the change.
+    let r = w.recover();
+    assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());
+    assert!(!w.repo.join("pages/Stray.md").exists());
+    assert!(w.accept(&p).is_ok());
+}
+
+#[test]
+fn a_foreign_process_in_the_repository_stops_every_step_of_a_recovery_not_only_a_lock() {
+    // P8. A queued patch is waiting to be sealed and a `prikk` of somebody else's is working in the repository:
+    // nothing is sealed, nothing is recorded as done, and the stop is named. Without the process it completes.
+    let Some(w) = World::new("foreign-process", LeaseConfig::default()) else {
+        return;
+    };
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    w.queued_acceptance(&p);
+    let intruder = ProcessInfo {
+        pid: 424_242,
+        parent: 1,
+        argv: vec![
+            "prikk".to_owned(),
+            "commit".to_owned(),
+            w.repo.display().to_string(),
+        ],
+        cwd: Some(w.repo.display().to_string()),
+        readable: true,
+    };
+    let seeing = w.recovery_seeing(Arc::new(Table(vec![intruder])));
+    let r = seeing.recover(&w.wiki, RecoveryMode::Run).unwrap();
+    assert_eq!(r.plan.stop, Some(Stop::ForeignProcess));
+    assert!(
+        matches!(&r.outcome, RecoveryOutcome::Stopped { at: None, .. }),
+        "{:#?}",
+        r.lines()
+    );
+    assert!(r.done.is_empty(), "no step was taken");
+    assert_eq!(w.queue_count(), 1, "nothing was sealed beside the process");
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
+    // The process is gone: the same recovery completes.
+    let quiet = w.recovery_seeing(Arc::new(Table(Vec::new())));
+    let r = quiet.recover(&w.wiki, RecoveryMode::Run).unwrap();
+    assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());
+    assert_eq!(w.queue_count(), 0);
+}
+
+#[test]
+fn an_acceptance_with_no_end_blocks_the_next_act_even_when_its_intent_was_never_written() {
+    // P8: the guard saw open intents only. A process that died between the acceptance's record and its intent left
+    // a pending acceptance and nothing else.
+    let Some(w) = World::new("pending-no-intent", LeaseConfig::default()) else {
+        return;
+    };
+    let p = w.propose(
+        "First",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    let q = w.propose(
+        "Second",
+        &[("pages/Other.md", Some(&OTHER.replace("Hello.", "Hola.")))],
+    );
+    let rec = inklkunn_store::AcceptanceRecord {
+        id: inklkunn_store::AcceptanceId::new(),
+        proposal: p.id.clone(),
+        revision: 1,
+        wiki: w.wiki.id.clone(),
+        view: MAIN.to_owned(),
+        acceptor: w.maintainer_id.clone(),
+        acceptor_role: Role::Maintainer,
+        policy_version: "bootstrap-1".to_owned(),
+        proposer: w.contributor_id.clone(),
+        digest: "d".repeat(64),
+        bytes: 1,
+        created_at: 3,
+    };
+    assert!(matches!(
+        w.store.begin_acceptance(&rec).unwrap(),
+        inklkunn_store::AcceptanceBegin::Started
+    ));
+    assert!(w.store.open_intents(&w.wiki.id).unwrap().is_empty());
+    let before = w.history();
+    let err = w.accept(&q).unwrap_err();
+    assert!(matches!(err, AcceptFailure::NeedsRecovery(_)), "{err:?}");
+    assert_eq!(w.history(), before, "nothing was written beside it");
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
+}
+
+#[test]
+fn a_retry_of_a_sealed_acceptance_settles_a_proposal_still_held_for_review() {
+    // P8: the seal is in the history and its record says so, and the writes that move the proposal on both failed.
+    // The retry says what is true and finishes the proposal.
+    let Some(w) = World::new("already-signed", LeaseConfig::default()) else {
+        return;
+    };
+    let p = w.propose(
+        "First",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    let rec = inklkunn_store::AcceptanceRecord {
+        id: inklkunn_store::AcceptanceId::new(),
+        proposal: p.id.clone(),
+        revision: 1,
+        wiki: w.wiki.id.clone(),
+        view: MAIN.to_owned(),
+        acceptor: w.maintainer_id.clone(),
+        acceptor_role: Role::Maintainer,
+        policy_version: "bootstrap-1".to_owned(),
+        proposer: w.contributor_id.clone(),
+        digest: "d".repeat(64),
+        bytes: 1,
+        created_at: 3,
+    };
+    w.store.begin_acceptance(&rec).unwrap();
+    w.store
+        .finish_acceptance(&inklkunn_store::AcceptanceResult {
+            acceptance: rec.id.clone(),
+            outcome: AcceptanceOutcome::Sealed {
+                block_id: w.tip(),
+                patch_id: "e".repeat(64),
+            },
+            at: 4,
+        })
+        .unwrap();
+    assert_eq!(w.state(&p), ProposalState::HeldForReview);
+    let again = w.accept(&p).expect("a retry is told what is true");
+    assert!(matches!(
+        again,
+        inklkunn_core::Accepted::AlreadySigned { .. }
+    ));
+    assert_eq!(w.state(&p), ProposalState::Accepted);
+    // A second retry changes nothing.
+    assert!(matches!(
+        w.accept(&p),
+        Ok(inklkunn_core::Accepted::AlreadySigned { .. })
+    ));
 }

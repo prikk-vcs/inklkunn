@@ -368,6 +368,61 @@ pub(crate) fn parse_sealed_blocks(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+/// What `prikk verify`'s text says about **publication trust** (ledger PK-34): the blocks, ref states and ref
+/// updates that "have no trusted MAINTAINER signature", the count prikk prints, and how many `publication-trust`
+/// lines were not of the one exact shape.
+///
+/// The exact shape of a line (measured on prikk 0.55.0, `verify` exit 1, after `trust maintainer remove`):
+/// `publication-trust [PRIKK-TRUST-PUBLICATION-UNTRUSTED]: <block|ref-state|ref-update> <64 lower-case hex> has no
+/// trusted MAINTAINER signature`, and, before the lines, `publication trust issues: <N>`. In the JSON report the
+/// same state is `verdict.ok == false` with the one failed condition `publication-trust`. **"Only by publication
+/// trust" means exactly this**: the failed conditions are that one; every `publication-trust` line has that
+/// shape; and their number is the `publication trust issues` count.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct PublicationTrust {
+    /// Blocks with no trusted signature.
+    pub(crate) blocks: Vec<String>,
+    /// Ref states with none.
+    pub(crate) ref_states: Vec<String>,
+    /// Ref updates with none.
+    pub(crate) ref_updates: Vec<String>,
+    /// `publication trust issues: N`, when the line is there.
+    pub(crate) issues: Option<u64>,
+    /// `publication-trust` lines of any other shape.
+    pub(crate) unrecognised: usize,
+}
+
+/// Read the publication-trust part of `prikk verify`'s text, strictly: a line that is not exactly the known shape
+/// is counted in `unrecognised` and never guessed at.
+pub(crate) fn parse_publication_trust(text: &str) -> PublicationTrust {
+    const HEAD: &str = "publication-trust [PRIKK-TRUST-PUBLICATION-UNTRUSTED]: ";
+    const TAIL: &str = " has no trusted MAINTAINER signature";
+    let mut out = PublicationTrust::default();
+    for line in text.lines() {
+        if let Some(n) = line.strip_prefix("publication trust issues: ") {
+            out.issues = n.trim().parse().ok();
+            continue;
+        }
+        if !line.starts_with("publication-trust") {
+            continue;
+        }
+        let parsed = line
+            .strip_prefix(HEAD)
+            .and_then(|rest| rest.strip_suffix(TAIL))
+            .and_then(|rest| rest.split_once(' '))
+            .filter(|(_, id)| {
+                id.len() == 64 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+            });
+        match parsed {
+            Some(("block", id)) => out.blocks.push(id.to_owned()),
+            Some(("ref-state", id)) => out.ref_states.push(id.to_owned()),
+            Some(("ref-update", id)) => out.ref_updates.push(id.to_owned()),
+            _ => out.unrecognised += 1,
+        }
+    }
+    out
+}
+
 /// Like [`outcome`], for a verb whose **report is the answer even when it exits 1**: `worktree-status` exits
 /// 1 on a dirty tree and `verify` on a failing verdict, each still printing its JSON report on stdout. A
 /// non-zero exit with a report on stdout is returned as the report; one without is the refusal it says.
@@ -836,6 +891,44 @@ impl Writes {
         let history: History = parse_report("log", &stdout, schema::LOG_REPORT)
             .map_err(|e| SignerError::Damaged(e.to_string()))?;
         Ok(history.blocks.into_iter().map(|b| b.block_id).collect())
+    }
+
+    /// The block ids and ref-state ids of a view's history, newest first, at most `limit` of them.
+    pub(crate) fn view_block_states(
+        &self,
+        repo: &Path,
+        view: &str,
+        limit: u64,
+    ) -> Result<Vec<(String, String)>, SignerError> {
+        let limit = limit.to_string();
+        let stdout = self.read(
+            repo,
+            &["log", "--ref", view, "--limit", &limit, "--format", "json"],
+        )?;
+        let history: History = parse_report("log", &stdout, schema::LOG_REPORT)
+            .map_err(|e| SignerError::Damaged(e.to_string()))?;
+        Ok(history
+            .blocks
+            .into_iter()
+            .map(|b| (b.block_id, b.ref_state_id))
+            .collect())
+    }
+
+    /// `prikk verify`'s text, whatever its exit (a failing verification still prints its findings): the words
+    /// [`parse_publication_trust`] and [`parse_sealed_blocks`] read. A call stopped at its bound is an error.
+    pub(crate) fn verify_text(&self, repo: &Path) -> Result<String, SignerError> {
+        let (run, ceiling) =
+            self.run_raw(&Mounts::read(repo, None), Sizing::repo(repo), &["verify"])?;
+        if run.timed_out || run.output_exceeded {
+            return Err(SignerError::Unavailable(
+                "`verify` was stopped before it printed its findings".to_owned(),
+            ));
+        }
+        let text = String::from_utf8_lossy(&run.stdout).into_owned();
+        if text.trim().is_empty() && !run.status.success() {
+            outcome("verify", run, ceiling)?;
+        }
+        Ok(text)
     }
 
     /// Who sealed which block, as `prikk verify` lists it: one `sealed-block <block id>: <maintainer key id>`

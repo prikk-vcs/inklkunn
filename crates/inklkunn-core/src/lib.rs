@@ -69,7 +69,7 @@ pub use accept::{
 pub use acceptance::{
     AcceptFailure, AcceptStep, AcceptanceParts, Accepted, AfterSeal, NoFollowUp, NoLedger,
     ProposalAcceptor, Reconciled, Signed, StoreActs, StoreLedger, SystemActFailure, SystemActs,
-    SystemRequest,
+    SystemRequest, SystemStep,
 };
 pub use assurance::Assurance;
 pub use authorize::{
