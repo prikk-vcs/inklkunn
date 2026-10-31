@@ -1,0 +1,128 @@
+{
+  "languages": {
+    "en": {
+      "Amazon River": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "Eiffel Tower": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "Great Wall of China": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "Hoover Dam": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "Krakatoa": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "Lake Baikal": {
+        "requested": 90,
+        "fetched": 89,
+        "deleted_upstream": 1
+      },
+      "Mount Everest": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "Panama Canal": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "Pluto": {
+        "requested": 90,
+        "fetched": 89,
+        "deleted_upstream": 1
+      },
+      "Suez Canal": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "Titanic": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "Tower Bridge": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      }
+    },
+    "ja": {
+      "万里の長城": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "姫路城": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "富士山": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "明石海峡大橋": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "東京スカイツリー": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "東京タワー": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "瀬戸大橋": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "琵琶湖": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "関門橋": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "阿蘇山": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "青函トンネル": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      },
+      "黒部ダム": {
+        "requested": 90,
+        "fetched": 90,
+        "deleted_upstream": 0
+      }
+    }
+  }
+}

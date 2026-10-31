@@ -15,7 +15,7 @@ use crate::Opts;
 use crate::wiki::Rng;
 
 use super::events::{Event, Kind, Record, read_dir};
-use super::text::block_texts;
+use super::text::{block_texts, readable};
 use super::{cache_root, converted_path, slug, write_file};
 
 /// One line of the committed pool.
@@ -68,6 +68,24 @@ pub fn run(opts: &Opts) -> Result<(), String> {
             Record::Revision(_) => None,
         })
         .collect();
+    // Blocks longer than `--max-chars` (as a labeller reads them) are whole infoboxes, link lists and tables kept as
+    // source: not statements a person can label, and they would make a packet unreadable. They are left out of the
+    // draw, and how many is said.
+    let events = match opts.values.get("max-chars") {
+        None => events,
+        Some(v) => {
+            let cap: usize = v
+                .parse()
+                .map_err(|_| "`--max-chars` needs a whole number".to_owned())?;
+            let before = events.len();
+            let kept = within_length(events, &cache, cap)?;
+            println!(
+                "left out {} events whose old or new block is over {cap} characters",
+                before - kept.len()
+            );
+            kept
+        }
+    };
     let pool = draw(&events, seed, size, shuffle)?;
     let mut lines = String::new();
     for d in &pool {
@@ -78,6 +96,41 @@ pub fn run(opts: &Opts) -> Result<(), String> {
     write_packets(&pool, &cache, &packets, per_packet)?;
     println!("drew {} items into {}", pool.len(), out.display());
     Ok(())
+}
+
+/// The events whose old and new block, as a labeller reads them, are each at most `cap` characters. Events that are
+/// not `changed` or `replaced` are kept untouched (the draw ignores them).
+pub fn within_length(events: Vec<Event>, cache: &Path, cap: usize) -> Result<Vec<Event>, String> {
+    let mut pages: BTreeMap<(String, String, u64), Vec<usize>> = BTreeMap::new();
+    let mut kept = Vec::with_capacity(events.len());
+    for e in events {
+        if !matches!(e.kind, Kind::Changed | Kind::Replaced) {
+            kept.push(e);
+            continue;
+        }
+        let mut lengths = |rev: u64, block: Option<usize>| -> Result<usize, String> {
+            let key = (e.lang.clone(), e.article.clone(), rev);
+            if !pages.contains_key(&key) {
+                let path = converted_path(cache, &e.lang, &slug(&e.article), rev);
+                let page = std::fs::read_to_string(&path)
+                    .map_err(|err| format!("{}: {err}", path.display()))?;
+                let lens = block_texts(&page)
+                    .iter()
+                    .map(|t| readable(t).chars().count())
+                    .collect();
+                pages.insert(key.clone(), lens);
+            }
+            Ok(block
+                .and_then(|b| pages.get(&key).and_then(|l| l.get(b)).copied())
+                .unwrap_or(usize::MAX))
+        };
+        let old = lengths(e.parent_rev, e.prev_block)?;
+        let new = lengths(e.rev, e.new_block)?;
+        if old <= cap && new <= cap {
+            kept.push(e);
+        }
+    }
+    Ok(kept)
 }
 
 /// Equal shares of `total` over articles with `available` events each: water-filling, so an article with fewer
@@ -232,8 +285,8 @@ pub fn write_packets(
     for (n, chunk) in pool.chunks(per_packet).enumerate() {
         let mut body = String::new();
         for d in chunk {
-            let old = block_of(cache, &d.item, d.parent_rev, d.item.prev_block)?;
-            let new = block_of(cache, &d.item, d.item.rev, d.item.new_block)?;
+            let old = readable(&block_of(cache, &d.item, d.parent_rev, d.item.prev_block)?);
+            let new = readable(&block_of(cache, &d.item, d.item.rev, d.item.new_block)?);
             body.push_str(&render_item(d.item.item, &old, &new));
         }
         write_file(

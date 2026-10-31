@@ -228,3 +228,67 @@ fn a_text_with_backticks_gets_a_longer_fence() {
     assert!(item.contains("````\nhas ``` inside\n````"));
     assert!(item.contains("```\nplain\n```"));
 }
+
+#[test]
+fn a_snapshot_is_read_as_the_source_it_stands_for_and_nothing_else_changes() {
+    use crate::claims::text::readable;
+    let snap = |name: &str, src: &str| {
+        format!(
+            "<!-- wiki:snapshot kind=\"template\" name=\"{name}\" engine=\"mediawiki\" src=\"{src}\" -->*[template {name} not expanded]*<!-- /wiki:snapshot -->"
+        )
+    };
+    let text = format!(
+        "The tower sways by up to {} in the wind.{}",
+        snap("convert", "{{convert|9|cm|in|abbr=on}}"),
+        snap("cite web", "{{cite web|url=http://example.org/a |title=A}}")
+    );
+    assert_eq!(
+        readable(&text),
+        "The tower sways by up to {{convert|9|cm|in|abbr=on}} in the wind.{{cite web|url=http://example.org/a |title=A}}"
+    );
+    // Plain text, Japanese text and an unclosed snapshot are left exactly as they are.
+    assert_eq!(readable("橋は1950年に開通した。"), "橋は1950年に開通した。");
+    let open = "before <!-- wiki:snapshot kind=\"x\" src=\"{{a}}\" --> never closed";
+    assert_eq!(readable(open), open);
+    // A snapshot with no `src` stays whole (nothing to show instead).
+    let bare = "<!-- wiki:snapshot kind=\"x\" -->*[x]*<!-- /wiki:snapshot -->";
+    assert_eq!(readable(bare), "<!-- wiki:snapshot kind=\"x\" -->*[x]*");
+}
+
+#[test]
+fn a_block_over_the_cap_as_a_labeller_reads_it_is_left_out_of_the_draw() {
+    use crate::claims::pool::within_length;
+    let cache = Tmp::new("cap");
+    let title = "Old bridge";
+    let long = format!("{} {}", "word".repeat(30), "end");
+    let snapshot = format!(
+        "<!-- wiki:snapshot kind=\"template\" name=\"t\" engine=\"mediawiki\" src=\"{{{{t}}}}\" -->*[{}]*<!-- /wiki:snapshot -->",
+        "padding ".repeat(100)
+    );
+    let put = |rev: u64, body: &str| {
+        write_file(
+            &converted_path(cache.path(), "en", &slug(title), rev),
+            format!("---\ntitle: {title}\n---\n{body}\n").as_bytes(),
+        )
+        .unwrap();
+    };
+    put(1, &format!("Short one.\n\n{long}\n\n{snapshot}"));
+    put(2, &format!("Short two.\n\n{long} changed\n\n{snapshot} x"));
+    let ev = |prev, new| {
+        event(
+            Kind::Changed,
+            "en",
+            title,
+            2,
+            (Some(prev), Some(new)),
+            Some("0-0"),
+        )
+    };
+    let kept = within_length(vec![ev(0, 0), ev(1, 1), ev(2, 2)], cache.path(), 150).unwrap();
+    // The short pair is kept; the 120-character pair is kept; the snapshot block reads as `{{t}}` (5 characters
+    // and its padding is the comment's, not the labeller's), so it is kept as well.
+    assert_eq!(kept.len(), 3);
+    let kept = within_length(vec![ev(0, 0), ev(1, 1), ev(2, 2)], cache.path(), 20).unwrap();
+    assert_eq!(kept.len(), 2, "the long prose pair is out: {kept:?}");
+    assert!(kept.iter().all(|e| e.prev_block != Some(1)));
+}

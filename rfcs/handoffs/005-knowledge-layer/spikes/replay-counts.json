@@ -1,0 +1,324 @@
+{
+  "languages": {
+    "en": {
+      "articles": {
+        "Amazon River": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 237,
+          "replaced": 202,
+          "added": 33,
+          "removed": 139,
+          "ids_minted": 525,
+          "first_ids_alive_at_end": 109,
+          "reverts": 7
+        },
+        "Eiffel Tower": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 151,
+          "replaced": 530,
+          "added": 27,
+          "removed": 3,
+          "ids_minted": 869,
+          "first_ids_alive_at_end": 186,
+          "reverts": 1
+        },
+        "Great Wall of China": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 111,
+          "replaced": 501,
+          "added": 27,
+          "removed": 24,
+          "ids_minted": 678,
+          "first_ids_alive_at_end": 54,
+          "reverts": 4
+        },
+        "Hoover Dam": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 214,
+          "replaced": 118,
+          "added": 42,
+          "removed": 40,
+          "ids_minted": 386,
+          "first_ids_alive_at_end": 161,
+          "reverts": 20
+        },
+        "Krakatoa": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 198,
+          "replaced": 433,
+          "added": 38,
+          "removed": 40,
+          "ids_minted": 608,
+          "first_ids_alive_at_end": 63,
+          "reverts": 4
+        },
+        "Lake Baikal": {
+          "revisions": 89,
+          "edits": 88,
+          "revisions_without_converted_text": 1,
+          "changed": 169,
+          "replaced": 312,
+          "added": 14,
+          "removed": 4,
+          "ids_minted": 582,
+          "first_ids_alive_at_end": 124,
+          "reverts": 12
+        },
+        "Mount Everest": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 325,
+          "replaced": 1505,
+          "added": 22,
+          "removed": 22,
+          "ids_minted": 1902,
+          "first_ids_alive_at_end": 153,
+          "reverts": 7
+        },
+        "Panama Canal": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 199,
+          "replaced": 2158,
+          "added": 29,
+          "removed": 24,
+          "ids_minted": 2566,
+          "first_ids_alive_at_end": 110,
+          "reverts": 7
+        },
+        "Pluto": {
+          "revisions": 89,
+          "edits": 88,
+          "revisions_without_converted_text": 1,
+          "changed": 1218,
+          "replaced": 1039,
+          "added": 368,
+          "removed": 364,
+          "ids_minted": 1759,
+          "first_ids_alive_at_end": 151,
+          "reverts": 1
+        },
+        "Suez Canal": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 161,
+          "replaced": 581,
+          "added": 20,
+          "removed": 17,
+          "ids_minted": 970,
+          "first_ids_alive_at_end": 144,
+          "reverts": 13
+        },
+        "Titanic": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 242,
+          "replaced": 2078,
+          "added": 45,
+          "removed": 34,
+          "ids_minted": 2603,
+          "first_ids_alive_at_end": 280,
+          "reverts": 2
+        },
+        "Tower Bridge": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 130,
+          "replaced": 550,
+          "added": 28,
+          "removed": 19,
+          "ids_minted": 782,
+          "first_ids_alive_at_end": 82,
+          "reverts": 9
+        }
+      },
+      "totals": {
+        "revisions": 1078,
+        "edits": 1066,
+        "revisions_without_converted_text": 2,
+        "changed": 3355,
+        "replaced": 10007,
+        "added": 693,
+        "removed": 730,
+        "ids_minted": 14230,
+        "first_ids_alive_at_end": 1617,
+        "reverts": 87
+      }
+    },
+    "ja": {
+      "articles": {
+        "万里の長城": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 131,
+          "replaced": 422,
+          "added": 85,
+          "removed": 107,
+          "ids_minted": 660,
+          "first_ids_alive_at_end": 31,
+          "reverts": 17
+        },
+        "姫路城": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 228,
+          "replaced": 1076,
+          "added": 40,
+          "removed": 25,
+          "ids_minted": 1887,
+          "first_ids_alive_at_end": 397,
+          "reverts": 8
+        },
+        "富士山": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 304,
+          "replaced": 878,
+          "added": 120,
+          "removed": 127,
+          "ids_minted": 1439,
+          "first_ids_alive_at_end": 281,
+          "reverts": 14
+        },
+        "明石海峡大橋": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 120,
+          "replaced": 729,
+          "added": 73,
+          "removed": 41,
+          "ids_minted": 915,
+          "first_ids_alive_at_end": 35,
+          "reverts": 5
+        },
+        "東京スカイツリー": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 292,
+          "replaced": 1337,
+          "added": 31,
+          "removed": 48,
+          "ids_minted": 1910,
+          "first_ids_alive_at_end": 210,
+          "reverts": 2
+        },
+        "東京タワー": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 288,
+          "replaced": 1057,
+          "added": 23,
+          "removed": 10,
+          "ids_minted": 1534,
+          "first_ids_alive_at_end": 240,
+          "reverts": 4
+        },
+        "瀬戸大橋": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 217,
+          "replaced": 256,
+          "added": 106,
+          "removed": 111,
+          "ids_minted": 481,
+          "first_ids_alive_at_end": 21,
+          "reverts": 6
+        },
+        "琵琶湖": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 244,
+          "replaced": 371,
+          "added": 25,
+          "removed": 2,
+          "ids_minted": 801,
+          "first_ids_alive_at_end": 378,
+          "reverts": 5
+        },
+        "関門橋": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 102,
+          "replaced": 86,
+          "added": 50,
+          "removed": 44,
+          "ids_minted": 209,
+          "first_ids_alive_at_end": 33,
+          "reverts": 4
+        },
+        "阿蘇山": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 204,
+          "replaced": 118,
+          "added": 22,
+          "removed": 20,
+          "ids_minted": 255,
+          "first_ids_alive_at_end": 66,
+          "reverts": 8
+        },
+        "青函トンネル": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 197,
+          "replaced": 755,
+          "added": 61,
+          "removed": 56,
+          "ids_minted": 1043,
+          "first_ids_alive_at_end": 67,
+          "reverts": 2
+        },
+        "黒部ダム": {
+          "revisions": 90,
+          "edits": 89,
+          "revisions_without_converted_text": 0,
+          "changed": 139,
+          "replaced": 597,
+          "added": 247,
+          "removed": 228,
+          "ids_minted": 954,
+          "first_ids_alive_at_end": 6,
+          "reverts": 4
+        }
+      },
+      "totals": {
+        "revisions": 1080,
+        "edits": 1068,
+        "revisions_without_converted_text": 0,
+        "changed": 2466,
+        "replaced": 7682,
+        "added": 883,
+        "removed": 819,
+        "ids_minted": 12088,
+        "first_ids_alive_at_end": 1765,
+        "reverts": 79
+      }
+    }
+  }
+}

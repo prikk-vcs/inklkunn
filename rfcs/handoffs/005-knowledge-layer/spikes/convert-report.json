@@ -1,0 +1,386 @@
+{
+  "wikicommons_commit": "19f021c68e581b9e6423b3f2b59c99c01e82bf1a",
+  "timestamps": "synthetic: 2001-01-01T00:00:00Z plus the revision's position in the article's list, in seconds; the real times were never fetched",
+  "languages": {
+    "en": {
+      "Amazon River": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (330×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source",
+          "tables (13×): kept as wikitext source in snapshot envelopes"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "Eiffel Tower": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (253×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source",
+          "tables (6×): kept as wikitext source in snapshot envelopes"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "Great Wall of China": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (214×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "Hoover Dam": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (317×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source",
+          "tables (1×): kept as wikitext source in snapshot envelopes"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "Krakatoa": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (115×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "Lake Baikal": {
+        "pinned": 90,
+        "missing_raw": 1,
+        "converted": 89,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (235×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "Mount Everest": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (617×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source",
+          "tables (5×): kept as wikitext source in snapshot envelopes"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "Panama Canal": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (413×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source",
+          "tables (2×): kept as wikitext source in snapshot envelopes"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "Pluto": {
+        "pinned": 90,
+        "missing_raw": 1,
+        "converted": 89,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (355×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source",
+          "tables (1×): kept as wikitext source in snapshot envelopes"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "Suez Canal": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (263×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "Titanic": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (666×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source",
+          "tables (1×): kept as wikitext source in snapshot envelopes"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "Tower Bridge": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (203×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      }
+    },
+    "ja": {
+      "万里の長城": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (54×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "姫路城": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (266×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source",
+          "tables (1×): kept as wikitext source in snapshot envelopes"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "富士山": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (182×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source",
+          "tables (6×): kept as wikitext source in snapshot envelopes"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "明石海峡大橋": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (53×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source",
+          "tables (1×): kept as wikitext source in snapshot envelopes"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "東京スカイツリー": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (134×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source",
+          "tables (3×): kept as wikitext source in snapshot envelopes"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "東京タワー": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (252×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source",
+          "tables (9×): kept as wikitext source in snapshot envelopes"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "瀬戸大橋": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (67×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source",
+          "tables (1×): kept as wikitext source in snapshot envelopes"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "琵琶湖": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (1328×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "関門橋": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (41×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source",
+          "tables (2×): kept as wikitext source in snapshot envelopes"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "阿蘇山": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (80×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source",
+          "tables (1×): kept as wikitext source in snapshot envelopes"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "青函トンネル": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (88×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source",
+          "tables (1×): kept as wikitext source in snapshot envelopes"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      },
+      "黒部ダム": {
+        "pinned": 90,
+        "missing_raw": 0,
+        "converted": 90,
+        "skipped": 0,
+        "xml_invalid_chars_dropped": 0,
+        "degraded": [
+          "templates and parser functions (48×): kept as source in snapshot envelopes; not expanded",
+          "wikitext: converted with the built-in minimal converter; tables kept as source"
+        ],
+        "dropped": [
+          "media files: XML dumps do not contain uploads; File: description pages are kept",
+          "IP addresses of anonymous editors: replaced by stable pseudonyms"
+        ]
+      }
+    }
+  }
+}

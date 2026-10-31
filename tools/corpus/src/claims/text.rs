@@ -158,3 +158,36 @@ fn lines_of(hunk: &Hunk, kind: LineKind) -> Vec<&[Segment]> {
 fn join(segments: &[Segment]) -> String {
     segments.iter().map(|s| s.text.as_str()).collect()
 }
+
+/// A block as a labeller reads it: each converter snapshot (`<!-- wiki:snapshot … src="X" -->…<!-- /wiki:snapshot -->`,
+/// what the built-in converter leaves for a template or a table it did not expand) is replaced by the source it
+/// stands for, `X`, so a template such as `{{convert|9|cm|in}}` is read as written instead of as a long comment. The
+/// replay and every measure use the converted text as it is; only the packets are made readable this way.
+pub fn readable(text: &str) -> String {
+    const OPEN: &str = "<!-- wiki:snapshot";
+    const CLOSE: &str = "<!-- /wiki:snapshot -->";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(OPEN) {
+        out.push_str(rest.get(..at).unwrap_or(""));
+        let tail = rest.get(at..).unwrap_or("");
+        let Some(end) = tail.find(CLOSE) else {
+            // Not closed: leave the rest as it is.
+            out.push_str(tail);
+            return out;
+        };
+        let snapshot = tail.get(..end).unwrap_or("");
+        match snapshot.find(" src=\"").and_then(|i| {
+            let from = i + " src=\"".len();
+            snapshot
+                .get(from..)
+                .and_then(|r| r.rfind("\" -->").map(|j| r.get(..j).unwrap_or("")))
+        }) {
+            Some(src) => out.push_str(src),
+            None => out.push_str(snapshot),
+        }
+        rest = tail.get(end + CLOSE.len()..).unwrap_or("");
+    }
+    out.push_str(rest);
+    out
+}
