@@ -652,6 +652,8 @@ pub fn assemble(
         proposals,
         accounts: store.clone(),
         acceptances: store.clone(),
+        acts: store.clone(),
+        acceptor: None,
         log: Arc::new(move |line| {
             sink.lock()
                 .unwrap_or_else(PoisonError::into_inner)

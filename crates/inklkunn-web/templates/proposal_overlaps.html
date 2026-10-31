@@ -1,0 +1,13 @@
+<section class="overlaps" aria-labelledby="overlaps">
+<h2 id="overlaps">{{ overlaps.heading }}</h2>
+<p>{{ overlaps.intro }}</p>
+<table class="overlap-table">
+<caption>{{ overlaps.caption }}</caption>
+<thead>
+<tr><th scope="col">{{ overlaps.col_where }}</th><th scope="col">{{ overlaps.col_theirs }}</th><th scope="col">{{ overlaps.col_ours }}</th></tr>
+</thead>
+<tbody>
+{% for r in overlaps.rows %}<tr><th scope="row">{{ r.place }}</th><td>{{ r.theirs }}</td><td>{{ r.ours }}</td></tr>
+{% endfor %}</tbody>
+</table>
+</section>

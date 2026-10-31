@@ -10,8 +10,10 @@ use std::sync::Arc;
 
 use axum::http::HeaderMap;
 use inklkunn_core::proposal::ProposalService;
-use inklkunn_core::{Authorizer, Inbox, Principal, ReadService, Verifier};
-use inklkunn_store::{AcceptanceStore, AccountStore, WikiStore};
+use inklkunn_core::{
+    AcceptFailure, Accepted, Authorizer, Inbox, Principal, ProposalAcceptor, ReadService, Verifier,
+};
+use inklkunn_store::{AcceptanceStore, AccountStore, ActStore, ProposalId, WikiRecord, WikiStore};
 
 /// Who a request is. The only way the web layer learns a principal.
 pub trait Identify: Send + Sync {
@@ -27,6 +29,33 @@ pub struct AnonymousOnly;
 impl Identify for AnonymousOnly {
     fn principal(&self, _: &HeaderMap) -> Principal {
         Principal::Anonymous
+    }
+}
+
+/// What takes a proposal into the history (RFC 004 D-4): the one seam through which the web layer accepts. It
+/// blocks the calling thread (the lease waits its turn, prikk is asked); a handler calls it on a blocking
+/// thread. [`ProposalAcceptor`] is the implementation; a test stands a double behind it to show each outcome's
+/// page.
+pub trait Acceptor: Send + Sync {
+    /// Accept revision `revision` of the proposal, as `principal`.
+    fn accept(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        id: &ProposalId,
+        revision: u32,
+    ) -> Result<Accepted, AcceptFailure>;
+}
+
+impl Acceptor for ProposalAcceptor {
+    fn accept(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        id: &ProposalId,
+        revision: u32,
+    ) -> Result<Accepted, AcceptFailure> {
+        ProposalAcceptor::accept(self, principal, wiki, id, revision)
     }
 }
 
@@ -51,6 +80,10 @@ pub struct Services {
     pub accounts: Arc<dyn AccountStore>,
     /// The acceptance records, to link an accepted proposal to its change.
     pub acceptances: Arc<dyn AcceptanceStore>,
+    /// The overlaps an acceptance found, kept on the proposal: shown where the proposal needs a revision (D-5).
+    pub acts: Arc<dyn ActStore>,
+    /// What accepts a proposal. `None`: accepting is not served by this build, and the page says so.
+    pub acceptor: Option<Arc<dyn Acceptor>>,
     /// Where a cause meant for the operator goes (a page never shows it).
     pub log: Arc<dyn Fn(&str) + Send + Sync>,
     /// The clock, in Unix seconds.

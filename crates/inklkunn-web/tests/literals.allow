@@ -237,6 +237,27 @@ exact :: watch.rs :: unwatch :: the value of a form field: data, not a sentence
 exact :: watch.rs :: title :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
 exact :: watch.rs :: a watch could not be recorded: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
 
+# --- accepting from the web, and the overlaps of a proposal (handoff 004 T4b)
+exact :: accept.rs :: acceptance {} is sealed but the seal could not be confirmed: {why:?} :: a line for the operator's log; no response carries it
+exact :: accept.rs :: a temporary directory of decrypted seeds was left behind; remove it :: a line for the operator's log; no response carries it
+exact :: accept.rs :: the reconciliation after acceptance {} found {} disagreement(s) :: a line for the operator's log; no response carries it
+exact :: accept.rs :: the reconciliation could not run now: {why} :: a line for the operator's log; no response carries it
+exact :: accept.rs :: the wiki needs recovery ({}); writes are refused until it has been looked at :: a line for the operator's log; no response carries it
+exact :: accept.rs :: acceptance {acceptance} is incomplete ({}; flag recorded: {flagged}): {detail} :: a line for the operator's log; no response carries it
+exact :: accept.rs :: acceptance {acceptance} of this revision is pending :: a line for the operator's log; no response carries it
+exact :: accept.rs :: acceptance {acceptance} failed ({word}): {detail} :: a line for the operator's log; no response carries it
+exact :: accept.rs :: an acceptance could not be done now: {why} :: a line for the operator's log; no response carries it
+exact :: accept.rs :: the records failed during an acceptance: {error} :: a line for the operator's log; no response carries it
+exact :: overlaps.rs :: the overlaps of a proposal could not be read: {error} :: a line for the operator's log; no response carries it
+exact :: overlaps.rs :: page :: a placeholder name of a catalog message, or the description of a place that the acceptance recorded: data, not a sentence
+exact :: overlaps.rs :: place :: a placeholder name of a catalog message
+exact :: overlaps.rs :: key :: a placeholder name of a catalog message
+exact :: overlaps.rs :: number :: a placeholder name of a catalog message
+exact :: overlaps.rs :: frontmatter :: the description of a place that the acceptance recorded (merge.rs / acceptance prepare): data, not a sentence
+exact :: overlaps.rs :: path :: the description of a place that the acceptance recorded (merge.rs / acceptance prepare): data, not a sentence
+exact :: overlaps.rs :: block ^ :: the description of a place that the acceptance recorded (merge.rs / acceptance prepare): data, not a sentence
+exact :: overlaps.rs :: block :: the description of a place that the acceptance recorded (merge.rs / acceptance prepare): data, not a sentence
+
 # --- proposals (handoff 004 T3)
 exact :: list.rs :: author :: a placeholder name of a catalog message
 exact :: list.rs :: when :: a placeholder name of a catalog message

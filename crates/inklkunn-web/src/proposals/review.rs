@@ -1,11 +1,6 @@
 //! Review (RFC 004 D-3, D-8; WEB-04): a comment (on a part or a reply), a decision (*approve*, *request
 //! changes*) bound to the revision that was reviewed, the thin forms that decline a proposal, take it back or
-//! ask for a revision (each with a required reason, worded to assume good faith), and *Accept*.
-//!
-//! **Accept is not served yet** (handoff 004 T4): [`accept`] answers a page that says so, after the same checks
-//! the acceptance will make first (a form from this site, an account, the `accept` action on the proposal, a
-//! proposal that exists). It is the one function the acceptance orchestration replaces; the words for every
-//! outcome an acceptance can have are already here ([`AcceptOutcome`], [`render_accept_outcome`]).
+//! ask for a revision (each with a required reason, worded to assume good faith). *Accept* is in `accept`.
 
 use std::collections::HashMap;
 
@@ -14,9 +9,9 @@ use axum::extract::rejection::{FormRejection, PathRejection};
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
-use inklkunn_core::proposal::{Invalid, ProposalError, QuotaRefusal};
+use inklkunn_core::proposal::{Invalid, ProposalError};
 use inklkunn_core::{Action, proposal::NewComment};
-use inklkunn_store::{CommentId, DecisionKind, ProposalId, ProposalOp, ProposalState, WikiRecord};
+use inklkunn_store::{CommentId, DecisionKind, ProposalId, ProposalOp, ProposalState};
 
 use super::{
     Ctx, Stop, fields, fields_of, from_this_site, needs_account, parse_id, paths, refused, see,
@@ -25,7 +20,7 @@ use super::{
 use crate::catalog::Key;
 use crate::discover::Subject;
 use crate::pages::{Page, PageState, answer};
-use crate::wiki::{Choice, Shell, generic_not_found, notice, services_of, with_retry_after};
+use crate::wiki::{Choice, Shell, generic_not_found, services_of};
 
 type Fields = Result<axum::extract::Form<HashMap<String, String>>, FormRejection>;
 type Ids = Result<Path<(String, String)>, PathRejection>;
@@ -223,134 +218,6 @@ pub(crate) async fn decide(
             Ok(_) => see(&paths::proposal_at(ctx.slug(), id.as_str(), "decisions")),
             Err(error) => refused(page, &ctx, &error, back(page, &ctx, &id)),
         }
-    })
-    .await
-}
-
-// ------------------------------------------------------------------------------------ accept
-
-/// What an acceptance can come to (RFC 004 D-12), in the glossary's words. [`AcceptOutcome::NotYetAvailable`]
-/// is what this release answers; the others are what the acceptance (handoff 004 T4) will answer with.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AcceptOutcome {
-    /// Accepting is not served by this build.
-    NotYetAvailable,
-    /// *Signed into the history.*
-    Signed,
-    /// *Stopped: changes overlap.*
-    Overlap,
-    /// *Not allowed.*
-    NotAllowed,
-    /// *The wiki is busy*, with how many acceptances are waiting before this one.
-    Busy {
-        /// The queue's depth.
-        waiting: u64,
-    },
-    /// *The wiki needs recovery.*
-    NeedsRecovery,
-    /// *Refused: the named limit.*
-    Refused(QuotaRefusal),
-}
-
-/// The page that says how an acceptance of `proposal` of `wiki` ended, in the visitor's language.
-pub fn render_accept_outcome(
-    page: &Page,
-    wiki: &WikiRecord,
-    proposal: &ProposalId,
-    outcome: &AcceptOutcome,
-) -> Response {
-    let t = page.t();
-    let (status, heading, paragraphs) = match outcome {
-        AcceptOutcome::NotYetAvailable => (
-            StatusCode::NOT_IMPLEMENTED,
-            Key::AcceptHeading,
-            vec![t.get(Key::AcceptNotYet), t.get(Key::AcceptNotYetKept)],
-        ),
-        AcceptOutcome::Signed => (
-            StatusCode::OK,
-            Key::OutcomeSigned,
-            vec![t.get(Key::OutcomeNoteSigned)],
-        ),
-        AcceptOutcome::Overlap => (
-            StatusCode::CONFLICT,
-            Key::OutcomeOverlap,
-            vec![t.get(Key::OutcomeNoteOverlap)],
-        ),
-        AcceptOutcome::NotAllowed => (
-            StatusCode::FORBIDDEN,
-            Key::OutcomeNotAllowed,
-            vec![t.get(Key::OutcomeNoteNotAllowed)],
-        ),
-        AcceptOutcome::Busy { waiting } => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Key::OutcomeBusy,
-            vec![
-                t.get(Key::OutcomeNoteBusy),
-                t.msg(Key::OutcomeNoteBusyDepth).n(*waiting).text(),
-            ],
-        ),
-        AcceptOutcome::NeedsRecovery => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Key::OutcomeRecovery,
-            vec![t.get(Key::OutcomeNoteRecovery)],
-        ),
-        AcceptOutcome::Refused(q) => (
-            StatusCode::TOO_MANY_REQUESTS,
-            Key::OutcomeRefusedHeading,
-            words::quota_paragraphs(t, q),
-        ),
-    };
-    let response = notice(
-        page,
-        wiki,
-        status,
-        heading,
-        paragraphs,
-        vec![Choice {
-            label: t.get(Key::ProposalBack),
-            href: paths::proposal(wiki.slug.as_str(), proposal.as_str()),
-        }],
-        None,
-    );
-    match outcome {
-        AcceptOutcome::Busy { .. } | AcceptOutcome::NeedsRecovery => with_retry_after(response),
-        _ => response,
-    }
-}
-
-/// `POST /{slug}/-/proposals/{id}/accept`. **The one function the acceptance replaces** (handoff 004 T4):
-/// until then it makes the checks an acceptance makes first and says that accepting is not available.
-pub(crate) async fn accept(
-    State(state): State<PageState>,
-    page: Page,
-    headers: HeaderMap,
-    ids: Ids,
-) -> Response {
-    if let Some(response) = from_this_site(&page, &headers) {
-        return response;
-    }
-    let (Ok(Path((slug, id))), Some(services)) = (ids, services_of(&state)) else {
-        return generic_not_found(&page);
-    };
-    serve(page, move |page| {
-        let Some(ctx) = Ctx::open(&services, &headers, &slug) else {
-            return generic_not_found(page);
-        };
-        let Some(id) = parse_id(&id) else {
-            return generic_not_found(page);
-        };
-        if let Some(response) = needs_account(page, &ctx) {
-            return response;
-        }
-        if let Err(error) = ctx.services.proposals.get(&ctx.principal, &ctx.wiki, &id) {
-            return refused(page, &ctx, &error, Vec::new());
-        }
-        let outcome = if ctx.may_on(Action::Accept, &id) {
-            AcceptOutcome::NotYetAvailable
-        } else {
-            AcceptOutcome::NotAllowed
-        };
-        render_accept_outcome(page, &ctx.wiki, &id, &outcome)
     })
     .await
 }

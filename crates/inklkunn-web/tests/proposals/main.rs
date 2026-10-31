@@ -3,6 +3,7 @@
 //! in both test runs; accounts are the test identity's (the header `x-test-account`), roles are the store's.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+mod accept;
 #[path = "../common/mod.rs"]
 mod common;
 mod flows;

@@ -12,14 +12,15 @@
 //! **Every write is a form post from this site** (`crate::lang::from_this_site`) and ends with a redirect
 //! (303) to the page that shows the result, so a reload never repeats it. Nothing here needs a script.
 //!
-//! **Accepting is not served yet** (handoff 004 T4): `review::accept` answers a page that says so, and it is
-//! the one function the acceptance orchestration replaces. The words for every outcome of an acceptance are
-//! here already (`AcceptOutcome`, `render_accept_outcome`).
+//! **Accepting** (`accept`) asks `Services::acceptor` on a blocking thread and says every answer of the
+//! acceptance in the words of RFC 004 D-12 (`AcceptOutcome`, `render_accept_outcome`); a server with no acceptor
+//! says that accepting is not served. A proposal that needs a revision because it overlaps the wiki shows both
+//! texts side by side (`overlaps`).
 //!
 //! The pieces: `words` (what each state, outcome and refusal says), `form` (a form read and its bounds
 //! checked before anything is parsed), `parts` (the section or part a form edits), `changes` (what a
 //! proposal changes, part by part), `anchor` (a comment's anchor and where it lands on a later revision),
-//! `render` (the view of those changes), and the handlers in `list`, `new`, `show` and `review`.
+//! `render` (the view of those changes), and the handlers in `list`, `new`, `show`, `review` and `accept`.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -34,6 +35,7 @@ use crate::pages::Page;
 use crate::services::Services;
 use crate::wiki::{Choice, notice, open};
 
+pub(crate) mod accept;
 pub(crate) mod anchor;
 pub(crate) mod changes;
 pub(crate) mod fields;
@@ -41,6 +43,7 @@ pub(crate) mod form;
 pub(crate) mod lints;
 pub(crate) mod list;
 pub(crate) mod new;
+pub(crate) mod overlaps;
 pub(crate) mod parts;
 pub(crate) mod paths;
 pub(crate) mod render;
@@ -49,7 +52,7 @@ pub(crate) mod show;
 pub(crate) mod submit;
 pub(crate) mod words;
 
-pub use review::{AcceptOutcome, render_accept_outcome};
+pub use accept::{AcceptOutcome, Unchanged, render_accept_outcome};
 
 /// The most bytes a form of a proposal may carry: the bound on its texts, three times over (a text of
 /// multi-byte characters is written three times as long in a form), and a little for the other fields.

@@ -23,6 +23,7 @@ use inklkunn_store::{
 
 use super::anchor::{Landing, land};
 use super::changes::delta;
+use super::overlaps::OverlapsView;
 use super::render::{
     Beside, ChangesView, CommentView, LinkView, PageInput, build, on_parse, on_value,
 };
@@ -67,8 +68,11 @@ struct DecideFormView {
 
 struct AcceptView {
     action: String,
+    revision_name: &'static str,
+    revision: u32,
     button: String,
-    note: String,
+    /// Said beside the button only when this server does not accept.
+    note: Option<String>,
 }
 
 #[derive(Template)]
@@ -86,6 +90,7 @@ struct ProposalTpl<'a> {
     signed: Option<(String, Option<LinkView>)>,
     actions: Vec<LinkView>,
     accept: Option<AcceptView>,
+    overlaps: Option<OverlapsView>,
     changes_heading: String,
     changes: Option<ChangesView>,
     thread_id: &'static str,
@@ -567,9 +572,16 @@ pub(crate) fn draw(
     }
     let accept = (can_accept && record.state == ProposalState::HeldForReview).then(|| AcceptView {
         action: paths::act(slug, id.as_str(), paths::ACT_ACCEPT),
+        revision_name: fields::REVISION,
+        revision: latest.unwrap_or(1),
         button: t.get(Key::ActionAccept),
-        note: t.get(Key::AcceptNotYetNote),
+        note: ctx
+            .services
+            .acceptor
+            .is_none()
+            .then(|| t.get(Key::AcceptNotYetNote)),
     });
+    let overlaps = super::overlaps::view(ctx, t, record, latest);
 
     // The comment form: about a part, or a reply, or neither.
     let comment_form = can_comment.then(|| {
@@ -670,6 +682,7 @@ pub(crate) fn draw(
         signed,
         actions,
         accept,
+        overlaps,
         changes_heading: t.get(Key::ProposalChangesHeading),
         changes: Some(changes),
         thread_id: fields::ID_THREAD,

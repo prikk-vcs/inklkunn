@@ -9,7 +9,7 @@
 {% endif %}<ul class="proposal-facts">
 {% for f in facts %}<li>{{ f }}</li>
 {% endfor %}</ul>
-{% if !sources.is_empty() %}<section aria-labelledby="sources">
+{% if let Some(overlaps) = overlaps %}{% include "proposal_overlaps.html" %}{% endif %}{% if !sources.is_empty() %}<section aria-labelledby="sources">
 <h2 id="sources">{{ sources_heading }}</h2>
 <ul>
 {% for s in sources %}<li>{{ s }}</li>
@@ -19,7 +19,7 @@
 <h2 id="actions">{{ page.get(Key::ActionsHeading) }}</h2>
 <ul class="change-links">
 {% for a in actions %}<li><a href="{{ a.href }}">{{ a.label }}</a></li>
-{% endfor %}{% if let Some(a) = accept %}<li><form method="post" action="{{ a.action }}"><button type="submit">{{ a.button }}</button></form> <span class="note">{{ a.note }}</span></li>
+{% endfor %}{% if let Some(a) = accept %}<li><form method="post" action="{{ a.action }}"><input type="hidden" name="{{ a.revision_name }}" value="{{ a.revision }}"><button type="submit">{{ a.button }}</button></form>{% if let Some(note) = a.note %} <span class="note">{{ note }}</span>{% endif %}</li>
 {% endif %}</ul>
 </section>
 {% endif %}<section aria-labelledby="changes">

@@ -284,6 +284,17 @@ mark { background: none; color: var(--fg); font-weight: 700; text-decoration: un
 .depth-2 { margin-inline-start: 3rem; }
 .depth-3 { margin-inline-start: 4.5rem; }
 .decision { margin-block-end: 0.75rem; }
+/* The overlaps of a proposal (RFC 004 D-5): the wiki's text and the proposal's, side by side. */
+.overlap-table { inline-size: 100%; table-layout: fixed; border-collapse: collapse; }
+.overlap-table caption { text-align: start; color: var(--muted); padding-block-end: 0.5rem; }
+.overlap-table th, .overlap-table td {
+  border: 1px solid var(--line);
+  padding: 0.5rem 0.75rem;
+  text-align: start;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
 section > p > a, .proposal-list a, .comment a, .discussed a {
   display: inline-block;
   min-block-size: 24px;

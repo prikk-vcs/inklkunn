@@ -47,4 +47,4 @@ mod wiki;
 pub type Site = axum::Router;
 
 pub use config::{ConfigRefusal, Origin, OriginError, Scheme, WebConfig};
-pub use services::{AnonymousOnly, Identify, Services};
+pub use services::{Acceptor, AnonymousOnly, Identify, Services};

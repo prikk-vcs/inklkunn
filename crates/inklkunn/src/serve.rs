@@ -140,7 +140,13 @@ pub(crate) fn prepare(settings: &Settings, web: &WebSettings) -> Result<Prepared
         inbox,
         proposals,
         accounts: store.clone(),
-        acceptances: store,
+        acceptances: store.clone(),
+        acts: store,
+        // No acceptor yet, on purpose: sign-in is not served, so no visitor is an account and nobody may accept,
+        // and the server holds no write signer (the keys are the command line's, behind `serve`'s confinement).
+        // The Accept button answers "accepting is not available yet" until both are decided (RFC 002 D-10;
+        // handoff 004 T4b's decision request).
+        acceptor: None,
         // Sign-in is not served yet (RFC 002's pages are the next surface), so every request is anonymous:
         // a public wiki is readable, an internal or restricted one is not.
         identity: Arc::new(AnonymousOnly),

@@ -500,10 +500,37 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `outcome_note.busy` | under the outcome the wiki is busy | "Another change is being signed into the history. Nothing was changed; try again in a moment." | "別の変更を履歴に記録している最中です。何も変更していません。しばらくしてからもう一度お試しください。" |
 | `outcome_note.busy_depth` | under that: how many acceptances wait before this one; `{count}` is the number | "One acceptance is waiting ahead of yours." / "{count} acceptances are waiting ahead of yours." | "あなたの前に {count} 件の受け入れが待っています。" |
 | `outcome_note.recovery` | under the outcome the wiki needs recovery | "The wiki is being checked after an interruption. It can be read, but nothing can be changed until the check is done." | "ウィキは中断後の確認を行っています。読むことはできますが、確認が終わるまで変更はできません。" |
+| `outcome.unchanged_refused` | the outcome of an acceptance the history refused as it was prepared; nothing was changed | "Not signed: the history refused it" | "署名されませんでした: 履歴が受け付けませんでした" |
+| `outcome_note.unchanged_refused` | under the outcome not signed: the history refused it | "The history did not accept this change as it was prepared. Nothing was changed, and the proposal is still held for review." | "履歴は、用意された変更をそのままでは受け付けませんでした。何も変更しておらず、提案はレビュー待ちのままです。" |
+| `outcome.too_large` | the outcome of an acceptance that needed more memory than one signing may use | "Too large to sign now" | "大きすぎて今は署名できません" |
+| `outcome_note.too_large` | under the outcome too large to sign now | "This change needs more memory than one signing may use. Nothing was changed, and the proposal is still held for review." | "この変更の署名には、1 回の署名で使える量を超えるメモリが必要です。何も変更しておらず、提案はレビュー待ちのままです。" |
+| `outcome.unavailable` | the outcome of an acceptance that could not be done now, before anything was changed | "Could not be done now" | "今は実行できません" |
+| `outcome_note.unavailable` | under the outcome could not be done now | "The records or the history could not be used just now. Nothing was changed. Try again in a little while; if it keeps happening, tell the person who runs this server." | "記録または履歴を今は利用できませんでした。何も変更していません。しばらくしてからもう一度お試しください。何度も起きる場合は、このサーバーを運用している人に伝えてください。" |
+| `outcome.in_progress` | the outcome of an acceptance of a revision whose earlier acceptance has not finished | "This revision is being signed" | "この修正版は署名の最中です" |
+| `outcome_note.in_progress` | under the outcome this revision is being signed | "An earlier attempt to take this revision into the history has not finished. Nothing was done now. Wait a little and read the proposal again." | "この修正版を履歴に取り込む以前の操作が、まだ終わっていません。今回は何も行っていません。しばらく待ってから、提案をもう一度開いてください。" |
+| `outcome.nothing_to_change` | the outcome of an acceptance whose changes the history already has | "Nothing to change" | "変更するものがありません" |
+| `outcome_note.nothing_to_change` | under the outcome nothing to change | "The history already has everything this proposal asks for. Nothing was changed." | "この提案が求める内容は、すでに履歴に入っています。何も変更していません。" |
+| `outcome.store` | the outcome of an acceptance when the records failed and it is not known whether the change is in the history | "The result is not certain" | "結果を確定できません" |
+| `outcome_note.store` | under the outcome the result is not certain | "The records could not be used while the change was being taken in. It may or may not be in the history now: read the history before you try again, and tell the person who runs this server." | "変更を取り込む途中で、記録を利用できなくなりました。変更が履歴に入ったかどうかは分かりません。もう一度試す前に履歴を確認し、このサーバーを運用している人に伝えてください。" |
 | `accept.heading` | the heading of the page that answers the Accept button while accepting is not served | "Accepting is not available yet" | "受け入れはまだ利用できません" |
 | `accept.not_yet` | on that page | "This server does not take proposals into the history yet." | "このサーバーは、まだ提案を履歴に取り込めません。" |
 | `accept.not_yet_kept` | on that page | "The proposal stays held for review and nothing was changed." | "提案はレビュー待ちのままで、何も変更していません。" |
 | `accept.not_yet_note` | beside the Accept button | "Accepting is not available yet on this server." | "このサーバーでは、受け入れはまだ利用できません。" |
+| `overlap.heading` | the heading of the section of a proposal that needs a revision because it overlaps the wiki's current text | "Where the changes overlap" | "変更が重なっている箇所" |
+| `overlap.intro` | under that heading | "The wiki's current text and this proposal both changed the places below. Nothing was merged. Revise the proposal with both texts in front of you." | "ウィキの現在の文面とこの提案が、下の箇所をどちらも変更しています。何も統合していません。両方の文面を見ながら、提案を修正してください。" |
+| `overlap.caption` | the caption of the table of overlapping places | "Places changed both in the wiki and in this proposal" | "ウィキと提案の両方で変更された箇所" |
+| `overlap.col_where` | a column heading of that table: the page and the place | "Where" | "場所" |
+| `overlap.col_theirs` | a column heading of that table: the wiki's text now | "In the wiki now" | "ウィキの現在の文面" |
+| `overlap.col_ours` | a column heading of that table: the proposal's text | "In this proposal" | "この提案の文面" |
+| `overlap.nothing` | in a cell of that table, when that side removed the text | "(removed: nothing is there)" | "（削除されています: 何もありません）" |
+| `overlap.row` | the name of a row of that table; `{page}` is the page's title, `{place}` the place in it | "{page}: {place}" | "{page}: {place}" |
+| `overlap.place_top` | a place in that table: the information at the top of a page, as a whole | "Information at the top of the page" | "ページ先頭の情報" |
+| `overlap.place_key` | a place in that table: one item of the information at the top of a page; `{key}` is its name | "Information at the top of the page: {key}" | "ページ先頭の情報: {key}" |
+| `overlap.place_part` | a place in that table: a part of the page that has no number | "A part of the page" | "ページの一部分" |
+| `overlap.place_number` | a place in that table: a numbered part of the page | "Part {number}" | "部分 {number}" |
+| `overlap.place_named` | a place in that table: a part of the page that has a name; `{id}` is the name | "The part named {id}" | "{id} と名付けられた部分" |
+| `overlap.place_page` | a place in that table: the whole page | "The whole page" | "ページ全体" |
+| `overlap.place_path` | a place in that table: the page's address | "The page's address" | "ページのアドレス" |
 | `quota.open_proposals` | the name of the limit on open proposals, as a clause | "too many open proposals" | "未決の提案が多すぎます" |
 | `quota.revisions` | the name of the limit on revisions of one proposal | "too many revisions of one proposal" | "1 つの提案の修正が多すぎます" |
 | `quota.accepted_bytes` | the name of the limit on text taken into the history in a day | "too much accepted text today" | "本日受け入れられた文章が多すぎます" |

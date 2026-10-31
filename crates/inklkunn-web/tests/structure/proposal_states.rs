@@ -10,13 +10,16 @@ use std::sync::Arc;
 
 use axum::body::Body;
 use axum::http::{Request, header};
-use inklkunn_core::proposal::{ProposalEdit, ProposalService};
+use inklkunn_core::proposal::{ProposalEdit, ProposalError, ProposalService};
 use inklkunn_core::{IdentityAuthority, Principal};
-use inklkunn_store::{AccountId, Anchor, DecisionKind, FileChange, ProposalRecord, Quote, Role};
+use inklkunn_store::{
+    AccountId, ActStore, Anchor, DecisionKind, FileChange, OverlapRecord, OverlapText,
+    ProposalRecord, Quote, Role,
+};
 use inklkunn_web::WebConfig;
 use inklkunn_web::catalog::{Lang, T};
 use inklkunn_web::pages::Page;
-use inklkunn_web::proposals::{AcceptOutcome, render_accept_outcome};
+use inklkunn_web::proposals::{AcceptOutcome, Unchanged, render_accept_outcome};
 use inklkunn_web::routes::site_with;
 use tower::ServiceExt as _;
 
@@ -472,6 +475,24 @@ pub(super) const SCENARIOS: &[Scenario] = &[
         },
     },
     Scenario {
+        id: "proposal-needs-revision-overlaps",
+        identity: "proposal-needs-revision-o",
+        status: 200,
+        make: |e| {
+            let p = e.held(&e.contributor, "Stopped by an overlap");
+            e.w.store.record_overlap(&overlap_record(&p)).unwrap();
+            e.service()
+                .ask_for_revision(
+                    &Env::who(&e.maintainer),
+                    &e.w.wiki,
+                    &p.id,
+                    "Changes overlap.",
+                )
+                .unwrap();
+            get(&e.address(&p, ""), Some(&e.contributor))
+        },
+    },
+    Scenario {
         id: "proposal-accepted",
         identity: "proposal-accepted",
         status: 200,
@@ -639,6 +660,32 @@ pub(super) const SCENARIOS: &[Scenario] = &[
     },
 ];
 
+/// The overlaps an acceptance would have recorded for revision 1 of `p`: a part, a key and a removed page.
+fn overlap_record(p: &ProposalRecord) -> OverlapRecord {
+    let text = |place: &str, theirs: Option<&str>, ours: Option<&str>| OverlapText {
+        page: "pages/Home.md".to_owned(),
+        place: place.to_owned(),
+        base: Some("Second paragraph.".to_owned()),
+        theirs: theirs.map(str::to_owned),
+        ours: ours.map(str::to_owned),
+    };
+    OverlapRecord {
+        proposal: p.id.clone(),
+        revision: 1,
+        tip_block: block_id(1),
+        texts: vec![
+            text(
+                "block 2",
+                Some("Second, by them."),
+                Some("Second, drafted."),
+            ),
+            text("frontmatter title", Some("Start"), Some("Home page")),
+            text("page", None, Some("A page text <b>kept</b>.")),
+        ],
+        created_at: NOW,
+    }
+}
+
 /// The anchor of a comment about the part that reads `exact`, which is the `ordinal`-th of its page.
 fn quote_anchor(exact: &str, ordinal: u32) -> Anchor {
     Anchor {
@@ -666,6 +713,13 @@ const OUTCOMES: &[(&str, &str)] = &[
     ("accept-busy", "busy"),
     ("accept-recovery", "recovery"),
     ("accept-refused", "refused"),
+    ("accept-unchanged-refused", "unchanged-refused"),
+    ("accept-too-large", "too-large"),
+    ("accept-unavailable", "unavailable"),
+    ("accept-in-progress", "in-progress"),
+    ("accept-nothing-to-change", "nothing-to-change"),
+    ("accept-uncertain", "uncertain"),
+    ("accept-stale", "stale"),
 ];
 
 fn outcome(name: &str) -> AcceptOutcome {
@@ -674,8 +728,18 @@ fn outcome(name: &str) -> AcceptOutcome {
         "signed" => AcceptOutcome::Signed,
         "overlap" => AcceptOutcome::Overlap,
         "not-allowed" => AcceptOutcome::NotAllowed,
-        "busy" => AcceptOutcome::Busy { waiting: 3 },
+        "busy" => AcceptOutcome::Busy {
+            waiting: 3,
+            retry_after: 30,
+        },
         "recovery" => AcceptOutcome::NeedsRecovery,
+        "unchanged-refused" => AcceptOutcome::Unchanged(Unchanged::Refused),
+        "too-large" => AcceptOutcome::Unchanged(Unchanged::TooLarge),
+        "unavailable" => AcceptOutcome::Unavailable,
+        "in-progress" => AcceptOutcome::InProgress,
+        "nothing-to-change" => AcceptOutcome::NothingToChange,
+        "uncertain" => AcceptOutcome::Uncertain,
+        "stale" => AcceptOutcome::Proposal(ProposalError::StaleRevision { latest: 2 }),
         _ => AcceptOutcome::Refused(QuotaRefusal {
             limit: QuotaLimit::AcceptedBytesPerDay,
             allowed: 8 * 1024 * 1024,
@@ -764,6 +828,7 @@ pub(super) async fn build(extra: &[(&str, &str)], out: &mut Out) {
             identity: match *name {
                 "not-allowed" => "propose-not-allowed",
                 "refused" => "quota-refused",
+                "stale" => "refused-not-now",
                 _ => id,
             },
             status,
