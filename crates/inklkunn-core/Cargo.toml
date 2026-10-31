@@ -14,10 +14,10 @@ description = "inklkunn's domain: wikis and views, pages, proposals and review, 
 test-authority = []
 
 [dependencies]
-inklkunn-markup = { path = "../inklkunn-markup", version = "0.0.0" }
-inklkunn-prikk = { path = "../inklkunn-prikk", version = "0.0.0" }
-inklkunn-signer = { path = "../inklkunn-signer", version = "0.0.0" }
-inklkunn-store = { path = "../inklkunn-store", version = "0.0.0" }
+inklkunn-markup = { path = "../inklkunn-markup", version = "0.1.0" }
+inklkunn-prikk = { path = "../inklkunn-prikk", version = "0.1.0" }
+inklkunn-signer = { path = "../inklkunn-signer", version = "0.1.0" }
+inklkunn-store = { path = "../inklkunn-store", version = "0.1.0" }
 # The sanitizer every rendered page passes through before a template sees it (RFC 003 D-3; threat model T-6).
 ammonia = "4"
 # The SHA-256 of every file of an exported bundle, for the manifest's checksums (handoff 003 T7); already in the
@@ -35,7 +35,7 @@ unicode-normalization = { workspace = true }
 [dev-dependencies]
 # The tests create wikis with the bootstrap signer and open the real signer with the cheapest key derivation;
 # the product build never enables either feature.
-inklkunn-signer = { path = "../inklkunn-signer", version = "0.0.0", features = ["bootstrap", "test-knobs"] }
+inklkunn-signer = { path = "../inklkunn-signer", version = "0.1.0", features = ["bootstrap", "test-knobs"] }
 
 [lints]
 workspace = true

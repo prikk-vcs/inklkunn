@@ -5,7 +5,297 @@ Releases are bare version tags; each section is the release's notes (assembled i
 
 ## [Unreleased]
 
-M0 — foundations (RFC 001, RFC 010). Nothing serves pages yet.
+- **Proposals T2 (RFC 004 D-5; handoff 004): the block-aware three-way merge.** `inklkunn_markup::blocks` segments a body
+  into its top-level blocks from the parser's own structure (paragraph, heading, list, quotation, table, code block, HTML,
+  container, footnote), each with its `^id` (a trailing one on a paragraph, a line of its own after a table, code block,
+  list or quotation) and its whitespace-trimmed text; a container is one block, and anything the parser consumes without a
+  token (a link reference definition) is a block of its own, so only whitespace lies between blocks. `inklkunn_core::merge`
+  merges three sides (base, tip, proposal) of a set of pages: pages by page id (an edit lands on the renamed file; removed
+  on one side and changed on the other, two new paths for one page, and two pages at one path are overlaps), the
+  frontmatter key by key (unreadable frontmatter as one unit), the body block by block (matched by `^id`, then by unique
+  content, then by a bounded longest-common-subsequence alignment). A change on one side is taken, the same change on both
+  sides once, anything else is an **overlap carrying both texts and where**; the code never resolves one, and two sides
+  that add different blocks at one place overlap too. `MergeOutcome` is `Clean { pages }` or `Overlaps { overlaps }`. The
+  measurement hook says, for each overlap, whether a line-level merge of the block would have been clean
+  (`LineLevel`, `MergeOutcome::line_level_clean`), made with the same engine and no dependency, and never applied: on the
+  spike's 21 overlaps it is 0. The 120 pairs of spike B are a committed fixture
+  (`crates/inklkunn-core/tests/fixtures/merge-spike-b-pairs.json`, regenerated without prikk by
+  `inklkunn-corpus merge-fixture`, which refuses to write if its replay of the generator differs from the report) and yield
+  exactly 99 clean merges and 21 overlaps, the same verdict as the spike's own model on every pair. `tools/corpus` now
+  measures with the product function (a workspace path edge to `inklkunn-core`) and reports the hook's count.
+- **Handoff 004 T1: store schema 9, the proposal records.** Explicit migration from 8, tested on a copy built from
+  `MIGRATIONS` up to 8 (and the migrated schema is compared with a fresh one): proposals, their revisions, the log of every
+  transition, comments (with their anchors: a block's `^id`, or a quote selector and an ordinal), reviewers' decisions,
+  acceptances and their results, intents and their completions, the wiki's lease holder, watches and inbox events. New ids
+  are UUID v7 (`CommentId`, `DecisionId`, `AcceptanceId`, `IntentId`, `InboxEventId`). **Revisions, transitions, comments,
+  decisions, acceptances, acceptance results, intents and intent completions are written once, in the database itself**:
+  triggers abort an `UPDATE`, a `DELETE` and an `INSERT` over a key already taken, counting every unique key of a table (a
+  replacing insert on the decisions' second key, one per reviewer per revision, removes a row without firing a delete
+  trigger). The memory store refuses the same writes through the trait; one suite runs on both. An acceptance and an intent
+  end by a second record, so nothing is updated; a retry of an accept of the same revision finds the pending or sealed
+  record and starts nothing (CON-6), and a failed one does not stand in the way. **A draft is its author's alone, in the
+  store**: every read takes the viewer, and a proposal that was never submitted (a withdrawn draft included) is absent to
+  anyone else; it is a working copy replaced by each save and turned into revision 1 by the submission, so saving does not
+  use up the revision quota.
+- **Handoff 004 T1: `inklkunn_core::proposal`.** Create (the base from `Storage::views` through the read service: the
+  view's state id and the block it belongs to), save and resume a draft, submit, revise, comment, decide (one per
+  reviewer per revision, on the latest), ask for a revision, decline, withdraw, supersede, and the reads. **The state
+  machine** (`proposal::machine`) names every transition and every other is refused (`NotInThisState`). Every act is
+  authorized first through `authorize()` (propose on each page touched, comment, review, accept); only an account acts;
+  a proposal of another wiki is as absent as one that does not exist. Refusals are typed (`ProposalError`) and carry no
+  path or text; the glossary words arrive with the pages (T3). **Quotas** (`QuotaConfig`, the RFC's defaults, halved for
+  an account in its first week): open proposals, revisions per proposal, proposals per hour per principal and per wiki,
+  accepted bytes per day, the acceptance queue; a refusal names the limit and carries the allowed value, the current
+  one, what was asked and when it resets (rolling windows). **Participation metrics** (`proposal::metrics`) are computed
+  from the records alone: proposals by state, medians to the first review and to a decision, acceptance and decline
+  rates, distinct and first-time proposers, reviewers per proposal; drafts are in no figure and a proposer's decision on
+  her own proposal is not a review. Tests: one invariant suite per record family on both stores; every sequence of up to
+  four acts (three on SQLite) held to the state machine; every quota at its boundary; drafts invisible to other accounts;
+  reopen persistence; the metrics against a hand count.
+- **Handoff 004 T6: undo as a proposal, the inbox and following, the flags (RFC 004 D-8, D-9, D-10).** *Store schema
+  10*: `proposal_rollbacks` (a proposal is a rollback from its creation, in the same step, and the block it undoes is
+  written once; the migration from 9 adds one table and changes nothing), `ProposalStore::create_rollback_proposal`,
+  `rollback_of` and `revision_flags` (the flags of the latest revision of each proposal asked for, in one step).
+  **Propose a rollback**: `ReadService::rollback_plan` computes the inverse of a change at content level (one `show`,
+  two `cat`s per page): the pages as they were before it, byte for byte, a page the change created removed, one it
+  removed written again, one it moved put back. The plan is written against the *undone block* (its state and id are the
+  proposal's base), so the merge reads it as "take back what this block did": later edits elsewhere on a page stay and a
+  later change to the very text is an overlap for a person, and the message's `Base:` trailer names the undone change.
+  A rollback of a rollback restores the change because an accepted rollback is a change like any other. What cannot be
+  undone says why (the first change, a file that is not a page, text that is not text, more than 200 pages, a change
+  that left the pages as they were). `ProposalService::propose_rollback` plans, opens and submits it (authorized before
+  the repository is asked); `create_rollback`, `rollback_of` and `RollbackSource` are the parts. **The inbox**
+  (`inklkunn_core::notify`, `inbox`): the proposal service, given a `Notifier` (`with_notifier`), tells the proposer of
+  a review, a decline, a request for a revision and a supersession, the people who held a proposal (those who may
+  accept, and those who reviewed or commented) of its withdrawal, the author of a comment replied to and the proposer
+  of a comment on their proposal, and each account a comment mentions by sign-in name (`@name`; at most ten; the writer
+  never learns whether a name exists). Telling is best effort and counted (`Notifier::failures`); an act never fails
+  for want of an inbox record. **An event is ids and a kind** and is made only for someone who may read the proposal
+  now; the inbox then reads what it is about *as the person who opens it*, so an event about a wiki that stopped being
+  theirs to read is one sentence that names nothing. `Notifier::accepted` and `Notifier::page_changed` are what the
+  acceptance calls after the seal (a watch is told of a change that is in the history and of nothing else). Channels
+  are a trait (`Channel`) with the in-app inbox as its one implementation. Watching a page or the pages under a title
+  (`Inbox::watch`, `unwatch`, `followed`) needs the right to read it and an account, and is bounded (500). **Flags**:
+  recent changes carry the accepted revision's *minor* (real now) and *machine-assisted* flags
+  (`ReadService::with_revision_flags`), filter on them (`minor`, and `automated`, which now covers what the service
+  made itself and what a machine assisted; a filter the records cannot answer is refused, never answered as if nothing
+  were flagged), and label machine-assisted content with the person who accepted it. *Web*: `/-/inbox` (an account
+  is needed and said in words; each kind of event a sentence in the reader's language, other people's text escaped;
+  mark everything read and stop following are `POST`s from this site), `POST /<slug>/-/watch/<Title>` (the generic
+  not-found page for a wiki the visitor may not read, then an account, then a page the account may read), the *minor*
+  choice and the labels on the changes page, `minor=` on the feed and the API (`minor`, `machine_assisted` in each
+  item, drawn in the OpenAPI document), `<category term="minor|automated"/>` in the feed. Forty-one catalog
+  messages in English and the Japanese preview, with their glossary rows; three existing messages say that the
+  *automated* filter covers machine-assisted changes too. Tests: the inverse on exact text (multibyte, CRLF, no final
+  newline), a creation, a removal, a move and a rollback of a rollback; every refusal; the events of every act and who
+  is not told; a wiki restricted after the event; watches fired by the acceptance's function only (against a channel
+  that remembers); the flags on both stores, in the list, the feed and the API; the migration from 9; the structure
+  rules on every new page state in both languages; the route-enumeration harness over the new routes.
+- **Handoff 004 T3: the propose form, the proposal's page and review (`inklkunn_web::proposals`).** Routes under
+  `/<slug>/-/proposals` and `/<slug>/-/discussion/<Title>`, each registered with the action its handler authorizes
+  (`propose`, `comment`, `review`, `accept`), and every one begins with the wiki's read check, so a wiki the visitor
+  may not read, a proposal of another wiki and a draft that is not the visitor's own are the one not-found page. The
+  **form** (a page, a section by its heading, a part by its position, or a new page; the page view and the page that
+  is not there link to it) holds the current text, a summary (required, at most 120 characters), sources, and *Preview*,
+  *Show changes*, *Save as draft* and *Submit*, all server round trips and none needing a script; a section or part goes
+  back into the **base text the form was opened on** (so the page may have moved since); a page keeps its own line
+  endings (a browser sends CR LF whatever the page had). **Sizes are judged before anything is parsed** (a page over
+  1 MiB, a proposal over 2 MiB, a body no form can be); the keys the service owns (`kind`, `visibility`, `system`) are
+  refused when a proposal changes them unless the principal administers the wiki; a new page's title goes through
+  `title_to_path` and a refusal names the rule, never the path; the linter's findings are suggestions on *Preview* and
+  *Show changes*. Everything wrong is said at once on the form, with the person's text still in it, and a refused
+  submission leaves no draft behind. **The proposal's page** shows its state in the glossary's seven words, who
+  proposed it, what it changes page by page and part by part (the history's line diff and word marks over
+  `inklkunn_markup::blocks`), the thread with comments anchored to parts, each decision with the revision it is bound
+  to ("on revision 1", and a note once a newer revision exists), and the actions the viewer's role and the state allow.
+  A comment's anchor (the part's `^id`, else a quote with its surroundings and position) is **re-anchored every time
+  the page is drawn** and shown as *orphaned*, with the text it was about, when nothing matches. Decline, withdraw and
+  ask for a revision are thin forms with a required reason; *Accept* is a form whose answer says it is **not available
+  yet** (`review::accept` is the one function the acceptance replaces; `AcceptOutcome` and `render_accept_outcome` hold
+  the words for every outcome of an acceptance). A page's discussion lists the proposals that change it with their
+  threads. An anonymous visitor is told in words that proposing needs an account. **Words:** a catalog entry in English
+  and Japanese (preview) and a glossary row, in the same order, for every state, outcome, named limit, refusal, label
+  and suggestion; the concept rows for proposal, held for review, accepted and declined are now in use, and draft,
+  needs a revision, withdrawn, superseded and orphaned are added. Additive changes outside the crate: `Services`
+  gains `proposals`, `accounts` and `acceptances`, `ReadService` gains `source_at` (a file at a block) and `preview`
+  (source text drawn and sanitized as the page would be), and the binary builds the service. The route table's unit
+  test and the route-enumeration harness now hold the proposals' writes to their actions; the structural harness
+  runs 49 more states, both languages.
+- **Handoff 004 T4: acceptance under the lease (RFC 004 D-4, D-6, D-14).** *Store schema 11*: the message an
+  intent means to seal (`intents.message`; the facts a seal is bound to and the reconciliation compares are read from
+  it, so a later rename of a person changes nothing), `wiki_flags` (the recovery flag: set once, the first reason
+  stays, cleared by recovery), `proposal_overlaps` (both texts of every overlap, written once), `system_acts` and
+  `system_act_ends` (the service's own changes, which have no proposal; written once), `ActStore`,
+  `AcceptanceStore::pending_acceptance` and `sealed_acceptances`; the migration from 10 adds tables and one column and
+  changes nothing. **The write lease** (`inklkunn_core::lease`, `inklkunn_signer::lease`): one writer per wiki across
+  processes (the per-wiki `flock` of the 002 corrections, held for the whole act, so the command line and a running
+  server exclude each other), a fair in-process queue of at most 64 waiting per wiki, a bounded wait after which the
+  waiter is told *busy* with how many acts are ahead and an estimate from what leases of that wiki have taken, and a
+  durable holder record written at the take and cleared at the release (a record of another holder found at the take
+  is a holder that died). The acts inside a lease on one thread (the signer's `accept`, the export, the checkpoint
+  refresh) *borrow* it (`Signer::with_leases`, `Maintenance::with_leases`, `WriteLease::scope`): `Accept` is
+  unchanged. It blocks the calling thread, as every service here does; there is no async runtime in the crate.
+  `WikiLeases::export_archive` and `refresh_checkpoint` take the lease. **Acceptance** (`ProposalAcceptor::accept`):
+  `authorize(_, accept, proposal)` first, before the lease; the lease; the guard against an unfinished earlier act;
+  the tip read again through `Storage::views`; the revision as it is when its base is the tip, else re-authored by
+  the merge against the tip (only the pages whose text differs there are written, a rename the tip can still carry
+  out stays a rename); on an overlap both texts are recorded on the proposal, which needs a revision, the proposer is
+  told and nothing in prikk changes; else the acceptance record (*pending seal*, with the digest of the files) and
+  the intent, both **before** `Accept::accept`, which reads them back through `StoreLedger` (nothing is kept in
+  memory between the records and the signer). The signer's outcomes are read as typed: *sealed* (ids recorded,
+  proposal accepted, caches forgotten, reconciliation run, lease released, then the proposer and the watchers told
+  and the title index and verification asked for through `AfterSeal`), *nothing happened* (the record says *failed*
+  with a fixed word, the intent is abandoned, the proposal stays open), *queued*, *worktree dirty* or *sealed but
+  unconfirmed without ids* (the record stays pending, the intent open, the wiki is flagged *needs recovery*, writes
+  are refused with the word, reads are served, and nothing is committed again); a seal that could not be confirmed
+  but has its block is recorded as sealed and flags the wiki for a look. A retry finds the record and answers
+  `AlreadySigned`; a retry behind the first waits and finds it. A maintainer accepts their own proposal only in a
+  wiki with fewer than three; the accepted-bytes quota and the queue bound refuse by name. `^id`s are attached to
+  commented blocks that had none in the same change (CM-5; paragraphs, tables and code blocks, each checked by
+  reading the page again). A proposal created as a rollback is signed as `Kind: rollback`. **One path**:
+  `SystemActs` (authorize as the system principal, lease, record, `Accept`, end, reconciliation) is how
+  `import-folder` and any system change are made; `run_import` takes it, and `ImportLedger` is gone (the signer's
+  guard reads the store). Tests: the lease on its own (queue order, bound, estimate, the other process, the holder
+  record, export and refresh), the acceptance against an in-memory repository and a scripted signer (every outcome,
+  the race, the retry, the quotas, the flag, ids, who is told), the sides of the merge, and eleven against a real
+  repository (`tests/acceptance.rs`) including the reconciliation finding nothing after every kind of act.
+- **Handoff 004 T4b: Accept on the web, and the creation of a wiki is a recorded act.** *The web*: `Services` gains
+  `acceptor` (`Option<Arc<dyn Acceptor>>`; `ProposalAcceptor` implements the trait; `None` is a build that does not
+  accept, and the page says so, as before) and `acts` (the recorded overlaps). The Accept form posts the revision
+  it shows; after the checks that precede an acceptance (a form from this site, an account, a proposal the visitor
+  may read, the `accept` action) the handler asks the acceptor on a blocking thread, and **every** `Accepted` and
+  `AcceptFailure` is a page in the words of RFC 004 D-12 (the match is exhaustive): *signed into the history* (also
+  for a retry that finds the record), *stopped: changes overlap*, *not allowed* (a proposal the acceptance cannot
+  find looks exactly the same), *the wiki is busy* (with the depth, and `Retry-After` from the estimate, never a
+  depth of zero), *the wiki needs recovery*, *refused: the named limit*, and for the rest a fixed word each: *not
+  signed: the history refused it*, *too large to sign now*, *this revision is being signed*, *nothing to change*,
+  *could not be done now*, *the result is not certain* (the records failed after the change may have been made).
+  A missing or unreadable revision is a refusal in words and asks nobody. Nothing of prikk's text, a path or a cause
+  is on a page; operators get it through `services.log`. A proposal that *needs a revision* shows the overlaps its
+  acceptance recorded, both texts side by side in a table (the wiki's now, the proposal's), for the revision they
+  were found for. 27 catalog messages (English, Japanese preview) with glossary rows; the structural harness
+  draws the seven new outcome pages and the overlaps, both languages. The binary passes `acceptor: None`: sign-in is
+  not served, and the server holds no write signer. **Creation**: `create_wiki` (and `create_wiki_observed`, and the
+  start-up sweep) take an `ActStore`; once the wiki's record is stored (the act's table refers to it) the first
+  change is kept as the sealed `Kind: system` act `SystemActs` writes (a new step, `CreationStep::ActRecorded`, after
+  `Stored`), so a production reconciliation no longer reports the first block as an unrecorded system change. A
+  creation killed between the record and the act is made whole by the sweep, which writes the act from the history
+  before it removes the mark (and keeps the mark when it cannot); `CreatedWiki::first_change_recorded` says whether
+  the act was kept. Tests: every outcome in both languages, the revision field, nothing run for a visitor who may
+  not accept or a form from elsewhere, the log, the overlaps; the creation against a repository double (steps, the
+  act, the kill after the record, a store that cannot take the act, the sweep's refusals), and against a real
+  repository (the reconciliation of a created wiki, the kill test over the new step).
+- **The write API (handoff 004 T7; RFC 004 D-13; API-03 … API-05).** `POST` under the versioned path
+  `/{slug}/-/api/v1/`: `proposals` (open one: a draft, or sent for review at once), `proposals/{id}/draft` (save),
+  `…/submission` (send a draft), `…/revisions`, `…/comments`, `…/decisions`, `…/acceptances`, `…/declines`,
+  `…/withdrawals`, and `GET proposals/{id}` (the proposal and the base to write against). Each is registered in
+  `routes.rs` with its `Action` (the one its description names, so the router and the document cannot say two things),
+  and appears in the OpenAPI document, which now has request bodies, an `If-Match` header, the scope each needs
+  (`x-inklkunn-scope`), a bearer security scheme and the problems each can answer; the drift tests hold the table and
+  the document both ways, for writes as for reads. **Each write names its base** in `If-Match`: the proposal
+  revision's `ETag` (`"<id>-r<n>"`, `-r0` for a draft; one strong tag, never `*` or a list), or for a new proposal
+  the `state_id` of the view's tip (now in the read API's `tip`). No header is `428 base-required`, a tag that is not
+  one is `invalid-parameter`, and a base that is not the current one is **`409 stale-base`** carrying the current
+  value; nothing is recorded. **Credentials**: a request that presents `Authorization: Bearer …` is the token's
+  account with the token's scope whatever cookies it carries, and a token that does not authenticate is `401
+  invalid-token` (the header says it was presented), before any wiki is looked at; a request with only a session cookie
+  must pass the pages' same-site check and send JSON, which a form cannot; none is needed for a token. The web layer
+  still never makes a principal: `Identify::principal` is the seam, now documented to resolve the bearer token
+  (the binary's implementation over `Authenticator::principal_for_token` comes with sign-in; `AnonymousOnly` stays
+  until then). **Order of the checks** (each stops the request and none depends on a fact a caller must not learn):
+  credential, wiki (absent and unreadable are the same `404`, byte for byte), an account (`401
+  authentication-required`), the action for this principal (a token's scope intersected with the account's role, AZ-3:
+  a `propose` token is `403 forbidden` at `accept` whatever its account is, before the body is read), the base, the
+  body. **Bodies** are JSON objects, bounded before a byte is parsed (a declared length over the bound is refused
+  unread; the bound is the form's texts, six bytes a byte, for a proposal and for a comment or a reason), read
+  strictly (an unknown, repeated, missing or mistyped member is `400 invalid-body` naming it, at any depth), and the
+  texts are carried as they are; the pages follow the proposal form's rules (a page over 1 MiB or a proposal over
+  2 MiB before the parser, the keys the service owns, a title that is taken, a path inside `pages/`). **Refusals** are
+  problem details with stable `type`s (eighteen new: `authentication-required`, `invalid-token`, `forbidden`,
+  `base-required`, `stale-base`, `invalid-body`, `body-too-large`, `unsupported-media-type`, `unacceptable` with a
+  `reason` word and the pages' own sentence, `not-in-this-state`, `already-decided`, `refused-limit` with the limit's
+  name, `allowed`/`current`/`asked` and `reset`, `busy`, `needs-recovery`, `overlap`, `nothing-to-change`,
+  `acceptance-in-progress`, `acceptance-failed`), each with a catalog entry and a glossary row; a quota that waiting
+  lifts carries **`Retry-After`** (a rate: the seconds to its reset; a full queue; a busy or recovering wiki), one that
+  waiting cannot lift does not. Problem bodies now write `<`, `>` and `&` as escapes like every answer of the API.
+  `Services` gains `acceptor: Option<Arc<ProposalAcceptor>>`. Tests: the document names every write (and drift both
+  ways, and a write guarded by another action is drift), every endpoint is in the route registry and the
+  enumeration harness walks the writes, the stale base (new proposal, revision, decision, draft), a token with
+  `propose` cannot accept, `Retry-After` on a refused rate, a private wiki's writes answer `404` as an absent one
+  for four kinds of caller, multibyte JSON round trips, hostile content is data, the bounds, the strict body, the
+  same-site check, and an acceptance through a real `ProposalAcceptor` over a scripted signer.
+
+- **Proposals T5 (RFC 004 D-7; handoff 004): recovery and the kill test.** *Two reads in the driver and the signer.*
+  `Storage::status` (the read driver's ninth verb: a flat cost rule, measured at 2 MiB on 3,000 pages; `status-report-v1`
+  pinned; the queue's patches with their messages and operations, the torn bytes at the end of the log, the interrupted
+  states; a report of another schema is refused, one of another shape or that disagrees with itself is `Damaged`; the
+  default method fails closed, so a storage that cannot report is never taken for one that found nothing). `doctor` and
+  the lock listing have no JSON form, and the boundary gate keeps `doctor` and `unlock` out of the read driver, so they are
+  `Witnesses` in the signer (keyless, read-only, cost rules for `doctor` as `verify`'s, `unlock` flat, `cat` as the read
+  driver's) with strict readers that refuse a shape they do not know; unreached-object warnings are a note, never damage
+  (ledger PL-12). *The signer's recovery operations* (`Recover`: `seal` alone on the one queued patch, `doctor
+  --discard-damaged-commits`, `unlock --lock <path> --yes` for the five lock kinds an acceptance leaves, and putting a
+  worktree back to the tip) are bound as an acceptance is: each is given a token naming a **recorded recovery act**, read
+  back through the ledger, and does nothing unless the act is the wiki's, still open, and names this very operation;
+  sealing is also bound to the pending acceptance or system act whose change is queued (its message, its base, and its files
+  by the digest, with the renames' order proven, because prikk lists them sorted); and none runs unless the wiki's write
+  lease is lent to the calling thread. **A lock's liveness is decided by the lease record, never by prikk's process check**
+  (ledger PL-8): the listing's `liveness` line is read, kept in the plan and used for nothing. *The procedure*
+  (`Recovery::recover`, at start and on demand, `RecoveryMode::PlanOnly | Run`): under the lease, the witnesses are read
+  (the flag, the open intents, acceptances with no end with or without an intent, system acts with no end, the record of a
+  holder that died, `status`, `doctor`, the locks, the history, the worktree, and processes of somebody else's that may be
+  working in the repository), a pure function makes the plan (`recovery::build`: steps in order, or a *stop* with a fixed
+  word), the plan is recorded as a recovery act before any step and every step is an audit record before it is taken. A
+  queued patch that is the change of the unfinished act is sealed alone and its records ended; a commit prikk calls torn
+  is discarded and its act ended as failed (`interrupted`) with its intent `discarded`; stale locks are cleared first;
+  a worktree that is not the baseline is put back; then `verify`, the reconciliation, and the flag is cleared. **A sound
+  queued patch that matches no recorded act is a stop, not a discard**: prikk 0.55.0 has no verb that removes one
+  (`--discard-damaged-commits` answers an acknowledged commit the log no longer holds soundly and refuses over anything
+  else), and sealing it would put an unaccepted change in the history. *The surfaces:* `inklkunn wiki recover <wiki>
+  [--plan]` (the plan alone changes nothing and writes nothing; a stop is exit 1) and a recovery of every wiki that needs
+  it in the start-up work, before anything is served; a wiki that stays flagged serves reads and refuses writes with the
+  word. *API and records:* store **schema 12** (`recovery_acts` and their ends, written once, with the triggers of the
+  acceptance records; a version 11 database migrates with its data) and `AcceptanceStore::{pending_acceptances,
+  acceptance_entry}`; `ProposalAcceptor::with_observer` and `AcceptStep` (the nine steps of D-4, observed and nothing
+  more; nothing in production sets one); `words::INTERRUPTED`; `WikiLeases::holder_name`. **The kill test**
+  (`inklkunn-signer/tests/acceptance_kill.rs`: the one crate besides the driver that may spawn a process, with a
+  dev-dependency on core): the acceptance runs in a child process that is `SIGKILL`ed at each of D-4's steps and at
+  each prikk call of the signer's write sequence, held by a stand-in `prikk`; after each of fourteen kills a fresh
+  recovery leaves `verify` green, exactly the expected blocks in `log`, the acceptance record and the intent
+  consistent with them, the plan recorded and ended, the reconciliation clean, and the wiki taking writes (a retry of a
+  sealed acceptance seals nothing twice). Also tested against a real repository: a planted queued patch that no intent
+  describes (a stop, the repository untouched), the same torn (discarded and reported), a planted lock whose recorded
+  pid this namespace shows as alive (cleared all the same), a lock of another kind (a stop), recovery refused without the
+  lease, a step that fails (the flag kept, the plan ended as stopped), an interrupted recovery, a doctor report of an
+  unknown shape.
+
+Handoff 004 T8 (RFC 004: proposals).
+
+- **The participation metrics are exposed.** `inklkunn wiki metrics <wiki> [--days N | --from T --to T]` prints one JSON Lines record
+  on standard output (`Metrics::json_line`: the wiki's id, the period, the proposals by state, the medians, the acceptance and
+  decline shares as `{num, den}`, the proposers and the reviewers per proposal; an absent figure is `null`), after an audit event
+  begins the act; `operator_metrics` is the command line's computation (no principal; the same figures as the service's).
+- **Threat model v0.2.** The write path (the lease, the intent journal, the overlap rule, recovery and its recorded acts: C-1g – C-1k),
+  the write API's scope ∩ role rule, the proposal quotas and the verification claim (C-3b, C-9d), RR-9 – RR-11, and the
+  verification record §7.2 (what carries each item and what does not).
+- **Two retired words.** *conflict* (コンフリクト) and *merge* (マージ) join the retired-words table; the one message that said
+  "Nothing was merged" says "Nothing was changed".
+
+## [0.1.0] — 2026-10-31
+
+**M1 — read a wiki.** The first release: a standalone server that serves a prikk repository as a wiki. Pages in the
+Portable Wiki Markdown profile with free links, backlinks, dangling links, redirects and aliases; history, differences
+and permalinks read from prikk; an honest verification badge on every page (*Verified*, *Verification failed*, or
+*Could not be checked now*, never a guess); serve-stale when prikk cannot be asked; search, recent changes and Atom
+feeds; the raw source of each page on a separate content origin; export as a Portable Wiki Bundle and as a prikk
+archive; `inklkunn wiki create`, `import-folder` and the key lifecycle on the command line; a read API with an OpenAPI
+3.1 document; English, and Japanese as a labelled preview. **Not in this release:** signing in, proposing and
+accepting changes (M2, 0.2.0). Every visitor is anonymous, and only public wikis are readable. Runtime: prikk ≥ 0.54.0,
+bubblewrap and prlimit on the host, or the container image.
+
+The entries below are in the order the work landed, M0's foundations first.
+
+M0 — foundations (RFC 001, RFC 010).
 
 - **The workspace and its gates.** Eight crates in three layers (`inklkunn-prikk`, `inklkunn-signer`,
   `inklkunn-store`; `inklkunn-markup`, `inklkunn-core`, `inklkunn-auth`; `inklkunn-web`, `inklkunn`) and four
@@ -664,278 +954,3 @@ Follow-ups from the review of 2026-10-31 (handoff 003, S2 – S4).
   `renameat2(RENAME_NOREPLACE)` instead of a `mkdir` and a `rename`: an existing destination, an empty directory included,
   is refused by the kernel in the same step, so the race with a process that makes the destination meanwhile is closed, not
   narrowed.
-- **Proposals T2 (RFC 004 D-5; handoff 004): the block-aware three-way merge.** `inklkunn_markup::blocks` segments a body
-  into its top-level blocks from the parser's own structure (paragraph, heading, list, quotation, table, code block, HTML,
-  container, footnote), each with its `^id` (a trailing one on a paragraph, a line of its own after a table, code block,
-  list or quotation) and its whitespace-trimmed text; a container is one block, and anything the parser consumes without a
-  token (a link reference definition) is a block of its own, so only whitespace lies between blocks. `inklkunn_core::merge`
-  merges three sides (base, tip, proposal) of a set of pages: pages by page id (an edit lands on the renamed file; removed
-  on one side and changed on the other, two new paths for one page, and two pages at one path are overlaps), the
-  frontmatter key by key (unreadable frontmatter as one unit), the body block by block (matched by `^id`, then by unique
-  content, then by a bounded longest-common-subsequence alignment). A change on one side is taken, the same change on both
-  sides once, anything else is an **overlap carrying both texts and where**; the code never resolves one, and two sides
-  that add different blocks at one place overlap too. `MergeOutcome` is `Clean { pages }` or `Overlaps { overlaps }`. The
-  measurement hook says, for each overlap, whether a line-level merge of the block would have been clean
-  (`LineLevel`, `MergeOutcome::line_level_clean`), made with the same engine and no dependency, and never applied: on the
-  spike's 21 overlaps it is 0. The 120 pairs of spike B are a committed fixture
-  (`crates/inklkunn-core/tests/fixtures/merge-spike-b-pairs.json`, regenerated without prikk by
-  `inklkunn-corpus merge-fixture`, which refuses to write if its replay of the generator differs from the report) and yield
-  exactly 99 clean merges and 21 overlaps, the same verdict as the spike's own model on every pair. `tools/corpus` now
-  measures with the product function (a workspace path edge to `inklkunn-core`) and reports the hook's count.
-- **Handoff 004 T1: store schema 9, the proposal records.** Explicit migration from 8, tested on a copy built from
-  `MIGRATIONS` up to 8 (and the migrated schema is compared with a fresh one): proposals, their revisions, the log of every
-  transition, comments (with their anchors: a block's `^id`, or a quote selector and an ordinal), reviewers' decisions,
-  acceptances and their results, intents and their completions, the wiki's lease holder, watches and inbox events. New ids
-  are UUID v7 (`CommentId`, `DecisionId`, `AcceptanceId`, `IntentId`, `InboxEventId`). **Revisions, transitions, comments,
-  decisions, acceptances, acceptance results, intents and intent completions are written once, in the database itself**:
-  triggers abort an `UPDATE`, a `DELETE` and an `INSERT` over a key already taken, counting every unique key of a table (a
-  replacing insert on the decisions' second key, one per reviewer per revision, removes a row without firing a delete
-  trigger). The memory store refuses the same writes through the trait; one suite runs on both. An acceptance and an intent
-  end by a second record, so nothing is updated; a retry of an accept of the same revision finds the pending or sealed
-  record and starts nothing (CON-6), and a failed one does not stand in the way. **A draft is its author's alone, in the
-  store**: every read takes the viewer, and a proposal that was never submitted (a withdrawn draft included) is absent to
-  anyone else; it is a working copy replaced by each save and turned into revision 1 by the submission, so saving does not
-  use up the revision quota.
-- **Handoff 004 T1: `inklkunn_core::proposal`.** Create (the base from `Storage::views` through the read service: the
-  view's state id and the block it belongs to), save and resume a draft, submit, revise, comment, decide (one per
-  reviewer per revision, on the latest), ask for a revision, decline, withdraw, supersede, and the reads. **The state
-  machine** (`proposal::machine`) names every transition and every other is refused (`NotInThisState`). Every act is
-  authorized first through `authorize()` (propose on each page touched, comment, review, accept); only an account acts;
-  a proposal of another wiki is as absent as one that does not exist. Refusals are typed (`ProposalError`) and carry no
-  path or text; the glossary words arrive with the pages (T3). **Quotas** (`QuotaConfig`, the RFC's defaults, halved for
-  an account in its first week): open proposals, revisions per proposal, proposals per hour per principal and per wiki,
-  accepted bytes per day, the acceptance queue; a refusal names the limit and carries the allowed value, the current
-  one, what was asked and when it resets (rolling windows). **Participation metrics** (`proposal::metrics`) are computed
-  from the records alone: proposals by state, medians to the first review and to a decision, acceptance and decline
-  rates, distinct and first-time proposers, reviewers per proposal; drafts are in no figure and a proposer's decision on
-  her own proposal is not a review. Tests: one invariant suite per record family on both stores; every sequence of up to
-  four acts (three on SQLite) held to the state machine; every quota at its boundary; drafts invisible to other accounts;
-  reopen persistence; the metrics against a hand count.
-- **Handoff 004 T6: undo as a proposal, the inbox and following, the flags (RFC 004 D-8, D-9, D-10).** *Store schema
-  10*: `proposal_rollbacks` (a proposal is a rollback from its creation, in the same step, and the block it undoes is
-  written once; the migration from 9 adds one table and changes nothing), `ProposalStore::create_rollback_proposal`,
-  `rollback_of` and `revision_flags` (the flags of the latest revision of each proposal asked for, in one step).
-  **Propose a rollback**: `ReadService::rollback_plan` computes the inverse of a change at content level (one `show`,
-  two `cat`s per page): the pages as they were before it, byte for byte, a page the change created removed, one it
-  removed written again, one it moved put back. The plan is written against the *undone block* (its state and id are the
-  proposal's base), so the merge reads it as "take back what this block did": later edits elsewhere on a page stay and a
-  later change to the very text is an overlap for a person, and the message's `Base:` trailer names the undone change.
-  A rollback of a rollback restores the change because an accepted rollback is a change like any other. What cannot be
-  undone says why (the first change, a file that is not a page, text that is not text, more than 200 pages, a change
-  that left the pages as they were). `ProposalService::propose_rollback` plans, opens and submits it (authorized before
-  the repository is asked); `create_rollback`, `rollback_of` and `RollbackSource` are the parts. **The inbox**
-  (`inklkunn_core::notify`, `inbox`): the proposal service, given a `Notifier` (`with_notifier`), tells the proposer of
-  a review, a decline, a request for a revision and a supersession, the people who held a proposal (those who may
-  accept, and those who reviewed or commented) of its withdrawal, the author of a comment replied to and the proposer
-  of a comment on their proposal, and each account a comment mentions by sign-in name (`@name`; at most ten; the writer
-  never learns whether a name exists). Telling is best effort and counted (`Notifier::failures`); an act never fails
-  for want of an inbox record. **An event is ids and a kind** and is made only for someone who may read the proposal
-  now; the inbox then reads what it is about *as the person who opens it*, so an event about a wiki that stopped being
-  theirs to read is one sentence that names nothing. `Notifier::accepted` and `Notifier::page_changed` are what the
-  acceptance calls after the seal (a watch is told of a change that is in the history and of nothing else). Channels
-  are a trait (`Channel`) with the in-app inbox as its one implementation. Watching a page or the pages under a title
-  (`Inbox::watch`, `unwatch`, `followed`) needs the right to read it and an account, and is bounded (500). **Flags**:
-  recent changes carry the accepted revision's *minor* (real now) and *machine-assisted* flags
-  (`ReadService::with_revision_flags`), filter on them (`minor`, and `automated`, which now covers what the service
-  made itself and what a machine assisted; a filter the records cannot answer is refused, never answered as if nothing
-  were flagged), and label machine-assisted content with the person who accepted it. *Web*: `/-/inbox` (an account
-  is needed and said in words; each kind of event a sentence in the reader's language, other people's text escaped;
-  mark everything read and stop following are `POST`s from this site), `POST /<slug>/-/watch/<Title>` (the generic
-  not-found page for a wiki the visitor may not read, then an account, then a page the account may read), the *minor*
-  choice and the labels on the changes page, `minor=` on the feed and the API (`minor`, `machine_assisted` in each
-  item, drawn in the OpenAPI document), `<category term="minor|automated"/>` in the feed. Forty-one catalog
-  messages in English and the Japanese preview, with their glossary rows; three existing messages say that the
-  *automated* filter covers machine-assisted changes too. Tests: the inverse on exact text (multibyte, CRLF, no final
-  newline), a creation, a removal, a move and a rollback of a rollback; every refusal; the events of every act and who
-  is not told; a wiki restricted after the event; watches fired by the acceptance's function only (against a channel
-  that remembers); the flags on both stores, in the list, the feed and the API; the migration from 9; the structure
-  rules on every new page state in both languages; the route-enumeration harness over the new routes.
-- **Handoff 004 T3: the propose form, the proposal's page and review (`inklkunn_web::proposals`).** Routes under
-  `/<slug>/-/proposals` and `/<slug>/-/discussion/<Title>`, each registered with the action its handler authorizes
-  (`propose`, `comment`, `review`, `accept`), and every one begins with the wiki's read check, so a wiki the visitor
-  may not read, a proposal of another wiki and a draft that is not the visitor's own are the one not-found page. The
-  **form** (a page, a section by its heading, a part by its position, or a new page; the page view and the page that
-  is not there link to it) holds the current text, a summary (required, at most 120 characters), sources, and *Preview*,
-  *Show changes*, *Save as draft* and *Submit*, all server round trips and none needing a script; a section or part goes
-  back into the **base text the form was opened on** (so the page may have moved since); a page keeps its own line
-  endings (a browser sends CR LF whatever the page had). **Sizes are judged before anything is parsed** (a page over
-  1 MiB, a proposal over 2 MiB, a body no form can be); the keys the service owns (`kind`, `visibility`, `system`) are
-  refused when a proposal changes them unless the principal administers the wiki; a new page's title goes through
-  `title_to_path` and a refusal names the rule, never the path; the linter's findings are suggestions on *Preview* and
-  *Show changes*. Everything wrong is said at once on the form, with the person's text still in it, and a refused
-  submission leaves no draft behind. **The proposal's page** shows its state in the glossary's seven words, who
-  proposed it, what it changes page by page and part by part (the history's line diff and word marks over
-  `inklkunn_markup::blocks`), the thread with comments anchored to parts, each decision with the revision it is bound
-  to ("on revision 1", and a note once a newer revision exists), and the actions the viewer's role and the state allow.
-  A comment's anchor (the part's `^id`, else a quote with its surroundings and position) is **re-anchored every time
-  the page is drawn** and shown as *orphaned*, with the text it was about, when nothing matches. Decline, withdraw and
-  ask for a revision are thin forms with a required reason; *Accept* is a form whose answer says it is **not available
-  yet** (`review::accept` is the one function the acceptance replaces; `AcceptOutcome` and `render_accept_outcome` hold
-  the words for every outcome of an acceptance). A page's discussion lists the proposals that change it with their
-  threads. An anonymous visitor is told in words that proposing needs an account. **Words:** a catalog entry in English
-  and Japanese (preview) and a glossary row, in the same order, for every state, outcome, named limit, refusal, label
-  and suggestion; the concept rows for proposal, held for review, accepted and declined are now in use, and draft,
-  needs a revision, withdrawn, superseded and orphaned are added. Additive changes outside the crate: `Services`
-  gains `proposals`, `accounts` and `acceptances`, `ReadService` gains `source_at` (a file at a block) and `preview`
-  (source text drawn and sanitized as the page would be), and the binary builds the service. The route table's unit
-  test and the route-enumeration harness now hold the proposals' writes to their actions; the structural harness
-  runs 49 more states, both languages.
-- **Handoff 004 T4: acceptance under the lease (RFC 004 D-4, D-6, D-14).** *Store schema 11*: the message an
-  intent means to seal (`intents.message`; the facts a seal is bound to and the reconciliation compares are read from
-  it, so a later rename of a person changes nothing), `wiki_flags` (the recovery flag: set once, the first reason
-  stays, cleared by recovery), `proposal_overlaps` (both texts of every overlap, written once), `system_acts` and
-  `system_act_ends` (the service's own changes, which have no proposal; written once), `ActStore`,
-  `AcceptanceStore::pending_acceptance` and `sealed_acceptances`; the migration from 10 adds tables and one column and
-  changes nothing. **The write lease** (`inklkunn_core::lease`, `inklkunn_signer::lease`): one writer per wiki across
-  processes (the per-wiki `flock` of the 002 corrections, held for the whole act, so the command line and a running
-  server exclude each other), a fair in-process queue of at most 64 waiting per wiki, a bounded wait after which the
-  waiter is told *busy* with how many acts are ahead and an estimate from what leases of that wiki have taken, and a
-  durable holder record written at the take and cleared at the release (a record of another holder found at the take
-  is a holder that died). The acts inside a lease on one thread (the signer's `accept`, the export, the checkpoint
-  refresh) *borrow* it (`Signer::with_leases`, `Maintenance::with_leases`, `WriteLease::scope`): `Accept` is
-  unchanged. It blocks the calling thread, as every service here does; there is no async runtime in the crate.
-  `WikiLeases::export_archive` and `refresh_checkpoint` take the lease. **Acceptance** (`ProposalAcceptor::accept`):
-  `authorize(_, accept, proposal)` first, before the lease; the lease; the guard against an unfinished earlier act;
-  the tip read again through `Storage::views`; the revision as it is when its base is the tip, else re-authored by
-  the merge against the tip (only the pages whose text differs there are written, a rename the tip can still carry
-  out stays a rename); on an overlap both texts are recorded on the proposal, which needs a revision, the proposer is
-  told and nothing in prikk changes; else the acceptance record (*pending seal*, with the digest of the files) and
-  the intent, both **before** `Accept::accept`, which reads them back through `StoreLedger` (nothing is kept in
-  memory between the records and the signer). The signer's outcomes are read as typed: *sealed* (ids recorded,
-  proposal accepted, caches forgotten, reconciliation run, lease released, then the proposer and the watchers told
-  and the title index and verification asked for through `AfterSeal`), *nothing happened* (the record says *failed*
-  with a fixed word, the intent is abandoned, the proposal stays open), *queued*, *worktree dirty* or *sealed but
-  unconfirmed without ids* (the record stays pending, the intent open, the wiki is flagged *needs recovery*, writes
-  are refused with the word, reads are served, and nothing is committed again); a seal that could not be confirmed
-  but has its block is recorded as sealed and flags the wiki for a look. A retry finds the record and answers
-  `AlreadySigned`; a retry behind the first waits and finds it. A maintainer accepts their own proposal only in a
-  wiki with fewer than three; the accepted-bytes quota and the queue bound refuse by name. `^id`s are attached to
-  commented blocks that had none in the same change (CM-5; paragraphs, tables and code blocks, each checked by
-  reading the page again). A proposal created as a rollback is signed as `Kind: rollback`. **One path**:
-  `SystemActs` (authorize as the system principal, lease, record, `Accept`, end, reconciliation) is how
-  `import-folder` and any system change are made; `run_import` takes it, and `ImportLedger` is gone (the signer's
-  guard reads the store). Tests: the lease on its own (queue order, bound, estimate, the other process, the holder
-  record, export and refresh), the acceptance against an in-memory repository and a scripted signer (every outcome,
-  the race, the retry, the quotas, the flag, ids, who is told), the sides of the merge, and eleven against a real
-  repository (`tests/acceptance.rs`) including the reconciliation finding nothing after every kind of act.
-- **Handoff 004 T4b: Accept on the web, and the creation of a wiki is a recorded act.** *The web*: `Services` gains
-  `acceptor` (`Option<Arc<dyn Acceptor>>`; `ProposalAcceptor` implements the trait; `None` is a build that does not
-  accept, and the page says so, as before) and `acts` (the recorded overlaps). The Accept form posts the revision
-  it shows; after the checks that precede an acceptance (a form from this site, an account, a proposal the visitor
-  may read, the `accept` action) the handler asks the acceptor on a blocking thread, and **every** `Accepted` and
-  `AcceptFailure` is a page in the words of RFC 004 D-12 (the match is exhaustive): *signed into the history* (also
-  for a retry that finds the record), *stopped: changes overlap*, *not allowed* (a proposal the acceptance cannot
-  find looks exactly the same), *the wiki is busy* (with the depth, and `Retry-After` from the estimate, never a
-  depth of zero), *the wiki needs recovery*, *refused: the named limit*, and for the rest a fixed word each: *not
-  signed: the history refused it*, *too large to sign now*, *this revision is being signed*, *nothing to change*,
-  *could not be done now*, *the result is not certain* (the records failed after the change may have been made).
-  A missing or unreadable revision is a refusal in words and asks nobody. Nothing of prikk's text, a path or a cause
-  is on a page; operators get it through `services.log`. A proposal that *needs a revision* shows the overlaps its
-  acceptance recorded, both texts side by side in a table (the wiki's now, the proposal's), for the revision they
-  were found for. 27 catalog messages (English, Japanese preview) with glossary rows; the structural harness
-  draws the seven new outcome pages and the overlaps, both languages. The binary passes `acceptor: None`: sign-in is
-  not served, and the server holds no write signer. **Creation**: `create_wiki` (and `create_wiki_observed`, and the
-  start-up sweep) take an `ActStore`; once the wiki's record is stored (the act's table refers to it) the first
-  change is kept as the sealed `Kind: system` act `SystemActs` writes (a new step, `CreationStep::ActRecorded`, after
-  `Stored`), so a production reconciliation no longer reports the first block as an unrecorded system change. A
-  creation killed between the record and the act is made whole by the sweep, which writes the act from the history
-  before it removes the mark (and keeps the mark when it cannot); `CreatedWiki::first_change_recorded` says whether
-  the act was kept. Tests: every outcome in both languages, the revision field, nothing run for a visitor who may
-  not accept or a form from elsewhere, the log, the overlaps; the creation against a repository double (steps, the
-  act, the kill after the record, a store that cannot take the act, the sweep's refusals), and against a real
-  repository (the reconciliation of a created wiki, the kill test over the new step).
-- **The write API (handoff 004 T7; RFC 004 D-13; API-03 … API-05).** `POST` under the versioned path
-  `/{slug}/-/api/v1/`: `proposals` (open one: a draft, or sent for review at once), `proposals/{id}/draft` (save),
-  `…/submission` (send a draft), `…/revisions`, `…/comments`, `…/decisions`, `…/acceptances`, `…/declines`,
-  `…/withdrawals`, and `GET proposals/{id}` (the proposal and the base to write against). Each is registered in
-  `routes.rs` with its `Action` (the one its description names, so the router and the document cannot say two things),
-  and appears in the OpenAPI document, which now has request bodies, an `If-Match` header, the scope each needs
-  (`x-inklkunn-scope`), a bearer security scheme and the problems each can answer; the drift tests hold the table and
-  the document both ways, for writes as for reads. **Each write names its base** in `If-Match`: the proposal
-  revision's `ETag` (`"<id>-r<n>"`, `-r0` for a draft; one strong tag, never `*` or a list), or for a new proposal
-  the `state_id` of the view's tip (now in the read API's `tip`). No header is `428 base-required`, a tag that is not
-  one is `invalid-parameter`, and a base that is not the current one is **`409 stale-base`** carrying the current
-  value; nothing is recorded. **Credentials**: a request that presents `Authorization: Bearer …` is the token's
-  account with the token's scope whatever cookies it carries, and a token that does not authenticate is `401
-  invalid-token` (the header says it was presented), before any wiki is looked at; a request with only a session cookie
-  must pass the pages' same-site check and send JSON, which a form cannot; none is needed for a token. The web layer
-  still never makes a principal: `Identify::principal` is the seam, now documented to resolve the bearer token
-  (the binary's implementation over `Authenticator::principal_for_token` comes with sign-in; `AnonymousOnly` stays
-  until then). **Order of the checks** (each stops the request and none depends on a fact a caller must not learn):
-  credential, wiki (absent and unreadable are the same `404`, byte for byte), an account (`401
-  authentication-required`), the action for this principal (a token's scope intersected with the account's role, AZ-3:
-  a `propose` token is `403 forbidden` at `accept` whatever its account is, before the body is read), the base, the
-  body. **Bodies** are JSON objects, bounded before a byte is parsed (a declared length over the bound is refused
-  unread; the bound is the form's texts, six bytes a byte, for a proposal and for a comment or a reason), read
-  strictly (an unknown, repeated, missing or mistyped member is `400 invalid-body` naming it, at any depth), and the
-  texts are carried as they are; the pages follow the proposal form's rules (a page over 1 MiB or a proposal over
-  2 MiB before the parser, the keys the service owns, a title that is taken, a path inside `pages/`). **Refusals** are
-  problem details with stable `type`s (eighteen new: `authentication-required`, `invalid-token`, `forbidden`,
-  `base-required`, `stale-base`, `invalid-body`, `body-too-large`, `unsupported-media-type`, `unacceptable` with a
-  `reason` word and the pages' own sentence, `not-in-this-state`, `already-decided`, `refused-limit` with the limit's
-  name, `allowed`/`current`/`asked` and `reset`, `busy`, `needs-recovery`, `overlap`, `nothing-to-change`,
-  `acceptance-in-progress`, `acceptance-failed`), each with a catalog entry and a glossary row; a quota that waiting
-  lifts carries **`Retry-After`** (a rate: the seconds to its reset; a full queue; a busy or recovering wiki), one that
-  waiting cannot lift does not. Problem bodies now write `<`, `>` and `&` as escapes like every answer of the API.
-  `Services` gains `acceptor: Option<Arc<ProposalAcceptor>>`. Tests: the document names every write (and drift both
-  ways, and a write guarded by another action is drift), every endpoint is in the route registry and the
-  enumeration harness walks the writes, the stale base (new proposal, revision, decision, draft), a token with
-  `propose` cannot accept, `Retry-After` on a refused rate, a private wiki's writes answer `404` as an absent one
-  for four kinds of caller, multibyte JSON round trips, hostile content is data, the bounds, the strict body, the
-  same-site check, and an acceptance through a real `ProposalAcceptor` over a scripted signer.
-
-- **Proposals T5 (RFC 004 D-7; handoff 004): recovery and the kill test.** *Two reads in the driver and the signer.*
-  `Storage::status` (the read driver's ninth verb: a flat cost rule, measured at 2 MiB on 3,000 pages; `status-report-v1`
-  pinned; the queue's patches with their messages and operations, the torn bytes at the end of the log, the interrupted
-  states; a report of another schema is refused, one of another shape or that disagrees with itself is `Damaged`; the
-  default method fails closed, so a storage that cannot report is never taken for one that found nothing). `doctor` and
-  the lock listing have no JSON form, and the boundary gate keeps `doctor` and `unlock` out of the read driver, so they are
-  `Witnesses` in the signer (keyless, read-only, cost rules for `doctor` as `verify`'s, `unlock` flat, `cat` as the read
-  driver's) with strict readers that refuse a shape they do not know; unreached-object warnings are a note, never damage
-  (ledger PL-12). *The signer's recovery operations* (`Recover`: `seal` alone on the one queued patch, `doctor
-  --discard-damaged-commits`, `unlock --lock <path> --yes` for the five lock kinds an acceptance leaves, and putting a
-  worktree back to the tip) are bound as an acceptance is: each is given a token naming a **recorded recovery act**, read
-  back through the ledger, and does nothing unless the act is the wiki's, still open, and names this very operation;
-  sealing is also bound to the pending acceptance or system act whose change is queued (its message, its base, and its files
-  by the digest, with the renames' order proven, because prikk lists them sorted); and none runs unless the wiki's write
-  lease is lent to the calling thread. **A lock's liveness is decided by the lease record, never by prikk's process check**
-  (ledger PL-8): the listing's `liveness` line is read, kept in the plan and used for nothing. *The procedure*
-  (`Recovery::recover`, at start and on demand, `RecoveryMode::PlanOnly | Run`): under the lease, the witnesses are read
-  (the flag, the open intents, acceptances with no end with or without an intent, system acts with no end, the record of a
-  holder that died, `status`, `doctor`, the locks, the history, the worktree, and processes of somebody else's that may be
-  working in the repository), a pure function makes the plan (`recovery::build`: steps in order, or a *stop* with a fixed
-  word), the plan is recorded as a recovery act before any step and every step is an audit record before it is taken. A
-  queued patch that is the change of the unfinished act is sealed alone and its records ended; a commit prikk calls torn
-  is discarded and its act ended as failed (`interrupted`) with its intent `discarded`; stale locks are cleared first;
-  a worktree that is not the baseline is put back; then `verify`, the reconciliation, and the flag is cleared. **A sound
-  queued patch that matches no recorded act is a stop, not a discard**: prikk 0.55.0 has no verb that removes one
-  (`--discard-damaged-commits` answers an acknowledged commit the log no longer holds soundly and refuses over anything
-  else), and sealing it would put an unaccepted change in the history. *The surfaces:* `inklkunn wiki recover <wiki>
-  [--plan]` (the plan alone changes nothing and writes nothing; a stop is exit 1) and a recovery of every wiki that needs
-  it in the start-up work, before anything is served; a wiki that stays flagged serves reads and refuses writes with the
-  word. *API and records:* store **schema 12** (`recovery_acts` and their ends, written once, with the triggers of the
-  acceptance records; a version 11 database migrates with its data) and `AcceptanceStore::{pending_acceptances,
-  acceptance_entry}`; `ProposalAcceptor::with_observer` and `AcceptStep` (the nine steps of D-4, observed and nothing
-  more; nothing in production sets one); `words::INTERRUPTED`; `WikiLeases::holder_name`. **The kill test**
-  (`inklkunn-signer/tests/acceptance_kill.rs`: the one crate besides the driver that may spawn a process, with a
-  dev-dependency on core): the acceptance runs in a child process that is `SIGKILL`ed at each of D-4's steps and at
-  each prikk call of the signer's write sequence, held by a stand-in `prikk`; after each of fourteen kills a fresh
-  recovery leaves `verify` green, exactly the expected blocks in `log`, the acceptance record and the intent
-  consistent with them, the plan recorded and ended, the reconciliation clean, and the wiki taking writes (a retry of a
-  sealed acceptance seals nothing twice). Also tested against a real repository: a planted queued patch that no intent
-  describes (a stop, the repository untouched), the same torn (discarded and reported), a planted lock whose recorded
-  pid this namespace shows as alive (cleared all the same), a lock of another kind (a stop), recovery refused without the
-  lease, a step that fails (the flag kept, the plan ended as stopped), an interrupted recovery, a doctor report of an
-  unknown shape.
-
-Handoff 004 T8 (RFC 004: proposals).
-
-- **The participation metrics are exposed.** `inklkunn wiki metrics <wiki> [--days N | --from T --to T]` prints one JSON Lines record
-  on standard output (`Metrics::json_line`: the wiki's id, the period, the proposals by state, the medians, the acceptance and
-  decline shares as `{num, den}`, the proposers and the reviewers per proposal; an absent figure is `null`), after an audit event
-  begins the act; `operator_metrics` is the command line's computation (no principal; the same figures as the service's).
-- **Threat model v0.2.** The write path (the lease, the intent journal, the overlap rule, recovery and its recorded acts: C-1g – C-1k),
-  the write API's scope ∩ role rule, the proposal quotas and the verification claim (C-3b, C-9d), RR-9 – RR-11, and the
-  verification record §7.2 (what carries each item and what does not).
-- **Two retired words.** *conflict* (コンフリクト) and *merge* (マージ) join the retired-words table; the one message that said
-  "Nothing was merged" says "Nothing was changed".

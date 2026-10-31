@@ -92,10 +92,12 @@ jobs:
     needs: gates
     strategy:
       matrix:
+        # Built on Ubuntu 22.04 (glibc 2.35) so the binary runs on the image's Debian 12 base (glibc 2.36) and on
+        # every distribution with glibc 2.35 or newer; 24.04's headers make the C parts (AWS-LC, SQLite) need 2.38+.
         include:
-          - os: ubuntu-24.04
+          - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-          - os: ubuntu-24.04-arm
+          - os: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     permissions:
@@ -113,6 +115,12 @@ jobs:
         env:
           INKLKUNN_COMMIT: ${{ github.sha }}
         run: cargo build --release --locked -p inklkunn
+      - name: The binary needs no glibc newer than 2.35 (the image's base has 2.36)
+        run: |
+          set -euo pipefail
+          NEED="$(objdump -T target/release/inklkunn | grep -o 'GLIBC_[0-9.]*' | cut -d_ -f2 | sort -uV | tail -1)"
+          echo "the binary needs glibc ${NEED}"
+          test "$(printf '%s\n' "${NEED}" 2.35 | sort -V | tail -1)" = 2.35 || { echo "the binary needs glibc ${NEED}, newer than 2.35" >&2; exit 1; }
       - name: Package
         env:
           TARGET: ${{ matrix.target }}
@@ -126,7 +134,7 @@ jobs:
             echo "commit: ${GITHUB_SHA}"
             echo "ref: ${GITHUB_REF_NAME}"
             echo "toolchain: ${RUST_TOOLCHAIN} ($(rustc --version))"
-            echo "requires: prikk >= ${PRIKK_VERSION}, bubblewrap, prlimit (util-linux)"
+            echo "requires: glibc >= 2.35, prikk >= ${PRIKK_VERSION}, bubblewrap, prlimit (util-linux)"
           } > "dist/${NAME}.build-info.txt"
       - name: Attest the tarball
         if: github.event_name == 'push'
@@ -263,7 +271,7 @@ jobs:
             p && /^## \[/ {exit}
             p {print}' CHANGELOG.md > release-notes.md
           test -s release-notes.md || { echo "no CHANGELOG section for ${GITHUB_REF_NAME}" >&2; exit 1; }
-          printf '\n---\n**Runtime prerequisites:** prikk >= %s, bubblewrap, prlimit (util-linux) on the host, or the container image `ghcr.io/prikk-vcs/inklkunn:%s` (amd64 and arm64).\n' "$PRIKK_VERSION" "$GITHUB_REF_NAME" >> release-notes.md
+          printf '\n---\n**Runtime prerequisites:** Linux with glibc >= 2.35, prikk >= %s, bubblewrap, prlimit (util-linux) on the host, or the container image `ghcr.io/prikk-vcs/inklkunn:%s` (amd64 and arm64).\n' "$PRIKK_VERSION" "$GITHUB_REF_NAME" >> release-notes.md
       - name: Create the GitHub release (tag push)
         if: github.event_name == 'push'
         env:
@@ -287,6 +295,11 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
           set -euo pipefail
-          for c in inklkunn-markup inklkunn-prikk inklkunn-store inklkunn-signer inklkunn-auth inklkunn-core inklkunn-web inklkunn; do
+          # crates.io is optional per release (owner, 2026-10-31): with no token the release ships without it.
+          if [ -z "${CARGO_REGISTRY_TOKEN}" ]; then
+            echo "::notice::no CARGO_REGISTRY_TOKEN secret: the crates are not published to crates.io for ${GITHUB_REF_NAME}"
+            exit 0
+          fi
+          for c in inklkunn-markup inklkunn-prikk inklkunn-fetch inklkunn-store inklkunn-signer inklkunn-auth inklkunn-core inklkunn-web inklkunn; do
             cargo publish --locked -p "$c"
           done

@@ -33,7 +33,7 @@ base64ct = { version = "1", features = ["alloc"] }
 jsonwebtoken = { version = "11", default-features = false, features = ["aws_lc_rs"] }
 
 [dev-dependencies]
-inklkunn-auth = { path = ".", version = "0.0.0", features = ["test-knobs"] }
+inklkunn-auth = { path = ".", version = "0.1.0", features = ["test-knobs"] }
 
 [lints]
 workspace = true

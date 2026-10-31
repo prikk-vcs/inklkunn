@@ -17,10 +17,10 @@ bootstrap = []
 test-knobs = []
 
 [dependencies]
-inklkunn-prikk = { path = "../inklkunn-prikk", version = "0.0.0" }
+inklkunn-prikk = { path = "../inklkunn-prikk", version = "0.1.0" }
 # The validated identifiers (`WikiId`, `AccountId`, `ProposalId`) and `DisplayName`: what the signer may
 # put in a path or a signed message is exactly what these types let through (both crates are lower-layer).
-inklkunn-store = { path = "../inklkunn-store", version = "0.0.0" }
+inklkunn-store = { path = "../inklkunn-store", version = "0.1.0" }
 argon2 = { version = "0.5", default-features = false, features = ["alloc"] }
 chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
 zeroize = "1"
@@ -34,13 +34,13 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
-inklkunn-signer = { path = ".", version = "0.0.0", features = ["bootstrap", "test-knobs"] }
+inklkunn-signer = { path = ".", version = "0.1.0", features = ["bootstrap", "test-knobs"] }
 # The fixed-ceiling knob: the verdict sweep (tests/verify_verdicts.rs) drives the read driver at chosen ceilings.
-inklkunn-prikk = { path = "../inklkunn-prikk", version = "0.0.0", features = ["test-knobs"] }
+inklkunn-prikk = { path = "../inklkunn-prikk", version = "0.1.0", features = ["test-knobs"] }
 proptest = { workspace = true }
 # The kill test runs the service's own acceptance in a child process, killed for real at each of its steps; only a
 # crate that may spawn a process can, and the service is `inklkunn-core` (tests only: a dev-dependency cycle).
-inklkunn-core = { path = "../inklkunn-core", version = "0.0.0" }
+inklkunn-core = { path = "../inklkunn-core", version = "0.1.0" }
 
 [lints]
 workspace = true
