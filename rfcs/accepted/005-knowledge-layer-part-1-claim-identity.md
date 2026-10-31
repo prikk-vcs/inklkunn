@@ -1,6 +1,8 @@
 # RFC 005 part 1 — The knowledge layer's ground: when a claim stays the same claim, how claims attach to pages, and what one change is
 
-**Status.** **Proposed** by the architect on 2026-10-31 (ROADMAP §7: "the claim-identity and patch-granularity
+**Status.** **Accepted by the owner 2026-10-31** (*"Yes. Accepted."*, after the corpus section and H-1 were revised at
+the owner's request the same day). Handoff: `../handoffs/005-knowledge-layer/claim-identity-spike-handoff-v1.md`.
+Proposed by the architect on 2026-10-31 (ROADMAP §7: "the claim-identity and patch-granularity
 investigation", due once M1 is under way; M1 shipped as 0.1.0 the same day). An **investigation** RFC: it fixes
 the questions, the working hypotheses, the prototype that tests them and the measures that decide; part 2
 (claims, evidence, views, provenance, disagreement as branches) is designed only after its results.

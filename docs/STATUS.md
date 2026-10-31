@@ -203,15 +203,15 @@
   nothing to C and a scan of every registry crate in the lock found none, so **0.1.0 is not affected**; CI, the
   supply-chain workflow and the release move to 1.99.1. The rest agrees with what inklkunn already does (wording,
   the accept's memory) or was met independently the same day (the glibc of the image).
+- **2026-10-31 — RFC 005 part 1 accepted by the owner** (*"Yes. Accepted."*), after its corpus section and H-1 were
+  revised at the owner's request (what real edit histories are good for and not; *trust never moves silently*; only
+  explicit claims have identity; facts, never meaning; no newcomer asked). The spike's handoff:
+  `rfcs/handoffs/005-knowledge-layer/claim-identity-spike-handoff-v1.md` (the corpus fetched with no editor identity
+  and no text committed, converted by wiki-commons' MediaWiki converter, replayed through the product's own block
+  functions, two independent labellers under one rule sheet, the measures M-1 … M-6 and M-2b). Part 2 after its report.
 
 ## Pending on the owner
 
-- **RFC 005 part 1 proposed** (`rfcs/proposed/005-knowledge-layer-part-1-claim-identity.md`). *Owner, 2026-10-31:*
-  both questions "almost approved", asking what the real corpus is good for and for a careful review of the identity
-  principle. **Revised the same day:** the corpus section says what real histories measure and what they cannot
-  (estimates, not predictions; no editor identity read; no text committed); H-1 gains *trust never moves silently*
-  (evidence and status bound to the wording they were judged on), *only explicit claims have identity*, *the service
-  states facts, never meaning*, and *no newcomer is asked*. **Awaiting the owner's acceptance.**
 - **Review the Japanese catalog** when the dev team files it (DR-7; the owner is the reviewer): one request listing
   every message in English and Japanese with where it appears. It waits for RFC 004's words (about 300 more messages
   now); until your sign-off Japanese stays a preview that only a reader's own choice turns on.
@@ -233,7 +233,7 @@ conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done a
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
 (2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **The dev team's order now:**
 handoff 004's corrections P1 – P12 (with 003's tidy-ups T1, T2) beside the sign-in handoff's U1 – U5; U6 (writes on)
-after P1 – P6 are approved. The 0.1.0 decision is the owner's (above). F1, F5, F6, V1, V2 are done (in T4 – T9); F2 – F4
+after P1 – P6 are approved; RFC 005's spike C beside them (it touches no product crate). F1, F5, F6, V1, V2 are done (in T4 – T9); F2 – F4
 before OpenID Connect is switched on. The architect reviews
 each request as it arrives; the next re-baseline is at prikk 0.56.0. RFC 004 (proposals) is accepted and its handoff v1 is written; it is **assignable now** (R1, the verdict acceptance
 reads under INT-6, is approved). The single-large-attachment measurement is now handoff 003's T6 (IS-12; the architect's
