@@ -721,6 +721,7 @@ const OUTCOMES: &[(&str, &str)] = &[
     ("accept-nothing-to-change", "nothing-to-change"),
     ("accept-uncertain", "uncertain"),
     ("accept-stale", "stale"),
+    ("accept-signing-not-configured", "signing-not-configured"),
 ];
 
 fn outcome(name: &str) -> AcceptOutcome {
@@ -742,6 +743,7 @@ fn outcome(name: &str) -> AcceptOutcome {
         "nothing-to-change" => AcceptOutcome::NothingToChange,
         "uncertain" => AcceptOutcome::Uncertain,
         "stale" => AcceptOutcome::Proposal(ProposalError::StaleRevision { latest: 2 }),
+        "signing-not-configured" => AcceptOutcome::SigningNotConfigured,
         _ => AcceptOutcome::Refused(QuotaRefusal {
             limit: QuotaLimit::AcceptedBytesPerDay,
             allowed: 8 * 1024 * 1024,

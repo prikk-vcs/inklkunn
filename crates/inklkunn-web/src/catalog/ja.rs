@@ -1104,6 +1104,18 @@ pub const CATALOG: &[Entry] = &[
         "problem.acceptance_failed.hint",
         "もう一度試すか、このサーバーを運用している人に知らせてください。",
     ),
+    msg(
+        "problem.signing_not_configured.title",
+        "署名が設定されていません",
+    ),
+    msg(
+        "problem.signing_not_configured.detail",
+        "このサーバーには変更を履歴へ署名する設定がないため、提案を受け入れられません。読み取りはできます。",
+    ),
+    msg(
+        "problem.signing_not_configured.hint",
+        "このサーバーを運用している人に知らせてください。このリクエストでは何も行われていません。",
+    ),
     // the inbox, following a page, and the flags of changes (handoff 004 T6)
     msg("title.inbox", "受信箱 · {product}"),
     msg("inbox.heading", "受信箱"),
@@ -1352,6 +1364,18 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "accept.not_yet_note",
         "このサーバーでは、受け入れはまだ利用できません。",
+    ),
+    msg(
+        "accept.unconfigured_heading",
+        "このサーバーでは受け入れが設定されていません",
+    ),
+    msg(
+        "accept.unconfigured",
+        "このサーバーには履歴へ署名する設定がないため、何も変更しておらず、提案はレビュー待ちのままです（このサーバーを運用している人に伝えてください）。",
+    ),
+    msg(
+        "accept.unconfigured_note",
+        "このサーバーでは、受け入れが設定されていません。",
     ),
     msg("overlap.heading", "変更が重なっている箇所"),
     msg(

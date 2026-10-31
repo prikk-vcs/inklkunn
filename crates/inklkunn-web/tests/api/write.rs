@@ -1929,3 +1929,52 @@ async fn a_write_endpoint_answers_a_method_it_does_not_take_with_a_problem_and_a
     let a = super::send(&c.w, Method::DELETE, &format!("{API}/proposals"), &[]).await;
     assert_eq!(a.status, 405);
 }
+
+#[tokio::test]
+async fn a_server_started_without_the_means_to_sign_answers_signing_not_configured_after_the_checks()
+ {
+    let mut c = cast();
+    let p = open(&c, &c.contributor, true).await;
+    let id = id_of(&p);
+    let accept = format!("{API}/proposals/{id}/acceptances");
+    c.w.services = std::sync::Arc::new(inklkunn_web::Services {
+        acceptor: Some(std::sync::Arc::new(inklkunn_web::NoSigner)),
+        ..(*c.w.services).clone()
+    });
+    // Its own problem, not `not-available` (which is a build that does not offer accepting at all).
+    let a = post(
+        &c.w,
+        &accept,
+        &[token("accept", &c.maintainer), tag_header(&p)],
+        "{}".to_owned(),
+    )
+    .await;
+    assert_eq!(a.status, 503, "{}", a.text());
+    assert_eq!(problem_type(&a), urn("signing-not-configured"));
+    assert!(
+        a.json()
+            .at("/detail")
+            .as_str()
+            .unwrap()
+            .contains("not set up to sign changes into the history"),
+        "{}",
+        a.text()
+    );
+    assert_eq!(a.header("retry-after"), None);
+    // The checks come first: a token that cannot accept hears *forbidden*, not what the server lacks.
+    let a = post(
+        &c.w,
+        &accept,
+        &[token("propose", &c.maintainer), tag_header(&p)],
+        "{}".to_owned(),
+    )
+    .await;
+    assert_eq!(a.status, 403, "{}", a.text());
+    // And the proposal is where it was.
+    let record =
+        c.w.services
+            .proposals
+            .get(&principal(&c.maintainer), &c.w.wiki, &id)
+            .unwrap();
+    assert_eq!(record.state, inklkunn_store::ProposalState::HeldForReview);
+}

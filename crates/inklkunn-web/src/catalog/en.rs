@@ -1023,6 +1023,18 @@ pub const CATALOG: &[Entry] = &[
         "problem.acceptance_failed.hint",
         "Try again, or tell the person who runs this server.",
     ),
+    msg(
+        "problem.signing_not_configured.title",
+        "Signing is not set up",
+    ),
+    msg(
+        "problem.signing_not_configured.detail",
+        "This server is not set up to sign changes into the history, so it accepts no proposals; reading works.",
+    ),
+    msg(
+        "problem.signing_not_configured.hint",
+        "Tell the person who runs this server. This request did nothing.",
+    ),
     // the inbox, following a page, and the flags of changes (handoff 004 T6)
     msg("title.inbox", "Inbox · {product}"),
     msg("inbox.heading", "Inbox"),
@@ -1268,6 +1280,18 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "accept.not_yet_note",
         "Accepting is not available yet on this server.",
+    ),
+    msg(
+        "accept.unconfigured_heading",
+        "Accepting is not set up on this server",
+    ),
+    msg(
+        "accept.unconfigured",
+        "This server is not set up to sign changes into the history, so nothing was changed and the proposal stays held for review; tell the person who runs this server.",
+    ),
+    msg(
+        "accept.unconfigured_note",
+        "Accepting is not set up on this server.",
     ),
     msg("overlap.heading", "Where the changes overlap"),
     msg(

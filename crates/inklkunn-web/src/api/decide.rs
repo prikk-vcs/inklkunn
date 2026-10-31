@@ -199,6 +199,10 @@ pub(crate) async fn accept(
             let acceptor = req.services.acceptor.as_ref().ok_or_else(|| {
                 Problem::new(Code::NotAvailable).member("feature", json!("accept"))
             })?;
+            // Served, but started without the means to sign: its own problem, so a caller can tell the two apart.
+            if !acceptor.is_configured() {
+                return Err(Problem::new(Code::SigningNotConfigured));
+            }
             let accepted = acceptor
                 .accept(&req.principal, &req.wiki, &id, revision)
                 .map_err(|failure| req.refused_acceptance(failure))?;

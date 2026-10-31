@@ -506,6 +506,9 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `problem.acceptance_failed.title` | the API's problem detail `acceptance-failed`: the title | "Acceptance failed" | "受け入れに失敗しました" |
 | `problem.acceptance_failed.detail` | the API's problem detail `acceptance-failed`: the detail | "The change was not made: {word}. The proposal stays open and the history is as it was." | "変更は行われませんでした: {word}。提案は開いたままで、履歴は変わっていません。" |
 | `problem.acceptance_failed.hint` | the API's problem detail `acceptance-failed`: the hint | "Try again, or tell the person who runs this server." | "もう一度試すか、このサーバーを運用している人に知らせてください。" |
+| `problem.signing_not_configured.title` | the API's problem detail `signing-not-configured`: the title | "Signing is not set up" | "署名が設定されていません" |
+| `problem.signing_not_configured.detail` | the API's problem detail `signing-not-configured`: the detail | "This server is not set up to sign changes into the history, so it accepts no proposals; reading works." | "このサーバーには変更を履歴へ署名する設定がないため、提案を受け入れられません。読み取りはできます。" |
+| `problem.signing_not_configured.hint` | the API's problem detail `signing-not-configured`: the hint | "Tell the person who runs this server. This request did nothing." | "このサーバーを運用している人に知らせてください。このリクエストでは何も行われていません。" |
 | `title.inbox` | the title of the inbox | "Inbox · {product}" | "受信箱 · {product}" |
 | `inbox.heading` | the heading of the inbox | "Inbox" | "受信箱" |
 | `inbox.intro` | under the heading of the inbox | "What has happened to your proposals and to the pages you follow, newest first." | "あなたの提案と、フォローしているページに起きたことを、新しい順に表示します。" |
@@ -602,6 +605,9 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `accept.not_yet` | on that page | "This server does not take proposals into the history yet." | "このサーバーは、まだ提案を履歴に取り込めません。" |
 | `accept.not_yet_kept` | on that page | "The proposal stays held for review and nothing was changed." | "提案はレビュー待ちのままで、何も変更していません。" |
 | `accept.not_yet_note` | beside the Accept button | "Accepting is not available yet on this server." | "このサーバーでは、受け入れはまだ利用できません。" |
+| `accept.unconfigured_heading` | the heading of the page that answers the Accept button when the server was started without the means to sign | "Accepting is not set up on this server" | "このサーバーでは受け入れが設定されていません" |
+| `accept.unconfigured` | on that page: the one sentence | "This server is not set up to sign changes into the history, so nothing was changed and the proposal stays held for review; tell the person who runs this server." | "このサーバーには履歴へ署名する設定がないため、何も変更しておらず、提案はレビュー待ちのままです（このサーバーを運用している人に伝えてください）。" |
+| `accept.unconfigured_note` | beside the Accept button, on such a server | "Accepting is not set up on this server." | "このサーバーでは、受け入れが設定されていません。" |
 | `overlap.heading` | the heading of the section of a proposal that needs a revision because it overlaps the wiki's current text | "Where the changes overlap" | "変更が重なっている箇所" |
 | `overlap.intro` | under that heading | "The wiki's current text and this proposal both changed the places below. Nothing was changed. Revise the proposal with both texts in front of you." | "ウィキの現在の文面とこの提案が、下の箇所をどちらも変更しています。何も統合していません。両方の文面を見ながら、提案を修正してください。" |
 | `overlap.caption` | the caption of the table of overlapping places | "Places changed both in the wiki and in this proposal" | "ウィキと提案の両方で変更された箇所" |

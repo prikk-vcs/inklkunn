@@ -85,6 +85,8 @@ pub(crate) enum Code {
     AcceptanceInProgress,
     /// The change was not made.
     AcceptanceFailed,
+    /// The server was started without the means to sign: it reads, and accepts nothing.
+    SigningNotConfigured,
 }
 
 impl Code {
@@ -125,6 +127,7 @@ impl Code {
         Code::NothingToChange,
         Code::AcceptanceInProgress,
         Code::AcceptanceFailed,
+        Code::SigningNotConfigured,
     ];
 
     /// The stable name: lower case, hyphenated.
@@ -164,6 +167,7 @@ impl Code {
             Code::NothingToChange => "nothing-to-change",
             Code::AcceptanceInProgress => "acceptance-in-progress",
             Code::AcceptanceFailed => "acceptance-failed",
+            Code::SigningNotConfigured => "signing-not-configured",
         }
     }
 
@@ -204,7 +208,9 @@ impl Code {
             Code::UnsupportedMediaType => StatusCode::UNSUPPORTED_MEDIA_TYPE,
             Code::Unacceptable => StatusCode::UNPROCESSABLE_ENTITY,
             Code::RefusedLimit => StatusCode::TOO_MANY_REQUESTS,
-            Code::Busy | Code::NeedsRecovery => StatusCode::SERVICE_UNAVAILABLE,
+            Code::Busy | Code::NeedsRecovery | Code::SigningNotConfigured => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
             Code::AcceptanceFailed => StatusCode::BAD_GATEWAY,
         }
     }
@@ -390,6 +396,11 @@ impl Code {
                 Key::ProblemAcceptanceFailedTitle,
                 Key::ProblemAcceptanceFailedDetail,
                 Key::ProblemAcceptanceFailedHint,
+            ),
+            Code::SigningNotConfigured => (
+                Key::ProblemSigningNotConfiguredTitle,
+                Key::ProblemSigningNotConfiguredDetail,
+                Key::ProblemSigningNotConfiguredHint,
             ),
         }
     }

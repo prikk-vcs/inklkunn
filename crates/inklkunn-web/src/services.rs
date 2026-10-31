@@ -107,6 +107,38 @@ pub trait Acceptor: Send + Sync {
         id: &ProposalId,
         revision: u32,
     ) -> Result<Accepted, AcceptFailure>;
+
+    /// Can this acceptor take a proposal into the history at all? `false` for [`NoSigner`]: the server was
+    /// started without the means to sign, so a handler says that, in one plain sentence, after the checks an
+    /// acceptance makes first and without asking [`Acceptor::accept`].
+    fn is_configured(&self) -> bool {
+        true
+    }
+}
+
+/// The acceptor of a server that was started **without** the means to sign (no operator secret file, or a key
+/// store that could not be opened): it serves every read and refuses every write with one plain sentence, and
+/// the operator was told why once, at start. It asks nothing of anyone, and it never asks for the secret.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoSigner;
+
+impl Acceptor for NoSigner {
+    fn accept(
+        &self,
+        _: &Principal,
+        _: &WikiRecord,
+        _: &ProposalId,
+        _: u32,
+    ) -> Result<Accepted, AcceptFailure> {
+        // The handlers do not get here (`is_configured` is `false`); if something else does, nothing happens.
+        Err(AcceptFailure::Unavailable(
+            "this server was started without the means to sign".to_owned(),
+        ))
+    }
+
+    fn is_configured(&self) -> bool {
+        false
+    }
 }
 
 impl Acceptor for ProposalAcceptor {
@@ -144,7 +176,8 @@ pub struct Services {
     pub acceptances: Arc<dyn AcceptanceStore>,
     /// The overlaps an acceptance found, kept on the proposal: shown where the proposal needs a revision (D-5).
     pub acts: Arc<dyn ActStore>,
-    /// What accepts a proposal. `None`: accepting is not served by this build, and the page says so.
+    /// What accepts a proposal. `None`: accepting is not served by this build, and the page says so. [`NoSigner`]:
+    /// it is served, but this server was started without the means to sign, and the page says that.
     pub acceptor: Option<Arc<dyn Acceptor>>,
     /// Where a cause meant for the operator goes (a page never shows it).
     pub log: Arc<dyn Fn(&str) + Send + Sync>,

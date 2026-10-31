@@ -9,8 +9,9 @@
 //! state things are in and never prikk's text, a path or a cause: operators get the detail through
 //! `services.log`.
 //!
-//! A server without an acceptor (`Services::acceptor` is `None`: the binary builds none until sign-in is
-//! served) answers [`AcceptOutcome::NotYetAvailable`], after the same checks.
+//! A server without an acceptor (`Services::acceptor` is `None`: a build that does not serve accepting) answers
+//! [`AcceptOutcome::NotYetAvailable`], after the same checks; one started without the means to sign
+//! ([`NoSigner`](crate::services::NoSigner)) answers [`AcceptOutcome::SigningNotConfigured`], in one sentence.
 
 use axum::extract::rejection::PathRejection;
 use axum::extract::{Path, State};
@@ -54,6 +55,9 @@ pub enum Unchanged {
 pub enum AcceptOutcome {
     /// Accepting is not served by this build.
     NotYetAvailable,
+    /// Accepting is served, but this server was started without the means to sign (no operator secret, or a
+    /// key store that could not be opened): reads work, every write is refused with one sentence.
+    SigningNotConfigured,
     /// *Signed into the history* (by this call, or by an earlier one: a retry finds the record).
     Signed,
     /// *Stopped: changes overlap.*
@@ -196,6 +200,11 @@ pub fn render_accept_outcome(
             StatusCode::NOT_IMPLEMENTED,
             Key::AcceptHeading,
             vec![t.get(Key::AcceptNotYet), t.get(Key::AcceptNotYetKept)],
+        ),
+        AcceptOutcome::SigningNotConfigured => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Key::AcceptUnconfiguredHeading,
+            vec![t.get(Key::AcceptUnconfigured)],
         ),
         AcceptOutcome::Signed => (
             StatusCode::OK,
@@ -369,6 +378,14 @@ pub(crate) async fn accept(
         }
         let outcome = if !ctx.may_on(Action::Accept, &id) {
             AcceptOutcome::NotAllowed
+        } else if ctx
+            .services
+            .acceptor
+            .as_ref()
+            .is_some_and(|acceptor| !acceptor.is_configured())
+        {
+            // Served, but started without the means to sign: said after the same checks, before anything is read.
+            AcceptOutcome::SigningNotConfigured
         } else if let Some(acceptor) = ctx.services.acceptor.clone() {
             let revision = match revision_of(page, &ctx, &headers, &id, form) {
                 Ok(revision) => revision,

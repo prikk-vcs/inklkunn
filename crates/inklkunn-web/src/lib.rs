@@ -53,7 +53,10 @@ mod wiki;
 /// The assembled application: both origins behind one listener (see [`routes::site`]).
 pub type Site = axum::Router;
 
+/// The request headers [`Identify`] reads: re-exported so that the binary, which implements it, needs no web
+/// framework of its own.
+pub use axum::http::HeaderMap;
 pub use config::{ConfigRefusal, Origin, OriginError, Scheme, WebConfig};
 pub use csrf::{FIELD as CSRF_FIELD, HEADER as CSRF_HEADER};
 pub use identity::AuthIdentity;
-pub use services::{Acceptor, AnonymousOnly, Identify, Services, SessionView, WriteIdentity};
+pub use services::{Acceptor, AnonymousOnly, Identify, NoSigner, Services, SessionView, WriteIdentity};

@@ -724,3 +724,62 @@ async fn a_post_without_an_acceptor_still_checks_first_and_says_it_is_not_availa
     let a = post_form(&c.w, &format!("{p}/accept"), Some(&c.contributor), &[]).await;
     assert_eq!(a.status, StatusCode::FORBIDDEN);
 }
+
+/// The wiki served by a server that was started without the means to sign.
+fn without_a_signer(c: &mut Cast) {
+    c.w.services = Arc::new(Services {
+        acceptor: Some(Arc::new(inklkunn_web::NoSigner)),
+        ..(*c.w.services).clone()
+    });
+}
+
+#[tokio::test]
+async fn a_server_started_without_the_means_to_sign_reads_and_refuses_an_accept_with_one_sentence()
+{
+    let mut c = cast();
+    let p = propose(&c, &c.contributor, "Improve").await;
+    without_a_signer(&mut c);
+    // The page is served, and the button says what is the matter beside it (not "not yet").
+    let page = read(&c, &p, Some(&c.maintainer)).await.body();
+    assert!(
+        page.contains("Accepting is not set up on this server."),
+        "{page}"
+    );
+    assert!(!page.contains("not available yet"), "{page}");
+    assert!(page.contains(ACCEPT_FORM_REVISION), "{page}");
+    // The accept is refused after the checks, in one sentence, in each language.
+    let a = accept(&c, &p, Some(&c.maintainer), SAME_SITE, "revision=1").await;
+    assert_eq!(a.status, StatusCode::SERVICE_UNAVAILABLE, "{}", a.body());
+    let body = a.body();
+    assert!(
+        body.contains("<h1>Accepting is not set up on this server</h1>"),
+        "{body}"
+    );
+    assert!(
+        body.contains("This server is not set up to sign changes into the history, so nothing was changed and the proposal stays held for review; tell the person who runs this server."),
+        "{body}"
+    );
+    assert!(!body.contains("not available yet"), "{body}");
+    // A retry does not help, so no `Retry-After` pretends it might.
+    assert_eq!(a.header("retry-after"), None);
+    // The form does not even have to be complete: the same answer, nothing is read from it.
+    let empty = accept(&c, &p, Some(&c.maintainer), SAME_SITE, "").await;
+    assert_eq!(empty.status, StatusCode::SERVICE_UNAVAILABLE);
+    let ja = accept(&c, &p, Some(&c.maintainer), JAPANESE, "revision=1").await;
+    assert_eq!(ja.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(
+        ja.body()
+            .contains("このサーバーでは受け入れが設定されていません"),
+        "{}",
+        ja.body()
+    );
+    assert!(ja.body().contains("履歴へ署名する設定がないため"));
+    // The checks that come first still come first: a visitor who may not accept is told *not allowed*.
+    for who in [&c.contributor, &c.observer] {
+        let a = accept(&c, &p, Some(who), SAME_SITE, "revision=1").await;
+        assert_eq!(a.status, StatusCode::FORBIDDEN);
+    }
+    // And the proposal is where it was.
+    let page = read(&c, &p, Some(&c.maintainer)).await.body();
+    assert!(page.contains("<strong>Held for review</strong>"), "{page}");
+}

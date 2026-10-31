@@ -575,11 +575,11 @@ pub(crate) fn draw(
         revision_name: fields::REVISION,
         revision: latest.unwrap_or(1),
         button: t.get(Key::ActionAccept),
-        note: ctx
-            .services
-            .acceptor
-            .is_none()
-            .then(|| t.get(Key::AcceptNotYetNote)),
+        note: match ctx.services.acceptor.as_deref() {
+            None => Some(t.get(Key::AcceptNotYetNote)),
+            Some(acceptor) if !acceptor.is_configured() => Some(t.get(Key::AcceptUnconfiguredNote)),
+            Some(_) => None,
+        },
     });
     let overlaps = super::overlaps::view(ctx, t, record, latest);
 

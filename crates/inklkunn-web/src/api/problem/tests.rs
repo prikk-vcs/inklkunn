@@ -113,7 +113,8 @@ fn the_registry_is_complete() {
         | Code::Overlap
         | Code::NothingToChange
         | Code::AcceptanceInProgress
-        | Code::AcceptanceFailed => 1,
+        | Code::AcceptanceFailed
+        | Code::SigningNotConfigured => 1,
     };
     assert_eq!(Code::ALL.iter().map(|c| named(*c)).sum::<usize>(), 34);
 }

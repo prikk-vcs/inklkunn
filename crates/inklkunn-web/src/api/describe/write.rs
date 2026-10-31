@@ -187,6 +187,7 @@ pub(crate) const ACCEPT: Doc = Doc {
         Code::AcceptanceInProgress,
         Code::AcceptanceFailed,
         Code::NotAvailable,
+        Code::SigningNotConfigured,
     ],
 };
 
