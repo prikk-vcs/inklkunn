@@ -32,7 +32,7 @@ use crate::record::{
 use crate::{Result, StoreError, WikiStore};
 
 /// The schema version this build writes and reads: the last of [`MIGRATIONS`].
-pub const SCHEMA_VERSION: i64 = 11;
+pub const SCHEMA_VERSION: i64 = 12;
 
 /// Version 1: M0's schema, the wiki records.
 const V1: &str = "
@@ -564,6 +564,40 @@ WHEN EXISTS (SELECT 1 FROM system_act_ends WHERE act_id = NEW.act_id)
 BEGIN SELECT RAISE(ABORT, 'system act ends are append-only'); END;
 ";
 
+/// Version 12 (RFC 004 D-7; handoff 004 T5): the recovery acts. Recovery is recorded like an acceptance: the
+/// plan it made is written before the signer is asked to do any of it, and how it ended is a second record,
+/// written once. Both tables carry the write-once triggers of the acceptance records. Nothing else changes:
+/// version 11's tables are kept as they are.
+const V12: &str = "
+CREATE TABLE IF NOT EXISTS recovery_acts (
+    id         TEXT PRIMARY KEY,
+    seq        INTEGER NOT NULL,
+    wiki_id    TEXT NOT NULL REFERENCES wikis(id),
+    plan       TEXT NOT NULL CHECK (length(CAST(plan AS BLOB)) <= 262144),
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS recovery_acts_wiki ON recovery_acts(wiki_id, seq);
+CREATE TRIGGER IF NOT EXISTS recovery_acts_no_update BEFORE UPDATE ON recovery_acts
+BEGIN SELECT RAISE(ABORT, 'recovery acts are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS recovery_acts_no_delete BEFORE DELETE ON recovery_acts
+BEGIN SELECT RAISE(ABORT, 'recovery acts are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS recovery_acts_no_replace BEFORE INSERT ON recovery_acts
+WHEN EXISTS (SELECT 1 FROM recovery_acts WHERE id = NEW.id)
+BEGIN SELECT RAISE(ABORT, 'recovery acts are append-only'); END;
+CREATE TABLE IF NOT EXISTS recovery_act_ends (
+    act_id  TEXT PRIMARY KEY REFERENCES recovery_acts(id),
+    ending  TEXT NOT NULL CHECK (ending IN ('recovered', 'stopped')),
+    at      INTEGER NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS recovery_act_ends_no_update BEFORE UPDATE ON recovery_act_ends
+BEGIN SELECT RAISE(ABORT, 'recovery act ends are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS recovery_act_ends_no_delete BEFORE DELETE ON recovery_act_ends
+BEGIN SELECT RAISE(ABORT, 'recovery act ends are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS recovery_act_ends_no_replace BEFORE INSERT ON recovery_act_ends
+WHEN EXISTS (SELECT 1 FROM recovery_act_ends WHERE act_id = NEW.act_id)
+BEGIN SELECT RAISE(ABORT, 'recovery act ends are append-only'); END;
+";
+
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and
 /// [`SCHEMA_VERSION`] moves with it (a test holds the two together).
 pub const MIGRATIONS: &[(i64, &str)] = &[
@@ -578,6 +612,7 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (9, V9),
     (10, V10),
     (11, V11),
+    (12, V12),
 ];
 
 /// The SQLite-backed store.

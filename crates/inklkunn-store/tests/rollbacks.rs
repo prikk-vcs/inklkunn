@@ -310,7 +310,7 @@ fn a_version_9_database_is_migrated_to_the_current_schema_keeping_its_proposals_
     let old = {
         let store = SqliteStore::open(&db).expect("a version 9 database opens");
         assert_eq!(version(), SCHEMA_VERSION.to_string());
-        assert_eq!(SCHEMA_VERSION, 11);
+        assert_eq!(SCHEMA_VERSION, 12);
         // A proposal of version 9 is an ordinary one and is kept as it was; the new table works beside it.
         let old = submit(&store, &open_draft(&store, &w, &a, 5), 6);
         assert_eq!(store.rollback_of(&old.id, None).unwrap(), None);
@@ -322,7 +322,7 @@ fn a_version_9_database_is_migrated_to_the_current_schema_keeping_its_proposals_
         old
     };
     let store = SqliteStore::open(&db).expect("reopen");
-    assert_eq!(version(), "11");
+    assert_eq!(version(), SCHEMA_VERSION.to_string());
     assert_eq!(
         store.proposal(&old.id, None).unwrap().map(|p| p.state),
         Some(ProposalState::HeldForReview)

@@ -211,6 +211,12 @@ uuid_id! {
 }
 
 uuid_id! {
+    /// The opaque id of a recovery act (RFC 004 D-7, handoff 004 T5): the plan recovery made and recorded before
+    /// it asked the signer to do any of it, which the signer's recovery operations are bound to.
+    RecoveryActId
+}
+
+uuid_id! {
     /// The opaque id of an inbox event (RFC 004 D-9).
     InboxEventId
 }

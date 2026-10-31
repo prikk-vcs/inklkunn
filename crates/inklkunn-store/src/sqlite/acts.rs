@@ -1,5 +1,6 @@
-//! The SQLite recovery flag, overlaps and system acts (schema version 10). The overlaps, the system acts and
-//! their ends carry the write-once triggers of [`V10`](super::V10), as the acceptance records do.
+//! The SQLite recovery flag, overlaps, system acts and recovery acts (schema versions 11 and 12). The overlaps, the
+//! system acts, the recovery acts and their ends carry the write-once triggers of [`V11`](super::V11) and
+//! [`V12`](super::V12), as the acceptance records do.
 
 use rusqlite::{OptionalExtension, Row, TransactionBehavior, params};
 
@@ -7,10 +8,11 @@ use super::proposal::{count, from_json, invalid, probe, to_json, write_refusal};
 use super::{SqliteStore, backend};
 use crate::acceptance::AcceptanceOutcome;
 use crate::acts::{
-    ActStore, OverlapRecord, OverlapText, RecoveryFlag, RecoveryReason, SystemActEnd,
-    SystemActEntry, SystemActKind, SystemActRecord,
+    ActStore, MAX_RECOVERY_PLAN_BYTES, OverlapRecord, OverlapText, RecoveryActEnd,
+    RecoveryActEntry, RecoveryActRecord, RecoveryEnding, RecoveryFlag, RecoveryReason,
+    SystemActEnd, SystemActEntry, SystemActKind, SystemActRecord,
 };
-use crate::record::{ProposalId, SystemActId, WikiId};
+use crate::record::{ProposalId, RecoveryActId, SystemActId, WikiId};
 use crate::{Result, StoreError};
 
 fn row_to_flag(row: &Row<'_>) -> rusqlite::Result<RecoveryFlag> {
@@ -63,6 +65,32 @@ fn row_to_act(row: &Row<'_>) -> rusqlite::Result<SystemActEntry> {
             digest: row.get(7)?,
             bytes: count(bytes),
             created_at: row.get(9)?,
+        },
+        end,
+    })
+}
+
+const RECOVERY_COLUMNS: &str = "a.id, a.wiki_id, a.plan, a.created_at, e.ending, e.at";
+
+fn row_to_recovery(row: &Row<'_>) -> rusqlite::Result<RecoveryActEntry> {
+    let id: String = row.get(0)?;
+    let wiki: String = row.get(1)?;
+    let ending: Option<String> = row.get(4)?;
+    let act = RecoveryActId::parse(&id).ok_or_else(|| invalid("id"))?;
+    let end = match ending {
+        None => None,
+        Some(e) => Some(RecoveryActEnd {
+            act: act.clone(),
+            ending: RecoveryEnding::parse(&e).ok_or_else(|| invalid("ending"))?,
+            at: row.get(5)?,
+        }),
+    };
+    Ok(RecoveryActEntry {
+        act: RecoveryActRecord {
+            id: act,
+            wiki: WikiId::parse(&wiki).ok_or_else(|| invalid("wiki_id"))?,
+            plan: row.get(2)?,
+            created_at: row.get(3)?,
         },
         end,
     })
@@ -263,6 +291,90 @@ impl ActStore for SqliteStore {
                 .map_err(backend)?;
             rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|_| {
                 StoreError::Backend("a stored system act could not be read".to_owned())
+            })
+        })
+    }
+
+    fn begin_recovery_act(&self, act: &RecoveryActRecord) -> Result<()> {
+        if act.plan.len() > MAX_RECOVERY_PLAN_BYTES {
+            return Err(StoreError::Backend(format!(
+                "a recovery plan is longer than {MAX_RECOVERY_PLAN_BYTES} bytes"
+            )));
+        }
+        self.with(|conn| {
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(backend)?;
+            if !probe(
+                &tx,
+                "SELECT 1 FROM wikis WHERE id = ?1",
+                &[act.wiki.as_str()],
+            )? {
+                return Err(StoreError::NotFound);
+            }
+            tx.execute(
+                "INSERT INTO recovery_acts (id, seq, wiki_id, plan, created_at) VALUES (?1, \
+                 (SELECT COALESCE(MAX(seq), 0) + 1 FROM recovery_acts), ?2, ?3, ?4)",
+                params![act.id.as_str(), act.wiki.as_str(), act.plan, act.created_at],
+            )
+            .map_err(write_refusal)?;
+            tx.commit().map_err(backend)
+        })
+    }
+
+    fn finish_recovery_act(&self, end: &RecoveryActEnd) -> Result<()> {
+        self.with(|conn| {
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(backend)?;
+            if !probe(
+                &tx,
+                "SELECT 1 FROM recovery_acts WHERE id = ?1",
+                &[end.act.as_str()],
+            )? {
+                return Err(StoreError::NotFound);
+            }
+            tx.execute(
+                "INSERT INTO recovery_act_ends (act_id, ending, at) VALUES (?1, ?2, ?3)",
+                params![end.act.as_str(), end.ending.as_str(), end.at],
+            )
+            .map_err(write_refusal)?;
+            tx.commit().map_err(backend)
+        })
+    }
+
+    fn open_recovery_act(&self, id: &RecoveryActId) -> Result<Option<RecoveryActRecord>> {
+        self.with(|conn| {
+            let found = conn
+                .query_row(
+                    &format!(
+                        "SELECT {RECOVERY_COLUMNS} FROM recovery_acts a \
+                         LEFT JOIN recovery_act_ends e ON e.act_id = a.id \
+                         WHERE a.id = ?1 AND e.act_id IS NULL"
+                    ),
+                    params![id.as_str()],
+                    row_to_recovery,
+                )
+                .optional()
+                .map_err(backend)?;
+            Ok(found.map(|e| e.act))
+        })
+    }
+
+    fn recovery_acts(&self, wiki: &WikiId) -> Result<Vec<RecoveryActEntry>> {
+        self.with(|conn| {
+            let mut stmt = conn
+                .prepare(&format!(
+                    "SELECT {RECOVERY_COLUMNS} FROM recovery_acts a \
+                     LEFT JOIN recovery_act_ends e ON e.act_id = a.id \
+                     WHERE a.wiki_id = ?1 ORDER BY a.seq"
+                ))
+                .map_err(backend)?;
+            let rows = stmt
+                .query_map(params![wiki.as_str()], row_to_recovery)
+                .map_err(backend)?;
+            rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|_| {
+                StoreError::Backend("a stored recovery act could not be read".to_owned())
             })
         })
     }

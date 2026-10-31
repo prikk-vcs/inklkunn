@@ -3,9 +3,10 @@
 use std::sync::{MutexGuard, PoisonError};
 
 use crate::acts::{
-    ActStore, OverlapRecord, RecoveryFlag, SystemActEnd, SystemActEntry, SystemActRecord,
+    ActStore, MAX_RECOVERY_PLAN_BYTES, OverlapRecord, RecoveryActEnd, RecoveryActEntry,
+    RecoveryActRecord, RecoveryFlag, SystemActEnd, SystemActEntry, SystemActRecord,
 };
-use crate::record::{ProposalId, SystemActId, WikiId};
+use crate::record::{ProposalId, RecoveryActId, SystemActId, WikiId};
 use crate::{Result, StoreError};
 
 use super::MemoryStore;
@@ -17,6 +18,8 @@ pub(super) struct Acts {
     overlaps: Vec<OverlapRecord>,
     acts: Vec<SystemActRecord>,
     ends: Vec<SystemActEnd>,
+    recoveries: Vec<RecoveryActRecord>,
+    recovery_ends: Vec<RecoveryActEnd>,
 }
 
 impl MemoryStore {
@@ -114,6 +117,55 @@ impl ActStore for MemoryStore {
             .map(|a| SystemActEntry {
                 act: a.clone(),
                 end: d.ends.iter().find(|e| e.act == a.id).cloned(),
+            })
+            .collect())
+    }
+
+    fn begin_recovery_act(&self, act: &RecoveryActRecord) -> Result<()> {
+        if act.plan.len() > MAX_RECOVERY_PLAN_BYTES {
+            return Err(StoreError::Backend(format!(
+                "a recovery plan is longer than {MAX_RECOVERY_PLAN_BYTES} bytes"
+            )));
+        }
+        if !self.wiki_exists(&act.wiki) {
+            return Err(StoreError::NotFound);
+        }
+        let mut d = self.acts_lock();
+        if d.recoveries.iter().any(|a| a.id == act.id) {
+            return Err(StoreError::AlreadyRecorded);
+        }
+        d.recoveries.push(act.clone());
+        Ok(())
+    }
+
+    fn finish_recovery_act(&self, end: &RecoveryActEnd) -> Result<()> {
+        let mut d = self.acts_lock();
+        if !d.recoveries.iter().any(|a| a.id == end.act) {
+            return Err(StoreError::NotFound);
+        }
+        if d.recovery_ends.iter().any(|e| e.act == end.act) {
+            return Err(StoreError::AlreadyRecorded);
+        }
+        d.recovery_ends.push(end.clone());
+        Ok(())
+    }
+
+    fn open_recovery_act(&self, id: &RecoveryActId) -> Result<Option<RecoveryActRecord>> {
+        let d = self.acts_lock();
+        if d.recovery_ends.iter().any(|e| e.act == *id) {
+            return Ok(None);
+        }
+        Ok(d.recoveries.iter().find(|a| a.id == *id).cloned())
+    }
+
+    fn recovery_acts(&self, wiki: &WikiId) -> Result<Vec<RecoveryActEntry>> {
+        let d = self.acts_lock();
+        Ok(d.recoveries
+            .iter()
+            .filter(|a| a.wiki == *wiki)
+            .map(|a| RecoveryActEntry {
+                act: a.clone(),
+                end: d.recovery_ends.iter().find(|e| e.act == a.id).cloned(),
             })
             .collect())
     }

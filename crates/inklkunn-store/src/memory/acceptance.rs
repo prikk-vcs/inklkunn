@@ -120,6 +120,15 @@ impl AcceptanceStore for MemoryStore {
         Ok(Some((a.clone(), i.clone())))
     }
 
+    fn pending_acceptances(&self, wiki: &WikiId) -> Result<Vec<AcceptanceRecord>> {
+        let d = self.acceptances_lock();
+        Ok(d.acceptances
+            .iter()
+            .filter(|a| a.wiki == *wiki && !d.results.iter().any(|r| r.acceptance == a.id))
+            .cloned()
+            .collect())
+    }
+
     fn sealed_acceptances(&self, wiki: &WikiId) -> Result<Vec<SealedAcceptance>> {
         let d = self.acceptances_lock();
         Ok(d.acceptances
