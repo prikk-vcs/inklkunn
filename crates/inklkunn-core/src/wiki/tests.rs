@@ -432,11 +432,10 @@ fn a_store_that_refuses_the_record_and_act_together_leaves_neither_and_nothing_o
         raced,
         Err(CreateWikiError::Store(StoreError::SlugTaken(_)))
     ));
-    let wikis = rig.store.list().unwrap();
-    assert_eq!(wikis.len(), 1, "only the one that won the slug");
-    assert_eq!(wikis[0].display_name.as_str(), "First");
+    let [winner] = rig.store.list().unwrap().try_into().unwrap();
+    assert_eq!(winner.display_name.as_str(), "First");
     assert!(
-        rig.store.system_acts(&wikis[0].id).unwrap().is_empty(),
+        rig.store.system_acts(&winner.id).unwrap().is_empty(),
         "the loser's act was not stored"
     );
     assert!(rig.layout.creation_marks().unwrap().is_empty());

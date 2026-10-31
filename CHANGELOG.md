@@ -323,6 +323,49 @@ Knowledge layer K-T1 – K-T4 (RFC 005 part 2, D-1 … D-6, on part 1's decision
   from 12, dropped and rebuilt with the rest of the derived store, a count that says an index is whole), bounded by the walk's
   entry bound and the file size, and asked for by `ReadService::knowledge_index`. A tip whose knowledge directory is over the
   bound still serves its pages.
+Corrections from the review of 2026-10-31 (handoff 004, P4, P5, P8, P9, P11, P12; handoff 003 T1, T2; spike K1).
+
+- **P4 — every path is checked in the proposal service.** Every file path and both ends of every rename must be a `.md`
+  file inside `pages/` (`Invalid::PathOutsidePages`); a path that is not in the repository at the proposal's base is a new
+  page and must be exactly what its title gives, `title_to_path(path_to_title(path))` (`PathNotCanonical`); a new path may
+  not collide with a page that stays, or with another new path, by `collision_key`, and a rename may not land on a page that
+  stays (`PathCollides`). The rules hold for a draft, a submission, a revision and a rollback plan alike, and the base is read
+  through `BaseSource::page_paths` (one `tree`). The form and the API keep their checks as the first line; the API's reasons
+  are `path-outside-pages`, `path-not-canonical`, `path-collides`, and the catalog gains `invalid.path_collides`.
+- **P5 — the owned-keys rule lives in the service.** `kind`, `visibility` and `system` are checked in `ProposalService`
+  (`proposal::files`) on every edit, removal, rename and rollback plan: removing or renaming a page that carries one counts as
+  changing it (`ProposalError::OwnedKeys`, API reason `front-owned`), and information at the top of a page that cannot be read
+  is refused (`Invalid::FrontUnreadable`). Owned keys stay administrators' alone, **except `kind: redirect`** (ruling D8): a
+  page may become a redirect, or stop being one, for anyone who may propose. The form and the API use the service's rule
+  (`changed_owned_keys`, `front_keys`) for their first-line check, so there is one rule.
+- **P8 — the creation act and the wiki record are one transaction.** `ActStore::insert_wiki_with_creation_act` stores the
+  wiki's record and its sealed creation act together, on both stores (one SQLite transaction); a kill leaves both or neither.
+  `CreationStep::ActRecorded` and `CreatedWiki::first_change_recorded` retire (the creation is complete at `Stored`), and the
+  sweep's repair of a missing act stays as the second line, for a wiki an earlier build stored in two steps.
+- **P8 (D9) — a proposer's own approve or request for changes is refused by name.** `ProposalError::OwnProposal`, the API's
+  `own-proposal` problem type (403), and the page's words (`refused.own_proposal`; `problem.own_proposal.*`); a comment on
+  one's own proposal stays.
+- **P8 (D3) — the operator's way out of a stop on a queued patch that matches no intent** is `docs/RECOVERY.md`: how to look
+  (read-only commands), what to keep, why recovery will not seal or discard it, when prikk 0.57.0 lets the operator discard it
+  (PK-43), a new wiki from an export if writes cannot wait, and the actions that must not be taken.
+- **P9 — maintenance goes through the wiki leases.** The command line's checkpoint refresh and archive export take the wiki's
+  lease (the holder record, the queue) through `WikiLeases::refresh_checkpoint` and `export_archive`, and wait their turn behind
+  an acceptance; the start-up refresh leaves a wiki alone that still needs recovery and says so.
+- **P11 — abuse bounds.** A per-principal comment quota (`comments_per_hour_per_principal`, 60, half for a new account;
+  limit `comments-per-hour-per-principal`); at most 10 mention events (`MAX_MENTION_EVENTS_PER_HOUR`) one actor may send one
+  recipient in an hour, the rest dropped and counted (`Notifier::suppressed`); the per-wiki hourly proposals quota counts
+  proposals **sent for review** (checked at the submit, not when a draft is opened), is not bound by and does not count
+  reviewers and above, and its refusal shows the limit and not the count. The write forms take the raw body (`urlencoded::Raw`)
+  and parse it after the checks (the site, the wiki, the account), no longer through axum's `Form` extractor; a parity test holds
+  the parser to that extractor.
+- **P12 — `PRAGMA synchronous = FULL`** is set explicitly on every SQLite connection the store opens, with a test.
+- **Handoff 003 T1 — one RFC 3339 function.** The web crate's `time::rfc3339` is `inklkunn_store::record::rfc3339`, and the
+  binary's `keys.rs` calls it; their tests stay.
+- **Handoff 003 T2 — an export refused by a file system that cannot move without replacing says so.** `renameat2` answering
+  `EINVAL` or `ENOTSUP` now reads "this file system cannot place the bundle without the risk of replacing an existing one".
+- **Spike K1 — `align_blocks` is tool-only.** `inklkunn_core::align_blocks` is behind the non-default `measurement-alignment`
+  feature, which only `tools/corpus` enables; the boundary gate lists it as a tool-only feature and refuses it in a product
+  crate's dependencies.
 
 ## [0.1.0] — 2026-10-31
 
