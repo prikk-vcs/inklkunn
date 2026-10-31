@@ -3,7 +3,7 @@
 //!
 //! What is judged, for the knowledge files the change writes:
 //!
-//! - the schema and the ids ([`read_file`](super::read_file): the path, the size, the YAML subset, the closed
+//! - the schema and the ids ([`read_file`]: the path, the size, the YAML subset, the closed
 //!   words, no number anywhere);
 //! - every source and claim a file names is present, and readable, in the same view (the tip with the change on
 //!   it);
@@ -34,7 +34,7 @@ use inklkunn_store::WikiRecord;
 use super::tree::{TreeError, read_tree};
 use super::{
     AnchorState, Expression, Fault, File, KNOWLEDGE_DIR, Rule, anchor_state, claim_path, family_of,
-    is_knowledge_path, read_file, source_path,
+    is_keep, is_knowledge_path, read_file, source_path,
 };
 use crate::import::shown;
 use crate::read::{ReadError, ReadService, entries_from_tree};
@@ -381,10 +381,12 @@ pub fn check_change(
     renames: &[(PathBuf, PathBuf)],
 ) -> Result<Vec<Refusal>, CheckError> {
     let path_text = |p: &Path| p.to_string_lossy().into_owned();
-    let touches = files.iter().any(|f| is_knowledge_path(&path_text(&f.path)))
+    // A keep-file is no knowledge file: a new wiki's `knowledge/` holds nothing else.
+    let mine = |p: &str| is_knowledge_path(p) && !is_keep(p);
+    let touches = files.iter().any(|f| mine(&path_text(&f.path)))
         || renames
             .iter()
-            .any(|(a, b)| is_knowledge_path(&path_text(a)) || is_knowledge_path(&path_text(b)));
+            .any(|(a, b)| mine(&path_text(a)) || mine(&path_text(b)));
     if !touches {
         let listing = storage
             .tree(
@@ -393,7 +395,11 @@ pub fn check_change(
                 Some(KNOWLEDGE_DIR),
             )
             .map_err(CheckError::Storage)?;
-        if !listing.entries.iter().any(|e| e.kind == "file") {
+        if !listing
+            .entries
+            .iter()
+            .any(|e| e.kind == "file" && !is_keep(&e.path))
+        {
             return Ok(Vec::new());
         }
     }
@@ -428,6 +434,7 @@ fn judge(
     for (from, to) in renames {
         let (from, to) = (path_text(from), path_text(to));
         if is_knowledge_path(&from)
+            && !is_keep(&from)
             && let Some(bytes) = knowledge.remove(&from)
         {
             touched.removed.insert(from.clone());
@@ -439,7 +446,7 @@ fn judge(
     }
     for f in files {
         let path = path_text(&f.path);
-        if !is_knowledge_path(&path) {
+        if !is_knowledge_path(&path) || is_keep(&path) {
             continue;
         }
         match &f.content {

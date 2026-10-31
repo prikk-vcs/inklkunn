@@ -25,6 +25,12 @@ pub enum Family {
     Source,
 }
 
+/// Is `path` a keep-file ([`crate::bundle::KEEP`])? The one file a new wiki's `knowledge/` holds: it makes the empty
+/// directory exist and is no knowledge file, so nothing reads it, judges it or lists it.
+pub fn is_keep(path: &str) -> bool {
+    path.rsplit('/').next() == Some(crate::bundle::KEEP)
+}
+
 /// Is `path` under the knowledge directory?
 pub fn is_knowledge_path(path: &str) -> bool {
     path.strip_prefix(KNOWLEDGE_DIR)

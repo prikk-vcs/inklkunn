@@ -39,7 +39,7 @@ pub use model::{
 };
 pub use path::{
     CLAIMS_DIR, Family, File, KNOWLEDGE_DIR, MAX_FILE_BYTES, SOURCES_DIR, claim_path, family_of,
-    is_knowledge_path, read_file, source_path,
+    is_keep, is_knowledge_path, read_file, source_path,
 };
 pub use tree::{MAX_TREE_BYTES, TreeError, TreeFile, list_tree, read_head, read_tree};
 pub use yaml::{MAX_EXPRESSIONS, MAX_LINKS, MAX_TEXT_CHARS};

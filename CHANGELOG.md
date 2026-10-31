@@ -290,6 +290,40 @@ Spike C, the measurement tool (RFC 005 part 1; no product crate changes).
   per edited block (metrics, never text), `pool` draws the seeded, language-balanced, per-article-equal items the two labellers see,
   and `measure` computes M-1 … M-6 (and M-2b, Cohen's kappa) from their labels. `inklkunn-markup` is a workspace edge of the tool.
 
+Knowledge layer K-T1 – K-T4 (RFC 005 part 2, D-1 … D-6, on part 1's decisions D-1 … D-4; `inklkunn-core::knowledge`; no new crate, no new dependency).
+
+- **The two files and their reader (K-T1).** `knowledge/claims/<id>.yaml` and `knowledge/sources/<id>.yaml` as values (`Claim`,
+  `Source`), read in the frontmatter's plain YAML subset on `inklkunn_markup::frontmatter` (no anchor, no tag, no repeated key,
+  flow mappings included) and written back in one canonical form (`to_yaml`; the lists in one order). The enumerations are
+  closed (`bearing` is `direct | partial | indirect`), a key the format does not have is refused, a number is refused wherever
+  it stands (dates and years are text), and nothing is read from a file that is not wholly well formed. `judged_on` is the SHA-256
+  of an expression's block text as `inklkunn_markup::blocks` trims it, by one function (`block_digest`), tested on English and
+  Japanese against digests computed outside the product.
+- **Validation at acceptance (K-T2).** Before the signer is asked, a change that touches `knowledge/` (or lands on a tip that has
+  knowledge files) is judged on the files as it would leave them: the schema and ids, every source and claim a file names present
+  and readable in the same view, every anchor naming a page and a block the result has once, no key only the service writes
+  (`kind`, `visibility`, `system`) changed beside it, a removed file not still named, and a claim left pointing at a block the change
+  took out. The refusal is typed (`AcceptFailure::KnowledgeInvalid`, the word `knowledge-invalid`), names each file (escaped as the
+  import escapes a name) and the rule, never what the file said; no acceptance is recorded. A wiki with no knowledge layer (the `knowledge/.keep` every new wiki has is no knowledge file) pays one
+  `tree` call; otherwise the tip is extracted once. Files that were already invalid, and not touched, do not hold up other changes.
+  The accept page has its own outcome (*Not signed: a claim or source file is not acceptable*), the write API its word.
+- **A seventh health list, *Knowledge files that cannot be read*.** `-/health/knowledge-files`, the API's `health?list=knowledge-files`
+  (rows: the file's repository path as `title`, `rule` as a code, `action` `fix-or-remove-file`), catalog entries in English and
+  the Japanese preview with their glossary rows, the structural scenarios (listed and empty) and the OpenAPI shapes. A repository
+  that already holds invalid files serves its pages all the same, and no claim is read from them.
+- **The knowledge files in the merge (K-T3).** RFC 004's merge gains a third file family: `expressions` matched by anchor,
+  `relations` by `(type, claim)`, `sources` by source id, a source link merged by its keys, the standing one value; a value changed
+  on both sides is an overlap with both texts (`Place::Knowledge`), an entry one side removed and the other changed is one, and
+  nothing is lost. A file one side left alone is taken as written. The corpus: 324 hand pairs (306 clean, 18 overlaps) and 216
+  pairs derived from spike C's replay facts (209 clean, 7 overlaps), the counts held by a test, a lost-nothing rule and an oracle
+  checked on every pair (`tests/fixtures/KNOWLEDGE-MERGE-CORPUS.md`).
+- **The derived knowledge index (K-T4), store schema version 13.** Claims, sources, relations, expressions with what each block
+  is now, and per link (and per standing) whether it was judged on the wording the claim has now (`current` or `earlier`), built
+  in the same pass over the same `extract` as the title index (one extract serves both), stored in seven derived tables (migrated
+  from 12, dropped and rebuilt with the rest of the derived store, a count that says an index is whole), bounded by the walk's
+  entry bound and the file size, and asked for by `ReadService::knowledge_index`. A tip whose knowledge directory is over the
+  bound still serves its pages.
+
 ## [0.1.0] — 2026-10-31
 
 **M1 — read a wiki.** The first release: a standalone server that serves a prikk repository as a wiki. Pages in the

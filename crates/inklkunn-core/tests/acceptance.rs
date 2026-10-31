@@ -970,3 +970,85 @@ fn the_reconciliation_finds_nothing_after_every_kind_of_act() {
         ]
     );
 }
+
+// ------------------------------------------------------------------------------------ the knowledge layer (RFC 005 part 2 D-5)
+
+#[test]
+fn a_claim_with_its_source_and_its_block_is_signed_and_an_unsound_change_is_refused_before_the_signer()
+ {
+    use inklkunn_core::knowledge::{
+        Bearing, Claim, ClaimId, Expression, Link, Rule, Source, SourceId, SourceLink,
+        block_digest, claim_path, source_path,
+    };
+    let Some(w) = World::new("knowledge", LeaseConfig::default()) else {
+        return;
+    };
+    let claim_id = ClaimId::new();
+    let source_id = SourceId::new();
+    // The page gains a block a claim can stand on; the claim and its source are written in the same proposal.
+    let home = HOME.replace("One.", "One. ^b1");
+    let block = inklkunn_markup::blocks("One. ^b1\n");
+    let mut claim = Claim::new(claim_id.clone());
+    claim.expressions = vec![Expression::new("p-home", "b1").unwrap()];
+    claim.sources = vec![SourceLink {
+        source: source_id.clone(),
+        relation: Link::Supports,
+        bearing: Bearing::Direct,
+        note: None,
+        judged_on: block_digest(block.first().unwrap()),
+    }];
+    let source = Source::new(source_id.clone());
+    let (claim_file, source_file) = (claim_path(&claim_id), source_path(&source_id));
+    let p = w.propose(
+        "A claim with its source",
+        &[
+            (claim_file.as_str(), Some(&claim.to_yaml())),
+            (source_file.as_str(), Some(&source.to_yaml())),
+            ("pages/Home.md", Some(&home)),
+        ],
+    );
+    let done = signed(w.accept(&p).unwrap());
+    assert_eq!(done.reconciliation, Reconciled::Clean);
+    // The real repository has all three files, and the derived index reads them from the real extract.
+    assert!(w.page(&claim_file).contains("kind: unknown"));
+    assert!(w.page("pages/Home.md").contains("One. ^b1"));
+    w.reads.forget_wiki(&w.wiki);
+    let index = w.reads.knowledge_index(&w.wiki, None).unwrap();
+    assert_eq!(index.claims().len(), 1);
+    assert_eq!(index.sources().len(), 1);
+    assert!(index.invalid().is_empty(), "{:?}", index.invalid());
+    let link = index.links_of(claim_id.as_str()).next().unwrap();
+    assert_eq!(link.judgement, "current");
+
+    // A change that takes the claim's block out is refused, naming the claim; the signer is not asked and the
+    // history does not grow.
+    let blocks = w.history().len();
+    let p = w.propose("Take the block out", &[("pages/Home.md", Some(HOME))]);
+    match w.accept(&p) {
+        Err(AcceptFailure::KnowledgeInvalid(refusals)) => {
+            assert_eq!(refusals.len(), 1);
+            let r = refusals.first().unwrap();
+            assert_eq!(
+                (r.file.as_str(), r.rule),
+                (claim_file.as_str(), Rule::Anchor)
+            );
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(w.history().len(), blocks);
+    assert_eq!(w.state(&p), ProposalState::HeldForReview);
+
+    // An unreadable claim file is refused the same way.
+    let p = w.propose(
+        "A broken claim",
+        &[(
+            claim_path(&ClaimId::new()).as_str(),
+            Some("kind: observation\nscore: 9\n"),
+        )],
+    );
+    assert!(matches!(
+        w.accept(&p),
+        Err(AcceptFailure::KnowledgeInvalid(_))
+    ));
+    assert_eq!(w.history().len(), blocks);
+}

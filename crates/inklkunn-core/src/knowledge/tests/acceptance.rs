@@ -253,3 +253,23 @@ fn a_wiki_with_no_knowledge_layer_extracts_nothing_for_the_check() {
     );
     assert_eq!(calls, 1, "no second signer call");
 }
+
+#[test]
+fn a_wiki_whose_knowledge_directory_holds_only_its_keep_file_extracts_nothing_either() {
+    // A new wiki has `knowledge/.keep`: it is the common case, and it costs an acceptance nothing.
+    let s = scene("k2-keep");
+    s.rig.fake.set("knowledge/.keep", "");
+    s.rig.fake.fail_materialize(Some(StorageError::Driver {
+        verb: "extract",
+        detail: "must not be asked".to_owned(),
+    }));
+    let (outcome, calls) = accept(
+        &s,
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    assert!(matches!(outcome, Ok(Accepted::Signed(_))), "{outcome:?}");
+    assert_eq!(calls, 1);
+    // Writing the keep-file again is not a change to the knowledge layer either.
+    let (outcome, _) = accept(&s, &[("knowledge/.keep", Some("\n"))]);
+    assert!(matches!(outcome, Ok(Accepted::Signed(_))), "{outcome:?}");
+}

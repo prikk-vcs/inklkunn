@@ -434,10 +434,16 @@ fn pages_and_knowledge_files_are_merged_together_and_an_overlap_of_either_stops_
         panic!("clean");
     };
     assert_eq!(pages.len(), 2);
-    assert!(pages.iter().any(
-        |p| p.path == "pages/Home.md" && p.text.contains("said again. ^b1")
-            || p.path != "pages/Home.md"
-    ));
+    let home = pages
+        .iter()
+        .find(|p| p.path == "pages/Home.md")
+        .expect("the page");
+    assert!(home.text.contains("One, said again. ^b1") && home.text.contains("Two, said again."));
+    let merged = pages
+        .iter()
+        .find(|p| p.path == claim_path(&c.id))
+        .expect("the claim file");
+    assert!(merged.text.contains("kind: policy"));
     assert!(pages.is_sorted_by_key(|p| p.path.clone()));
     // A knowledge overlap with clean pages: nothing is merged.
     let mut ours = c.clone();

@@ -420,3 +420,16 @@ fn nothing_in_the_index_is_a_number_or_a_rank() {
         assert!(kix::Judgement::from_code(&l.judgement).is_some());
     }
 }
+
+#[test]
+fn the_keep_file_of_a_new_wiki_is_no_knowledge_file() {
+    // Every wiki starts with `knowledge/.keep` (it makes the empty directory exist); it is not listed as unreadable.
+    let w = world(&[
+        ("knowledge/.keep".to_owned(), String::new()),
+        ("knowledge/claims/.keep".to_owned(), String::new()),
+    ]);
+    let k = knowledge(&w);
+    assert!(k.invalid().is_empty(), "{:?}", k.invalid());
+    assert!(k.claims().is_empty() && k.sources().is_empty());
+    assert!(kix::build(std::path::Path::new("/nonexistent"), &[], 10, 10).is_ok());
+}

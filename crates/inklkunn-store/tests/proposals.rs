@@ -767,7 +767,7 @@ fn a_version_8_database_is_migrated_to_the_current_schema_keeping_its_records_an
     );
     {
         let store = SqliteStore::open(&db).expect("a version 8 database opens");
-        assert_eq!(version(), "12");
+        assert_eq!(version(), "13");
         assert_eq!(SCHEMA_VERSION, 13);
         // What was there is there.
         let wikis = store.list().unwrap();
@@ -791,7 +791,7 @@ fn a_version_8_database_is_migrated_to_the_current_schema_keeping_its_records_an
     }
     // Opening it again changes nothing and loses nothing.
     let store = SqliteStore::open(&db).expect("reopen");
-    assert_eq!(version(), "12");
+    assert_eq!(version(), "13");
     let old = store.list().unwrap().remove(0);
     assert_eq!(
         store
@@ -808,7 +808,7 @@ fn a_version_8_database_is_migrated_to_the_current_schema_keeping_its_records_an
     // accepting a higher version than its own.
     let conn = rusqlite::Connection::open(&db).unwrap();
     conn.execute(
-        "UPDATE schema_meta SET value = '13' WHERE key = 'schema_version'",
+        "UPDATE schema_meta SET value = '14' WHERE key = 'schema_version'",
         [],
     )
     .unwrap();

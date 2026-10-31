@@ -3,7 +3,7 @@
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 
-use super::{KNOWLEDGE_DIR, MAX_FILE_BYTES};
+use super::{KNOWLEDGE_DIR, MAX_FILE_BYTES, is_keep};
 
 /// The most bytes of knowledge files held in memory at once (the acceptance check holds the tip's knowledge files
 /// together with the change).
@@ -47,7 +47,7 @@ impl std::error::Error for TreeError {}
 
 /// Every regular file under `<root>/knowledge`, in path order, with where it is on disk. `max_entries` bounds the
 /// files and directories visited. A link, a device, or a name that is not UTF-8 is not a file of ours (prikk
-/// stores none of them). A tree without a `knowledge/` directory has no knowledge files.
+/// stores none of them), and neither is a keep-file. A tree without a `knowledge/` directory has no knowledge files.
 pub fn list_tree(root: &Path, max_entries: u64) -> Result<Vec<(String, PathBuf)>, TreeError> {
     let mut found: Vec<(String, PathBuf)> = Vec::new();
     let mut visited: u64 = 0;
@@ -75,7 +75,7 @@ pub fn list_tree(root: &Path, max_entries: u64) -> Result<Vec<(String, PathBuf)>
             let path = format!("{logical}/{name}");
             if kind.is_dir() {
                 stack.push((path, item.path()));
-            } else if kind.is_file() {
+            } else if kind.is_file() && !is_keep(&path) {
                 found.push((path, item.path()));
             }
         }
