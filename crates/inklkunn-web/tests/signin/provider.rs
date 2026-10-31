@@ -39,13 +39,13 @@ impl HttpsFetcher for Idp {
 }
 
 /// Vouches for whoever is at the provider just now (the ID token's signature is the auth crate's own tests).
-struct Vouches(Arc<Mutex<String>>);
+struct Vouches(String, Arc<Mutex<String>>);
 
 impl TokenVerifier for Vouches {
     fn verify(&self, _: &str, _: &str, _: i64) -> Result<VerifiedIdentity, OidcError> {
-        let subject = self.0.lock().unwrap().clone();
+        let subject = self.1.lock().unwrap().clone();
         Ok(VerifiedIdentity::for_test(
-            ExternalIdentity::new(ISSUER, &subject).unwrap(),
+            ExternalIdentity::new(&self.0, &subject).unwrap(),
             Some("alice@example.org".into()),
         ))
     }
@@ -53,6 +53,7 @@ impl TokenVerifier for Vouches {
 
 /// What a test turns to change what the provider does.
 pub(crate) struct Provider {
+    issuer: String,
     routes: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     at_the_provider: Arc<Mutex<String>>,
 }
@@ -67,36 +68,43 @@ impl Provider {
         self.routes
             .lock()
             .unwrap()
-            .remove("https://idp.example/token");
+            .remove(&format!("{}/token", self.issuer));
     }
 }
 
 /// A world with a provider configured, and joining as `join` says.
 pub(crate) fn with_provider(join: JoinPolicy) -> (Real, Provider) {
+    provider_at(
+        join,
+        ISSUER,
+        "http://localhost:8080/-/sign-in/oidc/callback",
+    )
+}
+
+/// As [`with_provider`], for a provider at `issuer` (an https address, with a port if it has one) that sends the
+/// browser back to `redirect_uri`: the real-browser run serves the site on a real port.
+pub(crate) fn provider_at(join: JoinPolicy, issuer: &str, redirect_uri: &str) -> (Real, Provider) {
     let routes = Arc::new(Mutex::new(HashMap::from([
         (
-            "https://idp.example/.well-known/openid-configuration".to_owned(),
+            format!("{issuer}/.well-known/openid-configuration"),
             format!(
-                r#"{{"issuer":"{ISSUER}","authorization_endpoint":"https://idp.example/authorize","token_endpoint":"https://idp.example/token","jwks_uri":"https://idp.example/jwks"}}"#
+                r#"{{"issuer":"{issuer}","authorization_endpoint":"{issuer}/authorize","token_endpoint":"{issuer}/token","jwks_uri":"{issuer}/jwks"}}"#
             )
             .into_bytes(),
         ),
-        (
-            "https://idp.example/token".to_owned(),
-            br#"{"id_token":"t"}"#.to_vec(),
-        ),
+        (format!("{issuer}/token"), br#"{"id_token":"t"}"#.to_vec()),
     ])));
     let at_the_provider = Arc::new(Mutex::new("nobody".to_owned()));
     let provider = OidcProvider::with_verifier(
         OidcConfig {
-            issuer: ISSUER.into(),
+            issuer: issuer.into(),
             client_id: "inklkunn-wiki".into(),
             client_secret: None,
-            redirect_uri: "http://localhost:8080/-/sign-in/oidc/callback".into(),
+            redirect_uri: redirect_uri.into(),
             scopes: Vec::new(),
         },
         Arc::new(Idp(routes.clone())),
-        Arc::new(Vouches(at_the_provider.clone())),
+        Arc::new(Vouches(issuer.to_owned(), at_the_provider.clone())),
     );
     let r = real_built(
         AuthConfig { join, ..config() },
@@ -106,6 +114,7 @@ pub(crate) fn with_provider(join: JoinPolicy) -> (Real, Provider) {
     (
         r,
         Provider {
+            issuer: issuer.to_owned(),
             routes,
             at_the_provider,
         },

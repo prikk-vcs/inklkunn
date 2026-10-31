@@ -19,6 +19,7 @@
 mod common;
 
 mod account;
+mod browser;
 mod harness;
 mod identify;
 mod invitations;

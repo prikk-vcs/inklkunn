@@ -176,7 +176,7 @@ fn login_with(
     f: &MockFetcher,
     id_token: impl FnOnce(&str) -> String,
 ) -> (BeginSignIn, Result<VerifiedIdentity, OidcError>) {
-    let b = begin(&p, NOW).unwrap();
+    let b = begin(p, NOW).unwrap();
     let (nonce, _) = p.peek_pending(&b.state).unwrap();
     f.set(
         "https://idp.example/token",
@@ -186,7 +186,7 @@ fn login_with(
         ),
     );
     let result = finish(
-        &p,
+        p,
         &b.state,
         Some(&state_header(&b.state)),
         "the-code",
