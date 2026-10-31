@@ -5,22 +5,24 @@
 //! navigation as cross-site: a `302` to the landing page would be requested **without** the Strict cookie the
 //! callback's own response has just set, and the person would see the site signed out. A `200` page that moves
 //! the browser on by itself (`<meta http-equiv="refresh">`) is a new navigation started by *this* site's page, so
-//! the browser sends the Strict cookie with it. [`Landing`] is that page, with the status, the headers and the
-//! cookies that go with it, and the web layer sends exactly what it holds (see [`Landing::status`],
-//! [`Landing::headers`], [`Landing::set_cookies`], [`Landing::body`]).
+//! the browser sends the Strict cookie with it. [`Landing`] is what that answer is made of: the status, the
+//! headers, the cookies and the path to move on to. **The page itself is the web layer's** (handoff 002's F4):
+//! its words are catalog messages in the reader's language, so this crate hands over the target, the cookies
+//! and the headers and writes no sentence (see [`Landing::status`], [`Landing::headers`],
+//! [`Landing::set_cookies`], [`Landing::target`]).
 //!
 //! A `Landing` has no public constructor: the only one in existence comes out of a successful
 //! [`crate::Authenticator::finish_oidc`], together with the session it belongs to, so a handler cannot sign
 //! somebody in and then redirect.
 
-use std::fmt::Write as _;
-
 /// The longest landing path the page will carry; a longer one is replaced by `/`.
 const MAX_TARGET_BYTES: usize = 2048;
 
 /// The headers the page is sent with. The page needs no script, no style and no sub-resource, so its policy
-/// allows none; it must never be cached (it sits behind a one-time sign-in) and must not leak the callback's
-/// address, whose query holds the provider's code, as a referrer.
+/// allows none (the web layer's header layer sets the policy of the whole site on every response, which allows
+/// no more); it must never be cached (it sits behind a one-time sign-in) and must not leak the callback's
+/// address, whose query holds the provider's code, as a referrer (the page also says so in a `<meta
+/// name="referrer">`, because the site's own header layer sends `same-origin`).
 const HEADERS: &[(&str, &str)] = &[
     ("Content-Type", "text/html; charset=utf-8"),
     ("Cache-Control", "no-store"),
@@ -32,16 +34,15 @@ const HEADERS: &[(&str, &str)] = &[
     ),
 ];
 
-/// What a successful OpenID Connect callback must be answered with: a `200` page that moves the browser to
-/// the landing path with a request of this site's own, plus the cookies to set. **Send all of it as it is**:
-/// answering with a redirect instead loses the session cookie on the next request (see the module
-/// documentation). Not constructible outside this crate.
+/// What a successful OpenID Connect callback must be answered with: a `200` page (the web layer draws it) that
+/// moves the browser to [`Landing::target`] with a request of this site's own, plus the headers and the cookies
+/// to set. **Send all of it as it is**: answering with a redirect instead loses the session cookie on the next
+/// request (see the module documentation). Not constructible outside this crate.
 #[derive(Clone, PartialEq, Eq)]
 #[must_use = "the callback must be answered with this page; a redirect would lose the Strict session cookie"]
 pub struct Landing {
     target: String,
     set_cookies: Vec<String>,
-    body: String,
 }
 
 impl std::fmt::Debug for Landing {
@@ -60,11 +61,9 @@ impl Landing {
     /// is never worth refusing a sign-in for.
     pub(crate) fn new(next: Option<&str>, set_cookies: Vec<String>) -> Self {
         let target = next.filter(|p| is_local_path(p)).unwrap_or("/").to_owned();
-        let body = page(&target);
         Landing {
             target,
             set_cookies,
-            body,
         }
     }
 
@@ -84,12 +83,8 @@ impl Landing {
         &self.set_cookies
     }
 
-    /// The page: HTML, UTF-8.
-    pub fn body(&self) -> &str {
-        &self.body
-    }
-
-    /// The path the page moves the browser to.
+    /// The path the page moves the browser to: a path on this site, always (`/` when the one asked for was
+    /// not).
     pub fn target(&self) -> &str {
         &self.target
     }
@@ -105,39 +100,6 @@ fn is_local_path(p: &str) -> bool {
         && !p
             .chars()
             .any(|c| c == '\\' || c == ' ' || c.is_control() || c == '\u{2028}' || c == '\u{2029}')
-}
-
-/// Escape for HTML text and for a double-quoted attribute.
-fn escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            c => out.push(c),
-        }
-    }
-    out
-}
-
-fn page(target: &str) -> String {
-    let t = escape(target);
-    let mut out = String::with_capacity(400 + 2 * t.len());
-    // Writing to a String cannot fail.
-    let _ = write!(
-        out,
-        "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n\
-         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
-         <meta name=\"robots\" content=\"noindex\">\n\
-         <meta http-equiv=\"refresh\" content=\"0;url={t}\">\n\
-         <title>Signing in</title>\n</head>\n<body>\n\
-         <p>Signing you in. If this page does not move on by itself, <a href=\"{t}\">continue</a>.</p>\n\
-         </body>\n</html>\n"
-    );
-    out
 }
 
 #[cfg(test)]

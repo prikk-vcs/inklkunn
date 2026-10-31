@@ -11,11 +11,39 @@ pub const PENDING_TTL_SECS: i64 = 600;
 /// own requests and cannot grow memory (the per-address rate limit of the web layer bounds the flood).
 const MAX_PENDING: usize = 10_000;
 
+/// What a login in flight is for. It is kept here, on the server: the browser carries only the opaque `state`,
+/// so an invitation's secret and the landing path are never in a cookie, a callback address or the provider's
+/// logs. (`Debug` shows no secret.)
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) enum Purpose {
+    /// Sign in, or join where joining through the provider is open. `next` is where an existing account lands,
+    /// `after_joining` where a new one does.
+    SignIn {
+        next: Option<String>,
+        after_joining: Option<String>,
+    },
+    /// Make the account an invitation is for, bound to the provider identity.
+    Invitation {
+        secret: String,
+        next: Option<String>,
+    },
+}
+
+impl std::fmt::Debug for Purpose {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Purpose::SignIn { .. } => f.write_str("Purpose::SignIn"),
+            Purpose::Invitation { .. } => f.write_str("Purpose::Invitation(…)"),
+        }
+    }
+}
+
 /// What the callback needs.
 #[derive(Debug, Clone)]
 pub(super) struct Pending {
     pub nonce: String,
     pub verifier: String,
+    pub purpose: Purpose,
     created_at: i64,
 }
 
@@ -25,7 +53,14 @@ pub(super) struct PendingLogins {
 }
 
 impl PendingLogins {
-    pub(super) fn insert(&self, state: String, nonce: String, verifier: String, now: i64) {
+    pub(super) fn insert(
+        &self,
+        state: String,
+        nonce: String,
+        verifier: String,
+        purpose: Purpose,
+        now: i64,
+    ) {
         let mut m = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         m.retain(|_, p| now.saturating_sub(p.created_at) < PENDING_TTL_SECS);
         if m.len() >= MAX_PENDING
@@ -41,6 +76,7 @@ impl PendingLogins {
             Pending {
                 nonce,
                 verifier,
+                purpose,
                 created_at: now,
             },
         );

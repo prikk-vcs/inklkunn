@@ -11,7 +11,7 @@ use inklkunn_auth::oidc::{
     FetchError, FetchRequest, HttpsFetcher, InvalidReason, OidcConfig, OidcError, OidcProvider,
     STATE_COOKIE, TokenVerifier, VerifiedIdentity,
 };
-use inklkunn_auth::{AccountError, AuthError, OidcSignInError};
+use inklkunn_auth::{AccountError, AuthError, OidcPurpose, OidcSignInError};
 use inklkunn_core::authorize::{Action, Decision, Snapshot, decide};
 use inklkunn_core::{IdentityAuthority, Principal};
 use inklkunn_store::{ExternalIdentity, Role, Scope, Visibility};
@@ -194,6 +194,7 @@ fn provider_with(verifier: Arc<dyn TokenVerifier>) -> OidcProvider {
             client_id: "c".into(),
             client_secret: None,
             redirect_uri: "https://wiki.example/cb".into(),
+            scopes: Vec::new(),
         },
         idp,
         verifier,
@@ -204,6 +205,14 @@ fn oidc_world(subject: &'static str) -> World {
     world_with_oidc(provider_with(Arc::new(Vouches(subject))))
 }
 
+/// Signing in, with no particular place to land.
+fn plain() -> OidcPurpose<'static> {
+    OidcPurpose::SignIn {
+        next: None,
+        after_joining: None,
+    }
+}
+
 /// A complete sign-in as a browser does it: start, then come back with the state in the query and in the
 /// cookie.
 fn sign_in_through_the_provider(
@@ -211,7 +220,7 @@ fn sign_in_through_the_provider(
     client: &str,
     now: i64,
 ) -> Result<inklkunn_auth::OidcSignedIn, OidcSignInError> {
-    let begun = w.auth.begin_oidc(&ip(client), now)?;
+    let begun = w.auth.begin_oidc(plain(), &ip(client), now)?;
     assert!(
         begun
             .authorization_url
@@ -221,7 +230,7 @@ fn sign_in_through_the_provider(
     let header = cookie.split(';').next().unwrap().to_owned();
     assert!(header.starts_with(STATE_COOKIE), "{header}");
     w.auth
-        .finish_oidc(&begun.state, Some(&header), "code", None, now + 1)
+        .finish_oidc(&begun.state, Some(&header), "code", &ip(client), now + 1)
 }
 
 #[test]
@@ -259,7 +268,7 @@ fn an_identity_nobody_linked_signs_nobody_in_even_with_a_matching_email() {
         .unwrap();
     assert_eq!(
         sign_in_through_the_provider(&w, "203.0.113.1", NOW).unwrap_err(),
-        OidcSignInError::Auth(AuthError::BadCredentials)
+        OidcSignInError::NotLinked
     );
 }
 
@@ -292,18 +301,24 @@ fn a_callback_this_browser_did_not_start_or_one_used_twice_ends_before_any_accou
             NOW,
         )
         .unwrap();
-    let begun = w.auth.begin_oidc(&ip("203.0.113.1"), NOW).unwrap();
+    let begun = w.auth.begin_oidc(plain(), &ip("203.0.113.1"), NOW).unwrap();
     // No cookie, someone else's cookie: the login-CSRF check.
     assert_eq!(
         w.auth
-            .finish_oidc(&begun.state, None, "code", None, NOW + 1)
+            .finish_oidc(&begun.state, None, "code", &ip("203.0.113.1"), NOW + 1)
             .unwrap_err(),
         OidcSignInError::Oidc(OidcError::State)
     );
     let other = format!("{STATE_COOKIE}=not-this-state");
     assert_eq!(
         w.auth
-            .finish_oidc(&begun.state, Some(&other), "code", None, NOW + 1)
+            .finish_oidc(
+                &begun.state,
+                Some(&other),
+                "code",
+                &ip("203.0.113.1"),
+                NOW + 1
+            )
             .unwrap_err(),
         OidcSignInError::Oidc(OidcError::State)
     );
@@ -311,12 +326,24 @@ fn a_callback_this_browser_did_not_start_or_one_used_twice_ends_before_any_accou
     let header = format!("{STATE_COOKIE}={}", begun.state);
     assert!(
         w.auth
-            .finish_oidc(&begun.state, Some(&header), "code", None, NOW + 2)
+            .finish_oidc(
+                &begun.state,
+                Some(&header),
+                "code",
+                &ip("203.0.113.1"),
+                NOW + 2
+            )
             .is_ok()
     );
     assert_eq!(
         w.auth
-            .finish_oidc(&begun.state, Some(&header), "code", None, NOW + 3)
+            .finish_oidc(
+                &begun.state,
+                Some(&header),
+                "code",
+                &ip("203.0.113.1"),
+                NOW + 3
+            )
             .unwrap_err(),
         OidcSignInError::Oidc(OidcError::State)
     );
@@ -334,7 +361,17 @@ fn a_successful_callback_is_answered_with_a_landing_that_carries_the_session_and
             NOW,
         )
         .unwrap();
-    let begun = w.auth.begin_oidc(&ip("203.0.113.6"), NOW).unwrap();
+    let begun = w
+        .auth
+        .begin_oidc(
+            OidcPurpose::SignIn {
+                next: Some("/handbook/Home?x=1"),
+                after_joining: None,
+            },
+            &ip("203.0.113.6"),
+            NOW,
+        )
+        .unwrap();
     let header = format!("{STATE_COOKIE}={}", begun.state);
     let done = w
         .auth
@@ -342,25 +379,21 @@ fn a_successful_callback_is_answered_with_a_landing_that_carries_the_session_and
             &begun.state,
             Some(&header),
             "code",
-            Some("/handbook/Home?x=1"),
+            &ip("203.0.113.6"),
             NOW + 1,
         )
         .unwrap();
+    assert!(!done.account_created);
     let landing = &done.landing;
-    // A page, never a redirect.
+    // An answer the web layer draws as a page, never a redirect: no `Location`, and the target is the path
+    // that was asked for at the start (kept on the server, not in the callback's address).
     assert_eq!(landing.status(), 200);
     assert_eq!(landing.target(), "/handbook/Home?x=1");
     assert!(
-        landing.body().contains("http-equiv=\"refresh\""),
-        "{}",
-        landing.body()
-    );
-    assert!(
-        landing
-            .body()
-            .contains("content=\"0;url=/handbook/Home?x=1\""),
-        "{}",
-        landing.body()
+        !landing
+            .headers()
+            .iter()
+            .any(|(n, _)| n.eq_ignore_ascii_case("location"))
     );
     // Two cookies: the Strict session, which opens the session it names, and the state cookie's removal.
     let [session_cookie, state_cookie] = landing.set_cookies() else {
@@ -414,11 +447,21 @@ fn a_landing_path_that_is_not_a_path_on_this_site_becomes_the_front_page() {
     {
         let now = NOW + 10 * i64::try_from(n).unwrap();
         let client = ip(&format!("203.0.113.{}", 20 + n));
-        let begun = w.auth.begin_oidc(&client, now).unwrap();
+        let begun = w
+            .auth
+            .begin_oidc(
+                OidcPurpose::SignIn {
+                    next: Some(next),
+                    after_joining: None,
+                },
+                &client,
+                now,
+            )
+            .unwrap();
         let header = format!("{STATE_COOKIE}={}", begun.state);
         let done = w
             .auth
-            .finish_oidc(&begun.state, Some(&header), "code", Some(next), now + 1)
+            .finish_oidc(&begun.state, Some(&header), "code", &client, now + 1)
             .unwrap();
         assert_eq!(done.landing.target(), "/", "{next:?}");
     }
@@ -439,25 +482,29 @@ fn starting_a_sign_in_spends_the_clients_budget_so_logins_in_flight_cannot_be_fl
     let w = oidc_world("subject-4");
     let flooder = ip("198.51.100.9");
     for i in 0..30 {
-        assert!(w.auth.begin_oidc(&flooder, NOW + i).is_ok(), "{i}");
+        assert!(w.auth.begin_oidc(plain(), &flooder, NOW + i).is_ok(), "{i}");
     }
     assert!(matches!(
-        w.auth.begin_oidc(&flooder, NOW + 40),
+        w.auth.begin_oidc(plain(), &flooder, NOW + 40),
         Err(OidcSignInError::Auth(AuthError::Locked { .. }))
     ));
     // Another address is unaffected.
-    assert!(w.auth.begin_oidc(&ip("198.51.100.10"), NOW + 41).is_ok());
+    assert!(
+        w.auth
+            .begin_oidc(plain(), &ip("198.51.100.10"), NOW + 41)
+            .is_ok()
+    );
 }
 
 #[test]
 fn without_a_provider_there_is_no_openid_connect() {
     let w = world();
     assert!(matches!(
-        w.auth.begin_oidc(&ip("203.0.113.1"), NOW),
+        w.auth.begin_oidc(plain(), &ip("203.0.113.1"), NOW),
         Err(OidcSignInError::Oidc(OidcError::NotConfigured))
     ));
     assert!(matches!(
-        w.auth.finish_oidc("s", None, "c", None, NOW),
+        w.auth.finish_oidc("s", None, "c", &ip("203.0.113.1"), NOW),
         Err(OidcSignInError::Oidc(OidcError::NotConfigured))
     ));
 }
@@ -482,7 +529,7 @@ fn one_identity_links_to_one_account_only() {
 #[test]
 fn nothing_about_a_sign_in_in_flight_prints_a_secret() {
     let w = oidc_world("subject-6");
-    let begun = w.auth.begin_oidc(&ip("203.0.113.1"), NOW).unwrap();
+    let begun = w.auth.begin_oidc(plain(), &ip("203.0.113.1"), NOW).unwrap();
     let shown = format!("{begun:?}");
     assert!(
         !shown.contains(&begun.state) && !shown.contains("auth?"),

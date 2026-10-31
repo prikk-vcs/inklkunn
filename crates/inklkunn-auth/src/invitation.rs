@@ -65,6 +65,11 @@ impl JoinPolicy {
             .find(|p| p.as_str() == s)
     }
 
+    /// May a first sign-in through the configured provider make an account, with no invitation?
+    pub const fn lets_a_provider_sign_in_join(self) -> bool {
+        matches!(self, JoinPolicy::Provider | JoinPolicy::Anyone)
+    }
+
     /// May a person make an account with a password of their own choosing, with no invitation?
     pub const fn lets_anyone_join_with_a_password(self) -> bool {
         matches!(self, JoinPolicy::Anyone)

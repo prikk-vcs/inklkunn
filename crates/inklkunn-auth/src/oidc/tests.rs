@@ -88,7 +88,37 @@ fn config(secret: Option<&str>) -> OidcConfig {
         client_id: CLIENT.into(),
         client_secret: secret.map(str::to_owned),
         redirect_uri: REDIRECT.into(),
+        scopes: Vec::new(),
     }
+}
+
+fn plain_purpose() -> Purpose {
+    Purpose::SignIn {
+        next: None,
+        after_joining: None,
+    }
+}
+
+/// Start a plain sign-in.
+fn begin(p: &OidcProvider, now: i64) -> Result<BeginSignIn, OidcError> {
+    p.begin_sign_in(
+        Purpose::SignIn {
+            next: None,
+            after_joining: None,
+        },
+        now,
+    )
+}
+
+/// Finish a sign-in, keeping the identity (what the purpose is has its own tests).
+fn finish(
+    p: &OidcProvider,
+    state: &str,
+    cookie: Option<&str>,
+    code: &str,
+    now: i64,
+) -> Result<VerifiedIdentity, OidcError> {
+    p.finish_sign_in(state, cookie, code, now).map(|(i, _)| i)
 }
 
 fn idp() -> Arc<MockFetcher> {
@@ -146,7 +176,7 @@ fn login_with(
     f: &MockFetcher,
     id_token: impl FnOnce(&str) -> String,
 ) -> (BeginSignIn, Result<VerifiedIdentity, OidcError>) {
-    let b = p.begin_sign_in(NOW).unwrap();
+    let b = begin(&p, NOW).unwrap();
     let (nonce, _) = p.peek_pending(&b.state).unwrap();
     f.set(
         "https://idp.example/token",
@@ -155,14 +185,20 @@ fn login_with(
             id_token(&nonce)
         ),
     );
-    let result = p.finish_sign_in(&b.state, Some(&state_header(&b.state)), "the-code", NOW + 1);
+    let result = finish(
+        &p,
+        &b.state,
+        Some(&state_header(&b.state)),
+        "the-code",
+        NOW + 1,
+    );
     (b, result)
 }
 
 #[test]
 fn begin_login_builds_a_pkce_url_keeps_the_secrets_and_asks_for_nothing_but_openid() {
     let (p, _) = provider(None);
-    let b = p.begin_sign_in(NOW).unwrap();
+    let b = begin(&p, NOW).unwrap();
     let url = &b.authorization_url;
     assert!(
         url.starts_with("https://idp.example/auth?response_type=code&client_id=inklkunn-client"),
@@ -234,7 +270,13 @@ fn the_whole_flow_verifies_a_real_signature_and_the_state_is_one_shot() {
     );
     // Redeeming the same state again finds nothing.
     assert_eq!(
-        p.finish_sign_in(&b.state, Some(&state_header(&b.state)), "the-code", NOW + 2),
+        finish(
+            &p,
+            &b.state,
+            Some(&state_header(&b.state)),
+            "the-code",
+            NOW + 2
+        ),
         Err(OidcError::State)
     );
 }
@@ -250,7 +292,7 @@ fn a_public_client_sends_no_secret() {
 #[test]
 fn a_callback_the_browser_did_not_start_is_refused_and_does_not_spend_the_login() {
     let (p, f) = provider(None);
-    let b = p.begin_sign_in(NOW).unwrap();
+    let b = begin(&p, NOW).unwrap();
     let (nonce, _) = p.peek_pending(&b.state).unwrap();
     f.set(
         "https://idp.example/token",
@@ -274,13 +316,13 @@ fn a_callback_the_browser_did_not_start_is_refused_and_does_not_spend_the_login(
     ];
     for header in headers {
         assert_eq!(
-            p.finish_sign_in(&b.state, header, "c", NOW + 1),
+            finish(&p, &b.state, header, "c", NOW + 1),
             Err(OidcError::State),
             "{header:?}"
         );
     }
     assert_eq!(
-        p.finish_sign_in("", Some(&empty), "c", NOW + 1),
+        finish(&p, "", Some(&empty), "c", NOW + 1),
         Err(OidcError::State),
         "empty is not a match"
     );
@@ -289,18 +331,16 @@ fn a_callback_the_browser_did_not_start_is_refused_and_does_not_spend_the_login(
         "no code was exchanged"
     );
     // The real browser can still finish.
-    assert!(
-        p.finish_sign_in(&b.state, Some(&state_header(&b.state)), "c", NOW + 2)
-            .is_ok()
-    );
+    assert!(finish(&p, &b.state, Some(&state_header(&b.state)), "c", NOW + 2).is_ok());
 }
 
 #[test]
 fn a_login_expires_and_an_unknown_state_is_refused() {
     let (p, _) = provider(None);
-    let b = p.begin_sign_in(NOW).unwrap();
+    let b = begin(&p, NOW).unwrap();
     assert_eq!(
-        p.finish_sign_in(
+        finish(
+            &p,
             &b.state,
             Some(&state_header(&b.state)),
             "c",
@@ -309,7 +349,8 @@ fn a_login_expires_and_an_unknown_state_is_refused() {
         Err(OidcError::State)
     );
     assert_eq!(
-        p.finish_sign_in(
+        finish(
+            &p,
             "never-issued",
             Some(&state_header("never-issued")),
             "c",
@@ -555,14 +596,14 @@ fn an_unknown_kid_refetches_the_keys_but_not_more_than_once_a_minute() {
     let token =
         |kid: &str, nonce: &str| sign_with(KEY_2, Some(kid), Algorithm::ES256, &claims(nonce));
     let v = |kid: &str, nonce: &str, now: i64| {
-        let b = p.begin_sign_in(now).unwrap();
+        let b = begin(&p, now).unwrap();
         let (n, _) = p.peek_pending(&b.state).unwrap();
         let _ = nonce;
         f.set(
             "https://idp.example/token",
             format!(r#"{{"id_token":"{}"}}"#, token(kid, &n)),
         );
-        p.finish_sign_in(&b.state, Some(&state_header(&b.state)), "c", now)
+        finish(&p, &b.state, Some(&state_header(&b.state)), "c", now)
     };
     // The first verification fetches the key set once (k1 only); k2 is unknown.
     assert_eq!(v("k2", "", NOW), Err(OidcError::Invalid(R::UnknownKey)));
@@ -597,7 +638,7 @@ fn a_discovery_document_for_another_issuer_or_with_a_plain_http_endpoint_is_refu
     );
     let p = OidcProvider::new(config(None), f);
     assert!(
-        matches!(p.begin_sign_in(NOW), Err(OidcError::Provider(_))),
+        matches!(begin(&p, NOW), Err(OidcError::Provider(_))),
         "another issuer"
     );
 
@@ -627,7 +668,7 @@ fn a_discovery_document_for_another_issuer_or_with_a_plain_http_endpoint_is_refu
         f.set("https://idp.example/.well-known/openid-configuration", doc);
         let p = OidcProvider::new(config(None), f);
         assert!(
-            matches!(p.begin_sign_in(NOW), Err(OidcError::Provider(_))),
+            matches!(begin(&p, NOW), Err(OidcError::Provider(_))),
             "{what}"
         );
     }
@@ -637,15 +678,15 @@ fn a_discovery_document_for_another_issuer_or_with_a_plain_http_endpoint_is_refu
 fn a_provider_that_cannot_be_reached_or_answers_rubbish_is_a_provider_error() {
     // Nothing configured at the fetcher: the transport fails.
     let p = OidcProvider::new(config(None), Arc::new(MockFetcher::default()));
-    assert!(matches!(p.begin_sign_in(NOW), Err(OidcError::Provider(_))));
+    assert!(matches!(begin(&p, NOW), Err(OidcError::Provider(_))));
     // A token endpoint that answers something that is not JSON, or JSON without an id_token.
     for body in ["<html>", r#"{"access_token":"x"}"#] {
         let (p, f) = provider(None);
-        let b = p.begin_sign_in(NOW).unwrap();
+        let b = begin(&p, NOW).unwrap();
         f.set("https://idp.example/token", body);
         assert!(
             matches!(
-                p.finish_sign_in(&b.state, Some(&state_header(&b.state)), "c", NOW + 1),
+                finish(&p, &b.state, Some(&state_header(&b.state)), "c", NOW + 1),
                 Err(OidcError::Provider(_))
             ),
             "{body}"
@@ -657,14 +698,14 @@ fn a_provider_that_cannot_be_reached_or_answers_rubbish_is_a_provider_error() {
         "https://idp.example/jwks",
         vec![b' '; MAX_RESPONSE_BYTES + 1],
     );
-    let b = p.begin_sign_in(NOW).unwrap();
+    let b = begin(&p, NOW).unwrap();
     let (n, _) = p.peek_pending(&b.state).unwrap();
     f.set(
         "https://idp.example/token",
         format!(r#"{{"id_token":"{}"}}"#, sign(&claims(&n))),
     );
     assert!(matches!(
-        p.finish_sign_in(&b.state, Some(&state_header(&b.state)), "c", NOW + 1),
+        finish(&p, &b.state, Some(&state_header(&b.state)), "c", NOW + 1),
         Err(OidcError::Provider(_))
     ));
 }
@@ -698,7 +739,7 @@ fn the_flow_hands_the_verifier_the_token_the_nonce_it_made_and_the_time() {
         answer: Ok(identity.clone()),
     });
     let p = OidcProvider::with_verifier(config(None), idp(), stub.clone());
-    let b = p.begin_sign_in(NOW).unwrap();
+    let b = begin(&p, NOW).unwrap();
     let (nonce, _) = p.peek_pending(&b.state).unwrap();
     // The stub fetcher's token endpoint.
     let f = idp();
@@ -707,11 +748,11 @@ fn the_flow_hands_the_verifier_the_token_the_nonce_it_made_and_the_time() {
         r#"{"id_token":"the.id.token"}"#,
     );
     let p = OidcProvider::with_verifier(config(None), f, stub.clone());
-    let b2 = p.begin_sign_in(NOW).unwrap();
+    let b2 = begin(&p, NOW).unwrap();
     let (nonce2, _) = p.peek_pending(&b2.state).unwrap();
     assert_ne!(nonce, nonce2);
     assert_eq!(
-        p.finish_sign_in(&b2.state, Some(&state_header(&b2.state)), "c", NOW + 5),
+        finish(&p, &b2.state, Some(&state_header(&b2.state)), "c", NOW + 5),
         Ok(identity)
     );
     assert_eq!(
@@ -729,9 +770,9 @@ fn a_verifier_that_refuses_refuses_the_login() {
         answer: Err(OidcError::Invalid(R::Signature)),
     });
     let p = OidcProvider::with_verifier(config(None), f, stub);
-    let b = p.begin_sign_in(NOW).unwrap();
+    let b = begin(&p, NOW).unwrap();
     assert_eq!(
-        p.finish_sign_in(&b.state, Some(&state_header(&b.state)), "c", NOW),
+        finish(&p, &b.state, Some(&state_header(&b.state)), "c", NOW),
         Err(OidcError::Invalid(R::Signature))
     );
 }
@@ -741,7 +782,13 @@ fn pending_logins_are_bounded_and_the_oldest_go_first() {
     let pending = PendingLogins::default();
     // Twenty logins to a second, all inside the ten minutes a login may take.
     for i in 0..10_050_i64 {
-        pending.insert(format!("s{i}"), "n".into(), "v".into(), NOW + i / 20);
+        pending.insert(
+            format!("s{i}"),
+            "n".into(),
+            "v".into(),
+            plain_purpose(),
+            NOW + i / 20,
+        );
     }
     assert_eq!(pending.len(), 10_000);
     assert!(
@@ -750,7 +797,13 @@ fn pending_logins_are_bounded_and_the_oldest_go_first() {
     );
     assert!(pending.peek("s10049").is_some() && pending.peek("s9000").is_some());
     // Old ones are swept when anything new arrives.
-    pending.insert("late".into(), "n".into(), "v".into(), NOW + 100_000);
+    pending.insert(
+        "late".into(),
+        "n".into(),
+        "v".into(),
+        plain_purpose(),
+        NOW + 100_000,
+    );
     assert_eq!(pending.len(), 1);
 }
 
@@ -772,7 +825,7 @@ fn percent_encoding_leaves_only_unreserved_characters() {
 #[test]
 fn the_state_cookie_is_lax_short_lived_and_host_prefixed_and_its_removal_matches_it() {
     let (p, _f) = provider(None);
-    let b = p.begin_sign_in(1_000).unwrap();
+    let b = begin(&p, 1_000).unwrap();
     let set = b.state_cookie();
     let attrs = |c: &str| -> Vec<String> { c.split("; ").skip(1).map(str::to_owned).collect() };
     assert_eq!(
@@ -797,4 +850,53 @@ fn the_state_cookie_is_lax_short_lived_and_host_prefixed_and_its_removal_matches
         attrs(&clear),
         ["Path=/", "Secure", "HttpOnly", "SameSite=Lax", "Max-Age=0"]
     );
+}
+
+#[test]
+fn the_scopes_asked_for_are_openid_first_then_the_configured_ones_once_each() {
+    let mut c = config(None);
+    assert_eq!(c.scope_parameter(), "openid");
+    c.scopes = vec![
+        "profile".into(),
+        "openid".into(),
+        "profile".into(),
+        "groups".into(),
+    ];
+    assert_eq!(c.scope_parameter(), "openid profile groups");
+    let f = idp();
+    let p = OidcProvider::new(c, f);
+    let url = begin(&p, NOW).unwrap().authorization_url;
+    assert!(url.contains("&scope=openid%20profile%20groups&"), "{url}");
+}
+
+#[test]
+fn what_a_login_is_for_stays_on_the_server_and_comes_back_once_with_the_identity() {
+    let (p, f) = provider(None);
+    let purpose = Purpose::Invitation {
+        secret: "inv_the-secret".into(),
+        next: Some("/-/account".into()),
+    };
+    let b = p.begin_sign_in(purpose.clone(), NOW).unwrap();
+    // Neither the cookie nor the address carries it.
+    for shown in [b.state_cookie(), b.authorization_url.clone()] {
+        assert!(!shown.contains("inv_the-secret"), "{shown}");
+        assert!(!shown.contains("account"), "{shown}");
+    }
+    let (nonce, _) = p.peek_pending(&b.state).unwrap();
+    f.set(
+        "https://idp.example/token",
+        format!(r#"{{"id_token":"{}"}}"#, sign(&claims(&nonce))),
+    );
+    let (identity, got) = p
+        .finish_sign_in(&b.state, Some(&state_header(&b.state)), "c", NOW + 1)
+        .unwrap();
+    assert_eq!(got, purpose);
+    assert_eq!(identity.identity().subject(), "user-42");
+    // The purpose is not printed.
+    assert!(!format!("{got:?}").contains("inv_the-secret"));
+    let asked = OidcPurpose::Invitation {
+        secret: "inv_the-secret",
+        next: None,
+    };
+    assert!(!format!("{asked:?}").contains("inv_the-secret"));
 }

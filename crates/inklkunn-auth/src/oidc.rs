@@ -42,6 +42,7 @@ pub use verify::{TokenVerifier, VerifiedIdentity};
 use crate::random;
 use crate::stored::same_secret;
 use pending::PendingLogins;
+pub(crate) use pending::Purpose;
 use remote::Remote;
 
 /// The cookie that carries a login's `state` to the callback.
@@ -170,6 +171,23 @@ pub struct OidcConfig {
     pub client_secret: Option<String>,
     /// This service's callback URL, exactly as registered.
     pub redirect_uri: String,
+    /// The scopes to ask for besides `openid`, which is always asked (the identity needs it) and need not be
+    /// listed. Nothing here reads a claim other than `iss` and `sub`: a wider scope asks the provider for
+    /// more than this service uses, so the default is none.
+    pub scopes: Vec<String>,
+}
+
+impl OidcConfig {
+    /// The `scope` request parameter's value: `openid` first, then the others, each once, space separated.
+    pub fn scope_parameter(&self) -> String {
+        let mut scopes = vec!["openid"];
+        for s in &self.scopes {
+            if !scopes.contains(&s.as_str()) {
+                scopes.push(s);
+            }
+        }
+        scopes.join(" ")
+    }
 }
 
 impl fmt::Debug for OidcConfig {
@@ -179,7 +197,61 @@ impl fmt::Debug for OidcConfig {
             .field("client_id", &self.client_id)
             .field("client_secret", &self.client_secret.as_ref().map(|_| "…"))
             .field("redirect_uri", &self.redirect_uri)
+            .field("scopes", &self.scopes)
             .finish()
+    }
+}
+
+/// What a sign-in is for, told when it starts. The server keeps it with the login in flight: the browser
+/// carries only the `state`, so an invitation's secret and the landing path are in no cookie, no callback
+/// address and no provider log.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum OidcPurpose<'a> {
+    /// Sign in. A person whose identity is linked lands on `next`; where joining through the provider is open
+    /// (`INKLKUNN_JOIN`), a first sign-in makes an account and lands on `after_joining`; otherwise an identity
+    /// nobody linked signs nobody in. Each is a path on this site (anything else becomes `/`).
+    SignIn {
+        /// Where an existing account lands.
+        next: Option<&'a str>,
+        /// Where a new account lands.
+        after_joining: Option<&'a str>,
+    },
+    /// Make the account an invitation is for, bound to the identity the provider vouches for, instead of a
+    /// password. The invitation must be usable when this starts and when the provider sends the browser back.
+    Invitation {
+        /// The invitation's secret, as the link carried it.
+        secret: &'a str,
+        /// Where the new account lands.
+        next: Option<&'a str>,
+    },
+}
+
+impl fmt::Debug for OidcPurpose<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            OidcPurpose::SignIn { .. } => f.write_str("OidcPurpose::SignIn"),
+            OidcPurpose::Invitation { .. } => f.write_str("OidcPurpose::Invitation(…)"),
+        }
+    }
+}
+
+impl OidcPurpose<'_> {
+    pub(crate) fn owned(&self) -> Purpose {
+        let own = |p: &Option<&str>| p.map(str::to_owned);
+        match self {
+            OidcPurpose::SignIn {
+                next,
+                after_joining,
+            } => Purpose::SignIn {
+                next: own(next),
+                after_joining: own(after_joining),
+            },
+            OidcPurpose::Invitation { secret, next } => Purpose::Invitation {
+                secret: (*secret).to_owned(),
+                next: own(next),
+            },
+        }
     }
 }
 
@@ -269,25 +341,30 @@ impl OidcProvider {
 
     /// Start a sign-in: make the state, nonce and PKCE verifier, keep them, and build the URL. Reached through
     /// the authenticator, which spends the client address's budget for starting one first.
-    pub(crate) fn begin_sign_in(&self, now: i64) -> Result<BeginSignIn, OidcError> {
+    pub(crate) fn begin_sign_in(
+        &self,
+        purpose: Purpose,
+        now: i64,
+    ) -> Result<BeginSignIn, OidcError> {
         let d = self.remote.discovery(now)?;
         let state = random::token()?;
         let nonce = random::token()?;
         let verifier = random::token()?;
         let challenge = Base64UrlUnpadded::encode_string(&Sha256::digest(verifier.as_bytes()));
         self.pending
-            .insert(state.clone(), nonce.clone(), verifier, now);
+            .insert(state.clone(), nonce.clone(), verifier, purpose, now);
         let sep = if d.authorization_endpoint.contains('?') {
             '&'
         } else {
             '?'
         };
         let authorization_url = format!(
-            "{}{sep}response_type=code&client_id={}&redirect_uri={}&scope=openid&state={}&nonce={}\
+            "{}{sep}response_type=code&client_id={}&redirect_uri={}&scope={}&state={}&nonce={}\
              &code_challenge={}&code_challenge_method=S256",
             d.authorization_endpoint,
             pct(&self.cfg.client_id),
             pct(&self.cfg.redirect_uri),
+            pct(&self.cfg.scope_parameter()),
             pct(&state),
             pct(&nonce),
             pct(&challenge),
@@ -308,7 +385,7 @@ impl OidcProvider {
         cookie_header: Option<&str>,
         code: &str,
         now: i64,
-    ) -> Result<VerifiedIdentity, OidcError> {
+    ) -> Result<(VerifiedIdentity, Purpose), OidcError> {
         let state_cookie = cookie_header
             .and_then(|h| crate::session::cookie_value(h, STATE_COOKIE))
             .unwrap_or("");
@@ -344,7 +421,10 @@ impl OidcProvider {
         let tokens: TokenResponse = serde_json::from_slice(&body).map_err(|_| {
             OidcError::Provider("the token response was not the expected JSON".to_owned())
         })?;
-        self.verifier.verify(&tokens.id_token, &pending.nonce, now)
+        let identity = self
+            .verifier
+            .verify(&tokens.id_token, &pending.nonce, now)?;
+        Ok((identity, pending.purpose))
     }
 
     fn remote_fetch(&self, request: &FetchRequest) -> Result<Vec<u8>, OidcError> {

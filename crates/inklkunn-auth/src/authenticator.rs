@@ -41,7 +41,7 @@ use crate::hashing::{
 };
 use crate::invitation::{Invitations, InviteError, IssuedInvitation, JoinPolicy};
 use crate::oidc::{
-    BeginSignIn, Landing, OidcError, OidcProvider, VerifiedIdentity, clear_state_cookie,
+    BeginSignIn, Landing, OidcError, OidcProvider, OidcPurpose, Purpose, clear_state_cookie,
 };
 use crate::proxy::{ClientAddress, ProxyPolicy};
 use crate::random;
@@ -112,6 +112,9 @@ pub struct SignedIn {
 pub struct OidcSignedIn {
     /// Who signed in and the new session (its secret is also in the landing's cookies).
     pub signed_in: SignedIn,
+    /// Whether this sign-in made the account: a first sign-in where joining through the provider is open, or an
+    /// invitation redeemed with the provider.
+    pub account_created: bool,
     /// The answer to the callback. **Send it as it is**, not a redirect: see [`Landing`].
     pub landing: Landing,
 }
@@ -214,9 +217,17 @@ impl From<StoreError> for AccountError {
 pub enum OidcSignInError {
     /// The provider flow failed; the reason is for the log (a person sees "sign-in failed").
     Oidc(OidcError),
-    /// The identity did not sign anyone in (nobody linked it, the account is disabled), or this client
-    /// address has started too many sign-ins, or a store failed.
+    /// The account is disabled, this client address has started or made too many, or a store failed.
     Auth(AuthError),
+    /// The provider vouched for the person, but no account here is linked to that identity and joining through
+    /// the provider is not open. (The person is told so, and told to ask for an invitation: the identity is
+    /// their own, so nothing about anyone else is given away.)
+    NotLinked,
+    /// The invitation's sign-in found that the person's provider identity already belongs to an account here.
+    /// The invitation is **not** spent: the person signs in with that account instead.
+    IdentityTaken,
+    /// The invitation is unknown, used or over.
+    InvitationUnusable,
 }
 
 impl std::fmt::Display for OidcSignInError {
@@ -224,6 +235,15 @@ impl std::fmt::Display for OidcSignInError {
         match self {
             OidcSignInError::Oidc(e) => e.fmt(f),
             OidcSignInError::Auth(e) => e.fmt(f),
+            OidcSignInError::NotLinked => f.write_str(
+                "no account is linked to that identity and joining through the provider is not open",
+            ),
+            OidcSignInError::IdentityTaken => {
+                f.write_str("that identity is linked to an account already")
+            }
+            OidcSignInError::InvitationUnusable => {
+                f.write_str("that invitation is unknown, used or over")
+            }
         }
     }
 }
@@ -500,30 +520,24 @@ impl Authenticator {
         })
     }
 
-    /// Sign in with an identity an OpenID Connect provider just verified. An identity no account is linked
-    /// to signs nobody in; so does a disabled account. Both are [`AuthError::BadCredentials`].
-    pub(crate) fn sign_in_verified(
-        &self,
-        identity: &VerifiedIdentity,
-        now: i64,
-    ) -> Result<SignedIn, AuthError> {
-        let account = self
-            .accounts
-            .account_by_identity(identity.identity())?
-            .ok_or(AuthError::BadCredentials)?;
-        if account.disabled {
-            return Err(AuthError::BadCredentials);
-        }
-        self.start(&account, now)
+    /// Is an OpenID Connect provider configured? A page offers the provider's button only then.
+    pub fn oidc_configured(&self) -> bool {
+        self.oidc.is_some()
     }
 
-    /// Start an OpenID Connect sign-in: spends one of the client address's sign-in starts (so an address
-    /// cannot flood the logins in flight), then asks the provider. Send the browser to the returned URL and set
-    /// the returned state cookie.
+    /// The configured provider's issuer, for a page to name it; `None` without one.
+    pub fn oidc_issuer(&self) -> Option<&str> {
+        self.oidc.as_ref().map(OidcProvider::issuer)
+    }
+
+    /// Start an OpenID Connect sign-in for `purpose`: spends one of the client address's sign-in starts (so an
+    /// address cannot flood the logins in flight), then asks the provider. Send the browser to the returned URL
+    /// and set the returned state cookie. A purpose that is an invitation must be usable now.
     ///
     /// **Blocking** (it may fetch the provider's discovery document).
     pub fn begin_oidc(
         &self,
+        purpose: OidcPurpose<'_>,
         client: &ClientAddress,
         now: i64,
     ) -> Result<BeginSignIn, OidcSignInError> {
@@ -541,26 +555,56 @@ impl Authenticator {
                 }
             }
         }
-        provider.begin_sign_in(now).map_err(|e| {
+        let started = self.start_oidc(provider, purpose, now);
+        if started.is_err() {
             // Nothing was started: the start is given back.
             self.by_oidc_start.refund(client.as_key());
-            OidcSignInError::Oidc(e)
-        })
+        }
+        started
+    }
+
+    fn start_oidc(
+        &self,
+        provider: &OidcProvider,
+        purpose: OidcPurpose<'_>,
+        now: i64,
+    ) -> Result<BeginSignIn, OidcSignInError> {
+        if let OidcPurpose::Invitation { secret, .. } = purpose
+            && !self
+                .invitations
+                .usable(secret, now)
+                .map_err(OidcSignInError::Auth)?
+        {
+            return Err(OidcSignInError::InvitationUnusable);
+        }
+        provider
+            .begin_sign_in(purpose.owned(), now)
+            .map_err(OidcSignInError::Oidc)
     }
 
     /// Finish an OpenID Connect sign-in from the provider's callback: `state` and `code` are its query
     /// parameters and `cookie_header` the request's `Cookie` header (the state cookie is read from it). A
-    /// callback this browser did not start, a state used twice, a token that fails a check, and an identity
-    /// nobody linked all end here; the first two and the third are [`OidcSignInError::Oidc`] with the reason
-    /// for the log, the last [`AuthError::BadCredentials`].
+    /// callback this browser did not start and a state used twice end before any account is looked at; a token
+    /// that fails a check ends with its reason for the log ([`OidcSignInError::Oidc`]).
+    ///
+    /// What happens to the identity the provider vouches for depends on what the sign-in was for (told to
+    /// [`Authenticator::begin_oidc`]):
+    ///
+    /// * **sign in**: an account linked to the identity signs in (a disabled one does not). Where the join
+    ///   setting lets a provider sign-in make accounts, an identity nobody linked makes one now (counted per
+    ///   client address, the new-account quotas, no role beyond what the wiki gives everyone). Otherwise it
+    ///   signs nobody in ([`OidcSignInError::NotLinked`]). **Never matched or linked by e-mail address**:
+    ///   the identity is the provider's `iss` and `sub` and nothing else, so one person is one account.
+    /// * **an invitation**: the account the invitation is for is made, bound to the identity (no password), the
+    ///   role it named is granted and the invitation is spent, in one step. An identity that already has an
+    ///   account spends nothing ([`OidcSignInError::IdentityTaken`]).
     ///
     /// **Answer a success with its [`OidcSignedIn::landing`] exactly as it is.** The session cookie is
     /// `SameSite=Strict`, and the callback is a navigation the provider started on another site: a redirect
     /// from it would reach the landing page *without* the session cookie, so the person would see the site
     /// signed out. The landing is a `200` page that moves the browser on with a request of this site's own,
-    /// which does carry it. `next` is the path to land on (a path on this site; anything else becomes `/`).
-    /// The landing also removes the one-shot state cookie. On an error, send [`clear_state_cookie`] with the
-    /// refusal.
+    /// which does carry it. The landing also removes the one-shot state cookie. On an error, send
+    /// [`clear_state_cookie`] with the refusal.
     ///
     /// **Blocking** (the token exchange is a request to the provider).
     pub fn finish_oidc(
@@ -568,24 +612,148 @@ impl Authenticator {
         state: &str,
         cookie_header: Option<&str>,
         code: &str,
-        next: Option<&str>,
+        client: &ClientAddress,
         now: i64,
     ) -> Result<OidcSignedIn, OidcSignInError> {
         let provider = self
             .oidc
             .as_ref()
             .ok_or(OidcSignInError::Oidc(OidcError::NotConfigured))?;
-        let identity = provider
+        let (identity, purpose) = provider
             .finish_sign_in(state, cookie_header, code, now)
             .map_err(OidcSignInError::Oidc)?;
-        let signed_in = self
-            .sign_in_verified(&identity, now)
-            .map_err(OidcSignInError::Auth)?;
+        let (account, created, next) = match purpose {
+            Purpose::SignIn {
+                next,
+                after_joining,
+            } => match self
+                .accounts
+                .account_by_identity(identity.identity())
+                .map_err(|e| OidcSignInError::Auth(e.into()))?
+            {
+                Some(account) if account.disabled => {
+                    return Err(OidcSignInError::Auth(AuthError::BadCredentials));
+                }
+                Some(account) => (account, false, next),
+                None if self.join.lets_a_provider_sign_in_join() => {
+                    let account = self.join_through_provider(identity.identity(), client, now)?;
+                    (account, true, after_joining)
+                }
+                None => return Err(OidcSignInError::NotLinked),
+            },
+            Purpose::Invitation { secret, next } => {
+                let account = self.redeem_with_provider(&secret, identity.identity(), now)?;
+                (account, true, next)
+            }
+        };
+        let signed_in = self.start(&account, now).map_err(OidcSignInError::Auth)?;
         let landing = Landing::new(
-            next,
+            next.as_deref(),
             vec![signed_in.session.set_cookie(now), clear_state_cookie()],
         );
-        Ok(OidcSignedIn { signed_in, landing })
+        Ok(OidcSignedIn {
+            signed_in,
+            account_created: created,
+            landing,
+        })
+    }
+
+    /// An account with no password, named by a placeholder the person changes on their account page: the
+    /// provider's claims are not read (not even a name), so nothing about the person is copied from it.
+    fn external_account(&self, now: i64) -> Result<Account, OidcSignInError> {
+        let id = AccountId::new();
+        let mut tail: Vec<char> = id
+            .as_str()
+            .chars()
+            .rev()
+            .filter(char::is_ascii_hexdigit)
+            .take(6)
+            .collect();
+        tail.reverse();
+        let tail: String = tail.into_iter().collect();
+        let display_name = DisplayName::new(&format!("member-{tail}"))
+            .map_err(|_| OidcSignInError::Auth(AuthError::BadCredentials))?;
+        Ok(Account {
+            id,
+            display_name,
+            local: None,
+            created_at: now,
+            disabled: false,
+        })
+    }
+
+    /// A first sign-in where joining through the provider is open: the account and its identity, in one step.
+    fn join_through_provider(
+        &self,
+        identity: &ExternalIdentity,
+        client: &ClientAddress,
+        now: i64,
+    ) -> Result<Account, OidcSignInError> {
+        match self.by_join.begin(client.as_key(), now) {
+            Begin::Locked(until) => {
+                return Err(OidcSignInError::Auth(AuthError::Locked { until }));
+            }
+            Begin::Admitted { locks_now } => {
+                if let Some(until) = locks_now {
+                    self.note_lock("join-throttle", until, now);
+                }
+            }
+        }
+        let account = self.external_account(now)?;
+        match self
+            .accounts
+            .add_account_with_identity(&account, identity, now)
+        {
+            Ok(()) => Ok(account),
+            Err(StoreError::IdentityTaken) => {
+                // Two first sign-ins of one person at once: the other one made it, and this one signs in.
+                self.by_join.refund(client.as_key());
+                self.accounts
+                    .account_by_identity(identity)
+                    .map_err(|e| OidcSignInError::Auth(e.into()))?
+                    .filter(|a| !a.disabled)
+                    .ok_or(OidcSignInError::Auth(AuthError::BadCredentials))
+            }
+            Err(e) => {
+                self.by_join.refund(client.as_key());
+                Err(OidcSignInError::Auth(e.into()))
+            }
+        }
+    }
+
+    /// An invitation redeemed with the provider's identity instead of a password.
+    fn redeem_with_provider(
+        &self,
+        presented: &str,
+        identity: &ExternalIdentity,
+        now: i64,
+    ) -> Result<Account, OidcSignInError> {
+        let hash = Invitations::hash_of(presented).ok_or(OidcSignInError::InvitationUnusable)?;
+        if !self
+            .invitations
+            .usable(presented, now)
+            .map_err(OidcSignInError::Auth)?
+        {
+            return Err(OidcSignInError::InvitationUnusable);
+        }
+        // One person, one account: an identity that has one is told to sign in, and the link is not spent.
+        if self
+            .accounts
+            .account_by_identity(identity)
+            .map_err(|e| OidcSignInError::Auth(e.into()))?
+            .is_some()
+        {
+            return Err(OidcSignInError::IdentityTaken);
+        }
+        let account = self.external_account(now)?;
+        self.redemption
+            .redeem_invitation_with_identity(&hash, &account, identity, now)
+            .map_err(|e| match e {
+                StoreError::InvitationUnusable => OidcSignInError::InvitationUnusable,
+                StoreError::IdentityTaken => OidcSignInError::IdentityTaken,
+                other => OidcSignInError::Auth(other.into()),
+            })?;
+        Ok(account)
     }
 
     /// The principal for a request's session cookie, if the session is live and its account is enabled. For

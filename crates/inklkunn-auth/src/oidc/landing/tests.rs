@@ -7,22 +7,11 @@ fn landing(next: Option<&str>) -> Landing {
 }
 
 #[test]
-fn a_landing_is_a_200_page_with_a_meta_refresh_and_a_link_and_never_a_redirect() {
+fn a_landing_is_a_200_answer_with_a_target_and_cookies_and_never_a_redirect() {
     let l = landing(Some("/handbook/Home"));
     assert_eq!(l.status(), 200);
     assert_eq!(l.target(), "/handbook/Home");
     assert_eq!(l.set_cookies(), ["a=1", "b=2"]);
-    let body = l.body();
-    assert!(body.starts_with("<!doctype html>"), "{body}");
-    assert!(
-        body.contains("<meta http-equiv=\"refresh\" content=\"0;url=/handbook/Home\">"),
-        "{body}"
-    );
-    assert!(
-        body.contains("<a href=\"/handbook/Home\">continue</a>"),
-        "{body}"
-    );
-    assert!(!body.contains("<script"), "no script: {body}");
     assert!(
         !l.headers()
             .iter()
@@ -69,18 +58,6 @@ fn only_a_path_on_this_site_is_a_target() {
         assert_eq!(landing(Some(bad)).target(), "/", "{bad:?}");
     }
     assert_eq!(landing(None).target(), "/");
-}
-
-#[test]
-fn the_target_is_escaped_where_it_lands_in_the_page() {
-    let l = landing(Some("/x\"><script>alert('1')</script>&"));
-    let body = l.body();
-    assert!(!body.contains("<script"), "{body}");
-    assert!(!body.contains("\"><"), "{body}");
-    assert!(
-        body.contains("/x&quot;&gt;&lt;script&gt;alert(&#39;1&#39;)&lt;/script&gt;&amp;"),
-        "{body}"
-    );
 }
 
 #[test]

@@ -39,7 +39,7 @@ pub use authenticator::{
 pub use error::AuthError;
 pub use hashing::{Argon2idHasher, PasswordHasher, PasswordRefusal};
 pub use invitation::{InvitationSecret, InviteError, IssuedInvitation, JoinPolicy};
-pub use oidc::Landing;
+pub use oidc::{Landing, OidcPurpose};
 pub use proxy::{ClientAddress, ProxyPolicy};
 pub use session::{CsrfToken, NewSession, SessionSummary};
 pub use throttle::ThrottlePolicy;
