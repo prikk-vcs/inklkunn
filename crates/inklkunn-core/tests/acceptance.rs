@@ -27,7 +27,7 @@ use inklkunn_prikk::{Admission, Point, PrikkCli, Sandbox, Storage};
 use inklkunn_store::{
     AcceptanceStore, Account, AccountId, AccountStore, ActStore, DisplayName, FileChange, NewWiki,
     ProposalFilter, ProposalRecord, ProposalState, RecoveryReason, Role, RoleGrant, RoleStore,
-    Slug, SqliteStore, SystemActEnd, SystemActId, SystemActKind, SystemActRecord,
+    Slug, SqliteStore, SystemActId, SystemActKind,
 };
 
 const MAIN: &str = "heads/main";
@@ -155,6 +155,7 @@ impl World {
         );
         let created = create_wiki(
             &*store,
+            &*store,
             &layout,
             &*signer,
             &*storage,
@@ -167,32 +168,8 @@ impl World {
         )
         .unwrap_or_else(|e| panic!("{e}"));
         let wiki = created.record.clone();
-        // The creation is a system change; the records of it are what `create_wiki` will keep once it keeps
-        // any, and the reconciliation needs them to call the first block recorded.
-        let message = inklkunn_core::creation_message(&wiki);
-        let act = SystemActRecord {
-            id: SystemActId::new(),
-            wiki: wiki.id.clone(),
-            view: wiki.default_view.clone(),
-            kind: SystemActKind::System,
-            base_block: created.first_block_id.clone(),
-            message_digest: inklkunn_core::acceptance::message_digest(&message),
-            message,
-            digest: "0".repeat(64),
-            bytes: 0,
-            created_at: 1,
-        };
-        store.begin_system_act(&act).unwrap();
-        store
-            .finish_system_act(&SystemActEnd {
-                act: act.id.clone(),
-                outcome: inklkunn_store::AcceptanceOutcome::Sealed {
-                    block_id: created.first_block_id.clone(),
-                    patch_id: "0".repeat(64),
-                },
-                at: 2,
-            })
-            .unwrap();
+        // `create_wiki` keeps the creation as a sealed system act, so the first block is a recorded one.
+        assert!(created.first_change_recorded);
 
         let leases = WikiLeases::new(
             write_leases.clone(),

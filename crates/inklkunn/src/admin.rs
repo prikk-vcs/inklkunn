@@ -462,8 +462,15 @@ fn create(
     }
     // What an earlier, killed creation left goes first.
     let trail = SweepTrail::new(&store, now);
-    let report =
-        sweep_unfinished_creations(&store, &env.layout, &signer, &env.storage, fresh, &trail)?;
+    let report = sweep_unfinished_creations(
+        &store,
+        &store,
+        &env.layout,
+        &signer,
+        &env.storage,
+        fresh,
+        &trail,
+    )?;
     report_sweep(&report, err);
     for line in trail.problems() {
         let _ = writeln!(err, "{line}");
@@ -471,6 +478,7 @@ fn create(
     let trail = Trail { sink: &store, now };
     trail.begin("wiki-create", "wiki:new", "begun")?;
     let created = create_wiki(
+        &store,
         &store,
         &env.layout,
         &signer,
@@ -491,6 +499,12 @@ fn create(
             let _ = writeln!(out, "  name:            {}", c.record.display_name);
             let _ = writeln!(out, "  repository:      {}", c.repo.display());
             let _ = writeln!(out, "  first block:     {}", c.first_block_id);
+            if !c.first_change_recorded {
+                let _ = writeln!(
+                    err,
+                    "inklkunn: the wiki is whole, but the record of its first change could not be kept now; the next start keeps it"
+                );
+            }
             let _ = writeln!(
                 out,
                 "  author key:      {}",
@@ -866,6 +880,7 @@ pub(crate) fn start_up(
                 Ok(signer) => {
                     let trail = SweepTrail::new(store, now);
                     match sweep_unfinished_creations(
+                        store,
                         store,
                         &layout,
                         &signer,

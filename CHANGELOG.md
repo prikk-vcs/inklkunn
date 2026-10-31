@@ -818,3 +818,29 @@ Follow-ups from the review of 2026-10-31 (handoff 003, S2 – S4).
   record, export and refresh), the acceptance against an in-memory repository and a scripted signer (every outcome,
   the race, the retry, the quotas, the flag, ids, who is told), the sides of the merge, and eleven against a real
   repository (`tests/acceptance.rs`) including the reconciliation finding nothing after every kind of act.
+- **Handoff 004 T4b: Accept on the web, and the creation of a wiki is a recorded act.** *The web*: `Services` gains
+  `acceptor` (`Option<Arc<dyn Acceptor>>`; `ProposalAcceptor` implements the trait; `None` is a build that does not
+  accept, and the page says so, as before) and `acts` (the recorded overlaps). The Accept form posts the revision
+  it shows; after the checks that precede an acceptance (a form from this site, an account, a proposal the visitor
+  may read, the `accept` action) the handler asks the acceptor on a blocking thread, and **every** `Accepted` and
+  `AcceptFailure` is a page in the words of RFC 004 D-12 (the match is exhaustive): *signed into the history* (also
+  for a retry that finds the record), *stopped: changes overlap*, *not allowed* (a proposal the acceptance cannot
+  find looks exactly the same), *the wiki is busy* (with the depth, and `Retry-After` from the estimate, never a
+  depth of zero), *the wiki needs recovery*, *refused: the named limit*, and for the rest a fixed word each: *not
+  signed: the history refused it*, *too large to sign now*, *this revision is being signed*, *nothing to change*,
+  *could not be done now*, *the result is not certain* (the records failed after the change may have been made).
+  A missing or unreadable revision is a refusal in words and asks nobody. Nothing of prikk's text, a path or a cause
+  is on a page; operators get it through `services.log`. A proposal that *needs a revision* shows the overlaps its
+  acceptance recorded, both texts side by side in a table (the wiki's now, the proposal's), for the revision they
+  were found for. 27 catalog messages (English, Japanese preview) with glossary rows; the structural harness
+  draws the seven new outcome pages and the overlaps, both languages. The binary passes `acceptor: None`: sign-in is
+  not served, and the server holds no write signer. **Creation**: `create_wiki` (and `create_wiki_observed`, and the
+  start-up sweep) take an `ActStore`; once the wiki's record is stored (the act's table refers to it) the first
+  change is kept as the sealed `Kind: system` act `SystemActs` writes (a new step, `CreationStep::ActRecorded`, after
+  `Stored`), so a production reconciliation no longer reports the first block as an unrecorded system change. A
+  creation killed between the record and the act is made whole by the sweep, which writes the act from the history
+  before it removes the mark (and keeps the mark when it cannot); `CreatedWiki::first_change_recorded` says whether
+  the act was kept. Tests: every outcome in both languages, the revision field, nothing run for a visitor who may
+  not accept or a form from elsewhere, the log, the overlaps; the creation against a repository double (steps, the
+  act, the kill after the record, a store that cannot take the act, the sweep's refusals), and against a real
+  repository (the reconciliation of a created wiki, the kill test over the new step).

@@ -161,6 +161,7 @@ fn world(tag: &str, sandbox: Sandbox) -> World {
 fn create(w: &World, slug: &str) -> CreatedWiki {
     create_wiki(
         &*w.store,
+        &*w.store,
         &w.layout,
         &*w.signer,
         &w.storage,

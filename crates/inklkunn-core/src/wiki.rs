@@ -14,6 +14,11 @@
 //! holds a sealed block, nor when the store is one this start made (R9): those wait for the operator.
 //! [`create_wiki_observed`] names the steps so that a test can stop the process
 //! (or panic, which runs no cleanup either) after each one.
+//!
+//! **The first change is a recorded act** (handoff 004 T4b): once the wiki's record is stored, the creation is
+//! kept as a sealed system act (`act`), so the reconciliation finds a record behind the first block. A creation
+//! killed between the two leaves a stored wiki whose act is missing, and the sweep writes it from the history
+//! before it removes the mark.
 
 use std::path::{Path, PathBuf};
 
@@ -22,10 +27,15 @@ pub use inklkunn_signer::RepositoryBootstrap;
 use inklkunn_signer::message::{Message, Summary, SystemLabel};
 use inklkunn_signer::{CreationMark, KeyAuthority, find_unfinished};
 use inklkunn_store::{
-    NewWiki, RootLayout, StoreError, Verification, VerificationState, WikiId, WikiRecord, WikiStore,
+    ActStore, NewWiki, RootLayout, StoreError, Verification, VerificationState, WikiId, WikiRecord,
+    WikiStore,
 };
 
 use crate::bundle;
+
+mod act;
+#[cfg(test)]
+mod tests;
 
 /// What happened to the directories of a failed creation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -154,6 +164,10 @@ pub struct CreatedWiki {
     pub repo: PathBuf,
     /// The first sealed block.
     pub first_block_id: String,
+    /// The creation is kept as a sealed system act. `false`: the wiki is whole and its history is sound, the
+    /// record could not be kept now (the store failed), the creation mark stays and the next start's sweep
+    /// keeps it. The caller says so to the operator.
+    pub first_change_recorded: bool,
 }
 
 pub use inklkunn_signer::message::SUMMARY_MAX_CHARS;
@@ -217,13 +231,16 @@ pub enum CreationStep {
     Sealed,
     /// The new repository verified.
     Verified,
-    /// The record is stored: from here the wiki is complete and only the mark remains.
+    /// The wiki's record is stored. The wiki exists from here; the record of its first change is still to be
+    /// kept (a kill now is made whole by the next start's sweep).
     Stored,
+    /// The first change is kept as a sealed system act: from here the wiki is complete and only the mark remains.
+    ActRecorded,
 }
 
 impl CreationStep {
     /// Every step, in order.
-    pub const ALL: [CreationStep; 7] = [
+    pub const ALL: [CreationStep; 8] = [
         CreationStep::Marked,
         CreationStep::Prepared,
         CreationStep::RepositoryCreated,
@@ -231,14 +248,18 @@ impl CreationStep {
         CreationStep::Sealed,
         CreationStep::Verified,
         CreationStep::Stored,
+        CreationStep::ActRecorded,
     ];
 }
 
 /// Create a wiki (an act that brings keys into being, so it takes the process's [`KeyAuthority`]): check the
 /// slug, build the record, **mark the creation**, make the directories, create the repository, write the
-/// bundle files, seal the first change, verify, and only then store the record and remove the mark.
+/// bundle files, seal the first change, verify, and only then store the record, keep the first change as a
+/// system act in `acts` and remove the mark.
+#[allow(clippy::too_many_arguments)]
 pub fn create_wiki(
     store: &dyn WikiStore,
+    acts: &dyn ActStore,
     layout: &RootLayout,
     signer: &dyn RepositoryBootstrap,
     storage: &dyn Storage,
@@ -248,6 +269,7 @@ pub fn create_wiki(
 ) -> Result<CreatedWiki, CreateWikiError> {
     create_wiki_observed(
         store,
+        acts,
         layout,
         signer,
         storage,
@@ -265,6 +287,7 @@ pub fn create_wiki(
 #[allow(clippy::too_many_arguments)]
 pub fn create_wiki_observed(
     store: &dyn WikiStore,
+    acts: &dyn ActStore,
     layout: &RootLayout,
     signer: &dyn RepositoryBootstrap,
     storage: &dyn Storage,
@@ -364,13 +387,29 @@ pub fn create_wiki_observed(
         }
     };
     observe(CreationStep::Stored);
-    // 10. The mark goes last. One that cannot be removed is harmless: the record exists, so the sweep removes
-    //     the mark and nothing else.
-    let _ = mark.finish();
+    // 10. The first change, kept as a sealed system act (it refers to the wiki's record, so it cannot come
+    //     before it). If the store cannot take it now the mark stays, and the next start's sweep keeps it.
+    let message = creation_message(&record);
+    let first_change_recorded = act::record(
+        acts,
+        &record,
+        &message,
+        &sealed.block_id,
+        sealed.patch_ids.first().map_or("", String::as_str),
+        inklkunn_store::record::now_secs(),
+    )
+    .is_ok();
+    if first_change_recorded {
+        observe(CreationStep::ActRecorded);
+        // 11. The mark goes last. One that cannot be removed is harmless: the record and the act exist, so the
+        //     sweep removes the mark and nothing else.
+        let _ = mark.finish();
+    }
     Ok(CreatedWiki {
         record,
         repo,
         first_block_id: sealed.block_id,
+        first_change_recorded,
     })
 }
 
@@ -428,7 +467,9 @@ impl SweepReport {
 /// is gone and settle it. **No record in `store`**: the creation never finished, and everything it made is
 /// removed whole (the sealed key record, the repository, the scratch directory, the lock
 /// file) and then the mark. **A record**: the wiki is complete (the process died between storing the record and
-/// removing the mark) and only the mark is removed. A mark whose creation is still running is left alone.
+/// removing the mark) and only the mark is removed; if the record of its first change was not yet kept, that is
+/// written first, from the history, and the mark stays when it cannot be. A mark whose creation is still running
+/// is left alone.
 ///
 /// **An empty store proves nothing, and a sealed block is not an attempt (R9).** Nothing is removed when
 /// `store_is_new` (this start made the store, so a wiki whose record was in a lost one would look unfinished),
@@ -440,6 +481,7 @@ impl SweepReport {
 /// removed. It never removes anything it cannot tie to an unfinished creation: it acts on ids that have a mark.
 pub fn sweep_unfinished_creations(
     store: &dyn WikiStore,
+    acts: &dyn ActStore,
     layout: &RootLayout,
     signer: &dyn RepositoryBootstrap,
     storage: &dyn Storage,
@@ -454,9 +496,20 @@ pub fn sweep_unfinished_creations(
     for mark in found.dead {
         let id = mark.id().clone();
         match store.get(&id) {
-            Ok(_) => {
-                let _ = mark.finish();
-                report.completed.push(id);
+            Ok(record) => {
+                // The wiki is whole once its first change is kept as an act; a creation killed between the
+                // record and the act has it written now, from the history, and its mark stays if that fails.
+                let now = inklkunn_store::record::now_secs();
+                match act::repair(acts, storage, layout, &record, now) {
+                    Ok(_) => {
+                        let _ = mark.finish();
+                        report.completed.push(id);
+                    }
+                    Err(why) => {
+                        audit.after(&id, false);
+                        report.left_behind.push((id, why));
+                    }
+                }
             }
             Err(StoreError::NotFound) => {
                 if let Some(why) = refuse_removal(storage, layout, &id, store_is_new) {

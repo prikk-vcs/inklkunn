@@ -113,6 +113,7 @@ impl Real {
         let store = Arc::new(MemoryStore::new());
         let created = create_wiki(
             &*store,
+            &*store,
             &layout,
             &signer,
             counting.inner(),

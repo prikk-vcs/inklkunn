@@ -4,15 +4,19 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
+use inklkunn_core::acceptance::StoreActs;
 use inklkunn_core::bundle::{HELP_PAGE, check_layout};
+use inklkunn_core::reconcile::{Finding, reconcile};
 use inklkunn_core::{Cleanup, CreateWikiError, create_wiki};
 use inklkunn_prikk::sandbox::probe_bwrap;
 use inklkunn_prikk::{Admission, Point, PrikkCli, Sandbox, Storage};
 use inklkunn_signer::{BootstrapSigner, KeyIds, RepositoryBootstrap, SealedIds, SignerError};
 use inklkunn_store::{
-    DisplayName, MemoryStore, NewWiki, RootLayout, Slug, StoreError, VerificationState, WikiStore,
+    AcceptanceOutcome, ActStore, DisplayName, MemoryStore, NewWiki, RootLayout, Slug, StoreError,
+    SystemActKind, VerificationState, WikiStore,
 };
 
 struct TempDir(PathBuf);
@@ -60,6 +64,86 @@ fn storage(sandbox: Sandbox) -> PrikkCli {
     .expect("prikk at the floor")
 }
 
+/// A created wiki's first change is a recorded act (handoff 004 T4b): what the reconciliation of a production
+/// store would otherwise report as an unrecorded system change.
+#[test]
+fn a_created_wikis_first_change_is_a_recorded_act_and_the_reconciliation_reports_nothing() {
+    if !prikk_on_path() {
+        println!("skipping: prikk not on PATH");
+        return;
+    }
+    for (n, sandbox) in policies().into_iter().enumerate() {
+        let tmp = temp(&format!("recorded-{n}"));
+        let layout = RootLayout::new(tmp.0.join("root"));
+        let signer =
+            BootstrapSigner::new("prikk", sandbox.clone(), tmp.0.join("keys")).expect("signer");
+        let storage = storage(sandbox);
+        let store = Arc::new(MemoryStore::new());
+        let created = create_wiki(
+            &*store,
+            &*store,
+            &layout,
+            &signer,
+            &storage,
+            NewWiki::new(Slug::new("recorded").expect("slug"), name("Recorded")),
+            "0.0.0",
+            &inklkunn_core::KeyAuthority::for_tests(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert!(created.first_change_recorded);
+
+        // One act, a system change, sealed as the history's one block and its one patch.
+        let acts = store.system_acts(&created.record.id).expect("acts");
+        let [entry] = acts.as_slice() else {
+            panic!("one act, not {}", acts.len());
+        };
+        assert_eq!(entry.act.kind, SystemActKind::System);
+        assert_eq!(
+            entry.act.message,
+            inklkunn_core::creation_message(&created.record)
+        );
+        let history = storage
+            .history(
+                &created.repo,
+                &Point::View(created.record.default_view.clone()),
+                None,
+            )
+            .expect("history");
+        let patch = history
+            .blocks
+            .first()
+            .and_then(|b| b.patch_messages.first())
+            .expect("the first patch");
+        assert_eq!(
+            entry.end.as_ref().map(|e| &e.outcome),
+            Some(&AcceptanceOutcome::Sealed {
+                block_id: created.first_block_id.clone(),
+                patch_id: patch.patch_id.clone(),
+            })
+        );
+
+        // The reconciliation, over the real history and these records, finds nothing...
+        let records = StoreActs::new(store.clone(), store.clone());
+        let report = reconcile(&created.record.id, &created.repo, &storage, &records)
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(report.findings, Vec::new());
+        assert_eq!((report.blocks, report.system_acts), (1, 1));
+        // ...and finds the block unrecorded when the record is not there (the check can fail).
+        let bare = Arc::new(MemoryStore::new());
+        let records = StoreActs::new(bare.clone(), bare);
+        let report = reconcile(&created.record.id, &created.repo, &storage, &records)
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert!(
+            matches!(
+                report.findings.as_slice(),
+                [Finding::UnrecordedSystemChange { .. }]
+            ),
+            "{:?}",
+            report.findings
+        );
+    }
+}
+
 #[test]
 fn a_created_wiki_verifies_and_has_the_bundle_layout() {
     if !prikk_on_path() {
@@ -76,6 +160,7 @@ fn a_created_wiki_verifies_and_has_the_bundle_layout() {
 
         let slug = Slug::new("first-wiki").expect("slug");
         let created = create_wiki(
+            &store,
             &store,
             &layout,
             &signer,
@@ -198,6 +283,7 @@ fn a_created_wiki_verifies_and_has_the_bundle_layout() {
         let before = std::fs::read_dir(layout.root()).expect("root").count();
         let again = create_wiki(
             &store,
+            &store,
             &layout,
             &signer,
             &storage,
@@ -264,6 +350,7 @@ fn a_failed_creation_leaves_no_record_and_no_directories() {
         let slug = Slug::new("doomed").expect("slug");
         let r = create_wiki(
             &store,
+            &store,
             &layout,
             &signer,
             &storage,
@@ -293,6 +380,7 @@ fn a_failed_creation_leaves_no_record_and_no_directories() {
         let good =
             BootstrapSigner::new("prikk", sandbox.clone(), tmp.0.join("keys")).expect("signer");
         let created = create_wiki(
+            &store,
             &store,
             &layout,
             &good,
@@ -393,6 +481,7 @@ fn an_invalid_request_is_refused_before_anything_is_made() {
     let mut bad = NewWiki::new(Slug::new("bad-view").expect("slug"), name("Bad"));
     bad.default_view = Some("main".into());
     let r = create_wiki(
+        &store,
         &store,
         &layout,
         &Never,
@@ -504,6 +593,7 @@ fn a_failed_creation_with_the_real_signer_removes_the_sealed_key_record_too() {
     let storage = storage(Sandbox::Unconfined);
     let store = MemoryStore::new();
     let r = create_wiki(
+        &store,
         &store,
         &layout,
         &doomed,

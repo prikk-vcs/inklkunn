@@ -410,6 +410,7 @@ exec "$REAL" "$@"
             let r = catch_unwind(AssertUnwindSafe(|| {
                 create_wiki_observed(
                     &self.store,
+                    &self.store,
                     &layout,
                     &signer,
                     &self.storage,
