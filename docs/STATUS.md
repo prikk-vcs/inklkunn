@@ -226,6 +226,13 @@
   **(D-2)** pages first; claims and shared evidence as files in `knowledge/`; never anchored to footnotes.
   **(D-3)** one accepted proposal, one change; notifications per accepted change. **(D-4)** the four state fields
   with `unknown`, no aggregate. *Not required:* a human relabelling now (it remains available if you want it).
+- **A bundled letter to prikk, drafted** (four asks, each with a working fallback today, so nothing waits on it): a
+  block's sealing key id in a JSON report (PK-39: the superseded-key check parses `verify`'s text and cannot run after a
+  retirement); a block's time, if a seal records one (*first seen here* today); `log --path` (a page's history costs a
+  `show` per block); a way to discard a sound queued patch no one accepted (recovery can only stop). A fifth candidate
+  (the block id in `branch list`) is left out as not worth your time. Checked against prikk `main`'s reference the
+  same day. `.git-exclude/upstream/prikk/send/draft/2026-10-31-block-signer-time-path-history-and-an-orphan-queued-patch.md`.
+  Send, adjust or hold.
 - **Review the Japanese catalog** when the dev team files it (DR-7; the owner is the reviewer): one request listing
   every message in English and Japanese with where it appears. It waits for RFC 004's words (about 300 more messages
   now); until your sign-off Japanese stays a preview that only a reader's own choice turns on.
