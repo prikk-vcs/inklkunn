@@ -526,6 +526,32 @@ Corrections from the review of 2026-10-31 (handoff 004, P1 – P3, P7, P8, P10).
   `PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING` and recommends *run `prikk seal --allow-no-audit` for the affected ref*: recovery
   cannot read `status` and stops; a second `seal` is prikk's own answer. These three are decision requests in the handoff
   report; `INKLKUNN_AK_KEEP=<dir>` keeps a copy of the repository of a row that stopped or failed closed, for study.
+Serving sign-in and accepting, U5: the server's acceptor (decision D1 of the review of handoff 004).
+
+- **`inklkunn serve` opens the signer and builds the acceptor.** After the start-up work (the sweep of unfinished creations,
+  recovery, the checkpoint refresh) the server opens the key store as the command line does (`INKLKUNN_KEY_DIR`, the secret from
+  `INKLKUNN_SECRET_FILE`, the seeds decrypted per call onto the tmpfs; bubblewrap required as for every prikk call) and builds a
+  `ProposalAcceptor` with `Signer::with_leases` over the **same** `WriteLeases` that its `WikiLeases` wrap, `StoreLedger` as the
+  ledger, the notifier, the audit trail and the reconciliation, so the command line and the server exclude each other (each is told
+  *busy*, naming the process, when the other holds the wiki). `Services.acceptor` is set. The banner says
+  *accepting proposals: the signer is open …*. The serving process now holds the key store (threat model RR-1, RR-11, SECURITY.md).
+- **After a seal, the title index is warmed and the wiki verified off the request path.** `AfterSeal` is implemented by one worker thread
+  with a bounded queue (16 jobs, a repeated job for the same wiki collapses, a full queue drops the ask, because the next acceptance
+  asks again): a flood of acceptances makes no thread and no memory.
+- **A server started without the means to sign still serves.** With no secret file, or a key store that does not open (a wrong secret,
+  a key directory open to others, no keys made yet, a seed directory off the tmpfs) the server prints **one line** at start naming the
+  setting and the cause, serves every read, and refuses every write with one plain sentence (`accept.unconfigured`, with a heading and a
+  note beside the button; the API's `signing-not-configured` problem, 503, distinct from `not-available`). It never asks for the secret
+  on a terminal and does not retry on its own: fix the cause and restart. `inklkunn_web::NoSigner` is that acceptor; `Acceptor` gains
+  `is_configured` (default `true`); `AcceptOutcome::SigningNotConfigured` is the page's outcome; `inklkunn_web::HeaderMap` is re-exported
+  so that the binary can implement `Identify`.
+- **Tests (real prikk, a real key store and a real socket)**: a start without the secret file serves a page and refuses a write with the
+  sentence; a start with the secret accepts a proposal end to end (the history has the block, the page says *Signed into the history*,
+  a retry writes nothing, the verification after the seal is recorded, no seed directory is left) and a search of the operator's lines,
+  the log and every answer for the secret's value finds nothing; a wrong secret is the same unconfigured server; a wiki the command line
+  holds makes the server's acceptance busy and it accepts when released; a wiki the server is signing is refused to the command line by
+  name; a wiki flagged *needs recovery* refuses the accept with the signer open, and a flagged wiki is recovered before the acceptor
+  exists. SECURITY.md says where the secret file lives and what the signer checks of it, the key directory and the seed directory.
 
 ## [0.1.0] — 2026-10-31
 

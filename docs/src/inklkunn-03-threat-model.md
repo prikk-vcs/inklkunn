@@ -76,7 +76,9 @@ signer directly, a stolen key, an insider with the key store secret, a bug that 
   schedule, and is reported, never hidden.
 - **C-1c — Keys at rest are encrypted under the operator's secret**, decrypted for one write onto a private
   mount only the sandboxed prikk can read, removed after; never logged, never in content, never exported
-  (SEC-4, OP-07). The secret is supplied at start, not stored beside the keys.
+  (SEC-4, OP-07). The secret is supplied at start, not stored beside the keys: the process that opens the key store, the command
+  line or the server, reads the file `INKLKUNN_SECRET_FILE` names, once, when it opens it; it is never asked for on a
+  terminal, never taken from a variable, and a test searches the server's log lines and every page for its value.
 - **C-1d — Per-wiki keys and rotation.** A compromise is bounded to one wiki; rotation adopts a new key id
   and the service seals only with it from then on; the procedure is documented and rehearsed. **On prikk,
   removing a key from trust is revocation** (it makes everything that key ever sealed fail verification; prikk
@@ -307,6 +309,14 @@ A forged identity assertion from a fake planeter; planeter's guarantees weakened
   this for the sake of keyless participation; the controls make it bounded (per-wiki keys), detectable
   (reconciliation, independent witness), attributable (every seal says it is the service's) and recoverable
   (rotation). This is the central difference from planeter and must be said plainly in SECURITY.md.
+  **The serving process now opens the key store** (it did not in 0.1.0, whose server held no write signer): it reads
+  the operator's secret file at start and decrypts a wiki's seed onto the tmpfs for the one signing call that needs
+  it, so the secret and the sealed records are within reach of the process that parses visitors' requests, and a
+  compromise of that process is a compromise of every wiki's keys, as a compromise of the host always was. The
+  controls that bound it are unchanged and remain the ones that matter here: the signer is reached only through
+  `Accept` (C-1a), refuses any seal not bound to a recorded acceptance (C-1b), is opened `with_leases` over the one
+  lock the command line uses, and every call runs in the sandbox under a memory ceiling with only the seed it signs
+  with. There is no second signer process (IQ-4 stays). A server started without the secret file never holds a key.
 - **RR-2 — Secrets committed into pages** are carried faithfully; rotation in the real world is the only
   remedy.
 - **RR-3 — The prikk subprocess parses attacker-influenced bytes** (paths, content, imported archives); a
@@ -333,9 +343,16 @@ A forged identity assertion from a fake planeter; planeter's guarantees weakened
   damage. The plan is recorded either way.
 - **RR-10 — The lease is per host.** The `flock` and the in-process queue exclude every process on one host; a
   multi-host deployment on shared storage needs a shared lease (the same operations RFC as RR-7).
-- **RR-11 — The server does not accept yet.** Sign-in is not served, so every visitor is anonymous and `Accept` is
-  always refused; the server holds no write signer. When accepting is served, where the signer's keys live in the
-  server process is a decision of its own (a handoff), and this model is re-verified then.
+- **RR-11 — Accepting is served once sign-in and the acceptor are configured.** The server builds its acceptor at
+  start (`inklkunn/src/serve/acceptor.rs`) when the operator's secret file is there and the key store opens; it then
+  accepts proposals for the people its sign-in identifies, under the same write lease as the command line (C-1g), and
+  asks for the title index and a verification after each seal off the request path, on one worker with a bounded
+  queue. A server started **without** the secret file, or whose key store does not open, still serves every read and
+  refuses every write with one sentence (*this server is not set up to sign changes into the history …*), prints one
+  line at start naming the setting, never asks for the secret on a terminal, and does not retry behind a visitor's
+  back. Until the sign-in pages and the real `Identify` are served (handoff `serve-sign-in-and-accept`, U1 – U4, U6)
+  every visitor is anonymous and `Accept` is refused for want of an account; this model is re-verified when they are
+  (U6).
 - **ASSUME-1** The operator and the host are trusted; inklkunn defends against network actors and malicious
   users, not a hostile operator.
 - **ASSUME-2** prikk's offline `verify` is correct and is the arbiter of history integrity.
@@ -412,10 +429,11 @@ review re-verifies it.
 | **C-1h** the journal's records are write-once | `inklkunn-store/tests/acceptance_records.rs`, `acts.rs`, `recovery_acts.rs`, `proposals.rs`: raw-SQL refusals of an update, a delete and an insert over any taken key, per table, on both stores | A hand-edited database file (the triggers guard code paths, not someone with the file; the audit log note applies) |
 | **C-1i** an overlap stops before `commit` and records both texts | `acceptance.rs`: `an_overlap_stops_before_commit_records_both_texts_and_the_repository_is_unchanged`; `inklkunn-core/tests/merge_corpus.rs` (the 120 spike pairs: exactly 99 clean, 21 overlaps, both texts); `merge/tests.rs` properties | Within-block merging (deferred by D-5 with a measurement hook) |
 | **C-1g** failures: before `commit` nothing changes; after `commit` the wiki is flagged and reads are served | `acceptance.rs`: `a_failure_injected_before_commit_leaves_the_repository_unchanged_and_the_record_failed_with_the_word`, `a_failure_injected_after_commit_flags_the_wiki_and_reads_still_serve` | |
+| **RR-1, RR-11, C-1c, C-1g** the serving process opens the key store; a server without the secret file reads and refuses writes with one sentence; the command line and the server exclude each other; no secret reaches a log or a page | `inklkunn/src/serve/acceptor/tests.rs` (real prikk, real key store, a real socket): `a_start_without_the_secret_file_serves_a_page_and_refuses_a_write_with_one_sentence`, `a_start_with_the_secret_accepts_a_proposal_end_to_end_and_no_secret_reaches_a_log_or_a_page`, `a_secret_that_does_not_open_the_key_store_is_the_same_server_with_one_line_that_names_no_secret`, `a_wiki_the_command_line_holds_makes_the_servers_acceptance_busy_and_it_accepts_when_it_lets_go`, `a_wiki_the_server_is_signing_is_refused_to_the_command_line_by_name`, `a_wiki_flagged_needs_recovery_refuses_the_accept_though_the_signer_is_open`, `the_acceptor_is_built_after_the_start_up_work_has_recovered_a_flagged_wiki`; `serve/follow_up/tests.rs` (one worker, a bounded queue); `inklkunn-web/tests/proposals/accept.rs`, `tests/api/write.rs` (the sentence and the `signing-not-configured` problem) | The sign-in pages and the real `Identify` (U1 – U4): the tests stand a header-named identity behind the real router. A key store that appears after the start (a first `wiki create` while the server runs) is used from the next start |
 | **C-1j** the kill test: SIGKILL at each step of an acceptance, then recovery | `inklkunn-signer/tests/acceptance_kill.rs`: `a_sigkill_at_each_step_of_an_acceptance_is_recovered_with_nothing_lost_or_made_twice` (fourteen kill points; the matrix is in the review request); `inklkunn-core/tests/recovery.rs` (15 tests: a queued patch completed, a torn commit discarded, a foreign queued patch a stop, a stale lock cleared even when prikk's pid check says alive (PL-8), an unknown lock kind a stop, no recovery without the lease, an interrupted recovery resumed, unreached-object warnings recorded, an unknown doctor shape a stop) | A kill of **recovery itself** at every step (one interrupted recovery is tested, not each step); a real SIGKILL inside each prikk call of the *creation* is the signer's `creation_kill.rs` |
 | **C-1k** recovery operations need the lease and a recorded act | `inklkunn-signer/tests/recover.rs` (8, real prikk); `recovery_never_runs_without_the_lease_and_a_busy_wiki_is_told_so_with_nothing_done` | |
 | **INV-4** the route enumeration covers every proposal route, the inbox, the watch form and every write endpoint | `inklkunn-web/tests/route_enumeration`, `routes::tests::every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public`, the OpenAPI drift tests in both directions (`tests/api`) | |
-| **C-3b** scope ∩ role; existence-neutral 404 on writes | `inklkunn-web/tests/api/write.rs` (a token with `propose` cannot accept, a private wiki answers as an absent one for four kinds of caller, an unauthenticated token is `invalid-token` first, `Retry-After`) | A real bearer token resolved from the store: sign-in is not served (RR-11); the test identity stands in |
+| **C-3b** scope ∩ role; existence-neutral 404 on writes | `inklkunn-web/tests/api/write.rs` (a token with `propose` cannot accept, a private wiki answers as an absent one for four kinds of caller, an unauthenticated token is `invalid-token` first, `Retry-After`) | A real bearer token resolved from the store: sign-in is not served yet (RR-11); the test identity stands in |
 | **INV-6** an open proposal is never rendered as the record | `inklkunn-web/tests/proposals/flows.rs` (`submitting_makes_a_proposal_held_for_review_with_the_text_that_was_sent`) and `review.rs` (`an_accepted_proposal_says_it_is_signed_into_the_history_and_links_to_its_change`: only an accepted proposal says so); the structural harness's proposal states and accept outcomes in both languages | |
 | **T-7** a draft is its author's alone; the inbox leaks nothing to a non-reader | `inklkunn-store/tests/proposals.rs` and `inklkunn-core` `proposal/tests/drafts.rs` (a draft is invisible to another account and survives a restart); `inklkunn-web/tests/proposals/flows.rs` (`the_list_shows_what_was_sent_and_a_draft_only_to_its_author`, `a_draft_survives_a_session_and_is_resumed_with_its_text_and_summary`); `inklkunn-web/tests/inbox_watch` (a wiki restricted after the event leaks nothing) | |
 | **T-4, INV-3** hostile proposed content is data | `inklkunn-web/tests/proposals/safety.rs` (hostile content in preview, diff output and the page), `tests/api/write.rs` (hostile JSON stored as text, escaped on output) | |

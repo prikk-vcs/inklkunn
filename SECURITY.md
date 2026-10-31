@@ -75,6 +75,35 @@ out of backups of the key records, readable by the server's user only, and long 
 second factor** on local accounts in v1 (threat model RR-4); an OpenID Connect provider that enforces one is the
 interim answer.
 
+**The serving process opens the key store** (it did not in 0.1.0; threat model RR-1, RR-11). `inklkunn serve`
+reads the operator's secret from the file `INKLKUNN_SECRET_FILE` names, once, when it starts, and opens the key
+store in `INKLKUNN_KEY_DIR`; a wiki's seed is decrypted onto the tmpfs (`INKLKUNN_SEED_DIR`) for the one signing
+call that needs it and removed with the call. The secret is **never asked for on a terminal**, never read from an
+environment variable, and never written to a log line or a page (a test searches both for its value). What the
+signer checks, and what it does not:
+
+- **The secret file**: an absolute path; a symbolic link is followed (secret mounts are often links) and the target
+  must be a regular file; 16 to 1024 bytes once the line breaks at its end are taken off (so `echo` and an editor
+  give the same secret). **It does not check the file's owner or mode**: make it owned by the service's user with mode
+  0400 or 0600, outside the data directory and out of any backup that holds the key records. Anyone who can read it,
+  and the key records, holds every wiki's keys.
+- **The key directory**: made with mode 0700 when it is absent; when it is there, it must be a real directory (not a
+  link) that group and others cannot enter (any permission bit for them refuses the start of the signer). The sealed
+  records inside are mode 0600. A key directory with no key store in it is refused, never made into one, by the
+  server: only `inklkunn wiki create` and `wiki keys create` make a store.
+- **The seed directory**: absolute, on a tmpfs or ramfs, owned by the user the server runs as, and not writable by
+  group or others; the server makes it mode 0700 itself and refuses a directory it cannot do that to.
+- **bubblewrap** must work on the host: every prikk call the signer makes is confined (`--dev-unconfined` is for
+  development and prints a banner).
+
+**A server started without the means to sign still serves.** If the secret file is not there, or the key store does
+not open (a wrong secret, a key directory open to others, no keys made yet, a seed directory that is not on a
+tmpfs), the server prints **one line** at start that names the setting and the cause, serves every page, and refuses
+every write with one plain sentence (*this server is not set up to sign changes into the history …*). It does not
+ask for the secret and does not try again on its own: fix the cause and restart. Accepting a proposal from the web
+and the command line (`wiki import-folder`, `wiki recover`, `wiki export`, key rotation) take the same per-wiki
+write lock, so a command beside a running server is told the wiki is busy, naming the process that holds it.
+
 The **bootstrap signer** over a plain-text key directory exists only behind the `bootstrap` cargo feature, for
 tests; the gate fails if a product crate enables it.
 

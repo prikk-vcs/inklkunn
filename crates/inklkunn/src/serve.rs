@@ -18,6 +18,9 @@ use inklkunn_web::{AuthIdentity, Services, Site, WebConfig, routes};
 use crate::admin;
 use crate::config::{ConfigError, Settings, WebSettings};
 
+mod acceptor;
+mod follow_up;
+
 /// Everything `serve` checked and built, ready to bind.
 pub(crate) struct Prepared {
     web: WebConfig,
@@ -45,6 +48,23 @@ pub(crate) fn prepare(
     settings: &Settings,
     web: &WebSettings,
     authority: IdentityAuthority,
+) -> Result<Prepared, String> {
+    prepare_with(
+        settings,
+        web,
+        authority,
+        Arc::new(|line| {
+            let _ = writeln!(std::io::stderr(), "inklkunn: {line}");
+        }),
+    )
+}
+
+/// [`prepare`], with the operator's log going to `log` (a test hears it).
+fn prepare_with(
+    settings: &Settings,
+    web: &WebSettings,
+    authority: IdentityAuthority,
+    log: Arc<dyn Fn(&str) + Send + Sync>,
 ) -> Result<Prepared, String> {
     let config = WebConfig::new(&web.bind, &web.app_origin, &web.content_origin)
         .map_err(|e| e.to_string())?;
@@ -92,6 +112,11 @@ pub(crate) fn prepare(
     let version = storage.version().to_owned();
     let layout = RootLayout::new(settings.wikis_root());
     let storage: Arc<dyn Storage> = Arc::new(storage);
+    let verifier = Arc::new(Verifier::new(
+        storage.clone(),
+        store.clone(),
+        layout.clone(),
+    ));
     let read = Arc::new(
         ReadService::new(
             storage.clone(),
@@ -151,26 +176,38 @@ pub(crate) fn prepare(
         .map_err(|e| format!("sign-in could not be set up ({e})"))?
         .with_audit(store.clone() as Arc<dyn AuditSink>),
     );
-    let log: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(|line| {
-        let _ = writeln!(std::io::stderr(), "inklkunn: {line}");
+    // The acceptor comes last among the parts and only after `admin::start_up` ran above: recovery has looked at
+    // every wiki that needed it before anything can be accepted (a wiki it could not recover stays flagged and
+    // refuses writes). Without the secret file the server still serves reads (RR-1; handoff U5).
+    let signing = acceptor::assemble(acceptor::Parts {
+        settings: settings.clone(),
+        sandbox: sandbox.clone(),
+        layout: layout.clone(),
+        store: store.clone(),
+        storage: storage.clone(),
+        read: read.clone(),
+        proposals: proposals.clone(),
+        verifier: verifier.clone(),
+        lease: acceptor::lease_config(),
+        log: log.clone(),
     });
+    let mut notes = notes;
+    notes.extend(signing.notes);
     let services = Arc::new(Services {
         wikis: store.clone(),
         read,
-        verifier: Arc::new(Verifier::new(storage, store.clone(), layout)),
+        verifier,
         authorizer,
         inbox,
         proposals,
         accounts: store.clone(),
         acceptances: store.clone(),
         acts: store.clone(),
-        // No acceptor yet, on purpose: people can sign in now, but the server holds no write signer (the keys are
-        // the command line's, behind `serve`'s confinement) until the acceptor is wired (the sign-in handoff's U5;
-        // RFC 002 D-10). The Accept button answers "accepting is not available yet" until then.
-        acceptor: None,
+        // The acceptor of RFC 004 D-4 over the same lease as the command line, or `NoSigner` when this server was
+        // started without the means to sign (then every write is refused with one sentence).
+        acceptor: Some(signing.acceptor),
         // A request is who its credential says: a session cookie (a write only with the session's CSRF token), or
-        // a bearer token judged alone (the sign-in handoff's U4). The Accept button still waits for the
-        // acceptor (U5).
+        // a bearer token judged alone (the sign-in handoff's U4).
         identity: Arc::new(AuthIdentity::new(
             auth.clone(),
             store.clone(),
@@ -185,7 +222,8 @@ pub(crate) fn prepare(
         .map_err(|e| format!("the routes are inconsistent: {e}"))?;
     let mut notes = notes;
     notes.extend(join_note(web.join));
-    let banner = vec![
+    let signing_on = signing.signing;
+    let mut banner = vec![
         format!(
             "inklkunn {} serving {} (content {}) on {}",
             env!("CARGO_PKG_VERSION"),
@@ -204,6 +242,12 @@ pub(crate) fn prepare(
             settings.store_path().display()
         ),
     ];
+    if signing_on {
+        banner.push(format!(
+            "accepting proposals: the signer is open over {}",
+            settings.key_dir.display()
+        ));
+    }
     Ok(Prepared {
         web: config,
         site,
