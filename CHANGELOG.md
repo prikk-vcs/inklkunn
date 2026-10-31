@@ -927,3 +927,15 @@ Follow-ups from the review of 2026-10-31 (handoff 003, S2 – S4).
   pid this namespace shows as alive (cleared all the same), a lock of another kind (a stop), recovery refused without the
   lease, a step that fails (the flag kept, the plan ended as stopped), an interrupted recovery, a doctor report of an
   unknown shape.
+
+Handoff 004 T8 (RFC 004: proposals).
+
+- **The participation metrics are exposed.** `inklkunn wiki metrics <wiki> [--days N | --from T --to T]` prints one JSON Lines record
+  on standard output (`Metrics::json_line`: the wiki's id, the period, the proposals by state, the medians, the acceptance and
+  decline shares as `{num, den}`, the proposers and the reviewers per proposal; an absent figure is `null`), after an audit event
+  begins the act; `operator_metrics` is the command line's computation (no principal; the same figures as the service's).
+- **Threat model v0.2.** The write path (the lease, the intent journal, the overlap rule, recovery and its recorded acts: C-1g – C-1k),
+  the write API's scope ∩ role rule, the proposal quotas and the verification claim (C-3b, C-9d), RR-9 – RR-11, and the
+  verification record §7.2 (what carries each item and what does not).
+- **Two retired words.** *conflict* (コンフリクト) and *merge* (マージ) join the retired-words table; the one message that said
+  "Nothing was merged" says "Nothing was changed".

@@ -2,7 +2,7 @@
 //! proposals by state, the median time to the first review and to a decision, the acceptance and decline
 //! rates, the distinct and the first-time proposers, and the reviewers per proposal. A pure function over the
 //! proposals and decisions of a wiki, so a hand count on a small fixture is the test. Exposing them (the
-//! administration surface, JSON Lines) is handoff 004 T8; the dashboard that interprets them is RFC 006's.
+//! administration surface: `inklkunn wiki metrics`, one JSON Lines record per wiki and period, [`Metrics::json_line`]) is handoff 004 T8; the dashboard that interprets them is RFC 006's.
 //!
 //! **What is counted.** The *cohort* is the proposals **submitted** in the period `[from, to)`: a draft that
 //! was never submitted is private to its author and appears nowhere, not even in a count. A *review* is a
@@ -177,4 +177,52 @@ pub fn compute(
             den: submitted,
         }),
     }
+}
+
+impl Metrics {
+    /// The figures as **one line of JSON** (JSON Lines, CT-08): a record per wiki and period, ready to append to a
+    /// file. Times are whole seconds, a share is `{"num","den"}` (no figure is rounded), an absent figure is `null`,
+    /// every state is present, and the line carries nothing but numbers, the wiki's id and fixed words.
+    pub fn json_line(&self) -> String {
+        use serde_json::{Map, Value, json};
+        let ratio = |r: &Option<Ratio>| match r {
+            Some(r) => json!({ "num": r.num, "den": r.den }),
+            None => Value::Null,
+        };
+        let by_state: Map<String, Value> = self
+            .by_state
+            .iter()
+            .map(|(state, n)| (state.as_str().to_owned(), json!(n)))
+            .collect();
+        let line = json!({
+            "kind": "participation",
+            "wiki": self.wiki.as_str(),
+            "from": self.period.from,
+            "to": self.period.to,
+            "submitted": self.submitted,
+            "by_state": by_state,
+            "median_secs_to_first_review": self.median_secs_to_first_review,
+            "median_secs_to_decision": self.median_secs_to_decision,
+            "acceptance_rate": ratio(&self.acceptance_rate),
+            "decline_rate": ratio(&self.decline_rate),
+            "distinct_proposers": self.distinct_proposers,
+            "first_time_proposers": self.first_time_proposers,
+            "reviewers_per_proposal": ratio(&self.reviewers_per_proposal),
+        });
+        line.to_string()
+    }
+}
+
+/// The metrics of `wiki` over `period` **for the operator at the command line** (the administration surface of
+/// RFC 004 D-10): the same computation as [`ProposalService::metrics`](super::ProposalService::metrics), without a
+/// principal, because the command line's authority is the operator's own access to the host. Drafts are in no
+/// figure.
+pub fn operator_metrics(
+    proposals: &dyn inklkunn_store::ProposalStore,
+    wiki: &inklkunn_store::WikiRecord,
+    period: Period,
+) -> Result<Metrics, inklkunn_store::StoreError> {
+    let all = proposals.proposals(&wiki.id, &inklkunn_store::ProposalFilter::default(), None)?;
+    let decisions = proposals.wiki_decisions(&wiki.id)?;
+    Ok(compute(&wiki.id, period, &all, &decisions))
 }

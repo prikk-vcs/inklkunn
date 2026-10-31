@@ -571,7 +571,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `accept.not_yet_kept` | on that page | "The proposal stays held for review and nothing was changed." | "提案はレビュー待ちのままで、何も変更していません。" |
 | `accept.not_yet_note` | beside the Accept button | "Accepting is not available yet on this server." | "このサーバーでは、受け入れはまだ利用できません。" |
 | `overlap.heading` | the heading of the section of a proposal that needs a revision because it overlaps the wiki's current text | "Where the changes overlap" | "変更が重なっている箇所" |
-| `overlap.intro` | under that heading | "The wiki's current text and this proposal both changed the places below. Nothing was merged. Revise the proposal with both texts in front of you." | "ウィキの現在の文面とこの提案が、下の箇所をどちらも変更しています。何も統合していません。両方の文面を見ながら、提案を修正してください。" |
+| `overlap.intro` | under that heading | "The wiki's current text and this proposal both changed the places below. Nothing was changed. Revise the proposal with both texts in front of you." | "ウィキの現在の文面とこの提案が、下の箇所をどちらも変更しています。何も統合していません。両方の文面を見ながら、提案を修正してください。" |
 | `overlap.caption` | the caption of the table of overlapping places | "Places changed both in the wiki and in this proposal" | "ウィキと提案の両方で変更された箇所" |
 | `overlap.col_where` | a column heading of that table: the page and the place | "Where" | "場所" |
 | `overlap.col_theirs` | a column heading of that table: the wiki's text now | "In the wiki now" | "ウィキの現在の文面" |
@@ -799,6 +799,8 @@ Japanese term is matched anywhere in the text. A legitimate exception goes in
 | patch, patches | パッチ | change (the recorded step); edit (a part of a change) | prikk's smallest edit; one word, "change", for what the reader sees |
 | block, blocks | ブロック | change | prikk's recorded unit of history; the glossary's word is "change" |
 | ref, refs | リファレンス | view | A version-control name for a branch or a tag; the wiki's word is "view" |
+| conflict, conflicts, conflicting | コンフリクト | the changes overlap | A version-control name; the word of an acceptance that stops is "changes overlap" (RFC 004 D-12), and a person, not the service, decides what to keep |
+| merge, merges, merged, merging | マージ | re-authored against the current page; combined | A version-control verb; the reader is told the result (re-authored, or the places that overlap), not the operation |
 
 ## 4. Japanese: what the reviewers are asked
 

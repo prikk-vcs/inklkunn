@@ -40,7 +40,7 @@ pub mod quota;
 pub mod rollback;
 
 pub use machine::{Illegal, TRANSITIONS};
-pub use metrics::{Metrics, Period, Ratio};
+pub use metrics::{Metrics, Period, Ratio, operator_metrics};
 pub use quota::{QuotaConfig, QuotaLimit, QuotaRefusal, Quotas, Reset};
 
 /// The longest summary, in characters (RFC 004 D-2; the CT-03 first line).

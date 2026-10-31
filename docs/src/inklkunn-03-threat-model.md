@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | inklkunn Threat Model (security): what inklkunn must defend, against whom, and how, so that the design and the tests can be checked against it. A first-class release deliverable (project rules): updated by any release that touches identity, signing, the prikk boundary, rendering or inbound content; re-verified by the others. |
-| Version | v0.1, amended 2026-10-29 (C-1d and RR-8: key rotation on prikk as it is, the owner's DR-10 ruling after prikk confirmed it). **Section 7's tests re-verified 2026-10-29** at the end of handoff 003 (M1): the record is §7.1 |
+| Version | **v0.2, 2026-10-31** (RFC 004: the write path, the lease, the intent journal and recovery; C-1g – C-1k, additions to C-3, C-7, C-9 and C-12, RR-9 – RR-11). Earlier: v0.1, amended 2026-10-29 (C-1d and RR-8: key rotation on prikk as it is, the owner's DR-10 ruling after prikk confirmed it). **Section 7's tests re-verified** at the end of handoff 003 (M1; the record is §7.1) and **at the end of handoff 004 (M2; §7.2)** |
 | Date | 2026-10-27 |
 | Basis | Requirements v0.1 (SEC/PRV/ID/GV/INT), the external design v0.1 (BD/WEB/API/AUTH/PK/FL/CT/OP), the rulings DR-2 and DR-4, prikk's trust and threat model, planeter's threat model v0.4 (the house precedent and the neighbour whose guarantees inklkunn must not weaken), wiki-commons chapter 14, the requirements register items 7, 8, 14, 17. |
 | ID scheme | `A-` asset · `TB-` trust boundary · `T-` threat · `C-` control · `INV-` security invariant · `RR-` residual risk · `ASSUME-` assumption |
@@ -87,6 +87,33 @@ signer directly, a stolen key, an insider with the key store secret, a bug that 
   the point where the old key stopped, and inklkunn reports any block sealed by it after that point (RR-8).
 - **C-1e — Independent witness.** The repository can be hosted read-only by planeter and exported as an
   archive at any time (MD-5, IX-2), so a forged change is visible to a path the wiki does not control.
+- **C-1g — Acceptance is one act under the wiki's write lease** (RFC 004 D-4; CON-1). The lease is the signer's
+  per-wiki `flock` (so the command line and the server exclude each other) with a durable holder record written at
+  the take and cleared at the release, and a fair queue bounded at 64 per wiki; a waiter is told *the wiki is
+  busy* with the depth and an estimate, never a surprising prikk `lock conflict`. Archive export and the checkpoint
+  refresh take the same lease. Authorization is asked **before** the lease is taken.
+- **C-1h — The intent journal: nothing is sealed that was not recorded first.** The acceptance record (*pending
+  seal*, with the prepared change's digest) and the intent (acceptance, wiki, view, base, the composed message)
+  are written **before** `Accept::accept`; the endings are second, write-once records (the store refuses an
+  update, a delete, or an insert over a taken key, by trigger, tested on raw SQL); a retry of the same revision
+  finds the record and seals nothing twice (CON-6). Wiki creation and every system change record their act the
+  same way, so the reconciliation (C-1b) has nothing to report after any kind of act.
+- **C-1i — An overlap is never resolved by the service** (INT-7; HIST-9). The merge is a pure function over
+  blocks; an overlap stops the acceptance **before `commit`**, records both texts on the proposal, and leaves the
+  repository unchanged.
+- **C-1j — Recovery completes or discards, and never guesses** (RFC 004 D-7; INV-7). A wiki whose acceptance was
+  incomplete is flagged *needs recovery*: it refuses writes, serves reads, and is recovered at start and on demand
+  under the lease. Recovery reads the witnesses (intents, the lease record, prikk `status` and `doctor`, the lock
+  listing, foreign processes), builds a **plan that is recorded before any step is taken**, audits each step before
+  taking it, and takes only these: *seal alone* a queued patch that matches the intent's message, base and files
+  (never commit again), `doctor --discard-damaged-commits` for a torn commit, put the worktree back, clear the
+  five lock kinds an acceptance leaves. **A queued patch that matches no intent is a stop, not a seal**: sealing
+  it would put an unaccepted change in the history. A doctor or lock report of a shape nobody knows is a stop. **A
+  lock's holder is judged by inklkunn's lease record, never by prikk's process check**, which means nothing inside
+  the sandbox's PID namespace (ledger PL-8). `verify` and the reconciliation run before the flag is cleared.
+- **C-1k — Every recovery act is bound and recorded like an acceptance.** The signer's recovery operations
+  need the wiki's lease lent to the calling thread and a recorded recovery act naming the operation; `seal` is
+  bound to the pending acceptance or system act it completes.
 - **C-1f — Honest labels.** Every change is labelled *signed by the wiki service on behalf of …* (ID-5): the
   reader is never told a person signed.
 
@@ -108,7 +135,11 @@ is escalated through a policy edit (A-AUTHZ, A-CONTENT).
 
 - **C-3a** One pure default-deny `authorize()` on every path (ID-7); a test enumerates every route and verb
   and asserts the call (planeter's ENF-4, written before the first write handler).
-- **C-3b** Scopes intersected with roles per endpoint; existence-neutral denials.
+- **C-3b** Scopes intersected with roles per endpoint; existence-neutral denials. The write API checks the
+  endpoint's action against the authorizer (token scope ∩ role) **before the body is read**; a token with
+  `propose` cannot accept even when its account is a maintainer; an unauthenticated token is `invalid-token`
+  before any wiki lookup; a private wiki's write endpoints answer 404 byte for byte as an absent wiki does.
+  A proposer accepts their own proposal only where the policy allows (a wiki with fewer than three maintainers).
 - **C-3c** Policy changes are proposals under the constitutional layers (GV-1); the bootstrap roles cannot
   be removed by a policy edit; protections are authorization outcomes, not UI.
 
@@ -169,6 +200,10 @@ Expensive prikk calls on large repositories, proposal floods, huge pages, accept
   (SEC-7; planeter RFC 011 pattern); a ceiling hit is *unavailable*, never a verification verdict.
 - **C-9b** Quotas per principal and per wiki (PR-14); rate limits with `Retry-After`; bounded page and
   attachment sizes; the acceptance queue bounded and visible.
+- **C-9d** (RFC 004 D-11) The proposal quotas (open proposals, revisions, proposals per hour per principal and per
+  wiki, accepted bytes per day) refuse **by name** with the limit, the current value and the reset time; new
+  accounts get half; a verification check is claimed per wiki (one at a time) and capped overall, and a check that
+  could not run never replaces a verdict (R1).
 - **C-9c** Metering and alerts on disk (repositories only grow; prikk deletes nothing) and on queue depth.
 
 ### T-10 — The service store or the cache as a false source of truth
@@ -288,6 +323,15 @@ A forged identity assertion from a fake planeter; planeter's guarantees weakened
   witness, an archive) sees which key sealed each block but **cannot prove** that a block came after the
   rotation, because prikk records the adoption of a key nowhere a copy can check. A host compromise is
   `--retire-old`'s case, at the cost of the *Verified* label.
+- **RR-9 — Recovery stops where it cannot be sure.** A sound queued patch that matches no recorded intent, a
+  lock of a kind an acceptance does not leave, or a doctor report of an unknown shape leaves the wiki flagged
+  and read-only until a person decides: automating the choice would either seal an unaccepted change or hide
+  damage. The plan is recorded either way.
+- **RR-10 — The lease is per host.** The `flock` and the in-process queue exclude every process on one host; a
+  multi-host deployment on shared storage needs a shared lease (the same operations RFC as RR-7).
+- **RR-11 — The server does not accept yet.** Sign-in is not served, so every visitor is anonymous and `Accept` is
+  always refused; the server holds no write signer. When accepting is served, where the signer's keys live in the
+  server process is a decision of its own (a handoff), and this model is re-verified then.
 - **ASSUME-1** The operator and the host are trusted; inklkunn defends against network actors and malicious
   users, not a hostile operator.
 - **ASSUME-2** prikk's offline `verify` is correct and is the arbiter of history integrity.
@@ -350,6 +394,32 @@ Also re-run: the structural, catalog, glossary, retired-words and stylesheet tes
 (`inklkunn-core/tests/sanitizer.rs`, `read/sanitize/tests.rs`, `inklkunn-markup/tests/author_html.rs` for IS-14), and
 the supply-chain gates (`cargo deny check`, `cargo audit`).
 
-*End of Threat Model v0.1. Its headline is RR-1, stated so no one discovers it after depending on it: inklkunn
+### 7.2 Verification record (2026-10-31, handoff 004 T8)
+
+The items RFC 004 adds to §7, re-run with the workspace test suite (prikk 0.55.0 on `PATH`, and again with prikk
+shimmed off, where the count of `skipping: prikk not on PATH` lines is held to `EXPECTED_SKIPS`). As in §7.1, a row
+says which tests carry the item and what they do **not** cover. The dev team wrote this record; the architect's
+review re-verifies it.
+
+| Item | Tests that carry it | Not covered |
+|---|---|---|
+| **INV-1, C-1g** an acceptance seals once, under the lease; busy with a depth; unauthorized refused before the lease | `inklkunn-core/tests/acceptance.rs` (real prikk): `an_acceptance_whose_base_is_the_tip_seals_and_the_log_shows_the_message`, `two_acceptances_racing_on_one_wiki_serialize_and_the_second_is_told_busy_with_a_depth`, `a_retried_accept_of_the_same_revision_seals_once`, `an_unauthorized_acceptor_is_refused_before_the_lease_is_taken`, `an_archive_export_and_a_checkpoint_refresh_hold_the_wiki_lease_and_an_acceptance_waits_for_them`; `inklkunn-core` `lease` and `acceptance` unit tests | Two **processes** racing (the unit tests race threads; the `flock` itself is tested in the signer) |
+| **INV-1, INV-10, C-1b, C-1h** the reconciliation after every kind of act | `acceptance.rs`: `the_reconciliation_finds_nothing_after_every_kind_of_act`, `import_folder_produces_one_block_with_kind_import`; `create_wiki.rs`: `a_created_wikis_first_change_is_a_recorded_act_and_the_reconciliation_reports_nothing`; `inklkunn-core/tests/reconcile.rs` | A production history written before RFC 004 (no act rows): the reconciliation reports it, by design |
+| **C-1h** the journal's records are write-once | `inklkunn-store/tests/acceptance_records.rs`, `acts.rs`, `recovery_acts.rs`, `proposals.rs`: raw-SQL refusals of an update, a delete and an insert over any taken key, per table, on both stores | A hand-edited database file (the triggers guard code paths, not someone with the file; the audit log note applies) |
+| **C-1i** an overlap stops before `commit` and records both texts | `acceptance.rs`: `an_overlap_stops_before_commit_records_both_texts_and_the_repository_is_unchanged`; `inklkunn-core/tests/merge_corpus.rs` (the 120 spike pairs: exactly 99 clean, 21 overlaps, both texts); `merge/tests.rs` properties | Within-block merging (deferred by D-5 with a measurement hook) |
+| **C-1g** failures: before `commit` nothing changes; after `commit` the wiki is flagged and reads are served | `acceptance.rs`: `a_failure_injected_before_commit_leaves_the_repository_unchanged_and_the_record_failed_with_the_word`, `a_failure_injected_after_commit_flags_the_wiki_and_reads_still_serve` | |
+| **C-1j** the kill test: SIGKILL at each step of an acceptance, then recovery | `inklkunn-signer/tests/acceptance_kill.rs`: `a_sigkill_at_each_step_of_an_acceptance_is_recovered_with_nothing_lost_or_made_twice` (fourteen kill points; the matrix is in the review request); `inklkunn-core/tests/recovery.rs` (15 tests: a queued patch completed, a torn commit discarded, a foreign queued patch a stop, a stale lock cleared even when prikk's pid check says alive (PL-8), an unknown lock kind a stop, no recovery without the lease, an interrupted recovery resumed, unreached-object warnings recorded, an unknown doctor shape a stop) | A kill of **recovery itself** at every step (one interrupted recovery is tested, not each step); a real SIGKILL inside each prikk call of the *creation* is the signer's `creation_kill.rs` |
+| **C-1k** recovery operations need the lease and a recorded act | `inklkunn-signer/tests/recover.rs` (8, real prikk); `recovery_never_runs_without_the_lease_and_a_busy_wiki_is_told_so_with_nothing_done` | |
+| **INV-4** the route enumeration covers every proposal route, the inbox, the watch form and every write endpoint | `inklkunn-web/tests/route_enumeration`, `routes::tests::every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public`, the OpenAPI drift tests in both directions (`tests/api`) | |
+| **C-3b** scope ∩ role; existence-neutral 404 on writes | `inklkunn-web/tests/api/write.rs` (a token with `propose` cannot accept, a private wiki answers as an absent one for four kinds of caller, an unauthenticated token is `invalid-token` first, `Retry-After`) | A real bearer token resolved from the store: sign-in is not served (RR-11); the test identity stands in |
+| **INV-6** an open proposal is never rendered as the record | `inklkunn-web/tests/proposals/flows.rs` (`submitting_makes_a_proposal_held_for_review_with_the_text_that_was_sent`) and `review.rs` (`an_accepted_proposal_says_it_is_signed_into_the_history_and_links_to_its_change`: only an accepted proposal says so); the structural harness's proposal states and accept outcomes in both languages | |
+| **T-7** a draft is its author's alone; the inbox leaks nothing to a non-reader | `inklkunn-store/tests/proposals.rs` and `inklkunn-core` `proposal/tests/drafts.rs` (a draft is invisible to another account and survives a restart); `inklkunn-web/tests/proposals/flows.rs` (`the_list_shows_what_was_sent_and_a_draft_only_to_its_author`, `a_draft_survives_a_session_and_is_resumed_with_its_text_and_summary`); `inklkunn-web/tests/inbox_watch` (a wiki restricted after the event leaks nothing) | |
+| **T-4, INV-3** hostile proposed content is data | `inklkunn-web/tests/proposals/safety.rs` (hostile content in preview, diff output and the page), `tests/api/write.rs` (hostile JSON stored as text, escaped on output) | |
+| **C-9b, C-9d** every quota refuses by name | `inklkunn-core/src/proposal/tests/quotas.rs` (both sides of each boundary); `inklkunn-core/src/check/tests.rs` (one check per wiki, the cap, a time in the future) | |
+
+Also re-run: the structural, catalog, glossary, retired-words and stylesheet tests on every page state in both
+languages; the sanitizer tests; the supply-chain gates (`cargo deny check`, `cargo audit`).
+
+*End of Threat Model v0.2. Its headline is RR-1, stated so no one discovers it after depending on it: inklkunn
 holds its wikis' signing keys by the owner's ruling, and everything in this model is built to make that
 custody bounded, detectable, attributable and recoverable rather than invisible.*

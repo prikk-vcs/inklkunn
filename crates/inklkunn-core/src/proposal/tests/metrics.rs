@@ -282,3 +282,70 @@ fn the_figures_are_an_administrators_and_a_draft_is_in_none_of_them() {
         assert_eq!(m.by_state.values().sum::<u64>(), 6);
     });
 }
+
+#[test]
+fn the_operator_gets_the_same_figures_as_one_line_of_json() {
+    on_both(|e| {
+        let _fx = fixture(e);
+        let period = Period {
+            from: 1000,
+            to: 2000,
+        };
+        set_now(3000);
+        let by_service = e
+            .service
+            .metrics(&e.admin.principal, &e.wiki, period)
+            .unwrap();
+        let by_operator = crate::proposal::operator_metrics(
+            &*e.store as &dyn inklkunn_store::ProposalStore,
+            &e.wiki,
+            period,
+        )
+        .unwrap();
+        assert_eq!(
+            by_operator, by_service,
+            "the command line asks no principal, not a different question"
+        );
+
+        let line = by_operator.json_line();
+        assert!(!line.contains('\n'), "one record is one line: {line}");
+        let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(v["kind"], "participation");
+        assert_eq!(v["wiki"], e.wiki.id.as_str());
+        assert_eq!(
+            (v["from"].as_i64(), v["to"].as_i64()),
+            (Some(1000), Some(2000))
+        );
+        assert_eq!(v["submitted"], 4);
+        assert_eq!(v["median_secs_to_first_review"], 100);
+        assert_eq!(v["median_secs_to_decision"], 60);
+        // A share is the two whole numbers, never a rounded figure.
+        assert_eq!(v["acceptance_rate"]["num"], 1);
+        assert_eq!(v["acceptance_rate"]["den"], 2);
+        assert_eq!(v["reviewers_per_proposal"]["den"], 4);
+        // Every state is present, by its stored name.
+        let states = v["by_state"].as_object().unwrap();
+        assert_eq!(states.len(), 7, "{states:?}");
+        assert_eq!(states["accepted"], 1);
+        assert_eq!(states["draft"], 0);
+        assert_eq!(
+            (
+                v["distinct_proposers"].as_u64(),
+                v["first_time_proposers"].as_u64()
+            ),
+            (Some(3), Some(2))
+        );
+
+        // Nothing to say is null, not zero: a period with no proposals has no median and no rate.
+        let empty = crate::proposal::operator_metrics(
+            &*e.store as &dyn inklkunn_store::ProposalStore,
+            &e.wiki,
+            Period { from: 10, to: 20 },
+        )
+        .unwrap()
+        .json_line();
+        let v: serde_json::Value = serde_json::from_str(&empty).unwrap();
+        assert!(v["median_secs_to_first_review"].is_null() && v["acceptance_rate"].is_null());
+        assert_eq!(v["submitted"], 0);
+    });
+}

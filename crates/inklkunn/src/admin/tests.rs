@@ -1403,3 +1403,94 @@ fn a_start_recovers_every_wiki_that_needs_it_before_it_serves_and_says_so() {
         "{notes:?}"
     );
 }
+
+#[test]
+fn metrics_parses_a_period_one_way_or_the_other_and_a_usage_error_shows_the_usage() {
+    assert_eq!(
+        parse(&args(&["metrics", "docs"])).unwrap(),
+        Command::Metrics {
+            wiki: "docs".into(),
+            from: None,
+            to: None,
+            days: None
+        }
+    );
+    assert_eq!(
+        parse(&args(&["metrics", "docs", "--days", "7"])).unwrap(),
+        Command::Metrics {
+            wiki: "docs".into(),
+            from: None,
+            to: None,
+            days: Some(7)
+        }
+    );
+    assert_eq!(
+        parse(&args(&["metrics", "docs", "--from", "100", "--to", "200"])).unwrap(),
+        Command::Metrics {
+            wiki: "docs".into(),
+            from: Some(100),
+            to: Some(200),
+            days: None
+        }
+    );
+    for bad in [
+        vec!["metrics"],
+        vec!["metrics", "--days", "7"],
+        vec!["metrics", "docs", "--days"],
+        vec!["metrics", "docs", "--days", "0"],
+        vec!["metrics", "docs", "--days", "9999"],
+        vec!["metrics", "docs", "--days", "x"],
+        vec!["metrics", "docs", "--from", "100"],
+        vec!["metrics", "docs", "--days", "7", "--from", "1", "--to", "2"],
+        vec!["metrics", "docs", "--csv"],
+    ] {
+        let e = parse(&args(&bad)).unwrap_err();
+        assert!(
+            e.0.contains("usage:") && e.0.contains("wiki metrics"),
+            "{bad:?}: {}",
+            e.0
+        );
+    }
+}
+
+#[test]
+fn metrics_prints_one_json_line_audits_the_act_and_refuses_an_empty_period() {
+    let Some(w) = world("metrics") else { return };
+    let (status, _, err) = w.cli(&["wiki", "create", "notes", "--name", "Notes"]);
+    assert_eq!(status, 0, "{err}");
+    let id = w.record("notes").id;
+    let before = w.audit().len();
+
+    let (status, out, err) = w.cli(&["wiki", "metrics", "notes", "--days", "7"]);
+    assert_eq!(status, 0, "{err}");
+    assert_eq!(out.lines().count(), 1, "one record, one line: {out:?}");
+    assert!(
+        out.starts_with("{\"kind\":\"participation\"")
+            || out.contains("\"kind\":\"participation\""),
+        "{out}"
+    );
+    assert!(out.contains(&format!("\"wiki\":\"{id}\"")), "{out}");
+    assert!(out.contains("\"submitted\":0"), "{out}");
+    assert!(
+        out.contains("\"acceptance_rate\":null"),
+        "nothing decided is no rate: {out}"
+    );
+    // The act is audited before it is done and finished after, naming the wiki by its id.
+    let events: Vec<_> = w.audit().into_iter().skip(before).collect();
+    let metrics: Vec<_> = events
+        .iter()
+        .filter(|(_, a, ..)| a == "wiki-metrics")
+        .collect();
+    assert_eq!(metrics.len(), 2, "{events:?}");
+    assert!(metrics.iter().all(|(p, _, o, r)| p == "system:operator-cli"
+        && o == "allowed"
+        && *r == format!("wiki:{id}")));
+
+    // A period that ends before it begins is refused, and a wiki that is not there is named.
+    let (status, out, err) = w.cli(&["wiki", "metrics", "notes", "--from", "200", "--to", "100"]);
+    assert_eq!((status, out.as_str()), (1, ""), "{err}");
+    assert!(err.contains("--from must be before --to"), "{err}");
+    let (status, _, err) = w.cli(&["wiki", "metrics", "nowhere"]);
+    assert_eq!(status, 1);
+    assert!(err.contains("no wiki `nowhere`"), "{err}");
+}

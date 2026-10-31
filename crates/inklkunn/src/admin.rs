@@ -35,6 +35,7 @@ use std::time::Duration;
 use inklkunn_core::export::is_checkpoint_not_recorded;
 use inklkunn_core::export::{ExportError, export_bundle};
 use inklkunn_core::import::{ImportError, plan_folder, run_import, wiki_state};
+use inklkunn_core::proposal::{Period, operator_metrics};
 use inklkunn_core::recovery::needs_recovery;
 use inklkunn_core::{
     Authorizer, LeaseConfig, Maintenance, NoLedger, Recover, Recovery, RecoveryError, RecoveryMode,
@@ -76,6 +77,13 @@ pub(crate) enum Command {
         bundle: Option<String>,
         archive: Option<String>,
     },
+    /// The participation metrics of a wiki, as one JSON Lines record (RFC 004 D-10).
+    Metrics {
+        wiki: String,
+        from: Option<i64>,
+        to: Option<i64>,
+        days: Option<u32>,
+    },
     Recover {
         wiki: String,
         plan_only: bool,
@@ -89,7 +97,8 @@ pub(crate) struct Usage(pub String);
 pub(crate) const USAGE: &str = "usage: inklkunn [--dev-unconfined] wiki create <slug> --name <name> [--license <spdx>] [--lang <tag>]... [--visibility public|private]\n       \
 inklkunn [--dev-unconfined] wiki import-folder <wiki> <dir> [--dry-run] [--replace-existing]\n       \
 inklkunn [--dev-unconfined] wiki export <wiki> [--bundle <dir>] [--archive <file>]\n       \
-inklkunn [--dev-unconfined] wiki recover <wiki> [--plan]\n\
+inklkunn [--dev-unconfined] wiki recover <wiki> [--plan]\n       \
+inklkunn [--dev-unconfined] wiki metrics <wiki> [--days <n> | --from <unix> --to <unix>]\n\
 <wiki> is the wiki's slug or id. An export's destination must not exist. `recover --plan` shows what recovery would do and changes nothing.";
 
 /// Parse what follows `wiki` for `create`, `import-folder` and `export`.
@@ -172,6 +181,44 @@ pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
                 wiki: first,
                 bundle,
                 archive,
+            })
+        }
+        "metrics" => {
+            let (mut from, mut to, mut days) = (None, None, None);
+            let number = |flag: &str, it: &mut std::slice::Iter<'_, String>| {
+                value(flag, it)?
+                    .parse::<i64>()
+                    .map_err(|_| usage(&format!("{flag} needs a whole number")))
+            };
+            let mut it = flags.iter();
+            while let Some(flag) = it.next() {
+                match flag.as_str() {
+                    "--from" => from = Some(number("--from", &mut it)?),
+                    "--to" => to = Some(number("--to", &mut it)?),
+                    "--days" => {
+                        days = Some(
+                            u32::try_from(number("--days", &mut it)?)
+                                .ok()
+                                .filter(|d| (1..=3660).contains(d))
+                                .ok_or_else(|| usage("--days is between 1 and 3660"))?,
+                        );
+                    }
+                    other => {
+                        return Err(usage(&format!("`{other}` is not an option of `metrics`")));
+                    }
+                }
+            }
+            if days.is_some() && (from.is_some() || to.is_some()) {
+                return Err(usage("--days or --from/--to, not both"));
+            }
+            if from.is_some() != to.is_some() {
+                return Err(usage("--from and --to go together"));
+            }
+            Ok(Command::Metrics {
+                wiki: first,
+                from,
+                to,
+                days,
             })
         }
         "recover" => {
@@ -360,7 +407,50 @@ fn run(
             err,
         ),
         Command::Recover { wiki, plan_only } => recover(settings, now, wiki, *plan_only, out, err),
+        Command::Metrics {
+            wiki,
+            from,
+            to,
+            days,
+        } => metrics(settings, now, wiki, *from, *to, *days, out),
     }
+}
+
+/// `inklkunn wiki metrics`: the participation metrics of one wiki over a period, as one JSON Lines record on
+/// standard output (RFC 004 D-10; CT-08). The figures are about people, so the act is audited before it is done.
+/// Without a period: the last 30 days.
+fn metrics(
+    settings: &Settings,
+    now: i64,
+    wiki: &str,
+    from: Option<i64>,
+    to: Option<i64>,
+    days: Option<u32>,
+    out: &mut dyn Write,
+) -> Result<(), String> {
+    let store = existing_store(settings)?;
+    let record = find_wiki(&store, wiki)?;
+    let period = match (from, to) {
+        (Some(from), Some(to)) if from < to => Period { from, to },
+        (Some(_), Some(_)) => return Err("--from must be before --to".to_owned()),
+        _ => Period {
+            from: now.saturating_sub(i64::from(days.unwrap_or(30)) * 86_400),
+            to: now,
+        },
+    };
+    let trail = Trail { sink: &store, now };
+    let resource = wiki_resource(&record);
+    trail.begin("wiki-metrics", &resource, "begun")?;
+    let result = operator_metrics(&store, &record, period)
+        .map_err(|e| format!("the records could not be read ({e})"));
+    let outcome = if result.is_ok() {
+        AuditOutcome::Allowed
+    } else {
+        AuditOutcome::Failed
+    };
+    trail.finish("wiki-metrics", &resource, outcome, "done")?;
+    writeln!(out, "{}", result?.json_line())
+        .map_err(|e| format!("the result could not be written ({})", e.kind()))
 }
 
 /// The audit trail of a start-up sweep: one `creation-sweep` event **before** each removal (*allowed*, the wiki's

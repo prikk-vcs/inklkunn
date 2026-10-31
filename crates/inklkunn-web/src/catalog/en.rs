@@ -1185,7 +1185,7 @@ pub const CATALOG: &[Entry] = &[
     msg("overlap.heading", "Where the changes overlap"),
     msg(
         "overlap.intro",
-        "The wiki's current text and this proposal both changed the places below. Nothing was merged. Revise the proposal with both texts in front of you.",
+        "The wiki's current text and this proposal both changed the places below. Nothing was changed. Revise the proposal with both texts in front of you.",
     ),
     msg(
         "overlap.caption",
