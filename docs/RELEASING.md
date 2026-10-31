@@ -16,8 +16,9 @@ released from M0; this document exists so that the first release is a rehearsed 
 3. **The pins reviewed**: `pin-check` passes (actions by SHA, images by digest, runners named, the
    toolchain and the supply-chain tools pinned, the MSRV job equal to `rust-version`, the rehearsal guard
    exact); `floor-check` passes (one prikk floor and one set of asset checksums; the corpus digest).
-4. **`CHANGELOG.md`**: the `[Unreleased]` section becomes `## X.Y.Z — YYYY-MM-DD` with the notes a reader
-   needs; the runtime prerequisites line names the prikk floor.
+4. **`CHANGELOG.md`**: the release's entries move under `## [X.Y.Z] — YYYY-MM-DD` (the brackets matter: `release.yml`
+   takes the notes from that heading to the next `## [`), with a lead paragraph a reader needs, and an empty
+   `## [Unreleased]` stays above it.
 5. **Versions**: `Cargo.toml`'s workspace version is `X.Y.Z`, and so is the `version = "…"` beside every
    intra-workspace `path` dependency (cargo-deny's wildcard rule wants one; `grep -rn 'version = "' crates/*/Cargo.toml`);
    `README.md` and `docs/STATUS.md` say so.
@@ -27,12 +28,28 @@ released from M0; this document exists so that the first release is a rehearsed 
 
 ## The tag (the architect, once the owner has authorized the release)
 
+When `main` has moved past the candidate, the release is cut from a branch `release/X.Y` at the candidate; the version
+and CHANGELOG commit lands there, the rehearsal runs there, and the branch is merged back into `main` afterwards (the
+release's entries under its heading, everything newer under `[Unreleased]`).
+
 ```sh
-git tag -a X.Y.Z <release-candidate commit> -m "inklkunn X.Y.Z"   # signed by the git configuration
+git tag -s X.Y.Z <release commit> -m "inklkunn X.Y.Z"   # signed by the owner's git configuration
 git push origin X.Y.Z
 ```
 
-A tag whose version differs from the workspace version fails the gates job before anything is built.
+A tag whose version differs from the workspace version fails the gates job before anything is built. **The rehearsal
+does not run the attestation steps** (they need a tag push), so the first tag run is their first run: watch it. If a
+tag run fails before anything is published (no GitHub release, no image under the real name, no crate), the tag may
+be moved to the fixed commit, with the owner's agreement, and the move recorded in `docs/STATUS.md`. Once anything is
+published, a fix is a new patch release, never a moved tag.
+
+**crates.io is optional per release:** with no `CARGO_REGISTRY_TOKEN` secret the crates step skips with a notice. When
+it is set, nine crates are published (the eight libraries and the `inklkunn` binary, in dependency order); the tools
+are never published. A published crate cannot be deleted, only yanked.
+
+**The binaries are built on Ubuntu 22.04** (glibc 2.35) so they run on the image's Debian 12 base and on any Linux with
+glibc 2.35 or newer; a step refuses a binary that needs a newer glibc. The container package on `ghcr.io` must be
+**public** for readers to pull it (a new organization package is private; the owner sets it once).
 
 ## What the workflow does
 

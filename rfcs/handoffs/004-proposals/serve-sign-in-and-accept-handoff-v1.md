@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | The handoff that makes M2 usable from a browser: people sign in, and the server accepts. Everything it needs is built and reviewed in the crates (`inklkunn-auth`: passwords, sessions with CSRF tokens, tokens, OpenID Connect; `inklkunn-core`: the proposal service and the acceptor; `inklkunn-signer`: the write lease). What is missing is the serving: the pages, a real `Identify`, and the acceptor in `serve`. |
-| Status | Written by the architect 2026-10-31 from the review of handoff 004 (decisions D1, D2, D11). **Assignable now**, in the order below; **U6 (switching writes on) waits for handoff 004's corrections P1 – P6 to be approved**; U2's account-creation policy waits for the owner's **DR-11** (the rest of U2 does not). |
+| Status | Written by the architect 2026-10-31 from the review of handoff 004 (decisions D1, D2, D11). **Assignable now**, in the order below; **U6 (switching writes on) waits for handoff 004's corrections P1 – P6 to be approved**; U2 follows DR-11 as the owner ruled it (2026-10-31). |
 | Basis | RFC 002 D-1 (principals; constant-work sign-in; throttles; `Secure`, `HttpOnly`, `SameSite` cookies; a CSRF token on every cookie write; scoped tokens), D-2 (`authorize`), D-6 (keys in the process, seeds per call); RFC 004 D-4, D-12, D-13; requirements ID-1, ID-2, AUTH-01, AUTH-02; threat model T-1, T-2, C-1a … C-1c, C-2a, RR-1, RR-4; internal design SGN-5 / IQ-4 (the signer stays in-process in v1, behind the gate); handoff 002's corrections C7 (witnesses), C8 – C10 and follow-ups F2 – F4; handoff 004's P6. |
 | Audience | The dev team. The two lenses of handoff 003 apply unchanged: a clean end state, and nothing a person can misread. |
 | Handback | One review request per task group (U1 – U4; U5; U6), in `.git-exclude/review-requests/`, with the usual gates, both test runs, the mutation table, and the pages in both languages. |
@@ -21,13 +21,25 @@
 - Catalog entries in both languages with glossary rows; the structural and retired-words tests over every new state;
   route enumeration lists each route with its action or public reason.
 
-## U2 — How accounts come into being
+## U2 — How accounts come into being (DR-11, ruled by the owner 2026-10-31)
 
-- **Always (no ruling needed):** an operator path on the command line — `inklkunn account create <login>` (prints a
-  one-time set-password link, never a password), `account disable`, `account grant <login> <role> <wiki>`,
-  `account revoke-grant`, each audited before the act. The first administrator is made this way.
-- **The policy (DR-11, the owner's):** whether people may also make their own account. Build what the ruling says;
-  until it lands, only the operator path exists and the sign-in page says how to get an account in one plain sentence.
+One idea for people: **you are invited, or — where the server is open — you join.** Then you choose how you sign in.
+
+- **An invitation** is a one-time, expiring link (default 7 days), made by the operator on the command line
+  (`inklkunn account invite [--role <role> --wiki <slug>]`; later also by a wiki's administrator) and shown once. The
+  person who opens it chooses a password **or** signs in with the configured OpenID Connect provider, and the account
+  is bound to that credential. No password is ever sent or printed; no mail server is needed (the operator passes the
+  link on as they like). The first administrator is made this way.
+- **Joining** is one server setting, `INKLKUNN_JOIN = off | provider | anyone`, **default `off`**. `provider`: a first
+  sign-in through the configured provider makes an account (for an organization's own provider; a public provider makes
+  this open registration, and the setting's documentation says so in one sentence). `anyone`: also a local account with
+  a password. A joined account starts with the new-account quotas and no role beyond what the wiki gives everyone.
+- **One person, one account.** Accounts are never matched or linked by email. Adding a second credential (a password
+  to a provider account, or the reverse) is the person's own act while signed in, or the operator's.
+- `account disable`, `account grant <login> <role> <wiki>` and `account revoke-grant` on the command line; every act
+  audited before it is done.
+- **The sign-in page shows only what exists:** the provider button if one is configured; *Join* only if joining is
+  open; otherwise one sentence, *Ask the person who runs this wiki for an invitation.*
 
 ## U3 — OpenID Connect switched on
 

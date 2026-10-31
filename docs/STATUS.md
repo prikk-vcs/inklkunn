@@ -178,32 +178,32 @@
   served (D1), so the architect wrote **`rfcs/handoffs/004-proposals/serve-sign-in-and-accept-handoff-v1.md`**
   (sign-in pages, accounts, OpenID Connect switched on, a real `Identify`, the server's acceptor, then writes on).
   Pushed.
+- **2026-10-31 — DR-11 ruled by the owner** (*"almost approved"*, then, on the architect's re-review against the owner's
+  philosophy, *"Yes"*): **you are invited, or, where the server is open, you join.** An invitation is a one-time link
+  from the operator with which the person chooses a password or the provider; joining is one setting `INKLKUNN_JOIN =
+  off | provider | anyone`, **default `off`**; accounts are never linked by email; the sign-in page shows only what
+  exists. The re-review changed one thing from the first recommendation: joining through a provider is no longer on
+  by default (with a public provider it is open registration). Handoff `serve-sign-in-and-accept-handoff-v1.md` U2.
+- **2026-10-31 — 0.1.0 released** (M1: read a wiki; authorized by the owner the same day):
+  <https://github.com/prikk-vcs/inklkunn/releases/tag/0.1.0>, cut from `release/0.1` at the candidate `95ab12c` plus
+  the release commit `ec79a4f` and two release-engineering fixes, the tag (signed by the owner's key) on `da4c03e`. The
+  Linux binaries (x86_64, aarch64) with checksums and build info, the image `ghcr.io/prikk-vcs/inklkunn:0.1.0`
+  (amd64 + arm64), SLSA build provenance on both; **not** on crates.io (no token; the step skipped with a notice, as
+  authorized). Verified after publishing: the tarball's checksum and attestation (`gh attestation verify`: SLSA v1
+  provenance), `inklkunn --version` naming the commit. What the release found: **the rehearsal** caught binaries that
+  needed glibc 2.38 – 2.39 (built on Ubuntu 24.04; the image's Debian 12 base has 2.36): they are now built on 22.04
+  (they need 2.34) and a step refuses a newer need; **the first tag run** failed in the attestation step (a
+  hand-written predicate GitHub refuses; the rehearsal does not run that step) before publishing anything, so with the
+  owner's agreement the tag was moved to the fix (option A). The release list also lacked `inklkunn-fetch` (fixed).
+  `release/0.1` is merged back into `main` (`8c18f90`): the workspace at 0.1.0, the CHANGELOG's 0.1.0 section, the
+  newer work under `[Unreleased]`. `docs/RELEASING.md` records the lessons.
 
 ## Pending on the owner
 
-- **Authorize 0.1.0 (M1: read a wiki)?** Candidate: **`95ab12c`** (handoff 003 complete, every gate green there:
-  1,223 tests in both runs, 98 self-skips; CI green on `c610227` below it). `main` has since moved on to RFC 004's
-  proposals, which are not part of 0.1.0, so the release is cut from a branch `release/0.1` at `95ab12c` with one
-  commit (workspace version `0.1.0`; the CHANGELOG's `[Unreleased]` becomes `## 0.1.0`, saying proposals are not in it),
-  then the release rehearsal, then the tag (signed by your git configuration), then `release.yml` publishes: the
-  Linux binaries (x86_64, aarch64), the container image `ghcr.io/prikk-vcs/inklkunn:0.1.0`, the GitHub release —
-  **and the crates to crates.io, which cannot be deleted, only yanked**. *Readiness:* green — every gate, every page
-  state in two languages, the existence-neutral refusals, the honest badge (R1), serve-stale, kill-safe creation,
-  import/export with hostile-folder refusals, the read API with its OpenAPI document; done by a person — nothing
-  (accessibility is tool-checked only, and the Japanese is a labelled preview until your review); risks — a very
-  large wiki's first visit at a new tip costs an `extract` bounded by `INKLKUNN_INDEX_MAX_MIB`; every visitor is
-  anonymous (sign-in comes with 0.2.0). *One thing needs you either way:* the repository has **no
-  `CARGO_REGISTRY_TOKEN` secret**, so the crates.io step would fail after everything else is published. Either add
-  the secret, or let 0.1.0 ship without crates.io (`release.yml` then skips that step with a notice; the architect
-  makes that change). *Recommendation:* authorize, without crates.io for 0.1.0.
-- **DR-11 — How accounts come into being** (decision request; handoff `serve-sign-in-and-accept-handoff-v1.md` U2).
-  RFC 002 decided sign-in, not who may make an account. *Options:* **(a)** the operator only (`inklkunn account create`,
-  a one-time set-password link) — no spam, but every newcomer needs an operator; **(b)** open self-registration with a
-  local password, under the new-account quotas — the easiest start, and the most spam; **(c)** a server setting: the
-  operator path always; self-registration **off** by default; **an account made at first sign-in through the
-  configured OpenID Connect provider, on** by default when a provider is configured (the provider vouches for the
-  person, and a newcomer needs no operator). *Recommendation:* **(c)**. *Deadline:* before 0.2.0 serves writes.
-  *If deferred:* only the operator path is built.
+- **Make the container image public** (once): GitHub → the `prikk-vcs` organization → Packages → `inklkunn` →
+  Package settings → Change visibility → Public. A new organization package is private, so today
+  `docker pull ghcr.io/prikk-vcs/inklkunn:0.1.0` is refused to everyone else (verified anonymously: 401). The
+  rehearsal package `inklkunn-rehearsal` can stay private.
 - **Review the Japanese catalog** when the dev team files it (DR-7; the owner is the reviewer): one request listing
   every message in English and Japanese with where it appears. It waits for RFC 004's words (about 300 more messages
   now); until your sign-off Japanese stays a preview that only a reader's own choice turns on.
