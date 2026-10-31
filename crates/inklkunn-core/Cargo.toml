@@ -12,6 +12,9 @@ description = "inklkunn's domain: wikis and views, pages, proposals and review, 
 # Lets tests build account principals freely (corrections handoff C7). Never enabled by a product crate; the
 # boundary gate fails if one does.
 test-authority = []
+# Exposes `align_blocks`, the merge's own block alignment, to the measurement tool (spike follow-up K1). Tool-only:
+# `tools/corpus` alone enables it; the boundary gate fails if a product crate does.
+measurement-alignment = []
 
 [dependencies]
 inklkunn-markup = { path = "../inklkunn-markup", version = "0.1.0" }

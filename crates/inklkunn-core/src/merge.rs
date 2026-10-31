@@ -46,6 +46,11 @@ use page::merge_text;
 /// block on each side is one block that changed. `None`: the block has no counterpart (removed). The merge is not
 /// run and nothing is decided; this is for measurement tools that must use the product's own matching (spike C),
 /// never a copy of it.
+///
+/// Behind the `measurement-alignment` feature, which only `tools/corpus` enables (spike follow-up K1): the explicit
+/// `^id` is the identity signal (RFC 005 D-1 a), so no product path needs this exposed, and the boundary gate
+/// refuses the feature in any product crate.
+#[cfg(any(test, feature = "measurement-alignment"))]
 pub fn align_blocks(base: &str, other: &str) -> Vec<Option<usize>> {
     page::align_blocks(base, other)
 }

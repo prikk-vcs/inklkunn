@@ -88,9 +88,9 @@ pub use inklkunn_signer::{
     SignerConfig, SignerError, SupersededKey, Witnesses, WorktreeState, WriteLeases,
 };
 pub use lease::{Busy, BusyWhy, Lease, LeaseConfig, LeaseError, Leased, Purpose, WikiLeases};
-pub use merge::{
-    LineLevel, MergeOutcome, MergedPage, Overlap, PageRef, PageText, Place, align_blocks, merge,
-};
+#[cfg(any(test, feature = "measurement-alignment"))]
+pub use merge::align_blocks;
+pub use merge::{LineLevel, MergeOutcome, MergedPage, Overlap, PageRef, PageText, Place, merge};
 pub use notify::{Channel, InApp, Notifier};
 pub use proposal::{
     BaseSource, Invalid, Metrics, NewComment, Period, ProposalEdit, ProposalError, ProposalService,

@@ -85,6 +85,9 @@ pub const SIGNER_ONLY_NAMES: &[&str] = &[
 ];
 /// Cargo features no product crate may enable in a non-dev dependency.
 pub const TEST_ONLY_FEATURES: &[&str] = &["test-knobs", "bootstrap", "test-authority"];
+/// Cargo features only a measurement tool (`tools/corpus`, which is outside `crates/`) may enable; a product crate
+/// that enables one in a non-dev dependency fails the gate like a test-only feature does (spike follow-up K1).
+pub const TOOL_ONLY_FEATURES: &[&str] = &["measurement-alignment"];
 
 /// prikk verbs that write; `inklkunn-prikk` (the read driver) may not name any of them as a string.
 pub const PRIKK_WRITE_VERBS: &[&str] = &[
@@ -491,7 +494,9 @@ pub fn test_feature_leaks(manifests: &BTreeMap<String, String>) -> Vec<(String, 
                 continue;
             }
             for f in &d.features {
-                if TEST_ONLY_FEATURES.contains(&f.as_str()) {
+                if TEST_ONLY_FEATURES.contains(&f.as_str())
+                    || TOOL_ONLY_FEATURES.contains(&f.as_str())
+                {
                     out.push((name.clone(), d.package.clone(), f.clone()));
                 }
             }

@@ -15,7 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 # The merge the harness measures is the product's (handoff 004 T2); a workspace path edge, no new crate.
-inklkunn-core = { workspace = true }
+inklkunn-core = { workspace = true, features = ["measurement-alignment"] }
 # Spike C replays histories through the product's own block segmentation (RFC 005 part 1); a workspace path edge, no new crate.
 inklkunn-markup = { workspace = true }
 serde = { workspace = true }

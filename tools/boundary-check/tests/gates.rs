@@ -160,6 +160,59 @@ fn key_reachability_gate_catches_planted_dependencies_and_features() {
     assert_eq!(test_feature_leaks(&m).len(), 1);
 }
 
+/// Spike follow-up K1: `inklkunn-core`'s `measurement-alignment` feature (the merge's own block alignment,
+/// `align_blocks`) is a tool-only feature: the measurement tool enables it and no product crate may, in any
+/// spelling the manifest allows. The feature is non-default, so a product build never has it.
+#[test]
+fn the_measurement_alignment_feature_is_tool_only_and_no_product_crate_enables_it() {
+    assert!(TOOL_ONLY_FEATURES.contains(&"measurement-alignment"));
+    let root = workspace_root();
+    let core = read(&root.join("crates/inklkunn-core/Cargo.toml"));
+    assert!(core.contains("measurement-alignment = []"), "declared");
+    let default_line = core.lines().find(|l| l.trim_start().starts_with("default"));
+    assert!(
+        default_line.is_none_or(|l| !l.contains("measurement-alignment")),
+        "non-default"
+    );
+    let corpus = read(&root.join("tools/corpus/Cargo.toml"));
+    assert!(
+        corpus.contains("features = [\"measurement-alignment\"]"),
+        "the tool enables it"
+    );
+
+    let manifests = read_manifests(&root);
+    assert!(
+        test_feature_leaks(&manifests).is_empty(),
+        "a product crate enables a tool-only feature"
+    );
+    // Planted: every spelling a dependency can enable it in, in a product crate.
+    for plant in [
+        "[dependencies]\ninklkunn-core = { path = \"../inklkunn-core\", features = [\"measurement-alignment\"] }\n",
+        "[dependencies]\ninklkunn-core = { workspace = true, features = [\"test-authority\", \"measurement-alignment\"] }\n",
+        "[dependencies.inklkunn-core]\npath = \"../inklkunn-core\"\nfeatures = [\"measurement-alignment\"]\n",
+        "[build-dependencies]\ninklkunn-core = { path = \"x\", features = [\"measurement-alignment\"] }\n",
+    ] {
+        let mut m = read_manifests(&root);
+        m.insert("inklkunn-web".into(), plant.into());
+        assert!(
+            test_feature_leaks(&m).contains(&(
+                "inklkunn-web".to_owned(),
+                "inklkunn-core".to_owned(),
+                "measurement-alignment".to_owned()
+            )),
+            "{plant}"
+        );
+    }
+    // A dev-dependency may (a test of the tool's own); it is not a product dependency.
+    let mut m = read_manifests(&root);
+    m.insert(
+        "inklkunn-web".into(),
+        "[dev-dependencies]\ninklkunn-core = { path = \"x\", features = [\"measurement-alignment\"] }\n"
+            .into(),
+    );
+    assert!(test_feature_leaks(&m).is_empty());
+}
+
 #[test]
 fn the_key_store_module_is_private_unmentioned_and_the_signer_names_stay_in_the_signer() {
     let root = workspace_root();
