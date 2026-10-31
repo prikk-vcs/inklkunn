@@ -90,17 +90,15 @@ impl ProposalService {
     }
 
     fn judge_paths(&self, content: &RevisionContent, present: &BTreeSet<String>) -> Result<()> {
-        let removed: BTreeSet<&str> = content
-            .files
-            .iter()
+        // Only pages are judged here; a knowledge file's place and name are the knowledge layer's (K-T2).
+        let pages = || content.files.iter().filter(|f| is_page_path(&f.path));
+        let removed: BTreeSet<&str> = pages()
             .filter(|f| f.text.is_none())
             .map(|f| f.path.as_str())
             .chain(content.renames.iter().map(|r| r.from.as_str()))
             .collect();
         // The paths that are new at the base: a page written where there was none, and where a page is moved to.
-        let new: BTreeSet<&str> = content
-            .files
-            .iter()
+        let new: BTreeSet<&str> = pages()
             .filter(|f| f.text.is_some())
             .map(|f| f.path.as_str())
             .chain(content.renames.iter().map(|r| r.to.as_str()))
@@ -160,7 +158,7 @@ impl ProposalService {
         let keys_before =
             |old: &Option<String>| old.as_deref().and_then(front_keys).unwrap_or_default();
         let mut changed: BTreeSet<&'static str> = BTreeSet::new();
-        for file in &content.files {
+        for file in content.files.iter().filter(|f| is_page_path(&f.path)) {
             let old = at_base(&file.path)?;
             let after = match &file.text {
                 // Unchanged text changes nothing, whatever it holds.

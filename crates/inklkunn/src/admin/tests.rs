@@ -1444,9 +1444,11 @@ fn a_checkpoint_refresh_waits_in_the_wikis_queue_behind_a_lease_held_elsewhere_a
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert_eq!(maintained.leases.waiting(&record.id), 1, "it did not queue");
+        // (A holder is named by its name, its process start time and a random part: the name is the first of them.)
+        let holder = store.lease_holder(&record.id).unwrap().map(|h| h.holder);
         assert_eq!(
-            store.lease_holder(&record.id).unwrap().map(|h| h.holder),
-            Some("someone-else".to_owned())
+            holder.as_deref().and_then(|h| h.split('@').next()),
+            Some("someone-else")
         );
         assert!(!refresh.is_finished());
         assert_eq!(w.record("notes").checkpoint.refreshed_with, None);

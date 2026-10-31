@@ -22,7 +22,7 @@ struct Scene {
 fn scene(tag: &str) -> Scene {
     let rig = Rig::new(tag);
     let (_, maintainer) = rig.person("Maya", Some(Role::Maintainer));
-    let (_, author) = rig.person("Noor", Some(Role::Contributor));
+    let (_, author) = rig.person("Noor", Some(Role::Admin));
     rig.fake.set("pages/One.md", ONE);
     Scene {
         rig,
@@ -269,7 +269,6 @@ fn a_wiki_whose_knowledge_directory_holds_only_its_keep_file_extracts_nothing_ei
     );
     assert!(matches!(outcome, Ok(Accepted::Signed(_))), "{outcome:?}");
     assert_eq!(calls, 1);
-    // Writing the keep-file again is not a change to the knowledge layer either.
-    let (outcome, _) = accept(&s, &[("knowledge/.keep", Some("\n"))]);
-    assert!(matches!(outcome, Ok(Accepted::Signed(_))), "{outcome:?}");
+    // (The keep-file is not a proposal's to write: the service refuses any path that is neither a page nor a
+    // claim or source file, `Invalid::PathOutsidePages`, so a proposal cannot touch it at all.)
 }

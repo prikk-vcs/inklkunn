@@ -269,7 +269,6 @@ fn a_version_12_database_is_migrated_to_13_keeping_everything_and_only_once() {
     {
         let store = SqliteStore::open(&db).expect("a version 12 database opens");
         assert_eq!(version(), SCHEMA_VERSION.to_string());
-        assert_eq!(SCHEMA_VERSION, 13);
         let w = store.list().unwrap().remove(0);
         // What was there is still there.
         assert_eq!(

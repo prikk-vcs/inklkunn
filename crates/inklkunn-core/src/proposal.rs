@@ -424,7 +424,9 @@ fn validate(
         if !path_ok(&f.path) {
             return Err(Invalid::BadPath);
         }
-        if !files::is_page_path(&f.path) {
+        // A file is a page, or a knowledge file in the place the knowledge layer reads (`knowledge/claims/…` and
+        // `knowledge/sources/…`; its name and content are judged at acceptance, K-T2). Nothing else.
+        if !files::is_page_path(&f.path) && crate::knowledge::family_of(&f.path).is_none() {
             return Err(Invalid::PathOutsidePages);
         }
         if !seen.insert(f.path.as_str()) {
