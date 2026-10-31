@@ -113,6 +113,3 @@ pub fn run_blocking(
         .map_err(ServeError::Io)
     })
 }
-
-#[cfg(test)]
-mod tests;

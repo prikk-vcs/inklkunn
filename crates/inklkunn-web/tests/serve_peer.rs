@@ -1,3 +1,5 @@
+//! The server attaches the peer of each connection to its requests (`ConnectInfo`), which the sign-in throttle
+//! counts. The route is registered here, in a test of the listener; no page is.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::io::{Read, Write};
@@ -7,8 +9,10 @@ use axum::Router;
 use axum::extract::ConnectInfo;
 use axum::routing::get;
 
-use super::*;
-use crate::config::WebConfig;
+use std::net::SocketAddr;
+
+use inklkunn_web::WebConfig;
+use inklkunn_web::serve::{Shutdown, run_blocking};
 
 /// The server hands every request the address of the connection it came on, so a throttle can count it.
 #[test]
