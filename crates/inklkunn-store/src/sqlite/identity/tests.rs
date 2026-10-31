@@ -55,3 +55,42 @@ fn the_store_turns_foreign_keys_on_itself_whatever_the_connection_came_with() {
     };
     assert_eq!(store.grant(grant).err(), Some(StoreError::AccountNotFound));
 }
+
+fn synchronous(store: &SqliteStore) -> i64 {
+    store
+        .with(|conn| {
+            conn.query_row("PRAGMA synchronous", [], |r| r.get(0))
+                .map_err(backend)
+        })
+        .unwrap()
+}
+
+/// P12: the durability claims rest on `synchronous = FULL` (2). The store asks for it itself; SQLite's own
+/// default, a build option, or a connection that came with another setting does not decide it.
+#[test]
+fn the_store_sets_synchronous_full_whatever_the_connection_came_with() {
+    let conn = rusqlite::Connection::open_in_memory().unwrap();
+    conn.execute_batch("PRAGMA synchronous=OFF;").unwrap();
+    let off: i64 = conn
+        .query_row("PRAGMA synchronous", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(off, 0, "the starting point: synchronous off");
+    let store = SqliteStore::init(conn, false).unwrap();
+    assert_eq!(synchronous(&store), 2, "the store asked for FULL");
+}
+
+/// P12: and a file-backed store, in WAL mode (where a build's own default can be `NORMAL`), is FULL.
+#[test]
+fn a_file_backed_store_in_wal_mode_is_synchronous_full() {
+    let dir = std::env::temp_dir().join(format!(
+        "inklkunn-sync-{}-{}",
+        std::process::id(),
+        AccountId::new()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    {
+        let store = SqliteStore::open(&dir.join("store.sqlite")).unwrap();
+        assert_eq!(synchronous(&store), 2);
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

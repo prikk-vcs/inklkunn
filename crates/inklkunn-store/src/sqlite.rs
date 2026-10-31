@@ -864,8 +864,10 @@ impl SqliteStore {
     }
 
     fn init(mut conn: Connection, file_backed: bool) -> Result<Self> {
-        conn.execute_batch("PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;")
-            .map_err(backend)?;
+        conn.execute_batch(
+            "PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;",
+        )
+        .map_err(backend)?;
         if file_backed {
             let mode: String = conn
                 .query_row("PRAGMA journal_mode=WAL", [], |r| r.get(0))
