@@ -1306,6 +1306,10 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg("quota.queue", "too many acceptances waiting"),
     msg(
+        "quota.comments_hour_person",
+        "too many comments in the last hour",
+    ),
+    msg(
         "quota.counts",
         "The limit is {allowed}. The count now is {current}, and this asked for {asked}.",
     ),

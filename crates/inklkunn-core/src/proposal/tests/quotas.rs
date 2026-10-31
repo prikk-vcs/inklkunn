@@ -41,6 +41,7 @@ fn the_defaults_are_the_rfcs() {
     assert_eq!(d.proposals_per_hour_per_principal, 30);
     assert_eq!(d.proposals_per_hour_per_wiki, 300);
     assert_eq!(d.acceptance_queue, 64);
+    assert_eq!(d.comments_per_hour_per_principal, 60);
 }
 
 #[test]
@@ -55,6 +56,7 @@ fn the_limits_have_fixed_distinct_names() {
             "proposals-per-hour-per-principal",
             "proposals-per-hour-per-wiki",
             "acceptance-queue",
+            "comments-per-hour-per-principal",
         ]
     );
 }
@@ -144,8 +146,20 @@ fn the_hourly_rate_per_principal_is_a_rolling_window_and_says_when_it_resets() {
     });
 }
 
+fn send(
+    e: &Env,
+    who: &super::support::Actor,
+    n: usize,
+) -> Result<inklkunn_store::ProposalRecord, ProposalError> {
+    let draft = create(e, who, n)?;
+    e.service.submit(&who.principal, &e.wiki, &draft.id)
+}
+
+/// Corrections P11: the wiki-wide hourly limit counts what is *sent for review*, by everyone not above the
+/// reviewers, and says nothing of how many that is.
 #[test]
-fn the_hourly_rate_per_wiki_counts_everyone_and_the_principals_limit_is_asked_first() {
+fn the_hourly_rate_per_wiki_counts_what_is_sent_by_everyone_below_the_reviewers_and_the_principals_limit_is_asked_first()
+ {
     let config = QuotaConfig {
         proposals_per_hour_per_wiki: 3,
         proposals_per_hour_per_principal: 2,
@@ -159,16 +173,18 @@ fn the_hourly_rate_per_wiki_counts_everyone_and_the_principals_limit_is_asked_fi
             e.person(Some(Role::Contributor)),
             e.person(Some(Role::Contributor)),
         );
-        create(e, &a, 0).unwrap();
+        send(e, &a, 0).unwrap();
         set_now(T0 + 10);
-        create(e, &b, 1).unwrap();
+        send(e, &b, 1).unwrap();
         set_now(T0 + 20);
-        create(e, &c, 2).unwrap();
-        // A fourth, by a fresh person, is refused by the wiki's limit, naming the wiki's limit.
+        send(e, &c, 2).unwrap();
+        // A fourth, by a fresh person: opening a draft is fine (a draft is nobody's activity)...
         set_now(T0 + 30);
         let d = e.person(Some(Role::Contributor));
+        let draft = create(e, &d, 3).unwrap();
+        // ...and sending it is refused by the wiki's limit, naming the wiki's limit.
         assert_eq!(
-            refusal(create(e, &d, 3)),
+            refusal(e.service.submit(&d.principal, &e.wiki, &draft.id)),
             QuotaRefusal {
                 limit: QuotaLimit::ProposalsPerHourPerWiki,
                 allowed: 3,
@@ -177,12 +193,160 @@ fn the_hourly_rate_per_wiki_counts_everyone_and_the_principals_limit_is_asked_fi
                 reset: Reset::At(T0 + HOUR),
             }
         );
+        // The count is never shown: reviewers and above send past the limit (it does not bind them), and the
+        // refusal that follows still says 3, not how many were sent.
+        for who in [&e.reviewer, &e.maintainer, &e.admin] {
+            send(e, who, 10).unwrap_or_else(|error| panic!("{error}"));
+            send(e, who, 11).unwrap_or_else(|error| panic!("{error}"));
+        }
+        assert_eq!(
+            e.store.submitted_since(&e.wiki.id, T0).unwrap().len(),
+            9,
+            "nine were sent, three of them by people the limit binds"
+        );
+        // What the reviewers sent took nobody's room: only the three of the contributors are counted. After they
+        // leave the window, the reviewers' six, still inside it, do not hold the next contributor back.
+        let q = refusal(e.service.submit(&d.principal, &e.wiki, &draft.id));
+        assert_eq!((q.allowed, q.current), (3, 3), "{q:?}");
+        // Unsent drafts, however many, are not counted: once the sent ones have left the window, the drafts of
+        // everyone else make no difference.
+        set_now(T0 + HOUR + 25);
+        for n in 20..25 {
+            create(e, &e.person(Some(Role::Contributor)), n).unwrap();
+        }
+        assert!(e.service.submit(&d.principal, &e.wiki, &draft.id).is_ok());
         // When the person is over their own limit too, theirs is the one named: it is the one they can act on.
-        set_now(T0 + HOUR + 15);
+        set_now(T0 + 2 * HOUR + 15);
         create(e, &a, 4).unwrap();
         create(e, &a, 5).unwrap();
         let q = refusal(create(e, &a, 6));
         assert_eq!(q.limit, QuotaLimit::ProposalsPerHourPerPrincipal);
+    });
+}
+
+/// Corrections P11: the refusal of the wiki-wide limit is the same whatever the count is. Here the limit was
+/// lowered after five were sent; the refusal still says 3, not 5.
+#[test]
+fn a_refusal_of_the_wiki_wide_limit_does_not_show_how_many_were_sent() {
+    use std::sync::Arc;
+
+    use super::support::Everything;
+
+    fn run<S: Everything + 'static>(store: Arc<S>) {
+        let loose = QuotaConfig {
+            proposals_per_hour_per_wiki: 5,
+            open_proposals: 100,
+            ..QuotaConfig::default()
+        };
+        let e = Env::over(store.clone(), loose);
+        set_now(T0);
+        for n in 0..5 {
+            send(&e, &e.person(Some(Role::Contributor)), n).unwrap();
+        }
+        let d = e.person(Some(Role::Contributor));
+        let draft = create(&e, &d, 9).unwrap();
+        set_now(T0 + 1);
+        // The same records under a service whose limit is 3: five were sent, and the refusal says 3.
+        let strict = Env::service_over(
+            &store,
+            &e.bases,
+            QuotaConfig {
+                proposals_per_hour_per_wiki: 3,
+                open_proposals: 100,
+                ..QuotaConfig::default()
+            },
+        );
+        let q = refusal(strict.submit(&d.principal, &e.wiki, &draft.id));
+        assert_eq!(q.limit, QuotaLimit::ProposalsPerHourPerWiki);
+        assert_eq!((q.allowed, q.current), (3, 3), "{q:?}");
+    }
+    run(Arc::new(inklkunn_store::MemoryStore::new()));
+    run(Arc::new(
+        inklkunn_store::SqliteStore::open_in_memory().unwrap(),
+    ));
+}
+
+/// Corrections P11: a per-principal comment quota, half for a new account, a rolling hour that says when it
+/// resets, one principal's.
+#[test]
+fn comments_are_limited_per_principal_in_a_rolling_hour() {
+    let config = QuotaConfig {
+        comments_per_hour_per_principal: 3,
+        ..QuotaConfig::default()
+    };
+    on_both_with(&config, |e| {
+        set_now(T0);
+        let p = e.held(&e.author, "Mine", "pages/a.md");
+        let talk = |who: &super::support::Actor, n: usize| {
+            e.service.comment(
+                &who.principal,
+                &e.wiki,
+                &p.id,
+                crate::proposal::NewComment {
+                    body: format!("Comment {n}"),
+                    ..crate::proposal::NewComment::default()
+                },
+            )
+        };
+        talk(&e.reviewer, 0).unwrap();
+        set_now(T0 + 600);
+        talk(&e.reviewer, 1).unwrap();
+        talk(&e.reviewer, 2).unwrap();
+        set_now(T0 + 1200);
+        assert_eq!(
+            refusal(talk(&e.reviewer, 3)),
+            QuotaRefusal {
+                limit: QuotaLimit::CommentsPerHourPerPrincipal,
+                allowed: 3,
+                current: 3,
+                asked: 1,
+                reset: Reset::At(T0 + HOUR),
+            }
+        );
+        // It is the reviewer's: the proposer and a maintainer still comment.
+        talk(&e.author, 4).unwrap();
+        talk(&e.maintainer, 5).unwrap();
+        // One second before the oldest leaves the window: still refused; at the reset it fits.
+        set_now(T0 + HOUR - 1);
+        assert_eq!(refusal(talk(&e.reviewer, 6)).reset, Reset::At(T0 + HOUR));
+        set_now(T0 + HOUR);
+        talk(&e.reviewer, 7).unwrap();
+        // A new account has half (at least one).
+        let new = e.person_created(Some(Role::Reviewer), T0 + HOUR - 10);
+        talk(&new, 8).unwrap();
+        assert_eq!(refusal(talk(&new, 9)).allowed, 1);
+    });
+}
+
+#[test]
+fn a_refused_comment_is_not_stored() {
+    let config = QuotaConfig {
+        comments_per_hour_per_principal: 1,
+        ..QuotaConfig::default()
+    };
+    on_both_with(&config, |e| {
+        set_now(T0);
+        let p = e.held(&e.author, "Mine", "pages/a.md");
+        let say = |text: &str| {
+            e.service.comment(
+                &e.reviewer.principal,
+                &e.wiki,
+                &p.id,
+                crate::proposal::NewComment {
+                    body: text.to_owned(),
+                    ..crate::proposal::NewComment::default()
+                },
+            )
+        };
+        say("First").unwrap();
+        assert!(say("Second").is_err());
+        assert_eq!(
+            e.service
+                .comments(&e.reviewer.principal, &e.wiki, &p.id)
+                .unwrap()
+                .len(),
+            1
+        );
     });
 }
 

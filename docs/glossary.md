@@ -618,6 +618,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `quota.hour_person` | the name of the limit on proposals a person opens in an hour | "too many proposals opened in the last hour" | "直近 1 時間に出した提案が多すぎます" |
 | `quota.hour_wiki` | the name of the limit on proposals opened in the wiki in an hour | "too many proposals opened in this wiki in the last hour" | "直近 1 時間にこのウィキで出された提案が多すぎます" |
 | `quota.queue` | the name of the limit on acceptances waiting | "too many acceptances waiting" | "待機中の受け入れが多すぎます" |
+| `quota.comments_hour_person` | the name of the limit on comments a person makes in an hour | "too many comments in the last hour" | "直近 1 時間のコメントが多すぎます" |
 | `quota.counts` | under a refusal by a limit: the limit, the count now and what was asked | "The limit is {allowed}. The count now is {current}, and this asked for {asked}." | "上限は {allowed} です。現在の数は {current} で、今回の要求は {asked} です。" |
 | `quota.reset_at` | under a refusal by a limit: when it ends; `{when}` is a time in UTC | "It resets at {when}." | "{when} にリセットされます。" |
 | `quota.reset_proposal_closes` | under a refusal by the limit on open proposals | "It resets when one of your open proposals is accepted, declined, withdrawn or superseded." | "あなたの未決の提案のどれかが、受け入れ・見送り・取り下げ・置き換えのいずれかになるとリセットされます。" |

@@ -532,6 +532,65 @@ fn the_suite(store: &(impl ProposalStore + WikiStore + AccountStore)) {
     );
 }
 
+/// Corrections P11: what the wiki-wide rate and the comment rate read. A draft that was never sent is in neither,
+/// and what one wiki has is not in another's.
+fn the_rate_queries(store: &(impl ProposalStore + WikiStore + AccountStore)) {
+    let w = wiki(store, "rates");
+    let elsewhere = wiki(store, "rates-elsewhere");
+    let (a, b) = (account(store), account(store));
+    let _unsent = open_draft(store, &w.id, &a, 100);
+    let q = submit(store, &open_draft(store, &w.id, &b, 110), 120);
+    let r = submit(store, &open_draft(store, &w.id, &a, 130), 140);
+    let s = submit(store, &open_draft(store, &elsewhere.id, &a, 135), 145);
+
+    assert_eq!(
+        store.submitted_since(&w.id, 0).unwrap(),
+        vec![(b.clone(), 120), (a.clone(), 140)],
+        "the sender and the time of each, oldest first; the unsent draft is not there"
+    );
+    assert_eq!(
+        store.submitted_since(&w.id, 121).unwrap(),
+        vec![(a.clone(), 140)]
+    );
+    assert!(store.submitted_since(&w.id, 141).unwrap().is_empty());
+    assert_eq!(
+        store.submitted_since(&elsewhere.id, 0).unwrap(),
+        vec![(a.clone(), 145)]
+    );
+
+    store
+        .add_comment(&comment(&q.id, 1, &a, 200), &REVIEWABLE)
+        .unwrap();
+    store
+        .add_comment(&comment(&q.id, 1, &a, 210), &REVIEWABLE)
+        .unwrap();
+    store
+        .add_comment(&comment(&r.id, 1, &b, 205), &REVIEWABLE)
+        .unwrap();
+    store
+        .add_comment(&comment(&s.id, 1, &a, 220), &REVIEWABLE)
+        .unwrap();
+    assert_eq!(store.comments_since(&w.id, &a, 0).unwrap(), vec![200, 210]);
+    assert_eq!(store.comments_since(&w.id, &a, 201).unwrap(), vec![210]);
+    assert_eq!(store.comments_since(&w.id, &b, 0).unwrap(), vec![205]);
+    assert_eq!(
+        store.comments_since(&elsewhere.id, &a, 0).unwrap(),
+        vec![220]
+    );
+    assert!(
+        store
+            .comments_since(&elsewhere.id, &b, 0)
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn both_stores_answer_the_rate_queries_the_same_way() {
+    the_rate_queries(&MemoryStore::new());
+    the_rate_queries(&SqliteStore::open_in_memory().expect("open"));
+}
+
 #[test]
 fn the_memory_store_holds_the_proposal_invariants() {
     the_suite(&MemoryStore::new());

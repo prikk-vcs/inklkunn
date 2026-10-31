@@ -497,6 +497,13 @@ impl Authorizer {
         Ok(Snapshot { visibility, role })
     }
 
+    /// The role `account` holds in `wiki`, for the service's own bookkeeping (which limit binds whom): nothing is
+    /// recorded and nothing leaves this crate. `None` when it holds none, or when the facts cannot be read (the
+    /// answer that binds the account to every limit).
+    pub(crate) fn role_in(&self, account: &AccountId, wiki: &WikiId) -> Option<Role> {
+        self.source.role(account, wiki).ok().flatten()
+    }
+
     /// May this account, **carrying the whole authority of its role** as a browser session does, do the
     /// non-consequential `action` to `resource`? For the service's own bookkeeping about *other* people (whom
     /// to tell something, a watch to keep): it builds no principal that leaves this crate and records

@@ -880,6 +880,7 @@ keys! {
     QuotaHourPerson => "quota.hour_person",
     QuotaHourWiki => "quota.hour_wiki",
     QuotaQueue => "quota.queue",
+    QuotaCommentsHourPerson => "quota.comments_hour_person",
     QuotaCounts => "quota.counts",
     ResetAt => "quota.reset_at",
     ResetProposalCloses => "quota.reset_proposal_closes",

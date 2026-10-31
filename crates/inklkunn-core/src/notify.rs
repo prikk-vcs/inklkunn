@@ -34,7 +34,13 @@ use inklkunn_store::{
 use crate::authorize::{Action, Authorizer, Resource};
 
 pub use channel::{Channel, ChannelError, InApp};
-pub use mention::{MAX_MENTIONS, mentions};
+pub use mention::{MAX_MENTION_EVENTS_PER_HOUR, MAX_MENTIONS, mentions};
+
+/// The window the mention cap is counted over, in seconds.
+const MENTION_WINDOW_SECS: i64 = 3600;
+/// How many of a recipient's newest events are read to count the mentions one actor sent them (more than the cap,
+/// so that a flood is seen).
+const MENTION_SCAN: usize = 200;
 
 /// Makes the events and hands them to the channels.
 pub struct Notifier {
@@ -46,6 +52,7 @@ pub struct Notifier {
     authorizer: Authorizer,
     clock: fn() -> i64,
     failures: AtomicU64,
+    suppressed: AtomicU64,
 }
 
 impl std::fmt::Debug for Notifier {
@@ -74,6 +81,7 @@ impl Notifier {
             authorizer,
             clock: inklkunn_store::record::now_secs,
             failures: AtomicU64::new(0),
+            suppressed: AtomicU64::new(0),
         }
     }
 
@@ -99,6 +107,37 @@ impl Notifier {
 
     fn failed(&self) {
         self.failures.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// How many mention events were dropped because their actor had sent their recipient the most one actor may
+    /// in an hour ([`MAX_MENTION_EVENTS_PER_HOUR`]) since the process started: what an operator watches for a
+    /// flood.
+    pub fn suppressed(&self) -> u64 {
+        self.suppressed.load(Ordering::Relaxed)
+    }
+
+    /// Has `actor` already sent `to` the most mention events one actor may in a rolling hour? Counted from the
+    /// recipient's inbox (the newest events are the ones that matter, and a flood is made of them); a record that
+    /// cannot be read counts as not capped, and the failure is counted: telling is best effort.
+    fn mention_capped(&self, to: &AccountId, actor: &AccountId) -> bool {
+        let since = (self.clock)().saturating_sub(MENTION_WINDOW_SECS) + 1;
+        match self.inbox.inbox(to, false, MENTION_SCAN) {
+            Ok(events) => {
+                events
+                    .iter()
+                    .filter(|e| {
+                        e.kind == InboxEventKind::Mentioned
+                            && e.actor.as_ref() == Some(actor)
+                            && e.created_at >= since
+                    })
+                    .count()
+                    >= MAX_MENTION_EVENTS_PER_HOUR
+            }
+            Err(_) => {
+                self.failed();
+                false
+            }
+        }
     }
 
     // --- one event
@@ -271,7 +310,15 @@ impl Notifier {
             // A name that is nobody's, or that belongs to someone with no business here, is told nothing
             // and the writer is told nothing either way.
             match self.accounts.account_by_login(&login) {
-                Ok(Some(account)) => tell_once(&account.id, InboxEventKind::Mentioned),
+                Ok(Some(account)) => {
+                    // One actor cannot fill one person's inbox: past the cap the mention is dropped, and
+                    // neither the writer nor the recipient is told (the comment itself stands).
+                    if self.mention_capped(&account.id, &comment.author) {
+                        self.suppressed.fetch_add(1, Ordering::Relaxed);
+                    } else {
+                        tell_once(&account.id, InboxEventKind::Mentioned);
+                    }
+                }
                 Ok(None) => {}
                 Err(_) => self.failed(),
             }

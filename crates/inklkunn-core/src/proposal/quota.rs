@@ -8,6 +8,7 @@
 //! what was opened or accepted; a window is half-open, `(now - window, now]`, so a record stops counting at
 //! exactly `its time + window`, which is the reset time a refusal gives.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use inklkunn_store::{AcceptanceStore, AccountId, AccountStore, ProposalStore, WikiId};
@@ -25,8 +26,12 @@ pub struct QuotaConfig {
     pub accepted_bytes_per_day: u64,
     /// Proposals a principal may open in a rolling hour, per wiki.
     pub proposals_per_hour_per_principal: u64,
-    /// Proposals all principals together may open in a wiki in a rolling hour.
+    /// Proposals all principals together may **send for review** in a wiki in a rolling hour. Drafts that were
+    /// never sent are not counted, reviewers and the roles above them are not bound by it, and a refusal does not
+    /// tell how many have been sent (corrections P11: it must not be a way to watch other people's activity).
     pub proposals_per_hour_per_wiki: u64,
+    /// Comments a principal may make in a wiki in a rolling hour.
+    pub comments_per_hour_per_principal: u64,
     /// Acceptances that may wait for a wiki's lease (read by the acceptance lease, handoff 004 T4).
     pub acceptance_queue: u64,
     /// How long after its creation an account counts as new, in seconds.
@@ -41,6 +46,7 @@ impl Default for QuotaConfig {
             accepted_bytes_per_day: 8 * 1024 * 1024,
             proposals_per_hour_per_principal: 30,
             proposals_per_hour_per_wiki: 300,
+            comments_per_hour_per_principal: 60,
             acceptance_queue: 64,
             // The RFC says "new accounts" without saying how long an account is new; a week is the
             // architect's to confirm (reported with handoff 004 T1).
@@ -66,21 +72,24 @@ pub enum QuotaLimit {
     AcceptedBytesPerDay,
     /// Too many proposals opened by one principal in an hour.
     ProposalsPerHourPerPrincipal,
-    /// Too many proposals opened in the wiki in an hour.
+    /// Too many proposals sent for review in the wiki in an hour.
     ProposalsPerHourPerWiki,
     /// Too many acceptances waiting for the wiki's lease.
     AcceptanceQueue,
+    /// Too many comments by one principal in an hour.
+    CommentsPerHourPerPrincipal,
 }
 
 impl QuotaLimit {
     /// Every limit.
-    pub const ALL: [QuotaLimit; 6] = [
+    pub const ALL: [QuotaLimit; 7] = [
         QuotaLimit::OpenProposals,
         QuotaLimit::RevisionsPerProposal,
         QuotaLimit::AcceptedBytesPerDay,
         QuotaLimit::ProposalsPerHourPerPrincipal,
         QuotaLimit::ProposalsPerHourPerWiki,
         QuotaLimit::AcceptanceQueue,
+        QuotaLimit::CommentsPerHourPerPrincipal,
     ];
 
     /// The fixed name (stable: logs, the API's problem type and the glossary key are made from it).
@@ -92,6 +101,7 @@ impl QuotaLimit {
             QuotaLimit::ProposalsPerHourPerPrincipal => "proposals-per-hour-per-principal",
             QuotaLimit::ProposalsPerHourPerWiki => "proposals-per-hour-per-wiki",
             QuotaLimit::AcceptanceQueue => "acceptance-queue",
+            QuotaLimit::CommentsPerHourPerPrincipal => "comments-per-hour-per-principal",
         }
     }
 }
@@ -212,15 +222,13 @@ impl Quotas {
         Ok(())
     }
 
-    /// May `author` open another proposal in the wiki this hour, and may the wiki's contributors together?
-    /// The principal's limit is asked first: it is the one the person can do something about.
+    /// May `author` open another proposal (a draft included) in the wiki this hour?
     pub fn check_opening_rate(
         &self,
         wiki: &WikiId,
         author: &AccountId,
     ) -> Result<(), ProposalError> {
-        let now = (self.clock)();
-        let since = now - HOUR + 1;
+        let since = (self.clock)() - HOUR + 1;
         let allowed = self.allowed_for(author, self.config.proposals_per_hour_per_principal)?;
         let mine = self.proposals.opened_since(wiki, Some(author), since)?;
         if let Some(reset) = rolling_reset(&mine, allowed, HOUR) {
@@ -232,13 +240,65 @@ impl Quotas {
                 reset,
             ));
         }
+        Ok(())
+    }
+
+    /// May one more proposal be **sent for review** in the wiki this hour, all principals together?
+    /// `exempt` is true for reviewers and the roles above them, whom the limit does not bind (it is there to keep
+    /// the queue of those who review from being flooded, not to hold them back), and `bound` says of a sender
+    /// whether what they sent counts toward it: what a reviewer sends does not take the room of the people the
+    /// limit is for. Only proposals that were sent count: a draft nobody has seen is not activity. **The refusal
+    /// does not say how many have been sent**: the count shown is the limit itself, which is true (the limit is
+    /// reached) and tells nothing about whose proposals made it.
+    pub fn check_submission_rate(
+        &self,
+        wiki: &WikiId,
+        exempt: bool,
+        bound: &dyn Fn(&AccountId) -> bool,
+    ) -> Result<(), ProposalError> {
+        if exempt {
+            return Ok(());
+        }
+        let since = (self.clock)() - HOUR + 1;
         let allowed = self.config.proposals_per_hour_per_wiki;
-        let all = self.proposals.opened_since(wiki, None, since)?;
-        if let Some(reset) = rolling_reset(&all, allowed, HOUR) {
+        let mut verdicts: HashMap<AccountId, bool> = HashMap::new();
+        let sent: Vec<i64> = self
+            .proposals
+            .submitted_since(wiki, since)?
+            .into_iter()
+            .filter(|(sender, _)| {
+                *verdicts
+                    .entry(sender.clone())
+                    .or_insert_with(|| bound(sender))
+            })
+            .map(|(_, at)| at)
+            .collect();
+        if let Some(reset) = rolling_reset(&sent, allowed, HOUR) {
             return Err(refuse(
                 QuotaLimit::ProposalsPerHourPerWiki,
                 allowed,
-                count(&all),
+                allowed,
+                1,
+                reset,
+            ));
+        }
+        Ok(())
+    }
+
+    /// May `author` make another comment in the wiki this hour?
+    pub fn check_comment_rate(
+        &self,
+        wiki: &WikiId,
+        author: &AccountId,
+    ) -> Result<(), ProposalError> {
+        let since = (self.clock)() - HOUR + 1;
+        let allowed = self.allowed_for(author, self.config.comments_per_hour_per_principal)?;
+        let mine = self.proposals.comments_since(wiki, author, since)?;
+        if let Some(reset) = rolling_reset(&mine, allowed, HOUR) {
+            return Err(refuse(
+                QuotaLimit::CommentsPerHourPerPrincipal,
+                allowed,
+                count(&mine),
                 1,
                 reset,
             ));

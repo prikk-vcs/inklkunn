@@ -3,7 +3,7 @@
 use inklkunn_store::InboxEventKind as Kind;
 
 use super::world::on_both;
-use crate::notify::{MAX_MENTIONS, mentions};
+use crate::notify::{MAX_MENTION_EVENTS_PER_HOUR, MAX_MENTIONS, mentions};
 use crate::proposal::NewComment;
 
 fn names(text: &str) -> Vec<String> {
@@ -73,6 +73,61 @@ fn a_comment_tells_the_proposer_a_reply_tells_the_one_replied_to_and_nobody_is_t
             .expect("a reply");
         assert_eq!(w.kinds(&w.reviewer), vec![Kind::Replied, Kind::Replied]);
         assert_eq!(w.kinds(&w.author), vec![Kind::Replied, Kind::Replied]);
+    });
+}
+
+/// Corrections P11: one actor cannot fill one person's inbox with mentions. Past the cap in a rolling hour the
+/// mentions are dropped (and counted for the operator); the comment, the other kinds of events, other actors
+/// and the next hour are all untouched.
+#[test]
+fn one_actor_can_send_one_person_only_so_many_mentions_in_an_hour() {
+    use super::world::{T0, set_now};
+    on_both(|w| {
+        set_now(T0);
+        let p = w.held(&w.author, "Add a section");
+        let mentions_of = |w: &super::world::World, who: &super::world::Person| {
+            w.kinds(who)
+                .iter()
+                .filter(|k| **k == Kind::Mentioned)
+                .count()
+        };
+        for n in 0..MAX_MENTION_EVENTS_PER_HOUR + 5 {
+            set_now(T0 + i64::try_from(n).unwrap());
+            w.comment(&w.reviewer, &p, "@maintainer look at this");
+        }
+        assert_eq!(mentions_of(w, &w.maintainer), MAX_MENTION_EVENTS_PER_HOUR);
+        assert_eq!(w.notifier.suppressed(), 5);
+        assert_eq!(
+            w.notifier.failures(),
+            0,
+            "dropping a flood is not a failure"
+        );
+        // The comments stood, and told the proposer every time: only the mention is capped.
+        assert_eq!(
+            w.kinds(&w.author)
+                .iter()
+                .filter(|k| **k == Kind::Replied)
+                .count(),
+            MAX_MENTION_EVENTS_PER_HOUR + 5
+        );
+        // Another actor may still mention the same person, and the same actor may mention another.
+        w.comment(&w.author, &p, "@maintainer too");
+        assert_eq!(
+            mentions_of(w, &w.maintainer),
+            MAX_MENTION_EVENTS_PER_HOUR + 1
+        );
+        w.comment(&w.reviewer, &p, "@author and you");
+        assert_eq!(
+            mentions_of(w, &w.maintainer),
+            MAX_MENTION_EVENTS_PER_HOUR + 1
+        );
+        // When the hour has passed, the actor is heard again.
+        set_now(T0 + 4000);
+        w.comment(&w.reviewer, &p, "@maintainer once more");
+        assert_eq!(
+            mentions_of(w, &w.maintainer),
+            MAX_MENTION_EVENTS_PER_HOUR + 2
+        );
     });
 }
 

@@ -755,4 +755,43 @@ impl ProposalStore for SqliteStore {
             rows.collect::<rusqlite::Result<Vec<_>>>().map_err(backend)
         })
     }
+
+    fn submitted_since(&self, wiki: &WikiId, since: i64) -> Result<Vec<(AccountId, i64)>> {
+        self.with(|conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT author, submitted_at FROM proposals WHERE wiki_id = ?1 \
+                     AND submitted_at IS NOT NULL AND submitted_at >= ?2 ORDER BY submitted_at",
+                )
+                .map_err(backend)?;
+            let rows = stmt
+                .query_map(params![wiki.as_str(), since], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+                })
+                .map_err(backend)?;
+            rows.map(|row| {
+                let (author, at) = row.map_err(backend)?;
+                let author = AccountId::parse(&author).ok_or_else(|| backend(invalid("author")))?;
+                Ok((author, at))
+            })
+            .collect()
+        })
+    }
+
+    fn comments_since(&self, wiki: &WikiId, author: &AccountId, since: i64) -> Result<Vec<i64>> {
+        self.with(|conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT c.created_at FROM proposal_comments c JOIN proposals p ON p.id = c.proposal_id \
+                     WHERE p.wiki_id = ?1 AND c.author = ?2 AND c.created_at >= ?3 ORDER BY c.created_at",
+                )
+                .map_err(backend)?;
+            let rows = stmt
+                .query_map(params![wiki.as_str(), author.as_str(), since], |r| {
+                    r.get::<_, i64>(0)
+                })
+                .map_err(backend)?;
+            rows.collect::<rusqlite::Result<Vec<_>>>().map_err(backend)
+        })
+    }
 }

@@ -1196,6 +1196,63 @@ async fn a_refused_rate_carries_retry_after_and_names_its_limit_and_numbers() {
 }
 
 #[tokio::test]
+async fn the_comment_limit_and_the_wiki_wide_limit_refuse_by_name_and_the_second_shows_no_count() {
+    let c = with_quota(
+        cast(),
+        QuotaConfig {
+            comments_per_hour_per_principal: 1,
+            proposals_per_hour_per_wiki: 1,
+            ..QuotaConfig::default()
+        },
+    );
+    // The wiki-wide limit counts what is sent, by people the limit binds: the first send fits, the next is
+    // refused by name with the limit as the count; a reviewer sends past it.
+    let held = open(&c, &c.contributor, true).await;
+    let id = id_of(&held);
+    let refused = post(
+        &c.w,
+        &format!("{API}/proposals"),
+        &[session(&c.other), tip()],
+        opening("One too many", &better(), true),
+    )
+    .await;
+    assert_eq!(refused.status, 429, "{}", refused.text());
+    assert_eq!(refused.json().at("/limit"), "proposals-per-hour-per-wiki");
+    assert_eq!(refused.json().at("/allowed"), 1);
+    assert_eq!(refused.json().at("/current"), 1);
+    // A draft is nobody's activity: opening one is fine.
+    let draft = open(&c, &c.other, false).await;
+    assert_eq!(draft.at("/state"), "draft");
+    let sent = open(&c, &c.reviewer, true).await;
+    assert_eq!(sent.at("/state"), "held-for-review");
+
+    // The comment limit is the person's: the second comment by the same account is refused by name.
+    let uri = format!("{API}/proposals/{id}/comments");
+    let comment = |who: AccountId, body: &'static str| {
+        let (c, uri, tag) = (&c, uri.clone(), tag_header(&held));
+        async move {
+            post(
+                &c.w,
+                &uri,
+                &[token("propose", &who), tag],
+                json!({ "body": body }).to_string(),
+            )
+            .await
+        }
+    };
+    assert_eq!(comment(c.other.clone(), "First").await.status, 201);
+    let refused = comment(c.other.clone(), "Second").await;
+    assert_eq!(refused.status, 429, "{}", refused.text());
+    assert_eq!(problem_type(&refused), urn("refused-limit"));
+    assert_eq!(
+        refused.json().at("/limit"),
+        "comments-per-hour-per-principal"
+    );
+    assert_eq!(refused.json().at("/reset"), "at");
+    assert_eq!(comment(c.reviewer.clone(), "Mine").await.status, 201);
+}
+
+#[tokio::test]
 async fn a_limit_that_waiting_cannot_lift_says_so_and_has_no_retry_after() {
     let c = with_quota(
         cast(),

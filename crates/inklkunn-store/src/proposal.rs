@@ -540,4 +540,12 @@ pub trait ProposalStore: Send + Sync {
         author: Option<&AccountId>,
         since: i64,
     ) -> Result<Vec<i64>>;
+
+    /// Who sent each proposal of the wiki **for review**, and when, at or after `since`, oldest first. A draft that
+    /// was never sent is not in it, whoever's it is: what the wiki-wide rate limit counts, and all it may reveal.
+    fn submitted_since(&self, wiki: &WikiId, since: i64) -> Result<Vec<(AccountId, i64)>>;
+
+    /// When each comment `author` made on the wiki's proposals was made, at or after `since`, oldest first: a
+    /// comment quota's current value and the time it will reset.
+    fn comments_since(&self, wiki: &WikiId, author: &AccountId, since: i64) -> Result<Vec<i64>>;
 }

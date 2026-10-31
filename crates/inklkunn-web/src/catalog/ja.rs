@@ -1381,6 +1381,10 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg("quota.queue", "待機中の受け入れが多すぎます"),
     msg(
+        "quota.comments_hour_person",
+        "直近 1 時間のコメントが多すぎます",
+    ),
+    msg(
         "quota.counts",
         "上限は {allowed} です。現在の数は {current} で、今回の要求は {asked} です。",
     ),

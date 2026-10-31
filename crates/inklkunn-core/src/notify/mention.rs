@@ -3,13 +3,18 @@
 //! The syntax is deliberately small. A mention is `@` at the start of the text or after a character that is
 //! not part of a word, followed by a sign-in name (letters a to z, digits, `.`, `_`, `-`; a trailing `.`, `-`
 //! or `_` is punctuation, not part of the name). At most [`MAX_MENTIONS`] are read from one comment, so a
-//! comment cannot be used to flood people. Whether a name belongs to anyone who may be told is not decided
+//! comment cannot be used to flood people, and one actor may send one recipient at most
+//! [`MAX_MENTION_EVENTS_PER_HOUR`] in an hour. Whether a name belongs to anyone who may be told is not decided
 //! here, and the sender is never told either way (no oracle for which sign-in names exist).
 
 use inklkunn_store::LoginName;
 
 /// The most mentions one comment may make.
 pub const MAX_MENTIONS: usize = 10;
+
+/// The most mention events one actor may send one recipient in a rolling hour (corrections P11): past it the
+/// mentions are dropped, so a person cannot be buried in their own inbox by someone who comments again and again.
+pub const MAX_MENTION_EVENTS_PER_HOUR: usize = 10;
 
 fn name_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')

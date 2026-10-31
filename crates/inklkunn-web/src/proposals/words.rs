@@ -49,6 +49,7 @@ pub(crate) fn limit_name(limit: QuotaLimit) -> Key {
         QuotaLimit::ProposalsPerHourPerPrincipal => Key::QuotaHourPerson,
         QuotaLimit::ProposalsPerHourPerWiki => Key::QuotaHourWiki,
         QuotaLimit::AcceptanceQueue => Key::QuotaQueue,
+        QuotaLimit::CommentsPerHourPerPrincipal => Key::QuotaCommentsHourPerson,
     }
 }
 

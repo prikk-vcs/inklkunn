@@ -368,6 +368,21 @@ impl ProposalStore for Down {
     ) -> Result<Vec<i64>, StoreError> {
         down()
     }
+    fn submitted_since(
+        &self,
+        _: &inklkunn_store::WikiId,
+        _: i64,
+    ) -> Result<Vec<(AccountId, i64)>, StoreError> {
+        down()
+    }
+    fn comments_since(
+        &self,
+        _: &inklkunn_store::WikiId,
+        _: &AccountId,
+        _: i64,
+    ) -> Result<Vec<i64>, StoreError> {
+        down()
+    }
 }
 
 #[test]

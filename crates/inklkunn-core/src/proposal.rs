@@ -27,7 +27,7 @@ use inklkunn_store::{
     AcceptanceStore, AccountId, AccountStore, Anchor, Base, CommentId, CommentRecord, DecisionId,
     DecisionKind, DecisionRecord, FileChange, ProposalChange, ProposalFilter, ProposalId,
     ProposalOp, ProposalRecord, ProposalState, ProposalStore, ProposalTransition, Rename,
-    RevisionContent, RevisionRecord, StoreError, WikiRecord,
+    RevisionContent, RevisionRecord, Role, StoreError, WikiRecord,
 };
 
 use crate::authorize::{Action, Authorizer, Principal, Resource};
@@ -794,6 +794,22 @@ impl ProposalService {
         self.allow_pages(principal, wiki, &touched)?;
         validate(&p.summary, &p.sources, &draft, Finish::Submit)?;
         self.judge_files(principal, wiki, &draft)?;
+        // The wiki-wide hourly limit counts what is *sent*, so it is asked here and not when a draft is opened;
+        // in one critical section with the change, so that two sends cannot both find room for the last one.
+        let _admission = self
+            .admission
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        // Reviewers and the roles above them are not bound by the limit and are not counted toward it.
+        let at_least_reviewer = |account: &AccountId| {
+            self.authorizer
+                .role_in(account, &wiki.id)
+                .is_some_and(|role| role >= Role::Reviewer)
+        };
+        self.quotas
+            .check_submission_rate(&wiki.id, at_least_reviewer(author), &|sender| {
+                !at_least_reviewer(sender)
+            })?;
         let now = (self.clock)();
         let change = ProposalChange {
             transition: ProposalTransition {
@@ -891,6 +907,11 @@ impl ProposalService {
             return Err(Invalid::BadAnchor.into());
         }
         let revision = self.latest_revision(id, who)?.seq;
+        let _admission = self
+            .admission
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        self.quotas.check_comment_rate(&wiki.id, who)?;
         let comment = CommentRecord {
             id: CommentId::new(),
             proposal: id.clone(),

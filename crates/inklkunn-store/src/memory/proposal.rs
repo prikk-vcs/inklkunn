@@ -427,6 +427,32 @@ impl ProposalStore for MemoryStore {
         times.sort_unstable();
         Ok(times)
     }
+
+    fn submitted_since(&self, wiki: &WikiId, since: i64) -> Result<Vec<(AccountId, i64)>> {
+        let d = self.proposals_lock();
+        let mut sent: Vec<(AccountId, i64)> = d
+            .proposals
+            .iter()
+            .filter(|p| p.wiki == *wiki)
+            .filter_map(|p| p.submitted_at.map(|at| (p.author.clone(), at)))
+            .filter(|(_, at)| *at >= since)
+            .collect();
+        sent.sort_by_key(|(_, at)| *at);
+        Ok(sent)
+    }
+
+    fn comments_since(&self, wiki: &WikiId, author: &AccountId, since: i64) -> Result<Vec<i64>> {
+        let d = self.proposals_lock();
+        let mut times: Vec<i64> = d
+            .comments
+            .iter()
+            .filter(|c| c.author == *author && c.created_at >= since)
+            .filter(|c| d.find(&c.proposal).is_some_and(|p| p.wiki == *wiki))
+            .map(|c| c.created_at)
+            .collect();
+        times.sort_unstable();
+        Ok(times)
+    }
 }
 
 impl MemoryStore {
