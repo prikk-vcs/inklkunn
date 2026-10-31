@@ -53,6 +53,15 @@ impl ThrottlePolicy {
     /// Per client address, for starting an OpenID Connect sign-in: 30 starts lock it for 15 minutes. A
     /// person starts one; the budget bounds the logins an address can leave in flight.
     pub const OIDC_STARTS_PER_ADDRESS: ThrottlePolicy = ThrottlePolicy::PER_ADDRESS;
+
+    /// Per client address, for making accounts where joining is open: 10 accounts started lock the address
+    /// for an hour. A person makes one; the budget bounds what one address can flood.
+    pub const JOINS_PER_ADDRESS: ThrottlePolicy = ThrottlePolicy {
+        max_failures: 10,
+        lock_secs: 3600,
+        forget_secs: 3600,
+        max_tracked: 10_000,
+    };
 }
 
 #[derive(Debug, Clone, Copy)]

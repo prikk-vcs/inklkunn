@@ -160,6 +160,31 @@ fn looks_like_a_secret(v: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
+/// One of an account's live sessions, as its owner sees it on the account page: when it began and ends, whether
+/// it is the one this request holds, and a **handle** that names it for *end this session*. The handle is a
+/// piece of the stored hash, not the cookie: it opens nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionSummary {
+    /// Names the session when ending it: 16 lower-case hex digits.
+    pub handle: String,
+    /// Unix seconds.
+    pub created_at: i64,
+    /// Unix seconds.
+    pub expires_at: i64,
+    /// Is this the session the asking request holds?
+    pub current: bool,
+}
+
+/// The handle of a stored session hash (`sha256$<hex>`): its first sixteen digits.
+fn handle_of(id_hash: &str) -> String {
+    id_hash
+        .strip_prefix("sha256$")
+        .unwrap_or(id_hash)
+        .chars()
+        .take(16)
+        .collect()
+}
+
 /// A session found by its secret.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResolvedSession {
@@ -231,6 +256,52 @@ impl Sessions {
     /// End one session (sign-out); `true` when it existed.
     pub(crate) fn end(&self, secret: &str) -> Result<bool, AuthError> {
         Ok(self.store.end_session(&stored_form(secret))?)
+    }
+
+    /// The account's live sessions, newest first; `current` marks the one `current_secret` names.
+    pub(crate) fn list(
+        &self,
+        account: &AccountId,
+        current_secret: Option<&str>,
+        now: i64,
+    ) -> Result<Vec<SessionSummary>, AuthError> {
+        let current = current_secret
+            .filter(|s| looks_like_a_secret(s))
+            .map(stored_form);
+        Ok(self
+            .store
+            .sessions_of(account, now)?
+            .into_iter()
+            .map(|s| SessionSummary {
+                handle: handle_of(&s.id_hash),
+                created_at: s.created_at,
+                expires_at: s.expires_at,
+                current: current.as_deref() == Some(s.id_hash.as_str()),
+            })
+            .collect())
+    }
+
+    /// End the account's session that `handle` names; `true` when it was theirs and live. A handle can only
+    /// ever name one of the asking account's own sessions.
+    pub(crate) fn end_one(
+        &self,
+        account: &AccountId,
+        handle: &str,
+        now: i64,
+    ) -> Result<bool, AuthError> {
+        if handle.len() != 16 || !handle.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Ok(false);
+        }
+        let wanted = handle.to_ascii_lowercase();
+        let Some(found) = self
+            .store
+            .sessions_of(account, now)?
+            .into_iter()
+            .find(|s| handle_of(&s.id_hash) == wanted)
+        else {
+            return Ok(false);
+        };
+        Ok(self.store.end_session(&found.id_hash)?)
     }
 
     /// End every session of an account (a new password, a disabling); how many there were.

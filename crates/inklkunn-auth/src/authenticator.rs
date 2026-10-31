@@ -30,8 +30,8 @@ use std::time::Duration;
 use inklkunn_core::{IdentityAuthority, Principal};
 use inklkunn_store::{
     Account, AccountId, AccountStore, AuditEvent, AuditOutcome, AuditSink, DisplayName,
-    DisplayNameError, ExternalIdentity, LocalCredential, LoginName, LoginNameError, SessionStore,
-    StoreError, TokenId, TokenStore,
+    DisplayNameError, ExternalIdentity, InvitationStore, LocalCredential, LoginName,
+    LoginNameError, Role, SessionStore, StoreError, TokenId, TokenStore, WikiId,
 };
 
 use crate::error::AuthError;
@@ -39,12 +39,13 @@ use crate::gate::WorkGate;
 use crate::hashing::{
     Argon2idHasher, PASSWORD_MAX_BYTES, PasswordHasher, PasswordRefusal, check_new_password,
 };
+use crate::invitation::{Invitations, InviteError, IssuedInvitation, JoinPolicy};
 use crate::oidc::{
     BeginSignIn, Landing, OidcError, OidcProvider, VerifiedIdentity, clear_state_cookie,
 };
 use crate::proxy::{ClientAddress, ProxyPolicy};
 use crate::random;
-use crate::session::{CsrfToken, NewSession, SESSION_TTL_SECS, Sessions};
+use crate::session::{CsrfToken, NewSession, SESSION_TTL_SECS, SessionSummary, Sessions};
 use crate::throttle::{Begin, Throttle, ThrottlePolicy};
 use crate::token::{IssueError, IssuedToken, TokenSummary, Tokens};
 
@@ -69,6 +70,10 @@ pub struct AuthConfig {
     pub oidc_start_throttle: ThrottlePolicy,
     /// Which peers are trusted proxies.
     pub proxies: ProxyPolicy,
+    /// Who may make an account for themselves. **Off unless the operator says otherwise.**
+    pub join: JoinPolicy,
+    /// How many accounts one client address may start making.
+    pub join_throttle: ThrottlePolicy,
 }
 
 impl Default for AuthConfig {
@@ -82,6 +87,8 @@ impl Default for AuthConfig {
             address_throttle: ThrottlePolicy::PER_ADDRESS,
             oidc_start_throttle: ThrottlePolicy::OIDC_STARTS_PER_ADDRESS,
             proxies: ProxyPolicy::none(),
+            join: JoinPolicy::Off,
+            join_throttle: ThrottlePolicy::JOINS_PER_ADDRESS,
         }
     }
 }
@@ -152,6 +159,10 @@ pub enum AccountError {
     IdentityTaken,
     /// No such account.
     NotFound,
+    /// The invitation is unknown, used or over (one answer for all three).
+    InvitationUnusable,
+    /// Joining without an invitation is not open on this server.
+    JoinClosed,
     /// Hashing, a store or the random source failed, the credential did not authenticate, or the service is
     /// busy.
     Auth(AuthError),
@@ -168,6 +179,10 @@ impl std::fmt::Display for AccountError {
                 f.write_str("that external identity is linked to another account")
             }
             AccountError::NotFound => f.write_str("no such account"),
+            AccountError::InvitationUnusable => {
+                f.write_str("that invitation is unknown, used or over")
+            }
+            AccountError::JoinClosed => f.write_str("joining is not open on this server"),
             AccountError::Auth(e) => e.fmt(f),
         }
     }
@@ -187,6 +202,7 @@ impl From<StoreError> for AccountError {
             StoreError::LoginTaken(_) => AccountError::LoginTaken,
             StoreError::IdentityTaken => AccountError::IdentityTaken,
             StoreError::AccountNotFound => AccountError::NotFound,
+            StoreError::InvitationUnusable => AccountError::InvitationUnusable,
             other => AccountError::Auth(other.into()),
         }
     }
@@ -219,6 +235,7 @@ pub struct Authenticator {
     accounts: Arc<dyn AccountStore>,
     sessions: Sessions,
     tokens: Tokens,
+    invitations: Invitations,
     hasher: Arc<dyn PasswordHasher>,
     gate: WorkGate,
     /// What a sign-in with no usable hash to check against verifies against, so the work is the same.
@@ -226,6 +243,10 @@ pub struct Authenticator {
     by_login: Throttle,
     by_address: Throttle,
     by_oidc_start: Throttle,
+    by_join: Throttle,
+    join: JoinPolicy,
+    /// The store the single-step redemption goes through (the same store the other records are in).
+    redemption: Arc<dyn InvitationStore>,
     proxies: ProxyPolicy,
     oidc: Option<OidcProvider>,
     audit: Option<Arc<dyn AuditSink>>,
@@ -255,7 +276,7 @@ impl Authenticator {
         authority: IdentityAuthority,
     ) -> Result<Self, AuthError>
     where
-        S: AccountStore + SessionStore + TokenStore + 'static,
+        S: AccountStore + SessionStore + TokenStore + InvitationStore + 'static,
     {
         Self::build(store, config, Arc::new(Argon2idHasher::new()), authority)
     }
@@ -269,7 +290,7 @@ impl Authenticator {
         hasher: Arc<dyn PasswordHasher>,
     ) -> Result<Self, AuthError>
     where
-        S: AccountStore + SessionStore + TokenStore + 'static,
+        S: AccountStore + SessionStore + TokenStore + InvitationStore + 'static,
     {
         Self::build(store, config, hasher, IdentityAuthority::for_tests())
     }
@@ -281,7 +302,7 @@ impl Authenticator {
         authority: IdentityAuthority,
     ) -> Result<Self, AuthError>
     where
-        S: AccountStore + SessionStore + TokenStore + 'static,
+        S: AccountStore + SessionStore + TokenStore + InvitationStore + 'static,
     {
         if !SESSION_TTL_RANGE.contains(&config.session_ttl_secs) {
             return Err(AuthError::Misconfigured(
@@ -297,13 +318,17 @@ impl Authenticator {
         Ok(Authenticator {
             accounts: store.clone(),
             sessions: Sessions::new(store.clone(), config.session_ttl_secs),
-            tokens: Tokens::new(store),
+            tokens: Tokens::new(store.clone()),
+            invitations: Invitations::new(store.clone()),
+            redemption: store,
             hasher,
             gate: WorkGate::new(config.hash_permits, config.gate_wait),
             dummy_hash,
             by_login: Throttle::new(config.login_throttle),
             by_address: Throttle::new(config.address_throttle),
             by_oidc_start: Throttle::new(config.oidc_start_throttle),
+            by_join: Throttle::new(config.join_throttle),
+            join: config.join,
             proxies: config.proxies,
             oidc: None,
             audit: None,
@@ -637,10 +662,23 @@ impl Authenticator {
         password: &str,
         now: i64,
     ) -> Result<Account, AccountError> {
+        let account = self.new_local_account(login_name, display_name, password, now)?;
+        self.accounts.add_account(&account)?;
+        Ok(account)
+    }
+
+    /// An account with a name and a password, checked and hashed and not yet stored.
+    fn new_local_account(
+        &self,
+        login_name: &str,
+        display_name: &str,
+        password: &str,
+        now: i64,
+    ) -> Result<Account, AccountError> {
         let login = LoginName::parse(login_name).map_err(AccountError::Login)?;
         let display_name = DisplayName::new(display_name).map_err(AccountError::DisplayName)?;
         let password_hash = self.hash_new_password(password)?;
-        let account = Account {
+        Ok(Account {
             id: AccountId::new(),
             display_name,
             local: Some(LocalCredential {
@@ -649,9 +687,118 @@ impl Authenticator {
             }),
             created_at: now,
             disabled: false,
-        };
-        self.accounts.add_account(&account)?;
-        Ok(account)
+        })
+    }
+
+    // ---- how accounts come into being (the sign-in handoff's U2) ----
+
+    /// Who may join without an invitation (`INKLKUNN_JOIN`).
+    pub fn join_policy(&self) -> JoinPolicy {
+        self.join
+    }
+
+    /// Make an invitation (the operator's act; the caller has recorded it in the audit trail first). `grant` is
+    /// the role in a wiki the new account starts with, if any. The secret is returned once.
+    pub fn invite(
+        &self,
+        grant: Option<(WikiId, Role)>,
+        lifetime_secs: i64,
+        now: i64,
+    ) -> Result<IssuedInvitation, InviteError> {
+        self.invitations.issue(grant, lifetime_secs, now)
+    }
+
+    /// Can the person who opened this link still use it? A link that is malformed, unknown, used or over is one
+    /// answer.
+    pub fn invitation_usable(&self, presented: &str, now: i64) -> Result<bool, AuthError> {
+        self.invitations.usable(presented, now)
+    }
+
+    /// The person who opened an invitation chooses a sign-in name and a password: the account is made, the
+    /// invitation is used up and the role it named is granted in one step, and the person is signed in. The
+    /// invitation is checked **before** anything is hashed (a stranger's bad link costs a lookup, not a
+    /// verification), and a refusal (a taken name, a weak password) spends nothing: the person tries again with
+    /// the same link.
+    ///
+    /// **Blocking** (it hashes).
+    pub fn redeem_with_password(
+        &self,
+        presented: &str,
+        login_name: &str,
+        display_name: &str,
+        password: &str,
+        now: i64,
+    ) -> Result<SignedIn, AccountError> {
+        let hash = Invitations::hash_of(presented).ok_or(AccountError::InvitationUnusable)?;
+        if !self.invitations.usable(presented, now)? {
+            return Err(AccountError::InvitationUnusable);
+        }
+        let account = self.new_local_account(login_name, display_name, password, now)?;
+        self.redemption.redeem_invitation(&hash, &account, now)?;
+        Ok(self.start(&account, now)?)
+    }
+
+    /// Where joining is open to anyone (`INKLKUNN_JOIN=anyone`), a person makes an account with a sign-in name
+    /// and a password, and is signed in. Never matched or linked to another account by e-mail address; no
+    /// role; the new-account quotas apply. Counted per client address before any work is done.
+    ///
+    /// **Blocking** (it hashes).
+    pub fn join_with_password(
+        &self,
+        login_name: &str,
+        display_name: &str,
+        password: &str,
+        client: &ClientAddress,
+        now: i64,
+    ) -> Result<SignedIn, AccountError> {
+        if !self.join.lets_anyone_join_with_a_password() {
+            return Err(AccountError::JoinClosed);
+        }
+        match self.by_join.begin(client.as_key(), now) {
+            Begin::Locked(until) => return Err(AuthError::Locked { until }.into()),
+            Begin::Admitted { locks_now } => {
+                if let Some(until) = locks_now {
+                    self.note_lock("join-throttle", until, now);
+                }
+            }
+        }
+        let account = self.register_local(login_name, display_name, password, now)?;
+        Ok(self.start(&account, now)?)
+    }
+
+    // ---- the account page ----
+
+    /// Change the name readers see. The account's own act; the web layer checks the session and the CSRF token
+    /// first.
+    pub fn set_display_name(
+        &self,
+        account: &AccountId,
+        display_name: &str,
+    ) -> Result<(), AccountError> {
+        let name = DisplayName::new(display_name).map_err(AccountError::DisplayName)?;
+        Ok(self.accounts.set_display_name(account, &name)?)
+    }
+
+    /// The account's live sessions, newest first; `current_secret` is the session cookie of the asking request,
+    /// which marks its own.
+    pub fn sessions(
+        &self,
+        account: &AccountId,
+        current_secret: Option<&str>,
+        now: i64,
+    ) -> Result<Vec<SessionSummary>, AuthError> {
+        self.sessions.list(account, current_secret, now)
+    }
+
+    /// End one of the account's own sessions by its handle (*end this session*); `true` when it was theirs and
+    /// live.
+    pub fn end_session_of(
+        &self,
+        account: &AccountId,
+        handle: &str,
+        now: i64,
+    ) -> Result<bool, AuthError> {
+        self.sessions.end_one(account, handle, now)
     }
 
     /// Make an account with no password, to be reached by a linked external identity.

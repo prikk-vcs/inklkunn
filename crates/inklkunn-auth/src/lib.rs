@@ -13,6 +13,7 @@
 //! - [`proxy`]: the client address a throttle counts, from a declared trusted proxy only.
 //! - [`session`]: opaque server-side sessions (kept private to the crate), their cookies and CSRF tokens.
 //! - [`token`]: API tokens, hashed, scoped, expiring, revocable (the store-facing type is private).
+//! - [`invitation`]: how accounts come into being: one-time invitation links, and the join setting.
 //! - [`oidc`]: the provider seams and the code + PKCE flow.
 //! - [`authenticator`]: the pieces together, and the only way into all of the above. The bounded gate in
 //!   front of password verification and the failure throttles (counted before they are judged) are private
@@ -22,6 +23,7 @@ pub mod authenticator;
 pub mod error;
 mod gate;
 pub mod hashing;
+pub mod invitation;
 pub mod oidc;
 pub mod proxy;
 mod random;
@@ -36,7 +38,8 @@ pub use authenticator::{
 };
 pub use error::AuthError;
 pub use hashing::{Argon2idHasher, PasswordHasher, PasswordRefusal};
+pub use invitation::{InvitationSecret, InviteError, IssuedInvitation, JoinPolicy};
 pub use oidc::Landing;
 pub use proxy::{ClientAddress, ProxyPolicy};
-pub use session::{CsrfToken, NewSession};
+pub use session::{CsrfToken, NewSession, SessionSummary};
 pub use throttle::ThrottlePolicy;
