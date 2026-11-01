@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use inklkunn_prikk::storage::QueuedPatch;
+use inklkunn_prikk::storage::{Operation, QueuedPatch};
 use inklkunn_store::WikiId;
 
 use super::{Signer, is_view_ref};
@@ -75,12 +75,12 @@ fn read_worktree(repo: &Path, rel: &str) -> Result<Vec<u8>, RecoverError> {
     })
 }
 
-/// The files and renames of a queued patch, read from its operations and the worktree (which, once the patch is
-/// committed, is exactly the patch's result), and whether they are the files `expected` binds. An operation this
-/// build does not know is a patch it cannot vouch for.
-fn queued_change_matches(
-    repo: &Path,
-    patch: &QueuedPatch,
+/// The files and renames of a patch, read from its operations and `read` (the worktree for a queued patch, which,
+/// once the patch is committed, is exactly the patch's result; the view's tip for a patch already published), and
+/// whether they are the files `expected` binds. An operation this build does not know is a patch it cannot vouch for.
+fn change_matches(
+    operations: &[Operation],
+    read: &dyn Fn(&str) -> Result<Vec<u8>, RecoverError>,
     expected: &ChangeDigest,
 ) -> Result<Option<u64>, RecoverError> {
     let mut files: BTreeMap<String, Option<Vec<u8>>> = BTreeMap::new();
@@ -88,7 +88,7 @@ fn queued_change_matches(
     let path_of = |p: &str| {
         worktree::repo_path(Path::new(p)).map_err(|why| RecoverError::DoesNotMatch(why.to_owned()))
     };
-    for op in &patch.operations {
+    for op in operations {
         let paths: Vec<&str> = op.paths.iter().filter_map(|p| p.path.as_deref()).collect();
         if paths.len() != op.paths.len() {
             return mismatch("an operation of the queued patch names a node that has no path");
@@ -99,7 +99,7 @@ fn queued_change_matches(
             }
             ("create-file" | "edit-text", [p]) => {
                 let rel = path_of(p)?;
-                let bytes = read_worktree(repo, &rel)?;
+                let bytes = read(&rel)?;
                 files.insert(rel, Some(bytes));
             }
             ("rename-path", [from, to]) => renames.push((path_of(from)?, path_of(to)?)),
@@ -136,6 +136,15 @@ fn queued_change_matches(
         }
     });
     Ok(found.then_some(bytes))
+}
+
+/// [`change_matches`] for a queued patch: its files are read from the worktree.
+fn queued_change_matches(
+    repo: &Path,
+    patch: &QueuedPatch,
+    expected: &ChangeDigest,
+) -> Result<Option<u64>, RecoverError> {
+    change_matches(&patch.operations, &|rel| read_worktree(repo, rel), expected)
 }
 
 /// Call `f` with every ordering of `items[from..]` (Heap's method, in place).
@@ -231,6 +240,114 @@ impl Recover for Signer {
         wiki: &WikiId,
     ) -> Result<Option<RetirementExcuse>, RecoverError> {
         Ok(self.retirement_explains(&self.root.repo_dir(wiki), wiki)?)
+    }
+
+    fn complete_publication(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        act: &RecoveryToken,
+        acceptance: &AcceptanceToken,
+    ) -> Result<(), RecoverError> {
+        if !is_view_ref(view) {
+            return Err(RecoverError::Refused("a view is `heads/<name>`".to_owned()));
+        }
+        let op = RecoveryOp::CompletePublication {
+            acceptance: acceptance.as_str().to_owned(),
+            view: view.to_owned(),
+        };
+        let _held = self.recovering(wiki, act, &op)?;
+        let expected = self
+            .ledger
+            .pending(acceptance)
+            .map_err(|e| RecoverError::Unavailable(e.to_string()))?
+            .ok_or(RecoverError::NotRecorded)?;
+        if expected.wiki != *wiki || expected.view != view {
+            return Err(RecoverError::NotRecorded);
+        }
+        let repo = self.root.repo_dir(wiki);
+        let w = &self.writes;
+        // 1. prikk says exactly this: one error, a publication whose cleanup is pending, and nothing else.
+        if !w.doctor(&repo)?.is_only_cleanup_pending() {
+            return mismatch(
+                "prikk's doctor does not report exactly one pending cleanup of a publication",
+            );
+        }
+        // 2. The block published is the change the record describes: the one patch, its message, its base.
+        let Some(tip) = w.tip(&repo, view)? else {
+            return mismatch("the view has no block");
+        };
+        let [published] = tip.patch_messages.as_slice() else {
+            return mismatch("the newest block of the view does not hold exactly one patch");
+        };
+        let message = Message::parse(&published.message).map_err(|_| {
+            RecoverError::DoesNotMatch(
+                "the published patch's message is not a patch message".to_owned(),
+            )
+        })?;
+        if !expected.matches(&message) {
+            return mismatch("the published patch's message is not the one the record describes");
+        }
+        if let Some(pinned) = &expected.pinned_tip {
+            let blocks = w.view_blocks(&repo, view, 2)?;
+            if blocks.get(1).map(String::as_str) != Some(pinned.as_str()) {
+                return mismatch(
+                    "the published block was not made on the block the change was made on",
+                );
+            }
+        }
+        // Where `status` can still be read, nothing else is queued.
+        if let Ok(status) = w.status_full(&repo)
+            && (status.trailing_partial_wal_bytes != 0
+                || status.provisional_worktree.is_some()
+                || status.interrupted_materialization.is_some()
+                || status
+                    .queue
+                    .patches
+                    .iter()
+                    .any(|q| q.patch_id != published.patch_id))
+        {
+            return mismatch(
+                "the repository has a torn log, an interrupted state or a queued patch that is not the published one",
+            );
+        }
+        // Its files are the ones that were accepted, read from the block (the worktree cannot be asked yet).
+        let change = w.change(&repo, &tip.block_id)?;
+        let [patch] = change.patches.as_slice() else {
+            return mismatch("the newest block of the view does not hold exactly one patch");
+        };
+        if patch.patch_id != published.patch_id {
+            return mismatch("the newest block's patch is not the one its message belongs to");
+        }
+        let at_the_tip = |rel: &str| {
+            w.cat(&repo, view, rel, MAX_FILE_BYTES)
+                .map_err(RecoverError::from)
+        };
+        let Some(change_bytes) =
+            change_matches(&patch.operations, &at_the_tip, &expected.change_digest)?
+        else {
+            return mismatch("the published block's files are not the ones that were accepted");
+        };
+        // 3. `seal` once more: the ref is published, so it makes no block and drains what the kill left.
+        let seeds = self.seeds(wiki);
+        let sealed = w.seal(&repo, &seeds, view, change_bytes);
+        match (sealed, seeds.left_over()) {
+            (Ok(()), false) => {}
+            (Ok(()), true) => return Err(RecoverError::SeedsNotRemoved),
+            (Err(e), _) => return Err(e.into()),
+        }
+        // 4. It did what was meant and nothing more: the same tip, and no pending cleanup.
+        if w.tip(&repo, view)?.map(|b| b.block_id) != Some(tip.block_id.clone()) {
+            return mismatch("the view's tip is not the published block after the seal");
+        }
+        if w.doctor(&repo)?
+            .diagnostics
+            .iter()
+            .any(|d| d.is_cleanup_pending())
+        {
+            return mismatch("prikk still reports the cleanup as pending after the seal");
+        }
+        Ok(())
     }
 
     fn discard_damaged(

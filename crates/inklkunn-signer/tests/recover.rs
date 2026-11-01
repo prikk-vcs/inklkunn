@@ -312,6 +312,62 @@ impl Fixture {
         }
     }
 
+    fn publish_op(&self, p: &Prepared) -> RecoveryOp {
+        RecoveryOp::CompletePublication {
+            acceptance: p.token.as_str().to_owned(),
+            view: MAIN.to_owned(),
+        }
+    }
+
+    /// What a `seal` killed after it published its block and before it drained the queue leaves (handoff 004, P15;
+    /// measured with real kills on prikk 0.55.0): `p` is queued, then sealed, and then the three files of the active
+    /// session that the seal had emptied are put back as they were, so that the block is in the history **and** the
+    /// patch is still in the queue. `status --format json` refuses, and `doctor` names exactly
+    /// `PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING`. Returns the block.
+    fn publish_and_leave_the_queue(&self, p: &Prepared) -> String {
+        self.queue(p);
+        let active = self.repo.join(".prikk/active/default");
+        let kept: Vec<(PathBuf, Vec<u8>)> = ["queue.wal", "ref-name", "witness"]
+            .iter()
+            .map(|name| {
+                let path = active.join(name);
+                let bytes = std::fs::read(&path).unwrap();
+                (path, bytes)
+            })
+            .collect();
+        let act = self.act(vec![self.seal_op(p)]);
+        self.leased(|| self.signer.seal_queued(&self.wiki, MAIN, &act, &p.token))
+            .expect("sealed");
+        for (path, bytes) in kept {
+            std::fs::write(path, bytes).unwrap();
+        }
+        assert_eq!(
+            self.queue_count(),
+            u64::MAX,
+            "`status --format json` refuses over the state a killed seal leaves"
+        );
+        assert!(
+            self.witnesses
+                .doctor(&self.wiki)
+                .unwrap()
+                .is_only_cleanup_pending()
+        );
+        self.prikk_json(&["log", "--ref", MAIN, "--limit", "1", "--format", "json"])
+            .pointer("/blocks/0/block_id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap()
+            .to_owned()
+    }
+
+    fn cleanup_is_pending(&self) -> bool {
+        self.witnesses
+            .doctor(&self.wiki)
+            .unwrap()
+            .diagnostics
+            .iter()
+            .any(|d| d.is_cleanup_pending())
+    }
+
     /// The wiki's lease, lent to this thread for the closure.
     fn leased<T>(&self, f: impl FnOnce() -> T) -> T {
         let lease = self
@@ -451,6 +507,7 @@ fn every_operation_refuses_without_the_lease_without_a_record_and_without_the_ac
     f.queue(&p);
     let all = vec![
         f.seal_op(&p),
+        f.publish_op(&p),
         RecoveryOp::DiscardDamaged,
         RecoveryOp::ClearLocks {
             paths: vec!["/x".to_owned()],
@@ -465,6 +522,7 @@ fn every_operation_refuses_without_the_lease_without_a_record_and_without_the_ac
     let run = |a: &RecoveryToken| -> Vec<Result<(), RecoverError>> {
         vec![
             f.signer.seal_queued(&f.wiki, MAIN, a, &p.token),
+            f.signer.complete_publication(&f.wiki, MAIN, a, &p.token),
             f.signer.discard_damaged(&f.wiki, a).map(|_| ()),
             f.signer
                 .clear_locks(&f.wiki, a, &["/x".to_owned()])
@@ -486,16 +544,17 @@ fn every_operation_refuses_without_the_lease_without_a_record_and_without_the_ac
     for r in run(&gone) {
         assert_eq!(r, Err(RecoverError::NotRecorded));
     }
-    // Lent and recorded, but the act names only the discard: the other three refuse.
+    // Lent and recorded, but the act names only the discard: the other four refuse.
     let rs = run(&narrow);
     assert_eq!(nth(&rs, 0), &Err(RecoverError::NotRecorded));
+    assert_eq!(nth(&rs, 1), &Err(RecoverError::NotRecorded));
     assert_ne!(
-        nth(&rs, 1),
+        nth(&rs, 2),
         &Err(RecoverError::NotRecorded),
         "the discard is named"
     );
-    assert_eq!(nth(&rs, 2), &Err(RecoverError::NotRecorded));
     assert_eq!(nth(&rs, 3), &Err(RecoverError::NotRecorded));
+    assert_eq!(nth(&rs, 4), &Err(RecoverError::NotRecorded));
     // An act of another wiki is not this wiki's.
     let foreign = RecoveryToken::new("foreign");
     f.ledger.acts.lock().unwrap().insert(
@@ -699,4 +758,212 @@ fn a_dirty_worktree_is_put_back_to_the_tip_and_a_queued_patch_is_never_touched()
             .unwrap()
             .contains("world")
     );
+}
+
+#[test]
+fn an_empty_lock_file_is_unreadable_to_recovery_and_the_runbooks_step_clears_exactly_that_file() {
+    // Handoff 004, P15 / ruling 1: an empty lock file (a process killed the instant prikk created it) stays
+    // fail-closed, and the operator's way out is in docs/RECOVERY.md. The commands there are run as written.
+    let Some(f) = fixture("emptylock") else {
+        return;
+    };
+    let runbook = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/RECOVERY.md"),
+    )
+    .unwrap()
+    .split_whitespace()
+    .collect::<Vec<_>>()
+    .join(" ");
+    let lock = f.repo.join(".prikk/active/default/active.lock");
+    std::fs::write(&lock, "").unwrap();
+    // Another lock that is somebody's, to show the step clears one file and not the others.
+    let other = plant_lock(
+        &f.repo,
+        "containers/objects.lock",
+        2_147_483_000,
+        "container:object-store",
+    );
+    let listed = |f: &Fixture| {
+        let out = Command::new(&f.prikk)
+            .arg("unlock")
+            .current_dir(&f.repo)
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    // What recovery's reader makes of it, and what the runbook says it will see.
+    let err = f.witnesses.locks(&f.wiki).unwrap_err().to_string();
+    assert!(err.contains("a recorded pid is not a number"), "{err}");
+    for said in [
+        "a recorded pid is not a number",
+        "recorded pid: (unparseable)",
+        "prikk unlock --lock <that path>",
+        "`no locks currently held`",
+    ] {
+        assert!(runbook.contains(said), "the runbook says `{said}`");
+    }
+    let before = listed(&f);
+    assert!(before.contains("recorded pid: (unparseable)"), "{before}");
+    assert!(before.contains(&lock.display().to_string()), "{before}");
+    assert_eq!(std::fs::metadata(&lock).unwrap().len(), 0);
+    // The step, as written (`--yes` is the question answered): `prikk unlock --lock <that path>`.
+    let cleared = Command::new(&f.prikk)
+        .args(["unlock", "--lock"])
+        .arg(&lock)
+        .arg("--yes")
+        .current_dir(&f.repo)
+        .output()
+        .unwrap();
+    assert!(cleared.status.success(), "{cleared:?}");
+    assert!(!lock.exists(), "that file is gone");
+    assert!(Path::new(&other).exists(), "and only that file");
+    // After: the reader reads (the other lock is a real one, of a kind recovery knows), and the history is untouched.
+    let held = f.witnesses.locks(&f.wiki).expect("the listing is read");
+    assert_eq!(held.len(), 1);
+    assert_eq!(nth(&held, 0).path, other);
+    assert_eq!(f.blocks(), 1);
+    assert!(f.verify_ok());
+    std::fs::remove_file(&other).unwrap();
+    assert!(listed(&f).contains("no locks currently held"));
+}
+
+#[test]
+fn a_publication_a_killed_seal_left_is_finished_with_one_more_seal_and_no_second_block() {
+    let Some(f) = fixture("publish") else {
+        return;
+    };
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    let block = f.publish_and_leave_the_queue(&p);
+    let blocks = f.blocks();
+    assert_eq!(blocks, 2, "the first block and the published one");
+    let act = f.act(vec![f.publish_op(&p)]);
+    f.leased(|| f.signer.complete_publication(&f.wiki, MAIN, &act, &p.token))
+        .expect("finished");
+    // No block was made; the queue is drained; prikk reads the repository again and is content with it.
+    assert_eq!(f.blocks(), blocks);
+    let log = f.prikk_json(&["log", "--ref", MAIN, "--limit", "1", "--format", "json"]);
+    assert_eq!(
+        log.pointer("/blocks/0/block_id")
+            .and_then(serde_json::Value::as_str),
+        Some(block.as_str())
+    );
+    assert_eq!(f.queue_count(), 0);
+    assert!(!f.cleanup_is_pending());
+    assert!(f.verify_ok());
+    assert!(f.worktree_clean());
+    assert_eq!(
+        std::fs::read_to_string(f.repo.join("pages/Home.md")).unwrap(),
+        HOME_EDITED
+    );
+    // Once is once: with nothing pending, the operation refuses (and does not seal an empty queue).
+    let again = f.leased(|| f.signer.complete_publication(&f.wiki, MAIN, &act, &p.token));
+    assert!(
+        matches!(again, Err(RecoverError::DoesNotMatch(_))),
+        "{again:?}"
+    );
+    assert_eq!(f.blocks(), blocks);
+}
+
+#[test]
+fn a_published_block_with_renames_and_a_removal_is_proven_against_the_recorded_digest() {
+    let Some(f) = fixture("publish-renames") else {
+        return;
+    };
+    // The block's operations are read back (`show`) and its files from the tip, with the renames in any order.
+    let p = f.prepare(
+        vec![
+            file("pages/Edit.md", None),
+            file("pages/Home.md", Some(HOME_EDITED)),
+        ],
+        vec![
+            ("pages/Old C.md", "pages/New Z.md"),
+            ("pages/Old A.md", "pages/New Y.md"),
+        ],
+    );
+    f.publish_and_leave_the_queue(&p);
+    let act = f.act(vec![f.publish_op(&p)]);
+    f.leased(|| f.signer.complete_publication(&f.wiki, MAIN, &act, &p.token))
+        .expect("finished");
+    assert_eq!(f.queue_count(), 0);
+    assert!(f.verify_ok());
+    assert!(f.worktree_clean());
+    assert!(!f.repo.join("pages/Edit.md").exists() && f.repo.join("pages/New Z.md").is_file());
+}
+
+#[test]
+fn a_publication_that_is_not_the_recorded_change_is_not_finished() {
+    let Some(f) = fixture("publish-mismatch") else {
+        return;
+    };
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    f.publish_and_leave_the_queue(&p);
+    let ledger_entry = |token: &AcceptanceToken| {
+        f.ledger
+            .pending
+            .lock()
+            .unwrap()
+            .get(token.as_str())
+            .cloned()
+            .unwrap()
+    };
+    let try_it = |token: &AcceptanceToken| {
+        let act = f.act(vec![RecoveryOp::CompletePublication {
+            acceptance: token.as_str().to_owned(),
+            view: MAIN.to_owned(),
+        }]);
+        f.leased(|| f.signer.complete_publication(&f.wiki, MAIN, &act, token))
+    };
+    let refused = |r: Result<(), RecoverError>, what: &str| {
+        assert!(
+            matches!(&r, Err(RecoverError::DoesNotMatch(why)) if why.contains(what)),
+            "{what}: {r:?}"
+        );
+        // Nothing was done: the cleanup is still pending, and the history is as the kill left it.
+        assert!(f.cleanup_is_pending(), "{what}");
+        assert_eq!(f.blocks(), 2, "{what}");
+    };
+    // Another change's message.
+    let other = f.prepare(
+        vec![file(
+            "pages/Home.md",
+            Some("---\ntitle: Home\n---\n\nOther.\n"),
+        )],
+        vec![],
+    );
+    refused(try_it(&other.token), "message");
+    // The published message with other files: the record's digest is not the block's.
+    let mut liar = ledger_entry(&p.token);
+    liar.change_digest = other.change.digest();
+    let liar_token = AcceptanceToken::new("acceptance-liar");
+    f.ledger
+        .pending
+        .lock()
+        .unwrap()
+        .insert(liar_token.as_str().to_owned(), liar);
+    refused(try_it(&liar_token), "files");
+    // The published message and files, but the change was made on another block than the one it sits on.
+    let mut elsewhere = ledger_entry(&p.token);
+    elsewhere.pinned_tip = Some(BlockId::new(&"a".repeat(64)).unwrap());
+    let elsewhere_token = AcceptanceToken::new("acceptance-elsewhere");
+    f.ledger
+        .pending
+        .lock()
+        .unwrap()
+        .insert(elsewhere_token.as_str().to_owned(), elsewhere);
+    refused(try_it(&elsewhere_token), "made on");
+    // Another wiki's or another view's record is not this one's.
+    let mut foreign = ledger_entry(&p.token);
+    foreign.wiki = WikiId::new();
+    let foreign_token = AcceptanceToken::new("acceptance-foreign");
+    f.ledger
+        .pending
+        .lock()
+        .unwrap()
+        .insert(foreign_token.as_str().to_owned(), foreign);
+    assert_eq!(try_it(&foreign_token), Err(RecoverError::NotRecorded));
+    // And the record that is right finishes it.
+    try_it(&p.token).expect("the right record");
+    assert!(!f.cleanup_is_pending());
+    assert_eq!(f.blocks(), 2);
 }

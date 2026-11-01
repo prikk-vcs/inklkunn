@@ -12,7 +12,9 @@
 //!    recovery act ([`RecoveryActRecord`]), which is what the signer's recovery operations are bound to.
 //! 3. *Take the steps*, each preceded by an audit record: stale locks of the kinds an acceptance leaves are cleared
 //!    on the lease record's word and never prikk's liveness line (ledger PL-8); a queued patch that is the change of
-//!    the unfinished act is **completed** with `seal` alone (never committed again); a commit prikk says is torn is
+//!    the unfinished act is **completed** with `seal` alone (never committed again); a publication a killed `seal` left
+//!    unfinished (`doctor` names exactly `PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING`, and the block published is the
+//!    act's) is finished with prikk's own recommendation, `seal` once more (P15); a commit prikk says is torn is
 //!    **discarded** with `doctor --discard-damaged-commits`; a worktree that is not the baseline is put back; the act's
 //!    records are ended as what happened; `verify`; the reconciliation (RFC 002 D-7); the flag is cleared.
 //!
@@ -44,11 +46,13 @@ use crate::proposal::machine;
 use crate::read::ReadService;
 use crate::reconcile::Finding;
 
+mod cleanup;
 pub mod plan;
 pub mod processes;
 
 pub use plan::{
-    ActRef, ActWitness, Chain, Ended, LockEntry, Plan, Step, Stop, Witness, build, facts_of,
+    ActRef, ActWitness, Chain, CleanupPending, Ended, LockEntry, Plan, Published, Step, Stop,
+    Witness, build, facts_of,
 };
 pub use processes::{Foreign, ProcFs, ProcessInfo, ProcessTable};
 
@@ -532,11 +536,7 @@ impl Recovery {
             h.purpose != Purpose::Export.as_str() && h.purpose != Purpose::Refresh.as_str()
         });
         let acts = self.unfinished_acts(wiki, dead.as_ref())?;
-        let status = p
-            .storage
-            .status(&repo)
-            .map_err(|e| witness_error("prikk status", e))?;
-        let torn = status.trailing_partial_wal_bytes > 0;
+        let status_read = p.storage.status(&repo);
         let table = self.processes.processes();
         let mut doctor = p
             .witnesses
@@ -559,6 +559,18 @@ impl Recovery {
                 .0;
             retirement = Some(excuse.note);
         }
+        // A `seal` killed between publishing its block and draining the queue (P15): `status` refuses, and `doctor`
+        // names the pending cleanup (the plan then requires that it names nothing else). Any other refusal of `status`
+        // is a witness that could not be read.
+        let cleanup_pending = cleanup::read(&*p.storage, &repo, &status_read, &doctor, &acts)?;
+        let status = match status_read {
+            Ok(status) => status,
+            Err(_) if cleanup_pending.is_some() => {
+                cleanup::unread_status(acts.first().map(|a| a.view.as_str()))
+            }
+            Err(e) => return Err(witness_error("prikk status", e)),
+        };
+        let torn = status.trailing_partial_wal_bytes > 0;
         Ok(Witness {
             wiki: wiki.id.clone(),
             flag: p.acts.recovery_flag(&wiki.id)?,
@@ -573,8 +585,9 @@ impl Recovery {
             status,
             doctor,
             retirement,
-            worktree: if torn {
-                // prikk refuses to compare a worktree over a torn log; the plan puts it back after the discard.
+            worktree: if torn || cleanup_pending.is_some() {
+                // prikk refuses to compare a worktree over a torn log; the plan puts it back after the discard. It
+                // refuses over a publication that is not finished too; the plan puts it back after the seal.
                 None
             } else {
                 Some(
@@ -589,6 +602,7 @@ impl Recovery {
                 .map_err(|e| witness_error("prikk unlock", e))?,
             foreign: processes::foreign(&table, &repo, std::process::id()),
             lease_held,
+            cleanup_pending,
         })
     }
 
@@ -905,6 +919,16 @@ impl Recovery {
                     .seal_queued(&wiki.id, view, token, &AcceptanceToken::new(act.token()))
                     .map_err(|e| e.to_string())?;
                 Ok(format!("patch {patch_id} sealed"))
+            }
+            Step::CompletePublication {
+                act,
+                view,
+                block_id,
+            } => {
+                p.signer
+                    .complete_publication(&wiki.id, view, token, &AcceptanceToken::new(act.token()))
+                    .map_err(|e| e.to_string())?;
+                Ok(format!("the cleanup of block {block_id} is finished"))
             }
             Step::DiscardDamaged => {
                 let d = p

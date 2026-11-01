@@ -118,6 +118,7 @@ fn flagged() -> Witness {
         locks: Vec::new(),
         foreign: Vec::new(),
         lease_held: true,
+        cleanup_pending: None,
     }
 }
 
@@ -600,4 +601,357 @@ fn the_plan_is_kept_as_json_and_read_back_as_what_the_signer_may_do_and_nothing_
     let facts = facts_of(&stopped.wiki, &stopped.to_json()).unwrap();
     assert!(facts.ops.is_empty());
     assert!(stopped.to_json().contains("foreign-queued-patch"));
+}
+
+// ---- a publication a killed `seal` left unfinished (handoff 004, P15) ----
+
+const CLEANUP_CODE: &str = "PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING";
+const PUBLISHED: &str = "c";
+
+fn cleanup_error() -> Diagnostic {
+    diag(
+        Severity::Error,
+        CLEANUP_CODE,
+        Some("run signer-backed `prikk seal --allow-no-audit` for the affected ref"),
+    )
+}
+
+/// The block that sits on the act's base, seals the act's message, and that the history found.
+fn published_block() -> Published {
+    Published {
+        view: VIEW.to_owned(),
+        block_id: PUBLISHED.repeat(64),
+        parent: Some("b".repeat(64)),
+        message_digests: vec![message_digest(MESSAGE)],
+    }
+}
+
+fn published_act() -> ActWitness {
+    act(Chain::Sealed {
+        block_id: PUBLISHED.repeat(64),
+        patch_id: "a".repeat(64),
+    })
+}
+
+/// A wiki where `doctor` names exactly the pending cleanup, `status` refuses, and the one unfinished act's change is
+/// the block that was published.
+fn cleanup_pending() -> Witness {
+    let mut w = flagged();
+    w.doctor = doctor(vec![cleanup_error()]);
+    w.acts = vec![published_act()];
+    w.worktree = None;
+    w.cleanup_pending = Some(CleanupPending {
+        status_refused: true,
+        published: Some(published_block()),
+    });
+    w
+}
+
+#[test]
+fn a_pending_cleanup_of_the_acts_own_block_is_finished_with_seal_once_and_recorded_as_a_step() {
+    let w = cleanup_pending();
+    let a = nth(&w.acts, 0).clone();
+    let plan = build(&w);
+    assert_eq!(plan.stop, None, "{:#?}", plan.lines());
+    assert_eq!(
+        names(&plan),
+        [
+            "complete-publication",
+            "restore-worktree",
+            "end-sealed",
+            "verify",
+            "reconcile",
+            "clear-flag"
+        ]
+    );
+    assert!(matches!(
+        plan.steps.first(),
+        Some(Step::CompletePublication { act, view, block_id })
+            if *act == a.act && view == VIEW && *block_id == PUBLISHED.repeat(64)
+    ));
+    assert!(matches!(
+        plan.steps.get(2),
+        Some(Step::EndSealed { block_id: Some(b), .. }) if *b == PUBLISHED.repeat(64)
+    ));
+    // The signer is bound to exactly that, and the text says what it is and why.
+    assert_eq!(
+        plan.ops(),
+        vec![
+            RecoveryOp::CompletePublication {
+                acceptance: a.act.token(),
+                view: VIEW.to_owned()
+            },
+            RecoveryOp::RestoreWorktree {
+                view: VIEW.to_owned()
+            }
+        ]
+    );
+    let lines = plan.lines();
+    assert!(
+        lines
+            .iter()
+            .any(|l| l
+                .contains("step 1: run seal --allow-no-audit once, as prikk's doctor recommends")),
+        "{lines:#?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.contains("saw: prikk status refuses (an integrity error)")),
+        "{lines:#?}"
+    );
+    assert!(
+        lines.iter().any(|l| l
+            .contains("saw: prikk doctor names the error PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING")),
+        "{lines:#?}"
+    );
+    // The step is in the recorded plan and is read back as what the signer may do, and only that.
+    let facts = facts_of(&plan.wiki, &plan.to_json()).expect("a plan of this version");
+    assert_eq!(facts.ops, plan.ops());
+    assert!(facts.allows(&RecoveryOp::CompletePublication {
+        acceptance: a.act.token(),
+        view: VIEW.to_owned()
+    }));
+    assert!(!facts.allows(&RecoveryOp::CompletePublication {
+        acceptance: AcceptanceId::new().to_string(),
+        view: VIEW.to_owned()
+    }));
+    assert!(plan.to_json().contains("\"step\":\"complete-publication\""));
+    // A stale lock the killed `seal` left is cleared first; a system act's change is finished the same way.
+    let mut w = cleanup_pending();
+    w.locks = vec![lock("active", 408_657, "does not appear to be running")];
+    assert_eq!(
+        names(&build(&w)).iter().take(2).collect::<Vec<_>>(),
+        [&"clear-locks", &"complete-publication"]
+    );
+    let mut sys = published_act();
+    sys.act = ActRef::System(SystemActId::new());
+    sys.proposal = None;
+    sys.proposal_state = None;
+    sys.intent_open = false;
+    let mut w = cleanup_pending();
+    w.acts = vec![sys];
+    assert_eq!(nth(&names(&build(&w)), 0), &"complete-publication");
+    // A worktree that could be compared and is the baseline is not put back.
+    let mut w = cleanup_pending();
+    w.worktree = Some(WorktreeState {
+        clean: true,
+        changes: 0,
+        declarations: 0,
+    });
+    assert!(!names(&build(&w)).contains(&"restore-worktree"));
+}
+
+#[test]
+fn a_pending_cleanup_is_a_stop_unless_doctor_names_exactly_that_code_and_the_block_is_the_acts() {
+    let stop_of = |w: &Witness| {
+        let plan = build(w);
+        assert!(
+            plan.steps.is_empty() && plan.ops().is_empty(),
+            "a stop takes no step: {:?}",
+            names(&plan)
+        );
+        plan.stop
+    };
+    // Any other code beside it, or instead of it, is doctor-trouble: nothing is finished.
+    let mut w = cleanup_pending();
+    w.doctor = doctor(vec![
+        cleanup_error(),
+        diag(Severity::Error, "PRIKK-DOCTOR-OBJECT-MISSING", None),
+    ]);
+    assert_eq!(stop_of(&w), Some(Stop::DoctorTrouble));
+    let mut w = cleanup_pending();
+    w.doctor = doctor(vec![
+        cleanup_error(),
+        diag(
+            Severity::Warning,
+            "PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS",
+            None,
+        ),
+    ]);
+    assert_eq!(stop_of(&w), Some(Stop::DoctorTrouble));
+    let mut w = cleanup_pending();
+    w.doctor = doctor(vec![diag(
+        Severity::Error,
+        "PRIKK-VERIFY-REF-SOMETHING-ELSE",
+        None,
+    )]);
+    assert_eq!(stop_of(&w), Some(Stop::DoctorTrouble));
+    // Two of the code itself are not "exactly that".
+    let mut w = cleanup_pending();
+    w.doctor = doctor(vec![cleanup_error(), cleanup_error()]);
+    assert_eq!(stop_of(&w), Some(Stop::DoctorTrouble));
+    // The same error with no witness that says it is the state (the reader did not recognise it) is trouble as ever.
+    let mut w = cleanup_pending();
+    w.cleanup_pending = None;
+    assert_eq!(stop_of(&w), Some(Stop::DoctorTrouble));
+    // Unreached-object notes beside it do not block.
+    let mut w = cleanup_pending();
+    w.doctor = doctor(vec![
+        cleanup_error(),
+        diag(
+            Severity::Warning,
+            UNREACHED_OBJECT_CODE,
+            Some("the bytes stay; no command removes them yet"),
+        ),
+    ]);
+    assert_eq!(build(&w).stop, None);
+    assert_eq!(nth(&names(&build(&w)), 0), &"complete-publication");
+
+    // The block published must be the act's: each of its marks, one at a time.
+    type Spoil = Box<dyn Fn(&mut Witness)>;
+    let wrong: Vec<(&str, Spoil)> = vec![
+        (
+            "another message",
+            Box::new(|w: &mut Witness| {
+                if let Some(p) = w
+                    .cleanup_pending
+                    .as_mut()
+                    .and_then(|c| c.published.as_mut())
+                {
+                    p.message_digests = vec![message_digest("Something else\n\nKind: proposal\n")];
+                }
+            }),
+        ),
+        (
+            "two patches",
+            Box::new(|w: &mut Witness| {
+                if let Some(p) = w
+                    .cleanup_pending
+                    .as_mut()
+                    .and_then(|c| c.published.as_mut())
+                {
+                    p.message_digests = vec![message_digest(MESSAGE), message_digest(MESSAGE)];
+                }
+            }),
+        ),
+        (
+            "no patch",
+            Box::new(|w: &mut Witness| {
+                if let Some(p) = w
+                    .cleanup_pending
+                    .as_mut()
+                    .and_then(|c| c.published.as_mut())
+                {
+                    p.message_digests.clear();
+                }
+            }),
+        ),
+        (
+            "another base",
+            Box::new(|w: &mut Witness| {
+                if let Some(p) = w
+                    .cleanup_pending
+                    .as_mut()
+                    .and_then(|c| c.published.as_mut())
+                {
+                    p.parent = Some("d".repeat(64));
+                }
+            }),
+        ),
+        (
+            "no parent",
+            Box::new(|w: &mut Witness| {
+                if let Some(p) = w
+                    .cleanup_pending
+                    .as_mut()
+                    .and_then(|c| c.published.as_mut())
+                {
+                    p.parent = None;
+                }
+            }),
+        ),
+        (
+            "another view",
+            Box::new(|w: &mut Witness| {
+                if let Some(p) = w
+                    .cleanup_pending
+                    .as_mut()
+                    .and_then(|c| c.published.as_mut())
+                {
+                    p.view = "heads/other".to_owned();
+                }
+            }),
+        ),
+        (
+            "the history found the act's message in another block",
+            Box::new(|w: &mut Witness| {
+                if let Some(a) = w.acts.first_mut() {
+                    a.chain = Chain::Sealed {
+                        block_id: "e".repeat(64),
+                        patch_id: "a".repeat(64),
+                    };
+                }
+            }),
+        ),
+        (
+            "the history did not find it",
+            Box::new(|w: &mut Witness| {
+                if let Some(a) = w.acts.first_mut() {
+                    a.chain = Chain::NotSealed;
+                }
+            }),
+        ),
+        (
+            "the act ended",
+            Box::new(|w: &mut Witness| {
+                if let Some(a) = w.acts.first_mut() {
+                    a.ended = Ended::Failed;
+                }
+            }),
+        ),
+        (
+            "the act has no message",
+            Box::new(|w: &mut Witness| {
+                if let Some(a) = w.acts.first_mut() {
+                    a.message_digest = None;
+                }
+            }),
+        ),
+        (
+            "no block was read",
+            Box::new(|w: &mut Witness| {
+                if let Some(c) = w.cleanup_pending.as_mut() {
+                    c.published = None;
+                }
+            }),
+        ),
+        (
+            "no act at all",
+            Box::new(|w: &mut Witness| {
+                w.acts.clear();
+                if let Some(c) = w.cleanup_pending.as_mut() {
+                    c.published = None;
+                }
+            }),
+        ),
+    ];
+    for (what, mutate) in wrong {
+        let mut w = cleanup_pending();
+        mutate(&mut w);
+        assert_eq!(stop_of(&w), Some(Stop::PublishedBlockIsNotTheAct), "{what}");
+    }
+    // The stop is named in the plan's text, and it is a stop of the plan, not of the reader.
+    let mut w = cleanup_pending();
+    w.acts.clear();
+    assert!(
+        build(&w)
+            .lines()
+            .iter()
+            .any(|l| l.contains("STOP (published-block-is-not-the-act)"))
+    );
+    // More than one unfinished act, or more than one patch queued, stops before the row is reached.
+    let mut w = cleanup_pending();
+    w.acts = vec![published_act(), published_act()];
+    assert_eq!(stop_of(&w), Some(Stop::SeveralActs));
+    let mut w = cleanup_pending();
+    w.status = status(vec![patch(MESSAGE), patch(MESSAGE)], 0);
+    assert_eq!(stop_of(&w), Some(Stop::SeveralQueued));
+    // A foreign process stops it like every step.
+    let mut w = cleanup_pending();
+    w.foreign = vec![Foreign {
+        pid: 4_242,
+        tool: "prikk".to_owned(),
+    }];
+    assert_eq!(stop_of(&w), Some(Stop::ForeignProcess));
 }

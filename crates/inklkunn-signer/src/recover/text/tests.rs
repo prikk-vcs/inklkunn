@@ -316,3 +316,79 @@ fn only_the_publication_findings_an_excuse_names_are_taken_out_of_the_report() {
     );
     assert_eq!(odd.without_excused_publication_findings(|_, _| true).1, 0);
 }
+
+/// The report of a `seal` killed after it published its block and before it drained the queue (measured on prikk
+/// 0.55.0, handoff 004 P15): one error, with prikk's own recommendation.
+const DOCTOR_CLEANUP_PENDING: &str = "\
+doctor repository: /srv/r/.prikk
+verified repository: /srv/r/.prikk
+ref publication issues: 1
+ref-publication [PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING]: pointer and log agree but matching active publication state remains
+trailing partial WAL bytes: 0
+error [PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING]: pointer and log agree but matching active publication state remains
+  recommendation: run signer-backed `prikk seal --allow-no-audit` for the affected ref; doctor does not sign or append
+issue summary: errors=1, warnings=0, info=0
+";
+
+#[test]
+fn a_pending_cleanup_is_read_and_only_exactly_that_one_error_is_it() {
+    let r = parse_doctor_output(DOCTOR_CLEANUP_PENDING).unwrap();
+    assert_eq!((r.errors, r.warnings, r.info), (1, 0, 0));
+    assert!(nth(&r.diagnostics, 0).is_cleanup_pending());
+    assert!(r.is_only_cleanup_pending());
+    // Not clean for recovery, and not the discard's: the plan decides what to make of it.
+    assert!(!r.is_clean_for_recovery());
+    assert!(!r.has_acknowledged_damage());
+    // Information and unreached-object notes beside it do not change what it is.
+    let notes = DOCTOR_CLEANUP_PENDING.replace(
+        "issue summary: errors=1, warnings=0, info=0",
+        "info [PRIKK-DOCTOR-VERIFY-OK]: done\nwarning [PRIKK-DOCTOR-UNREACHED-OBJECT]: 3 objects nothing refers to\n  recommendation: the bytes stay; no command removes them yet\nissue summary: errors=1, warnings=1, info=1",
+    );
+    assert!(
+        parse_doctor_output(&notes)
+            .unwrap()
+            .is_only_cleanup_pending()
+    );
+    // Another error or warning beside it, a second one of its code, or the same code as a warning: not this.
+    let beside = |extra: &str, counts: &str| {
+        parse_doctor_output(&DOCTOR_CLEANUP_PENDING.replace(
+            "issue summary: errors=1, warnings=0, info=0",
+            &format!("{extra}\nissue summary: {counts}"),
+        ))
+        .unwrap()
+    };
+    assert!(
+        !beside(
+            "error [PRIKK-DOCTOR-OBJECT-MISSING]: an object is missing",
+            "errors=2, warnings=0, info=0"
+        )
+        .is_only_cleanup_pending()
+    );
+    assert!(
+        !beside(
+            "warning [PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS]: stale",
+            "errors=1, warnings=1, info=0"
+        )
+        .is_only_cleanup_pending()
+    );
+    assert!(
+        !beside(
+            "error [PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING]: again",
+            "errors=2, warnings=0, info=0"
+        )
+        .is_only_cleanup_pending()
+    );
+    let weak = "doctor repository: /x\nwarning [PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING]: x\nissue summary: errors=0, warnings=1, info=0\n";
+    assert!(!parse_doctor_output(weak).unwrap().is_only_cleanup_pending());
+    // And a clean report, or one for another error, is not it.
+    assert!(
+        !parse_doctor_output(DOCTOR_OK)
+            .unwrap()
+            .is_only_cleanup_pending()
+    );
+    assert!(
+        !parse_doctor_output(DOCTOR_DAMAGED)
+            .unwrap()
+            .is_only_cleanup_pending()
+    );
+}

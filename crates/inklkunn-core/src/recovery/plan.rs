@@ -5,7 +5,10 @@
 //! **stop**: a state recovery will not act on, with a fixed word, because acting would be guessing. Nothing is
 //! rewritten. A sound queued patch that matches no recorded act is not discarded, because prikk has no verb that
 //! removes one (`doctor --discard-damaged-commits` acts on an acknowledged commit the log no longer holds soundly,
-//! and refuses over anything else): it is a stop, and a person decides.
+//! and refuses over anything else): it is a stop, and a person decides. A publication a killed `seal` left unfinished
+//! (`doctor` names `PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING` and nothing else) is the one state where prikk's own
+//! recommendation, `seal` once more, is taken as a step, and only when the block published is the unfinished act's
+//! (P15).
 
 use inklkunn_prikk::{RepoStatus, storage::QueuedPatch};
 use inklkunn_signer::recover::text::{ACCEPTANCE_LOCK_KINDS, DoctorReport, HeldLock};
@@ -120,6 +123,31 @@ impl ActWitness {
     }
 }
 
+/// The newest block of an unfinished act's view, as far as the question "is it the act's change" needs it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Published {
+    /// The view.
+    pub view: String,
+    /// The newest block.
+    pub block_id: String,
+    /// The block before it (its parent), when the history has one.
+    pub parent: Option<String>,
+    /// The digests of the messages of the patches the newest block seals.
+    pub message_digests: Vec<String>,
+}
+
+/// A `seal` published its block and stopped before it drained the queue (handoff 004, P15): `prikk doctor` names
+/// exactly one thing, the error `PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING`, whose recommendation is to run `seal
+/// --allow-no-audit` for the ref once more. Whether that is safe is a question of whose block was published.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CleanupPending {
+    /// `prikk status` refused (an integrity error) and so the queue could not be read; its absence from the witness
+    /// is a placeholder, not a finding.
+    pub status_refused: bool,
+    /// The newest block of the one unfinished act's view; `None` when there is not exactly one unfinished act.
+    pub published: Option<Published>,
+}
+
 /// Everything recovery read before it made a plan.
 #[derive(Debug, Clone)]
 pub struct Witness {
@@ -152,6 +180,8 @@ pub struct Witness {
     pub foreign: Vec<Foreign>,
     /// The write lease is held by this recovery. `false` for a plan that is only shown.
     pub lease_held: bool,
+    /// A publication whose cleanup a killed `seal` did not finish, when `doctor` names exactly that (P15).
+    pub cleanup_pending: Option<CleanupPending>,
 }
 
 /// Why recovery will not act: each a fixed word. None names a path.
@@ -163,6 +193,9 @@ pub enum Stop {
     QueuedPatchIsNotTheAct,
     /// More than one patch is queued.
     SeveralQueued,
+    /// A killed `seal` left a publication to finish, and the block it published is not the change of the one
+    /// unfinished act (or there is no such act, or it ended, or the block was made on another base).
+    PublishedBlockIsNotTheAct,
     /// More than one act is unfinished.
     SeveralActs,
     /// The view moved past the block the act was made on, and the act's change is not in the history.
@@ -186,6 +219,7 @@ impl Stop {
             Stop::ForeignQueuedPatch => "foreign-queued-patch",
             Stop::QueuedPatchIsNotTheAct => "queued-patch-is-not-the-act",
             Stop::SeveralQueued => "several-queued",
+            Stop::PublishedBlockIsNotTheAct => "published-block-is-not-the-act",
             Stop::SeveralActs => "several-acts",
             Stop::TipMoved => "tip-moved",
             Stop::InterruptedState => "interrupted-state",
@@ -206,6 +240,9 @@ impl Stop {
                 "a patch is queued that is not the change of the recorded act (its message, its base or its files differ)"
             }
             Stop::SeveralQueued => "more than one patch is queued",
+            Stop::PublishedBlockIsNotTheAct => {
+                "prikk reports a publication whose cleanup a killed seal did not finish, and the block it published is not the change of the one unfinished act (its message, its base or its patch differ, or no such act is unfinished)"
+            }
             Stop::SeveralActs => "more than one act is unfinished",
             Stop::TipMoved => {
                 "the view has moved past the block the unfinished act was made on, and the act's change is not in the history"
@@ -251,6 +288,16 @@ pub enum Step {
         /// The queued patch.
         patch_id: String,
     },
+    /// Finish the cleanup of the publication of `block_id`, which is the change of `act`: `seal --allow-no-audit`
+    /// once more for `view`, as prikk's own `doctor` recommends (P15). It makes no block.
+    CompletePublication {
+        /// The act.
+        act: ActRef,
+        /// The view.
+        view: String,
+        /// The block that was published.
+        block_id: String,
+    },
     /// `doctor --discard-damaged-commits`.
     DiscardDamaged,
     /// Put the worktree of `view` back to the tip.
@@ -286,6 +333,7 @@ impl Step {
         match self {
             Step::ClearLocks { .. } => "clear-locks",
             Step::SealQueued { .. } => "seal-queued",
+            Step::CompletePublication { .. } => "complete-publication",
             Step::DiscardDamaged => "discard-damaged",
             Step::RestoreWorktree { .. } => "restore-worktree",
             Step::EndFailed { .. } => "end-failed",
@@ -310,6 +358,13 @@ impl Step {
             ),
             Step::SealQueued { act, patch_id, .. } => format!(
                 "seal the queued patch {patch_id}, which is the change of {} {}; it is not committed again",
+                act.kind(),
+                act.token()
+            ),
+            Step::CompletePublication {
+                act, block_id, ..
+            } => format!(
+                "run seal --allow-no-audit once, as prikk's doctor recommends, to finish the cleanup of block {block_id}, which is the change of {} {}; no block is made",
                 act.kind(),
                 act.token()
             ),
@@ -376,6 +431,12 @@ impl Plan {
                     acceptance: act.token(),
                     view: view.clone(),
                 }),
+                Step::CompletePublication { act, view, .. } => {
+                    Some(RecoveryOp::CompletePublication {
+                        acceptance: act.token(),
+                        view: view.clone(),
+                    })
+                }
                 Step::DiscardDamaged => Some(RecoveryOp::DiscardDamaged),
                 Step::RestoreWorktree { view } => {
                     Some(RecoveryOp::RestoreWorktree { view: view.clone() })
@@ -402,6 +463,13 @@ impl Plan {
                     patch_id,
                 } => json!({
                     "step": "seal-queued", "acceptance": act.token(), "view": view, "patch": patch_id,
+                }),
+                Step::CompletePublication {
+                    act,
+                    view,
+                    block_id,
+                } => json!({
+                    "step": "complete-publication", "acceptance": act.token(), "view": view, "block": block_id,
                 }),
                 Step::DiscardDamaged => json!({"step": "discard-damaged"}),
                 Step::RestoreWorktree { view } => json!({"step": "restore-worktree", "view": view}),
@@ -472,6 +540,10 @@ pub fn facts_of(wiki: &WikiId, plan: &str) -> Option<RecoveryFacts> {
                 acceptance: text(s, "acceptance")?,
                 view: text(s, "view")?,
             }),
+            "complete-publication" => ops.push(RecoveryOp::CompletePublication {
+                acceptance: text(s, "acceptance")?,
+                view: text(s, "view")?,
+            }),
             "discard-damaged" => ops.push(RecoveryOp::DiscardDamaged),
             "restore-worktree" => ops.push(RecoveryOp::RestoreWorktree {
                 view: text(s, "view")?,
@@ -498,6 +570,20 @@ pub fn facts_of(wiki: &WikiId, plan: &str) -> Option<RecoveryFacts> {
 fn matches_queued(act: &ActWitness, patch: &QueuedPatch, target: Option<&str>) -> bool {
     let digest = crate::acceptance::message_digest(&patch.message);
     act.message_digest.as_deref() == Some(digest.as_str()) && target == Some(act.view.as_str())
+}
+
+/// Is the block `published` the change of `act`: the act has not ended, the block sits on the view and the base the
+/// act was made on, it seals exactly one patch, and that patch's message is the act's, to the digest; and the
+/// history found it there (P15).
+fn is_the_act(act: &ActWitness, published: &Published) -> bool {
+    matches!(act.ended, Ended::Not)
+        && published.view == act.view
+        && published.parent.is_some()
+        && published.parent == act.base_block
+        && act.message_digest.is_some()
+        && published.message_digests.len() == 1
+        && published.message_digests.first() == act.message_digest.as_ref()
+        && matches!(&act.chain, Chain::Sealed { block_id, .. } if *block_id == published.block_id)
 }
 
 /// Make the plan.
@@ -551,12 +637,23 @@ pub fn build(w: &Witness) -> Plan {
         ));
     }
     let q = &w.status.queue;
-    wit.push(format!(
-        "prikk status: {} patch(es) queued, {} torn byte(s) at the end of the log, view {}",
-        q.count,
-        w.status.trailing_partial_wal_bytes,
-        w.status.current_branch.as_deref().unwrap_or("(none)")
-    ));
+    let refused = w.cleanup_pending.as_ref().is_some_and(|c| c.status_refused);
+    wit.push(if refused {
+        "prikk status refuses (an integrity error): the queue cannot be read".to_owned()
+    } else {
+        format!(
+            "prikk status: {} patch(es) queued, {} torn byte(s) at the end of the log, view {}",
+            q.count,
+            w.status.trailing_partial_wal_bytes,
+            w.status.current_branch.as_deref().unwrap_or("(none)")
+        )
+    });
+    if w.cleanup_pending.is_some() {
+        wit.push(
+            "prikk doctor names the error PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING: a seal published its block and did not drain the queue"
+                .to_owned(),
+        );
+    }
     wit.push(format!(
         "prikk doctor: {} error(s), {} warning(s){}",
         w.doctor.errors,
@@ -573,6 +670,10 @@ pub fn build(w: &Witness) -> Plan {
             "the worktree differs from its baseline ({} path(s), {} declared rename(s))",
             s.changes, s.declarations
         ),
+        None if w.cleanup_pending.is_some() => {
+            "the worktree was not compared with its baseline: prikk refuses to report it until the publication is finished"
+                .to_owned()
+        }
         None => "the worktree could not be compared with its baseline: the log is torn".to_owned(),
     });
     wit.push(format!("{} lock(s) held", w.locks.len()));
@@ -614,7 +715,16 @@ pub fn build(w: &Witness) -> Plan {
         stop(&mut plan, Stop::InterruptedState);
         return plan;
     }
-    if !w.doctor.others().is_empty() {
+    // The one error a pending cleanup stands for is that row's own business (P15); anything beside it is trouble.
+    let mut cleanup_error = usize::from(w.cleanup_pending.is_some());
+    if w.doctor.others().iter().any(|d| {
+        if d.is_cleanup_pending() && cleanup_error > 0 {
+            cleanup_error -= 1;
+            false
+        } else {
+            true
+        }
+    }) {
         stop(&mut plan, Stop::DoctorTrouble);
         return plan;
     }
@@ -659,9 +769,32 @@ pub fn build(w: &Witness) -> Plan {
     let act = w.acts.first();
 
     // --- The decision table: the queue first, then the act.
-    match (q.patches.first(), act) {
+    match (w.cleanup_pending.as_ref(), q.patches.first(), act) {
+        // A `seal` published its block and stopped before it drained the queue (P15): prikk's own recommendation is
+        // `seal` once more, taken only when the block published is the change of the one unfinished act.
+        (Some(c), _, a) => {
+            let published = c.published.as_ref();
+            match a.zip(published).filter(|(a, p)| is_the_act(a, p)) {
+                Some((a, p)) => {
+                    steps.push(Step::CompletePublication {
+                        act: a.act.clone(),
+                        view: a.view.clone(),
+                        block_id: p.block_id.clone(),
+                    });
+                    restore(&mut steps);
+                    steps.push(Step::EndSealed {
+                        act: a.act.clone(),
+                        block_id: Some(p.block_id.clone()),
+                    });
+                }
+                None => {
+                    stop(&mut plan, Stop::PublishedBlockIsNotTheAct);
+                    return plan;
+                }
+            }
+        }
         // A patch is queued, and it is the change of the one unfinished act.
-        (Some(patch), Some(a))
+        (None, Some(patch), Some(a))
             if matches_queued(a, patch, q.target_ref.as_deref())
                 && a.chain == Chain::NotSealed
                 && matches!(a.ended, Ended::Not) =>
@@ -676,16 +809,16 @@ pub fn build(w: &Witness) -> Plan {
                 block_id: None,
             });
         }
-        (Some(_), Some(_)) => {
+        (None, Some(_), Some(_)) => {
             stop(&mut plan, Stop::QueuedPatchIsNotTheAct);
             return plan;
         }
-        (Some(_), None) => {
+        (None, Some(_), None) => {
             stop(&mut plan, Stop::ForeignQueuedPatch);
             return plan;
         }
         // Nothing is queued, and prikk says an acknowledged commit is torn: discard it.
-        (None, a) if w.doctor.has_acknowledged_damage() => {
+        (None, None, a) if w.doctor.has_acknowledged_damage() => {
             steps.push(Step::DiscardDamaged);
             restore(&mut steps);
             match a {
@@ -714,7 +847,7 @@ pub fn build(w: &Witness) -> Plan {
             }
         }
         // Nothing is queued and nothing is torn: the act, if there is one, is in the history or it is not.
-        (None, Some(a)) => match &a.chain {
+        (None, None, Some(a)) => match &a.chain {
             Chain::Sealed { block_id, .. } => steps.push(Step::EndSealed {
                 act: a.act.clone(),
                 block_id: Some(block_id.clone()),
@@ -735,7 +868,7 @@ pub fn build(w: &Witness) -> Plan {
                 return plan;
             }
         },
-        (None, None) => restore(&mut steps),
+        (None, None, None) => restore(&mut steps),
     }
 
     // --- The tail every recovery has: the repository must verify, the records must agree, the flag goes.

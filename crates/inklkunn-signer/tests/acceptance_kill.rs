@@ -34,6 +34,7 @@ use std::time::{Duration, Instant};
 use inklkunn_core::message::{Kind, SystemLabel};
 use inklkunn_core::proposal::{ProposalEdit, ProposalService, QuotaConfig};
 use inklkunn_core::reconcile::reconcile;
+use inklkunn_core::recovery::Stop;
 use inklkunn_core::{
     AcceptStep, AcceptanceParts, Authorizer, IdentityAuthority, KeyAuthority, LeaseConfig,
     PreparedFile, Principal, ProposalAcceptor, ReadConfig, ReadService, Recover, Recovery,
@@ -45,7 +46,8 @@ use inklkunn_prikk::{Admission, Point, PrikkCli, Sandbox, Storage};
 use inklkunn_store::{
     AcceptanceOutcome, AcceptanceStore, Account, AccountId, AccountStore, ActStore, DisplayName,
     FileChange, IntentEnd, NewWiki, ProposalId, ProposalRecord, ProposalState, RecoveryEnding,
-    Role, RoleGrant, RoleStore, RootLayout, Slug, SqliteStore, WikiId, WikiRecord, WikiStore,
+    RecoveryFlag, RecoveryReason, Role, RoleGrant, RoleStore, RootLayout, Slug, SqliteStore,
+    WikiId, WikiRecord, WikiStore,
 };
 
 const MAIN: &str = "heads/main";
@@ -93,6 +95,10 @@ fn inside_seconds() -> String {
 ///   the real verb runs;
 /// - `after-<verb>` = n: runs the real verb **to completion**, then writes its id to `blocked-after-<verb>-<n>` and
 ///   becomes a sleep until killed (the verb's effect is durable, its caller has not been answered);
+/// - `halfway-<verb>` = n (`seal` only; handoff 004, P15): runs the real verb to completion, then puts back the three
+///   files of the active session that it emptied (`queue.wal`, `ref-name`, `witness`) as they were, writes its id to
+///   `blocked-halfway-<verb>-<n>` and becomes a sleep until killed: the block is published and the queue is not drained,
+///   which is what a `seal` killed between the two leaves, made every time and not by the luck of a delay;
 /// - `inside-<verb>` = n: starts the real verb, waits [`inside_seconds`], writes its id and the verb's to
 ///   `blocked-inside-<verb>-<n>` and waits for the verb (the parent kills both as fast as it can).
 ///
@@ -112,6 +118,15 @@ fi
 if [ -e "$CTL/after-$verb" ] && [ "$(cat "$CTL/after-$verb")" = "$n" ]; then
   "$REAL" "$@"
   echo "$$" > "$CTL/blocked-after-$verb-$n"
+  exec sleep 3600
+fi
+if [ -e "$CTL/halfway-$verb" ] && [ "$(cat "$CTL/halfway-$verb")" = "$n" ]; then
+  A=".prikk/active/default"
+  mkdir -p "$CTL/kept"
+  cp "$A/queue.wal" "$A/ref-name" "$A/witness" "$CTL/kept/"
+  "$REAL" "$@"
+  cp "$CTL/kept/queue.wal" "$CTL/kept/ref-name" "$CTL/kept/witness" "$A/"
+  echo "$$" > "$CTL/blocked-halfway-$verb-$n"
   exec sleep 3600
 fi
 if [ -e "$CTL/inside-$verb" ] && [ "$(cat "$CTL/inside-$verb")" = "$n" ]; then
@@ -400,6 +415,9 @@ enum At {
     After(&'static str, u32),
     /// The same call, killed a couple of milliseconds **inside** the real verb.
     Inside(&'static str, u32),
+    /// The same call, held after the real `seal` ran and the queue was put back: the block is published and the queue
+    /// is not drained (P15).
+    Halfway(&'static str, u32),
     /// The acceptance is killed before the seal (a patch is queued); then **recovery** is killed after its
     /// `seal-queued` step sealed (the real seal ran to completion), before any record of it was written.
     RecoveryAfterSeal,
@@ -413,6 +431,7 @@ impl At {
             At::Prikk(verb, n) => format!("prikk {verb} #{n}"),
             At::After(verb, n) => format!("prikk {verb} #{n} done"),
             At::Inside(verb, n) => format!("inside prikk {verb} #{n}"),
+            At::Halfway(verb, n) => format!("prikk {verb} #{n} published, queue not drained"),
             At::RecoveryAfterSeal => "recovery, after seal-queued".to_owned(),
         }
     }
@@ -458,6 +477,15 @@ const QUEUED: &[&str] = &[
     "clear-flag",
 ];
 const SEALED: &[&str] = &["end-sealed", "verify", "reconcile", "clear-flag"];
+/// A `seal` that published its block and did not drain the queue (P15): prikk's own recommendation, then the rest.
+const PUBLISHED: &[&str] = &[
+    "complete-publication",
+    "restore-worktree",
+    "end-sealed",
+    "verify",
+    "reconcile",
+    "clear-flag",
+];
 
 /// The matrix: D-4's steps in turn, then the prikk calls of the signer's write sequence between the intent and the
 /// signer's return (before the call, after the real call, and inside it), then the system act's, then a recovery
@@ -515,6 +543,14 @@ fn matrix() -> Vec<(Who, At, Expect)> {
         (Acceptance, At::Prikk("seal", 0), fixed(QUEUED, true, true)),
         // Sealed in prikk, the caller never answered, none of it recorded.
         (Acceptance, At::After("seal", 0), fixed(SEALED, true, true)),
+        // The block is published and the queue is not drained (what a `seal` killed between the two leaves, ~3 % of
+        // the `inside` runs, made every time): `status` refuses, `doctor` names the pending cleanup, and recovery
+        // finishes it with prikk's own recommendation (P15).
+        (
+            Acceptance,
+            At::Halfway("seal", 0),
+            fixed(PUBLISHED, true, true),
+        ),
         // Sealed in prikk, none of it recorded.
         (
             Acceptance,
@@ -604,6 +640,7 @@ fn matrix() -> Vec<(Who, At, Expect)> {
         (System, At::After("commit", 0), fixed(QUEUED, true, true)),
         (System, At::Prikk("seal", 0), fixed(QUEUED, true, true)),
         (System, At::After("seal", 0), fixed(SEALED, true, true)),
+        (System, At::Halfway("seal", 0), fixed(PUBLISHED, true, true)),
         (System, At::Prikk("verify", 0), fixed(SEALED, true, true)),
         (
             System,
@@ -930,12 +967,16 @@ impl Fixture {
                 std::fs::write(self.ctl.join(format!("inside-{verb}")), n.to_string()).unwrap();
                 (None, self.ctl.join(format!("blocked-inside-{verb}-{n}")))
             }
+            At::Halfway(verb, n) => {
+                std::fs::write(self.ctl.join(format!("halfway-{verb}")), n.to_string()).unwrap();
+                (None, self.ctl.join(format!("blocked-halfway-{verb}-{n}")))
+            }
             At::RecoveryAfterSeal => unreachable!("a recovery is killed by `kill_recovery`"),
         };
         let label = format!("{}: {}", who.label(), at.label());
         self.run_and_kill(&self.spec(who.mode(), step), &marker, &label);
         // Nothing of the kill may go on to write: the stand-in's hold is a pass-through again.
-        for verb in ["block", "after", "inside"] {
+        for verb in ["block", "after", "halfway", "inside"] {
             for name in ["status", "worktree-status", "commit", "seal", "verify"] {
                 let _ = std::fs::remove_file(self.ctl.join(format!("{verb}-{name}")));
             }
@@ -1057,7 +1098,16 @@ fn a_sigkill_at_each_step_of_an_acceptance_is_recovered_with_nothing_lost_or_mad
         let status_killed = s.storage.status(&f.repo);
         let queued_killed = status_killed.as_ref().map_or(0, |st| st.queue.count);
         let left = left_by_the_kill(f.base_blocks, blocks_killed.len(), queued_killed);
-        if let Err(e) = &status_killed {
+        // ... and that refusal has one cause recovery answers (handoff 004, P15): a `seal` killed after it published
+        // its block and before it drained the queue, which `doctor` names (`PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING`)
+        // and recovery finishes with prikk's own recommendation. Such a row goes on as any other, with every invariant
+        // asserted; the kill matrix's `inside prikk seal` rows land here about three runs in a hundred, and the
+        // `published, queue not drained` rows land here every time.
+        let cleanup_pending = status_killed.is_err()
+            && s.witnesses
+                .doctor(&f.wiki.id)
+                .is_ok_and(|d| d.is_only_cleanup_pending());
+        if let (Err(e), false) = (&status_killed, cleanup_pending) {
             assert!(
                 timed,
                 "{label}: prikk status refuses a state no step-kill makes: {e}"
@@ -1477,4 +1527,259 @@ fn a_sigkill_at_each_step_of_an_acceptance_is_recovered_with_nothing_lost_or_mad
         }
     }
     assert_eq!(table.len(), matrix().len());
+}
+
+/// The runbook's section for the stop `foreign-queued-patch` (`docs/RECOVERY.md`).
+fn runbook_section() -> String {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/RECOVERY.md");
+    let doc = std::fs::read_to_string(&path).expect("docs/RECOVERY.md is there");
+    let at = doc
+        .find("## STOP `foreign-queued-patch`")
+        .expect("the runbook has the section");
+    let section = doc.get(at..).expect("the rest of the document");
+    // The section ends at the next second-level heading, if there is one.
+    match section.get(3..).and_then(|rest| rest.find("\n## ")) {
+        Some(end) => section.get(..end + 3).expect("the section").to_owned(),
+        None => section.to_owned(),
+    }
+}
+
+/// The commands of the fenced block that follows `marker` in `section`, each with the comment after its `#`.
+fn runbook_commands(section: &str, marker: &str) -> Vec<(String, String)> {
+    let (_, after) = section
+        .split_once(marker)
+        .unwrap_or_else(|| panic!("the runbook has `{marker}`"));
+    let (_, after) = after
+        .split_once("```sh\n")
+        .expect("a command block follows");
+    let (block, _) = after.split_once("```").expect("the block ends");
+    block
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(|l| match l.split_once('#') {
+            Some((command, comment)) => (command.trim().to_owned(), comment.trim().to_owned()),
+            None => (l.to_owned(), String::new()),
+        })
+        .collect()
+}
+
+#[test]
+fn the_runbooks_way_out_of_an_orphan_queued_patch_is_true_of_the_state_a_commit_kill_leaves() {
+    // Handoff 004, P16. The state is the one the kill matrix's `prikk commit` rows leave when the service's records
+    // of the act are gone (a database restored from a copy older than the repository): a sound patch is queued and
+    // no recorded act describes it. The test follows the runbook's own commands, literally, as far as prikk 0.55
+    // supports them (they only read), and checks each statement the runbook makes about what recovery says.
+    let Some(f) = fixture("runbook") else {
+        return;
+    };
+    let Some(real) = real_prikk() else {
+        return;
+    };
+    let older = f.paths.store.with_extension("older.sqlite");
+    std::fs::copy(&f.paths.store, &older).expect("the copy a restore would bring back");
+    f.kill_at(Who::Acceptance, At::After("commit", 0));
+    let restored = Paths {
+        root: f.paths.root.clone(),
+        keys: f.paths.keys.clone(),
+        secret: f.paths.secret.clone(),
+        shm: f.paths.shm.clone(),
+        store: older,
+        prikk: f.paths.prikk.clone(),
+    };
+    let s = open_services(&restored, "restarted", false);
+    // The service starts, finds the repository and its records disagreeing, and the wiki is flagged.
+    s.store
+        .set_recovery_flag(&RecoveryFlag {
+            wiki: f.wiki.id.clone(),
+            reason: RecoveryReason::Interrupted,
+            act: None,
+            since: 5,
+        })
+        .unwrap();
+    let recovery = s.recovery();
+    let blocks = log(&s, &f.repo);
+    assert_eq!(blocks.len(), f.base_blocks);
+    let section = runbook_section();
+
+    // What recovery says: the STOP word and its meaning, after the witnesses the runbook says it names.
+    let shown = recovery.recover(&f.wiki, RecoveryMode::PlanOnly).unwrap();
+    let text = shown.lines().join("\n");
+    assert_eq!(shown.plan.stop, Some(Stop::ForeignQueuedPatch), "{text}");
+    assert!(
+        section.contains("## STOP `foreign-queued-patch`"),
+        "the runbook names the word recovery prints"
+    );
+    for said in [
+        "no act is unfinished",
+        "prikk status: 1 patch(es) queued",
+        "prikk doctor: 0 error(s), 0 warning(s)",
+        "the worktree is the baseline",
+        "0 lock(s) held",
+        "STOP (foreign-queued-patch): a patch is queued that no recorded act describes",
+        "prikk has no verb that removes a sound queued patch",
+        "recovery changes nothing and the wiki stays flagged for a person to decide",
+    ] {
+        assert!(text.contains(said), "the plan says `{said}`:\n{text}");
+    }
+    assert!(
+        shown.plan.steps.is_empty() && shown.plan.ops().is_empty(),
+        "no step is planned, so nothing the signer may be asked"
+    );
+
+    // The runbook's own commands, as written. `<patch id>` is the id its earlier command printed.
+    let commands = runbook_commands(&section, "**Look, without changing anything.**");
+    let words: Vec<&str> = commands.iter().map(|(c, _)| c.as_str()).collect();
+    assert_eq!(
+        words,
+        [
+            "inklkunn wiki recover <wiki> --plan",
+            "cd $INKLKUNN_DATA_DIR/wikis/<xx>/<wiki id>",
+            "prikk status --format json",
+            "prikk show <patch id>",
+            "prikk worktree-status",
+            "prikk log",
+        ],
+        "the runbook's commands"
+    );
+    let mut patch_id: Option<String> = None;
+    let mut seen_log = false;
+    for (command, _) in &commands {
+        if command == "inklkunn wiki recover <wiki> --plan" {
+            // Its output is the plan checked above.
+        } else if let Some(dir) = command.strip_prefix("cd ") {
+            assert_eq!(dir, "$INKLKUNN_DATA_DIR/wikis/<xx>/<wiki id>");
+            // `<xx>` is the first two characters of the wiki id, under the data directory's `wikis`.
+            let id = f.wiki.id.as_str();
+            let shard = id.get(..2).expect("an id is longer than two characters");
+            assert_eq!(f.repo, f.paths.root.join(shard).join(id));
+        } else if let Some(args) = command.strip_prefix("prikk ") {
+            let args = if args.contains("<patch id>") {
+                args.replace(
+                    "<patch id>",
+                    patch_id
+                        .as_deref()
+                        .expect("the runbook has printed the patch id before it uses it"),
+                )
+            } else {
+                args.to_owned()
+            };
+            let args: Vec<String> = args.split_whitespace().map(str::to_owned).collect();
+            let out = Command::new(&real)
+                .args(&args)
+                .current_dir(&f.repo)
+                .output()
+                .expect("prikk runs");
+            let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+            assert!(
+                out.status.success(),
+                "`{command}` failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            match args.first().map(String::as_str) {
+                Some("status") => {
+                    // "that one patch is queued, and its id"
+                    let status: serde_json::Value =
+                        serde_json::from_str(&stdout).expect("the runbook asks for the JSON form");
+                    assert_eq!(
+                        status
+                            .pointer("/queue/count")
+                            .and_then(serde_json::Value::as_u64),
+                        Some(1)
+                    );
+                    patch_id = status
+                        .pointer("/queue/patches/0/patch_id")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_owned);
+                    assert!(patch_id.is_some(), "the status names the patch: {stdout}");
+                }
+                Some("show") => {
+                    // "what the patch changes, file by file"
+                    assert!(stdout.contains("queued: yes"), "{stdout}");
+                    assert!(stdout.contains("path: pages/Home.md"), "{stdout}");
+                    // The text the operation replaces and the text it puts (the span that changed, not the page).
+                    assert!(stdout.contains("old:\nOne\n"), "{stdout}");
+                    assert!(stdout.contains("new:\nUno\n"), "{stdout}");
+                }
+                Some("worktree-status") => {
+                    // "whether the worktree matches it"
+                    assert!(
+                        stdout.contains("worktree: clean against baseline"),
+                        "{stdout}"
+                    );
+                }
+                Some("log") => {
+                    // "the sealed history, which the patch is not part of"
+                    seen_log = true;
+                    let shown_blocks = stdout.lines().filter(|l| l.starts_with("block ")).count();
+                    assert_eq!(shown_blocks, f.base_blocks, "{stdout}");
+                    let id = patch_id.as_deref().expect("the patch id");
+                    assert!(!stdout.contains(id), "the patch is not in the history");
+                }
+                other => panic!("the runbook runs a verb the test does not know: {other:?}"),
+            }
+        } else {
+            panic!("a command the test does not know: {command}");
+        }
+    }
+    assert!(seen_log);
+    // "The worktree holds every page the patch changes whole, as the patch leaves it."
+    assert!(
+        std::fs::read_to_string(f.repo.join("pages/Home.md"))
+            .unwrap()
+            .contains("Uno."),
+        "the worktree holds the page as the patch leaves it"
+    );
+    // "A queued patch is not in the history and does no harm while it waits": the repository verifies with it queued.
+    let verified = Command::new(&real)
+        .arg("verify")
+        .current_dir(&f.repo)
+        .output()
+        .unwrap();
+    assert!(verified.status.success());
+
+    // "prikk 0.55 has no verb that discards a sound queued patch": the one discard it has is for a commit the log no
+    // longer holds soundly, and it refuses over this patch (a plan only, so nothing is written either way).
+    let help = Command::new(&real).arg("--help").output().unwrap();
+    let help = String::from_utf8_lossy(&help.stdout).into_owned();
+    for line in help.lines().filter(|l| l.contains("discard")) {
+        assert!(
+            line.contains("doctor [path] --discard-damaged-commits"),
+            "prikk has a discard the runbook does not know of: {line}"
+        );
+    }
+    let refused = Command::new(&real)
+        .args(["doctor", "--discard-damaged-commits", "--plan-only"])
+        .current_dir(&f.repo)
+        .output()
+        .unwrap();
+    assert!(!refused.status.success(), "{refused:?}");
+    assert!(
+        String::from_utf8_lossy(&refused.stderr).contains("nothing acknowledged is damaged"),
+        "{refused:?}"
+    );
+
+    // "A recovery that stops leaves the wiki flagged and the repository exactly as it found it; it records the plan
+    // and that it stopped, so the trail shows what was seen."
+    let run = recovery.recover(&f.wiki, RecoveryMode::Run).unwrap();
+    assert!(
+        matches!(&run.outcome, RecoveryOutcome::Stopped { at: None, .. }),
+        "{:#?}",
+        run.lines()
+    );
+    assert_eq!(run.plan.stop, Some(Stop::ForeignQueuedPatch));
+    assert!(run.done.is_empty());
+    assert_eq!(log(&s, &f.repo), blocks, "nothing was sealed");
+    assert_eq!(s.storage.status(&f.repo).unwrap().queue.count, 1);
+    assert!(s.store.recovery_flag(&f.wiki.id).unwrap().is_some());
+    let acts = s.store.recovery_acts(&f.wiki.id).unwrap();
+    assert_eq!(acts.len(), 1);
+    assert_eq!(
+        acts.first().and_then(|a| a.end.as_ref()).map(|e| e.ending),
+        Some(RecoveryEnding::Stopped)
+    );
+    assert!(
+        acts.first()
+            .is_some_and(|a| a.act.plan.contains("foreign-queued-patch"))
+    );
 }

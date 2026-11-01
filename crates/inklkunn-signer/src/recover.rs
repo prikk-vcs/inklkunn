@@ -1,9 +1,10 @@
 //! `Recover`: the signer's recovery operations, and the read-only witnesses recovery plans from (RFC 004 D-7; internal
 //! design CON-4, WR-8; handoff 004 T5; threat model C-1b, INV-7).
 //!
-//! **Recovery is bound to a recorded act, as an acceptance is.** [`Recover`] has four operations: `seal` alone (complete
-//! a queued patch), `doctor --discard-damaged-commits`, `unlock --lock <path>` for the locks an acceptance leaves, and
-//! putting a worktree back to its baseline. None takes a seed, a key directory or a prikk argument. Each is given a
+//! **Recovery is bound to a recorded act, as an acceptance is.** [`Recover`] has five operations: `seal` alone (complete
+//! a queued patch), `seal` once more to finish the cleanup of a publication a killed `seal` left (prikk's own
+//! recommendation; handoff 004, P15), `doctor --discard-damaged-commits`, `unlock --lock <path>` for the locks an
+//! acceptance leaves, and putting a worktree back to its baseline. None takes a seed, a key directory or a prikk argument. Each is given a
 //! [`RecoveryToken`], an id, and nothing else; the signer reads the record the id names itself, through its
 //! [`AcceptanceLedger`](crate::AcceptanceLedger), and refuses unless the record is the wiki's, still open, and **names
 //! this very operation** ([`RecoveryOp`]). The plan the record holds was written by the service before it asked, so a
@@ -61,6 +62,15 @@ impl RecoveryToken {
 pub enum RecoveryOp {
     /// Seal the one queued patch that is the change of the acceptance (or system act) `acceptance` names, on `view`.
     SealQueued {
+        /// The acceptance or system act, as the token names it.
+        acceptance: String,
+        /// The view (`heads/<name>`).
+        view: String,
+    },
+    /// Run `seal` once more for `view`, because a `seal` published the block that is the change of the acceptance (or
+    /// system act) `acceptance` and was killed before it drained the queue (`doctor`: exactly
+    /// `PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING`, whose recommendation this is). No block is made.
+    CompletePublication {
         /// The acceptance or system act, as the token names it.
         acceptance: String,
         /// The view (`heads/<name>`).
@@ -189,6 +199,26 @@ pub trait Recover: Send + Sync {
         act: &RecoveryToken,
         acceptance: &AcceptanceToken,
     ) -> Result<(), RecoverError>;
+
+    /// Finish the cleanup of a publication: a `seal` made the block that is the change the pending acceptance (or
+    /// system act) `acceptance` describes, and was killed before it drained the queue, so `status` refuses and
+    /// `doctor` names exactly `PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING`. Refuses unless `doctor` says exactly that,
+    /// the tip of `view` is one block holding one patch whose message, base and files are the record's, and nothing
+    /// else is queued; runs `seal` once (it makes no block: prikk sees the ref already published), and refuses to
+    /// call it done unless the tip is the same block and `doctor` no longer names the cleanup. **The default is
+    /// unable**: a signer that does not implement this can never be mistaken for one that found nothing to do.
+    fn complete_publication(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        act: &RecoveryToken,
+        acceptance: &AcceptanceToken,
+    ) -> Result<(), RecoverError> {
+        let _ = (wiki, view, act, acceptance);
+        Err(RecoverError::Unavailable(
+            "this signer cannot complete a publication".to_owned(),
+        ))
+    }
 
     /// `doctor --discard-damaged-commits`. prikk removes an acknowledged commit that the WAL no longer holds
     /// soundly (saving the bytes first) and refuses over anything else.

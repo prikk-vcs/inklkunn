@@ -87,12 +87,15 @@ pub(crate) enum WriteVerb {
     Unlock,
     /// `cat`: one file's bytes at a ref (recovery restores a worktree from the tip).
     Cat,
+    /// `show`: what one block or patch changed (recovery reads the operations of the block a killed `seal` published;
+    /// handoff 004, P15).
+    Show,
 }
 
 impl WriteVerb {
     /// Every verb.
     #[cfg(test)]
-    pub(crate) const ALL: [WriteVerb; 18] = [
+    pub(crate) const ALL: [WriteVerb; 19] = [
         WriteVerb::Init,
         WriteVerb::Trust,
         WriteVerb::KeyGenerate,
@@ -111,6 +114,7 @@ impl WriteVerb {
         WriteVerb::Doctor,
         WriteVerb::Unlock,
         WriteVerb::Cat,
+        WriteVerb::Show,
     ];
 
     /// The verb a prikk argument vector runs, or `None` for one the signer has no cost for (and so never runs).
@@ -131,6 +135,7 @@ impl WriteVerb {
             ["doctor", ..] => WriteVerb::Doctor,
             ["unlock", ..] => WriteVerb::Unlock,
             ["cat", ..] => WriteVerb::Cat,
+            ["show", ..] => WriteVerb::Show,
             ["mv", ..] => WriteVerb::Mv,
             ["commit", ..] => WriteVerb::Commit,
             ["seal", ..] => WriteVerb::Seal,
@@ -174,6 +179,9 @@ impl WriteVerb {
             WriteVerb::Unlock => (0, 0, 16 * MIB),
             // Reads one file out of the replay: `tree`'s and `cat`'s rule in the read driver (2.1 × S).
             WriteVerb::Cat => (21, 0, 16 * MIB),
+            // The read driver's measured rule for `show` (flat for a small patch; up to 3.6 × S for large text), at
+            // its floor.
+            WriteVerb::Show => (36, 0, 32 * MIB),
         };
         WriteRule {
             store_tenths,

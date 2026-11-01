@@ -6,7 +6,12 @@
 //!
 //! A stand-in `prikk` passes every call to the real one unless a control file names the verb: `fail-<verb>` makes it
 //! fail, `say-<verb>` makes it print a canned answer, `runfail-<verb>` makes the real verb do its work and the call
-//! then report a failure (what a call stopped at its bound after its effect was durable looks like).
+//! then report a failure (what a call stopped at its bound after its effect was durable looks like),
+//! `dies-after-publishing-<verb>` makes the real `seal` publish its block and then puts back the three files of the
+//! active session that it emptied, as they were, and fails (a `seal` killed between publishing and draining the queue,
+//! made on cue: handoff 004, P15; `leaves-the-lock` adds the stale `active.lock` the killed process would have left,
+//! and `leaves-only-the-metadata` puts back the ref's metadata but not the queue: the other state a kill just after
+//! the publication leaves, a lone `ACTIVE-REF-METADATA-DEBRIS` warning).
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::collections::HashMap;
@@ -84,6 +89,18 @@ if [ -e "$CTL/say-$verb" ]; then cat "$CTL/say-$verb"; exit 0; fi
 if [ -e "$CTL/runfail-$verb" ]; then
   "{real}" "$@" > /dev/null 2>&1
   echo "error: the call was stopped after $verb had done its work" >&2; exit 1
+fi
+if [ -e "$CTL/dies-after-publishing-$verb" ]; then
+  A=".prikk/active/default"
+  mkdir -p "$CTL/kept"
+  cp "$A/queue.wal" "$A/ref-name" "$A/witness" "$CTL/kept/"
+  "{real}" "$@" > /dev/null 2>&1
+  cp "$CTL/kept/ref-name" "$CTL/kept/witness" "$A/"
+  if [ ! -e "$CTL/leaves-only-the-metadata" ]; then cp "$CTL/kept/queue.wal" "$A/"; fi
+  if [ -e "$CTL/leaves-the-lock" ]; then
+    printf 'pid=2147483000\nkind=active\nnote=left by a seal that was killed\n' > "$A/active.lock"
+  fi
+  echo "error: the call was stopped after $verb had published its block" >&2; exit 1
 fi
 exec "{real}" "$@"
 "#,
@@ -447,6 +464,28 @@ impl World {
         );
     }
 
+    /// An acceptance whose `seal` published its block and was killed before it drained the queue (the stand-in's
+    /// `dies-after-publishing-seal`, with `extra` controls): the wiki is flagged, and the block is in the history.
+    fn killed_seal(&self, p: &ProposalRecord, extra: &[&str]) {
+        self.control("dies-after-publishing-seal", "");
+        for name in extra {
+            self.control(name, "");
+        }
+        let err = self.accept(p).unwrap_err();
+        self.uncontrol("dies-after-publishing-seal");
+        for name in extra {
+            self.uncontrol(name);
+        }
+        assert!(
+            matches!(&err, AcceptFailure::Incomplete { flagged: true, .. }),
+            "{err:?}"
+        );
+    }
+
+    fn recovery_witnesses(&self) -> Witnesses {
+        Witnesses::new(&self.standin, Sandbox::Unconfined, self.layout.clone())
+    }
+
     fn queue_count(&self) -> u64 {
         self.storage.status(&self.repo).unwrap().queue.count
     }
@@ -568,6 +607,16 @@ fn plant_lock(repo: &Path, relative: &str, pid: u32, kind: &str) -> String {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, format!("pid={pid}\nkind={kind}\nnote=planted\n")).unwrap();
     std::fs::canonicalize(&path).unwrap().display().to_string()
+}
+
+/// `docs/RECOVERY.md`, whose statements about what recovery and prikk say these tests hold true. Whitespace is
+/// collapsed, so that a sentence wrapped across lines is the sentence.
+fn runbook() -> String {
+    std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/RECOVERY.md"))
+        .expect("docs/RECOVERY.md is there")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn quick(wait_ms: u64) -> LeaseConfig {
@@ -708,6 +757,407 @@ fn a_queued_patch_is_completed_with_seal_alone_and_the_records_agree_with_the_hi
     assert!(matches!(done, inklkunn_core::Accepted::Signed(_)));
     assert_eq!(w.history().len(), before.len() + 2);
     assert!(w.reconciled().is_clean());
+}
+
+#[test]
+fn a_seal_killed_between_publishing_and_draining_is_finished_with_prikks_own_recommendation_as_a_step()
+ {
+    // Handoff 004, P15. `status --format json` refuses, `doctor` names exactly PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING
+    // and recommends `seal --allow-no-audit`; the block published is the acceptance's. Both ways it is left: with the
+    // stale `active.lock` the killed process would have left (cleared first) and without.
+    for (tag, lock) in [("cleanup", false), ("cleanup-lock", true)] {
+        let Some(w) = World::new(tag, LeaseConfig::default()) else {
+            return;
+        };
+        let p = w.propose(
+            "Say it in Spanish",
+            &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+        );
+        let q = w.propose(
+            "Another",
+            &[(
+                "pages/Another.md",
+                Some("---\ntitle: Another\nid: pn\n---\n\na\n"),
+            )],
+        );
+        let before = w.history();
+        w.killed_seal(&p, if lock { &["leaves-the-lock"] } else { &[] });
+        // The state, as prikk shows it.
+        assert_eq!(
+            w.history().len(),
+            before.len() + 1,
+            "the block is published"
+        );
+        assert!(
+            w.storage.status(&w.repo).is_err(),
+            "`status --format json` refuses over the state a killed seal leaves"
+        );
+        let doctor = w.recovery_witnesses().doctor(&w.wiki.id).unwrap();
+        assert!(doctor.is_only_cleanup_pending(), "{doctor:?}");
+        assert_eq!(w.store.open_intents(&w.wiki.id).unwrap().len(), 1);
+        let published = w.tip();
+        let seals = |w: &World| {
+            std::fs::read_to_string(w.ctl.join("calls.log"))
+                .unwrap()
+                .lines()
+                .filter(|v| *v == "seal")
+                .count()
+        };
+        let commits = std::fs::read_to_string(w.ctl.join("calls.log"))
+            .unwrap()
+            .lines()
+            .filter(|v| *v == "commit")
+            .count();
+        let seals_before = seals(&w);
+
+        // The plan, shown: it changes nothing, and it names the step and what it rests on.
+        let shown = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
+        assert_eq!(shown.plan.stop, None, "{:#?}", shown.lines());
+        let mut expected = vec!["complete-publication", "restore-worktree", "end-sealed"];
+        if lock {
+            expected.insert(0, "clear-locks");
+        }
+        expected.extend(["verify", "reconcile", "clear-flag"]);
+        assert_eq!(step_names(&shown), expected);
+        assert!(
+            shown
+                .lines()
+                .iter()
+                .any(|l| l.contains("run seal --allow-no-audit once, as prikk's doctor recommends")),
+            "{:#?}",
+            shown.lines()
+        );
+        assert_eq!(seals(&w), seals_before, "a plan runs nothing");
+        assert!(w.storage.status(&w.repo).is_err());
+
+        // The run.
+        let r = w.recover();
+        assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());
+        let done: Vec<&str> = r.done.iter().map(|d| d.step).collect();
+        assert_eq!(done, expected);
+        assert_eq!(seals(&w), seals_before + 1, "prikk's recommendation, once");
+        let commits_after = std::fs::read_to_string(w.ctl.join("calls.log"))
+            .unwrap()
+            .lines()
+            .filter(|v| *v == "commit")
+            .count();
+        assert_eq!(commits_after, commits, "recovery never commits");
+        // No second block: the tip is the one that was published; the queue is drained; the repository verifies.
+        assert_eq!(w.history().len(), before.len() + 1);
+        assert_eq!(w.tip(), published);
+        assert_eq!(w.queue_count(), 0);
+        assert!(w.verifies());
+        assert!(
+            w.recovery_witnesses()
+                .doctor(&w.wiki.id)
+                .unwrap()
+                .diagnostics
+                .iter()
+                .all(|d| !d.is_cleanup_pending())
+        );
+        assert!(w.page("pages/Home.md").contains("Uno."));
+        // The records agree with the history: the acceptance sealed in that block, the intent completed, the
+        // proposal accepted, the flag gone.
+        let entry = w.store.acceptances_of(&p.id, 1).unwrap().remove(0);
+        assert!(matches!(
+            entry.result.map(|r| r.outcome),
+            Some(AcceptanceOutcome::Sealed { block_id, .. }) if block_id == published
+        ));
+        assert!(w.store.open_intents(&w.wiki.id).unwrap().is_empty());
+        assert_eq!(w.state(&p), ProposalState::Accepted);
+        assert_eq!(w.store.recovery_flag(&w.wiki.id).unwrap(), None);
+        assert!(w.reconciled().is_clean());
+        // The step is in the recorded plan and in the audit trail before it was taken.
+        let acts = w.store.recovery_acts(&w.wiki.id).unwrap();
+        let record = acts.first().unwrap();
+        assert!(
+            record
+                .act
+                .plan
+                .contains("\"step\":\"complete-publication\""),
+            "{}",
+            record.act.plan
+        );
+        let audit = w.audit();
+        let at = audit
+            .iter()
+            .position(|(a, _, d)| a == "recovery-step" && d == "complete-publication")
+            .expect("the step is audited");
+        assert!(
+            audit
+                .iter()
+                .skip(at + 1)
+                .any(|(a, _, d)| a == "recovery-step" && d == "end-sealed"),
+            "{audit:?}"
+        );
+        // The wiki takes writes again.
+        assert!(matches!(
+            w.accept(&q).expect("writes are accepted again"),
+            inklkunn_core::Accepted::Signed(_)
+        ));
+        assert_eq!(w.history().len(), before.len() + 2);
+        assert!(w.reconciled().is_clean());
+    }
+}
+
+#[test]
+fn a_pending_cleanup_is_not_finished_unless_doctor_names_exactly_that_and_the_block_is_the_acts() {
+    let Some(w) = World::new("cleanup-stops", LeaseConfig::default()) else {
+        return;
+    };
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    w.killed_seal(&p, &[]);
+    let blocks = w.history();
+    let seals = || {
+        std::fs::read_to_string(w.ctl.join("calls.log"))
+            .unwrap()
+            .lines()
+            .filter(|v| *v == "seal")
+            .count()
+    };
+    let seals_before = seals();
+    // Nothing is changed by any of the refusals below.
+    let untouched = |what: &str| {
+        assert_eq!(w.history(), blocks, "{what}");
+        assert_eq!(seals(), seals_before, "{what}: no seal ran");
+        assert!(
+            w.store.recovery_flag(&w.wiki.id).unwrap().is_some(),
+            "{what}"
+        );
+        assert!(w.storage.status(&w.repo).is_err(), "{what}");
+        assert_eq!(w.store.open_intents(&w.wiki.id).unwrap().len(), 1, "{what}");
+    };
+
+    // Another error beside the cleanup, as `doctor` says it: not that code alone, so a stop and nothing done.
+    w.control(
+        "say-doctor",
+        "doctor repository: /x\nerror [PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING]: pointer and log agree but matching active publication state remains\n  recommendation: run signer-backed `prikk seal --allow-no-audit` for the affected ref\nerror [PRIKK-DOCTOR-OBJECT-MISSING]: an object is missing\nissue summary: errors=2, warnings=0, info=0\n",
+    );
+    let r = w.recover();
+    assert_eq!(r.plan.stop, Some(Stop::DoctorTrouble), "{:#?}", r.lines());
+    assert!(matches!(
+        r.outcome,
+        RecoveryOutcome::Stopped { at: None, .. }
+    ));
+    assert!(r.done.is_empty());
+    untouched("another error beside it");
+    // `status` refuses and `doctor` does not say why (a clean report): a witness that cannot be explained is not
+    // read, and recovery fails closed before it plans.
+    w.control(
+        "say-doctor",
+        "doctor repository: /x\ninfo [PRIKK-DOCTOR-VERIFY-OK]: done\nissue summary: errors=0, warnings=0, info=1\n",
+    );
+    for mode in [RecoveryMode::PlanOnly, RecoveryMode::Run] {
+        let r = w.recovery.recover(&w.wiki, mode);
+        assert!(
+            matches!(&r, Err(RecoveryError::Witness(why)) if why.contains("prikk status")),
+            "{r:?}"
+        );
+    }
+    untouched("status refuses and doctor is clean");
+    // The same error as a warning is not the error.
+    w.control(
+        "say-doctor",
+        "doctor repository: /x\nwarning [PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING]: x\nissue summary: errors=0, warnings=1, info=0\n",
+    );
+    assert!(matches!(
+        w.recovery.recover(&w.wiki, RecoveryMode::Run),
+        Err(RecoveryError::Witness(_))
+    ));
+    untouched("a warning of that code");
+    w.uncontrol("say-doctor");
+    // `status` is refused for another reason than an integrity error (prikk could not be asked at all, say): the
+    // pending cleanup does not explain it, and recovery fails closed.
+    w.control("fail-status", "");
+    for mode in [RecoveryMode::PlanOnly, RecoveryMode::Run] {
+        let r = w.recovery.recover(&w.wiki, mode);
+        assert!(
+            matches!(&r, Err(RecoveryError::Witness(why)) if why.contains("injected failure of status")),
+            "{r:?}"
+        );
+    }
+    w.uncontrol("fail-status");
+    untouched("status refused for another reason");
+
+    // The block published is not an unfinished act's: no act at all (its records are gone, say), so the cleanup is
+    // somebody else's publication. A stop, nothing done.
+    let intent = w.store.open_intents(&w.wiki.id).unwrap().remove(0);
+    w.store
+        .complete_intent(&inklkunn_store::IntentCompletion {
+            intent: intent.intent.id.clone(),
+            end: IntentEnd::Abandoned,
+            at: 9,
+        })
+        .unwrap();
+    let acceptance = intent.intent.acceptance.clone();
+    w.store
+        .finish_acceptance(&inklkunn_store::AcceptanceResult {
+            acceptance,
+            outcome: AcceptanceOutcome::Failed {
+                word: "interrupted".to_owned(),
+            },
+            at: 9,
+        })
+        .unwrap();
+    let r = w.recover();
+    assert_eq!(
+        r.plan.stop,
+        Some(Stop::PublishedBlockIsNotTheAct),
+        "{:#?}",
+        r.lines()
+    );
+    assert!(r.done.is_empty());
+    assert_eq!(w.history(), blocks);
+    assert_eq!(seals(), seals_before, "no seal ran");
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
+    assert!(w.storage.status(&w.repo).is_err());
+}
+
+#[test]
+fn a_lone_metadata_debris_after_a_kill_inside_seal_stays_fail_closed_with_the_flag_kept() {
+    // Handoff 004, P15 / ruling 1: recovery has no answer for this and says so. Nothing is changed, the flag is
+    // kept, the operator's steps are in docs/RECOVERY.md.
+    let Some(w) = World::new("failclosed", LeaseConfig::default()) else {
+        return;
+    };
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    // A `seal` killed just after it published: the queue is drained, the ref's metadata is stale. `status` reads;
+    // `doctor` has one warning that asks for nothing; the block is the acceptance's, and recovery still stops.
+    w.killed_seal(&p, &["leaves-only-the-metadata"]);
+    let blocks = w.history();
+    assert_eq!(w.queue_count(), 0, "the queue is drained");
+    let doctor = w.recovery_witnesses().doctor(&w.wiki.id).unwrap();
+    assert!(
+        doctor.diagnostics.iter().any(|d| d.is_metadata_debris()),
+        "{doctor:?}"
+    );
+    assert!(!doctor.is_only_cleanup_pending());
+    for mode in [RecoveryMode::PlanOnly, RecoveryMode::Run] {
+        let r = w.recovery.recover(&w.wiki, mode).unwrap();
+        assert_eq!(r.plan.stop, Some(Stop::DoctorTrouble), "{:#?}", r.lines());
+        assert!(r.done.is_empty());
+    }
+    assert_eq!(w.history(), blocks);
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
+    assert_eq!(w.store.open_intents(&w.wiki.id).unwrap().len(), 1);
+    assert!(w.verifies(), "nothing is lost: the repository verifies");
+
+    // What docs/RECOVERY.md says about it, checked against what recovery and prikk say.
+    let runbook = runbook();
+    for said in [
+        "STOP (doctor-trouble)",
+        "PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS",
+        "active WAL is empty but stale ref metadata remains",
+        "no repair is required; the next guarded active-WAL append will replace stale metadata",
+    ] {
+        assert!(runbook.contains(said), "the runbook says `{said}`");
+    }
+    let r = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
+    assert!(
+        r.lines()
+            .iter()
+            .any(|l| l.contains("STOP (doctor-trouble)")),
+        "{:#?}",
+        r.lines()
+    );
+    let debris = doctor
+        .diagnostics
+        .iter()
+        .find(|d| d.is_metadata_debris())
+        .unwrap();
+    assert!(
+        debris
+            .message
+            .contains("active WAL is empty but stale ref metadata remains")
+    );
+    assert_eq!(
+        debris.recommendation.as_deref(),
+        Some(
+            "no repair is required; the next guarded active-WAL append will replace stale metadata"
+        )
+    );
+}
+
+#[test]
+fn an_empty_lock_file_fails_closed_and_the_runbooks_one_step_lets_recovery_go_on() {
+    // Handoff 004, P15 / ruling 1. A kill the instant prikk created a lock file leaves it empty: `unlock` lists it with
+    // `recorded pid: (unparseable)`, the strict reader refuses it, and recovery changes nothing.
+    let Some(w) = World::new("emptylock", LeaseConfig::default()) else {
+        return;
+    };
+    let p = w.propose(
+        "Half done",
+        &[("pages/Home.md", Some(&HOME.replace("Two.", "Dos.")))],
+    );
+    w.queued_acceptance(&p);
+    let blocks = w.history();
+    let lock = w.repo.join(".prikk/active/default/active.lock");
+    std::fs::write(&lock, "").unwrap();
+    let acts_before = w.store.recovery_acts(&w.wiki.id).unwrap().len();
+    for mode in [RecoveryMode::PlanOnly, RecoveryMode::Run] {
+        let r = w.recovery.recover(&w.wiki, mode);
+        assert!(
+            matches!(&r, Err(RecoveryError::Witness(why))
+                if why.contains("prikk unlock") && why.contains("a recorded pid is not a number")),
+            "{r:?}"
+        );
+    }
+    assert_eq!(w.history(), blocks);
+    assert_eq!(w.queue_count(), 1, "nothing was sealed");
+    assert!(
+        lock.exists(),
+        "recovery does not clear a lock it cannot read"
+    );
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
+    assert_eq!(
+        w.store.recovery_acts(&w.wiki.id).unwrap().len(),
+        acts_before,
+        "a witness that cannot be read plans nothing and records no plan"
+    );
+
+    // docs/RECOVERY.md: what the operator sees, the commands, and what they print.
+    let runbook = runbook();
+    for said in [
+        "a witness could not be read, so nothing is concluded: prikk unlock",
+        "a recorded pid is not a number",
+        "recorded pid: (unparseable)",
+        "prikk unlock --lock <that path>",
+        "no locks currently held",
+    ] {
+        assert!(runbook.contains(said), "the runbook says `{said}`");
+    }
+    assert_eq!(
+        std::fs::metadata(&lock).unwrap().len(),
+        0,
+        "`ls -l` says size 0"
+    );
+    // The step is `prikk unlock --lock <path>`, which clears exactly that file; this crate may not spawn a process,
+    // so the step itself is run against a real prikk in `inklkunn-signer`'s tests (`tests/recover.rs`), and here only
+    // its effect is made.
+    std::fs::remove_file(&lock).unwrap();
+    // After: recovery reads again, makes its plan, and finishes what the kill left.
+    let shown = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
+    assert_eq!(shown.plan.stop, None, "{:#?}", shown.lines());
+    assert_eq!(
+        step_names(&shown),
+        [
+            "seal-queued",
+            "end-sealed",
+            "verify",
+            "reconcile",
+            "clear-flag"
+        ]
+    );
+    let r = w.recover();
+    assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());
+    assert_eq!(w.queue_count(), 0);
+    assert!(w.verifies());
 }
 
 #[test]

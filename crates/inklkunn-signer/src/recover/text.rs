@@ -21,6 +21,10 @@ pub const ACKNOWLEDGED_LOSS_CODE: &str = "PRIKK-DOCTOR-COMMIT-WITNESS-ACKNOWLEDG
 /// The warning prikk gives beside an acknowledged damage: stale ref metadata for an empty WAL, "no repair is
 /// required" (measured on prikk 0.55.0).
 pub const ACTIVE_REF_METADATA_DEBRIS_CODE: &str = "PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS";
+/// The error prikk gives when a `seal` published its block and stopped before it drained the queue: "pointer and log
+/// agree but matching active publication state remains", recommending `prikk seal --allow-no-audit` for the ref
+/// (measured on prikk 0.55.0; handoff 004, P15).
+pub const ACTIVE_CLEANUP_PENDING_CODE: &str = "PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING";
 
 /// The kinds of lock an acceptance leaves behind: `commit` takes the active session's lock and the object store's,
 /// and `seal` a ref's lock and the ref pointer index's and ref log's. A lock of any other kind (the trust policy's,
@@ -91,6 +95,11 @@ impl Diagnostic {
     /// The warning that rides along with an acknowledged damage and asks for nothing.
     pub fn is_metadata_debris(&self) -> bool {
         self.severity == Severity::Warning && self.code == ACTIVE_REF_METADATA_DEBRIS_CODE
+    }
+
+    /// The error of exactly [`ACTIVE_CLEANUP_PENDING_CODE`]: a publication whose cleanup a `seal` did not finish.
+    pub fn is_cleanup_pending(&self) -> bool {
+        self.severity == Severity::Error && self.code == ACTIVE_CLEANUP_PENDING_CODE
     }
 
     /// The `--flags` this diagnostic's message and recommendation name (without `--plan-only`), in order, without
@@ -189,6 +198,17 @@ impl DoctorReport {
         self.diagnostics
             .iter()
             .any(Diagnostic::is_acknowledged_damage)
+    }
+
+    /// `doctor` names **exactly** one thing, the error [`ACTIVE_CLEANUP_PENDING_CODE`]: beside it there is only
+    /// information and unreached-object notes (which do not block). Any other error or warning, a second one of this
+    /// code, or a warning of the same code, is not this.
+    pub fn is_only_cleanup_pending(&self) -> bool {
+        let mut named = self
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity != Severity::Info && !d.is_unreached_note());
+        matches!((named.next(), named.next()), (Some(d), None) if d.is_cleanup_pending())
     }
 
     /// The diagnostics that stand in the way of every automatic step: errors and warnings that are not an unreached

@@ -8,7 +8,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use inklkunn_prikk::sandbox::{CallLimits, Mounts, Run, Sandbox};
-use inklkunn_prikk::storage::{History, HistoryBlock, RepoStatus, Verification};
+use inklkunn_prikk::storage::{Change, History, HistoryBlock, RepoStatus, Verification};
 use inklkunn_prikk::{parse_report, parse_status, schema};
 use serde::Deserialize;
 
@@ -833,6 +833,19 @@ impl Writes {
         let history: History = parse_report("log", &stdout, schema::LOG_REPORT)
             .map_err(|e| SignerError::Damaged(e.to_string()))?;
         Ok(history.blocks.into_iter().next())
+    }
+
+    /// `prikk show <block id or patch id> --format json`: what a block or patch changed, patch by patch (read-only, no
+    /// keys). The id is checked for shape before anything runs.
+    pub(crate) fn change(&self, repo: &Path, id: &str) -> Result<Change, SignerError> {
+        if id.len() != 64 || !id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+            return Err(SignerError::Refused(
+                "a block or patch id is 64 lower-case hex characters".to_owned(),
+            ));
+        }
+        let stdout = self.read(repo, &["show", id, "--format", "json"])?;
+        parse_report("show", &stdout, schema::SHOW_REPORT)
+            .map_err(|e| SignerError::Damaged(e.to_string()))
     }
 
     /// The newest block of the repository's **current** branch, or `None` when it has none yet (a fresh
