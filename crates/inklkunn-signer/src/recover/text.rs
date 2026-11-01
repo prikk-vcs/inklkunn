@@ -73,6 +73,21 @@ impl Diagnostic {
             && (self.code == ACKNOWLEDGED_DAMAGE_CODE || self.code == ACKNOWLEDGED_LOSS_CODE)
     }
 
+    /// What a [`PUBLICATION_UNTRUSTED_CODE`] diagnostic names, as `(kind, id)` (`block`, `ref-state` or `ref-update`,
+    /// and 64 lower-case hex characters): the message must be exactly `<kind> <id> has no trusted MAINTAINER
+    /// signature` (prikk 0.55.0). `None` for any other code and for any other shape.
+    pub fn publication_subject(&self) -> Option<(&str, &str)> {
+        if self.code != PUBLICATION_UNTRUSTED_CODE {
+            return None;
+        }
+        let (kind, id) = self
+            .message
+            .strip_suffix(" has no trusted MAINTAINER signature")?
+            .split_once(' ')?;
+        let hex = id.len() == 64 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+        (hex && matches!(kind, "block" | "ref-state" | "ref-update")).then_some((kind, id))
+    }
+
     /// The warning that rides along with an acknowledged damage and asks for nothing.
     pub fn is_metadata_debris(&self) -> bool {
         self.severity == Severity::Warning && self.code == ACTIVE_REF_METADATA_DEBRIS_CODE
@@ -121,14 +136,19 @@ pub struct DoctorReport {
 pub const PUBLICATION_UNTRUSTED_CODE: &str = "PRIKK-TRUST-PUBLICATION-UNTRUSTED";
 
 impl DoctorReport {
-    /// The same report without the diagnostics of `code`, the counts recomputed, and how many were taken out. For a
-    /// finding that something else has already accounted for (handoff 004, P2: a retired key's publication trust).
+    /// The same report without the [`PUBLICATION_UNTRUSTED_CODE`] diagnostics whose subject `excused` accepts (called
+    /// with the kind and id each names), the counts recomputed, and how many were taken out. Only those: a
+    /// diagnostic of that code that names anything else, or whose message is not of the known shape, stays (handoff
+    /// 004, P13: a retirement's record accounts for exactly what it recorded).
     #[must_use]
-    pub fn without_code(&self, code: &str) -> (DoctorReport, usize) {
+    pub fn without_excused_publication_findings(
+        &self,
+        excused: impl Fn(&str, &str) -> bool,
+    ) -> (DoctorReport, usize) {
         let kept: Vec<Diagnostic> = self
             .diagnostics
             .iter()
-            .filter(|d| d.code != code)
+            .filter(|d| !d.publication_subject().is_some_and(|(k, i)| excused(k, i)))
             .cloned()
             .collect();
         let count = |s: Severity| {

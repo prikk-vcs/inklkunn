@@ -199,6 +199,10 @@ pub const CATALOG: &[Entry] = &[
         "verification.running",
         "A check of this wiki is already running. Wait for it to finish, then look at this page again.",
     ),
+    msg(
+        "verification.explained_by_retirement",
+        "The only failures are those the retirement of key {key} recorded. That key was removed from this wiki's trust, so what it signed can no longer be checked; nothing else failed.",
+    ),
     // about, and the list of wikis
     msg("title.about", "About {wiki} · {product}"),
     msg("about.heading", "About {wiki}"),

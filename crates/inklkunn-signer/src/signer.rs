@@ -561,10 +561,10 @@ impl Signer {
             unconfirmed(Some(sealed.clone()), why, e.to_string())
         })?;
         if !verification.verdict.ok {
-            // A retired key never freezes the wiki (P2, DR-10): a verify that fails exactly and only by
-            // publication trust for blocks a retired key sealed is the known cost and confirms the change. Any
+            // A retired key never freezes the wiki (P2, P2′, DR-10): a verify that fails exactly and only by
+            // publication trust for what a retirement recorded is the known cost and confirms the change. Any
             // other failure, and a failure that cannot be read, is a stop.
-            return match self.retirement_explains(repo, seeds.wiki, &verification) {
+            return match self.retirement_explains(repo, seeds.wiki) {
                 Ok(Some(_)) => Ok(sealed),
                 Ok(None) | Err(_) => Err(unconfirmed(
                     Some(sealed),
@@ -823,7 +823,7 @@ impl RepositoryBootstrap for Signer {
 
 pub(crate) mod lifecycle;
 mod recover;
-mod retirement;
+pub(crate) mod retirement;
 pub(crate) mod superseded;
 
 #[cfg(test)]

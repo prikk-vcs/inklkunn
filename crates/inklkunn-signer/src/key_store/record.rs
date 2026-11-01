@@ -3,7 +3,7 @@
 //! changed generation or a record moved to another wiki's file no longer authenticates; there is no field
 //! of the record that can be edited without the master key being noticed.
 //!
-//! File format `inklkunn-key-record/2`, one JSON object, lower-case hex for the binary fields:
+//! File format `inklkunn-key-record/3`, one JSON object, lower-case hex for the binary fields:
 //! `format`, `wiki`, `generation`, `author_key_id`, `maintainer_key_id`, `created_at`, `rotated_at`
 //! (`null` until a rotation), `superseded` (see below), `nonce` (24 bytes), `sealed` (the ciphertext and its
 //! tag). The plaintext is the two seed files exactly as prikk wrote them, each behind a two-byte big-endian
@@ -13,7 +13,14 @@
 //! id, when it was replaced, whether it was retired, and the tip block id of every view at that moment: the
 //! point after which a seal by that key is not the service's. The ids and block ids are not secret, and are
 //! bound into the seal with everything else, so they cannot be edited either. Format `/1` (no `superseded`)
-//! still opens, as a record that has never been rotated under this rule; every record written is `/2`.
+//! still opens, as a record that has never been rotated under this rule.
+//!
+//! **`excused`** (corrections handoff 004, P2′; format `/3`) is kept inside a superseded entry that was also
+//! **retired**: the exact set of blocks, ref states and ref updates `prikk verify` named when the retirement had
+//! just been made (every one of them failing publication trust for want of the retired key), and nothing else.
+//! It is what a later failing `verify` may be excused by, whole or not at all. It is bound into the seal like the
+//! rest. Format `/2` (no `excused`) still opens, and a retirement recorded in it **excuses nothing**: the set was
+//! never taken, and nothing is guessed to stand in for it. Every record written is `/3`.
 
 use inklkunn_store::WikiId;
 use serde::{Deserialize, Serialize};
@@ -24,11 +31,17 @@ use super::crypto::{CryptoError, MasterKey, NONCE_LEN};
 use super::random::{hex, unhex};
 
 /// The record format name, also the first thing bound into the associated data.
-pub(super) const RECORD_FORMAT: &str = "inklkunn-key-record/2";
+pub(super) const RECORD_FORMAT: &str = "inklkunn-key-record/3";
+/// The format before `excused` existed: still read, never written (a retirement in it excuses nothing).
+const RECORD_FORMAT_V2: &str = "inklkunn-key-record/2";
 /// The format before `superseded` existed: still read, never written.
 const RECORD_FORMAT_V1: &str = "inklkunn-key-record/1";
-/// A record larger than this is not one.
-pub(super) const MAX_RECORD_BYTES: u64 = 2 * 1024 * 1024;
+/// A record larger than this is not one (a retired key's excused set is three 64-character ids for each block a
+/// wiki has, and is why this is not smaller).
+pub(super) const MAX_RECORD_BYTES: u64 = 16 * 1024 * 1024;
+/// The most findings of one retirement a record keeps (about 12 MiB of the record); a wiki whose retirement would
+/// name more is refused before the key is removed from trust.
+pub(crate) const MAX_EXCUSED_SUBJECTS: usize = 150_000;
 /// The most views a rotation records the tips of (a wiki with more refuses to rotate, saying why).
 pub(crate) const MAX_RECORDED_VIEWS: usize = 1024;
 /// The most superseded keys a record keeps.
@@ -82,6 +95,42 @@ pub(crate) struct Superseded {
     pub(crate) retired: bool,
     /// `(view, tip block id)` of every view when it was replaced.
     pub(crate) views: Vec<RecordedTip>,
+    /// What `prikk verify` named just after the key was removed from trust (a retirement only; empty for a key that
+    /// was kept, and for a retirement recorded before this was taken, which excuses nothing).
+    #[serde(default, skip_serializing_if = "Excused::is_empty")]
+    pub(crate) excused: Excused,
+}
+
+/// The findings of publication trust a retirement recorded: ids of the blocks, ref states and ref updates `prikk
+/// verify` named right after the retired key left the trust store, each 64 lower-case hex characters.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Excused {
+    /// Blocks.
+    #[serde(default)]
+    pub(crate) blocks: Vec<String>,
+    /// Ref states.
+    #[serde(default)]
+    pub(crate) ref_states: Vec<String>,
+    /// Ref updates.
+    #[serde(default)]
+    pub(crate) ref_updates: Vec<String>,
+}
+
+impl Excused {
+    /// Nothing recorded.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.blocks.is_empty() && self.ref_states.is_empty() && self.ref_updates.is_empty()
+    }
+
+    /// How many findings.
+    pub(crate) fn len(&self) -> usize {
+        self.blocks.len() + self.ref_states.len() + self.ref_updates.len()
+    }
+
+    fn lists(&self) -> [&Vec<String>; 3] {
+        [&self.blocks, &self.ref_states, &self.ref_updates]
+    }
 }
 
 /// A view and its newest block at the moment of a rotation.
@@ -95,7 +144,11 @@ pub(crate) struct RecordedTip {
 }
 
 fn valid_block_id(s: &str) -> bool {
-    s.is_empty() || (s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
+    s.is_empty() || valid_id(s)
+}
+
+fn valid_id(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 impl Meta {
@@ -122,7 +175,7 @@ impl Meta {
             }
             None => out.push(0),
         }
-        if format == RECORD_FORMAT {
+        if format != RECORD_FORMAT_V1 {
             out.extend_from_slice(&(self.superseded.len() as u32).to_be_bytes());
             for entry in &self.superseded {
                 out.push(0);
@@ -138,6 +191,16 @@ impl Meta {
                     out.extend_from_slice(tip.view.as_bytes());
                     out.push(0);
                     out.extend_from_slice(tip.block_id.as_bytes());
+                }
+                if format == RECORD_FORMAT {
+                    // The ids are 64 characters each, so counts and bytes are unambiguous.
+                    for list in entry.excused.lists() {
+                        out.push(0);
+                        out.extend_from_slice(&(list.len() as u32).to_be_bytes());
+                        for id in list {
+                            out.extend_from_slice(id.as_bytes());
+                        }
+                    }
                 }
             }
         }
@@ -173,6 +236,22 @@ impl Meta {
             {
                 return Err(KeyStoreError::Record(
                     "a superseded key's record has a value prikk would not issue",
+                ));
+            }
+            if entry.excused.len() > MAX_EXCUSED_SUBJECTS
+                || entry
+                    .excused
+                    .lists()
+                    .iter()
+                    .any(|l| l.iter().any(|id| !valid_id(id)))
+            {
+                return Err(KeyStoreError::Record(
+                    "a retired key's recorded findings are too many or are not ids prikk issues",
+                ));
+            }
+            if !entry.retired && !entry.excused.is_empty() {
+                return Err(KeyStoreError::Record(
+                    "a key that was not retired cannot carry recorded findings",
                 ));
             }
         }
@@ -277,6 +356,16 @@ pub(super) fn seal(
     seal_in_format(master, meta, seeds, RECORD_FORMAT)
 }
 
+/// A record in the format before `excused` (tests: it must still open, and a retirement in it excuses nothing).
+#[cfg(test)]
+pub(super) fn seal_v2(
+    master: &MasterKey,
+    meta: &Meta,
+    seeds: &Seeds,
+) -> Result<String, KeyStoreError> {
+    seal_in_format(master, meta, seeds, RECORD_FORMAT_V2)
+}
+
 /// A record in the format before `superseded` (tests: it must still open).
 #[cfg(test)]
 pub(super) fn seal_v1(
@@ -329,11 +418,19 @@ pub(super) fn open(
 ) -> Result<(Meta, Seeds), KeyStoreError> {
     let bad = |what: &'static str| KeyStoreError::Record(what);
     let file: File = serde_json::from_str(text).map_err(|_| bad("the record is not readable"))?;
-    if file.format != RECORD_FORMAT && file.format != RECORD_FORMAT_V1 {
+    if file.format != RECORD_FORMAT
+        && file.format != RECORD_FORMAT_V2
+        && file.format != RECORD_FORMAT_V1
+    {
         return Err(bad("the record's format is not one this build reads"));
     }
     if file.format == RECORD_FORMAT_V1 && !file.superseded.is_empty() {
         return Err(bad("a format 1 record cannot carry superseded keys"));
+    }
+    if file.format != RECORD_FORMAT && file.superseded.iter().any(|s| !s.excused.is_empty()) {
+        return Err(bad(
+            "a record before format 3 cannot carry recorded findings",
+        ));
     }
     if file.wiki != wiki.as_str() {
         return Err(bad("the record is for another wiki"));

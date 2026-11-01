@@ -53,6 +53,10 @@ pub enum SignerError {
         /// What prikk said.
         detail: String,
     },
+    /// The wiki's repository does not verify (or `verify` could not be asked), and a step that must start from a
+    /// verified repository was therefore **not taken; nothing was changed**. The wiki needs recovery first
+    /// (handoff 004, P2′). The text is for operators.
+    NeedsRecovery(String),
     /// The change is committed **and sealed**; only reading its ids back failed. Nothing needs recovery;
     /// the ids are in `log`.
     SealedButUnread(String),
@@ -86,6 +90,9 @@ impl std::fmt::Display for SignerError {
                     f,
                     "the change is committed but `{step}` failed; recovery must complete it: {detail}"
                 )
+            }
+            SignerError::NeedsRecovery(m) => {
+                write!(f, "the wiki needs recovery first; nothing was changed: {m}")
             }
             SignerError::SealedButUnread(m) => {
                 write!(
@@ -347,6 +354,17 @@ pub(crate) fn resource_failure_in(report: &[u8]) -> bool {
         })
 }
 
+/// `checked publication trust records: N` of `prikk verify`'s text: how many blocks, ref states and ref updates
+/// were checked for a trusted signature, and so the most a retirement can name. `None` when the line is not there
+/// exactly once.
+pub(crate) fn checked_publication_trust_records(text: &str) -> Option<u64> {
+    let mut found = text
+        .lines()
+        .filter_map(|l| l.strip_prefix("checked publication trust records: "));
+    let n = found.next()?.trim().parse().ok()?;
+    found.next().is_none().then_some(n)
+}
+
 /// The `(block id, maintainer key id)` pairs of the `sealed-block <id>: <key id>` lines of `prikk verify`'s text.
 /// A line that is not exactly that shape (a 64-character lower-case hex block id, a colon, a space, a key id
 /// prikk accepts) is not one; a block with no key id listed has an empty one.
@@ -386,10 +404,22 @@ pub(crate) struct PublicationTrust {
     pub(crate) ref_states: Vec<String>,
     /// Ref updates with none.
     pub(crate) ref_updates: Vec<String>,
-    /// `publication trust issues: N`, when the line is there.
+    /// `publication trust issues: N`, when the line is there **exactly once** (two such lines are refused, and
+    /// counted in `unrecognised`).
     pub(crate) issues: Option<u64>,
+    /// How many `publication trust issues:` lines there were.
+    pub(crate) issues_lines: usize,
     /// `publication-trust` lines of any other shape.
     pub(crate) unrecognised: usize,
+}
+
+/// One look at `prikk verify`: its JSON verdict and its text (see [`Writes::verify_run`]).
+#[derive(Debug)]
+pub(crate) struct VerifyRun {
+    /// The verdict and the stages.
+    pub(crate) report: Verification,
+    /// The text: the publication-trust findings, the `sealed-block` lines and the counts.
+    pub(crate) text: String,
 }
 
 /// Read the publication-trust part of `prikk verify`'s text, strictly: a line that is not exactly the known shape
@@ -400,7 +430,15 @@ pub(crate) fn parse_publication_trust(text: &str) -> PublicationTrust {
     let mut out = PublicationTrust::default();
     for line in text.lines() {
         if let Some(n) = line.strip_prefix("publication trust issues: ") {
-            out.issues = n.trim().parse().ok();
+            // Exactly one such line (handoff 004, P14): a second one is not the report prikk prints, and which of
+            // the two counts is no question to settle by taking the last.
+            if out.issues_lines == 0 {
+                out.issues = n.trim().parse().ok();
+            } else {
+                out.issues = None;
+                out.unrecognised += 1;
+            }
+            out.issues_lines += 1;
             continue;
         }
         if !line.starts_with("publication-trust") {
@@ -893,30 +931,10 @@ impl Writes {
         Ok(history.blocks.into_iter().map(|b| b.block_id).collect())
     }
 
-    /// The block ids and ref-state ids of a view's history, newest first, at most `limit` of them.
-    pub(crate) fn view_block_states(
-        &self,
-        repo: &Path,
-        view: &str,
-        limit: u64,
-    ) -> Result<Vec<(String, String)>, SignerError> {
-        let limit = limit.to_string();
-        let stdout = self.read(
-            repo,
-            &["log", "--ref", view, "--limit", &limit, "--format", "json"],
-        )?;
-        let history: History = parse_report("log", &stdout, schema::LOG_REPORT)
-            .map_err(|e| SignerError::Damaged(e.to_string()))?;
-        Ok(history
-            .blocks
-            .into_iter()
-            .map(|b| (b.block_id, b.ref_state_id))
-            .collect())
-    }
-
-    /// `prikk verify`'s text, whatever its exit (a failing verification still prints its findings): the words
-    /// [`parse_publication_trust`] and [`parse_sealed_blocks`] read. A call stopped at its bound is an error.
-    pub(crate) fn verify_text(&self, repo: &Path) -> Result<String, SignerError> {
+    /// `prikk verify`'s text and whether it exited 0, whatever its exit (a failing verification still prints its
+    /// findings): the words [`parse_publication_trust`] and [`parse_sealed_blocks`] read. A call stopped at its
+    /// bound is an error.
+    fn verify_text_status(&self, repo: &Path) -> Result<(String, bool), SignerError> {
         let (run, ceiling) =
             self.run_raw(&Mounts::read(repo, None), Sizing::repo(repo), &["verify"])?;
         if run.timed_out || run.output_exceeded {
@@ -925,10 +943,27 @@ impl Writes {
             ));
         }
         let text = String::from_utf8_lossy(&run.stdout).into_owned();
-        if text.trim().is_empty() && !run.status.success() {
+        let success = run.status.success();
+        if text.trim().is_empty() && !success {
             outcome("verify", run, ceiling)?;
         }
-        Ok(text)
+        Ok((text, success))
+    }
+
+    /// One look at `prikk verify`: the verdict (`--format json`) and the findings (the text), asked for one right
+    /// after the other by a caller that holds the wiki's write lock or the recovery lease, and refused when the two
+    /// disagree on whether the repository verifies (handoff 004, P14). prikk 0.55.0 prints the verdict as JSON or
+    /// the findings as text, never both in one run; this is as close to one run as it can be made.
+    pub(crate) fn verify_run(&self, repo: &Path) -> Result<VerifyRun, SignerError> {
+        let report = self.verify(repo)?;
+        let (text, success) = self.verify_text_status(repo)?;
+        if success != report.verdict.ok {
+            return Err(SignerError::Unavailable(
+                "`verify` did not give the same answer twice in a row; nothing was concluded from it"
+                    .to_owned(),
+            ));
+        }
+        Ok(VerifyRun { report, text })
     }
 
     /// Who sealed which block, as `prikk verify` lists it: one `sealed-block <block id>: <maintainer key id>`

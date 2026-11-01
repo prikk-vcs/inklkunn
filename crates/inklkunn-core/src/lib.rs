@@ -77,8 +77,8 @@ pub use authorize::{
     Resource, Snapshot, SourceError, StoreAuthz, SystemPrincipal, decide,
 };
 pub use check::{
-    CONCURRENT_CHECKS, CheckOutcome, Checked, Declined, MIN_RECHECK_SECS, NotChecked, StageFinding,
-    Verifier,
+    CONCURRENT_CHECKS, CheckOutcome, Checked, Declined, MIN_RECHECK_SECS, NotChecked,
+    RetirementReader, StageFinding, Verifier,
 };
 pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, Resolver, StdEgressGuard, StdResolver};
 pub use inbox::Inbox;

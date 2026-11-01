@@ -572,6 +572,8 @@ fn a_retirement_records_the_point_too_and_marks_the_key_retired() {
         "the record says the key was retired"
     );
     assert_eq!(superseded.first().unwrap().views_recorded, 1);
+    // The sealed block, its ref state and its ref update: what `verify` named just after the removal (P2′).
+    assert_eq!(superseded.first().unwrap().findings_recorded, 3);
     // After a retirement prikk cannot verify the old history (ledger PK-34) and prints no list of who sealed
     // what (ledger PK-39), so the check cannot run: it says so and never answers "nothing found" from nothing.
     // It does not need to: the retired key can seal nothing more.
@@ -580,6 +582,72 @@ fn a_retirement_records_the_point_too_and_marks_the_key_retired() {
         matches!(&r, Err(SignerError::Refused(why)) if why.contains("publication-trust")),
         "{r:?}"
     );
+}
+
+#[test]
+fn a_retirement_recorded_without_findings_excuses_nothing() {
+    // P2′: a record from before the set was kept (format 2 opens as a retired key with no findings) excuses nothing,
+    // even when the failure is, in fact, that key's.
+    let Some(w) = world("retire-old-format") else {
+        return;
+    };
+    w.signer
+        .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
+        .unwrap();
+    assert!(
+        matches!(w.signer.retirement_explains(&w.repo, &w.wiki), Ok(Some(_))),
+        "the same failure is excused by the record that holds it"
+    );
+    let mut meta = w.signer.store.status(&w.wiki).unwrap();
+    meta.superseded.last_mut().unwrap().excused = Excused::default();
+    let seeds = crate::key_store::Seeds::new(
+        format!("{}\n", "1".repeat(64)).as_bytes(),
+        format!("{}\n", "2".repeat(64)).as_bytes(),
+    )
+    .unwrap();
+    w.signer.store.replace(&meta, &seeds).unwrap();
+    assert_eq!(
+        w.signer.retirement_explains(&w.repo, &w.wiki),
+        Ok(None),
+        "a retirement with no recorded findings excuses nothing"
+    );
+}
+
+#[test]
+fn a_verdict_and_a_text_that_disagree_conclude_nothing() {
+    // P14: the verdict (JSON) and the findings (text) are one look at `verify`. A prikk whose text says "verifies"
+    // where its verdict says "fails" is not read from: nothing is concluded and nothing is excused.
+    let Some(w) = world("retire-disagree") else {
+        return;
+    };
+    w.signer
+        .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
+        .unwrap();
+    let standin = w._tmp.0.join("prikk-disagrees");
+    std::fs::write(
+        &standin,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = verify ] && [ $# -eq 1 ]; then {} verify; exit 0; fi\nexec {} \"$@\"\n",
+            w.prikk.display(),
+            w.prikk.display()
+        ),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&standin, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let signer = w.signer_with_prikk(&standin);
+    let r = signer.retirement_explains(&w.repo, &w.wiki);
+    assert!(
+        matches!(&r, Err(SignerError::Unavailable(why)) if why.contains("same answer")),
+        "{r:?}"
+    );
+    // The same prikk without the disguise: excused.
+    assert!(matches!(
+        w.signer.retirement_explains(&w.repo, &w.wiki),
+        Ok(Some(_))
+    ));
 }
 
 #[test]

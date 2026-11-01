@@ -884,8 +884,19 @@ pub(crate) async fn check_now(
         let mut stages = Vec::new();
         match &checked.outcome {
             CheckOutcome::Verified => lines.push(t.get(Key::VerificationNowVerified)),
-            CheckOutcome::Failed { stages: found } => {
+            CheckOutcome::Failed {
+                stages: found,
+                explained_by_retirement,
+            } => {
                 lines.push(t.get(Key::VerificationStateFailed));
+                // The label stays; when a retirement recorded every failure, the page says so (P2′, DR-10).
+                if !explained_by_retirement.is_empty() {
+                    lines.push(
+                        t.msg(Key::VerificationExplainedByRetirement)
+                            .with("key", explained_by_retirement.join(", "))
+                            .text(),
+                    );
+                }
                 stages = found.iter().map(|s| s.stage.clone()).collect();
             }
             CheckOutcome::CouldNotBeChecked(why) => lines.push(t.get(match why {

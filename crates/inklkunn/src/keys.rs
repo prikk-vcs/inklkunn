@@ -366,7 +366,7 @@ fn run(
                         OldKeyOutcome::Kept => "old key kept".to_owned(),
                         OldKeyOutcome::Retired => "old key retired".to_owned(),
                         OldKeyOutcome::RetiredUnrecorded(_) => {
-                            "old key retired; the key record could not say so".to_owned()
+                            "old key retired; the key record could not say all of it".to_owned()
                         }
                         OldKeyOutcome::RetireFailed(_) => {
                             "old key retirement FAILED, the old key is still trusted".to_owned()
@@ -411,7 +411,7 @@ fn run(
                             let _ = writeln!(
                                 out,
                                 "previous maintainer key {previous} was removed from the repository's trust; what it sealed no longer verifies. \
-                                 The key record could not be updated to say so ({why}); nothing is trusted that should not be"
+                                 The key record could not say all of it ({why}); nothing is trusted that should not be"
                             );
                             Ok(())
                         }
@@ -480,9 +480,12 @@ fn report_superseded(
             k.generation,
             rfc3339(k.superseded_at),
             if k.retired {
-                ", retired"
+                format!(
+                    ", retired, {} finding(s) of publication trust recorded",
+                    k.findings_recorded
+                )
             } else {
-                ", still trusted"
+                ", still trusted".to_owned()
             },
             k.views_recorded
         );

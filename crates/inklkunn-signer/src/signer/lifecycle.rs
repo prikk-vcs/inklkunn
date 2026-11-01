@@ -23,7 +23,7 @@ use inklkunn_store::WikiId;
 
 use super::{KeyDir, KeyIds, Meta, Signer, SignerError, ks, read_seeds};
 use crate::KeyAuthority;
-use crate::key_store::{MAX_RECORDED_VIEWS, RecordedTip, Superseded};
+use crate::key_store::{Excused, MAX_RECORDED_VIEWS, RecordedTip, Superseded};
 
 /// What happens to the old maintainer key when keys are rotated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,11 +40,13 @@ pub enum OldKey {
 pub enum OldKeyOutcome {
     /// It was left trusted, as asked.
     Kept,
-    /// It was removed from the repository's trust, as asked.
+    /// It was removed from the repository's trust, as asked, and the key record holds the findings the removal
+    /// caused (handoff 004, P2′): a later failure made of exactly those is excused.
     Retired,
-    /// The key was removed from the repository's trust, as asked, **but the key record could not say so**
-    /// (it still lists the key as superseded and not retired). Nothing is trusted that should not be; the
-    /// record's note is the only thing missing. The text is why.
+    /// The key was removed from the repository's trust, as asked, **but the key record could not say all of it**:
+    /// it could not be updated, or it holds no findings (or not all) for this retirement, so a `verify` failure
+    /// is not excused (or not for what was left out) and the wiki stops on it until a new rotation repairs the
+    /// record. Nothing is trusted that should not be. The text is why.
     RetiredUnrecorded(String),
     /// Removal was asked for and **failed**: the keys *were* rotated and the old maintainer key is **still
     /// trusted**. The text is prikk's, for operators; the fix is `prikk trust maintainer remove --key-id <old>`
@@ -101,6 +103,13 @@ impl Signer {
         let _held = self.write_lock(&wiki)?;
         let before = self.store.status(&wiki).map_err(ks)?;
         let generation = before.generation.saturating_add(1);
+        // A retirement starts from a repository that verifies (handoff 004, P2′): `verify` runs before anything is
+        // changed, under the write lock just taken, so nothing happens between it and the removal from trust, and the
+        // old key stays trusted if it does not pass. Its text names the signer of every sealed block.
+        let signers_before = match old_key {
+            OldKey::Keep => Vec::new(),
+            OldKey::Retire => self.verify_before_retirement(repo, &wiki)?,
+        };
         let scratch = self.seed_base.scratch().map_err(ks)?;
         let result = (|| -> Result<Rotation, SignerError> {
             // 1. New keys, in a scratch directory on the tmpfs. The ids depend on the public keys, so the
@@ -152,6 +161,7 @@ impl Signer {
                 superseded_at: now,
                 retired: false,
                 views: tips,
+                excused: Excused::default(),
             });
             let seeds = read_seeds(&keys)?;
             let meta = Meta {
@@ -176,13 +186,30 @@ impl Signer {
                         .untrust_maintainer(repo, &before.maintainer_key_id)
                     {
                         Ok(()) => {
+                            // `verify` just after names what lost its trusted signature; that set is what the record
+                            // keeps, so that a later failure is excused by it and by nothing else (P2′).
+                            let earlier: Vec<(String, Excused)> = before
+                                .superseded
+                                .iter()
+                                .filter(|s| s.retired)
+                                .map(|s| (s.maintainer_key_id.clone(), s.excused.clone()))
+                                .collect();
+                            let (found, problem) = self.record_after_retirement(
+                                repo,
+                                &before.maintainer_key_id,
+                                &signers_before,
+                                &earlier,
+                            );
                             // The record says it too: a retired key is recorded the same way, marked.
                             let mut marked = meta.clone();
                             if let Some(last) = marked.superseded.last_mut() {
                                 last.retired = true;
+                                last.excused = found;
                             }
                             match self.store.replace(&marked, &seeds) {
-                                Ok(()) => OldKeyOutcome::Retired,
+                                Ok(()) => problem.map_or(OldKeyOutcome::Retired, |why| {
+                                    OldKeyOutcome::RetiredUnrecorded(why)
+                                }),
                                 Err(e) => OldKeyOutcome::RetiredUnrecorded(ks(e).to_string()),
                             }
                         }

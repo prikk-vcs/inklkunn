@@ -12,7 +12,7 @@ use crate::accept::{AcceptanceToken, ChangeDigest, PreparedChange, PreparedFile}
 use crate::locks::{self, WriteGuard};
 use crate::message::Message;
 use crate::recover::text::{ACCEPTANCE_LOCK_KINDS, Discarded};
-use crate::recover::{Recover, RecoverError, RecoveryOp, RecoveryToken};
+use crate::recover::{Recover, RecoverError, RecoveryOp, RecoveryToken, RetirementExcuse};
 use crate::worktree::{self, Applied};
 
 /// The most bytes of one file recovery reads back out of the history to restore a worktree, and out of a worktree to
@@ -226,14 +226,11 @@ impl Recover for Signer {
         }
     }
 
-    fn verify_after_retirement(&self, wiki: &WikiId) -> Result<Option<String>, RecoverError> {
-        let repo = self.root.repo_dir(wiki);
-        let report = self.writes.verify(&repo)?;
-        Ok(self.retirement_explains(&repo, wiki, &report)?.map(|n| {
-            format!(
-                "only publication trust fails, {n} finding(s), all for what a retired maintainer key sealed; the badge still says Verification failed (DR-10)"
-            )
-        }))
+    fn verify_after_retirement(
+        &self,
+        wiki: &WikiId,
+    ) -> Result<Option<RetirementExcuse>, RecoverError> {
+        Ok(self.retirement_explains(&self.root.repo_dir(wiki), wiki)?)
     }
 
     fn discard_damaged(

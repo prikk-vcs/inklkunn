@@ -51,10 +51,15 @@ This is the choice, and prikk 0.54.1 makes it a hard one (ledger **PK-34**):
 Use the default for a routine rotation (a schedule, a change of operator): the service no longer holds the
 old seed, and nothing else is known to. Use `--retire-old` when the old seed may be in someone else's hands,
 and accept that the wiki will report *Verification failed* until prikk can keep a retired key's history
-verifiable. **The wiki goes on taking changes** (handoff 004, P2): an acceptance whose `verify` fails exactly and only by
-publication trust, for blocks the retired key sealed before it was replaced, is confirmed, and recovery's `verify` step
-passes with a note. Any other failed condition, or an untrusted block that no retired key could have sealed (one newer
-than the point the key record kept), still stops the wiki. The second flag exists so that cost cannot be paid by accident. The owner ruled this design
+verifiable. **The wiki goes on taking changes** (handoff 004, P2 and P2′): the rotation first runs `prikk verify` and
+refuses to retire (the old key stays trusted; the error says the wiki needs recovery first) unless the repository
+verifies; it removes the key from trust; it runs `verify` again and records in the key record the blocks, ref states and
+ref updates that lost their trusted signature. An acceptance whose `verify` fails by publication trust and by nothing
+else, naming only what the record holds, is confirmed, and recovery's `verify` step passes with a note; the
+verification page says the only failures are those the retirement of that key recorded. Anything else still stops the
+wiki: another failed condition, and a block, ref state or ref update the record does not hold, whoever signed it and
+wherever it sits in the history (a branch published or a rollback made after the retirement with the old seed, a
+block of another key that was taken out of trust later). The second flag exists so that cost cannot be paid by accident. The owner ruled this design
 (DR-10, 2026-10-29) after prikk **confirmed** it on the same day: a leaked copy of a still-trusted key can
 seal anything that verifies, and a rotation that keeps history verifiable while removing the key **is not
 scheduled** in prikk.
@@ -96,11 +101,13 @@ empty tip: every block of that view is then "after"), and a repository that no l
 6. **State what was signed during the window**, to the wiki's maintainers.
 7. **Change the operator's secret** (it re-seals nothing; plan a re-key of the key records — not yet a command).
 
-**After a retirement the service reports every later change as sealed but unconfirmed.** Each acceptance still
-seals, and the wiki's history still grows, but the check that closes every acceptance (`prikk verify`) fails for
-the old key's history, so the signer answers `SealedUnconfirmed` with the new block's ids instead of success
-(a test pins this). Whatever records the acceptance (RFC 004) must treat that answer as "sealed, record the
-block", never as a reason to retry.
+**After a retirement the service goes on taking changes** (handoff 004, P2′). Each acceptance seals, and the check that
+closes it (`prikk verify`) still fails for the old key's history; the signer confirms the change when the failure is
+publication trust and nothing else and names only the blocks, ref states and ref updates the retirement recorded. A
+failure with anything else in it answers `SealedUnconfirmed` with the new block's ids instead of success (a test
+pins this); whatever records the acceptance (RFC 004) must treat that answer as "sealed, record the block", never as a
+reason to retry. A retirement made by an earlier version of inklkunn, or one whose findings could not be recorded, excuses
+nothing: every change is then answered that way.
 
 An *author* key cannot be revoked (prikk has no author trust list): retiring it means only that the service
 stops using it. That is why the maintainer key is the one that matters.

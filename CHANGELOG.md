@@ -618,6 +618,56 @@ Serving sign-in, U3 (handoff `serve-sign-in-and-accept-handoff-v1`) with handoff
   name always present), the ceiling (`prlimit` removed, a wrong number), the store's one-step redemption, and the audit of
   `account link` (taken out).
 
+Corrections from the review of 2026-11-01 (handoff 004, P2′, P13, P14).
+
+- **P2′ — a retirement excuses its own recorded findings and nothing wider.** The first rule (any block at or before the retired key's
+  recorded point, ref updates by count, ref states up to the number of views *now*) let a rollback of `heads/main`, or a branch
+  published from an old block, after a retirement read as the retirement's own cost; the counting rules and the `views` allowance are
+  gone. Now a retirement (`rotate_keys` with `OldKey::Retire`, under the wiki's write lock) runs `prikk verify` **before anything
+  changes** and **refuses to retire** unless it passes (or fails only by what an earlier retirement recorded): the old key stays
+  trusted, nothing else is touched, and the error is `SignerError::NeedsRecovery` (*the wiki needs recovery first; nothing was
+  changed*). It removes the key from trust, runs `verify` again, and records **the exact set of blocks, ref states and ref updates
+  it names** in the authenticated key record (`excused`, in format `inklkunn-key-record/3`, bound into the seal; formats 1 and 2
+  still open and a retirement recorded in them **excuses nothing**). A later failing `verify` is excused **only if** its report has
+  no failed condition but `publication-trust`, its text has exactly one `publication trust issues:` count line (two are refused, as
+  is any line of another shape) and as many findings as it counts, **and every block, ref state and ref update it names is in the
+  recorded set**. Nothing is excused by count or by position. Measured on prikk 0.55.0: the text of the verify *before* lists the
+  signer of every sealed block (`sealed-block <id>: <key id>`); after the key is removed it lists none (`sealed blocks: 0`), and the
+  JSON report names no block at all. So a **block** is recorded only when the verify before listed the retired key as its signer
+  (a named block with another signer, or none, is left out and reported in `OldKeyOutcome::RetiredUnrecorded`, and stops the wiki).
+  **What the record can prove:** that the ids were there, signed by a trusted key, when `verify` passed just before the removal, and
+  that they lost their trusted signature at that moment; the signer of each block. **What it cannot:** the signer of a *ref state* or
+  *ref update* (prikk 0.55 names none, so they are in the set because the removal made them fail), and that the retired key's blocks
+  were honest before the retirement (that is what a compromise puts in doubt). A second retirement starts from a repository that fails
+  only by the first one's record and records the findings the first had not; the union is what is excused. A retirement that would
+  name more than 150,000 findings is refused before the key leaves trust (the record's bound, 16 MiB). A retirement made before
+  this change, or one whose record could not be taken (`RetiredUnrecorded`), excuses nothing: every later `verify` failure stops
+  the wiki, and there is no command that repairs that record. The verification page (after *Check now*) adds *The only failures are
+  those the retirement of key … recorded* when that is so (`CheckOutcome::Failed::explained_by_retirement`, filled by the signer
+  through `Verifier::explain_retirements_with`); the badge still says *Verification failed* (DR-10). The persisted state shows the
+  sentence only after a check made now, not on the page's first load: showing it from the record would need a store field (a schema
+  change), which was not made. Tests (real prikk, self-skipping): the signer's `a_branch_published_from_an_old_block_after_a_retirement_is_not_excused`,
+  `a_rollback_after_a_retirement_is_not_excused`, `a_block_sealed_by_a_third_key_before_the_rotation_is_not_excused`,
+  `a_block_sealed_after_a_retirement_by_the_retired_key_itself_is_not_excused`, `a_retirement_is_refused_while_verify_fails_and_nothing_changes`,
+  `a_second_retirement_starts_from_what_the_first_recorded_and_the_two_add_up`, the lifecycle tests
+  `a_retirement_recorded_without_findings_excuses_nothing` and `a_verdict_and_a_text_that_disagree_conclude_nothing`, plus the
+  existing writes-continue and planted-second-failure tests; the pure judgement in `signer/retirement/tests.rs`; the key record's
+  `a_retirements_recorded_findings_survive_a_reopen_and_are_bound_into_the_seal` and the format-2 test; core's check tests and the
+  web's `a_failure_a_retirement_recorded_is_said_so_beside_a_badge_that_still_says_failed`. A catalog message and its glossary row
+  (English and a Japanese preview): `verification.explained_by_retirement`.
+- **P13 — recovery removes only the `doctor` findings the excuse names.** `Recover::verify_after_retirement` now answers with a
+  `RetirementExcuse` (the note, the retired key ids and the ids of the findings), and the plan takes out of `doctor`'s report the
+  `PRIKK-TRUST-PUBLICATION-UNTRUSTED` diagnostics whose kind and id are in it (`DoctorReport::without_excused_publication_findings`,
+  `Diagnostic::publication_subject`); one that names anything else, or whose message is not of the known shape, stays and the plan stops
+  on it. Tests: core's `recovery_takes_out_only_the_doctor_findings_the_excuse_names`; the reader's
+  `only_the_publication_findings_an_excuse_names_are_taken_out_of_the_report`.
+- **P14 — one look at `verify`, and exactly one count line.** The verdict and the findings come from one `Writes::verify_run`: prikk
+  0.55.0 prints the verdict as JSON **or** the findings as text, never both in a run, so the two are asked for back to back (under the
+  wiki's write lock or the recovery lease) and the answer is refused when they disagree on whether the repository verifies. The text
+  parse refuses a report with two `publication trust issues:` lines (it used to take the last). A question to the signer is now one
+  such pair of runs (it used to be a verdict, then a text read by a separate call, with the caller's own run before them), and none at
+  all when the wiki has no retirement that recorded anything; the acceptance's and recovery's own first `verify` is still separate.
+
 ## [0.1.0] — 2026-10-31
 
 **M1 — read a wiki.** The first release: a standalone server that serves a prikk repository as a wiki. Pages in the

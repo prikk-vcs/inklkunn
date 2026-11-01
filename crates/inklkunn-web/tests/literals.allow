@@ -94,6 +94,7 @@ exact :: wiki.rs :: target :: a placeholder name of a catalog message
 exact :: wiki.rs :: view :: a placeholder name of a catalog message
 exact :: wiki.rs :: license :: a placeholder name of a catalog message
 exact :: wiki.rs :: when :: a placeholder name of a catalog message
+exact :: wiki.rs :: key :: a placeholder name of a catalog message
 exact :: wiki.rs :: a page of wiki `{}` could not be read now: {cause} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
 exact :: wiki.rs :: a verification of wiki `{}` could not be completed: {why} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
 

@@ -40,6 +40,10 @@ pub struct SupersededKey {
     pub retired: bool,
     /// How many views had their tip recorded.
     pub views_recorded: usize,
+    /// How many blocks, ref states and ref updates the retirement recorded as failing publication trust for want
+    /// of this key (handoff 004, P2′); 0 for a key that was kept, and for a retirement recorded before the set was
+    /// kept, which excuses nothing.
+    pub findings_recorded: usize,
 }
 
 /// A block sealed by a superseded maintainer key **after** the rotation that replaced it.
@@ -77,6 +81,7 @@ impl Signer {
                 superseded_at: s.superseded_at,
                 retired: s.retired,
                 views_recorded: s.views.len(),
+                findings_recorded: s.excused.len(),
             })
             .collect())
     }

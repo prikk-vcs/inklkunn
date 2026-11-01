@@ -22,9 +22,10 @@
 //! recency is read **inside** the claim, from the record as it stands, so two requests cannot both pass it.
 
 use std::collections::BTreeSet;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use inklkunn_prikk::{Storage, StorageError, Unavailable};
+use inklkunn_signer::Recover;
 use inklkunn_store::{
     Attempt, NotRun, RootLayout, Verification, VerificationState, WikiRecord, WikiStore,
     record::now_secs,
@@ -80,6 +81,11 @@ pub enum CheckOutcome {
     Failed {
         /// The stages that did not come out well, in prikk's order.
         stages: Vec<StageFinding>,
+        /// The ids of the retired maintainer keys whose retirement recorded every failure, when that is so (handoff
+        /// 004, P2′: the failure is publication trust and nothing else, and every block, ref state and ref update it
+        /// names is in what a retirement recorded). Empty otherwise. **It changes no label**: the badge says
+        /// *Verification failed* as before (DR-10); the verification page only adds the sentence.
+        explained_by_retirement: Vec<String>,
     },
     /// The check did not run to completion. Not a verdict, and the last verdict stands.
     CouldNotBeChecked(NotChecked),
@@ -108,6 +114,23 @@ impl Checked {
     }
 }
 
+/// Who can say that a failed check is made of what a key retirement recorded (handoff 004, P2′): the signer, read-only
+/// and with no keys, through [`Recover::verify_after_retirement`].
+pub trait RetirementReader: Send + Sync {
+    /// The ids of the retired maintainer keys whose recorded findings the wiki's failure is made of, or nothing: when
+    /// it is not a retirement's failure, when there is none, and when it cannot be told.
+    fn explained_by(&self, wiki: &inklkunn_store::WikiId) -> Vec<String>;
+}
+
+impl<T: Recover + ?Sized> RetirementReader for T {
+    fn explained_by(&self, wiki: &inklkunn_store::WikiId) -> Vec<String> {
+        match self.verify_after_retirement(wiki) {
+            Ok(Some(excuse)) => excuse.keys,
+            Ok(None) | Err(_) => Vec::new(),
+        }
+    }
+}
+
 /// Runs the check.
 pub struct Verifier {
     storage: Arc<dyn Storage>,
@@ -116,6 +139,8 @@ pub struct Verifier {
     clock: fn() -> i64,
     cap: usize,
     running: Mutex<BTreeSet<String>>,
+    /// The signer, asked (read-only, no keys) whether a failure is a retirement's; set once, when there is a signer.
+    retirements: OnceLock<Arc<dyn RetirementReader>>,
 }
 
 /// A claim on one wiki's check, given back when it is dropped (also when the check panics).
@@ -149,7 +174,15 @@ impl Verifier {
             clock: now_secs,
             cap: CONCURRENT_CHECKS,
             running: Mutex::new(BTreeSet::new()),
+            retirements: OnceLock::new(),
         }
+    }
+
+    /// Ask `signer` whether a failed check is made of what a key retirement recorded, to say so beside the result
+    /// (handoff 004, P2′). Set once, after the signer is open; a later call changes nothing. Without it a failed check
+    /// is reported as it always was.
+    pub fn explain_retirements_with(&self, reader: Arc<dyn RetirementReader>) {
+        let _ = self.retirements.set(reader);
     }
 
     /// The same, allowing `cap` checks at once (at least one).
@@ -203,7 +236,15 @@ impl Verifier {
         }
         let result = self.storage.verify(&self.layout.repo_dir(&wiki.id));
         let at = (self.clock)();
-        let (outcome, operator) = classify(result);
+        let (mut outcome, operator) = classify(result);
+        if let CheckOutcome::Failed {
+            explained_by_retirement,
+            ..
+        } = &mut outcome
+            && let Some(reader) = self.retirements.get()
+        {
+            *explained_by_retirement = reader.explained_by(&wiki.id);
+        }
         let recorded = match &outcome {
             CheckOutcome::Verified => self.verdict(wiki, VerificationState::Verified, at),
             CheckOutcome::Failed { .. } => self.verdict(wiki, VerificationState::Failed, at),
@@ -275,6 +316,7 @@ fn classify(
                         status: s.status.clone(),
                     })
                     .collect(),
+                explained_by_retirement: Vec::new(),
             },
             None,
         ),

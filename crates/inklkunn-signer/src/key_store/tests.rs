@@ -806,7 +806,7 @@ fn a_record_cannot_be_changed_moved_or_corrupted_without_notice() {
         ),
         (
             "an unknown format",
-            mutate(&|v| v["format"] = "inklkunn-key-record/3".into()),
+            mutate(&|v| v["format"] = "inklkunn-key-record/4".into()),
         ),
         (
             "the older format named on a record sealed in the newer",
@@ -866,7 +866,7 @@ fn a_record_that_is_a_link_or_too_large_is_refused() {
     std::os::unix::fs::symlink(&real, &path).unwrap();
     assert!(matches!(store.status(&wiki), Err(KeyStoreError::Io(_, _))));
     std::fs::remove_file(&path).unwrap();
-    std::fs::write(&path, vec![b'x'; 3 * 1024 * 1024]).unwrap();
+    std::fs::write(&path, vec![b'x'; 17 * 1024 * 1024]).unwrap();
     assert!(matches!(store.status(&wiki), Err(KeyStoreError::Io(_, _))));
 }
 
@@ -1321,6 +1321,19 @@ fn superseded_entry() -> Superseded {
             view: "heads/main".to_owned(),
             block_id: "ab".repeat(32),
         }],
+        excused: Excused::default(),
+    }
+}
+
+fn retired_entry() -> Superseded {
+    Superseded {
+        retired: true,
+        excused: Excused {
+            blocks: vec!["a1".repeat(32), "a2".repeat(32)],
+            ref_states: vec!["b1".repeat(32)],
+            ref_updates: vec!["c1".repeat(32), "c2".repeat(32)],
+        },
+        ..superseded_entry()
     }
 }
 
@@ -1336,7 +1349,7 @@ fn the_superseded_keys_are_kept_in_the_record_and_survive_a_reopen() {
     store.create(&m, &seeds()).unwrap();
     assert_eq!(store.status(&wiki).unwrap(), m);
     let text = std::fs::read_to_string(tmp.0.join(format!("keys/{wiki}.key.json"))).unwrap();
-    assert!(text.contains("inklkunn-key-record/2") && text.contains("superseded"));
+    assert!(text.contains("inklkunn-key-record/3") && text.contains("superseded"));
     drop(store);
     assert_eq!(
         store_in(&tmp.0.join("keys"))
@@ -1358,7 +1371,7 @@ fn a_record_written_before_superseded_keys_existed_still_opens_as_never_rotated_
     let opened = store.status(&wiki).unwrap();
     assert_eq!(opened, meta(&wiki));
     assert!(opened.superseded.is_empty());
-    // A rotation under the new rule rewrites it as format 2.
+    // A rotation under the new rule rewrites it as format 3.
     let mut m = meta(&wiki);
     m.generation = 2;
     m.superseded = vec![superseded_entry()];
@@ -1366,7 +1379,7 @@ fn a_record_written_before_superseded_keys_existed_still_opens_as_never_rotated_
     assert!(
         std::fs::read_to_string(tmp.0.join(format!("keys/{wiki}.key.json")))
             .unwrap()
-            .contains("inklkunn-key-record/2")
+            .contains("inklkunn-key-record/3")
     );
     assert_eq!(store.status(&wiki).unwrap().superseded.len(), 1);
 }
@@ -1408,7 +1421,7 @@ fn a_superseded_entry_cannot_be_edited_added_or_dropped_without_notice() {
         assert!(matches!(&r, Err(KeyStoreError::Record(_))), "{what}: {r:?}");
     }
     // A format-1 record cannot carry the field at all.
-    let v1_with = good.replace("inklkunn-key-record/2", "inklkunn-key-record/1");
+    let v1_with = good.replace("inklkunn-key-record/3", "inklkunn-key-record/1");
     std::fs::write(&path, v1_with).unwrap();
     assert!(matches!(store.status(&wiki), Err(KeyStoreError::Record(_))));
     std::fs::write(&path, &good).unwrap();
@@ -1466,4 +1479,170 @@ fn a_record_with_a_value_prikk_would_not_issue_in_its_superseded_list_is_refused
         ..superseded_entry()
     }];
     store.create(&m, &seeds()).unwrap();
+}
+
+// ---- the findings a retirement recorded (handoff 004, P2')
+
+#[test]
+fn a_retirements_recorded_findings_survive_a_reopen_and_are_bound_into_the_seal() {
+    let tmp = temp("excused");
+    let store = store_in(&tmp.0.join("keys"));
+    let wiki = WikiId::new();
+    let mut m = meta(&wiki);
+    m.generation = 2;
+    m.superseded = vec![retired_entry()];
+    store.create(&m, &seeds()).unwrap();
+    assert_eq!(store.status(&wiki).unwrap(), m);
+    let path = tmp.0.join(format!("keys/{wiki}.key.json"));
+    let good = std::fs::read_to_string(&path).unwrap();
+    assert!(good.contains("inklkunn-key-record/3") && good.contains("excused"));
+    // Not one of the recorded ids can be changed, added, dropped or moved to another kind without notice.
+    let one = "a1".repeat(32);
+    let other = "ff".repeat(32);
+    let edited = |change: &dyn Fn(&mut serde_json::Value)| {
+        let mut v: serde_json::Value = serde_json::from_str(&good).unwrap();
+        change(&mut v);
+        serde_json::to_string(&v).unwrap()
+    };
+    for (what, bad) in [
+        ("an id changed", good.replace(&one, &other)),
+        (
+            "a block moved to the ref states",
+            edited(&|v| {
+                let at = |v: &mut serde_json::Value, list: &str| {
+                    v.pointer_mut(&format!("/superseded/0/excused/{list}"))
+                        .unwrap()
+                        .as_array_mut()
+                        .unwrap()
+                        .clone()
+                };
+                let mut blocks = at(v, "blocks");
+                let mut states = at(v, "ref_states");
+                states.push(blocks.remove(0));
+                let excused = v.pointer_mut("/superseded/0/excused").unwrap();
+                excused
+                    .as_object_mut()
+                    .unwrap()
+                    .insert("blocks".into(), blocks.into());
+                excused
+                    .as_object_mut()
+                    .unwrap()
+                    .insert("ref_states".into(), states.into());
+            }),
+        ),
+        (
+            "an id added",
+            edited(&|v| {
+                v.pointer_mut("/superseded/0/excused/blocks")
+                    .unwrap()
+                    .as_array_mut()
+                    .unwrap()
+                    .push(other.clone().into());
+            }),
+        ),
+        (
+            "an id dropped",
+            edited(&|v| {
+                v.pointer_mut("/superseded/0/excused/ref_updates")
+                    .unwrap()
+                    .as_array_mut()
+                    .unwrap()
+                    .pop();
+            }),
+        ),
+        (
+            "the whole set dropped",
+            edited(&|v| {
+                v.pointer_mut("/superseded/0")
+                    .unwrap()
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("excused");
+            }),
+        ),
+        (
+            "named in a record of the format before",
+            good.replace("inklkunn-key-record/3", "inklkunn-key-record/2"),
+        ),
+    ] {
+        std::fs::write(&path, &bad).unwrap();
+        let r = store.status(&wiki);
+        assert!(matches!(&r, Err(KeyStoreError::Record(_))), "{what}: {r:?}");
+    }
+    std::fs::write(&path, &good).unwrap();
+    assert!(store.status(&wiki).is_ok());
+}
+
+#[test]
+fn a_retirement_in_a_record_of_the_format_before_opens_and_excuses_nothing() {
+    let tmp = temp("format-two");
+    let store = store_in(&tmp.0.join("keys"));
+    let wiki = WikiId::new();
+    let mut m = meta(&wiki);
+    m.generation = 2;
+    // What the previous format held: a retired key with its tips and no findings.
+    m.superseded = vec![Superseded {
+        retired: true,
+        ..superseded_entry()
+    }];
+    let old = record::seal_v2(&store.master, &m, &seeds()).unwrap();
+    assert!(old.contains("inklkunn-key-record/2") && !old.contains("excused"));
+    std::fs::write(tmp.0.join(format!("keys/{wiki}.key.json")), old).unwrap();
+    let opened = store.status(&wiki).unwrap();
+    assert_eq!(opened, m);
+    let entry = opened.superseded.first().unwrap();
+    assert!(entry.retired && entry.excused.is_empty());
+}
+
+#[test]
+fn recorded_findings_that_prikk_would_not_issue_are_refused_at_sealing() {
+    let tmp = temp("check-excused");
+    let store = store_in(&tmp.0.join("keys"));
+    let wiki = WikiId::new();
+    for (what, entry) in [
+        (
+            "an id that is not hex",
+            Superseded {
+                excused: Excused {
+                    blocks: vec!["zz".into()],
+                    ..Excused::default()
+                },
+                ..retired_entry()
+            },
+        ),
+        (
+            "an upper-case id",
+            Superseded {
+                excused: Excused {
+                    ref_states: vec!["AB".repeat(32)],
+                    ..Excused::default()
+                },
+                ..retired_entry()
+            },
+        ),
+        (
+            "findings on a key that was not retired",
+            Superseded {
+                retired: false,
+                ..retired_entry()
+            },
+        ),
+        (
+            "more findings than a record keeps",
+            Superseded {
+                excused: Excused {
+                    blocks: vec!["ab".repeat(32); MAX_EXCUSED_SUBJECTS + 1],
+                    ..Excused::default()
+                },
+                ..retired_entry()
+            },
+        ),
+    ] {
+        let mut m = meta(&wiki);
+        m.superseded = vec![entry];
+        assert!(
+            matches!(store.create(&m, &seeds()), Err(KeyStoreError::Record(_))),
+            "{what}"
+        );
+    }
 }

@@ -253,3 +253,66 @@ plan only -- nothing written
     let bare = parse_discard_output("damaged commit discarded\n").unwrap();
     assert_eq!(bare, Discarded::default());
 }
+
+/// The report of a repository after a key retirement (shape measured on prikk 0.55.0): one error for each block, ref
+/// state and ref update that lost its trusted signature, then the summary.
+fn untrusted_report(findings: &[(&str, char)]) -> String {
+    let mut out =
+        String::from("doctor repository: /srv/r/.prikk\nverified repository: /srv/r/.prikk\n");
+    for (kind, c) in findings {
+        out.push_str(&format!(
+            "error [PRIKK-TRUST-PUBLICATION-UNTRUSTED]: {kind} {} has no trusted MAINTAINER signature\n  recommendation: configure trusted MAINTAINER keys and re-run verification; doctor will not auto-trust keys or repair signatures\n",
+            c.to_string().repeat(64)
+        ));
+    }
+    out.push_str(&format!(
+        "issue summary: errors={}, warnings=0, info=0\n",
+        findings.len()
+    ));
+    out
+}
+
+#[test]
+fn only_the_publication_findings_an_excuse_names_are_taken_out_of_the_report() {
+    // P13. The subject of a finding is its kind and id; the report loses those the excuse accepts, and no other.
+    let report = parse_doctor_output(&untrusted_report(&[
+        ("block", 'a'),
+        ("ref-state", '1'),
+        ("ref-update", '8'),
+        ("block", 'b'),
+    ]))
+    .unwrap();
+    assert_eq!(
+        nth(&report.diagnostics, 0).publication_subject(),
+        Some(("block", "a".repeat(64).as_str()))
+    );
+    let (rest, removed) = report.without_excused_publication_findings(|kind, id| {
+        (kind == "block" && id == "a".repeat(64)) || (kind == "ref-state" && id == "1".repeat(64))
+    });
+    assert_eq!(removed, 2);
+    assert_eq!((rest.errors, rest.diagnostics.len()), (2, 2));
+    assert_eq!(
+        nth(&rest.diagnostics, 0).publication_subject(),
+        Some(("ref-update", "8".repeat(64).as_str()))
+    );
+    // Nothing accepted, nothing taken out; the same id under another kind is another finding.
+    assert_eq!(
+        report.without_excused_publication_findings(|_, _| false).1,
+        0
+    );
+    let (_, removed) = report.without_excused_publication_findings(|kind, id| {
+        kind == "ref-state" && id == "a".repeat(64)
+    });
+    assert_eq!(removed, 0);
+    // A finding of another code, or of a shape this build does not know, is never taken out, whatever is accepted.
+    let odd = parse_doctor_output(
+        "doctor repository: /x\nerror [PRIKK-TRUST-PUBLICATION-UNTRUSTED]: tag aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa has no trusted MAINTAINER signature\nerror [PRIKK-DOCTOR-COMMIT-WITNESS-ACKNOWLEDGED-DAMAGE]: block aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa has no trusted MAINTAINER signature\nissue summary: errors=2, warnings=0, info=0\n",
+    )
+    .unwrap();
+    assert!(
+        odd.diagnostics
+            .iter()
+            .all(|d| d.publication_subject().is_none())
+    );
+    assert_eq!(odd.without_excused_publication_findings(|_, _| true).1, 0);
+}

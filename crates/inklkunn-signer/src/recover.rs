@@ -28,6 +28,7 @@ use inklkunn_prikk::sandbox::Sandbox;
 use inklkunn_store::{RootLayout, WikiId};
 
 use crate::accept::AcceptanceToken;
+pub use crate::signer::retirement::RetirementExcuse;
 use crate::writes::{SignerError, Writes};
 
 pub mod text;
@@ -217,12 +218,16 @@ pub trait Recover: Send + Sync {
         act: &RecoveryToken,
     ) -> Result<usize, RecoverError>;
 
-    /// A failed `verify` that a **retired key** accounts for exactly and only (handoff 004, P2; DR-10): `Some(note)`
-    /// when `prikk verify` fails by publication trust alone, for blocks the wiki's retired maintainer key sealed
-    /// before it was replaced, and by nothing else; `None` for anything else, including a verify that passes. The
-    /// note is for the recovery report. Read-only and keyless: it needs no recorded act and no lease. The default
-    /// excuses nothing.
-    fn verify_after_retirement(&self, wiki: &WikiId) -> Result<Option<String>, RecoverError> {
+    /// A failed `verify` that a **retirement** accounts for exactly and only (handoff 004, P2′; DR-10): `Some` when
+    /// `prikk verify` fails by publication trust alone and **every** block, ref state and ref update it names is in
+    /// the set a retirement recorded in the authenticated key record; `None` for anything else, including a verify
+    /// that passes and a retirement recorded before the set was kept. The answer names those findings, so that the
+    /// caller can take out exactly them and nothing else. Read-only and keyless: it needs no recorded act and no
+    /// lease. The default excuses nothing.
+    fn verify_after_retirement(
+        &self,
+        wiki: &WikiId,
+    ) -> Result<Option<RetirementExcuse>, RecoverError> {
         let _ = wiki;
         Ok(None)
     }

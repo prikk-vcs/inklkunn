@@ -1558,7 +1558,8 @@ impl Recover for ExcusesFirst {
     fn verify_after_retirement(
         &self,
         wiki: &inklkunn_store::WikiId,
-    ) -> Result<Option<String>, inklkunn_core::RecoverError> {
+    ) -> Result<Option<inklkunn_signer::recover::RetirementExcuse>, inklkunn_core::RecoverError>
+    {
         use std::sync::atomic::Ordering;
         let left = self.1.load(Ordering::SeqCst);
         if left == 0 {
@@ -1663,6 +1664,99 @@ fn a_failure_the_signer_does_not_excuse_keeps_the_flag_even_after_a_retirement()
         "{:#?}",
         r.lines()
     );
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
+}
+
+/// The real signer's answer about a retirement with the blocks left out of what it excuses: `doctor` still names them.
+struct ForgetsTheBlocks(Arc<Signer>);
+
+impl Recover for ForgetsTheBlocks {
+    fn verify_after_retirement(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+    ) -> Result<Option<inklkunn_signer::recover::RetirementExcuse>, inklkunn_core::RecoverError>
+    {
+        Ok(self.0.verify_after_retirement(wiki)?.map(|mut excuse| {
+            excuse.blocks.clear();
+            excuse
+        }))
+    }
+
+    fn seal_queued(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+        view: &str,
+        act: &inklkunn_core::RecoveryToken,
+        acceptance: &AcceptanceToken,
+    ) -> Result<(), inklkunn_core::RecoverError> {
+        self.0.seal_queued(wiki, view, act, acceptance)
+    }
+
+    fn discard_damaged(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+        act: &inklkunn_core::RecoveryToken,
+    ) -> Result<inklkunn_signer::recover::text::Discarded, inklkunn_core::RecoverError> {
+        self.0.discard_damaged(wiki, act)
+    }
+
+    fn clear_locks(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+        act: &inklkunn_core::RecoveryToken,
+        locks: &[String],
+    ) -> Result<Vec<String>, inklkunn_core::RecoverError> {
+        self.0.clear_locks(wiki, act, locks)
+    }
+
+    fn restore_worktree(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+        view: &str,
+        act: &inklkunn_core::RecoveryToken,
+    ) -> Result<usize, inklkunn_core::RecoverError> {
+        self.0.restore_worktree(wiki, view, act)
+    }
+}
+
+#[test]
+fn recovery_takes_out_only_the_doctor_findings_the_excuse_names() {
+    // P13. `doctor` reports one error for each block, ref state and ref update without a trusted signature. Only
+    // those the signer's answer names are a note; a finding of that code that it does not name is damage and the
+    // plan stops on it, though the answer is "yes" (before: every finding of the code was taken out at once).
+    let Some(w) = World::new("retired-names", LeaseConfig::default()) else {
+        return;
+    };
+    w.signer
+        .rotate_keys(&KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
+        .expect("a rotation that retires the old key");
+    let q = w.propose(
+        "Half done",
+        &[("pages/Other.md", Some(&OTHER.replace("Hello.", "Hola.")))],
+    );
+    w.queued_acceptance(&q);
+    let recovery_with = |signer: Arc<dyn Recover>| {
+        Recovery::new(RecoveryParts {
+            acceptances: w.store.clone(),
+            acts: w.store.clone(),
+            proposals: w.store.clone(),
+            storage: w.storage.clone(),
+            witnesses: Arc::new(Witnesses::new(
+                &w.standin,
+                Sandbox::Unconfined,
+                w.layout.clone(),
+            )),
+            signer,
+            leases: w.leases.clone(),
+            layout: w.layout.clone(),
+            audit: w.store.clone(),
+        })
+    };
+    let r = recovery_with(Arc::new(ForgetsTheBlocks(w.signer.clone())))
+        .recover(&w.wiki, RecoveryMode::Run)
+        .unwrap();
+    assert_eq!(r.plan.stop, Some(Stop::DoctorTrouble), "{:#?}", r.lines());
+    assert_eq!(w.queue_count(), 1, "nothing was sealed");
     assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
 }
 

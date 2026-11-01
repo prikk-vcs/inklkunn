@@ -226,6 +226,10 @@ pub const CATALOG: &[Entry] = &[
         "verification.running",
         "このウィキの確認はすでに実行中です。終わるまでお待ちになってから、このページをもう一度ご覧ください。",
     ),
+    msg(
+        "verification.explained_by_retirement",
+        "確認に失敗した箇所は、鍵 {key} の失効時に記録されたものだけです。その鍵はこのウィキの信頼から外されたため、その鍵が署名した部分は確認できなくなっています。ほかに失敗はありません。",
+    ),
     // about, and the list of wikis
     msg("title.about", "{wiki} について · {product}"),
     msg("about.heading", "{wiki} について"),

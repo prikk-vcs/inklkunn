@@ -460,6 +460,45 @@ async fn the_verification_page_states_the_record_and_runs_a_check_on_request() {
     assert_eq!(w.fake.verifies(), 1);
 }
 
+/// Says that a retirement of `key` recorded every failure (what the signer says, P2′).
+struct Retired(&'static str);
+
+impl inklkunn_core::RetirementReader for Retired {
+    fn explained_by(&self, _: &inklkunn_store::WikiId) -> Vec<String> {
+        vec![self.0.to_owned()]
+    }
+}
+
+#[tokio::test]
+async fn a_failure_a_retirement_recorded_is_said_so_beside_a_badge_that_still_says_failed() {
+    // P2′ (DR-10): the verification page says the only failures are those the retirement of the key recorded; the
+    // label does not change: it is *Verification failed* here and on every page.
+    let w = handbook();
+    w.services
+        .verifier
+        .explain_retirements_with(std::sync::Arc::new(Retired("inklkunn-w-maintainer")));
+    w.fake.verify_says(Ok(damaged()));
+    let a = post_form(&w, "/handbook/-/verification", true).await;
+    assert!(a.body.contains(">Verification failed</a>"), "{}", a.body);
+    assert!(
+        a.body.contains(
+            "The only failures are those the retirement of key inklkunn-w-maintainer recorded."
+        ),
+        "{}",
+        a.body
+    );
+    assert!(a.body.contains("<li><code>refs</code></li>"), "{}", a.body);
+    let home = get(&w, "/handbook/Home").await;
+    assert!(home.body.contains(">Verification failed</a>"));
+    assert!(!home.body.contains("the retirement of key"));
+    // A failed check no retirement accounts for says nothing of the kind.
+    let w = handbook();
+    w.fake.verify_says(Ok(damaged()));
+    let b = post_form(&w, "/handbook/-/verification", true).await;
+    assert!(b.body.contains(">Verification failed</a>"));
+    assert!(!b.body.contains("the retirement of key"), "{}", b.body);
+}
+
 #[tokio::test]
 async fn a_failed_check_names_the_stages_and_a_check_that_could_not_run_is_not_a_failure() {
     let w = handbook();

@@ -388,6 +388,16 @@ impl Fixture {
             == Some(&serde_json::Value::Bool(true))
     }
 
+    /// The text of a prikk verb run in the repository, whatever its exit.
+    fn prikk_text(&self, args: &[&str]) -> String {
+        let out = Command::new(&self.prikk)
+            .args(args)
+            .current_dir(&self.repo)
+            .output()
+            .expect("prikk runs");
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    }
+
     fn queue_count(&self) -> u64 {
         self.prikk_json(&["status", "--format", "json"])
             .pointer("/queue/count")
@@ -1995,11 +2005,34 @@ fn after_a_retirement_writes_continue_and_the_repository_still_fails_its_verific
         .filter_map(|c| field(c, "id").as_str())
         .collect();
     assert_eq!(conditions, ["publication-trust"]);
-    // Recovery asks the signer the same question and gets the same answer, with a note for its report.
-    let note = Recover::verify_after_retirement(&f.signer, &f.wiki).expect("asked");
+    // Recovery asks the signer the same question and gets the same answer, with a note for its report, the key the
+    // retirement removed, and exactly the findings the failure names (each recorded by that retirement).
+    let excuse = Recover::verify_after_retirement(&f.signer, &f.wiki)
+        .expect("asked")
+        .expect("the failure is the retirement's");
+    assert_eq!(excuse.keys, [format!("inklkunn-{}-maintainer", f.wiki)]);
+    assert!(excuse.note.contains("recorded by the retirement of key"));
+    let reported = f.prikk_text(&["verify"]);
+    let named = excuse.blocks.len() + excuse.ref_states.len() + excuse.ref_updates.len();
     assert!(
-        note.as_deref().is_some_and(|n| n.contains("retired")),
-        "{note:?}"
+        reported.contains(&format!("publication trust issues: {named}")),
+        "{reported}"
+    );
+    for block in &excuse.blocks {
+        assert!(excuse.names("block", block));
+        assert!(reported.contains(&format!("block {block} has no trusted")));
+    }
+    // The key record kept what the retirement named: the blocks the retired key sealed, with their ref states and
+    // ref updates, and nothing of the three writes made after it (those are sealed by the new key and verify).
+    let kept = f.signer.superseded_keys(&f.wiki).unwrap();
+    assert_eq!(kept.len(), 1);
+    let only = kept.first().unwrap();
+    assert!(only.retired);
+    assert_eq!(only.findings_recorded, named);
+    assert_eq!(
+        excuse.blocks.len(),
+        1,
+        "the retired key sealed the first change only"
     );
 }
 
@@ -2032,71 +2065,121 @@ fn a_repository_that_verifies_or_whose_key_was_only_rotated_has_nothing_to_excus
     );
 }
 
-/// A key of a stranger, adopted in the repository by hand and then removed from trust again, with one block it
-/// sealed in between: after this the repository fails publication trust for a block no retired key sealed.
-fn plant_a_block_sealed_by_an_untrusted_key(f: &Fixture) {
+/// A key that is not the service's, adopted in the repository by hand: a stranger's, or a thief's copy of a retired
+/// seed (prikk judges a signature by the id and the trust set, so for `verify` they are the same). While it is
+/// adopted it can seal and publish; [`Stranger::removed`] takes it out of trust again, leaving what it did as
+/// findings of publication trust that no retirement of this wiki recorded.
+struct Stranger<'a> {
+    f: &'a Fixture,
+    author: PathBuf,
+    maintainer: PathBuf,
+    id: String,
+}
+
+fn prikk_in(f: &Fixture, args: &[&str], envs: &[(&str, &Path)]) -> String {
     use std::process::Stdio;
-    let dir = f.ctl.join("stranger");
-    std::fs::create_dir_all(&dir).unwrap();
-    let run = |args: &[&str], envs: &[(&str, &Path)]| {
-        let mut c = Command::new(&f.prikk);
-        c.args(args)
-            .current_dir(&f.repo)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        for (k, v) in envs {
-            c.env(k, v);
-        }
-        let out = c.output().expect("prikk runs");
-        assert!(
-            out.status.success(),
-            "{args:?}: {}",
-            String::from_utf8_lossy(&out.stderr)
+    let mut c = Command::new(&f.prikk);
+    c.args(args)
+        .current_dir(&f.repo)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    for (k, v) in envs {
+        c.env(k, v);
+    }
+    let out = c.output().expect("prikk runs");
+    assert!(
+        out.status.success(),
+        "{args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+impl<'a> Stranger<'a> {
+    fn adopt(f: &'a Fixture) -> Stranger<'a> {
+        let dir = f.ctl.join("stranger");
+        std::fs::create_dir_all(&dir).unwrap();
+        let (author, maintainer) = (dir.join("a.seed"), dir.join("m.seed"));
+        let _ = std::fs::remove_file(&author);
+        let _ = std::fs::remove_file(&maintainer);
+        prikk_in(
+            f,
+            &["key", "generate", "--out", author.to_str().unwrap()],
+            &[],
         );
-        String::from_utf8_lossy(&out.stdout).into_owned()
-    };
-    let (author, maintainer) = (dir.join("a.seed"), dir.join("m.seed"));
-    run(&["key", "generate", "--out", author.to_str().unwrap()], &[]);
-    run(
-        &["key", "generate", "--out", maintainer.to_str().unwrap()],
-        &[],
-    );
-    let id = std::fs::read_to_string(dir.join("m.seed.key-id")).unwrap();
-    let id = id.trim();
-    let public = run(
-        &["key", "public", "--seed-file", maintainer.to_str().unwrap()],
-        &[],
-    );
-    let public = public
-        .lines()
-        .find_map(|l| l.strip_prefix("public key: "))
-        .unwrap()
-        .trim()
-        .to_owned();
-    run(
-        &[
-            "trust",
-            "maintainer",
-            "add",
-            "--key-id",
+        prikk_in(
+            f,
+            &["key", "generate", "--out", maintainer.to_str().unwrap()],
+            &[],
+        );
+        let id = std::fs::read_to_string(dir.join("m.seed.key-id")).unwrap();
+        let id = id.trim().to_owned();
+        let public = prikk_in(
+            f,
+            &["key", "public", "--seed-file", maintainer.to_str().unwrap()],
+            &[],
+        );
+        let public = public
+            .lines()
+            .find_map(|l| l.strip_prefix("public key: "))
+            .unwrap()
+            .trim()
+            .to_owned();
+        prikk_in(
+            f,
+            &[
+                "trust",
+                "maintainer",
+                "add",
+                "--key-id",
+                &id,
+                "--public-key",
+                &public,
+            ],
+            &[],
+        );
+        Stranger {
+            f,
+            author,
+            maintainer,
             id,
-            "--public-key",
-            &public,
-        ],
-        &[],
-    );
-    std::fs::write(
-        f.repo.join("pages/Stranger.md"),
-        "---\ntitle: Stranger\n---\n\nhi\n",
-    )
-    .unwrap();
-    let envs: [(&str, &Path); 2] = [
-        ("PRIKK_AUTHOR_SEED_FILE", author.as_path()),
-        ("PRIKK_MAINTAINER_SEED_FILE", maintainer.as_path()),
-    ];
-    run(&["commit", "-m", "A stranger's change"], &envs);
-    run(&["seal", "--allow-no-audit"], &envs);
-    run(&["trust", "maintainer", "remove", "--key-id", id], &[]);
+        }
+    }
+
+    /// A prikk verb run with this key's seeds.
+    fn run(&self, args: &[&str]) -> String {
+        let envs: [(&str, &Path); 2] = [
+            ("PRIKK_AUTHOR_SEED_FILE", self.author.as_path()),
+            ("PRIKK_MAINTAINER_SEED_FILE", self.maintainer.as_path()),
+        ];
+        prikk_in(self.f, args, &envs)
+    }
+
+    /// A change of its own, committed and sealed.
+    fn seals_a_change(&self) {
+        std::fs::write(
+            self.f.repo.join("pages/Stranger.md"),
+            "---\ntitle: Stranger\n---\n\nhi\n",
+        )
+        .unwrap();
+        self.run(&["commit", "-m", "A stranger's change"]);
+        self.run(&["seal", "--allow-no-audit"]);
+    }
+
+    fn removed(self) {
+        prikk_in(
+            self.f,
+            &["trust", "maintainer", "remove", "--key-id", &self.id],
+            &[],
+        );
+    }
+}
+
+/// The repository fails publication trust for a block no retirement of this wiki recorded: a stranger's change.
+fn plant_a_block_sealed_by_an_untrusted_key(f: &Fixture) {
+    let stranger = Stranger::adopt(f);
+    stranger.seals_a_change();
+    stranger.removed();
 }
 
 #[test]
@@ -2142,6 +2225,214 @@ fn a_second_failure_planted_after_a_retirement_still_stops_the_wiki() {
         Recover::verify_after_retirement(&f.signer, &f.wiki),
         Ok(None)
     );
+}
+
+fn retire_the_maintainer_key(f: &Fixture) {
+    f.signer
+        .rotate_keys(
+            &inklkunn_signer::KeyAuthority::for_tests(),
+            &f.repo,
+            inklkunn_signer::OldKey::Retire,
+        )
+        .expect("a rotation that retires the old key");
+}
+
+/// An ordinary write by the service: it is accepted and confirmed whatever the retirements left behind.
+fn an_ordinary_write_is_confirmed(f: &Fixture, text: &str) {
+    let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some(text))], vec![]);
+    f.signer
+        .accept(&f.wiki, MAIN, &p.token, &p.change)
+        .unwrap_or_else(|e| panic!("an ordinary write after a retirement was not confirmed: {e}"));
+}
+
+/// The next write is sealed and cannot be confirmed (`verify` fails by something no retirement recorded), and the
+/// signer's answer to recovery's question is "no".
+fn the_wiki_is_stopped(f: &Fixture, what: &str) {
+    assert_eq!(
+        Recover::verify_after_retirement(&f.signer, &f.wiki),
+        Ok(None),
+        "{what}: recovery's question"
+    );
+    let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("after\n"))], vec![]);
+    let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+    assert!(
+        matches!(
+            &r,
+            Err(AcceptError::SealedUnconfirmed {
+                why: Unconfirmed::VerifyFailed,
+                ..
+            })
+        ),
+        "{what}: {r:?}"
+    );
+}
+
+#[test]
+fn a_branch_published_from_an_old_block_after_a_retirement_is_not_excused() {
+    // P2′: after a retirement (a key that may be in someone else's hands) a branch published from an old block adds
+    // a ref state and a ref update. Counting them against the ref states the retirement made excused them; the
+    // retirement's own record does not hold them.
+    let Some(f) = fixture("retired-branch", Sandbox::Unconfined, false) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    retire_the_maintainer_key(&f);
+    assert!(
+        matches!(
+            Recover::verify_after_retirement(&f.signer, &f.wiki),
+            Ok(Some(_))
+        ),
+        "the retirement's own findings are excused"
+    );
+    // heads/main is still at the block the retired key sealed: the branch starts from an old block.
+    assert_eq!(f.tip_block(MAIN), f.first_block);
+    let thief = Stranger::adopt(&f);
+    thief.run(&["branch", "create", "heads/old-copy", "--from", MAIN]);
+    thief.removed();
+    the_wiki_is_stopped(&f, "a branch from an old block");
+}
+
+#[test]
+fn a_rollback_after_a_retirement_is_not_excused() {
+    // P2′: a rollback sealed after the retirement by a key that is not trusted moves heads/main, adding a block, a
+    // ref state and a ref update the retirement did not record.
+    let Some(f) = fixture("retired-rollback", Sandbox::Unconfined, false) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    retire_the_maintainer_key(&f);
+    an_ordinary_write_is_confirmed(&f, "one\n");
+    let thief = Stranger::adopt(&f);
+    thief.run(&["rollback-draft", "--append-inverse", "-m", "Roll it back"]);
+    thief.run(&["seal", "--allow-no-audit"]);
+    thief.removed();
+    assert_eq!(
+        Recover::verify_after_retirement(&f.signer, &f.wiki),
+        Ok(None)
+    );
+}
+
+#[test]
+fn a_block_sealed_by_a_third_key_before_the_rotation_is_not_excused() {
+    // P2′: the old rule excused any block at or before a retired key's recorded point, whoever sealed it. The
+    // first key sealed the first change and was kept at the first rotation; the second key is retired at the
+    // second. When the first key is later taken out of trust by hand, its blocks lose their signature too, sit
+    // before both recorded points, and are not in the second key's record.
+    let Some(f) = fixture("retired-third", Sandbox::Unconfined, false) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    f.signer
+        .rotate_keys(
+            &inklkunn_signer::KeyAuthority::for_tests(),
+            &f.repo,
+            inklkunn_signer::OldKey::Keep,
+        )
+        .expect("the first rotation keeps the key");
+    an_ordinary_write_is_confirmed(&f, "by the second key\n");
+    retire_the_maintainer_key(&f);
+    an_ordinary_write_is_confirmed(&f, "by the third key\n");
+    assert!(matches!(
+        Recover::verify_after_retirement(&f.signer, &f.wiki),
+        Ok(Some(_))
+    ));
+    prikk_in(
+        &f,
+        &[
+            "trust",
+            "maintainer",
+            "remove",
+            "--key-id",
+            &format!("inklkunn-{}-maintainer", f.wiki),
+        ],
+        &[],
+    );
+    the_wiki_is_stopped(&f, "the first key's blocks");
+}
+
+#[test]
+fn a_block_sealed_after_a_retirement_by_the_retired_key_itself_is_not_excused() {
+    // Not by position and not by key: the record holds the ids that failed when the key was removed, so a later
+    // seal under the same key id, however it was made, names a block the record does not hold.
+    let Some(f) = fixture("retired-late", Sandbox::Unconfined, false) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    retire_the_maintainer_key(&f);
+    an_ordinary_write_is_confirmed(&f, "one\n");
+    let thief = Stranger::adopt(&f);
+    thief.seals_a_change();
+    thief.removed();
+    the_wiki_is_stopped(&f, "a later block");
+}
+
+#[test]
+fn a_retirement_is_refused_while_verify_fails_and_nothing_changes() {
+    // P2′: `verify` runs before the key leaves the trust store, and a repository that does not verify is not retired
+    // from: the old key stays trusted, the key record does not change, and the error says what to do.
+    let Some(f) = fixture("retire-refused", Sandbox::Unconfined, false) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    plant_a_block_sealed_by_an_untrusted_key(&f);
+    let status = f.signer.key_status(&f.wiki).unwrap();
+    let trusted = f.prikk_text(&["trust", "maintainer", "list"]);
+    let r = f.signer.rotate_keys(
+        &inklkunn_signer::KeyAuthority::for_tests(),
+        &f.repo,
+        inklkunn_signer::OldKey::Retire,
+    );
+    let Err(SignerError::NeedsRecovery(why)) = &r else {
+        panic!("a wiki that does not verify was retired from: {r:?}");
+    };
+    assert!(
+        why.contains("publication trust") || why.contains("verify"),
+        "{why}"
+    );
+    assert!(r.unwrap_err().to_string().contains("needs recovery first"));
+    // Nothing changed: the same keys, the same trust (the old key still there, no new key adopted), no record.
+    assert_eq!(f.signer.key_status(&f.wiki).unwrap(), status);
+    assert_eq!(f.prikk_text(&["trust", "maintainer", "list"]), trusted);
+    assert!(f.signer.superseded_keys(&f.wiki).unwrap().is_empty());
+    // Keeping the old key does not need the repository to verify; it is the retirement that does.
+    assert!(
+        f.signer
+            .rotate_keys(
+                &inklkunn_signer::KeyAuthority::for_tests(),
+                &f.repo,
+                inklkunn_signer::OldKey::Keep,
+            )
+            .is_ok()
+    );
+}
+
+#[test]
+fn a_second_retirement_starts_from_what_the_first_recorded_and_the_two_add_up() {
+    let Some(f) = fixture("retired-twice", Sandbox::Unconfined, false) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    retire_the_maintainer_key(&f);
+    an_ordinary_write_is_confirmed(&f, "one\n");
+    // The repository fails by the first retirement's findings alone: a second retirement may start from that.
+    retire_the_maintainer_key(&f);
+    an_ordinary_write_is_confirmed(&f, "two\n");
+    let excuse = Recover::verify_after_retirement(&f.signer, &f.wiki)
+        .expect("asked")
+        .expect("both retirements' findings");
+    assert_eq!(excuse.keys.len(), 2, "{excuse:?}");
+    let kept = f.signer.superseded_keys(&f.wiki).unwrap();
+    assert_eq!(kept.len(), 2);
+    assert!(kept.iter().all(|k| k.retired && k.findings_recorded > 0));
+    // A failure no retirement recorded stops a third one, and the wiki.
+    plant_a_block_sealed_by_an_untrusted_key(&f);
+    let r = f.signer.rotate_keys(
+        &inklkunn_signer::KeyAuthority::for_tests(),
+        &f.repo,
+        inklkunn_signer::OldKey::Retire,
+    );
+    assert!(matches!(r, Err(SignerError::NeedsRecovery(_))), "{r:?}");
+    the_wiki_is_stopped(&f, "a stranger after two retirements");
 }
 
 #[test]

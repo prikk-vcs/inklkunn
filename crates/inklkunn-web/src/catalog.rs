@@ -411,6 +411,7 @@ keys! {
     VerificationUnavailable => "verification.unavailable",
     VerificationAttemptAt => "verification.attempt_at",
     VerificationRunning => "verification.running",
+    VerificationExplainedByRetirement => "verification.explained_by_retirement",
     // about, and the list of wikis
     TitleAbout => "title.about",
     AboutHeading => "about.heading",

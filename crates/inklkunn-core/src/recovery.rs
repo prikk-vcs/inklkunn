@@ -543,17 +543,21 @@ impl Recovery {
             .doctor(&wiki.id)
             .map_err(|e| witness_error("prikk doctor", e))?;
         // A retired key never freezes the wiki (P2, DR-10): `doctor` reports each thing the retired key signed as an
-        // error. When the signer says that `verify` fails exactly and only for them, they are a note and not damage;
-        // any other answer (or no answer) leaves them where they are, and the plan stops on them.
+        // error. When the signer says that `verify` fails exactly and only for what a retirement recorded, the
+        // diagnostics that name exactly those blocks, ref states and ref updates are a note and not damage (P13);
+        // any other answer (or no answer) leaves them where they are, and a diagnostic that names anything else stays
+        // wherever the answer is yes, so the plan stops on it.
         let mut retirement = None;
         if doctor
             .diagnostics
             .iter()
             .any(|d| d.code == PUBLICATION_UNTRUSTED_CODE)
-            && let Ok(Some(note)) = p.signer.verify_after_retirement(&wiki.id)
+            && let Ok(Some(excuse)) = p.signer.verify_after_retirement(&wiki.id)
         {
-            doctor = doctor.without_code(PUBLICATION_UNTRUSTED_CODE).0;
-            retirement = Some(note);
+            doctor = doctor
+                .without_excused_publication_findings(|kind, id| excuse.names(kind, id))
+                .0;
+            retirement = Some(excuse.note);
         }
         Ok(Witness {
             wiki: wiki.id.clone(),
@@ -931,8 +935,9 @@ impl Recovery {
                     // publication trust for what a retired key sealed passes, with a note. Anything else, or a
                     // check that cannot be made, keeps the flag.
                     match p.signer.verify_after_retirement(&wiki.id) {
-                        Ok(Some(note)) => Ok(format!(
-                            "the repository does not verify, and only because of a retired key: {note}"
+                        Ok(Some(excuse)) => Ok(format!(
+                            "the repository does not verify, and only because of a retired key: {}",
+                            excuse.note
                         )),
                         Ok(None) => {
                             Err("prikk verify reports failed conditions; the flag is kept"

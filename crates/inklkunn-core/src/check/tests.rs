@@ -9,7 +9,10 @@ use inklkunn_prikk::{
     Change, Diff, ExtractBounds, FileMeta, History, Materialized, Point, Result as PrikkResult,
     Stage, Storage, Tree, Verdict, Verification as Report, Views,
 };
-use inklkunn_store::{DisplayName, MemoryStore, NewWiki, Slug};
+use inklkunn_signer::AcceptanceToken;
+use inklkunn_signer::recover::text::Discarded;
+use inklkunn_signer::recover::{RecoverError, RecoveryToken, RetirementExcuse};
+use inklkunn_store::{DisplayName, MemoryStore, NewWiki, Slug, WikiId};
 
 use super::*;
 
@@ -168,7 +171,8 @@ fn a_finding_is_a_failure_that_names_the_stages_that_did_not_come_out_well() {
                     stage: "ref-update-schema-trust".into(),
                     status: "not_evaluated".into()
                 },
-            ]
+            ],
+            explained_by_retirement: Vec::new(),
         }
     );
     assert_eq!(after.verification.state, VerificationState::Failed);
@@ -441,4 +445,117 @@ fn an_attempt_the_gate_turned_away_does_not_hold_back_the_next_check_but_a_stopp
         .unwrap();
     let c = verifier(&store, Arc::new(Canned::of(vec![]))).check(&store.get(&wiki.id).unwrap());
     assert_eq!(c.outcome, CheckOutcome::Declined(Declined::Recent));
+}
+
+// ---- a failure a key retirement recorded (handoff 004, P2′)
+
+type Excuse = Result<Option<RetirementExcuse>, RecoverError>;
+
+/// A signer that answers the one question of a retirement and nothing else.
+struct Retirements(Excuse);
+
+impl Recover for Retirements {
+    fn verify_after_retirement(&self, _: &WikiId) -> Excuse {
+        self.0.clone()
+    }
+    fn seal_queued(
+        &self,
+        _: &WikiId,
+        _: &str,
+        _: &RecoveryToken,
+        _: &AcceptanceToken,
+    ) -> Result<(), RecoverError> {
+        Err(RecoverError::NoLease)
+    }
+    fn discard_damaged(&self, _: &WikiId, _: &RecoveryToken) -> Result<Discarded, RecoverError> {
+        Err(RecoverError::NoLease)
+    }
+    fn clear_locks(
+        &self,
+        _: &WikiId,
+        _: &RecoveryToken,
+        _: &[String],
+    ) -> Result<Vec<String>, RecoverError> {
+        Err(RecoverError::NoLease)
+    }
+    fn restore_worktree(
+        &self,
+        _: &WikiId,
+        _: &str,
+        _: &RecoveryToken,
+    ) -> Result<usize, RecoverError> {
+        Err(RecoverError::NoLease)
+    }
+}
+
+fn excuse(keys: &[&str]) -> RetirementExcuse {
+    RetirementExcuse {
+        note: "note".to_owned(),
+        keys: keys.iter().map(|k| (*k).to_owned()).collect(),
+        blocks: Vec::new(),
+        ref_states: Vec::new(),
+        ref_updates: Vec::new(),
+    }
+}
+
+fn failed_with(answer: Excuse) -> (CheckOutcome, VerificationState) {
+    let store = Arc::new(MemoryStore::new());
+    let wiki = new_wiki(&store, "handbook");
+    let v = verifier(
+        &store,
+        Arc::new(Canned::of(vec![Ok(report(false, &[("refs", "failed")]))])),
+    );
+    v.explain_retirements_with(Arc::new(Retirements(answer)));
+    let checked = v.check(&wiki);
+    (
+        checked.outcome,
+        store.get(&wiki.id).unwrap().verification.state,
+    )
+}
+
+#[test]
+fn a_failure_a_retirement_recorded_carries_the_key_and_leaves_the_state_failed() {
+    let (outcome, state) = failed_with(Ok(Some(excuse(&["old-key"]))));
+    let CheckOutcome::Failed {
+        explained_by_retirement,
+        ..
+    } = outcome
+    else {
+        panic!("{outcome:?}");
+    };
+    assert_eq!(explained_by_retirement, ["old-key"]);
+    // The badge is the record's state, and it is Failed, as DR-10 ruled.
+    assert_eq!(state, VerificationState::Failed);
+}
+
+#[test]
+fn a_failure_the_signer_does_not_explain_or_cannot_tell_is_reported_as_it_always_was() {
+    for answer in [Ok(None), Err(RecoverError::NoLease)] {
+        let (outcome, state) = failed_with(answer);
+        assert!(
+            matches!(&outcome, CheckOutcome::Failed { explained_by_retirement, .. } if explained_by_retirement.is_empty()),
+            "{outcome:?}"
+        );
+        assert_eq!(state, VerificationState::Failed);
+    }
+    // No signer at all (a server that cannot sign): nothing is asked.
+    let (c, _, _) = run(Ok(report(false, &[("refs", "failed")])));
+    assert!(
+        matches!(&c.outcome, CheckOutcome::Failed { explained_by_retirement, .. } if explained_by_retirement.is_empty())
+    );
+}
+
+#[test]
+fn a_clean_check_never_asks_the_signer() {
+    let store = Arc::new(MemoryStore::new());
+    let wiki = new_wiki(&store, "handbook");
+    let v = verifier(
+        &store,
+        Arc::new(Canned::of(vec![Ok(report(
+            true,
+            &[("objects", "evaluated")],
+        ))])),
+    );
+    v.explain_retirements_with(Arc::new(Retirements(Ok(Some(excuse(&["old-key"]))))));
+    assert_eq!(v.check(&wiki).outcome, CheckOutcome::Verified);
 }

@@ -124,6 +124,10 @@ pub(crate) fn assemble(parts: Parts) -> Assembled {
         Ok(signer) => signer.with_leases(&write_leases),
         Err(e) => return off(format!("the signer could not be opened ({e})")),
     };
+    let signer = Arc::new(signer);
+    // The verification page says when a failed check is made of what a key retirement recorded (P2′); the badge is
+    // not touched.
+    parts.verifier.explain_retirements_with(signer.clone());
     let mut notes = Vec::new();
     let swept = signer.leftover_call_directories_removed();
     if swept > 0 {
@@ -162,7 +166,7 @@ pub(crate) fn assemble(parts: Parts) -> Assembled {
         accounts: store.clone(),
         storage: parts.storage.clone(),
         layout: parts.layout.clone(),
-        signer: Arc::new(signer),
+        signer,
         leases,
         reads: parts.read.clone(),
     })
