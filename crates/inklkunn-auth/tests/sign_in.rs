@@ -135,47 +135,117 @@ fn an_oversized_password_is_refused_without_hashing_and_it_counts_as_a_failure()
     ));
 }
 
-#[test]
-fn unknown_account_and_wrong_password_cost_the_same_within_noise() {
-    // The real Argon2id at a cost that dominates a map lookup. Every sample is a first attempt under its own
-    // name and address, so each is really judged: no throttle shortcut can make a sample fast.
-    let store = Arc::new(MemoryStore::new());
-    let hasher = Arc::new(inklkunn_auth::Argon2idHasher::with_cost(4096, 2, 1).unwrap());
-    let auth = Authenticator::with_hasher(store, config(), hasher).unwrap();
-    for i in 0..7 {
-        auth.register_local(&format!("user{i}"), "A user", ALICE_PASSWORD, NOW)
-            .unwrap();
-    }
-    let sample = |login: String, i: usize| {
-        let c = ip(&format!("198.51.100.{}", i + 1));
-        let started = Instant::now();
-        let r = auth.sign_in(&login, "some password here", &c, NOW);
-        assert!(
-            matches!(r, Err(AuthError::BadCredentials)),
-            "{login}: {r:?}"
-        );
-        started.elapsed()
-    };
-    let median = |mut v: Vec<Duration>| {
-        v.sort();
-        v.get(v.len() / 2).copied().unwrap()
-    };
-    let unknown = median((0..7).map(|i| sample(format!("ghost{i}"), i)).collect());
-    let wrong = median((0..7).map(|i| sample(format!("user{i}"), i + 10)).collect());
-    assert!(
-        unknown > Duration::from_micros(500),
-        "{unknown:?}: a sample that cheap was not hashed"
-    );
-    assert!(wrong > Duration::from_micros(500), "{wrong:?}");
+/// How many times the two paths are measured before a difference is believed (handoff 004, P16; the markup crate's
+/// scaling tests do the same, R10). Descheduling a sample on a loaded runner can only make a path look **dearer**
+/// than it is, never cheaper, so one measurement in which the two cost alike is evidence that they do, while a path
+/// that skipped the hash is far outside the bound in every one.
+const ATTEMPTS: usize = 5;
+
+/// Do the two paths cost alike: the dearer within twice the cheaper and five milliseconds.
+fn alike(unknown: Duration, wrong: Duration) -> bool {
     let (lo, hi) = if unknown < wrong {
         (unknown, wrong)
     } else {
         (wrong, unknown)
     };
+    hi.as_secs_f64() <= lo.as_secs_f64() * 2.0 + 0.005
+}
+
+/// The verdict on measurements `(unknown, wrong)` taken one after another, **lazily**: the paths cost alike if any
+/// one measurement says so (the rest are not taken); a difference is believed only when every measurement shows it.
+fn alike_in_one_of(
+    measurements: impl IntoIterator<Item = (Duration, Duration)>,
+) -> Result<(), String> {
+    let mut last = String::from("no measurement was taken");
+    let mut taken = 0;
+    for (unknown, wrong) in measurements {
+        taken += 1;
+        if alike(unknown, wrong) {
+            return Ok(());
+        }
+        last = format!("unknown {unknown:?} against wrong {wrong:?}");
+    }
+    Err(format!(
+        "{last}, in each of {taken} measurements; the two paths cost alike"
+    ))
+}
+
+#[test]
+fn a_difference_between_the_two_paths_is_believed_only_when_every_measurement_shows_it() {
+    let ms = Duration::from_millis;
+    let alike_pair = (ms(100), ms(110));
+    let apart = (ms(100), ms(400));
+    // One loaded measurement among good ones is noise; a good one at the end rescues a run of bad ones.
+    assert!(alike_in_one_of([apart, apart, apart, apart, alike_pair]).is_ok());
+    assert!(alike_in_one_of([apart, alike_pair, apart]).is_ok());
+    // The first good measurement ends it: nothing after it is taken.
+    let mut taken = 0;
+    let verdict = alike_in_one_of(std::iter::from_fn(|| {
+        taken += 1;
+        Some(if taken == 3 { alike_pair } else { apart })
+    }));
+    assert!(verdict.is_ok());
+    assert_eq!(taken, 3, "the measurements are taken one by one");
+    // A path that skipped the hash is apart in every measurement, however many are taken.
+    let err = alike_in_one_of([apart; ATTEMPTS]).unwrap_err();
     assert!(
-        hi.as_secs_f64() <= lo.as_secs_f64() * 2.0 + 0.005,
-        "unknown {unknown:?} against wrong {wrong:?}"
+        err.contains(&format!("in each of {ATTEMPTS} measurements")),
+        "{err}"
     );
+    // The bound itself: twice the cheaper and five milliseconds, either way round.
+    assert!(alike(ms(100), ms(205)) && alike(ms(205), ms(100)));
+    assert!(!alike(ms(100), ms(206)) && !alike(ms(206), ms(100)));
+    assert!(alike(ms(0), ms(5)) && !alike(ms(0), ms(6)));
+}
+
+#[test]
+fn unknown_account_and_wrong_password_cost_the_same_within_noise() {
+    // The real Argon2id at a cost that dominates a map lookup. Every sample is a first attempt under its own
+    // name and address, so each is really judged: no throttle shortcut can make a sample fast. Each attempt has
+    // names and addresses of its own, so that an earlier attempt's failures are no part of a later one.
+    let store = Arc::new(MemoryStore::new());
+    let hasher = Arc::new(inklkunn_auth::Argon2idHasher::with_cost(4096, 2, 1).unwrap());
+    let auth = Authenticator::with_hasher(store, config(), hasher).unwrap();
+    let median = |mut v: Vec<Duration>| {
+        v.sort();
+        v.get(v.len() / 2).copied().unwrap()
+    };
+    let measure = |attempt: usize| {
+        for i in 0..7 {
+            auth.register_local(&format!("user{attempt}x{i}"), "A user", ALICE_PASSWORD, NOW)
+                .unwrap();
+        }
+        let sample = |login: String, i: usize| {
+            let c = ip(&format!("198.51.{}.{}", 100 + attempt, i + 1));
+            let started = Instant::now();
+            let r = auth.sign_in(&login, "some password here", &c, NOW);
+            assert!(
+                matches!(r, Err(AuthError::BadCredentials)),
+                "{login}: {r:?}"
+            );
+            started.elapsed()
+        };
+        let unknown = median(
+            (0..7)
+                .map(|i| sample(format!("ghost{attempt}x{i}"), i))
+                .collect(),
+        );
+        let wrong = median(
+            (0..7)
+                .map(|i| sample(format!("user{attempt}x{i}"), i + 10))
+                .collect(),
+        );
+        // A sample cheaper than a hash is not noise: no load makes the work less, so these are not retried.
+        assert!(
+            unknown > Duration::from_micros(500),
+            "{unknown:?}: a sample that cheap was not hashed"
+        );
+        assert!(wrong > Duration::from_micros(500), "{wrong:?}");
+        (unknown, wrong)
+    };
+    if let Err(why) = alike_in_one_of((0..ATTEMPTS).map(measure)) {
+        panic!("{why}");
+    }
 }
 
 #[test]

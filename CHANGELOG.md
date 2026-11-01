@@ -667,6 +667,52 @@ Corrections from the review of 2026-11-01 (handoff 004, P2′, P13, P14).
   parse refuses a report with two `publication trust issues:` lines (it used to take the last). A question to the signer is now one
   such pair of runs (it used to be a verdict, then a text read by a separate call, with the caller's own run before them), and none at
   all when the wiki has no retirement that recorded anything; the acceptance's and recovery's own first `verify` is still separate.
+Corrections from the review of 2026-11-01 (handoff 004, P15, P16).
+
+- **P15 — recovery finishes a publication a killed `seal` left, with prikk's own recommendation, as a recorded step.** A `seal`
+  killed between publishing its block and draining the queue (about 3 % of the kill matrix's `inside prikk seal` runs) leaves
+  the block in the history and the patch in the queue: `prikk status --format json` and `worktree-status` refuse with an
+  integrity error, and `doctor` reports one error, `PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING`, recommending `seal
+  --allow-no-audit` for the ref. Recovery now answers it with the step `complete-publication`, taken **only when** `doctor`
+  names that code and nothing else (any other code beside it is `doctor-trouble`), and the block published is the one
+  unfinished act's own: the newest block of the act's view seals exactly one patch, whose message has the act's digest,
+  made on the block the act was made on, and the history found the act's message in it; otherwise the new stop
+  `published-block-is-not-the-act` (nothing changed, flag kept). The signer's new `Recover::complete_publication` (a
+  `RecoveryOp::CompletePublication` in the recorded plan, the lent lease, the recorded act) re-checks `doctor`, the record,
+  the base, the one patch's message, and the patch's files read **from the block** (`show` for the operations, `cat` at the tip
+  for the bytes, against the accepted change's digest), refuses a queue that holds anything but that patch, runs `seal` once,
+  and calls it done only when the tip is the same block and `doctor` no longer reports the cleanup (`show` joins the signer's
+  cost table at the read driver's measured rule). The default method is *unable*, as `Storage::status`'s is. The plan clears a
+  stale `active.lock` first, puts the worktree back after the seal if it cannot be compared (prikk refuses to report it until
+  the publication is finished), and ends the act as sealed in that block. The empty lock file (`prikk unlock` lists it with
+  `recorded pid: (unparseable)`) and a lone `ACTIVE-REF-METADATA-DEBRIS` warning stay **fail-closed** (a witness that cannot be
+  read, and `doctor-trouble`; nothing changed, flag kept), each with its operator steps, what to check before and after, in
+  `docs/RECOVERY.md`; they join the next letter to prikk. Tests: the plan table (the code exactly, the block the act's mark by
+  mark: another message, two patches, another base, another view, the history not finding it, an ended act, no act; other
+  codes and a second error are `doctor-trouble`; the step is in the recorded plan and read back as the signer's operation); the
+  signer against a real prikk (the state made by putting back the three files of the active session that a `seal` empties:
+  finished with one more `seal` and no second block, renames and a removal proven against the digest, a message, files or
+  base that is not the record's refused with the cleanup still pending, every guard); recovery against a real prikk with a
+  stand-in `prikk` whose `seal` publishes and then fails (`dies-after-publishing-seal`, with and without the stale lock): the
+  plan, the run, the records, the audit, the next acceptance; the empty lock and the debris asserted fail-closed, and the
+  runbook's step for the empty lock followed; the real kill matrix gains two rows that make the state every time (the stand-in's
+  `halfway-seal`, for an acceptance and a system act), and its `inside` rows that land in it now recover (56 runs of the real
+  matrix, 112 `inside prikk seal` rows: 2 landed in it with the stale lock, and recovered). 8 new prikk-dependent tests (and
+  2 rows of the matrix).
+- **P16 — the runbook for an orphan queued patch is tested against a real queued patch.** A test builds the state the kill
+  matrix's `prikk commit` rows leave when the service's records of the act are gone (a database restored from a copy older
+  than the repository), reads the commands out of `docs/RECOVERY.md` and runs them as written (`prikk status --format json`,
+  `show`, `worktree-status`, `log`), and checks each statement: the STOP word and its meaning in the plan, the witnesses it
+  names, that `prikk` 0.55 has no discard but `doctor --discard-damaged-commits`, which refuses over a sound patch, that the
+  stop records the plan and that it stopped and changes nothing. It found two errors, now fixed: `prikk status` (text) does not
+  print the patch id (the runbook asks for `--format json`), and `prikk show` prints the replaced and the new text of each
+  operation, not whole pages (the worktree, which is the patch's result, has them). The auth crate's timing test
+  `unknown_account_and_wrong_password_cost_the_same_within_noise` believes a difference between the two paths only when five
+  measurements in a row show it (each with names and addresses of its own, taken one by one and stopped at the first in which
+  the two cost alike), as the markup crate's scaling tests do (R10): a descheduled sample can only make a path look dearer.
+  The cheaper-than-a-hash checks are not retried, and the decision has a test of its own on synthetic measurements
+  (`a_difference_between_the_two_paths_is_believed_only_when_every_measurement_shows_it`). 20 runs in a row beside 8 busy loops
+  pinned to the test's two CPUs hold. 1 new prikk-dependent test.
 
 ## [0.1.0] — 2026-10-31
 
