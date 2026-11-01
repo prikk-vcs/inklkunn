@@ -163,7 +163,11 @@ fn the_in_process_turn_is_given_up_only_after_the_file_lock_is_released() {
     let locks = WikiLocks::default();
     for round in 0..40 {
         locks.enter(&wiki);
-        let Acquired::Held(file) = flock::try_exclusive(&path).unwrap() else {
+        // Taken as the product takes it, with the grace: a sibling test's `fork` holds a copy of the descriptor
+        // for microseconds, and "busy" at that instant is not what this test is about.
+        let Acquired::Held(file) =
+            flock::exclusive_within(&path, Duration::from_millis(500)).unwrap()
+        else {
             panic!("round {round}: the lock was busy for the first holder");
         };
         let guard = WriteGuard {
