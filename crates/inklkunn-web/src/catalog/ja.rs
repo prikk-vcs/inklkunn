@@ -1114,7 +1114,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.signing_not_configured.detail",
-        "このサーバーには変更を履歴へ署名する設定がないため、提案を受け入れられません。読み取りはできます。",
+        "このサーバーには変更を履歴へ署名する設定がないため、提案を履歴に取り込めません。読み取り、提案、コメントはできます。",
     ),
     msg(
         "problem.signing_not_configured.hint",

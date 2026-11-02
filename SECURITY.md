@@ -1,5 +1,27 @@
 # Security policy
 
+## Deployment notes (read before you put it on a network)
+
+1. **Declare your reverse proxy: `INKLKUNN_TRUSTED_PROXIES`.** The server has no TLS of its own and binds
+   `127.0.0.1:8080` by default, so the usual deployment is a TLS proxy on the same host, which reaches the server as a
+   *loopback* peer. Unless the proxy's address is listed in `INKLKUNN_TRUSTED_PROXIES` (comma-separated addresses or
+   networks, such as `127.0.0.1` or `10.0.0.0/8`), `X-Forwarded-For` is ignored, as it must be, and **every client
+   counts as one address**: thirty bad passwords by anyone lock every password sign-in for fifteen minutes, and
+   repeatably (the same budget holds the provider sign-in starts and the new accounts). `inklkunn serve` says so at
+   every start, for **any** bind address, while no proxy is declared, and once more at run time the first time a loopback
+   peer sends `X-Forwarded-For` while none is. The header is read from the right and stops at the first address that is
+   not a declared proxy, so what a client writes on its left is never believed.
+2. **No core files.** The serving process holds the key store's derived master key for its whole life and a wiki's seed
+   for the length of a signing call. It makes itself non-dumpable when it starts (`prctl(PR_SET_DUMPABLE, 0)`, which
+   also stops another process of the same user from attaching with `ptrace` or reading `/proc/<pid>/mem`), and **your
+   unit says `LimitCORE=0` as well** (systemd; `ulimit -c 0` or `--ulimit core=0` elsewhere), so a change to the first
+   is not the only wall. Keep swap off, or encrypted, for the same reason.
+3. **The secret file.** Owned by the service's user with mode `0400` or `0600`, outside the data directory and out of
+   any backup that holds the key records (see below). The server **warns at start**, and does not refuse, when group or
+   others can read or change it, or when its owner is neither the service's user nor root.
+4. **The seed directory** is a tmpfs owned by the service's user (see below), and **an unclean stop is a reason to look
+   at the host**.
+
 ## What inklkunn holds, and the risk it accepts
 
 inklkunn signs changes **on behalf of its wikis**: each wiki has an author key and a maintainer key, and the
@@ -57,16 +79,22 @@ the limit as a sequence is. Failures are counted per sign-in name and per client
 declared trusted proxy only) **in the memory of one process** (threat model RR-7): a restart forgets them, and a
 deployment with several replicas needs the proxy to limit too. Locking a name after five failures lets someone
 who knows it lock its owner out for fifteen minutes; that is the price of refusing a correct password while
-locked, and the address throttle bounds how many names one client can lock. **Declare your reverse proxy**: behind
-one that is not declared, every client shares the proxy's address and thirty bad attempts by anyone lock everyone;
-`inklkunn serve` prints a warning at start when it is bound to an address that is not a loopback one and no
-trusted proxy is declared (this build has no setting to declare one yet, and the warning says so).
+locked, and the address throttle bounds how many names one client can lock. **Declare your reverse proxy**
+(`INKLKUNN_TRUSTED_PROXIES`, the first of the deployment notes above): behind one that is not declared, every client
+shares the proxy's address and thirty bad attempts by anyone lock everyone. A provider sign-in's start is counted
+against the address and **given back when that sign-in succeeds**; the start answers only a person's own navigation
+when the browser says what a request is (`Sec-Fetch-Mode`, `Sec-Fetch-Dest`), so a page of another site cannot spend
+it; and the logins in flight are bounded per address as well as overall. Redeeming an invitation is throttled like
+joining. A sign-in, a join or an invitation made while signed in ends the session the request presented.
 Sessions and API tokens are stored as hashes; a copy of the database opens neither. An account holds at most a
 hundred live sessions and a hundred live tokens; a sign-in beyond the hundredth is never refused, it ends the
 account's oldest session. The session cookie is `SameSite=Strict`; the one-shot login-state cookie of an OpenID
 Connect sign-in is `SameSite=Lax` (the provider's redirect must carry it back), and the callback is answered with
-a small page that moves the browser on, never with a redirect, so the Strict cookie is sent on the next request. A password change, an
-administrator's reset and a disabling end every session and revoke every token. OpenID Connect accounts are
+a small page that moves the browser on, never with a redirect, so the Strict cookie is sent on the next request. A password change
+(from the account page: the current password is asked, and every session **but the one making the change** ends), an
+administrator's reset and a disabling end every session and revoke every token. **Making an API token asks for the
+password again** (an account with none, which signs in through a provider, needs a sign-in of the last ten minutes),
+because a token outlives the session that made it. OpenID Connect accounts are
 reached by the provider's issuer and subject and by nothing else (**never by e-mail address**: the provider's other
 claims are not read): the operator links one (`inklkunn account link`, audited), an invitation may be redeemed with
 the provider instead of a password, and a first sign-in makes an account only where `INKLKUNN_JOIN` is `provider` or
@@ -82,17 +110,19 @@ second factor** on local accounts in v1 (threat model RR-4); an OpenID Connect p
 interim answer.
 
 **The serving process opens the key store** (it did not in 0.1.0; threat model RR-1, RR-11). `inklkunn serve`
-reads the operator's secret from the file `INKLKUNN_SECRET_FILE` names, once, when it starts, and opens the key
-store in `INKLKUNN_KEY_DIR`; a wiki's seed is decrypted onto the tmpfs (`INKLKUNN_SEED_DIR`) for the one signing
+reads the operator's secret from the file `INKLKUNN_SECRET_FILE` names **at start** (not once: the sweep of leftover seed
+directories, the start-up recovery and the acceptor each open the signer, so up to three times, and each copy is
+zeroized when its signer is dropped), and opens the key store in `INKLKUNN_KEY_DIR`; a wiki's seed is decrypted onto the tmpfs (`INKLKUNN_SEED_DIR`) for the one signing
 call that needs it and removed with the call. The secret is **never asked for on a terminal**, never read from an
 environment variable, and never written to a log line or a page (a test searches both for its value). What the
 signer checks, and what it does not:
 
 - **The secret file**: an absolute path; a symbolic link is followed (secret mounts are often links) and the target
   must be a regular file; 16 to 1024 bytes once the line breaks at its end are taken off (so `echo` and an editor
-  give the same secret). **It does not check the file's owner or mode**: make it owned by the service's user with mode
-  0400 or 0600, outside the data directory and out of any backup that holds the key records. Anyone who can read it,
-  and the key records, holds every wiki's keys.
+  give the same secret). **It does not refuse on the file's owner or mode** (a Kubernetes secret mount is 0644 by
+  default), **it warns at every start** when group or others can read or change it or its owner is neither the service's
+  user nor root: make it owned by the service's user with mode 0400 or 0600, outside the data directory and out of any
+  backup that holds the key records. Anyone who can read it, and the key records, holds every wiki's keys.
 - **The key directory**: made with mode 0700 when it is absent; when it is there, it must be a real directory (not a
   link) that group and others cannot enter (any permission bit for them refuses the start of the signer). The sealed
   records inside are mode 0600. A key directory with no key store in it is refused, never made into one, by the
@@ -104,8 +134,9 @@ signer checks, and what it does not:
 
 **A server started without the means to sign still serves.** If the secret file is not there, or the key store does
 not open (a wrong secret, a key directory open to others, no keys made yet, a seed directory that is not on a
-tmpfs), the server prints **one line** at start that names the setting and the cause, serves every page, and refuses
-every write with one plain sentence (*this server is not set up to sign changes into the history …*). It does not
+tmpfs), the server prints **one line** at start that names the setting and the cause, serves every page, **still
+stores proposals and comments**, and refuses **every change to the history** (an acceptance) with one plain sentence
+(*this server is not set up to sign changes into the history …*). It does not
 ask for the secret and does not try again on its own: fix the cause and restart. Accepting a proposal from the web
 and the command line (`wiki import-folder`, `wiki recover`, `wiki export`, key rotation) take the same per-wiki
 write lock, so a command beside a running server is told the wiki is busy, naming the process that holds it.

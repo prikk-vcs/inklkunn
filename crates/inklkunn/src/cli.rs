@@ -47,6 +47,8 @@ pub(crate) fn run(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> i32 {
+    // Before anything is read or opened: no core dump and no ptrace attach can hold what the process will hold.
+    crate::hardening::no_core_dumps(err);
     let (dev_unconfined, args) = match args.split_first() {
         Some((first, rest)) if first == "--dev-unconfined" => (true, rest),
         _ => (false, args),

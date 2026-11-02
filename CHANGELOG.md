@@ -738,6 +738,51 @@ Corrections from the review of 2026-11-01 (handoff 004, P15, P16).
   readiness report for the owner is `docs/releases/0.2.0-readiness.md`. Mutations: the CSRF layer made to pass everything fails
   the web test at the forged token; the follow-up's verify job made to return fails both at the fresh check; the acceptor
   unset fails both with the 501; `create_href` made `None` fails its unit test and the page test. 2 new prikk-dependent tests.
+- **Corrections from the review of 2026-11-01 (sign-in handoff, G1 – G10, A1 – A4).**
+  - **G1.** The proxy warning at start fires for a loopback bind too (the default bind, and the likeliest deployment is a
+    TLS proxy on the same host), and the server says once, at run time, the first time a loopback peer sends
+    `X-Forwarded-For` while no proxy is trusted: *every client counts as one address*. `SECURITY.md` gains "Deployment
+    notes", which lead with `INKLKUNN_TRUSTED_PROXIES`.
+  - **G2.** A provider sign-in start keeps its client key with the pending login and is refunded when the callback
+    succeeds (to the address that started it); the start requires `Sec-Fetch-Mode: navigate` and `Sec-Fetch-Dest: document`
+    when the browser sends them (a request without them is served as before; a refusal spends nothing); pending logins are
+    bounded per address (32) as well as overall, and a full table drops the oldest login of the address with the most.
+  - **G3.** Redeeming an invitation is throttled like joining (`by_join`, per client address) and tells a taken sign-in name
+    before the password is hashed (`new_local_account` checks the cheap things first; the store still checks in the step that
+    spends the link). `Authenticator::redeem_with_password` takes the client address.
+  - **G4.** The CSRF layer decides with `Identify::for_write` (closed: a session it could not read is a refusal) and lets
+    through only a request that is signed out, a valid token, or a session with its token; the decision goes into the
+    request's extensions (`csrf::Decided`) and every write handler (the proposal pages, accept, the inbox, following, the
+    verification check, the write API, the account page) takes its principal from there. The wiki lookup of a read takes the
+    principal it already has (`wiki::open_as`), so a read resolves once instead of twice.
+  - **G5.** Sign-out with a bearer token does nothing to any cookie session and does not touch its cookie.
+  - **G6.** Making an API token asks for the password again; an account with no password (it signs in through a provider)
+    needs a session started within ten minutes (`Authenticator::confirm_for_sensitive_act`, `FRESH_SESSION_SECS`),
+    throttled and constant-work like a sign-in and counted under the account's sign-in name.
+  - **G7.** `X-Forwarded-For` is read from the right and stops at the first valid hop that is not a trusted proxy; what a
+    client prepended on the left (junk, a long hop, any number of hops) is never read. The header-length limit is gone with
+    it; 32 hops are examined at most.
+  - **G8.** Signing in, joining or redeeming an invitation while signed in ends the session the request presented (a
+    provider sign-in cannot: its callback is a cross-site navigation and the `Strict` cookie is not sent).
+  - **G9.** The OpenAPI document describes the cookie client's `X-CSRF-Token` (the `sessionCookie` and `csrfToken` security
+    schemes, the header on every write, and the two alternatives of a write's `security`), with a drift test against the
+    server's own constants. One term, *the person who runs this wiki*, replaces *server* in the needs-account message
+    (catalog, Japanese preview, glossary row and a concept row).
+  - **G10.** The account page changes the password (`POST /-/account/password`): the current password is asked and judged
+    first, throttled and constant-work like a sign-in; every other session of the account ends and every API token is
+    revoked; the CSRF token is on the form. Catalog, Japanese preview and glossary; structural states in both languages.
+    An account with no password sees a sentence and no form.
+  - **A1.** The process makes itself non-dumpable when a command starts (`rustix::process::set_dumpable_behavior`, no new
+    crate; recorded in `docs/dependency-policy.md`), and `SECURITY.md` says `LimitCORE=0`.
+  - **A2.** A start-up warning, not a refusal, when the secret file can be read or changed by group or others or is owned by
+    a user who is neither the server's nor root.
+  - **A3.** The docs say the secret is read **at start** (up to three times, each copy zeroized) and that a server without a
+    signer refuses **every change to the history** while proposals and comments are still stored: `SECURITY.md`,
+    `serve/acceptor.rs` (comments and the start-up line), threat model C-1c and RR-11, and the API's `signing-not-configured`
+    detail (it said *accepts no proposals*).
+  - **A4.** The follow-up worker runs each job under `catch_unwind` (the panic is a line and the next job runs) and says
+    once if its queue is closed.
+  Tests are in the files of the code they hold; 1 new prikk-dependent test (`a_secret_file_that_others_can_read_is_a_warning_at_start_and_the_server_still_signs`).
 
 ## [0.1.0] — 2026-10-31
 

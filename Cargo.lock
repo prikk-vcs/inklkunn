@@ -765,6 +765,7 @@ dependencies = [
  "inklkunn-store",
  "inklkunn-web",
  "rusqlite",
+ "rustix",
 ]
 
 [[package]]

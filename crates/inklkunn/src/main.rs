@@ -13,6 +13,7 @@ mod cli;
 mod config;
 mod keys;
 // Outbound HTTPS for OpenID Connect (handoff 002 C8): the provider `serve` builds when one is configured.
+mod hardening;
 mod outbound;
 mod serve;
 

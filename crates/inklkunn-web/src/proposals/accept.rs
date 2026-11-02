@@ -57,7 +57,7 @@ pub enum AcceptOutcome {
     /// Accepting is not served by this build.
     NotServed,
     /// Accepting is served, but this server was started without the means to sign (no operator secret, or a
-    /// key store that could not be opened): reads work, every write is refused with one sentence.
+    /// key store that could not be opened): reads work, proposals and comments are stored, and every change to the history is refused with one sentence.
     SigningNotConfigured,
     /// *Signed into the history* (by this call, or by an earlier one: a retry finds the record).
     Signed,

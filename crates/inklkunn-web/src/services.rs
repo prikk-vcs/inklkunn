@@ -117,7 +117,7 @@ pub trait Acceptor: Send + Sync {
 }
 
 /// The acceptor of a server that was started **without** the means to sign (no operator secret file, or a key
-/// store that could not be opened): it serves every read and refuses every write with one plain sentence, and
+/// store that could not be opened): it serves every read, stores proposals and comments, and refuses every change to the history with one plain sentence, and
 /// the operator was told why once, at start. It asks nothing of anyone, and it never asks for the secret.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NoSigner;

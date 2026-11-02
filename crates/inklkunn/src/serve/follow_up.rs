@@ -8,10 +8,14 @@
 //! flood of acceptances cannot make threads (there is one) or memory (there are [`QUEUE_BOUND`] jobs at most; a
 //! job asked for while the same job for the same wiki is already waiting is the same job, and one asked for
 //! when the queue is full is dropped, because the next acceptance asks again and a page that needs the index
-//! builds it itself). The worker ends when the last sender is dropped.
+//! builds it itself). The worker ends when the last sender is dropped. **A job that panics does not end it**
+//! (each job runs under `catch_unwind`: the panic is said in one line and the next job runs), and if the queue is
+//! ever found closed the operator is told once that nothing will be warmed or re-verified until a restart.
 
 use std::collections::HashSet;
-use std::sync::mpsc::{SyncSender, sync_channel};
+use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{SyncSender, TrySendError, sync_channel};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use inklkunn_core::{AfterSeal, ReadService, Verifier};
@@ -42,6 +46,10 @@ pub(crate) struct FollowUp {
     queue: Option<SyncSender<Job>>,
     /// The jobs that wait: a job is in this set from the moment it is queued until the worker takes it.
     waiting: Arc<Mutex<HashSet<(Kind, String)>>>,
+    /// Where the operator's lines go.
+    log: Arc<dyn Fn(&str) + Send + Sync>,
+    /// Whether the operator has been told that the queue is closed.
+    closed_noted: AtomicBool,
 }
 
 impl std::fmt::Debug for FollowUp {
@@ -57,32 +65,46 @@ impl FollowUp {
         verifier: Arc<Verifier>,
         log: Arc<dyn Fn(&str) + Send + Sync>,
     ) -> Self {
-        Self::with_runner(move |job: &Job| match job.kind {
-            Kind::WarmTitleIndex => {
-                if let Err(e) = read.title_index(&job.wiki, None) {
-                    log(&format!(
-                        "the title index of wiki {} could not be warmed after a change ({e}); the next page builds it",
-                        job.wiki.slug
-                    ));
+        let line = log.clone();
+        Self::with_runner_logging(
+            move |job: &Job| match job.kind {
+                Kind::WarmTitleIndex => {
+                    if let Err(e) = read.title_index(&job.wiki, None) {
+                        log(&format!(
+                            "the title index of wiki {} could not be warmed after a change ({e}); the next page builds it",
+                            job.wiki.slug
+                        ));
+                    }
                 }
-            }
-            Kind::Verify => {
-                let checked = verifier.check(&job.wiki);
-                if let Some(why) = checked.operator {
-                    log(&format!(
-                        "the verification of wiki {} after a change did not complete: {why}",
-                        job.wiki.slug
-                    ));
+                Kind::Verify => {
+                    let checked = verifier.check(&job.wiki);
+                    if let Some(why) = checked.operator {
+                        log(&format!(
+                            "the verification of wiki {} after a change did not complete: {why}",
+                            job.wiki.slug
+                        ));
+                    }
                 }
-            }
-        })
+            },
+            line,
+        )
     }
 
-    /// The same, doing each job with `run` (a test counts them).
+    /// The same, doing each job with `run`, and saying nothing (a test counts the jobs).
+    #[cfg(test)]
     pub(crate) fn with_runner(run: impl Fn(&Job) + Send + 'static) -> Self {
+        Self::with_runner_logging(run, Arc::new(|_: &str| {}))
+    }
+
+    /// The same, with the operator's lines going to `log`.
+    pub(crate) fn with_runner_logging(
+        run: impl Fn(&Job) + Send + 'static,
+        log: Arc<dyn Fn(&str) + Send + Sync>,
+    ) -> Self {
         let waiting: Arc<Mutex<HashSet<(Kind, String)>>> = Arc::new(Mutex::new(HashSet::new()));
         let (queue, jobs) = sync_channel::<Job>(QUEUE_BOUND);
         let taken = waiting.clone();
+        let worker_log = log.clone();
         let worker = std::thread::Builder::new()
             .name("inklkunn-after-seal".to_owned())
             .spawn(move || {
@@ -92,12 +114,48 @@ impl FollowUp {
                         .lock()
                         .unwrap_or_else(PoisonError::into_inner)
                         .remove(&(job.kind, job.wiki.id.as_str().to_owned()));
-                    run(&job);
+                    // A job that panics is a line and the next job, not the end of every later follow-up.
+                    if catch_unwind(AssertUnwindSafe(|| run(&job))).is_err() {
+                        worker_log(&format!(
+                            "a follow-up job ({:?}) for wiki {} panicked; it was given up and the worker goes on",
+                            job.kind, job.wiki.slug
+                        ));
+                    }
                 }
             });
+        Self::over(worker.ok().map(|_| queue), waiting, log)
+    }
+
+    fn over(
+        queue: Option<SyncSender<Job>>,
+        waiting: Arc<Mutex<HashSet<(Kind, String)>>>,
+        log: Arc<dyn Fn(&str) + Send + Sync>,
+    ) -> Self {
         FollowUp {
-            queue: worker.ok().map(|_| queue),
+            queue,
             waiting,
+            log,
+            closed_noted: AtomicBool::new(false),
+        }
+    }
+
+    /// A follow-up whose worker is gone (its end of the queue is dropped), as one whose thread died would be: for
+    /// the test of what the operator is told.
+    #[cfg(test)]
+    pub(crate) fn with_dead_worker(log: Arc<dyn Fn(&str) + Send + Sync>) -> Self {
+        let (queue, jobs) = sync_channel::<Job>(QUEUE_BOUND);
+        drop(jobs);
+        Self::over(Some(queue), Arc::new(Mutex::new(HashSet::new())), log)
+    }
+
+    /// Say, once, that the queue is closed: from here on nothing is warmed or re-verified after a change.
+    fn note_closed(&self) {
+        if !self.closed_noted.swap(true, Ordering::Relaxed) {
+            (self.log)(
+                "the follow-up worker has stopped, so after a change the title index is not warmed and the wiki is \
+                 not verified again until the server is restarted (pages build what they need; the badge is the \
+                 last check's)",
+            );
         }
     }
 
@@ -115,8 +173,16 @@ impl FollowUp {
             kind,
             wiki: wiki.clone(),
         };
-        if queue.try_send(job).is_err() {
-            waiting.remove(&key);
+        match queue.try_send(job) {
+            Ok(()) => {}
+            Err(TrySendError::Full(_)) => {
+                waiting.remove(&key);
+            }
+            Err(TrySendError::Disconnected(_)) => {
+                waiting.remove(&key);
+                drop(waiting);
+                self.note_closed();
+            }
         }
     }
 }

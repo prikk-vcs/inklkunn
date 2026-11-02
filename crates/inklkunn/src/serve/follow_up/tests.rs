@@ -129,3 +129,78 @@ fn both_kinds_reach_the_runner_with_the_wiki() {
     assert!(seen.contains(&(Kind::WarmTitleIndex, "wiki-0".to_owned())));
     assert!(seen.contains(&(Kind::Verify, "wiki-0".to_owned())));
 }
+
+type Heard = Arc<Mutex<Vec<String>>>;
+type Log = Arc<dyn Fn(&str) + Send + Sync>;
+
+fn lines() -> (Heard, Log) {
+    let heard = Arc::new(Mutex::new(Vec::new()));
+    let sink = heard.clone();
+    (
+        heard,
+        Arc::new(move |line: &str| sink.lock().unwrap().push(line.to_owned())),
+    )
+}
+
+#[test]
+fn a_job_that_panics_is_a_line_and_the_next_job_still_runs() {
+    // A4: the worker used to end with the panicking job, and every later ask failed silently.
+    let (heard, log) = lines();
+    let done = Arc::new(AtomicUsize::new(0));
+    let d = done.clone();
+    let follow_up = FollowUp::with_runner_logging(
+        move |job: &Job| {
+            if job.kind == Kind::WarmTitleIndex {
+                panic!("a job that goes wrong");
+            }
+            d.fetch_add(1, Ordering::SeqCst);
+        },
+        log,
+    );
+    let records = wikis(2);
+    let (a, b) = (records.first().unwrap(), records.get(1).unwrap());
+    follow_up.warm_title_index(a);
+    until("the panic to be heard", || {
+        !heard.lock().unwrap().is_empty()
+    });
+    // The worker is alive: jobs asked for after the panic run.
+    follow_up.enqueue_verification(a);
+    follow_up.enqueue_verification(b);
+    until("the later jobs", || done.load(Ordering::SeqCst) >= 2);
+    let heard = heard.lock().unwrap().clone();
+    assert!(
+        heard
+            .iter()
+            .any(|l| l.contains("panicked") && l.contains("wiki-0")),
+        "{heard:?}"
+    );
+    assert!(
+        heard.iter().all(|l| !l.contains("worker has stopped")),
+        "{heard:?}"
+    );
+}
+
+#[test]
+fn a_closed_queue_is_said_once_not_at_every_ask() {
+    let (heard, log) = lines();
+    let follow_up = FollowUp::with_dead_worker(log);
+    let records = wikis(1);
+    let record = records.first().unwrap();
+    assert!(heard.lock().unwrap().is_empty(), "nothing yet");
+    for _ in 0..5 {
+        follow_up.warm_title_index(record);
+        follow_up.enqueue_verification(record);
+    }
+    let heard = heard.lock().unwrap().clone();
+    assert_eq!(heard.len(), 1, "once: {heard:?}");
+    assert!(
+        heard
+            .iter()
+            .all(|l| l.contains("follow-up worker has stopped")),
+        "{heard:?}"
+    );
+    assert!(
+        follow_up.waiting.lock().unwrap().is_empty(),
+        "a job that could not be queued is not left waiting"
+    );
+}

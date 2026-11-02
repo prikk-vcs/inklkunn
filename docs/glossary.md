@@ -510,7 +510,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `problem.acceptance_failed.detail` | the API's problem detail `acceptance-failed`: the detail | "The change was not made: {word}. The proposal stays open and the history is as it was." | "変更は行われませんでした: {word}。提案は開いたままで、履歴は変わっていません。" |
 | `problem.acceptance_failed.hint` | the API's problem detail `acceptance-failed`: the hint | "Try again, or tell the person who runs this server." | "もう一度試すか、このサーバーを運用している人に知らせてください。" |
 | `problem.signing_not_configured.title` | the API's problem detail `signing-not-configured`: the title | "Signing is not set up" | "署名が設定されていません" |
-| `problem.signing_not_configured.detail` | the API's problem detail `signing-not-configured`: the detail | "This server is not set up to sign changes into the history, so it accepts no proposals; reading works." | "このサーバーには変更を履歴へ署名する設定がないため、提案を受け入れられません。読み取りはできます。" |
+| `problem.signing_not_configured.detail` | the API's problem detail `signing-not-configured`: the detail | "This server is not set up to sign changes into the history, so it takes no proposal into the history; reading, proposing and commenting still work." | "このサーバーには変更を履歴へ署名する設定がないため、提案を履歴に取り込めません。読み取り、提案、コメントはできます。" |
 | `problem.signing_not_configured.hint` | the API's problem detail `signing-not-configured`: the hint | "Tell the person who runs this server. This request did nothing." | "このサーバーを運用している人に知らせてください。このリクエストでは何も行われていません。" |
 | `title.inbox` | the title of the inbox | "Inbox · {product}" | "受信箱 · {product}" |
 | `inbox.heading` | the heading of the inbox | "Inbox" | "受信箱" |

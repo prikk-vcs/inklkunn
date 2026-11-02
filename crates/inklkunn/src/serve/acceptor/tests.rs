@@ -519,7 +519,8 @@ fn a_start_without_the_secret_file_serves_a_page_and_refuses_a_write_with_one_se
     assert!(
         line.contains(&world.settings.secret_file.display().to_string())
             && line.contains("does not exist")
-            && line.contains("reads pages and refuses every write")
+            && line
+                .contains("stores proposals and comments, and refuses every change to the history")
             && line.contains("restarted"),
         "{line}"
     );
@@ -671,6 +672,43 @@ fn a_start_with_the_secret_accepts_a_proposal_end_to_end_and_no_secret_reaches_a
 }
 
 #[test]
+fn a_secret_file_that_others_can_read_is_a_warning_at_start_and_the_server_still_signs() {
+    // A2: a Kubernetes secret mount is 0644 by default, so this is a word and not a refusal.
+    let Some(world) = World::new("opensecret", false) else {
+        return;
+    };
+    std::fs::set_permissions(
+        &world.settings.secret_file,
+        std::fs::Permissions::from_mode(0o644),
+    )
+    .unwrap();
+    let running = Running::start(&world, |_| {});
+    let lines: Vec<&String> = running
+        .notes
+        .iter()
+        .filter(|l| l.contains("can be read or changed by group or others"))
+        .collect();
+    assert_eq!(lines.len(), 1, "{:?}", running.notes);
+    let line = lines.first().unwrap();
+    assert!(
+        line.contains(&world.settings.secret_file.display().to_string())
+            && line.contains("INKLKUNN_SECRET_FILE")
+            && line.contains("0644")
+            && !line.contains(SECRET),
+        "{line}"
+    );
+    assert!(
+        running
+            .banner
+            .iter()
+            .any(|l| l.contains("accepting proposals: the signer is open")),
+        "it is a warning only: {:?}",
+        running.banner
+    );
+    running.stop();
+}
+
+#[test]
 fn a_secret_that_does_not_open_the_key_store_is_the_same_server_with_one_line_that_names_no_secret()
 {
     let Some(world) = World::new("wrongsecret", false) else {
@@ -688,7 +726,7 @@ fn a_secret_that_does_not_open_the_key_store_is_the_same_server_with_one_line_th
         lines
             .first()
             .unwrap()
-            .contains("reads pages and refuses every write"),
+            .contains("refuses every change to the history"),
         "{lines:?}"
     );
     let proposal = propose(&running, &world);

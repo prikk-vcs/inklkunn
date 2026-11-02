@@ -1033,7 +1033,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.signing_not_configured.detail",
-        "This server is not set up to sign changes into the history, so it accepts no proposals; reading works.",
+        "This server is not set up to sign changes into the history, so it takes no proposal into the history; reading, proposing and commenting still work.",
     ),
     msg(
         "problem.signing_not_configured.hint",

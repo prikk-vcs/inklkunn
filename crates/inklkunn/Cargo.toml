@@ -19,6 +19,9 @@ inklkunn-fetch = { path = "../inklkunn-fetch", version = "0.1.0" }
 inklkunn-prikk = { path = "../inklkunn-prikk", version = "0.1.0" }
 inklkunn-store = { path = "../inklkunn-store", version = "0.1.0" }
 inklkunn-web = { path = "../inklkunn-web", version = "0.1.0" }
+# Already locked and built for two other crates of the workspace: the safe `prctl` wrapper that makes the
+# process non-dumpable (`PR_SET_DUMPABLE`), and `getuid` for the secret file's owner. No new crate.
+rustix = { version = "1", default-features = false, features = ["process", "std"] }
 
 [dev-dependencies]
 # Test-only, already in the lock for the store: the account tests break the audit trail to show that an act the

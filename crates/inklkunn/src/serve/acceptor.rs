@@ -7,8 +7,10 @@
 //! key store: the key directory and the operator's secret file from the settings, the seeds decrypted for one
 //! signing call onto the tmpfs and removed with the call, bubblewrap required for the signer's prikk calls
 //! exactly as it is for every other prikk call of the server (`Settings::sandbox`). There is no second signer
-//! process (IQ-4 stays). The secret is read from its file, once, when the signer is opened: **it is never asked
-//! for on a terminal, never put in a variable, a log line or a page.**
+//! process (IQ-4 stays). The secret is read from its file **at start**, not once: the sweep of leftover seed
+//! directories, the start-up recovery and this acceptor each open the signer and read it (up to three times), and
+//! every copy is zeroized when its signer is dropped. **It is never asked for on a terminal, never put in a
+//! variable, a log line or a page.**
 //!
 //! **One lease with the command line.** The signer is opened `with_leases` over the [`WriteLeases`] that the
 //! acceptor's [`WikiLeases`] wrap, as the command line's acts are: an acceptance holds the wiki's `flock` for
@@ -17,8 +19,8 @@
 //!
 //! **A server without the means to sign still serves.** No secret file, or a key store that does not open
 //! (a wrong secret, a key directory open to others, a seed directory that is not on a tmpfs, no keys made yet):
-//! the server reads and refuses every write with the one sentence of [`NoSigner`]; the operator is told why in
-//! one line at start. It does not stop, because everything it can still do is useful, and it does not retry
+//! the server reads, **stores proposals and comments as usual** and refuses **every change to the history** (an
+//! acceptance) with the one sentence of [`NoSigner`]; the operator is told why in one line at start. It does not stop, because everything it can still do is useful, and it does not retry
 //! behind a visitor's back: fix the cause and restart.
 
 use std::path::Path;
@@ -82,8 +84,48 @@ fn off(why: String) -> Assembled {
         acceptor: Arc::new(NoSigner),
         signing: false,
         notes: vec![format!(
-            "inklkunn: {why}; this server reads pages and refuses every write until that is fixed and the server is restarted"
+            "inklkunn: {why}; this server reads pages and stores proposals and comments, and refuses every change to the history until that is fixed and the server is restarted"
         )],
+    }
+}
+
+/// What is wrong with the secret file's mode and owner, as warnings (corrections A2): readable or writable by
+/// group or others, or owned by a user who is neither the server's nor root. **A warning only**: a Kubernetes
+/// secret mount is 0644 by default and an operator may have reasons, but anyone who can read the file and the key
+/// records holds every wiki's keys, and the operator should hear it at every start.
+pub(crate) fn secret_file_warnings(path: &Path, mode: u32, owner: u32, server: u32) -> Vec<String> {
+    let mut out = Vec::new();
+    if mode & 0o066 != 0 {
+        out.push(format!(
+            "inklkunn: warning: the operator's secret file {} (INKLKUNN_SECRET_FILE) can be read or changed by group or \
+             others (mode {:04o}); anyone who can read it and the key records holds every wiki's keys, so make it \
+             owned by the server's user with mode 0400 or 0600",
+            path.display(),
+            mode & 0o777
+        ));
+    }
+    if owner != server && owner != 0 {
+        out.push(format!(
+            "inklkunn: warning: the operator's secret file {} (INKLKUNN_SECRET_FILE) is owned by user {owner}, who is \
+             neither the server's user ({server}) nor root, and so can change it; make it owned by the server's user",
+            path.display()
+        ));
+    }
+    out
+}
+
+/// The warnings about the file at `path`, read through any link (secret mounts are often links); none when it
+/// cannot be looked at (the signer says why it cannot be opened).
+fn secret_file_check(path: &Path) -> Vec<String> {
+    use std::os::unix::fs::MetadataExt;
+    match std::fs::metadata(path) {
+        Ok(meta) => secret_file_warnings(
+            path,
+            meta.mode(),
+            meta.uid(),
+            rustix::process::getuid().as_raw(),
+        ),
+        Err(_) => Vec::new(),
     }
 }
 
@@ -96,6 +138,13 @@ fn secret_file_is_missing(path: &Path) -> bool {
 /// creations and recovery, `admin::start_up`): an acceptor must never be built on a wiki that start-up has not
 /// looked at, and a wiki that start-up flagged *needs recovery* refuses writes whatever the acceptor is.
 pub(crate) fn assemble(parts: Parts) -> Assembled {
+    let warnings = secret_file_check(&parts.settings.secret_file);
+    let mut assembled = assemble_signer(parts);
+    assembled.notes.splice(0..0, warnings);
+    assembled
+}
+
+fn assemble_signer(parts: Parts) -> Assembled {
     let settings = &parts.settings;
     if secret_file_is_missing(&settings.secret_file) {
         return off(format!(
@@ -183,3 +232,6 @@ pub(crate) fn assemble(parts: Parts) -> Assembled {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod secret_file_tests;

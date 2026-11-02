@@ -210,7 +210,7 @@ fn prepare_with(
         acceptances: store.clone(),
         acts: store.clone(),
         // The acceptor of RFC 004 D-4 over the same lease as the command line, or `NoSigner` when this server was
-        // started without the means to sign (then every write is refused with one sentence).
+        // started without the means to sign (then every change to the history is refused with one sentence).
         acceptor: Some(signing.acceptor),
         // A request is who its credential says: a session cookie (a write only with the session's CSRF token), or
         // a bearer token judged alone (the sign-in handoff's U4).
