@@ -140,7 +140,12 @@ fn what_a_client_prepended_on_the_left_is_never_read() {
         &many,
     ] {
         let c = p.client(peer, Some(header));
-        assert_eq!(c.as_key(), "198.51.100.1", "{}", &header[..header.len().min(40)]);
+        assert_eq!(
+            c.as_key(),
+            "198.51.100.1",
+            "{}",
+            &header[..header.len().min(40)]
+        );
         assert!(!c.fell_back());
     }
 }

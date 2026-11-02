@@ -1188,6 +1188,7 @@ keys! {
     TitleLanding => "title.landing",
     LandingBody => "landing.body",
     LandingContinue => "landing.continue",
+    SignInProviderNotNavigation => "sign_in.provider_not_navigation",
     // sign-in through a provider (the OpenID Connect handoff U3): end
 }
 

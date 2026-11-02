@@ -106,6 +106,7 @@ fn begin(p: &OidcProvider, now: i64) -> Result<BeginSignIn, OidcError> {
             next: None,
             after_joining: None,
         },
+        "203.0.113.1",
         now,
     )
 }
@@ -118,7 +119,8 @@ fn finish(
     code: &str,
     now: i64,
 ) -> Result<VerifiedIdentity, OidcError> {
-    p.finish_sign_in(state, cookie, code, now).map(|(i, _)| i)
+    p.finish_sign_in(state, cookie, code, now)
+        .map(|(i, _, _)| i)
 }
 
 fn idp() -> Arc<MockFetcher> {
@@ -780,13 +782,15 @@ fn a_verifier_that_refuses_refuses_the_login() {
 #[test]
 fn pending_logins_are_bounded_and_the_oldest_go_first() {
     let pending = PendingLogins::default();
-    // Twenty logins to a second, all inside the ten minutes a login may take.
+    // Twenty logins to a second, all inside the ten minutes a login may take, from addresses that hold
+    // thirty-two at most each.
     for i in 0..10_050_i64 {
         pending.insert(
             format!("s{i}"),
             "n".into(),
             "v".into(),
             plain_purpose(),
+            &format!("c{}", i % 400),
             NOW + i / 20,
         );
     }
@@ -802,9 +806,72 @@ fn pending_logins_are_bounded_and_the_oldest_go_first() {
         "n".into(),
         "v".into(),
         plain_purpose(),
+        "c1",
         NOW + 100_000,
     );
     assert_eq!(pending.len(), 1);
+}
+
+#[test]
+fn one_address_cannot_push_out_the_logins_of_others() {
+    // G2: the overall bound alone let one network fill it and evict everyone's. An address that starts more than
+    // its share loses its own oldest; and when the whole table is full, the address with the most goes first.
+    let pending = PendingLogins::default();
+    for i in 0..5 {
+        pending.insert(
+            format!("p{i}"),
+            "n".into(),
+            "v".into(),
+            plain_purpose(),
+            &format!("person{i}"),
+            NOW,
+        );
+    }
+    for i in 0..500_i64 {
+        pending.insert(
+            format!("flood{i}"),
+            "n".into(),
+            "v".into(),
+            plain_purpose(),
+            "flooder",
+            NOW + 1 + i / 100,
+        );
+    }
+    assert!(
+        (0..5).all(|i| pending.peek(&format!("p{i}")).is_some()),
+        "the people's logins are all still there"
+    );
+    assert_eq!(pending.len(), 5 + super::pending::MAX_PENDING_PER_CLIENT);
+    assert!(
+        pending.peek("flood499").is_some() && pending.peek("flood0").is_none(),
+        "the flooder lost its own oldest"
+    );
+    // Many addresses together fill the table: the one with the most in flight loses, not the newcomer's, not a
+    // person who started one.
+    let pending = PendingLogins::default();
+    pending.insert(
+        "person".into(),
+        "n".into(),
+        "v".into(),
+        plain_purpose(),
+        "person",
+        NOW,
+    );
+    for i in 0..10_000_i64 {
+        pending.insert(
+            format!("net{i}"),
+            "n".into(),
+            "v".into(),
+            plain_purpose(),
+            &format!("net{}", i % 330),
+            NOW + 1 + i / 100,
+        );
+    }
+    assert_eq!(pending.len(), 10_000);
+    assert!(
+        pending.peek("person").is_some(),
+        "a network of many addresses did not evict the person who started one"
+    );
 }
 
 #[test]
@@ -876,7 +943,9 @@ fn what_a_login_is_for_stays_on_the_server_and_comes_back_once_with_the_identity
         secret: "inv_the-secret".into(),
         next: Some("/-/account".into()),
     };
-    let b = p.begin_sign_in(purpose.clone(), NOW).unwrap();
+    let b = p
+        .begin_sign_in(purpose.clone(), "203.0.113.1", NOW)
+        .unwrap();
     // Neither the cookie nor the address carries it.
     for shown in [b.state_cookie(), b.authorization_url.clone()] {
         assert!(!shown.contains("inv_the-secret"), "{shown}");
@@ -887,10 +956,14 @@ fn what_a_login_is_for_stays_on_the_server_and_comes_back_once_with_the_identity
         "https://idp.example/token",
         format!(r#"{{"id_token":"{}"}}"#, sign(&claims(&nonce))),
     );
-    let (identity, got) = p
+    let (identity, got, started_by) = p
         .finish_sign_in(&b.state, Some(&state_header(&b.state)), "c", NOW + 1)
         .unwrap();
     assert_eq!(got, purpose);
+    assert_eq!(
+        started_by, "203.0.113.1",
+        "the login remembers who started it"
+    );
     assert_eq!(identity.identity().subject(), "user-42");
     // The purpose is not printed.
     assert!(!format!("{got:?}").contains("inv_the-secret"));

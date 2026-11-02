@@ -497,6 +497,68 @@ fn starting_a_sign_in_spends_the_clients_budget_so_logins_in_flight_cannot_be_fl
 }
 
 #[test]
+fn a_sign_in_that_succeeds_gives_its_start_back_and_one_that_does_not_keeps_it_spent() {
+    // G2: the start is a plain GET a third-party page can trigger, and an office signs in through one address.
+    // Thirty sign-ins that each finish never lock the address; thirty that never finish do.
+    let w = oidc_world("subject-6");
+    let sso = w.auth.register_external("Sso Person", NOW).unwrap();
+    w.auth
+        .link_external(
+            &sso.id,
+            &ExternalIdentity::new(ISSUER, "subject-6").unwrap(),
+            NOW,
+        )
+        .unwrap();
+    for i in 0..45 {
+        let _ = sign_in_through_the_provider(&w, "203.0.113.50", NOW + 2 * i).unwrap();
+    }
+    let abandoned = ip("203.0.113.51");
+    for i in 0..30 {
+        assert!(
+            w.auth.begin_oidc(plain(), &abandoned, NOW + i).is_ok(),
+            "{i}"
+        );
+    }
+    assert!(matches!(
+        w.auth.begin_oidc(plain(), &abandoned, NOW + 40),
+        Err(OidcSignInError::Auth(AuthError::Locked { .. }))
+    ));
+}
+
+#[test]
+fn the_start_goes_back_to_the_address_that_made_it_not_to_the_one_that_finished() {
+    let w = oidc_world("subject-7");
+    let sso = w.auth.register_external("Sso Person", NOW).unwrap();
+    w.auth
+        .link_external(
+            &sso.id,
+            &ExternalIdentity::new(ISSUER, "subject-7").unwrap(),
+            NOW,
+        )
+        .unwrap();
+    let (starter, finisher) = (ip("203.0.113.60"), ip("203.0.113.61"));
+    // Twenty-eight starts of the starter's, left open; the twenty-ninth is finished from another address.
+    for i in 0..28 {
+        w.auth.begin_oidc(plain(), &starter, NOW + i).unwrap();
+    }
+    let begun = w.auth.begin_oidc(plain(), &starter, NOW + 30).unwrap();
+    let header = format!("{STATE_COOKIE}={}", begun.state);
+    let _ = w
+        .auth
+        .finish_oidc(&begun.state, Some(&header), "code", &finisher, NOW + 31)
+        .unwrap();
+    // The starter has 28 spent: two more starts are allowed (the thirtieth engages the lock) and the third is
+    // locked out. Had the start not been given back, or given to the finisher, it would be one start fewer.
+    assert!(w.auth.begin_oidc(plain(), &starter, NOW + 32).is_ok());
+    assert!(w.auth.begin_oidc(plain(), &starter, NOW + 33).is_ok());
+    assert!(matches!(
+        w.auth.begin_oidc(plain(), &starter, NOW + 34),
+        Err(OidcSignInError::Auth(AuthError::Locked { .. }))
+    ));
+    assert!(w.auth.begin_oidc(plain(), &finisher, NOW + 35).is_ok());
+}
+
+#[test]
 fn without_a_provider_there_is_no_openid_connect() {
     let w = world();
     assert!(matches!(

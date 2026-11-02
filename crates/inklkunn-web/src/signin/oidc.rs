@@ -32,7 +32,8 @@ use inklkunn_auth::oidc::{OidcError, clear_state_cookie};
 use inklkunn_auth::{AuthError, Authenticator, OidcPurpose, OidcSignInError, OidcSignedIn};
 
 use super::names::{
-    F_NEXT, Q_CODE, Q_ERROR, Q_STATE, invite_action, invite_oidc_action, no_store, oidc_start_href,
+    F_NEXT, FETCH_DEST_DOCUMENT, FETCH_MODE_NAVIGATE, Q_CODE, Q_ERROR, Q_STATE, SEC_FETCH_DEST,
+    SEC_FETCH_MODE, invite_action, invite_oidc_action, no_store, oidc_start_href,
 };
 use super::{
     Making, Peer, SignInView, client_of, cookie_line, invitation_unusable, new_account_form,
@@ -108,6 +109,20 @@ pub(crate) fn invitation_intro(page: &Page) -> String {
 }
 
 // ------------------------------------------------------------------------------------ starting
+
+/// Did the browser say this request is something other than a person opening the address? The start is a plain
+/// GET, which a page of another site can trigger with an `<img src>` or a script and so spend the address's
+/// starts (corrections G2). A browser that sends `Sec-Fetch-Mode` and `Sec-Fetch-Dest` says what the request is:
+/// a person's own navigation is `navigate` and `document`. A request without the headers (an older browser, a
+/// command-line client) is served as before; one that sends them and says anything else is not.
+fn not_a_navigation(headers: &HeaderMap) -> bool {
+    let says = |name: &str, wanted: &str| {
+        headers
+            .get(name)
+            .is_some_and(|v| !v.as_bytes().eq_ignore_ascii_case(wanted.as_bytes()))
+    };
+    says(SEC_FETCH_MODE, FETCH_MODE_NAVIGATE) || says(SEC_FETCH_DEST, FETCH_DEST_DOCUMENT)
+}
 
 /// Send the browser to the provider, with the login-state cookie. The response is never kept.
 fn to_the_provider(page: &Page, begun: &inklkunn_auth::oidc::BeginSignIn) -> Response {
@@ -199,6 +214,18 @@ pub(crate) async fn start(
         return generic_not_found(&page);
     }
     let page = private(page);
+    if not_a_navigation(&headers) {
+        return sign_in_form(
+            &page,
+            &auth,
+            StatusCode::FORBIDDEN,
+            &SignInView {
+                problem: Some(page.get(Key::SignInProviderNotNavigation)),
+                login: "",
+                next: "/",
+            },
+        );
+    }
     let next = query
         .ok()
         .and_then(|Query(q)| q.get(F_NEXT).cloned())
@@ -245,6 +272,16 @@ pub(crate) async fn start_invitation(
         return invitation_unusable(&page);
     };
     let action = invite_action(&secret);
+    if not_a_navigation(&headers) {
+        return new_account_form(
+            &page,
+            Making::Invitation,
+            action,
+            StatusCode::FORBIDDEN,
+            Some(page.get(Key::SignInProviderNotNavigation)),
+            &super::Typed::default(),
+        );
+    }
     let client = client_of(&services, &auth, &peer, &headers);
     let now = (services.clock)();
     let for_work = auth.clone();

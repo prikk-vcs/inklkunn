@@ -46,6 +46,17 @@ pub(crate) const API_SEGMENT: &str = "/-/api/";
 pub(crate) const BEARER: &str = "bearer";
 /// The header a trusted proxy reports the client address in.
 pub(crate) const FORWARDED_FOR: &str = "x-forwarded-for";
+/// What the server tells the operator, once, when a loopback peer sends `X-Forwarded-For` while no proxy is
+/// trusted (corrections G1).
+pub(crate) const FORWARDED_IGNORED_LINE: &str = "a request from a loopback address carried X-Forwarded-For \
+     while no trusted proxy is declared (INKLKUNN_TRUSTED_PROXIES): the header is ignored and every client \
+     counts as one address, so thirty failed sign-ins by anyone lock everyone out";
+/// What a browser says a request is (`Sec-Fetch-Mode`, `Sec-Fetch-Dest`), and the values of a person's own
+/// navigation to a page.
+pub(crate) const SEC_FETCH_MODE: &str = "sec-fetch-mode";
+pub(crate) const SEC_FETCH_DEST: &str = "sec-fetch-dest";
+pub(crate) const FETCH_MODE_NAVIGATE: &str = "navigate";
+pub(crate) const FETCH_DEST_DOCUMENT: &str = "document";
 
 /// The form fields.
 pub(crate) const F_LOGIN: &str = "login";

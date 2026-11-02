@@ -340,10 +340,12 @@ impl OidcProvider {
     }
 
     /// Start a sign-in: make the state, nonce and PKCE verifier, keep them, and build the URL. Reached through
-    /// the authenticator, which spends the client address's budget for starting one first.
+    /// the authenticator, which spends the client address's budget for starting one first. `client` is that
+    /// address's key: the login remembers it, so the budget can be given back when the login succeeds.
     pub(crate) fn begin_sign_in(
         &self,
         purpose: Purpose,
+        client: &str,
         now: i64,
     ) -> Result<BeginSignIn, OidcError> {
         let d = self.remote.discovery(now)?;
@@ -352,7 +354,7 @@ impl OidcProvider {
         let verifier = random::token()?;
         let challenge = Base64UrlUnpadded::encode_string(&Sha256::digest(verifier.as_bytes()));
         self.pending
-            .insert(state.clone(), nonce.clone(), verifier, purpose, now);
+            .insert(state.clone(), nonce.clone(), verifier, purpose, client, now);
         let sep = if d.authorization_endpoint.contains('?') {
             '&'
         } else {
@@ -378,14 +380,15 @@ impl OidcProvider {
     /// Finish a sign-in from the callback. `state` is the callback's query parameter and `cookie_header` the
     /// request's `Cookie` header, from which the browser's [`STATE_COOKIE`] is read: they must name the same
     /// state, and it must be a sign-in this server started a moment ago and has not finished. (The cookie is
-    /// read here, from the header, so a caller cannot pass the query parameter for both.)
+    /// read here, from the header, so a caller cannot pass the query parameter for both.) The last of the three
+    /// is the key of the client address that started the login.
     pub(crate) fn finish_sign_in(
         &self,
         state: &str,
         cookie_header: Option<&str>,
         code: &str,
         now: i64,
-    ) -> Result<(VerifiedIdentity, Purpose), OidcError> {
+    ) -> Result<(VerifiedIdentity, Purpose, String), OidcError> {
         let state_cookie = cookie_header
             .and_then(|h| crate::session::cookie_value(h, STATE_COOKIE))
             .unwrap_or("");
@@ -424,7 +427,7 @@ impl OidcProvider {
         let identity = self
             .verifier
             .verify(&tokens.id_token, &pending.nonce, now)?;
-        Ok((identity, pending.purpose))
+        Ok((identity, pending.purpose, pending.client))
     }
 
     fn remote_fetch(&self, request: &FetchRequest) -> Result<Vec<u8>, OidcError> {

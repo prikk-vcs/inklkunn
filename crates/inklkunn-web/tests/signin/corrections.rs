@@ -72,3 +72,52 @@ async fn a_declared_proxy_is_not_said_anything_about() {
         r.w.logged()
     );
 }
+
+// ------------------------------------------------------------------------------------ G2
+
+/// The start of a provider sign-in is a plain GET that a page of another site can trigger. A browser that says
+/// what a request is gets a start only for a person's own navigation; one that says nothing is served as before.
+#[tokio::test]
+async fn a_provider_start_is_for_a_persons_own_navigation_when_the_browser_says_what_it_is() {
+    let (r, _) = crate::provider::with_provider(inklkunn_auth::JoinPolicy::Off);
+    let secret = crate::provider::invitation(&r, None);
+    let invite_start = format!("/-/invite/{secret}/oidc");
+    let refused: [&[(&str, &str)]; 5] = [
+        &[("sec-fetch-mode", "no-cors"), ("sec-fetch-dest", "image")],
+        &[("sec-fetch-mode", "cors"), ("sec-fetch-dest", "empty")],
+        &[("sec-fetch-mode", "navigate"), ("sec-fetch-dest", "iframe")],
+        &[("sec-fetch-mode", "no-cors")],
+        &[("sec-fetch-dest", "script")],
+    ];
+    // Far more than the thirty starts an address has: none of them spends one.
+    for _ in 0..10 {
+        for headers in refused {
+            for uri in ["/-/sign-in/oidc", invite_start.as_str()] {
+                let a = r.get(uri, headers).await;
+                assert_eq!(a.status, 403, "{uri} {headers:?}: {}", a.body());
+                assert!(a.header("location").is_none(), "{uri} {headers:?}");
+                assert!(
+                    cookie_value(&a, "__Host-inklkunn-oidc").is_none(),
+                    "{uri} {headers:?}: no login was started"
+                );
+                assert!(
+                    a.body().contains("only when you open its address yourself"),
+                    "{uri}: {}",
+                    a.body()
+                );
+            }
+        }
+    }
+    // A navigation, with or without the headers, is served.
+    for headers in [
+        &[][..],
+        &[
+            ("sec-fetch-mode", "navigate"),
+            ("sec-fetch-dest", "document"),
+        ][..],
+        &[("sec-fetch-mode", "navigate")][..],
+    ] {
+        crate::provider::start(&r, "/-/sign-in/oidc", headers).await;
+        crate::provider::start(&r, &invite_start, headers).await;
+    }
+}

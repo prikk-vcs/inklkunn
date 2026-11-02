@@ -928,6 +928,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `title.landing` | the title of the page that moves the browser on after a sign-in through the provider | "Signing in · {product}" | "サインインしています · {product}" |
 | `landing.body` | on that page; `{link}` is the next message | "Signing you in. If this page does not move on by itself, {link}." | "サインインしています。このページが自動で切り替わらない場合は、{link}。" |
 | `landing.continue` | the link in that sentence, to the page the person asked for | "continue to the page you asked for" | "続きのページへ進んでください" |
+| `sign_in.provider_not_navigation` | a problem: the address that starts a sign-in with the provider was reached by something other than the person opening it themselves (an image or a script on another page) | "A sign-in with a provider starts only when you open its address yourself, from this site's sign-in page. Nothing was started. Use the button on this page." | "プロバイダーでのサインインは、このサイトのサインインのページから、ご自身でアドレスを開いたときにだけ始まります。何も開始されていません。このページのボタンをお使いください。" |
 
 ## 3. Words the interface does not say
 

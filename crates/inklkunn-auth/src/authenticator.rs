@@ -542,7 +542,8 @@ impl Authenticator {
     }
 
     /// Start an OpenID Connect sign-in for `purpose`: spends one of the client address's sign-in starts (so an
-    /// address cannot flood the logins in flight), then asks the provider. Send the browser to the returned URL
+    /// address cannot flood the logins in flight; the login keeps the address, and the start is **given back
+    /// when the sign-in succeeds**), then asks the provider. Send the browser to the returned URL
     /// and set the returned state cookie. A purpose that is an invitation must be usable now.
     ///
     /// **Blocking** (it may fetch the provider's discovery document).
@@ -566,7 +567,7 @@ impl Authenticator {
                 }
             }
         }
-        let started = self.start_oidc(provider, purpose, now);
+        let started = self.start_oidc(provider, purpose, client.as_key(), now);
         if started.is_err() {
             // Nothing was started: the start is given back.
             self.by_oidc_start.refund(client.as_key());
@@ -578,6 +579,7 @@ impl Authenticator {
         &self,
         provider: &OidcProvider,
         purpose: OidcPurpose<'_>,
+        client: &str,
         now: i64,
     ) -> Result<BeginSignIn, OidcSignInError> {
         if let OidcPurpose::Invitation { secret, .. } = purpose
@@ -589,7 +591,7 @@ impl Authenticator {
             return Err(OidcSignInError::InvitationUnusable);
         }
         provider
-            .begin_sign_in(purpose.owned(), now)
+            .begin_sign_in(purpose.owned(), client, now)
             .map_err(OidcSignInError::Oidc)
     }
 
@@ -630,7 +632,7 @@ impl Authenticator {
             .oidc
             .as_ref()
             .ok_or(OidcSignInError::Oidc(OidcError::NotConfigured))?;
-        let (identity, purpose) = provider
+        let (identity, purpose, started_by) = provider
             .finish_sign_in(state, cookie_header, code, now)
             .map_err(OidcSignInError::Oidc)?;
         let (account, created, next) = match purpose {
@@ -658,6 +660,10 @@ impl Authenticator {
             }
         };
         let signed_in = self.start(&account, now).map_err(OidcSignInError::Auth)?;
+        // The person finished what they started: the start is given back to the address that made it (corrections
+        // G2), so a start that a third-party page triggered on someone's behalf, or an office of people who all
+        // sign in through the provider, does not use up the address's budget by succeeding.
+        self.by_oidc_start.refund(&started_by);
         let landing = Landing::new(
             next.as_deref(),
             vec![signed_in.session.set_cookie(now), clear_state_cookie()],

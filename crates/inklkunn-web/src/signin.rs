@@ -46,7 +46,10 @@ use crate::wiki::{blocking, generic_not_found, redirect, render_failed};
 pub(crate) mod names;
 pub(crate) mod oidc;
 
-use names::{F_LOGIN, F_NAME, F_NEXT, F_PASSWORD, FORWARDED_FOR, clear_form_cookie, invite_action};
+use names::{
+    F_LOGIN, F_NAME, F_NEXT, F_PASSWORD, FORWARDED_FOR, FORWARDED_IGNORED_LINE, clear_form_cookie,
+    invite_action,
+};
 pub(crate) use names::{
     INVITE_OIDC_ROUTE, INVITE_ROUTE, JOIN_PATH, OIDC_CALLBACK_PATH, OIDC_PATH, SIGN_IN_PATH,
     SIGN_OUT_PATH, no_store, sign_in_href,
@@ -100,11 +103,7 @@ pub(crate) fn client_of(
         forwarded.as_deref(),
     );
     if auth.first_ignored_forwarded_for(&client) {
-        (services.log)(
-            "a request from a loopback address carried X-Forwarded-For while no trusted proxy is declared \
-             (INKLKUNN_TRUSTED_PROXIES): the header is ignored and every client counts as one address, so \
-             thirty failed sign-ins by anyone lock everyone out",
-        );
+        (services.log)(FORWARDED_IGNORED_LINE);
     }
     client
 }

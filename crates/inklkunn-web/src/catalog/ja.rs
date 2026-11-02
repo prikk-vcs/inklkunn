@@ -2095,5 +2095,9 @@ pub const CATALOG: &[Entry] = &[
         "サインインしています。このページが自動で切り替わらない場合は、{link}。",
     ),
     msg("landing.continue", "続きのページへ進んでください"),
+    msg(
+        "sign_in.provider_not_navigation",
+        "プロバイダーでのサインインは、このサイトのサインインのページから、ご自身でアドレスを開いたときにだけ始まります。何も開始されていません。このページのボタンをお使いください。",
+    ),
     // sign-in through a provider (the OpenID Connect handoff U3): end
 ];

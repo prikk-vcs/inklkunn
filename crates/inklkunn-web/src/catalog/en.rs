@@ -2026,5 +2026,9 @@ pub const CATALOG: &[Entry] = &[
         "Signing you in. If this page does not move on by itself, {link}.",
     ),
     msg("landing.continue", "continue to the page you asked for"),
+    msg(
+        "sign_in.provider_not_navigation",
+        "A sign-in with a provider starts only when you open its address yourself, from this site's sign-in page. Nothing was started. Use the button on this page.",
+    ),
     // sign-in through a provider (the OpenID Connect handoff U3): end
 ];

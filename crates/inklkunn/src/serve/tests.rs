@@ -263,7 +263,9 @@ fn no_declared_proxy_is_warned_about_for_any_bind_and_declaring_one_ends_it() {
             "one line: {w}"
         );
         assert!(
-            w.contains("INKLKUNN_TRUSTED_PROXIES") && w.contains(loopback) && w.contains("lock everyone out"),
+            w.contains("INKLKUNN_TRUSTED_PROXIES")
+                && w.contains(loopback)
+                && w.contains("lock everyone out"),
             "{w}"
         );
     }
