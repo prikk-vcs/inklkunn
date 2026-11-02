@@ -559,6 +559,9 @@ impl Recovery {
                 .0;
             retirement = Some(excuse.note);
         }
+        // A retirement that was begun and not finished (Q1): the signer says so, and the plan stops on the findings
+        // nothing excuses yet, naming the command (recovery never runs it: it needs the operator's key authority).
+        let retirement_unfinished = p.signer.unfinished_retirement(&wiki.id).ok().flatten();
         // A `seal` killed between publishing its block and draining the queue (P15): `status` refuses, and `doctor`
         // names the pending cleanup (the plan then requires that it names nothing else). Any other refusal of `status`
         // is a witness that could not be read.
@@ -585,6 +588,7 @@ impl Recovery {
             status,
             doctor,
             retirement,
+            retirement_unfinished,
             worktree: if torn || cleanup_pending.is_some() {
                 // prikk refuses to compare a worktree over a torn log; the plan puts it back after the discard. It
                 // refuses over a publication that is not finished too; the plan puts it back after the seal.
@@ -963,10 +967,13 @@ impl Recovery {
                             "the repository does not verify, and only because of a retired key: {}",
                             excuse.note
                         )),
-                        Ok(None) => {
-                            Err("prikk verify reports failed conditions; the flag is kept"
-                                .to_owned())
-                        }
+                        Ok(None) => Err(match p.signer.unfinished_retirement(&wiki.id) {
+                            Ok(Some(unfinished)) => format!(
+                                "prikk verify reports failed conditions; the flag is kept: {unfinished}"
+                            ),
+                            _ => "prikk verify reports failed conditions; the flag is kept"
+                                .to_owned(),
+                        }),
                         Err(e) => Err(format!(
                             "prikk verify reports failed conditions, and whether a retired key accounts for them could not be told ({e}); the flag is kept"
                         )),

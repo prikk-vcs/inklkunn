@@ -1,4 +1,4 @@
-//! `inklkunn wiki keys <status|create|rotate> <wiki>` (RFC 002 D-8): a wiki's keys over time, from the
+//! `inklkunn wiki keys <status|create|rotate|finish-retirement> <wiki>` (RFC 002 D-8): a wiki's keys over time, from the
 //! command line of the host that runs the service.
 //!
 //! **Who may do this.** Whoever can run the command on the host and read the operator's secret file: the key
@@ -7,7 +7,12 @@
 //! wiki's slug typed (`--confirm`), so the wrong wiki is not rotated by a slip, and retiring the old key needs
 //! a second flag that says what it costs.
 //!
-//! **Every `create` and `rotate` is audited** (principal `system:operator-cli`, resource `wiki:<id>`, allowed
+//! **A retirement that ends without its record** (`rotate --retire-old` exits non-zero and says so) is finished with
+//! `finish-retirement <wiki>` (handoff 004, Q1): it completes the record of what the removal of the old key made fail
+//! from the state the retirement kept in the key record, under the wiki's write lock, and only while nothing has been
+//! written since. It needs the same operator rights as the other key commands and is audited the same way.
+//!
+//! **Every `create`, `rotate` and `finish-retirement` is audited** (principal `system:operator-cli`, resource `wiki:<id>`, allowed
 //! or failed, with the generation and what was done to the old key). `status` prints ids and dates and never
 //! a secret; nothing here can print one.
 
@@ -62,6 +67,9 @@ pub(crate) enum Command {
         retire_old: bool,
         accept_unverifiable_history: bool,
     },
+    FinishRetirement {
+        wiki: String,
+    },
 }
 
 /// The command line was not understood (exit status 2).
@@ -70,7 +78,8 @@ pub(crate) struct Usage(pub String);
 
 pub(crate) const USAGE: &str = "usage: inklkunn [--dev-unconfined] wiki keys status <wiki>\n       \
 inklkunn [--dev-unconfined] wiki keys create <wiki>\n       \
-inklkunn [--dev-unconfined] wiki keys rotate <wiki> --confirm <slug> [--retire-old --accept-unverifiable-history]\n\
+inklkunn [--dev-unconfined] wiki keys rotate <wiki> --confirm <slug> [--retire-old --accept-unverifiable-history]\n       \
+inklkunn [--dev-unconfined] wiki keys finish-retirement <wiki>\n\
 <wiki> is the wiki's slug or id.";
 
 /// Parse what follows `wiki keys`.
@@ -82,14 +91,14 @@ pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
         _ => return Err(usage("which wiki?")),
     };
     match sub.as_str() {
-        "status" | "create" => {
+        "status" | "create" | "finish-retirement" => {
             if let Some(extra) = flags.first() {
                 return Err(usage(&format!("`{extra}` is not an option of `{sub}`")));
             }
-            Ok(if sub == "status" {
-                Command::Status { wiki }
-            } else {
-                Command::Create { wiki }
+            Ok(match sub.as_str() {
+                "status" => Command::Status { wiki },
+                "create" => Command::Create { wiki },
+                _ => Command::FinishRetirement { wiki },
             })
         }
         "rotate" => {
@@ -198,7 +207,9 @@ fn run(
     trail: Option<&dyn AuditSink>,
 ) -> Result<(), String> {
     let (wiki_arg, rotating) = match command {
-        Command::Status { wiki } | Command::Create { wiki } => (wiki, None),
+        Command::Status { wiki }
+        | Command::Create { wiki }
+        | Command::FinishRetirement { wiki } => (wiki, None),
         Command::Rotate { wiki, .. } => (wiki, Some(command)),
     };
 
@@ -286,6 +297,17 @@ fn run(
         Command::Status { .. } => {
             let status = signer.key_status(&record.id).map_err(|e| e.to_string())?;
             print_status(out, &record, &status);
+            if let Some(key) = signer
+                .unfinished_retirement(&record.id)
+                .map_err(|e| e.to_string())?
+            {
+                let _ = writeln!(
+                    out,
+                    "UNFINISHED: the retirement of maintainer key {key} was begun and its record was not finished, so nothing is excused \
+                     and the wiki's verification fails for what that key sealed; finish it with `{}`",
+                    inklkunn_core::finish_retirement_command(&record.id)
+                );
+            }
             let late = report_superseded(&signer, &record, &repo, out, err)?;
             if late.is_empty() {
                 Ok(())
@@ -335,6 +357,62 @@ fn run(
                 }
             }
         }
+        Command::FinishRetirement { .. } => {
+            // The trail first, as for the other key commands: an act that cannot be recorded is not begun.
+            begin(
+                trail,
+                &record,
+                now,
+                "keys-finish-retirement",
+                "begun; the record of an unfinished retirement is to be completed",
+            )?;
+            match signer.finish_retirement(key_authority(), &repo) {
+                Ok(done) => {
+                    let detail = format!(
+                        "retirement of key {} finished; {} finding(s) recorded{}",
+                        done.maintainer_key_id,
+                        done.findings_recorded,
+                        if done.note.is_some() {
+                            "; some blocks lack a trusted signature without being that key's"
+                        } else {
+                            ""
+                        }
+                    );
+                    let finished = finish(
+                        trail,
+                        &record,
+                        now,
+                        "keys-finish-retirement",
+                        AuditOutcome::Allowed,
+                        &detail,
+                    );
+                    let _ = writeln!(
+                        out,
+                        "the retirement of maintainer key {} is finished: {} finding(s) of publication trust are recorded, \
+                         and a later failure made of exactly those is excused (the badge still says Verification failed)",
+                        done.maintainer_key_id, done.findings_recorded
+                    );
+                    let partly = done.note.map(|note| {
+                        format!(
+                            "{note}; no command can add them, and a failure they cause stops the wiki"
+                        )
+                    });
+                    finished?;
+                    partly.map_or(Ok(()), Err)
+                }
+                Err(e) => {
+                    let done = finish(
+                        trail,
+                        &record,
+                        now,
+                        "keys-finish-retirement",
+                        AuditOutcome::Failed,
+                        "refused or failed",
+                    );
+                    done.and(Err(e.to_string()))
+                }
+            }
+        }
         Command::Rotate { retire_old, .. } => {
             let old = if *retire_old {
                 OldKey::Retire
@@ -365,8 +443,11 @@ fn run(
                     let what = match &r.old_key {
                         OldKeyOutcome::Kept => "old key kept".to_owned(),
                         OldKeyOutcome::Retired => "old key retired".to_owned(),
+                        OldKeyOutcome::RetiredPartly(_) => {
+                            "old key retired; some blocks that lack a trusted signature were not its own".to_owned()
+                        }
                         OldKeyOutcome::RetiredUnrecorded(_) => {
-                            "old key retired; the key record could not say all of it".to_owned()
+                            "old key retired; its findings are NOT recorded (finish-retirement)".to_owned()
                         }
                         OldKeyOutcome::RetireFailed(_) => {
                             "old key retirement FAILED, the old key is still trusted".to_owned()
@@ -407,19 +488,34 @@ fn run(
                             );
                             Ok(())
                         }
+                        OldKeyOutcome::RetiredPartly(why) => {
+                            let _ = writeln!(
+                                out,
+                                "previous maintainer key {previous} was removed from the repository's trust; what it sealed no longer verifies."
+                            );
+                            Err(format!(
+                                "the retirement is recorded as far as it can be, but {why}"
+                            ))
+                        }
                         OldKeyOutcome::RetiredUnrecorded(why) => {
                             let _ = writeln!(
                                 out,
-                                "previous maintainer key {previous} was removed from the repository's trust; what it sealed no longer verifies. \
-                                 The key record could not say all of it ({why}); nothing is trusted that should not be"
+                                "previous maintainer key {previous} was removed from the repository's trust; what it sealed no longer verifies."
                             );
-                            Ok(())
+                            // Not a success: the wiki shows `Verification failed` for what the key sealed and every
+                            // later change is sealed and not confirmed until the record is finished.
+                            Err(format!(
+                                "the retirement was NOT recorded completely ({why}); nothing is trusted that should not be, but nothing is excused either: \
+                                 finish it with `{}` before anything else is written to the wiki",
+                                inklkunn_core::finish_retirement_command(&record.id)
+                            ))
                         }
                         OldKeyOutcome::RetireFailed(why) => Err(format!(
                             "the keys were rotated (generation {}) but the old maintainer key `{previous}` is STILL TRUSTED: \
                              removing it failed ({why}); remove it with `prikk trust maintainer remove --key-id {previous}` \
-                             in the wiki's repository",
-                            r.status.generation
+                             in the wiki's repository, and then run `{}`, which records what the removal made fail",
+                            r.status.generation,
+                            inklkunn_core::finish_retirement_command(&record.id)
                         )),
                     };
                     // The check runs after every rotation: it prints what it finds, and the trail keeps it.

@@ -22,6 +22,12 @@ fn the_commands_parse() {
         }
     );
     assert_eq!(
+        parse(&args("finish-retirement docs")).unwrap(),
+        Command::FinishRetirement {
+            wiki: "docs".into()
+        }
+    );
+    assert_eq!(
         parse(&args("rotate docs --confirm docs")).unwrap(),
         Command::Rotate {
             wiki: "docs".into(),
@@ -52,6 +58,9 @@ fn what_is_not_understood_is_a_usage_error_that_shows_the_usage() {
         "status --confirm x",
         "status docs extra",
         "create docs --retire-old",
+        "finish-retirement",
+        "finish-retirement docs extra",
+        "finish-retirement docs --confirm docs",
         "rotate docs",
         "rotate docs --confirm",
         "rotate docs --confirm docs --frobnicate",
@@ -282,6 +291,30 @@ mod world {
                 format!(
                     "#!/bin/sh\nif [ \"$1 $2 $3\" = \"trust maintainer remove\" ]; then echo 'error: precondition not met: injected' >&2; exit 1; fi\nexec {} \"$@\"\n",
                     real.display()
+                ),
+            )
+            .unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            path
+        }
+
+        /// A `prikk` that cannot run `verify` once a key was removed from trust (the file `removed` in the returned
+        /// directory is made by the removal), and passes everything else to the real one.
+        pub fn standin_whose_verify_dies_after_a_removal(&self) -> PathBuf {
+            let ctl = self.settings.data_dir.join("ctl");
+            std::fs::create_dir_all(&ctl).unwrap();
+            let path = self.settings.data_dir.join("prikk-dies");
+            let real = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+                .map(|d| d.join("prikk"))
+                .find(|c| c.is_file())
+                .unwrap();
+            std::fs::write(
+                &path,
+                format!(
+                    "#!/bin/sh\nif [ \"$1 $2 $3\" = \"trust maintainer remove\" ]; then {real} \"$@\"; rc=$?; touch {ctl}/removed; exit $rc; fi\nif [ \"$1\" = verify ] && [ -e {ctl}/removed ]; then echo 'error: injected' >&2; exit 2; fi\nexec {real} \"$@\"\n",
+                    real = real.display(),
+                    ctl = ctl.display()
                 ),
             )
             .unwrap();
@@ -570,6 +603,85 @@ fn a_rotation_whose_retirement_fails_is_recorded_as_a_rotation_and_says_the_old_
     );
     // …and the old key is still trusted, so the repository still verifies.
     assert!(w.verifies());
+}
+
+#[test]
+fn a_retirement_that_ends_without_its_record_exits_non_zero_names_the_command_and_finish_retirement_finishes_it()
+ {
+    let Some(w) = world::world("retire-unrecorded") else {
+        return;
+    };
+    let standin = w.standin_whose_verify_dies_after_a_removal();
+    let (status, out, err) = w.cli_with_prikk(
+        "wiki keys rotate handbook --confirm handbook --retire-old --accept-unverifiable-history",
+        standin.as_os_str(),
+    );
+    // The keys rotated and the old key left the trust store; the record of what that made fail was not made.
+    assert_eq!(status, 1, "the operator must notice: {out}{err}");
+    let command = format!("wiki keys finish-retirement {}", w.record.id);
+    assert!(
+        err.contains("NOT recorded completely") && err.contains(&command),
+        "{err}"
+    );
+    assert!(out.contains("generation:      2"), "{out}");
+    assert!(!w.verifies(), "the key is out of the trust store");
+    let events = w.audit_events();
+    assert!(
+        events.iter().any(|(a, o, d)| a == "keys-rotate"
+            && o == "allowed"
+            && d.contains("NOT recorded")
+            && d.contains("finish-retirement")),
+        "{events:?}"
+    );
+    // `status` says it, with the command.
+    let (status, out, _) = w.cli("wiki keys status handbook");
+    assert_eq!(status, 0, "{out}");
+    assert!(
+        out.contains("UNFINISHED") && out.contains(&command),
+        "{out}"
+    );
+    // Nothing else can be done to the keys meanwhile.
+    let (status, _, err) = w.cli("wiki keys rotate handbook --confirm handbook");
+    assert_eq!(status, 1);
+    assert!(err.contains(&command), "{err}");
+    // It is finished with the command, audited before and after, and only once.
+    let (status, out, err) = w.cli("wiki keys finish-retirement handbook");
+    assert_eq!(status, 0, "{out}{err}");
+    assert!(
+        out.contains("is finished") && out.contains("3 finding(s)"),
+        "{out}"
+    );
+    let events = w.audit_events();
+    let finishing: Vec<_> = events
+        .iter()
+        .filter(|(a, _, _)| a == "keys-finish-retirement")
+        .collect();
+    assert_eq!(finishing.len(), 2, "{events:?}");
+    assert!(
+        finishing
+            .first()
+            .is_some_and(|(_, _, d)| d.starts_with("begun")),
+        "{events:?}"
+    );
+    assert!(
+        finishing.get(1).is_some_and(|(_, o, d)| o == "allowed"
+            && d.contains("finished")
+            && d.contains("3 finding(s)")),
+        "{events:?}"
+    );
+    let (status, out, _) = w.cli("wiki keys status handbook");
+    assert_eq!(status, 0, "{out}");
+    assert!(!out.contains("UNFINISHED"), "{out}");
+    let (status, _, err) = w.cli("wiki keys finish-retirement handbook");
+    assert_eq!(status, 1);
+    assert!(err.contains("no key retirement"), "{err}");
+    let events = w.audit_events();
+    assert!(
+        events
+            .iter()
+            .any(|(a, o, _)| a == "keys-finish-retirement" && o == "failed"),
+        "{events:?}"
+    );
 }
 
 #[test]

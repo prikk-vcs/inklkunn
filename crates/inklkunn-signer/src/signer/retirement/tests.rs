@@ -249,20 +249,16 @@ fn what_a_retirement_records_is_the_blocks_the_retired_key_signed_and_the_new_re
         ("ref-state", '1'),
         ("ref-update", '8'),
     ]);
-    // The verify before listed `a` and `b` as the retired key's, `c` as another key's, and had no line for `d`.
-    let signers = vec![
-        (id('a'), "retired".to_owned()),
-        (id('b'), "retired".to_owned()),
-        (id('c'), "other".to_owned()),
-        (id('d'), "retired".to_owned()),
-    ];
-    let (record, left_out) = record_of(&t, &signers, "retired", &[]);
+    // The verify before listed `a` and `b` as the retired key's (and `c` as another key's, and had no line for `d`):
+    // what the retirement kept is the blocks the retired key signed.
+    let signed_by_key = ids(&['a', 'b', 'd']);
+    let (record, left_out) = record_of(&t, &signed_by_key, &[]);
     assert_eq!(record.blocks, ids(&['a', 'b']));
     assert_eq!(left_out, 1, "the block another key signed is left out");
     assert_eq!(record.ref_states, ids(&['1']));
     assert_eq!(record.ref_updates, ids(&['8']));
     // A block that no line lists is not the retired key's either.
-    let (record, left_out) = record_of(&t, &[], "retired", &[]);
+    let (record, left_out) = record_of(&t, &[], &[]);
     assert!(record.blocks.is_empty());
     assert_eq!(left_out, 3);
     // What an earlier retirement recorded is not recorded again.
@@ -274,7 +270,7 @@ fn what_a_retirement_records_is_the_blocks_the_retired_key_signed_and_the_new_re
             ref_updates: vec![],
         },
     )];
-    let (record, left_out) = record_of(&t, &signers, "retired", &earlier);
+    let (record, left_out) = record_of(&t, &signed_by_key, &earlier);
     assert_eq!((record.blocks, left_out), (ids(&['a', 'b']), 0));
     assert!(record.ref_states.is_empty());
     assert_eq!(record.ref_updates, ids(&['8']));

@@ -2624,3 +2624,112 @@ fn the_lock_file_is_beside_the_repository_and_never_inside_it() {
             .any(|e| e.file_name().to_string_lossy().ends_with(".lock"))
     );
 }
+
+// ---- a retirement that ended without its record (handoff 004, Q1)
+
+/// A retirement whose `verify` after the removal could not run (the stand-in lets the two looks before it pass and
+/// fails the next), so that the key is out of the trust store and the key record holds only the state to finish from.
+fn retire_without_the_record(f: &Fixture) -> inklkunn_signer::Rotation {
+    std::fs::write(f.ctl.join("failafter-verify"), "2").unwrap();
+    let rotation = f
+        .signer
+        .rotate_keys(
+            &inklkunn_signer::KeyAuthority::for_tests(),
+            &f.repo,
+            inklkunn_signer::OldKey::Retire,
+        )
+        .expect("the rotation happened");
+    f.uncontrol("failafter-verify");
+    assert!(
+        matches!(&rotation.old_key, inklkunn_signer::OldKeyOutcome::RetiredUnrecorded(why)
+            if why.contains("finish-retirement")),
+        "{rotation:?}"
+    );
+    rotation
+}
+
+#[test]
+fn a_retirement_that_ended_without_its_record_excuses_nothing_and_finishing_it_lets_writes_continue()
+ {
+    let Some(f) = fixture("retire-unrecorded", Sandbox::Unconfined, true) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    retire_without_the_record(&f);
+    // The key is out of the trust store (the repository fails), and nothing is excused: recovery's question is "no".
+    let verdict = f.prikk_json(&["verify", "--format", "json"]);
+    assert_eq!(
+        field(field(&verdict, "verdict"), "ok"),
+        &serde_json::Value::Bool(false)
+    );
+    assert_eq!(
+        Recover::verify_after_retirement(&f.signer, &f.wiki),
+        Ok(None)
+    );
+    // The operator's command finishes the record; the failure is then the retirement's, and writes are confirmed.
+    let done = f
+        .signer
+        .finish_retirement(&inklkunn_signer::KeyAuthority::for_tests(), &f.repo)
+        .expect("finished");
+    assert_eq!(done.findings_recorded, 3);
+    assert!(
+        Recover::verify_after_retirement(&f.signer, &f.wiki)
+            .expect("asked")
+            .is_some()
+    );
+    an_ordinary_write_is_confirmed(&f, "after the finish\n");
+    assert_eq!(Recover::unfinished_retirement(&f.signer, &f.wiki), Ok(None));
+}
+
+#[test]
+fn writes_while_a_retirement_is_unfinished_are_sealed_but_not_confirmed_and_name_the_command() {
+    let Some(f) = fixture("retire-unrecorded-writes", Sandbox::Unconfined, true) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    retire_without_the_record(&f);
+    let command = inklkunn_signer::finish_retirement_command(&f.wiki);
+    let before = f.history_len(MAIN);
+    let p = f.prepare(
+        MAIN,
+        vec![file("pages/Edit.md", Some("written meanwhile\n"))],
+        vec![],
+    );
+    let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+    // Sealed, and not confirmed: nothing is excused until the record is finished.
+    assert!(
+        matches!(&r, Err(AcceptError::SealedUnconfirmed {
+            sealed: Some(_),
+            why: Unconfirmed::VerifyFailed,
+            detail,
+        }) if detail.contains(&command)),
+        "{r:?}"
+    );
+    assert_eq!(
+        f.history_len(MAIN),
+        before + 1,
+        "the change is in the history"
+    );
+    // Recovery's questions: nothing is excused, and the way out is named (never run).
+    assert_eq!(
+        Recover::verify_after_retirement(&f.signer, &f.wiki),
+        Ok(None)
+    );
+    let named = Recover::unfinished_retirement(&f.signer, &f.wiki)
+        .expect("asked")
+        .expect("unfinished");
+    assert!(named.contains(&command), "{named}");
+    // The write made the repository something the record cannot be made from: finishing is refused, and says so.
+    let r = f
+        .signer
+        .finish_retirement(&inklkunn_signer::KeyAuthority::for_tests(), &f.repo);
+    assert!(
+        matches!(&r, Err(SignerError::Refused(why)) if why.contains("has changed") && why.contains("nothing was changed")),
+        "{r:?}"
+    );
+    assert!(
+        Recover::unfinished_retirement(&f.signer, &f.wiki)
+            .unwrap()
+            .is_some()
+    );
+}

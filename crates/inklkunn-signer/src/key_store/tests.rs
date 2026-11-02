@@ -56,6 +56,7 @@ fn store_in(dir: &Path) -> KeyStore {
 fn meta(wiki: &WikiId) -> Meta {
     Meta {
         superseded: Vec::new(),
+        retiring: None,
         wiki: wiki.clone(),
         generation: 1,
         author_key_id: format!("inklkunn-{wiki}-author"),
@@ -806,7 +807,7 @@ fn a_record_cannot_be_changed_moved_or_corrupted_without_notice() {
         ),
         (
             "an unknown format",
-            mutate(&|v| v["format"] = "inklkunn-key-record/4".into()),
+            mutate(&|v| v["format"] = "inklkunn-key-record/5".into()),
         ),
         (
             "the older format named on a record sealed in the newer",
@@ -1349,7 +1350,7 @@ fn the_superseded_keys_are_kept_in_the_record_and_survive_a_reopen() {
     store.create(&m, &seeds()).unwrap();
     assert_eq!(store.status(&wiki).unwrap(), m);
     let text = std::fs::read_to_string(tmp.0.join(format!("keys/{wiki}.key.json"))).unwrap();
-    assert!(text.contains("inklkunn-key-record/3") && text.contains("superseded"));
+    assert!(text.contains("inklkunn-key-record/4") && text.contains("superseded"));
     drop(store);
     assert_eq!(
         store_in(&tmp.0.join("keys"))
@@ -1371,7 +1372,7 @@ fn a_record_written_before_superseded_keys_existed_still_opens_as_never_rotated_
     let opened = store.status(&wiki).unwrap();
     assert_eq!(opened, meta(&wiki));
     assert!(opened.superseded.is_empty());
-    // A rotation under the new rule rewrites it as format 3.
+    // A rotation under the new rule rewrites it as format 4.
     let mut m = meta(&wiki);
     m.generation = 2;
     m.superseded = vec![superseded_entry()];
@@ -1379,7 +1380,7 @@ fn a_record_written_before_superseded_keys_existed_still_opens_as_never_rotated_
     assert!(
         std::fs::read_to_string(tmp.0.join(format!("keys/{wiki}.key.json")))
             .unwrap()
-            .contains("inklkunn-key-record/3")
+            .contains("inklkunn-key-record/4")
     );
     assert_eq!(store.status(&wiki).unwrap().superseded.len(), 1);
 }
@@ -1421,7 +1422,7 @@ fn a_superseded_entry_cannot_be_edited_added_or_dropped_without_notice() {
         assert!(matches!(&r, Err(KeyStoreError::Record(_))), "{what}: {r:?}");
     }
     // A format-1 record cannot carry the field at all.
-    let v1_with = good.replace("inklkunn-key-record/3", "inklkunn-key-record/1");
+    let v1_with = good.replace("inklkunn-key-record/4", "inklkunn-key-record/1");
     std::fs::write(&path, v1_with).unwrap();
     assert!(matches!(store.status(&wiki), Err(KeyStoreError::Record(_))));
     std::fs::write(&path, &good).unwrap();
@@ -1495,7 +1496,7 @@ fn a_retirements_recorded_findings_survive_a_reopen_and_are_bound_into_the_seal(
     assert_eq!(store.status(&wiki).unwrap(), m);
     let path = tmp.0.join(format!("keys/{wiki}.key.json"));
     let good = std::fs::read_to_string(&path).unwrap();
-    assert!(good.contains("inklkunn-key-record/3") && good.contains("excused"));
+    assert!(good.contains("inklkunn-key-record/4") && good.contains("excused"));
     // Not one of the recorded ids can be changed, added, dropped or moved to another kind without notice.
     let one = "a1".repeat(32);
     let other = "ff".repeat(32);
@@ -1562,7 +1563,7 @@ fn a_retirements_recorded_findings_survive_a_reopen_and_are_bound_into_the_seal(
         ),
         (
             "named in a record of the format before",
-            good.replace("inklkunn-key-record/3", "inklkunn-key-record/2"),
+            good.replace("inklkunn-key-record/4", "inklkunn-key-record/2"),
         ),
     ] {
         std::fs::write(&path, &bad).unwrap();
@@ -1645,4 +1646,215 @@ fn recorded_findings_that_prikk_would_not_issue_are_refused_at_sealing() {
             "{what}"
         );
     }
+}
+
+// ---- an unfinished retirement (handoff 004, Q1)
+
+fn retiring_state() -> Retiring {
+    Retiring {
+        maintainer_key_id: "inklkunn-old-maintainer".to_owned(),
+        signed_by_key: vec!["a1".repeat(32), "a2".repeat(32)],
+        checked_records: 7,
+        views: vec![RecordedTip {
+            view: "heads/main".to_owned(),
+            block_id: "ab".repeat(32),
+        }],
+    }
+}
+
+/// A record in the middle of a retirement: the key is superseded, not marked retired, and `retiring` says what the
+/// verify before named.
+fn retiring_meta(wiki: &WikiId) -> Meta {
+    let mut m = meta(wiki);
+    m.generation = 2;
+    m.superseded = vec![superseded_entry()];
+    m.retiring = Some(retiring_state());
+    m
+}
+
+#[test]
+fn an_unfinished_retirement_survives_a_reopen_and_is_bound_into_the_seal() {
+    let tmp = temp("retiring");
+    let store = store_in(&tmp.0.join("keys"));
+    let wiki = WikiId::new();
+    let m = retiring_meta(&wiki);
+    store.create(&m, &seeds()).unwrap();
+    assert_eq!(store.status(&wiki).unwrap(), m);
+    let path = tmp.0.join(format!("keys/{wiki}.key.json"));
+    let good = std::fs::read_to_string(&path).unwrap();
+    assert!(good.contains("inklkunn-key-record/4") && good.contains("retiring"));
+    let edited = |change: &dyn Fn(&mut serde_json::Value)| {
+        let mut v: serde_json::Value = serde_json::from_str(&good).unwrap();
+        change(&mut v);
+        serde_json::to_string(&v).unwrap()
+    };
+    for (what, bad) in [
+        (
+            "a block of the key dropped",
+            edited(&|v| {
+                v.pointer_mut("/retiring/signed_by_key")
+                    .unwrap()
+                    .as_array_mut()
+                    .unwrap()
+                    .pop();
+            }),
+        ),
+        (
+            "a block of the key added",
+            edited(&|v| {
+                v.pointer_mut("/retiring/signed_by_key")
+                    .unwrap()
+                    .as_array_mut()
+                    .unwrap()
+                    .push("ff".repeat(32).into());
+            }),
+        ),
+        (
+            "the count changed",
+            edited(&|v| v["retiring"]["checked_records"] = 8.into()),
+        ),
+        (
+            "a kept tip moved",
+            edited(&|v| v["retiring"]["views"][0]["block_id"] = "cd".repeat(32).into()),
+        ),
+        (
+            "a kept view dropped",
+            edited(&|v| v["retiring"]["views"] = serde_json::json!([])),
+        ),
+        (
+            "the state removed (a retirement made to look never begun)",
+            edited(&|v| {
+                v.as_object_mut().unwrap().remove("retiring");
+            }),
+        ),
+        (
+            "named in a record of the format before",
+            good.replace("inklkunn-key-record/4", "inklkunn-key-record/3"),
+        ),
+    ] {
+        std::fs::write(&path, &bad).unwrap();
+        let r = store.status(&wiki);
+        assert!(matches!(&r, Err(KeyStoreError::Record(_))), "{what}: {r:?}");
+    }
+    std::fs::write(&path, &good).unwrap();
+    assert!(store.status(&wiki).is_ok());
+}
+
+#[test]
+fn an_unfinished_retirement_that_is_not_about_the_newest_superseded_key_or_has_values_prikk_would_not_issue_is_refused()
+ {
+    let tmp = temp("check-retiring");
+    let store = store_in(&tmp.0.join("keys"));
+    let wiki = WikiId::new();
+    let cases: Vec<(&str, Meta)> = vec![
+        ("no superseded key at all", {
+            let mut m = retiring_meta(&wiki);
+            m.superseded.clear();
+            m
+        }),
+        ("another key's id", {
+            let mut m = retiring_meta(&wiki);
+            m.retiring.as_mut().unwrap().maintainer_key_id = "inklkunn-other".into();
+            m
+        }),
+        ("a key already marked retired", {
+            let mut m = retiring_meta(&wiki);
+            m.superseded = vec![retired_entry()];
+            m
+        }),
+        ("a key that holds findings", {
+            let mut m = retiring_meta(&wiki);
+            m.superseded.last_mut().unwrap().excused = retired_entry().excused;
+            m
+        }),
+        ("a block id that is not hex", {
+            let mut m = retiring_meta(&wiki);
+            m.retiring.as_mut().unwrap().signed_by_key = vec!["zz".into()];
+            m
+        }),
+        ("more blocks than a record keeps", {
+            let mut m = retiring_meta(&wiki);
+            m.retiring.as_mut().unwrap().signed_by_key =
+                vec!["ab".repeat(32); MAX_EXCUSED_SUBJECTS + 1];
+            m
+        }),
+        ("a tip that is not a block id", {
+            let mut m = retiring_meta(&wiki);
+            m.retiring.as_mut().unwrap().views[0].block_id = "nope".into();
+            m
+        }),
+    ];
+    for (what, m) in cases {
+        assert!(
+            matches!(store.create(&m, &seeds()), Err(KeyStoreError::Record(_))),
+            "{what}"
+        );
+    }
+}
+
+#[test]
+fn a_record_of_the_format_before_opens_and_nothing_is_retiring_in_it() {
+    let tmp = temp("format-three");
+    let store = store_in(&tmp.0.join("keys"));
+    let wiki = WikiId::new();
+    let mut m = meta(&wiki);
+    m.generation = 2;
+    m.superseded = vec![retired_entry()];
+    let old = record::seal_v3(&store.master, &m, &seeds()).unwrap();
+    assert!(old.contains("inklkunn-key-record/3") && !old.contains("retiring"));
+    std::fs::write(tmp.0.join(format!("keys/{wiki}.key.json")), old).unwrap();
+    let opened = store.status(&wiki).unwrap();
+    assert_eq!(opened, m);
+    assert!(opened.retiring.is_none());
+    // The format before cannot carry the state at all: it is refused at sealing.
+    assert!(matches!(
+        record::seal_v3(&store.master, &retiring_meta(&wiki), &seeds()),
+        Err(KeyStoreError::Record(_))
+    ));
+}
+
+#[test]
+fn updating_the_plain_facts_keeps_the_seeds_and_cannot_change_a_key_id() {
+    let tmp = temp("update-meta");
+    let store = store_in(&tmp.0.join("keys"));
+    let wiki = WikiId::new();
+    let m = retiring_meta(&wiki);
+    store.create(&m, &seeds()).unwrap();
+    // Finish the retirement the way the signer does.
+    let updated = store
+        .update_meta(&wiki, |m| {
+            m.retiring = None;
+            if let Some(last) = m.superseded.last_mut() {
+                last.retired = true;
+                last.excused = retired_entry().excused;
+            }
+        })
+        .unwrap();
+    assert!(updated.retiring.is_none());
+    assert_eq!(store.status(&wiki).unwrap(), updated);
+    assert!(updated.superseded.first().unwrap().retired);
+    // A key id or a generation is not for an update to change; nothing is written when it tries.
+    let path = tmp.0.join(format!("keys/{wiki}.key.json"));
+    let before = std::fs::read_to_string(&path).unwrap();
+    for change in [
+        (|m: &mut Meta| m.generation += 1) as fn(&mut Meta),
+        |m| m.maintainer_key_id = "inklkunn-someone".to_owned(),
+        |m| m.author_key_id = "inklkunn-someone".to_owned(),
+    ] {
+        assert!(matches!(
+            store.update_meta(&wiki, change),
+            Err(KeyStoreError::Record(_))
+        ));
+    }
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+    // The seeds are still the ones that were sealed.
+    let Some((_guard, seed_base)) = base("update-meta") else {
+        return;
+    };
+    let (_, dir) = store.checkout(&wiki, &seed_base, Role::Maintainer).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(dir.key_dir().seed_file("maintainer")).unwrap(),
+        MAINTAINER_SEED
+    );
+    dir.finish().unwrap();
 }

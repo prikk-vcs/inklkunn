@@ -11,7 +11,9 @@
 //! (P15).
 
 use inklkunn_prikk::{RepoStatus, storage::QueuedPatch};
-use inklkunn_signer::recover::text::{ACCEPTANCE_LOCK_KINDS, DoctorReport, HeldLock};
+use inklkunn_signer::recover::text::{
+    ACCEPTANCE_LOCK_KINDS, DoctorReport, HeldLock, PUBLICATION_UNTRUSTED_CODE,
+};
 use inklkunn_signer::{RecoveryFacts, RecoveryOp, WorktreeState};
 use inklkunn_store::{
     AcceptanceId, AccountId, LeaseHolder, ProposalId, ProposalState, RecoveryFlag, SystemActId,
@@ -170,6 +172,11 @@ pub struct Witness {
     /// when that is the case: `verify` and `doctor` fail by publication trust for what the retired key sealed and
     /// by nothing else. The wiki is not frozen for it.
     pub retirement: Option<String>,
+    /// A key retirement that was begun and whose record was not finished (handoff 004, Q1), as the signer says it:
+    /// the key and the command that finishes it. While it is so, nothing is excused, and recovery stops on the
+    /// publication-trust findings of the retired key instead of taking them for damage. The command needs the
+    /// operator's key authority; recovery never runs it.
+    pub retirement_unfinished: Option<String>,
     /// `prikk worktree-status`; `None` when it could not be asked because the log is torn (prikk refuses to
     /// report a worktree over a log with trailing partial bytes, and says to repair the log first): the worktree
     /// is then taken to need putting back after the torn commit is discarded.
@@ -204,6 +211,10 @@ pub enum Stop {
     InterruptedState,
     /// `doctor` reports something recovery has no answer for.
     DoctorTrouble,
+    /// `doctor` reports publication-trust findings, and a key retirement was begun and its record never finished: the
+    /// operator finishes it with `inklkunn wiki keys finish-retirement <wiki>` (recovery cannot: it needs the key
+    /// authority), and then recovers.
+    RetirementUnfinished,
     /// A lock of a kind an acceptance does not leave.
     UnknownLock,
     /// A `prikk` or `bwrap` of somebody else's may be working in the repository, so no step is taken.
@@ -224,6 +235,7 @@ impl Stop {
             Stop::TipMoved => "tip-moved",
             Stop::InterruptedState => "interrupted-state",
             Stop::DoctorTrouble => "doctor-trouble",
+            Stop::RetirementUnfinished => "retirement-unfinished",
             Stop::UnknownLock => "unknown-lock",
             Stop::ForeignProcess => "foreign-process",
             Stop::HistoryUnreadable => "history-unreadable",
@@ -249,6 +261,9 @@ impl Stop {
             }
             Stop::InterruptedState => "prikk reports an interrupted checkout or materialization",
             Stop::DoctorTrouble => "prikk's doctor reports damage that recovery has no answer for",
+            Stop::RetirementUnfinished => {
+                "a key retirement was begun and its record was not finished, so prikk's doctor reports publication-trust findings that nothing excuses; finish it with `inklkunn wiki keys finish-retirement <wiki>` (it needs the operator's key authority; recovery never runs it), then recover again"
+            }
             Stop::UnknownLock => "a lock is held of a kind an acceptance does not leave",
             Stop::ForeignProcess => {
                 "a prikk or bwrap of somebody else's may be working in the repository"
@@ -713,6 +728,18 @@ pub fn build(w: &Witness) -> Plan {
     }
     if w.status.provisional_worktree.is_some() || w.status.interrupted_materialization.is_some() {
         stop(&mut plan, Stop::InterruptedState);
+        return plan;
+    }
+    // A retirement that was begun and not finished (Q1): the retired key's blocks are reported by `doctor` and nothing
+    // excuses them yet. The way out is the operator's command, which recovery names and never runs.
+    if let Some(unfinished) = &w.retirement_unfinished
+        && w.doctor
+            .others()
+            .iter()
+            .any(|d| d.code == PUBLICATION_UNTRUSTED_CODE)
+    {
+        plan.notes.push(unfinished.clone());
+        stop(&mut plan, Stop::RetirementUnfinished);
         return plan;
     }
     // The one error a pending cleanup stands for is that row's own business (P15); anything beside it is trouble.

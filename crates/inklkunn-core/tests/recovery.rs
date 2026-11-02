@@ -5,7 +5,8 @@
 //! `tests/acceptance_kill.rs`; the core crate may not spawn a process.
 //!
 //! A stand-in `prikk` passes every call to the real one unless a control file names the verb: `fail-<verb>` makes it
-//! fail, `say-<verb>` makes it print a canned answer, `runfail-<verb>` makes the real verb do its work and the call
+//! fail, `failafter-<verb>` (holding a number) lets that many calls of the verb through and fails the rest,
+//! `say-<verb>` makes it print a canned answer, `runfail-<verb>` makes the real verb do its work and the call
 //! then report a failure (what a call stopped at its bound after its effect was durable looks like),
 //! `dies-after-publishing-<verb>` makes the real `seal` publish its block and then puts back the three files of the
 //! active session that it emptied, as they were, and fails (a `seal` killed between publishing and draining the queue,
@@ -85,6 +86,11 @@ CTL="{ctl}"
 verb="$1"
 echo "$verb" >> "$CTL/calls.log"
 if [ -e "$CTL/fail-$verb" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
+if [ -e "$CTL/failafter-$verb" ]; then
+  n="$(cat "$CTL/failafter-$verb")"; c="$(cat "$CTL/count-$verb" 2>/dev/null || echo 0)"
+  echo "$((c + 1))" > "$CTL/count-$verb"
+  if [ "$c" -ge "$n" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
+fi
 if [ -e "$CTL/say-$verb" ]; then cat "$CTL/say-$verb"; exit 0; fi
 if [ -e "$CTL/runfail-$verb" ]; then
   "{real}" "$@" > /dev/null 2>&1
@@ -2515,4 +2521,60 @@ fn a_retry_of_a_sealed_acceptance_settles_a_proposal_still_held_for_review() {
         w.accept(&p),
         Ok(inklkunn_core::Accepted::AlreadySigned { .. })
     ));
+}
+
+#[test]
+fn a_retirement_that_ended_without_its_record_stops_recovery_naming_the_command_and_keeps_the_flag()
+{
+    // Q1. The `verify` after the removal could not run (the stand-in lets the two before it through): the key is out of
+    // the trust store, the key record holds only the state to finish from, nothing is excused. A change accepted
+    // meanwhile is sealed and not confirmed (the wiki is flagged), and recovery stops on the findings nothing excuses,
+    // names the operator's command, and runs nothing (it needs the key authority); the flag is kept.
+    let Some(w) = World::new("retiring", LeaseConfig::default()) else {
+        return;
+    };
+    w.control("failafter-verify", "2");
+    let rotation = w
+        .signer
+        .rotate_keys(&KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
+        .expect("a rotation that retires the old key");
+    w.uncontrol("failafter-verify");
+    assert!(
+        matches!(
+            &rotation.old_key,
+            inklkunn_core::OldKeyOutcome::RetiredUnrecorded(_)
+        ),
+        "{rotation:?}"
+    );
+    let command = inklkunn_core::finish_retirement_command(&w.wiki.id);
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    match w.accept(&p) {
+        Ok(inklkunn_core::Accepted::Signed(s)) => {
+            assert!(s.unconfirmed.is_some(), "nothing is excused: {s:?}");
+        }
+        other => panic!("{other:?}"),
+    }
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
+    let history = w.history();
+    let r = w.recover();
+    assert_eq!(
+        r.plan.stop,
+        Some(Stop::RetirementUnfinished),
+        "{:#?}",
+        r.lines()
+    );
+    assert!(r.done.is_empty(), "recovery ran nothing");
+    assert!(
+        r.lines().iter().any(|l| l.contains(&command)),
+        "the stop names the command: {:#?}",
+        r.lines()
+    );
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
+    assert_eq!(w.history(), history);
+    // The same, shown without running anything.
+    let shown = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
+    assert_eq!(shown.plan.stop, Some(Stop::RetirementUnfinished));
 }

@@ -386,6 +386,37 @@ pub(crate) fn parse_sealed_blocks(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+/// The blocks of the `sealed-block <id>: <key id>` lines, **once each**: `Err` names a block listed twice (handoff 004,
+/// Q7: prikk prints one line per sealed block, and a second line for a block, with another signer, is not a report to
+/// pick a winner from).
+pub(crate) fn parse_sealed_blocks_once(text: &str) -> Result<Vec<(String, String)>, String> {
+    let all = parse_sealed_blocks(text);
+    let mut seen = std::collections::HashSet::new();
+    for (block, _) in &all {
+        if !seen.insert(block.as_str()) {
+            return Err(format!(
+                "the text of `verify` lists the block {block} more than once"
+            ));
+        }
+    }
+    Ok(all)
+}
+
+/// The finding lines of `prikk verify`'s text that are **not publication trust**: `<condition> [PRIKK-…]: <message>`
+/// where the condition is not `publication-trust` (handoff 004, Q3). Their words, in order.
+pub(crate) fn findings_of_other_conditions(text: &str) -> Vec<&str> {
+    text.lines()
+        .filter_map(|line| {
+            let (word, rest) = line.split_once(" [PRIKK-")?;
+            let word_ok = !word.is_empty()
+                && word
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+            (word_ok && word != "publication-trust" && rest.contains("]: ")).then_some(word)
+        })
+        .collect()
+}
+
 /// What `prikk verify`'s text says about **publication trust** (ledger PK-34): the blocks, ref states and ref
 /// updates that "have no trusted MAINTAINER signature", the count prikk prints, and how many `publication-trust`
 /// lines were not of the one exact shape.
@@ -707,6 +738,48 @@ impl Writes {
             .map_err(|e| SignerError::Damaged(e.to_string()))
     }
 
+    /// `prikk status` as text (no `--format json`), read-only and keyless. Unlike the JSON form it **reads** in the state
+    /// a `seal` killed between publishing its block and draining the queue leaves (measured on prikk 0.55.0), and it
+    /// states how many patches are queued, though not which (handoff 004, Q2).
+    pub(crate) fn status_text(&self, repo: &Path) -> Result<String, SignerError> {
+        let out = self.read(repo, &["status"])?;
+        Ok(String::from_utf8_lossy(&out).into_owned())
+    }
+
+    /// Is this maintainer key id adopted in the repository's trust store? (`trust maintainer check`; it exits 1 for
+    /// an id that is not, and prints the answer all the same.)
+    pub(crate) fn maintainer_trusted(
+        &self,
+        repo: &Path,
+        key_id: &str,
+    ) -> Result<bool, SignerError> {
+        let out = self.read_report(
+            repo,
+            &[
+                "trust",
+                "maintainer",
+                "check",
+                "--key-id",
+                key_id,
+                "--format",
+                "json",
+            ],
+        )?;
+        let value: serde_json::Value = serde_json::from_slice(&out).map_err(|_| {
+            SignerError::Damaged("`trust maintainer check` printed no report".to_owned())
+        })?;
+        let named = value.get("key_id").and_then(serde_json::Value::as_str) == Some(key_id);
+        match (
+            named,
+            value.get("trusted").and_then(serde_json::Value::as_bool),
+        ) {
+            (true, Some(trusted)) => Ok(trusted),
+            _ => Err(SignerError::Damaged(
+                "`trust maintainer check` did not answer for the key asked about".to_owned(),
+            )),
+        }
+    }
+
     /// `prikk doctor` with no repair flag, read-only and keyless. **The report is the answer on exit 1** (prikk
     /// exits 1 when it found errors, and prints the report all the same); a text that is not a report is an
     /// error, and nothing is concluded from it.
@@ -975,6 +1048,16 @@ impl Writes {
                 "`verify` did not give the same answer twice in a row; nothing was concluded from it"
                     .to_owned(),
             ));
+        }
+        // The verdict (the first run) names which conditions failed, the text (the second) names the findings. A
+        // failing repository whose text holds a finding of any condition but publication trust is damage that
+        // appeared between the two, or a report that is not one: the text is refused (Q3).
+        if !report.verdict.ok
+            && let Some(word) = findings_of_other_conditions(&text).first()
+        {
+            return Err(SignerError::Unavailable(format!(
+                "the text of `verify` names a finding of the condition `{word}`, which is not publication trust; nothing was concluded from it"
+            )));
         }
         Ok(VerifyRun { report, text })
     }

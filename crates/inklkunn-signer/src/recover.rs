@@ -261,6 +261,16 @@ pub trait Recover: Send + Sync {
         let _ = wiki;
         Ok(None)
     }
+
+    /// The text of an unfinished key retirement of `wiki` (handoff 004, Q1): the key record holds the state a
+    /// retirement began from and never recorded its findings, so nothing is excused and the wiki's `verify` fails for
+    /// the retired key's blocks. The text names the key and the command that finishes it
+    /// (`inklkunn wiki keys finish-retirement <wiki>`), which needs the operator's key authority and which recovery
+    /// never runs. `None` when nothing is unfinished. Read-only. The default has none.
+    fn unfinished_retirement(&self, wiki: &WikiId) -> Result<Option<String>, RecoverError> {
+        let _ = wiki;
+        Ok(None)
+    }
 }
 
 /// How the worktree differs from its baseline: counts, and nothing that names a path.

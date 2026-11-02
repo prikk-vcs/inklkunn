@@ -242,6 +242,10 @@ impl Recover for Signer {
         Ok(self.retirement_explains(&self.root.repo_dir(wiki), wiki)?)
     }
 
+    fn unfinished_retirement(&self, wiki: &WikiId) -> Result<Option<String>, RecoverError> {
+        Ok(self.unfinished_retirement_note(wiki))
+    }
+
     fn complete_publication(
         &self,
         wiki: &WikiId,

@@ -696,8 +696,8 @@ Corrections from the review of 2026-11-01 (handoff 004, P15, P16).
   stand-in `prikk` whose `seal` publishes and then fails (`dies-after-publishing-seal`, with and without the stale lock): the
   plan, the run, the records, the audit, the next acceptance; the empty lock and the debris asserted fail-closed, and the
   runbook's step for the empty lock followed; the real kill matrix gains two rows that make the state every time (the stand-in's
-  `halfway-seal`, for an acceptance and a system act), and its `inside` rows that land in it now recover (56 runs of the real
-  matrix, 112 `inside prikk seal` rows: 2 landed in it with the stale lock, and recovered). 8 new prikk-dependent tests (and
+  `halfway-seal`, for an acceptance and a system act), and its `inside` rows that land in it now recover (measured, 76 runs of the
+  real matrix: 3 recovered and 4 ended fail-closed, as the runbook says they do; corrected from "56 runs, 2 landed" by Q8). 8 new prikk-dependent tests (and
   2 rows of the matrix).
 - **P16 — the runbook for an orphan queued patch is tested against a real queued patch.** A test builds the state the kill
   matrix's `prikk commit` rows leave when the service's records of the act are gone (a database restored from a copy older

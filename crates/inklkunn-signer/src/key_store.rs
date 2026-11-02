@@ -40,7 +40,8 @@ mod seeds;
 use crate::keys::Role;
 use crypto::{KdfParams, MasterKey, NONCE_LEN, SALT_LEN};
 pub(crate) use record::{
-    Excused, MAX_EXCUSED_SUBJECTS, MAX_RECORDED_VIEWS, Meta, RecordedTip, Seeds, Superseded,
+    Excused, MAX_EXCUSED_SUBJECTS, MAX_RECORDED_VIEWS, Meta, RecordedTip, Retiring, Seeds,
+    Superseded,
 };
 pub(crate) use seeds::{DIR_PREFIX, SeedBase, SeedDir};
 
@@ -638,6 +639,35 @@ impl KeyStore {
         let _ = self.record_text(&meta.wiki)?;
         let text = record::seal(&self.master, meta, seeds)?;
         write_private(&self.dir, &Self::record_name(&meta.wiki), &text, false)
+    }
+
+    /// Change a wiki's plain facts and keep its seeds: the record is opened (and authenticated), `change` is applied to
+    /// its plain fields, and it is sealed and written again. The generation and the key ids are not for `change` to
+    /// touch (only the fields of a retirement are). Returns the new facts.
+    pub(crate) fn update_meta(
+        &self,
+        wiki: &WikiId,
+        change: impl FnOnce(&mut Meta),
+    ) -> Result<Meta, KeyStoreError> {
+        let text = self.record_text(wiki)?;
+        let (mut meta, seeds) = record::open(&self.master, &text, wiki)?;
+        let (generation, author, maintainer) = (
+            meta.generation,
+            meta.author_key_id.clone(),
+            meta.maintainer_key_id.clone(),
+        );
+        change(&mut meta);
+        if meta.generation != generation
+            || meta.author_key_id != author
+            || meta.maintainer_key_id != maintainer
+        {
+            return Err(KeyStoreError::Record(
+                "an update may not change a generation or a key id",
+            ));
+        }
+        let text = record::seal(&self.master, &meta, &seeds)?;
+        write_private(&self.dir, &Self::record_name(wiki), &text, false)?;
+        Ok(meta)
     }
 
     /// A wiki's plain facts: key ids, generation, dates. The record is opened and authenticated to read them,

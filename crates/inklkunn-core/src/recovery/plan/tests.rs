@@ -119,6 +119,7 @@ fn flagged() -> Witness {
         foreign: Vec::new(),
         lease_held: true,
         cleanup_pending: None,
+        retirement_unfinished: None,
     }
 }
 
@@ -954,4 +955,49 @@ fn a_pending_cleanup_is_a_stop_unless_doctor_names_exactly_that_code_and_the_blo
         tool: "prikk".to_owned(),
     }];
     assert_eq!(stop_of(&w), Some(Stop::ForeignProcess));
+}
+
+// ---- a key retirement that was begun and not finished (handoff 004, Q1)
+
+fn untrusted_block() -> Diagnostic {
+    diag(Severity::Error, "PRIKK-TRUST-PUBLICATION-UNTRUSTED", None)
+}
+
+const UNFINISHED: &str = "the retirement of key k was begun and its record not finished, so nothing is excused: run `inklkunn wiki keys finish-retirement w`";
+
+#[test]
+fn an_unfinished_retirement_stops_the_plan_on_the_findings_it_leaves_and_names_the_command() {
+    let mut w = flagged();
+    w.doctor = doctor(vec![untrusted_block()]);
+    // Without the signer's word the findings are damage recovery has no answer for.
+    assert_eq!(build(&w).stop, Some(Stop::DoctorTrouble));
+    // With it, the stop names what to do, and nothing is planned.
+    w.retirement_unfinished = Some(UNFINISHED.to_owned());
+    let plan = build(&w);
+    assert_eq!(plan.stop, Some(Stop::RetirementUnfinished));
+    assert!(plan.steps.is_empty());
+    assert!(plan.notes.iter().any(|n| n.contains("finish-retirement")));
+    assert!(
+        Stop::RetirementUnfinished
+            .meaning()
+            .contains("finish-retirement")
+    );
+    assert_eq!(Stop::RetirementUnfinished.as_str(), "retirement-unfinished");
+}
+
+#[test]
+fn an_unfinished_retirement_stops_nothing_that_it_did_not_cause() {
+    // The key was never removed from trust (the retirement stopped before), so `doctor` reports no such finding: the
+    // plan is the ordinary one, and the state is only a note for the operator.
+    let mut w = flagged();
+    w.retirement_unfinished = Some(UNFINISHED.to_owned());
+    let plan = build(&w);
+    assert_eq!(plan.stop, None);
+    assert_eq!(names(&plan), ["verify", "reconcile", "clear-flag"]);
+    // Another error beside the findings is still the doctor's trouble to name, after the retirement is finished.
+    w.doctor = doctor(vec![
+        untrusted_block(),
+        diag(Severity::Error, "PRIKK-DOCTOR-OBJECT-MISSING", None),
+    ]);
+    assert_eq!(build(&w).stop, Some(Stop::RetirementUnfinished));
 }

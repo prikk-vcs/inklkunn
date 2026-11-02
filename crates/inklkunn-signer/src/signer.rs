@@ -569,7 +569,10 @@ impl Signer {
                 Ok(None) | Err(_) => Err(unconfirmed(
                     Some(sealed),
                     Unconfirmed::VerifyFailed,
-                    "prikk's verify reported failed conditions".to_owned(),
+                    match self.unfinished_retirement_note(seeds.wiki) {
+                        Some(note) => format!("prikk's verify reported failed conditions; {note}"),
+                        None => "prikk's verify reported failed conditions".to_owned(),
+                    },
                 )),
             };
         }
@@ -738,6 +741,7 @@ impl Signer {
                 created_at: inklkunn_store::record::now_secs(),
                 rotated_at: None,
                 superseded: Vec::new(),
+                retiring: None,
             };
             self.store.create(&meta, &seeds).map_err(ks)?;
             Ok(KeyIds {
