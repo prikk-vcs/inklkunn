@@ -283,13 +283,23 @@ pub(crate) fn join_note(policy: inklkunn_auth::JoinPolicy) -> Option<String> {
     }
 }
 
-/// The warning for a bind address that anybody can reach while no trusted proxy is declared (handoff 002
-/// C10), or `None`. Behind a reverse proxy that is not declared trusted, every client is the proxy's address,
-/// so the sign-in's per-address throttle (30 failures, `inklkunn_auth::ThrottlePolicy::PER_ADDRESS`) counts
-/// every failed attempt by anyone against one key and thirty of them lock everyone out. A loopback bind is
-/// not warned about: only a process on the same host reaches it.
+/// The warning for a server that has no trusted proxy declared (handoff 002 C10; corrections G1), or `None`
+/// once one is. Behind a reverse proxy that is not declared trusted, every client is the proxy's address, so
+/// the sign-in's per-address throttle (30 failures, `inklkunn_auth::ThrottlePolicy::PER_ADDRESS`) counts every
+/// failed attempt by anyone against one key and thirty of them lock everyone out. **A loopback bind is warned
+/// about too**: the default bind is `127.0.0.1:8080` and this server has no TLS of its own, so the likeliest
+/// deployment is a TLS proxy on the same host, which reaches it as a loopback peer.
 pub(crate) fn proxy_warning(bind: std::net::SocketAddr, declared: bool) -> Option<String> {
-    (!bind.ip().is_loopback() && !declared).then(|| {
+    if declared {
+        return None;
+    }
+    Some(if bind.ip().is_loopback() {
+        format!(
+            "warning: INKLKUNN_BIND {bind} is a loopback address and no trusted proxy is declared \
+             (INKLKUNN_TRUSTED_PROXIES): if a reverse proxy on this host passes requests on, every client \
+             counts as the same address and thirty failed sign-ins by anyone would lock everyone out"
+        )
+    } else {
         format!(
             "warning: INKLKUNN_BIND {bind} is not a loopback address and no trusted proxy is declared \
              (INKLKUNN_TRUSTED_PROXIES), so behind a reverse proxy every client counts as the same address \

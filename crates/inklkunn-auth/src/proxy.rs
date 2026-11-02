@@ -15,6 +15,7 @@ use std::net::{IpAddr, Ipv6Addr};
 pub struct ClientAddress {
     key: String,
     fell_back: bool,
+    forwarded_ignored: bool,
 }
 
 impl PartialEq for ClientAddress {
@@ -46,7 +47,11 @@ impl ClientAddress {
                 format!("{}/64", Ipv6Addr::from(prefix))
             }
         };
-        ClientAddress { key, fell_back }
+        ClientAddress {
+            key,
+            fell_back,
+            forwarded_ignored: false,
+        }
     }
 
     /// The text a throttle uses as its key.
@@ -60,6 +65,16 @@ impl ClientAddress {
     /// a web layer logs it when it sees it.
     pub fn fell_back(&self) -> bool {
         self.fell_back
+    }
+}
+
+impl ClientAddress {
+    /// `true` when a **loopback** peer sent `X-Forwarded-For` while no proxy is trusted at all: the typical
+    /// reverse proxy on the same host that the operator has not declared (`INKLKUNN_TRUSTED_PROXIES`). The
+    /// header was ignored, as it must be, and **every client behind that proxy counts as one address** (thirty
+    /// bad attempts by anyone lock everyone). A web layer says so once, when it sees it.
+    pub fn forwarded_ignored(&self) -> bool {
+        self.forwarded_ignored
     }
 }
 
@@ -169,7 +184,11 @@ impl ProxyPolicy {
     /// ([`ClientAddress::fell_back`]).
     pub fn client(&self, peer: IpAddr, forwarded_for: Option<&str>) -> ClientAddress {
         if !self.is_trusted(peer) {
-            return ClientAddress::keyed(peer, false);
+            let mut client = ClientAddress::keyed(peer, false);
+            client.forwarded_ignored = self.trusted.is_empty()
+                && peer.to_canonical().is_loopback()
+                && forwarded_for.is_some();
+            return client;
         }
         match forwarded_for.and_then(|header| self.rightmost_client(header)) {
             Some(client) => ClientAddress::keyed(client, false),

@@ -204,7 +204,7 @@ pub(crate) async fn start(
         .and_then(|Query(q)| q.get(F_NEXT).cloned())
         .and_then(|n| crate::lang::safe_back(&n).map(str::to_owned))
         .unwrap_or_else(|| "/".to_owned());
-    let client = client_of(&auth, &peer, &headers);
+    let client = client_of(&services, &auth, &peer, &headers);
     let now = (services.clock)();
     let for_work = auth.clone();
     let result = blocking(move || {
@@ -245,7 +245,7 @@ pub(crate) async fn start_invitation(
         return invitation_unusable(&page);
     };
     let action = invite_action(&secret);
-    let client = client_of(&auth, &peer, &headers);
+    let client = client_of(&services, &auth, &peer, &headers);
     let now = (services.clock)();
     let for_work = auth.clone();
     let result = blocking(move || {
@@ -367,7 +367,7 @@ pub(crate) async fn callback(
     let q = query.map(|Query(q)| q).unwrap_or_default();
     let field = |name: &str| q.get(name).cloned().unwrap_or_default();
     let (state_param, code) = (field(Q_STATE), field(Q_CODE));
-    let client = client_of(&auth, &peer, &headers);
+    let client = client_of(&services, &auth, &peer, &headers);
     let now = (services.clock)();
     // The provider says no (the person declined, or it could not sign them in): nothing to finish, and the
     // login in flight is left to end by itself. The reason is the provider's word, for the log.

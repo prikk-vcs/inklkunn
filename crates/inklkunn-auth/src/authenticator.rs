@@ -25,6 +25,7 @@
 //! `spawn_blocking`, never from an async worker.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use inklkunn_core::{IdentityAuthority, Principal};
@@ -264,6 +265,8 @@ pub struct Authenticator {
     by_address: Throttle,
     by_oidc_start: Throttle,
     by_join: Throttle,
+    /// Whether the operator has been told that a loopback proxy's `X-Forwarded-For` is being ignored.
+    forwarded_noted: AtomicBool,
     join: JoinPolicy,
     /// The store the single-step redemption goes through (the same store the other records are in).
     redemption: Arc<dyn InvitationStore>,
@@ -348,6 +351,7 @@ impl Authenticator {
             by_address: Throttle::new(config.address_throttle),
             by_oidc_start: Throttle::new(config.oidc_start_throttle),
             by_join: Throttle::new(config.join_throttle),
+            forwarded_noted: AtomicBool::new(false),
             join: config.join,
             proxies: config.proxies,
             oidc: None,
@@ -380,6 +384,13 @@ impl Authenticator {
         forwarded_for: Option<&str>,
     ) -> ClientAddress {
         self.proxies.client(peer, forwarded_for)
+    }
+
+    /// `true` **once** per authenticator, for the first client address whose `X-Forwarded-For` was ignored
+    /// because a loopback peer sent it while no proxy is trusted ([`ClientAddress::forwarded_ignored`]): the
+    /// caller then tells the operator, one line, that every client counts as one address. Never `true` again.
+    pub fn first_ignored_forwarded_for(&self, client: &ClientAddress) -> bool {
+        client.forwarded_ignored() && !self.forwarded_noted.swap(true, Ordering::Relaxed)
     }
 
     fn note_lock(&self, what: &str, until: i64, now: i64) {

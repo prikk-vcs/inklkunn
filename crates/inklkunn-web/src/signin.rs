@@ -79,17 +79,34 @@ impl<S: Send + Sync> FromRequestParts<S> for Peer {
 
 /// The client address a throttle counts: the peer, unless it is a trusted proxy and says otherwise. A request
 /// whose peer is unknown counts as one address (`0.0.0.0`): throttled together rather than not at all.
-pub(crate) fn client_of(auth: &Authenticator, peer: &Peer, headers: &HeaderMap) -> ClientAddress {
+///
+/// **Says so, once, when it sees a reverse proxy it was not told about** (corrections G1): a loopback peer that
+/// sends `X-Forwarded-For` while no proxy is trusted is the likeliest deployment, and it makes every client one
+/// address.
+pub(crate) fn client_of(
+    services: &Services,
+    auth: &Authenticator,
+    peer: &Peer,
+    headers: &HeaderMap,
+) -> ClientAddress {
     let forwarded: Vec<&str> = headers
         .get_all(FORWARDED_FOR)
         .iter()
         .filter_map(|v| v.to_str().ok())
         .collect();
     let forwarded = (!forwarded.is_empty()).then(|| forwarded.join(", "));
-    auth.client_address(
+    let client = auth.client_address(
         peer.0.unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
         forwarded.as_deref(),
-    )
+    );
+    if auth.first_ignored_forwarded_for(&client) {
+        (services.log)(
+            "a request from a loopback address carried X-Forwarded-For while no trusted proxy is declared \
+             (INKLKUNN_TRUSTED_PROXIES): the header is ignored and every client counts as one address, so \
+             thirty failed sign-ins by anyone lock everyone out",
+        );
+    }
+    client
 }
 
 /// The `Cookie` header(s) as one.
@@ -293,7 +310,7 @@ pub(crate) async fn sign_in_post(
         .to_owned();
     let login = field(&fields, F_LOGIN).trim().to_owned();
     let password = field(&fields, F_PASSWORD).to_owned();
-    let client = client_of(&auth, &peer, &headers);
+    let client = client_of(&services, &auth, &peer, &headers);
     let now = (services.clock)();
     let (for_work, shown) = (auth.clone(), (login.clone(), next.clone()));
     let result = blocking(move || for_work.sign_in(&login, &password, &client, now)).await;
@@ -665,7 +682,7 @@ pub(crate) async fn join_post(
         return join_closed(&page);
     }
     let typed = submitted(&fields);
-    let client = client_of(&auth, &peer, &headers);
+    let client = client_of(&services, &auth, &peer, &headers);
     let now = (services.clock)();
     let (for_work, input) = (
         auth.clone(),

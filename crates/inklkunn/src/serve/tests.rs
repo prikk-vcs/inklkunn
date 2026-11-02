@@ -236,8 +236,7 @@ fn bind(text: &str) -> std::net::SocketAddr {
 }
 
 #[test]
-fn an_address_anybody_can_reach_without_a_declared_proxy_is_warned_about_and_a_loopback_one_is_not()
-{
+fn no_declared_proxy_is_warned_about_for_any_bind_and_declaring_one_ends_it() {
     for reachable in [
         "0.0.0.0:8080",
         "[::]:8080",
@@ -256,15 +255,26 @@ fn an_address_anybody_can_reach_without_a_declared_proxy_is_warned_about_and_a_l
         assert!(w.contains(reachable), "names the address: {w}");
         assert!(w.contains("lock everyone out"), "says what happens: {w}");
     }
+    // G1: the default bind is a loopback one and the likeliest deployment is a TLS proxy on the same host.
     for loopback in ["127.0.0.1:8080", "[::1]:8080", "127.0.0.2:1"] {
-        assert_eq!(proxy_warning(bind(loopback), false), None, "{loopback}");
+        let w = proxy_warning(bind(loopback), false).expect(loopback);
+        assert!(
+            w.starts_with("warning: ") && !w.contains('\n'),
+            "one line: {w}"
+        );
+        assert!(
+            w.contains("INKLKUNN_TRUSTED_PROXIES") && w.contains(loopback) && w.contains("lock everyone out"),
+            "{w}"
+        );
     }
     // Declaring a trusted proxy ends the warning.
-    assert_eq!(proxy_warning(bind("0.0.0.0:8080"), true), None);
+    for any in ["0.0.0.0:8080", "127.0.0.1:8080"] {
+        assert_eq!(proxy_warning(bind(any), true), None, "{any}");
+    }
 }
 
 #[test]
-fn the_start_notes_put_the_banner_first_and_the_warning_on_stderr_only_for_a_reachable_bind() {
+fn the_start_notes_put_the_banner_first_and_the_warning_after_it_whatever_the_bind() {
     let notes = |addr: &str| {
         let web = WebConfig::new(addr, "https://wiki.example", "https://content.example").unwrap();
         let mut err = Vec::new();
@@ -276,7 +286,10 @@ fn the_start_notes_put_the_banner_first_and_the_warning_on_stderr_only_for_a_rea
     assert_eq!(lines.first(), Some(&"the banner"));
     assert_eq!(lines.len(), 2, "{open}");
     assert!(lines.get(1).unwrap().starts_with("warning: "), "{open}");
-    assert_eq!(notes("127.0.0.1:8080"), "the banner\n");
+    let loopback = notes("127.0.0.1:8080");
+    let lines: Vec<&str> = loopback.lines().collect();
+    assert_eq!(lines.len(), 2, "{loopback}");
+    assert!(lines.get(1).unwrap().starts_with("warning: "), "{loopback}");
 }
 
 #[test]
