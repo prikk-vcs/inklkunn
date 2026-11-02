@@ -1396,3 +1396,8 @@ Spike C (RFC 005 part 1: claim identity), measurement only.
   No article text and no editor identity is in the repository; the text lives in a cache outside it.
 - **`inklkunn_core::align_blocks`**: the merge's own block alignment between a base page and a side, exposed for measurement tools
   (no behaviour changed).
+
+Follow-up K2 (handoff 005, review of 2026-11-01).
+
+- **One list of owned page keys.** `knowledge/check.rs` re-exports the proposal service's `OWNED_KEYS` as `OWNED_PAGE_KEYS` instead of keeping a copy
+  (`kind`, `visibility`, `system`): the two rules cannot drift apart.

@@ -39,9 +39,10 @@ use super::{
 use crate::import::shown;
 use crate::read::{ReadError, ReadService, entries_from_tree};
 
-/// The page keys only the service writes (RFC 004 D-2; threat model C-4b). A change to the knowledge layer may not
-/// alter them in any page it writes.
-pub const OWNED_PAGE_KEYS: [&str; 3] = ["kind", "visibility", "system"];
+/// The page keys only the service writes (RFC 004 D-2; threat model C-4b), **the proposal service's own list**: one
+/// constant, not a copy (handoff 005, follow-up K2). A change to the knowledge layer may not alter them in any page it
+/// writes.
+pub use crate::proposal::files::OWNED_KEYS as OWNED_PAGE_KEYS;
 
 /// A file the change would write or leave, and the one rule it breaks. Plain text, safe to show: the file's name is
 /// escaped, and nothing the file said is in it.
