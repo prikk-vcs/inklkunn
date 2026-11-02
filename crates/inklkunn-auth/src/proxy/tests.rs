@@ -114,12 +114,35 @@ fn a_header_that_cannot_be_read_counts_the_peer() {
         Some("not-an-address"),
         Some("198.51.100.1, garbage"),
         Some("198.51.100.1,"),
-        Some(&*"1.1.1.1, ".repeat(40)),
+        // A proxy writes only addresses: junk at the end it writes to is not a header we can believe.
+        Some("198.51.100.1, 10.0.0.9, garbage"),
+        // Thirty-three trusted hops and none that is not: hostile or broken.
+        Some(&*"10.0.0.9, ".repeat(33)),
     ] {
         assert_eq!(p.client(ip(peer), bad).as_key(), peer, "{bad:?}");
     }
-    let long = format!("{}1.1.1.1", " ".repeat(3000));
-    assert_eq!(p.client(ip(peer), Some(&long)).as_key(), peer);
+}
+
+#[test]
+fn what_a_client_prepended_on_the_left_is_never_read() {
+    // G7: one unreadable hop (or a very long one, or a hundred) in front of the client's real address must not
+    // make the header unreadable, or every client behind the proxy shares one key and anyone can lock them out.
+    let p = ProxyPolicy::trusting(&["10.0.0.0/8"]).unwrap();
+    let peer = ip("10.0.0.5");
+    let long = format!("{}, 198.51.100.1", "x".repeat(5000));
+    let many = format!("{}198.51.100.1", "1.1.1.1, ".repeat(100));
+    for header in [
+        "garbage, 198.51.100.1",
+        "garbage, 1.1.1.1, 198.51.100.1, 10.0.0.9",
+        ",,, 198.51.100.1",
+        "198.51.100.1:5555, 198.51.100.1",
+        &long,
+        &many,
+    ] {
+        let c = p.client(peer, Some(header));
+        assert_eq!(c.as_key(), "198.51.100.1", "{}", &header[..header.len().min(40)]);
+        assert!(!c.fell_back());
+    }
 }
 
 #[test]

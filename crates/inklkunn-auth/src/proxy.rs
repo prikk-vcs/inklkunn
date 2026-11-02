@@ -141,10 +141,9 @@ pub struct ProxyPolicy {
     trusted: Vec<Cidr>,
 }
 
-/// The most entries of `X-Forwarded-For` read, and the longest header: beyond either the header is taken as
-/// hostile and the peer is counted instead.
+/// The most hops of `X-Forwarded-For` read from the right before the header is taken as hostile or broken and
+/// the peer is counted instead. A chain of proxies is a handful long.
 const MAX_HOPS: usize = 32;
-const MAX_HEADER: usize = 2048;
 
 impl ProxyPolicy {
     /// No trusted proxy.
@@ -172,29 +171,38 @@ impl ProxyPolicy {
         if !self.is_trusted(peer) {
             return ClientAddress::keyed(peer, false);
         }
-        let Some(hops) = forwarded_for.and_then(parse_hops) else {
-            return ClientAddress::keyed(peer, true);
-        };
-        let client = hops
-            .iter()
-            .rev()
-            .find(|ip| !self.is_trusted(**ip))
-            .or_else(|| hops.first())
-            .copied()
-            .unwrap_or(peer);
-        ClientAddress::keyed(client, false)
+        match forwarded_for.and_then(|header| self.rightmost_client(header)) {
+            Some(client) => ClientAddress::keyed(client, false),
+            None => ClientAddress::keyed(peer, true),
+        }
     }
-}
 
-fn parse_hops(header: &str) -> Option<Vec<IpAddr>> {
-    if header.len() > MAX_HEADER {
-        return None;
+    /// Walk the header **from the right**, which is the end a trusted proxy writes to: a hop that is a trusted
+    /// proxy is skipped, the first valid hop that is not one is the client, and what stands further left is
+    /// never read (so junk, or any number of hops, a client prepended cannot move the answer or make the
+    /// header unreadable). A hop that cannot be read *before* that point (a proxy writes only addresses) makes
+    /// the header unreadable; so does walking [`MAX_HOPS`] hops without finding a client. When every hop is a
+    /// trusted proxy the leftmost one is the original inside client.
+    fn rightmost_client(&self, header: &str) -> Option<IpAddr> {
+        let mut leftmost_trusted = None;
+        let mut hops = header.rsplit(',');
+        for _ in 0..MAX_HOPS {
+            let Some(hop) = hops.next() else {
+                // Every hop there was is a trusted proxy.
+                return leftmost_trusted;
+            };
+            let ip = hop.trim().parse::<IpAddr>().ok()?;
+            if !self.is_trusted(ip) {
+                return Some(ip);
+            }
+            leftmost_trusted = Some(ip);
+        }
+        // More hops than any chain of proxies has, all of them trusted: hostile or broken.
+        if hops.next().is_some() {
+            return None;
+        }
+        leftmost_trusted
     }
-    let hops = header
-        .split(',')
-        .map(|h| h.trim().parse::<IpAddr>().ok())
-        .collect::<Option<Vec<_>>>()?;
-    (!hops.is_empty() && hops.len() <= MAX_HOPS).then_some(hops)
 }
 
 #[cfg(test)]
