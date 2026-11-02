@@ -204,7 +204,24 @@ impl World {
             accepted_by: self.acceptor.clone(),
             base: message.base().cloned(),
             imported_from: None,
-            pinned_tip: None,
+            // The block the change is made on: the view's tip now (the base is enforced for every acceptance).
+            pinned_tip: Some(
+                BlockId::new(
+                    &self
+                        .storage
+                        .history(
+                            &self.repo,
+                            &inklkunn_prikk::Point::View("heads/main".into()),
+                            Some(1),
+                        )
+                        .unwrap()
+                        .blocks
+                        .first()
+                        .unwrap()
+                        .block_id,
+                )
+                .unwrap(),
+            ),
         };
         let token = AcceptanceToken::new(format!("acceptance-{proposal}"));
         self.books

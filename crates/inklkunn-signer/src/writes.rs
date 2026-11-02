@@ -386,6 +386,64 @@ pub(crate) fn parse_sealed_blocks(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+/// What `prikk status` (the plain text, not `--format json`) says about the active log and the queue (handoff 004, Q2):
+/// the three lines `active WAL records: N`, `trailing partial WAL bytes: N` and `queued patches: N [targeting REF]`.
+/// The text **reads** where the JSON refuses (the state a `seal` killed after publishing leaves: the JSON replays the
+/// queued patch on a tip that already holds it), but states how many patches are queued and not which.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct StatusText {
+    /// Records in the active log.
+    pub(crate) wal_records: u64,
+    /// Torn bytes at the end of the log.
+    pub(crate) torn_bytes: u64,
+    /// Patches queued.
+    pub(crate) queued: u64,
+    /// The ref they target, when any are queued.
+    pub(crate) target: Option<String>,
+}
+
+/// Read the queue out of `prikk status`'s text, strictly: each of the three lines exactly once, in the known shape.
+pub(crate) fn parse_status_text(text: &str) -> Result<StatusText, String> {
+    let once = |prefix: &str| -> Result<&str, String> {
+        let mut found = text.lines().filter_map(|l| l.strip_prefix(prefix));
+        let first = found.next().ok_or_else(|| {
+            format!(
+                "`prikk status` has no `{}` line",
+                prefix.trim_end_matches(": ")
+            )
+        })?;
+        match found.next() {
+            None => Ok(first.trim()),
+            Some(_) => Err(format!(
+                "`prikk status` has more than one `{}` line",
+                prefix.trim_end_matches(": ")
+            )),
+        }
+    };
+    let number = |what: &str, v: &str| {
+        v.parse::<u64>()
+            .map_err(|_| format!("`prikk status` says `{what}: {v}`, which is not a number"))
+    };
+    let wal_records = number("active WAL records", once("active WAL records: ")?)?;
+    let torn_bytes = number(
+        "trailing partial WAL bytes",
+        once("trailing partial WAL bytes: ")?,
+    )?;
+    let queue = once("queued patches: ")?;
+    let (queued, target) = match queue.split_once(" targeting ") {
+        Some((n, target)) if !target.trim().is_empty() => {
+            (number("queued patches", n)?, Some(target.trim().to_owned()))
+        }
+        _ => (number("queued patches", queue)?, None),
+    };
+    Ok(StatusText {
+        wal_records,
+        torn_bytes,
+        queued,
+        target,
+    })
+}
+
 /// The blocks of the `sealed-block <id>: <key id>` lines, **once each**: `Err` names a block listed twice (handoff 004,
 /// Q7: prikk prints one line per sealed block, and a second line for a block, with another signer, is not a report to
 /// pick a winner from).

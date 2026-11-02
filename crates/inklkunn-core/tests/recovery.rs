@@ -571,9 +571,9 @@ impl World {
                 proposal: Some(proposal),
                 proposed_by: a,
                 accepted_by: b,
-                base: Some(base),
+                base: Some(base.clone()),
                 imported_from: None,
-                pinned_tip: None,
+                pinned_tip: Some(base),
                 change_digest: change.digest(),
             },
         );
@@ -2577,4 +2577,37 @@ fn a_retirement_that_ended_without_its_record_stops_recovery_naming_the_command_
     // The same, shown without running anything.
     let shown = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
     assert_eq!(shown.plan.stop, Some(Stop::RetirementUnfinished));
+}
+
+#[test]
+fn a_killed_seal_on_a_wiki_with_a_retired_key_is_not_finished_and_the_stop_says_why() {
+    // Q6, measured on prikk 0.55.0: while a publication's cleanup is pending `verify` fails by two conditions (the ref
+    // publication and publication trust), so the retirement's record, which excuses a failure by publication trust
+    // alone, does not apply, and the plan stops with a word of its own instead of offering a step that could not
+    // succeed. Nothing is changed.
+    let Some(w) = World::new("retired-cleanup", LeaseConfig::default()) else {
+        return;
+    };
+    w.signer
+        .rotate_keys(&KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
+        .expect("a rotation that retires the old key");
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    w.killed_seal(&p, &[]);
+    let blocks = w.history();
+    for mode in [RecoveryMode::PlanOnly, RecoveryMode::Run] {
+        let r = w.recovery.recover(&w.wiki, mode).unwrap();
+        assert_eq!(
+            r.plan.stop,
+            Some(Stop::CleanupBesideTrustFindings),
+            "{:#?}",
+            r.lines()
+        );
+        assert!(r.done.is_empty());
+    }
+    assert_eq!(w.history(), blocks);
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
+    assert_eq!(w.store.open_intents(&w.wiki.id).unwrap().len(), 1);
 }

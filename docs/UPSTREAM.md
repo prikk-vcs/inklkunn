@@ -33,7 +33,15 @@ staying true to all three (RFC 010 D-1, D-2, D-8). The record of what each upstr
   cannot answer and leaves fail-closed (handoff 004 P15): an **empty lock file** (`unlock` lists it with an unparseable
   pid) and a **lone `ACTIVE-REF-METADATA-DEBRIS` warning** — what is the right handling of each? And one machine-readable `verify` report that names the failing subjects and their signers (the
   JSON and the text cannot come from one run in 0.55.0; handoff 004 P14), and a read of the queue in the cleanup-pending state
-  (handoff 004 Q2).
+  (handoff 004 Q2; measured on 0.55.0: `status --format json`, `worktree-status` and every JSON read refuse with an integrity
+  error there, `doctor` and `verify` print no queue, and the **plain-text** `prikk status` reads and prints `queued patches: N
+  targeting REF` and `active WAL records: N` but **no patch id**; inklkunn refuses to finish the publication unless that text
+  shows exactly one patch on the view in a log of one record, which is a check of the queue's size and not of its content: what
+  it asks is a read that lists the queued patch ids in this state, as `status --format json` does elsewhere). And, from the
+  same state with a retired key (Q6): `verify` fails there by two conditions (`blocking-ref-publication` and
+  `publication-trust`), so no retirement's record can excuse the retired key's findings beside a pending cleanup, and recovery
+  stops with `cleanup-beside-trust-findings`; what does prikk recommend for a pending cleanup on a repository whose trust set
+  changed.
 - **Open asks as of 2026-10-31: none outstanding; prikk will write about 0.57.0.**
   `send/2026-10-31-block-signer-time-path-history-and-an-orphan-queued-patch.md` (sent by the owner; four asks) was
   answered the same day (`receive/2026-10-31-four-asks-where-each-lands.md`): each block's `sealed_by` in `log` and

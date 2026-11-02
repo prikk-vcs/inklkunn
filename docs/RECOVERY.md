@@ -98,7 +98,8 @@ either rewrites the history or puts an unaccepted change into it:
 
 The other STOP words (`queued-patch-is-not-the-act`, `published-block-is-not-the-act`, `several-queued`,
 `several-acts`, `tip-moved`, `interrupted-state`, `doctor-trouble`, `unknown-lock`, `foreign-process`,
-`history-unreadable`) are printed with their meaning by `inklkunn wiki recover <wiki> --plan`. Each one is a state
+`history-unreadable`, and the two of the next sections, `retirement-unfinished` and
+`cleanup-beside-trust-findings`) are printed with their meaning by `inklkunn wiki recover <wiki> --plan`. Each one is a state
 where the witnesses disagree or recovery has no answer; the principle is the same: read, export, decide, and do not
 guess. Two states have no word, because recovery cannot even read them; they are the next two sections.
 
@@ -113,10 +114,34 @@ recommends* (`complete-publication`), and recovery takes it **only when** `docto
 else, and the block that was published is the unfinished act's own: the one patch it seals has the act's message
 and files, to the digest, and sits on the block the act was made on. The step makes no block (the ref is already
 published); recovery checks that the tip is the same block afterwards, and that `doctor` no longer reports the
-cleanup. Any other code beside it is `doctor-trouble`; a block that is not the act's, or no unfinished act, is the
+cleanup, **and that the queue is exactly that one patch**: `status --format json` refuses in this state, but the plain
+text of `prikk status` reads (it prints `queued patches: N targeting REF` and `active WAL records: N`), and the step is
+refused unless it shows one patch on the view in a log of one record with no torn byte (it does not show *which* patch;
+that is a question for prikk). Any other code beside it is `doctor-trouble`; a block that is not the act's, or no unfinished act, is the
 stop `published-block-is-not-the-act`, with nothing changed. For that stop, look as under `foreign-queued-patch`
 (`prikk log` shows the newest block; `prikk verify` says whether the repository is sound) and do not run `prikk
 seal` yourself.
+
+## A key retirement that was begun and not finished: `retirement-unfinished`
+
+**What you see.** The plan says `STOP (retirement-unfinished)` and names the key and a command. `prikk doctor` reports
+`PRIKK-TRUST-PUBLICATION-UNTRUSTED` errors for blocks, ref states and ref updates a retired key sealed, and the key
+record holds the state a retirement began from but not its findings (`rotate --retire-old` ended without its record, and
+said so with a non-zero exit). **What it is.** The old key is out of the repository's trust; nothing yet says which
+failures are its, so nothing is excused. **What to do.** Run `inklkunn wiki keys finish-retirement <wiki>` (it needs
+the operator's secret, as every key command does; **recovery never runs it**), then `inklkunn wiki recover <wiki>`. If it
+refuses because the wiki was written to since the retirement began, the record cannot be made from the changed
+repository: that is the decision recorded in handoff 004's Q1 and is for the architect; do not edit the key record. See
+`docs/KEYS.md`.
+
+## A killed `seal` on a wiki with a retired key: `cleanup-beside-trust-findings`
+
+**What you see.** `STOP (cleanup-beside-trust-findings)`: the pending cleanup of the previous section and publication-trust
+findings of a retired key at once. **What it is.** While the cleanup is pending `prikk verify` fails by two conditions
+(`blocking-ref-publication` and `publication-trust`), and only a failure by publication trust alone is excused by a
+retirement's record (P2′), so recovery does not finish the cleanup beside findings it cannot account for. Nothing is
+changed. **What to do.** Nothing in the product: the question is with prikk (`docs/UPSTREAM.md`), and the decision about
+excusing the retirement's findings beside a pending cleanup is the architect's. Do not run `prikk seal` yourself.
 
 ## An empty lock file: recovery cannot read the witness
 

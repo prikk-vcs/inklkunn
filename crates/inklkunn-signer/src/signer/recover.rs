@@ -14,6 +14,7 @@ use crate::message::Message;
 use crate::recover::text::{ACCEPTANCE_LOCK_KINDS, Discarded};
 use crate::recover::{Recover, RecoverError, RecoveryOp, RecoveryToken, RetirementExcuse};
 use crate::worktree::{self, Applied};
+use crate::writes::parse_status_text;
 
 /// The most bytes of one file recovery reads back out of the history to restore a worktree, and out of a worktree to
 /// check a queued patch's files: the bound of one acceptance.
@@ -212,11 +213,13 @@ impl Recover for Signer {
         if !expected.matches(&message) {
             return mismatch("the queued patch's message is not the one the record describes");
         }
-        if let Some(pinned) = &expected.pinned_tip {
-            let tip = w.tip(&repo, view)?.map(|b| b.block_id);
-            if tip.as_deref() != Some(pinned.as_str()) {
-                return mismatch("the view is not at the block the change was made on");
-            }
+        // The base is enforced for every acceptance (Q7): a record that names none cannot be sealed from.
+        let Some(pinned) = &expected.pinned_tip else {
+            return mismatch("the record names no block the change was made on");
+        };
+        let tip = w.tip(&repo, view)?.map(|b| b.block_id);
+        if tip.as_deref() != Some(pinned.as_str()) {
+            return mismatch("the view is not at the block the change was made on");
         }
         if !w.worktree_clean(&repo)? {
             return mismatch("the worktree is not the queued patch's result");
@@ -271,8 +274,19 @@ impl Recover for Signer {
         }
         let repo = self.root.repo_dir(wiki);
         let w = &self.writes;
-        // 1. prikk says exactly this: one error, a publication whose cleanup is pending, and nothing else.
-        if !w.doctor(&repo)?.is_only_cleanup_pending() {
+        // 1. prikk says exactly this: one error, a publication whose cleanup is pending, and nothing else. As the plan
+        //    does (P13, Q6), the publication-trust findings a retirement recorded are not "something else": the
+        //    signer's own question (`verify` fails by publication trust alone, all of it recorded) says which.
+        let doctor = w.doctor(&repo)?;
+        let doctor = match self.retirement_explains(&repo, wiki) {
+            Ok(Some(excuse)) => {
+                doctor
+                    .without_excused_publication_findings(|kind, id| excuse.names(kind, id))
+                    .0
+            }
+            _ => doctor,
+        };
+        if !doctor.is_only_cleanup_pending() {
             return mismatch(
                 "prikk's doctor does not report exactly one pending cleanup of a publication",
             );
@@ -292,15 +306,34 @@ impl Recover for Signer {
         if !expected.matches(&message) {
             return mismatch("the published patch's message is not the one the record describes");
         }
-        if let Some(pinned) = &expected.pinned_tip {
-            let blocks = w.view_blocks(&repo, view, 2)?;
-            if blocks.get(1).map(String::as_str) != Some(pinned.as_str()) {
-                return mismatch(
-                    "the published block was not made on the block the change was made on",
-                );
-            }
+        // ... and its parent is the block the change was made on, for every acceptance (Q7).
+        let Some(pinned) = &expected.pinned_tip else {
+            return mismatch("the record names no block the change was made on");
+        };
+        let blocks = w.view_blocks(&repo, view, 2)?;
+        if blocks.get(1).map(String::as_str) != Some(pinned.as_str()) {
+            return mismatch(
+                "the published block was not made on the block the change was made on",
+            );
         }
-        // Where `status` can still be read, nothing else is queued.
+        // Nothing else is queued (Q2). `status --format json` refuses in this state, but the plain text of `status`
+        // reads, and states the queue's size: exactly one patch, on this view, in a log with one record and no torn
+        // byte. The patch is the published one (`doctor` names a publication whose active state matches it, and the
+        // block's own patch was read above); *which* patch the queue holds is not shown in the text (an
+        // open question for prikk: a read of the queue that does not refuse in this state).
+        let queue = parse_status_text(&w.status_text(&repo)?).map_err(|why| {
+            RecoverError::Unavailable(format!("the queue could not be read: {why}"))
+        })?;
+        if queue.queued != 1
+            || queue.target.as_deref() != Some(view)
+            || queue.wal_records != 1
+            || queue.torn_bytes != 0
+        {
+            return mismatch(
+                "the repository's queue is not exactly the one patch that was published (more is queued, or the log is torn)",
+            );
+        }
+        // Where the JSON `status` can still be read (it cannot in the state this step is for), the patch itself.
         if let Ok(status) = w.status_full(&repo)
             && (status.trailing_partial_wal_bytes != 0
                 || status.provisional_worktree.is_some()

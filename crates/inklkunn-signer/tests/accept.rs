@@ -101,6 +101,8 @@ struct Fixture {
     ledger: Arc<Ledger>,
     signer: Signer,
     prikk: PathBuf,
+    /// The real prikk, whatever stands in front of it (the pin of a prepared change is read with it).
+    real: PathBuf,
     first_block: String,
     proposer: Actor,
     acceptor: Actor,
@@ -165,12 +167,17 @@ if [ -e "$CTL/failafter-$verb" ]; then
   if [ "$c" -ge "$n" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
 fi
 if [ -e "$CTL/die-$verb" ]; then
-  case "$(cat "$CTL/die-$verb")" in
-    abort) echo "memory allocation of 629145648 bytes failed" >&2; exit 134 ;;
-    loader) echo "error while loading shared libraries: cannot allocate TLS" >&2; exit 127 ;;
-    segv) kill -SEGV $$ ;;
-    bwrap) echo "Out of memory" >&2; exit 1 ;;
-  esac
+  skip=0; if [ -e "$CTL/dieskip-$verb" ]; then skip="$(cat "$CTL/dieskip-$verb")"; fi
+  c="$(cat "$CTL/diecount-$verb" 2>/dev/null || echo 0)"
+  echo "$((c + 1))" > "$CTL/diecount-$verb"
+  if [ "$c" -ge "$skip" ]; then
+    case "$(cat "$CTL/die-$verb")" in
+      abort) echo "memory allocation of 629145648 bytes failed" >&2; exit 134 ;;
+      loader) echo "error while loading shared libraries: cannot allocate TLS" >&2; exit 127 ;;
+      segv) kill -SEGV $$ ;;
+      bwrap) echo "Out of memory" >&2; exit 1 ;;
+    esac
+  fi
 fi
 if [ -e "$CTL/say-$verb" ]; then cat "$CTL/say-$verb"; exit 0; fi
 if [ -e "$CTL/lockseeds-$verb" ]; then chmod 0500 "$(dirname "${{PRIKK_AUTHOR_SEED_FILE:-$PRIKK_MAINTAINER_SEED_FILE}}")"; fi
@@ -272,6 +279,7 @@ fn fixture(tag: &str, sandbox: Sandbox, use_standin: bool) -> Option<Fixture> {
         ledger,
         signer,
         prikk,
+        real,
         first_block: sealed.block_id,
         proposer: account("Aiko Tanaka"),
         acceptor: account("Ben (maintainer)"),
@@ -337,7 +345,8 @@ impl Fixture {
             accepted_by: self.acceptor.clone(),
             base: Some(base),
             imported_from: None,
-            pinned_tip: None,
+            // The record names the block the change is made on: the tip of the view now (Q7).
+            pinned_tip: Some(BlockId::new(&self.real_tip(view)).unwrap()),
             change_digest: change.digest(),
         };
         self.ledger.set(&token, expected.clone());
@@ -403,6 +412,21 @@ impl Fixture {
             .pointer("/queue/count")
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(u64::MAX)
+    }
+
+    /// The newest block of a view, by the real `prikk log` (no stand-in between).
+    fn real_tip(&self, view: &str) -> String {
+        let out = Command::new(&self.real)
+            .args(["log", "--ref", view, "--limit", "1", "--format", "json"])
+            .current_dir(&self.repo)
+            .output()
+            .expect("prikk runs");
+        let report: serde_json::Value = serde_json::from_slice(&out.stdout).expect("a report");
+        report
+            .pointer("/blocks/0/block_id")
+            .and_then(serde_json::Value::as_str)
+            .expect("a block")
+            .to_owned()
     }
 
     /// The newest block of a view, by `prikk log`.
@@ -1136,6 +1160,9 @@ fn a_check_after_the_seal_stopped_by_its_memory_ceiling_is_unconfirmed_and_never
             };
             let before = f.history_len(MAIN);
             f.die(verb, shape);
+            // The first `log` is the guard's read of the view's tip, before anything is written (the base is enforced
+            // for every acceptance); the one that dies is the read after the seal.
+            std::fs::write(f.ctl.join("dieskip-log"), "1").unwrap();
             let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
             let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
             match &r {
@@ -1734,7 +1761,7 @@ fn child_accepts_and_blocks_in_seal() {
             accepted_by: actor(&s(field(e, "acceptor_id")), &s(field(e, "acceptor_name"))),
             base: BlockId::new(&s(field(e, "base"))).ok(),
             imported_from: None,
-            pinned_tip: None,
+            pinned_tip: BlockId::new(&s(field(e, "base"))).ok(),
         },
     );
     let mut cfg = SignerConfig::new(
@@ -2439,7 +2466,9 @@ fn a_second_retirement_starts_from_what_the_first_recorded_and_the_two_add_up() 
 fn two_acceptances_at_once_on_one_wiki_never_interleave() {
     // Without a lock per wiki this failed in about half the runs: both threads wrote their files into one
     // worktree, one committed both, and one acceptance's message was signed over the other's unaccepted
-    // file. With it, whichever comes second waits, and each block carries only its own change.
+    // file. With it, whichever comes second waits; and both were planned on the same tip (the base is enforced for
+    // every acceptance, Q7), so the second is refused when it gets its turn, having written nothing. Each block
+    // carries only its own change.
     let Some(f) = fixture("concurrent", Sandbox::Unconfined, false) else {
         println!("skipping: prikk not on PATH");
         return;
@@ -2461,16 +2490,28 @@ fn two_acceptances_at_once_on_one_wiki_never_interleave() {
             let tb = s.spawn(|| f.signer.accept(&f.wiki, MAIN, &b.token, &b.change));
             (ta.join().unwrap(), tb.join().unwrap())
         });
-        let (ra, rb) = (ra.expect("the first"), rb.expect("the second"));
-        assert_ne!(
-            ra.block_id, rb.block_id,
-            "round {round}: two acceptances are two blocks"
+        let is_late = |r: &Result<_, AcceptError>| matches!(r, Err(AcceptError::Refused(m)) if m.contains("its tip moved") && m.contains("nothing was written"));
+        assert!(
+            (ra.is_ok() && is_late(&rb)) || (rb.is_ok() && is_late(&ra)),
+            "round {round}: one is sealed and the other, second, is refused: {ra:?} / {rb:?}"
         );
         assert_eq!(f.queue_count(), 0, "round {round}");
+        assert!(f.worktree_clean(), "round {round}");
+        assert_eq!(f.history_len(MAIN), before + round + 1);
+        // The winner's block carries its own change and not the other's.
+        let (winner_file, loser_file, text) = if ra.is_ok() {
+            ("pages/Edit.md", "pages/Home.md", format!("edit {round}\n"))
+        } else {
+            ("pages/Home.md", "pages/Edit.md", format!("home {round}\n"))
+        };
+        assert_eq!(f.read(MAIN, winner_file).unwrap(), text, "round {round}");
+        assert!(
+            !f.read(MAIN, loser_file)
+                .unwrap()
+                .contains(&format!("{round}\n")),
+            "round {round}: the refused change is not in the history"
+        );
     }
-    assert_eq!(f.history_len(MAIN), before + 16);
-    assert!(f.read(MAIN, "pages/Edit.md").unwrap().contains("edit 7"));
-    assert!(f.read(MAIN, "pages/Home.md").unwrap().contains("home 7"));
 }
 
 /// Another process holding the wiki's write lock: a shell opens the lock file on descriptor 9, locks it with
@@ -2732,4 +2773,33 @@ fn writes_while_a_retirement_is_unfinished_are_sealed_but_not_confirmed_and_name
             .unwrap()
             .is_some()
     );
+}
+
+#[test]
+fn an_acceptance_whose_record_names_no_base_is_refused_before_anything_is_written() {
+    // Q7: the base is enforced for every acceptance, not only an import's. A record that names none is refused by
+    // the signer, with the view and the worktree as they were; the same change with its base is accepted.
+    let Some(f) = fixture("no-base", Sandbox::Unconfined, false) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    let before = f.history_len(MAIN);
+    let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
+    let mut expected = p.expected.clone();
+    expected.pinned_tip = None;
+    f.ledger.set(&p.token, expected);
+    let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+    assert!(
+        matches!(&r, Err(AcceptError::Refused(why)) if why.contains("names no block") && why.contains("nothing was written")),
+        "{r:?}"
+    );
+    assert_eq!(f.history_len(MAIN), before);
+    assert_eq!(f.queue_count(), 0);
+    assert!(f.worktree_clean());
+    assert!(f.seed_dirs().is_empty());
+    f.ledger.set(&p.token, p.expected.clone());
+    f.signer
+        .accept(&f.wiki, MAIN, &p.token, &p.change)
+        .expect("with its base it is accepted");
+    assert_eq!(f.history_len(MAIN), before + 1);
 }

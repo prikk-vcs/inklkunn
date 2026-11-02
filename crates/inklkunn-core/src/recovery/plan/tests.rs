@@ -1001,3 +1001,34 @@ fn an_unfinished_retirement_stops_nothing_that_it_did_not_cause() {
     ]);
     assert_eq!(build(&w).stop, Some(Stop::RetirementUnfinished));
 }
+
+#[test]
+fn a_pending_cleanup_beside_publication_trust_findings_nothing_excused_is_a_stop_with_its_own_word()
+{
+    // Q6. A retired key's blocks are reported by `doctor`; while the cleanup is pending `verify` fails for the ref
+    // publication too, so no retirement's record excuses them (the signer says no). The plan does not offer the
+    // step, and says why in a word of its own, where it used to say `doctor-trouble`.
+    let mut w = cleanup_pending();
+    w.doctor = doctor(vec![cleanup_error(), untrusted_block()]);
+    let plan = build(&w);
+    assert_eq!(plan.stop, Some(Stop::CleanupBesideTrustFindings));
+    assert!(plan.steps.is_empty());
+    assert_eq!(
+        Stop::CleanupBesideTrustFindings.as_str(),
+        "cleanup-beside-trust-findings"
+    );
+    assert!(
+        Stop::CleanupBesideTrustFindings
+            .meaning()
+            .contains("ref publication")
+    );
+    // Another code beside the cleanup is still the doctor's trouble.
+    w.doctor = doctor(vec![
+        cleanup_error(),
+        diag(Severity::Error, "PRIKK-DOCTOR-OBJECT-MISSING", None),
+    ]);
+    assert_eq!(build(&w).stop, Some(Stop::DoctorTrouble));
+    // And the cleanup alone (the findings taken out because the signer excused them) is the step.
+    w.doctor = doctor(vec![cleanup_error()]);
+    assert_eq!(build(&w).stop, None);
+}

@@ -166,3 +166,59 @@ fn only_the_whole_resource_message_of_a_failed_stage_is_a_ceiling_hit() {
         assert!(!resource_failure_in(&bytes), "{what}");
     }
 }
+
+#[test]
+fn the_queue_is_read_from_the_plain_text_of_status_strictly() {
+    let text = |records: &str, torn: &str, queue: &str| {
+        format!(
+            "prikk repository: /x/.prikk\nactive WAL records: {records}\ntrailing partial WAL bytes: {torn}\nheads/main RefState: abc\ncurrent branch: heads/main\nqueued patches: {queue}\nstatus: multi-operation text diff minimization and plugins not yet implemented\n"
+        )
+    };
+    assert_eq!(
+        parse_status_text(&text("1", "0", "1 targeting heads/main")),
+        Ok(StatusText {
+            wal_records: 1,
+            torn_bytes: 0,
+            queued: 1,
+            target: Some("heads/main".to_owned())
+        })
+    );
+    assert_eq!(
+        parse_status_text(&text("0", "0", "0")),
+        Ok(StatusText {
+            wal_records: 0,
+            torn_bytes: 0,
+            queued: 0,
+            target: None
+        })
+    );
+    for (what, bad) in [
+        (
+            "a count that is not a number",
+            text("one", "0", "1 targeting heads/main"),
+        ),
+        (
+            "a queue of words",
+            text("1", "0", "some targeting heads/main"),
+        ),
+        ("a torn count that is not a number", text("1", "-1", "0")),
+        (
+            "no queue line",
+            "active WAL records: 1\ntrailing partial WAL bytes: 0\n".to_owned(),
+        ),
+        (
+            "no log line",
+            "trailing partial WAL bytes: 0\nqueued patches: 0\n".to_owned(),
+        ),
+        (
+            "the queue twice",
+            format!(
+                "{}queued patches: 0\n",
+                text("1", "0", "1 targeting heads/main")
+            ),
+        ),
+        ("nothing", String::new()),
+    ] {
+        assert!(parse_status_text(&bad).is_err(), "{what}");
+    }
+}

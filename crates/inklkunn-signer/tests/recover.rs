@@ -84,13 +84,17 @@ fn account(name: &str) -> Actor {
     }
 }
 
-/// The stand-in: every call goes to the real prikk unless a control file names the verb (`fail-<verb>`).
+/// The stand-in: every call goes to the real prikk unless a control file names the verb (`fail-<verb>`), or says what
+/// the plain-text `status` (`say-status-text`) or `verify` (`say-verify-text`, `say-verify-json`) prints.
 fn write_standin(ctl: &Path, real: &Path) -> PathBuf {
     let script = format!(
         r#"#!/bin/sh
 CTL="{ctl}"
 verb="$1"
 if [ -e "$CTL/fail-$verb" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
+if [ "$verb" = status ] && [ $# -eq 1 ] && [ -e "$CTL/say-status-text" ]; then cat "$CTL/say-status-text"; exit 0; fi
+if [ "$verb" = verify ] && [ $# -eq 1 ] && [ -e "$CTL/say-verify-text" ]; then cat "$CTL/say-verify-text"; exit 1; fi
+if [ "$verb" = verify ] && [ $# -gt 1 ] && [ -e "$CTL/say-verify-json" ]; then cat "$CTL/say-verify-json"; exit 1; fi
 exec "{real}" "$@"
 "#,
         ctl = ctl.display(),
@@ -113,6 +117,8 @@ struct Fixture {
     witnesses: Witnesses,
     leases: Arc<WriteLeases>,
     prikk: PathBuf,
+    /// The real prikk, whatever stands in front of it.
+    real: PathBuf,
     first_block: String,
     proposer: Actor,
     acceptor: Actor,
@@ -184,6 +190,7 @@ fn fixture(tag: &str) -> Option<Fixture> {
         witnesses,
         leases,
         prikk,
+        real,
         first_block: sealed.block_id,
         proposer: account("Aiko Tanaka"),
         acceptor: account("Ben (maintainer)"),
@@ -325,6 +332,19 @@ impl Fixture {
     /// patch is still in the queue. `status --format json` refuses, and `doctor` names exactly
     /// `PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING`. Returns the block.
     fn publish_and_leave_the_queue(&self, p: &Prepared) -> String {
+        let block = self.leave_the_queue_after_publishing(p);
+        assert!(
+            self.witnesses
+                .doctor(&self.wiki)
+                .unwrap()
+                .is_only_cleanup_pending()
+        );
+        block
+    }
+
+    /// [`Fixture::publish_and_leave_the_queue`] without the claim that the cleanup is the only thing `doctor` names
+    /// (on a wiki with a retired key it is not).
+    fn leave_the_queue_after_publishing(&self, p: &Prepared) -> String {
         self.queue(p);
         let active = self.repo.join(".prikk/active/default");
         let kept: Vec<(PathBuf, Vec<u8>)> = ["queue.wal", "ref-name", "witness"]
@@ -346,12 +366,7 @@ impl Fixture {
             u64::MAX,
             "`status --format json` refuses over the state a killed seal leaves"
         );
-        assert!(
-            self.witnesses
-                .doctor(&self.wiki)
-                .unwrap()
-                .is_only_cleanup_pending()
-        );
+        assert!(self.cleanup_is_pending());
         self.prikk_json(&["log", "--ref", MAIN, "--limit", "1", "--format", "json"])
             .pointer("/blocks/0/block_id")
             .and_then(serde_json::Value::as_str)
@@ -966,4 +981,252 @@ fn a_publication_that_is_not_the_recorded_change_is_not_finished() {
     try_it(&p.token).expect("the right record");
     assert!(!f.cleanup_is_pending());
     assert_eq!(f.blocks(), 2);
+}
+
+// ---- the publication a killed seal left: the queue is read, the doctor is filtered, the base is every record's
+// (handoff 004, Q2, Q6, Q7)
+
+impl Fixture {
+    /// What `prikk status` prints now (the real one, plain text).
+    fn status_text(&self) -> String {
+        let out = Command::new(&self.real)
+            .args(["status"])
+            .current_dir(&self.repo)
+            .output()
+            .expect("prikk runs");
+        assert!(out.status.success(), "the plain text reads in this state");
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    }
+
+    fn say(&self, name: &str, text: &str) {
+        std::fs::write(self.ctl.join(name), text).unwrap();
+    }
+
+    fn unsay(&self, name: &str) {
+        let _ = std::fs::remove_file(self.ctl.join(name));
+    }
+
+    /// One try at finishing the publication of `p`.
+    fn finish_publication(&self, p: &Prepared) -> Result<(), RecoverError> {
+        let act = self.act(vec![self.publish_op(p)]);
+        self.leased(|| {
+            self.signer
+                .complete_publication(&self.wiki, MAIN, &act, &p.token)
+        })
+    }
+}
+
+#[test]
+fn the_queue_is_read_from_the_plain_text_of_status_and_only_the_published_patch_may_be_in_it() {
+    let Some(f) = fixture("publish-queue") else {
+        return;
+    };
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    f.publish_and_leave_the_queue(&p);
+    let real = f.status_text();
+    // The measured shape: the plain text reads where the JSON refuses.
+    assert!(
+        real.contains("queued patches: 1 targeting heads/main"),
+        "{real}"
+    );
+    assert!(real.contains("active WAL records: 1"), "{real}");
+    let blocks = f.blocks();
+    // Each of these is a queue that is not exactly the published patch: refused, and nothing is done (the cleanup
+    // is still pending, no block is made, the queue is as it was).
+    let refused = |what: &str, text: String| {
+        f.say("say-status-text", &text);
+        let r = f.finish_publication(&p);
+        assert!(
+            matches!(&r, Err(RecoverError::DoesNotMatch(why)) if why.contains("queue")),
+            "{what}: {r:?}"
+        );
+        assert!(f.cleanup_is_pending(), "{what}");
+        assert_eq!(f.blocks(), blocks, "{what}");
+    };
+    refused(
+        "a second patch queued",
+        real.replace("queued patches: 1 targeting", "queued patches: 2 targeting")
+            .replace("active WAL records: 1", "active WAL records: 2"),
+    );
+    refused(
+        "a second patch queued, the count of records alone",
+        real.replace("active WAL records: 1", "active WAL records: 2"),
+    );
+    refused(
+        "nothing queued, which is not the state doctor names",
+        real.replace(
+            "queued patches: 1 targeting heads/main",
+            "queued patches: 0",
+        ),
+    );
+    refused(
+        "queued for another view",
+        real.replace("targeting heads/main", "targeting heads/other"),
+    );
+    refused(
+        "a torn byte",
+        real.replace(
+            "trailing partial WAL bytes: 0",
+            "trailing partial WAL bytes: 5",
+        ),
+    );
+    // A text that cannot be read as a queue is not guessed at: a failure to read, not a mismatch.
+    for (what, text) in [
+        (
+            "no queue line",
+            real.replace("queued patches: 1 targeting heads/main\n", ""),
+        ),
+        (
+            "a queue line twice",
+            format!("{real}queued patches: 1 targeting heads/main\n"),
+        ),
+        (
+            "a count that is not a number",
+            real.replace("queued patches: 1", "queued patches: many"),
+        ),
+    ] {
+        f.say("say-status-text", &text);
+        let r = f.finish_publication(&p);
+        assert!(
+            matches!(&r, Err(RecoverError::Unavailable(why)) if why.contains("queue could not be read")),
+            "{what}: {r:?}"
+        );
+        assert!(f.cleanup_is_pending(), "{what}");
+        assert_eq!(f.blocks(), blocks, "{what}");
+    }
+    // And a `status` that cannot be asked at all.
+    f.unsay("say-status-text");
+    f.say("fail-status", "");
+    assert!(matches!(
+        f.finish_publication(&p),
+        Err(RecoverError::Refused(_) | RecoverError::Unavailable(_))
+    ));
+    f.unsay("fail-status");
+    assert!(f.cleanup_is_pending());
+    // The state as prikk prints it finishes.
+    f.finish_publication(&p)
+        .expect("the queue is the published patch");
+    assert!(!f.cleanup_is_pending());
+    assert_eq!(f.blocks(), blocks);
+}
+
+#[test]
+fn the_publication_findings_a_retirement_recorded_are_not_something_else_for_the_cleanup_step() {
+    // Q6. The plan takes the findings the signer excuses out of `doctor` (P13) before it judges what is left; the
+    // step does the same. Real prikk fails `verify` by two conditions while the cleanup is pending, so what the
+    // signer is asked is made to answer as it would if only publication trust failed: the verdict and the text are
+    // the real ones with the ref publication's condition and its finding taken out.
+    let Some(f) = fixture("publish-retired") else {
+        return;
+    };
+    f.signer
+        .rotate_keys(
+            &inklkunn_signer::KeyAuthority::for_tests(),
+            &f.repo,
+            inklkunn_signer::OldKey::Retire,
+        )
+        .expect("a retirement");
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    f.leave_the_queue_after_publishing(&p);
+    let blocks = f.blocks();
+    // The raw `doctor` holds the cleanup and the retired key's findings.
+    let raw = f.witnesses.doctor(&f.wiki).unwrap();
+    assert!(!raw.is_only_cleanup_pending());
+    assert!(raw.diagnostics.iter().any(|d| d.is_cleanup_pending()));
+    // As real prikk answers: two conditions, so no retirement excuses it, and the step is refused.
+    let r = f.finish_publication(&p);
+    assert!(
+        matches!(&r, Err(RecoverError::DoesNotMatch(why)) if why.contains("doctor")),
+        "{r:?}"
+    );
+    assert!(f.cleanup_is_pending());
+    assert_eq!(f.blocks(), blocks);
+    // As it would answer with publication trust alone failing.
+    let mut json = f.prikk_json(&["verify", "--format", "json"]);
+    json.pointer_mut("/verdict/failed_conditions")
+        .and_then(serde_json::Value::as_array_mut)
+        .unwrap()
+        .retain(|c| c.get("id").and_then(serde_json::Value::as_str) == Some("publication-trust"));
+    let text = String::from_utf8_lossy(
+        &Command::new(&f.real)
+            .args(["verify"])
+            .current_dir(&f.repo)
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .lines()
+    .filter(|l| !l.starts_with("ref-publication "))
+    .map(|l| format!("{l}\n"))
+    .collect::<String>();
+    f.say("say-verify-json", &json.to_string());
+    f.say("say-verify-text", &text);
+    f.finish_publication(&p).expect(
+        "the retired key's findings are the retirement's, and the cleanup is the only thing else",
+    );
+    f.unsay("say-verify-json");
+    f.unsay("say-verify-text");
+    assert!(!f.cleanup_is_pending());
+    assert_eq!(f.blocks(), blocks);
+    assert_eq!(f.queue_count(), 0);
+}
+
+#[test]
+fn a_record_that_names_no_base_is_not_sealed_from_by_any_operation() {
+    // Q7: the base is every record's. A record without one cannot be told from "any base will do", so the signer
+    // refuses it: in recovery's `seal` of a queued patch, and in the finishing of a publication.
+    let Some(f) = fixture("no-base") else {
+        return;
+    };
+    let unpin = |p: &Prepared| {
+        f.ledger
+            .pending
+            .lock()
+            .unwrap()
+            .get_mut(p.token.as_str())
+            .unwrap()
+            .pinned_tip = None;
+    };
+    let pin = |p: &Prepared| {
+        f.ledger
+            .pending
+            .lock()
+            .unwrap()
+            .get_mut(p.token.as_str())
+            .unwrap()
+            .pinned_tip = Some(BlockId::new(&f.first_block).unwrap());
+    };
+    // A queued patch.
+    let q = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    f.queue(&q);
+    unpin(&q);
+    let act = f.act(vec![f.seal_op(&q)]);
+    let r = f.leased(|| f.signer.seal_queued(&f.wiki, MAIN, &act, &q.token));
+    assert!(
+        matches!(&r, Err(RecoverError::DoesNotMatch(why)) if why.contains("names no block")),
+        "{r:?}"
+    );
+    assert_eq!(f.queue_count(), 1, "nothing was sealed");
+    pin(&q);
+    f.leased(|| f.signer.seal_queued(&f.wiki, MAIN, &act, &q.token))
+        .expect("with its base the record seals");
+    // A publication a killed seal left.
+    let Some(g) = fixture("no-base-publish") else {
+        return;
+    };
+    let p = g.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    g.publish_and_leave_the_queue(&p);
+    g.ledger
+        .pending
+        .lock()
+        .unwrap()
+        .get_mut(p.token.as_str())
+        .unwrap()
+        .pinned_tip = None;
+    let r = g.finish_publication(&p);
+    assert!(
+        matches!(&r, Err(RecoverError::DoesNotMatch(why)) if why.contains("names no block")),
+        "{r:?}"
+    );
+    assert!(g.cleanup_is_pending());
 }

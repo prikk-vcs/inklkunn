@@ -617,18 +617,23 @@ impl Accept for Signer {
         let repo = self.root.repo_dir(wiki);
         // 2b. A change planned against a tip (an import) is written only if the view is still there; the write
         //     lock is held, so no other act of this service moves it between this read and the commit.
-        if let Some(pinned) = &expected.pinned_tip {
-            let now = self
-                .writes
-                .tip(&repo, view)
-                .map_err(accept_error)?
-                .map(|b| b.block_id);
-            if now.as_deref() != Some(pinned.as_str()) {
-                return Err(AcceptError::Refused(
-                    "the wiki changed after the import was planned (its tip moved); nothing was written, plan the import again"
-                        .to_owned(),
-                ));
-            }
+        // The base is enforced for **every** acceptance (Q7): a record that names none is refused.
+        let Some(pinned) = &expected.pinned_tip else {
+            return Err(AcceptError::Refused(
+                "the acceptance record names no block the change was made on, so the signer cannot tell whether the view has moved; nothing was written"
+                    .to_owned(),
+            ));
+        };
+        let now = self
+            .writes
+            .tip(&repo, view)
+            .map_err(accept_error)?
+            .map(|b| b.block_id);
+        if now.as_deref() != Some(pinned.as_str()) {
+            return Err(AcceptError::Refused(
+                "the wiki changed after the change was planned (its tip moved); nothing was written, plan it again"
+                    .to_owned(),
+            ));
         }
         let seeds = self.seeds(wiki);
         let result = self.write_sequence(&repo, &seeds, view, &plan, &change.message);

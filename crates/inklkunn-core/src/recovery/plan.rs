@@ -215,6 +215,11 @@ pub enum Stop {
     /// operator finishes it with `inklkunn wiki keys finish-retirement <wiki>` (recovery cannot: it needs the key
     /// authority), and then recovers.
     RetirementUnfinished,
+    /// A killed `seal` left a publication to finish, and `doctor` also reports publication-trust findings that nothing
+    /// excuses: while the cleanup is pending `verify` fails for the ref publication as well as for publication trust,
+    /// and only a failure by publication trust alone can be excused by a retirement's record (Q6). Recovery does not
+    /// finish the cleanup beside findings it cannot account for.
+    CleanupBesideTrustFindings,
     /// A lock of a kind an acceptance does not leave.
     UnknownLock,
     /// A `prikk` or `bwrap` of somebody else's may be working in the repository, so no step is taken.
@@ -236,6 +241,7 @@ impl Stop {
             Stop::InterruptedState => "interrupted-state",
             Stop::DoctorTrouble => "doctor-trouble",
             Stop::RetirementUnfinished => "retirement-unfinished",
+            Stop::CleanupBesideTrustFindings => "cleanup-beside-trust-findings",
             Stop::UnknownLock => "unknown-lock",
             Stop::ForeignProcess => "foreign-process",
             Stop::HistoryUnreadable => "history-unreadable",
@@ -261,6 +267,9 @@ impl Stop {
             }
             Stop::InterruptedState => "prikk reports an interrupted checkout or materialization",
             Stop::DoctorTrouble => "prikk's doctor reports damage that recovery has no answer for",
+            Stop::CleanupBesideTrustFindings => {
+                "prikk reports a publication whose cleanup a killed seal did not finish, and publication-trust findings besides (a retired key's blocks, say): while the cleanup is pending verify fails for the ref publication too, and only a failure by publication trust alone is excused by a retirement's record, so recovery does not finish the cleanup here"
+            }
             Stop::RetirementUnfinished => {
                 "a key retirement was begun and its record was not finished, so prikk's doctor reports publication-trust findings that nothing excuses; finish it with `inklkunn wiki keys finish-retirement <wiki>` (it needs the operator's key authority; recovery never runs it), then recover again"
             }
@@ -740,6 +749,17 @@ pub fn build(w: &Witness) -> Plan {
     {
         plan.notes.push(unfinished.clone());
         stop(&mut plan, Stop::RetirementUnfinished);
+        return plan;
+    }
+    // A pending cleanup beside publication-trust findings that nothing excused (Q6): a named stop rather than a
+    // generic one. (When the signer excuses them, `gather` has already taken them out of `doctor`.)
+    if w.cleanup_pending.is_some()
+        && w.doctor
+            .others()
+            .iter()
+            .any(|d| d.code == PUBLICATION_UNTRUSTED_CODE)
+    {
+        stop(&mut plan, Stop::CleanupBesideTrustFindings);
         return plan;
     }
     // The one error a pending cleanup stands for is that row's own business (P15); anything beside it is trouble.
