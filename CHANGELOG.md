@@ -713,6 +713,31 @@ Corrections from the review of 2026-11-01 (handoff 004, P15, P16).
   The cheaper-than-a-hash checks are not retried, and the decision has a test of its own on synthetic measurements
   (`a_difference_between_the_two_paths_is_believed_only_when_every_measurement_shows_it`). 20 runs in a row beside 8 busy loops
   pinned to the test's two CPUs hold. 1 new prikk-dependent test.
+- **U6 — writes switched on (the sign-in handoff).** Two end-to-end tests in `crates/inklkunn/src/serve/writes_on/`, over the
+  binary's own `prepare` and `Identify` (nothing stood in), a real prikk, a real key store, a real SQLite store and a real
+  socket. *The web:* accounts are made by the operator's `account invite` and the invitation page (a maintainer, a
+  contributor, a reviewer; the link works once), signed in through `/-/sign-in` with a cookie jar that obeys the `__Host-`
+  rules and forms read off the pages (the hidden `csrf` field, the double-submit cookie, the same-site headers, a text area
+  sent with CR LF as a browser sends it); a forged, another session's, a missing and an empty CSRF token and a post from
+  another site each change nothing; an anonymous visitor and a contributor cannot accept (even by posting the form), a
+  contributor cannot review and a reviewer cannot approve or ask for changes on her own proposal (D9); then propose, comment,
+  approve, accept: the page shows the change, the proposal says *Signed into the history*, the history and the change page
+  show the message and both people, `prikk log` has exactly one new block, a retry writes nothing, the badge comes from a check
+  that ran afterwards (the verification page says *Verified* with that time), a second person's proposal written against the
+  old tip is re-authored and accepted (both changes on the page), and a proposal that overlaps stops with *Stopped: changes
+  overlap*, shows both texts and leaves the repository as it was; an open proposal never changes the page every reader sees;
+  an ended session is no session; no password, operator secret or session value reaches a log, a note or a page. *The write
+  API:* a script with `propose` / `review` / `accept` tokens does the same (`reauthored: true` on the moved base, `overlap`
+  as a problem); a `propose` token cannot review or accept, a `review` token cannot accept, a contributor's `accept` token
+  cannot review or accept, an invalid token is `invalid-token`, a cookie with no CSRF token cannot write. **What still said
+  writes were off is gone:** a link to a page that is not there leads to the form that proposes it (in the default view; NAV-3),
+  the missing-page notice no longer waits for "the next release", the build-without-an-acceptor sentences (kept, for the tests
+  and for any build that serves no acceptor) say *this build* rather than *yet* (`accept.not_served*`,
+  `AcceptOutcome::NotServed`), the API's `405` no longer says the API only reads, the README's status and quick start, the
+  health module's note; the threat model gains §7.3 (the cells §7.1 and §7.2 left open until sign-in was served). The
+  readiness report for the owner is `docs/releases/0.2.0-readiness.md`. Mutations: the CSRF layer made to pass everything fails
+  the web test at the forged token; the follow-up's verify job made to return fails both at the fresh check; the acceptor
+  unset fails both with the 501; `create_href` made `None` fails its unit test and the page test. 2 new prikk-dependent tests.
 
 ## [0.1.0] — 2026-10-31
 

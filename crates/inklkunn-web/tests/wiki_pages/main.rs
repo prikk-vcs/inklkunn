@@ -147,7 +147,14 @@ async fn a_page_is_shown_with_one_main_heading_its_body_and_the_honest_badge() {
         a.body
             .contains("class=\"wikilink\" href=\"/handbook/Guide\"")
     );
-    assert!(a.body.contains("wikilink-missing"));
+    // A link to a page that is not there leads to the form that proposes it (NAV-3), not nowhere.
+    assert!(
+        a.body.contains(
+            "class=\"wikilink wikilink-missing\" href=\"/handbook/-/proposals/new?new=1&amp;title=Nowhere\""
+        ),
+        "{}",
+        a.body
+    );
     assert!(a.body.contains("License: CC-BY-SA-4.0"));
     // Never verified: the badge says so, and says nothing more.
     assert!(

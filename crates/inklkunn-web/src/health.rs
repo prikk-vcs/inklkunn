@@ -4,9 +4,9 @@
 //! stale,knowledge-files}` shows one (the last, RFC 005 part 2 D-5, from the knowledge index of the tip); `-/links/<Title>` shows the pages that link to a page, each with the line that makes the
 //! link.
 //!
-//! Nobody can create a page until proposals arrive (RFC 004), so the action beside a row is said in words and
-//! the one thing that can be done now, looking at who links to a wanted title, is a link; the disabled
-//! affordance is explained once, under the list, with the catalog's sentence about proposals.
+//! The action beside a row is said in words, and the one thing the row links to is the page of who links to a
+//! wanted title; a page is made by a proposal, and the missing-page notice and every link to a page that is not
+//! there lead to the form that proposes it (RFC 004), so no row needs a control of its own.
 
 use askama::Template;
 use axum::extract::rejection::PathRejection;

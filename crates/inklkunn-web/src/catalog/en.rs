@@ -79,7 +79,7 @@ pub const CATALOG: &[Entry] = &[
     msg("missing.body", "No page in {wiki} has the title {title}."),
     msg(
         "missing.invite",
-        "You can propose it when proposals arrive with the next release.",
+        "You can propose it. A proposal needs an account, and the page exists once someone who is allowed to takes the proposal into the history.",
     ),
     msg("ambiguous.heading", "More than one page fits"),
     msg(
@@ -345,7 +345,7 @@ pub const CATALOG: &[Entry] = &[
     msg("problem.not_available.title", "Not available in this build"),
     msg(
         "problem.not_available.detail",
-        "This build of the server does not offer this yet.",
+        "This build of the server does not offer this.",
     ),
     msg(
         "problem.not_available.hint",
@@ -369,11 +369,11 @@ pub const CATALOG: &[Entry] = &[
     msg("problem.method_not_allowed.title", "Method not allowed"),
     msg(
         "problem.method_not_allowed.detail",
-        "This release of the API only reads, so this address does not take that method.",
+        "This address of the API does not take that method.",
     ),
     msg(
         "problem.method_not_allowed.hint",
-        "Ask with GET or HEAD instead.",
+        "The API description of this server lists the methods each address takes.",
     ),
     // history, change, diff and permalinks (handoff 003 T5)
     msg("page.link_history", "History of this page"),
@@ -1272,18 +1272,18 @@ pub const CATALOG: &[Entry] = &[
         "outcome_note.store",
         "The records could not be used while the change was being taken in. It may or may not be in the history now: read the history before you try again, and tell the person who runs this server.",
     ),
-    msg("accept.heading", "Accepting is not available yet"),
+    msg("accept.heading", "Accepting is not available in this build"),
     msg(
-        "accept.not_yet",
-        "This server does not take proposals into the history yet.",
+        "accept.not_served",
+        "This build of the server does not take proposals into the history.",
     ),
     msg(
-        "accept.not_yet_kept",
+        "accept.not_served_kept",
         "The proposal stays held for review and nothing was changed.",
     ),
     msg(
-        "accept.not_yet_note",
-        "Accepting is not available yet on this server.",
+        "accept.not_served_note",
+        "Accepting is not available on this server.",
     ),
     msg(
         "accept.unconfigured_heading",

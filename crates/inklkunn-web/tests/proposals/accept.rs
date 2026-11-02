@@ -153,7 +153,7 @@ async fn the_accept_form_posts_the_revision_it_shows_and_says_nothing_of_unavail
     let p = propose(&c, &c.contributor, "Improve").await;
     // Without an acceptor the button is there and says so.
     let page = read(&c, &p, Some(&c.maintainer)).await.body();
-    assert!(page.contains("Accepting is not available yet on this server."));
+    assert!(page.contains("Accepting is not available on this server."));
     assert!(
         page.contains(ACCEPT_FORM_REVISION),
         "the form carries the revision it shows: {page}"
@@ -161,7 +161,7 @@ async fn the_accept_form_posts_the_revision_it_shows_and_says_nothing_of_unavail
     let double = serving(&mut c, Err(AcceptFailure::NotAllowed));
     let page = read(&c, &p, Some(&c.maintainer)).await.body();
     assert!(page.contains(">Accept</button>"), "{page}");
-    assert!(!page.contains("not available yet"), "{page}");
+    assert!(!page.contains("Accepting is not available"), "{page}");
     assert!(page.contains(ACCEPT_FORM_REVISION), "{page}");
     assert_eq!(double.calls(), 0, "reading a page accepts nothing");
 }
@@ -739,13 +739,13 @@ async fn a_server_started_without_the_means_to_sign_reads_and_refuses_an_accept_
     let mut c = cast();
     let p = propose(&c, &c.contributor, "Improve").await;
     without_a_signer(&mut c);
-    // The page is served, and the button says what is the matter beside it (not "not yet").
+    // The page is served, and the button says what is the matter beside it (not that it is unavailable).
     let page = read(&c, &p, Some(&c.maintainer)).await.body();
     assert!(
         page.contains("Accepting is not set up on this server."),
         "{page}"
     );
-    assert!(!page.contains("not available yet"), "{page}");
+    assert!(!page.contains("Accepting is not available"), "{page}");
     assert!(page.contains(ACCEPT_FORM_REVISION), "{page}");
     // The accept is refused after the checks, in one sentence, in each language.
     let a = accept(&c, &p, Some(&c.maintainer), SAME_SITE, "revision=1").await;
@@ -759,7 +759,7 @@ async fn a_server_started_without_the_means_to_sign_reads_and_refuses_an_accept_
         body.contains("This server is not set up to sign changes into the history, so nothing was changed and the proposal stays held for review; tell the person who runs this server."),
         "{body}"
     );
-    assert!(!body.contains("not available yet"), "{body}");
+    assert!(!body.contains("Accepting is not available"), "{body}");
     // A retry does not help, so no `Retry-After` pretends it might.
     assert_eq!(a.header("retry-after"), None);
     // The form does not even have to be complete: the same answer, nothing is read from it.

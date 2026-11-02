@@ -21,6 +21,8 @@ use crate::outbound;
 
 mod acceptor;
 mod follow_up;
+#[cfg(test)]
+mod writes_on;
 
 /// Everything `serve` checked and built, ready to bind.
 pub(crate) struct Prepared {

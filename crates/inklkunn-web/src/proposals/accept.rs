@@ -10,7 +10,7 @@
 //! `services.log`.
 //!
 //! A server without an acceptor (`Services::acceptor` is `None`: a build that does not serve accepting) answers
-//! [`AcceptOutcome::NotYetAvailable`], after the same checks; one started without the means to sign
+//! [`AcceptOutcome::NotServed`], after the same checks; one started without the means to sign
 //! ([`NoSigner`](crate::services::NoSigner)) answers [`AcceptOutcome::SigningNotConfigured`], in one sentence.
 
 use axum::extract::rejection::PathRejection;
@@ -54,7 +54,7 @@ pub enum Unchanged {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AcceptOutcome {
     /// Accepting is not served by this build.
-    NotYetAvailable,
+    NotServed,
     /// Accepting is served, but this server was started without the means to sign (no operator secret, or a
     /// key store that could not be opened): reads work, every write is refused with one sentence.
     SigningNotConfigured,
@@ -196,10 +196,10 @@ pub fn render_accept_outcome(
 ) -> Response {
     let t = page.t();
     let (status, heading, paragraphs) = match outcome {
-        AcceptOutcome::NotYetAvailable => (
+        AcceptOutcome::NotServed => (
             StatusCode::NOT_IMPLEMENTED,
             Key::AcceptHeading,
-            vec![t.get(Key::AcceptNotYet), t.get(Key::AcceptNotYetKept)],
+            vec![t.get(Key::AcceptNotServed), t.get(Key::AcceptNotServedKept)],
         ),
         AcceptOutcome::SigningNotConfigured => (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -396,7 +396,7 @@ pub(crate) async fn accept(
                 &|line| ctx.log(line),
             )
         } else {
-            AcceptOutcome::NotYetAvailable
+            AcceptOutcome::NotServed
         };
         render_accept_outcome(page, &ctx.wiki, &id, &outcome)
     })

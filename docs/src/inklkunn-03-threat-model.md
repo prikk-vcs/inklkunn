@@ -439,6 +439,25 @@ review re-verifies it.
 | **T-4, INV-3** hostile proposed content is data | `inklkunn-web/tests/proposals/safety.rs` (hostile content in preview, diff output and the page), `tests/api/write.rs` (hostile JSON stored as text, escaped on output) | |
 | **C-9b, C-9d** every quota refuses by name | `inklkunn-core/src/proposal/tests/quotas.rs` (both sides of each boundary); `inklkunn-core/src/check/tests.rs` (one check per wiki, the cap, a time in the future) | |
 
+### 7.3 Verification record (2026-11-03, sign-in handoff U6: writes switched on)
+
+The two tests of `crates/inklkunn/src/serve/writes_on/` (real prikk, a real key store, a real SQLite store, a real
+socket; the binary's own `prepare` with its own `Identify`, nothing stood in) close the cells that §7.1 and §7.2 left
+open because sign-in was not served: *a real bearer token resolved from the store* (C-3b), *an authenticated principal
+with a role* (INV-4), and the stand-in identity of the RR-1 / RR-11 row. Accounts are made by the operator's
+invitation and its page, sessions by `/-/sign-in` with a cookie jar that obeys the `__Host-` rules and the forms read
+off the pages (a text area is sent with CR LF, as a browser sends it).
+
+| Item | Tests that carry it | Not covered |
+|---|---|---|
+| **T-2, C-2a** sign-in through the page; the session cookie is `__Host-`, `Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/`, no `Domain`; the double-submit cookie is spent; a wrong password and a forged double-submit token are refused; an invitation link works once; an ended session is no session | `writes_on::tests::an_invited_person_signs_in_proposes_is_reviewed_and_accepted_and_the_pages_say_so` | The throttles behind a proxy (G1 – G3), OpenID Connect against a real provider (F2) |
+| **C-2b** a write by a signed-in person needs the session's CSRF token: a forged one, another session's, none, an empty one, and a post from another site each change nothing | the same test (mutation: the CSRF layer's `needs_token` made always false fails it at the forged token) | A cross-site form post in a real browser |
+| **C-3a, C-3b** scope ∩ role: a `propose` token cannot review or accept, a `review` token cannot accept, a contributor's `accept` token cannot review or accept, an invalid token is `invalid-token`, a cookie with no CSRF token cannot write through the API | `writes_on::tests::api::a_script_with_scoped_tokens_proposes_comments_reviews_and_is_accepted_and_a_narrow_token_is_refused` | Token creation through the account page (G6 changes it) |
+| **D9** nobody approves or asks for changes on their own proposal (a contributor is refused by role, a reviewer by D9, through the page and the API) | both tests | The page still offers the form to a proposer who is a reviewer; it is refused in words (observation, not a hole) |
+| **INV-1, C-1g** propose, comment, approve, accept: one new block in `prikk log`, *Signed into the history* on the proposal, the change and the history; a retry writes nothing; a proposal whose base moved is re-authored (`reauthored: true`); an overlap stops with both texts and the repository unchanged | both tests | A kill during a web accept (the kill matrix of §7.2 stands) |
+| **INV-5, INV-6** an open proposal is not the record (the page every reader sees and its badge are unchanged until acceptance); after an acceptance the badge comes from a check that ran afterwards (the verification page says *Verified*, with a time at or after the acceptance) | the first test (mutation: the follow-up's verify job made to return fails both) | |
+| **RR-1, RR-11** the serving process opens the key store and no secret, password or cookie value reaches a log, a note or a page | the first test (the search covers what the operator and every visitor saw) | A core dump (A1: non-dumpable, `LimitCORE=0`) |
+
 Also re-run: the structural, catalog, glossary, retired-words and stylesheet tests on every page state in both
 languages; the sanitizer tests; the supply-chain gates (`cargo deny check`, `cargo audit`).
 

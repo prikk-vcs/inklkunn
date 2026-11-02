@@ -122,7 +122,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `page.license` | under a page; `{license}` is the license of the page, or of the wiki when the page names none | "License: {license}" | "ライセンス: {license}" |
 | `missing.heading` | the heading of the page shown for a title no page has | "This page does not exist yet" | "このページはまだありません" |
 | `missing.body` | its sentence; `{title}` is the title asked for, `{wiki}` the wiki's name | "No page in {wiki} has the title {title}." | "{wiki} に「{title}」というタイトルのページはありません。" |
-| `missing.invite` | its second sentence, an invitation | "You can propose it when proposals arrive with the next release." | "提案の機能が次のリリースで提供されたら、このページを提案できます。" |
+| `missing.invite` | its second sentence, an invitation | "You can propose it. A proposal needs an account, and the page exists once someone who is allowed to takes the proposal into the history." | "このページを提案できます。提案にはアカウントが必要で、権限のある人が提案を履歴に取り込むと、ページができます。" |
 | `ambiguous.heading` | the heading of the page that lists the pages a title could mean | "More than one page fits" | "該当するページが複数あります" |
 | `ambiguous.body` | its sentence; `{title}` is the title asked for | "Several pages could be the one called {title}. Choose one." | "「{title}」に当たるページが複数あります。ひとつ選んでください。" |
 | `redirect.heading` | the heading of the page shown for a redirect that leads nowhere | "This redirect does not lead to a page" | "このリダイレクトの先にはページがありません" |
@@ -215,7 +215,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `problem.invalid_cursor.detail` | the API's problem detail `invalid-cursor`: the detail | "The cursor is not one this server gave out." | "このサーバーが発行したものではないカーソルです。" |
 | `problem.invalid_cursor.hint` | the API's problem detail `invalid-cursor`: the hint | "Start again from the first page, without a cursor." | "カーソルを付けずに、最初のページからやり直してください。" |
 | `problem.not_available.title` | the API's problem detail `not-available`: the title | "Not available in this build" | "このビルドでは利用できません" |
-| `problem.not_available.detail` | the API's problem detail `not-available`: the detail | "This build of the server does not offer this yet." | "このサーバーのビルドでは、まだ提供されていません。" |
+| `problem.not_available.detail` | the API's problem detail `not-available`: the detail | "This build of the server does not offer this." | "このサーバーのビルドでは、提供されていません。" |
 | `problem.not_available.hint` | the API's problem detail `not-available`: the hint | "Check the API description of this server for what it offers." | "このサーバーが提供するものは、API の説明で確認してください。" |
 | `problem.unavailable.title` | the API's problem detail `unavailable`: the title | "Cannot be read now" | "現在は読み取れません" |
 | `problem.unavailable.detail` | the API's problem detail `unavailable`: the detail | "The server could not read the wiki just now." | "サーバーが今、ウィキを読み取れませんでした。" |
@@ -224,8 +224,8 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `problem.failed.detail` | the API's problem detail `failed`: the detail | "Something went wrong on the server, so the request was not served." | "サーバー側で問題が起きたため、リクエストを処理できませんでした。" |
 | `problem.failed.hint` | the API's problem detail `failed`: the hint | "Try again in a little while, and tell the person who runs this server if it keeps happening." | "しばらくしてからもう一度お試しになり、続く場合はこのサーバーの管理者にお知らせください。" |
 | `problem.method_not_allowed.title` | the API's problem detail `method-not-allowed`: the title | "Method not allowed" | "このメソッドは使えません" |
-| `problem.method_not_allowed.detail` | the API's problem detail `method-not-allowed`: the detail | "This release of the API only reads, so this address does not take that method." | "この版の API は読み取り専用のため、このアドレスではそのメソッドを使えません。" |
-| `problem.method_not_allowed.hint` | the API's problem detail `method-not-allowed`: the hint | "Ask with GET or HEAD instead." | "GET または HEAD で求めてください。" |
+| `problem.method_not_allowed.detail` | the API's problem detail `method-not-allowed`: the detail | "This address of the API does not take that method." | "この API のこのアドレスでは、そのメソッドを使えません。" |
+| `problem.method_not_allowed.hint` | the API's problem detail `method-not-allowed`: the hint | "The API description of this server lists the methods each address takes." | "各アドレスで使えるメソッドは、このサーバーの API の説明に載っています。" |
 | `page.link_history` | under a page, the link to its history | "History of this page" | "このページの履歴" |
 | `title.history` | the title of a page's history; `{page}` is the page's title, `{wiki}` the wiki's name | "History of {page} · {wiki} · {product}" | "{page} の履歴 · {wiki} · {product}" |
 | `history.heading` | the heading of a page's history; `{title}` is the page's title | "History of {title}" | "{title} の履歴" |
@@ -603,10 +603,10 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `outcome_note.nothing_to_change` | under the outcome nothing to change | "The history already has everything this proposal asks for. Nothing was changed." | "この提案が求める内容は、すでに履歴に入っています。何も変更していません。" |
 | `outcome.store` | the outcome of an acceptance when the records failed and it is not known whether the change is in the history | "The result is not certain" | "結果を確定できません" |
 | `outcome_note.store` | under the outcome the result is not certain | "The records could not be used while the change was being taken in. It may or may not be in the history now: read the history before you try again, and tell the person who runs this server." | "変更を取り込む途中で、記録を利用できなくなりました。変更が履歴に入ったかどうかは分かりません。もう一度試す前に履歴を確認し、このサーバーを運用している人に伝えてください。" |
-| `accept.heading` | the heading of the page that answers the Accept button while accepting is not served | "Accepting is not available yet" | "受け入れはまだ利用できません" |
-| `accept.not_yet` | on that page | "This server does not take proposals into the history yet." | "このサーバーは、まだ提案を履歴に取り込めません。" |
-| `accept.not_yet_kept` | on that page | "The proposal stays held for review and nothing was changed." | "提案はレビュー待ちのままで、何も変更していません。" |
-| `accept.not_yet_note` | beside the Accept button | "Accepting is not available yet on this server." | "このサーバーでは、受け入れはまだ利用できません。" |
+| `accept.heading` | the heading of the page that answers the Accept button in a build that does not serve accepting (the shipped server always does; a build without an acceptor, as the tests make one, says this) | "Accepting is not available in this build" | "このビルドでは受け入れを利用できません" |
+| `accept.not_served` | on that page | "This build of the server does not take proposals into the history." | "このサーバーのビルドは、提案を履歴に取り込みません。" |
+| `accept.not_served_kept` | on that page | "The proposal stays held for review and nothing was changed." | "提案はレビュー待ちのままで、何も変更していません。" |
+| `accept.not_served_note` | beside the Accept button, in such a build | "Accepting is not available on this server." | "このサーバーでは、受け入れを利用できません。" |
 | `accept.unconfigured_heading` | the heading of the page that answers the Accept button when the server was started without the means to sign | "Accepting is not set up on this server" | "このサーバーでは受け入れが設定されていません" |
 | `accept.unconfigured` | on that page: the one sentence | "This server is not set up to sign changes into the history, so nothing was changed and the proposal stays held for review; tell the person who runs this server." | "このサーバーには履歴へ署名する設定がないため、何も変更しておらず、提案はレビュー待ちのままです（このサーバーを運用している人に伝えてください）。" |
 | `accept.unconfigured_note` | beside the Accept button, on such a server | "Accepting is not set up on this server." | "このサーバーでは、受け入れが設定されていません。" |

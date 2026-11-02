@@ -48,10 +48,13 @@ impl Presentation for WikiLinks {
         format!("{}/{}", self.base(), encode_title(title))
     }
 
-    /// Nobody can create a page yet: proposals arrive with the next release (RFC 004), so a link to a page that
-    /// does not exist is marked and goes nowhere. (A link that led to a form would be a dead end.)
-    fn create_href(&self, _title: &str) -> Option<String> {
-        None
+    /// A link to a page that does not exist leads to the form that proposes it (RFC 004; NAV-3): in the default
+    /// view only, since the form proposes against that view. A link in another view is marked and goes nowhere
+    /// rather than to a form for a different history than the reader is looking at.
+    fn create_href(&self, title: &str) -> Option<String> {
+        self.view
+            .is_none()
+            .then(|| crate::proposals::paths::new_page(&self.slug, Some(title)))
     }
 
     fn transclusion_label(&self, title: &str) -> String {

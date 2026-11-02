@@ -26,9 +26,18 @@ fn links_follow_the_url_scheme_and_a_view_has_its_own_cache_key() {
     );
     assert_eq!(main.lang(), "en");
     assert_eq!(WikiLinks::new(T::new(ja()), "handbook", None).lang(), "ja");
+    // A link to a page that is not there leads to the form that proposes it, in the default view only.
+    assert_eq!(
+        main.create_href("Nowhere").as_deref(),
+        Some("/handbook/-/proposals/new?new=1&title=Nowhere")
+    );
+    assert_eq!(
+        main.create_href("Two words & more").as_deref(),
+        Some("/handbook/-/proposals/new?new=1&title=Two%20words%20%26%20more")
+    );
     assert!(
-        main.create_href("Nowhere").is_none(),
-        "no page can be created yet"
+        draft.create_href("Nowhere").is_none(),
+        "a form for the default view is not offered from another view"
     );
 }
 

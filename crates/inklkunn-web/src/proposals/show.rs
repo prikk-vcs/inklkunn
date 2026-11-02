@@ -576,7 +576,7 @@ pub(crate) fn draw(
         revision: latest.unwrap_or(1),
         button: t.get(Key::ActionAccept),
         note: match ctx.services.acceptor.as_deref() {
-            None => Some(t.get(Key::AcceptNotYetNote)),
+            None => Some(t.get(Key::AcceptNotServedNote)),
             Some(acceptor) if !acceptor.is_configured() => Some(t.get(Key::AcceptUnconfiguredNote)),
             Some(_) => None,
         },

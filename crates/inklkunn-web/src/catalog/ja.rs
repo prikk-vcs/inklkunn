@@ -100,7 +100,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "missing.invite",
-        "提案の機能が次のリリースで提供されたら、このページを提案できます。",
+        "このページを提案できます。提案にはアカウントが必要で、権限のある人が提案を履歴に取り込むと、ページができます。",
     ),
     msg("ambiguous.heading", "該当するページが複数あります"),
     msg(
@@ -390,7 +390,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.not_available.detail",
-        "このサーバーのビルドでは、まだ提供されていません。",
+        "このサーバーのビルドでは、提供されていません。",
     ),
     msg(
         "problem.not_available.hint",
@@ -420,11 +420,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.method_not_allowed.detail",
-        "この版の API は読み取り専用のため、このアドレスではそのメソッドを使えません。",
+        "この API のこのアドレスでは、そのメソッドを使えません。",
     ),
     msg(
         "problem.method_not_allowed.hint",
-        "GET または HEAD で求めてください。",
+        "各アドレスで使えるメソッドは、このサーバーの API の説明に載っています。",
     ),
     // history, change, diff and permalinks (handoff 003 T5)
     msg("page.link_history", "このページの履歴"),
@@ -1356,18 +1356,18 @@ pub const CATALOG: &[Entry] = &[
         "outcome_note.store",
         "変更を取り込む途中で、記録を利用できなくなりました。変更が履歴に入ったかどうかは分かりません。もう一度試す前に履歴を確認し、このサーバーを運用している人に伝えてください。",
     ),
-    msg("accept.heading", "受け入れはまだ利用できません"),
+    msg("accept.heading", "このビルドでは受け入れを利用できません"),
     msg(
-        "accept.not_yet",
-        "このサーバーは、まだ提案を履歴に取り込めません。",
+        "accept.not_served",
+        "このサーバーのビルドは、提案を履歴に取り込みません。",
     ),
     msg(
-        "accept.not_yet_kept",
+        "accept.not_served_kept",
         "提案はレビュー待ちのままで、何も変更していません。",
     ),
     msg(
-        "accept.not_yet_note",
-        "このサーバーでは、受け入れはまだ利用できません。",
+        "accept.not_served_note",
+        "このサーバーでは、受け入れを利用できません。",
     ),
     msg(
         "accept.unconfigured_heading",

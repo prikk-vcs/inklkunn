@@ -476,12 +476,12 @@ async fn asking_for_a_revision_sends_it_back_and_a_revision_brings_it_back_for_r
 }
 
 #[tokio::test]
-async fn accept_is_there_and_says_it_is_not_available_yet() {
+async fn in_a_build_without_an_acceptor_accept_is_there_and_says_it_is_not_available() {
     let c = cast();
     let p = propose(&c, &c.contributor, "Improve").await;
     let page = read(&c, &p, Some(&c.maintainer)).await.body();
     assert!(page.contains(">Accept</button>"), "{page}");
-    assert!(page.contains("Accepting is not available yet on this server."));
+    assert!(page.contains("Accepting is not available on this server."));
     // Not a person who may accept: no button.
     assert!(
         !read(&c, &p, Some(&c.contributor))
@@ -493,7 +493,7 @@ async fn accept_is_there_and_says_it_is_not_available_yet() {
     assert_eq!(a.status, StatusCode::NOT_IMPLEMENTED);
     let body = a.body();
     assert!(
-        body.contains("<h1>Accepting is not available yet</h1>"),
+        body.contains("<h1>Accepting is not available in this build</h1>"),
         "{body}"
     );
     assert!(body.contains("The proposal stays held for review and nothing was changed."));

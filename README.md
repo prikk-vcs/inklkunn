@@ -19,8 +19,10 @@ embeds, block identifiers, tags, callouts, directives), keeps each wiki as a Por
 repository, and signs on the wiki's behalf with per-wiki keys it holds. It is designed to run alone and,
 later, as a module of the [planeter](https://github.com/prikk-vcs/planeter) forge.
 
-**Status: M0 (foundations) is under construction; nothing serves pages yet.** See [`docs/STATUS.md`](docs/STATUS.md)
-for the read-first brief and [`ROADMAP.md`](ROADMAP.md) for where it goes.
+**Status: 0.1.0 (M1) serves a wiki you can read. Sign-in, proposals, review and signed acceptance (M2) are built and
+tested end to end against a real prikk; they ship with 0.2.0, which the owner cuts.** See
+[`docs/STATUS.md`](docs/STATUS.md) for the read-first brief, [`docs/releases/0.2.0-readiness.md`](docs/releases/0.2.0-readiness.md)
+for what stands between here and that release, and [`ROADMAP.md`](ROADMAP.md) for where it goes.
 
 ## Why
 
@@ -33,7 +35,8 @@ for the read-first brief and [`ROADMAP.md`](ROADMAP.md) for where it goes.
 
 ## Quick start
 
-There is nothing to run yet. To build and test what exists:
+To build and test (running a server also needs a key store and the operator's secret file: see the operator notes in
+[`SECURITY.md`](SECURITY.md) and [`docs/KEYS.md`](docs/KEYS.md)):
 
 ```sh
 # prerequisites: Rust 1.88+, prikk ≥ 0.54.0 on PATH, bubblewrap (bwrap), prlimit (util-linux)
