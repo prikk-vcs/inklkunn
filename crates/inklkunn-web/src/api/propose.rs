@@ -20,6 +20,7 @@ use super::request::serve;
 use super::write::base::bad_if_match;
 use super::write::body::Fields;
 use super::write::{Request, serve_write};
+use crate::csrf::Decided;
 use crate::pages::PageState;
 use crate::url::{decode, view_ref};
 
@@ -37,12 +38,14 @@ impl Request {
 pub(crate) async fn create(
     State(state): State<PageState>,
     headers: HeaderMap,
+    decided: Decided,
     uri: Uri,
     body: Body,
 ) -> Response {
     serve_write(
         state,
         headers,
+        decided,
         uri,
         body,
         &describe::CREATE_PROPOSAL,
@@ -158,12 +161,14 @@ pub(crate) async fn get(State(state): State<PageState>, headers: HeaderMap, uri:
 pub(crate) async fn save_draft(
     State(state): State<PageState>,
     headers: HeaderMap,
+    decided: Decided,
     uri: Uri,
     body: Body,
 ) -> Response {
     serve_write(
         state,
         headers,
+        decided,
         uri,
         body,
         &describe::SAVE_DRAFT,
@@ -193,12 +198,14 @@ pub(crate) async fn save_draft(
 pub(crate) async fn submit_draft(
     State(state): State<PageState>,
     headers: HeaderMap,
+    decided: Decided,
     uri: Uri,
     body: Body,
 ) -> Response {
     serve_write(
         state,
         headers,
+        decided,
         uri,
         body,
         &describe::SUBMIT_DRAFT,
@@ -221,12 +228,14 @@ pub(crate) async fn submit_draft(
 pub(crate) async fn revise(
     State(state): State<PageState>,
     headers: HeaderMap,
+    decided: Decided,
     uri: Uri,
     body: Body,
 ) -> Response {
     serve_write(
         state,
         headers,
+        decided,
         uri,
         body,
         &describe::REVISE,
@@ -263,12 +272,14 @@ pub(crate) async fn revise(
 pub(crate) async fn withdraw(
     State(state): State<PageState>,
     headers: HeaderMap,
+    decided: Decided,
     uri: Uri,
     body: Body,
 ) -> Response {
     serve_write(
         state,
         headers,
+        decided,
         uri,
         body,
         &describe::WITHDRAW,

@@ -20,10 +20,28 @@ use inklkunn_core::inbox::{InboxError, namespace_target, page_target};
 use inklkunn_store::WatchTarget;
 
 use crate::catalog::Key;
-use crate::discover::resolve;
+use crate::csrf::Decided;
 use crate::pages::{Page, PageState, answer, render_form_refused};
 use crate::url::encode_title;
-use crate::wiki::{Choice, blocking, generic_not_found, notice, render_failed};
+use crate::wiki::{Choice, blocking, generic_not_found, notice, open_as, render_failed};
+
+/// The wiki a request is about, if the principal the CSRF layer decided on may read it; and the services.
+async fn resolve_deciding(
+    state: &PageState,
+    headers: HeaderMap,
+    decided: Decided,
+    slug: String,
+) -> Option<(
+    std::sync::Arc<crate::services::Services>,
+    inklkunn_store::WikiRecord,
+)> {
+    let services = state.services.clone()?;
+    let for_work = services.clone();
+    let wiki = blocking(move || open_as(&for_work, &decided.principal(&for_work, &headers), &slug))
+        .await
+        .flatten()?;
+    Some((services, wiki))
+}
 
 /// What was done.
 enum Done {
@@ -39,6 +57,7 @@ pub(crate) async fn watch(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
+    decided: Decided,
     path: Result<Path<(String, String)>, PathRejection>,
     form: crate::proposals::urlencoded::Raw,
 ) -> Response {
@@ -49,7 +68,9 @@ pub(crate) async fn watch(
     if !crate::lang::from_this_site(&headers) {
         return answer(StatusCode::FORBIDDEN, &page, render_form_refused(&page));
     }
-    let Some((services, wiki)) = resolve(&state, headers.clone(), slug).await else {
+    let Some((services, wiki)) =
+        resolve_deciding(&state, headers.clone(), decided.clone(), slug).await
+    else {
         return generic_not_found(&page);
     };
     // The body is read as fields only now, after the checks above (corrections P11).
@@ -60,7 +81,7 @@ pub(crate) async fn watch(
     let stop = form.get("do").is_some_and(|v| v == "unwatch");
     let (for_work, record, wanted) = (services.clone(), wiki.clone(), title.clone());
     let done = blocking(move || {
-        let principal = for_work.identity.principal(&headers);
+        let principal = decided.principal(&for_work, &headers);
         let target = if namespace {
             namespace_target(&wanted)
         } else {

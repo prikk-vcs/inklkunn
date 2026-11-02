@@ -210,6 +210,7 @@ pub(crate) async fn mark_read(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
+    decided: crate::csrf::Decided,
 ) -> Response {
     let page = page.without_switcher();
     if !crate::lang::from_this_site(&headers) {
@@ -219,7 +220,7 @@ pub(crate) async fn mark_read(
         return needs_account(&page);
     };
     let done = blocking(move || {
-        let principal = services.identity.principal(&headers);
+        let principal = decided.principal(&services, &headers);
         services.inbox.mark_all_read(&principal)
     })
     .await;

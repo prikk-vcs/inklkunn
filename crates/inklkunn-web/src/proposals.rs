@@ -33,7 +33,7 @@ use inklkunn_store::{AccountId, ProposalId, WikiRecord};
 use crate::catalog::{Key, T};
 use crate::pages::Page;
 use crate::services::Services;
-use crate::wiki::{Choice, notice, open};
+use crate::wiki::{Choice, notice};
 
 pub(crate) mod accept;
 pub(crate) mod anchor;
@@ -73,11 +73,26 @@ impl Ctx {
     /// The wiki a request is about, if the principal may read it. `None` is the one answer for "no such wiki"
     /// and "not yours to read".
     pub(crate) fn open(services: &Arc<Services>, headers: &HeaderMap, slug: &str) -> Option<Ctx> {
-        let wiki = open(services, headers, slug)?;
+        Self::open_as(services, services.identity.principal(headers), slug)
+    }
+
+    /// [`Ctx::open`] for a request that changes something: the principal is the one the CSRF layer decided on
+    /// (corrections G4), not asked for again.
+    pub(crate) fn open_deciding(
+        services: &Arc<Services>,
+        headers: &HeaderMap,
+        decided: &crate::csrf::Decided,
+        slug: &str,
+    ) -> Option<Ctx> {
+        Self::open_as(services, decided.principal(services, headers), slug)
+    }
+
+    fn open_as(services: &Arc<Services>, principal: Principal, slug: &str) -> Option<Ctx> {
+        let wiki = crate::wiki::open_as(services, &principal, slug)?;
         Some(Ctx {
             services: services.clone(),
             wiki,
-            principal: services.identity.principal(headers),
+            principal,
         })
     }
 

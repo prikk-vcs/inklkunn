@@ -18,6 +18,7 @@ use super::{
     serve, words,
 };
 use crate::catalog::Key;
+use crate::csrf::Decided;
 use crate::discover::Subject;
 use crate::pages::{Page, PageState, answer};
 use crate::wiki::{Choice, Shell, generic_not_found, services_of};
@@ -39,6 +40,7 @@ fn begin(
     state: &PageState,
     page: &Page,
     headers: &HeaderMap,
+    decided: Decided,
     ids: Ids,
     form: Fields,
 ) -> Result<Begun, Stop> {
@@ -50,6 +52,7 @@ fn begin(
     };
     Ok(Begun {
         services,
+        decided,
         slug,
         id,
         form,
@@ -58,6 +61,8 @@ fn begin(
 
 struct Begun {
     services: std::sync::Arc<crate::services::Services>,
+    /// Who the request is, as the CSRF layer decided (corrections G4).
+    decided: Decided,
     slug: String,
     id: String,
     form: Fields,
@@ -74,15 +79,17 @@ pub(crate) async fn comment(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
+    decided: Decided,
     ids: Ids,
     form: Fields,
 ) -> Response {
-    let begun = match begin(&state, &page, &headers, ids, form) {
+    let begun = match begin(&state, &page, &headers, decided, ids, form) {
         Ok(b) => b,
         Err(response) => return *response,
     };
     serve(page, move |page| {
-        let Some(ctx) = Ctx::open(&begun.services, &headers, &begun.slug) else {
+        let Some(ctx) = Ctx::open_deciding(&begun.services, &headers, &begun.decided, &begun.slug)
+        else {
             return generic_not_found(page);
         };
         let Some(id) = parse_id(&begun.id) else {
@@ -166,15 +173,17 @@ pub(crate) async fn decide(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
+    decided: Decided,
     ids: Ids,
     form: Fields,
 ) -> Response {
-    let begun = match begin(&state, &page, &headers, ids, form) {
+    let begun = match begin(&state, &page, &headers, decided, ids, form) {
         Ok(b) => b,
         Err(response) => return *response,
     };
     serve(page, move |page| {
-        let Some(ctx) = Ctx::open(&begun.services, &headers, &begun.slug) else {
+        let Some(ctx) = Ctx::open_deciding(&begun.services, &headers, &begun.decided, &begun.slug)
+        else {
             return generic_not_found(page);
         };
         let Some(id) = parse_id(&begun.id) else {
@@ -389,16 +398,18 @@ pub(crate) async fn reason_post(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
+    decided: Decided,
     ids: Ids,
     form: Fields,
     reason: Reason,
 ) -> Response {
-    let begun = match begin(&state, &page, &headers, ids, form) {
+    let begun = match begin(&state, &page, &headers, decided, ids, form) {
         Ok(b) => b,
         Err(response) => return *response,
     };
     serve(page, move |page| {
-        let Some(ctx) = Ctx::open(&begun.services, &headers, &begun.slug) else {
+        let Some(ctx) = Ctx::open_deciding(&begun.services, &headers, &begun.decided, &begun.slug)
+        else {
             return generic_not_found(page);
         };
         let Some(id) = parse_id(&begun.id) else {
@@ -452,10 +463,11 @@ pub(crate) async fn decline_post(
     state: State<PageState>,
     page: Page,
     headers: HeaderMap,
+    decided: Decided,
     ids: Ids,
     form: Fields,
 ) -> Response {
-    reason_post(state, page, headers, ids, form, Reason::Decline).await
+    reason_post(state, page, headers, decided, ids, form, Reason::Decline).await
 }
 
 /// `GET …/withdraw`.
@@ -473,10 +485,11 @@ pub(crate) async fn withdraw_post(
     state: State<PageState>,
     page: Page,
     headers: HeaderMap,
+    decided: Decided,
     ids: Ids,
     form: Fields,
 ) -> Response {
-    reason_post(state, page, headers, ids, form, Reason::Withdraw).await
+    reason_post(state, page, headers, decided, ids, form, Reason::Withdraw).await
 }
 
 /// `GET …/ask`.
@@ -494,8 +507,9 @@ pub(crate) async fn ask_post(
     state: State<PageState>,
     page: Page,
     headers: HeaderMap,
+    decided: Decided,
     ids: Ids,
     form: Fields,
 ) -> Response {
-    reason_post(state, page, headers, ids, form, Reason::Ask).await
+    reason_post(state, page, headers, decided, ids, form, Reason::Ask).await
 }

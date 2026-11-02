@@ -173,6 +173,27 @@ fn not_from_this_site(page: &Page) -> Response {
     answer(StatusCode::FORBIDDEN, &page, render_form_refused(&page))
 }
 
+/// A sign-in while signed in ends the session the request presented (corrections G8): the browser is given a new
+/// session, and the old one must not stay live behind it (a shared browser; a person who chooses another
+/// account). Called after the new session exists, so a failed sign-in leaves the old one alone.
+async fn end_presented_session(
+    services: &std::sync::Arc<Services>,
+    auth: &std::sync::Arc<Authenticator>,
+    headers: &HeaderMap,
+) {
+    let Some(secret) = crate::identity::session_secret(headers) else {
+        return;
+    };
+    let (auth, services) = (auth.clone(), services.clone());
+    // A failure is the operator's line; the person is signed in and the old session ends with its time.
+    let _ = blocking(move || {
+        if let Err(e) = auth.sign_out(&secret) {
+            (services.log)(&format!("a session could not be ended: {e}"));
+        }
+    })
+    .await;
+}
+
 /// A session cookie and a removal of the double-submit cookie, on `response`.
 fn signed_in_response(response: Response, signed_in: &SignedIn, now: i64) -> Response {
     let response = with_cookie(response, &signed_in.session.set_cookie(now));
@@ -327,7 +348,10 @@ pub(crate) async fn sign_in_post(
     };
     match result {
         None => render_failed(&page),
-        Some(Ok(signed_in)) => signed_in_response(redirect(&next), &signed_in, now),
+        Some(Ok(signed_in)) => {
+            end_presented_session(&services, &auth, &headers).await;
+            signed_in_response(redirect(&next), &signed_in, now)
+        }
         Some(Err(AuthError::BadCredentials)) => again(StatusCode::UNAUTHORIZED, Key::SignInFailed),
         Some(Err(AuthError::Locked { until })) => retry_after(
             again(StatusCode::TOO_MANY_REQUESTS, Key::SignInLocked),
@@ -398,6 +422,11 @@ pub(crate) async fn sign_out_post(
     };
     if !crate::lang::from_this_site(&headers) {
         return not_from_this_site(&private(page));
+    }
+    // A request that presents a bearer token is judged by the token alone (corrections G5): it signs out
+    // nobody, whatever cookie it also carries, and its cookie is neither read nor removed.
+    if crate::identity::presented(&headers) != crate::identity::Presented::Nothing {
+        return no_store(redirect("/"));
     }
     let secret = crate::identity::session_secret(&headers);
     let ended = blocking(move || {
@@ -696,7 +725,10 @@ pub(crate) async fn join_post(
             .await;
     match result {
         None => render_failed(&page),
-        Some(Ok(signed_in)) => signed_in_response(redirect(crate::account::PATH), &signed_in, now),
+        Some(Ok(signed_in)) => {
+            end_presented_session(&services, &auth, &headers).await;
+            signed_in_response(redirect(crate::account::PATH), &signed_in, now)
+        }
         Some(Err(AccountError::JoinClosed)) => join_closed(&page),
         Some(Err(error)) => problem_page(
             &page,
@@ -795,7 +827,10 @@ pub(crate) async fn invite_post(
     .await;
     match result {
         None => render_failed(&page),
-        Some(Ok(signed_in)) => signed_in_response(redirect(crate::account::PATH), &signed_in, now),
+        Some(Ok(signed_in)) => {
+            end_presented_session(&services, &auth, &headers).await;
+            signed_in_response(redirect(crate::account::PATH), &signed_in, now)
+        }
         Some(Err(AccountError::InvitationUnusable)) => invitation_unusable(&page),
         Some(Err(error)) => problem_page(
             &page,

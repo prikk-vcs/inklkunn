@@ -34,10 +34,11 @@ use super::problem::{Code, Problem};
 use super::reply::{self, Reply};
 use super::request::{language, parse_path};
 use crate::catalog::T;
+use crate::csrf::Decided;
 use crate::pages::PageState;
 use crate::services::{Services, WriteIdentity};
 use crate::url::decode;
-use crate::wiki::{blocking, open};
+use crate::wiki::{blocking, open_as};
 
 pub(crate) mod base;
 pub(crate) mod body;
@@ -80,6 +81,7 @@ impl Request {
 pub(crate) async fn serve_write<F>(
     state: PageState,
     headers: HeaderMap,
+    decided: Decided,
     uri: Uri,
     body: Body,
     doc: &'static Doc,
@@ -89,7 +91,7 @@ where
     F: FnOnce(&Request, Fields) -> Result<Reply, Problem> + Send + 'static,
 {
     let t = language(&headers);
-    let outcome = run(state, headers, uri, body, doc, t, work).await;
+    let outcome = run(state, headers, decided, uri, body, doc, work).await;
     // A write is never a `304`: it has no `If-None-Match`.
     reply::finish(t, None, outcome)
 }
@@ -97,15 +99,16 @@ where
 async fn run<F>(
     state: PageState,
     headers: HeaderMap,
+    decided: Decided,
     uri: Uri,
     body: Body,
     doc: &'static Doc,
-    t: T,
     work: F,
 ) -> Result<Reply, Problem>
 where
     F: FnOnce(&Request, Fields) -> Result<Reply, Problem> + Send + 'static,
 {
+    let t = language(&headers);
     let not_found = || Problem::new(Code::NotFound);
     let write = doc.write.ok_or_else(|| Problem::new(Code::Failed))?;
     let services = state.services.ok_or_else(not_found)?;
@@ -119,6 +122,7 @@ where
         admit(
             &services,
             &head,
+            &decided,
             &slug,
             has_id.then_some(raw_id.as_str()),
             write.action,
@@ -159,6 +163,7 @@ struct Admitted {
 fn admit(
     services: &Arc<Services>,
     headers: &HeaderMap,
+    decided: &Decided,
     slug: &str,
     raw_id: Option<&str>,
     action: inklkunn_core::Action,
@@ -174,7 +179,7 @@ fn admit(
     let csrf = headers
         .get(crate::csrf::HEADER)
         .and_then(|v| v.to_str().ok());
-    let principal = match services.identity.for_write(headers, csrf) {
+    let principal = match decided.write_identity(services, headers, csrf) {
         WriteIdentity::Principal(p) => p,
         WriteIdentity::InvalidToken => return Err(Problem::new(Code::InvalidToken)),
         WriteIdentity::CsrfMismatch => return Err(Problem::new(Code::Forbidden)),
@@ -182,7 +187,7 @@ fn admit(
     if presented && matches!(principal, Principal::Anonymous) {
         return Err(Problem::new(Code::InvalidToken));
     }
-    let wiki = open(services, headers, slug).ok_or_else(|| Problem::new(Code::NotFound))?;
+    let wiki = open_as(services, &principal, slug).ok_or_else(|| Problem::new(Code::NotFound))?;
     if matches!(principal, Principal::Anonymous) {
         return Err(Problem::new(Code::AuthenticationRequired));
     }

@@ -41,7 +41,15 @@ use crate::url::{page_address, view_ref};
 /// The wiki a request is about, if the principal may read it. `None` is the one answer for "no such wiki" and
 /// "not yours to read".
 pub(crate) fn open(services: &Services, headers: &HeaderMap, slug: &str) -> Option<WikiRecord> {
-    let principal = services.identity.principal(headers);
+    open_as(services, &services.identity.principal(headers), slug)
+}
+
+/// [`open`] for a principal already known (a write's, decided once by the CSRF layer).
+pub(crate) fn open_as(
+    services: &Services,
+    principal: &inklkunn_core::Principal,
+    slug: &str,
+) -> Option<WikiRecord> {
     let record = Slug::new(slug)
         .ok()
         .and_then(|slug| services.wikis.by_slug(&slug).ok());
@@ -52,7 +60,7 @@ pub(crate) fn open(services: &Services, headers: &HeaderMap, slug: &str) -> Opti
     let decision =
         services
             .authorizer
-            .authorize(&principal, Action::Read, &Resource::Wiki { wiki: id });
+            .authorize(principal, Action::Read, &Resource::Wiki { wiki: id });
     record.filter(|_| decision.is_allowed())
 }
 
@@ -858,6 +866,7 @@ pub(crate) async fn check_now(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
+    decided: crate::csrf::Decided,
     slug: Result<Path<String>, PathRejection>,
 ) -> Response {
     let Ok(Path(slug)) = slug else {
@@ -872,7 +881,7 @@ pub(crate) async fn check_now(
     }
     let t = page.t();
     let done = blocking(move || {
-        let wiki = open(&services, &headers, &slug)?;
+        let wiki = open_as(&services, &decided.principal(&services, &headers), &slug)?;
         let checked = services.verifier.check(&wiki);
         if let Some(why) = &checked.operator {
             (services.log)(&format!(

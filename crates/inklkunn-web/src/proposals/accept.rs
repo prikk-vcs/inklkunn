@@ -27,6 +27,7 @@ use super::{
     refused, serve, words,
 };
 use crate::catalog::Key;
+use crate::csrf::Decided;
 use crate::pages::{Page, PageState};
 use crate::wiki::{Choice, generic_not_found, notice, services_of, with_retry_after};
 
@@ -352,6 +353,7 @@ pub(crate) async fn accept(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
+    decided: Decided,
     ids: Ids,
     form: Fields,
 ) -> Response {
@@ -362,7 +364,7 @@ pub(crate) async fn accept(
         return generic_not_found(&page);
     };
     serve(page, move |page| {
-        let Some(ctx) = Ctx::open(&services, &headers, &slug) else {
+        let Some(ctx) = Ctx::open_deciding(&services, &headers, &decided, &slug) else {
             return generic_not_found(page);
         };
         let Some(id) = parse_id(&id) else {

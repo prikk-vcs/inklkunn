@@ -36,6 +36,7 @@ use super::{
     refused, see, serve, words,
 };
 use crate::catalog::{Key, T};
+use crate::csrf::Decided;
 use crate::pages::{Page, PageState};
 use crate::present::WikiLinks;
 use crate::wiki::{Body, Choice, generic_not_found, services_of};
@@ -50,6 +51,7 @@ pub(crate) async fn new_post(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
+    decided: Decided,
     slug: Result<Path<String>, PathRejection>,
     form: Fields,
 ) -> Response {
@@ -60,7 +62,7 @@ pub(crate) async fn new_post(
         return generic_not_found(&page);
     };
     serve(page, move |page| {
-        let Some(ctx) = Ctx::open(&services, &headers, &slug) else {
+        let Some(ctx) = Ctx::open_deciding(&services, &headers, &decided, &slug) else {
             return generic_not_found(page);
         };
         if let Some(response) = needs_account(page, &ctx) {
@@ -111,6 +113,7 @@ pub(crate) async fn edit_post(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
+    decided: Decided,
     path: Result<Path<(String, String)>, PathRejection>,
     form: Fields,
 ) -> Response {
@@ -121,7 +124,7 @@ pub(crate) async fn edit_post(
         return generic_not_found(&page);
     };
     serve(page, move |page| {
-        let Some(ctx) = Ctx::open(&services, &headers, &slug) else {
+        let Some(ctx) = Ctx::open_deciding(&services, &headers, &decided, &slug) else {
             return generic_not_found(page);
         };
         let Some(id) = parse_id(&id) else {

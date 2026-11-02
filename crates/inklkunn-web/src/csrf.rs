@@ -13,7 +13,12 @@
 //! * **A request that presents a bearer token is judged by the token alone**: it needs no CSRF token (a browser
 //!   does not send one by itself) and a cookie it also carries is not looked at.
 //! * A request with no live session has nothing to forge: it passes, and the handler says what an anonymous
-//!   visitor may do.
+//!   visitor may do. **Only a request that is signed out passes unchecked**: the layer asks
+//!   `Identify::for_write`, which fails closed (a session it could not read is a refusal, never "signed out"),
+//!   and never a separate "is there a session" question whose failure would read as "no".
+//! * **The layer decides once and says what it decided** (corrections G4): the identity it settled on goes into
+//!   the request's extensions ([`Decided`]), and a write handler takes its principal from there. No handler
+//!   resolves the credential a second time, so nothing can come out differently the second time.
 //! * The pages that make a session (sign-in, joining, an invitation) are protected by a double-submit token in
 //!   a `__Host-` cookie instead (they have no session yet); the language form changes a cookie of the visitor's
 //!   own and nothing else. Those are the only exceptions, listed here.
@@ -26,6 +31,8 @@ use axum::extract::{Request, State};
 use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::Response;
+
+use inklkunn_core::Principal;
 
 use crate::catalog::T;
 use crate::pages::{PageState, answer, render_form_expired};
@@ -103,35 +110,90 @@ async fn presented(req: Request) -> (Request, Option<String>) {
     }
 }
 
+/// What the layer decided about a request that changes something, kept in the request's extensions for the
+/// handler (corrections G4). A request the layer let through carries it; a handler that takes its principal
+/// from here asks the credential nothing more. (A request the layer did not look at, a read, has none, and the
+/// handler resolves the principal itself, once.)
+#[derive(Debug, Clone)]
+pub(crate) struct Decided(Option<WriteIdentity>);
+
+impl<S: Send + Sync> axum::extract::FromRequestParts<S> for Decided {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _: &S,
+    ) -> Result<Decided, Self::Rejection> {
+        Ok(Decided(
+            parts.extensions.get::<Settled>().map(|s| s.0.clone()),
+        ))
+    }
+}
+
+/// The extension the layer sets.
+#[derive(Debug, Clone)]
+struct Settled(WriteIdentity);
+
+impl Decided {
+    /// Who the request is, as the layer decided; else (it decided nothing) the identity is asked, once. A
+    /// request that presented a bad token or a session without its token is nobody.
+    pub(crate) fn principal(&self, services: &Services, headers: &HeaderMap) -> Principal {
+        match &self.0 {
+            Some(WriteIdentity::Principal(p)) => p.clone(),
+            Some(WriteIdentity::InvalidToken | WriteIdentity::CsrfMismatch) => Principal::Anonymous,
+            None => services.identity.principal(headers),
+        }
+    }
+
+    /// The identity of a write as the layer decided it, else (it decided nothing) as the identity says now.
+    pub(crate) fn write_identity(
+        &self,
+        services: &Services,
+        headers: &HeaderMap,
+        csrf: Option<&str>,
+    ) -> WriteIdentity {
+        match &self.0 {
+            Some(decided) => decided.clone(),
+            None => services.identity.for_write(headers, csrf),
+        }
+    }
+}
+
 /// The layer.
 pub(crate) async fn layer(State(state): State<PageState>, req: Request, next: Next) -> Response {
     let Some(services) = state.services.clone() else {
         return next.run(req).await;
     };
-    if !needs_token(req.method(), req.uri().path())
-        || !services.identity.may_be_signed_in(req.headers())
-    {
+    if !needs_token(req.method(), req.uri().path()) {
         return next.run(req).await;
     }
-    // Only a live session has anything to forge; look before reading a body.
     let path = req.uri().path().to_owned();
-    let (probe, headers) = (services.clone(), req.headers().clone());
-    let live = tokio::task::spawn_blocking(move || probe.identity.session(&headers))
-        .await
-        .map_err(|_| ())
-        .map(|session| session.is_some());
-    match live {
-        Ok(false) => return next.run(req).await,
-        Ok(true) => {}
-        // The check could not run: closed.
-        Err(()) => return expired_for(req.headers(), &path),
-    }
-    let (req, token) = presented(req).await;
-    let decision = check(&services, req.headers().clone(), token).await;
-    match decision {
-        Some(WriteIdentity::Principal(_) | WriteIdentity::InvalidToken) => next.run(req).await,
-        Some(WriteIdentity::CsrfMismatch) | None => expired_for(req.headers(), &path),
-    }
+    // First without a token: a request with no session cookie, or with a bearer token, is decided by this alone,
+    // and nothing is buffered for a stranger. A request that is signed out passes; only that does.
+    let first = check(&services, req.headers().clone(), None).await;
+    let (req, decision) = match first {
+        Some(decided @ (WriteIdentity::Principal(_) | WriteIdentity::InvalidToken)) => {
+            (req, decided)
+        }
+        // A live session that has not shown its token, or a check that could not run (closed): the token is
+        // read now (this request carries a session cookie, so it is worth the buffer) and decides.
+        Some(WriteIdentity::CsrfMismatch) => {
+            let (req, token) = presented(req).await;
+            let decided = check(&services, req.headers().clone(), token).await;
+            match decided {
+                Some(decided @ (WriteIdentity::Principal(_) | WriteIdentity::InvalidToken)) => {
+                    (req, decided)
+                }
+                Some(WriteIdentity::CsrfMismatch) | None => {
+                    return expired_for(req.headers(), &path);
+                }
+            }
+        }
+        None => return expired_for(req.headers(), &path),
+    };
+    let mut req = req;
+    req.extensions_mut().insert(Settled(decision));
+    next.run(req).await
 }
 
 /// Ask the identity, on a blocking thread, who the request is with the token it presented.

@@ -21,6 +21,7 @@ use super::propose::answer;
 use super::reply::Reply;
 use super::write::base::ProposalTag;
 use super::write::{Request, serve_write};
+use crate::csrf::Decided;
 use crate::pages::PageState;
 use crate::proposals::anchor;
 
@@ -66,12 +67,14 @@ fn decision_json(decision: &DecisionRecord) -> Value {
 pub(crate) async fn comment(
     State(state): State<PageState>,
     headers: HeaderMap,
+    decided: Decided,
     uri: Uri,
     body: Body,
 ) -> Response {
     serve_write(
         state,
         headers,
+        decided,
         uri,
         body,
         &describe::COMMENT,
@@ -147,12 +150,14 @@ fn anchor_of(
 pub(crate) async fn decide(
     State(state): State<PageState>,
     headers: HeaderMap,
+    decided: Decided,
     uri: Uri,
     body: Body,
 ) -> Response {
     serve_write(
         state,
         headers,
+        decided,
         uri,
         body,
         &describe::DECIDE,
@@ -181,12 +186,14 @@ pub(crate) async fn decide(
 pub(crate) async fn accept(
     State(state): State<PageState>,
     headers: HeaderMap,
+    decided: Decided,
     uri: Uri,
     body: Body,
 ) -> Response {
     serve_write(
         state,
         headers,
+        decided,
         uri,
         body,
         &describe::ACCEPT,
@@ -242,12 +249,14 @@ pub(crate) async fn accept(
 pub(crate) async fn decline(
     State(state): State<PageState>,
     headers: HeaderMap,
+    decided: Decided,
     uri: Uri,
     body: Body,
 ) -> Response {
     serve_write(
         state,
         headers,
+        decided,
         uri,
         body,
         &describe::DECLINE,

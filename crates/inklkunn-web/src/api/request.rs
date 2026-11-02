@@ -21,7 +21,7 @@ use crate::lang;
 use crate::pages::PageState;
 use crate::services::Services;
 use crate::url::decode;
-use crate::wiki::{blocking, open};
+use crate::wiki::{blocking, open_as};
 
 /// The language of an API answer: the same negotiation as the pages (the language cookie, else
 /// `Accept-Language`, else English; a preview only by the reader's own choice).
@@ -103,10 +103,11 @@ where
     let (rest, query) = (raw_rest.to_owned(), uri.query().map(str::to_owned));
     let done = blocking(move || {
         // Existence-neutral: no wiki and no right to read it are the same answer, before anything else.
-        let wiki = open(&services, &headers, &slug).ok_or_else(not_found)?;
+        let principal = services.identity.principal(&headers);
+        let wiki = open_as(&services, &principal, &slug).ok_or_else(not_found)?;
         let ctx = Ctx {
             t,
-            principal: services.identity.principal(&headers),
+            principal,
             rest,
             query,
         };
