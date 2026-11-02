@@ -845,7 +845,10 @@ impl Authenticator {
         Ok(account)
     }
 
-    /// An account with a name and a password, checked and hashed and not yet stored.
+    /// An account with a name and a password, checked and hashed and not yet stored. **Everything cheap is
+    /// checked before the password is hashed**: the names, the password's length, and that no account has the
+    /// sign-in name already (a taken name is told without spending a hash; the store checks again when the
+    /// account is written, which is the check that counts).
     fn new_local_account(
         &self,
         login_name: &str,
@@ -855,6 +858,10 @@ impl Authenticator {
     ) -> Result<Account, AccountError> {
         let login = LoginName::parse(login_name).map_err(AccountError::Login)?;
         let display_name = DisplayName::new(display_name).map_err(AccountError::DisplayName)?;
+        check_new_password(password).map_err(AccountError::Password)?;
+        if self.accounts.account_by_login(&login)?.is_some() {
+            return Err(AccountError::LoginTaken);
+        }
         let password_hash = self.hash_new_password(password)?;
         Ok(Account {
             id: AccountId::new(),
@@ -895,8 +902,10 @@ impl Authenticator {
     /// The person who opened an invitation chooses a sign-in name and a password: the account is made, the
     /// invitation is used up and the role it named is granted in one step, and the person is signed in. The
     /// invitation is checked **before** anything is hashed (a stranger's bad link costs a lookup, not a
-    /// verification), and a refusal (a taken name, a weak password) spends nothing: the person tries again with
-    /// the same link.
+    /// verification), and a refusal (a taken name, a weak password) spends nothing of the link: the person tries
+    /// again with the same link. **Counted per client address like joining** (corrections G3): one link would
+    /// otherwise allow unbounded probing of which sign-in names exist, and keep the hash gate busy. A taken
+    /// name is told before anything is hashed; the store checks again in the step that spends the link.
     ///
     /// **Blocking** (it hashes).
     pub fn redeem_with_password(
@@ -905,11 +914,20 @@ impl Authenticator {
         login_name: &str,
         display_name: &str,
         password: &str,
+        client: &ClientAddress,
         now: i64,
     ) -> Result<SignedIn, AccountError> {
         let hash = Invitations::hash_of(presented).ok_or(AccountError::InvitationUnusable)?;
         if !self.invitations.usable(presented, now)? {
             return Err(AccountError::InvitationUnusable);
+        }
+        match self.by_join.begin(client.as_key(), now) {
+            Begin::Locked(until) => return Err(AuthError::Locked { until }.into()),
+            Begin::Admitted { locks_now } => {
+                if let Some(until) = locks_now {
+                    self.note_lock("join-throttle", until, now);
+                }
+            }
         }
         let account = self.new_local_account(login_name, display_name, password, now)?;
         self.redemption.redeem_invitation(&hash, &account, now)?;

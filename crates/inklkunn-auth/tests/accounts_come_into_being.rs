@@ -91,6 +91,7 @@ fn the_person_who_opens_an_invitation_chooses_a_password_and_is_signed_in_with_t
             "Carol",
             "Carol Q.",
             LONG,
+            &ip("203.0.113.7"),
             NOW + 60,
         )
         .unwrap();
@@ -124,12 +125,12 @@ fn an_invitation_works_once() {
     let invitation = w.auth.invite(None, DEFAULT_LIFETIME_SECS, NOW).unwrap();
     let link = invitation.secret.as_str();
     w.auth
-        .redeem_with_password(link, "first", "First", LONG, NOW + 1)
+        .redeem_with_password(link, "first", "First", LONG, &ip("203.0.113.7"), NOW + 1)
         .unwrap();
     assert!(!w.auth.invitation_usable(link, NOW + 2).unwrap());
     assert_eq!(
         w.auth
-            .redeem_with_password(link, "second", "Second", LONG, NOW + 3)
+            .redeem_with_password(link, "second", "Second", LONG, &ip("203.0.113.7"), NOW + 3)
             .err(),
         Some(AccountError::InvitationUnusable)
     );
@@ -151,13 +152,13 @@ fn an_invitation_ends_when_it_ends() {
     assert!(!w.auth.invitation_usable(link, NOW + 100).unwrap());
     assert_eq!(
         w.auth
-            .redeem_with_password(link, "late", "Late", LONG, NOW + 100)
+            .redeem_with_password(link, "late", "Late", LONG, &ip("203.0.113.7"), NOW + 100)
             .err(),
         Some(AccountError::InvitationUnusable)
     );
     assert_eq!(
         w.auth
-            .redeem_with_password(link, "late", "Late", LONG, NOW + 5_000)
+            .redeem_with_password(link, "late", "Late", LONG, &ip("203.0.113.7"), NOW + 5_000)
             .err(),
         Some(AccountError::InvitationUnusable)
     );
@@ -180,7 +181,7 @@ fn a_link_that_is_no_invitation_costs_no_hashing_and_says_the_same_as_a_used_one
         assert!(!w.auth.invitation_usable(bad, NOW).unwrap(), "{bad}");
         assert_eq!(
             w.auth
-                .redeem_with_password(bad, "mallory", "Mallory", LONG, NOW)
+                .redeem_with_password(bad, "mallory", "Mallory", LONG, &ip("203.0.113.7"), NOW)
                 .err(),
             Some(AccountError::InvitationUnusable),
             "{bad}"
@@ -207,34 +208,107 @@ fn a_refused_choice_spends_nothing_so_the_same_link_is_tried_again() {
     // A name that is taken (alice is in the world), a name that cannot be, a password too short, a blank name.
     assert_eq!(
         w.auth
-            .redeem_with_password(link, "alice", "Imposter", LONG, NOW)
+            .redeem_with_password(link, "alice", "Imposter", LONG, &ip("203.0.113.7"), NOW)
             .err(),
         Some(AccountError::LoginTaken)
     );
     assert!(matches!(
         w.auth
-            .redeem_with_password(link, "a", "Short name", LONG, NOW)
+            .redeem_with_password(link, "a", "Short name", LONG, &ip("203.0.113.7"), NOW)
             .err(),
         Some(AccountError::Login(_))
     ));
     assert!(matches!(
         w.auth
-            .redeem_with_password(link, "dana", "Dana", "short", NOW)
+            .redeem_with_password(link, "dana", "Dana", "short", &ip("203.0.113.7"), NOW)
             .err(),
         Some(AccountError::Password(_))
     ));
     assert!(matches!(
         w.auth
-            .redeem_with_password(link, "dana", "   ", LONG, NOW)
+            .redeem_with_password(link, "dana", "   ", LONG, &ip("203.0.113.7"), NOW)
             .err(),
         Some(AccountError::DisplayName(_))
     ));
     assert!(w.auth.invitation_usable(link, NOW).unwrap());
     assert!(
         w.auth
-            .redeem_with_password(link, "dana", "Dana", LONG, NOW)
+            .redeem_with_password(link, "dana", "Dana", LONG, &ip("203.0.113.7"), NOW)
             .is_ok(),
         "and then it works"
+    );
+}
+
+#[test]
+fn a_taken_name_is_told_before_anything_is_hashed() {
+    // G3: the hash gate is the scarce thing, and a taken name does not spend the link, so one link could
+    // otherwise probe names without limit while keeping the gate busy.
+    let w = world();
+    let invitation = w.auth.invite(None, DEFAULT_LIFETIME_SECS, NOW).unwrap();
+    let link = invitation.secret.as_str();
+    let before = w.hasher.hashes.load(Ordering::SeqCst);
+    assert_eq!(
+        w.auth
+            .redeem_with_password(link, "alice", "Imposter", LONG, &ip("203.0.113.7"), NOW)
+            .err(),
+        Some(AccountError::LoginTaken)
+    );
+    assert_eq!(
+        w.hasher.hashes.load(Ordering::SeqCst),
+        before,
+        "a taken name hashed nothing"
+    );
+    assert_eq!(
+        w.auth.register_local("alice", "Imposter", LONG, NOW).err(),
+        Some(AccountError::LoginTaken)
+    );
+    assert_eq!(
+        w.hasher.hashes.load(Ordering::SeqCst),
+        before,
+        "nor did the operator's command"
+    );
+    // A free name is hashed, once.
+    w.auth
+        .redeem_with_password(link, "dana", "Dana", LONG, &ip("203.0.113.7"), NOW)
+        .unwrap();
+    assert_eq!(w.hasher.hashes.load(Ordering::SeqCst), before + 1);
+}
+
+#[test]
+fn redeeming_invitations_is_throttled_per_address_like_joining() {
+    // G3: ten tries from one address (the join budget) and the address is locked, for a good link too.
+    let w = world();
+    let invitation = w.auth.invite(None, DEFAULT_LIFETIME_SECS, NOW).unwrap();
+    let link = invitation.secret.as_str();
+    let prober = ip("198.51.100.20");
+    for i in 0..10 {
+        assert_eq!(
+            w.auth
+                .redeem_with_password(link, "alice", "Imposter", LONG, &prober, NOW + i)
+                .err(),
+            Some(AccountError::LoginTaken),
+            "{i}"
+        );
+    }
+    assert!(matches!(
+        w.auth
+            .redeem_with_password(link, "dana", "Dana", LONG, &prober, NOW + 20)
+            .err(),
+        Some(AccountError::Auth(AuthError::Locked { .. }))
+    ));
+    // The link was not spent, and another address uses it.
+    assert!(w.auth.invitation_usable(link, NOW + 21).unwrap());
+    assert!(
+        w.auth
+            .redeem_with_password(link, "dana", "Dana", LONG, &ip("198.51.100.21"), NOW + 22)
+            .is_ok()
+    );
+    // A link that is not usable answers the same however the address stands (it is judged before the count).
+    assert_eq!(
+        w.auth
+            .redeem_with_password(link, "erin", "Erin", LONG, &prober, NOW + 23)
+            .err(),
+        Some(AccountError::InvitationUnusable)
     );
 }
 
@@ -245,7 +319,14 @@ fn an_invitation_with_no_role_makes_an_account_with_none() {
     let invitation = w.auth.invite(None, DEFAULT_LIFETIME_SECS, NOW).unwrap();
     let signed_in = w
         .auth
-        .redeem_with_password(invitation.secret.as_str(), "erin", "Erin", LONG, NOW)
+        .redeem_with_password(
+            invitation.secret.as_str(),
+            "erin",
+            "Erin",
+            LONG,
+            &ip("203.0.113.7"),
+            NOW,
+        )
         .unwrap();
     assert_eq!(w.store.role(&signed_in.account, &garden.id).unwrap(), None);
 }
@@ -502,7 +583,14 @@ fn a_session_made_by_an_invitation_checks_its_csrf_token_like_any_other() {
     let invitation = w.auth.invite(None, DEFAULT_LIFETIME_SECS, NOW).unwrap();
     let signed_in = w
         .auth
-        .redeem_with_password(invitation.secret.as_str(), "frank", "Frank", LONG, NOW)
+        .redeem_with_password(
+            invitation.secret.as_str(),
+            "frank",
+            "Frank",
+            LONG,
+            &ip("203.0.113.7"),
+            NOW,
+        )
         .unwrap();
     let secret = signed_in.session.secret().as_str();
     assert!(matches!(

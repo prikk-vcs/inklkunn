@@ -755,6 +755,7 @@ pub(crate) async fn invite_page(
 pub(crate) async fn invite_post(
     State(state): State<PageState>,
     page: Page,
+    peer: Peer,
     headers: HeaderMap,
     secret: Secret,
     form: Fields,
@@ -776,6 +777,7 @@ pub(crate) async fn invite_post(
         return expired(&page);
     }
     let typed = submitted(&fields);
+    let client = client_of(&services, &auth, &peer, &headers);
     let now = (services.clock)();
     let action = invite_action(&secret);
     let (for_work, input) = (
@@ -788,7 +790,7 @@ pub(crate) async fn invite_post(
         ),
     );
     let result = blocking(move || {
-        for_work.redeem_with_password(&input.0, &input.1, &input.2, &input.3, now)
+        for_work.redeem_with_password(&input.0, &input.1, &input.2, &input.3, &client, now)
     })
     .await;
     match result {

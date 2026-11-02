@@ -333,3 +333,40 @@ async fn where_anyone_may_join_a_person_makes_an_account_with_no_role_and_is_sig
     .await;
     assert_eq!(a.status, 409);
 }
+
+/// G3: one link must not allow unbounded probing of sign-in names (a taken name does not spend it).
+#[tokio::test]
+async fn an_invitation_page_throttles_the_address_like_joining() {
+    let r = real(config());
+    r.person("alice", "Alice", None);
+    let (uri, _) = link(&r, None, DEFAULT_LIFETIME_SECS);
+    let mut statuses = Vec::new();
+    for _ in 0..12 {
+        let a = submit(
+            &r,
+            &uri,
+            &uri,
+            &[
+                ("login", "alice"),
+                ("name", "Imposter"),
+                ("password", PASSWORD),
+            ],
+            &[],
+        )
+        .await;
+        statuses.push(a.status.as_u16());
+        if a.status == 429 {
+            assert!(a.header("retry-after").is_some());
+            assert!(
+                a.body().contains("too many attempts"),
+                "the lock is said: {}",
+                a.body()
+            );
+        }
+    }
+    assert_eq!(
+        statuses,
+        [409, 409, 409, 409, 409, 409, 409, 409, 409, 409, 429, 429],
+        "ten tries, then the address is locked"
+    );
+}

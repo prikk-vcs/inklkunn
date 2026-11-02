@@ -190,7 +190,14 @@ fn an_invitation_is_made_shown_once_audited_and_opens_an_account() {
     let auth = auth_over(&store);
     assert!(auth.invitation_usable(&secret, NOW + 60).unwrap());
     let signed_in = auth
-        .redeem_with_password(&secret, "carol", "Carol", PASSWORD, NOW + 60)
+        .redeem_with_password(
+            &secret,
+            "carol",
+            "Carol",
+            PASSWORD,
+            &auth.client_address("203.0.113.7".parse().unwrap(), None),
+            NOW + 60,
+        )
         .unwrap();
     assert_eq!(
         store
@@ -221,7 +228,14 @@ fn the_first_administrator_is_made_with_an_invitation_that_names_a_role() {
     let store = std::sync::Arc::new(store);
     let auth = auth_over(&store);
     let signed_in = auth
-        .redeem_with_password(&secret, "root", "Root", PASSWORD, NOW + 5)
+        .redeem_with_password(
+            &secret,
+            "root",
+            "Root",
+            PASSWORD,
+            &auth.client_address("203.0.113.7".parse().unwrap(), None),
+            NOW + 5,
+        )
         .unwrap();
     let wiki = inklkunn_store::WikiId::parse(&wiki_id).unwrap();
     assert_eq!(

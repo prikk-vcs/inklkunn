@@ -739,7 +739,14 @@ async fn an_invitation_that_is_no_good_does_not_start_a_sign_in_and_one_used_mea
     p.person("slow");
     let s = start(&r, &format!("/-/invite/{secret}/oidc"), &[]).await;
     r.auth
-        .redeem_with_password(&secret, "quick", "Quick", PASSWORD, NOW)
+        .redeem_with_password(
+            &secret,
+            "quick",
+            "Quick",
+            PASSWORD,
+            &r.auth.client_address("203.0.113.7".parse().unwrap(), None),
+            NOW,
+        )
         .unwrap();
     let a = come_back(&r, &s.state, Some(&s.cookie()), &[]).await;
     assert_eq!(a.status, 404, "{}", a.body());

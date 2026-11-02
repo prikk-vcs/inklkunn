@@ -407,7 +407,14 @@ fn an_invitation_used_while_the_person_was_at_the_provider_is_refused_at_the_cal
             .unwrap();
     // Somebody else uses the link first, with a password.
     r.w.auth
-        .redeem_with_password(&secret, "quick", "Quick", "a password long enough", NOW + 1)
+        .redeem_with_password(
+            &secret,
+            "quick",
+            "Quick",
+            "a password long enough",
+            &ip("203.0.113.7"),
+            NOW + 1,
+        )
         .unwrap();
     let cookie = format!("{STATE_COOKIE}={}", begun.state);
     let e =
