@@ -1443,7 +1443,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "needs_account.advice",
-        "アカウントの作り方は、このサーバーの管理者にお尋ねください。",
+        "アカウントの作り方は、このウィキを運営している人にお尋ねください。",
     ),
     msg(
         "refused.not_allowed",
@@ -2098,6 +2098,43 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "sign_in.provider_not_navigation",
         "プロバイダーでのサインインは、このサイトのサインインのページから、ご自身でアドレスを開いたときにだけ始まります。何も開始されていません。このページのボタンをお使いください。",
+    ),
+    msg("account.token_password_label", "パスワード"),
+    msg(
+        "account.token_password_hint",
+        "トークンはサインアウトした後も使えるため、パスワードをもう一度確認します。",
+    ),
+    msg(
+        "account.token_password_wrong",
+        "パスワードが違うため、トークンは作られませんでした。",
+    ),
+    msg(
+        "account.token_provider_hint",
+        "このアカウントはプロバイダーでサインインし、パスワードはありません。トークンは、サインインしてから 10 分以内にだけ作れます。",
+    ),
+    msg(
+        "account.token_sign_in_again",
+        "最後のサインインから時間がたっているため、トークンは作られませんでした。サインアウトしてもう一度サインインし、10 分以内にトークンを作ってください。",
+    ),
+    msg("account.password_heading", "パスワード"),
+    msg(
+        "account.password_intro",
+        "パスワードを変更すると、このアカウントの他のセッションとすべての API トークンが終了します。このブラウザーはサインインしたままです。",
+    ),
+    msg(
+        "account.password_none",
+        "このアカウントにはパスワードがありません。プロバイダーでサインインします。",
+    ),
+    msg("account.password_current_label", "現在のパスワード"),
+    msg("account.password_new_label", "新しいパスワード"),
+    msg("account.password_button", "パスワードを変更"),
+    msg(
+        "account.password_wrong",
+        "現在のパスワードが違います。何も変更されていません。",
+    ),
+    msg(
+        "account.password_changed",
+        "パスワードを変更しました。このアカウントの他のセッションとすべての API トークンは終了しました。",
     ),
     // sign-in through a provider (the OpenID Connect handoff U3): end
 ];

@@ -304,6 +304,41 @@ impl Sessions {
         Ok(self.store.end_session(&found.id_hash)?)
     }
 
+    /// When the session `secret` names was started, if it is this account's and live (the freshness a sensitive
+    /// act asks of a person who has no password to give again).
+    pub(crate) fn started_at(
+        &self,
+        account: &AccountId,
+        secret: &str,
+        now: i64,
+    ) -> Result<Option<i64>, AuthError> {
+        Ok(self
+            .list(account, Some(secret), now)?
+            .into_iter()
+            .find(|s| s.current)
+            .map(|s| s.created_at))
+    }
+
+    /// End every session of the account but the one `keep_secret` names (a password change made from a session
+    /// that stays); how many ended. Sessions that are over already are not touched.
+    pub(crate) fn end_all_but(
+        &self,
+        account: &AccountId,
+        keep_secret: &str,
+        now: i64,
+    ) -> Result<u64, AuthError> {
+        let keep = looks_like_a_secret(keep_secret).then(|| stored_form(keep_secret));
+        let mut ended = 0;
+        for session in self.store.sessions_of(account, now)? {
+            if keep.as_deref() != Some(session.id_hash.as_str())
+                && self.store.end_session(&session.id_hash)?
+            {
+                ended += 1;
+            }
+        }
+        Ok(ended)
+    }
+
     /// End every session of an account (a new password, a disabling); how many there were.
     pub(crate) fn end_all(&self, account: &AccountId) -> Result<u64, AuthError> {
         Ok(self.store.end_sessions_of(account)?)

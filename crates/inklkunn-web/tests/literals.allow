@@ -50,6 +50,9 @@ exact :: account.rs :: a name could not be saved: {error} :: a line for the pers
 exact :: account.rs :: a session could not be ended: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
 exact :: account.rs :: a token could not be made: {error} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
 exact :: account.rs :: a token could not be revoked: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: account.rs :: min :: a placeholder name of a catalog message
+exact :: account.rs :: a token could not be confirmed: {other} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: account.rs :: a password could not be changed: {other} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
 exact :: identity.rs :: AuthIdentity :: the name in the type's Debug output
 exact :: identity.rs :: a credential could not be checked: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
 exact :: identity.rs :: a session could not be checked: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it

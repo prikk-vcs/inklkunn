@@ -1189,6 +1189,19 @@ keys! {
     LandingBody => "landing.body",
     LandingContinue => "landing.continue",
     SignInProviderNotNavigation => "sign_in.provider_not_navigation",
+    AccountTokenPasswordLabel => "account.token_password_label",
+    AccountTokenPasswordHint => "account.token_password_hint",
+    AccountTokenPasswordWrong => "account.token_password_wrong",
+    AccountTokenProviderHint => "account.token_provider_hint",
+    AccountTokenSignInAgain => "account.token_sign_in_again",
+    AccountPasswordHeading => "account.password_heading",
+    AccountPasswordIntro => "account.password_intro",
+    AccountPasswordNone => "account.password_none",
+    AccountPasswordCurrentLabel => "account.password_current_label",
+    AccountPasswordNewLabel => "account.password_new_label",
+    AccountPasswordButton => "account.password_button",
+    AccountPasswordWrong => "account.password_wrong",
+    AccountPasswordChanged => "account.password_changed",
     // sign-in through a provider (the OpenID Connect handoff U3): end
 }
 

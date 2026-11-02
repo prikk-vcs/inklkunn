@@ -145,7 +145,7 @@ pub(crate) fn private(mut page: Page) -> Page {
 }
 
 /// `Retry-After` for a lock that ends at `until`.
-fn retry_after(response: Response, until: i64, now: i64) -> Response {
+pub(crate) fn retry_after(response: Response, until: i64, now: i64) -> Response {
     let secs = until.saturating_sub(now).clamp(1, 24 * 3600);
     let mut response = response;
     if let Ok(value) = HeaderValue::from_str(&secs.to_string()) {

@@ -33,8 +33,8 @@ mod throttle;
 pub mod token;
 
 pub use authenticator::{
-    AccountError, AuthConfig, Authenticator, OidcSignInError, OidcSignedIn, SessionCheck,
-    SessionPrincipal, SignedIn,
+    AccountError, AuthConfig, Authenticator, ConfirmError, FRESH_SESSION_SECS, OidcSignInError,
+    OidcSignedIn, SessionCheck, SessionPrincipal, SignedIn,
 };
 pub use error::AuthError;
 pub use hashing::{Argon2idHasher, PasswordHasher, PasswordRefusal};

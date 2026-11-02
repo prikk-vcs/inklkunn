@@ -278,6 +278,14 @@ fn account_specs() -> Vec<Spec> {
             },
             handler: || post_route_for_account(account::revoke_token),
         },
+        Spec {
+            path: account::PASSWORD_PATH,
+            methods: &["POST"],
+            guard: Guard::Public {
+                reason: "changes the signed-in person's own password after the current one is checked (throttled and constant-work like sign-in) and ends their other sessions and tokens; it serves no wiki data and needs a session and its token",
+            },
+            handler: || post_route_for_account(account::change_password),
+        },
     ]
 }
 

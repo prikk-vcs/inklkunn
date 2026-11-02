@@ -50,6 +50,39 @@ use crate::session::{CsrfToken, NewSession, SESSION_TTL_SECS, SessionSummary, Se
 use crate::throttle::{Begin, Throttle, ThrottlePolicy};
 use crate::token::{IssueError, IssuedToken, TokenSummary, Tokens};
 
+/// How recent a sign-in must be for a person with no password to give again to make something that outlives
+/// the session (corrections G6): ten minutes.
+pub const FRESH_SESSION_SECS: i64 = 10 * 60;
+
+/// Why a sensitive act was not confirmed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ConfirmError {
+    /// The password did not authenticate (one answer for every way to fail), the address or the name is locked,
+    /// the service is busy, or a store failed.
+    Auth(AuthError),
+    /// The account has no password and its session is older than [`FRESH_SESSION_SECS`]: sign in again (with
+    /// the provider), then do it.
+    SignInAgain,
+}
+
+impl std::fmt::Display for ConfirmError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfirmError::Auth(e) => e.fmt(f),
+            ConfirmError::SignInAgain => f.write_str("a fresh sign-in is needed"),
+        }
+    }
+}
+
+impl std::error::Error for ConfirmError {}
+
+impl From<AuthError> for ConfirmError {
+    fn from(e: AuthError) -> Self {
+        ConfirmError::Auth(e)
+    }
+}
+
 /// The shortest and longest a session may be configured to last.
 const SESSION_TTL_RANGE: std::ops::RangeInclusive<i64> = 60..=90 * 24 * 3600;
 
@@ -448,24 +481,55 @@ impl Authenticator {
         now: i64,
     ) -> Result<Account, AuthError> {
         let key = login_key(login_name);
-        self.admit(&key, client, now)?;
+        self.verify_against(&key, password, client, now, || {
+            match LoginName::parse(login_name.trim()) {
+                Ok(name) => self.accounts.account_by_login(&name),
+                Err(_) => Ok(None),
+            }
+        })
+    }
+
+    /// Check the password of a known account (a person with a session who is asked for it again), counted under
+    /// the account's sign-in name exactly as a sign-in would be: guessing it here costs the same lock.
+    fn verify_account(
+        &self,
+        account: Account,
+        password: &str,
+        client: &ClientAddress,
+        now: i64,
+    ) -> Result<Account, AuthError> {
+        let key = match &account.local {
+            Some(local) => login_key(local.login.as_str()),
+            None => format!("account:{}", account.id.as_str()),
+        };
+        self.verify_against(&key, password, client, now, || Ok(Some(account)))
+    }
+
+    /// The one verification: admit under `key` and `client`, then check `password` against the account `find`
+    /// returns (or against the dummy hash when there is nothing usable, so the work is the same).
+    fn verify_against(
+        &self,
+        key: &str,
+        password: &str,
+        client: &ClientAddress,
+        now: i64,
+        find: impl FnOnce() -> Result<Option<Account>, StoreError>,
+    ) -> Result<Account, AuthError> {
+        self.admit(key, client, now)?;
         if password.len() > PASSWORD_MAX_BYTES {
             // No password this long was ever accepted, so nothing is verified; it stays counted.
             return Err(AuthError::BadCredentials);
         }
         let Some(permit) = self.gate.acquire() else {
-            self.give_back(&key, client);
+            self.give_back(key, client);
             return Err(AuthError::Busy);
         };
-        let account = match LoginName::parse(login_name.trim()) {
-            Ok(name) => match self.accounts.account_by_login(&name) {
-                Ok(found) => found,
-                Err(e) => {
-                    self.give_back(&key, client);
-                    return Err(e.into());
-                }
-            },
-            Err(_) => None,
+        let account = match find() {
+            Ok(found) => found,
+            Err(e) => {
+                self.give_back(key, client);
+                return Err(e.into());
+            }
         };
         let own = account
             .as_ref()
@@ -480,7 +544,7 @@ impl Authenticator {
         drop(permit);
         match account {
             Some(account) if verified && usable => {
-                self.by_login.clear(&key);
+                self.by_login.clear(key);
                 self.by_address.refund(client.as_key());
                 Ok(account)
             }
@@ -1049,6 +1113,84 @@ impl Authenticator {
         Ok(())
     }
 
+    /// Does the account have a password of its own? (An account that signs in through a provider has none.) A
+    /// page offers a password change, and asks for the password again, only where this is `true`.
+    pub fn has_password(&self, account: &AccountId) -> Result<bool, AuthError> {
+        Ok(self
+            .accounts
+            .account(account)?
+            .is_some_and(|a| a.local.is_some()))
+    }
+
+    /// What a sensitive act asks of a person who has a session (corrections G6; the key commands ask the same
+    /// of the operator): **the account's own password again**, or, for an account that has none, **a fresh
+    /// sign-in** (a session started within [`FRESH_SESSION_SECS`]), which for such an account is a sign-in
+    /// through the provider. A stolen session alone then cannot make what outlives it (an API token).
+    /// Throttled and constant-work exactly as [`Authenticator::sign_in`]: guessing here costs the account's
+    /// sign-in name the same lock.
+    ///
+    /// **Blocking.**
+    pub fn confirm_for_sensitive_act(
+        &self,
+        account: &AccountId,
+        session_secret: &str,
+        password: &str,
+        client: &ClientAddress,
+        now: i64,
+    ) -> Result<(), ConfirmError> {
+        let found = self
+            .accounts
+            .account(account)
+            .map_err(AuthError::from)?
+            .ok_or(AuthError::BadCredentials)?;
+        if found.local.is_some() {
+            self.verify_account(found, password, client, now)?;
+            return Ok(());
+        }
+        match self.sessions.started_at(account, session_secret, now)? {
+            Some(at) if now.saturating_sub(at) <= FRESH_SESSION_SECS => Ok(()),
+            _ => Err(ConfirmError::SignInAgain),
+        }
+    }
+
+    /// Change one's **own** password from a session (corrections G10): the current password must authenticate
+    /// (throttled and constant-work like a sign-in, and checked **before** the new one is looked at), the new one
+    /// must be acceptable. Every session of the account **but the one making the change** ends, and every API
+    /// token is revoked (a password changed because something leaked must not leave the thing that leaked
+    /// working). `session_secret` is the session cookie of the asking request.
+    ///
+    /// **Blocking.**
+    pub fn change_own_password(
+        &self,
+        account: &AccountId,
+        session_secret: &str,
+        old_password: &str,
+        new_password: &str,
+        client: &ClientAddress,
+        now: i64,
+    ) -> Result<(), AccountError> {
+        let found = self
+            .accounts
+            .account(account)?
+            .ok_or(AccountError::NotFound)?;
+        let Some(login) = found.local.as_ref().map(|l| l.login.clone()) else {
+            // A provider account has no password to change (the page does not offer it).
+            return Err(AccountError::Auth(AuthError::BadCredentials));
+        };
+        self.verify_account(found, old_password, client, now)?;
+        let password_hash = self.hash_new_password(new_password)?;
+        self.accounts.set_local_credential(
+            account,
+            Some(&LocalCredential {
+                login,
+                password_hash,
+            }),
+        )?;
+        self.sessions.end_all_but(account, session_secret, now)?;
+        self.tokens.revoke_all(account, now)?;
+        Ok(())
+    }
+
     /// An administrator's reset: give an account a sign-in name and a new password **without proving the old
     /// one** (the caller has been authorized to do this and has re-authenticated). Every session ends and
     /// every API token is revoked. **Blocking.**
@@ -1125,6 +1267,16 @@ impl Authenticator {
     /// The account's tokens, without their secrets.
     pub fn tokens(&self, account: &AccountId) -> Result<Vec<TokenSummary>, AuthError> {
         self.tokens.list(account)
+    }
+
+    /// Start a session for an account without any credential, and return its secret (a test of what a session
+    /// of an account with no password may do). Never available to a product build.
+    #[cfg(any(test, feature = "test-knobs"))]
+    pub fn start_session_for_test(&self, account: &AccountId, now: i64) -> String {
+        self.sessions
+            .start(account, now)
+            .map(|new| new.secret().as_str().to_owned())
+            .unwrap_or_default()
     }
 
     /// The dummy hash a sign-in verifies against when it has nothing usable to check (tests compare its cost

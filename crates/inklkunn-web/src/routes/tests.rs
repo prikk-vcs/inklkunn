@@ -371,6 +371,7 @@ fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
             "/-/account/sessions/end",
             "/-/account/tokens",
             "/-/account/tokens/revoke",
+            "/-/account/password",
             "/-/health",
             "/-/lang",
             "/-/assets/{file}",

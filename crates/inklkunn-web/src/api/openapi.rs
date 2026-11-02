@@ -177,10 +177,29 @@ fn if_match_parameter(base: Base) -> Value {
     })
 }
 
+/// The name of the CSRF header as the document spells it (the server reads it without regard to case).
+pub(super) const CSRF_HEADER_NAME: &str = "X-CSRF-Token";
+/// The security schemes of a write: a bearer token, or a session cookie **with** its CSRF token.
+pub(super) const BEARER_SCHEME: &str = "bearerAuth";
+pub(super) const SESSION_SCHEME: &str = "sessionCookie";
+pub(super) const CSRF_SCHEME: &str = "csrfToken";
+
+/// The `X-CSRF-Token` header of a write made with the session cookie (corrections G9).
+fn csrf_parameter() -> Value {
+    json!({
+        "name": CSRF_HEADER_NAME,
+        "in": "header",
+        "required": false,
+        "description": "The CSRF token of the signed-in session (the page of the account shows it to the session that owns it). **Required when the write is authenticated by the session cookie**, never otherwise: a browser sends the cookie by itself, so the cookie alone is refused with `forbidden`. A request that carries a bearer token is judged by the token alone and needs neither the cookie nor this header.",
+        "schema": {"type": "string"},
+    })
+}
+
 fn operation(doc: &Doc, path: &str, guard: Guard) -> Value {
     let mut parameters: Vec<Value> = path_params(path).into_iter().map(path_parameter).collect();
     if let Some(write) = doc.write {
         parameters.push(if_match_parameter(write.base));
+        parameters.push(csrf_parameter());
     }
     parameters.extend(doc.query.iter().map(query_parameter));
 
@@ -224,7 +243,13 @@ fn operation(doc: &Doc, path: &str, guard: Guard) -> Value {
                 "content": {"application/json": {"schema": {"$ref": format!("#/components/schemas/{}", write.request)}}},
             }),
         );
-        op.insert("security".to_owned(), json!([{"bearerAuth": []}]));
+        op.insert(
+            "security".to_owned(),
+            json!([
+                {BEARER_SCHEME: []},
+                {SESSION_SCHEME: [], CSRF_SCHEME: []},
+            ]),
+        );
         op.insert(
             "x-inklkunn-scope".to_owned(),
             json!(write.action.required_scope().as_str()),
@@ -350,10 +375,22 @@ fn components() -> Value {
     json!({
         "schemas": schemas,
         "securitySchemes": {
-            "bearerAuth": {
+            BEARER_SCHEME: {
                 "type": "http",
                 "scheme": "bearer",
                 "description": "An API token (`ink_…`) issued to an account, with a scope (`read`, `propose`, `review`, `accept`, `admin`). The scope is intersected with the account's role in the wiki: a token never does more than either allows.",
+            },
+            SESSION_SCHEME: {
+                "type": "apiKey",
+                "in": "cookie",
+                "name": inklkunn_auth::session::SESSION_COOKIE,
+                "description": "The site's own session, set by signing in on its pages. For a read it is enough; **a write made with it must also present the session's CSRF token** (`csrfToken`), and the two are checked together.",
+            },
+            CSRF_SCHEME: {
+                "type": "apiKey",
+                "in": "header",
+                "name": CSRF_HEADER_NAME,
+                "description": "The session's CSRF token, for a client that is not a form (a form sends it as the field `csrf`). Used only together with `sessionCookie`.",
             },
         },
     })
@@ -377,7 +414,7 @@ fn problem_types() -> Value {
     )
 }
 
-const INTRO: &str = "The API of an inklkunn site: what the pages show, as JSON, and the writes that propose, review and accept changes. Every wiki's endpoints are under `/{slug}/-/api/v1/`, the version is in the path, and this description is generated from the server's route table. Every answer is a success of the stated shape or a problem detail (RFC 9457) whose `type` is stable (`x-inklkunn-problems` lists them) and whose `title`, `detail` and `hint` follow the language cookie or `Accept-Language`. A wiki that does not exist and a wiki you may not read answer the same `not-found`. Every success has an `ETag` and `304` answers a matching `If-None-Match`. HEAD is answered like GET without the body. There is no cross-origin access. The reads take the site's session or an API token; **a write takes a JSON body (`application/json`, bounded before it is parsed) and names its base in `If-Match`** — the proposal revision's `etag`, or for a new proposal the `state_id` of the view's tip — and a stale base is `409 stale-base`, which carries the current one. A write is authenticated by an API token (`Authorization: Bearer …`), whose scope (`propose`, `review`, `accept`) is intersected with the account's role in the wiki, or by the site's own session from the site's own pages. Where waiting helps, a refusal carries `Retry-After`.";
+const INTRO: &str = "The API of an inklkunn site: what the pages show, as JSON, and the writes that propose, review and accept changes. Every wiki's endpoints are under `/{slug}/-/api/v1/`, the version is in the path, and this description is generated from the server's route table. Every answer is a success of the stated shape or a problem detail (RFC 9457) whose `type` is stable (`x-inklkunn-problems` lists them) and whose `title`, `detail` and `hint` follow the language cookie or `Accept-Language`. A wiki that does not exist and a wiki you may not read answer the same `not-found`. Every success has an `ETag` and `304` answers a matching `If-None-Match`. HEAD is answered like GET without the body. There is no cross-origin access. The reads take the site's session or an API token; **a write takes a JSON body (`application/json`, bounded before it is parsed) and names its base in `If-Match`** — the proposal revision's `etag`, or for a new proposal the `state_id` of the view's tip — and a stale base is `409 stale-base`, which carries the current one. A write is authenticated by an API token (`Authorization: Bearer …`), whose scope (`propose`, `review`, `accept`) is intersected with the account's role in the wiki, or by the site's own session: **the session cookie together with the session's CSRF token in `X-CSRF-Token`** (a cookie alone is refused with `forbidden`; a request that carries a bearer token is judged by the token alone). Where waiting helps, a refusal carries `Retry-After`.";
 
 /// Build the document from the route `table` and the endpoints' `docs`.
 pub(crate) fn document(table: &RouteTable, docs: &[&'static Doc]) -> Result<Value, Drift> {

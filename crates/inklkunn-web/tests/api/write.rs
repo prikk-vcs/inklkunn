@@ -1792,7 +1792,7 @@ async fn the_description_names_every_write_with_its_base_its_scope_and_the_probl
             .filter(|p| p.at("/in") == "header")
             .map(|p| p.at("/name").as_str().unwrap())
             .collect();
-        assert_eq!(names, ["If-Match"], "{path}");
+        assert_eq!(names, ["If-Match", "X-CSRF-Token"], "{path}");
         let statuses: Vec<String> = op
             .at("/responses")
             .as_object()
@@ -1813,6 +1813,11 @@ async fn the_description_names_every_write_with_its_base_its_scope_and_the_probl
             "{path}: a write has no 304"
         );
         assert_eq!(op.at("/security/0/bearerAuth"), &json!([]));
+        assert_eq!(
+            op.at("/security/1"),
+            &json!({"sessionCookie": [], "csrfToken": []}),
+            "{path}: the cookie client sends the token too"
+        );
     }
     // The registry of the types is the one a client matches on, and every code a write answers is in it.
     let listed: Vec<&str> = document

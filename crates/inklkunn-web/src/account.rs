@@ -19,22 +19,26 @@ use axum::extract::rejection::{FormRejection, QueryRejection};
 use axum::extract::{Form, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::Response;
+use inklkunn_auth::hashing::PASSWORD_MIN_CHARS;
 use inklkunn_auth::token::{IssueError, MAX_LIVE_PER_ACCOUNT};
-use inklkunn_auth::{AccountError, AuthError, Authenticator};
+use inklkunn_auth::{AccountError, AuthError, Authenticator, ConfirmError};
 use inklkunn_store::{AccountId, Scope, TokenId};
 
 use crate::catalog::Key;
+use crate::csrf::Decided;
 use crate::pages::{Page, PageState, answer, render_form_refused};
 use crate::services::Services;
+use crate::signin::{Peer, client_of};
 use crate::time::utc_minutes;
 use crate::wiki::{blocking, generic_not_found, redirect, render_failed};
 
 pub(crate) use crate::signin::names::{
-    ACCOUNT_PATH as PATH, NAME_PATH, SESSIONS_END_PATH, TOKENS_PATH, TOKENS_REVOKE_PATH,
+    ACCOUNT_PATH as PATH, NAME_PATH, PASSWORD_PATH, SESSIONS_END_PATH, TOKENS_PATH,
+    TOKENS_REVOKE_PATH,
 };
 use crate::signin::names::{
-    DONE_NAME, DONE_SESSION, DONE_TOKEN, F_DAYS, F_HANDLE, F_ID, F_LABEL, F_NAME, F_SCOPE, Q_DONE,
-    account_done, no_store,
+    DONE_NAME, DONE_PASSWORD, DONE_SESSION, DONE_TOKEN, F_CURRENT, F_DAYS, F_HANDLE, F_ID, F_LABEL,
+    F_NAME, F_NEW, F_PASSWORD, F_SCOPE, Q_DONE, account_done, no_store,
 };
 
 /// The most bytes one of these forms may carry.
@@ -96,6 +100,18 @@ struct AccountTpl<'a> {
     name: String,
     name_hint: String,
     name_button: String,
+    password_heading: String,
+    /// Whether the account has a password: the form that changes it, and the password a token asks for, are
+    /// for such an account only.
+    has_password: bool,
+    password_intro: String,
+    password_none: String,
+    password_problem: Option<String>,
+    password_action: &'static str,
+    password_current_label: String,
+    password_new_label: String,
+    password_new_hint: String,
+    password_button: String,
     sessions_heading: String,
     sessions_intro: String,
     sessions: Vec<SessionRow>,
@@ -117,6 +133,9 @@ struct AccountTpl<'a> {
     scopes: Vec<OptionRow>,
     token_lifetime_label: String,
     lifetimes: Vec<OptionRow>,
+    token_password_label: String,
+    token_password_hint: String,
+    token_provider_hint: String,
     token_button: String,
 }
 
@@ -135,6 +154,7 @@ struct Shown {
     status: Option<StatusCode>,
     note: Option<Key>,
     name_problem: Option<String>,
+    password_problem: Option<String>,
     token_problem: Option<String>,
     /// A token just made, to show once.
     made: Option<String>,
@@ -190,10 +210,11 @@ async fn draw(page: Page, acting: Acting, shown: Shown) -> Response {
             .0
             .sessions(&for_work.1, for_work.2.as_deref(), now)?;
         let tokens = for_work.0.tokens(&for_work.1)?;
-        Ok::<_, AuthError>((sessions, tokens))
+        let has_password = for_work.0.has_password(&for_work.1)?;
+        Ok::<_, AuthError>((sessions, tokens, has_password))
     })
     .await;
-    let (sessions, tokens) = match loaded {
+    let (sessions, tokens, has_password) = match loaded {
         Some(Ok(found)) => found,
         Some(Err(e)) => {
             (acting.services.log)(&format!("an account's records could not be read: {e}"));
@@ -279,6 +300,20 @@ async fn draw(page: Page, acting: Acting, shown: Shown) -> Response {
         name,
         name_hint: page.get(Key::AccountNameHint),
         name_button: page.get(Key::AccountNameButton),
+        password_heading: page.get(Key::AccountPasswordHeading),
+        has_password,
+        password_intro: page.get(Key::AccountPasswordIntro),
+        password_none: page.get(Key::AccountPasswordNone),
+        password_problem: shown.password_problem.clone(),
+        password_action: PASSWORD_PATH,
+        password_current_label: page.get(Key::AccountPasswordCurrentLabel),
+        password_new_label: page.get(Key::AccountPasswordNewLabel),
+        password_new_hint: page
+            .t()
+            .msg(Key::AccountFormPasswordHint)
+            .with("min", PASSWORD_MIN_CHARS.to_string())
+            .text(),
+        password_button: page.get(Key::AccountPasswordButton),
         sessions_heading: page.get(Key::AccountSessionsHeading),
         sessions_intro: page.get(Key::AccountSessionsIntro),
         sessions: session_rows,
@@ -314,6 +349,9 @@ async fn draw(page: Page, acting: Acting, shown: Shown) -> Response {
                 selected: *days == chosen_days,
             })
             .collect(),
+        token_password_label: page.get(Key::AccountTokenPasswordLabel),
+        token_password_hint: page.get(Key::AccountTokenPasswordHint),
+        token_provider_hint: page.get(Key::AccountTokenProviderHint),
         token_button: page.get(Key::AccountTokenButton),
     }
     .render();
@@ -342,6 +380,7 @@ pub(crate) async fn account_page(
             DONE_NAME => Some(Key::AccountNameSaved),
             DONE_SESSION => Some(Key::AccountSessionEnded),
             DONE_TOKEN => Some(Key::AccountTokenRevokedNote),
+            DONE_PASSWORD => Some(Key::AccountPasswordChanged),
             _ => None,
         });
     draw(
@@ -360,6 +399,7 @@ fn begin(
     state: &PageState,
     page: &Page,
     headers: &HeaderMap,
+    decided: &Decided,
     form: Fields,
 ) -> Result<(Acting, HashMap<String, String>), Box<Response>> {
     if !crate::lang::from_this_site(headers) {
@@ -371,6 +411,11 @@ fn begin(
         )));
     }
     let acting = acting(state, page, headers)?;
+    // The CSRF layer decided who this request is; the page's session view must be the same account, or this is
+    // not a request to act on (a token is not a session, and the two cannot disagree).
+    if decided.principal(&acting.services, headers).account_id() != Some(&acting.account) {
+        return Err(Box::new(crate::csrf::expired(headers)));
+    }
     let Ok(Form(fields)) = form else {
         return Err(Box::new(crate::csrf::expired(headers)));
     };
@@ -397,9 +442,10 @@ pub(crate) async fn save_name(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
+    decided: Decided,
     form: Fields,
 ) -> Response {
-    let (acting, fields) = match begin(&state, &page, &headers, form) {
+    let (acting, fields) = match begin(&state, &page, &headers, &decided, form) {
         Ok(b) => b,
         Err(response) => return *response,
     };
@@ -435,9 +481,10 @@ pub(crate) async fn end_session(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
+    decided: Decided,
     form: Fields,
 ) -> Response {
-    let (acting, fields) = match begin(&state, &page, &headers, form) {
+    let (acting, fields) = match begin(&state, &page, &headers, &decided, form) {
         Ok(b) => b,
         Err(response) => return *response,
     };
@@ -478,14 +525,18 @@ pub(crate) async fn end_session(
     }
 }
 
-/// `POST /-/account/tokens`: make a token, and show it once.
+/// `POST /-/account/tokens`: make a token, and show it once. **The password is asked again** (or, for an account
+/// with none, a sign-in of the last ten minutes is needed): a token outlives the session, so a stolen session
+/// alone must not be able to make one (corrections G6).
 pub(crate) async fn make_token(
     State(state): State<PageState>,
     page: Page,
+    peer: Peer,
     headers: HeaderMap,
+    decided: Decided,
     form: Fields,
 ) -> Response {
-    let (acting, fields) = match begin(&state, &page, &headers, form) {
+    let (acting, fields) = match begin(&state, &page, &headers, &decided, form) {
         Ok(b) => b,
         Err(response) => return *response,
     };
@@ -511,6 +562,73 @@ pub(crate) async fn make_token(
         let shown = again(Key::ProblemUnavailable);
         return draw(page, acting, shown).await;
     };
+    // Only now, with everything else in order, is the password judged (a form that was never going to be
+    // accepted does not spend a guess).
+    let client = client_of(&acting.services, &acting.auth, &peer, &headers);
+    let for_work = (
+        acting.auth.clone(),
+        acting.account.clone(),
+        acting.secret.clone().unwrap_or_default(),
+        field(&fields, F_PASSWORD).to_owned(),
+    );
+    let (now, asked) = (acting.now, client.clone());
+    let confirmed = blocking(move || {
+        for_work
+            .0
+            .confirm_for_sensitive_act(&for_work.1, &for_work.2, &for_work.3, &asked, now)
+    })
+    .await;
+    let refuse = |status: StatusCode, text: String| Shown {
+        status: Some(status),
+        token_problem: Some(text),
+        typed_label: label.clone(),
+        typed_scope: scope,
+        typed_days: days,
+        ..Shown::default()
+    };
+    let refused = match confirmed {
+        None => return render_failed(&page),
+        Some(Ok(())) => None,
+        Some(Err(ConfirmError::SignInAgain)) => Some((
+            refuse(
+                StatusCode::FORBIDDEN,
+                page.get(Key::AccountTokenSignInAgain),
+            ),
+            None,
+        )),
+        Some(Err(ConfirmError::Auth(AuthError::BadCredentials))) => Some((
+            refuse(
+                StatusCode::UNAUTHORIZED,
+                page.get(Key::AccountTokenPasswordWrong),
+            ),
+            None,
+        )),
+        Some(Err(ConfirmError::Auth(AuthError::Locked { until }))) => Some((
+            refuse(StatusCode::TOO_MANY_REQUESTS, page.get(Key::SignInLocked)),
+            Some(until),
+        )),
+        Some(Err(ConfirmError::Auth(AuthError::Busy))) => Some((
+            refuse(StatusCode::SERVICE_UNAVAILABLE, page.get(Key::SignInBusy)),
+            Some(now + 5),
+        )),
+        Some(Err(other)) => {
+            (acting.services.log)(&format!("a token could not be confirmed: {other}"));
+            Some((
+                refuse(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    page.get(Key::ProblemUnavailable),
+                ),
+                None,
+            ))
+        }
+    };
+    if let Some((shown, retry)) = refused {
+        let response = draw(page, acting, shown).await;
+        return match retry {
+            Some(until) => crate::signin::retry_after(response, until, now),
+            None => response,
+        };
+    }
     let for_work = (
         acting.auth.clone(),
         acting.account.clone(),
@@ -558,14 +676,106 @@ pub(crate) async fn make_token(
     }
 }
 
+/// `POST /-/account/password`: change one's own password (corrections G10). The current password is asked and
+/// judged first, throttled and constant-work like a sign-in; every other session of the account ends and every
+/// API token is revoked, and this browser stays signed in.
+pub(crate) async fn change_password(
+    State(state): State<PageState>,
+    page: Page,
+    peer: Peer,
+    headers: HeaderMap,
+    decided: Decided,
+    form: Fields,
+) -> Response {
+    let (acting, fields) = match begin(&state, &page, &headers, &decided, form) {
+        Ok(b) => b,
+        Err(response) => return *response,
+    };
+    let client = client_of(&acting.services, &acting.auth, &peer, &headers);
+    let for_work = (
+        acting.auth.clone(),
+        acting.account.clone(),
+        acting.secret.clone().unwrap_or_default(),
+        field(&fields, F_CURRENT).to_owned(),
+        field(&fields, F_NEW).to_owned(),
+    );
+    let now = acting.now;
+    let changed = blocking(move || {
+        for_work.0.change_own_password(
+            &for_work.1,
+            &for_work.2,
+            &for_work.3,
+            &for_work.4,
+            &client,
+            now,
+        )
+    })
+    .await;
+    let problem = |status: StatusCode, text: String| Shown {
+        status: Some(status),
+        password_problem: Some(text),
+        ..Shown::default()
+    };
+    let (shown, retry) = match changed {
+        None => return render_failed(&page),
+        Some(Ok(())) => return redirect(&account_done(DONE_PASSWORD)),
+        Some(Err(AccountError::Auth(AuthError::BadCredentials))) => (
+            problem(
+                StatusCode::UNAUTHORIZED,
+                page.get(Key::AccountPasswordWrong),
+            ),
+            None,
+        ),
+        Some(Err(AccountError::Auth(AuthError::Locked { until }))) => (
+            problem(StatusCode::TOO_MANY_REQUESTS, page.get(Key::SignInLocked)),
+            Some(until),
+        ),
+        Some(Err(AccountError::Auth(AuthError::Busy))) => (
+            problem(StatusCode::SERVICE_UNAVAILABLE, page.get(Key::SignInBusy)),
+            Some(now + 5),
+        ),
+        Some(Err(AccountError::Password(refusal))) => {
+            let key = match refusal {
+                inklkunn_auth::PasswordRefusal::TooShort => None,
+                _ => Some(Key::AccountFormPasswordLong),
+            };
+            let text = match key {
+                Some(key) => page.get(key),
+                None => page
+                    .t()
+                    .msg(Key::AccountFormPasswordShort)
+                    .with("min", PASSWORD_MIN_CHARS.to_string())
+                    .text(),
+            };
+            (problem(StatusCode::UNPROCESSABLE_ENTITY, text), None)
+        }
+        Some(Err(other)) => {
+            (acting.services.log)(&format!("a password could not be changed: {other}"));
+            (
+                problem(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    page.get(Key::ProblemUnavailable),
+                ),
+                None,
+            )
+        }
+    };
+    let response = draw(page, acting, shown).await;
+    match retry {
+        Some(until) => crate::signin::retry_after(response, until, now),
+        None => response,
+    }
+}
+
 /// `POST /-/account/tokens/revoke`.
 pub(crate) async fn revoke_token(
     State(state): State<PageState>,
     page: Page,
     headers: HeaderMap,
+    decided: Decided,
     form: Fields,
 ) -> Response {
-    let (acting, fields) = match begin(&state, &page, &headers, form) {
+    let (acting, fields) = match begin(&state, &page, &headers, &decided, form) {
         Ok(b) => b,
         Err(response) => return *response,
     };

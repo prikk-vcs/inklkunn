@@ -21,6 +21,24 @@
 <p><button type="submit">{{ name_button }}</button></p>
 </form>
 </section>
+<section class="account-section" aria-labelledby="password-heading">
+<h2 id="password-heading">{{ password_heading }}</h2>
+{% if has_password %}<p>{{ password_intro }}</p>
+{% if let Some(text) = password_problem %}<p class="problem" role="alert">{{ text }}</p>
+{% endif %}<form method="post" action="{{ password_action }}">
+{% include "csrf.html" %}<div class="field">
+<label for="password-current">{{ password_current_label }}</label>
+<input id="password-current" name="current" type="password" autocomplete="current-password" required>
+</div>
+<div class="field">
+<label for="password-new">{{ password_new_label }}</label>
+<input id="password-new" name="new" type="password" autocomplete="new-password" aria-describedby="password-new-hint" required>
+<p id="password-new-hint" class="hint">{{ password_new_hint }}</p>
+</div>
+<p><button type="submit">{{ password_button }}</button></p>
+</form>
+{% else %}<p>{{ password_none }}</p>
+{% endif %}</section>
 <section class="account-section" aria-labelledby="sessions-heading">
 <h2 id="sessions-heading">{{ sessions_heading }}</h2>
 <p>{{ sessions_intro }}</p>
@@ -57,7 +75,13 @@
 {% for o in lifetimes %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
 {% endfor %}</select>
 </div>
-<p><button type="submit">{{ token_button }}</button></p>
+{% if has_password %}<div class="field">
+<label for="token-password">{{ token_password_label }}</label>
+<input id="token-password" name="password" type="password" autocomplete="current-password" aria-describedby="token-password-hint" required>
+<p id="token-password-hint" class="hint">{{ token_password_hint }}</p>
+</div>
+{% else %}<p class="hint">{{ token_provider_hint }}</p>
+{% endif %}<p><button type="submit">{{ token_button }}</button></p>
 </form>
 </section>
 {% endblock %}

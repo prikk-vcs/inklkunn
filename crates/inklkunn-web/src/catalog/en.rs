@@ -1368,7 +1368,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "needs_account.advice",
-        "Ask the person who runs this server how to get an account.",
+        "Ask the person who runs this wiki how to get an account.",
     ),
     msg(
         "refused.not_allowed",
@@ -2029,6 +2029,43 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "sign_in.provider_not_navigation",
         "A sign-in with a provider starts only when you open its address yourself, from this site's sign-in page. Nothing was started. Use the button on this page.",
+    ),
+    msg("account.token_password_label", "Your password"),
+    msg(
+        "account.token_password_hint",
+        "Asked again because a token keeps working after you sign out.",
+    ),
+    msg(
+        "account.token_password_wrong",
+        "The password was not right, so no token was made.",
+    ),
+    msg(
+        "account.token_provider_hint",
+        "This account signs in through a provider and has no password. A token can be made only within ten minutes of signing in.",
+    ),
+    msg(
+        "account.token_sign_in_again",
+        "Your last sign-in was too long ago, so no token was made. Sign out, sign in again, and make the token within ten minutes.",
+    ),
+    msg("account.password_heading", "Password"),
+    msg(
+        "account.password_intro",
+        "Changing your password ends every other session of this account and every API token it has. This browser stays signed in.",
+    ),
+    msg(
+        "account.password_none",
+        "This account has no password: it signs in through a provider.",
+    ),
+    msg("account.password_current_label", "Current password"),
+    msg("account.password_new_label", "New password"),
+    msg("account.password_button", "Change password"),
+    msg(
+        "account.password_wrong",
+        "The current password was not right. Nothing was changed.",
+    ),
+    msg(
+        "account.password_changed",
+        "Your password was changed. Every other session and every API token of this account has ended.",
     ),
     // sign-in through a provider (the OpenID Connect handoff U3): end
 ];

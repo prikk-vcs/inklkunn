@@ -21,6 +21,7 @@ async fn a_visitor_with_no_session_is_sent_to_sign_in_and_back() {
         "/-/account/sessions/end",
         "/-/account/tokens",
         "/-/account/tokens/revoke",
+        "/-/account/password",
     ] {
         let a = r
             .call("POST", uri, &[SAME_SITE], &form(&[("name", "X")]))
@@ -216,6 +217,7 @@ async fn a_token_is_made_with_a_scope_and_an_expiry_shown_once_listed_and_revoke
             ("label", "the build bot"),
             ("scope", "propose"),
             ("days", "7"),
+            ("password", PASSWORD),
         ],
     )
     .await;
@@ -314,6 +316,8 @@ async fn a_token_form_with_a_scope_or_an_expiry_that_is_not_offered_makes_nothin
             ("days", "7"),
         ],
     ] {
+        let mut fields = fields;
+        fields.push(("password", PASSWORD));
         let a = post(&r, &s, "/-/account/tokens", &fields).await;
         assert_eq!(a.status, 422, "{fields:?}");
         assert!(!a.body().contains("Your new token"));
@@ -324,7 +328,12 @@ async fn a_token_form_with_a_scope_or_an_expiry_that_is_not_offered_makes_nothin
         &r,
         &s,
         "/-/account/tokens",
-        &[("label", "keep"), ("scope", "review"), ("days", "99")],
+        &[
+            ("label", "keep"),
+            ("scope", "review"),
+            ("days", "99"),
+            ("password", PASSWORD),
+        ],
     )
     .await;
     assert!(
@@ -338,7 +347,12 @@ async fn a_token_form_with_a_scope_or_an_expiry_that_is_not_offered_makes_nothin
         &r,
         &s,
         "/-/account/tokens",
-        &[("label", ""), ("scope", "read"), ("days", "1")],
+        &[
+            ("label", ""),
+            ("scope", "read"),
+            ("days", "1"),
+            ("password", PASSWORD),
+        ],
     )
     .await;
     assert_eq!(a.status, 200);
@@ -370,7 +384,12 @@ async fn an_account_holds_a_bounded_number_of_live_tokens_and_is_told() {
         &r,
         &s,
         "/-/account/tokens",
-        &[("label", "one more"), ("scope", "read"), ("days", "1")],
+        &[
+            ("label", "one more"),
+            ("scope", "read"),
+            ("days", "1"),
+            ("password", PASSWORD),
+        ],
     )
     .await;
     assert_eq!(a.status, 422);

@@ -33,6 +33,8 @@ pub(crate) const SESSIONS_END_PATH: &str = "/-/account/sessions/end";
 pub(crate) const TOKENS_PATH: &str = "/-/account/tokens";
 /// Where a token is revoked.
 pub(crate) const TOKENS_REVOKE_PATH: &str = "/-/account/tokens/revoke";
+/// Where the password is changed.
+pub(crate) const PASSWORD_PATH: &str = "/-/account/password";
 
 /// The hidden field every form of a signed-in person carries.
 pub const CSRF_FIELD: &str = "csrf";
@@ -68,6 +70,9 @@ pub(crate) const F_LABEL: &str = "label";
 pub(crate) const F_SCOPE: &str = "scope";
 pub(crate) const F_DAYS: &str = "days";
 pub(crate) const F_ID: &str = "id";
+/// The current password, the new one (the password change), and the password a token asks for again.
+pub(crate) const F_CURRENT: &str = "current";
+pub(crate) const F_NEW: &str = "new";
 
 /// The query parameters the provider's callback carries.
 pub(crate) const Q_STATE: &str = "state";
@@ -91,6 +96,7 @@ pub(crate) const Q_DONE: &str = "done";
 pub(crate) const DONE_NAME: &str = "name";
 pub(crate) const DONE_SESSION: &str = "session";
 pub(crate) const DONE_TOKEN: &str = "token";
+pub(crate) const DONE_PASSWORD: &str = "password";
 
 /// The address *Sign in* leads to from the page `back` (a local address): the sign-in page, which returns
 /// there.

@@ -64,6 +64,7 @@ T6, RFC 004) take the word from here and do not choose their own.
 | A translation no fluent reader has checked yet | preview | プレビュー版 | yes | Said wherever the language is offered, so nobody takes a draft for a finished translation (DR-7) | Drafted |
 | The small file a browser keeps for a site | cookie | Cookie | yes | The usual word in both languages; the language choice is the only thing kept for a visitor who is not signed in | Drafted |
 | Whoever looks after this installation | the person who runs this server | このサーバーの管理者 | yes | Operator vocabulary stays out of the pages | Reused from planeter |
+| Whoever a visitor asks for an account or an invitation | the person who runs this wiki | このウィキを運営している人 | yes | One term wherever the reader is told to ask for an account (corrections G9); "the person who runs this server" stays for faults of the installation | Drafted |
 | A form a page offers to be filled in and sent | form | フォーム | yes | The plain word | Drafted |
 | What the language choice is made on | language page | 言語のページ | yes | Names the page the refusal sends the reader to | Drafted |
 | A page that no other page links to | orphan page | 孤立したページ | yes | The usual wiki word; the health list says what would resolve it | Drafted |
@@ -643,7 +644,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `size.bytes` | a size in bytes | "{amount} bytes" | "{amount} バイト" |
 | `needs_account.heading` | the heading of the page that tells a visitor who is not signed in that proposing needs an account | "Proposing needs an account" | "提案にはアカウントが必要です" |
 | `needs_account.body` | on that page | "You are not signed in, and proposing a change, commenting or reviewing needs an account." | "サインインしていません。変更の提案、コメント、レビューにはアカウントが必要です。" |
-| `needs_account.advice` | on that page | "Ask the person who runs this server how to get an account." | "アカウントの作り方は、このサーバーの管理者にお尋ねください。" |
+| `needs_account.advice` | on that page | "Ask the person who runs this wiki how to get an account." | "アカウントの作り方は、このウィキを運営している人にお尋ねください。" |
 | `refused.not_allowed` | under the heading not allowed, for an act on a proposal | "Your role in this wiki does not include this. Nothing was changed." | "このウィキでのあなたの役割には、この操作が含まれていません。何も変更していません。" |
 | `refused.not_now_heading` | the heading of the page that says an act is not possible now | "Not possible now" | "今はできません" |
 | `refused.invalid_heading` | the heading of the page that says what was sent could not be used | "This could not be saved" | "保存できませんでした" |
@@ -929,6 +930,19 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `landing.body` | on that page; `{link}` is the next message | "Signing you in. If this page does not move on by itself, {link}." | "サインインしています。このページが自動で切り替わらない場合は、{link}。" |
 | `landing.continue` | the link in that sentence, to the page the person asked for | "continue to the page you asked for" | "続きのページへ進んでください" |
 | `sign_in.provider_not_navigation` | a problem: the address that starts a sign-in with the provider was reached by something other than the person opening it themselves (an image or a script on another page) | "A sign-in with a provider starts only when you open its address yourself, from this site's sign-in page. Nothing was started. Use the button on this page." | "プロバイダーでのサインインは、このサイトのサインインのページから、ご自身でアドレスを開いたときにだけ始まります。何も開始されていません。このページのボタンをお使いください。" |
+| `account.token_password_label` | the label of the password field of the form that makes a token | "Your password" | "パスワード" |
+| `account.token_password_hint` | under that field: why the password is asked again | "Asked again because a token keeps working after you sign out." | "トークンはサインアウトした後も使えるため、パスワードをもう一度確認します。" |
+| `account.token_password_wrong` | a problem: the password given to make a token was not right | "The password was not right, so no token was made." | "パスワードが違うため、トークンは作られませんでした。" |
+| `account.token_provider_hint` | in the form that makes a token, for an account that signs in through a provider and so has no password | "This account signs in through a provider and has no password. A token can be made only within ten minutes of signing in." | "このアカウントはプロバイダーでサインインし、パスワードはありません。トークンは、サインインしてから 10 分以内にだけ作れます。" |
+| `account.token_sign_in_again` | a problem: the account has no password and its sign-in is older than ten minutes | "Your last sign-in was too long ago, so no token was made. Sign out, sign in again, and make the token within ten minutes." | "最後のサインインから時間がたっているため、トークンは作られませんでした。サインアウトしてもう一度サインインし、10 分以内にトークンを作ってください。" |
+| `account.password_heading` | the heading of the section of the account page that changes the password | "Password" | "パスワード" |
+| `account.password_intro` | under that heading, for an account that has a password | "Changing your password ends every other session of this account and every API token it has. This browser stays signed in." | "パスワードを変更すると、このアカウントの他のセッションとすべての API トークンが終了します。このブラウザーはサインインしたままです。" |
+| `account.password_none` | under that heading, for an account that signs in through a provider and has no password | "This account has no password: it signs in through a provider." | "このアカウントにはパスワードがありません。プロバイダーでサインインします。" |
+| `account.password_current_label` | the label of the field for the password now in use | "Current password" | "現在のパスワード" |
+| `account.password_new_label` | the label of the field for the new password | "New password" | "新しいパスワード" |
+| `account.password_button` | the button that changes the password | "Change password" | "パスワードを変更" |
+| `account.password_wrong` | a problem: the current password given was not right | "The current password was not right. Nothing was changed." | "現在のパスワードが違います。何も変更されていません。" |
+| `account.password_changed` | a note at the top of the account page after the password was changed | "Your password was changed. Every other session and every API token of this account has ended." | "パスワードを変更しました。このアカウントの他のセッションとすべての API トークンは終了しました。" |
 
 ## 3. Words the interface does not say
 

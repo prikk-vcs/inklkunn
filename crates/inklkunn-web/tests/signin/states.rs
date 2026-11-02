@@ -272,6 +272,7 @@ async fn states(extra: &[(&str, &str)]) -> Vec<State> {
         ("account-name-saved", "name"),
         ("account-session-ended", "session"),
         ("account-token-revoked", "token"),
+        ("account-password-changed", "password"),
     ] {
         add(
             id,
@@ -315,11 +316,44 @@ async fn states(extra: &[(&str, &str)]) -> Vec<State> {
         go(&r, "POST", uri, signed, &signed_post, &body, &merge).await,
     );
     let (uri, body) = post(
+        "/-/account/password",
+        vec![
+            ("current", "wrong".into()),
+            ("new", "a new password, long".into()),
+        ],
+    );
+    add(
+        "account-password-wrong",
+        go(&r, "POST", uri, signed, &signed_post, &body, &merge).await,
+    );
+    let (uri, body) = post(
+        "/-/account/password",
+        vec![("current", PASSWORD.into()), ("new", "short".into())],
+    );
+    add(
+        "account-password-problem",
+        go(&r, "POST", uri, signed, &signed_post, &body, &merge).await,
+    );
+    let (uri, body) = post(
+        "/-/account/tokens",
+        vec![
+            ("label", "bot".into()),
+            ("scope", "propose".into()),
+            ("days", "7".into()),
+            ("password", "wrong".into()),
+        ],
+    );
+    add(
+        "account-token-password-wrong",
+        go(&r, "POST", uri, signed, &signed_post, &body, &merge).await,
+    );
+    let (uri, body) = post(
         "/-/account/tokens",
         vec![
             ("label", "the <build> bot".into()),
             ("scope", "propose".into()),
             ("days", "30".into()),
+            ("password", PASSWORD.into()),
         ],
     );
     add(
@@ -350,6 +384,48 @@ async fn states(extra: &[(&str, &str)]) -> Vec<State> {
     add(
         "account-tokens-listed",
         go(&r, "GET", "/-/account", signed, &[], "", &merge).await,
+    );
+    // An account with no password: no form to change one, no password asked for a token, and the sign-in that
+    // is too old for one.
+    let sso = r.auth.register_external("Sso Person", NOW).unwrap();
+    let fresh = format!(
+        "__Host-inklkunn-session={}",
+        r.auth.start_session_for_test(&sso.id, NOW - 60)
+    );
+    add(
+        "account-without-a-password",
+        go(&r, "GET", "/-/account", Some(&fresh), &[], "", &merge).await,
+    );
+    let stale = r.auth.start_session_for_test(&sso.id, NOW - 3600);
+    let csrf = r
+        .auth
+        .principal_for_session(&stale, NOW)
+        .unwrap()
+        .unwrap()
+        .csrf
+        .as_str()
+        .to_owned();
+    let stale_cookie = format!("__Host-inklkunn-session={stale}");
+    let (uri, body) = post(
+        "/-/account/tokens",
+        vec![
+            ("label", "bot".into()),
+            ("scope", "propose".into()),
+            ("days", "7".into()),
+        ],
+    );
+    add(
+        "account-token-sign-in-again",
+        go(
+            &r,
+            "POST",
+            uri,
+            Some(&stale_cookie),
+            &[SAME_SITE, (inklkunn_web::CSRF_HEADER, csrf.as_str())],
+            &body,
+            &merge,
+        )
+        .await,
     );
     out
 }
@@ -406,6 +482,12 @@ async fn every_state_passes(extra: &[(&str, &str)], tag: &str) {
         ("account-name-problem", 422),
         ("account-token-problem", 422),
         ("account-token-made", 200),
+        ("account-password-changed", 200),
+        ("account-password-wrong", 401),
+        ("account-password-problem", 422),
+        ("account-token-password-wrong", 401),
+        ("account-without-a-password", 200),
+        ("account-token-sign-in-again", 403),
         ("wiki-page-signed-in", 200),
         ("verification-signed-in", 200),
         ("wiki-page-signed-out", 200),

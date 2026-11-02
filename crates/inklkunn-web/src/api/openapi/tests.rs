@@ -188,6 +188,68 @@ fn every_operation_carries_the_guard_the_registry_declares() {
     }
 }
 
+/// Corrections G9: a client that authenticates a write with the session cookie must send the session's CSRF
+/// token, and the document says so: the security scheme, the header, and every write's alternatives. The names
+/// are the server's own constants, so a rename on either side is drift.
+#[test]
+fn a_write_describes_the_csrf_token_a_cookie_client_must_send() {
+    let table = real_table();
+    let document = document(&table, &docs()).unwrap();
+    assert!(CSRF_HEADER_NAME.eq_ignore_ascii_case(crate::csrf::HEADER));
+    assert_eq!(
+        document.at(&format!("/components/securitySchemes/{CSRF_SCHEME}/name")),
+        CSRF_HEADER_NAME
+    );
+    assert_eq!(
+        document.at(&format!("/components/securitySchemes/{CSRF_SCHEME}/in")),
+        "header"
+    );
+    assert_eq!(
+        document.at(&format!(
+            "/components/securitySchemes/{SESSION_SCHEME}/name"
+        )),
+        inklkunn_auth::session::SESSION_COOKIE
+    );
+    assert_eq!(
+        document.at(&format!("/components/securitySchemes/{SESSION_SCHEME}/in")),
+        "cookie"
+    );
+    let mut writes = 0;
+    for (path, item) in document.at("/paths").as_object().unwrap() {
+        let Some(post) = item.get("post") else {
+            // A read has no CSRF token to send and no alternative to a bearer token's.
+            let get = item.at("/get");
+            let names: Vec<&str> = get
+                .at("/parameters")
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|p| p.get("name").and_then(Value::as_str))
+                .collect();
+            assert!(!names.contains(&CSRF_HEADER_NAME), "{path}");
+            continue;
+        };
+        writes += 1;
+        let names: Vec<&str> = post
+            .at("/parameters")
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|p| p.get("name").and_then(Value::as_str))
+            .collect();
+        assert!(names.contains(&CSRF_HEADER_NAME), "{path}: {names:?}");
+        assert_eq!(
+            post.at("/security"),
+            &json!([
+                {BEARER_SCHEME: []},
+                {SESSION_SCHEME: [], CSRF_SCHEME: []},
+            ]),
+            "{path}"
+        );
+    }
+    assert!(writes >= 5, "{writes} writes");
+}
+
 #[test]
 fn a_router_path_is_spelled_the_openapi_way() {
     assert_eq!(
