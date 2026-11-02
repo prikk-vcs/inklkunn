@@ -31,7 +31,9 @@ staying true to all three (RFC 010 D-1, D-2, D-8). The record of what each upstr
 - **Candidates for the next bundled letter:** the block id in `branch list` (saves one call per new tip; held back as
   not worth a letter of its own); two states the kill matrix found after a `seal` killed inside prikk, which recovery
   cannot answer and leaves fail-closed (handoff 004 P15): an **empty lock file** (`unlock` lists it with an unparseable
-  pid) and a **lone `ACTIVE-REF-METADATA-DEBRIS` warning** — what is the right handling of each?
+  pid) and a **lone `ACTIVE-REF-METADATA-DEBRIS` warning** — what is the right handling of each? And one machine-readable `verify` report that names the failing subjects and their signers (the
+  JSON and the text cannot come from one run in 0.55.0; handoff 004 P14), and a read of the queue in the cleanup-pending state
+  (handoff 004 Q2).
 - **Open asks as of 2026-10-31: none outstanding; prikk will write about 0.57.0.**
   `send/2026-10-31-block-signer-time-path-history-and-an-orphan-queued-patch.md` (sent by the owner; four asks) was
   answered the same day (`receive/2026-10-31-four-asks-where-each-lands.md`): each block's `sealed_by` in `log` and

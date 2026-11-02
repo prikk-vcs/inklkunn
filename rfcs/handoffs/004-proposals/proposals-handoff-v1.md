@@ -285,3 +285,27 @@ Hand back P2′ and P13 – P17 as one request, `004-proposals-corrections-2-rev
 - **P16.** `docs/RECOVERY.md`'s way out of an orphan queued patch is tested against the state the kill matrix's *inside prikk
   commit* row leaves; the auth crate's timing test is made robust to load (as R10 did for the markup crate).
 
+## Corrections from the review of 2026-11-03 (binding; **before 0.2.0**; U6 may start now)
+
+P2′, P13 – P17 are **Conditionally Approved** (`.git-exclude/reviewed/004-proposals-corrections-2-review-result.md`): nothing
+outside a retirement's recorded set can be excused. Hand back Q1 – Q8 as one request, `004-proposals-corrections-3-review-request.md`.
+
+- **Q1 — a retirement never strands a wiki.** Before the untrust, store a `retiring` state in the authenticated key record with
+  the signers the before-`verify` named; an operation (`inklkunn wiki keys finish-retirement <wiki>`, and recovery offering it)
+  completes the after-`verify` and the record from that state under the write lock, and only while the views' tips are those the
+  `retiring` state kept (nothing written since). `RetiredUnrecorded` exits non-zero and names that command; the module doc says
+  so instead of "a later rotation repairs it". Tests: each way in (after-`verify` unavailable, the runs disagreeing, the store
+  write failing, the size limit) ends in a state the command finishes; a write after the failure makes it refuse.
+- **Q2 — P15 seals only the published patch.** Find a read that shows the queue in the cleanup-pending state (prikk's WAL or
+  `doctor` listing); refuse unless it shows only `published.patch_id`. If prikk 0.55 has no such read, the step is not offered
+  (a stop naming why) and the question joins the next letter.
+- **Q3.** The text of a P14 run is refused if it holds a finding line of any condition but publication trust.
+- **Q4.** A retirement records only if prikk's `checked publication trust records` is the same before and after the untrust.
+- **Q5.** `explained_by_retirement` is stored with the verdict (store schema 15), so the verification page says *the only
+  failures are those the retirement of key … recorded* whenever it is so, not only after *Check now*; the badge stays *Verification
+  failed* (DR-10).
+- **Q6.** `complete_publication` filters `doctor` as the plan does (P13), or the plan stops with a named reason.
+- **Q7.** Duplicate `sealed-block` lines are refused; the before-`verify` also asks `is_partial()`; the signer enforces the base for
+  every acceptance.
+- **Q8.** The CHANGELOG states the real-kill evidence as measured (76 runs; 3 recovered, 4 fail-closed).
+
