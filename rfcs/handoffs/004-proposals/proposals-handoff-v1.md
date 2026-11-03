@@ -409,3 +409,38 @@ as one request, `004-proposals-corrections-6-review-request.md`. **Y1 is the con
   and retire again whatever should be retired.
 - **Y6.** `retire` requires `--accept-unverifiable-history`, with `rotate --retire-old`'s sentence about the cost; the usage
   line and `docs/KEYS.md`'s command list show it.
+
+## Corrections from the review of 2026-11-04 (binding; **before 0.2.0**)
+
+Y1 – Y6 are **Conditionally Approved** (`.git-exclude/reviewed/004-proposals-corrections-6-review-result.md`). Y1 still excuses
+a thief's acts that seal no block, and a late act loops the operator between `recover` and `retire`. **This amends Y1: no
+separate late-seal path.** Anything a retirement cannot trace to the key's own history is W4's case. Hand back Z1 – Z6 as one
+request, `004-proposals-corrections-7-review-request.md`. **Z1 is the condition for retiring a key on a live wiki.**
+
+- **Z1 — a retirement records only what it can trace, or nothing.** After the removal, every finding must be traceable to the
+  key's own history as the service made it: a block in `known_when_replaced`; a ref state in the **known ref states** — the
+  `ref_state_id` of each view's log entries from the **oldest** entry whose block is the recorded tip back to the start
+  (`view_blocks` keeps it instead of dropping it; one function with the blocks); ref updates as today. A publication-trust
+  finding of a kind the parser does not attribute (a `tag`) is **untraceable**, not a parse failure. If **anything** is
+  untraceable — a late block, an unknown ref state, a tag, a block another key lost — the retirement **records nothing and
+  stays unfinished** (W1's pause holds; the key stays out of the trust store; the key record gains nothing). Its refusal, the
+  `finish-retirement` refusal and `status`'s `UNFINISHED` line name each untraceable finding and say, in one sentence for all:
+  *the repository holds acts with this key that cannot be traced to what it sealed for this service; nothing excuses them, and
+  this service seals nothing more until the history is restored from before them (`docs/KEYS.md`, compromise) or the
+  retirement is given up with `abandon-retirement`, which trusts the key again*. Y1's `late_seals` result, exit path and
+  sentence go. Tests (real prikk): a late block; a `branch close` and a `branch create` by the superseded key; a tag by it; each
+  ends unfinished with nothing recorded, writes paused, and the finding named; the same retirement with none of them records and
+  verifies as today.
+- **Z2 — no loop.** In that state recovery stops with `retirement-unfinished` (it does not reach `doctor-trouble`), naming the
+  same sentence; no text tells the operator to run `recover` for it. `docs/RECOVERY.md`'s late-seal paragraph says so, in its
+  own place.
+- **Z3 — the way out, stated.** `docs/KEYS.md`'s compromise playbook: an act made with a key after it was replaced needs write
+  access to the wiki's repository outside this service — treat it as a host compromise: restore the repository, the key
+  directory and the store **together** from a backup taken before it (every later write is lost), then retire again; or abandon
+  and accept the key as trusted. Step 5 no longer says RFC 004's acceptance records do not exist.
+- **Z4.** `status` says when the record calls a key *retired* but the repository trusts it again (*the repository looks older
+  than the key record: restore the key directory from the same backup, then retire it again*), with a test.
+- **Z5.** A rotation (Keep or Retire) refuses while a publication is pending (the state recovery's `complete-publication`
+  finishes): *recover first*, naming `inklkunn wiki recover <wiki>`. A recorded tip missing from its view's log is
+  untraceable under Z1 (its words, not *this service did not make them*).
+- **Z6.** The readiness report and the CHANGELOG say what Z1 makes of a compromised key (one sentence each).
