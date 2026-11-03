@@ -140,8 +140,12 @@ inklkunn wiki keys finish-retirement <wiki>                    # does whatever s
 inklkunn wiki keys abandon-retirement <wiki> --confirm <slug>  # gives it up: the old key is trusted again, nothing is retired
 ```
 
-Abandoning leaves the old key trusted and retires nothing; `inklkunn wiki keys retire <wiki> --key <id> --confirm <slug>`
-retires it later, by its id (`docs/KEYS.md`).
+Abandoning leaves the old key trusted and retires nothing; `inklkunn wiki keys retire <wiki> --key <id> --confirm <slug>
+--accept-unverifiable-history` retires it later, by its id (`docs/KEYS.md`).
+
+A retirement that finished can still leave `verify` failing for a block nothing excuses: a **late seal**, a block the old key
+sealed after the rotation that replaced it, which `retire` / `finish-retirement` named when they ended. Recovery does not call
+that failure *only a retired key*: the block is one this service did not make (`docs/KEYS.md`, the compromise runbook).
 
 then `inklkunn wiki recover <wiki>`. You never run `prikk trust maintainer` yourself. If `finish-retirement` refuses with
 a reason no later run can cure (the repository changed outside inklkunn, the trusted keys are not the ones the retirement
