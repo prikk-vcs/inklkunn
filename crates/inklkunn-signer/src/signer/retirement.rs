@@ -18,7 +18,11 @@
 //! 3. `verify` **after**. Its report names every block, ref state and ref update that now has no trusted
 //!    signature. Those ids are recorded in the authenticated key record ([`Excused`]); a block is recorded only
 //!    when step 1 listed the retired key as its signer, and only if prikk counted the same number of publication
-//!    trust records before and after (nothing was published in between; Q4).
+//!    trust records before and after (nothing was published in between; Q4). **A late seal is never recorded** (Y1):
+//!    of the blocks step 1 listed as the key's, only those up to the tips the key record kept when the key was
+//!    superseded ([`known_when_replaced`], the set the late-seal check uses) are recorded. Blocks the key sealed
+//!    afterwards were not made by this service; the key is removed all the same, those blocks are left out and named
+//!    ([`LATE_SEALS_SENTENCE`]), and `verify` keeps failing on them with nothing to excuse it.
 //!
 //! **A retirement never strands a wiki** (handoff 004, Q1, W1 – W7). Before step 2 the key record stores a `retiring`
 //! state: the blocks step 1 listed as the key's, the count, the tip of every view, the retired key's public key and
@@ -70,6 +74,7 @@ use inklkunn_prikk::storage::Verification;
 use inklkunn_store::{AuditLog, WikiId};
 
 use super::lifecycle::OldKeyOutcome;
+use super::superseded::known_when_replaced;
 use super::{Signer, SignerError, ks};
 use crate::KeyAuthority;
 use crate::key_store::{Excused, MAX_EXCUSED_SUBJECTS, MAX_RECORDED_VIEWS, RecordedTip, Retiring};
@@ -127,6 +132,9 @@ pub struct RetirementFinished {
     pub maintainer_key_id: String,
     /// How many blocks, ref states and ref updates the record now holds for it.
     pub findings_recorded: usize,
+    /// The blocks the key sealed after the rotation that replaced it (Y1): not recorded, and [`LATE_SEALS_SENTENCE`]
+    /// says what that means.
+    pub late_seals: Vec<String>,
     /// The command removed the key from the repository's trust itself (it was still trusted).
     pub removed_now: bool,
 }
@@ -354,25 +362,35 @@ fn judge_named(trust: &PublicationTrust, recorded: &Recorded) -> Judgement {
 /// before listed as sealed by the retired key (`signed_by_key`), and what earlier retirements recorded already (those
 /// are not recorded again).
 ///
-/// Returns the new findings and how many named blocks were **left out** because the verify before did not list the
-/// retired key as their signer.
+/// A block the retired key sealed is recorded only when it is **known** (`known`: the blocks that existed when the key
+/// was replaced, [`known_when_replaced`], the same set the late-seal check uses; Y1). A block the key sealed
+/// afterwards is a **late seal**: this service did not make it, so it is not recorded and no retirement excuses it.
+///
+/// Returns the new findings, how many named blocks were **left out** because the verify before did not list the
+/// retired key as their signer, and the late seals.
 pub(crate) fn record_of(
     trust: &PublicationTrust,
     signed_by_key: &[String],
+    known: &HashSet<&str>,
     earlier: &Recorded,
-) -> (Excused, usize) {
+) -> Findings {
     let earlier_has = |pick: fn(&Excused) -> &Vec<String>, id: &String| {
         earlier.iter().any(|(_, e)| pick(e).contains(id))
     };
     let signed_by_retired: HashSet<&str> = signed_by_key.iter().map(String::as_str).collect();
     let mut left_out = 0;
+    let mut late_seals = Vec::new();
     let mut out = Excused::default();
     for block in &trust.blocks {
         if earlier_has(|e| &e.blocks, block) {
             continue;
         }
         if signed_by_retired.contains(block.as_str()) {
-            out.blocks.push(block.clone());
+            if known.contains(block.as_str()) {
+                out.blocks.push(block.clone());
+            } else {
+                late_seals.push(block.clone());
+            }
         } else {
             left_out += 1;
         }
@@ -389,8 +407,34 @@ pub(crate) fn record_of(
         .filter(|u| !earlier_has(|e| &e.ref_updates, u))
         .cloned()
         .collect();
-    (out, left_out)
+    Findings {
+        record: out,
+        left_out,
+        late_seals,
+    }
 }
+
+/// What [`record_of`] made of a failure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Findings {
+    /// What the retirement records.
+    pub(crate) record: Excused,
+    /// How many named blocks the retired key did not seal.
+    pub(crate) left_out: usize,
+    /// The blocks the retired key sealed **after** it was replaced (Y1): recorded nowhere.
+    pub(crate) late_seals: Vec<String>,
+}
+
+/// What the end of a retirement made.
+pub(super) struct Concluded {
+    /// How many findings the key record now holds for the key.
+    pub(super) recorded: usize,
+    /// The blocks the key sealed after it was replaced (Y1), which the record leaves out.
+    pub(super) late_seals: Vec<String>,
+}
+
+/// What a retirement says of the blocks the retired key sealed after it was replaced (Y1): said with each block's id.
+pub const LATE_SEALS_SENTENCE: &str = "these blocks were sealed with this key after it was replaced, so this service did not make them; verification keeps failing on them, and nothing excuses them";
 
 /// The most findings a retirement may record, read before the key leaves the trust store from the count prikk
 /// prints (`checked publication trust records: N`): a wiki past it is refused and nothing changes.
@@ -572,19 +616,24 @@ impl Signer {
     /// **Nothing is recorded when a block that lost its signature was not the retired key's** (W4): such a block would
     /// stop the wiki, no command adds it to a record, and a record that looks complete while it is not is worse than
     /// none. The way out is [`Signer::abandon_retirement`].
+    ///
+    /// **A late seal is not W4's block** (Y1): a block the retired key sealed after the rotation that replaced it
+    /// (`kept` are the tips the key record kept then) is left out of the record **on purpose**, the key stays removed,
+    /// and the block is given back so that it is named.
     pub(super) fn findings_after_retirement(
         &self,
         repo: &std::path::Path,
         retiring: &Retiring,
+        kept: &[RecordedTip],
         earlier: &[(String, Excused)],
-    ) -> Result<Excused, Cannot> {
+    ) -> Result<(Excused, Vec<String>), Cannot> {
         let run = self.writes.verify_run(repo).map_err(|e| {
             Cannot::later(format!(
                 "`prikk verify` could not be run after the key was removed from trust ({e})"
             ))
         })?;
         if run.report.verdict.ok {
-            return Ok(Excused::default());
+            return Ok((Excused::default(), Vec::new()));
         }
         let trust = parse_publication_trust(&run.text);
         only_publication_trust(&run.report, &trust).map_err(|why| {
@@ -603,7 +652,18 @@ impl Signer {
             )));
         }
         let earlier: Vec<(&str, &Excused)> = earlier.iter().map(|(k, e)| (k.as_str(), e)).collect();
-        let (record, left_out) = record_of(&trust, &retiring.signed_by_key, &earlier);
+        // The blocks that existed when the key was replaced: the one definition, shared with the late-seal check (Y1).
+        let histories = self.view_histories(repo).map_err(|e| {
+            Cannot::later(format!(
+                "the history of the wiki's views could not be read to tell the key's late seals from its earlier ones ({e})"
+            ))
+        })?;
+        let known = known_when_replaced(kept, &histories);
+        let Findings {
+            record,
+            left_out,
+            late_seals,
+        } = record_of(&trust, &retiring.signed_by_key, &known, &earlier);
         if left_out > 0 {
             return Err(Cannot::never(format!(
                 "{left_out} block(s) that now lack a trusted signature were not sealed by the retired key (the verify before the removal did not list it as their signer), so no record of this retirement would be complete, and they would stop the wiki"
@@ -616,7 +676,7 @@ impl Signer {
                 record_limit()
             )));
         }
-        Ok(record)
+        Ok((record, late_seals))
     }
 
     /// The end of a retirement, once the key is out of the trust store (W2, W6): the `verify` after, the record, the
@@ -627,7 +687,7 @@ impl Signer {
         repo: &std::path::Path,
         wiki: &WikiId,
         retiring: &Retiring,
-    ) -> Result<usize, Cannot> {
+    ) -> Result<Concluded, Cannot> {
         let meta = self
             .store
             .status(wiki)
@@ -635,22 +695,23 @@ impl Signer {
         // The record is made on **that key's** entry, found by its id (X1): the key being retired is not always the
         // newest superseded one.
         let key = retiring.maintainer_key_id.as_str();
-        if !meta
+        let Some(entry) = meta
             .superseded
             .iter()
-            .any(|s| s.maintainer_key_id == key && !s.retired)
-        {
+            .find(|s| s.maintainer_key_id == key && !s.retired)
+        else {
             return Err(Cannot::never(format!(
                 "the key record holds no superseded key {key} that is still to be retired, so there is no entry to record the findings on"
             )));
-        }
+        };
         let earlier: Vec<(String, Excused)> = meta
             .superseded
             .iter()
             .filter(|s| s.retired)
             .map(|s| (s.maintainer_key_id.clone(), s.excused.clone()))
             .collect();
-        let found = self.findings_after_retirement(repo, retiring, &earlier)?;
+        let (found, late_seals) =
+            self.findings_after_retirement(repo, retiring, &entry.views, &earlier)?;
         let recorded = found.len();
         self.store
             .update_meta(wiki, |m| {
@@ -667,7 +728,10 @@ impl Signer {
             .map_err(|e| {
                 Cannot::later(format!("the key record could not be updated ({})", ks(e)))
             })?;
-        Ok(recorded)
+        Ok(Concluded {
+            recorded,
+            late_seals,
+        })
     }
 
     /// Run the end of a retirement after the key left the trust store: the outcome it reports.
@@ -678,7 +742,9 @@ impl Signer {
         retiring: &Retiring,
     ) -> OldKeyOutcome {
         match self.conclude_retirement(repo, wiki, retiring) {
-            Ok(_) => OldKeyOutcome::Retired,
+            Ok(done) => OldKeyOutcome::Retired {
+                late_seals: done.late_seals,
+            },
             Err(cannot) => unrecorded(&cannot, wiki, &retiring.maintainer_key_id),
         }
     }
@@ -916,18 +982,19 @@ impl Signer {
                 )));
             }
         }
-        let findings_recorded = self.conclude_retirement(repo, &wiki, &retiring).map_err(
-            |cannot| {
+        let concluded = self
+            .conclude_retirement(repo, &wiki, &retiring)
+            .map_err(|cannot| {
                 SignerError::Refused(format!(
                     "the retirement of key {key} cannot be finished: {}; {}; nothing was recorded",
                     cannot.why,
                     way_out(&wiki, &key, cannot.curable)
                 ))
-            },
-        )?;
+            })?;
         Ok(RetirementFinished {
             maintainer_key_id: key,
-            findings_recorded,
+            findings_recorded: concluded.recorded,
+            late_seals: concluded.late_seals,
             removed_now,
         })
     }

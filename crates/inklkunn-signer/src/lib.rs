@@ -59,9 +59,9 @@ pub use recover::{
 };
 pub use signer::lifecycle::{OldKey, OldKeyOutcome, Rotation};
 pub use signer::retirement::{
-    ACTION_FINISH_RETIREMENT, ACTION_RETIRE, ACTION_ROTATE, RetirementAbandoned,
-    RetirementFinished, abandon_retirement_command, finish_retirement_command, recorded_detail,
-    recorded_key, retire_command, retirement_finished_in,
+    ACTION_FINISH_RETIREMENT, ACTION_RETIRE, ACTION_ROTATE, LATE_SEALS_SENTENCE,
+    RetirementAbandoned, RetirementFinished, abandon_retirement_command, finish_retirement_command,
+    recorded_detail, recorded_key, retire_command, retirement_finished_in,
 };
 pub use signer::superseded::{LateSeal, SupersededKey};
 pub use signer::{KeyStatus, Signer, SignerConfig};

@@ -101,6 +101,17 @@ empty tip: every block of that view is then "after"), and a repository that no l
    earlier rotation (or a retirement was given up, see below) and may have leaked, **retire it by its id**:
    `inklkunn wiki keys retire <wiki> --key <id> --confirm <slug>` (`status` lists the superseded keys and whether each is
    still trusted). The current key cannot be retired: rotate first.
+   **A retirement never excuses a late seal** (handoff 004, Y1). It records only the blocks the key sealed up to the
+   newest blocks the key record kept when that key was replaced (the same set the check in `status` calls *known*). A
+   block the key sealed **after** that is one this service did not make: the retirement still removes the key (a leaked key
+   is never kept trusted for it), leaves the block out of the record on purpose, names it (`retire`, `rotate
+   --retire-old` and `finish-retirement` print each such block's id and *these blocks were sealed with this key after it
+   was replaced, so this service did not make them; verification keeps failing on them, and nothing excuses them*, and
+   exit 1), and the verification page and recovery do not call that failure *only a retired key*. What it means: a block
+   in the history that the service did not make. Export the history, read the block, decide; nothing in the product
+   rewrites history. The key record keeps nothing new for this. (prikk names no signer for a ref state or a ref update,
+   so those the late seal made are in the record beside the service's own; the late block is what keeps the failure
+   unexplained.)
 5. **Read what happened.** Export the audit trail (`inklkunn audit export`: JSON Lines, oldest first) and read
    the wiki's history with `prikk log` in its repository. Because the history the old key sealed no longer
    verifies, `prikk verify` cannot be the check any more. The reconciliation (RFC 002 D-7: every sealed change

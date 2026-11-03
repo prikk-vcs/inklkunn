@@ -252,15 +252,21 @@ fn what_a_retirement_records_is_the_blocks_the_retired_key_signed_and_the_new_re
     // The verify before listed `a` and `b` as the retired key's (and `c` as another key's, and had no line for `d`):
     // what the retirement kept is the blocks the retired key signed.
     let signed_by_key = ids(&['a', 'b', 'd']);
-    let (record, left_out) = record_of(&t, &signed_by_key, &[]);
-    assert_eq!(record.blocks, ids(&['a', 'b']));
-    assert_eq!(left_out, 1, "the block another key signed is left out");
-    assert_eq!(record.ref_states, ids(&['1']));
-    assert_eq!(record.ref_updates, ids(&['8']));
+    let known_ids = ids(&['a', 'b', 'd']);
+    let known: HashSet<&str> = known_ids.iter().map(String::as_str).collect();
+    let found = record_of(&t, &signed_by_key, &known, &[]);
+    assert_eq!(found.record.blocks, ids(&['a', 'b']));
+    assert_eq!(
+        found.left_out, 1,
+        "the block another key signed is left out"
+    );
+    assert!(found.late_seals.is_empty());
+    assert_eq!(found.record.ref_states, ids(&['1']));
+    assert_eq!(found.record.ref_updates, ids(&['8']));
     // A block that no line lists is not the retired key's either.
-    let (record, left_out) = record_of(&t, &[], &[]);
-    assert!(record.blocks.is_empty());
-    assert_eq!(left_out, 3);
+    let found = record_of(&t, &[], &known, &[]);
+    assert!(found.record.blocks.is_empty());
+    assert_eq!(found.left_out, 3);
     // What an earlier retirement recorded is not recorded again.
     let earlier = [(
         "first",
@@ -270,10 +276,34 @@ fn what_a_retirement_records_is_the_blocks_the_retired_key_signed_and_the_new_re
             ref_updates: vec![],
         },
     )];
-    let (record, left_out) = record_of(&t, &signed_by_key, &earlier);
-    assert_eq!((record.blocks, left_out), (ids(&['a', 'b']), 0));
-    assert!(record.ref_states.is_empty());
-    assert_eq!(record.ref_updates, ids(&['8']));
+    let found = record_of(&t, &signed_by_key, &known, &earlier);
+    assert_eq!((found.record.blocks, found.left_out), (ids(&['a', 'b']), 0));
+    assert!(found.record.ref_states.is_empty());
+    assert_eq!(found.record.ref_updates, ids(&['8']));
+}
+
+#[test]
+fn a_block_the_retired_key_sealed_after_it_was_replaced_is_a_late_seal_and_is_never_recorded() {
+    // Y1. `b` is the retired key's but is not among the blocks that existed when the key was replaced: it is named
+    // as a late seal, it is not recorded, and it is not W4's block that someone else signed (no `left_out`).
+    let t = trust(&[("block", 'a'), ("block", 'b'), ("block", 'c')]);
+    let signed_by_key = ids(&['a', 'b']);
+    let known_ids = ids(&['a']);
+    let known: HashSet<&str> = known_ids.iter().map(String::as_str).collect();
+    let found = record_of(&t, &signed_by_key, &known, &[]);
+    assert_eq!(found.record.blocks, ids(&['a']));
+    assert_eq!(found.late_seals, ids(&['b']));
+    assert_eq!(found.left_out, 1, "only `c`, another key's, is left out");
+    // A block an earlier retirement recorded is neither recorded again nor called late.
+    let earlier = [(
+        "first",
+        &Excused {
+            blocks: ids(&['b']),
+            ..Excused::default()
+        },
+    )];
+    let found = record_of(&t, &signed_by_key, &known, &earlier);
+    assert!(found.late_seals.is_empty());
 }
 
 #[test]

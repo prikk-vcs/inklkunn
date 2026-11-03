@@ -21,6 +21,7 @@ use std::path::Path;
 use inklkunn_store::WikiId;
 
 use super::{Signer, SignerError, ks};
+use crate::key_store::RecordedTip;
 
 /// The most blocks of one view the check reads before it gives up and says so.
 const MAX_HISTORY: u64 = 1 << 20;
@@ -67,6 +68,32 @@ impl std::fmt::Display for LateSeal {
     }
 }
 
+/// One view and its blocks, newest first.
+pub(super) type ViewHistory = (String, Vec<String>);
+
+/// The blocks that existed when a superseded key was replaced: from each tip the key record kept then, back through
+/// that view's history. **The one definition of *known*** (handoff 004, Y1): the late-seal check
+/// ([`Signer::seals_by_superseded_keys`]) and a retirement ([`Signer::retire_key`]) both ask it, so a block the
+/// check calls a late seal is a block no retirement records, and the other way round.
+pub(super) fn known_when_replaced<'a>(
+    kept: &[RecordedTip],
+    histories: &'a [ViewHistory],
+) -> HashSet<&'a str> {
+    let mut known: HashSet<&str> = HashSet::new();
+    for tip in kept {
+        if tip.block_id.is_empty() {
+            continue;
+        }
+        let Some((_, blocks)) = histories.iter().find(|(v, _)| *v == tip.view) else {
+            continue;
+        };
+        if let Some(at) = blocks.iter().position(|b| *b == tip.block_id) {
+            known.extend(blocks.iter().skip(at).map(String::as_str));
+        }
+    }
+    known
+}
+
 impl Signer {
     /// The maintainer keys earlier rotations replaced, oldest first. Ids and dates; the record is authenticated
     /// to read them.
@@ -99,26 +126,11 @@ impl Signer {
         // Who sealed what, now.
         let signers = self.writes.sealed_block_signers(repo)?;
         // The history of every view now, newest first.
-        let mut histories: Vec<(String, Vec<String>)> = Vec::new();
-        for view in self.writes.all_views(repo)? {
-            let blocks = self.view_history(repo, &view)?;
-            histories.push((view, blocks));
-        }
+        let histories = self.view_histories(repo)?;
         let mut late = Vec::new();
         for key in &meta.superseded {
             // The blocks that existed when this key was replaced: from each recorded tip back.
-            let mut known: HashSet<&str> = HashSet::new();
-            for tip in &key.views {
-                if tip.block_id.is_empty() {
-                    continue;
-                }
-                let Some((_, blocks)) = histories.iter().find(|(v, _)| *v == tip.view) else {
-                    continue;
-                };
-                if let Some(at) = blocks.iter().position(|b| *b == tip.block_id) {
-                    known.extend(blocks.iter().skip(at).map(String::as_str));
-                }
-            }
+            let known = known_when_replaced(&key.views, &histories);
             for (block, signed_by) in &signers {
                 if *signed_by == key.maintainer_key_id && !known.contains(block.as_str()) {
                     late.push(LateSeal {
@@ -130,6 +142,16 @@ impl Signer {
             }
         }
         Ok(late)
+    }
+
+    /// The history of every view now, newest first, as `(view, blocks)`.
+    pub(super) fn view_histories(&self, repo: &Path) -> Result<Vec<ViewHistory>, SignerError> {
+        let mut histories = Vec::new();
+        for view in self.writes.all_views(repo)? {
+            let blocks = self.view_history(repo, &view)?;
+            histories.push((view, blocks));
+        }
+        Ok(histories)
     }
 
     /// A view's whole history, newest first: one `log --limit N` at a time, four times larger while it comes

@@ -157,6 +157,17 @@ mod world {
     /// A deployment with one wiki, `handbook`, created through the product's own path with the production key
     /// derivation (the commands open the key store the same way).
     pub fn world(tag: &str) -> Option<World> {
+        build(tag, false)
+    }
+
+    /// As [`world`], over a `prikk` that copies the seeds of the first keys when it first sees them (a leak), into
+    /// `<data dir>/loot`: what a thief of the first maintainer key holds. It also cannot run `verify` once a key was
+    /// removed from trust while the file `<data dir>/ctl/verify-dies` exists.
+    pub fn leaky_world(tag: &str) -> Option<World> {
+        build(tag, true)
+    }
+
+    fn build(tag: &str, leaky: bool) -> Option<World> {
         let on_path = std::env::var_os("PATH")
             .is_some_and(|p| std::env::split_paths(&p).any(|d| d.join("prikk").is_file()));
         if !on_path {
@@ -169,19 +180,43 @@ mod world {
         std::fs::create_dir_all(&data_dir).unwrap();
         let secret_file = tmp.0.join("operator.secret");
         std::fs::write(&secret_file, SECRET).unwrap();
+        let prikk = if leaky {
+            let real = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+                .map(|d| d.join("prikk"))
+                .find(|c| c.is_file())
+                .unwrap();
+            let loot = data_dir.join("loot");
+            let path = data_dir.join("prikk-leaky");
+            std::fs::write(
+                &path,
+                format!(
+                    "#!/bin/sh\nif [ \"$1 $2 $3\" = \"trust maintainer remove\" ]; then {real} \"$@\"; rc=$?; touch {ctl}/removed; exit $rc; fi\nif [ \"$1\" = verify ] && [ -e {ctl}/removed ] && [ -e {ctl}/verify-dies ]; then echo 'error: injected' >&2; exit 2; fi\nif [ -n \"$PRIKK_MAINTAINER_SEED_FILE\" ] && [ -f \"$PRIKK_MAINTAINER_SEED_FILE\" ] && [ ! -e {loot}/maintainer.seed ]; then mkdir -p {loot}; cp \"$PRIKK_MAINTAINER_SEED_FILE\" {loot}/maintainer.seed; fi\nif [ -n \"$PRIKK_AUTHOR_SEED_FILE\" ] && [ -f \"$PRIKK_AUTHOR_SEED_FILE\" ] && [ ! -e {loot}/author.seed ]; then mkdir -p {loot}; cp \"$PRIKK_AUTHOR_SEED_FILE\" {loot}/author.seed; fi\nexec {real} \"$@\"\n",
+                    real = real.display(),
+                    loot = loot.display(),
+                    ctl = data_dir.join("ctl").display()
+                ),
+            )
+            .unwrap();
+            std::fs::create_dir_all(data_dir.join("ctl")).unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            path.into_os_string()
+        } else {
+            OsString::from("prikk")
+        };
         let settings = Settings {
             key_dir: data_dir.join("keys"),
             data_dir,
             secret_file,
             seed_dir: shm.0.clone(),
-            prikk: OsString::from("prikk"),
+            prikk: prikk.clone(),
             dev_unconfined: true,
         };
         let layout = RootLayout::new(settings.wikis_root());
         let store = SqliteStore::open(&settings.store_path()).unwrap();
         let signer = Signer::open_creating_store(
             SignerConfig::new(
-                "prikk",
+                prikk,
                 Sandbox::Unconfined,
                 layout.clone(),
                 &settings.key_dir,
@@ -337,6 +372,36 @@ mod world {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
             path
+        }
+
+        /// A thief with the seeds of the first keys (`leaky_world`) commits and seals a change.
+        pub fn thief_seals(&self, author_key_id: &str, maintainer_key_id: &str) {
+            let loot = self.settings.data_dir.join("loot");
+            let repo = RootLayout::new(self.settings.wikis_root()).repo_dir(&self.record.id);
+            std::fs::write(repo.join("Forged.md"), "forged\n").unwrap();
+            let run = |args: &[&str]| {
+                std::process::Command::new("prikk")
+                    .args(args)
+                    .current_dir(&repo)
+                    .env("PRIKK_AUTHOR_KEY_ID", author_key_id)
+                    .env("PRIKK_AUTHOR_SEED_FILE", loot.join("author.seed"))
+                    .env("PRIKK_MAINTAINER_KEY_ID", maintainer_key_id)
+                    .env("PRIKK_MAINTAINER_SEED_FILE", loot.join("maintainer.seed"))
+                    .output()
+                    .unwrap()
+            };
+            let commit = run(&["commit", "-m", "forged"]);
+            assert!(
+                commit.status.success(),
+                "{}",
+                String::from_utf8_lossy(&commit.stderr)
+            );
+            let seal = run(&["seal", "--allow-no-audit"]);
+            assert!(
+                seal.status.success(),
+                "{}",
+                String::from_utf8_lossy(&seal.stderr)
+            );
         }
 
         pub fn recorded_ids(&self) -> (Option<String>, Option<String>) {
@@ -1013,6 +1078,11 @@ fn a_superseded_key_is_retired_at_the_command_line_by_its_id_audited_and_the_ref
         out.contains(&format!("{k1} was removed from the repository's trust")),
         "{out}"
     );
+    // No late seal, so none is named (Y1).
+    assert!(
+        !out.contains("WARNING") && !out.contains(inklkunn_core::LATE_SEALS_SENTENCE),
+        "{out}"
+    );
     assert!(!w.verifies(), "the key is out of the trust store");
     // Audited before and after; the end carries the key's id in the fixed form abandon reads back.
     let events = w.audit_events();
@@ -1158,4 +1228,117 @@ fn abandon_refuses_when_the_key_record_is_older_than_the_audit_trail_and_changes
         .collect();
     assert_eq!(abandoning.len(), 2, "{events:?}");
     assert_eq!(abandoning.get(1).unwrap().1, "failed");
+}
+
+// ---- a retirement never excuses a late seal (handoff 004, Y1)
+
+#[test]
+fn retire_names_each_late_seal_and_what_it_means_exits_1_and_the_key_is_out_but_nothing_excuses_the_block()
+ {
+    let Some(w) = world::leaky_world("y1-cli") else {
+        return;
+    };
+    let (author, maintainer) = w.recorded_ids();
+    let (author, k1) = (author.unwrap(), maintainer.unwrap());
+    let (status, out, err) = w.cli("wiki keys rotate handbook --confirm handbook");
+    assert_eq!(status, 0, "{out}{err}");
+    // A thief with the first keys' seeds seals a block; `status` shows it as a late seal.
+    w.thief_seals(&author, &k1);
+    let (status, out, _) = w.cli("wiki keys status handbook");
+    assert_eq!(status, 1, "{out}");
+    let forged = out
+        .lines()
+        .find_map(|l| l.strip_prefix("WARNING: block "))
+        .and_then(|l| l.split_whitespace().next())
+        .expect("the late seal is shown")
+        .to_owned();
+    assert!(w.verifies(), "the key is still trusted");
+
+    let (status, out, err) = w.cli(&format!(
+        "wiki keys retire handbook --key {k1} --confirm handbook"
+    ));
+    // The key is out of trust and the record is made; the command still exits 1, with the block named.
+    assert_eq!(status, 1, "{out}{err}");
+    assert!(
+        out.contains(&format!(
+            "WARNING: block {forged} was sealed with maintainer key {k1}"
+        )) && out.contains(inklkunn_core::LATE_SEALS_SENTENCE),
+        "{out}"
+    );
+    assert!(
+        err.contains("is retired and its record is made") && err.contains("1 block(s)"),
+        "{err}"
+    );
+    assert!(!w.verifies(), "the key is out of the trust store");
+    // The trail says the retirement finished, and that one late seal was not recorded.
+    let events = w.audit_events();
+    let ended = events
+        .iter()
+        .rfind(|(a, o, _)| a == "keys-retire" && o == "allowed")
+        .unwrap();
+    assert!(
+        ended
+            .2
+            .starts_with(&format!("retirement recorded: key {k1}"))
+            && ended.2.contains("1 late seal(s)"),
+        "{events:?}"
+    );
+    assert!(inklkunn_core::retirement_finished_in(&w.store, &w.record.id, &k1).unwrap());
+    // The verdict stored afterwards is a failure nothing explains: the page carries no *retired key* sentence.
+    let record = w.store.get(&w.record.id).unwrap();
+    assert!(
+        record.verification_explained_by.is_empty(),
+        "{:?}",
+        record.verification_explained_by
+    );
+}
+
+#[test]
+fn finish_retirement_names_the_late_seal_too_records_without_it_and_exits_1() {
+    let Some(w) = world::leaky_world("y1-cli-finish") else {
+        return;
+    };
+    let (author, maintainer) = w.recorded_ids();
+    let (author, k1) = (author.unwrap(), maintainer.unwrap());
+    let (status, out, err) = w.cli("wiki keys rotate handbook --confirm handbook");
+    assert_eq!(status, 0, "{out}{err}");
+    w.thief_seals(&author, &k1);
+    let (_, out, _) = w.cli("wiki keys status handbook");
+    let forged = out
+        .lines()
+        .find_map(|l| l.strip_prefix("WARNING: block "))
+        .and_then(|l| l.split_whitespace().next())
+        .expect("the late seal is shown")
+        .to_owned();
+    // The retirement stops after the removal (`verify` cannot run), then is finished.
+    let ctl = w.settings.data_dir.join("ctl").join("verify-dies");
+    std::fs::write(&ctl, "").unwrap();
+    let (status, out, err) = w.cli(&format!(
+        "wiki keys retire handbook --key {k1} --confirm handbook"
+    ));
+    assert_eq!(status, 1, "{out}{err}");
+    assert!(err.contains("NOT recorded completely"), "{err}");
+    std::fs::remove_file(&ctl).unwrap();
+    let (status, out, err) = w.cli("wiki keys finish-retirement handbook");
+    assert_eq!(status, 1, "{out}{err}");
+    assert!(
+        out.contains(&format!(
+            "WARNING: block {forged} was sealed with maintainer key {k1}"
+        )) && out.contains(inklkunn_core::LATE_SEALS_SENTENCE),
+        "{out}"
+    );
+    assert!(err.contains("is retired and its record is made"), "{err}");
+    let events = w.audit_events();
+    let ended = events
+        .iter()
+        .rfind(|(a, o, _)| a == "keys-finish-retirement" && o == "allowed")
+        .unwrap();
+    assert!(
+        ended
+            .2
+            .starts_with(&format!("retirement recorded: key {k1}"))
+            && ended.2.contains("1 late seal(s)"),
+        "{events:?}"
+    );
+    assert!(inklkunn_core::retirement_finished_in(&w.store, &w.record.id, &k1).unwrap());
 }

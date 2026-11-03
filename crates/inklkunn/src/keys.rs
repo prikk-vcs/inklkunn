@@ -31,8 +31,9 @@ use std::time::Duration;
 use inklkunn_core::wiki::repo_of;
 use inklkunn_core::{
     ACTION_FINISH_RETIREMENT, ACTION_RETIRE, ACTION_ROTATE, AcceptanceLedger, AcceptanceToken,
-    ExpectedMessage, KeyAuthority, KeyStatus, LedgerError, OldKey, OldKeyOutcome, Signer,
-    SignerConfig, Verifier, ViewCreationAct, ViewCreationFacts, recorded_detail, retire_command,
+    ExpectedMessage, KeyAuthority, KeyStatus, LATE_SEALS_SENTENCE, LedgerError, OldKey,
+    OldKeyOutcome, Signer, SignerConfig, Verifier, ViewCreationAct, ViewCreationFacts,
+    recorded_detail, retire_command,
 };
 use inklkunn_prikk::{Admission, PrikkCli};
 use inklkunn_store::record::rfc3339;
@@ -466,13 +467,14 @@ fn run(
                     let detail = recorded_detail(
                         &done.maintainer_key_id,
                         &format!(
-                            "finished; {} finding(s) recorded{}",
+                            "finished; {} finding(s) recorded{}{}",
                             done.findings_recorded,
                             if done.removed_now {
                                 "; the key was removed from the repository's trust by this command"
                             } else {
                                 ""
-                            }
+                            },
+                            late_note(&done.late_seals)
                         ),
                     );
                     let finished = finish(
@@ -495,6 +497,7 @@ fn run(
                         },
                         done.findings_recorded
                     );
+                    let late = say_late_seals(out, &done.maintainer_key_id, &done.late_seals);
                     refresh_verdict(
                         settings,
                         verdict_sandbox,
@@ -504,6 +507,7 @@ fn run(
                         out,
                         err,
                     );
+                    late?;
                     finished
                 }
                 Err(e) => {
@@ -541,7 +545,10 @@ fn run(
                 Ok(outcome) => {
                     let detail = match &outcome {
                         // The key's id comes first, in the fixed form abandon reads back from the trail (X2).
-                        OldKeyOutcome::Retired => recorded_detail(key, "retired by `retire`"),
+                        OldKeyOutcome::Retired { late_seals } => recorded_detail(
+                            key,
+                            &format!("retired by `retire`{}", late_note(late_seals)),
+                        ),
                         OldKeyOutcome::RetiredUnrecorded(_) => format!(
                             "key {key} removed from the repository's trust; its findings are NOT recorded (finish-retirement or abandon-retirement)"
                         ),
@@ -684,7 +691,9 @@ fn run(
                     );
                     let what = match &r.old_key {
                         OldKeyOutcome::Kept => "old key kept".to_owned(),
-                        OldKeyOutcome::Retired => "old key retired".to_owned(),
+                        OldKeyOutcome::Retired { late_seals } => {
+                            format!("old key retired{}", late_note(late_seals))
+                        }
                         OldKeyOutcome::RetiredUnrecorded(_) => {
                             "old key retired; its findings are NOT recorded (finish-retirement or abandon-retirement)".to_owned()
                         }
@@ -706,7 +715,7 @@ fn run(
                     );
                     // A rotation whose retirement ended with its record made says so first, in the fixed form abandon
                     // reads back from the trail (X2).
-                    let detail = if matches!(r.old_key, OldKeyOutcome::Retired) {
+                    let detail = if matches!(r.old_key, OldKeyOutcome::Retired { .. }) {
                         recorded_detail(&r.previous_maintainer_key_id, &detail)
                     } else {
                         detail
@@ -773,6 +782,39 @@ fn run(
     }
 }
 
+/// The audit detail's note on the late seals of a retirement (Y1): nothing when there are none.
+fn late_note(late_seals: &[String]) -> String {
+    if late_seals.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "; {} late seal(s) of the key were NOT recorded and nothing excuses them",
+            late_seals.len()
+        )
+    }
+}
+
+/// Say what a retirement left out on purpose (Y1): each block the key sealed after the rotation that replaced it, by
+/// its id, and why. Nothing is said when there are none. The retirement itself is done and recorded; the error makes
+/// the command exit 1, as `status` does for the same blocks, so that no script passes over a block this service did
+/// not make.
+fn say_late_seals(out: &mut dyn Write, key: &str, late_seals: &[String]) -> Result<(), String> {
+    if late_seals.is_empty() {
+        return Ok(());
+    }
+    for block in late_seals {
+        let _ = writeln!(
+            out,
+            "WARNING: block {block} was sealed with maintainer key {key}"
+        );
+    }
+    let _ = writeln!(out, "{LATE_SEALS_SENTENCE}");
+    Err(format!(
+        "the key {key} is retired and its record is made, but {} block(s) were sealed with it after it was replaced and are not recorded; see above",
+        late_seals.len()
+    ))
+}
+
 /// Say what became of the old maintainer key `previous` on `out`, and give back the error that makes the command
 /// exit 1 when its retirement did not end with the record made. `rotated` is the generation when a rotation made the
 /// key old; `None` when `retire` asked for it.
@@ -796,7 +838,7 @@ fn report_old_key(
             );
             Ok(())
         }
-        OldKeyOutcome::Retired => {
+        OldKeyOutcome::Retired { late_seals } => {
             let _ = writeln!(
                 out,
                 "{} {previous} was removed from the repository's trust; what it sealed no longer verifies",
@@ -806,7 +848,7 @@ fn report_old_key(
                     "maintainer key"
                 }
             );
-            Ok(())
+            say_late_seals(out, previous, late_seals)
         }
         OldKeyOutcome::RetiredUnrecorded(why) => {
             let _ = writeln!(

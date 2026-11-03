@@ -2946,7 +2946,10 @@ fn a_retirement_that_could_not_be_begun_after_the_rotation_pauses_nothing() {
             &rotation.previous_maintainer_key_id,
         )
         .expect("retired by its id");
-    assert_eq!(outcome, inklkunn_signer::OldKeyOutcome::Retired);
+    assert_eq!(
+        outcome,
+        inklkunn_signer::OldKeyOutcome::Retired { late_seals: vec![] }
+    );
 }
 
 #[test]

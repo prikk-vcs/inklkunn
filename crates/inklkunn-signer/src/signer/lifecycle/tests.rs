@@ -342,7 +342,10 @@ fn retiring_the_old_key_stops_it_sealing_and_prikk_then_cannot_verify_what_it_se
         .signer
         .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
         .unwrap();
-    assert_eq!(rotation.old_key, OldKeyOutcome::Retired);
+    assert_eq!(
+        rotation.old_key,
+        OldKeyOutcome::Retired { late_seals: vec![] }
+    );
 
     // The new keys seal.
     w.seal_with_current_keys("second\n");
@@ -1531,7 +1534,7 @@ fn a_key_kept_at_rotation_is_retired_later_by_its_id_and_the_record_is_made_on_i
     w.seal_with_current_keys("sealed by the new key\n");
     assert!(w.verify().0, "the old key is still trusted");
     let outcome = w.retire_by_id(&w.signer, &k1).unwrap();
-    assert_eq!(outcome, OldKeyOutcome::Retired);
+    assert_eq!(outcome, OldKeyOutcome::Retired { late_seals: vec![] });
     let facts = w.facts();
     assert!(facts.retiring.is_none());
     let entry = w.entry(&k1);
@@ -1594,7 +1597,7 @@ fn a_retirement_abandoned_after_the_removal_is_retired_later_by_its_id_and_the_m
             assert_eq!(finished.findings_recorded, 3);
         } else {
             let outcome = w.retire_by_id(&w.signer, &k1).unwrap();
-            assert_eq!(outcome, OldKeyOutcome::Retired);
+            assert_eq!(outcome, OldKeyOutcome::Retired { late_seals: vec![] });
         }
         let facts = w.facts();
         assert!(facts.retiring.is_none());
@@ -1657,7 +1660,7 @@ fn the_current_key_an_unknown_id_a_retired_key_and_a_key_not_trusted_are_refused
     // A key already retired.
     assert_eq!(
         w.retire_by_id(&w.signer, &k1).unwrap(),
-        OldKeyOutcome::Retired
+        OldKeyOutcome::Retired { late_seals: vec![] }
     );
     let before = w.facts();
     let r = w.retire_by_id(&w.signer, &k1);
@@ -1722,7 +1725,7 @@ fn of_two_superseded_keys_the_older_is_retired_by_id_on_its_own_entry() {
     // The older one first: the entry that gets the record is K1's, not the newest superseded one's.
     assert_eq!(
         w.retire_by_id(&w.signer, &k1).unwrap(),
-        OldKeyOutcome::Retired
+        OldKeyOutcome::Retired { late_seals: vec![] }
     );
     let first = w.entry(&k1);
     let second = w.entry(&k2);
@@ -1737,7 +1740,7 @@ fn of_two_superseded_keys_the_older_is_retired_by_id_on_its_own_entry() {
     // Then the other: its record is its own, and disjoint from the first.
     assert_eq!(
         w.retire_by_id(&w.signer, &k2).unwrap(),
-        OldKeyOutcome::Retired
+        OldKeyOutcome::Retired { late_seals: vec![] }
     );
     let second = w.entry(&k2);
     assert!(second.retired && !second.excused.is_empty(), "{second:?}");
@@ -1767,7 +1770,10 @@ fn a_rotation_that_retires_is_the_rotation_followed_by_the_retirement_of_the_key
         .signer
         .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
         .unwrap();
-    assert_eq!(rotation.old_key, OldKeyOutcome::Retired);
+    assert_eq!(
+        rotation.old_key,
+        OldKeyOutcome::Retired { late_seals: vec![] }
+    );
     assert_eq!(rotation.previous_maintainer_key_id, k1);
     assert!(w.entry(&k1).retired);
     assert!(w.facts().retiring.is_none());
@@ -1803,7 +1809,7 @@ fn a_retirement_that_could_not_be_begun_after_the_rotation_is_its_own_outcome_an
     std::fs::remove_file(ctl.join("list-dies-after-add")).unwrap();
     assert_eq!(
         w.retire_by_id(&w.signer, &k1).unwrap(),
-        OldKeyOutcome::Retired
+        OldKeyOutcome::Retired { late_seals: vec![] }
     );
     assert!(w.entry(&k1).retired);
 }
@@ -2143,4 +2149,208 @@ fn a_key_record_that_cannot_be_read_refuses_the_seal_it_does_not_count_as_no_ret
     );
     std::fs::write(&path, good).unwrap();
     assert_eq!(w.signer.seal_pause(&w.wiki), Ok(None));
+}
+
+// ---- a retirement never excuses a late seal (handoff 004, Y1)
+
+impl World {
+    /// K1 kept at a rotation and stolen; the service seals on with the new keys; a thief seals with K1. Gives back
+    /// K1's id, the thief's block and the legitimate block K1 sealed before the rotation.
+    fn kept_key_with_a_late_seal(&self, tag: &str) -> (String, String, String) {
+        let k1 = self.facts().maintainer_key_id;
+        let before_rotation = self.tip_block();
+        let loot = dir(Path::new("/dev/shm"), tag);
+        let stolen = self.steal_seeds(&loot.0);
+        assert_eq!(self.keep_rotation().old_key, OldKeyOutcome::Kept);
+        self.seal_with_current_keys("sealed by the new key\n");
+        assert_eq!(self.seal_with_stolen(&loot.0, &stolen), None);
+        let forged = self.tip_block();
+        assert_eq!(
+            self.signer.seals_by_superseded_keys(&self.repo).unwrap(),
+            vec![LateSeal {
+                generation: 1,
+                maintainer_key_id: k1.clone(),
+                block_id: forged.clone(),
+            }]
+        );
+        assert!(self.verify().0, "K1 is still trusted");
+        (k1, forged, before_rotation)
+    }
+
+    /// The maintainer key ids the repository trusts.
+    fn trusted_ids_now(&self) -> Vec<String> {
+        self.signer
+            .writes
+            .trusted_maintainers(&self.repo)
+            .unwrap()
+            .into_iter()
+            .map(|k| k.key_id)
+            .collect()
+    }
+}
+
+#[test]
+fn a_late_seal_by_a_retired_key_is_named_not_recorded_and_nothing_excuses_it() {
+    let Some(w) = world("y1-late") else { return };
+    let (k1, forged, made_by_the_service) = w.kept_key_with_a_late_seal("y1-late-loot");
+    let outcome = w.retire_by_id(&w.signer, &k1).unwrap();
+    // The key is removed all the same, the record is made, and the late block is named.
+    assert_eq!(
+        outcome,
+        OldKeyOutcome::Retired {
+            late_seals: vec![forged.clone()]
+        }
+    );
+    assert!(
+        !w.trusted_ids_now().contains(&k1),
+        "the key is out of trust"
+    );
+    assert!(w.facts().retiring.is_none());
+    let entry = w.entry(&k1);
+    assert!(entry.retired);
+    assert!(
+        entry.excused.blocks.contains(&made_by_the_service),
+        "what the key sealed before it was replaced is recorded: {entry:?}"
+    );
+    // prikk names no signer for a ref state or a ref update, so the thief's two are in the set beside the service's
+    // two (it is the BLOCK that cannot be told from the key's; and it is the block that keeps the failure unexplained).
+    assert_eq!(entry.excused.len(), 5, "{entry:?}");
+    assert!(
+        !entry.excused.blocks.contains(&forged),
+        "the late seal is not recorded: {entry:?}"
+    );
+    // Verification keeps failing on the late block and nothing explains it: no *only a retired key* anywhere.
+    let (ok, out) = w.verify();
+    assert!(!ok && out.contains(&forged), "{out}");
+    assert_eq!(
+        w.signer.retirement_explains(&w.repo, &w.wiki),
+        Ok(None),
+        "the verification page would carry no explanation"
+    );
+    assert_eq!(
+        w.signer
+            .retirement_explains_beside_cleanup(&w.repo, &w.wiki),
+        Ok(None)
+    );
+    // Recovery's `verify` step asks the same question and gets the same answer: it does not describe the late block
+    // as the retired key's.
+    assert!(matches!(
+        crate::recover::Recover::verify_after_retirement(&w.signer, &w.wiki),
+        Ok(None)
+    ));
+    // The wiki goes on: the service seals with its new keys, and the late block stays unexplained.
+    assert_eq!(w.signer.seal_pause(&w.wiki), Ok(None));
+    w.seal_with_current_keys("and on\n");
+    assert_eq!(w.signer.retirement_explains(&w.repo, &w.wiki), Ok(None));
+    // The sentence that says what it means is one constant.
+    assert!(crate::LATE_SEALS_SENTENCE.contains("nothing excuses them"));
+}
+
+#[test]
+fn the_same_retirement_with_no_late_seal_records_everything_and_explains_the_failure_as_before() {
+    let Some(w) = world("y1-none") else { return };
+    let k1 = w.facts().maintainer_key_id;
+    w.keep_rotation();
+    w.seal_with_current_keys("sealed by the new key\n");
+    let outcome = w.retire_by_id(&w.signer, &k1).unwrap();
+    assert_eq!(outcome, OldKeyOutcome::Retired { late_seals: vec![] });
+    assert_eq!(w.entry(&k1).excused.len(), 3);
+    assert!(!w.verify().0);
+    assert!(matches!(
+        w.signer.retirement_explains(&w.repo, &w.wiki),
+        Ok(Some(_))
+    ));
+    assert!(matches!(
+        crate::recover::Recover::verify_after_retirement(&w.signer, &w.wiki),
+        Ok(Some(_))
+    ));
+}
+
+#[test]
+fn finishing_a_retirement_does_not_widen_what_it_records_and_names_the_late_seal() {
+    let Some(w) = world("y1-finish") else { return };
+    let (k1, forged, _) = w.kept_key_with_a_late_seal("y1-finish-loot");
+    // The retirement is stopped before its record (the `verify` after the removal dies), then finished.
+    let (ctl, signer) = w.faulty();
+    std::fs::write(ctl.join("verify-dies"), "").unwrap();
+    let outcome = w.retire_by_id(&signer, &k1).unwrap();
+    assert!(
+        matches!(outcome, OldKeyOutcome::RetiredUnrecorded(_)),
+        "{outcome:?}"
+    );
+    std::fs::remove_file(ctl.join("verify-dies")).unwrap();
+    let done = w.finish(&signer).unwrap();
+    assert_eq!(done.late_seals, vec![forged.clone()]);
+    assert_eq!(done.findings_recorded, w.entry(&k1).excused.len());
+    assert!(!w.entry(&k1).excused.blocks.contains(&forged));
+    assert_eq!(w.signer.retirement_explains(&w.repo, &w.wiki), Ok(None));
+    // Finishing with the key still trusted (the removal never happened) takes the same road.
+    let Some(w) = world("y1-finish-trusted") else {
+        return;
+    };
+    let (k1, forged, _) = w.kept_key_with_a_late_seal("y1-finish-trusted-loot");
+    let (ctl, signer) = w.faulty();
+    std::fs::write(ctl.join("remove-fails"), "").unwrap();
+    let outcome = w.retire_by_id(&signer, &k1).unwrap();
+    assert!(
+        matches!(outcome, OldKeyOutcome::RetireFailed(_)),
+        "{outcome:?}"
+    );
+    std::fs::remove_file(ctl.join("remove-fails")).unwrap();
+    let done = w.finish(&signer).unwrap();
+    assert!(done.removed_now);
+    assert_eq!(done.late_seals, vec![forged.clone()]);
+    assert!(!w.entry(&k1).excused.blocks.contains(&forged));
+    assert_eq!(w.signer.retirement_explains(&w.repo, &w.wiki), Ok(None));
+}
+
+#[test]
+fn abandoning_a_retirement_with_a_late_seal_retrusts_the_key_and_retiring_again_names_the_same_block()
+ {
+    let Some(w) = world("y1-abandon") else { return };
+    let (k1, forged, _) = w.kept_key_with_a_late_seal("y1-abandon-loot");
+    let (ctl, signer) = w.faulty();
+    std::fs::write(ctl.join("verify-dies"), "").unwrap();
+    assert!(matches!(
+        w.retire_by_id(&signer, &k1).unwrap(),
+        OldKeyOutcome::RetiredUnrecorded(_)
+    ));
+    let done = w.abandon(&signer).unwrap();
+    assert!(done.restored);
+    // Nothing was recorded or excused by the abandoned attempt; the key is trusted and the repository verifies.
+    assert!(!w.entry(&k1).retired && w.entry(&k1).excused.is_empty());
+    assert!(w.verify().0);
+    std::fs::remove_file(ctl.join("verify-dies")).unwrap();
+    std::fs::remove_file(ctl.join("removed")).unwrap();
+    // Retired again, it is the same: the late block is named and not recorded.
+    let outcome = w.retire_by_id(&w.signer, &k1).unwrap();
+    assert_eq!(
+        outcome,
+        OldKeyOutcome::Retired {
+            late_seals: vec![forged.clone()]
+        }
+    );
+    assert!(!w.entry(&k1).excused.blocks.contains(&forged));
+}
+
+#[test]
+fn a_rotation_that_retires_the_replaced_key_does_not_call_a_kept_keys_late_seal_its_own() {
+    // K1 was kept at the first rotation and a thief sealed with it; the second rotation retires K2, the key it
+    // replaces. K2 sealed nothing late, and K1's late block (K1 is still trusted) is not K2's to name.
+    let Some(w) = world("y1-rotate-retire") else {
+        return;
+    };
+    let (k1, _forged, _) = w.kept_key_with_a_late_seal("y1-rotate-retire-loot");
+    let k2 = w.facts().maintainer_key_id;
+    let rotation = w
+        .signer
+        .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
+        .unwrap();
+    assert_eq!(rotation.previous_maintainer_key_id, k2);
+    assert_eq!(
+        rotation.old_key,
+        OldKeyOutcome::Retired { late_seals: vec![] }
+    );
+    assert!(w.entry(&k2).retired);
+    assert!(!w.entry(&k1).retired, "K1 stays trusted");
 }

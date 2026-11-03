@@ -44,7 +44,16 @@ pub enum OldKeyOutcome {
     Kept,
     /// It was removed from the repository's trust, as asked, and the key record holds the findings the removal
     /// caused (handoff 004, P2′): a later failure made of exactly those is excused.
-    Retired,
+    ///
+    /// **Except the key's late seals** (Y1): `late_seals` are the blocks the key sealed after the rotation that
+    /// replaced it. This service did not make them, the record leaves them out, `verify` keeps failing on them and
+    /// nothing excuses them ([`LATE_SEALS_SENTENCE`]). Empty for a key that sealed nothing after it was replaced.
+    ///
+    /// [`LATE_SEALS_SENTENCE`]: crate::LATE_SEALS_SENTENCE
+    Retired {
+        /// The ids of those blocks.
+        late_seals: Vec<String>,
+    },
     /// The key was removed from the repository's trust, as asked, **but its findings are not recorded**: `verify`
     /// could not be run after the removal, the two looks disagreed, the count of what prikk checked changed, a block
     /// that lost its signature was not the key's, the record was too large or could not be written. The key record
