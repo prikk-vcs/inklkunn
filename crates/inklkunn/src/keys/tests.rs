@@ -851,7 +851,8 @@ fn abandon_retirement_puts_the_old_key_back_and_says_so_in_one_sentence() {
                 "is trusted again; nothing is retired; to retire it later run `inklkunn wiki keys retire "
             } else {
                 "is trusted; nothing is retired; to retire it later run `inklkunn wiki keys retire "
-            }) && out.contains(&format!("wiki keys retire {} --key ", w.record.id)),
+            }) && out.contains(&format!("wiki keys retire {} --key ", w.record.id))
+                && out.contains("--accept-unverifiable-history"),
             "{out}"
         );
         assert!(
@@ -964,7 +965,7 @@ fn an_act_that_cannot_be_written_to_the_audit_trail_is_not_begun() {
     let before = w.recorded_ids();
     for line in [
         "rotate handbook --confirm handbook",
-        "retire handbook --key inklkunn-whatever --confirm handbook",
+        "retire handbook --key inklkunn-whatever --confirm handbook --accept-unverifiable-history",
     ] {
         let command = parse(&args(line)).unwrap();
         let (mut out, mut err) = (Vec::new(), Vec::new());
@@ -995,22 +996,29 @@ fn an_act_that_cannot_be_written_to_the_audit_trail_is_not_begun() {
 
 #[test]
 fn the_retire_command_parses_and_asks_for_the_key_and_the_slug() {
-    assert_eq!(
-        parse(&args("retire docs --key inklkunn-k --confirm docs")).unwrap(),
-        Command::Retire {
-            wiki: "docs".into(),
-            key: "inklkunn-k".into(),
-            confirm: "docs".into()
-        }
-    );
-    assert_eq!(
-        parse(&args("retire docs --confirm docs --key inklkunn-k")).unwrap(),
-        Command::Retire {
-            wiki: "docs".into(),
-            key: "inklkunn-k".into(),
-            confirm: "docs".into()
-        }
-    );
+    // The flag is read in any place; without it the command parses and is refused with the cost (Y6).
+    for (line, accepted) in [
+        ("retire docs --key inklkunn-k --confirm docs", false),
+        (
+            "retire docs --key inklkunn-k --confirm docs --accept-unverifiable-history",
+            true,
+        ),
+        (
+            "retire docs --accept-unverifiable-history --confirm docs --key inklkunn-k",
+            true,
+        ),
+    ] {
+        assert_eq!(
+            parse(&args(line)).unwrap(),
+            Command::Retire {
+                wiki: "docs".into(),
+                key: "inklkunn-k".into(),
+                confirm: "docs".into(),
+                accept_unverifiable_history: accepted
+            },
+            "{line}"
+        );
+    }
     for bad in [
         "retire docs",
         "retire docs --key inklkunn-k",
@@ -1023,7 +1031,54 @@ fn the_retire_command_parses_and_asks_for_the_key_and_the_slug() {
         let e = parse(&args(bad)).unwrap_err();
         assert!(e.0.contains("usage:"), "{bad}: {}", e.0);
     }
-    assert!(USAGE.contains("wiki keys retire <wiki> --key <maintainer key id> --confirm <slug>"));
+    assert!(USAGE.contains(
+        "wiki keys retire <wiki> --key <maintainer key id> --confirm <slug> --accept-unverifiable-history"
+    ));
+}
+
+#[test]
+fn retire_is_refused_without_the_flag_that_accepts_the_cost_and_nothing_changes_and_works_with_it()
+{
+    // Y6: `retire` has the cost of `rotate --retire-old` and the same flag.
+    let Some(w) = world::world("y6-retire-flag") else {
+        return;
+    };
+    let k1 = w.recorded_ids().1.unwrap();
+    let (status, _, err) = w.cli("wiki keys rotate handbook --confirm handbook");
+    assert_eq!(status, 0, "{err}");
+    let ids_before = w.recorded_ids();
+    let trail_before = w.audit_events().len();
+    let (status, out, err) = w.cli(&format!(
+        "wiki keys retire handbook --key {k1} --confirm handbook"
+    ));
+    assert_eq!(status, 1, "{out}{err}");
+    // The sentence is the one `rotate --retire-old` says, and it says the cost.
+    assert!(
+        err.contains("--accept-unverifiable-history")
+            && err.contains("everything it sealed then fails prikk's verification")
+            && err.contains("Verification failed")
+            && err.contains("Nothing was changed"),
+        "{err}"
+    );
+    let (_, _, rotate_err) = w.cli("wiki keys rotate handbook --confirm handbook --retire-old");
+    assert_eq!(
+        err.split_once("from the repository's trust")
+            .map(|(_, rest)| rest),
+        rotate_err
+            .split_once("from the repository's trust")
+            .map(|(_, rest)| rest),
+        "one sentence about the cost for both commands"
+    );
+    // Nothing changed: not the keys, not the trust, not the trail (refused before the act is begun).
+    assert_eq!(w.recorded_ids(), ids_before);
+    assert!(w.verifies(), "the key is still trusted");
+    assert_eq!(w.audit_events().len(), trail_before);
+    // The wrong slug is still refused first, and with the flag the command works.
+    let (status, out, err) = w.cli(&format!(
+        "wiki keys retire handbook --key {k1} --confirm handbook --accept-unverifiable-history"
+    ));
+    assert_eq!(status, 0, "{out}{err}");
+    assert!(!w.verifies(), "the key is out of the trust store");
 }
 
 #[test]
@@ -1037,7 +1092,8 @@ fn a_superseded_key_is_retired_at_the_command_line_by_its_id_audited_and_the_ref
     assert_eq!(status, 0, "{out}{err}");
     // The rotation said how to retire the kept key later.
     assert!(
-        out.contains(&format!("wiki keys retire {} --key {k1}", w.record.id)),
+        out.contains(&format!("wiki keys retire {} --key {k1}", w.record.id))
+            && out.contains("--accept-unverifiable-history"),
         "{out}"
     );
     let k2 = w.recorded_ids().1.unwrap();
@@ -1047,17 +1103,17 @@ fn a_superseded_key_is_retired_at_the_command_line_by_its_id_audited_and_the_ref
     for (what, line, said) in [
         (
             "the wrong slug",
-            format!("wiki keys retire handbook --key {k1} --confirm other"),
+            format!("wiki keys retire handbook --key {k1} --confirm other --accept-unverifiable-history"),
             "is not the slug",
         ),
         (
             "the current key",
-            format!("wiki keys retire handbook --key {k2} --confirm handbook"),
+            format!("wiki keys retire handbook --key {k2} --confirm handbook --accept-unverifiable-history"),
             "rotate first",
         ),
         (
             "an id nobody knows",
-            "wiki keys retire handbook --key inklkunn-nobody --confirm handbook".to_owned(),
+            "wiki keys retire handbook --key inklkunn-nobody --confirm handbook --accept-unverifiable-history".to_owned(),
             "does not know",
         ),
     ] {
@@ -1071,7 +1127,7 @@ fn a_superseded_key_is_retired_at_the_command_line_by_its_id_audited_and_the_ref
     }
     // Retired by its id.
     let (status, out, err) = w.cli(&format!(
-        "wiki keys retire handbook --key {k1} --confirm handbook"
+        "wiki keys retire handbook --key {k1} --confirm handbook --accept-unverifiable-history"
     ));
     assert_eq!(status, 0, "{out}{err}");
     assert!(
@@ -1113,7 +1169,7 @@ fn a_superseded_key_is_retired_at_the_command_line_by_its_id_audited_and_the_ref
     );
     // A key retired already is refused.
     let (status, _, err) = w.cli(&format!(
-        "wiki keys retire handbook --key {k1} --confirm handbook"
+        "wiki keys retire handbook --key {k1} --confirm handbook --accept-unverifiable-history"
     ));
     assert_eq!(status, 1);
     assert!(err.contains("retired already"), "{err}");
@@ -1255,7 +1311,7 @@ fn retire_names_each_late_seal_and_what_it_means_exits_1_and_the_key_is_out_but_
     assert!(w.verifies(), "the key is still trusted");
 
     let (status, out, err) = w.cli(&format!(
-        "wiki keys retire handbook --key {k1} --confirm handbook"
+        "wiki keys retire handbook --key {k1} --confirm handbook --accept-unverifiable-history"
     ));
     // The key is out of trust and the record is made; the command still exits 1, with the block named.
     assert_eq!(status, 1, "{out}{err}");
@@ -1314,7 +1370,7 @@ fn finish_retirement_names_the_late_seal_too_records_without_it_and_exits_1() {
     let ctl = w.settings.data_dir.join("ctl").join("verify-dies");
     std::fs::write(&ctl, "").unwrap();
     let (status, out, err) = w.cli(&format!(
-        "wiki keys retire handbook --key {k1} --confirm handbook"
+        "wiki keys retire handbook --key {k1} --confirm handbook --accept-unverifiable-history"
     ));
     assert_eq!(status, 1, "{out}{err}");
     assert!(err.contains("NOT recorded completely"), "{err}");
@@ -1341,4 +1397,154 @@ fn finish_retirement_names_the_late_seal_too_records_without_it_and_exits_1() {
         "{events:?}"
     );
     assert!(inklkunn_core::retirement_finished_in(&w.store, &w.record.id, &k1).unwrap());
+}
+
+// ---- status says what the repository trusts, and names the command (handoff 004, Y2, Y3)
+
+/// The status line of the superseded key `key` (and the line under it, if it starts with two spaces).
+fn status_of_superseded(out: &str, key: &str) -> String {
+    let mut lines = out.lines();
+    let first = lines
+        .find(|l| l.starts_with(&format!("superseded maintainer key {key} ")))
+        .unwrap_or_else(|| panic!("no line for {key}: {out}"));
+    let next = lines.next().filter(|l| l.starts_with("  ")).unwrap_or("");
+    format!("{first}\n{next}")
+}
+
+#[test]
+fn status_says_not_retired_and_names_the_retire_command_for_a_superseded_key_that_is_still_trusted()
+{
+    let Some(w) = world::world("y2-kept") else {
+        return;
+    };
+    let k1 = w.recorded_ids().1.unwrap();
+    let (status, out, err) = w.cli("wiki keys rotate handbook --confirm handbook");
+    assert_eq!(status, 0, "{out}{err}");
+    let (status, out, err) = w.cli("wiki keys status handbook");
+    assert_eq!(status, 0, "{out}{err}");
+    let shown = status_of_superseded(&out, &k1);
+    assert!(
+        shown.contains("not retired") && shown.contains("still trusted"),
+        "{shown}"
+    );
+    // The command, with the final spelling of the flags (Y6), beside the key.
+    assert!(
+        shown.contains(&format!(
+            "`inklkunn wiki keys retire {} --key {k1} --confirm <the wiki's slug> --accept-unverifiable-history`",
+            w.record.id
+        )),
+        "{shown}"
+    );
+    // Once retired: the record says so, the repository no longer trusts the key, and no command is offered.
+    let (status, out, err) = w.cli(&format!(
+        "wiki keys retire handbook --key {k1} --confirm handbook --accept-unverifiable-history"
+    ));
+    assert_eq!(status, 0, "{out}{err}");
+    let (_, out, _) = w.cli("wiki keys status handbook");
+    let shown = status_of_superseded(&out, &k1);
+    assert!(
+        shown.contains("retired, 3 finding(s) of publication trust recorded")
+            && shown.contains("out of the trust store")
+            && !shown.contains("not retired")
+            && !shown.contains("still trusted")
+            && !shown.contains("to retire it"),
+        "{shown}"
+    );
+}
+
+#[test]
+fn status_reads_the_trust_list_so_a_key_an_unfinished_retirement_removed_is_not_said_to_be_trusted()
+{
+    let Some(w) = world::world("y2-unfinished") else {
+        return;
+    };
+    let k1 = w.recorded_ids().1.unwrap();
+    let standin = w.standin_whose_verify_dies_after_a_removal();
+    let (status, _, err) = w.cli_with_prikk(
+        "wiki keys rotate handbook --confirm handbook --retire-old --accept-unverifiable-history",
+        standin.as_os_str(),
+    );
+    assert_eq!(status, 1, "{err}");
+    let (_, out, _) = w.cli("wiki keys status handbook");
+    assert!(out.contains("UNFINISHED"), "{out}");
+    let shown = status_of_superseded(&out, &k1);
+    // The record's flag says not retired; the repository's trust list says the key is gone.
+    assert!(
+        shown.contains("not retired")
+            && shown.contains("out of the trust store")
+            && !shown.contains("still trusted")
+            && !shown.contains("to retire it"),
+        "{shown}"
+    );
+}
+
+#[test]
+fn status_that_cannot_read_the_trust_list_says_it_cannot_tell() {
+    let Some(w) = world::world("y2-unreadable") else {
+        return;
+    };
+    let k1 = w.recorded_ids().1.unwrap();
+    let (status, _, err) = w.cli("wiki keys rotate handbook --confirm handbook");
+    assert_eq!(status, 0, "{err}");
+    let real = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+        .map(|d| d.join("prikk"))
+        .find(|c| c.is_file())
+        .unwrap();
+    let standin = w.settings.data_dir.join("prikk-no-list");
+    std::fs::write(
+        &standin,
+        format!(
+            "#!/bin/sh\nif [ \"$1 $2 $3\" = \"trust maintainer list\" ]; then echo 'error: injected' >&2; exit 2; fi\nexec {} \"$@\"\n",
+            real.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&standin, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let (_, out, _) = w.cli_with_prikk("wiki keys status handbook", standin.as_os_str());
+    let shown = status_of_superseded(&out, &k1);
+    assert!(
+        shown.contains("not retired")
+            && shown.contains("cannot be told whether the key is still trusted")
+            && !shown.contains(", still trusted")
+            && !shown.contains("out of the trust store")
+            && !shown.contains("to retire it"),
+        "{shown}"
+    );
+}
+
+#[test]
+fn status_names_no_retire_command_for_the_key_whose_retirement_is_unfinished_and_says_when_it_works_for_another()
+ {
+    let Some(w) = world::world("y3-unfinished") else {
+        return;
+    };
+    let k1 = w.recorded_ids().1.unwrap();
+    let (status, _, err) = w.cli("wiki keys rotate handbook --confirm handbook");
+    assert_eq!(status, 0, "{err}");
+    let k2 = w.recorded_ids().1.unwrap();
+    // The second rotation's retirement stops at the removal: K2 stays trusted, its retirement begun.
+    let standin = w.standin_that_cannot_remove_a_key();
+    let (status, _, err) = w.cli_with_prikk(
+        "wiki keys rotate handbook --confirm handbook --retire-old --accept-unverifiable-history",
+        standin.as_os_str(),
+    );
+    assert_eq!(status, 1, "{err}");
+    let (_, out, _) = w.cli("wiki keys status handbook");
+    assert!(out.contains("UNFINISHED"), "{out}");
+    // K2 is trusted and not retired, and `retire` would refuse it: what ends it is named above, not `retire`.
+    let shown = status_of_superseded(&out, &k2);
+    assert!(
+        shown.contains("not retired")
+            && shown.contains("still trusted")
+            && !shown.contains("to retire it"),
+        "{shown}"
+    );
+    // K1 is trusted and not retired: its command is named, with the condition that makes it work.
+    let shown = status_of_superseded(&out, &k1);
+    assert!(
+        shown.contains("to retire it")
+            && shown.contains(&format!("--key {k1} "))
+            && shown.contains("once the unfinished retirement above is finished or given up"),
+        "{shown}"
+    );
 }

@@ -2929,8 +2929,11 @@ fn a_retirement_that_could_not_be_begun_after_the_rotation_pauses_nothing() {
     f.uncontrol("count-trust");
     assert!(
         matches!(&rotation.old_key, inklkunn_signer::OldKeyOutcome::RetireNotBegun(why)
-            if why.contains("not begun") && why.contains("wiki keys retire")),
-        "{rotation:?}"
+            if why.contains("not begun") && why.contains("wiki keys retire")
+                && why.contains("--accept-unverifiable-history")
+                && why.contains("keys were rotated") && why.contains("still trusted")
+                && !why.contains("nothing was changed")),
+        "the rotation happened, so the text does not say nothing was changed: {rotation:?}"
     );
     assert_eq!(f.signer.unfinished_retirement(&f.wiki).unwrap(), None);
     assert!(f.verify_ok(), "the old key is still trusted");

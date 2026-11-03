@@ -272,7 +272,7 @@ impl Stop {
                 "prikk reports a publication whose cleanup a killed seal did not finish, and publication-trust findings besides (a retired key's blocks, say): while the cleanup is pending verify fails for the ref publication too, and only a failure by publication trust alone is excused by a retirement's record, so recovery does not finish the cleanup here"
             }
             Stop::RetirementUnfinished => {
-                "a key retirement was begun and is not finished, so nothing new is sealed, and prikk's doctor may report publication-trust findings that nothing excuses; finish it with `inklkunn wiki keys finish-retirement <wiki>` or give it up with `inklkunn wiki keys abandon-retirement <wiki> --confirm <slug>` (the old key stays trusted and nothing is retired; `inklkunn wiki keys retire <wiki> --key <id> --confirm <slug>` retires it later); these commands need the operator's key authority and recovery never runs them; then recover again"
+                "a key retirement was begun and is not finished, so nothing new is sealed, and prikk's doctor may report publication-trust findings that nothing excuses; finish it with `inklkunn wiki keys finish-retirement <wiki>` or give it up with `inklkunn wiki keys abandon-retirement <wiki> --confirm <slug>` (the old key stays trusted and nothing is retired; `inklkunn wiki keys retire <wiki> --key <id> --confirm <slug> --accept-unverifiable-history` retires it later); these commands need the operator's key authority and recovery never runs them; then recover again"
             }
             Stop::UnknownLock => "a lock is held of a kind an acceptance does not leave",
             Stop::ForeignProcess => {

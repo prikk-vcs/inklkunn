@@ -4,8 +4,8 @@
 //! **Who may do this.** Whoever can run the command on the host and read the operator's secret file: the key
 //! store does not open without it, so opening it *is* the re-authentication D-8 asks for. The web
 //! administration surface (RFC 003, RFC 006) will ask for the password again instead. Rotation also needs the
-//! wiki's slug typed (`--confirm`), so the wrong wiki is not rotated by a slip, and retiring the old key needs
-//! a second flag that says what it costs.
+//! wiki's slug typed (`--confirm`), so the wrong wiki is not rotated by a slip, and retiring a key (`rotate
+//! --retire-old` and `retire` alike) needs a second flag, `--accept-unverifiable-history`, that says what it costs (Y6).
 //!
 //! **A retirement that ends without its record** (`rotate --retire-old` exits non-zero and says so) pauses every new
 //! seal of the wiki (handoff 004, W1) and has two ways out. `finish-retirement <wiki>` does whatever step remains
@@ -13,7 +13,7 @@
 //! removal made fail; with the key already removed it records from the state the retirement kept, while nothing has
 //! been written and no other key was added or removed since. `abandon-retirement <wiki> --confirm <slug>` (W3) gives
 //! the retirement up: the old key is trusted again (adopted again if it had been removed) and **nothing is retired**;
-//! `retire <wiki> --key <id> --confirm <slug>` (X1) retires it later, and any other superseded key that is still
+//! `retire <wiki> --key <id> --confirm <slug> --accept-unverifiable-history` (X1, Y6) retires it later, and any other superseded key that is still
 //! trusted, by its id. Abandon never adopts again a key whose retirement the audit trail records as finished (X2).
 //! Both need the same operator rights as the other key commands and are audited the same way. **Whichever of
 //! `rotate --retire-old`, `finish-retirement` and `abandon-retirement` ends, it ends by recording a fresh verdict**
@@ -83,6 +83,7 @@ pub(crate) enum Command {
         wiki: String,
         key: String,
         confirm: String,
+        accept_unverifiable_history: bool,
     },
     FinishRetirement {
         wiki: String,
@@ -100,7 +101,7 @@ pub(crate) struct Usage(pub String);
 pub(crate) const USAGE: &str = "usage: inklkunn [--dev-unconfined] wiki keys status <wiki>\n       \
 inklkunn [--dev-unconfined] wiki keys create <wiki>\n       \
 inklkunn [--dev-unconfined] wiki keys rotate <wiki> --confirm <slug> [--retire-old --accept-unverifiable-history]\n       \
-inklkunn [--dev-unconfined] wiki keys retire <wiki> --key <maintainer key id> --confirm <slug>\n       \
+inklkunn [--dev-unconfined] wiki keys retire <wiki> --key <maintainer key id> --confirm <slug> --accept-unverifiable-history\n       \
 inklkunn [--dev-unconfined] wiki keys finish-retirement <wiki>\n       \
 inklkunn [--dev-unconfined] wiki keys abandon-retirement <wiki> --confirm <slug>\n\
 <wiki> is the wiki's slug or id.";
@@ -125,10 +126,11 @@ pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
             })
         }
         "retire" => {
-            let (mut key, mut confirm) = (None, None);
+            let (mut key, mut confirm, mut accept) = (None, None, false);
             let mut it = flags.iter();
             while let Some(flag) = it.next() {
                 match flag.as_str() {
+                    "--accept-unverifiable-history" => accept = true,
                     "--key" => {
                         key = Some(
                             it.next()
@@ -154,7 +156,12 @@ pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
             let confirm = confirm.ok_or_else(|| {
                 usage("retiring needs --confirm <slug>: type the wiki's slug to say it is this one")
             })?;
-            Ok(Command::Retire { wiki, key, confirm })
+            Ok(Command::Retire {
+                wiki,
+                key,
+                confirm,
+                accept_unverifiable_history: accept,
+            })
         }
         "abandon-retirement" => {
             let mut confirm = None;
@@ -212,6 +219,17 @@ pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
         }
         other => Err(usage(&format!("`{other}` is not a command"))),
     }
+}
+
+/// The refusal of a command that removes a maintainer key from the repository's trust, run without
+/// `--accept-unverifiable-history`: what it costs, said once for `rotate --retire-old` and `retire` alike (Y6).
+fn refusal_without_acceptance(what: &str) -> String {
+    format!(
+        "{what} from the repository's trust: everything it sealed \
+         then fails prikk's verification (the wiki shows `Verification failed`) until prikk can keep a \
+         retired key's history verifiable. If that is what you want — a compromise — add \
+         --accept-unverifiable-history. Nothing was changed."
+    )
 }
 
 /// Nothing is ever pending: the key commands accept no change.
@@ -338,14 +356,20 @@ fn run(
             ));
         }
         if *retire_old && !accept_unverifiable_history {
-            return Err(
-                "--retire-old removes the old maintainer key from the repository's trust: everything it sealed \
-                 then fails prikk's verification (the wiki shows `Verification failed`) until prikk can keep a \
-                 retired key's history verifiable. If that is what you want — a compromise — add \
-                 --accept-unverifiable-history. Nothing was changed."
-                    .to_owned(),
-            );
+            return Err(refusal_without_acceptance(
+                "--retire-old removes the old maintainer key",
+            ));
         }
+    }
+    // `retire` has the cost of `rotate --retire-old` and the same flag (Y6): one flag for one cost.
+    if let Command::Retire {
+        accept_unverifiable_history: false,
+        ..
+    } = command
+    {
+        return Err(refusal_without_acceptance(
+            "`retire` removes the maintainer key",
+        ));
     }
 
     let sandbox = settings.sandbox().map_err(|e| e.to_string())?;
@@ -979,23 +1003,54 @@ fn report_superseded(
     if keys.is_empty() {
         return Ok(Vec::new());
     }
+    // What the repository trusts is read once, from the repository (Y2): the key record's `retired` flag says whether
+    // the retirement was recorded, not whether the key is out of the trust store (an unfinished retirement removes
+    // the key first).
+    let trusted = signer.trusted_maintainer_ids(repo);
+    let unfinished = signer.unfinished_retirement(&record.id).ok().flatten();
     for k in &keys {
+        let is_trusted = trusted
+            .as_ref()
+            .ok()
+            .map(|ids| ids.contains(&k.maintainer_key_id));
         let _ = writeln!(
             out,
-            "superseded maintainer key {} (generation {}, replaced {}{}); the newest block of {} view(s) was recorded then",
+            "superseded maintainer key {} (generation {}, replaced {}, {}{}); the newest block of {} view(s) was recorded then",
             k.maintainer_key_id,
             k.generation,
             rfc3339(k.superseded_at),
             if k.retired {
                 format!(
-                    ", retired, {} finding(s) of publication trust recorded",
+                    "retired, {} finding(s) of publication trust recorded",
                     k.findings_recorded
                 )
             } else {
-                ", still trusted".to_owned()
+                "not retired".to_owned()
+            },
+            match is_trusted {
+                Some(true) => ", still trusted",
+                Some(false) => ", out of the trust store",
+                None =>
+                    ", the repository's trust list could not be read, so it cannot be told whether the key is still trusted",
             },
             k.views_recorded
         );
+        // The command that retires it, beside every superseded key that is still trusted and not retired (Y3). The key
+        // whose retirement is unfinished is the exception: `UNFINISHED` above names what ends that one, and `retire`
+        // refuses it until then.
+        let being_retired = unfinished.as_deref() == Some(k.maintainer_key_id.as_str());
+        if is_trusted == Some(true) && !k.retired && !being_retired {
+            let _ = writeln!(
+                out,
+                "  to retire it: `{}`{}",
+                retire_command(&record.id, &k.maintainer_key_id),
+                if unfinished.is_some() {
+                    " (once the unfinished retirement above is finished or given up)"
+                } else {
+                    ""
+                }
+            );
+        }
     }
     match signer.seals_by_superseded_keys(repo) {
         Ok(late) if late.is_empty() => {

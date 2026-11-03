@@ -22,7 +22,7 @@ use std::path::Path;
 
 use inklkunn_store::WikiId;
 
-use super::retirement::{recovery_first, retire_command, unfinished_refusal};
+use super::retirement::{not_begun_text, recovery_first, unfinished_refusal};
 use super::{KeyDir, KeyIds, Meta, Signer, SignerError, ks, read_seeds};
 use crate::KeyAuthority;
 use crate::key_store::{Excused, Superseded};
@@ -73,8 +73,9 @@ pub enum OldKeyOutcome {
     RetireFailed(String),
     /// Removal was asked for and **no retirement was begun**: the keys *were* rotated, the old maintainer key is
     /// **still trusted**, and nothing is paused (the key record could not take the retirement's state, or the
-    /// repository's trust could not be read). The text is why, and names `inklkunn wiki keys retire <wiki> --key <id>`
-    /// (handoff 004, X1), which retires the key later.
+    /// repository's trust could not be read). The text is why (without a *nothing was changed*, which is not true: the
+    /// rotation happened), says the old key is still trusted and names `inklkunn wiki keys retire <wiki> --key <id>
+    /// --confirm <slug> --accept-unverifiable-history` (handoff 004, X1, Y4), which retires the key later.
     RetireNotBegun(String),
 }
 
@@ -199,9 +200,10 @@ impl Signer {
                 Some(look) => {
                     match self.retire_superseded(repo, &wiki, &before.maintainer_key_id, look) {
                         Ok(outcome) => outcome,
-                        Err(e) => OldKeyOutcome::RetireNotBegun(format!(
-                            "the retirement of the old key was not begun ({e}); retire it with `{}`",
-                            retire_command(&wiki, &before.maintainer_key_id)
+                        Err(e) => OldKeyOutcome::RetireNotBegun(not_begun_text(
+                            &wiki,
+                            &before.maintainer_key_id,
+                            &e,
                         )),
                     }
                 }

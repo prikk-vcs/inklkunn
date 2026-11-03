@@ -703,3 +703,37 @@ fn the_whole_trail_is_read_and_only_an_allowed_event_of_the_three_actions_for_th
         "another wiki"
     );
 }
+
+#[test]
+fn a_retirement_not_begun_after_a_rotation_does_not_say_nothing_was_changed() {
+    // Y4. The refusals made before the state is written close with `; nothing was changed`, which is true of `retire`
+    // and false after a rotation: the rotation happened, the old key is still trusted, and the command is named.
+    let wiki = WikiId::new();
+    for e in [
+        SignerError::Refused(format!(
+            "the key k is not trusted in the repository, so there is no retirement to begin{NOTHING_CHANGED}"
+        )),
+        SignerError::Unavailable(format!(
+            "the retirement could not be begun: the key record could not be written (x){NOTHING_CHANGED}"
+        )),
+    ] {
+        let text = not_begun_text(&wiki, "k", &e);
+        assert!(!text.contains("nothing was changed"), "{text}");
+        assert!(
+            text.contains("not begun")
+                && text.contains("keys were rotated")
+                && text.contains("old key is still trusted")
+                && text.contains(&retire_command(&wiki, "k")),
+            "{text}"
+        );
+    }
+    // A reason that does not end that way is kept whole.
+    let text = not_begun_text(
+        &wiki,
+        "k",
+        &SignerError::Unavailable("the list is gone".into()),
+    );
+    assert!(text.contains("the list is gone"), "{text}");
+    // The command carries the flag that accepts the cost (Y6).
+    assert!(retire_command(&wiki, "k").ends_with(" --accept-unverifiable-history"));
+}
