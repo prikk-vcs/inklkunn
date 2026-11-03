@@ -348,3 +348,35 @@ Q1 still lets the first write after a failed retirement close the only way out. 
   recovery stops as now. The verdict's rule and the acceptance's rule do not change. Replaces the stop
   `cleanup-beside-trust-findings` in that case (it stays for anything else).
 - **W8.** `ExpectedMessage.pinned_tip` becomes `BlockId`; the refusals of `None` go with the `Option`.
+
+## Corrections from the review of 2026-11-03, third (binding; **before 0.2.0**)
+
+W1 – W8 are **Conditionally Approved** (`.git-exclude/reviewed/004-proposals-corrections-4-review-result.md`): no strand is left
+while every key change goes through inklkunn. The way out W3 made has a cost nobody is told and nothing can undo: after an
+abandon the old key stays trusted and no command retires it. Hand back X1 – X6 as one request,
+`004-proposals-corrections-5-review-request.md`. **X1 and X2 are the condition for retiring a key on a live wiki.**
+
+- **X1 — any key that left the service can be retired, by its id.** `inklkunn wiki keys retire <wiki> --key <maintainer key id>
+  --confirm <slug>`, audited before and after (`keys-retire`), retires a **superseded** maintainer key that is still trusted in
+  the repository: the same before-`verify`, `retiring` state (that key's id and public key), removal, after-`verify` and record
+  as today, the record made on **that key's** superseded entry found by id (not `last_mut()`). It refuses the current key
+  (*rotate first*), an id the key record does not know, and a key already retired. `rotate --retire-old` becomes the rotation
+  followed by this same retirement of the key it just replaced (one code path). `finish-retirement` and `abandon-retirement` are
+  unchanged in meaning. Abandon's sentence, the refusals that name it, and `docs/KEYS.md` say what abandoning costs: *the old
+  key … is trusted again; nothing is retired; to retire it later run `inklkunn wiki keys retire <wiki> --key <id>`*. The
+  compromise playbook in `docs/KEYS.md` says to retire, and how to retire again after an abandon. Tests: K1 kept at rotation and
+  retired later by id; K1's retirement abandoned after the removal, then retired by id and recorded; the current key and an
+  unknown id refused.
+- **X2 — abandon never re-trusts a key whose retirement finished.** Before it adopts a removed key again, abandon reads the audit
+  trail; if the trail records that key's retirement as finished (the record made, by `rotate`, `retire` or
+  `finish-retirement`), it refuses and changes nothing: *the key record looks older than the audit trail; restore the key
+  directory from a later backup*. `docs/KEYS.md`'s restore paragraph says the same. A test with a key directory rolled back to an
+  unfinished state after the retirement finished.
+- **X3 — words.** Finish's refusal after a failed fresh look does not tell the operator to *retire the key afterwards*; abandon's
+  texts are true when the key was re-added out of band; the refusal after an add names its way out; errors of
+  `trust_maintainer` / `trusted_maintainers` on that path name a command or say that nothing changed, whichever is true.
+- **X4.** `seal_pause` fails closed: a key record that cannot be read refuses the seal (*unavailable*) before anything else.
+  Abandon's "still trusted" check compares the public key as well as the id.
+- **X5.** The never-released `/4` record format is refused in one sentence saying so; `/1` – `/3` and `/5` open as today. W5's
+  empty-list path goes with it.
+- **X6.** The readiness report's section 1 no longer says `EXPECTED_SKIPS` "moves by +2"; refresh it to the final tree.
