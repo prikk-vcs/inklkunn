@@ -364,5 +364,25 @@ pub trait TokenStore: Send + Sync {
     fn revoke_tokens_of(&self, account: &AccountId, at: i64) -> Result<u64>;
 }
 
+/// What a password change does to an account's records, **in one step**: the credential, the sessions and
+/// the tokens change together or not at all (corrections H5). Three separate calls could leave the password
+/// changed with the old sessions alive, or the sessions ended with the password unchanged.
+pub trait CredentialStore: Send + Sync {
+    /// Replace the local credential of `id`, end **every** session of the account, revoke every live token of
+    /// it at `at`, and add `session` (the one the person who changed the password continues with), all in one
+    /// step. Refusals, in this order, as [`AccountStore::set_local_credential`] and
+    /// [`SessionStore::add_session`] give them: [`crate::StoreError::AccountNotFound`] (also when `session` is
+    /// not the account's), [`crate::StoreError::InvalidCredential`], [`crate::StoreError::LoginTaken`], and
+    /// [`crate::StoreError::IdTaken`] when another account holds the session's hash. **Any refusal or failure
+    /// leaves the old credential, the old sessions and the old tokens exactly as they were.**
+    fn change_credential(
+        &self,
+        id: &AccountId,
+        credential: &LocalCredential,
+        session: &SessionRecord,
+        at: i64,
+    ) -> Result<()>;
+}
+
 #[cfg(test)]
 mod tests;

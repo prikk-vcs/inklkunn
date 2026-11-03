@@ -28,7 +28,7 @@ use crate::catalog::Key;
 use crate::csrf::Decided;
 use crate::pages::{Page, PageState, answer, render_form_refused};
 use crate::services::Services;
-use crate::signin::{Peer, client_of};
+use crate::signin::{Peer, client_of, with_cookie};
 use crate::time::utc_minutes;
 use crate::wiki::{blocking, generic_not_found, redirect, render_failed};
 
@@ -413,7 +413,7 @@ fn begin(
     let acting = acting(state, page, headers)?;
     // The CSRF layer decided who this request is; the page's session view must be the same account, or this is
     // not a request to act on (a token is not a session, and the two cannot disagree).
-    if decided.principal(&acting.services, headers).account_id() != Some(&acting.account) {
+    if decided.principal().account_id() != Some(&acting.account) {
         return Err(Box::new(crate::csrf::expired(headers)));
     }
     let Ok(Form(fields)) = form else {
@@ -677,8 +677,9 @@ pub(crate) async fn make_token(
 }
 
 /// `POST /-/account/password`: change one's own password (corrections G10). The current password is asked and
-/// judged first, throttled and constant-work like a sign-in; every other session of the account ends and every
-/// API token is revoked, and this browser stays signed in.
+/// judged first, throttled and constant-work like a sign-in; every session of the account ends **this one
+/// included** and every API token is revoked, and this browser continues with a new session whose cookie the
+/// answer sets (corrections H5).
 pub(crate) async fn change_password(
     State(state): State<PageState>,
     page: Page,
@@ -695,20 +696,14 @@ pub(crate) async fn change_password(
     let for_work = (
         acting.auth.clone(),
         acting.account.clone(),
-        acting.secret.clone().unwrap_or_default(),
         field(&fields, F_CURRENT).to_owned(),
         field(&fields, F_NEW).to_owned(),
     );
     let now = acting.now;
     let changed = blocking(move || {
-        for_work.0.change_own_password(
-            &for_work.1,
-            &for_work.2,
-            &for_work.3,
-            &for_work.4,
-            &client,
-            now,
-        )
+        for_work
+            .0
+            .change_own_password(&for_work.1, &for_work.2, &for_work.3, &client, now)
     })
     .await;
     let problem = |status: StatusCode, text: String| Shown {
@@ -718,7 +713,14 @@ pub(crate) async fn change_password(
     };
     let (shown, retry) = match changed {
         None => return render_failed(&page),
-        Some(Ok(())) => return redirect(&account_done(DONE_PASSWORD)),
+        // The old cookie is dead (every session ended); this browser continues with the new one, and the page it
+        // is sent to carries the new session's CSRF token in its forms (corrections H5).
+        Some(Ok(session)) => {
+            return no_store(with_cookie(
+                redirect(&account_done(DONE_PASSWORD)),
+                &session.set_cookie(now),
+            ));
+        }
         Some(Err(AccountError::Auth(AuthError::BadCredentials))) => (
             problem(
                 StatusCode::UNAUTHORIZED,

@@ -59,8 +59,9 @@ pub use derived::{
     SearchKind,
 };
 pub use identity::{
-    Account, AccountStore, ExternalIdentity, ExternalIdentityError, LocalCredential, LoginName,
-    LoginNameError, SessionRecord, SessionStore, TokenRecord, TokenStore,
+    Account, AccountStore, CredentialStore, ExternalIdentity, ExternalIdentityError,
+    LocalCredential, LoginName, LoginNameError, SessionRecord, SessionStore, TokenRecord,
+    TokenStore,
 };
 pub use inbox::{InboxEvent, InboxEventKind, InboxStore, WatchRecord, WatchTarget};
 pub use invitation::{InvitationRecord, InvitationStore, InvitationUse};

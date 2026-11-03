@@ -5,8 +5,8 @@ use rusqlite::{OptionalExtension, Row, TransactionBehavior, params};
 use super::{SqliteStore, backend};
 use crate::access::Scope;
 use crate::identity::{
-    Account, AccountStore, ExternalIdentity, LocalCredential, LoginName, SessionRecord,
-    SessionStore, TokenRecord, TokenStore, clean_label, looks_like_an_argon2id_hash,
+    Account, AccountStore, CredentialStore, ExternalIdentity, LocalCredential, LoginName,
+    SessionRecord, SessionStore, TokenRecord, TokenStore, clean_label, looks_like_an_argon2id_hash,
 };
 use crate::record::{AccountId, DisplayName, TokenId};
 use crate::{Result, StoreError};
@@ -527,6 +527,81 @@ impl TokenStore for SqliteStore {
             )
             .map(|n| n as u64)
             .map_err(backend)
+        })
+    }
+}
+
+impl CredentialStore for SqliteStore {
+    fn change_credential(
+        &self,
+        id: &AccountId,
+        credential: &LocalCredential,
+        session: &SessionRecord,
+        at: i64,
+    ) -> Result<()> {
+        self.with(|conn| {
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(backend)?;
+            if !exists(&tx, "SELECT 1 FROM accounts WHERE id = ?1", id.as_str())?
+                || session.account != *id
+            {
+                return Err(StoreError::AccountNotFound);
+            }
+            if !looks_like_an_argon2id_hash(&credential.password_hash) {
+                return Err(StoreError::InvalidCredential);
+            }
+            let owner: Option<String> = tx
+                .query_row(
+                    "SELECT id FROM accounts WHERE login = ?1",
+                    params![credential.login.as_str()],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(backend)?;
+            if owner.as_deref().is_some_and(|o| o != id.as_str()) {
+                return Err(StoreError::LoginTaken(credential.login.to_string()));
+            }
+            // From here on, a refusal drops the transaction and undoes every statement before it.
+            tx.execute(
+                "UPDATE accounts SET login = ?1, password_hash = ?2 WHERE id = ?3",
+                params![
+                    credential.login.as_str(),
+                    credential.password_hash.as_str(),
+                    id.as_str()
+                ],
+            )
+            .map_err(|e| map_account_write(e, id, Some(&credential.login)))?;
+            tx.execute(
+                "DELETE FROM sessions WHERE account_id = ?1",
+                params![id.as_str()],
+            )
+            .map_err(backend)?;
+            tx.execute(
+                "UPDATE api_tokens SET revoked_at = ?1 WHERE account_id = ?2 AND revoked_at IS NULL",
+                params![at, id.as_str()],
+            )
+            .map_err(backend)?;
+            if exists(
+                &tx,
+                "SELECT 1 FROM sessions WHERE id_hash = ?1",
+                &session.id_hash,
+            )? {
+                return Err(StoreError::IdTaken("session".to_owned()));
+            }
+            tx.execute(
+                "INSERT INTO sessions (id_hash, account_id, csrf, created_at, expires_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    session.id_hash,
+                    session.account.as_str(),
+                    session.csrf,
+                    session.created_at,
+                    session.expires_at
+                ],
+            )
+            .map_err(backend)?;
+            tx.commit().map_err(backend)
         })
     }
 }

@@ -4,8 +4,8 @@ use std::sync::PoisonError;
 
 use crate::access::RoleGrant;
 use crate::identity::{
-    Account, AccountStore, ExternalIdentity, LocalCredential, LoginName, SessionRecord,
-    SessionStore, TokenRecord, TokenStore, looks_like_an_argon2id_hash,
+    Account, AccountStore, CredentialStore, ExternalIdentity, LocalCredential, LoginName,
+    SessionRecord, SessionStore, TokenRecord, TokenStore, looks_like_an_argon2id_hash,
 };
 use crate::invitation::{InvitationRecord, InvitationStore, InvitationUse};
 use crate::record::{AccountId, DisplayName, TokenId};
@@ -319,6 +319,48 @@ impl TokenStore for MemoryStore {
             n += 1;
         }
         Ok(n)
+    }
+}
+
+impl CredentialStore for MemoryStore {
+    fn change_credential(
+        &self,
+        id: &AccountId,
+        credential: &LocalCredential,
+        session: &SessionRecord,
+        at: i64,
+    ) -> Result<()> {
+        // One lock for the whole step; every refusal is decided before anything changes, in the order the
+        // SQLite store meets them.
+        let mut d = self.identities();
+        d.account_mut(id)?;
+        if session.account != *id {
+            return Err(StoreError::AccountNotFound);
+        }
+        if !looks_like_an_argon2id_hash(&credential.password_hash) {
+            return Err(StoreError::InvalidCredential);
+        }
+        if d.login_taken(&credential.login, Some(id)) {
+            return Err(StoreError::LoginTaken(credential.login.to_string()));
+        }
+        // The account's own sessions are about to end, so only another account's can hold the hash.
+        if d.sessions
+            .iter()
+            .any(|s| s.id_hash == session.id_hash && s.account != *id)
+        {
+            return Err(StoreError::IdTaken("session".to_owned()));
+        }
+        d.account_mut(id)?.local = Some(credential.clone());
+        d.sessions.retain(|s| s.account != *id);
+        d.sessions.push(session.clone());
+        for t in d
+            .tokens
+            .iter_mut()
+            .filter(|t| t.account == *id && t.revoked_at.is_none())
+        {
+            t.revoked_at = Some(at);
+        }
+        Ok(())
     }
 }
 

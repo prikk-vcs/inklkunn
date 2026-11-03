@@ -47,8 +47,8 @@ pub(crate) mod names;
 pub(crate) mod oidc;
 
 use names::{
-    F_LOGIN, F_NAME, F_NEXT, F_PASSWORD, FORWARDED_FOR, FORWARDED_IGNORED_LINE, clear_form_cookie,
-    invite_action,
+    F_LOGIN, F_NAME, F_NEXT, F_PASSWORD, FORWARDED_FOR, FORWARDED_IGNORED_LINE,
+    FORWARDED_UNREADABLE_LINE, clear_form_cookie, invite_action,
 };
 pub(crate) use names::{
     INVITE_OIDC_ROUTE, INVITE_ROUTE, JOIN_PATH, OIDC_CALLBACK_PATH, OIDC_PATH, SIGN_IN_PATH,
@@ -85,7 +85,9 @@ impl<S: Send + Sync> FromRequestParts<S> for Peer {
 ///
 /// **Says so, once, when it sees a reverse proxy it was not told about** (corrections G1): a loopback peer that
 /// sends `X-Forwarded-For` while no proxy is trusted is the likeliest deployment, and it makes every client one
-/// address.
+/// address. **And once when a proxy it was told about sends a header it cannot read** (corrections H2): a
+/// proxy that appends ports or writes `unknown` puts every client on the proxy's own address, which is the same
+/// failure.
 pub(crate) fn client_of(
     services: &Services,
     auth: &Authenticator,
@@ -104,6 +106,9 @@ pub(crate) fn client_of(
     );
     if auth.first_ignored_forwarded_for(&client) {
         (services.log)(FORWARDED_IGNORED_LINE);
+    }
+    if auth.first_unreadable_forwarded_for(&client) {
+        (services.log)(FORWARDED_UNREADABLE_LINE);
     }
     client
 }
@@ -131,7 +136,7 @@ fn field<'a>(fields: &'a HashMap<String, String>, name: &str) -> &'a str {
 }
 
 /// Add a `Set-Cookie` to a response.
-fn with_cookie(mut response: Response, cookie: &str) -> Response {
+pub(crate) fn with_cookie(mut response: Response, cookie: &str) -> Response {
     if let Ok(value) = HeaderValue::from_str(cookie) {
         response.headers_mut().append(header::SET_COOKIE, value);
     }

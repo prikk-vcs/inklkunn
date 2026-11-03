@@ -53,6 +53,12 @@ pub(crate) const FORWARDED_FOR: &str = "x-forwarded-for";
 pub(crate) const FORWARDED_IGNORED_LINE: &str = "a request from a loopback address carried X-Forwarded-For \
      while no trusted proxy is declared (INKLKUNN_TRUSTED_PROXIES): the header is ignored and every client \
      counts as one address, so thirty failed sign-ins by anyone lock everyone out";
+/// What the server tells the operator, once, when a declared trusted proxy sends an `X-Forwarded-For` that
+/// cannot be read, or none (corrections H2).
+pub(crate) const FORWARDED_UNREADABLE_LINE: &str = "a request from a declared trusted proxy \
+     (INKLKUNN_TRUSTED_PROXIES) carried no X-Forwarded-For that could be read (it must list addresses only, \
+     no ports, no `unknown`): the proxy's own address stands for the client, so every client behind it counts \
+     as one address and thirty failed sign-ins by anyone lock everyone out";
 /// What a browser says a request is (`Sec-Fetch-Mode`, `Sec-Fetch-Dest`), and the values of a person's own
 /// navigation to a page.
 pub(crate) const SEC_FETCH_MODE: &str = "sec-fetch-mode";

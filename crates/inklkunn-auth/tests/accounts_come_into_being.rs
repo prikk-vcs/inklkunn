@@ -313,6 +313,48 @@ fn redeeming_invitations_is_throttled_per_address_like_joining() {
 }
 
 #[test]
+fn a_redemption_that_succeeds_gives_its_join_budget_back_and_a_refused_one_does_not() {
+    // H4: a workshop behind one address invites more people than the budget (ten an hour per address); each
+    // holds a one-time secret, and every one of them gets in.
+    let w = world();
+    let workshop = ip("198.51.100.30");
+    for n in 0..15 {
+        let invitation = w.auth.invite(None, DEFAULT_LIFETIME_SECS, NOW).unwrap();
+        assert!(
+            w.auth
+                .redeem_with_password(
+                    invitation.secret.as_str(),
+                    &format!("guest{n}"),
+                    "Guest",
+                    LONG,
+                    &workshop,
+                    NOW + n,
+                )
+                .is_ok(),
+            "guest {n} was kept out"
+        );
+    }
+    // The refusals still spend it: ten taken names and the address is locked, as before.
+    let invitation = w.auth.invite(None, DEFAULT_LIFETIME_SECS, NOW).unwrap();
+    let link = invitation.secret.as_str();
+    for i in 0..10 {
+        assert_eq!(
+            w.auth
+                .redeem_with_password(link, "guest0", "Imposter", LONG, &workshop, NOW + 20 + i)
+                .err(),
+            Some(AccountError::LoginTaken),
+            "{i}"
+        );
+    }
+    assert!(matches!(
+        w.auth
+            .redeem_with_password(link, "guest99", "Late", LONG, &workshop, NOW + 40)
+            .err(),
+        Some(AccountError::Auth(AuthError::Locked { .. }))
+    ));
+}
+
+#[test]
 fn an_invitation_with_no_role_makes_an_account_with_none() {
     let w = world();
     let garden = wiki(&w);

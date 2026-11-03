@@ -30,8 +30,8 @@ use std::time::Duration;
 
 use inklkunn_core::{IdentityAuthority, Principal};
 use inklkunn_store::{
-    Account, AccountId, AccountStore, AuditEvent, AuditOutcome, AuditSink, DisplayName,
-    DisplayNameError, ExternalIdentity, InvitationStore, LocalCredential, LoginName,
+    Account, AccountId, AccountStore, AuditEvent, AuditOutcome, AuditSink, CredentialStore,
+    DisplayName, DisplayNameError, ExternalIdentity, InvitationStore, LocalCredential, LoginName,
     LoginNameError, Role, SessionStore, StoreError, TokenId, TokenStore, WikiId,
 };
 
@@ -300,9 +300,13 @@ pub struct Authenticator {
     by_join: Throttle,
     /// Whether the operator has been told that a loopback proxy's `X-Forwarded-For` is being ignored.
     forwarded_noted: AtomicBool,
+    /// Whether the operator has been told that a declared proxy's `X-Forwarded-For` cannot be read.
+    unreadable_noted: AtomicBool,
     join: JoinPolicy,
     /// The store the single-step redemption goes through (the same store the other records are in).
     redemption: Arc<dyn InvitationStore>,
+    /// The store the password change goes through: credential, sessions and tokens in one step.
+    credentials: Arc<dyn CredentialStore>,
     proxies: ProxyPolicy,
     oidc: Option<OidcProvider>,
     audit: Option<Arc<dyn AuditSink>>,
@@ -332,7 +336,7 @@ impl Authenticator {
         authority: IdentityAuthority,
     ) -> Result<Self, AuthError>
     where
-        S: AccountStore + SessionStore + TokenStore + InvitationStore + 'static,
+        S: AccountStore + SessionStore + TokenStore + InvitationStore + CredentialStore + 'static,
     {
         Self::build(store, config, Arc::new(Argon2idHasher::new()), authority)
     }
@@ -346,7 +350,7 @@ impl Authenticator {
         hasher: Arc<dyn PasswordHasher>,
     ) -> Result<Self, AuthError>
     where
-        S: AccountStore + SessionStore + TokenStore + InvitationStore + 'static,
+        S: AccountStore + SessionStore + TokenStore + InvitationStore + CredentialStore + 'static,
     {
         Self::build(store, config, hasher, IdentityAuthority::for_tests())
     }
@@ -358,7 +362,7 @@ impl Authenticator {
         authority: IdentityAuthority,
     ) -> Result<Self, AuthError>
     where
-        S: AccountStore + SessionStore + TokenStore + InvitationStore + 'static,
+        S: AccountStore + SessionStore + TokenStore + InvitationStore + CredentialStore + 'static,
     {
         if !SESSION_TTL_RANGE.contains(&config.session_ttl_secs) {
             return Err(AuthError::Misconfigured(
@@ -376,7 +380,8 @@ impl Authenticator {
             sessions: Sessions::new(store.clone(), config.session_ttl_secs),
             tokens: Tokens::new(store.clone()),
             invitations: Invitations::new(store.clone()),
-            redemption: store,
+            redemption: store.clone(),
+            credentials: store,
             hasher,
             gate: WorkGate::new(config.hash_permits, config.gate_wait),
             dummy_hash,
@@ -385,6 +390,7 @@ impl Authenticator {
             by_oidc_start: Throttle::new(config.oidc_start_throttle),
             by_join: Throttle::new(config.join_throttle),
             forwarded_noted: AtomicBool::new(false),
+            unreadable_noted: AtomicBool::new(false),
             join: config.join,
             proxies: config.proxies,
             oidc: None,
@@ -424,6 +430,14 @@ impl Authenticator {
     /// caller then tells the operator, one line, that every client counts as one address. Never `true` again.
     pub fn first_ignored_forwarded_for(&self, client: &ClientAddress) -> bool {
         client.forwarded_ignored() && !self.forwarded_noted.swap(true, Ordering::Relaxed)
+    }
+
+    /// `true` **once** per authenticator, for the first client address whose declared trusted proxy sent an
+    /// `X-Forwarded-For` that could not be read ([`ClientAddress::fell_back`]: a proxy that appends ports, writes
+    /// `unknown`, or sends none): the caller then tells the operator, one line, that every client behind that
+    /// proxy counts as one address. Never `true` again (corrections H2).
+    pub fn first_unreadable_forwarded_for(&self, client: &ClientAddress) -> bool {
+        client.fell_back() && !self.unreadable_noted.swap(true, Ordering::Relaxed)
     }
 
     fn note_lock(&self, what: &str, until: i64, now: i64) {
@@ -498,10 +512,12 @@ impl Authenticator {
         client: &ClientAddress,
         now: i64,
     ) -> Result<Account, AuthError> {
-        let key = match &account.local {
-            Some(local) => login_key(local.login.as_str()),
-            None => format!("account:{}", account.id.as_str()),
+        // An account with no password has none to ask for (both callers have looked): nothing is counted or
+        // verified, the answer is the one every wrong password gets.
+        let Some(local) = &account.local else {
+            return Err(AuthError::BadCredentials);
         };
+        let key = login_key(local.login.as_str());
         self.verify_against(&key, password, client, now, || Ok(Some(account)))
     }
 
@@ -968,8 +984,10 @@ impl Authenticator {
     /// invitation is checked **before** anything is hashed (a stranger's bad link costs a lookup, not a
     /// verification), and a refusal (a taken name, a weak password) spends nothing of the link: the person tries
     /// again with the same link. **Counted per client address like joining** (corrections G3): one link would
-    /// otherwise allow unbounded probing of which sign-in names exist, and keep the hash gate busy. A taken
-    /// name is told before anything is hashed; the store checks again in the step that spends the link.
+    /// otherwise allow unbounded probing of which sign-in names exist, and keep the hash gate busy. **Given
+    /// back when the link is spent** (H4): a redemption that succeeds is no probe, so people invited together
+    /// from behind one address all get in; a refused one stays counted. A taken name is told before anything
+    /// is hashed; the store checks again in the step that spends the link.
     ///
     /// **Blocking** (it hashes).
     pub fn redeem_with_password(
@@ -995,6 +1013,9 @@ impl Authenticator {
         }
         let account = self.new_local_account(login_name, display_name, password, now)?;
         self.redemption.redeem_invitation(&hash, &account, now)?;
+        // The link was spent and the account made: that is no probe, and ten people invited together who sit
+        // behind one address must all get in. A refusal above stays counted (corrections H4).
+        self.by_join.refund(client.as_key());
         Ok(self.start(&account, now)?)
     }
 
@@ -1153,22 +1174,23 @@ impl Authenticator {
         }
     }
 
-    /// Change one's **own** password from a session (corrections G10): the current password must authenticate
-    /// (throttled and constant-work like a sign-in, and checked **before** the new one is looked at), the new one
-    /// must be acceptable. Every session of the account **but the one making the change** ends, and every API
-    /// token is revoked (a password changed because something leaked must not leave the thing that leaked
-    /// working). `session_secret` is the session cookie of the asking request.
+    /// Change one's **own** password from a session (corrections G10, H5): the current password must
+    /// authenticate (throttled and constant-work like a sign-in, and checked **before** the new one is looked
+    /// at), the new one must be acceptable. **Every session of the account ends, this one included, and a new
+    /// one starts**, which the caller sets as the cookie (a leaked copy of the old cookie dies with the change;
+    /// a session id never survives a credential change), and every API token is revoked (a password changed
+    /// because something leaked must not leave the thing that leaked working). The credential, the sessions and
+    /// the tokens change in **one** store step: an error means that nothing changed.
     ///
     /// **Blocking.**
     pub fn change_own_password(
         &self,
         account: &AccountId,
-        session_secret: &str,
         old_password: &str,
         new_password: &str,
         client: &ClientAddress,
         now: i64,
-    ) -> Result<(), AccountError> {
+    ) -> Result<NewSession, AccountError> {
         let found = self
             .accounts
             .account(account)?
@@ -1179,16 +1201,17 @@ impl Authenticator {
         };
         self.verify_account(found, old_password, client, now)?;
         let password_hash = self.hash_new_password(new_password)?;
-        self.accounts.set_local_credential(
+        let (record, session) = self.sessions.fresh(account, now)?;
+        self.credentials.change_credential(
             account,
-            Some(&LocalCredential {
+            &LocalCredential {
                 login,
                 password_hash,
-            }),
+            },
+            &record,
+            now,
         )?;
-        self.sessions.end_all_but(account, session_secret, now)?;
-        self.tokens.revoke_all(account, now)?;
-        Ok(())
+        Ok(session)
     }
 
     /// An administrator's reset: give an account a sign-in name and a new password **without proving the old

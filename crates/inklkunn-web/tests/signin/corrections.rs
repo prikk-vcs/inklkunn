@@ -73,6 +73,40 @@ async fn a_declared_proxy_is_not_said_anything_about() {
     );
 }
 
+/// H2: a proxy the operator declared whose header cannot be read puts every client on the proxy's address, the
+/// same failure; the server says so, once, and says nothing while the header is readable.
+#[tokio::test]
+async fn a_declared_proxy_whose_header_cannot_be_read_is_said_once_at_run_time() {
+    let r = real(AuthConfig {
+        proxies: ProxyPolicy::trusting(&["127.0.0.1"]).unwrap(),
+        ..config()
+    });
+    let said = || {
+        r.w.logged()
+            .into_iter()
+            .filter(|l| l.contains("X-Forwarded-For"))
+            .collect::<Vec<_>>()
+    };
+    // A readable header from the proxy, and a request from a peer that is not the proxy: nothing to say.
+    failed_sign_in(&r, "127.0.0.1", Some("198.51.100.1")).await;
+    failed_sign_in(&r, "203.0.113.5", Some("unknown")).await;
+    assert!(said().is_empty(), "{:?}", said());
+    // The first unreadable one, then any number more (ports, `unknown`, none at all).
+    failed_sign_in(&r, "127.0.0.1", Some("unknown")).await;
+    failed_sign_in(&r, "127.0.0.1", Some("198.51.100.1:5555")).await;
+    failed_sign_in(&r, "127.0.0.1", None).await;
+    let lines = said();
+    assert_eq!(lines.len(), 1, "once: {lines:?}");
+    let line = lines.first().unwrap();
+    assert!(
+        line.contains("INKLKUNN_TRUSTED_PROXIES")
+            && line.contains("every client behind it counts as one address"),
+        "{line}"
+    );
+    // The loopback line of G1 is another matter and was not said: a proxy is declared.
+    assert!(!line.contains("no trusted proxy is declared"), "{line}");
+}
+
 // ------------------------------------------------------------------------------------ G2
 
 /// The start of a provider sign-in is a plain GET that a page of another site can trigger. A browser that says
@@ -578,9 +612,10 @@ async fn an_account_with_no_password_makes_a_token_only_within_ten_minutes_of_si
     assert!(r.auth.tokens(&account).unwrap().is_empty());
 }
 
-/// G10: the account page changes the password.
+/// G10, H5: the account page changes the password.
 #[tokio::test]
-async fn the_account_page_changes_the_password_and_ends_the_other_sessions_and_the_tokens() {
+async fn the_account_page_changes_the_password_ends_every_session_and_every_token_and_sets_a_new_cookie()
+ {
     let r = real(config());
     let alice = r.person("alice", "Alice", Some(Role::Contributor));
     let here = r.sign_in("alice").await;
@@ -617,22 +652,36 @@ async fn the_account_page_changes_the_password_and_ends_the_other_sessions_and_t
     .await;
     assert_eq!(a.status, 303, "{}", a.body());
     assert_eq!(a.header("location"), Some("/-/account?done=password"));
-    // This browser is still signed in and is told; the other is out; the token is revoked.
-    let after = r
-        .get("/-/account?done=password", &[("cookie", &here.cookie)])
-        .await;
-    assert_eq!(after.status, 200);
+    // The answer sets a new `__Host-` session cookie: this browser continues with it.
+    let set = a.header("set-cookie").unwrap_or_default().to_owned();
     assert!(
-        after.body().contains("Your password was changed."),
-        "{}",
-        after.body()
+        set.starts_with("__Host-inklkunn-session=")
+            && set.contains("Secure")
+            && set.contains("HttpOnly")
+            && set.contains("SameSite=Strict")
+            && set.contains("Path=/"),
+        "{set}"
     );
-    assert_eq!(
-        r.get("/-/account", &[("cookie", &there.cookie)])
-            .await
-            .status,
-        303
+    let fresh = cookie_value(&a, "__Host-inklkunn-session").expect("a new session cookie");
+    let fresh_cookie = format!("__Host-inklkunn-session={fresh}");
+    assert_ne!(
+        fresh_cookie, here.cookie,
+        "a session id never survives the change"
     );
+    assert!(
+        a.header("cache-control")
+            .is_some_and(|c| c.contains("no-store")),
+        "{:?}",
+        a.header("cache-control")
+    );
+    // The old cookie, the one that made the change, is over, as is the other; so the token.
+    for old in [&here, &there] {
+        assert_eq!(
+            r.get("/-/account", &[("cookie", &old.cookie)]).await.status,
+            303,
+            "an ended session is signed out"
+        );
+    }
     let by_token = r
         .get(
             "/-/inbox",
@@ -643,6 +692,34 @@ async fn the_account_page_changes_the_password_and_ends_the_other_sessions_and_t
         )
         .await;
     assert_ne!(by_token.status, 200, "the token no longer works");
+    // The new cookie is signed in, is told, and the forms of the following page carry the new CSRF token.
+    let after = r
+        .get("/-/account?done=password", &[("cookie", &fresh_cookie)])
+        .await;
+    assert_eq!(after.status, 200);
+    assert!(
+        after.body().contains("Your password was changed."),
+        "{}",
+        after.body()
+    );
+    let csrf = csrf_field(&after.body()).expect("the new session's token is in the page");
+    assert_ne!(
+        csrf, here.csrf,
+        "the old session's token is not carried over"
+    );
+    let continued = Session {
+        cookie: fresh_cookie.clone(),
+        csrf,
+    };
+    // A write with the new session and its token is accepted; with the old token it is not.
+    let name = post_form(&r, &continued, "/-/account/name", &[("name", "Alice B.")]).await;
+    assert_eq!(name.status, 303, "{}", name.body());
+    let stale = Session {
+        cookie: fresh_cookie,
+        csrf: here.csrf.clone(),
+    };
+    let refused = post_form(&r, &stale, "/-/account/name", &[("name", "Mallory")]).await;
+    assert_eq!(refused.status, 403, "{}", refused.body());
     // The new password signs in and the old does not.
     let page = r.get("/-/sign-in", &[]).await;
     let csrf = cookie_value(&page, "__Host-inklkunn-csrf").unwrap();

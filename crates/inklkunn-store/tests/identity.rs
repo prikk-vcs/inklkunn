@@ -5,9 +5,9 @@
 use std::path::PathBuf;
 
 use inklkunn_store::{
-    Account, AccountId, AccountStore, DisplayName, ExternalIdentity, LocalCredential, LoginName,
-    MemoryStore, Scope, SessionRecord, SessionStore, SqliteStore, StoreError, TokenId, TokenRecord,
-    TokenStore,
+    Account, AccountId, AccountStore, CredentialStore, DisplayName, ExternalIdentity,
+    LocalCredential, LoginName, MemoryStore, Scope, SessionRecord, SessionStore, SqliteStore,
+    StoreError, TokenId, TokenRecord, TokenStore,
 };
 
 fn login(s: &str) -> LoginName {
@@ -723,4 +723,127 @@ fn account_with_identity_invariants(store: &(impl AccountStore + SessionStore)) 
 fn an_account_with_its_identity_is_one_step_on_both_stores() {
     account_with_identity_invariants(&MemoryStore::new());
     account_with_identity_invariants(&SqliteStore::open_in_memory().expect("store"));
+}
+
+/// A password change is one step (corrections H5): the credential, every session and every token change
+/// together, and any refusal leaves all three as they were.
+fn credential_change_invariants(
+    store: &(impl AccountStore + SessionStore + TokenStore + CredentialStore),
+) {
+    let alice = account("Alice", Some("alice"));
+    let bob = account("Bob", Some("bobby"));
+    store.add_account(&alice).expect("create");
+    store.add_account(&bob).expect("create");
+    store.add_session(&session("a1", &alice.id, 9_000)).unwrap();
+    store.add_session(&session("a2", &alice.id, 9_000)).unwrap();
+    store.add_session(&session("b1", &bob.id, 9_000)).unwrap();
+    store
+        .add_token(&token("tok-a", &alice.id, Scope::Read))
+        .unwrap();
+    store
+        .add_token(&token("tok-b", &bob.id, Scope::Read))
+        .unwrap();
+    let new = LocalCredential {
+        login: login("alice"),
+        password_hash: phc("the-new-one"),
+    };
+    let alices_sessions = || -> Vec<String> {
+        store
+            .sessions_of(&alice.id, 0)
+            .unwrap()
+            .into_iter()
+            .map(|s| s.id_hash)
+            .collect()
+    };
+
+    // Every refusal leaves the old password, the old sessions and the old tokens (and Bob's, always). The
+    // first is met only after the credential, the sessions and the tokens were written (SQLite undoes them).
+    let clash = session("b1", &alice.id, 9_000);
+    let strangers = session("c1", &bob.id, 9_000);
+    let bad_hash = LocalCredential {
+        login: login("alice"),
+        password_hash: "plaintext".into(),
+    };
+    let taken_name = LocalCredential {
+        login: login("bobby"),
+        password_hash: phc("the-new-one"),
+    };
+    let fresh = session("a3", &alice.id, 9_000);
+    let nobody = AccountId::new();
+    let attempts: [(&AccountId, &LocalCredential, &SessionRecord, StoreError); 5] = [
+        (
+            &alice.id,
+            &new,
+            &clash,
+            StoreError::IdTaken("session".into()),
+        ),
+        (&alice.id, &new, &strangers, StoreError::AccountNotFound),
+        (&alice.id, &bad_hash, &fresh, StoreError::InvalidCredential),
+        (
+            &alice.id,
+            &taken_name,
+            &fresh,
+            StoreError::LoginTaken("bobby".into()),
+        ),
+        (&nobody, &new, &fresh, StoreError::AccountNotFound),
+    ];
+    for (id, credential, new_session, refusal) in attempts {
+        assert_eq!(
+            store
+                .change_credential(id, credential, new_session, 700)
+                .err(),
+            Some(refusal.clone()),
+            "{refusal:?}"
+        );
+        assert_eq!(
+            store.account(&alice.id).unwrap().unwrap().local,
+            alice.local,
+            "{refusal:?}: the old password stays"
+        );
+        assert_eq!(alices_sessions(), ["a2", "a1"], "{refusal:?}");
+        let tokens = store.tokens_of(&alice.id).unwrap();
+        assert_eq!(tokens.len(), 1, "{refusal:?}");
+        assert_eq!(
+            tokens.first().unwrap().revoked_at,
+            None,
+            "{refusal:?}: the token stays"
+        );
+        assert_eq!(store.sessions_of(&bob.id, 0).unwrap().len(), 1);
+    }
+
+    // Done: the new password, one session (the new one), every token revoked, and nobody else touched.
+    store
+        .change_credential(&alice.id, &new, &fresh, 700)
+        .expect("changed");
+    assert_eq!(store.account(&alice.id).unwrap().unwrap().local, Some(new));
+    assert_eq!(alices_sessions(), ["a3"]);
+    assert_eq!(
+        store.session("a3", 0).unwrap().map(|s| s.csrf),
+        Some("csrf-a3".to_owned())
+    );
+    assert_eq!(
+        store
+            .tokens_of(&alice.id)
+            .unwrap()
+            .first()
+            .unwrap()
+            .revoked_at,
+        Some(700)
+    );
+    assert_eq!(store.sessions_of(&bob.id, 0).unwrap().len(), 1);
+    assert_eq!(
+        store
+            .tokens_of(&bob.id)
+            .unwrap()
+            .first()
+            .unwrap()
+            .revoked_at,
+        None
+    );
+}
+
+#[test]
+fn a_password_change_is_one_step_on_both_stores() {
+    credential_change_invariants(&MemoryStore::new());
+    credential_change_invariants(&SqliteStore::open_in_memory().expect("store"));
 }

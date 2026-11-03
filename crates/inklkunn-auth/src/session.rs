@@ -212,26 +212,41 @@ impl Sessions {
     /// (no fixation). Also removes the sessions that have ended, and, when the account would hold more than
     /// [`MAX_LIVE_PER_ACCOUNT`], the oldest ones: the sign-in always succeeds.
     pub(crate) fn start(&self, account: &AccountId, now: i64) -> Result<NewSession, AuthError> {
+        let (record, session) = self.fresh(account, now)?;
+        self.store.purge_expired_sessions(now)?;
+        self.store.add_session(&record)?;
+        // Added first, trimmed after: the new session is the newest, so it is never the one that goes, and a
+        // crash in between leaves one session too many until the next sign-in, never one too few.
+        self.store
+            .keep_newest_sessions(account, MAX_LIVE_PER_ACCOUNT, now)?;
+        Ok(session)
+    }
+
+    /// A session for `account` that is not stored yet: its record and what the cookie and the forms hold. A
+    /// new secret every time. (A password change stores it in the same step as the new credential.)
+    pub(crate) fn fresh(
+        &self,
+        account: &AccountId,
+        now: i64,
+    ) -> Result<(SessionRecord, NewSession), AuthError> {
         let secret = SessionSecret(random::token()?);
         let csrf = CsrfToken::mint()?;
         let expires_at = now.saturating_add(self.ttl_secs);
-        self.store.purge_expired_sessions(now)?;
-        self.store.add_session(&SessionRecord {
+        let record = SessionRecord {
             id_hash: stored_form(&secret.0),
             account: account.clone(),
             csrf: csrf.0.clone(),
             created_at: now,
             expires_at,
-        })?;
-        // Added first, trimmed after: the new session is the newest, so it is never the one that goes, and a
-        // crash in between leaves one session too many until the next sign-in, never one too few.
-        self.store
-            .keep_newest_sessions(account, MAX_LIVE_PER_ACCOUNT, now)?;
-        Ok(NewSession {
-            secret,
-            csrf,
-            expires_at,
-        })
+        };
+        Ok((
+            record,
+            NewSession {
+                secret,
+                csrf,
+                expires_at,
+            },
+        ))
     }
 
     /// The session this secret names, unless it is unknown or over.
@@ -317,26 +332,6 @@ impl Sessions {
             .into_iter()
             .find(|s| s.current)
             .map(|s| s.created_at))
-    }
-
-    /// End every session of the account but the one `keep_secret` names (a password change made from a session
-    /// that stays); how many ended. Sessions that are over already are not touched.
-    pub(crate) fn end_all_but(
-        &self,
-        account: &AccountId,
-        keep_secret: &str,
-        now: i64,
-    ) -> Result<u64, AuthError> {
-        let keep = looks_like_a_secret(keep_secret).then(|| stored_form(keep_secret));
-        let mut ended = 0;
-        for session in self.store.sessions_of(account, now)? {
-            if keep.as_deref() != Some(session.id_hash.as_str())
-                && self.store.end_session(&session.id_hash)?
-            {
-                ended += 1;
-            }
-        }
-        Ok(ended)
     }
 
     /// End every session of an account (a new password, a disabling); how many there were.
