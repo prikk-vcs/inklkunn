@@ -942,8 +942,8 @@ fn the_plan_is_pinned_to_the_tip_and_a_plan_without_one_is_not_run() {
     run_import(&acts, &rig.wiki, &plan).unwrap();
     let during = accept.pending_during.lock().unwrap().clone().unwrap();
     assert_eq!(
-        during.pinned_tip.as_ref().map(BlockId::as_str),
-        Some(TIP),
+        during.pinned_tip.as_str(),
+        TIP,
         "the signer is told the tip the plan was made against"
     );
     *accept.seen.lock().unwrap() = None;

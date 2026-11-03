@@ -150,7 +150,7 @@ fn world(tag: &str) -> Option<World> {
             accepted_by: Actor::System(SystemLabel::inklkunn()),
             base: None,
             imported_from: None,
-            pinned_tip: None,
+            pinned_tip: BlockId::new(&sealed.block_id).unwrap(),
         },
     });
     let storage = PrikkCli::open(
@@ -205,23 +205,21 @@ impl World {
             base: message.base().cloned(),
             imported_from: None,
             // The block the change is made on: the view's tip now (the base is enforced for every acceptance).
-            pinned_tip: Some(
-                BlockId::new(
-                    &self
-                        .storage
-                        .history(
-                            &self.repo,
-                            &inklkunn_prikk::Point::View("heads/main".into()),
-                            Some(1),
-                        )
-                        .unwrap()
-                        .blocks
-                        .first()
-                        .unwrap()
-                        .block_id,
-                )
-                .unwrap(),
-            ),
+            pinned_tip: BlockId::new(
+                &self
+                    .storage
+                    .history(
+                        &self.repo,
+                        &inklkunn_prikk::Point::View("heads/main".into()),
+                        Some(1),
+                    )
+                    .unwrap()
+                    .blocks
+                    .first()
+                    .unwrap()
+                    .block_id,
+            )
+            .unwrap(),
         };
         let token = AcceptanceToken::new(format!("acceptance-{proposal}"));
         self.books

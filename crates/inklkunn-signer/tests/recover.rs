@@ -240,7 +240,7 @@ impl Fixture {
             accepted_by: self.acceptor.clone(),
             base: Some(base),
             imported_from: None,
-            pinned_tip: Some(BlockId::new(&self.first_block).unwrap()),
+            pinned_tip: BlockId::new(&self.first_block).unwrap(),
             change_digest: change.digest(),
         };
         self.ledger
@@ -959,7 +959,7 @@ fn a_publication_that_is_not_the_recorded_change_is_not_finished() {
     refused(try_it(&liar_token), "files");
     // The published message and files, but the change was made on another block than the one it sits on.
     let mut elsewhere = ledger_entry(&p.token);
-    elsewhere.pinned_tip = Some(BlockId::new(&"a".repeat(64)).unwrap());
+    elsewhere.pinned_tip = BlockId::new(&"a".repeat(64)).unwrap();
     let elsewhere_token = AcceptanceToken::new("acceptance-elsewhere");
     f.ledger
         .pending
@@ -1169,64 +1169,4 @@ fn the_publication_findings_a_retirement_recorded_are_not_something_else_for_the
     assert!(!f.cleanup_is_pending());
     assert_eq!(f.blocks(), blocks);
     assert_eq!(f.queue_count(), 0);
-}
-
-#[test]
-fn a_record_that_names_no_base_is_not_sealed_from_by_any_operation() {
-    // Q7: the base is every record's. A record without one cannot be told from "any base will do", so the signer
-    // refuses it: in recovery's `seal` of a queued patch, and in the finishing of a publication.
-    let Some(f) = fixture("no-base") else {
-        return;
-    };
-    let unpin = |p: &Prepared| {
-        f.ledger
-            .pending
-            .lock()
-            .unwrap()
-            .get_mut(p.token.as_str())
-            .unwrap()
-            .pinned_tip = None;
-    };
-    let pin = |p: &Prepared| {
-        f.ledger
-            .pending
-            .lock()
-            .unwrap()
-            .get_mut(p.token.as_str())
-            .unwrap()
-            .pinned_tip = Some(BlockId::new(&f.first_block).unwrap());
-    };
-    // A queued patch.
-    let q = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
-    f.queue(&q);
-    unpin(&q);
-    let act = f.act(vec![f.seal_op(&q)]);
-    let r = f.leased(|| f.signer.seal_queued(&f.wiki, MAIN, &act, &q.token));
-    assert!(
-        matches!(&r, Err(RecoverError::DoesNotMatch(why)) if why.contains("names no block")),
-        "{r:?}"
-    );
-    assert_eq!(f.queue_count(), 1, "nothing was sealed");
-    pin(&q);
-    f.leased(|| f.signer.seal_queued(&f.wiki, MAIN, &act, &q.token))
-        .expect("with its base the record seals");
-    // A publication a killed seal left.
-    let Some(g) = fixture("no-base-publish") else {
-        return;
-    };
-    let p = g.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
-    g.publish_and_leave_the_queue(&p);
-    g.ledger
-        .pending
-        .lock()
-        .unwrap()
-        .get_mut(p.token.as_str())
-        .unwrap()
-        .pinned_tip = None;
-    let r = g.finish_publication(&p);
-    assert!(
-        matches!(&r, Err(RecoverError::DoesNotMatch(why)) if why.contains("names no block")),
-        "{r:?}"
-    );
-    assert!(g.cleanup_is_pending());
 }

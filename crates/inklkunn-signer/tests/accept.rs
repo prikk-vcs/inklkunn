@@ -346,7 +346,7 @@ impl Fixture {
             base: Some(base),
             imported_from: None,
             // The record names the block the change is made on: the tip of the view now (Q7).
-            pinned_tip: Some(BlockId::new(&self.real_tip(view)).unwrap()),
+            pinned_tip: BlockId::new(&self.real_tip(view)).unwrap(),
             change_digest: change.digest(),
         };
         self.ledger.set(&token, expected.clone());
@@ -1761,7 +1761,7 @@ fn child_accepts_and_blocks_in_seal() {
             accepted_by: actor(&s(field(e, "acceptor_id")), &s(field(e, "acceptor_name"))),
             base: BlockId::new(&s(field(e, "base"))).ok(),
             imported_from: None,
-            pinned_tip: BlockId::new(&s(field(e, "base"))).ok(),
+            pinned_tip: BlockId::new(&s(field(e, "base"))).expect("a base"),
         },
     );
     let mut cfg = SignerConfig::new(
@@ -2773,33 +2773,4 @@ fn writes_while_a_retirement_is_unfinished_are_sealed_but_not_confirmed_and_name
             .unwrap()
             .is_some()
     );
-}
-
-#[test]
-fn an_acceptance_whose_record_names_no_base_is_refused_before_anything_is_written() {
-    // Q7: the base is enforced for every acceptance, not only an import's. A record that names none is refused by
-    // the signer, with the view and the worktree as they were; the same change with its base is accepted.
-    let Some(f) = fixture("no-base", Sandbox::Unconfined, false) else {
-        println!("skipping: prikk not on PATH");
-        return;
-    };
-    let before = f.history_len(MAIN);
-    let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
-    let mut expected = p.expected.clone();
-    expected.pinned_tip = None;
-    f.ledger.set(&p.token, expected);
-    let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
-    assert!(
-        matches!(&r, Err(AcceptError::Refused(why)) if why.contains("names no block") && why.contains("nothing was written")),
-        "{r:?}"
-    );
-    assert_eq!(f.history_len(MAIN), before);
-    assert_eq!(f.queue_count(), 0);
-    assert!(f.worktree_clean());
-    assert!(f.seed_dirs().is_empty());
-    f.ledger.set(&p.token, p.expected.clone());
-    f.signer
-        .accept(&f.wiki, MAIN, &p.token, &p.change)
-        .expect("with its base it is accepted");
-    assert_eq!(f.history_len(MAIN), before + 1);
 }

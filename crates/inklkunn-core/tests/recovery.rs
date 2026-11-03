@@ -573,7 +573,7 @@ impl World {
                 accepted_by: b,
                 base: Some(base.clone()),
                 imported_from: None,
-                pinned_tip: Some(base),
+                pinned_tip: base,
                 change_digest: change.digest(),
             },
         );

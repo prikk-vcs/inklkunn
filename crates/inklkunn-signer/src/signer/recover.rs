@@ -213,10 +213,8 @@ impl Recover for Signer {
         if !expected.matches(&message) {
             return mismatch("the queued patch's message is not the one the record describes");
         }
-        // The base is enforced for every acceptance (Q7): a record that names none cannot be sealed from.
-        let Some(pinned) = &expected.pinned_tip else {
-            return mismatch("the record names no block the change was made on");
-        };
+        // The base is enforced for every acceptance (Q7, W8).
+        let pinned = &expected.pinned_tip;
         let tip = w.tip(&repo, view)?.map(|b| b.block_id);
         if tip.as_deref() != Some(pinned.as_str()) {
             return mismatch("the view is not at the block the change was made on");
@@ -306,10 +304,8 @@ impl Recover for Signer {
         if !expected.matches(&message) {
             return mismatch("the published patch's message is not the one the record describes");
         }
-        // ... and its parent is the block the change was made on, for every acceptance (Q7).
-        let Some(pinned) = &expected.pinned_tip else {
-            return mismatch("the record names no block the change was made on");
-        };
+        // ... and its parent is the block the change was made on, for every acceptance (Q7, W8).
+        let pinned = &expected.pinned_tip;
         let blocks = w.view_blocks(&repo, view, 2)?;
         if blocks.get(1).map(String::as_str) != Some(pinned.as_str()) {
             return mismatch(

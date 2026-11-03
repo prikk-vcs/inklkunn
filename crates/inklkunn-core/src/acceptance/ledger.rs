@@ -79,7 +79,7 @@ pub fn facts_of(
         accepted_by: parsed.accepted_by().clone(),
         base: parsed.base().cloned(),
         imported_from: parsed.imported_from().cloned(),
-        pinned_tip: Some(pinned),
+        pinned_tip: pinned,
         change_digest,
     })
 }

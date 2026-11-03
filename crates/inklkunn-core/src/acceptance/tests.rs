@@ -74,8 +74,8 @@ fn an_acceptance_whose_base_is_the_tip_is_signed_with_every_record_in_place() {
     assert_eq!(facts.proposal.as_ref(), Some(&p.id));
     assert_eq!(facts.change_digest, call.change.digest());
     assert_eq!(
-        facts.pinned_tip.as_ref().map(|b| b.as_str().to_owned()),
-        Some(rig.fake.block_id())
+        facts.pinned_tip.as_str().to_owned(),
+        rig.fake.block_id()
     );
     // The message is CT-03 with Kind: proposal, naming the proposal, both people and the base.
     let message = Message::parse(&call.change.message).unwrap();
@@ -156,7 +156,7 @@ fn a_moved_base_without_an_overlap_is_re_authored_and_writes_only_what_the_tip_d
         message.base().map(|b| b.as_str().to_owned()),
         Some(rig.fake.block_id())
     );
-    let pin = call.pending.unwrap().pinned_tip.unwrap();
+    let pin = call.pending.unwrap().pinned_tip;
     assert_eq!(pin.as_str(), rig.fake.block_id());
 }
 
@@ -1088,8 +1088,8 @@ fn a_system_act_is_pending_until_it_ends_and_a_failed_one_is_no_record_of_a_chan
         .unwrap();
     assert_eq!((facts.kind, facts.view.as_str()), (Kind::System, MAIN));
     assert_eq!(
-        facts.pinned_tip.map(|b| b.as_str().to_owned()),
-        Some("c".repeat(64))
+        facts.pinned_tip.as_str().to_owned(),
+        "c".repeat(64)
     );
     rig.store
         .finish_system_act(&SystemActEnd {

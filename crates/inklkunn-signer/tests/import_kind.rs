@@ -154,7 +154,7 @@ fn an_import_under_the_system_principal_verifies_with_prikk_itself_and_says_what
         accepted_by: Actor::System(label.clone()),
         base: None,
         imported_from: Some(source.clone()),
-        pinned_tip: Some(pinned_tip),
+        pinned_tip,
         change_digest: digest,
     };
     // The wiki moved after the plan was made (here: the plan names a block that is not the view's tip): the

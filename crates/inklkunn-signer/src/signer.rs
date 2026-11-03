@@ -617,13 +617,8 @@ impl Accept for Signer {
         let repo = self.root.repo_dir(wiki);
         // 2b. A change planned against a tip (an import) is written only if the view is still there; the write
         //     lock is held, so no other act of this service moves it between this read and the commit.
-        // The base is enforced for **every** acceptance (Q7): a record that names none is refused.
-        let Some(pinned) = &expected.pinned_tip else {
-            return Err(AcceptError::Refused(
-                "the acceptance record names no block the change was made on, so the signer cannot tell whether the view has moved; nothing was written"
-                    .to_owned(),
-            ));
-        };
+        // The base is enforced for **every** acceptance (Q7, W8): the record always names one.
+        let pinned = &expected.pinned_tip;
         let now = self
             .writes
             .tip(&repo, view)
