@@ -115,3 +115,30 @@ own).
   user than the server's or root; the docs say the secret is read *at start* and that a server without a signer refuses
   *every change to the history*; the follow-up worker survives a panicking job and logs once if its channel closes.
 
+
+## Corrections from the review of 2026-11-03 (binding; **before 0.2.0**)
+
+G1 – G10 and A1 – A4 are **Conditionally Approved** (`.git-exclude/reviewed/004-serve-sign-in-corrections-review-result.md`; no
+path lets a cookie write past the CSRF check) and U6 is **Approved** (`.git-exclude/reviewed/004-serve-writes-on-u6-review-result.md`).
+Hand back H1 – H6 and E1 – E2 as one request, `004-serve-sign-in-corrections-2-review-request.md`, with the readiness report
+refreshed to the final tree (numbers, section 6, the retirement row once W1 – W8 of handoff 004 land).
+
+- **H1 — SECURITY.md says only what is true.** `INKLKUNN_TRUSTED_PROXIES` lists **only the proxies' own addresses, never a network
+  clients are in** (say why in one sentence: a client inside it would choose its own address); drop the `10.0.0.0/8` example.
+  Signing in while signed in ends the presented session **except through the provider** (the `Strict` cookie is not sent on its
+  callback; end it from the account page). A provider start cannot be spent by another site's images, scripts or frames (not *by
+  any page*). The owner of an account whose sign-in is locked by someone at the account page ends that session from the account
+  page, which needs no password. One sentence on the /48 limit of pending provider logins.
+- **H2.** A declared proxy whose `X-Forwarded-For` cannot be read (`fell_back()`) is logged once at run time, as G1's line is.
+- **H3.** With no decision attached, `Decided` is never a signed-in principal: `principal` answers `Anonymous` and
+  `write_identity` refuses. A test that every write route sits behind the layer.
+- **H4.** A successful invitation redemption gives its join budget back (a failed one still spends it).
+- **H5.** A password change rotates the current session (end every session, start a new one, set its cookie) and still revokes
+  every token; the credential, the sessions and the tokens change in one store transaction, or the message says the password may
+  have changed.
+- **H6 — words.** The OpenAPI text says where a cookie client finds the CSRF token (the hidden field of the page's forms); the
+  stale comments in `api/write.rs` and `main.rs`; remove the unused `account:<id>` throttle key or use it, and make decision 4's
+  sentence true either way.
+- **E1.** The decide form is not shown to the proposer; the existing sentence `refused.own_proposal` takes its place.
+- **E2.** The health page's wanted-pages rows gain *Propose this page* (the new-page form, default view only) beside *who links
+  here*; `health.rs`'s module note says so. Catalog en / ja and the structural tests.

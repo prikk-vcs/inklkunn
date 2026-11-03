@@ -247,6 +247,16 @@
   before it seals (Q2). **A new advisory, RUSTSEC-2026-0433** (`pulldown-cmark`, quadratic parsing of nested image wikilinks
   with `ENABLE_WIKILINKS`): inklkunn never enables that option, so **0.1.0 is not affected**; the lock moved to 0.13.6
   (`d11b6ae`) so the gates stay green. Pushed.
+- **2026-11-03 — U6 (writes on), Q1 – Q8 with K2, and G1 – G10 with A1 – A4 reviewed** (one tree, `9cee373`; 2,118 tests in
+  both runs, 203 self-skips; the retirement state machine and the sign-in corrections also read adversarially). **U6 Approved**
+  (E1, E2: the decide form hidden from the proposer; *Propose this page* on wanted pages). **Sign-in corrections Conditionally
+  Approved**: no cookie write passes the CSRF check; H1 – H6 (SECURITY.md promises more than the code in three places; a proxy
+  header that cannot be read is logged; a password change rotates the session). **Q1 – Q8 Conditionally Approved**: an
+  unfinished retirement could still strand a wiki (the first write after it closed the only way out, partly from the
+  architect's own brief); W1 – W8: writes pause while a retirement is unfinished, `finish-retirement` does any step left, an
+  `abandon-retirement` way out, a killed seal on a retired wiki is finished narrowly. **Do not retire a key on a live wiki
+  until W1 – W5 are approved.** Readiness report `docs/releases/0.2.0-readiness.md` accepted as the basis of the 0.2.0
+  decision, to be refreshed. Pushed.
 
 ## Pending on the owner
 
@@ -270,8 +280,7 @@
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and handoff 003's T1 – T3 are built and
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
-(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **The dev team's order now:** **U6** (writes on: P2′ is approved); handoff 004's Q1 – Q8, the sign-in's G1 – G10 and
-A1 – A4, the knowledge layer's K2, all before 0.2.0; then the 0.2.0 readiness report and the release rehearsal, and the
+(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **The dev team's order now:** handoff 004's **W1 – W8** and the sign-in's **H1 – H6, E1 – E2**, all before 0.2.0, with the readiness report refreshed; then the architect's release rehearsal, and the
 architect brings the 0.2.0 decision to the owner. K-T5 onward after 0.2.0.
 
 ## Issue register

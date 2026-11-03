@@ -309,3 +309,42 @@ outside a retirement's recorded set can be excused. Hand back Q1 – Q8 as one r
   every acceptance.
 - **Q8.** The CHANGELOG states the real-kill evidence as measured (76 runs; 3 recovered, 4 fail-closed).
 
+
+## Corrections from the review of 2026-11-03, second (binding; **before 0.2.0**)
+
+Q1 – Q8 and K2 are **Conditionally Approved** (`.git-exclude/reviewed/004-proposals-corrections-3-review-result.md`): Q2 – Q8 hold;
+Q1 still lets the first write after a failed retirement close the only way out. This amends Q1's "acceptances meanwhile are
+*sealed, not confirmed*": an unfinished retirement now **pauses** writes instead. Hand back W1 – W8 as one request,
+`004-proposals-corrections-4-review-request.md`. Until they are approved, do not retire a key on a live wiki.
+
+- **W1 — writes pause while a retirement is unfinished.** While `retiring` is set the signer refuses every new seal (`accept`,
+  `seal_queued`) before it changes anything, with one sentence naming `inklkunn wiki keys finish-retirement <wiki>`; the
+  proposal stays held. The web answers it as its own outcome in plain words (*a change to this wiki's keys is not finished; the
+  person who runs this wiki must finish it; the proposal is kept*), catalog en / ja with a glossary row; the API as a `problem`
+  with its own code. `docs/KEYS.md` and `docs/RECOVERY.md` say so. Tests: a kill at each point of `rotate --retire-old` (before
+  the first record, between the record and the untrust, after the untrust) followed by an acceptance: refused, nothing written,
+  and `finish-retirement` then succeeds.
+- **W2 — `finish-retirement` finishes from whatever step remains.** If the old key is still trusted (a kill before the untrust,
+  `RetireFailed`), it takes a fresh before-`verify` under the write lock (it must pass, as `rotate` requires), rewrites the
+  `retiring` state from it, does the removal itself, then the after-`verify` and the record. No message or document tells an
+  operator to run `prikk trust maintainer remove` by hand.
+- **W3 — a way out when finishing cannot be made safe.** `inklkunn wiki keys abandon-retirement <wiki> --confirm <slug>`, audited
+  before and after, under the write lock: with the old key still trusted it clears the state (the rotation stands, as a Keep
+  rotation); with the key already removed it puts the old maintainer key back into the repository's trust and clears the state.
+  The old maintainer **public** key is kept in the `retiring` state for this, inside the record's AAD. It prints what it did in
+  one sentence (*the old key is trusted again; nothing is retired*). Every refusal of `finish-retirement` that no later run can
+  cure (the repository changed outside inklkunn, the count differs, a finding outside the recorded set) names this command.
+- **W4.** A finish that would leave blocks out (`RetiredPartly`, `left_out > 0`) records nothing and keeps the state; its refusal
+  names `abandon-retirement`. `OldKeyOutcome::RetiredPartly` goes if nothing else produces it.
+- **W5.** The `retiring` state keeps the trusted maintainer key ids of the before-`verify`; finishing requires the trust list now
+  to be exactly that list without the retired key.
+- **W6 — the stored explanation never outlives its truth.** `rotate --retire-old`, `finish-retirement` and `abandon-retirement`
+  each end by recording a fresh verdict through the same check the server uses (`Verifier::check`); if it cannot run, they clear
+  the stored explanation. A test: K1 retired and recorded, then K2's retirement left unfinished — the page no longer says the only
+  failures are K1's.
+- **W7 — a killed seal on a retired wiki is not a dead end.** `complete-publication` is offered beside a recorded retirement only
+  when `verify` fails by exactly `blocking-ref-publication` and `publication-trust`, every publication-trust finding is in a
+  recorded set (`judge`), and the filtered `doctor` shows only the cleanup. After the step the unwidened P2′ test must hold, or
+  recovery stops as now. The verdict's rule and the acceptance's rule do not change. Replaces the stop
+  `cleanup-beside-trust-findings` in that case (it stays for anything else).
+- **W8.** `ExpectedMessage.pinned_tip` becomes `BlockId`; the refusals of `None` go with the `Option`.
