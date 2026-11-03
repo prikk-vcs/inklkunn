@@ -898,7 +898,7 @@ pub(crate) async fn check_now(
     }
     let t = page.t();
     let done = blocking(move || {
-        let wiki = open_as(&services, &decided.principal(&services, &headers), &slug)?;
+        let wiki = open_as(&services, &decided.principal(), &slug)?;
         let checked = services.verifier.check(&wiki);
         if let Some(why) = &checked.operator {
             (services.log)(&format!(

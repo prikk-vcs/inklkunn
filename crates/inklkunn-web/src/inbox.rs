@@ -220,7 +220,7 @@ pub(crate) async fn mark_read(
         return needs_account(&page);
     };
     let done = blocking(move || {
-        let principal = decided.principal(&services, &headers);
+        let principal = decided.principal();
         services.inbox.mark_all_read(&principal)
     })
     .await;

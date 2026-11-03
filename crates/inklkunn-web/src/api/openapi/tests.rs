@@ -238,6 +238,20 @@ fn a_write_describes_the_csrf_token_a_cookie_client_must_send() {
             .filter_map(|p| p.get("name").and_then(Value::as_str))
             .collect();
         assert!(names.contains(&CSRF_HEADER_NAME), "{path}: {names:?}");
+        // H6: where a cookie client finds the token is said as it is: the hidden field of the forms it was
+        // served; no page "shows" it as text.
+        let described = post
+            .at("/parameters")
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p.get("name").and_then(Value::as_str) == Some(CSRF_HEADER_NAME))
+            .and_then(|p| p.get("description").and_then(Value::as_str))
+            .unwrap();
+        assert!(
+            described.contains("hidden field `csrf`") && !described.contains("shows it"),
+            "{path}: {described}"
+        );
         assert_eq!(
             post.at("/security"),
             &json!([

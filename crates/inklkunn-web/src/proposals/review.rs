@@ -88,8 +88,7 @@ pub(crate) async fn comment(
         Err(response) => return *response,
     };
     serve(page, move |page| {
-        let Some(ctx) = Ctx::open_deciding(&begun.services, &headers, &begun.decided, &begun.slug)
-        else {
+        let Some(ctx) = Ctx::open_deciding(&begun.services, &begun.decided, &begun.slug) else {
             return generic_not_found(page);
         };
         let Some(id) = parse_id(&begun.id) else {
@@ -182,8 +181,7 @@ pub(crate) async fn decide(
         Err(response) => return *response,
     };
     serve(page, move |page| {
-        let Some(ctx) = Ctx::open_deciding(&begun.services, &headers, &begun.decided, &begun.slug)
-        else {
+        let Some(ctx) = Ctx::open_deciding(&begun.services, &begun.decided, &begun.slug) else {
             return generic_not_found(page);
         };
         let Some(id) = parse_id(&begun.id) else {
@@ -408,8 +406,7 @@ pub(crate) async fn reason_post(
         Err(response) => return *response,
     };
     serve(page, move |page| {
-        let Some(ctx) = Ctx::open_deciding(&begun.services, &headers, &begun.decided, &begun.slug)
-        else {
+        let Some(ctx) = Ctx::open_deciding(&begun.services, &begun.decided, &begun.slug) else {
             return generic_not_found(page);
         };
         let Some(id) = parse_id(&begun.id) else {

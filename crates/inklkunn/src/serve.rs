@@ -82,7 +82,9 @@ fn prepare_with(
     // sign-in's per-address throttle counts addresses by.
     let proxy_networks: Vec<&str> = web.trusted_proxies.iter().map(String::as_str).collect();
     let proxies = ProxyPolicy::trusting(&proxy_networks).map_err(|e| {
-        format!("INKLKUNN_TRUSTED_PROXIES must be addresses or networks like 10.0.0.0/8 ({e})")
+        format!(
+            "INKLKUNN_TRUSTED_PROXIES must be the addresses of your proxies themselves, like 127.0.0.1 ({e})"
+        )
     })?;
     // The provider (its secret read, its vector probed) is checked now too, before anything is opened.
     let provider = outbound::provider_if_configured(web)?;

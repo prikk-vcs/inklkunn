@@ -112,8 +112,9 @@ async fn presented(req: Request) -> (Request, Option<String>) {
 
 /// What the layer decided about a request that changes something, kept in the request's extensions for the
 /// handler (corrections G4). A request the layer let through carries it; a handler that takes its principal
-/// from here asks the credential nothing more. (A request the layer did not look at, a read, has none, and the
-/// handler resolves the principal itself, once.)
+/// from here asks the credential nothing more. **A request the layer decided nothing about has none, and none
+/// is a nobody, never a signed-in person** (corrections H3): the pages that read resolve their own principal
+/// and do not take one from here.
 #[derive(Debug, Clone)]
 pub(crate) struct Decided(Option<WriteIdentity>);
 
@@ -135,27 +136,23 @@ impl<S: Send + Sync> axum::extract::FromRequestParts<S> for Decided {
 struct Settled(WriteIdentity);
 
 impl Decided {
-    /// Who the request is, as the layer decided; else (it decided nothing) the identity is asked, once. A
-    /// request that presented a bad token or a session without its token is nobody.
-    pub(crate) fn principal(&self, services: &Services, headers: &HeaderMap) -> Principal {
+    /// Who the request is, as the layer decided. A request that presented a bad token or a session without its
+    /// token is nobody, and **so is a request the layer decided nothing about** (corrections H3): a handler
+    /// that is wired outside the layer, or a route someone exempts later, gets no signed-in principal from
+    /// here, and the credential is never asked a second time. (Nothing is passed in: there is nothing to ask.)
+    pub(crate) fn principal(&self) -> Principal {
         match &self.0 {
             Some(WriteIdentity::Principal(p)) => p.clone(),
-            Some(WriteIdentity::InvalidToken | WriteIdentity::CsrfMismatch) => Principal::Anonymous,
-            None => services.identity.principal(headers),
+            Some(WriteIdentity::InvalidToken | WriteIdentity::CsrfMismatch) | None => {
+                Principal::Anonymous
+            }
         }
     }
 
-    /// The identity of a write as the layer decided it, else (it decided nothing) as the identity says now.
-    pub(crate) fn write_identity(
-        &self,
-        services: &Services,
-        headers: &HeaderMap,
-        csrf: Option<&str>,
-    ) -> WriteIdentity {
-        match &self.0 {
-            Some(decided) => decided.clone(),
-            None => services.identity.for_write(headers, csrf),
-        }
+    /// The identity of a write as the layer decided it. With no decision it is a refusal (the form expired), not
+    /// a second look at the cookie (corrections H3).
+    pub(crate) fn write_identity(&self) -> WriteIdentity {
+        self.0.clone().unwrap_or(WriteIdentity::CsrfMismatch)
     }
 }
 

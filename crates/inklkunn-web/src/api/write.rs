@@ -172,14 +172,11 @@ fn admit(
     if !presented && !crate::lang::from_this_site(headers) {
         return Err(Problem::new(Code::Forbidden));
     }
-    // Who the request is, the one way a write learns it: a token alone if one is presented (one that does not
-    // authenticate is `invalid-token`, never a fall back to a cookie), else the session **and its CSRF token**
-    // (the page layer has checked them too, in front of every route; this is the same question asked again by
-    // the endpoint that acts on the answer).
-    let csrf = headers
-        .get(crate::csrf::HEADER)
-        .and_then(|v| v.to_str().ok());
-    let principal = match decided.write_identity(services, headers, csrf) {
+    // Who the request is, the one way a write learns it: what the CSRF layer decided, once, in front of every
+    // route (corrections G4, H3). A token alone if one is presented (one that does not authenticate is
+    // `invalid-token`, never a fall back to a cookie), else the session **and its CSRF token**. Nothing is
+    // asked of the credential again here; a request the layer decided nothing about is refused.
+    let principal = match decided.write_identity() {
         WriteIdentity::Principal(p) => p,
         WriteIdentity::InvalidToken => return Err(Problem::new(Code::InvalidToken)),
         WriteIdentity::CsrfMismatch => return Err(Problem::new(Code::Forbidden)),

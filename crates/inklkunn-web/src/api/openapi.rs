@@ -190,7 +190,7 @@ fn csrf_parameter() -> Value {
         "name": CSRF_HEADER_NAME,
         "in": "header",
         "required": false,
-        "description": "The CSRF token of the signed-in session (the page of the account shows it to the session that owns it). **Required when the write is authenticated by the session cookie**, never otherwise: a browser sends the cookie by itself, so the cookie alone is refused with `forbidden`. A request that carries a bearer token is judged by the token alone and needs neither the cookie nor this header.",
+        "description": "The CSRF token of the signed-in session: a client that is a browser page finds it in the hidden field `csrf` of the forms of the pages it was served (the account page's, for one), a client that is not a form sends it as this header. **Required when the write is authenticated by the session cookie**, never otherwise: a browser sends the cookie by itself, so the cookie alone is refused with `forbidden`. A request that carries a bearer token is judged by the token alone and needs neither the cookie nor this header.",
         "schema": {"type": "string"},
     })
 }

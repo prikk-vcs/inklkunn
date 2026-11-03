@@ -12,8 +12,9 @@ mod audit;
 mod cli;
 mod config;
 mod keys;
-// Outbound HTTPS for OpenID Connect (handoff 002 C8): the provider `serve` builds when one is configured.
+// What the process does about itself before anything else (no core dumps; the sign-in handoff's A1).
 mod hardening;
+// Outbound HTTPS for OpenID Connect (handoff 002 C8): the provider `serve` builds when one is configured.
 mod outbound;
 mod serve;
 

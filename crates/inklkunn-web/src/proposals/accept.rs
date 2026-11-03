@@ -364,7 +364,7 @@ pub(crate) async fn accept(
         return generic_not_found(&page);
     };
     serve(page, move |page| {
-        let Some(ctx) = Ctx::open_deciding(&services, &headers, &decided, &slug) else {
+        let Some(ctx) = Ctx::open_deciding(&services, &decided, &slug) else {
             return generic_not_found(page);
         };
         let Some(id) = parse_id(&id) else {

@@ -8,7 +8,7 @@
 use inklkunn_auth::AuthConfig;
 use inklkunn_core::Guard;
 use inklkunn_store::{Role, Scope, Visibility, WikiStore};
-use inklkunn_web::routes::application_table;
+use inklkunn_web::routes::{application_table, content_table};
 
 use crate::common::{Answer, NOW};
 use crate::harness::*;
@@ -391,57 +391,85 @@ async fn the_token_is_checked_before_any_wiki_is_looked_up_so_a_refusal_tells_wi
     assert_eq!(api.first(), api.get(1));
 }
 
+/// The methods that change something (the layer's own notion: everything that is not a read).
+const WRITE_METHODS: [&str; 4] = ["POST", "PUT", "PATCH", "DELETE"];
+
 #[tokio::test]
 async fn no_write_route_of_the_registry_escapes_the_token() {
     let c = cast();
     let alices = c.r.sign_in("alice").await;
-    // The posts that need no session token, each for its reason (csrf.rs), and no others.
+    // The writes that need no session token, each for its reason (csrf.rs), and no others: a route added to
+    // the layer's exemptions, or registered with another write method, fails here until it is named, with its
+    // reason, in this list.
     let excused = ["/-/lang", "/-/sign-in", "/-/join", "/-/invite/{secret}"];
-    let mut walked = Vec::new();
-    for e in application_table().unwrap().entries() {
-        if !e.methods.contains(&"POST") {
-            continue;
-        }
-        if excused.contains(&e.path) {
-            assert!(
-                matches!(e.guard, Guard::Public { .. }),
-                "{}: an excused post is public",
-                e.path
-            );
-            continue;
-        }
-        let uri = e
-            .path
-            .replace("{slug}", "garden")
-            .replace("{*title}", "Home")
-            .replace("{id}", "019a0000-0000-7000-8000-00000000dddd")
-            .replace("{secret}", "x");
-        let a =
-            c.r.call(
-                "POST",
-                &uri,
-                &[
-                    ("cookie", &alices.cookie),
-                    SAME_SITE,
-                    ("content-type", "application/json"),
-                ],
-                "{}",
-            )
-            .await;
-        assert_eq!(
-            a.status,
-            403,
-            "{} accepted a cookie with no token: {}",
-            e.path,
-            a.body()
-        );
+    // The content origin carries no cookie of the application and no write at all.
+    for e in content_table().unwrap().entries() {
         assert!(
-            a.body().contains("The form has expired") || a.body().contains("forbidden"),
-            "{}: {}",
-            e.path,
-            a.body()
+            !e.methods.iter().any(|m| WRITE_METHODS.contains(m)),
+            "{}: the content origin has no write",
+            e.path
         );
-        walked.push(e.path);
+    }
+    let mut walked = Vec::new();
+    let mut writes = Vec::new();
+    for e in application_table().unwrap().entries() {
+        for method in e.methods.iter().filter(|m| WRITE_METHODS.contains(m)) {
+            if excused.contains(&e.path) {
+                assert!(
+                    matches!(e.guard, Guard::Public { .. }) && *method == "POST",
+                    "{method} {}: an excused write is a public post",
+                    e.path
+                );
+                continue;
+            }
+            let uri = |slug: &str| {
+                e.path
+                    .replace("{slug}", slug)
+                    .replace("{*title}", "Home")
+                    .replace("{id}", "019a0000-0000-7000-8000-00000000dddd")
+                    .replace("{secret}", "x")
+            };
+            let cookie = alices.cookie.as_str();
+            let refused = |uri: String| {
+                let c = &c;
+                async move {
+                    c.r.call(
+                        method,
+                        &uri,
+                        &[
+                            ("cookie", cookie),
+                            SAME_SITE,
+                            ("content-type", "application/json"),
+                        ],
+                        "{}",
+                    )
+                    .await
+                }
+            };
+            let a = refused(uri("garden")).await;
+            assert_eq!(
+                a.status,
+                403,
+                "{method} {} accepted a cookie with no token: {}",
+                e.path,
+                a.body()
+            );
+            assert!(
+                a.body().contains("The form has expired") || a.body().contains("forbidden"),
+                "{method} {}: {}",
+                e.path,
+                a.body()
+            );
+            // Before any handler, and before the wiki is looked up: the same answer for a wiki that is not
+            // there.
+            if e.path.contains("{slug}") {
+                let absent = refused(uri("no-such-wiki")).await;
+                assert_eq!(a.status, absent.status, "{method} {}", e.path);
+                assert_eq!(a.body(), absent.body(), "{method} {}", e.path);
+            }
+            walked.push(e.path);
+            writes.push((*method, e.path));
+        }
     }
     // The pages' writes and the API's, and the account page's own.
     for expected in [
@@ -460,17 +488,17 @@ async fn no_write_route_of_the_registry_escapes_the_token() {
     }
     assert!(walked.len() >= 20, "{}: {walked:?}", walked.len());
     // And with the token every one of them gets past the layer (it is then the handler's to answer).
-    for path in &walked {
+    for (method, path) in &writes {
         let uri = path
             .replace("{slug}", "garden")
             .replace("{*title}", "Home")
             .replace("{id}", "019a0000-0000-7000-8000-00000000dddd");
         let mut headers = alices.headers();
         headers.push(("content-type", "application/json"));
-        let a = c.r.call("POST", &uri, &headers, "{}").await;
+        let a = c.r.call(method, &uri, &headers, "{}").await;
         assert!(
             !(a.status == 403 && a.body().contains("The form has expired")),
-            "{path} refused a request that carried the token"
+            "{method} {path} refused a request that carried the token"
         );
     }
 }

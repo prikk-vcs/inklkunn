@@ -80,3 +80,31 @@ fn only_a_urlencoded_body_is_a_form() {
     assert!(!is_form(&with("multipart/form-data; boundary=x")));
     assert!(!is_form(&HeaderMap::new()));
 }
+
+#[tokio::test]
+async fn a_request_the_layer_decided_nothing_about_is_nobody_and_its_write_is_refused() {
+    // H3: with no decision attached (a handler wired outside the layer, a route someone exempts later) the
+    // request is anonymous and its write is a refusal, whatever cookie it carries; nothing is asked again.
+    use axum::extract::FromRequestParts;
+    let request = axum::http::Request::builder()
+        .uri("/w/-/proposals/new")
+        .header(header::COOKIE, "__Host-inklkunn-session=whatever")
+        .body(())
+        .unwrap();
+    let (mut parts, ()) = request.into_parts();
+    let Ok(decided) = Decided::from_request_parts(&mut parts, &()).await;
+    assert!(matches!(decided.principal(), Principal::Anonymous));
+    assert_eq!(decided.write_identity(), WriteIdentity::CsrfMismatch);
+}
+
+#[test]
+fn a_refusal_of_the_layer_is_nobody_and_stays_a_refusal() {
+    // (A decided principal is the layer's to make, from the authenticator's; the sign-in tests that write
+    // through the real router are what shows it arrives.)
+    for refused in [WriteIdentity::CsrfMismatch, WriteIdentity::InvalidToken] {
+        let decided = Decided(Some(refused.clone()));
+        assert!(matches!(decided.principal(), Principal::Anonymous));
+        assert_eq!(decided.write_identity(), refused);
+    }
+    assert_eq!(Decided(None).write_identity(), WriteIdentity::CsrfMismatch);
+}

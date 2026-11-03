@@ -22,7 +22,7 @@
 //! | `INKLKUNN_OIDC_CLIENT_ID` | (`serve`) the client id registered at the provider; required with the issuer | none |
 //! | `INKLKUNN_OIDC_CLIENT_SECRET_FILE` | (`serve`) the file with the client secret (absolute; read once at start, trailing line breaks dropped, never printed); none for a public client (the PKCE proof alone) | none |
 //! | `INKLKUNN_OIDC_SCOPES` | (`serve`) the scopes to ask besides `openid`, which is always asked; separated by spaces or commas. Only the provider's `iss` and `sub` are ever read, so the default asks for nothing more | `openid` only |
-//! | `INKLKUNN_TRUSTED_PROXIES` | (`serve`) the reverse proxies whose `X-Forwarded-For` is believed: comma-separated addresses or networks (`10.0.0.0/8`); none by default | none |
+//! | `INKLKUNN_TRUSTED_PROXIES` | (`serve`) the reverse proxies whose `X-Forwarded-For` is believed: comma-separated addresses (or networks) **of the proxies themselves, never a network clients are in** (a client inside it would choose its own address): `127.0.0.1`; none by default | none |
 //!
 //! `serve --config FILE` reads the same names from a file, one `NAME=value` per line (`#` comments); the
 //! environment wins over the file, and a name that is not a setting is refused with its line number.

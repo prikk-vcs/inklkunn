@@ -80,11 +80,10 @@ impl Ctx {
     /// (corrections G4), not asked for again.
     pub(crate) fn open_deciding(
         services: &Arc<Services>,
-        headers: &HeaderMap,
         decided: &crate::csrf::Decided,
         slug: &str,
     ) -> Option<Ctx> {
-        Self::open_as(services, decided.principal(services, headers), slug)
+        Self::open_as(services, decided.principal(), slug)
     }
 
     fn open_as(services: &Arc<Services>, principal: Principal, slug: &str) -> Option<Ctx> {

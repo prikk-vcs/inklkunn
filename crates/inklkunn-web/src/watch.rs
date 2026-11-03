@@ -28,7 +28,6 @@ use crate::wiki::{Choice, blocking, generic_not_found, notice, open_as, render_f
 /// The wiki a request is about, if the principal the CSRF layer decided on may read it; and the services.
 async fn resolve_deciding(
     state: &PageState,
-    headers: HeaderMap,
     decided: Decided,
     slug: String,
 ) -> Option<(
@@ -37,7 +36,7 @@ async fn resolve_deciding(
 )> {
     let services = state.services.clone()?;
     let for_work = services.clone();
-    let wiki = blocking(move || open_as(&for_work, &decided.principal(&for_work, &headers), &slug))
+    let wiki = blocking(move || open_as(&for_work, &decided.principal(), &slug))
         .await
         .flatten()?;
     Some((services, wiki))
@@ -68,9 +67,7 @@ pub(crate) async fn watch(
     if !crate::lang::from_this_site(&headers) {
         return answer(StatusCode::FORBIDDEN, &page, render_form_refused(&page));
     }
-    let Some((services, wiki)) =
-        resolve_deciding(&state, headers.clone(), decided.clone(), slug).await
-    else {
+    let Some((services, wiki)) = resolve_deciding(&state, decided.clone(), slug).await else {
         return generic_not_found(&page);
     };
     // The body is read as fields only now, after the checks above (corrections P11).
@@ -81,7 +78,7 @@ pub(crate) async fn watch(
     let stop = form.get("do").is_some_and(|v| v == "unwatch");
     let (for_work, record, wanted) = (services.clone(), wiki.clone(), title.clone());
     let done = blocking(move || {
-        let principal = decided.principal(&for_work, &headers);
+        let principal = decided.principal();
         let target = if namespace {
             namespace_target(&wanted)
         } else {

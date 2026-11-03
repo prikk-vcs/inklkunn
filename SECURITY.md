@@ -4,13 +4,15 @@
 
 1. **Declare your reverse proxy: `INKLKUNN_TRUSTED_PROXIES`.** The server has no TLS of its own and binds
    `127.0.0.1:8080` by default, so the usual deployment is a TLS proxy on the same host, which reaches the server as a
-   *loopback* peer. Unless the proxy's address is listed in `INKLKUNN_TRUSTED_PROXIES` (comma-separated addresses or
-   networks, such as `127.0.0.1` or `10.0.0.0/8`), `X-Forwarded-For` is ignored, as it must be, and **every client
-   counts as one address**: thirty bad passwords by anyone lock every password sign-in for fifteen minutes, and
+   *loopback* peer. Unless the proxy's address is listed in `INKLKUNN_TRUSTED_PROXIES` (comma-separated addresses,
+   such as `127.0.0.1`), `X-Forwarded-For` is ignored, as it must be, and **every client counts as one address**: thirty bad passwords by anyone lock every password sign-in for fifteen minutes, and
    repeatably (the same budget holds the provider sign-in starts and the new accounts). `inklkunn serve` says so at
    every start, for **any** bind address, while no proxy is declared, and once more at run time the first time a loopback
-   peer sends `X-Forwarded-For` while none is. The header is read from the right and stops at the first address that is
-   not a declared proxy, so what a client writes on its left is never believed.
+   peer sends `X-Forwarded-For` while none is; and once more if a proxy you did declare sends a header that cannot be
+   read (ports, `unknown`, none), which puts every client on the proxy's own address again. The header is read from
+   the right and stops at the first address that is not a declared proxy, so what a client writes on its left is never
+   believed. **List only the proxies' own addresses, never a network that clients are in**: a client inside a listed
+   network would be counted as a proxy and could choose its own address.
 2. **No core files.** The serving process holds the key store's derived master key for its whole life and a wiki's seed
    for the length of a signing call. It makes itself non-dumpable when it starts (`prctl(PR_SET_DUMPABLE, 0)`, which
    also stops another process of the same user from attaching with `ptrace` or reading `/proc/<pid>/mem`), and **your
@@ -79,20 +81,32 @@ the limit as a sequence is. Failures are counted per sign-in name and per client
 declared trusted proxy only) **in the memory of one process** (threat model RR-7): a restart forgets them, and a
 deployment with several replicas needs the proxy to limit too. Locking a name after five failures lets someone
 who knows it lock its owner out for fifteen minutes; that is the price of refusing a correct password while
-locked, and the address throttle bounds how many names one client can lock. **Declare your reverse proxy**
+locked, and the address throttle bounds how many names one client can lock. The account page asks for the password again
+(to change it, to make a token) and counts those guesses in the **same bucket as the sign-in page**, per name, so
+someone who holds a stolen session cannot guess there with a second budget, and can lock the name's owner out of
+the sign-in page for the fifteen minutes. The owner, from a session of their own, **ends the thief's session at the
+account page, which needs no password**. **Declare your reverse proxy**
 (`INKLKUNN_TRUSTED_PROXIES`, the first of the deployment notes above): behind one that is not declared, every client
 shares the proxy's address and thirty bad attempts by anyone lock everyone. A provider sign-in's start is counted
 against the address and **given back when that sign-in succeeds**; the start answers only a person's own navigation
-when the browser says what a request is (`Sec-Fetch-Mode`, `Sec-Fetch-Dest`), so a page of another site cannot spend
-it; and the logins in flight are bounded per address as well as overall. Redeeming an invitation is throttled like
-joining. A sign-in, a join or an invitation made while signed in ends the session the request presented.
+when the browser says what a request is (`Sec-Fetch-Mode`, `Sec-Fetch-Dest`), so another site's images, scripts and
+frames cannot spend it (a link or script that sends the person's own tab there can spend one, and a start is given back only
+when its sign-in succeeds); and the logins in flight are bounded per address as well as overall (an address is an IPv4 address or an
+IPv6 /64, so one /48 can still push out other people's pending logins, whose harm is a sign-in to start again).
+Redeeming an invitation is throttled like joining, and **given back when it succeeds** (people invited together behind
+one address all get in; a refused try stays counted). A sign-in, a join or an invitation made while signed in ends
+the session the request presented, **except through the provider**: the `Strict` session cookie is not sent on the
+provider's callback, so the old session is not seen there and stays until it ends; end it from the account page.
 Sessions and API tokens are stored as hashes; a copy of the database opens neither. An account holds at most a
 hundred live sessions and a hundred live tokens; a sign-in beyond the hundredth is never refused, it ends the
 account's oldest session. The session cookie is `SameSite=Strict`; the one-shot login-state cookie of an OpenID
 Connect sign-in is `SameSite=Lax` (the provider's redirect must carry it back), and the callback is answered with
 a small page that moves the browser on, never with a redirect, so the Strict cookie is sent on the next request. A password change
-(from the account page: the current password is asked, and every session **but the one making the change** ends), an
-administrator's reset and a disabling end every session and revoke every token. **Making an API token asks for the
+(from the account page: the current password is asked) ends **every** session, the one making the change included,
+and revokes every token, and the page that answers sets a new session cookie and carries its new CSRF token, so a
+leaked copy of the old cookie dies with the change; the new password, the ended sessions and the revoked tokens change
+in one store step, so a failure leaves all three as they were. An administrator's reset and a disabling end every
+session and revoke every token too. **Making an API token asks for the
 password again** (an account with none, which signs in through a provider, needs a sign-in of the last ten minutes),
 because a token outlives the session that made it. OpenID Connect accounts are
 reached by the provider's issuer and subject and by nothing else (**never by e-mail address**: the provider's other
