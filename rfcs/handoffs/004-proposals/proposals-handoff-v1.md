@@ -380,3 +380,32 @@ abandon the old key stays trusted and no command retires it. Hand back X1 – X6
 - **X5.** The never-released `/4` record format is refused in one sentence saying so; `/1` – `/3` and `/5` open as today. W5's
   empty-list path goes with it.
 - **X6.** The readiness report's section 1 no longer says `EXPECTED_SKIPS` "moves by +2"; refresh it to the final tree.
+
+## Corrections from the review of 2026-11-03, fourth (binding; **before 0.2.0**)
+
+X1 – X6 are **Conditionally Approved** (`.git-exclude/reviewed/004-proposals-corrections-5-review-result.md`). Retiring by id
+records a superseded key's **late seals** (blocks sealed with it after the rotation that replaced it) as excused. Hand back Y1 – Y6
+as one request, `004-proposals-corrections-6-review-request.md`. **Y1 is the condition for retiring a key on a live wiki.**
+
+- **Y1 — a retirement never excuses a late seal.** A retirement records only blocks the key sealed **up to the tips the key record
+  kept when that key was superseded** (the set C11's late-seal check calls *known*; one function for both). The key's late seals
+  are **not** a reason to keep a leaked key trusted: the retirement still removes the key and records its set, leaves the late
+  seals out on purpose (they are not W4's *left out*: W4 still refuses for any other block that lost its signature), and says so
+  in its result and on the CLI — each late block's id, and one sentence: *these blocks were sealed with this key after it was
+  replaced, so this service did not make them; verification keeps failing on them, and nothing excuses them*. The key record
+  keeps nothing new. `docs/KEYS.md`'s compromise playbook says what that state means (a block in the history the service did not
+  make: export, read it, decide; nothing in the product rewrites history). Tests (real prikk): K1 kept, a late seal by K1, K1
+  retired by id — the key is out of trust, the late block is not in the recorded set, verification fails and the page carries no
+  *only a retired key* sentence; the same with no late seal records and verifies as today.
+- **Y2.** `status` says *not retired* for a superseded key whose record is not marked retired, and reads the repository's trust
+  list for *still trusted* / *out of the trust store* (one read; if it cannot run, it says it could not tell).
+- **Y3.** `status` names `inklkunn wiki keys retire <wiki> --key <id> …` beside every superseded key that is still trusted.
+- **Y4.** `RetireNotBegun`'s text drops the inner *nothing was changed*: the rotation happened; the old key is still trusted;
+  the command to retire it.
+- **Y5 — KEYS.md says only what is true.** A failed retirement after a rotation names what each outcome names (`retire` for
+  `RetireNotBegun`; `finish-retirement` / `abandon-retirement` for an unfinished one, where the key may already be out of the
+  trust store). The restore paragraph: finishing after a restore works only if nothing was written and no key changed since;
+  **back up the key directory after every key command**; after restoring the key directory and the store together, run `status`
+  and retire again whatever should be retired.
+- **Y6.** `retire` requires `--accept-unverifiable-history`, with `rotate --retire-old`'s sentence about the cost; the usage
+  line and `docs/KEYS.md`'s command list show it.

@@ -263,6 +263,11 @@
   retire it (the architect's W3 design); **X1 – X6**: retire any superseded key by id (`wiki keys retire`), abandon never
   re-trusts a key whose retirement finished, words, `/4` dropped. **X1, X2 are the condition for retiring a key on a live wiki.**
   Pushed.
+- **2026-11-03 — handoff 004's X1 – X6 reviewed: Conditionally Approved** (`fab0d60`; 2,172 tests in both runs, 239
+  self-skips; read adversarially). Retire-by-id works and strands nothing, but it recorded a superseded key's **late seals**
+  (blocks sealed with it after it was replaced — a thief's) as excused; **Y1**: never excuse a late seal, still remove the key,
+  name the late blocks; Y2 – Y6 words and `retire` takes `--accept-unverifiable-history`. **Y1 is the condition for retiring a
+  key on a live wiki.** Pushed.
 
 ## Pending on the owner
 
@@ -286,7 +291,7 @@
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and handoff 003's T1 – T3 are built and
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
-(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **The dev team's order now:** handoff 004's **X1 – X6** before 0.2.0, with the readiness report refreshed; then the architect's release rehearsal, and the
+(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **The dev team's order now:** handoff 004's **Y1 – Y6** before 0.2.0, with the readiness report refreshed; then the architect's release rehearsal, and the
 architect brings the 0.2.0 decision to the owner. K-T5 onward after 0.2.0.
 
 ## Issue register
