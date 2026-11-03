@@ -1471,3 +1471,67 @@ Follow-up K2 (handoff 005, review of 2026-11-01).
 
 - **One list of owned page keys.** `knowledge/check.rs` re-exports the proposal service's `OWNED_KEYS` as `OWNED_PAGE_KEYS` instead of keeping a copy
   (`kind`, `visibility`, `system`): the two rules cannot drift apart.
+
+Corrections from the review of 2026-11-03 (handoff 004, Q1 – Q8).
+
+- **Q1 — a retirement never strands a wiki.** `rotate --retire-old` writes a `retiring` state into the authenticated key record
+  **before** the old maintainer key leaves the trust store: the blocks the `verify` just before listed as the key's, how many
+  publication-trust records prikk checked, and the newest block of every view. The record format is `inklkunn-key-record/4`
+  (`/1` – `/3` still open and mean nothing is retiring; the AAD binds the state, a `/3` record cannot carry one). If anything
+  after the removal fails to complete the record (the `verify` after cannot run, the two looks disagree, the count line is
+  missing or differs, the findings exceed the record's limit, the key store cannot be written) the state stays;
+  `OldKeyOutcome::RetiredUnrecorded` makes `inklkunn wiki keys rotate` **exit 1 naming the command**, and
+  **`inklkunn wiki keys finish-retirement <wiki>`** (new; claims the `KeyAuthority`, audited before and after as
+  `keys-finish-retirement`) completes the after-`verify` and the record **from the kept state**, under the write lock, and only
+  while every view's tip is the block the state kept; it refuses, changing nothing, when no retirement is unfinished, when the
+  key is still trusted (a removal that failed keeps the state too: remove it by hand, then finish), when the `verify` is not a
+  clean publication-trust failure with the kept count, and when anything was written since. `rotate` is refused while a
+  retirement is unfinished; `status` prints `UNFINISHED` with the command. While it is unfinished nothing is excused: an
+  acceptance answers *sealed, not confirmed* with the command in its detail, and **recovery stops with the new word
+  `retirement-unfinished`**, names the command and runs nothing (it needs the key authority). `OldKeyOutcome` gains
+  `RetiredPartly` (the record is as complete as it can be, but some block lacks a trusted signature without being the retired
+  key's: also exit 1, with no command to run); the module docs no longer say "a later rotation repairs it" (none could).
+  Tests (the ways in each end in a state the command finishes: after-`verify` unavailable, the runs disagreeing, the count line
+  missing after, the count differing, the key directory read-only, the limit exceeded; a write after the failure makes it
+  refuse; rotation refused meanwhile; a removal that failed; the CLI end to end with its audit trail; the plan rows; recovery
+  against a real repository and the accept path), and the key store's (round trip, binding of every field of the state, shape
+  checks, `/3` opens, `update_meta` keeps the seeds and cannot change an id).
+- **Q2 — the publication a killed seal left is finished only if the queue is exactly the published patch.** Measured on prikk
+  0.55.0 in the cleanup-pending state: `status --format json`, `worktree-status` and the other JSON reads refuse (an integrity
+  error), `doctor` and `verify` print no queue, and **the plain-text `prikk status` reads** and prints `active WAL records: N`,
+  `trailing partial WAL bytes: N` and `queued patches: N targeting REF`. `complete_publication` now reads that text (each line
+  exactly once, in the known shape) and refuses unless it shows one patch on the view, in a log of one record with no torn byte;
+  an unreadable text is a failure to read, not a mismatch. **It is a real check of the queue's size, not of its content**: the
+  text names no patch id, so that the one queued patch is the published one rests on `doctor` naming a publication whose active
+  state matches and on the block's own patch (read from the history); the question for prikk (a read that lists the queued
+  patch ids in this state) is recorded in `docs/UPSTREAM.md` for the next letter. 1 prikk-dependent test (nine refusals of
+  queues and texts, then the finish).
+- **Q3.** The text of a P14 `verify` run is refused when it holds a finding line (`<condition> [PRIKK-…]: …`) of any condition
+  but publication trust and the verdict is a failure. Test: a retirement's failure with an injected `ref-publication` finding
+  is no longer excused (refused with the condition named), and the parser's rows.
+- **Q4.** A retirement records only if prikk's `checked publication trust records` is the same before and after the removal
+  (the count is kept in the `retiring` state; a missing or different count leaves the state for `finish-retirement`, which
+  applies the same rule); a retirement is not even begun from a `verify` that prints no count.
+- **Q5.** `explained_by_retirement` is **stored with the verdict**: store schema **15** (`wikis.verification_explained_by`, a JSON
+  array of key ids, `NULL` for none, with a `CHECK` that only a failed verdict carries one; migration from 14 tested on a
+  database with a failed and a verified wiki, once, and equal to the fresh schema). `WikiStore::set_verification_explained`
+  writes verdict and explanation in one statement (refused for a verdict that did not fail, for what is not a key id, for more
+  than 64); `set_verification` clears it, an attempt that could not run leaves it with the verdict (R1). The verification page
+  says *the only failures are those the retirement of key … recorded* whenever it is so, on the first load as well, beside a
+  badge that still says *Verification failed* (DR-10); *Check now* shows it once. A verdict recorded before schema 15 carries no
+  explanation until the next check.
+- **Q6.** `complete_publication` filters `doctor` as the plan does (P13: it asks the signer's own question and takes out
+  exactly the excused findings). Measured: while a cleanup is pending `verify` fails by **two** conditions
+  (`blocking-ref-publication` and `publication-trust`), so no retirement's record excuses the retired key's findings there; the
+  plan therefore never offered the step on such a wiki, and now **stops with the word `cleanup-beside-trust-findings`** instead
+  of the generic `doctor-trouble`. The question for prikk joins `docs/UPSTREAM.md`; `docs/RECOVERY.md` has both new words.
+- **Q7.** Duplicate `sealed-block` lines are refused (the retirement is not made from such a look); the `verify` before a
+  retirement also asks `is_partial()` when the verdict is ok; **the signer enforces the base for every acceptance**: a record
+  whose `pinned_tip` is `None` is refused by `accept` (nothing written), by `seal_queued` and by `complete_publication`
+  (the field keeps its type; its documentation says every acceptance names one, as the service's records always did). The
+  concurrent-acceptance test now asserts that the second of two changes planned on one tip is refused when its turn comes.
+- **Q8.** The real-kill evidence is stated as measured: 76 runs of the real matrix, 3 recovered and 4 ended fail-closed (the P15
+  entry above is corrected).
+
+Q1 – Q8 add **17 prikk-dependent tests** (lifecycle 8, the accept tests 3, the recovery tests of the signer 3, of the core 2, the
+command line 1): `EXPECTED_SKIPS` 183 → 200. Every fix was mutated (reverted, the test seen to fail, restored).

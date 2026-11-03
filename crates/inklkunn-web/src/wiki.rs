@@ -231,6 +231,9 @@ struct VerificationTpl<'a> {
     title: String,
     badge: Rich,
     state_sentence: String,
+    /// When the last verdict is a failure that a key retirement recorded (handoff 004, P2′, Q5): the sentence that says
+    /// so, from the stored verdict (so on every load); the label above it does not change.
+    explained: Option<String>,
     checked_at: Option<String>,
     attempt_at: Option<String>,
     result: Option<CheckView>,
@@ -803,6 +806,19 @@ fn state_sentence(page: &Page, wiki: &WikiRecord) -> String {
     })
 }
 
+/// The sentence that says the only failures are those a key retirement recorded: from the stored verdict, and only
+/// beside a failed one (an explanation never outlives its verdict).
+fn explanation(page: &Page, wiki: &WikiRecord) -> Option<String> {
+    (wiki.verification.state == VerificationState::Failed
+        && !wiki.verification_explained_by.is_empty())
+    .then(|| {
+        page.t()
+            .msg(Key::VerificationExplainedByRetirement)
+            .with("key", wiki.verification_explained_by.join(", "))
+            .text()
+    })
+}
+
 fn verification_page(page: &Page, wiki: &WikiRecord, result: Option<CheckView>) -> Response {
     let t = page.t();
     let shell = Shell::of(wiki);
@@ -817,6 +833,7 @@ fn verification_page(page: &Page, wiki: &WikiRecord, result: Option<CheckView>) 
             .text(),
         badge: badge(t, wiki, false),
         state_sentence: state_sentence(page, wiki),
+        explained: explanation(page, wiki),
         attempt_at: wiki
             .last_attempt
             // With no verdict yet the sentence above already says so; the attempt's time is all that is added.
@@ -898,8 +915,10 @@ pub(crate) async fn check_now(
                 explained_by_retirement,
             } => {
                 lines.push(t.get(Key::VerificationStateFailed));
-                // The label stays; when a retirement recorded every failure, the page says so (P2′, DR-10).
-                if !explained_by_retirement.is_empty() {
+                // The label stays; when a retirement recorded every failure, the page says so (P2′, DR-10) from the
+                // stored verdict, below the label, on this page and on every later load (Q5). Said here only when the
+                // verdict could not be stored, since then the page below has nothing to read it from.
+                if !explained_by_retirement.is_empty() && !checked.recorded {
                     lines.push(
                         t.msg(Key::VerificationExplainedByRetirement)
                             .with("key", explained_by_retirement.join(", "))

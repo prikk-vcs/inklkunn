@@ -221,7 +221,19 @@ pub trait WikiStore: Send + Sync {
     ) -> Result<WikiRecord>;
     /// Record a verification **verdict** (a check that ran to completion) and clear any later attempt that
     /// could not run: the verdict is now the latest thing that happened.
+    /// It clears any explanation a retirement gave of the previous failure (see
+    /// [`WikiRecord::verification_explained_by`]).
     fn set_verification(&self, id: &WikiId, verification: Verification) -> Result<WikiRecord>;
+    /// Record a **failed** verdict together with the retired keys whose retirement recorded every failure (handoff
+    /// 004, Q5), in one write, so that the explanation is always the verdict's own. `explained_by` must be empty
+    /// unless the verdict is a failure ([`StoreError::StateChanged`] otherwise: nothing is changed), and each entry a
+    /// key id as prikk accepts one.
+    fn set_verification_explained(
+        &self,
+        id: &WikiId,
+        verification: Verification,
+        explained_by: &[String],
+    ) -> Result<WikiRecord>;
     /// Record that a verification could not run to completion. **The last verdict is left as it was**: a check
     /// that did not run never replaces what the last one found (handoff 003, review R1).
     fn record_attempt(&self, id: &WikiId, attempt: Attempt) -> Result<WikiRecord>;

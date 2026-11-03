@@ -559,3 +559,88 @@ fn a_clean_check_never_asks_the_signer() {
     v.explain_retirements_with(Arc::new(Retirements(Ok(Some(excuse(&["old-key"]))))));
     assert_eq!(v.check(&wiki).outcome, CheckOutcome::Verified);
 }
+
+// ---- the explanation is stored with the verdict (handoff 004, Q5)
+
+static EXPLAIN_CLOCK: AtomicI64 = AtomicI64::new(NOW);
+
+/// One check of `wiki` at a later time, with the signer answering `answer` and prikk answering `says`.
+fn check_later(
+    store: &Arc<MemoryStore>,
+    wiki: &WikiRecord,
+    says: PrikkResult<Report>,
+    answer: Excuse,
+) -> Checked {
+    EXPLAIN_CLOCK.fetch_add(MIN_RECHECK_SECS * 2, Ordering::SeqCst);
+    let v = Verifier::new(
+        Arc::new(Canned::of(vec![says])),
+        store.clone(),
+        RootLayout::new("/nowhere"),
+    )
+    .with_clock(|| EXPLAIN_CLOCK.load(Ordering::SeqCst));
+    v.explain_retirements_with(Arc::new(Retirements(answer)));
+    v.check(wiki)
+}
+
+#[test]
+fn the_explanation_is_stored_with_its_verdict_and_follows_it() {
+    let store = Arc::new(MemoryStore::new());
+    let wiki = new_wiki(&store, "handbook");
+    let failed = || Ok(report(false, &[("refs", "failed")]));
+    let explained = || Ok(Some(excuse(&["old-key", "older-key"])));
+    // A failure a retirement recorded: the record says so, beside a verdict that is still *failed*.
+    let c = check_later(&store, &wiki, failed(), explained());
+    assert!(c.recorded);
+    let now = store.get(&wiki.id).unwrap();
+    assert_eq!(now.verification.state, VerificationState::Failed);
+    assert_eq!(now.verification_explained_by, ["old-key", "older-key"]);
+    // A check that could not run is an attempt: the verdict and what explains it stand (R1).
+    let busy = Err(StorageError::Unavailable {
+        verb: "verify",
+        reason: Unavailable::Busy,
+    });
+    check_later(&store, &wiki, busy, explained());
+    let now = store.get(&wiki.id).unwrap();
+    assert!(now.last_attempt.is_some());
+    assert_eq!(now.verification.state, VerificationState::Failed);
+    assert_eq!(now.verification_explained_by, ["old-key", "older-key"]);
+    // A later failure nothing explains replaces it: the explanation is the latest verdict's own.
+    check_later(&store, &wiki, failed(), Ok(None));
+    let now = store.get(&wiki.id).unwrap();
+    assert_eq!(now.verification.state, VerificationState::Failed);
+    assert!(now.verification_explained_by.is_empty());
+    assert!(now.last_attempt.is_none());
+    // ... and a failure that is explained again, then a check that passes, which clears it.
+    check_later(&store, &wiki, failed(), explained());
+    assert_eq!(
+        store.get(&wiki.id).unwrap().verification_explained_by,
+        ["old-key", "older-key"]
+    );
+    let c = check_later(
+        &store,
+        &wiki,
+        Ok(report(true, &[("objects", "evaluated")])),
+        explained(),
+    );
+    assert_eq!(c.outcome, CheckOutcome::Verified);
+    let now = store.get(&wiki.id).unwrap();
+    assert_eq!(now.verification.state, VerificationState::Verified);
+    assert!(now.verification_explained_by.is_empty());
+}
+
+#[test]
+fn an_explanation_the_store_will_not_keep_never_costs_the_verdict() {
+    // Key ids as prikk accepts them are all the store takes; anything else is dropped, and the verdict is recorded.
+    let store = Arc::new(MemoryStore::new());
+    let wiki = new_wiki(&store, "handbook");
+    let c = check_later(
+        &store,
+        &wiki,
+        Ok(report(false, &[("refs", "failed")])),
+        Ok(Some(excuse(&["not a key id"]))),
+    );
+    assert!(c.recorded);
+    let now = store.get(&wiki.id).unwrap();
+    assert_eq!(now.verification.state, VerificationState::Failed);
+    assert!(now.verification_explained_by.is_empty());
+}

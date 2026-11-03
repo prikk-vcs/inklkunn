@@ -1711,15 +1711,21 @@ fn an_unfinished_retirement_survives_a_reopen_and_is_bound_into_the_seal() {
         ),
         (
             "the count changed",
-            edited(&|v| v["retiring"]["checked_records"] = 8.into()),
+            edited(&|v| {
+                *v.pointer_mut("/retiring/checked_records").unwrap() = 8.into();
+            }),
         ),
         (
             "a kept tip moved",
-            edited(&|v| v["retiring"]["views"][0]["block_id"] = "cd".repeat(32).into()),
+            edited(&|v| {
+                *v.pointer_mut("/retiring/views/0/block_id").unwrap() = "cd".repeat(32).into();
+            }),
         ),
         (
             "a kept view dropped",
-            edited(&|v| v["retiring"]["views"] = serde_json::json!([])),
+            edited(&|v| {
+                *v.pointer_mut("/retiring/views").unwrap() = serde_json::json!([]);
+            }),
         ),
         (
             "the state removed (a retirement made to look never begun)",
@@ -1780,7 +1786,13 @@ fn an_unfinished_retirement_that_is_not_about_the_newest_superseded_key_or_has_v
         }),
         ("a tip that is not a block id", {
             let mut m = retiring_meta(&wiki);
-            m.retiring.as_mut().unwrap().views[0].block_id = "nope".into();
+            m.retiring
+                .as_mut()
+                .unwrap()
+                .views
+                .first_mut()
+                .unwrap()
+                .block_id = "nope".into();
             m
         }),
     ];

@@ -33,7 +33,7 @@ use crate::record::{
 use crate::{Result, StoreError, WikiStore};
 
 /// The schema version this build writes and reads: the last of [`MIGRATIONS`].
-pub const SCHEMA_VERSION: i64 = 14;
+pub const SCHEMA_VERSION: i64 = 15;
 
 /// Version 1: M0's schema, the wiki records.
 const V1: &str = "
@@ -713,6 +713,14 @@ WHEN EXISTS (SELECT 1 FROM invitation_uses WHERE invitation_id = NEW.invitation_
 BEGIN SELECT RAISE(ABORT, 'invitation uses are append-only'); END;
 ";
 
+/// Version 15 (handoff 004, Q5): the retired keys whose retirement recorded every failure of a wiki's last failed
+/// verdict, stored **with the verdict** so that the verification page says so on every load. A JSON array of key ids,
+/// `NULL` for none; the database refuses one beside a verdict that is not a failure.
+const V15: &str = "
+ALTER TABLE wikis ADD COLUMN verification_explained_by TEXT
+    CHECK (verification_explained_by IS NULL OR verification_state = 'failed');
+";
+
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and
 /// [`SCHEMA_VERSION`] moves with it (a test holds the two together).
 pub const MIGRATIONS: &[(i64, &str)] = &[
@@ -730,6 +738,7 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (12, V12),
     (13, V13),
     (14, V14),
+    (15, V15),
 ];
 
 /// The SQLite-backed store.
@@ -966,10 +975,16 @@ impl SqliteStore {
     }
 }
 
+/// The stored form of a verdict's explanation: a JSON array of key ids, `None` for none.
+fn explanation_text(explained_by: &[String]) -> Option<String> {
+    (!explained_by.is_empty())
+        .then(|| serde_json::to_string(explained_by).unwrap_or_else(|_| "[]".to_owned()))
+}
+
 const COLUMNS: &str = "id, slug, display_name, default_view, default_license, languages, visibility, \
                        policy_bootstrap, prikk_format_version, verification_state, verification_at, \
                        author_key_id, maintainer_key_id, created_at, checkpoint_prikk_version, \
-                       checkpoint_refresh_requested_at, attempt_at, attempt_why";
+                       checkpoint_refresh_requested_at, attempt_at, attempt_why, verification_explained_by";
 
 fn row_to_record(row: &Row<'_>) -> rusqlite::Result<WikiRecord> {
     let id: String = row.get(0)?;
@@ -981,6 +996,7 @@ fn row_to_record(row: &Row<'_>) -> rusqlite::Result<WikiRecord> {
     let checkpoint_version: Option<String> = row.get(14)?;
     let attempt_at: Option<i64> = row.get(16)?;
     let attempt_why: Option<String> = row.get(17)?;
+    let explained_by: Option<String> = row.get(18)?;
     let invalid = |what: &str| {
         rusqlite::Error::InvalidColumnType(0, what.to_owned(), rusqlite::types::Type::Text)
     };
@@ -1006,6 +1022,12 @@ fn row_to_record(row: &Row<'_>) -> rusqlite::Result<WikiRecord> {
             }),
             _ => return Err(invalid("attempt")),
         },
+        verification_explained_by: match explained_by {
+            None => Vec::new(),
+            Some(text) => {
+                serde_json::from_str(&text).map_err(|_| invalid("verification_explained_by"))?
+            }
+        },
         author_key_id: row.get(11)?,
         maintainer_key_id: row.get(12)?,
         checkpoint: Checkpoint {
@@ -1026,8 +1048,8 @@ pub(crate) fn insert_wiki_row(tx: &rusqlite::Transaction<'_>, record: &WikiRecor
                 "INSERT INTO wikis (id, slug, display_name, default_view, default_license, languages, visibility, \
                  policy_bootstrap, prikk_format_version, verification_state, verification_at, author_key_id, \
                  maintainer_key_id, created_at, checkpoint_prikk_version, checkpoint_refresh_requested_at, \
-                 attempt_at, attempt_why, seq) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, \
+                 attempt_at, attempt_why, verification_explained_by, seq) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, \
                  (SELECT COALESCE(MAX(seq), 0) + 1 FROM wikis))",
                 params![
                     record.id.as_str(),
@@ -1048,6 +1070,7 @@ pub(crate) fn insert_wiki_row(tx: &rusqlite::Transaction<'_>, record: &WikiRecor
                     record.checkpoint.refresh_requested_at,
                     record.last_attempt.map(|a| a.at),
                     record.last_attempt.map(|a| a.why.as_str()),
+                    explanation_text(&record.verification_explained_by),
                 ],
             );
     if let Err(e) = r {
@@ -1120,8 +1143,35 @@ impl WikiStore for SqliteStore {
             let n = conn
                 .execute(
                     "UPDATE wikis SET verification_state = ?1, verification_at = ?2, \
-                     attempt_at = NULL, attempt_why = NULL WHERE id = ?3",
+                     attempt_at = NULL, attempt_why = NULL, verification_explained_by = NULL WHERE id = ?3",
                     params![verification.state.as_str(), verification.at, id.as_str()],
+                )
+                .map_err(backend)?;
+            if n == 0 {
+                return Err(StoreError::NotFound);
+            }
+            Self::fetch(conn, Key::Id, id.as_str())
+        })
+    }
+
+    fn set_verification_explained(
+        &self,
+        id: &WikiId,
+        verification: Verification,
+        explained_by: &[String],
+    ) -> Result<WikiRecord> {
+        crate::record::check_explanation(verification.state, explained_by)?;
+        self.with(|conn| {
+            let n = conn
+                .execute(
+                    "UPDATE wikis SET verification_state = ?1, verification_at = ?2, \
+                     attempt_at = NULL, attempt_why = NULL, verification_explained_by = ?3 WHERE id = ?4",
+                    params![
+                        verification.state.as_str(),
+                        verification.at,
+                        explanation_text(explained_by),
+                        id.as_str()
+                    ],
                 )
                 .map_err(backend)?;
             if n == 0 {

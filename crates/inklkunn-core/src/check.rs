@@ -84,7 +84,8 @@ pub enum CheckOutcome {
         /// The ids of the retired maintainer keys whose retirement recorded every failure, when that is so (handoff
         /// 004, P2′: the failure is publication trust and nothing else, and every block, ref state and ref update it
         /// names is in what a retirement recorded). Empty otherwise. **It changes no label**: the badge says
-        /// *Verification failed* as before (DR-10); the verification page only adds the sentence.
+        /// *Verification failed* as before (DR-10); the verification page only adds the sentence. It is **stored with
+        /// the verdict** (store schema 15, Q5), so the page says it on every load.
         explained_by_retirement: Vec<String>,
     },
     /// The check did not run to completion. Not a verdict, and the last verdict stands.
@@ -246,8 +247,11 @@ impl Verifier {
             *explained_by_retirement = reader.explained_by(&wiki.id);
         }
         let recorded = match &outcome {
-            CheckOutcome::Verified => self.verdict(wiki, VerificationState::Verified, at),
-            CheckOutcome::Failed { .. } => self.verdict(wiki, VerificationState::Failed, at),
+            CheckOutcome::Verified => self.verdict(wiki, VerificationState::Verified, at, &[]),
+            CheckOutcome::Failed {
+                explained_by_retirement,
+                ..
+            } => self.verdict(wiki, VerificationState::Failed, at, explained_by_retirement),
             CheckOutcome::CouldNotBeChecked(why) => self
                 .wikis
                 .record_attempt(
@@ -273,15 +277,23 @@ impl Verifier {
         }
     }
 
-    fn verdict(&self, wiki: &WikiRecord, state: VerificationState, at: i64) -> bool {
+    /// Store the verdict **with** the retired keys that explain it (Q5), in one write: the explanation is the verdict's
+    /// own, a passing verdict has none, and a later verdict replaces it.
+    fn verdict(
+        &self,
+        wiki: &WikiRecord,
+        state: VerificationState,
+        at: i64,
+        explained_by: &[String],
+    ) -> bool {
+        let verdict = Verification {
+            state,
+            at: Some(at),
+        };
+        // An explanation the store will not keep (not key ids) never costs the verdict itself.
         self.wikis
-            .set_verification(
-                &wiki.id,
-                Verification {
-                    state,
-                    at: Some(at),
-                },
-            )
+            .set_verification_explained(&wiki.id, verdict, explained_by)
+            .or_else(|_| self.wikis.set_verification(&wiki.id, verdict))
             .is_ok()
     }
 }

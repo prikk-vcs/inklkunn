@@ -358,6 +358,14 @@ impl WikiStore for NoPlainInsert<'_> {
     ) -> Result<WikiRecord, StoreError> {
         self.0.set_verification(id, v)
     }
+    fn set_verification_explained(
+        &self,
+        id: &WikiId,
+        v: inklkunn_store::Verification,
+        explained_by: &[String],
+    ) -> Result<WikiRecord, StoreError> {
+        self.0.set_verification_explained(id, v, explained_by)
+    }
     fn record_attempt(
         &self,
         id: &WikiId,

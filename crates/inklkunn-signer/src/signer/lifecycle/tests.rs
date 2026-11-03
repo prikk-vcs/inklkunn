@@ -678,7 +678,7 @@ impl World {
     /// writable once a key was removed), and, once a key was removed, `verify-dies` (it cannot run), `disagree` (its
     /// text says the repository verifies where its verdict says it fails), `count-differs` (the text counts more
     /// records than before); at any time `count-missing` (the text prints no count), `duplicate-block` (the text lists
-    /// the first block twice, with another signer), `extra-finding` (the text names a finding of another condition) and `halted` (the verdict is that of a run that stopped early).
+    /// the first block twice, with another signer), `hide-signers` (the text lists no `sealed-block` line), `extra-finding` (the text names a finding of another condition) and `halted` (the verdict is that of a run that stopped early).
     fn faulty(&self) -> (PathBuf, Signer) {
         let ctl = self._tmp.0.join("ctl");
         std::fs::create_dir_all(&ctl).unwrap();
@@ -708,6 +708,7 @@ if [ "$1" = verify ]; then
       first=$(printf '%s\n' "$out" | grep '^sealed-block ' | head -1); b=${{first#sealed-block }}; b=${{b%%:*}}
       echo "sealed-block $b: someone-else"; exit $rc
     fi
+    if [ -e "$CTL/hide-signers" ]; then printf '%s\n' "$out" | grep -v '^sealed-block '; exit $rc; fi
     if [ -e "$CTL/extra-finding" ]; then
       printf '%s\n' "$out"; echo 'ref-publication [PRIKK-VERIFY-INJECTED]: appeared between the two runs'; exit $rc
     fi
@@ -1050,4 +1051,51 @@ fn a_finding_of_another_condition_in_the_text_is_refused_even_when_everything_el
         matches!(&r, Err(SignerError::Unavailable(why)) if why.contains("ref-publication") && why.contains("not publication trust")),
         "{r:?}"
     );
+}
+
+#[test]
+fn blocks_that_lose_their_signature_without_being_the_retired_keys_are_left_out_and_said_so() {
+    // The verify before listed nobody as the retired key's signer (the shim hides the lines), so the block the removal
+    // made fail is not the key's as far as the record knows: it is not recorded, the ref state and ref update are, and
+    // the retirement says so (exit 1 at the command line) instead of claiming a complete record. The state is cleared:
+    // nothing the command could add. What is left out is not excused, and the wiki stops on it.
+    for via_finish in [false, true] {
+        let Some(w) = world(&format!("q1-left-out-{via_finish}")) else {
+            return;
+        };
+        let (ctl, signer) = w.faulty();
+        std::fs::write(ctl.join("hide-signers"), "").unwrap();
+        if via_finish {
+            std::fs::write(ctl.join("verify-dies"), "").unwrap();
+        }
+        let rotation = w.retire(&signer);
+        let (findings, note) = if via_finish {
+            w.assert_unfinished(&rotation);
+            std::fs::remove_file(ctl.join("verify-dies")).unwrap();
+            let done = w.finish(&signer).unwrap();
+            (done.findings_recorded, done.note)
+        } else {
+            let OldKeyOutcome::RetiredPartly(note) = &rotation.old_key else {
+                panic!("{rotation:?}");
+            };
+            (
+                w.facts().superseded.last().unwrap().excused.len(),
+                Some(note.clone()),
+            )
+        };
+        assert_eq!(
+            findings, 2,
+            "the ref state and the ref update, and not the block"
+        );
+        assert!(note.is_some_and(|n| n.contains("left out") && n.contains("will stop the wiki")));
+        let facts = w.facts();
+        assert!(facts.retiring.is_none());
+        assert!(facts.superseded.last().unwrap().retired);
+        assert!(facts.superseded.last().unwrap().excused.blocks.is_empty());
+        assert_eq!(
+            w.signer.retirement_explains(&w.repo, &w.wiki),
+            Ok(None),
+            "the block is nobody's to excuse"
+        );
+    }
 }

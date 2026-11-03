@@ -112,6 +112,22 @@ impl WikiStore for MemoryStore {
         self.update(id, |r| {
             r.verification = verification;
             r.last_attempt = None;
+            r.verification_explained_by = Vec::new();
+            Ok(())
+        })
+    }
+
+    fn set_verification_explained(
+        &self,
+        id: &WikiId,
+        verification: Verification,
+        explained_by: &[String],
+    ) -> Result<WikiRecord> {
+        crate::record::check_explanation(verification.state, explained_by)?;
+        self.update(id, |r| {
+            r.verification = verification;
+            r.last_attempt = None;
+            r.verification_explained_by = explained_by.to_vec();
             Ok(())
         })
     }

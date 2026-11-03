@@ -483,6 +483,33 @@ impl VerificationState {
     }
 }
 
+/// The most retired keys one verdict names.
+pub const MAX_EXPLAINING_KEYS: usize = 64;
+
+/// May `explained_by` be stored with a verdict in `state`? Only a failure is explained, each entry is a key id as
+/// prikk accepts one (ASCII letters, digits, `-` and `_`, at most 128 characters), and there are not many.
+pub(crate) fn check_explanation(
+    state: VerificationState,
+    explained_by: &[String],
+) -> Result<(), crate::StoreError> {
+    let shaped = |k: &String| {
+        !k.is_empty()
+            && k.len() <= 128
+            && k.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    };
+    if explained_by.is_empty() {
+        return Ok(());
+    }
+    if state != VerificationState::Failed
+        || explained_by.len() > MAX_EXPLAINING_KEYS
+        || !explained_by.iter().all(shaped)
+    {
+        return Err(crate::StoreError::StateChanged);
+    }
+    Ok(())
+}
+
 /// A verification verdict and when it was reached.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Verification {
@@ -747,6 +774,12 @@ pub struct WikiRecord {
     /// A later attempt that could not run, if the last thing that happened was that; the next verdict clears
     /// it. It never replaces `verification`.
     pub last_attempt: Option<Attempt>,
+    /// The retired maintainer keys whose retirement recorded every failure of the last **failed** verdict (handoff
+    /// 004, Q5: the signer said so when the check ran, and the verdict is stored with it). Empty for any other
+    /// verdict, and for a failure no retirement accounts for. It changes no label (DR-10): a page that shows the
+    /// verdict adds a sentence, and shows it on every load, not only after a check. A later verdict replaces it
+    /// (a passing one clears it); an attempt that could not run leaves it alone, as it leaves the verdict.
+    pub verification_explained_by: Vec<String>,
     /// The wiki's author key id (never a seed).
     pub author_key_id: Option<String>,
     /// The wiki's maintainer key id (never a seed).
@@ -795,6 +828,7 @@ impl WikiRecord {
             prikk_format_version: None,
             verification: Verification::default(),
             last_attempt: None,
+            verification_explained_by: Vec::new(),
             author_key_id: None,
             maintainer_key_id: None,
             checkpoint: Checkpoint::default(),

@@ -731,3 +731,75 @@ async fn a_heading_called_main_cannot_take_the_skip_links_target() {
         a.body
     );
 }
+
+#[tokio::test]
+async fn the_explanation_of_a_failed_verdict_is_said_on_the_first_load_and_follows_the_verdict() {
+    // Handoff 004, Q5: the sentence is read from the stored verdict, so a visitor who never presses *Check now* meets it
+    // too, beside a badge that says *Verification failed* (DR-10) on every page; it is gone with the verdict.
+    let sentence =
+        "The only failures are those the retirement of key inklkunn-w-maintainer recorded.";
+    let w = handbook();
+    let failed = Verification {
+        state: VerificationState::Failed,
+        at: Some(NOW - 10_000),
+    };
+    w.store
+        .set_verification_explained(&w.wiki.id, failed, &["inklkunn-w-maintainer".to_owned()])
+        .unwrap();
+    let a = get(&w, "/handbook/-/verification").await;
+    assert!(a.body.contains(">Verification failed</a>"), "{}", a.body);
+    assert!(a.body.contains(sentence), "{}", a.body);
+    assert_eq!(count(&a.body, sentence), 1);
+    let home = get(&w, "/handbook/Home").await;
+    assert!(home.body.contains(">Verification failed</a>"));
+    assert!(!home.body.contains("the retirement of key"));
+    // A check that could not run is an attempt: the verdict, and what explains it, stand.
+    w.store
+        .record_attempt(
+            &w.wiki.id,
+            Attempt {
+                at: NOW - 30,
+                why: NotRun::Busy,
+            },
+        )
+        .unwrap();
+    let b = get(&w, "/handbook/-/verification").await;
+    assert!(b.body.contains(sentence), "{}", b.body);
+    // A failure nothing explains says nothing of the kind.
+    w.store.set_verification(&w.wiki.id, failed).unwrap();
+    let c = get(&w, "/handbook/-/verification").await;
+    assert!(c.body.contains(">Verification failed</a>"));
+    assert!(!c.body.contains("the retirement of key"), "{}", c.body);
+    // A later verdict that passes clears it.
+    w.store
+        .set_verification_explained(&w.wiki.id, failed, &["inklkunn-w-maintainer".to_owned()])
+        .unwrap();
+    w.store
+        .set_verification(
+            &w.wiki.id,
+            Verification {
+                state: VerificationState::Verified,
+                at: Some(NOW - 5_000),
+            },
+        )
+        .unwrap();
+    let d = get(&w, "/handbook/-/verification").await;
+    assert!(d.body.contains(">Verified</a>"), "{}", d.body);
+    assert!(!d.body.contains("the retirement of key"), "{}", d.body);
+}
+
+#[tokio::test]
+async fn a_check_now_that_found_a_retirements_failure_says_it_once_and_the_next_visit_still_does() {
+    let sentence =
+        "The only failures are those the retirement of key inklkunn-w-maintainer recorded.";
+    let w = handbook();
+    w.services
+        .verifier
+        .explain_retirements_with(std::sync::Arc::new(Retired("inklkunn-w-maintainer")));
+    w.fake.verify_says(Ok(damaged()));
+    let a = post_form(&w, "/handbook/-/verification", true).await;
+    assert_eq!(count(&a.body, sentence), 1, "{}", a.body);
+    let b = get(&w, "/handbook/-/verification").await;
+    assert!(b.body.contains(">Verification failed</a>"));
+    assert_eq!(count(&b.body, sentence), 1, "{}", b.body);
+}
