@@ -565,3 +565,111 @@ fn the_pending_cleanup_findings_are_counted_exactly() {
         (0, false)
     );
 }
+
+// ---- what the audit trail says of a retirement (X2)
+
+#[test]
+fn the_fixed_form_in_a_detail_is_read_strictly() {
+    let id = "inklkunn-w-maintainer-1-0a1b2c3d";
+    assert_eq!(recorded_key(&recorded_detail(id, "")), Some(id));
+    assert_eq!(
+        recorded_key(&recorded_detail(id, "finished; 3 finding(s)")),
+        Some(id)
+    );
+    assert_eq!(
+        recorded_key(&format!("retirement recorded: key {id}")),
+        Some(id)
+    );
+    for (what, detail) in [
+        ("nothing", String::new()),
+        (
+            "an older build's words",
+            format!("retirement of key {id} finished; 3 finding(s) recorded"),
+        ),
+        (
+            "not first",
+            format!("generation 2; retirement recorded: key {id}"),
+        ),
+        ("another case", format!("Retirement recorded: key {id}")),
+        ("no id", "retirement recorded: key ".to_owned()),
+        (
+            "no id, then words",
+            "retirement recorded: key ; finished".to_owned(),
+        ),
+        (
+            "a space in the id",
+            format!("retirement recorded: key {id} x"),
+        ),
+        (
+            "a separator that is not ours",
+            format!("retirement recorded: key {id}, finished"),
+        ),
+        (
+            "a character prikk refuses",
+            "retirement recorded: key bad/id".to_owned(),
+        ),
+        (
+            "an id that is too long",
+            format!("retirement recorded: key {}", "a".repeat(129)),
+        ),
+        ("begun", format!("begun; retirement recorded: key {id}")),
+    ] {
+        assert_eq!(recorded_key(&detail), None, "{what}: {detail}");
+    }
+    // The longest id still fits in what an event keeps, with room for words.
+    let longest = "a".repeat(128);
+    let detail = recorded_detail(&longest, "finished");
+    assert_eq!(recorded_key(&detail), Some(longest.as_str()));
+    assert!(detail.len() < inklkunn_store::audit::FIELD_MAX_CHARS);
+}
+
+#[test]
+fn the_whole_trail_is_read_and_only_an_allowed_event_of_the_three_actions_for_the_wiki_counts() {
+    use inklkunn_store::{AuditEvent, AuditOutcome, AuditSink, MemoryAudit};
+    let wiki = WikiId::new();
+    let key = "inklkunn-w-maintainer-1-0a1b2c3d";
+    let trail = MemoryAudit::new();
+    let event = |wiki: &WikiId, action: &str, outcome, detail: &str| {
+        AuditEvent::new(
+            1,
+            "system:operator-cli",
+            action,
+            &format!("wiki:{wiki}"),
+            outcome,
+            detail,
+        )
+    };
+    assert!(
+        !retirement_finished_in(&trail, &wiki, key).unwrap(),
+        "an empty trail"
+    );
+    // More than a page of other events first: the answer is not read from the first page only.
+    for _ in 0..1_201 {
+        trail
+            .record(&event(
+                &wiki,
+                "keys-rotate",
+                AuditOutcome::Allowed,
+                "generation 2; old key kept",
+            ))
+            .unwrap();
+    }
+    assert!(!retirement_finished_in(&trail, &wiki, key).unwrap());
+    trail
+        .record(&event(
+            &wiki,
+            ACTION_RETIRE,
+            AuditOutcome::Allowed,
+            &recorded_detail(key, "retired"),
+        ))
+        .unwrap();
+    assert!(retirement_finished_in(&trail, &wiki, key).unwrap());
+    assert!(
+        !retirement_finished_in(&trail, &wiki, "inklkunn-w-maintainer-2-ffffffff").unwrap(),
+        "another key"
+    );
+    assert!(
+        !retirement_finished_in(&trail, &WikiId::new(), key).unwrap(),
+        "another wiki"
+    );
+}

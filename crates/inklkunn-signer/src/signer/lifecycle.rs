@@ -12,7 +12,8 @@
 //!
 //! - [`OldKey::Keep`] leaves it trusted. Everything it sealed keeps verifying. The service no longer holds its
 //!   seed, but a copy somewhere else could still seal changes that verify. Right for a routine rotation.
-//! - [`OldKey::Retire`] removes it from the trust store. It can seal nothing more — **and everything it sealed
+//! - [`OldKey::Retire`] is the rotation followed by the **one** retirement of the key it just replaced, the same
+//!   (and the same code) as `inklkunn wiki keys retire` makes of any superseded key (handoff 004, X1). It removes the key from the trust store. It can seal nothing more — **and everything it sealed
 //!   stops verifying**: `prikk verify` fails with publication-trust issues for each block, ref state and ref
 //!   update it signed, and the wiki shows *Verification failed* until prikk can keep a retired key's history
 //!   verifiable. Right for a compromise, where the alternative is forged seals that verify.
@@ -21,10 +22,10 @@ use std::path::Path;
 
 use inklkunn_store::WikiId;
 
-use super::retirement::{abandon_retirement_command, finish_retirement_command};
+use super::retirement::{recovery_first, retire_command, unfinished_refusal};
 use super::{KeyDir, KeyIds, Meta, Signer, SignerError, ks, read_seeds};
 use crate::KeyAuthority;
-use crate::key_store::{Excused, Retiring, Superseded};
+use crate::key_store::{Excused, Superseded};
 
 /// What happens to the old maintainer key when keys are rotated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,6 +62,11 @@ pub enum OldKeyOutcome {
     /// `inklkunn wiki keys finish-retirement <wiki>` does the removal itself and the rest (W2), and
     /// `inklkunn wiki keys abandon-retirement <wiki> --confirm <slug>` leaves the key trusted.
     RetireFailed(String),
+    /// Removal was asked for and **no retirement was begun**: the keys *were* rotated, the old maintainer key is
+    /// **still trusted**, and nothing is paused (the key record could not take the retirement's state, or the
+    /// repository's trust could not be read). The text is why, and names `inklkunn wiki keys retire <wiki> --key <id>`
+    /// (handoff 004, X1), which retires the key later.
+    RetireNotBegun(String),
 }
 
 /// What a rotation did. A rotation that happened is always a `Rotation`, whatever became of the old key: the
@@ -112,12 +118,7 @@ impl Signer {
         let _held = self.write_lock(&wiki)?;
         let before = self.store.status(&wiki).map_err(ks)?;
         if let Some(open) = &before.retiring {
-            return Err(SignerError::Refused(format!(
-                "the retirement of key {} was begun and is not finished; finish it first with `{}`, or give it up with `{}`; nothing was changed",
-                open.maintainer_key_id,
-                finish_retirement_command(&wiki),
-                abandon_retirement_command(&wiki)
-            )));
+            return Err(unfinished_refusal(&wiki, &open.maintainer_key_id));
         }
         let generation = before.generation.saturating_add(1);
         // A retirement starts from a repository that verifies (handoff 004, P2′): `verify` runs before anything is
@@ -125,9 +126,12 @@ impl Signer {
         // old key stays trusted if it does not pass. Its text names the signer of every sealed block.
         let verified_before = match old_key {
             OldKey::Keep => None,
-            OldKey::Retire => {
-                Some(self.verify_before_retirement(repo, &wiki, &before.maintainer_key_id)?)
-            }
+            OldKey::Retire => Some(
+                self.verify_before_retirement(repo, &wiki, &before.maintainer_key_id)
+                    .map_err(|e| {
+                        recovery_first(&wiki, e, "then rotate again with `--retire-old`")
+                    })?,
+            ),
         };
         let scratch = self.seed_base.scratch().map_err(ks)?;
         let result = (|| -> Result<Rotation, SignerError> {
@@ -154,12 +158,6 @@ impl Signer {
             //    old maintainer key stopped: the tip block of every view now (corrections handoff C11), so that a
             //    later seal by that key can be told from the history it really sealed.
             let tips = self.current_tips(repo)?;
-            // The retirement's state (Q1, W3, W5): the trust list as it stands with the new key adopted and the old
-            // one still in, and the old key's public key, which only the repository's trust list holds from now on.
-            let trust_facts = match verified_before {
-                Some(_) => Some(self.retiring_trust_facts(repo, &before.maintainer_key_id)?),
-                None => None,
-            };
             let now = inklkunn_store::record::now_secs();
             let mut superseded = before.superseded.clone();
             superseded.push(Superseded {
@@ -167,23 +165,10 @@ impl Signer {
                 maintainer_key_id: before.maintainer_key_id.clone(),
                 superseded_at: now,
                 retired: false,
-                views: tips.clone(),
+                views: tips,
                 excused: Excused::default(),
             });
             let seeds = read_seeds(&keys)?;
-            // A retirement is written down **before** the key leaves the trust store (Q1): what the verify before
-            // named and where the views were. If anything after the removal fails, `finish-retirement` finishes the
-            // record from this.
-            let retiring = verified_before
-                .zip(trust_facts)
-                .map(|(b, (public, trusted))| Retiring {
-                    maintainer_key_id: before.maintainer_key_id.clone(),
-                    signed_by_key: b.signed_by_key,
-                    checked_records: b.checked_records,
-                    views: tips,
-                    maintainer_public_key: public,
-                    trusted_maintainers: trusted,
-                });
             let meta = Meta {
                 wiki: wiki.clone(),
                 generation,
@@ -192,31 +177,23 @@ impl Signer {
                 created_at: before.created_at,
                 rotated_at: Some(now),
                 superseded,
-                retiring: retiring.clone(),
+                retiring: None,
             };
             self.store.replace(&meta, &seeds).map_err(ks)?;
 
-            // 4. Only now, and only on request, the old maintainer key leaves the trust store. If this fails
-            //    the rotation has happened and the old key is still trusted: said so in the result, never
-            //    hidden and never an error that would make the caller think nothing changed.
-            let old_key_outcome = match old_key {
-                OldKey::Keep => OldKeyOutcome::Kept,
-                OldKey::Retire => {
-                    match self
-                        .writes
-                        .untrust_maintainer(repo, &before.maintainer_key_id)
-                    {
-                        // `verify` just after names what lost its trusted signature; that set is what the record
-                        // keeps, so that a later failure is excused by it and by nothing else (P2′). Anything that
-                        // keeps the record from being made leaves the `retiring` state in the key record (Q1):
-                        // `finish-retirement` makes it from there, or `abandon-retirement` gives it up.
-                        Ok(()) => match retiring.as_ref() {
-                            Some(r) => self.conclude_retirement_outcome(repo, &wiki, r),
-                            None => OldKeyOutcome::RetiredUnrecorded(
-                                "the retirement kept no state to record from".to_owned(),
-                            ),
-                        },
-                        Err(e) => OldKeyOutcome::RetireFailed(e.to_string()),
+            // 4. Only now, and only on request, the old maintainer key is retired: the same retirement, by the same code,
+            //    as `inklkunn wiki keys retire` makes of any superseded key (X1). The rotation has happened whatever
+            //    comes of it, and the result says so, never hidden and never an error that would make the caller think
+            //    nothing changed. (The `verify` that must pass was taken above, before anything was changed.)
+            let old_key_outcome = match verified_before {
+                None => OldKeyOutcome::Kept,
+                Some(look) => {
+                    match self.retire_superseded(repo, &wiki, &before.maintainer_key_id, look) {
+                        Ok(outcome) => outcome,
+                        Err(e) => OldKeyOutcome::RetireNotBegun(format!(
+                            "the retirement of the old key was not begun ({e}); retire it with `{}`",
+                            retire_command(&wiki, &before.maintainer_key_id)
+                        )),
                     }
                 }
             };

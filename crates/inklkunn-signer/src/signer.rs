@@ -593,8 +593,10 @@ impl Accept for Signer {
         let _held = self.write_lock(wiki).map_err(accept_error)?;
         // A change to the wiki's keys that was begun and not finished pauses every new seal (W1), before anything is
         // read from the ledger or written: a block sealed now could not be told from what the removal made fail.
-        if let Some(sentence) = self.seal_pause(wiki) {
-            return Err(AcceptError::RetirementUnfinished(sentence));
+        match self.seal_pause(wiki) {
+            Ok(None) => {}
+            Ok(Some(sentence)) => return Err(AcceptError::RetirementUnfinished(sentence)),
+            Err(why) => return Err(AcceptError::Unavailable(why)),
         }
         // 1. The guard: the record the token names, read here, and what the message says. Nothing is
         //    decrypted or written until both agree.
@@ -659,8 +661,10 @@ impl Accept for Signer {
         }
         let _held = self.write_lock(wiki).map_err(accept_error)?;
         // A view is a new ref in a history the unfinished retirement recorded the views of (W1).
-        if let Some(sentence) = self.seal_pause(wiki) {
-            return Err(AcceptError::RetirementUnfinished(sentence));
+        match self.seal_pause(wiki) {
+            Ok(None) => {}
+            Ok(Some(sentence)) => return Err(AcceptError::RetirementUnfinished(sentence)),
+            Err(why) => return Err(AcceptError::Unavailable(why)),
         }
         let facts = self
             .ledger

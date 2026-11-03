@@ -1667,15 +1667,6 @@ fn retiring_state() -> Retiring {
     }
 }
 
-/// A state as format `/4` kept it: neither the old key's public key nor the trust list.
-fn retiring_state_v4() -> Retiring {
-    Retiring {
-        maintainer_public_key: String::new(),
-        trusted_maintainers: Vec::new(),
-        ..retiring_state()
-    }
-}
-
 /// A record in the middle of a retirement: the key is superseded, not marked retired, and `retiring` says what the
 /// verify before named.
 fn retiring_meta(wiki: &WikiId) -> Meta {
@@ -1791,7 +1782,7 @@ fn an_unfinished_retirement_survives_a_reopen_and_is_bound_into_the_seal() {
             good.replace("inklkunn-key-record/5", "inklkunn-key-record/3"),
         ),
         (
-            "named as format 4, which keeps neither the key nor the list",
+            "named as format 4, which was never released (X5)",
             good.replace("inklkunn-key-record/5", "inklkunn-key-record/4"),
         ),
     ] {
@@ -1804,7 +1795,7 @@ fn an_unfinished_retirement_survives_a_reopen_and_is_bound_into_the_seal() {
 }
 
 #[test]
-fn an_unfinished_retirement_that_is_not_about_the_newest_superseded_key_or_has_values_prikk_would_not_issue_is_refused()
+fn an_unfinished_retirement_that_is_not_about_a_superseded_key_still_to_be_retired_or_has_values_prikk_would_not_issue_is_refused()
  {
     let tmp = temp("check-retiring");
     let store = store_in(&tmp.0.join("keys"));
@@ -1913,39 +1904,72 @@ fn a_record_of_the_format_before_opens_and_nothing_is_retiring_in_it() {
 }
 
 #[test]
-fn a_state_written_by_format_four_still_opens_and_keeps_neither_the_key_nor_the_list() {
-    // W3, W5: the format before kept neither. Its state opens (the wiki is not stranded by the format change), with
-    // both empty, and a state written now must hold both.
+fn a_record_of_format_four_is_refused_in_one_sentence_that_says_it_was_never_released() {
+    // X5: `/4` existed in the development tree only. Whatever it carries (a state or none), it is not read, and the
+    // sentence says why, so that nobody looks for a way to read it.
     let tmp = temp("format-four");
     let store = store_in(&tmp.0.join("keys"));
     let wiki = WikiId::new();
+    for (what, m) in [
+        ("with a state", retiring_meta(&wiki)),
+        ("without one", {
+            let mut m = meta(&wiki);
+            m.generation = 2;
+            m.superseded = vec![superseded_entry()];
+            m
+        }),
+    ] {
+        store.create(&m, &seeds()).unwrap();
+        let path = tmp.0.join(format!("keys/{wiki}.key.json"));
+        let good = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(
+            &path,
+            good.replace("inklkunn-key-record/5", "inklkunn-key-record/4"),
+        )
+        .unwrap();
+        let r = store.status(&wiki);
+        assert!(
+            matches!(&r, Err(KeyStoreError::Record(why))
+                if why.contains("format /4 was never released") && !why.contains('\n')),
+            "{what}: {r:?}"
+        );
+        // The same refusal on every way in.
+        assert!(store.update_meta(&wiki, |_| {}).is_err(), "{what}");
+        std::fs::remove_file(&path).unwrap();
+    }
+}
+
+#[test]
+fn a_retirement_state_may_be_about_an_older_superseded_key() {
+    // X1: `retire` takes any superseded key out of trust, so the state is found by the key's id, not by its place.
+    let tmp = temp("retiring-older");
+    let store = store_in(&tmp.0.join("keys"));
+    let wiki = WikiId::new();
     let mut m = retiring_meta(&wiki);
-    m.retiring = Some(retiring_state_v4());
-    let old = record::seal_v4(&store.master, &m, &seeds()).unwrap();
-    assert!(old.contains("inklkunn-key-record/4") && old.contains("retiring"));
-    std::fs::write(tmp.0.join(format!("keys/{wiki}.key.json")), old).unwrap();
-    let opened = store.status(&wiki).unwrap();
-    assert_eq!(opened, m);
-    let state = opened.retiring.as_ref().unwrap();
-    assert!(state.maintainer_public_key.is_empty() && state.trusted_maintainers.is_empty());
-    // A record written again is /5 and, with a state from /4, refuses to be written without them: the state is
-    // either complete or cleared.
-    assert!(matches!(
-        store.update_meta(&wiki, |_| {}),
-        Err(KeyStoreError::Record(_))
-    ));
-    let cleared = store.update_meta(&wiki, |m| m.retiring = None).unwrap();
-    assert!(cleared.retiring.is_none());
-    assert!(
-        std::fs::read_to_string(tmp.0.join(format!("keys/{wiki}.key.json")))
-            .unwrap()
-            .contains("inklkunn-key-record/5")
-    );
-    // The format before cannot hold what /5 does.
-    assert!(matches!(
-        record::seal_v4(&store.master, &retiring_meta(&wiki), &seeds()),
-        Err(KeyStoreError::Record(_))
-    ));
+    m.generation = 3;
+    let mut newer = superseded_entry();
+    newer.maintainer_key_id = "inklkunn-newer-maintainer".to_owned();
+    newer.generation = 2;
+    m.superseded.push(newer);
+    store.create(&m, &seeds()).unwrap();
+    assert_eq!(store.status(&wiki).unwrap(), m);
+    // ... and the record is made on that key's own entry.
+    let done = store
+        .update_meta(&wiki, |m| {
+            m.retiring = None;
+            if let Some(e) = m
+                .superseded
+                .iter_mut()
+                .find(|s| s.maintainer_key_id == "inklkunn-old-maintainer")
+            {
+                e.retired = true;
+                e.excused = retired_entry().excused;
+            }
+        })
+        .unwrap();
+    assert!(done.superseded.first().unwrap().retired);
+    assert!(!done.superseded.last().unwrap().retired);
+    assert_eq!(store.status(&wiki).unwrap(), done);
 }
 
 #[test]

@@ -779,8 +779,14 @@ fn abandon_retirement_puts_the_old_key_back_and_says_so_in_one_sentence() {
         assert_eq!(w.verifies(), !removed);
         let (status, out, err) = w.cli("wiki keys abandon-retirement handbook --confirm handbook");
         assert_eq!(status, 0, "{tag}: {out}{err}");
+        // The sentence says what abandoning costs and how to retire the key later (X1); it says *again* only when the
+        // key was put back.
         assert!(
-            out.contains("is trusted again; nothing is retired") && out.lines().count() >= 1,
+            out.contains(if removed {
+                "is trusted again; nothing is retired; to retire it later run `inklkunn wiki keys retire "
+            } else {
+                "is trusted; nothing is retired; to retire it later run `inklkunn wiki keys retire "
+            }) && out.contains(&format!("wiki keys retire {} --key ", w.record.id)),
             "{out}"
         );
         assert!(
@@ -799,10 +805,11 @@ fn abandon_retirement_puts_the_old_key_back_and_says_so_in_one_sentence() {
             ended.1 == "allowed"
                 && ended.2.contains("given up")
                 && ended.2.contains(if removed {
-                    "adopted it in the repository's trust again"
+                    "adopted the key in the repository's trust again"
                 } else {
-                    "never left"
-                }),
+                    "was trusted in the repository when this ran"
+                })
+                && !ended.2.contains("never left"),
             "{events:?}"
         );
         let (status, out, _) = w.cli("wiki keys status handbook");
@@ -890,26 +897,265 @@ fn an_act_that_cannot_be_written_to_the_audit_trail_is_not_begun() {
         return;
     };
     let before = w.recorded_ids();
-    let command = parse(&args("rotate handbook --confirm handbook")).unwrap();
-    let (mut out, mut err) = (Vec::new(), Vec::new());
-    let status = execute_with(
-        &command,
-        &w.settings,
-        1_800_000_000,
-        &mut out,
-        &mut err,
-        Some(&Broken),
-    );
-    let err = String::from_utf8(err).unwrap();
-    assert_eq!(status, 1, "{err}");
-    assert!(
-        err.contains("audit trail could not be written") && err.contains("nothing was done"),
-        "{err}"
-    );
+    for line in [
+        "rotate handbook --confirm handbook",
+        "retire handbook --key inklkunn-whatever --confirm handbook",
+    ] {
+        let command = parse(&args(line)).unwrap();
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        let status = execute_with(
+            &command,
+            &w.settings,
+            1_800_000_000,
+            &mut out,
+            &mut err,
+            Some(&Broken),
+        );
+        let err = String::from_utf8(err).unwrap();
+        assert_eq!(status, 1, "{line}: {err}");
+        assert!(
+            err.contains("audit trail could not be written") && err.contains("nothing was done"),
+            "{line}: {err}"
+        );
+    }
     assert_eq!(w.recorded_ids(), before);
     let (_, status_out, _) = w.cli("wiki keys status handbook");
     assert!(
         status_out.contains("generation:      1"),
         "no key changed: {status_out}"
     );
+}
+
+// ---- retire by id, and abandon against the audit trail (handoff 004, X1, X2)
+
+#[test]
+fn the_retire_command_parses_and_asks_for_the_key_and_the_slug() {
+    assert_eq!(
+        parse(&args("retire docs --key inklkunn-k --confirm docs")).unwrap(),
+        Command::Retire {
+            wiki: "docs".into(),
+            key: "inklkunn-k".into(),
+            confirm: "docs".into()
+        }
+    );
+    assert_eq!(
+        parse(&args("retire docs --confirm docs --key inklkunn-k")).unwrap(),
+        Command::Retire {
+            wiki: "docs".into(),
+            key: "inklkunn-k".into(),
+            confirm: "docs".into()
+        }
+    );
+    for bad in [
+        "retire docs",
+        "retire docs --key inklkunn-k",
+        "retire docs --confirm docs",
+        "retire docs --key",
+        "retire docs --key inklkunn-k --confirm",
+        "retire docs --key inklkunn-k --confirm docs --retire-old",
+        "retire --key inklkunn-k --confirm docs",
+    ] {
+        let e = parse(&args(bad)).unwrap_err();
+        assert!(e.0.contains("usage:"), "{bad}: {}", e.0);
+    }
+    assert!(USAGE.contains("wiki keys retire <wiki> --key <maintainer key id> --confirm <slug>"));
+}
+
+#[test]
+fn a_superseded_key_is_retired_at_the_command_line_by_its_id_audited_and_the_refusals_change_nothing()
+ {
+    let Some(w) = world::world("x1-cli") else {
+        return;
+    };
+    let k1 = w.recorded_ids().1.unwrap();
+    let (status, out, err) = w.cli("wiki keys rotate handbook --confirm handbook");
+    assert_eq!(status, 0, "{out}{err}");
+    // The rotation said how to retire the kept key later.
+    assert!(
+        out.contains(&format!("wiki keys retire {} --key {k1}", w.record.id)),
+        "{out}"
+    );
+    let k2 = w.recorded_ids().1.unwrap();
+    assert_ne!(k1, k2);
+    assert!(w.verifies());
+    // Refusals first, each changing nothing and audited as failed.
+    for (what, line, said) in [
+        (
+            "the wrong slug",
+            format!("wiki keys retire handbook --key {k1} --confirm other"),
+            "is not the slug",
+        ),
+        (
+            "the current key",
+            format!("wiki keys retire handbook --key {k2} --confirm handbook"),
+            "rotate first",
+        ),
+        (
+            "an id nobody knows",
+            "wiki keys retire handbook --key inklkunn-nobody --confirm handbook".to_owned(),
+            "does not know",
+        ),
+    ] {
+        let (status, _, err) = w.cli(&line);
+        assert_eq!(status, 1, "{what}: {err}");
+        assert!(
+            err.contains(said) && err.contains("nothing was changed"),
+            "{what}: {err}"
+        );
+        assert!(w.verifies(), "{what}: nothing was retired");
+    }
+    // Retired by its id.
+    let (status, out, err) = w.cli(&format!(
+        "wiki keys retire handbook --key {k1} --confirm handbook"
+    ));
+    assert_eq!(status, 0, "{out}{err}");
+    assert!(
+        out.contains(&format!("{k1} was removed from the repository's trust")),
+        "{out}"
+    );
+    assert!(!w.verifies(), "the key is out of the trust store");
+    // Audited before and after; the end carries the key's id in the fixed form abandon reads back.
+    let events = w.audit_events();
+    let retiring: Vec<_> = events
+        .iter()
+        .filter(|(a, _, _)| a == "keys-retire")
+        .collect();
+    assert_eq!(retiring.len(), 6, "{events:?}");
+    assert!(
+        retiring.iter().filter(|(_, o, _)| o == "failed").count() == 2,
+        "the two refusals that reached the signer: {events:?}"
+    );
+    let (begun, ended) = (retiring.get(4).unwrap(), retiring.get(5).unwrap());
+    assert!(begun.2.starts_with("begun"), "{events:?}");
+    assert!(
+        ended.1 == "allowed"
+            && ended
+                .2
+                .starts_with(&format!("retirement recorded: key {k1}")),
+        "{events:?}"
+    );
+    // `status` lists it as retired with its findings.
+    let (status, out, _) = w.cli("wiki keys status handbook");
+    assert_eq!(status, 0, "{out}");
+    assert!(
+        out.contains(&k1) && out.contains("retired, 3 finding(s) of publication trust recorded"),
+        "{out}"
+    );
+    // A key retired already is refused.
+    let (status, _, err) = w.cli(&format!(
+        "wiki keys retire handbook --key {k1} --confirm handbook"
+    ));
+    assert_eq!(status, 1);
+    assert!(err.contains("retired already"), "{err}");
+    // The verdict was recorded afresh (W6): the failures are the retirement's.
+    let record = w.store.get(&w.record.id).unwrap();
+    assert!(
+        record.verification_explained_by.contains(&k1),
+        "{:?}",
+        record.verification_explained_by
+    );
+}
+
+#[test]
+fn a_rotation_that_retires_writes_the_replaced_keys_id_first_in_the_audit_detail() {
+    let Some(w) = world::world("x2-rotate-detail") else {
+        return;
+    };
+    let k1 = w.recorded_ids().1.unwrap();
+    let (status, _, err) = w.cli(
+        "wiki keys rotate handbook --confirm handbook --retire-old --accept-unverifiable-history",
+    );
+    assert_eq!(status, 0, "{err}");
+    let events = w.audit_events();
+    let ended = events
+        .iter()
+        .rfind(|(a, o, _)| a == "keys-rotate" && o == "allowed")
+        .unwrap();
+    assert!(
+        ended
+            .2
+            .starts_with(&format!("retirement recorded: key {k1}; generation 2")),
+        "{events:?}"
+    );
+    // Read back the way abandon reads it.
+    assert!(
+        inklkunn_core::retirement_finished_in(&w.store, &w.record.id, &k1).unwrap(),
+        "{events:?}"
+    );
+    // A rotation that kept the key says nothing of the sort.
+    let Some(kept) = world::world("x2-rotate-kept") else {
+        return;
+    };
+    let k1 = kept.recorded_ids().1.unwrap();
+    let (status, _, _) = kept.cli("wiki keys rotate handbook --confirm handbook");
+    assert_eq!(status, 0);
+    assert!(!inklkunn_core::retirement_finished_in(&kept.store, &kept.record.id, &k1).unwrap());
+}
+
+/// Copy a directory tree (files and directories, mode kept).
+fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
+    std::fs::create_dir_all(to).unwrap();
+    std::fs::set_permissions(to, std::fs::metadata(from).unwrap().permissions()).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), &target).unwrap();
+        }
+    }
+}
+
+#[test]
+fn abandon_refuses_when_the_key_record_is_older_than_the_audit_trail_and_changes_nothing() {
+    // X2 at the command line. A retirement stops half way (the key is removed, the look after it cannot be made); the
+    // key directory is copied aside (a backup taken meanwhile); the retirement is finished (the trail says so); the
+    // old copy is put back. The key record then carries the unfinished state of a retirement that finished, and
+    // abandoning it would trust a key that was retired on purpose.
+    let Some(w) = world::world("x2-cli") else {
+        return;
+    };
+    let standin = w.standin_whose_verify_dies_after_a_removal();
+    let (status, _, err) = w.cli_with_prikk(
+        "wiki keys rotate handbook --confirm handbook --retire-old --accept-unverifiable-history",
+        standin.as_os_str(),
+    );
+    assert_eq!(status, 1, "{err}");
+    assert!(!w.verifies());
+    let backup = w.settings.data_dir.join("keys-backup");
+    copy_tree(&w.settings.key_dir, &backup);
+    let (status, out, err) = w.cli("wiki keys finish-retirement handbook");
+    assert_eq!(status, 0, "{out}{err}");
+    // The backup is put back over the newer key directory.
+    std::fs::remove_dir_all(&w.settings.key_dir).unwrap();
+    std::fs::rename(&backup, &w.settings.key_dir).unwrap();
+    let (status, out, _) = w.cli("wiki keys status handbook");
+    assert_eq!(status, 0);
+    assert!(out.contains("UNFINISHED"), "the old record: {out}");
+    let trusted_before = w.verifies();
+    let (status, out, err) = w.cli("wiki keys abandon-retirement handbook --confirm handbook");
+    assert_eq!(status, 1, "{out}{err}");
+    assert!(
+        err.contains("the key record looks older than the audit trail")
+            && err.contains("restore the key directory from a later backup")
+            && err.contains("nothing was changed"),
+        "{err}"
+    );
+    assert!(
+        !out.contains("is trusted"),
+        "nothing was said to be trusted: {out}"
+    );
+    assert_eq!(w.verifies(), trusted_before);
+    assert!(!w.verifies(), "the retired key was not trusted again");
+    // Still unfinished in that record (nothing was changed), and the trail says the act failed.
+    let (_, out, _) = w.cli("wiki keys status handbook");
+    assert!(out.contains("UNFINISHED"), "{out}");
+    let events = w.audit_events();
+    let abandoning: Vec<_> = events
+        .iter()
+        .filter(|(a, _, _)| a == "keys-abandon-retirement")
+        .collect();
+    assert_eq!(abandoning.len(), 2, "{events:?}");
+    assert_eq!(abandoning.get(1).unwrap().1, "failed");
 }

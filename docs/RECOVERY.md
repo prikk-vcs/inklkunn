@@ -140,6 +140,9 @@ inklkunn wiki keys finish-retirement <wiki>                    # does whatever s
 inklkunn wiki keys abandon-retirement <wiki> --confirm <slug>  # gives it up: the old key is trusted again, nothing is retired
 ```
 
+Abandoning leaves the old key trusted and retires nothing; `inklkunn wiki keys retire <wiki> --key <id> --confirm <slug>`
+retires it later, by its id (`docs/KEYS.md`).
+
 then `inklkunn wiki recover <wiki>`. You never run `prikk trust maintainer` yourself. If `finish-retirement` refuses with
 a reason no later run can cure (the repository changed outside inklkunn, the trusted keys are not the ones the retirement
 began with, a block that lost its signature was not the old key's, prikk counted something different), it says so and

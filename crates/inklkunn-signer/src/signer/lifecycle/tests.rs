@@ -13,6 +13,7 @@ use crate::RepositoryBootstrap;
 use crate::accept::{AcceptanceLedger, AcceptanceToken, ExpectedMessage, LedgerError};
 use crate::keys::Role;
 use crate::message::{Message, Summary, SystemLabel};
+use crate::signer::retirement::{abandon_retirement_command, finish_retirement_command};
 use crate::signer::superseded::LateSeal;
 use crate::{SignerConfig, accept::ViewCreationAct, accept::ViewCreationFacts};
 
@@ -678,7 +679,11 @@ impl World {
     /// writable once a key was removed), and, once a key was removed, `verify-dies` (it cannot run), `disagree` (its
     /// text says the repository verifies where its verdict says it fails), `count-differs` (the text counts more
     /// records than before); at any time `count-missing` (the text prints no count), `duplicate-block` (the text lists
-    /// the first block twice, with another signer), `hide-signers` (the text lists no `sealed-block` line), `extra-finding` (the text names a finding of another condition) and `halted` (the verdict is that of a run that stopped early).
+    /// the first block twice, with another signer), `hide-signers` (the text lists no `sealed-block` line), `extra-finding` (the text names a finding of another condition) and `halted` (the verdict is that of a run that stopped early);
+    /// and, for what abandoning does to the trust list: `list-dies-after-add` (the list cannot be read once a key was
+    /// added), `add-fails` (adding a key fails), `add-noop` (adding a key
+    /// says it worked and adds nothing), `list-dies` (the trust list cannot be read) and `swap-public` (the list
+    /// prints the public key named in the file, `<from> <to>`, as another one).
     fn faulty(&self) -> (PathBuf, Signer) {
         let ctl = self._tmp.0.join("ctl");
         std::fs::create_dir_all(&ctl).unwrap();
@@ -686,6 +691,16 @@ impl World {
             r#"#!/bin/sh
 CTL="{ctl}"
 REAL="{real}"
+if [ "$1 $2 $3" = "trust maintainer add" ]; then
+  if [ -e "$CTL/list-dies-after-add" ]; then "$REAL" "$@"; rc=$?; touch "$CTL/added"; exit $rc; fi
+  if [ -e "$CTL/add-fails" ]; then echo 'error: precondition not met: injected' >&2; exit 1; fi
+  if [ -e "$CTL/add-noop" ]; then exit 0; fi
+fi
+if [ "$1 $2 $3" = "trust maintainer list" ]; then
+  if [ -e "$CTL/list-dies" ]; then echo 'error: injected' >&2; exit 2; fi
+  if [ -e "$CTL/added" ] && [ -e "$CTL/list-dies-after-add" ]; then echo 'error: injected' >&2; exit 2; fi
+  if [ -e "$CTL/swap-public" ]; then read FROM TO < "$CTL/swap-public"; "$REAL" "$@" | sed "s/$FROM/$TO/g"; exit 0; fi
+fi
 if [ "$1 $2 $3" = "trust maintainer remove" ]; then
   if [ -e "$CTL/remove-fails" ]; then echo 'error: precondition not met: injected' >&2; exit 1; fi
   "$REAL" "$@"; rc=$?
@@ -1051,6 +1066,12 @@ fn finishing_with_the_key_still_trusted_needs_a_repository_that_verifies_and_cha
         "{r:?}"
     );
     assert_eq!(w.facts(), before);
+    // X3: the refusal does not tell anyone to retire the key afterwards (a rotation is refused meanwhile).
+    assert!(
+        matches!(&r, Err(SignerError::NeedsRecovery(why))
+            if !why.contains("afterwards") && !why.contains("retire the key")),
+        "{r:?}"
+    );
     assert!(w.verify().0, "the key was not removed");
     std::fs::remove_file(ctl.join("halted")).unwrap();
     let done = w.finish(&signer).unwrap();
@@ -1107,51 +1128,20 @@ fn the_trusted_keys_must_be_the_ones_the_retirement_began_with_less_the_retired_
     }
 }
 
-#[test]
-fn a_state_of_the_format_before_has_no_list_and_can_still_be_finished_but_not_abandoned_after_the_removal()
- {
-    // The format before W3 and W5 kept neither the key's public key nor the list. Its state opens; finishing does not
-    // compare a list that was not kept (and says nothing else is different); abandoning a key already removed would
-    // need the public key, so it is refused naming `finish-retirement`.
-    for finish_first in [true, false] {
-        let Some(w) = world(&format!("w3-legacy-{finish_first}")) else {
-            return;
-        };
-        let (ctl, signer) = w.faulty();
-        std::fs::write(ctl.join("verify-dies"), "").unwrap();
-        let rotation = w.retire(&signer);
-        w.assert_unfinished(&rotation);
-        std::fs::remove_file(ctl.join("verify-dies")).unwrap();
-        w.signer
-            .store
-            .rewrite_as_format_four(&w.wiki, |m| {
-                let r = m.retiring.as_mut().unwrap();
-                r.maintainer_public_key = String::new();
-                r.trusted_maintainers = Vec::new();
-            })
-            .unwrap();
-        assert!(w.facts().retiring.unwrap().maintainer_public_key.is_empty());
-        let before = w.facts();
-        if finish_first {
-            let done = w.finish(&signer).unwrap();
-            w.assert_finished(&done, &rotation);
-        } else {
-            let r = w.abandon(&signer);
-            assert!(
-                matches!(&r, Err(SignerError::Refused(why))
-                    if why.contains("older build") && why.contains(&finish_retirement_command(&w.wiki))),
-                "{r:?}"
-            );
-            assert_eq!(w.facts(), before);
-        }
-    }
-}
-
 // ---- giving a retirement up (handoff 004, W3)
 
 impl World {
     fn abandon(&self, signer: &Signer) -> Result<RetirementAbandoned, SignerError> {
-        signer.abandon_retirement(&crate::KeyAuthority::for_tests(), &self.repo)
+        self.abandon_with(signer, &inklkunn_store::MemoryAudit::new())
+    }
+
+    /// Abandon, with this audit trail to ask whether the key's retirement was finished (X2).
+    fn abandon_with(
+        &self,
+        signer: &Signer,
+        trail: &dyn inklkunn_store::AuditLog,
+    ) -> Result<RetirementAbandoned, SignerError> {
+        signer.abandon_retirement(&crate::KeyAuthority::for_tests(), &self.repo, trail)
     }
 
     /// A key adopted in the repository by hand, as a stranger's (or another operator's) would be: its id and
@@ -1231,7 +1221,7 @@ fn giving_up_a_retirement_whose_key_is_still_trusted_clears_the_state_and_the_ro
     assert_eq!(w.trusted_ids(), trusted, "the trust list is as it was");
     assert!(w.verify().0);
     assert_eq!(w.signer.unfinished_retirement(&w.wiki).unwrap(), None);
-    assert_eq!(w.signer.seal_pause(&w.wiki), None);
+    assert_eq!(w.signer.seal_pause(&w.wiki), Ok(None));
     // Nothing is waiting any more.
     let r = w.abandon(&signer);
     assert!(
@@ -1290,7 +1280,7 @@ fn giving_up_a_retirement_whose_key_was_removed_adopts_it_again_under_its_own_id
         );
         let newest = w.facts().superseded.last().cloned().unwrap();
         assert!(!newest.retired && newest.excused.is_empty(), "{way}");
-        assert_eq!(w.signer.seal_pause(&w.wiki), None);
+        assert_eq!(w.signer.seal_pause(&w.wiki), Ok(None));
         assert_eq!(
             w.signer.retirement_explains(&w.repo, &w.wiki),
             Ok(None),
@@ -1334,7 +1324,9 @@ fn a_refusal_no_later_run_can_cure_names_abandon_retirement_and_one_a_later_run_
     assert!(
         matches!(&r, Err(SignerError::Refused(why))
             if why.contains("published in between") && why.contains("no later run")
-                && why.contains(&abandon_retirement_command(&w.wiki))),
+                && why.contains(&abandon_retirement_command(&w.wiki))
+                && why.contains("nothing is retired")
+                && why.contains(&format!("wiki keys retire {} --key", w.wiki))),
         "{r:?}"
     );
     // The repository changed outside inklkunn.
@@ -1415,11 +1407,15 @@ fn a_retirement_is_paused_not_hidden_the_signer_names_the_command_while_the_stat
     let Some(w) = world("w1-sentence") else {
         return;
     };
-    assert_eq!(w.signer.seal_pause(&w.wiki), None);
+    assert_eq!(w.signer.seal_pause(&w.wiki), Ok(None));
     let (ctl, signer) = w.faulty();
     std::fs::write(ctl.join("remove-fails"), "").unwrap();
     let rotation = w.retire(&signer);
-    let sentence = w.signer.seal_pause(&w.wiki).expect("a pause");
+    let sentence = w
+        .signer
+        .seal_pause(&w.wiki)
+        .expect("the record is read")
+        .expect("a pause");
     assert!(
         sentence.contains(&finish_retirement_command(&w.wiki)),
         "{sentence}"
@@ -1431,7 +1427,7 @@ fn a_retirement_is_paused_not_hidden_the_signer_names_the_command_while_the_stat
     std::fs::remove_file(ctl.join("remove-fails")).unwrap();
     let done = w.finish(&signer);
     assert!(done.is_ok(), "{done:?}");
-    assert_eq!(w.signer.seal_pause(&w.wiki), None);
+    assert_eq!(w.signer.seal_pause(&w.wiki), Ok(None));
 }
 
 #[test]
@@ -1502,4 +1498,649 @@ fn a_finding_of_another_condition_in_the_text_is_refused_even_when_everything_el
         matches!(&r, Err(SignerError::Unavailable(why)) if why.contains("ref-publication") && why.contains("not publication trust")),
         "{r:?}"
     );
+}
+
+// ---- any key that left the service can be retired, by its id (handoff 004, X1)
+
+impl World {
+    fn retire_by_id(&self, signer: &Signer, key: &str) -> Result<OldKeyOutcome, SignerError> {
+        signer.retire_key(&crate::KeyAuthority::for_tests(), &self.repo, key)
+    }
+
+    fn keep_rotation(&self) -> Rotation {
+        self.signer
+            .rotate_keys(&crate::KeyAuthority::for_tests(), &self.repo, OldKey::Keep)
+            .unwrap()
+    }
+
+    /// The superseded entry of `key`.
+    fn entry(&self, key: &str) -> crate::key_store::Superseded {
+        self.facts()
+            .superseded
+            .into_iter()
+            .find(|s| s.maintainer_key_id == key)
+            .expect("the key record knows the key")
+    }
+}
+
+#[test]
+fn a_key_kept_at_rotation_is_retired_later_by_its_id_and_the_record_is_made_on_its_entry() {
+    let Some(w) = world("x1-later") else { return };
+    let k1 = w.facts().maintainer_key_id;
+    assert_eq!(w.keep_rotation().old_key, OldKeyOutcome::Kept);
+    w.seal_with_current_keys("sealed by the new key\n");
+    assert!(w.verify().0, "the old key is still trusted");
+    let outcome = w.retire_by_id(&w.signer, &k1).unwrap();
+    assert_eq!(outcome, OldKeyOutcome::Retired);
+    let facts = w.facts();
+    assert!(facts.retiring.is_none());
+    let entry = w.entry(&k1);
+    assert!(entry.retired, "the key record says the key was retired");
+    // The block the old key sealed, its ref state and its ref update; the new key's block is not among them.
+    assert_eq!(entry.excused.len(), 3, "{entry:?}");
+    assert!(!w.verify().0, "the key is out of the trust store");
+    assert!(
+        matches!(w.signer.retirement_explains(&w.repo, &w.wiki), Ok(Some(_))),
+        "what the retirement made fail is excused"
+    );
+    // The wiki goes on: the new key seals, and the failure is still the retirement's.
+    w.seal_with_current_keys("and on\n");
+    assert!(matches!(
+        w.signer.retirement_explains(&w.repo, &w.wiki),
+        Ok(Some(_))
+    ));
+    assert_eq!(w.signer.seal_pause(&w.wiki), Ok(None));
+}
+
+#[test]
+fn a_retirement_abandoned_after_the_removal_is_retired_later_by_its_id_and_the_machinery_is_unchanged()
+ {
+    for via_finish in [false, true] {
+        let Some(w) = world(&format!("x1-after-abandon-{via_finish}")) else {
+            return;
+        };
+        let (ctl, signer) = w.faulty();
+        std::fs::write(ctl.join("verify-dies"), "").unwrap();
+        let rotation = w.retire(&signer);
+        w.assert_unfinished(&rotation);
+        let k1 = rotation.previous_maintainer_key_id.clone();
+        // Abandoned after the removal: the old key is trusted again and nothing is retired.
+        let done = w.abandon(&signer).unwrap();
+        assert!(done.restored);
+        assert!(w.verify().0);
+        assert!(!w.entry(&k1).retired);
+        // Now it is retired by its id.
+        if via_finish {
+            // ... with a retirement that stops half way: the pause and `finish-retirement` are what they were.
+            // (The stand-in forgets the removal it saw, so that its `verify` runs until the key is removed again.)
+            std::fs::remove_file(ctl.join("removed")).unwrap();
+            let outcome = w.retire_by_id(&signer, &k1).unwrap();
+            let OldKeyOutcome::RetiredUnrecorded(why) = &outcome else {
+                panic!("{outcome:?}");
+            };
+            assert!(
+                why.contains(&finish_retirement_command(&w.wiki))
+                    && why.contains(&abandon_retirement_command(&w.wiki)),
+                "{why}"
+            );
+            assert!(w.signer.seal_pause(&w.wiki).unwrap().is_some());
+            assert_eq!(
+                w.signer.unfinished_retirement(&w.wiki).unwrap(),
+                Some(k1.clone())
+            );
+            std::fs::remove_file(ctl.join("verify-dies")).unwrap();
+            let finished = w.finish(&signer).unwrap();
+            assert_eq!(finished.maintainer_key_id, k1);
+            assert_eq!(finished.findings_recorded, 3);
+        } else {
+            let outcome = w.retire_by_id(&w.signer, &k1).unwrap();
+            assert_eq!(outcome, OldKeyOutcome::Retired);
+        }
+        let facts = w.facts();
+        assert!(facts.retiring.is_none());
+        let entry = w.entry(&k1);
+        assert!(entry.retired && entry.excused.len() == 3, "{entry:?}");
+        assert!(!w.verify().0);
+        assert!(matches!(
+            w.signer.retirement_explains(&w.repo, &w.wiki),
+            Ok(Some(_))
+        ));
+        assert_eq!(w.signer.seal_pause(&w.wiki), Ok(None));
+    }
+}
+
+#[test]
+fn the_current_key_an_unknown_id_a_retired_key_and_a_key_not_trusted_are_refused_and_nothing_changes()
+ {
+    let Some(w) = world("x1-refusals") else {
+        return;
+    };
+    let k1 = w.facts().maintainer_key_id;
+    let k2 = w.keep_rotation().status.maintainer_key_id;
+    let before = w.facts();
+    // The current key: rotate first.
+    let r = w.retire_by_id(&w.signer, &k2);
+    assert!(
+        matches!(&r, Err(SignerError::Refused(why))
+            if why.contains("current maintainer key") && why.contains("rotate first")
+                && why.contains("nothing was changed")),
+        "{r:?}"
+    );
+    // An id the key record does not know (and the ones it does, to choose from).
+    for unknown in ["inklkunn-nobody", &w.facts().author_key_id] {
+        let r = w.retire_by_id(&w.signer, unknown);
+        assert!(
+            matches!(&r, Err(SignerError::Refused(why))
+                if why.contains("does not know") && why.contains(&k1)
+                    && why.contains("nothing was changed")),
+            "{unknown}: {r:?}"
+        );
+    }
+    assert_eq!(w.facts(), before);
+    assert!(w.verify().0);
+    // A key that is not trusted in the repository any more (removed outside inklkunn): nothing to retire.
+    let Some(other) = world("x1-refusals-untrusted") else {
+        return;
+    };
+    let old = other.facts().maintainer_key_id;
+    other.keep_rotation();
+    let o = other.prikk(&["trust", "maintainer", "remove", "--key-id", &old]);
+    assert!(o.status.success());
+    let before = other.facts();
+    let r = other.retire_by_id(&other.signer, &old);
+    assert!(
+        matches!(&r, Err(SignerError::Refused(why))
+            if why.contains("not trusted in the repository") && why.contains("nothing was changed")),
+        "{r:?}"
+    );
+    assert_eq!(other.facts(), before);
+    // A key already retired.
+    assert_eq!(
+        w.retire_by_id(&w.signer, &k1).unwrap(),
+        OldKeyOutcome::Retired
+    );
+    let before = w.facts();
+    let r = w.retire_by_id(&w.signer, &k1);
+    assert!(
+        matches!(&r, Err(SignerError::Refused(why))
+            if why.contains("retired already") && why.contains("nothing was changed")),
+        "{r:?}"
+    );
+    assert_eq!(w.facts(), before);
+}
+
+#[test]
+fn nothing_is_retired_by_id_while_another_retirement_is_unfinished_and_a_failing_look_changes_nothing()
+ {
+    let Some(w) = world("x1-unfinished") else {
+        return;
+    };
+    let k1 = w.facts().maintainer_key_id;
+    w.keep_rotation();
+    w.seal_with_current_keys("sealed by the second key\n");
+    let (ctl, signer) = w.faulty();
+    // A look that does not pass: the key stays trusted and nothing is written; the refusal says what to do next.
+    std::fs::write(ctl.join("halted"), "").unwrap();
+    let before = w.facts();
+    let r = w.retire_by_id(&signer, &k1);
+    assert!(
+        matches!(&r, Err(SignerError::NeedsRecovery(why))
+            if why.contains("did not run to the end") && why.contains("still trusted")
+                && why.contains(&format!("inklkunn wiki recover {}", w.wiki))
+                && why.contains(&format!("wiki keys retire {} --key {k1}", w.wiki))),
+        "{r:?}"
+    );
+    assert_eq!(w.facts(), before);
+    assert!(w.verify().0);
+    std::fs::remove_file(ctl.join("halted")).unwrap();
+    // A rotation that retires and stops half way leaves a retirement unfinished; no other key is retired meanwhile.
+    std::fs::write(ctl.join("verify-dies"), "").unwrap();
+    let rotation = w.retire(&signer);
+    w.assert_unfinished(&rotation);
+    let before = w.facts();
+    let r = w.retire_by_id(&w.signer, &k1);
+    assert!(
+        matches!(&r, Err(SignerError::Refused(why))
+            if why.contains(&finish_retirement_command(&w.wiki))
+                && why.contains(&abandon_retirement_command(&w.wiki))
+                && why.contains("nothing is retired")),
+        "{r:?}"
+    );
+    assert_eq!(w.facts(), before);
+}
+
+#[test]
+fn of_two_superseded_keys_the_older_is_retired_by_id_on_its_own_entry() {
+    let Some(w) = world("x1-two-keys") else {
+        return;
+    };
+    let k1 = w.facts().maintainer_key_id;
+    let k2 = w.keep_rotation().status.maintainer_key_id;
+    w.seal_with_current_keys("sealed by the second key\n");
+    let k3 = w.keep_rotation().status.maintainer_key_id;
+    w.seal_with_current_keys("sealed by the third key\n");
+    // The older one first: the entry that gets the record is K1's, not the newest superseded one's.
+    assert_eq!(
+        w.retire_by_id(&w.signer, &k1).unwrap(),
+        OldKeyOutcome::Retired
+    );
+    let first = w.entry(&k1);
+    let second = w.entry(&k2);
+    assert!(first.retired && first.excused.len() == 3, "{first:?}");
+    assert!(!second.retired && second.excused.is_empty(), "{second:?}");
+    let trusted = w.trusted_ids();
+    assert!(!trusted.contains(&k1) && trusted.contains(&k2) && trusted.contains(&k3));
+    assert!(matches!(
+        w.signer.retirement_explains(&w.repo, &w.wiki),
+        Ok(Some(_))
+    ));
+    // Then the other: its record is its own, and disjoint from the first.
+    assert_eq!(
+        w.retire_by_id(&w.signer, &k2).unwrap(),
+        OldKeyOutcome::Retired
+    );
+    let second = w.entry(&k2);
+    assert!(second.retired && !second.excused.is_empty(), "{second:?}");
+    assert_eq!(w.entry(&k1), first, "the first record is untouched");
+    assert!(
+        second
+            .excused
+            .blocks
+            .iter()
+            .all(|b| !first.excused.blocks.contains(b))
+    );
+    assert!(w.facts().retiring.is_none());
+    assert!(matches!(
+        w.signer.retirement_explains(&w.repo, &w.wiki),
+        Ok(Some(_))
+    ));
+}
+
+#[test]
+fn a_rotation_that_retires_is_the_rotation_followed_by_the_retirement_of_the_key_it_replaced() {
+    // X1, one code path: the entry that gets the record is the replaced key's.
+    let Some(w) = world("x1-rotate-path") else {
+        return;
+    };
+    let k1 = w.facts().maintainer_key_id;
+    let rotation = w
+        .signer
+        .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
+        .unwrap();
+    assert_eq!(rotation.old_key, OldKeyOutcome::Retired);
+    assert_eq!(rotation.previous_maintainer_key_id, k1);
+    assert!(w.entry(&k1).retired);
+    assert!(w.facts().retiring.is_none());
+}
+
+#[test]
+fn a_retirement_that_could_not_be_begun_after_the_rotation_is_its_own_outcome_and_names_retire() {
+    let Some(w) = world("x1-not-begun") else {
+        return;
+    };
+    let k1 = w.facts().maintainer_key_id;
+    let (ctl, signer) = w.faulty();
+    // The trust list cannot be read once the new key was adopted, which is where the retirement begins.
+    std::fs::write(ctl.join("list-dies-after-add"), "").unwrap();
+    let rotation = signer
+        .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
+        .expect("the rotation happened");
+    let OldKeyOutcome::RetireNotBegun(why) = &rotation.old_key else {
+        panic!("{rotation:?}");
+    };
+    assert!(
+        why.contains("not begun")
+            && why.contains(&format!("wiki keys retire {} --key {k1}", w.wiki)),
+        "{why}"
+    );
+    // The keys rotated, the old key is trusted, nothing is paused.
+    assert_eq!(w.facts().generation, 2);
+    assert!(w.facts().retiring.is_none());
+    assert!(!w.entry(&k1).retired);
+    assert!(w.verify().0);
+    assert_eq!(w.signer.seal_pause(&w.wiki), Ok(None));
+    // ... and the command it names retires the key.
+    std::fs::remove_file(ctl.join("list-dies-after-add")).unwrap();
+    assert_eq!(
+        w.retire_by_id(&w.signer, &k1).unwrap(),
+        OldKeyOutcome::Retired
+    );
+    assert!(w.entry(&k1).retired);
+}
+
+// ---- abandon never re-trusts a key whose retirement finished (handoff 004, X2)
+
+/// An audit trail that cannot be read.
+struct BrokenTrail;
+
+impl inklkunn_store::AuditSink for BrokenTrail {
+    fn record(&self, _: &inklkunn_store::AuditEvent) -> inklkunn_store::Result<()> {
+        Ok(())
+    }
+}
+
+impl inklkunn_store::AuditLog for BrokenTrail {
+    fn read(&self, _: i64, _: usize) -> inklkunn_store::Result<Vec<inklkunn_store::AuditRecord>> {
+        Err(inklkunn_store::StoreError::Backend("injected".to_owned()))
+    }
+}
+
+fn operator_event(
+    wiki: &WikiId,
+    action: &str,
+    outcome: inklkunn_store::AuditOutcome,
+    detail: &str,
+) -> inklkunn_store::AuditEvent {
+    inklkunn_store::AuditEvent::new(
+        1,
+        "system:operator-cli",
+        action,
+        &format!("wiki:{wiki}"),
+        outcome,
+        detail,
+    )
+}
+
+#[test]
+fn abandon_refuses_to_trust_again_a_key_whose_retirement_the_trail_records_as_finished() {
+    use inklkunn_store::{AuditOutcome, AuditSink, MemoryAudit};
+    let Some(w) = world("x2-finished") else {
+        return;
+    };
+    let (ctl, signer) = w.faulty();
+    std::fs::write(ctl.join("verify-dies"), "").unwrap();
+    let rotation = w.retire(&signer);
+    w.assert_unfinished(&rotation);
+    let k1 = rotation.previous_maintainer_key_id.clone();
+    std::fs::remove_file(ctl.join("verify-dies")).unwrap();
+    let before = w.facts();
+    let trusted = w.trusted_ids();
+    // The way each command that makes the record says it ended.
+    for action in [
+        crate::signer::retirement::ACTION_ROTATE,
+        crate::signer::retirement::ACTION_RETIRE,
+        crate::signer::retirement::ACTION_FINISH_RETIREMENT,
+    ] {
+        let trail = MemoryAudit::new();
+        trail
+            .record(&operator_event(
+                &w.wiki,
+                action,
+                AuditOutcome::Allowed,
+                &crate::signer::retirement::recorded_detail(&k1, "generation 2; old key retired"),
+            ))
+            .unwrap();
+        let r = w.abandon_with(&signer, &trail);
+        assert!(
+            matches!(&r, Err(SignerError::Refused(why))
+                if why.contains("looks older than the audit trail")
+                    && why.contains("restore the key directory from a later backup")
+                    && why.contains(&k1)
+                    && why.contains("nothing was changed")),
+            "{action}: {r:?}"
+        );
+        assert_eq!(w.facts(), before, "{action}: the key record is untouched");
+        assert_eq!(
+            w.trusted_ids(),
+            trusted,
+            "{action}: the key was not adopted"
+        );
+        assert!(!w.verify().0, "{action}");
+    }
+    // A trail that cannot be read is no answer: the key is not adopted either.
+    let r = w.abandon_with(&signer, &BrokenTrail);
+    assert!(
+        matches!(&r, Err(SignerError::Unavailable(why))
+            if why.contains("audit trail could not be read") && why.contains("nothing was changed")
+                && why.contains(&abandon_retirement_command(&w.wiki))),
+        "{r:?}"
+    );
+    assert_eq!(w.facts(), before);
+    assert_eq!(w.trusted_ids(), trusted);
+}
+
+#[test]
+fn what_the_trail_does_not_say_about_this_key_does_not_stop_an_abandon() {
+    use inklkunn_store::{AuditOutcome, AuditSink, MemoryAudit};
+    let Some(w) = world("x2-unknown") else { return };
+    let (ctl, signer) = w.faulty();
+    std::fs::write(ctl.join("verify-dies"), "").unwrap();
+    let rotation = w.retire(&signer);
+    let k1 = rotation.previous_maintainer_key_id.clone();
+    std::fs::remove_file(ctl.join("verify-dies")).unwrap();
+    let other_wiki = WikiId::new();
+    let trail = MemoryAudit::new();
+    let record = |e: inklkunn_store::AuditEvent| trail.record(&e).unwrap();
+    let finished = |key: &str| crate::signer::retirement::recorded_detail(key, "finished");
+    // Another action, a failed or begun act, another wiki, another key whose id this one begins, the id only
+    // somewhere in the words, and an older build's wording (no id in the fixed form): each says nothing.
+    record(operator_event(
+        &w.wiki,
+        "keys-abandon-retirement",
+        AuditOutcome::Allowed,
+        &finished(&k1),
+    ));
+    record(operator_event(
+        &w.wiki,
+        "keys-finish-retirement",
+        AuditOutcome::Failed,
+        &finished(&k1),
+    ));
+    record(operator_event(
+        &w.wiki,
+        "keys-finish-retirement",
+        AuditOutcome::Reported,
+        &finished(&k1),
+    ));
+    record(operator_event(
+        &w.wiki,
+        "keys-finish-retirement",
+        AuditOutcome::Allowed,
+        &format!("begun; {}", finished(&k1)),
+    ));
+    record(operator_event(
+        &other_wiki,
+        "keys-finish-retirement",
+        AuditOutcome::Allowed,
+        &finished(&k1),
+    ));
+    record(operator_event(
+        &w.wiki,
+        "keys-finish-retirement",
+        AuditOutcome::Allowed,
+        &finished(&format!("{k1}x")),
+    ));
+    record(operator_event(
+        &w.wiki,
+        "keys-finish-retirement",
+        AuditOutcome::Allowed,
+        &finished(&k1[..k1.len() - 1]),
+    ));
+    record(operator_event(
+        &w.wiki,
+        "keys-finish-retirement",
+        AuditOutcome::Allowed,
+        &format!("retirement recorded: key other; {k1}"),
+    ));
+    record(operator_event(
+        &w.wiki,
+        "keys-finish-retirement",
+        AuditOutcome::Allowed,
+        &format!("retirement of key {k1} finished; 3 finding(s) recorded"),
+    ));
+    record(operator_event(
+        &w.wiki,
+        "keys-rotate",
+        AuditOutcome::Allowed,
+        "generation 2; old key retired",
+    ));
+    let done = w.abandon_with(&signer, &trail).unwrap();
+    assert!(
+        done.restored,
+        "nothing says the retirement of the key finished"
+    );
+    assert!(w.trusted_ids().contains(&k1));
+    assert!(w.facts().retiring.is_none());
+}
+
+// ---- words (handoff 004, X3) and fail-closed reads (X4)
+
+#[test]
+fn abandon_when_the_key_was_added_again_outside_inklkunn_says_what_is_true() {
+    let Some(w) = world("x3-readded") else { return };
+    let (ctl, signer) = w.faulty();
+    std::fs::write(ctl.join("verify-dies"), "").unwrap();
+    let rotation = w.retire(&signer);
+    let k1 = rotation.previous_maintainer_key_id.clone();
+    let public = w.facts().retiring.unwrap().maintainer_public_key;
+    // Added by hand, with the very public key it had.
+    let o = w.prikk(&[
+        "trust",
+        "maintainer",
+        "add",
+        "--key-id",
+        &k1,
+        "--public-key",
+        &public,
+    ]);
+    assert!(o.status.success());
+    let done = w.abandon(&signer).unwrap();
+    assert!(
+        !done.restored,
+        "nothing was put back: the key was trusted when abandoning looked"
+    );
+    assert!(w.facts().retiring.is_none());
+}
+
+#[test]
+fn abandon_checks_the_public_key_as_well_as_the_id_before_it_calls_the_key_trusted() {
+    let Some(w) = world("x4-public-key") else {
+        return;
+    };
+    let (ctl, signer) = w.faulty();
+    std::fs::write(ctl.join("remove-fails"), "").unwrap();
+    let rotation = w.retire(&signer);
+    assert!(matches!(&rotation.old_key, OldKeyOutcome::RetireFailed(_)));
+    let public = w.facts().retiring.unwrap().maintainer_public_key;
+    // The repository lists the id with another public key (prikk would never allow it; a changed trust file could).
+    std::fs::write(
+        ctl.join("swap-public"),
+        format!("{public} {}", "ab".repeat(32)),
+    )
+    .unwrap();
+    let before = w.facts();
+    let r = w.abandon(&signer);
+    assert!(
+        matches!(&r, Err(SignerError::Refused(why))
+            if why.contains("public key is not the one the retirement began with")
+                && why.contains("nothing was changed")),
+        "{r:?}"
+    );
+    assert_eq!(w.facts(), before, "the state is kept");
+    // With the list as it is, the same call clears the state.
+    std::fs::remove_file(ctl.join("swap-public")).unwrap();
+    let done = w.abandon(&signer).unwrap();
+    assert!(!done.restored);
+    assert!(w.facts().retiring.is_none());
+}
+
+#[test]
+fn every_error_on_abandons_trust_path_names_a_command_or_says_nothing_changed() {
+    let Some(w) = world("x3-trust-errors") else {
+        return;
+    };
+    let (ctl, signer) = w.faulty();
+    std::fs::write(ctl.join("verify-dies"), "").unwrap();
+    let rotation = w.retire(&signer);
+    let k1 = rotation.previous_maintainer_key_id.clone();
+    std::fs::remove_file(ctl.join("verify-dies")).unwrap();
+    let again = abandon_retirement_command(&w.wiki);
+    let trusted = w.trusted_ids();
+    let before = w.facts();
+    // The trust list cannot be read at all: nothing was changed (and that is true).
+    std::fs::write(ctl.join("list-dies"), "").unwrap();
+    let r = w.abandon(&signer);
+    assert!(
+        matches!(&r, Err(SignerError::Unavailable(why))
+            if why.contains("could not be read") && why.contains("nothing was changed") && why.contains(&again)),
+        "{r:?}"
+    );
+    assert_eq!(w.facts(), before);
+    std::fs::remove_file(ctl.join("list-dies")).unwrap();
+    // Adding the key fails: it may or may not have been added, so that is what is said, and the way out.
+    std::fs::write(ctl.join("add-fails"), "").unwrap();
+    let r = w.abandon(&signer);
+    assert!(
+        matches!(&r, Err(SignerError::Unavailable(why))
+            if why.contains("back into the repository's trust failed")
+                && why.contains("may or may not have been added") && why.contains(&again)
+                && !why.contains("nothing was changed")),
+        "{r:?}"
+    );
+    assert_eq!(w.facts(), before);
+    std::fs::remove_file(ctl.join("add-fails")).unwrap();
+    // The add says it worked and the repository does not list the key: the refusal names its way out.
+    std::fs::write(ctl.join("add-noop"), "").unwrap();
+    let r = w.abandon(&signer);
+    assert!(
+        matches!(&r, Err(SignerError::Refused(why))
+            if why.contains("does not list it with its public key") && why.contains(&again)
+                && why.contains("looks at the trust list first") && !why.contains("nothing else was changed")),
+        "{r:?}"
+    );
+    assert_eq!(w.facts(), before);
+    std::fs::remove_file(ctl.join("add-noop")).unwrap();
+    // The list is unreadable only after the add: the key was added, and the text says so.
+    std::fs::write(ctl.join("list-dies-after-add"), "").unwrap();
+    let r = w.abandon(&signer);
+    assert!(
+        matches!(&r, Err(SignerError::Unavailable(why))
+            if why.contains("was added to the repository's trust") && why.contains("could not be read afterwards")
+                && why.contains(&again)),
+        "{r:?}"
+    );
+    assert_eq!(w.facts(), before);
+    assert!(w.trusted_ids().contains(&k1), "the add did happen");
+    std::fs::remove_file(ctl.join("list-dies-after-add")).unwrap();
+    std::fs::remove_file(ctl.join("added")).unwrap();
+    // ... and the run the texts name works: the key is trusted, so nothing is put back, and the state is cleared.
+    let done = w.abandon(&signer).unwrap();
+    assert!(!done.restored);
+    assert!(w.trusted_ids().len() > trusted.len());
+    assert!(w.facts().retiring.is_none());
+    // The finish path says the same when the trust list cannot be read.
+    let Some(w) = world("x3-finish-list") else {
+        return;
+    };
+    let (ctl, signer) = w.faulty();
+    std::fs::write(ctl.join("verify-dies"), "").unwrap();
+    w.retire(&signer);
+    std::fs::write(ctl.join("list-dies"), "").unwrap();
+    let before = w.facts();
+    let r = w.finish(&signer);
+    assert!(
+        matches!(&r, Err(SignerError::Unavailable(why))
+            if why.contains("could not be read") && why.contains("nothing was changed")
+                && why.contains(&finish_retirement_command(&w.wiki))),
+        "{r:?}"
+    );
+    assert_eq!(w.facts(), before);
+}
+
+#[test]
+fn a_key_record_that_cannot_be_read_refuses_the_seal_it_does_not_count_as_no_retirement() {
+    let Some(w) = world("x4-fail-closed") else {
+        return;
+    };
+    assert_eq!(w.signer.seal_pause(&w.wiki), Ok(None));
+    let path = w.key_dir.join(format!("{}.key.json", w.wiki));
+    let good = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, "this is not a key record").unwrap();
+    let r = w.signer.seal_pause(&w.wiki);
+    assert!(
+        matches!(&r, Err(why) if why.contains("key record could not be read") && why.contains("nothing was written")),
+        "{r:?}"
+    );
+    std::fs::write(&path, good).unwrap();
+    assert_eq!(w.signer.seal_pause(&w.wiki), Ok(None));
 }

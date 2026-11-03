@@ -1816,10 +1816,15 @@ fn a_view_is_created_only_for_a_recorded_act_and_acceptances_can_target_it() {
                 "{name} {from}"
             );
         }
-        assert_eq!(
-            f.signer
-                .create_view(&WikiId::new(), "heads/draft", MAIN, &act),
-            Err(AcceptError::NotPending)
+        // A wiki with no key record at all: the pause is read first and fails closed (X4), so the refusal is the
+        // pause's, before the ledger is asked.
+        assert!(
+            matches!(
+                f.signer
+                    .create_view(&WikiId::new(), "heads/draft", MAIN, &act),
+                Err(AcceptError::Unavailable(why)) if why.contains("key record could not be read")
+            ),
+            "an unknown wiki has no key record"
         );
         for (name, from) in [
             ("draft", MAIN),
@@ -2868,14 +2873,16 @@ fn a_kill_at_each_point_of_a_retirement_pauses_every_acceptance_before_anything_
 
 #[test]
 fn a_kill_before_the_first_record_leaves_nothing_unfinished_and_the_acceptance_is_not_paused() {
-    // W1, the first point: the new key was adopted, the key record was not replaced. The wiki is as it was (an adopted
-    // key nobody holds the seed of is harmless): nothing to refuse, nothing to finish.
+    // W1, the first point: the rotation did not get to its record. The wiki is as it was (an adopted key nobody holds
+    // the seed of is harmless): nothing to refuse, nothing to finish. (X1: the retirement is a step of its own after
+    // the rotation, so the trust list being unreadable after the new key was adopted is a rotation that happened and a
+    // retirement that was not begun: the second point, below.)
     let Some(f) = fixture("w1-before", Sandbox::Unconfined, true) else {
         println!("skipping: prikk not on PATH");
         return;
     };
-    // trust calls: adopt the new key (0), read the list (1: fails)
-    std::fs::write(f.ctl.join("failafter-trust"), "1").unwrap();
+    // trust calls: adopt the new key (0: fails)
+    std::fs::write(f.ctl.join("failafter-trust"), "0").unwrap();
     let r = f.signer.rotate_keys(
         &inklkunn_signer::KeyAuthority::for_tests(),
         &f.repo,
@@ -2900,6 +2907,49 @@ fn a_kill_before_the_first_record_leaves_nothing_unfinished_and_the_acceptance_i
 }
 
 #[test]
+fn a_retirement_that_could_not_be_begun_after_the_rotation_pauses_nothing() {
+    // X1: the rotation happened (the key record was replaced), the trust list could not be read to begin the
+    // retirement. The old key is trusted, nothing is unfinished, the acceptance is not paused, and the outcome names
+    // the command that retires the key later.
+    let Some(f) = fixture("x1-not-begun", Sandbox::Unconfined, true) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    // trust calls: adopt the new key (0), read the list (1: fails)
+    std::fs::write(f.ctl.join("failafter-trust"), "1").unwrap();
+    let rotation = f
+        .signer
+        .rotate_keys(
+            &inklkunn_signer::KeyAuthority::for_tests(),
+            &f.repo,
+            inklkunn_signer::OldKey::Retire,
+        )
+        .expect("the rotation happened");
+    f.uncontrol("failafter-trust");
+    f.uncontrol("count-trust");
+    assert!(
+        matches!(&rotation.old_key, inklkunn_signer::OldKeyOutcome::RetireNotBegun(why)
+            if why.contains("not begun") && why.contains("wiki keys retire")),
+        "{rotation:?}"
+    );
+    assert_eq!(f.signer.unfinished_retirement(&f.wiki).unwrap(), None);
+    assert!(f.verify_ok(), "the old key is still trusted");
+    let before = f.history_len(MAIN);
+    an_ordinary_write_is_confirmed(&f, "written after a retirement that was not begun\n");
+    assert_eq!(f.history_len(MAIN), before + 1);
+    // The command it names retires the key.
+    let outcome = f
+        .signer
+        .retire_key(
+            &inklkunn_signer::KeyAuthority::for_tests(),
+            &f.repo,
+            &rotation.previous_maintainer_key_id,
+        )
+        .expect("retired by its id");
+    assert_eq!(outcome, inklkunn_signer::OldKeyOutcome::Retired);
+}
+
+#[test]
 fn the_pause_is_the_key_records_and_giving_the_retirement_up_lets_writes_continue() {
     // W1 and W3: while the state is set nothing is sealed; abandoning clears it, the old key is trusted again, and the
     // held acceptance goes through (the wiki verifies, so it is confirmed).
@@ -2916,7 +2966,11 @@ fn the_pause_is_the_key_records_and_giving_the_retirement_up_lets_writes_continu
     ));
     let done = f
         .signer
-        .abandon_retirement(&inklkunn_signer::KeyAuthority::for_tests(), &f.repo)
+        .abandon_retirement(
+            &inklkunn_signer::KeyAuthority::for_tests(),
+            &f.repo,
+            &inklkunn_store::MemoryAudit::new(),
+        )
         .expect("given up");
     assert!(done.restored, "the key had been removed");
     assert!(f.verify_ok(), "what the old key sealed verifies again");
@@ -2925,4 +2979,34 @@ fn the_pause_is_the_key_records_and_giving_the_retirement_up_lets_writes_continu
         .expect("the held proposal is accepted");
     assert_eq!(f.history_len(MAIN), before + 1);
     assert_eq!(Recover::unfinished_retirement(&f.signer, &f.wiki), Ok(None));
+}
+
+#[test]
+fn a_key_record_that_cannot_be_read_refuses_an_acceptance_before_anything_else_it_is_not_no_retirement()
+ {
+    // X4: the pause fails closed. The refusal is the pause's own sentence for an unreadable record, so it was reached
+    // before the ledger was read and before any seed was asked for (either would have failed in other words).
+    let Some(f) = fixture("x4-accept", Sandbox::Unconfined, true) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    let before = f.history_len(MAIN);
+    let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("kept\n"))], vec![]);
+    let path = f.key_dir.join(format!("{}.key.json", f.wiki));
+    let good = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, "this is not a key record").unwrap();
+    let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+    assert!(
+        matches!(&r, Err(AcceptError::Unavailable(why))
+            if why.contains("cannot be told whether a change to its keys is unfinished")
+                && why.contains("nothing was written")),
+        "{r:?}"
+    );
+    assert_eq!(f.history_len(MAIN), before);
+    // The record readable again, the same acceptance goes through.
+    std::fs::write(&path, good).unwrap();
+    f.signer
+        .accept(&f.wiki, MAIN, &p.token, &p.change)
+        .expect("the held proposal is accepted");
+    assert_eq!(f.history_len(MAIN), before + 1);
 }

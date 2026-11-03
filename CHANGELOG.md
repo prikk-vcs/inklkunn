@@ -1635,3 +1635,50 @@ W1 – W8 add **21 prikk-dependent tests** and remove 3 (the two tests of a miss
 the W1 tests): `EXPECTED_SKIPS` 203 → 221 (measured with prikk shimmed off). 2,144 tests pass in both runs. Every fix was mutated
 (reverted, the test seen to fail, restored): 23 mutations, three of which first survived and got a sharper test (a stale `retiring`
 state left in the key record by a finish that stops at the removal; the trust list inside the AAD edited without changing its count).
+
+Corrections from the review of 2026-11-03, third (handoff 004, X1 – X5).
+
+- **X1 — any key that left the service can be retired, by its id.** `inklkunn wiki keys retire <wiki> --key <maintainer key id>
+  --confirm <slug>` (audited before and after as `keys-retire`, then a fresh verdict as for the other retirement commands) retires a
+  **superseded** maintainer key that is still trusted in the repository: the same before-`verify` (which must pass), `retiring`
+  state (that key's id and public key), removal, after-`verify` and record as `rotate --retire-old`, with the record made on **that
+  key's** superseded entry found by its id (`conclude_retirement` no longer takes `last_mut()`). It refuses, changing nothing, the
+  wiki's current key (*rotate first*), an id the key record does not know (it lists the ones still to be retired), a key already
+  retired, a key the repository does not trust, and any key while another retirement is unfinished. **One code path:**
+  `Signer::retire_superseded` is the begin, the removal and the end for both commands; `rotate --retire-old` is the rotation
+  (taken after the `verify` that must pass, which still refuses the whole rotation when it does not pass) followed by that
+  retirement of the key it just replaced. The key record's check (`Meta::check`) now accepts a `retiring` state about any superseded
+  key that is not retired and holds no findings, found by id (it was the newest only). `OldKeyOutcome` gains
+  `RetireNotBegun(String)` (the rotation happened, the old key is trusted, nothing is paused, the state could not be begun; the
+  text names `retire`); `Signer::retire_key` and `retire_command` are new public API. Abandon's sentence, every refusal that names
+  abandon (`abandon_text`), `status`'s `UNFINISHED` line, recovery's `retirement-unfinished` stop, `docs/KEYS.md` and
+  `docs/RECOVERY.md` say what abandoning costs (*the old key … is trusted again; nothing is retired; to retire it later run
+  `inklkunn wiki keys retire <wiki> --key <id>`*). The compromise playbook says to retire (a kept key too), and the false sentence
+  that a retirement can be tried again with `rotate --retire-old` after an abandon is gone: it retires the *current* key.
+- **X2 — abandon never re-trusts a key whose retirement finished.** `abandon_retirement` takes the audit trail (`&dyn AuditLog`) and,
+  before it adopts a removed key again, reads the whole trail (a page of 500 at a time) for an *allowed* event of `keys-rotate`,
+  `keys-retire` or `keys-finish-retirement` for this wiki whose detail **begins** `retirement recorded: key <id>` (the fixed form,
+  written first because an event keeps 200 characters and an id up to 128; `trail::recorded_detail` writes it, `recorded_key` reads
+  it strictly: a key id as prikk accepts one, then the end or `; `). The commands write it only when the record was made. If the
+  trail says so, abandon refuses and changes nothing: *the key record looks older than the audit trail; restore the key directory
+  from a later backup*; a trail that cannot be read is no answer (the key is not adopted, nothing is changed, run it again). Events
+  written before this carry no such form and count as *not known to be finished*. `docs/KEYS.md`'s restore paragraph says the same.
+- **X3 — words.** Finish's refusal after a failed fresh look no longer says *retire the key afterwards* (the shared look's
+  texts are neutral; `rotate` and `retire` add their own *run `inklkunn wiki recover <wiki>`, then …*, which also replaces the old
+  `inklkunn recover`, a command that does not exist); abandon's audit text and sentence are true when the key was added again
+  outside inklkunn (*the key was trusted in the repository when this ran*; *is trusted* where it was not put back, *is trusted
+  again* where it was); every error on abandon's trust path says what is true and names the command: the trust list unreadable
+  (*nothing was changed*), the add failing (*the key may or may not have been added*, run abandon again, which looks first), the
+  add that did not show in the list, the list unreadable after the add; finish's first read of the list says the same.
+- **X4 — fail closed.** `seal_pause` returns `Result<Option<String>, String>`: a key record that cannot be read (a damaged one, a
+  missing one) refuses the seal before the ledger is asked or a seed is read (`AcceptError::Unavailable`, `RecoverError::Unavailable`;
+  `create_view` on a wiki with no key record is now this refusal instead of *not pending*). Abandon's *still trusted* check compares the
+  public key as well as the id; another public key under the id is a refusal that names it and changes nothing.
+- **X5 — the never-released `/4` record format is refused**: *format /4 was never released, so this record did not come from a released
+  inklkunn and is not read; restore the key directory from a backup made by a released build or by this one*. `/1` – `/3` and `/5`
+  open as before. A `/5` state must hold the public key and the sorted trusted ids (the empty-list path of W5, the *older build*
+  refusal of abandon and `KeyStore::rewrite_as_format_four` are gone).
+
+X1 – X5 add **18 prikk-dependent tests** net (19 added, one removed: the `/4` state test): `EXPECTED_SKIPS` 221 → 239 (measured with
+prikk shimmed off). 2,172 tests pass in both runs. Every fix was mutated (reverted, the test seen to fail, restored): 28 mutations, one of which first survived
+(the cost sentence of abandon's refusals) and got a sharper assertion.

@@ -178,8 +178,10 @@ impl Recover for Signer {
         };
         let _held = self.recovering(wiki, act, &op)?;
         // Sealing makes a block: while a key retirement is unfinished nothing new is sealed (W1).
-        if let Some(sentence) = self.seal_pause(wiki) {
-            return Err(RecoverError::RetirementUnfinished(sentence));
+        match self.seal_pause(wiki) {
+            Ok(None) => {}
+            Ok(Some(sentence)) => return Err(RecoverError::RetirementUnfinished(sentence)),
+            Err(why) => return Err(RecoverError::Unavailable(why)),
         }
         // The record the change was accepted under: pending, the wiki's, on this view.
         let expected = self

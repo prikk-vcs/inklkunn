@@ -16,16 +16,19 @@ inklkunn wiki keys status <wiki>                       # key ids, generation, cr
 inklkunn wiki keys create <wiki>                       # keys for an initialised repository that has none
 inklkunn wiki keys rotate <wiki> --confirm <slug>      # new keys; the old maintainer key stays trusted
 inklkunn wiki keys rotate <wiki> --confirm <slug> --retire-old --accept-unverifiable-history
+inklkunn wiki keys retire <wiki> --key <maintainer key id> --confirm <slug>   # retire a superseded key that is still trusted, by its id
 inklkunn wiki keys finish-retirement <wiki>            # finish a retirement that stopped half way, from whatever step remains
-inklkunn wiki keys abandon-retirement <wiki> --confirm <slug>   # give such a retirement up: the old key is trusted again
+inklkunn wiki keys abandon-retirement <wiki> --confirm <slug>   # give such a retirement up: the old key is trusted again, nothing is retired
 ```
 
 `<wiki>` is the slug or the id. **A key directory with no key store in it is never made into one by `status` or `rotate`:** they refuse, naming the path, so a mistyped `INKLKUNN_KEY_DIR` cannot start a second, empty store; only `create` (and creating a wiki) makes the store, and two processes doing so at once end with one. **Re-authentication:** the key store does not open without the operator's
 secret file, so these commands are the operator proving possession of it; the web administration surface will
 ask for the password again instead. `rotate` also needs the slug typed, so the wrong wiki is not rotated by a
-slip. `create`, `rotate`, `finish-retirement` and `abandon-retirement` are **audited**: an event is written *before* the act (and the act is
-refused if it cannot be written) and another after it (`system:operator-cli`, `keys-create` / `keys-rotate` /
-`keys-finish-retirement` / `keys-abandon-retirement`, with what became of the old key); a trail that shows "begun" and no ending means the process stopped in the middle. Read
+slip. `create`, `rotate`, `retire`, `finish-retirement` and `abandon-retirement` are **audited**: an event is written *before* the act (and the act is
+refused if it cannot be written) and another after it (`system:operator-cli`, `keys-create` / `keys-rotate` / `keys-retire` /
+`keys-finish-retirement` / `keys-abandon-retirement`, with what became of the old key); a trail that shows "begun" and no ending means the process stopped in the middle.
+The ending of a `rotate --retire-old`, a `retire` and a `finish-retirement` whose record was made begins with the retired key's id in one
+fixed form (`retirement recorded: key <id>`): it is how `abandon-retirement` knows a retirement finished (below). Read
 the trail with `inklkunn audit export`. If a retirement fails after the keys rotated, the command exits 1,
 says the old key is **still trusted**, and names the two commands that end it: `finish-retirement`, which removes the
 key itself, and `abandon-retirement` (below). Nothing needs `prikk` to be run by hand.
@@ -94,7 +97,10 @@ empty tip: every block of that view is then "after"), and a repository that no l
    and change the secret. If the records and the secret both leaked, or the host was taken over, the seeds are
    gone: continue.
 3. **Stop signing** (stop the service, or the wiki's writes) and note the time the compromise could have started.
-4. **Rotate with `--retire-old --accept-unverifiable-history`.** The old key can seal nothing more.
+4. **Rotate with `--retire-old --accept-unverifiable-history`.** The old key can seal nothing more. If a key was kept at an
+   earlier rotation (or a retirement was given up, see below) and may have leaked, **retire it by its id**:
+   `inklkunn wiki keys retire <wiki> --key <id> --confirm <slug>` (`status` lists the superseded keys and whether each is
+   still trusted). The current key cannot be retired: rotate first.
 5. **Read what happened.** Export the audit trail (`inklkunn audit export`: JSON Lines, oldest first) and read
    the wiki's history with `prikk log` in its repository. Because the history the old key sealed no longer
    verifies, `prikk verify` cannot be the check any more. The reconciliation (RFC 002 D-7: every sealed change
@@ -112,7 +118,7 @@ pins this); whatever records the acceptance (RFC 004) must treat that answer as 
 reason to retry. A retirement made by an earlier version of inklkunn excuses nothing: every change is then answered that way.
 
 **A retirement that stopped half way** (handoff 004, Q1, W1 – W7) does not strand the wiki, and **pauses it**.
-`rotate --retire-old` writes a `retiring` state into the authenticated key record *before* it removes the old key from
+`rotate --retire-old` (which is the rotation followed by `retire` of the key it replaced: one retirement, one code path) writes a `retiring` state into the authenticated key record *before* it removes the old key from
 the repository's trust: the blocks the old key had sealed (from the `prikk verify` just before), how many records prikk
 checked, the newest block of every view, the old key's **public** key and the ids of the maintainer keys the repository
 trusts. If anything after that stops (the command is killed, the removal fails, `verify` cannot run after the removal,
@@ -145,10 +151,24 @@ would look complete and would not be). A refusal that no later run can cure says
 `abandon-retirement` gives the retirement up. With the old key still trusted it clears the state; the rotation stands,
 as a rotation that kept the old key. With the old key already removed it adopts the old key in the repository's trust
 again, under its own id and with the public key the state kept, and then clears the state. It prints one sentence (*the
-old maintainer key … is trusted again; nothing is retired*). The wiki verifies again, nothing is excused and nothing needs
-to be. `--confirm` is the slug, as for `rotate`. A retirement can then be tried again with `rotate --retire-old`.
+old maintainer key … is trusted again; nothing is retired; to retire it later run `inklkunn wiki keys retire <wiki> --key
+<id>`*). The wiki verifies again, nothing is excused and nothing needs to be. `--confirm` is the slug, as for `rotate`.
 
-Each of `rotate --retire-old`, `finish-retirement` and `abandon-retirement` **ends by recording a fresh verdict** through
+**What abandoning costs.** The old key — perhaps the leaked one — is trusted again and **nothing is retired**. A later
+`rotate --retire-old` does not help: it retires the *current* key, which after an abandon is the new one. To take the old
+key out of trust afterwards, run `inklkunn wiki keys retire <wiki> --key <id> --confirm <slug>`: the same look before, the
+same state, removal, look after and record as `rotate --retire-old`, made on that key's own entry of the key record. It
+refuses the current key (rotate first), an id the key record does not know, a key already retired, a key the repository
+does not trust, and any key while another retirement is unfinished.
+
+**Abandon never trusts again a key whose retirement finished.** Before it adopts a removed key again it reads the audit
+trail; if the trail records that key's retirement as finished (the record was made, by `rotate --retire-old`, `retire` or
+`finish-retirement`), it refuses and changes nothing: *the key record looks older than the audit trail; restore the key
+directory from a later backup*. That is the case of a key directory restored from a backup taken while the retirement was
+unfinished. A trail that cannot be read is no answer: the key is not adopted either, and the command can be run again.
+Events written before this rule carry no key id in the fixed form and count as *not known to be finished*.
+
+Each of `rotate --retire-old`, `retire`, `finish-retirement` and `abandon-retirement` **ends by recording a fresh verdict** through
 the check the server runs (the verification page's), so that the page never keeps saying *the only failures are those the
 retirement of key … recorded* after a later retirement has made that untrue; if the check cannot run, the stored
 explanation is cleared instead and the command says so.
@@ -176,7 +196,11 @@ in every file of a deployment).
 
 ## When the key store is lost
 
-Restore it from a backup of the key directory (keep that backup **apart from** the operator's secret). There
+Restore it from a backup of the key directory (keep that backup **apart from** the operator's secret). A backup is a
+moment in time: a record restored from before a retirement finished still says that retirement is unfinished, and
+`abandon-retirement` refuses to trust that key again because the audit trail knows better (above); restore from a
+backup taken after, or finish the retirement (`finish-retirement`) instead. A key directory written by a development
+build in format `/4` (never released) is refused with a sentence that says so. There
 is no command that makes new keys for a wiki that already had some: prikk refuses to adopt the original key id
 with a different key (PK-35), and `create` says so rather than hiding it. If no backup exists, the wiki's
 repository can still be read and exported; signing new changes needs a recovery design that RFC 002 does not

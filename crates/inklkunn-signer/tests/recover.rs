@@ -1336,3 +1336,33 @@ fn a_queued_patch_is_not_sealed_while_a_retirement_is_unfinished_and_is_after_it
     assert_eq!(f.blocks(), blocks + 1);
     assert_eq!(f.queue_count(), 0);
 }
+
+#[test]
+fn a_queued_patch_is_not_sealed_while_the_key_record_cannot_be_read() {
+    // X4 for recovery's `seal_queued`: the pause fails closed. A key record that cannot be read refuses the step with the
+    // pause's own sentence for it, before the ledger is asked and before any seed is read; the patch stays queued, and
+    // with the record readable again the very same step seals it.
+    let Some(f) = fixture("x4-seal-queued") else {
+        return;
+    };
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    f.queue(&p);
+    let blocks = f.blocks();
+    let act = f.act(vec![f.seal_op(&p)]);
+    let path = f._tmp.0.join("keys").join(format!("{}.key.json", f.wiki));
+    let good = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, "this is not a key record").unwrap();
+    let r = f.leased(|| f.signer.seal_queued(&f.wiki, MAIN, &act, &p.token));
+    assert!(
+        matches!(&r, Err(RecoverError::Unavailable(why))
+            if why.contains("cannot be told whether a change to its keys is unfinished")
+                && why.contains("nothing was written")),
+        "{r:?}"
+    );
+    assert_eq!(f.queue_count(), 1, "the patch is still queued");
+    assert_eq!(f.blocks(), blocks);
+    std::fs::write(&path, good).unwrap();
+    f.leased(|| f.signer.seal_queued(&f.wiki, MAIN, &act, &p.token))
+        .expect("sealed once the record can be read");
+    assert_eq!(f.blocks(), blocks + 1);
+}

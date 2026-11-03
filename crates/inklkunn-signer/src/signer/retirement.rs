@@ -5,8 +5,11 @@
 //! label is the known cost. A frozen wiki is not: before this check every acceptance after a retirement answered
 //! *sealed, but not confirmed* and recovery's `verify` step always failed.
 //!
-//! **What is excused is the retirement's own record, and nothing wider.** A retirement ([`Signer::rotate_keys`] with
-//! `OldKey::Retire`) works in this order, under the wiki's write lock:
+//! **What is excused is the retirement's own record, and nothing wider.** A retirement works in this order, under the
+//! wiki's write lock. It is one code path whichever way it is asked for (X1): [`Signer::retire_key`]
+//! (`inklkunn wiki keys retire <wiki> --key <id>`) retires any **superseded** maintainer key still trusted in the
+//! repository, found by its id, and [`Signer::rotate_keys`] with `OldKey::Retire` is the rotation followed by that same
+//! retirement of the key it just replaced:
 //!
 //! 1. `verify` **before** anything changes. It must pass (or fail only by what an earlier retirement recorded); if
 //!    it does not, the retirement is refused and the old key stays trusted ([`SignerError::NeedsRecovery`]). The
@@ -39,6 +42,12 @@
 //! Every refusal of the first that no later run can cure names the second. Whichever ends a retirement, the caller
 //! records a fresh verdict (W6): the stored explanation of an earlier verdict never outlives its truth.
 //!
+//! **What abandoning costs, and what it must never do.** After an abandon the old key is trusted and **nothing is
+//! retired**; `inklkunn wiki keys retire <wiki> --key <id>` retires it later (X1), and every text that names abandon
+//! says so. Abandon never adopts again a key whose retirement the audit trail records as finished (X2, [`trail`]): a
+//! key record restored from a backup taken while the retirement was unfinished is older than the trail, and abandoning
+//! from it would trust a key that was retired on purpose.
+//!
 //! A later failing `verify` is excused if and only if its report has **no failed condition but
 //! `publication-trust`** and **every block, ref state and ref update it names is in a retirement's recorded set**
 //! ([`judge`]). Nothing is excused by count or by position: a rollback of `heads/main` or a branch published from an
@@ -58,7 +67,7 @@
 use std::collections::HashSet;
 
 use inklkunn_prikk::storage::Verification;
-use inklkunn_store::WikiId;
+use inklkunn_store::{AuditLog, WikiId};
 
 use super::lifecycle::OldKeyOutcome;
 use super::{Signer, SignerError, ks};
@@ -67,6 +76,13 @@ use crate::key_store::{Excused, MAX_EXCUSED_SUBJECTS, MAX_RECORDED_VIEWS, Record
 use crate::writes::{
     PublicationTrust, VerifyRun, checked_publication_trust_records, parse_publication_trust,
     parse_sealed_blocks_once, pending_cleanup_findings,
+};
+
+pub mod trail;
+
+pub use trail::{
+    ACTION_FINISH_RETIREMENT, ACTION_RETIRE, ACTION_ROTATE, recorded_detail, recorded_key,
+    retirement_finished_in,
 };
 
 #[cfg(test)]
@@ -120,7 +136,8 @@ pub struct RetirementFinished {
 pub struct RetirementAbandoned {
     /// The maintainer key that was to be retired and is not.
     pub maintainer_key_id: String,
-    /// It had been removed from the repository's trust and was adopted again (otherwise it was never removed).
+    /// It had been removed from the repository's trust and was adopted again (otherwise it was trusted when
+    /// abandoning began: it was never removed, or it was added again outside inklkunn).
     pub restored: bool,
 }
 
@@ -481,7 +498,7 @@ impl Signer {
         })?;
         if run.report.is_partial() {
             return Err(SignerError::NeedsRecovery(
-                "`prikk verify` did not run to the end, so the key was not retired and is still trusted; run `inklkunn recover` for the wiki and retire the key afterwards".to_owned(),
+                "`prikk verify` did not run to the end, so the key was not retired and is still trusted".to_owned(),
             ));
         }
         if !run.report.verdict.ok {
@@ -491,7 +508,7 @@ impl Signer {
                 retired.iter().map(|(k, e)| (k.as_str(), e)).collect();
             if let Judgement::Unexplained(why) = judge(&run.report, &trust, &recorded) {
                 return Err(SignerError::NeedsRecovery(format!(
-                    "`prikk verify` fails ({why}), so the key was not retired and is still trusted; run `inklkunn recover` for the wiki and retire the key afterwards"
+                    "`prikk verify` fails ({why}), so the key was not retired and is still trusted"
                 )));
             }
         }
@@ -615,6 +632,18 @@ impl Signer {
             .store
             .status(wiki)
             .map_err(|e| Cannot::later(format!("the key record could not be read ({})", ks(e))))?;
+        // The record is made on **that key's** entry, found by its id (X1): the key being retired is not always the
+        // newest superseded one.
+        let key = retiring.maintainer_key_id.as_str();
+        if !meta
+            .superseded
+            .iter()
+            .any(|s| s.maintainer_key_id == key && !s.retired)
+        {
+            return Err(Cannot::never(format!(
+                "the key record holds no superseded key {key} that is still to be retired, so there is no entry to record the findings on"
+            )));
+        }
         let earlier: Vec<(String, Excused)> = meta
             .superseded
             .iter()
@@ -626,9 +655,13 @@ impl Signer {
         self.store
             .update_meta(wiki, |m| {
                 m.retiring = None;
-                if let Some(last) = m.superseded.last_mut() {
-                    last.retired = true;
-                    last.excused = found;
+                if let Some(entry) = m
+                    .superseded
+                    .iter_mut()
+                    .find(|s| s.maintainer_key_id == key && !s.retired)
+                {
+                    entry.retired = true;
+                    entry.excused = found;
                 }
             })
             .map_err(|e| {
@@ -637,9 +670,8 @@ impl Signer {
         Ok(recorded)
     }
 
-    /// Run the end of a retirement as `rotate --retire-old` does, after the key left the trust store: the outcome it
-    /// reports.
-    pub(super) fn conclude_retirement_outcome(
+    /// Run the end of a retirement after the key left the trust store: the outcome it reports.
+    fn conclude_retirement_outcome(
         &self,
         repo: &std::path::Path,
         wiki: &WikiId,
@@ -647,7 +679,7 @@ impl Signer {
     ) -> OldKeyOutcome {
         match self.conclude_retirement(repo, wiki, retiring) {
             Ok(_) => OldKeyOutcome::Retired,
-            Err(cannot) => unrecorded(&cannot, wiki),
+            Err(cannot) => unrecorded(&cannot, wiki, &retiring.maintainer_key_id),
         }
     }
 
@@ -668,6 +700,119 @@ impl Signer {
         let mut ids: Vec<String> = listing.iter().map(|k| k.key_id.clone()).collect();
         ids.sort();
         Ok((retired.public_key.clone(), ids))
+    }
+
+    /// The `retiring` state for `key` from the look `before` took and the repository as it is now: the blocks `before`
+    /// listed as the key's, the count, the tip of every view, the key's public key and the sorted trusted ids. Read
+    /// only; refused when the repository does not trust the key.
+    fn begun_state(
+        &self,
+        repo: &std::path::Path,
+        key: &str,
+        before: Before,
+    ) -> Result<Retiring, SignerError> {
+        let (maintainer_public_key, trusted_maintainers) = self.retiring_trust_facts(repo, key)?;
+        Ok(Retiring {
+            maintainer_key_id: key.to_owned(),
+            signed_by_key: before.signed_by_key,
+            checked_records: before.checked_records,
+            views: self.current_tips(repo)?,
+            maintainer_public_key,
+            trusted_maintainers,
+        })
+    }
+
+    /// The one retirement (X1), whichever command asked for it, under the wiki's write lock the caller holds, after
+    /// `before` (the `verify` that must pass) was taken: write the `retiring` state for the superseded key `key` (its
+    /// id and public key, the blocks `before` listed as its own, the tip of every view, the trusted ids), remove the
+    /// key from the repository's trust, and conclude (the `verify` after, the record made on the key's own entry, the
+    /// state cleared). `Err` is a refusal before the state was written: **nothing was changed**. After that the
+    /// outcome says what became of the key, as [`OldKeyOutcome`] documents.
+    pub(super) fn retire_superseded(
+        &self,
+        repo: &std::path::Path,
+        wiki: &WikiId,
+        key: &str,
+        before: Before,
+    ) -> Result<OldKeyOutcome, SignerError> {
+        let retiring = self.begun_state(repo, key, before)?;
+        let begun = retiring.clone();
+        self.store
+            .update_meta(wiki, |m| m.retiring = Some(begun))
+            .map_err(|e| {
+                SignerError::Unavailable(format!(
+                    "the retirement could not be begun: the key record could not be written ({}); nothing was changed",
+                    ks(e)
+                ))
+            })?;
+        Ok(match self.writes.untrust_maintainer(repo, key) {
+            // `verify` just after names what lost its trusted signature; that set is what the record keeps, so that a
+            // later failure is excused by it and by nothing else (P2′). Anything that keeps the record from being made
+            // leaves the `retiring` state in the key record (Q1): `finish-retirement` makes it from there, or
+            // `abandon-retirement` gives it up.
+            Ok(()) => self.conclude_retirement_outcome(repo, wiki, &retiring),
+            Err(e) => OldKeyOutcome::RetireFailed(e.to_string()),
+        })
+    }
+
+    /// Retire a **superseded** maintainer key that is still trusted in the repository, by its id (handoff 004, X1;
+    /// `inklkunn wiki keys retire <wiki> --key <id> --confirm <slug>`), under the wiki's write lock: the same
+    /// before-`verify` (which must pass), `retiring` state, removal, after-`verify` and record as `rotate --retire-old`
+    /// makes for the key it just replaced, with the record made on **that key's** entry. Refused, with nothing changed,
+    /// for the wiki's current key (*rotate first*), for an id the key record does not know, for a key already retired,
+    /// for a key the repository does not trust, while another retirement is unfinished, and when `verify` does not
+    /// pass. After the state was written the answer is the outcome, as for a rotation. An administrator's act: the
+    /// caller has authorized and audited it.
+    pub fn retire_key(
+        &self,
+        _authority: &KeyAuthority,
+        repo: &std::path::Path,
+        key: &str,
+    ) -> Result<OldKeyOutcome, SignerError> {
+        let wiki = self.wiki_of(repo)?;
+        let _held = self.write_lock(&wiki)?;
+        let meta = self.store.status(&wiki).map_err(ks)?;
+        if let Some(open) = &meta.retiring {
+            return Err(unfinished_refusal(&wiki, &open.maintainer_key_id));
+        }
+        if key == meta.maintainer_key_id {
+            return Err(SignerError::Refused(format!(
+                "the key {key} is the wiki's current maintainer key, and a key is retired only after it was replaced: rotate first (`inklkunn wiki keys rotate {wiki} --confirm <the wiki's slug>`), then retire it; nothing was changed"
+            )));
+        }
+        let Some(entry) = meta.superseded.iter().find(|s| s.maintainer_key_id == key) else {
+            let known: Vec<&str> = meta
+                .superseded
+                .iter()
+                .filter(|s| !s.retired)
+                .map(|s| s.maintainer_key_id.as_str())
+                .collect();
+            return Err(SignerError::Refused(format!(
+                "the key record of this wiki does not know a maintainer key {key}; the superseded keys still to be retired are: {}; nothing was changed",
+                if known.is_empty() {
+                    "none".to_owned()
+                } else {
+                    known.join(", ")
+                }
+            )));
+        };
+        if entry.retired {
+            return Err(SignerError::Refused(format!(
+                "the key {key} was retired already; nothing was changed"
+            )));
+        }
+        // Not trusted any more (removed outside inklkunn, say): there is nothing to retire, and no look is needed.
+        self.retiring_trust_facts(repo, key)?;
+        let before = self
+            .verify_before_retirement(repo, &wiki, key)
+            .map_err(|e| {
+                recovery_first(
+                    &wiki,
+                    e,
+                    &format!("then retire the key with `{}`", retire_command(&wiki, key)),
+                )
+            })?;
+        self.retire_superseded(repo, &wiki, key, before)
     }
 
     /// The key a retirement was begun for and not finished, if there is one (the key record's `retiring` state).
@@ -707,7 +852,12 @@ impl Signer {
             ));
         };
         let key = retiring.maintainer_key_id.clone();
-        let listing = self.writes.trusted_maintainers(repo)?;
+        let listing = self.writes.trusted_maintainers(repo).map_err(|e| {
+            SignerError::Unavailable(format!(
+                "the repository's trusted maintainer keys could not be read ({e}); nothing was changed; run `{}` again",
+                finish_retirement_command(&wiki)
+            ))
+        })?;
         let mut removed_now = false;
         if listing.iter().any(|k| k.key_id == key) {
             // W2: the removal never happened. Begin again from a repository that verifies, here and now.
@@ -715,22 +865,13 @@ impl Signer {
                 .verify_before_retirement(repo, &wiki, &key)
                 .map_err(|e| match e {
                     SignerError::NeedsRecovery(why) => SignerError::NeedsRecovery(format!(
-                        "{why}; the retirement stays begun: `{}` takes the look again once the wiki verifies, and `{}` leaves the key trusted",
+                        "{why}; the retirement stays begun: once the wiki verifies (`inklkunn wiki recover {wiki}`), `{}` takes the look again; or {}; nothing was changed",
                         finish_retirement_command(&wiki),
-                        abandon_retirement_command(&wiki)
+                        abandon_text(&wiki, &key)
                     )),
                     other => other,
                 })?;
-            let (public_key, mut trusted) = self.retiring_trust_facts(repo, &key)?;
-            trusted.sort();
-            retiring = Retiring {
-                maintainer_key_id: key.clone(),
-                signed_by_key: before.signed_by_key,
-                checked_records: before.checked_records,
-                views: self.current_tips(repo)?,
-                maintainer_public_key: public_key,
-                trusted_maintainers: trusted,
-            };
+            retiring = self.begun_state(repo, &key, before)?;
             let begun = retiring.clone();
             self.store
                 .update_meta(&wiki, |m| m.retiring = Some(begun))
@@ -739,9 +880,9 @@ impl Signer {
                 .untrust_maintainer(repo, &key)
                 .map_err(|e| {
                     SignerError::Refused(format!(
-                        "removing the key {key} from the repository's trust failed ({e}); the retirement stays begun: run `{}` again, or `{}` to leave the key trusted; nothing else was changed",
+                        "removing the key {key} from the repository's trust failed ({e}); the retirement stays begun: run `{}` again; or {}; nothing else was changed",
                         finish_retirement_command(&wiki),
-                        abandon_retirement_command(&wiki)
+                        abandon_text(&wiki, &key)
                     ))
                 })?;
             removed_now = true;
@@ -754,28 +895,25 @@ impl Signer {
                 return Err(SignerError::Refused(format!(
                     "the wiki was written, or its views changed, since the retirement of key {key} was begun, so its record is not made from a repository that has changed (a block written since could not be told from what the removal made fail); no later run of `{}` can cure this: {}; nothing was changed",
                     finish_retirement_command(&wiki),
-                    abandon_text(&wiki)
+                    abandon_text(&wiki, &key)
                 )));
             }
-            // W5: the trust list is the list the retirement began from, without the retired key. (A state written by
-            // format /4 kept no list and is not compared.)
-            if !retiring.trusted_maintainers.is_empty() {
-                let mut expected: Vec<&str> = retiring
-                    .trusted_maintainers
-                    .iter()
-                    .map(String::as_str)
-                    .filter(|id| *id != key)
-                    .collect();
-                let mut actual: Vec<&str> = listing.iter().map(|k| k.key_id.as_str()).collect();
-                expected.sort_unstable();
-                actual.sort_unstable();
-                if expected != actual {
-                    return Err(SignerError::Refused(format!(
-                        "the repository's trusted maintainer keys are not those it trusted when the retirement of key {key} was begun, less that key (another key was added or removed outside inklkunn), so what the removal made fail cannot be told from what the other change made fail; no later run of `{}` can cure this: {}; nothing was changed",
-                        finish_retirement_command(&wiki),
-                        abandon_text(&wiki)
-                    )));
-                }
+            // W5: the trust list is the list the retirement began from, without the retired key.
+            let mut expected: Vec<&str> = retiring
+                .trusted_maintainers
+                .iter()
+                .map(String::as_str)
+                .filter(|id| *id != key)
+                .collect();
+            let mut actual: Vec<&str> = listing.iter().map(|k| k.key_id.as_str()).collect();
+            expected.sort_unstable();
+            actual.sort_unstable();
+            if expected != actual {
+                return Err(SignerError::Refused(format!(
+                    "the repository's trusted maintainer keys are not those it trusted when the retirement of key {key} was begun, less that key (another key was added or removed outside inklkunn), so what the removal made fail cannot be told from what the other change made fail; no later run of `{}` can cure this: {}; nothing was changed",
+                    finish_retirement_command(&wiki),
+                    abandon_text(&wiki, &key)
+                )));
             }
         }
         let findings_recorded = self.conclude_retirement(repo, &wiki, &retiring).map_err(
@@ -783,7 +921,7 @@ impl Signer {
                 SignerError::Refused(format!(
                     "the retirement of key {key} cannot be finished: {}; {}; nothing was recorded",
                     cannot.why,
-                    way_out(&wiki, cannot.curable)
+                    way_out(&wiki, &key, cannot.curable)
                 ))
             },
         )?;
@@ -795,16 +933,22 @@ impl Signer {
     }
 
     /// Give up a retirement that was begun and cannot be finished (handoff 004, W3), under the wiki's write lock:
-    /// with the old key **still trusted** the state is cleared and the rotation stands, as a rotation that kept the
-    /// old key; with the old key **already removed** from the repository's trust it is adopted again, under its own
+    /// with the old key **trusted** (id and public key) the state is cleared and the rotation stands, as a rotation that
+    /// kept the old key; with the old key **removed** from the repository's trust it is adopted again, under its own
     /// id and with the public key the state kept, and then the state is cleared. Nothing is excused by it and nothing
-    /// needs to be: the key is trusted, so what it sealed verifies. Refused, with nothing changed, when nothing is
-    /// unfinished, and when the state (written by an older format) did not keep the public key of a key that is
-    /// already removed. An administrator's act: the caller has authorized and audited it.
+    /// needs to be: the key is trusted, so what it sealed verifies. **The cost** (X1): the old key stays trusted and
+    /// nothing is retired; `inklkunn wiki keys retire <wiki> --key <id>` retires it later.
+    ///
+    /// **A key whose retirement the audit trail records as finished is never adopted again** (X2): a key record
+    /// restored from a backup taken while the retirement was unfinished is older than the trail, and the refusal says
+    /// so. A trail that cannot be read is no answer, and the key is not adopted either. Refused, with nothing changed,
+    /// also when nothing is unfinished and when the repository trusts another public key under the key's id. An
+    /// administrator's act: the caller has authorized and audited it.
     pub fn abandon_retirement(
         &self,
         _authority: &KeyAuthority,
         repo: &std::path::Path,
+        trail: &dyn AuditLog,
     ) -> Result<RetirementAbandoned, SignerError> {
         let wiki = self.wiki_of(repo)?;
         let _held = self.write_lock(&wiki)?;
@@ -816,34 +960,67 @@ impl Signer {
             ));
         };
         let key = retiring.maintainer_key_id;
-        let trusted = self
-            .writes
-            .trusted_maintainers(repo)?
-            .iter()
-            .any(|k| k.key_id == key);
-        if !trusted {
-            if retiring.maintainer_public_key.is_empty() {
+        let again = format!("run `{}` again", abandon_retirement_command(&wiki));
+        let listing = self.writes.trusted_maintainers(repo).map_err(|e| {
+            SignerError::Unavailable(format!(
+                "the repository's trusted maintainer keys could not be read ({e}); nothing was changed; {again}"
+            ))
+        })?;
+        // Still trusted means the id **and** the public key the retirement began with (X4).
+        let trusted = match listing.iter().find(|k| k.key_id == key) {
+            Some(k) if k.public_key == retiring.maintainer_public_key => true,
+            Some(_) => {
                 return Err(SignerError::Refused(format!(
-                    "the retirement of key {key} was begun by an older build, which did not keep the key's public key, so the key cannot be put back here; finish the retirement with `{}`; nothing was changed",
-                    finish_retirement_command(&wiki)
+                    "the repository trusts a key under the id {key} whose public key is not the one the retirement began with, so it is not the old key and abandoning cannot tell what to put back; no inklkunn command changes this; nothing was changed"
                 )));
             }
-            self.writes
-                .trust_maintainer(repo, &key, &retiring.maintainer_public_key)?;
-            if !self
-                .writes
-                .trusted_maintainers(repo)?
+            None => false,
+        };
+        if !trusted {
+            // X2: a key whose retirement finished is not adopted again from an older key record.
+            match retirement_finished_in(trail, &wiki, &key) {
+                Ok(false) => {}
+                Ok(true) => {
+                    return Err(SignerError::Refused(format!(
+                        "the audit trail records the retirement of key {key} as finished, so the key record looks older than the audit trail; restore the key directory from a later backup; the key was not put back into the repository's trust and nothing was changed"
+                    )));
+                }
+                Err(e) => {
+                    return Err(SignerError::Unavailable(format!(
+                        "the audit trail could not be read ({e}), so it cannot be told whether the retirement of key {key} was finished, and the key was not put back into the repository's trust; nothing was changed; {again}"
+                    )));
+                }
+            }
+            if let Err(e) =
+                self.writes
+                    .trust_maintainer(repo, &key, &retiring.maintainer_public_key)
+            {
+                return Err(SignerError::Unavailable(format!(
+                    "putting the key {key} back into the repository's trust failed ({e}); the retirement stays begun, and the key may or may not have been added; {again}, which looks at the trust list first"
+                )));
+            }
+            let listed = self.writes.trusted_maintainers(repo).map_err(|e| {
+                SignerError::Unavailable(format!(
+                    "the key {key} was added to the repository's trust, but the trust list could not be read afterwards ({e}); the retirement stays begun; {again}, which looks at the trust list first"
+                ))
+            })?;
+            if !listed
                 .iter()
                 .any(|k| k.key_id == key && k.public_key == retiring.maintainer_public_key)
             {
                 return Err(SignerError::Refused(format!(
-                    "the key {key} was adopted again but the repository does not list it with its public key; the retirement stays begun; nothing else was changed"
+                    "the key {key} was added to the repository's trust but the repository does not list it with its public key; the retirement stays begun; {again}, which looks at the trust list first"
                 )));
             }
         }
         self.store
             .update_meta(&wiki, |m| m.retiring = None)
-            .map_err(ks)?;
+            .map_err(|e| {
+                SignerError::Unavailable(format!(
+                    "the old key {key} is trusted in the repository, but the key record could not be updated ({}), so the retirement is still begun; {again}",
+                    ks(e)
+                ))
+            })?;
         Ok(RetirementAbandoned {
             maintainer_key_id: key,
             restored: !trusted,
@@ -855,21 +1032,30 @@ impl Signer {
     pub(crate) fn unfinished_retirement_note(&self, wiki: &WikiId) -> Option<String> {
         let key = self.unfinished_retirement(wiki).ok().flatten()?;
         Some(format!(
-            "the retirement of key {key} was begun and its record not finished, so nothing is excused and nothing new is sealed: run `{}`, or `{}`",
+            "the retirement of key {key} was begun and its record not finished, so nothing is excused and nothing new is sealed: run `{}`, or {}",
             finish_retirement_command(wiki),
-            abandon_retirement_command(wiki)
+            abandon_text(wiki, &key)
         ))
     }
 
-    /// The one sentence that refuses a new seal while a retirement is unfinished (W1); `None` when none is. Read from
-    /// the authenticated key record, under the write lock the caller holds, before anything is changed. A record that
-    /// cannot be read is not a retirement: the seal itself fails on the same record a moment later.
-    pub(crate) fn seal_pause(&self, wiki: &WikiId) -> Option<String> {
-        let key = self.unfinished_retirement(wiki).ok().flatten()?;
-        Some(format!(
-            "a change to this wiki's keys is not finished (the retirement of key {key} was begun), so nothing new is sealed until the person who runs this wiki runs `{}`; nothing was written",
-            finish_retirement_command(wiki)
-        ))
+    /// The one sentence that refuses a new seal while a retirement is unfinished (W1); `Ok(None)` when none is. Read
+    /// from the authenticated key record, under the write lock the caller holds, before anything is changed. **It fails
+    /// closed** (X4): a key record that cannot be read refuses the seal, whose `Err` is the sentence for *unavailable*.
+    pub(crate) fn seal_pause(&self, wiki: &WikiId) -> Result<Option<String>, String> {
+        let key = match self.unfinished_retirement(wiki) {
+            Ok(key) => key,
+            Err(e) => {
+                return Err(format!(
+                    "the wiki's key record could not be read ({e}), so it cannot be told whether a change to its keys is unfinished; nothing was written"
+                ));
+            }
+        };
+        Ok(key.map(|key| {
+            format!(
+                "a change to this wiki's keys is not finished (the retirement of key {key} was begun), so nothing new is sealed until the person who runs this wiki runs `{}`; nothing was written",
+                finish_retirement_command(wiki)
+            )
+        }))
     }
 }
 
@@ -896,41 +1082,68 @@ impl Cannot {
     }
 }
 
+/// The command that retires the superseded maintainer key `key` of `wiki` (X1).
+pub fn retire_command(wiki: &WikiId, key: &str) -> String {
+    format!("inklkunn wiki keys retire {wiki} --key {key} --confirm <the wiki's slug>")
+}
+
+/// The refusal of any new key change while the retirement of `key` is unfinished.
+pub(super) fn unfinished_refusal(wiki: &WikiId, key: &str) -> SignerError {
+    SignerError::Refused(format!(
+        "the retirement of key {key} was begun and is not finished; finish it first with `{}`, or {}; nothing was changed",
+        finish_retirement_command(wiki),
+        abandon_text(wiki, key)
+    ))
+}
+
+/// A look at `verify` that did not pass, said with what to do about it: recover the wiki, then `then`.
+pub(super) fn recovery_first(wiki: &WikiId, e: SignerError, then: &str) -> SignerError {
+    match e {
+        SignerError::NeedsRecovery(why) => {
+            SignerError::NeedsRecovery(format!("{why}; run `inklkunn wiki recover {wiki}`, {then}"))
+        }
+        other => other,
+    }
+}
+
 /// The command that gives up an unfinished retirement of `wiki` (W3).
 pub fn abandon_retirement_command(wiki: &WikiId) -> String {
     format!("inklkunn wiki keys abandon-retirement {wiki} --confirm <the wiki's slug>")
 }
 
-fn abandon_text(wiki: &WikiId) -> String {
+/// What abandoning does and what it costs, for the texts that name it (X1): the old key `key` is trusted again and
+/// nothing is retired, until it is retired by its id.
+fn abandon_text(wiki: &WikiId, key: &str) -> String {
     format!(
-        "`{}` puts the old key back into the repository's trust if it was removed and clears the state",
-        abandon_retirement_command(wiki)
+        "`{}` gives the retirement up: the old key {key} is trusted again (put back into the repository's trust if it was removed) and nothing is retired; to retire it later run `{}`",
+        abandon_retirement_command(wiki),
+        retire_command(wiki, key)
     )
 }
 
-/// What the operator can do about a retirement that is not finished.
-fn way_out(wiki: &WikiId, curable: bool) -> String {
+/// What the operator can do about the retirement of `key` that is not finished.
+fn way_out(wiki: &WikiId, key: &str, curable: bool) -> String {
     if curable {
         format!(
-            "once the cause is gone run `{}` again; `{}` gives the retirement up",
+            "once the cause is gone run `{}` again; or {}",
             finish_retirement_command(wiki),
-            abandon_retirement_command(wiki)
+            abandon_text(wiki, key)
         )
     } else {
         format!(
             "no later run of `{}` can cure this: {}",
             finish_retirement_command(wiki),
-            abandon_text(wiki)
+            abandon_text(wiki, key)
         )
     }
 }
 
 /// The outcome a retirement reports when its record could not be completed.
-pub(super) fn unrecorded(cannot: &Cannot, wiki: &WikiId) -> OldKeyOutcome {
+fn unrecorded(cannot: &Cannot, wiki: &WikiId, key: &str) -> OldKeyOutcome {
     OldKeyOutcome::RetiredUnrecorded(format!(
         "{}; the key is out of the trust store and nothing is excused, and nothing new is sealed, until the retirement is finished or given up: {}",
         cannot.why,
-        way_out(wiki, cannot.curable)
+        way_out(wiki, key, cannot.curable)
     ))
 }
 
