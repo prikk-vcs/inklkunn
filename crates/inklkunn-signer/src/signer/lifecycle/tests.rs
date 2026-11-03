@@ -1002,6 +1002,17 @@ fn finishing_with_the_key_still_trusted_retakes_the_look_and_does_not_need_the_v
     let rotation = w.retire(&signer);
     let stale = w.facts().retiring.unwrap();
     w.seal_with_current_keys("written while the retirement was unfinished\n");
+    // The removal still fails: the command refuses, and what it leaves in the key record is the state taken again from
+    // the look it took now (a kill here must leave something `finish-retirement` can go on from), not the stale one.
+    let r = w.finish(&signer);
+    assert!(matches!(&r, Err(SignerError::Refused(_))), "{r:?}");
+    let renewed = w.facts().retiring.unwrap();
+    assert_ne!(renewed.views, stale.views, "the views are those of now");
+    assert_ne!(
+        renewed.checked_records, stale.checked_records,
+        "the count is the one of now"
+    );
+    assert_eq!(renewed.views, w.signer.current_tips(&w.repo).unwrap());
     std::fs::remove_file(ctl.join("remove-fails")).unwrap();
     let done = w.finish(&signer).unwrap();
     assert!(done.removed_now);

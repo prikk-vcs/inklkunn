@@ -1770,6 +1770,13 @@ fn an_unfinished_retirement_survives_a_reopen_and_is_bound_into_the_seal() {
             }),
         ),
         (
+            "a trusted key id replaced by another of the same length (W5)",
+            edited(&|v| {
+                *v.pointer_mut("/retiring/trusted_maintainers/0").unwrap() =
+                    "inklkunn-new-maintainex".into();
+            }),
+        ),
+        (
             "a trusted key id dropped (W5)",
             edited(&|v| {
                 v.pointer_mut("/retiring/trusted_maintainers")

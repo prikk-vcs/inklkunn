@@ -1575,3 +1575,63 @@ Corrections from the review of 2026-11-03 (sign-in handoff, H1 – H6, E1, E2).
   the row cell holds a list of links; the module note of `health.rs` says so.
 
 Every fix was mutated (reverted, the test seen to fail, restored).
+Corrections from the review of 2026-11-03, second (handoff 004, W1 – W8).
+
+- **W1 — writes pause while a retirement is unfinished.** While the key record's `retiring` state is set the signer refuses every
+  new seal before it changes anything: `accept`, recovery's `seal_queued` and the creation of a view (a new ref in the history whose
+  views the state recorded), in one sentence that names `inklkunn wiki keys finish-retirement <wiki>`. This replaces Q1's *sealed,
+  not confirmed meanwhile*. The refusal is typed (`AcceptError::RetirementUnfinished`, `RecoverError::RetirementUnfinished`) and
+  mapped to a fixed word of its own, `retirement-unfinished` (`acceptance::words`): the acceptance record ends *failed* with that
+  word, the intent is abandoned, the proposal stays held for review, the wiki is not flagged, and the same proposal is accepted
+  once the retirement is finished or given up. The web answers it as its own outcome (`Unchanged::RetirementUnfinished`, 503: *a
+  change to this wiki's keys is not finished; the person who runs this wiki must finish it; the proposal is kept*; catalog English
+  and Japanese preview, glossary rows in the same order); the API as the problem **`retirement-unfinished`** (36 problem codes;
+  listed on the accept endpoint, so the OpenAPI document and its drift test follow). The recovery plan stops with
+  `retirement-unfinished` for a queued patch too (before, only for `doctor`'s findings) and names both commands. `docs/KEYS.md` and
+  `docs/RECOVERY.md` say so. Of the three points of `rotate --retire-old` a kill can come at, the first (before the key record is
+  replaced) leaves nothing unfinished (the new key is adopted and harmless): there is nothing to pause or finish, and a test says so.
+- **W2 — `finish-retirement` finishes from whatever step remains.** With the old key *still trusted* (a kill before the removal, or
+  a removal that failed) it takes a fresh `verify` under the write lock (it must pass, as `rotate` requires), writes the `retiring`
+  state again from it, **removes the key itself**, then takes the `verify` after and records. No message or document tells an
+  operator to run `prikk trust maintainer remove` any more (the rotation's failure text, the CLI, `docs/KEYS.md` and the tests were
+  fixed). With the key already removed it works from the kept state as before.
+- **W3 — `inklkunn wiki keys abandon-retirement <wiki> --confirm <slug>`** (audited before and after as `keys-abandon-retirement`,
+  under the write lock): with the key still trusted it clears the state (the rotation stands, as a rotation that kept the old key);
+  with the key already removed it adopts it again in the repository's trust under its own id with the public key the state kept
+  (`prikk trust maintainer add --key-id ID --public-key HEX`: the public key is all that adding needs, and it is read from
+  `trust maintainer list --format json` when the retirement begins, so no seed is touched), then clears the state. It prints *the old
+  maintainer key … is trusted again; nothing is retired*. Every refusal of `finish-retirement` that no later run can cure (the
+  repository changed outside inklkunn, the count differs, `verify` after the removal is not a clean publication-trust failure, the
+  trusted keys are not those the retirement began with, a block was left out, the record limit) says so and names this command; the
+  ones a later run can cure (`verify` cannot run, the key record cannot be written) say to run `finish-retirement` again.
+- **The record format changed: `inklkunn-key-record/5`.** A `retiring` state now also holds the retired key's **public** key and
+  the sorted ids of the maintainer keys the repository trusted when it was written (both inside the AAD, in that order, after the
+  existing fields). `/1` – `/3` open and mean nothing is retiring; a `/4` record opens too, and a `/4` state (which has neither) opens
+  with both empty: it can be finished (the list is not compared) and cannot be abandoned after the key was removed (the refusal says
+  so and names `finish-retirement`); a `/5` state must hold both (the retired key among the ids, sorted), `/4` must hold neither.
+  Every record written is `/5`. No store schema change (15 stays).
+- **W4.** A finish that would leave blocks out (`left_out > 0`) records **nothing** and keeps the state; its refusal names
+  `abandon-retirement`. `OldKeyOutcome::RetiredPartly` and `RetirementFinished::note` are gone (nothing else produced them).
+- **W5.** Finishing, with the key already removed, requires the trust list now to be exactly the kept list without the retired key;
+  a key added or removed outside inklkunn in the window makes it refuse (naming abandon).
+- **W6 — the stored explanation never outlives its truth.** `rotate --retire-old`, `finish-retirement` and `abandon-retirement` each
+  end by recording a fresh verdict through the check the server uses: the binary builds the same `Verifier` over the same store and
+  prikk, with the signer as its retirement reader (`Verifier::check_unthrottled`, new: `check` without the recency rule, because the
+  operator at the host is not a visitor and a verdict a minute old is exactly what a retirement makes untrue). If the check cannot run
+  or its verdict cannot be recorded, the stored explanation is cleared with `set_verification` (the verdict itself stays) and the
+  command says so. Test: K1 retired and recorded (verdict *Failed, explained by K1*), then K2's retirement left unfinished: the
+  explanation is gone; finishing or giving K2 up records a fresh one.
+- **W7 — a killed seal on a retired wiki is finished, narrowly.** `complete-publication` is offered beside a recorded retirement
+  only when `verify` fails by exactly `blocking-ref-publication` and `publication-trust` (run to the end), the text names the pending
+  cleanup once (`ref publication issues: 1`), every publication-trust finding is in a recorded set (`judge`'s rule, unchanged), and
+  `doctor`, with those findings taken out, shows only the cleanup. After the step the plain rule must hold (the `Verify` step is
+  unchanged: publication trust alone, all of it recorded) or recovery stops and the flag stays. The verdict's rule and the
+  acceptance's rule do not change. `Recover::verify_beside_cleanup` is the new question (default: no); `cleanup-beside-trust-findings`
+  stays for anything else. Tested against real prikk (the state a kill leaves, measured) and with stand-ins for each way the answer
+  could be wider.
+- **W8.** `ExpectedMessage.pinned_tip` is a `BlockId`; the refusals of `None` and the two tests that made one go with the `Option`.
+
+W1 – W8 add **21 prikk-dependent tests** and remove 3 (the two tests of a missing base, and Q1's *sealed, not confirmed* test, replaced by
+the W1 tests): `EXPECTED_SKIPS` 203 → 221 (measured with prikk shimmed off). 2,144 tests pass in both runs. Every fix was mutated
+(reverted, the test seen to fail, restored): 23 mutations, three of which first survived and got a sharper test (a stale `retiring`
+state left in the key record by a finish that stops at the removal; the trust list inside the AAD edited without changing its count).

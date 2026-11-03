@@ -465,7 +465,9 @@ struct File {
 fn state_matches_format(r: &Retiring, format: &str) -> Result<(), KeyStoreError> {
     let complete = valid_id(&r.maintainer_public_key)
         && r.trusted_maintainers.contains(&r.maintainer_key_id)
-        && r.trusted_maintainers.windows(2).all(|w| w[0] < w[1]);
+        && r.trusted_maintainers
+            .windows(2)
+            .all(|w| matches!(w, [a, b] if a < b));
     let empty = r.maintainer_public_key.is_empty() && r.trusted_maintainers.is_empty();
     let fits = if format == RECORD_FORMAT {
         complete

@@ -793,11 +793,12 @@ fn abandon_retirement_puts_the_old_key_back_and_says_so_in_one_sentence() {
             .filter(|(a, _, _)| a == "keys-abandon-retirement")
             .collect();
         assert_eq!(abandoning.len(), 2, "{events:?}");
-        assert!(abandoning[0].2.starts_with("begun"), "{events:?}");
+        let (begun, ended) = (abandoning.first().unwrap(), abandoning.get(1).unwrap());
+        assert!(begun.2.starts_with("begun"), "{events:?}");
         assert!(
-            abandoning[1].1 == "allowed"
-                && abandoning[1].2.contains("given up")
-                && abandoning[1].2.contains(if removed {
+            ended.1 == "allowed"
+                && ended.2.contains("given up")
+                && ended.2.contains(if removed {
                     "adopted it in the repository's trust again"
                 } else {
                     "never left"
@@ -835,7 +836,7 @@ fn every_end_of_a_retirement_records_a_fresh_verdict_or_clears_the_stored_explan
             inklkunn_store::VerificationState::Failed
         );
         assert_eq!(k1.verification_explained_by.len(), 1, "{k1:?}");
-        let first_key = k1.verification_explained_by[0].clone();
+        let first_key = k1.verification_explained_by.first().unwrap().clone();
         // K2: removed, and the look after the removal cannot be made; the check cannot run either.
         let standin = w.standin_whose_verify_dies_after_a_removal();
         let (status, _, err) = w.cli_with_prikk(
