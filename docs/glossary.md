@@ -390,6 +390,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `health.col_mark` | the heading of the column that says how a page is marked | "Marked as" | "表示されている状態" |
 | `health.col_changed` | the heading of the column that says when a page last changed | "Last change" | "最後の変更" |
 | `health.see_links` | a link to the pages that link to a wanted title; `{title}` is that title | "Pages that link to {title}" | "{title} へのリンク元のページ" |
+| `health.propose_page` | beside it, in the same row of the wanted pages: the link to the form that proposes the page; `{title}` is that title | "Propose this page ({title})" | "このページを提案する（{title}）" |
 | `health.wanted_action` | the action beside a wanted title | "Add a page with this title, or change the links that point to it." | "このタイトルのページを追加するか、リンクを修正します。" |
 | `health.orphans_action` | the action beside an orphan page | "Link to this page from a related page, so that readers can find it." | "関連するページからこのページへリンクして、読者が見つけられるようにします。" |
 | `health.dead_ends_action` | the action beside a dead-end page | "Add links from this page to related pages." | "このページから関連するページへのリンクを追加します。" |

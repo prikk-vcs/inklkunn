@@ -641,6 +641,7 @@ keys! {
     HealthColMark => "health.col_mark",
     HealthColChanged => "health.col_changed",
     HealthSeeLinks => "health.see_links",
+    HealthProposePage => "health.propose_page",
     HealthWantedAction => "health.wanted_action",
     HealthOrphansAction => "health.orphans_action",
     HealthDeadEndsAction => "health.dead_ends_action",

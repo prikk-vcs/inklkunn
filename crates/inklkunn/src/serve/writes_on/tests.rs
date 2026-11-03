@@ -1094,8 +1094,20 @@ fn an_invited_person_signs_in_proposes_is_reviewed_and_accepted_and_the_pages_sa
     );
     // D9: a reviewer cannot approve her own proposal either.
     let decide_own = format!("{}/decide", proposal_page(&p2));
-    // (The page offers her the form; the refusal is in words, which the unit tests of the pages pin.)
-    let forced = form_to(&quinn.browser.get(&proposal_page(&p2)), &decide_own);
+    // E1: the page does not offer her the form; where it would be, the sentence of the refusal stands.
+    let quinns = quinn.browser.get(&proposal_page(&p2));
+    assert!(!has_form_to(&quinns, &decide_own), "{}", quinns.body);
+    assert!(
+        quinns
+            .body
+            .contains("You cannot approve or ask for changes on your own proposal"),
+        "{}",
+        quinns.body
+    );
+    // The service still refuses it: she posts the maintainer's form of the same shape to her own proposal.
+    let mut forced = form_to(&hers, &decide_action);
+    forced.action = decide_own.clone();
+    forced.set("csrf", &quinn.browser.csrf());
     for op in ["approve", "request-changes"] {
         let own = quinn.browser.submit(&forced, Some(("op", op)));
         assert!(own.status >= 400, "{op}: {}\n{}", own.head, own.body);

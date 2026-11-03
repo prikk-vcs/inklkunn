@@ -1535,3 +1535,43 @@ Corrections from the review of 2026-11-03 (handoff 004, Q1 – Q8).
 
 Q1 – Q8 add **17 prikk-dependent tests** (lifecycle 8, the accept tests 3, the recovery tests of the signer 3, of the core 2, the
 command line 1): `EXPECTED_SKIPS` 183 → 200. Every fix was mutated (reverted, the test seen to fail, restored).
+
+Corrections from the review of 2026-11-03 (sign-in handoff, H1 – H6, E1, E2).
+
+- **H1 — `SECURITY.md` says only what is true.** `INKLKUNN_TRUSTED_PROXIES` lists **only the proxies' own addresses, never a
+  network clients are in** (a client inside it would choose its own address); the `10.0.0.0/8` example is gone from
+  `SECURITY.md`, the `config.rs` table and the start-up error for a typo. Signing in while signed in ends the presented
+  session **except through the provider** (the `Strict` cookie is not sent on its callback: end it from the account page). A
+  provider start cannot be spent by another site's images, scripts or frames (a top-level navigation can). The owner of an
+  account whose sign-in is locked from a stolen session ends that session at the account page, which needs no password; the
+  account page and the sign-in page share one bucket per sign-in name. Pending provider logins are per IPv4 address or IPv6
+  /64, so a /48 can still push out other people's logins (a retried sign-in).
+- **H2 — a declared proxy whose header cannot be read is said once.** `Authenticator::first_unreadable_forwarded_for`
+  (beside `first_ignored_forwarded_for`, an atomic swap) and one run-time line naming `INKLKUNN_TRUSTED_PROXIES`: a proxy that
+  appends ports, writes `unknown` or sends none puts every client on the proxy's address (`ClientAddress::fell_back`, which
+  nothing read before).
+- **H3 — no decision, no principal.** `csrf::Decided` with nothing attached answers `Anonymous` and its `write_identity` is
+  the refusal (*the form expired* for a page, `forbidden` for the API); it no longer asks the credential again, so
+  `principal()` and `write_identity()` take no arguments (and `Ctx::open_deciding` and the watch lookup lose their headers).
+  The registry test now walks every `POST`, `PUT`, `PATCH` and `DELETE` of the application table (the content origin has no
+  write), proves each refuses a cookie write with no token and answers a wiki that is not there identically, and fails for
+  any write that is not in its list of exemptions.
+- **H4 — a redemption that succeeds gives its join budget back** (a refused one stays counted).
+- **H5 — a password change rotates the session.** `Authenticator::change_own_password` loses its `session_secret`
+  argument and returns the new `NewSession`: every session of the account ends (the one that made the change too), a new one
+  starts, every token is revoked, and the account page answers with the new `__Host-` cookie (`no-store`) so the following
+  page carries the new CSRF token. The credential, the sessions and the tokens change in **one store step**:
+  `CredentialStore::change_credential` (new trait, in `MemoryStore` and `SqliteStore`; `Authenticator::new` needs it), tested
+  for all-or-nothing on both stores (a refusal met after the writes leaves the old password, sessions and tokens) and through
+  the authenticator over a store whose step fails. `Sessions::end_all_but` is gone. The G10 tests are rewritten.
+- **H6 — words.** The OpenAPI text says the token is in the hidden field `csrf` of the forms of the pages served (not that a
+  page shows it); the stale comment in `api/write.rs` and the one above `mod hardening` in `main.rs`; the unused
+  `account:<id>` throttle key is removed (the password asked at the account page is counted under the account's sign-in name,
+  as at the sign-in page; an account with no password has none to ask), and `SECURITY.md` says the one bucket.
+- **E1 — the decide form is not shown to the proposer.** A proposer who is a reviewer sees the existing sentence
+  `refused.own_proposal` where the form would be; the POST is still refused by the service (the web test pins both).
+- **E2 — *Propose this page* on the health page's wanted rows**, beside *who links here*, to the new-page form of the default
+  view (the view these lists are of): `health.propose_page` (catalog, Japanese preview, glossary row after `health.see_links`);
+  the row cell holds a list of links; the module note of `health.rs` says so.
+
+Every fix was mutated (reverted, the test seen to fail, restored).

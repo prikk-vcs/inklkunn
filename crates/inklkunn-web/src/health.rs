@@ -4,9 +4,10 @@
 //! stale,knowledge-files}` shows one (the last, RFC 005 part 2 D-5, from the knowledge index of the tip); `-/links/<Title>` shows the pages that link to a page, each with the line that makes the
 //! link.
 //!
-//! The action beside a row is said in words, and the one thing the row links to is the page of who links to a
-//! wanted title; a page is made by a proposal, and the missing-page notice and every link to a page that is not
-//! there lead to the form that proposes it (RFC 004), so no row needs a control of its own.
+//! The action beside a row is said in words. A wanted title's row links to two things, beside each other: the page
+//! of who links to it, and *Propose this page*, the form that proposes the page (RFC 004; the default view,
+//! which is the view these lists are of; the same form the missing-page notice and every red link lead to). A page
+//! is made by a proposal, so no row needs a control of its own.
 
 use askama::Template;
 use axum::extract::rejection::PathRejection;
@@ -264,7 +265,8 @@ pub(crate) async fn health_index(
 
 struct Cell {
     text: String,
-    link: Option<(String, String)>,
+    /// Links beside the text, each its words and its address, one under another.
+    links: Vec<(String, String)>,
     href: Option<String>,
 }
 
@@ -272,7 +274,7 @@ impl Cell {
     fn text(text: impl Into<String>) -> Cell {
         Cell {
             text: text.into(),
-            link: None,
+            links: Vec::new(),
             href: None,
         }
     }
@@ -280,7 +282,7 @@ impl Cell {
     fn page(text: impl Into<String>, href: String) -> Cell {
         Cell {
             text: text.into(),
-            link: None,
+            links: Vec::new(),
             href: Some(href),
         }
     }
@@ -325,10 +327,16 @@ fn rows_of(
                 .into_iter()
                 .map(|w| {
                     let mut act = action(Resolve::WantedAdd);
-                    act.link = Some((
-                        t.msg(Key::HealthSeeLinks).with("title", &w.title).text(),
-                        format!("/{}/-/links/{}", wiki.slug, encode_title(&w.title)),
-                    ));
+                    act.links = vec![
+                        (
+                            t.msg(Key::HealthSeeLinks).with("title", &w.title).text(),
+                            format!("/{}/-/links/{}", wiki.slug, encode_title(&w.title)),
+                        ),
+                        (
+                            t.msg(Key::HealthProposePage).with("title", &w.title).text(),
+                            crate::proposals::paths::new_page(wiki.slug.as_str(), Some(&w.title)),
+                        ),
+                    ];
                     vec![
                         Cell::text(w.title),
                         Cell::text(w.linked_from.to_string()),

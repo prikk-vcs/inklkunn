@@ -341,6 +341,28 @@ async fn every_health_list_shows_its_planted_case_with_what_would_resolve_it() {
     );
     assert!(!body.contains("Proposals arrive with the next release."));
     assert!(body.contains("<caption>Wanted pages</caption>"));
+    // E2: beside *who links here*, each row offers the form that proposes the page (the default view's, the
+    // one every red link leads to), under it in the same cell.
+    for (title, encoded) in [("Missing Page", "Missing%20Page"), ("Ghost", "Ghost")] {
+        let row = wanted
+            .iter()
+            .find(|r| r.contains(&format!(">{title}</th>")))
+            .unwrap_or_else(|| panic!("{title}: {body}"));
+        let see = format!("<a href=\"/handbook/-/links/{encoded}\">Pages that link to {title}</a>");
+        let propose = format!(
+            "<a href=\"/handbook/-/proposals/new?new=1&#38;title={encoded}\">Propose this page ({title})</a>"
+        );
+        let (at_see, at_propose) = (row.find(&see), row.find(&propose));
+        assert!(
+            at_see.is_some() && at_propose.is_some() && at_see < at_propose,
+            "{title}: {row}"
+        );
+        assert!(
+            !row.contains("view="),
+            "{title}: the default view only: {row}"
+        );
+    }
+    assert_eq!(body.matches("Propose this page (").count(), 2, "{body}");
 
     // Orphans: nothing links to it. Hostile is linked to nobody either, and is shown as letters.
     let body = list("orphans").await;

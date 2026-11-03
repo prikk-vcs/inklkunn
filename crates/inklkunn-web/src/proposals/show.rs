@@ -103,6 +103,7 @@ struct ProposalTpl<'a> {
     decisions: Vec<DecisionView>,
     no_decisions: Option<String>,
     decide: Option<DecideFormView>,
+    own_proposal: Option<String>,
     list: LinkView,
 }
 
@@ -641,7 +642,9 @@ pub(crate) fn draw(
             body: d.body.clone(),
         })
         .collect();
-    let decide = (can_review).then(|| DecideFormView {
+    // The proposer is not offered a button that can only be refused (corrections E1): the sentence the refusal
+    // would give stands where the form would.
+    let decide = (can_review && !is_author).then(|| DecideFormView {
         action: paths::act(slug, id.as_str(), paths::ACT_DECIDE),
         label: t.get(Key::DecideLabel),
         body_name: fields::BODY,
@@ -653,6 +656,7 @@ pub(crate) fn draw(
         request_op: fields::OP_REQUEST_CHANGES,
         request: t.get(Key::DecideRequest),
     });
+    let own_proposal = (can_review && is_author).then(|| t.get(Key::RefusedOwnProposal));
 
     if let Some(rich) = superseded {
         notes.push(rich);
@@ -695,6 +699,7 @@ pub(crate) fn draw(
         no_decisions: decisions.is_empty().then(|| t.get(Key::DecisionsNone)),
         decisions,
         decide,
+        own_proposal,
         list: LinkView {
             href: paths::list(slug),
             label: t.get(Key::ProposalsBackToList),

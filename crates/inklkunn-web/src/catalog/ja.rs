@@ -747,6 +747,7 @@ pub const CATALOG: &[Entry] = &[
     msg("health.col_mark", "表示されている状態"),
     msg("health.col_changed", "最後の変更"),
     msg("health.see_links", "{title} へのリンク元のページ"),
+    msg("health.propose_page", "このページを提案する（{title}）"),
     msg(
         "health.wanted_action",
         "このタイトルのページを追加するか、リンクを修正します。",

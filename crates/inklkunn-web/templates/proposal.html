@@ -56,6 +56,7 @@
 </div>
 <p><button type="submit" name="{{ f.op_name }}" value="{{ f.approve_op }}">{{ f.approve }}</button> <button type="submit" name="{{ f.op_name }}" value="{{ f.request_op }}">{{ f.request }}</button></p>
 </form>
+{% endif %}{% if let Some(text) = own_proposal %}<p class="note">{{ text }}</p>
 {% endif %}</section>
 <p><a href="{{ list.href }}">{{ list.label }}</a></p>
 {% endblock %}

@@ -231,6 +231,22 @@ async fn a_proposers_own_decision_is_refused_in_words_and_their_comment_is_taken
     }
     let page = read(&c, &p, None).await.body();
     assert!(!page.contains("I say so"), "no decision was recorded");
+    // E1: the proposer who is a reviewer is not offered a button that can only be refused; the sentence of the
+    // refusal stands where the form would. (The POST above is still refused by the service: both hold.)
+    let sentence = "You cannot approve or ask for changes on your own proposal. Ask a reviewer to decide on it; you can still comment.";
+    let own = read(&c, &p, Some(&c.reviewer)).await.body();
+    assert!(own.contains(sentence), "{own}");
+    assert!(
+        !own.contains("decide-form") && !own.contains("Approve") && !own.contains("name=\"op\""),
+        "{own}"
+    );
+    // Someone else's proposal still offers the reviewer the form, and not the sentence.
+    let theirs = propose(&c, &c.contributor, "Theirs").await;
+    let other = read(&c, &theirs, Some(&c.reviewer)).await.body();
+    assert!(
+        other.contains("decide-form") && !other.contains(sentence),
+        "{other}"
+    );
     let a = post_form(
         &c.w,
         &format!("{p}/comment"),

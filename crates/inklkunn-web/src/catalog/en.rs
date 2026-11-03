@@ -693,6 +693,7 @@ pub const CATALOG: &[Entry] = &[
     msg("health.col_mark", "Marked as"),
     msg("health.col_changed", "Last change"),
     msg("health.see_links", "Pages that link to {title}"),
+    msg("health.propose_page", "Propose this page ({title})"),
     msg(
         "health.wanted_action",
         "Add a page with this title, or change the links that point to it.",
