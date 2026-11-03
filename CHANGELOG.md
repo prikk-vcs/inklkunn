@@ -1682,3 +1682,52 @@ Corrections from the review of 2026-11-03, third (handoff 004, X1 – X5).
 X1 – X5 add **18 prikk-dependent tests** net (19 added, one removed: the `/4` state test): `EXPECTED_SKIPS` 221 → 239 (measured with
 prikk shimmed off). 2,172 tests pass in both runs. Every fix was mutated (reverted, the test seen to fail, restored): 28 mutations, one of which first survived
 (the cost sentence of abandon's refusals) and got a sharper assertion.
+
+Corrections from the review of 2026-11-03, fourth (handoff 004, Y1 – Y6).
+
+- **Y1 — a retirement never excuses a late seal.** A retirement records only the blocks the key sealed **up to the tips the key
+  record kept when that key was superseded**. `signer/superseded.rs` has one function for that set (`known_when_replaced`), used by
+  the late-seal check of `status` and by the end of every retirement (`conclude_retirement` →
+  `findings_after_retirement` → `record_of`), so a block the check calls a late seal is a block no retirement records. A block the
+  key sealed afterwards is **not recorded**, is **not** W4's *left out* (W4 still refuses for any other block that lost its
+  signature), and is **not** a reason to keep a leaked key trusted: the key is still removed and the record holds its set less the
+  late blocks. The key record keeps nothing new. The verification page and recovery therefore do not describe a failure on a late
+  block as *only a retired key* (no recorded set holds it, so `judge` does not explain the failure). It is said where the operator
+  reads it: `OldKeyOutcome::Retired` became `Retired { late_seals: Vec<String> }` and `RetirementFinished` gained `late_seals`; the
+  CLI of `retire`, `rotate --retire-old` and `finish-retirement` prints `WARNING: block <id> was sealed with maintainer key <key>`
+  for each and `LATE_SEALS_SENTENCE` (*these blocks were sealed with this key after it was replaced, so this service did not make
+  them; verification keeps failing on them, and nothing excuses them*), notes the count in the audit detail, and **exits 1** as
+  `status` does for the same blocks (the retirement itself is done, recorded and audited as finished). prikk names no signer for a
+  ref state or a ref update, so the two the thief's seal made are in the record beside the service's own; the late block is what keeps
+  the failure unexplained. `Signer::view_histories` is the one reading of every view's history. `docs/KEYS.md`'s compromise runbook
+  says what a late seal means (a block in the history the service did not make: export, read, decide; nothing rewrites history).
+- **Y2 — `status` says what the repository trusts.** A superseded key whose record is not marked retired is *not retired*; *still
+  trusted* / *out of the trust store* come from the repository's trust list (`Signer::trusted_maintainer_ids`, one read); if the
+  list cannot be read, `status` says it cannot tell. An unfinished retirement that removed the key no longer reads *still trusted*.
+- **Y3.** `status` names `inklkunn wiki keys retire <wiki> --key <id> --confirm <the wiki's slug> --accept-unverifiable-history`
+  beside every superseded key that is still trusted and not retired (for the key whose retirement is unfinished it names nothing:
+  `UNFINISHED` names what ends that; for another key it adds *once the unfinished retirement above is finished or given up*).
+- **Y4.** `OldKeyOutcome::RetireNotBegun`'s text drops the inner *nothing was changed* (`NOTHING_CHANGED` closes the refusals made
+  before the state is written, and `not_begun_text` takes it off after a rotation): the keys were rotated, the old key is still
+  trusted, and the command that retires it is named.
+- **Y5 — `docs/KEYS.md` says only what is true.** A failed retirement after a rotation is a table of what each outcome names
+  (`retire` for *not begun*; `finish-retirement` / `abandon-retirement` for an unfinished one, where the key may already be out of
+  the trust store). The restore paragraph: back up the key directory after every key command; finishing after a restore works only
+  if nothing was written and no key changed since; after restoring the key directory and the store together, run `status` and retire
+  again whatever should be retired. One sentence on X2's limits (a retirement whose ending event was never written, or lost when the
+  audit store and key directory are restored together, is invisible to abandon's check). `docs/RECOVERY.md` names the late seal.
+- **Y6 — `retire` takes `--accept-unverifiable-history`.** One flag for one cost: `retire` is refused without it, changing nothing
+  and before the audit trail is touched, with the sentence `rotate --retire-old` says (`refusal_without_acceptance`). The usage
+  line, `docs/KEYS.md`'s command list, `retire_command` (and so every text that names `retire`: abandon's sentences, `status`,
+  `RetireNotBegun`, recovery's `retirement-unfinished` stop) show the flag.
+
+Public API: `OldKeyOutcome::Retired` is now `Retired { late_seals }`, `RetirementFinished::late_seals`, `LATE_SEALS_SENTENCE`,
+`Signer::trusted_maintainer_ids` (new); `retire_command` carries the flag. Store schema unchanged (15).
+
+Y1 – Y6 add **12 prikk-dependent tests** (`EXPECTED_SKIPS` 239 → 251, measured with prikk shimmed off): five in
+`signer/lifecycle/tests.rs` (a late seal named and not recorded; the same with none; finish with the key removed and with it still
+trusted; abandon then retire again; a rotation that retires the replaced key beside a kept key's late seal) and seven in
+`keys/tests.rs` (`retire` and `finish-retirement` with a late seal; `retire` without and with the flag; `status` for a kept key, for
+an unfinished retirement, for an unreadable trust list, and for the unfinished key beside another). Two tests need no prikk
+(`record_of` with a late seal; `RetireNotBegun`'s text). Every fix was mutated (reverted, the test seen to fail, restored): 31
+mutations, none survived; one first did not apply (a formatting split) and was redone as two.
