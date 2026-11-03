@@ -190,7 +190,7 @@ mod world {
             std::fs::write(
                 &path,
                 format!(
-                    "#!/bin/sh\nif [ \"$1 $2 $3\" = \"trust maintainer remove\" ]; then {real} \"$@\"; rc=$?; touch {ctl}/removed; exit $rc; fi\nif [ \"$1\" = verify ] && [ -e {ctl}/removed ] && [ -e {ctl}/verify-dies ]; then echo 'error: injected' >&2; exit 2; fi\nif [ -n \"$PRIKK_MAINTAINER_SEED_FILE\" ] && [ -f \"$PRIKK_MAINTAINER_SEED_FILE\" ] && [ ! -e {loot}/maintainer.seed ]; then mkdir -p {loot}; cp \"$PRIKK_MAINTAINER_SEED_FILE\" {loot}/maintainer.seed; fi\nif [ -n \"$PRIKK_AUTHOR_SEED_FILE\" ] && [ -f \"$PRIKK_AUTHOR_SEED_FILE\" ] && [ ! -e {loot}/author.seed ]; then mkdir -p {loot}; cp \"$PRIKK_AUTHOR_SEED_FILE\" {loot}/author.seed; fi\nexec {real} \"$@\"\n",
+                    "#!/bin/sh\nif [ \"$1 $2 $3\" = \"trust maintainer remove\" ]; then {real} \"$@\"; rc=$?; touch {ctl}/removed; exit $rc; fi\nif [ \"$1\" = verify ] && [ -e {ctl}/removed ] && [ -e {ctl}/verify-dies ]; then echo 'error: injected' >&2; exit 2; fi\nif [ \"$1\" = verify ] && [ -e {ctl}/forge ]; then read A M < {ctl}/forge; rm {ctl}/forge; echo forged > Forged.md; PRIKK_AUTHOR_KEY_ID=$A PRIKK_AUTHOR_SEED_FILE={loot}/author.seed PRIKK_MAINTAINER_KEY_ID=$M PRIKK_MAINTAINER_SEED_FILE={loot}/maintainer.seed {real} commit -m forged >&2 || exit 9; PRIKK_AUTHOR_KEY_ID=$A PRIKK_AUTHOR_SEED_FILE={loot}/author.seed PRIKK_MAINTAINER_KEY_ID=$M PRIKK_MAINTAINER_SEED_FILE={loot}/maintainer.seed {real} seal --allow-no-audit >&2 || exit 9; fi\nif [ -n \"$PRIKK_MAINTAINER_SEED_FILE\" ] && [ -f \"$PRIKK_MAINTAINER_SEED_FILE\" ] && [ ! -e {loot}/maintainer.seed ]; then mkdir -p {loot}; cp \"$PRIKK_MAINTAINER_SEED_FILE\" {loot}/maintainer.seed; fi\nif [ -n \"$PRIKK_AUTHOR_SEED_FILE\" ] && [ -f \"$PRIKK_AUTHOR_SEED_FILE\" ] && [ ! -e {loot}/author.seed ]; then mkdir -p {loot}; cp \"$PRIKK_AUTHOR_SEED_FILE\" {loot}/author.seed; fi\nexec {real} \"$@\"\n",
                     real = real.display(),
                     loot = loot.display(),
                     ctl = data_dir.join("ctl").display()
@@ -374,34 +374,15 @@ mod world {
             path
         }
 
-        /// A thief with the seeds of the first keys (`leaky_world`) commits and seals a change.
-        pub fn thief_seals(&self, author_key_id: &str, maintainer_key_id: &str) {
-            let loot = self.settings.data_dir.join("loot");
-            let repo = RootLayout::new(self.settings.wikis_root()).repo_dir(&self.record.id);
-            std::fs::write(repo.join("Forged.md"), "forged\n").unwrap();
-            let run = |args: &[&str]| {
-                std::process::Command::new("prikk")
-                    .args(args)
-                    .current_dir(&repo)
-                    .env("PRIKK_AUTHOR_KEY_ID", author_key_id)
-                    .env("PRIKK_AUTHOR_SEED_FILE", loot.join("author.seed"))
-                    .env("PRIKK_MAINTAINER_KEY_ID", maintainer_key_id)
-                    .env("PRIKK_MAINTAINER_SEED_FILE", loot.join("maintainer.seed"))
-                    .output()
-                    .unwrap()
-            };
-            let commit = run(&["commit", "-m", "forged"]);
-            assert!(
-                commit.status.success(),
-                "{}",
-                String::from_utf8_lossy(&commit.stderr)
-            );
-            let seal = run(&["seal", "--allow-no-audit"]);
-            assert!(
-                seal.status.success(),
-                "{}",
-                String::from_utf8_lossy(&seal.stderr)
-            );
+        /// A thief with the seeds of the first keys (`leaky_world`) seals a change the next time `prikk verify` is run
+        /// in the repository (by whichever command): the stand-in does it, as a process of its own. (Only the driver, the
+        /// signer and the fetcher spawn processes in this product, tests of the binary included.)
+        pub fn arm_forgery(&self, author_key_id: &str, maintainer_key_id: &str) {
+            std::fs::write(
+                self.settings.data_dir.join("ctl").join("forge"),
+                format!("{author_key_id} {maintainer_key_id}\n"),
+            )
+            .unwrap();
         }
 
         pub fn recorded_ids(&self) -> (Option<String>, Option<String>) {
@@ -1298,8 +1279,8 @@ fn retire_names_each_late_seal_and_what_it_means_exits_1_and_the_key_is_out_but_
     let (author, k1) = (author.unwrap(), maintainer.unwrap());
     let (status, out, err) = w.cli("wiki keys rotate handbook --confirm handbook");
     assert_eq!(status, 0, "{out}{err}");
-    // A thief with the first keys' seeds seals a block; `status` shows it as a late seal.
-    w.thief_seals(&author, &k1);
+    // A thief with the first keys' seeds seals a block (when `status` runs `verify`); `status` shows it as a late seal.
+    w.arm_forgery(&author, &k1);
     let (status, out, _) = w.cli("wiki keys status handbook");
     assert_eq!(status, 1, "{out}");
     let forged = out
@@ -1358,7 +1339,7 @@ fn finish_retirement_names_the_late_seal_too_records_without_it_and_exits_1() {
     let (author, k1) = (author.unwrap(), maintainer.unwrap());
     let (status, out, err) = w.cli("wiki keys rotate handbook --confirm handbook");
     assert_eq!(status, 0, "{out}{err}");
-    w.thief_seals(&author, &k1);
+    w.arm_forgery(&author, &k1);
     let (_, out, _) = w.cli("wiki keys status handbook");
     let forged = out
         .lines()
