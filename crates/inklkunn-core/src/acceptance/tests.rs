@@ -73,10 +73,7 @@ fn an_acceptance_whose_base_is_the_tip_is_signed_with_every_record_in_place() {
     assert_eq!(facts.kind, Kind::Proposal);
     assert_eq!(facts.proposal.as_ref(), Some(&p.id));
     assert_eq!(facts.change_digest, call.change.digest());
-    assert_eq!(
-        facts.pinned_tip.as_str().to_owned(),
-        rig.fake.block_id()
-    );
+    assert_eq!(facts.pinned_tip.as_str().to_owned(), rig.fake.block_id());
     // The message is CT-03 with Kind: proposal, naming the proposal, both people and the base.
     let message = Message::parse(&call.change.message).unwrap();
     assert_eq!(message.kind(), Kind::Proposal);
@@ -317,6 +314,11 @@ fn each_failure_before_the_commit_has_its_own_word() {
         (AcceptError::ChangeMismatch, words::REFUSED),
         (AcceptError::MessageMismatch, words::REFUSED),
         (AcceptError::NotPending, words::REFUSED),
+        // W1: a word of its own, so that the page and the API can say what only the operator can mend.
+        (
+            AcceptError::RetirementUnfinished("run `x`".to_owned()),
+            words::RETIREMENT_UNFINISHED,
+        ),
     ];
     for (answer, word) in cases {
         let (rig, maintainer, _m, _a, _aid, p) = rig_with_proposal();
@@ -1087,10 +1089,7 @@ fn a_system_act_is_pending_until_it_ends_and_a_failed_one_is_no_record_of_a_chan
         .unwrap()
         .unwrap();
     assert_eq!((facts.kind, facts.view.as_str()), (Kind::System, MAIN));
-    assert_eq!(
-        facts.pinned_tip.as_str().to_owned(),
-        "c".repeat(64)
-    );
+    assert_eq!(facts.pinned_tip.as_str().to_owned(), "c".repeat(64));
     rig.store
         .finish_system_act(&SystemActEnd {
             act: sealed_act.id.clone(),

@@ -114,9 +114,10 @@ fn the_registry_is_complete() {
         | Code::NothingToChange
         | Code::AcceptanceInProgress
         | Code::AcceptanceFailed
-        | Code::SigningNotConfigured => 1,
+        | Code::SigningNotConfigured
+        | Code::RetirementUnfinished => 1,
     };
-    assert_eq!(Code::ALL.iter().map(|c| named(*c)).sum::<usize>(), 35);
+    assert_eq!(Code::ALL.iter().map(|c| named(*c)).sum::<usize>(), 36);
 }
 
 #[test]

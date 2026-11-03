@@ -670,6 +670,21 @@ impl KeyStore {
         Ok(meta)
     }
 
+    /// Tests: write the wiki's record as format `/4` (the one before the retired key's public key and the trust list were
+    /// kept), after `change` was applied to its plain fields, to see what a state of that format does.
+    #[cfg(test)]
+    pub(crate) fn rewrite_as_format_four(
+        &self,
+        wiki: &WikiId,
+        change: impl FnOnce(&mut Meta),
+    ) -> Result<(), KeyStoreError> {
+        let text = self.record_text(wiki)?;
+        let (mut meta, seeds) = record::open(&self.master, &text, wiki)?;
+        change(&mut meta);
+        let text = record::seal_v4(&self.master, &meta, &seeds)?;
+        write_private(&self.dir, &Self::record_name(wiki), &text, false)
+    }
+
     /// A wiki's plain facts: key ids, generation, dates. The record is opened and authenticated to read them,
     /// so an altered record is an error here and never a plausible-looking status.
     pub(crate) fn status(&self, wiki: &WikiId) -> Result<Meta, KeyStoreError> {

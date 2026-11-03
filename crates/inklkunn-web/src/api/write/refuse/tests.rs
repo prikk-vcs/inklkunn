@@ -243,6 +243,35 @@ fn each_way_an_acceptance_can_stop_is_one_problem_a_program_can_act_on() {
 }
 
 #[test]
+fn an_acceptance_the_signer_paused_for_an_unfinished_retirement_is_a_problem_of_its_own() {
+    // W1: the code `retirement-unfinished`, not `acceptance-failed`: the caller can tell it from a failure that may
+    // pass by itself. The command the operator reads goes to the log, never to the caller.
+    let (problem, logged) = failure_problem(AcceptFailure::Failed {
+        acceptance: AcceptanceId::new(),
+        word: "retirement-unfinished",
+        detail: "run `inklkunn wiki keys finish-retirement secret-wiki`".to_owned(),
+    });
+    assert_eq!(problem.code, Code::RetirementUnfinished);
+    assert_eq!(problem.code.slug(), "retirement-unfinished");
+    assert_eq!(problem.code.status().as_u16(), 503);
+    assert_eq!(problem.retry_after_secs(), None);
+    assert_eq!(logged.len(), 1);
+    assert!(logged.first().unwrap().contains("finish-retirement"));
+    let shown = body(&problem).to_string();
+    assert!(
+        !shown.contains("finish-retirement") && !shown.contains("secret-wiki"),
+        "{shown}"
+    );
+    // A failure with another word is still the plain failure.
+    let (plain, _) = failure_problem(AcceptFailure::Failed {
+        acceptance: AcceptanceId::new(),
+        word: "refused",
+        detail: "d".to_owned(),
+    });
+    assert_eq!(plain.code, Code::AcceptanceFailed);
+}
+
+#[test]
 fn a_busy_wiki_is_never_told_to_retry_in_no_time() {
     let (busy, _) = failure_problem(AcceptFailure::Busy(Busy {
         depth: 1,

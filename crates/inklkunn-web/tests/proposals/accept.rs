@@ -440,6 +440,25 @@ fn cases() -> Vec<Case> {
             japanese: &["<h1>ウィキは混み合っています</h1>"],
         },
         Case {
+            name: "failed before the change: a key retirement is not finished",
+            answer: || {
+                Err(failed(
+                    words::RETIREMENT_UNFINISHED,
+                    "a change to this wiki's keys is not finished; run `inklkunn wiki keys finish-retirement x`",
+                ))
+            },
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            english: &[
+                "<h1>Not signed: a change to this wiki&#39;s keys is not finished</h1>",
+                "the person who runs this wiki",
+                "the proposal is kept",
+            ],
+            japanese: &[
+                "<h1>署名されませんでした: このウィキの鍵の変更が完了していません</h1>",
+                "提案はそのまま保たれています",
+            ],
+        },
+        Case {
             name: "failed before the change: unavailable",
             answer: || Err(failed(words::UNAVAILABLE, "no route to the repository")),
             status: StatusCode::SERVICE_UNAVAILABLE,

@@ -2722,55 +2722,207 @@ fn a_retirement_that_ended_without_its_record_excuses_nothing_and_finishing_it_l
     assert_eq!(Recover::unfinished_retirement(&f.signer, &f.wiki), Ok(None));
 }
 
+impl Fixture {
+    /// Does the real `prikk verify` pass now?
+    fn verify_ok(&self) -> bool {
+        self.prikk_json(&["verify", "--format", "json"])
+            .pointer("/verdict/ok")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    }
+
+    /// How many calls the stand-in has seen of the verbs that write the history or the worktree.
+    fn write_calls(&self) -> usize {
+        std::fs::read_to_string(self.ctl.join("calls.log"))
+            .unwrap_or_default()
+            .lines()
+            .filter(|l| matches!(*l, "commit" | "seal" | "switch" | "mv" | "branch"))
+            .count()
+    }
+}
+
+/// A retirement that stopped half way, the way a kill at one point of `rotate --retire-old` leaves it: `point` is
+/// `record` (the state is written, the key was not removed: the stand-in refuses the removal, as a kill between the two
+/// leaves the key trusted) or `untrust` (the key is removed and the look after it could not be made).
+fn retirement_stopped_at(f: &Fixture, point: &str) {
+    match point {
+        "record" => {
+            // trust calls: adopt the new key (0), read the list (1), remove the old key (2: refused)
+            std::fs::write(f.ctl.join("failafter-trust"), "2").unwrap();
+            let rotation = f
+                .signer
+                .rotate_keys(
+                    &inklkunn_signer::KeyAuthority::for_tests(),
+                    &f.repo,
+                    inklkunn_signer::OldKey::Retire,
+                )
+                .expect("the rotation happened");
+            f.uncontrol("failafter-trust");
+            f.uncontrol("count-trust");
+            assert!(
+                matches!(
+                    &rotation.old_key,
+                    inklkunn_signer::OldKeyOutcome::RetireFailed(_)
+                ),
+                "{rotation:?}"
+            );
+            let key = rotation.previous_maintainer_key_id;
+            assert_eq!(
+                f.signer.unfinished_retirement(&f.wiki).unwrap(),
+                Some(key),
+                "the state is in the key record"
+            );
+            assert!(
+                f.verify_ok(),
+                "the key is still trusted: this is the quiet case"
+            );
+        }
+        _ => {
+            retire_without_the_record(f);
+        }
+    }
+}
+
 #[test]
-fn writes_while_a_retirement_is_unfinished_are_sealed_but_not_confirmed_and_name_the_command() {
-    let Some(f) = fixture("retire-unrecorded-writes", Sandbox::Unconfined, true) else {
+fn a_kill_at_each_point_of_a_retirement_pauses_every_acceptance_before_anything_is_written_and_finishing_lets_it_go()
+ {
+    // W1. Three points: before the first record (nothing was written but a harmless adopted key: there is nothing
+    // unfinished, the acceptance is not paused and `rotate` can be asked again), between the record and the removal
+    // (the old key is still trusted: `verify` passes, which is why this is the point that stranded a wiki), and after the
+    // removal (the key is out of trust, nothing is excused). In the last two, an acceptance is refused with the
+    // sentence that names the command, before the worktree, the queue or the history are touched, the proposal's record
+    // stays pending, and `finish-retirement` then succeeds, after which the very same acceptance goes through.
+    let command_of = inklkunn_signer::finish_retirement_command;
+    for point in ["record", "untrust"] {
+        let Some(f) = fixture(&format!("w1-{point}"), Sandbox::Unconfined, true) else {
+            println!("skipping: prikk not on PATH");
+            return;
+        };
+        retirement_stopped_at(&f, point);
+        let command = command_of(&f.wiki);
+        let before = f.history_len(MAIN);
+        let p = f.prepare(
+            MAIN,
+            vec![file("pages/Edit.md", Some("written meanwhile\n"))],
+            vec![],
+        );
+        let writes_so_far = f.write_calls();
+        let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+        assert!(
+            matches!(&r, Err(AcceptError::RetirementUnfinished(why))
+                if why.contains(&command) && why.contains("nothing was written") && why.contains("not finished")),
+            "{point}: {r:?}"
+        );
+        // Nothing was touched: not the history, not the queue, not the worktree, no seed on disk.
+        assert_eq!(f.history_len(MAIN), before, "{point}");
+        assert_eq!(f.queue_count(), 0, "{point}");
+        assert!(f.worktree_clean(), "{point}");
+        assert!(f.seed_dirs().is_empty(), "{point}");
+        // The refusal came before the signer asked the ledger for anything: no `commit` or `seal` was even tried.
+        assert_eq!(
+            f.write_calls(),
+            writes_so_far,
+            "{point}: no commit, seal or switch was tried"
+        );
+        // The record is still pending (the proposal is kept): asking again is the same answer, not "not pending".
+        let again = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
+        assert!(
+            matches!(&again, Err(AcceptError::RetirementUnfinished(_))),
+            "{point}: {again:?}"
+        );
+        // A view is a new ref in the history the retirement recorded the views of: refused the same way.
+        f.ledger.views.lock().unwrap().insert(
+            "act-w1".into(),
+            ViewCreationFacts {
+                wiki: f.wiki.clone(),
+                name: "heads/draft".into(),
+                from: MAIN.into(),
+            },
+        );
+        let view = f.signer.create_view(
+            &f.wiki,
+            "heads/draft",
+            MAIN,
+            &ViewCreationAct::new("act-w1"),
+        );
+        assert!(
+            matches!(&view, Err(AcceptError::RetirementUnfinished(why)) if why.contains(&command)),
+            "{point}: {view:?}"
+        );
+        // The way out: finishing succeeds (it removes the key itself when it was still trusted) ...
+        let done = f
+            .signer
+            .finish_retirement(&inklkunn_signer::KeyAuthority::for_tests(), &f.repo)
+            .unwrap_or_else(|e| panic!("{point}: {e}"));
+        assert_eq!(done.findings_recorded, 3, "{point}");
+        assert_eq!(done.removed_now, point == "record", "{point}");
+        // ... and the very same acceptance, record and change, goes through.
+        f.signer
+            .accept(&f.wiki, MAIN, &p.token, &p.change)
+            .unwrap_or_else(|e| {
+                panic!("{point}: the held proposal is accepted after the finish: {e}")
+            });
+        assert_eq!(f.history_len(MAIN), before + 1, "{point}");
+    }
+}
+
+#[test]
+fn a_kill_before_the_first_record_leaves_nothing_unfinished_and_the_acceptance_is_not_paused() {
+    // W1, the first point: the new key was adopted, the key record was not replaced. The wiki is as it was (an adopted
+    // key nobody holds the seed of is harmless): nothing to refuse, nothing to finish.
+    let Some(f) = fixture("w1-before", Sandbox::Unconfined, true) else {
+        println!("skipping: prikk not on PATH");
+        return;
+    };
+    // trust calls: adopt the new key (0), read the list (1: fails)
+    std::fs::write(f.ctl.join("failafter-trust"), "1").unwrap();
+    let r = f.signer.rotate_keys(
+        &inklkunn_signer::KeyAuthority::for_tests(),
+        &f.repo,
+        inklkunn_signer::OldKey::Retire,
+    );
+    f.uncontrol("failafter-trust");
+    f.uncontrol("count-trust");
+    assert!(r.is_err(), "{r:?}");
+    assert_eq!(f.signer.unfinished_retirement(&f.wiki).unwrap(), None);
+    let before = f.history_len(MAIN);
+    an_ordinary_write_is_confirmed(
+        &f,
+        "written after a rotation that never got to its record\n",
+    );
+    assert_eq!(f.history_len(MAIN), before + 1);
+    // ... and there is nothing to finish or give up.
+    assert!(matches!(
+        f.signer
+            .finish_retirement(&inklkunn_signer::KeyAuthority::for_tests(), &f.repo),
+        Err(SignerError::Refused(why)) if why.contains("no key retirement")
+    ));
+}
+
+#[test]
+fn the_pause_is_the_key_records_and_giving_the_retirement_up_lets_writes_continue() {
+    // W1 and W3: while the state is set nothing is sealed; abandoning clears it, the old key is trusted again, and the
+    // held acceptance goes through (the wiki verifies, so it is confirmed).
+    let Some(f) = fixture("w1-abandon", Sandbox::Unconfined, true) else {
         println!("skipping: prikk not on PATH");
         return;
     };
     retire_without_the_record(&f);
-    let command = inklkunn_signer::finish_retirement_command(&f.wiki);
     let before = f.history_len(MAIN);
-    let p = f.prepare(
-        MAIN,
-        vec![file("pages/Edit.md", Some("written meanwhile\n"))],
-        vec![],
-    );
-    let r = f.signer.accept(&f.wiki, MAIN, &p.token, &p.change);
-    // Sealed, and not confirmed: nothing is excused until the record is finished.
-    assert!(
-        matches!(&r, Err(AcceptError::SealedUnconfirmed {
-            sealed: Some(_),
-            why: Unconfirmed::VerifyFailed,
-            detail,
-        }) if detail.contains(&command)),
-        "{r:?}"
-    );
-    assert_eq!(
-        f.history_len(MAIN),
-        before + 1,
-        "the change is in the history"
-    );
-    // Recovery's questions: nothing is excused, and the way out is named (never run).
-    assert_eq!(
-        Recover::verify_after_retirement(&f.signer, &f.wiki),
-        Ok(None)
-    );
-    let named = Recover::unfinished_retirement(&f.signer, &f.wiki)
-        .expect("asked")
-        .expect("unfinished");
-    assert!(named.contains(&command), "{named}");
-    // The write made the repository something the record cannot be made from: finishing is refused, and says so.
-    let r = f
+    let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("kept\n"))], vec![]);
+    assert!(matches!(
+        f.signer.accept(&f.wiki, MAIN, &p.token, &p.change),
+        Err(AcceptError::RetirementUnfinished(_))
+    ));
+    let done = f
         .signer
-        .finish_retirement(&inklkunn_signer::KeyAuthority::for_tests(), &f.repo);
-    assert!(
-        matches!(&r, Err(SignerError::Refused(why)) if why.contains("has changed") && why.contains("nothing was changed")),
-        "{r:?}"
-    );
-    assert!(
-        Recover::unfinished_retirement(&f.signer, &f.wiki)
-            .unwrap()
-            .is_some()
-    );
+        .abandon_retirement(&inklkunn_signer::KeyAuthority::for_tests(), &f.repo)
+        .expect("given up");
+    assert!(done.restored, "the key had been removed");
+    assert!(f.verify_ok(), "what the old key sealed verifies again");
+    f.signer
+        .accept(&f.wiki, MAIN, &p.token, &p.change)
+        .expect("the held proposal is accepted");
+    assert_eq!(f.history_len(MAIN), before + 1);
+    assert_eq!(Recover::unfinished_retirement(&f.signer, &f.wiki), Ok(None));
 }

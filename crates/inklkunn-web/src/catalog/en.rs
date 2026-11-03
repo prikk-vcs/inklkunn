@@ -1040,6 +1040,18 @@ pub const CATALOG: &[Entry] = &[
         "problem.signing_not_configured.hint",
         "Tell the person who runs this server. This request did nothing.",
     ),
+    msg(
+        "problem.retirement_unfinished.title",
+        "A change to the wiki's keys is not finished",
+    ),
+    msg(
+        "problem.retirement_unfinished.detail",
+        "A change to this wiki's keys is not finished, so nothing new can be signed into its history until the person who runs this wiki has finished it. The change was not made, and the proposal is kept.",
+    ),
+    msg(
+        "problem.retirement_unfinished.hint",
+        "Tell the person who runs this wiki. When they have finished it, accept the proposal again.",
+    ),
     // the inbox, following a page, and the flags of changes (handoff 004 T6)
     msg("title.inbox", "Inbox · {product}"),
     msg("inbox.heading", "Inbox"),
@@ -1252,6 +1264,14 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "outcome_note.too_large",
         "This change needs more memory than one signing may use. Nothing was changed, and the proposal is still held for review.",
+    ),
+    msg(
+        "outcome.retirement_unfinished",
+        "Not signed: a change to this wiki's keys is not finished",
+    ),
+    msg(
+        "outcome_note.retirement_unfinished",
+        "A change to this wiki's keys is not finished, so nothing new can be signed into its history until the person who runs this wiki has finished it. Nothing was changed, and the proposal is kept. Tell that person; once they have finished it, accept the proposal again.",
     ),
     msg("outcome.unavailable", "Could not be done now"),
     msg(

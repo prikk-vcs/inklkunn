@@ -177,6 +177,10 @@ impl Recover for Signer {
             view: view.to_owned(),
         };
         let _held = self.recovering(wiki, act, &op)?;
+        // Sealing makes a block: while a key retirement is unfinished nothing new is sealed (W1).
+        if let Some(sentence) = self.seal_pause(wiki) {
+            return Err(RecoverError::RetirementUnfinished(sentence));
+        }
         // The record the change was accepted under: pending, the wiki's, on this view.
         let expected = self
             .ledger
@@ -243,6 +247,13 @@ impl Recover for Signer {
         Ok(self.retirement_explains(&self.root.repo_dir(wiki), wiki)?)
     }
 
+    fn verify_beside_cleanup(
+        &self,
+        wiki: &WikiId,
+    ) -> Result<Option<RetirementExcuse>, RecoverError> {
+        Ok(self.retirement_explains_beside_cleanup(&self.root.repo_dir(wiki), wiki)?)
+    }
+
     fn unfinished_retirement(&self, wiki: &WikiId) -> Result<Option<String>, RecoverError> {
         Ok(self.unfinished_retirement_note(wiki))
     }
@@ -276,7 +287,13 @@ impl Recover for Signer {
         //    does (P13, Q6), the publication-trust findings a retirement recorded are not "something else": the
         //    signer's own question (`verify` fails by publication trust alone, all of it recorded) says which.
         let doctor = w.doctor(&repo)?;
-        let doctor = match self.retirement_explains(&repo, wiki) {
+        // While the cleanup is pending `verify` fails by the ref publication as well, so the plain question says no;
+        // the question beside a cleanup (W7) is asked after it, and only a yes from either takes findings out.
+        let excuse = match self.retirement_explains(&repo, wiki) {
+            Ok(Some(excuse)) => Ok(Some(excuse)),
+            _ => self.retirement_explains_beside_cleanup(&repo, wiki),
+        };
+        let doctor = match excuse {
             Ok(Some(excuse)) => {
                 doctor
                     .without_excused_publication_findings(|kind, id| excuse.names(kind, id))

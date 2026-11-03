@@ -124,24 +124,39 @@ seal` yourself.
 
 ## A key retirement that was begun and not finished: `retirement-unfinished`
 
-**What you see.** The plan says `STOP (retirement-unfinished)` and names the key and a command. `prikk doctor` reports
-`PRIKK-TRUST-PUBLICATION-UNTRUSTED` errors for blocks, ref states and ref updates a retired key sealed, and the key
-record holds the state a retirement began from but not its findings (`rotate --retire-old` ended without its record, and
-said so with a non-zero exit). **What it is.** The old key is out of the repository's trust; nothing yet says which
-failures are its, so nothing is excused. **What to do.** Run `inklkunn wiki keys finish-retirement <wiki>` (it needs
-the operator's secret, as every key command does; **recovery never runs it**), then `inklkunn wiki recover <wiki>`. If it
-refuses because the wiki was written to since the retirement began, the record cannot be made from the changed
-repository: that is the decision recorded in handoff 004's Q1 and is for the architect; do not edit the key record. See
-`docs/KEYS.md`.
+**What you see.** The plan says `STOP (retirement-unfinished)` and names the key and the commands, when a patch waits to
+be sealed or when `prikk doctor` reports `PRIKK-TRUST-PUBLICATION-UNTRUSTED` errors for blocks, ref states and ref
+updates a retired key sealed. Acceptances on the web or through the API are answered *a change to this wiki's keys is
+not finished* (the proposal is kept). The key record holds the state a retirement began from but not its findings
+(`rotate --retire-old` stopped half way, or was killed, and said so with a non-zero exit when it could). **What it is.**
+The retirement was begun and not ended: the old key may still be trusted (the removal never happened), or be out of the
+repository's trust with nothing yet saying which failures are its. **Nothing new is sealed while it lasts** (the signer
+refuses every acceptance, every `seal` of a queued patch and every new view, before it changes anything), because a
+block written now could not be told from what the removal made fail. **What to do.** Run one of two commands (they need
+the operator's secret, as every key command does; **recovery never runs them**):
 
-## A killed `seal` on a wiki with a retired key: `cleanup-beside-trust-findings`
+```sh
+inklkunn wiki keys finish-retirement <wiki>                    # does whatever step remains, the removal of the key included
+inklkunn wiki keys abandon-retirement <wiki> --confirm <slug>  # gives it up: the old key is trusted again, nothing is retired
+```
 
-**What you see.** `STOP (cleanup-beside-trust-findings)`: the pending cleanup of the previous section and publication-trust
-findings of a retired key at once. **What it is.** While the cleanup is pending `prikk verify` fails by two conditions
-(`blocking-ref-publication` and `publication-trust`), and only a failure by publication trust alone is excused by a
-retirement's record (P2′), so recovery does not finish the cleanup beside findings it cannot account for. Nothing is
-changed. **What to do.** Nothing in the product: the question is with prikk (`docs/UPSTREAM.md`), and the decision about
-excusing the retirement's findings beside a pending cleanup is the architect's. Do not run `prikk seal` yourself.
+then `inklkunn wiki recover <wiki>`. You never run `prikk trust maintainer` yourself. If `finish-retirement` refuses with
+a reason no later run can cure (the repository changed outside inklkunn, the trusted keys are not the ones the retirement
+began with, a block that lost its signature was not the old key's, prikk counted something different), it says so and
+names `abandon-retirement`; do not edit the key record. See `docs/KEYS.md`.
+
+## A killed `seal` on a wiki with a retired key: finished by recovery, or `cleanup-beside-trust-findings`
+
+**What you see.** The pending cleanup of the section above (a block published, its patch still queued) on a wiki whose
+retirement is recorded. **What it is.** While the cleanup is pending `prikk verify` fails by two conditions
+(`blocking-ref-publication` and `publication-trust`). Recovery finishes the cleanup (`complete-publication`, as above)
+**only when** `verify` fails by exactly those two, **every** publication-trust finding is in a retirement's recorded set,
+`doctor` shows nothing but the cleanup once those findings are taken out, and the published block is the unfinished act's;
+the rule that excuses a failure (publication trust alone, all of it recorded) and the rule an acceptance confirms by do not
+change. **After the step** the ordinary rule must hold: `verify` fails by publication trust alone, and all of it recorded;
+otherwise recovery stops and the flag stays. **When it stops here** (`STOP (cleanup-beside-trust-findings)`), a
+publication-trust finding is not in any retirement's record, or something else fails besides: nothing is changed, and it
+is for the architect to decide. Do not run `prikk seal` yourself.
 
 ## An empty lock file: recovery cannot read the witness
 

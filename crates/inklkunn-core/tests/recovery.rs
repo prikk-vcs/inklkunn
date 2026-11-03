@@ -2524,15 +2524,20 @@ fn a_retry_of_a_sealed_acceptance_settles_a_proposal_still_held_for_review() {
 }
 
 #[test]
-fn a_retirement_that_ended_without_its_record_stops_recovery_naming_the_command_and_keeps_the_flag()
-{
-    // Q1. The `verify` after the removal could not run (the stand-in lets the two before it through): the key is out of
-    // the trust store, the key record holds only the state to finish from, nothing is excused. A change accepted
-    // meanwhile is sealed and not confirmed (the wiki is flagged), and recovery stops on the findings nothing excuses,
-    // names the operator's command, and runs nothing (it needs the key authority); the flag is kept.
+fn a_retirement_that_ended_without_its_record_stops_recovery_naming_the_commands_and_keeps_the_flag()
+ {
+    // Q1, W1. The `verify` after the removal could not run (the stand-in lets the two before it through): the key is out
+    // of the trust store, the key record holds only the state to finish from, nothing is excused. The wiki is flagged
+    // for a queued patch; recovery stops on the findings nothing excuses, names the operator's two commands, and runs
+    // nothing (they need the key authority); the flag is kept.
     let Some(w) = World::new("retiring", LeaseConfig::default()) else {
         return;
     };
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    w.queued_acceptance(&p);
     w.control("failafter-verify", "2");
     let rotation = w
         .signer
@@ -2547,16 +2552,7 @@ fn a_retirement_that_ended_without_its_record_stops_recovery_naming_the_command_
         "{rotation:?}"
     );
     let command = inklkunn_core::finish_retirement_command(&w.wiki.id);
-    let p = w.propose(
-        "Say it in Spanish",
-        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
-    );
-    match w.accept(&p) {
-        Ok(inklkunn_core::Accepted::Signed(s)) => {
-            assert!(s.unconfirmed.is_some(), "nothing is excused: {s:?}");
-        }
-        other => panic!("{other:?}"),
-    }
+    let abandon = inklkunn_core::abandon_retirement_command(&w.wiki.id);
     assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
     let history = w.history();
     let r = w.recover();
@@ -2568,8 +2564,10 @@ fn a_retirement_that_ended_without_its_record_stops_recovery_naming_the_command_
     );
     assert!(r.done.is_empty(), "recovery ran nothing");
     assert!(
-        r.lines().iter().any(|l| l.contains(&command)),
-        "the stop names the command: {:#?}",
+        r.lines()
+            .iter()
+            .any(|l| l.contains(&command) && l.contains(&abandon)),
+        "the stop names both commands: {:#?}",
         r.lines()
     );
     assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
@@ -2580,11 +2578,172 @@ fn a_retirement_that_ended_without_its_record_stops_recovery_naming_the_command_
 }
 
 #[test]
-fn a_killed_seal_on_a_wiki_with_a_retired_key_is_not_finished_and_the_stop_says_why() {
-    // Q6, measured on prikk 0.55.0: while a publication's cleanup is pending `verify` fails by two conditions (the ref
-    // publication and publication trust), so the retirement's record, which excuses a failure by publication trust
-    // alone, does not apply, and the plan stops with a word of its own instead of offering a step that could not
-    // succeed. Nothing is changed.
+fn an_acceptance_while_a_retirement_is_unfinished_fails_with_its_own_word_and_the_proposal_stays_open()
+ {
+    // W1 through the whole acceptance: the signer refuses before it changes anything, the acceptance record ends
+    // *failed* with the word `retirement-unfinished` (a word of its own, not `refused`), the intent is abandoned, the
+    // proposal stays held for review, the wiki is not flagged (nothing is wrong with the repository), and once the
+    // operator has finished the retirement the same proposal is accepted.
+    let Some(w) = World::new("retiring-accept", LeaseConfig::default()) else {
+        return;
+    };
+    w.control("failafter-trust", "2");
+    let rotation = w
+        .signer
+        .rotate_keys(&KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
+        .expect("the rotation happened");
+    w.uncontrol("failafter-trust");
+    w.uncontrol("count-trust");
+    assert!(
+        matches!(
+            &rotation.old_key,
+            inklkunn_core::OldKeyOutcome::RetireFailed(_)
+        ),
+        "{rotation:?}"
+    );
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    let history = w.history();
+    let err = w.accept(&p).unwrap_err();
+    let AcceptFailure::Failed { word, detail, .. } = &err else {
+        panic!("{err:?}");
+    };
+    assert_eq!(
+        *word,
+        inklkunn_core::acceptance::words::RETIREMENT_UNFINISHED
+    );
+    assert_eq!(*word, "retirement-unfinished");
+    assert!(
+        detail.contains(&inklkunn_core::finish_retirement_command(&w.wiki.id)),
+        "{detail}"
+    );
+    assert_eq!(err.word(), "retirement-unfinished");
+    assert_eq!(w.history(), history);
+    let entry = w.store.acceptances_of(&p.id, 1).unwrap().remove(0);
+    assert!(matches!(
+        entry.result.map(|r| r.outcome),
+        Some(inklkunn_store::AcceptanceOutcome::Failed { word }) if word == "retirement-unfinished"
+    ));
+    assert!(w.store.open_intents(&w.wiki.id).unwrap().is_empty());
+    assert_eq!(w.state(&p), ProposalState::HeldForReview);
+    assert_eq!(w.store.recovery_flag(&w.wiki.id).unwrap(), None);
+    // The person who runs the wiki finishes it; the same proposal is then accepted.
+    w.signer
+        .finish_retirement(&KeyAuthority::for_tests(), &w.repo)
+        .expect("finished");
+    assert!(matches!(
+        w.accept(&p),
+        Ok(inklkunn_core::Accepted::Signed(_))
+    ));
+    assert_eq!(w.state(&p), ProposalState::Accepted);
+}
+
+/// The real signer for everything, with the two questions about a retirement answered as told: after a cleanup the
+/// plain question can be made to say "no", and the question beside a cleanup can have its answer changed.
+struct Tweaked {
+    signer: Arc<Signer>,
+    plain_says_no: bool,
+    beside: fn(
+        inklkunn_signer::recover::RetirementExcuse,
+    ) -> inklkunn_signer::recover::RetirementExcuse,
+}
+
+impl Recover for Tweaked {
+    fn verify_after_retirement(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+    ) -> Result<Option<inklkunn_signer::recover::RetirementExcuse>, inklkunn_core::RecoverError>
+    {
+        if self.plain_says_no {
+            return Ok(None);
+        }
+        self.signer.verify_after_retirement(wiki)
+    }
+
+    fn verify_beside_cleanup(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+    ) -> Result<Option<inklkunn_signer::recover::RetirementExcuse>, inklkunn_core::RecoverError>
+    {
+        Ok(self.signer.verify_beside_cleanup(wiki)?.map(self.beside))
+    }
+
+    fn complete_publication(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+        view: &str,
+        act: &inklkunn_core::RecoveryToken,
+        acceptance: &AcceptanceToken,
+    ) -> Result<(), inklkunn_core::RecoverError> {
+        self.signer
+            .complete_publication(wiki, view, act, acceptance)
+    }
+
+    fn seal_queued(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+        view: &str,
+        act: &inklkunn_core::RecoveryToken,
+        acceptance: &AcceptanceToken,
+    ) -> Result<(), inklkunn_core::RecoverError> {
+        self.signer.seal_queued(wiki, view, act, acceptance)
+    }
+
+    fn discard_damaged(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+        act: &inklkunn_core::RecoveryToken,
+    ) -> Result<inklkunn_signer::recover::text::Discarded, inklkunn_core::RecoverError> {
+        self.signer.discard_damaged(wiki, act)
+    }
+
+    fn clear_locks(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+        act: &inklkunn_core::RecoveryToken,
+        locks: &[String],
+    ) -> Result<Vec<String>, inklkunn_core::RecoverError> {
+        self.signer.clear_locks(wiki, act, locks)
+    }
+
+    fn restore_worktree(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+        view: &str,
+        act: &inklkunn_core::RecoveryToken,
+    ) -> Result<usize, inklkunn_core::RecoverError> {
+        self.signer.restore_worktree(wiki, view, act)
+    }
+}
+
+impl World {
+    fn recovery_with(&self, signer: Arc<dyn Recover>) -> Recovery {
+        Recovery::new(RecoveryParts {
+            acceptances: self.store.clone(),
+            acts: self.store.clone(),
+            proposals: self.store.clone(),
+            storage: self.storage.clone(),
+            witnesses: Arc::new(Witnesses::new(
+                &self.standin,
+                Sandbox::Unconfined,
+                self.layout.clone(),
+            )),
+            signer,
+            leases: self.leases.clone(),
+            layout: self.layout.clone(),
+            audit: self.store.clone(),
+        })
+    }
+}
+
+#[test]
+fn a_killed_seal_on_a_wiki_with_a_retired_key_is_finished_when_every_finding_is_a_recorded_one() {
+    // W7, measured on prikk 0.55.0: while a publication's cleanup is pending `verify` fails by two conditions (the ref
+    // publication and publication trust). Beside a recorded retirement, recovery finishes the cleanup when every
+    // publication-trust finding is in the recorded set and `doctor` shows nothing but the cleanup once those are taken
+    // out; the step's `verify` afterwards is the plain rule, which holds.
     let Some(w) = World::new("retired-cleanup", LeaseConfig::default()) else {
         return;
     };
@@ -2597,8 +2756,71 @@ fn a_killed_seal_on_a_wiki_with_a_retired_key_is_not_finished_and_the_stop_says_
     );
     w.killed_seal(&p, &[]);
     let blocks = w.history();
+    // Shown, nothing is done: the plan has the step, with the retirement's note, and no stop.
+    let shown = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
+    assert_eq!(shown.plan.stop, None, "{:#?}", shown.lines());
+    assert!(
+        step_names(&shown).contains(&"complete-publication"),
+        "{:#?}",
+        shown.lines()
+    );
+    assert!(
+        shown
+            .lines()
+            .iter()
+            .any(|l| l.contains("only publication trust and the cleanup of a killed seal fail")),
+        "{:#?}",
+        shown.lines()
+    );
+    assert_eq!(w.history(), blocks);
+    assert_eq!(w.store.open_intents(&w.wiki.id).unwrap().len(), 1);
+    let r = w.recover();
+    assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());
+    assert!(step_names(&r).contains(&"complete-publication"));
+    let verify = r
+        .done
+        .iter()
+        .find(|d| d.step == "verify")
+        .expect("verify ran");
+    assert!(
+        verify.detail.contains("only because of a retired key"),
+        "{}",
+        verify.detail
+    );
+    assert_eq!(w.history(), blocks, "the step makes no block");
+    assert_eq!(w.queue_count(), 0);
+    assert_eq!(w.store.recovery_flag(&w.wiki.id).unwrap(), None);
+    assert_eq!(w.state(&p), ProposalState::Accepted);
+}
+
+#[test]
+fn a_killed_seal_beside_findings_the_signer_does_not_name_all_of_is_still_a_stop_and_changes_nothing()
+ {
+    // W7: the stop `cleanup-beside-trust-findings` stays for anything else. Here the signer's answer beside the cleanup
+    // names less than `doctor` does (a ref state is not in what it says is recorded): the finding stays in `doctor`,
+    // and the plan stops with its own word. Nothing is changed.
+    let Some(w) = World::new("retired-cleanup-less", LeaseConfig::default()) else {
+        return;
+    };
+    w.signer
+        .rotate_keys(&KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
+        .expect("a rotation that retires the old key");
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    w.killed_seal(&p, &[]);
+    let blocks = w.history();
+    let recovery = w.recovery_with(Arc::new(Tweaked {
+        signer: w.signer.clone(),
+        plain_says_no: false,
+        beside: |mut excuse| {
+            excuse.ref_states.clear();
+            excuse
+        },
+    }));
     for mode in [RecoveryMode::PlanOnly, RecoveryMode::Run] {
-        let r = w.recovery.recover(&w.wiki, mode).unwrap();
+        let r = recovery.recover(&w.wiki, mode).unwrap();
         assert_eq!(
             r.plan.stop,
             Some(Stop::CleanupBesideTrustFindings),
@@ -2607,7 +2829,103 @@ fn a_killed_seal_on_a_wiki_with_a_retired_key_is_not_finished_and_the_stop_says_
         );
         assert!(r.done.is_empty());
     }
+    // And with the signer saying nothing at all beside a cleanup (the default of the trait) the stop is the same.
+    let recovery = w.recovery_with(Arc::new(ForgetsTheBlocks(w.signer.clone())));
+    let r = recovery.recover(&w.wiki, RecoveryMode::Run).unwrap();
+    assert_eq!(r.plan.stop, Some(Stop::CleanupBesideTrustFindings));
     assert_eq!(w.history(), blocks);
     assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
     assert_eq!(w.store.open_intents(&w.wiki.id).unwrap().len(), 1);
+}
+
+#[test]
+fn after_the_step_the_plain_rule_must_hold_or_recovery_stops_with_the_flag_kept() {
+    // W7: the question beside a cleanup lets the step be taken; it does not excuse the wiki. If, afterwards, the plain
+    // rule (publication trust alone, all of it recorded) does not say yes, the `verify` step fails and the flag stays.
+    let Some(w) = World::new("retired-cleanup-after", LeaseConfig::default()) else {
+        return;
+    };
+    w.signer
+        .rotate_keys(&KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
+        .expect("a rotation that retires the old key");
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    w.killed_seal(&p, &[]);
+    let recovery = w.recovery_with(Arc::new(Tweaked {
+        signer: w.signer.clone(),
+        plain_says_no: true,
+        beside: |excuse| excuse,
+    }));
+    let r = recovery.recover(&w.wiki, RecoveryMode::Run).unwrap();
+    assert!(
+        step_names(&r).contains(&"complete-publication"),
+        "{:#?}",
+        r.lines()
+    );
+    assert!(
+        matches!(
+            &r.outcome,
+            RecoveryOutcome::Stopped {
+                at: Some("verify"),
+                ..
+            }
+        ),
+        "{:#?}",
+        r.lines()
+    );
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
+}
+
+#[test]
+fn recovery_does_not_seal_a_queued_patch_while_a_retirement_is_unfinished_and_names_both_commands()
+{
+    // W1 at the plan: a patch waits to be sealed and a key retirement was begun and not finished (the key is still
+    // trusted, so `doctor` is quiet). Sealing makes a block, which is paused; the plan stops with the retirement's word,
+    // names both commands, and runs nothing. The signer would refuse the step with the same words.
+    let Some(w) = World::new("retiring-queued", LeaseConfig::default()) else {
+        return;
+    };
+    let q = w.propose(
+        "Half done",
+        &[("pages/Other.md", Some(&OTHER.replace("Hello.", "Hola.")))],
+    );
+    w.queued_acceptance(&q);
+    // trust calls: adopt the new key (0), read the list (1), remove the old key (2: refused)
+    w.control("failafter-trust", "2");
+    let rotation = w
+        .signer
+        .rotate_keys(&KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
+        .expect("the rotation happened");
+    w.uncontrol("failafter-trust");
+    w.uncontrol("count-trust");
+    assert!(
+        matches!(
+            &rotation.old_key,
+            inklkunn_core::OldKeyOutcome::RetireFailed(_)
+        ),
+        "{rotation:?}"
+    );
+    let finish = inklkunn_core::finish_retirement_command(&w.wiki.id);
+    let abandon = inklkunn_core::abandon_retirement_command(&w.wiki.id);
+    let history = w.history();
+    let r = w.recover();
+    assert_eq!(
+        r.plan.stop,
+        Some(Stop::RetirementUnfinished),
+        "{:#?}",
+        r.lines()
+    );
+    assert!(r.done.is_empty(), "recovery ran nothing");
+    assert!(
+        r.lines()
+            .iter()
+            .any(|l| l.contains(&finish) && l.contains(&abandon)),
+        "{:#?}",
+        r.lines()
+    );
+    assert_eq!(w.queue_count(), 1, "nothing was sealed");
+    assert_eq!(w.history(), history);
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
 }

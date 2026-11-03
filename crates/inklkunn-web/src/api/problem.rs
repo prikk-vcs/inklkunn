@@ -87,6 +87,9 @@ pub(crate) enum Code {
     AcceptanceFailed,
     /// The server was started without the means to sign: it reads, and accepts nothing.
     SigningNotConfigured,
+    /// A change to the wiki's keys was begun and is not finished: the signer seals nothing new until the person who
+    /// runs the wiki finishes it (handoff 004, W1). The proposal is kept.
+    RetirementUnfinished,
 }
 
 impl Code {
@@ -128,6 +131,7 @@ impl Code {
         Code::AcceptanceInProgress,
         Code::AcceptanceFailed,
         Code::SigningNotConfigured,
+        Code::RetirementUnfinished,
     ];
 
     /// The stable name: lower case, hyphenated.
@@ -168,6 +172,7 @@ impl Code {
             Code::AcceptanceInProgress => "acceptance-in-progress",
             Code::AcceptanceFailed => "acceptance-failed",
             Code::SigningNotConfigured => "signing-not-configured",
+            Code::RetirementUnfinished => "retirement-unfinished",
         }
     }
 
@@ -208,9 +213,10 @@ impl Code {
             Code::UnsupportedMediaType => StatusCode::UNSUPPORTED_MEDIA_TYPE,
             Code::Unacceptable => StatusCode::UNPROCESSABLE_ENTITY,
             Code::RefusedLimit => StatusCode::TOO_MANY_REQUESTS,
-            Code::Busy | Code::NeedsRecovery | Code::SigningNotConfigured => {
-                StatusCode::SERVICE_UNAVAILABLE
-            }
+            Code::Busy
+            | Code::NeedsRecovery
+            | Code::SigningNotConfigured
+            | Code::RetirementUnfinished => StatusCode::SERVICE_UNAVAILABLE,
             Code::AcceptanceFailed => StatusCode::BAD_GATEWAY,
         }
     }
@@ -401,6 +407,11 @@ impl Code {
                 Key::ProblemSigningNotConfiguredTitle,
                 Key::ProblemSigningNotConfiguredDetail,
                 Key::ProblemSigningNotConfiguredHint,
+            ),
+            Code::RetirementUnfinished => (
+                Key::ProblemRetirementUnfinishedTitle,
+                Key::ProblemRetirementUnfinishedDetail,
+                Key::ProblemRetirementUnfinishedHint,
             ),
         }
     }

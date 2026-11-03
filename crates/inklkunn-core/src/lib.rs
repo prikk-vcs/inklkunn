@@ -84,9 +84,9 @@ pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, Resolver, StdEgressGu
 pub use inbox::Inbox;
 pub use inklkunn_signer::{
     ArchiveExported, KeyAuthority, KeyStatus, LateSeal, Maintenance, OldKey, OldKeyOutcome,
-    Recover, RecoverError, RecoveryFacts, RecoveryOp, RecoveryToken, RetirementFinished, Rotation,
-    Signer, SignerConfig, SignerError, SupersededKey, Witnesses, WorktreeState, WriteLeases,
-    finish_retirement_command,
+    Recover, RecoverError, RecoveryFacts, RecoveryOp, RecoveryToken, RetirementAbandoned,
+    RetirementFinished, Rotation, Signer, SignerConfig, SignerError, SupersededKey, Witnesses,
+    WorktreeState, WriteLeases, abandon_retirement_command, finish_retirement_command,
 };
 pub use lease::{Busy, BusyWhy, Lease, LeaseConfig, LeaseError, Leased, Purpose, WikiLeases};
 #[cfg(any(test, feature = "measurement-alignment"))]

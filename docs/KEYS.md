@@ -16,17 +16,19 @@ inklkunn wiki keys status <wiki>                       # key ids, generation, cr
 inklkunn wiki keys create <wiki>                       # keys for an initialised repository that has none
 inklkunn wiki keys rotate <wiki> --confirm <slug>      # new keys; the old maintainer key stays trusted
 inklkunn wiki keys rotate <wiki> --confirm <slug> --retire-old --accept-unverifiable-history
+inklkunn wiki keys finish-retirement <wiki>            # finish a retirement that stopped half way, from whatever step remains
+inklkunn wiki keys abandon-retirement <wiki> --confirm <slug>   # give such a retirement up: the old key is trusted again
 ```
 
 `<wiki>` is the slug or the id. **A key directory with no key store in it is never made into one by `status` or `rotate`:** they refuse, naming the path, so a mistyped `INKLKUNN_KEY_DIR` cannot start a second, empty store; only `create` (and creating a wiki) makes the store, and two processes doing so at once end with one. **Re-authentication:** the key store does not open without the operator's
 secret file, so these commands are the operator proving possession of it; the web administration surface will
 ask for the password again instead. `rotate` also needs the slug typed, so the wrong wiki is not rotated by a
-slip. `create`, `rotate` and `finish-retirement` are **audited**: an event is written *before* the act (and the act is
+slip. `create`, `rotate`, `finish-retirement` and `abandon-retirement` are **audited**: an event is written *before* the act (and the act is
 refused if it cannot be written) and another after it (`system:operator-cli`, `keys-create` / `keys-rotate` /
-`keys-finish-retirement`, with what became of the old key); a trail that shows "begun" and no ending means the process stopped in the middle. Read
+`keys-finish-retirement` / `keys-abandon-retirement`, with what became of the old key); a trail that shows "begun" and no ending means the process stopped in the middle. Read
 the trail with `inklkunn audit export`. If a retirement fails after the keys rotated, the command exits 1,
-says the old key is **still trusted**, and names the `prikk trust maintainer remove` to run by hand (and then
-`finish-retirement`, below).
+says the old key is **still trusted**, and names the two commands that end it: `finish-retirement`, which removes the
+key itself, and `abandon-retirement` (below). Nothing needs `prikk` to be run by hand.
 
 The seed directory (`INKLKUNN_SEED_DIR`) must be on a tmpfs, owned by the user the service runs as, and not
 writable by anyone else (mode 0700 is right); the signer refuses a directory that others can write to, since
@@ -109,26 +111,47 @@ failure with anything else in it answers `SealedUnconfirmed` with the new block'
 pins this); whatever records the acceptance (RFC 004) must treat that answer as "sealed, record the block", never as a
 reason to retry. A retirement made by an earlier version of inklkunn excuses nothing: every change is then answered that way.
 
-**A retirement whose record was not finished** (handoff 004, Q1) does not strand the wiki. `rotate --retire-old` writes
-a `retiring` state into the authenticated key record *before* it removes the old key from the repository's trust: the
-blocks the old key had sealed (from the `prikk verify` just before), how many records prikk checked, and the newest block
-of every view. If anything between the removal and the record fails (`verify` cannot run after the removal, the two
-looks at it disagree, prikk's count of what it checked differs because something was published in between, the record
-is too large, the key directory cannot be written), the key **is** out of the trust store, `rotate` exits 1 and names
-the command, and nothing is excused: each change accepted meanwhile is sealed and not confirmed, and recovery stops
-with `retirement-unfinished`. Finish it:
+**A retirement that stopped half way** (handoff 004, Q1, W1 – W7) does not strand the wiki, and **pauses it**.
+`rotate --retire-old` writes a `retiring` state into the authenticated key record *before* it removes the old key from
+the repository's trust: the blocks the old key had sealed (from the `prikk verify` just before), how many records prikk
+checked, the newest block of every view, the old key's **public** key and the ids of the maintainer keys the repository
+trusts. If anything after that stops (the command is killed, the removal fails, `verify` cannot run after the removal,
+the two looks at it disagree, prikk's count of what it checked differs, the record is too large, the key directory
+cannot be written), the state stays, `rotate` exits 1 and names the way out, and **the signer seals nothing new until
+the person who runs the wiki has ended the retirement** (W1): an acceptance on the web or through the API is refused
+before anything is written, with the sentence *a change to this wiki's keys is not finished* (the API answers the
+problem `retirement-unfinished`; the web page says the person who runs the wiki must finish it and that the proposal is
+kept), recovery will not seal a queued patch, and no view is created. The proposal stays held, and can be accepted again
+afterwards. A block written meanwhile could not be told from what the removal made fail, and would close the only way
+out. Recovery stops with `retirement-unfinished`; `status` prints `UNFINISHED` with both commands. Ending it takes one of
+two commands, each under the wiki's write lock and each audited:
 
 ```sh
 inklkunn wiki keys finish-retirement <wiki>
+inklkunn wiki keys abandon-retirement <wiki> --confirm <slug>
 ```
 
-It takes the `verify` after the removal and records its findings exactly as the retirement itself would have, under the
-wiki's write lock, and clears the state. It **refuses, changing nothing**, when no retirement is unfinished; when the
-key is still trusted (a removal that failed: run the `prikk trust maintainer remove` the rotation printed, then this);
-when the `verify` is not a clean publication-trust failure or counts something different from before; and when
-**anything was written since** the retirement began (a view's newest block is no longer the one the state kept: a block
-written since could not be told from what the removal made fail). So: finish it before the wiki is written to again.
-While it is unfinished `rotate` is refused too. `status` prints `UNFINISHED` with the command.
+`finish-retirement` does **whatever step remains**. If the old key is *still trusted* (the command was killed before
+the removal, or the removal failed) it takes a fresh `verify` (which must pass, as `rotate` requires), writes the state
+again from it, **removes the key from the trust store itself**, and goes on. If the key is *already removed* it requires
+that every view's newest block is the one the state kept and that the maintainer keys the repository trusts are exactly
+the ones it trusted then, less the retired key (a key added or removed outside inklkunn in between would have its blocks
+recorded under this retirement). Then it takes the `verify` after the removal and records its findings exactly as the
+retirement itself would have, and clears the state. It **records nothing and keeps the state** when `verify` cannot run or
+is not a clean publication-trust failure, when the count of what prikk checked differs, when the repository changed
+outside inklkunn, and when a block that lost its trusted signature was not the old key's (a record that left it out
+would look complete and would not be). A refusal that no later run can cure says so and names `abandon-retirement`.
+
+`abandon-retirement` gives the retirement up. With the old key still trusted it clears the state; the rotation stands,
+as a rotation that kept the old key. With the old key already removed it adopts the old key in the repository's trust
+again, under its own id and with the public key the state kept, and then clears the state. It prints one sentence (*the
+old maintainer key … is trusted again; nothing is retired*). The wiki verifies again, nothing is excused and nothing needs
+to be. `--confirm` is the slug, as for `rotate`. A retirement can then be tried again with `rotate --retire-old`.
+
+Each of `rotate --retire-old`, `finish-retirement` and `abandon-retirement` **ends by recording a fresh verdict** through
+the check the server runs (the verification page's), so that the page never keeps saying *the only failures are those the
+retirement of key … recorded* after a later retirement has made that untrue; if the check cannot run, the stored
+explanation is cleared instead and the command says so.
 
 An *author* key cannot be revoked (prikk has no author trust list): retiring it means only that the service
 stops using it. That is why the maintainer key is the one that matters.

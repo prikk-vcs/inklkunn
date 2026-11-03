@@ -182,6 +182,16 @@ pub(crate) fn acceptance_problem(failure: AcceptFailure, log: &dyn Fn(&str)) -> 
             ));
             Problem::new(Code::AcceptanceFailed).named("word", "knowledge-invalid")
         }
+        // The signer pauses every new seal while a key retirement is unfinished (W1): a problem of its own, because the
+        // person who runs the wiki is the one who can end it, and the proposal is kept.
+        AcceptFailure::Failed { word, detail, .. }
+            if word == inklkunn_core::acceptance::words::RETIREMENT_UNFINISHED =>
+        {
+            log(&format!(
+                "an acceptance was refused, a key retirement is unfinished: {detail}"
+            ));
+            Problem::new(Code::RetirementUnfinished)
+        }
         AcceptFailure::Failed { word, detail, .. } => {
             log(&format!("an acceptance failed ({word}): {detail}"));
             Problem::new(Code::AcceptanceFailed).named("word", word)

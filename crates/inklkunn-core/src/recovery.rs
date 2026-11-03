@@ -548,12 +548,24 @@ impl Recovery {
         // any other answer (or no answer) leaves them where they are, and a diagnostic that names anything else stays
         // wherever the answer is yes, so the plan stops on it.
         let mut retirement = None;
-        if doctor
+        let untrusted = doctor
             .diagnostics
             .iter()
-            .any(|d| d.code == PUBLICATION_UNTRUSTED_CODE)
-            && let Ok(Some(excuse)) = p.signer.verify_after_retirement(&wiki.id)
+            .any(|d| d.code == PUBLICATION_UNTRUSTED_CODE);
+        if untrusted && let Ok(Some(excuse)) = p.signer.verify_after_retirement(&wiki.id) {
+            doctor = doctor
+                .without_excused_publication_findings(|kind, id| excuse.names(kind, id))
+                .0;
+            retirement = Some(excuse.note);
+        } else if untrusted
+            && doctor.diagnostics.iter().any(|d| d.is_cleanup_pending())
+            && let Ok(Some(excuse)) = p.signer.verify_beside_cleanup(&wiki.id)
         {
+            // A killed seal left a publication to finish beside a recorded retirement (W7): `verify` fails by the ref
+            // publication as well as by publication trust, so the plain question says no. The signer answers yes only
+            // when every publication-trust finding is in a recorded set and nothing else fails; then the findings come
+            // out of `doctor` as above and the plan sees the cleanup alone. After the step the plain question (the
+            // `Verify` step) must say yes, or the flag stays.
             doctor = doctor
                 .without_excused_publication_findings(|kind, id| excuse.names(kind, id))
                 .0;

@@ -49,6 +49,9 @@ pub enum Unchanged {
     KnowledgeInvalid,
     /// The signer was busy.
     Busy,
+    /// A change to the wiki's keys (a key retirement) was begun and is not finished: the signer seals nothing new until
+    /// the person who runs the wiki finishes it (handoff 004, W1). The proposal is kept.
+    RetirementUnfinished,
 }
 
 /// What an acceptance can come to (RFC 004 D-12), in the glossary's words.
@@ -174,6 +177,9 @@ pub(crate) fn outcome_of(
                 accept_words::REFUSED => AcceptOutcome::Unchanged(Unchanged::Refused),
                 accept_words::MEMORY_LIMIT => AcceptOutcome::Unchanged(Unchanged::TooLarge),
                 accept_words::BUSY => AcceptOutcome::Unchanged(Unchanged::Busy),
+                accept_words::RETIREMENT_UNFINISHED => {
+                    AcceptOutcome::Unchanged(Unchanged::RetirementUnfinished)
+                }
                 _ => AcceptOutcome::Unavailable,
             }
         }
@@ -262,6 +268,11 @@ pub fn render_accept_outcome(
             StatusCode::SERVICE_UNAVAILABLE,
             Key::OutcomeBusy,
             vec![t.get(Key::OutcomeNoteBusy)],
+        ),
+        AcceptOutcome::Unchanged(Unchanged::RetirementUnfinished) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Key::OutcomeRetirementUnfinished,
+            vec![t.get(Key::OutcomeNoteRetirementUnfinished)],
         ),
         AcceptOutcome::InProgress => (
             StatusCode::SERVICE_UNAVAILABLE,

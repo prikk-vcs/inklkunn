@@ -358,3 +358,210 @@ fn the_most_a_retirement_can_record_is_read_from_the_count_prikk_prints() {
     );
     assert_eq!(checked("checked publication trust records: many\n"), None);
 }
+
+// ---- a killed seal on a wiki with a recorded retirement (handoff 004, W7)
+
+/// What `verify --format json` prints while a killed seal's cleanup is pending (measured on prikk 0.55.0): two
+/// failed conditions, the cleanup's and publication trust's.
+fn beside_cleanup() -> Verification {
+    report(serde_json::json!({
+        "schema_version": "verify-report-v1",
+        "verdict": {"ok": false, "failed_conditions": [
+            {"id": "blocking-ref-publication", "message": "repository has interrupted or divergent ref publication state"},
+            {"id": "publication-trust", "message": "repository has publication-trust issues"}
+        ]},
+        "stages": [
+            {"stage": "objects", "status": "evaluated"},
+            {"stage": "refs", "status": "evaluated"}
+        ]
+    }))
+}
+
+const CLEANUP_LINE: &str = "ref-publication [PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING]: pointer and log agree but matching active publication state remains\n";
+
+/// The text of such a run: the cleanup's finding line and count, then the publication-trust findings.
+fn text_beside_cleanup(lines: &[(&str, char)]) -> String {
+    format!(
+        "ref publication issues: 1\n{CLEANUP_LINE}{}",
+        text(lines, lines.len())
+    )
+}
+
+fn judged_beside(report: &Verification, text: &str, sets: &[(String, Excused)]) -> Judgement {
+    let recorded: Vec<(&str, &Excused)> = sets.iter().map(|(k, e)| (k.as_str(), e)).collect();
+    judge_beside_cleanup(report, text, &parse_publication_trust(text), &recorded)
+}
+
+#[test]
+fn a_cleanup_beside_the_retirements_recorded_findings_is_explained_and_nothing_wider_is() {
+    let sets = [recorded_by("old-key")];
+    let all = [("block", 'a'), ("ref-state", '1'), ("ref-update", '9')];
+    let t = text_beside_cleanup(&all);
+    let Judgement::Explained { named, keys } = judged_beside(&beside_cleanup(), &t, &sets) else {
+        panic!("the cleanup and the retirement's findings are all there is");
+    };
+    assert_eq!((named.len(), keys), (3, vec!["old-key".to_owned()]));
+    // The rule for the findings is `judge`'s: one that no retirement recorded is not excused, whatever stands beside it.
+    let t = text_beside_cleanup(&[("block", 'a'), ("block", 'c')]);
+    assert!(matches!(
+        judged_beside(&beside_cleanup(), &t, &sets),
+        Judgement::Unexplained(why) if why.contains("a block")
+    ));
+    let t = text_beside_cleanup(&[("ref-update", '5')]);
+    assert!(matches!(
+        judged_beside(&beside_cleanup(), &t, &sets),
+        Judgement::Unexplained(why) if why.contains("ref update")
+    ));
+    // ... and a retirement that recorded nothing excuses nothing.
+    let t = text_beside_cleanup(&all);
+    assert!(matches!(
+        judged_beside(&beside_cleanup(), &t, &[]),
+        Judgement::Unexplained(_)
+    ));
+}
+
+#[test]
+fn only_a_failure_by_exactly_the_cleanup_and_publication_trust_is_judged_beside_a_cleanup() {
+    let sets = [recorded_by("old-key")];
+    let t = text_beside_cleanup(&[("block", 'a')]);
+    let with = |conditions: serde_json::Value, stage_status: &str| {
+        report(serde_json::json!({
+            "schema_version": "verify-report-v1",
+            "verdict": {"ok": false, "failed_conditions": conditions},
+            "stages": [{"stage": "objects", "status": stage_status}]
+        }))
+    };
+    let c = |id: &str| serde_json::json!({"id": id, "message": "m"});
+    for (what, r) in [
+        (
+            "the cleanup alone",
+            with(
+                serde_json::json!([c("blocking-ref-publication")]),
+                "evaluated",
+            ),
+        ),
+        (
+            "publication trust alone (the plain rule's business)",
+            with(serde_json::json!([c("publication-trust")]), "evaluated"),
+        ),
+        (
+            "a third condition",
+            with(
+                serde_json::json!([
+                    c("blocking-ref-publication"),
+                    c("publication-trust"),
+                    c("object-integrity")
+                ]),
+                "evaluated",
+            ),
+        ),
+        (
+            "another condition for the cleanup's",
+            with(
+                serde_json::json!([c("object-integrity"), c("publication-trust")]),
+                "evaluated",
+            ),
+        ),
+        (
+            "the cleanup twice and no trust",
+            with(
+                serde_json::json!([c("blocking-ref-publication"), c("blocking-ref-publication")]),
+                "evaluated",
+            ),
+        ),
+        (
+            "a run that did not go to the end",
+            with(
+                serde_json::json!([c("blocking-ref-publication"), c("publication-trust")]),
+                "halted",
+            ),
+        ),
+    ] {
+        assert!(
+            matches!(judged_beside(&r, &t, &sets), Judgement::Unexplained(_)),
+            "{what}"
+        );
+    }
+    let passing = report(serde_json::json!({
+        "schema_version": "verify-report-v1",
+        "verdict": {"ok": true, "failed_conditions": []},
+        "stages": [{"stage": "objects", "status": "evaluated"}]
+    }));
+    assert!(matches!(
+        judged_beside(&passing, &t, &sets),
+        Judgement::Unexplained(_)
+    ));
+}
+
+#[test]
+fn the_text_beside_a_cleanup_must_name_exactly_one_cleanup_and_findings_of_the_known_shape() {
+    let sets = [recorded_by("old-key")];
+    let one = text_beside_cleanup(&[("block", 'a')]);
+    assert!(matches!(
+        judged_beside(&beside_cleanup(), &one, &sets),
+        Judgement::Explained { .. }
+    ));
+    for (what, bad) in [
+        ("no cleanup line", one.replace(CLEANUP_LINE, "")),
+        (
+            "two cleanup lines",
+            one.replace(CLEANUP_LINE, &format!("{CLEANUP_LINE}{CLEANUP_LINE}")),
+        ),
+        (
+            "the ref publication count saying two",
+            one.replace("ref publication issues: 1", "ref publication issues: 2"),
+        ),
+        (
+            "no ref publication count",
+            one.replace("ref publication issues: 1\n", ""),
+        ),
+        (
+            "the count twice",
+            format!("ref publication issues: 1\n{one}"),
+        ),
+        (
+            "a publication-trust line of another shape",
+            format!(
+                "{one}publication-trust [PRIKK-TRUST-OTHER]: block {} is odd\n",
+                id('b')
+            ),
+        ),
+        (
+            "a count of findings that is not the number named",
+            one.replace("publication trust issues: 1", "publication trust issues: 3"),
+        ),
+    ] {
+        assert!(
+            matches!(
+                judged_beside(&beside_cleanup(), &bad, &sets),
+                Judgement::Unexplained(_)
+            ),
+            "{what}"
+        );
+    }
+}
+
+#[test]
+fn the_pending_cleanup_findings_are_counted_exactly() {
+    use crate::writes::pending_cleanup_findings as count;
+    assert_eq!(
+        count(&format!("ref publication issues: 1\n{CLEANUP_LINE}")),
+        (1, true)
+    );
+    assert_eq!(count(CLEANUP_LINE), (1, false));
+    assert_eq!(count("ref publication issues: 1\n"), (0, true));
+    assert_eq!(count("ref publication issues: 0\n"), (0, false));
+    assert_eq!(
+        count(&format!(
+            "ref publication issues: 1\nref publication issues: 1\n{CLEANUP_LINE}"
+        )),
+        (1, false)
+    );
+    // A line that only looks like it (another code, a leading space) is not the cleanup.
+    assert_eq!(
+        count(
+            "ref-publication [PRIKK-VERIFY-OTHER]: x\n ref-publication [PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING]: x\n"
+        ),
+        (0, false)
+    );
+}

@@ -220,6 +220,18 @@ impl Verifier {
     /// `verify` is the longest read there is); an async caller runs it on a blocking thread. A request that
     /// cannot be served now comes back [`CheckOutcome::Declined`] with nothing recorded.
     pub fn check(&self, wiki: &WikiRecord) -> Checked {
+        self.run_check(wiki, true)
+    }
+
+    /// [`Verifier::check`] without the recency rule: a check is taken even if the last one ran a moment ago. For the
+    /// operator at the host, after a change that makes the last verdict untrue (a key retirement ended or given up,
+    /// handoff 004, W6); a visitor's request never takes this way. One check per wiki at a time and the cap on checks
+    /// still hold.
+    pub fn check_unthrottled(&self, wiki: &WikiRecord) -> Checked {
+        self.run_check(wiki, false)
+    }
+
+    fn run_check(&self, wiki: &WikiRecord, throttled: bool) -> Checked {
         let declined = |why| Checked {
             outcome: CheckOutcome::Declined(why),
             at: (self.clock)(),
@@ -232,7 +244,7 @@ impl Verifier {
         };
         // The record as it stands now, read inside the claim: a check that finished a moment ago is in it.
         let current = self.wikis.get(&wiki.id).unwrap_or_else(|_| wiki.clone());
-        if is_recent(&current, (self.clock)()) {
+        if throttled && is_recent(&current, (self.clock)()) {
             return declined(Declined::Recent);
         }
         let result = self.storage.verify(&self.layout.repo_dir(&wiki.id));

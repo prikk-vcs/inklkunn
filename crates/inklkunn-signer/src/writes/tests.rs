@@ -222,3 +222,78 @@ fn the_queue_is_read_from_the_plain_text_of_status_strictly() {
         assert!(parse_status_text(&bad).is_err(), "{what}");
     }
 }
+
+#[test]
+fn the_trust_list_is_read_strictly() {
+    // W3, W5: `prikk trust maintainer list --format json` (measured on prikk 0.55.0). The ids and the public keys come
+    // from it; a list that is not exactly that shape is refused and nothing is concluded from it.
+    let key = |id: &str, c: char| {
+        format!(
+            r#"{{"key_id": "{id}", "public_key": "{}"}}"#,
+            c.to_string().repeat(64)
+        )
+    };
+    let list = |schema: &str, keys: &[String]| {
+        format!(
+            r#"{{"schema_version": "{schema}", "keys": [{}]}}"#,
+            keys.join(", ")
+        )
+    };
+    let good = parse_trust_list(list("trust-list-v1", &[key("a", '1'), key("b", '2')]).as_bytes())
+        .unwrap();
+    assert_eq!(
+        good,
+        [
+            TrustedKey {
+                key_id: "a".to_owned(),
+                public_key: "1".repeat(64)
+            },
+            TrustedKey {
+                key_id: "b".to_owned(),
+                public_key: "2".repeat(64)
+            }
+        ]
+    );
+    assert!(
+        parse_trust_list(list("trust-list-v1", &[]).as_bytes())
+            .unwrap()
+            .is_empty()
+    );
+    for (what, bad) in [
+        ("another schema", list("trust-list-v2", &[key("a", '1')])),
+        (
+            "a duplicated id",
+            list("trust-list-v1", &[key("a", '1'), key("a", '2')]),
+        ),
+        ("an empty id", list("trust-list-v1", &[key("", '1')])),
+        (
+            "a public key in capitals",
+            list("trust-list-v1", &[key("a", 'A')]),
+        ),
+        (
+            "a short public key",
+            r#"{"schema_version": "trust-list-v1", "keys": [{"key_id": "a", "public_key": "abc"}]}"#
+                .to_owned(),
+        ),
+        (
+            "no public key",
+            r#"{"schema_version": "trust-list-v1", "keys": [{"key_id": "a"}]}"#.to_owned(),
+        ),
+        (
+            "no keys",
+            r#"{"schema_version": "trust-list-v1"}"#.to_owned(),
+        ),
+        (
+            "not a report",
+            "adopted maintainer keys, in adoption order:".to_owned(),
+        ),
+    ] {
+        assert!(
+            matches!(
+                parse_trust_list(bad.as_bytes()),
+                Err(SignerError::Damaged(_))
+            ),
+            "{what}"
+        );
+    }
+}

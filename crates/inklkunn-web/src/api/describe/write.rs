@@ -186,6 +186,7 @@ pub(crate) const ACCEPT: Doc = Doc {
         Code::NothingToChange,
         Code::AcceptanceInProgress,
         Code::AcceptanceFailed,
+        Code::RetirementUnfinished,
         Code::NotAvailable,
         Code::SigningNotConfigured,
     ],

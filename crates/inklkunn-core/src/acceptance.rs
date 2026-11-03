@@ -111,6 +111,10 @@ pub mod words {
     /// A knowledge file the change writes, or leaves broken, is refused before the signer is asked (RFC 005 part 2
     /// D-5); the files and rules are in the refusal.
     pub const KNOWLEDGE_INVALID: &str = "knowledge-invalid";
+    /// A change to the wiki's keys (a key retirement) was begun and is not finished, so the signer seals nothing new
+    /// until the person who runs the wiki finishes it (handoff 004, W1). Nothing was committed; the proposal stays
+    /// open.
+    pub const RETIREMENT_UNFINISHED: &str = "retirement-unfinished";
 }
 
 /// What a proposal's change is recorded as: the message's `Kind`. A rollback is a proposal that was created as
@@ -485,6 +489,10 @@ pub(crate) fn settle(result: Result<SealedChange, AcceptError>) -> Settled {
         },
         Err(e @ AcceptError::Busy { .. }) => Settled::Failed {
             word: words::BUSY,
+            detail: e.to_string(),
+        },
+        Err(e @ AcceptError::RetirementUnfinished(_)) => Settled::Failed {
+            word: words::RETIREMENT_UNFINISHED,
             detail: e.to_string(),
         },
         Err(e @ AcceptError::CeilingExceeded { .. }) => Settled::Failed {

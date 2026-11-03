@@ -28,6 +28,22 @@ fn the_commands_parse() {
         }
     );
     assert_eq!(
+        parse(&args("abandon-retirement docs --confirm docs")).unwrap(),
+        Command::AbandonRetirement {
+            wiki: "docs".into(),
+            confirm: "docs".into()
+        }
+    );
+    // Abandoning needs the slug typed, as rotating does, and takes no other option.
+    for bad in [
+        "abandon-retirement docs",
+        "abandon-retirement docs --confirm",
+        "abandon-retirement docs --confirm docs --retire-old",
+        "abandon-retirement --confirm docs",
+    ] {
+        assert!(parse(&args(bad)).is_err(), "{bad}");
+    }
+    assert_eq!(
         parse(&args("rotate docs --confirm docs")).unwrap(),
         Command::Rotate {
             wiki: "docs".into(),
@@ -586,8 +602,12 @@ fn a_rotation_whose_retirement_fails_is_recorded_as_a_rotation_and_says_the_old_
         standin.as_os_str(),
     );
     assert_eq!(status, 1, "the operator must notice: {out}{err}");
+    // It names the two commands that end it, and never tells the operator to run prikk by hand (W2).
     assert!(
-        err.contains("STILL TRUSTED") && err.contains("prikk trust maintainer remove --key-id"),
+        err.contains("STILL TRUSTED")
+            && err.contains(&format!("wiki keys finish-retirement {}", w.record.id))
+            && err.contains(&format!("wiki keys abandon-retirement {}", w.record.id))
+            && !err.contains("prikk trust maintainer"),
         "{err}"
     );
     // The keys did rotate, so the wiki record follows them and the output shows them…
@@ -619,8 +639,12 @@ fn a_retirement_that_ends_without_its_record_exits_non_zero_names_the_command_an
     // The keys rotated and the old key left the trust store; the record of what that made fail was not made.
     assert_eq!(status, 1, "the operator must notice: {out}{err}");
     let command = format!("wiki keys finish-retirement {}", w.record.id);
+    let abandon = format!("wiki keys abandon-retirement {}", w.record.id);
     assert!(
-        err.contains("NOT recorded completely") && err.contains(&command),
+        err.contains("NOT recorded completely")
+            && err.contains(&command)
+            && err.contains(&abandon)
+            && err.contains("nothing new is sealed"),
         "{err}"
     );
     assert!(out.contains("generation:      2"), "{out}");
@@ -637,7 +661,7 @@ fn a_retirement_that_ends_without_its_record_exits_non_zero_names_the_command_an
     let (status, out, _) = w.cli("wiki keys status handbook");
     assert_eq!(status, 0, "{out}");
     assert!(
-        out.contains("UNFINISHED") && out.contains(&command),
+        out.contains("UNFINISHED") && out.contains(&command) && out.contains(&abandon),
         "{out}"
     );
     // Nothing else can be done to the keys meanwhile.
@@ -682,6 +706,174 @@ fn a_retirement_that_ends_without_its_record_exits_non_zero_names_the_command_an
             .any(|(a, o, _)| a == "keys-finish-retirement" && o == "failed"),
         "{events:?}"
     );
+}
+
+#[test]
+fn finish_retirement_removes_a_key_that_is_still_trusted_itself() {
+    // W2 at the command line: the removal failed (the stand-in), the key is still trusted. Nothing tells the operator to
+    // run prikk; `finish-retirement`, run with a prikk that can remove, does the removal and records the rest.
+    let Some(w) = world::world("w2-cli") else {
+        return;
+    };
+    let standin = w.standin_that_cannot_remove_a_key();
+    let (status, _, err) = w.cli_with_prikk(
+        "wiki keys rotate handbook --confirm handbook --retire-old --accept-unverifiable-history",
+        standin.as_os_str(),
+    );
+    assert_eq!(status, 1, "{err}");
+    assert!(w.verifies(), "the key is still trusted");
+    // With the same broken prikk the command says why and changes nothing.
+    let (status, _, err) =
+        w.cli_with_prikk("wiki keys finish-retirement handbook", standin.as_os_str());
+    assert_eq!(status, 1, "{err}");
+    assert!(
+        err.contains("removing the key") && !err.contains("prikk trust maintainer"),
+        "{err}"
+    );
+    assert!(w.verifies(), "nothing was changed");
+    let (status, out, err) = w.cli("wiki keys finish-retirement handbook");
+    assert_eq!(status, 0, "{out}{err}");
+    assert!(
+        out.contains("this command removed the key") && out.contains("3 finding(s)"),
+        "{out}"
+    );
+    assert!(!w.verifies(), "the key is out of the trust store");
+    let events = w.audit_events();
+    assert!(
+        events.iter().any(|(a, o, d)| a == "keys-finish-retirement"
+            && o == "allowed"
+            && d.contains("removed from the repository's trust by this command")),
+        "{events:?}"
+    );
+}
+
+#[test]
+fn abandon_retirement_puts_the_old_key_back_and_says_so_in_one_sentence() {
+    // W3 at the command line, both branches: the key still trusted (the removal failed) and the key already removed
+    // (the look after it could not be made). Audited before and after; the typed slug is checked first; the state is
+    // gone, the wiki verifies, and a second run has nothing to give up.
+    for (tag, removed) in [("w3-cli-trusted", false), ("w3-cli-removed", true)] {
+        let Some(w) = world::world(tag) else {
+            return;
+        };
+        let standin = if removed {
+            w.standin_whose_verify_dies_after_a_removal()
+        } else {
+            w.standin_that_cannot_remove_a_key()
+        };
+        let (status, _, _) = w.cli_with_prikk(
+            "wiki keys rotate handbook --confirm handbook --retire-old --accept-unverifiable-history",
+            standin.as_os_str(),
+        );
+        assert_eq!(status, 1);
+        assert_eq!(w.verifies(), !removed);
+        // The wrong slug, and no slug, change nothing.
+        let (status, _, err) = w.cli("wiki keys abandon-retirement handbook --confirm other");
+        assert_eq!(status, 1);
+        assert!(
+            err.contains("is not the slug") && err.contains("nothing was changed"),
+            "{err}"
+        );
+        let (status, _, err) = w.cli("wiki keys abandon-retirement handbook");
+        assert_eq!(status, 2, "{err}");
+        assert_eq!(w.verifies(), !removed);
+        let (status, out, err) = w.cli("wiki keys abandon-retirement handbook --confirm handbook");
+        assert_eq!(status, 0, "{tag}: {out}{err}");
+        assert!(
+            out.contains("is trusted again; nothing is retired") && out.lines().count() >= 1,
+            "{out}"
+        );
+        assert!(
+            w.verifies(),
+            "{tag}: the old key is trusted, so its history verifies"
+        );
+        let events = w.audit_events();
+        let abandoning: Vec<_> = events
+            .iter()
+            .filter(|(a, _, _)| a == "keys-abandon-retirement")
+            .collect();
+        assert_eq!(abandoning.len(), 2, "{events:?}");
+        assert!(abandoning[0].2.starts_with("begun"), "{events:?}");
+        assert!(
+            abandoning[1].1 == "allowed"
+                && abandoning[1].2.contains("given up")
+                && abandoning[1].2.contains(if removed {
+                    "adopted it in the repository's trust again"
+                } else {
+                    "never left"
+                }),
+            "{events:?}"
+        );
+        let (status, out, _) = w.cli("wiki keys status handbook");
+        assert_eq!(status, 0);
+        assert!(!out.contains("UNFINISHED"), "{out}");
+        let (status, _, err) = w.cli("wiki keys abandon-retirement handbook --confirm handbook");
+        assert_eq!(status, 1);
+        assert!(err.contains("no key retirement"), "{err}");
+    }
+}
+
+#[test]
+fn every_end_of_a_retirement_records_a_fresh_verdict_or_clears_the_stored_explanation() {
+    // W6. K1 is retired and recorded: the verdict is recorded *Failed, explained by K1* (by the command itself, through
+    // the check the server uses). Then K2's retirement is left unfinished (the check cannot run: the stand-in's `verify`
+    // dies once a key was removed): the explanation is cleared, so the verification page no longer says that the only
+    // failures are K1's. Finishing K2, or giving it up, records a fresh verdict again (K2 sealed nothing, so what fails is K1's alone).
+    for give_up in [false, true] {
+        let Some(w) = world::world(&format!("w6-{give_up}")) else {
+            return;
+        };
+        let read = || w.store.get(&w.record.id).unwrap();
+        let (status, out, err) = w.cli(
+            "wiki keys rotate handbook --confirm handbook --retire-old --accept-unverifiable-history",
+        );
+        assert_eq!(status, 0, "{out}{err}");
+        assert!(out.contains("a fresh verification was recorded"), "{out}");
+        let k1 = read();
+        assert_eq!(
+            k1.verification.state,
+            inklkunn_store::VerificationState::Failed
+        );
+        assert_eq!(k1.verification_explained_by.len(), 1, "{k1:?}");
+        let first_key = k1.verification_explained_by[0].clone();
+        // K2: removed, and the look after the removal cannot be made; the check cannot run either.
+        let standin = w.standin_whose_verify_dies_after_a_removal();
+        let (status, _, err) = w.cli_with_prikk(
+            "wiki keys rotate handbook --confirm handbook --retire-old --accept-unverifiable-history",
+            standin.as_os_str(),
+        );
+        assert_eq!(status, 1, "{err}");
+        assert!(
+            err.contains("a fresh verification could not be recorded now")
+                && err.contains("explanation"),
+            "{err}"
+        );
+        let k2 = read();
+        assert_eq!(
+            k2.verification, k1.verification,
+            "the verdict stays what it was (it is not replaced by a guess)"
+        );
+        assert!(
+            k2.verification_explained_by.is_empty(),
+            "the page may no longer say the only failures are K1's: {k2:?}"
+        );
+        // The end of K2's retirement records a verdict again.
+        let command = if give_up {
+            "wiki keys abandon-retirement handbook --confirm handbook"
+        } else {
+            "wiki keys finish-retirement handbook"
+        };
+        let (status, out, err) = w.cli(command);
+        assert_eq!(status, 0, "{out}{err}");
+        assert!(out.contains("a fresh verification was recorded"), "{out}");
+        let after = read();
+        assert_eq!(
+            after.verification.state,
+            inklkunn_store::VerificationState::Failed
+        );
+        // K2 sealed nothing, so what fails is still K1's alone, whichever way K2's retirement ended.
+        assert_eq!(after.verification_explained_by, [first_key], "{after:?}");
+    }
 }
 
 #[test]

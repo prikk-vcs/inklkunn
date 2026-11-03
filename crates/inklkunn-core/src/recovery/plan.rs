@@ -211,9 +211,10 @@ pub enum Stop {
     InterruptedState,
     /// `doctor` reports something recovery has no answer for.
     DoctorTrouble,
-    /// `doctor` reports publication-trust findings, and a key retirement was begun and its record never finished: the
-    /// operator finishes it with `inklkunn wiki keys finish-retirement <wiki>` (recovery cannot: it needs the key
-    /// authority), and then recovers.
+    /// `doctor` reports publication-trust findings, or a patch waits to be sealed, and a key retirement was begun and
+    /// is not finished: the operator finishes it with `inklkunn wiki keys finish-retirement <wiki>`, or gives it up with
+    /// `inklkunn wiki keys abandon-retirement <wiki> --confirm <slug>` (recovery cannot: it needs the key authority),
+    /// and then recovers. Nothing new is sealed meanwhile (W1).
     RetirementUnfinished,
     /// A killed `seal` left a publication to finish, and `doctor` also reports publication-trust findings that nothing
     /// excuses: while the cleanup is pending `verify` fails for the ref publication as well as for publication trust,
@@ -271,7 +272,7 @@ impl Stop {
                 "prikk reports a publication whose cleanup a killed seal did not finish, and publication-trust findings besides (a retired key's blocks, say): while the cleanup is pending verify fails for the ref publication too, and only a failure by publication trust alone is excused by a retirement's record, so recovery does not finish the cleanup here"
             }
             Stop::RetirementUnfinished => {
-                "a key retirement was begun and its record was not finished, so prikk's doctor reports publication-trust findings that nothing excuses; finish it with `inklkunn wiki keys finish-retirement <wiki>` (it needs the operator's key authority; recovery never runs it), then recover again"
+                "a key retirement was begun and is not finished, so nothing new is sealed, and prikk's doctor may report publication-trust findings that nothing excuses; finish it with `inklkunn wiki keys finish-retirement <wiki>` or give it up with `inklkunn wiki keys abandon-retirement <wiki> --confirm <slug>` (they need the operator's key authority; recovery never runs them), then recover again"
             }
             Stop::UnknownLock => "a lock is held of a kind an acceptance does not leave",
             Stop::ForeignProcess => {
@@ -839,6 +840,21 @@ pub fn build(w: &Witness) -> Plan {
                     return plan;
                 }
             }
+        }
+        // A patch is queued and is the act's, but a key retirement is unfinished: sealing makes a block, and nothing new
+        // is sealed until the operator has finished or given up the retirement (W1). The signer would refuse the step
+        // with the same words; the plan says so first.
+        (None, Some(patch), Some(a))
+            if w.retirement_unfinished.is_some()
+                && matches_queued(a, patch, q.target_ref.as_deref())
+                && a.chain == Chain::NotSealed
+                && matches!(a.ended, Ended::Not) =>
+        {
+            if let Some(unfinished) = &w.retirement_unfinished {
+                plan.notes.push(unfinished.clone());
+            }
+            stop(&mut plan, Stop::RetirementUnfinished);
+            return plan;
         }
         // A patch is queued, and it is the change of the one unfinished act.
         (None, Some(patch), Some(a))

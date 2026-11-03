@@ -1121,6 +1121,18 @@ pub const CATALOG: &[Entry] = &[
         "problem.signing_not_configured.hint",
         "このサーバーを運用している人に知らせてください。このリクエストでは何も行われていません。",
     ),
+    msg(
+        "problem.retirement_unfinished.title",
+        "ウィキの鍵の変更が完了していません",
+    ),
+    msg(
+        "problem.retirement_unfinished.detail",
+        "このウィキの鍵の変更が完了していないため、運用している人がそれを完了するまで、履歴に新しく署名することはできません。変更は行われておらず、提案はそのまま保たれています。",
+    ),
+    msg(
+        "problem.retirement_unfinished.hint",
+        "このウィキを運用している人に知らせてください。完了したら、もう一度この提案を受け入れてください。",
+    ),
     // the inbox, following a page, and the flags of changes (handoff 004 T6)
     msg("title.inbox", "受信箱 · {product}"),
     msg("inbox.heading", "受信箱"),
@@ -1336,6 +1348,14 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "outcome_note.too_large",
         "この変更の署名には、1 回の署名で使える量を超えるメモリが必要です。何も変更しておらず、提案はレビュー待ちのままです。",
+    ),
+    msg(
+        "outcome.retirement_unfinished",
+        "署名されませんでした: このウィキの鍵の変更が完了していません",
+    ),
+    msg(
+        "outcome_note.retirement_unfinished",
+        "このウィキの鍵の変更が完了していないため、運用している人がそれを完了するまで、履歴に新しく署名することはできません。何も変更しておらず、提案はそのまま保たれています。その人に伝えてください。完了したら、もう一度この提案を受け入れてください。",
     ),
     msg("outcome.unavailable", "今は実行できません"),
     msg(

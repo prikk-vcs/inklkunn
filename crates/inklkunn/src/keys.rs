@@ -1,4 +1,4 @@
-//! `inklkunn wiki keys <status|create|rotate|finish-retirement> <wiki>` (RFC 002 D-8): a wiki's keys over time, from the
+//! `inklkunn wiki keys <status|create|rotate|finish-retirement|abandon-retirement> <wiki>` (RFC 002 D-8): a wiki's keys over time, from the
 //! command line of the host that runs the service.
 //!
 //! **Who may do this.** Whoever can run the command on the host and read the operator's secret file: the key
@@ -7,23 +7,31 @@
 //! wiki's slug typed (`--confirm`), so the wrong wiki is not rotated by a slip, and retiring the old key needs
 //! a second flag that says what it costs.
 //!
-//! **A retirement that ends without its record** (`rotate --retire-old` exits non-zero and says so) is finished with
-//! `finish-retirement <wiki>` (handoff 004, Q1): it completes the record of what the removal of the old key made fail
-//! from the state the retirement kept in the key record, under the wiki's write lock, and only while nothing has been
-//! written since. It needs the same operator rights as the other key commands and is audited the same way.
+//! **A retirement that ends without its record** (`rotate --retire-old` exits non-zero and says so) pauses every new
+//! seal of the wiki (handoff 004, W1) and has two ways out. `finish-retirement <wiki>` does whatever step remains
+//! (W2): with the old key still trusted it takes a fresh `verify`, removes the key itself and records what the
+//! removal made fail; with the key already removed it records from the state the retirement kept, while nothing has
+//! been written and no other key was added or removed since. `abandon-retirement <wiki> --confirm <slug>` (W3) gives
+//! the retirement up: the old key is trusted again (adopted again if it had been removed) and nothing is retired.
+//! Both need the same operator rights as the other key commands and are audited the same way. **Whichever of
+//! `rotate --retire-old`, `finish-retirement` and `abandon-retirement` ends, it ends by recording a fresh verdict**
+//! through the check the server uses (W6), or, when that cannot run, by clearing the stored explanation of the last
+//! verdict.
 //!
-//! **Every `create`, `rotate` and `finish-retirement` is audited** (principal `system:operator-cli`, resource `wiki:<id>`, allowed
+//! **Every `create`, `rotate`, `finish-retirement` and `abandon-retirement` is audited** (principal `system:operator-cli`, resource `wiki:<id>`, allowed
 //! or failed, with the generation and what was done to the old key). `status` prints ids and dates and never
 //! a secret; nothing here can print one.
 
 use std::io::Write;
 use std::sync::Arc;
+use std::time::Duration;
 
 use inklkunn_core::wiki::repo_of;
 use inklkunn_core::{
     AcceptanceLedger, AcceptanceToken, ExpectedMessage, KeyAuthority, KeyStatus, LedgerError,
-    OldKey, OldKeyOutcome, Signer, SignerConfig, ViewCreationAct, ViewCreationFacts,
+    OldKey, OldKeyOutcome, Signer, SignerConfig, Verifier, ViewCreationAct, ViewCreationFacts,
 };
+use inklkunn_prikk::{Admission, PrikkCli};
 use inklkunn_store::record::rfc3339;
 use inklkunn_store::{
     AuditEvent, AuditOutcome, AuditSink, RootLayout, Slug, SqliteStore, WikiId, WikiRecord,
@@ -70,6 +78,10 @@ pub(crate) enum Command {
     FinishRetirement {
         wiki: String,
     },
+    AbandonRetirement {
+        wiki: String,
+        confirm: String,
+    },
 }
 
 /// The command line was not understood (exit status 2).
@@ -79,7 +91,8 @@ pub(crate) struct Usage(pub String);
 pub(crate) const USAGE: &str = "usage: inklkunn [--dev-unconfined] wiki keys status <wiki>\n       \
 inklkunn [--dev-unconfined] wiki keys create <wiki>\n       \
 inklkunn [--dev-unconfined] wiki keys rotate <wiki> --confirm <slug> [--retire-old --accept-unverifiable-history]\n       \
-inklkunn [--dev-unconfined] wiki keys finish-retirement <wiki>\n\
+inklkunn [--dev-unconfined] wiki keys finish-retirement <wiki>\n       \
+inklkunn [--dev-unconfined] wiki keys abandon-retirement <wiki> --confirm <slug>\n\
 <wiki> is the wiki's slug or id.";
 
 /// Parse what follows `wiki keys`.
@@ -100,6 +113,32 @@ pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
                 "create" => Command::Create { wiki },
                 _ => Command::FinishRetirement { wiki },
             })
+        }
+        "abandon-retirement" => {
+            let mut confirm = None;
+            let mut it = flags.iter();
+            while let Some(flag) = it.next() {
+                match flag.as_str() {
+                    "--confirm" => {
+                        confirm = Some(
+                            it.next()
+                                .ok_or_else(|| usage("--confirm needs the wiki's slug"))?
+                                .clone(),
+                        );
+                    }
+                    other => {
+                        return Err(usage(&format!(
+                            "`{other}` is not an option of `abandon-retirement`"
+                        )));
+                    }
+                }
+            }
+            let confirm = confirm.ok_or_else(|| {
+                usage(
+                    "abandoning needs --confirm <slug>: type the wiki's slug to say it is this one",
+                )
+            })?;
+            Ok(Command::AbandonRetirement { wiki, confirm })
         }
         "rotate" => {
             let mut confirm = None;
@@ -209,7 +248,8 @@ fn run(
     let (wiki_arg, rotating) = match command {
         Command::Status { wiki }
         | Command::Create { wiki }
-        | Command::FinishRetirement { wiki } => (wiki, None),
+        | Command::FinishRetirement { wiki }
+        | Command::AbandonRetirement { wiki, .. } => (wiki, None),
         Command::Rotate { wiki, .. } => (wiki, Some(command)),
     };
 
@@ -233,6 +273,14 @@ fn run(
     let trail: &dyn AuditSink = trail.unwrap_or(&store);
 
     // Refusals that need nothing but the command line, before any key is touched.
+    if let Command::AbandonRetirement { confirm, .. } = command
+        && confirm != record.slug.as_str()
+    {
+        return Err(format!(
+            "--confirm `{confirm}` is not the slug of that wiki (`{}`); nothing was changed",
+            record.slug
+        ));
+    }
     if let Some(Command::Rotate {
         confirm,
         retire_old,
@@ -258,6 +306,7 @@ fn run(
     }
 
     let sandbox = settings.sandbox().map_err(|e| e.to_string())?;
+    let verdict_sandbox = sandbox.clone();
     if settings.dev_unconfined {
         let _ = writeln!(err, "{UNCONFINED_BANNER}");
     }
@@ -284,7 +333,7 @@ fn run(
     } else {
         Signer::open(config, Arc::new(NoAcceptances))
     };
-    let signer = opened.map_err(|e| format!("the signer could not be opened: {e}"))?;
+    let signer = Arc::new(opened.map_err(|e| format!("the signer could not be opened: {e}"))?);
     let swept = signer.leftover_call_directories_removed();
     if swept > 0 {
         let _ = writeln!(
@@ -303,9 +352,10 @@ fn run(
             {
                 let _ = writeln!(
                     out,
-                    "UNFINISHED: the retirement of maintainer key {key} was begun and its record was not finished, so nothing is excused \
-                     and the wiki's verification fails for what that key sealed; finish it with `{}`",
-                    inklkunn_core::finish_retirement_command(&record.id)
+                    "UNFINISHED: the retirement of maintainer key {key} was begun and is not finished, so nothing new is sealed in this wiki, nothing is excused \
+                     and the wiki's verification may fail for what that key sealed; finish it with `{}`, or give it up with `{}`",
+                    inklkunn_core::finish_retirement_command(&record.id),
+                    inklkunn_core::abandon_retirement_command(&record.id)
                 );
             }
             let late = report_superseded(&signer, &record, &repo, out, err)?;
@@ -364,7 +414,7 @@ fn run(
                 &record,
                 now,
                 "keys-finish-retirement",
-                "begun; the record of an unfinished retirement is to be completed",
+                "begun; an unfinished retirement is to be finished from whatever step remains",
             )?;
             match signer.finish_retirement(key_authority(), &repo) {
                 Ok(done) => {
@@ -372,8 +422,8 @@ fn run(
                         "retirement of key {} finished; {} finding(s) recorded{}",
                         done.maintainer_key_id,
                         done.findings_recorded,
-                        if done.note.is_some() {
-                            "; some blocks lack a trusted signature without being that key's"
+                        if done.removed_now {
+                            "; the key was removed from the repository's trust by this command"
                         } else {
                             ""
                         }
@@ -388,17 +438,26 @@ fn run(
                     );
                     let _ = writeln!(
                         out,
-                        "the retirement of maintainer key {} is finished: {} finding(s) of publication trust are recorded, \
+                        "the retirement of maintainer key {} is finished{}: {} finding(s) of publication trust are recorded, \
                          and a later failure made of exactly those is excused (the badge still says Verification failed)",
-                        done.maintainer_key_id, done.findings_recorded
+                        done.maintainer_key_id,
+                        if done.removed_now {
+                            " (this command removed the key from the repository's trust)"
+                        } else {
+                            ""
+                        },
+                        done.findings_recorded
                     );
-                    let partly = done.note.map(|note| {
-                        format!(
-                            "{note}; no command can add them, and a failure they cause stops the wiki"
-                        )
-                    });
-                    finished?;
-                    partly.map_or(Ok(()), Err)
+                    refresh_verdict(
+                        settings,
+                        verdict_sandbox,
+                        &signer,
+                        &record,
+                        &store,
+                        out,
+                        err,
+                    );
+                    finished
                 }
                 Err(e) => {
                     let done = finish(
@@ -408,6 +467,79 @@ fn run(
                         "keys-finish-retirement",
                         AuditOutcome::Failed,
                         "refused or failed",
+                    );
+                    refresh_verdict(
+                        settings,
+                        verdict_sandbox,
+                        &signer,
+                        &record,
+                        &store,
+                        out,
+                        err,
+                    );
+                    done.and(Err(e.to_string()))
+                }
+            }
+        }
+        Command::AbandonRetirement { .. } => {
+            begin(
+                trail,
+                &record,
+                now,
+                "keys-abandon-retirement",
+                "begun; an unfinished retirement is to be given up and its old key trusted again",
+            )?;
+            match signer.abandon_retirement(key_authority(), &repo) {
+                Ok(done) => {
+                    let finished = finish(
+                        trail,
+                        &record,
+                        now,
+                        "keys-abandon-retirement",
+                        AuditOutcome::Allowed,
+                        &format!(
+                            "retirement of key {} given up; the key is trusted again{}",
+                            done.maintainer_key_id,
+                            if done.restored {
+                                " (this command adopted it in the repository's trust again)"
+                            } else {
+                                " (it had never left the repository's trust)"
+                            }
+                        ),
+                    );
+                    let _ = writeln!(
+                        out,
+                        "the old maintainer key {} is trusted again; nothing is retired",
+                        done.maintainer_key_id
+                    );
+                    refresh_verdict(
+                        settings,
+                        verdict_sandbox,
+                        &signer,
+                        &record,
+                        &store,
+                        out,
+                        err,
+                    );
+                    finished
+                }
+                Err(e) => {
+                    let done = finish(
+                        trail,
+                        &record,
+                        now,
+                        "keys-abandon-retirement",
+                        AuditOutcome::Failed,
+                        "refused or failed",
+                    );
+                    refresh_verdict(
+                        settings,
+                        verdict_sandbox,
+                        &signer,
+                        &record,
+                        &store,
+                        out,
+                        err,
                     );
                     done.and(Err(e.to_string()))
                 }
@@ -443,11 +575,8 @@ fn run(
                     let what = match &r.old_key {
                         OldKeyOutcome::Kept => "old key kept".to_owned(),
                         OldKeyOutcome::Retired => "old key retired".to_owned(),
-                        OldKeyOutcome::RetiredPartly(_) => {
-                            "old key retired; some blocks that lack a trusted signature were not its own".to_owned()
-                        }
                         OldKeyOutcome::RetiredUnrecorded(_) => {
-                            "old key retired; its findings are NOT recorded (finish-retirement)".to_owned()
+                            "old key retired; its findings are NOT recorded (finish-retirement or abandon-retirement)".to_owned()
                         }
                         OldKeyOutcome::RetireFailed(_) => {
                             "old key retirement FAILED, the old key is still trusted".to_owned()
@@ -488,34 +617,25 @@ fn run(
                             );
                             Ok(())
                         }
-                        OldKeyOutcome::RetiredPartly(why) => {
-                            let _ = writeln!(
-                                out,
-                                "previous maintainer key {previous} was removed from the repository's trust; what it sealed no longer verifies."
-                            );
-                            Err(format!(
-                                "the retirement is recorded as far as it can be, but {why}"
-                            ))
-                        }
                         OldKeyOutcome::RetiredUnrecorded(why) => {
                             let _ = writeln!(
                                 out,
                                 "previous maintainer key {previous} was removed from the repository's trust; what it sealed no longer verifies."
                             );
-                            // Not a success: the wiki shows `Verification failed` for what the key sealed and every
-                            // later change is sealed and not confirmed until the record is finished.
+                            // Not a success: the wiki shows `Verification failed` for what the key sealed and nothing new
+                            // is sealed until the retirement is finished or given up (W1).
                             Err(format!(
-                                "the retirement was NOT recorded completely ({why}); nothing is trusted that should not be, but nothing is excused either: \
-                                 finish it with `{}` before anything else is written to the wiki",
-                                inklkunn_core::finish_retirement_command(&record.id)
+                                "the retirement was NOT recorded completely ({why}); nothing is trusted that should not be, but nothing is excused either, \
+                                 and nothing new is sealed in this wiki until it is finished or given up"
                             ))
                         }
                         OldKeyOutcome::RetireFailed(why) => Err(format!(
                             "the keys were rotated (generation {}) but the old maintainer key `{previous}` is STILL TRUSTED: \
-                             removing it failed ({why}); remove it with `prikk trust maintainer remove --key-id {previous}` \
-                             in the wiki's repository, and then run `{}`, which records what the removal made fail",
+                             removing it failed ({why}); the retirement stays begun and nothing new is sealed in this wiki until it is ended: \
+                             `{}` removes the key itself and records what the removal made fail, `{}` leaves the key trusted",
                             r.status.generation,
-                            inklkunn_core::finish_retirement_command(&record.id)
+                            inklkunn_core::finish_retirement_command(&record.id),
+                            inklkunn_core::abandon_retirement_command(&record.id)
                         )),
                     };
                     // The check runs after every rotation: it prints what it finds, and the trail keeps it.
@@ -532,6 +652,17 @@ fn run(
                             );
                         }
                     }
+                    if *retire_old {
+                        refresh_verdict(
+                            settings,
+                            verdict_sandbox,
+                            &signer,
+                            &record,
+                            &store,
+                            out,
+                            err,
+                        );
+                    }
                     recorded?;
                     outcome?;
                     done
@@ -547,6 +678,78 @@ fn run(
                     );
                     done.and(Err(e.to_string()))
                 }
+            }
+        }
+    }
+}
+
+/// The check the server uses (`Verifier::check`, over the same store and the same prikk), run once after a key
+/// retirement ended or was given up, so that the verdict the pages show was taken after the keys changed and never
+/// keeps an explanation that was true of an earlier one (handoff 004, W6). The check is not throttled here: the
+/// operator at the host is not a visitor. When it cannot run, or its verdict cannot be recorded, **the stored
+/// explanation is cleared** instead (the verdict itself stays what it was), and that is said.
+fn refresh_verdict(
+    settings: &Settings,
+    sandbox: inklkunn_prikk::sandbox::Sandbox,
+    signer: &Arc<Signer>,
+    record: &WikiRecord,
+    store: &SqliteStore,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) {
+    let fresh = (|| -> Result<inklkunn_core::Checked, String> {
+        let storage = PrikkCli::open(
+            &settings.prikk,
+            sandbox,
+            Admission::new(1024 << 20, 64 << 20, Duration::from_secs(5)),
+        )
+        .map_err(|e| e.to_string())?;
+        let wikis = Arc::new(SqliteStore::open(&settings.store_path()).map_err(|e| e.to_string())?);
+        let verifier = Verifier::new(
+            Arc::new(storage),
+            wikis,
+            RootLayout::new(settings.wikis_root()),
+        );
+        verifier.explain_retirements_with(signer.clone());
+        Ok(verifier.check_unthrottled(record))
+    })();
+    match fresh {
+        Ok(checked)
+            if checked.ran()
+                && checked.recorded
+                && matches!(
+                    checked.outcome,
+                    inklkunn_core::CheckOutcome::Verified
+                        | inklkunn_core::CheckOutcome::Failed { .. }
+                ) =>
+        {
+            let _ = writeln!(
+                out,
+                "a fresh verification was recorded: {}",
+                match checked.outcome {
+                    inklkunn_core::CheckOutcome::Verified => "the repository verifies",
+                    _ => "the repository does not verify (the badge says Verification failed)",
+                }
+            );
+        }
+        other => {
+            let why = match other {
+                Ok(checked) => format!("{:?}", checked.outcome),
+                Err(why) => why,
+            };
+            let _ = writeln!(
+                err,
+                "inklkunn: a fresh verification could not be recorded now ({why}); the stored explanation of the last verdict is cleared, and the next check on the wiki's page records one"
+            );
+            // The verdict stays what it was; what is said about it does not (the store's own method for this).
+            if let Ok(current) = store.get(&record.id)
+                && !current.verification_explained_by.is_empty()
+                && let Err(e) = store.set_verification(&record.id, current.verification)
+            {
+                let _ = writeln!(
+                    err,
+                    "inklkunn: the stored explanation could not be cleared ({e}); run a check on the wiki's page"
+                );
             }
         }
     }

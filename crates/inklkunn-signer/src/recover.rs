@@ -139,6 +139,9 @@ pub enum RecoverError {
     },
     /// The call completed, but the temporary directory of decrypted keys could not be removed.
     SeedsNotRemoved,
+    /// A change to the wiki's keys was begun and is not finished, so nothing new is sealed (handoff 004, W1): one
+    /// sentence naming `inklkunn wiki keys finish-retirement <wiki>`. Nothing was done.
+    RetirementUnfinished(String),
 }
 
 impl std::fmt::Display for RecoverError {
@@ -168,6 +171,7 @@ impl std::fmt::Display for RecoverError {
                 "the call completed but a temporary directory of decrypted keys could not be removed; \
                  remove the directories named `inklkunn-seeds-*` under the seed directory"
             ),
+            RecoverError::RetirementUnfinished(m) => write!(f, "{m}"),
         }
     }
 }
@@ -255,6 +259,19 @@ pub trait Recover: Send + Sync {
     /// caller can take out exactly them and nothing else. Read-only and keyless: it needs no recorded act and no
     /// lease. The default excuses nothing.
     fn verify_after_retirement(
+        &self,
+        wiki: &WikiId,
+    ) -> Result<Option<RetirementExcuse>, RecoverError> {
+        let _ = wiki;
+        Ok(None)
+    }
+
+    /// As [`Recover::verify_after_retirement`], for a repository a killed `seal` left with a publication to finish
+    /// (handoff 004, W7): `verify` fails by exactly `blocking-ref-publication` and `publication-trust`, and every
+    /// publication-trust finding is in a retirement's recorded set. Only then is `complete-publication` offered beside
+    /// a recorded retirement, and the plain question must be answered yes after it. Read-only and keyless. The default
+    /// excuses nothing.
+    fn verify_beside_cleanup(
         &self,
         wiki: &WikiId,
     ) -> Result<Option<RetirementExcuse>, RecoverError> {

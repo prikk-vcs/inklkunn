@@ -563,16 +563,14 @@ impl Signer {
         if !verification.verdict.ok {
             // A retired key never freezes the wiki (P2, P2′, DR-10): a verify that fails exactly and only by
             // publication trust for what a retirement recorded is the known cost and confirms the change. Any
-            // other failure, and a failure that cannot be read, is a stop.
+            // other failure, and a failure that cannot be read, is a stop. (An unfinished retirement never gets
+            // here: it pauses every seal before this, W1.)
             return match self.retirement_explains(repo, seeds.wiki) {
                 Ok(Some(_)) => Ok(sealed),
                 Ok(None) | Err(_) => Err(unconfirmed(
                     Some(sealed),
                     Unconfirmed::VerifyFailed,
-                    match self.unfinished_retirement_note(seeds.wiki) {
-                        Some(note) => format!("prikk's verify reported failed conditions; {note}"),
-                        None => "prikk's verify reported failed conditions".to_owned(),
-                    },
+                    "prikk's verify reported failed conditions".to_owned(),
                 )),
             };
         }
@@ -593,6 +591,11 @@ impl Accept for Signer {
         }
         // Held from the guard to the end: the guard's answer stays true while the files are written.
         let _held = self.write_lock(wiki).map_err(accept_error)?;
+        // A change to the wiki's keys that was begun and not finished pauses every new seal (W1), before anything is
+        // read from the ledger or written: a block sealed now could not be told from what the removal made fail.
+        if let Some(sentence) = self.seal_pause(wiki) {
+            return Err(AcceptError::RetirementUnfinished(sentence));
+        }
         // 1. The guard: the record the token names, read here, and what the message says. Nothing is
         //    decrypted or written until both agree.
         let expected = self
@@ -655,6 +658,10 @@ impl Accept for Signer {
             ));
         }
         let _held = self.write_lock(wiki).map_err(accept_error)?;
+        // A view is a new ref in a history the unfinished retirement recorded the views of (W1).
+        if let Some(sentence) = self.seal_pause(wiki) {
+            return Err(AcceptError::RetirementUnfinished(sentence));
+        }
         let facts = self
             .ledger
             .view_creation(act)

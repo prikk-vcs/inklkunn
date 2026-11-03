@@ -807,7 +807,7 @@ fn a_record_cannot_be_changed_moved_or_corrupted_without_notice() {
         ),
         (
             "an unknown format",
-            mutate(&|v| v["format"] = "inklkunn-key-record/5".into()),
+            mutate(&|v| v["format"] = "inklkunn-key-record/6".into()),
         ),
         (
             "the older format named on a record sealed in the newer",
@@ -1350,7 +1350,7 @@ fn the_superseded_keys_are_kept_in_the_record_and_survive_a_reopen() {
     store.create(&m, &seeds()).unwrap();
     assert_eq!(store.status(&wiki).unwrap(), m);
     let text = std::fs::read_to_string(tmp.0.join(format!("keys/{wiki}.key.json"))).unwrap();
-    assert!(text.contains("inklkunn-key-record/4") && text.contains("superseded"));
+    assert!(text.contains("inklkunn-key-record/5") && text.contains("superseded"));
     drop(store);
     assert_eq!(
         store_in(&tmp.0.join("keys"))
@@ -1380,7 +1380,7 @@ fn a_record_written_before_superseded_keys_existed_still_opens_as_never_rotated_
     assert!(
         std::fs::read_to_string(tmp.0.join(format!("keys/{wiki}.key.json")))
             .unwrap()
-            .contains("inklkunn-key-record/4")
+            .contains("inklkunn-key-record/5")
     );
     assert_eq!(store.status(&wiki).unwrap().superseded.len(), 1);
 }
@@ -1422,7 +1422,7 @@ fn a_superseded_entry_cannot_be_edited_added_or_dropped_without_notice() {
         assert!(matches!(&r, Err(KeyStoreError::Record(_))), "{what}: {r:?}");
     }
     // A format-1 record cannot carry the field at all.
-    let v1_with = good.replace("inklkunn-key-record/4", "inklkunn-key-record/1");
+    let v1_with = good.replace("inklkunn-key-record/5", "inklkunn-key-record/1");
     std::fs::write(&path, v1_with).unwrap();
     assert!(matches!(store.status(&wiki), Err(KeyStoreError::Record(_))));
     std::fs::write(&path, &good).unwrap();
@@ -1496,7 +1496,7 @@ fn a_retirements_recorded_findings_survive_a_reopen_and_are_bound_into_the_seal(
     assert_eq!(store.status(&wiki).unwrap(), m);
     let path = tmp.0.join(format!("keys/{wiki}.key.json"));
     let good = std::fs::read_to_string(&path).unwrap();
-    assert!(good.contains("inklkunn-key-record/4") && good.contains("excused"));
+    assert!(good.contains("inklkunn-key-record/5") && good.contains("excused"));
     // Not one of the recorded ids can be changed, added, dropped or moved to another kind without notice.
     let one = "a1".repeat(32);
     let other = "ff".repeat(32);
@@ -1563,7 +1563,7 @@ fn a_retirements_recorded_findings_survive_a_reopen_and_are_bound_into_the_seal(
         ),
         (
             "named in a record of the format before",
-            good.replace("inklkunn-key-record/4", "inklkunn-key-record/2"),
+            good.replace("inklkunn-key-record/5", "inklkunn-key-record/2"),
         ),
     ] {
         std::fs::write(&path, &bad).unwrap();
@@ -1659,6 +1659,20 @@ fn retiring_state() -> Retiring {
             view: "heads/main".to_owned(),
             block_id: "ab".repeat(32),
         }],
+        maintainer_public_key: "5c".repeat(32),
+        trusted_maintainers: vec![
+            "inklkunn-new-maintainer".to_owned(),
+            "inklkunn-old-maintainer".to_owned(),
+        ],
+    }
+}
+
+/// A state as format `/4` kept it: neither the old key's public key nor the trust list.
+fn retiring_state_v4() -> Retiring {
+    Retiring {
+        maintainer_public_key: String::new(),
+        trusted_maintainers: Vec::new(),
+        ..retiring_state()
     }
 }
 
@@ -1682,7 +1696,7 @@ fn an_unfinished_retirement_survives_a_reopen_and_is_bound_into_the_seal() {
     assert_eq!(store.status(&wiki).unwrap(), m);
     let path = tmp.0.join(format!("keys/{wiki}.key.json"));
     let good = std::fs::read_to_string(&path).unwrap();
-    assert!(good.contains("inklkunn-key-record/4") && good.contains("retiring"));
+    assert!(good.contains("inklkunn-key-record/5") && good.contains("retiring"));
     let edited = |change: &dyn Fn(&mut serde_json::Value)| {
         let mut v: serde_json::Value = serde_json::from_str(&good).unwrap();
         change(&mut v);
@@ -1734,8 +1748,44 @@ fn an_unfinished_retirement_survives_a_reopen_and_is_bound_into_the_seal() {
             }),
         ),
         (
+            "the old key's public key changed (W3: it could be made to put back another key)",
+            edited(&|v| {
+                *v.pointer_mut("/retiring/maintainer_public_key").unwrap() = "6d".repeat(32).into();
+            }),
+        ),
+        (
+            "the old key's public key dropped",
+            edited(&|v| {
+                *v.pointer_mut("/retiring/maintainer_public_key").unwrap() = "".into();
+            }),
+        ),
+        (
+            "a trusted key id added (W5)",
+            edited(&|v| {
+                v.pointer_mut("/retiring/trusted_maintainers")
+                    .unwrap()
+                    .as_array_mut()
+                    .unwrap()
+                    .push("inklkunn-zzz".into());
+            }),
+        ),
+        (
+            "a trusted key id dropped (W5)",
+            edited(&|v| {
+                v.pointer_mut("/retiring/trusted_maintainers")
+                    .unwrap()
+                    .as_array_mut()
+                    .unwrap()
+                    .remove(0);
+            }),
+        ),
+        (
             "named in a record of the format before",
-            good.replace("inklkunn-key-record/4", "inklkunn-key-record/3"),
+            good.replace("inklkunn-key-record/5", "inklkunn-key-record/3"),
+        ),
+        (
+            "named as format 4, which keeps neither the key nor the list",
+            good.replace("inklkunn-key-record/5", "inklkunn-key-record/4"),
         ),
     ] {
         std::fs::write(&path, &bad).unwrap();
@@ -1795,6 +1845,36 @@ fn an_unfinished_retirement_that_is_not_about_the_newest_superseded_key_or_has_v
                 .block_id = "nope".into();
             m
         }),
+        ("a public key that is not 64 hex characters", {
+            let mut m = retiring_meta(&wiki);
+            m.retiring.as_mut().unwrap().maintainer_public_key = "abc".into();
+            m
+        }),
+        ("no public key in a state written now", {
+            let mut m = retiring_meta(&wiki);
+            m.retiring.as_mut().unwrap().maintainer_public_key = String::new();
+            m
+        }),
+        ("a trust list without the retired key", {
+            let mut m = retiring_meta(&wiki);
+            m.retiring.as_mut().unwrap().trusted_maintainers =
+                vec!["inklkunn-new-maintainer".into()];
+            m
+        }),
+        ("a trust list that is not sorted", {
+            let mut m = retiring_meta(&wiki);
+            m.retiring.as_mut().unwrap().trusted_maintainers = vec![
+                "inklkunn-old-maintainer".into(),
+                "inklkunn-new-maintainer".into(),
+            ];
+            m
+        }),
+        ("a trusted key id prikk would refuse", {
+            let mut m = retiring_meta(&wiki);
+            m.retiring.as_mut().unwrap().trusted_maintainers =
+                vec!["inklkunn-old-maintainer".into(), "bad id".into()];
+            m
+        }),
     ];
     for (what, m) in cases {
         assert!(
@@ -1821,6 +1901,42 @@ fn a_record_of_the_format_before_opens_and_nothing_is_retiring_in_it() {
     // The format before cannot carry the state at all: it is refused at sealing.
     assert!(matches!(
         record::seal_v3(&store.master, &retiring_meta(&wiki), &seeds()),
+        Err(KeyStoreError::Record(_))
+    ));
+}
+
+#[test]
+fn a_state_written_by_format_four_still_opens_and_keeps_neither_the_key_nor_the_list() {
+    // W3, W5: the format before kept neither. Its state opens (the wiki is not stranded by the format change), with
+    // both empty, and a state written now must hold both.
+    let tmp = temp("format-four");
+    let store = store_in(&tmp.0.join("keys"));
+    let wiki = WikiId::new();
+    let mut m = retiring_meta(&wiki);
+    m.retiring = Some(retiring_state_v4());
+    let old = record::seal_v4(&store.master, &m, &seeds()).unwrap();
+    assert!(old.contains("inklkunn-key-record/4") && old.contains("retiring"));
+    std::fs::write(tmp.0.join(format!("keys/{wiki}.key.json")), old).unwrap();
+    let opened = store.status(&wiki).unwrap();
+    assert_eq!(opened, m);
+    let state = opened.retiring.as_ref().unwrap();
+    assert!(state.maintainer_public_key.is_empty() && state.trusted_maintainers.is_empty());
+    // A record written again is /5 and, with a state from /4, refuses to be written without them: the state is
+    // either complete or cleared.
+    assert!(matches!(
+        store.update_meta(&wiki, |_| {}),
+        Err(KeyStoreError::Record(_))
+    ));
+    let cleared = store.update_meta(&wiki, |m| m.retiring = None).unwrap();
+    assert!(cleared.retiring.is_none());
+    assert!(
+        std::fs::read_to_string(tmp.0.join(format!("keys/{wiki}.key.json")))
+            .unwrap()
+            .contains("inklkunn-key-record/5")
+    );
+    // The format before cannot hold what /5 does.
+    assert!(matches!(
+        record::seal_v4(&store.master, &retiring_meta(&wiki), &seeds()),
         Err(KeyStoreError::Record(_))
     ));
 }

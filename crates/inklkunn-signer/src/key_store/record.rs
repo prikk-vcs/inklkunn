@@ -3,7 +3,7 @@
 //! changed generation or a record moved to another wiki's file no longer authenticates; there is no field
 //! of the record that can be edited without the master key being noticed.
 //!
-//! File format `inklkunn-key-record/4`, one JSON object, lower-case hex for the binary fields:
+//! File format `inklkunn-key-record/5`, one JSON object, lower-case hex for the binary fields:
 //! `format`, `wiki`, `generation`, `author_key_id`, `maintainer_key_id`, `created_at`, `rotated_at`
 //! (`null` until a rotation), `superseded` (see below), `retiring` (see below; absent unless a retirement is
 //! unfinished), `nonce` (24 bytes), `sealed` (the ciphertext and its
@@ -30,7 +30,15 @@
 //! looks disagreed, the record could not be written) leaves it in place, so that `inklkunn wiki keys
 //! finish-retirement` can finish the record **from it**, and only while the views' tips are still those it kept (the
 //! blocks signed by the retired key are still the ones it names). It is bound into the seal like the rest. Formats
-//! `/1` to `/3` still open and mean that nothing is retiring. Every record written is `/4`.
+//! `/1` to `/3` still open and mean that nothing is retiring.
+//!
+//! **Format `/5`** (handoff 004, W3 and W5) adds two things to a `retiring` state, both bound into the seal: the retired
+//! key's **public** key (so that `inklkunn wiki keys abandon-retirement` can put it back into the repository's trust
+//! after it was removed; the seed is not kept anywhere, a public key is not a secret) and the ids of the maintainer
+//! keys the repository trusted when the state was written (so that finishing can require the trust list to be exactly
+//! that list without the retired key). A `/4` record still opens, and a `/4` state, which has neither, opens with both
+//! empty: it can be finished (the trust list is not compared) and cannot be abandoned after the key was removed.
+//! Every record written is `/5`.
 
 use inklkunn_store::WikiId;
 use serde::{Deserialize, Serialize};
@@ -41,7 +49,10 @@ use super::crypto::{CryptoError, MasterKey, NONCE_LEN};
 use super::random::{hex, unhex};
 
 /// The record format name, also the first thing bound into the associated data.
-pub(super) const RECORD_FORMAT: &str = "inklkunn-key-record/4";
+pub(super) const RECORD_FORMAT: &str = "inklkunn-key-record/5";
+/// The format before the retired key's public key and the trust list were kept in `retiring`: still read, never
+/// written (a state in it has neither).
+const RECORD_FORMAT_V4: &str = "inklkunn-key-record/4";
 /// The format before `retiring` existed: still read, never written (nothing is retiring in it).
 const RECORD_FORMAT_V3: &str = "inklkunn-key-record/3";
 /// The format before `excused` existed: still read, never written (a retirement in it excuses nothing).
@@ -58,6 +69,8 @@ pub(crate) const MAX_EXCUSED_SUBJECTS: usize = 150_000;
 pub(crate) const MAX_RECORDED_VIEWS: usize = 1024;
 /// The most superseded keys a record keeps.
 const MAX_SUPERSEDED: usize = 256;
+/// The most maintainer keys a `retiring` state keeps the ids of.
+pub(crate) const MAX_TRUSTED_MAINTAINERS: usize = 1024;
 
 /// A key id as prikk accepts one: ASCII letters, digits, `-` and `_` (its `path-safety` rule for trust key
 /// ids), at most 128 characters.
@@ -110,6 +123,15 @@ pub(crate) struct Retiring {
     pub(crate) checked_records: u64,
     /// `(view, tip block id)` of every view at that moment.
     pub(crate) views: Vec<RecordedTip>,
+    /// The key's **public** key, 64 lower-case hex characters, as the repository's trust list holds it: what
+    /// `abandon-retirement` adopts again. Empty in a state written by format `/4`.
+    #[serde(default)]
+    pub(crate) maintainer_public_key: String,
+    /// The ids of the maintainer keys the repository trusted when the state was written (the retired key and the
+    /// new one among them), sorted: finishing requires the trust list now to be exactly these without the retired
+    /// key (W5). Empty in a state written by format `/4`.
+    #[serde(default)]
+    pub(crate) trusted_maintainers: Vec<String>,
 }
 
 /// A maintainer key a rotation replaced, and where it stopped being the service's (corrections handoff C11).
@@ -223,7 +245,10 @@ impl Meta {
                     out.push(0);
                     out.extend_from_slice(tip.block_id.as_bytes());
                 }
-                if format == RECORD_FORMAT || format == RECORD_FORMAT_V3 {
+                if format == RECORD_FORMAT
+                    || format == RECORD_FORMAT_V4
+                    || format == RECORD_FORMAT_V3
+                {
                     // The ids are 64 characters each, so counts and bytes are unambiguous.
                     for list in entry.excused.lists() {
                         out.push(0);
@@ -235,7 +260,7 @@ impl Meta {
                 }
             }
         }
-        if format == RECORD_FORMAT {
+        if format == RECORD_FORMAT || format == RECORD_FORMAT_V4 {
             match &self.retiring {
                 None => out.push(0),
                 Some(r) => {
@@ -253,6 +278,17 @@ impl Meta {
                         out.extend_from_slice(tip.view.as_bytes());
                         out.push(0);
                         out.extend_from_slice(tip.block_id.as_bytes());
+                    }
+                    if format == RECORD_FORMAT {
+                        out.push(0);
+                        out.extend_from_slice(r.maintainer_public_key.as_bytes());
+                        out.push(0);
+                        out.extend_from_slice(&(r.trusted_maintainers.len() as u32).to_be_bytes());
+                        for id in &r.trusted_maintainers {
+                            // A key id cannot contain NUL, so the separator is unambiguous.
+                            out.push(0);
+                            out.extend_from_slice(id.as_bytes());
+                        }
                     }
                 }
             }
@@ -316,7 +352,13 @@ impl Meta {
                         && t.view.bytes().all(|b| b != 0)
                         && valid_block_id(&t.block_id)
                 });
+            let public_ok =
+                r.maintainer_public_key.is_empty() || valid_id(&r.maintainer_public_key);
+            let trusted_ok = r.trusted_maintainers.len() <= MAX_TRUSTED_MAINTAINERS
+                && r.trusted_maintainers.iter().all(|id| valid_key_id(id));
             if !tips_ok
+                || !public_ok
+                || !trusted_ok
                 || r.signed_by_key.len() > MAX_EXCUSED_SUBJECTS
                 || r.signed_by_key.iter().any(|id| !valid_id(id))
             {
@@ -418,6 +460,27 @@ struct File {
     sealed: String,
 }
 
+/// What a `retiring` state must hold in a format: a `/5` state names the retired key's public key and the trusted ids
+/// (sorted, and the retired key among them); a `/4` state has neither.
+fn state_matches_format(r: &Retiring, format: &str) -> Result<(), KeyStoreError> {
+    let complete = valid_id(&r.maintainer_public_key)
+        && r.trusted_maintainers.contains(&r.maintainer_key_id)
+        && r.trusted_maintainers.windows(2).all(|w| w[0] < w[1]);
+    let empty = r.maintainer_public_key.is_empty() && r.trusted_maintainers.is_empty();
+    let fits = if format == RECORD_FORMAT {
+        complete
+    } else {
+        empty
+    };
+    if fits {
+        Ok(())
+    } else {
+        Err(KeyStoreError::Record(
+            "an unfinished retirement does not hold what its record format holds",
+        ))
+    }
+}
+
 fn crypto(e: CryptoError) -> KeyStoreError {
     match e {
         CryptoError::Authentication => KeyStoreError::Record("the record did not authenticate"),
@@ -435,6 +498,17 @@ pub(super) fn seal(
     seeds: &Seeds,
 ) -> Result<String, KeyStoreError> {
     seal_in_format(master, meta, seeds, RECORD_FORMAT)
+}
+
+/// A record in the format before the retired key's public key and the trust list were kept (tests: it must still
+/// open; a state in it has neither).
+#[cfg(test)]
+pub(super) fn seal_v4(
+    master: &MasterKey,
+    meta: &Meta,
+    seeds: &Seeds,
+) -> Result<String, KeyStoreError> {
+    seal_in_format(master, meta, seeds, RECORD_FORMAT_V4)
 }
 
 /// A record in the format before `retiring` (tests: it must still open, and nothing is retiring in it).
@@ -474,10 +548,13 @@ fn seal_in_format(
     format: &str,
 ) -> Result<String, KeyStoreError> {
     meta.check()?;
-    if format != RECORD_FORMAT && meta.retiring.is_some() {
+    if format != RECORD_FORMAT && format != RECORD_FORMAT_V4 && meta.retiring.is_some() {
         return Err(KeyStoreError::Record(
             "a record before format 4 cannot carry an unfinished retirement",
         ));
+    }
+    if let Some(r) = &meta.retiring {
+        state_matches_format(r, format)?;
     }
     let plain = seeds.pack()?;
     let (nonce, sealed) = master.seal(&plain, &meta.aad(format)).map_err(crypto)?;
@@ -516,6 +593,7 @@ pub(super) fn open(
     let bad = |what: &'static str| KeyStoreError::Record(what);
     let file: File = serde_json::from_str(text).map_err(|_| bad("the record is not readable"))?;
     if file.format != RECORD_FORMAT
+        && file.format != RECORD_FORMAT_V4
         && file.format != RECORD_FORMAT_V3
         && file.format != RECORD_FORMAT_V2
         && file.format != RECORD_FORMAT_V1
@@ -526,6 +604,7 @@ pub(super) fn open(
         return Err(bad("a format 1 record cannot carry superseded keys"));
     }
     if file.format != RECORD_FORMAT
+        && file.format != RECORD_FORMAT_V4
         && file.format != RECORD_FORMAT_V3
         && file.superseded.iter().any(|s| !s.excused.is_empty())
     {
@@ -533,10 +612,13 @@ pub(super) fn open(
             "a record before format 3 cannot carry recorded findings",
         ));
     }
-    if file.format != RECORD_FORMAT && file.retiring.is_some() {
+    if file.format != RECORD_FORMAT && file.format != RECORD_FORMAT_V4 && file.retiring.is_some() {
         return Err(bad(
             "a record before format 4 cannot carry an unfinished retirement",
         ));
+    }
+    if let Some(r) = &file.retiring {
+        state_matches_format(r, &file.format)?;
     }
     if file.wiki != wiki.as_str() {
         return Err(bad("the record is for another wiki"));

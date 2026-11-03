@@ -766,6 +766,9 @@ keys! {
     ProblemSigningNotConfiguredTitle => "problem.signing_not_configured.title",
     ProblemSigningNotConfiguredDetail => "problem.signing_not_configured.detail",
     ProblemSigningNotConfiguredHint => "problem.signing_not_configured.hint",
+    ProblemRetirementUnfinishedTitle => "problem.retirement_unfinished.title",
+    ProblemRetirementUnfinishedDetail => "problem.retirement_unfinished.detail",
+    ProblemRetirementUnfinishedHint => "problem.retirement_unfinished.hint",
     // the inbox, following a page, and the flags of changes (handoff 004 T6)
     TitleInbox => "title.inbox",
     InboxHeading => "inbox.heading",
@@ -852,6 +855,8 @@ keys! {
     OutcomeNoteKnowledgeInvalid => "outcome_note.knowledge_invalid",
     OutcomeTooLarge => "outcome.too_large",
     OutcomeNoteTooLarge => "outcome_note.too_large",
+    OutcomeRetirementUnfinished => "outcome.retirement_unfinished",
+    OutcomeNoteRetirementUnfinished => "outcome_note.retirement_unfinished",
     OutcomeUnavailable => "outcome.unavailable",
     OutcomeNoteUnavailable => "outcome_note.unavailable",
     OutcomeInProgress => "outcome.in_progress",

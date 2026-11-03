@@ -247,6 +247,56 @@ impl<'a> Sizing<'a> {
     }
 }
 
+/// A maintainer key adopted in a repository's trust store.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TrustedKey {
+    /// The id it is adopted under.
+    pub(crate) key_id: String,
+    /// Its public key, 64 lower-case hex characters.
+    pub(crate) public_key: String,
+}
+
+/// Read `prikk trust maintainer list --format json` strictly.
+pub(crate) fn parse_trust_list(bytes: &[u8]) -> Result<Vec<TrustedKey>, SignerError> {
+    let damaged = |what: &str| SignerError::Damaged(format!("`trust maintainer list` {what}"));
+    let value: serde_json::Value =
+        serde_json::from_slice(bytes).map_err(|_| damaged("printed no report"))?;
+    if value
+        .get("schema_version")
+        .and_then(serde_json::Value::as_str)
+        != Some("trust-list-v1")
+    {
+        return Err(damaged(
+            "printed a report of a schema this build does not read",
+        ));
+    }
+    let keys = value
+        .get("keys")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| damaged("named no list of keys"))?;
+    let mut out: Vec<TrustedKey> = Vec::with_capacity(keys.len());
+    for key in keys {
+        let text = |field: &str| key.get(field).and_then(serde_json::Value::as_str);
+        let (Some(key_id), Some(public_key)) = (text("key_id"), text("public_key")) else {
+            return Err(damaged("listed a key without an id and a public key"));
+        };
+        let hex = public_key.len() == 64
+            && public_key
+                .bytes()
+                .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+        if key_id.is_empty() || !hex || out.iter().any(|k| k.key_id == key_id) {
+            return Err(damaged(
+                "listed a key of a shape prikk does not issue, or an id twice",
+            ));
+        }
+        out.push(TrustedKey {
+            key_id: key_id.to_owned(),
+            public_key: public_key.to_owned(),
+        });
+    }
+    Ok(out)
+}
+
 /// The write-verb runner over a sandbox and a key directory.
 #[derive(Debug, Clone)]
 pub(crate) struct Writes {
@@ -462,7 +512,16 @@ pub(crate) fn parse_sealed_blocks_once(text: &str) -> Result<Vec<(String, String
 
 /// The finding lines of `prikk verify`'s text that are **not publication trust**: `<condition> [PRIKK-…]: <message>`
 /// where the condition is not `publication-trust` (handoff 004, Q3). Their words, in order.
+#[cfg(test)]
 pub(crate) fn findings_of_other_conditions(text: &str) -> Vec<&str> {
+    other_condition_lines(text)
+        .into_iter()
+        .map(|(word, _)| word)
+        .collect()
+}
+
+/// The finding lines of `prikk verify`'s text that are not publication trust, each with its condition word.
+fn other_condition_lines(text: &str) -> Vec<(&str, &str)> {
     text.lines()
         .filter_map(|line| {
             let (word, rest) = line.split_once(" [PRIKK-")?;
@@ -470,9 +529,27 @@ pub(crate) fn findings_of_other_conditions(text: &str) -> Vec<&str> {
                 && word
                     .bytes()
                     .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
-            (word_ok && word != "publication-trust" && rest.contains("]: ")).then_some(word)
+            (word_ok && word != "publication-trust" && rest.contains("]: ")).then_some((word, line))
         })
         .collect()
+}
+
+/// The one finding line of a publication whose cleanup a killed `seal` did not finish (measured on prikk 0.55.0:
+/// `verify` fails by `blocking-ref-publication` as well as by whatever else fails).
+const CLEANUP_PENDING_LINE: &str = "ref-publication [PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING]: ";
+
+/// How many lines of `prikk verify`'s text are the pending-cleanup finding, and whether `ref publication issues:` is
+/// there exactly once, saying one (handoff 004, W7).
+pub(crate) fn pending_cleanup_findings(text: &str) -> (usize, bool) {
+    let lines = text
+        .lines()
+        .filter(|l| l.starts_with(CLEANUP_PENDING_LINE))
+        .count();
+    let mut counts = text
+        .lines()
+        .filter_map(|l| l.strip_prefix("ref publication issues: "));
+    let one = counts.next().map(str::trim) == Some("1") && counts.next().is_none();
+    (lines, one)
 }
 
 /// What `prikk verify`'s text says about **publication trust** (ledger PK-34): the blocks, ref states and ref
@@ -804,38 +881,12 @@ impl Writes {
         Ok(String::from_utf8_lossy(&out).into_owned())
     }
 
-    /// Is this maintainer key id adopted in the repository's trust store? (`trust maintainer check`; it exits 1 for
-    /// an id that is not, and prints the answer all the same.)
-    pub(crate) fn maintainer_trusted(
-        &self,
-        repo: &Path,
-        key_id: &str,
-    ) -> Result<bool, SignerError> {
-        let out = self.read_report(
-            repo,
-            &[
-                "trust",
-                "maintainer",
-                "check",
-                "--key-id",
-                key_id,
-                "--format",
-                "json",
-            ],
-        )?;
-        let value: serde_json::Value = serde_json::from_slice(&out).map_err(|_| {
-            SignerError::Damaged("`trust maintainer check` printed no report".to_owned())
-        })?;
-        let named = value.get("key_id").and_then(serde_json::Value::as_str) == Some(key_id);
-        match (
-            named,
-            value.get("trusted").and_then(serde_json::Value::as_bool),
-        ) {
-            (true, Some(trusted)) => Ok(trusted),
-            _ => Err(SignerError::Damaged(
-                "`trust maintainer check` did not answer for the key asked about".to_owned(),
-            )),
-        }
+    /// Every maintainer key adopted in the repository's trust store, with its public key (`trust maintainer list
+    /// --format json`; prikk 0.55.0 prints `trust-list-v1`). Read-only, no keys. A list that is not of the known
+    /// shape, or that names an id twice, is refused and nothing is concluded from it.
+    pub(crate) fn trusted_maintainers(&self, repo: &Path) -> Result<Vec<TrustedKey>, SignerError> {
+        let out = self.read(repo, &["trust", "maintainer", "list", "--format", "json"])?;
+        parse_trust_list(&out)
     }
 
     /// `prikk doctor` with no repair flag, read-only and keyless. **The report is the answer on exit 1** (prikk
@@ -1099,6 +1150,21 @@ impl Writes {
     /// disagree on whether the repository verifies (handoff 004, P14). prikk 0.55.0 prints the verdict as JSON or
     /// the findings as text, never both in one run; this is as close to one run as it can be made.
     pub(crate) fn verify_run(&self, repo: &Path) -> Result<VerifyRun, SignerError> {
+        self.verify_run_inner(repo, false)
+    }
+
+    /// [`Writes::verify_run`] for a repository a killed `seal` left with a publication to finish (handoff 004, W7):
+    /// the one pending-cleanup finding of the text is not refused as a finding of another condition. Every other
+    /// finding of another condition still is.
+    pub(crate) fn verify_run_beside_cleanup(&self, repo: &Path) -> Result<VerifyRun, SignerError> {
+        self.verify_run_inner(repo, true)
+    }
+
+    fn verify_run_inner(
+        &self,
+        repo: &Path,
+        beside_cleanup: bool,
+    ) -> Result<VerifyRun, SignerError> {
         let report = self.verify(repo)?;
         let (text, success) = self.verify_text_status(repo)?;
         if success != report.verdict.ok {
@@ -1111,7 +1177,9 @@ impl Writes {
         // failing repository whose text holds a finding of any condition but publication trust is damage that
         // appeared between the two, or a report that is not one: the text is refused (Q3).
         if !report.verdict.ok
-            && let Some(word) = findings_of_other_conditions(&text).first()
+            && let Some((word, _)) = other_condition_lines(&text)
+                .into_iter()
+                .find(|(_, line)| !(beside_cleanup && line.starts_with(CLEANUP_PENDING_LINE)))
         {
             return Err(SignerError::Unavailable(format!(
                 "the text of `verify` names a finding of the condition `{word}`, which is not publication trust; nothing was concluded from it"

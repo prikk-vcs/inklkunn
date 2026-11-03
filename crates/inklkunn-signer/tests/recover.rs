@@ -92,6 +92,7 @@ fn write_standin(ctl: &Path, real: &Path) -> PathBuf {
 CTL="{ctl}"
 verb="$1"
 if [ -e "$CTL/fail-$verb" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
+if [ "$1 $2 $3" = "trust maintainer remove" ] && [ -e "$CTL/fail-trust-remove" ]; then echo "error: precondition not met: injected failure of the removal" >&2; exit 1; fi
 if [ "$verb" = status ] && [ $# -eq 1 ] && [ -e "$CTL/say-status-text" ]; then cat "$CTL/say-status-text"; exit 0; fi
 if [ "$verb" = verify ] && [ $# -eq 1 ] && [ -e "$CTL/say-verify-text" ]; then cat "$CTL/say-verify-text"; exit 1; fi
 if [ "$verb" = verify ] && [ $# -gt 1 ] && [ -e "$CTL/say-verify-json" ]; then cat "$CTL/say-verify-json"; exit 1; fi
@@ -1110,15 +1111,9 @@ fn the_queue_is_read_from_the_plain_text_of_status_and_only_the_published_patch_
     assert_eq!(f.blocks(), blocks);
 }
 
-#[test]
-fn the_publication_findings_a_retirement_recorded_are_not_something_else_for_the_cleanup_step() {
-    // Q6. The plan takes the findings the signer excuses out of `doctor` (P13) before it judges what is left; the
-    // step does the same. Real prikk fails `verify` by two conditions while the cleanup is pending, so what the
-    // signer is asked is made to answer as it would if only publication trust failed: the verdict and the text are
-    // the real ones with the ref publication's condition and its finding taken out.
-    let Some(f) = fixture("publish-retired") else {
-        return;
-    };
+/// A retirement that is recorded, and a publication a killed seal left: the state W7 is about.
+fn retired_and_killed(tag: &str) -> Option<(Fixture, Prepared, String)> {
+    let f = fixture(tag)?;
     f.signer
         .rotate_keys(
             &inklkunn_signer::KeyAuthority::for_tests(),
@@ -1127,27 +1122,88 @@ fn the_publication_findings_a_retirement_recorded_are_not_something_else_for_the
         )
         .expect("a retirement");
     let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
-    f.leave_the_queue_after_publishing(&p);
+    let block = f.leave_the_queue_after_publishing(&p);
+    Some((f, p, block))
+}
+
+#[test]
+fn a_cleanup_beside_the_findings_a_retirement_recorded_is_finished_and_the_plain_rule_holds_after()
+{
+    // W7, with real prikk. While the cleanup is pending `verify` fails by two conditions, so the plain question (the
+    // retirement's record excuses a failure by publication trust alone) says no. The question beside a cleanup says yes
+    // when every publication-trust finding is in a recorded set; the step is then taken; and afterwards the plain
+    // question says yes again, with nothing changed but the queue.
+    let Some((f, p, _block)) = retired_and_killed("w7-publish-retired") else {
+        return;
+    };
     let blocks = f.blocks();
     // The raw `doctor` holds the cleanup and the retired key's findings.
     let raw = f.witnesses.doctor(&f.wiki).unwrap();
     assert!(!raw.is_only_cleanup_pending());
     assert!(raw.diagnostics.iter().any(|d| d.is_cleanup_pending()));
-    // As real prikk answers: two conditions, so no retirement excuses it, and the step is refused.
-    let r = f.finish_publication(&p);
-    assert!(
-        matches!(&r, Err(RecoverError::DoesNotMatch(why)) if why.contains("doctor")),
-        "{r:?}"
-    );
-    assert!(f.cleanup_is_pending());
-    assert_eq!(f.blocks(), blocks);
-    // As it would answer with publication trust alone failing.
-    let mut json = f.prikk_json(&["verify", "--format", "json"]);
-    json.pointer_mut("/verdict/failed_conditions")
-        .and_then(serde_json::Value::as_array_mut)
+    // The failure is exactly the two conditions.
+    let json = f.prikk_json(&["verify", "--format", "json"]);
+    let mut ids: Vec<&str> = json
+        .pointer("/verdict/failed_conditions")
+        .and_then(serde_json::Value::as_array)
         .unwrap()
-        .retain(|c| c.get("id").and_then(serde_json::Value::as_str) == Some("publication-trust"));
-    let text = String::from_utf8_lossy(
+        .iter()
+        .filter_map(|c| c.get("id").and_then(serde_json::Value::as_str))
+        .collect();
+    ids.sort_unstable();
+    assert_eq!(ids, ["blocking-ref-publication", "publication-trust"]);
+    // The plain question says no; the one beside a cleanup says yes, and names what `doctor` names.
+    assert!(
+        !matches!(
+            Recover::verify_after_retirement(&f.signer, &f.wiki),
+            Ok(Some(_))
+        ),
+        "two conditions fail: the plain rule does not apply (it refuses the text, Q3)"
+    );
+    let excuse = Recover::verify_beside_cleanup(&f.signer, &f.wiki)
+        .expect("asked")
+        .expect("every finding is a recorded one");
+    assert_eq!(
+        (
+            excuse.blocks.len(),
+            excuse.ref_states.len(),
+            excuse.ref_updates.len()
+        ),
+        (1, 1, 1)
+    );
+    assert!(
+        excuse
+            .note
+            .contains("only publication trust and the cleanup of a killed seal fail")
+    );
+    // The step is taken as real prikk answers.
+    f.finish_publication(&p).expect(
+        "the retired key's findings are the retirement's, and the cleanup is the only thing else",
+    );
+    assert!(!f.cleanup_is_pending());
+    assert_eq!(f.blocks(), blocks);
+    assert_eq!(f.queue_count(), 0);
+    // After the step the unwidened rule holds: publication trust alone, all of it recorded.
+    assert!(
+        Recover::verify_after_retirement(&f.signer, &f.wiki)
+            .expect("asked")
+            .is_some()
+    );
+    assert_eq!(Recover::verify_beside_cleanup(&f.signer, &f.wiki), Ok(None));
+}
+
+#[test]
+fn a_cleanup_is_not_finished_beside_anything_a_retirement_did_not_record() {
+    // W7: the question beside a cleanup is `judge`'s rule for the findings and exactly two conditions. Each way it can be
+    // wider is made with the stand-in (the real prikk is asked for the rest): a finding no retirement recorded, a third
+    // failed condition, the cleanup named twice, a run that did not go to the end. The step is refused, nothing is
+    // changed, and it is finished once real prikk answers again.
+    let Some((f, p, _block)) = retired_and_killed("w7-not-wider") else {
+        return;
+    };
+    let blocks = f.blocks();
+    let real_json = f.prikk_json(&["verify", "--format", "json"]);
+    let real_text = String::from_utf8_lossy(
         &Command::new(&f.real)
             .args(["verify"])
             .current_dir(&f.repo)
@@ -1155,18 +1211,128 @@ fn the_publication_findings_a_retirement_recorded_are_not_something_else_for_the
             .unwrap()
             .stdout,
     )
-    .lines()
-    .filter(|l| !l.starts_with("ref-publication "))
-    .map(|l| format!("{l}\n"))
-    .collect::<String>();
-    f.say("say-verify-json", &json.to_string());
-    f.say("say-verify-text", &text);
-    f.finish_publication(&p).expect(
-        "the retired key's findings are the retirement's, and the cleanup is the only thing else",
-    );
-    f.unsay("say-verify-json");
-    f.unsay("say-verify-text");
+    .into_owned();
+    let with_condition = |extra: &str| {
+        let mut json = real_json.clone();
+        json.pointer_mut("/verdict/failed_conditions")
+            .and_then(serde_json::Value::as_array_mut)
+            .unwrap()
+            .push(serde_json::json!({"id": extra, "message": "m"}));
+        json.to_string()
+    };
+    let stranger = "9".repeat(64);
+    let cleanup_line = real_text
+        .lines()
+        .find(|l| l.starts_with("ref-publication [PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING]"))
+        .unwrap()
+        .to_owned();
+    let mut halted = real_json.clone();
+    if let Some(status) = halted.pointer_mut("/stages/0/status") {
+        *status = "halted".into();
+    }
+    for (what, json, text) in [
+        (
+            "a block nobody recorded",
+            real_json.to_string(),
+            real_text.replace("publication trust issues: 3", "publication trust issues: 4")
+                + &format!(
+                    "publication-trust [PRIKK-TRUST-PUBLICATION-UNTRUSTED]: block {stranger} has no trusted MAINTAINER signature\n"
+                ),
+        ),
+        (
+            "a third failed condition",
+            with_condition("object-integrity"),
+            real_text.clone(),
+        ),
+        (
+            "the cleanup named twice",
+            real_json.to_string(),
+            real_text.replace(&cleanup_line, &format!("{cleanup_line}\n{cleanup_line}")),
+        ),
+        (
+            "a run that did not go to the end",
+            halted.to_string(),
+            real_text.clone(),
+        ),
+    ] {
+        f.say("say-verify-json", &json);
+        f.say("say-verify-text", &text);
+        assert_eq!(
+            Recover::verify_beside_cleanup(&f.signer, &f.wiki)
+                .ok()
+                .flatten()
+                .map(|e| e.keys),
+            None,
+            "{what}: the signer does not say yes"
+        );
+        let r = f.finish_publication(&p);
+        assert!(r.is_err(), "{what}: {r:?}");
+        assert!(f.cleanup_is_pending(), "{what}");
+        assert_eq!(f.blocks(), blocks, "{what}");
+        f.unsay("say-verify-json");
+        f.unsay("say-verify-text");
+    }
+    f.finish_publication(&p)
+        .expect("real prikk answers again, and every finding is a recorded one");
     assert!(!f.cleanup_is_pending());
+}
+
+#[test]
+fn a_cleanup_beside_a_wiki_with_no_recorded_retirement_is_not_offered() {
+    // W7 is for a *recorded* retirement. A wiki that never retired a key has nothing to excuse and the step is as it was.
+    let Some(f) = fixture("w7-none") else {
+        return;
+    };
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    f.publish_and_leave_the_queue(&p);
+    assert_eq!(Recover::verify_beside_cleanup(&f.signer, &f.wiki), Ok(None));
+    f.finish_publication(&p)
+        .expect("the cleanup alone, as before");
+    assert!(!f.cleanup_is_pending());
+}
+
+#[test]
+fn a_queued_patch_is_not_sealed_while_a_retirement_is_unfinished_and_is_after_it_is_finished() {
+    // W1 for recovery's `seal_queued`: it makes a block, so it is paused like an acceptance; nothing is touched, and the
+    // refusal is one sentence naming the command. After the operator finishes the retirement the very same step seals it.
+    let Some(f) = fixture("w1-seal-queued") else {
+        return;
+    };
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    f.queue(&p);
+    let blocks = f.blocks();
+    f.say("fail-trust-remove", "");
+    let rotation = f
+        .signer
+        .rotate_keys(
+            &inklkunn_signer::KeyAuthority::for_tests(),
+            &f.repo,
+            inklkunn_signer::OldKey::Retire,
+        )
+        .expect("the rotation happened");
+    f.unsay("fail-trust-remove");
+    assert!(
+        matches!(
+            &rotation.old_key,
+            inklkunn_signer::OldKeyOutcome::RetireFailed(_)
+        ),
+        "{rotation:?}"
+    );
+    let command = inklkunn_signer::finish_retirement_command(&f.wiki);
+    let act = f.act(vec![f.seal_op(&p)]);
+    let r = f.leased(|| f.signer.seal_queued(&f.wiki, MAIN, &act, &p.token));
+    assert!(
+        matches!(&r, Err(RecoverError::RetirementUnfinished(why))
+            if why.contains(&command) && why.contains("nothing was written")),
+        "{r:?}"
+    );
+    assert_eq!(f.queue_count(), 1, "the patch is still queued");
     assert_eq!(f.blocks(), blocks);
+    f.signer
+        .finish_retirement(&inklkunn_signer::KeyAuthority::for_tests(), &f.repo)
+        .expect("finished");
+    f.leased(|| f.signer.seal_queued(&f.wiki, MAIN, &act, &p.token))
+        .expect("sealed after the retirement is finished");
+    assert_eq!(f.blocks(), blocks + 1);
     assert_eq!(f.queue_count(), 0);
 }

@@ -262,6 +262,12 @@ pub enum AcceptError {
         /// What the call sealed, when it was an acceptance.
         sealed: Option<SealedChange>,
     },
+    /// A change to the wiki's keys was begun and is not finished (a key retirement that stopped half way): **the
+    /// signer seals nothing new until the person who runs the wiki finishes it** (`inklkunn wiki keys
+    /// finish-retirement <wiki>`) or abandons it (handoff 004, W1). Refused before anything was written, with the
+    /// view and the worktree as they were; the acceptance can be tried again afterwards. The text is one sentence
+    /// naming the command, for operators.
+    RetirementUnfinished(String),
 }
 
 impl std::fmt::Display for AcceptError {
@@ -339,6 +345,7 @@ impl std::fmt::Display for AcceptError {
                     ""
                 }
             ),
+            AcceptError::RetirementUnfinished(m) => write!(f, "refused, nothing committed: {m}"),
         }
     }
 }
