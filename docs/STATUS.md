@@ -283,12 +283,20 @@
   corrections are closed; a key may be retired on a live wiki.** The CHANGELOG's `[0.1.0]` section is byte-identical to the
   tag's again, everything since under `[Unreleased]`. **Every condition of 0.2.0 owed by the dev team is met**; next, the
   architect's candidate and rehearsal, then the owner's decision. Pushed.
+- **2026-11-04 — 0.2.0 candidate `3aad274` rehearsed: green.** `ci.yml` green (run 41786267845); the release rehearsal
+  (run 41786332296): gates, both binaries (Ubuntu 22.04, x86_64 and aarch64), both images, the manifest and the rehearsal
+  attestations succeeded; publishing skipped as rehearsal does. The architect's gates on the same tree: 2,202 tests with prikk
+  and without, 260 self-skips, deny and audit 0 on a fresh advisory database, pin-check and floor-check (workspace tests) pass.
+  **The 0.2.0 decision is with the owner** (below).
 
 ## Pending on the owner
 
-- **Review the Japanese catalog** when the dev team files it (DR-7; the owner is the reviewer): one request listing
-  every message in English and Japanese with where it appears. It waits for RFC 004's words (about 300 more messages
-  now); until your sign-off Japanese stays a preview that only a reader's own choice turns on.
+- **The 0.2.0 cut (2026-11-04):** authorize it, or say what must come first. Candidate `3aad274`, readiness report
+  `docs/releases/0.2.0-readiness.md`, rehearsal green. With it: whether Japanese ships as a labelled preview again (the
+  owner's review of 842 messages, DR-7, can follow the cut) and whether 0.2.0 may ship while no person who uses assistive
+  technology has tested the site (the about page says so; a pass before 0.3.0). crates.io stays optional (no token: skipped).
+- **Review the Japanese catalog** (DR-7; the owner is the reviewer): 842 messages, every one listed with where it appears in
+  `docs/glossary.md`; until your sign-off Japanese stays a preview that only a reader's own choice turns on.
 
 ## Pending upstream
 
