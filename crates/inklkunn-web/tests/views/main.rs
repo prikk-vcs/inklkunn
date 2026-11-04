@@ -62,6 +62,18 @@ fn main_of(a: &Answer) -> String {
     body.get(start..end).expect("main").to_owned()
 }
 
+/// The list item that holds `needle`.
+fn entry_of(main: &str, needle: &str) -> String {
+    let at = main.find(needle).expect(needle);
+    let start = main
+        .get(..at)
+        .and_then(|head| head.rfind("<li>"))
+        .expect("an item");
+    let rest = main.get(start..).expect("the rest");
+    let end = rest.find("</li>").expect("the end of the item");
+    rest.get(..end).expect("the item").to_owned()
+}
+
 fn form<'a>(name: &'a str, kind: &'a str, from: &'a str) -> Vec<(&'a str, &'a str)> {
     vec![("name", name), ("kind", kind), ("from", from)]
 }
@@ -276,6 +288,29 @@ async fn nobody_below_a_reviewer_and_nobody_unknown_is_given_the_form_or_makes_a
     );
     let anonymous = main_of(&get_as(&e.w, NEW, None).await);
     assert!(anonymous.to_lowercase().contains("account"), "{anonymous}");
+    // The refusal comes before the form is read: a form with every field wrong is not told what is wrong with it by
+    // someone who may not create a view, and a visitor who is nobody is told to sign in, not that it is not allowed.
+    let bad = form("Bad Name", "", "nowhere");
+    let refused = post_form(&e.w, NEW, Some(&e.contributor), &bad).await;
+    assert_eq!(refused.status, StatusCode::FORBIDDEN);
+    assert!(
+        main_of(&refused).contains("Not allowed"),
+        "{}",
+        main_of(&refused)
+    );
+    assert!(!refused.body().contains("role=\"alert\""));
+    let nobody = post_form(&e.w, NEW, None, &bad).await;
+    assert_eq!(nobody.status, StatusCode::FORBIDDEN);
+    assert!(
+        main_of(&nobody).to_lowercase().contains("account"),
+        "{}",
+        main_of(&nobody)
+    );
+    assert!(
+        !main_of(&nobody).contains("Not allowed"),
+        "{}",
+        main_of(&nobody)
+    );
     assert!(e.w.store.view_acts(&e.w.wiki.id).unwrap().is_empty());
     assert!(e.signer.calls().is_empty());
     assert!(e.w.logged().is_empty(), "{:?}", e.w.logged());
@@ -419,6 +454,38 @@ async fn a_name_a_kind_or_a_source_that_is_wrong_shows_the_form_again_with_what_
     }
     assert!(e.w.store.view_acts(&e.w.wiki.id).unwrap().is_empty());
     assert!(e.signer.calls().is_empty());
+}
+
+#[tokio::test]
+async fn what_was_chosen_stays_chosen_when_the_form_is_shown_again() {
+    let e = env();
+    e.w.fake.add_view("other");
+    let a = post_form(
+        &e.w,
+        NEW,
+        Some(&e.reviewer),
+        &form("Bad Name", "interpretation", "other"),
+    )
+    .await;
+    assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let main = main_of(&a);
+    assert!(
+        main.contains(
+            "value=\"interpretation\" aria-describedby=\"view-kind-interpretation-note\" checked"
+        ),
+        "{main}"
+    );
+    assert!(
+        !main.contains(
+            "value=\"experimental\" aria-describedby=\"view-kind-experimental-note\" checked"
+        ),
+        "{main}"
+    );
+    assert!(
+        main.contains("<option value=\"other\" selected>other</option>"),
+        "{main}"
+    );
+    assert!(main.contains("value=\"Bad Name\""), "{main}");
 }
 
 #[tokio::test]
@@ -668,6 +735,11 @@ fn forked(e: &Env) {
             source(2, SourceKind::Secondary),
         ],
     );
+    // A page only `main` has.
+    e.w.fake.set(
+        "pages/Extra.md",
+        "---\ntitle: Extra\n---\n\nOnly in the default view.\n",
+    );
     e.w.fake.diff_says(Ok(inklkunn_prikk::Diff {
         schema_version: "diff-report-v1".to_owned(),
         from: inklkunn_prikk::storage::DiffSide {
@@ -689,7 +761,7 @@ fn forked(e: &Env) {
                 ],
             },
             inklkunn_prikk::DiffEntry {
-                path: "pages/New.md".to_owned(),
+                path: "pages/Extra.md".to_owned(),
                 status: "removed".to_owned(),
                 from: None,
                 to: None,
@@ -755,9 +827,19 @@ async fn two_views_that_differ_are_compared_claim_by_claim_and_page_by_page_with
     );
     assert!(main.contains("The page differs."), "{main}");
     assert!(main.contains("1 line added"), "{main}");
-    // A page only one view has says which: `New` is main's alone, `Old` is alt's alone.
-    assert!(main.contains("Only in the default view."), "{main}");
-    assert!(main.contains("Only in the view “alt”."), "{main}");
+    // A page only one view has says which: `Extra` is main's alone, `Old` is alt's alone.
+    assert!(
+        entry_of(&main, "How Extra differs").contains("Only in the default view."),
+        "{main}"
+    );
+    assert!(
+        entry_of(&main, "How Old differs").contains("Only in the view “alt”."),
+        "{main}"
+    );
+    assert!(
+        entry_of(&main, "How Home differs").contains("The page differs."),
+        "{main}"
+    );
     assert!(
         main.contains("href=\"/handbook/-/views/compare/Home?a=main&#38;b=alt\""),
         "{main}"
@@ -821,6 +903,44 @@ async fn a_pages_difference_between_two_views_is_the_history_pages_diff_with_its
     assert_eq!(none.status, StatusCode::NOT_FOUND);
     let bare = get(&e.w, "/handbook/-/views/compare/Home").await;
     assert_eq!(bare.status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn a_page_only_one_view_has_is_read_only_in_that_view() {
+    let e = env();
+    forked(&e);
+    // `Extra` is the default view's alone: the page is offered where it is, and nowhere it is not.
+    let a = get(&e.w, "/handbook/-/views/compare/Extra?a=main&b=alt").await;
+    assert_eq!(a.status, StatusCode::OK, "{}", a.body());
+    let main = main_of(&a);
+    assert!(main.contains("Only in the default view."), "{main}");
+    assert!(main.contains("Read Extra in the default view"), "{main}");
+    assert!(!main.contains("Read Extra in the view “alt”"), "{main}");
+    assert!(!main.contains("~alt/Extra"), "{main}");
+}
+
+#[tokio::test]
+async fn a_claim_only_the_second_view_has_leads_to_its_page_in_the_second_view() {
+    let e = env();
+    forked(&e);
+    // Reversed, the claim only `main` has is the second view's: its page is read in the default view (no `?view=`),
+    // not in `alt`, which has no such claim.
+    let main = main_of(&get(&e.w, "/handbook/-/views/compare?a=alt&b=main").await);
+    assert!(
+        main.contains(&format!(
+            "href=\"/handbook/-/claim/{}\"",
+            common::claim_id(2)
+        )),
+        "{main}"
+    );
+    assert!(
+        !main.contains(&format!(
+            "/handbook/-/claim/{}?view=alt",
+            common::claim_id(2)
+        )),
+        "{main}"
+    );
+    assert!(main.contains("Only in the default view."), "{main}");
 }
 
 #[tokio::test]
@@ -989,6 +1109,32 @@ async fn a_claim_that_reads_alike_everywhere_says_so_and_a_wiki_with_one_view_sa
     assert!(
         alike.contains("No other view reads this claim differently."),
         "{alike}"
+    );
+}
+
+#[tokio::test]
+async fn a_view_that_could_not_be_read_is_said_to_be_unchecked_and_not_to_agree() {
+    let e = env();
+    put(
+        &e.w,
+        &home_with(SAID),
+        &[claim(1, Standing::Accepted, None, SAID)],
+        &[],
+    );
+    // A view whose tip the repository cannot give just now.
+    e.w.fake.add_view_at("ghost", 99);
+    let page = format!("/handbook/-/claim/{}", common::claim_id(1));
+    let a = get(&e.w, &page).await;
+    assert_eq!(a.status, StatusCode::OK);
+    let main = main_of(&a);
+    assert!(main.contains("<h2>Other views</h2>"), "{main}");
+    assert!(
+        main.contains("Some views could not be read just now, so they are not listed here."),
+        "{main}"
+    );
+    assert!(
+        !main.contains("No other view reads this claim differently."),
+        "{main}"
     );
 }
 

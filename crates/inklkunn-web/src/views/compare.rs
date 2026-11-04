@@ -436,7 +436,10 @@ fn report(t: T, wiki: &WikiRecord, a: &str, b: &str, comparison: &ViewComparison
     Report {
         same: comparison.same.then(|| t.get(Key::CompareSame)),
         claims_heading: t.get(Key::CompareClaimsHeading),
-        claims_none: (comparison.claims.is_empty() && comparison.claims_omitted == 0)
+        // A list that leaves some out is full, so an empty one has none left out.
+        claims_none: comparison
+            .claims
+            .is_empty()
             .then(|| t.get(Key::CompareClaimsNone)),
         claims: claim_items(t, wiki, a, b, comparison),
         claims_omitted: omitted(
@@ -445,7 +448,9 @@ fn report(t: T, wiki: &WikiRecord, a: &str, b: &str, comparison: &ViewComparison
             comparison.claims_omitted,
         ),
         pages_heading: t.get(Key::ComparePagesHeading),
-        pages_none: (comparison.pages.is_empty() && comparison.pages_omitted == 0)
+        pages_none: comparison
+            .pages
+            .is_empty()
             .then(|| t.get(Key::ComparePagesNone)),
         pages: comparison
             .pages

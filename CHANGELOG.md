@@ -66,6 +66,32 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   messages in both languages with their glossary rows; every new state through the structural rules. **Not in this
   entry:** the reviewers' identity decisions and re-confirmations recorded and counted in the participation metrics (part 1
   D-1 d) need a store record the schema does not have (a decision request).
+- **K-T8 (handoff 005; RFC 005 part 2 D-9): views.** *Creating a view is a reviewers' act* (the owner's ruling):
+  `create-view` needs the reviewer role and the `review` token scope by default (it was the maintainer's). The form
+  (`/{slug}/-/views/new`, no script, signed in, the session's token like every write) takes a name (lower case letters,
+  digits, `.`, `-`, `_`, at most 64; never changed on the way), what the view is for (*experimental* or
+  *interpretation*, neither preselected) and the view to fork from; the act goes through the acceptance path's steps
+  (`ProposalAcceptor::create_view`: authorize first, the wiki's write lease, the guard against an unfinished act, the
+  views read from prikk now, **the act recorded before the signer is asked**, the signer's `create_view` inside the lease,
+  the end settled from the repository and not from the signer's answer). The signer's ledger now reads that record back (it
+  answered *none* before, so `create_view` could not be called), and an unfinished key retirement pauses it as it pauses a
+  seal. The record (`ViewActRecord`: name, the view and the block it was forked from, kind, creator) is the view's
+  recorded origin; `ActStore` gains `begin_view_act`, `finish_view_act`, `open_view_act`, `view_acts` and
+  `keeps_view_acts`, whose defaults keep none (**the SQLite store keeps none until the schema is decided**: a server over
+  it says views cannot be created here, before showing a form), and the in-memory store keeps them. A holder that dies
+  making a view flags nothing (`Purpose::View`: one ref, no history to recover); an act that never ended is settled from
+  prikk before the next creation; a closed view's name stays taken; a wiki holds at most 100 open views. *Views*
+  (`/{slug}/-/views`, linked from the about page) lists the default view first, called **the default view**, then the
+  others by name, each with its recorded kind and origin (a view the service did not make says so in one plain sentence),
+  bounded and counted. *Compare views* (`/{slug}/-/views/compare?a=&b=`) lists the claims that differ (in wording, in
+  status, in sources; a claim only one view has; a file that cannot be read is not "no such claim") and the pages that
+  differ, from the two views' derived knowledge indexes and **one** whole-tree `diff` of the two tips, bounded (200 each,
+  the rest counted); `…/compare/{title}` is RFC 003's diff of one page between the two tips, with its word marks and its
+  line bound. A claim's page now ends with *Other views*: each of at most ten other views where the claim reads
+  differently, with a link to compare; it says that none does only when it looked at every other view, and says so when it
+  could not, and prints nothing when the wiki has one view. No view is called canonical, adopted or official, and the
+  comparison treats its two sides alike. Every message is in both languages with its glossary row; every state is in the
+  structural tests; the route and enumeration tests carry `create-view`.
 
 ## [0.2.0] — 2026-11-04
 

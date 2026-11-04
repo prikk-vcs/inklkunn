@@ -183,7 +183,8 @@ fn render(page: &Page, wiki: &WikiRecord, list: &ViewList, may_create: bool) -> 
     let slug = wiki.slug.as_str();
     let shell = Shell::of(wiki);
     let head = page.wiki_head(wiki, Subject::Surface("-/views"));
-    let only_default = list.rows.len() <= 1 && list.omitted == 0;
+    // A list past its bound holds the bound's worth of rows, so one row (or none) is the default view alone.
+    let only_default = list.rows.len() <= 1;
     let rendered = ViewsTpl {
         page: &head,
         shell: &shell,
