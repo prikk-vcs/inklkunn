@@ -29,6 +29,8 @@ pub(crate) fn digest_of_block(block: &str) -> Digest {
 
 mod acceptance;
 mod check;
+mod compare;
+mod compare_views;
 mod compose;
 mod curation;
 mod digest;

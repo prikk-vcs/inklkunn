@@ -53,6 +53,7 @@
 //!   footnotes keep the ids the Markdown writer gives them.
 
 mod changes;
+mod compare;
 mod counting;
 mod graph;
 mod history;
@@ -95,6 +96,10 @@ use crate::knowledge::index::{self as knowledge_index, KnowledgeIndex};
 pub use changes::{
     ChangeFilter, ChangeKind, ChangeList, ChangeRow, ChangedPage, Person, SCAN_WINDOW, StaleList,
     StalePage, Tri,
+};
+pub use compare::{
+    ComparedClaim, MAX_COMPARED_CLAIMS, MAX_COMPARED_PAGES, PageDifference, ViewComparison,
+    ViewPageDiff, ViewPageOutcome, ViewPageShape,
 };
 pub use counting::{Calls, CountingStorage};
 pub use graph::{

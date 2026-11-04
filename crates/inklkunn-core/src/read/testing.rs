@@ -27,6 +27,8 @@ struct State {
     /// A file change applied right after the next `branch list` answers (the view moves between two calls).
     move_after_views: Option<(String, Vec<u8>)>,
     extra_views: Vec<(String, u64)>,
+    /// The files of an extra view that has its own (by the view's number); one without shares the main view's.
+    view_files: BTreeMap<u64, BTreeMap<String, Vec<u8>>>,
     fail_views: Option<StorageError>,
     fail_materialize: Option<StorageError>,
     fail_read: Option<StorageError>,
@@ -123,6 +125,19 @@ impl Fake {
         s.extra_views.push((name.to_owned(), 1));
     }
 
+    /// A second view with **its own files** (and its own tip): the content of a view that was changed after it was
+    /// forked, for a comparison of two views.
+    pub(crate) fn add_view_with(&self, name: &str, files: &[(String, String)]) {
+        let mut s = self.state();
+        let n = 100 + u64::try_from(s.extra_views.len()).unwrap_or(0);
+        s.extra_views.push((name.to_owned(), n));
+        let files = files
+            .iter()
+            .map(|(p, t)| (p.clone(), t.as_bytes().to_vec()))
+            .collect();
+        s.view_files.insert(n, files);
+    }
+
     pub(crate) fn fail_views(&self, e: Option<StorageError>) {
         self.state().fail_views = e;
     }
@@ -182,12 +197,18 @@ fn files_at(s: &State, point: &Point) -> Option<BTreeMap<String, Vec<u8>>> {
             .iter()
             .find(|(version, _)| block_id(**version) == *id)
             .map(|(_, files)| files.clone())
-            // An extra view shares the files of the fake (it has its own state, not its own content).
+            // An extra view shares the files of the fake (it has its own state, not its own content) unless it
+            // was given files of its own.
             .or_else(|| {
                 s.extra_views
                     .iter()
-                    .any(|(_, n)| block_id(1_000_000 + n) == *id)
-                    .then(|| s.files.clone())
+                    .find(|(_, n)| block_id(1_000_000 + n) == *id)
+                    .map(|(_, n)| {
+                        s.view_files
+                            .get(n)
+                            .cloned()
+                            .unwrap_or_else(|| s.files.clone())
+                    })
             }),
     }
 }

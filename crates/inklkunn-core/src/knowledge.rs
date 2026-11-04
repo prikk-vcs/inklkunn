@@ -15,6 +15,8 @@
 //!   no owned page key affected. A refusal names the file and the rule and never repeats what a file said.
 //! - [`merge`]: the knowledge files in RFC 004's merge (part 2 D-4): YAML key by key, lists by stable identity,
 //!   a value changed on both sides an overlap with both texts, nothing lost.
+//! - [`compare`]: two views' claims side by side, claim by claim, what differs and nothing about which is right
+//!   (part 2 D-9; handoff K-T8).
 //! - [`index`]: the derived knowledge index of a tip (part 2 D-6), built from the same `extract` of the tip as the
 //!   title index and the link graph.
 //! - [`compose`], [`marker`], [`onpage`] and [`summary`]: making a claim and attaching a source in a proposal
@@ -27,6 +29,7 @@
 mod anchor;
 pub mod check;
 mod claim;
+pub mod compare;
 pub mod compose;
 pub mod curation;
 mod fault;

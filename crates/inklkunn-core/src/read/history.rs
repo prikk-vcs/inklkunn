@@ -643,6 +643,63 @@ fn resolve(index: &TitleIndex, title: &str) -> Result<Target, ReadError> {
     }
 }
 
+/// What one page's diff came to, from the report prikk gave for it (one definition for a page's diff between two
+/// changes and between two views).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct DiffShape {
+    pub(super) status: DiffStatus,
+    pub(super) hunks: Vec<HunkView>,
+    pub(super) added: u64,
+    pub(super) removed: u64,
+    pub(super) truncated: bool,
+    pub(super) no_lines: bool,
+}
+
+/// The status prikk gave a changed path (`None`: the path is not among the changed ones).
+pub(super) fn status_of(word: Option<&str>) -> DiffStatus {
+    match word {
+        None => DiffStatus::Unchanged,
+        Some("added") => DiffStatus::Added,
+        Some("removed") => DiffStatus::Removed,
+        Some("modified") => DiffStatus::Modified,
+        Some(_) => DiffStatus::Other,
+    }
+}
+
+/// The shape of the diff of the page at `path`: its status, its hunks as lines with word marks (at most
+/// [`MAX_DIFF_LINES`] lines; the rest is counted and not kept), and whether prikk gave no lines for a page that
+/// differs.
+pub(super) fn shape_diff(diff: &inklkunn_prikk::Diff, path: &str) -> DiffShape {
+    let entry = diff.entries.iter().find(|e| e.path == path);
+    let status = status_of(entry.map(|e| e.status.as_str()));
+    let (mut hunks, mut added, mut removed, mut lines) = (Vec::new(), 0_u64, 0_u64, 0_usize);
+    let mut truncated = false;
+    let given = entry.map_or(&[][..], |e| e.hunks.as_slice());
+    for raw in given {
+        let view = HunkView::of(raw);
+        if let HunkView::Lines(h) = &view {
+            added += h.added();
+            removed += h.removed();
+            lines += h.lines.len();
+        }
+        if truncated || lines > MAX_DIFF_LINES {
+            truncated = true;
+        } else {
+            hunks.push(view);
+        }
+    }
+    let no_lines = (given.is_empty() && status != DiffStatus::Unchanged)
+        || diff.unsupported_paths.iter().any(|p| p == path);
+    DiffShape {
+        status,
+        hunks,
+        added,
+        removed,
+        truncated,
+        no_lines,
+    }
+}
+
 // ------------------------------------------------------------------------------------ the service
 
 impl ReadService {
@@ -969,32 +1026,7 @@ impl ReadService {
             Err(StorageError::Refused { .. }) => return Ok(DiffOutcome::NoSuchChange),
             Err(e) => return Err(self.storage_error(wiki, e)),
         };
-        let entry = diff.entries.iter().find(|e| e.path == path);
-        let status = match entry.map(|e| e.status.as_str()) {
-            None => DiffStatus::Unchanged,
-            Some("added") => DiffStatus::Added,
-            Some("removed") => DiffStatus::Removed,
-            Some("modified") => DiffStatus::Modified,
-            Some(_) => DiffStatus::Other,
-        };
-        let (mut hunks, mut added, mut removed, mut lines) = (Vec::new(), 0_u64, 0_u64, 0_usize);
-        let mut truncated = false;
-        let given = entry.map_or(&[][..], |e| e.hunks.as_slice());
-        for raw in given {
-            let view = HunkView::of(raw);
-            if let HunkView::Lines(h) = &view {
-                added += h.added();
-                removed += h.removed();
-                lines += h.lines.len();
-            }
-            if truncated || lines > MAX_DIFF_LINES {
-                truncated = true;
-            } else {
-                hunks.push(view);
-            }
-        }
-        let no_lines = (given.is_empty() && status != DiffStatus::Unchanged)
-            || diff.unsupported_paths.contains(&path);
+        let shape = shape_diff(&diff, &path);
         Ok(DiffOutcome::Found(Box::new(PageDiff {
             title,
             path,
@@ -1002,12 +1034,12 @@ impl ReadService {
             to: to.to_owned(),
             from_number: from_block.number,
             to_number: to_block.number,
-            status,
-            hunks,
-            added,
-            removed,
-            truncated,
-            no_lines,
+            status: shape.status,
+            hunks: shape.hunks,
+            added: shape.added,
+            removed: shape.removed,
+            truncated: shape.truncated,
+            no_lines: shape.no_lines,
         })))
     }
 
