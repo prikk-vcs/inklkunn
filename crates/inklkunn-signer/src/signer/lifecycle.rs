@@ -125,6 +125,20 @@ impl Signer {
         if let Some(open) = &before.retiring {
             return Err(unfinished_refusal(&wiki, &open.maintainer_key_id));
         }
+        // A rotation records the newest block of every view (C11). A publication a killed `seal` left pending is
+        // finished by recovery afterwards, and the service's own block would then look like one made after the key was
+        // replaced (Z5): recovery first, whichever way the old key is to go.
+        if self
+            .writes
+            .doctor(repo)?
+            .diagnostics
+            .iter()
+            .any(|d| d.is_cleanup_pending())
+        {
+            return Err(SignerError::NeedsRecovery(format!(
+                "a publication that a killed seal left is pending, and a rotation records where the old key stopped; run `inklkunn wiki recover {wiki}` first, then rotate again"
+            )));
+        }
         let generation = before.generation.saturating_add(1);
         // A retirement starts from a repository that verifies (handoff 004, P2′): `verify` runs before anything is
         // changed, under the write lock just taken, so nothing happens between it and the removal from trust, and the

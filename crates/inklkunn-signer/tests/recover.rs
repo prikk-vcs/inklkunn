@@ -882,6 +882,48 @@ fn a_publication_a_killed_seal_left_is_finished_with_one_more_seal_and_no_second
 }
 
 #[test]
+fn a_rotation_refuses_while_a_publication_is_pending_and_names_recover() {
+    // Z5. A rotation records the newest block of every view. With a killed seal's publication pending, recovery would
+    // finish it after the rotation and the service's own block would look like one made after the old key was
+    // replaced: recovery first, for a kept old key and a retired one alike, and nothing changes.
+    let Some(f) = fixture("rotate-pending") else {
+        return;
+    };
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    f.publish_and_leave_the_queue(&p);
+    let before = f.signer.key_status(&f.wiki).unwrap();
+    for old_key in [
+        inklkunn_signer::OldKey::Keep,
+        inklkunn_signer::OldKey::Retire,
+    ] {
+        let r = f.signer.rotate_keys(
+            &inklkunn_signer::KeyAuthority::for_tests(),
+            &f.repo,
+            old_key,
+        );
+        let Err(inklkunn_signer::SignerError::NeedsRecovery(why)) = &r else {
+            panic!("{old_key:?}: {r:?}");
+        };
+        assert!(
+            why.contains(&format!("inklkunn wiki recover {}", f.wiki)) && why.contains("pending"),
+            "{old_key:?}: {why}"
+        );
+        assert_eq!(f.signer.key_status(&f.wiki).unwrap(), before, "{old_key:?}");
+        assert!(f.signer.superseded_keys(&f.wiki).unwrap().is_empty());
+    }
+    // Once recovery has finished the publication, the rotation goes ahead.
+    let act = f.act(vec![f.publish_op(&p)]);
+    f.leased(|| f.signer.complete_publication(&f.wiki, MAIN, &act, &p.token))
+        .expect("finished");
+    let r = f.signer.rotate_keys(
+        &inklkunn_signer::KeyAuthority::for_tests(),
+        &f.repo,
+        inklkunn_signer::OldKey::Keep,
+    );
+    assert!(r.is_ok(), "{r:?}");
+}
+
+#[test]
 fn a_published_block_with_renames_and_a_removal_is_proven_against_the_recorded_digest() {
     let Some(f) = fixture("publish-renames") else {
         return;
