@@ -288,13 +288,18 @@
   attestations succeeded; publishing skipped as rehearsal does. The architect's gates on the same tree: 2,202 tests with prikk
   and without, 260 self-skips, deny and audit 0 on a fresh advisory database, pin-check and floor-check (workspace tests) pass.
   **The 0.2.0 decision is with the owner** (below).
+- **2026-11-04 — 0.2.0 RELEASED (M2: propose and accept)**, authorized by the owner the same day. `release/0.2` at
+  `c6c7939` (workspace version 0.2.0, the CHANGELOG section with its lead, README), tag `0.2.0` signed by the owner's git
+  configuration; release run 41790102625 green in every job. Verified: both tarballs' checksums and provenance
+  attestations, both architecture images attested, `ghcr.io/prikk-vcs/inklkunn:0.2.0` pulls anonymously (the package is
+  public), the binary says `inklkunn 0.2.0`. crates.io skipped (no token). **Found at the cut:** 0.2.0's CHANGELOG section is
+  129,570 characters and a GitHub release body holds at most 125,000, and the release step runs after the image is
+  published: the release's text is now the section's lead and a link to the whole section (`.github/release-notes.sh`),
+  checked in the gates job before anything is built. Japanese ships as a labelled preview again; the about page says no
+  person who uses assistive technology has tested the site (a pass before 0.3.0). `release/0.2` merged back (fast-forward).
 
 ## Pending on the owner
 
-- **The 0.2.0 cut (2026-11-04):** authorize it, or say what must come first. Candidate `3aad274`, readiness report
-  `docs/releases/0.2.0-readiness.md`, rehearsal green. With it: whether Japanese ships as a labelled preview again (the
-  owner's review of 842 messages, DR-7, can follow the cut) and whether 0.2.0 may ship while no person who uses assistive
-  technology has tested the site (the about page says so; a pass before 0.3.0). crates.io stays optional (no token: skipped).
 - **Review the Japanese catalog** (DR-7; the owner is the reviewer): 842 messages, every one listed with where it appears in
   `docs/glossary.md`; until your sign-off Japanese stays a preview that only a reader's own choice turns on.
 
@@ -314,8 +319,9 @@
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and handoff 003's T1 – T3 are built and
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
-(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04): nothing owed by the dev team for 0.2.0.** Next: the architect's candidate and release rehearsal, and the
-architect brings the 0.2.0 decision to the owner. K-T5 onward after 0.2.0.
+(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **The dev team's order now:** the knowledge layer's
+K-T5 – K-T8 (M3: making claims, what a reader sees, *Why is this here?*, views), then K-T9 – K-T11; and, at the next touch of
+`signer/retirement.rs`, `seal_pause`'s operator sentence (Z7 – Z9 review). An assistive-technology pass is arranged before 0.3.0.
 
 ## Issue register
 
