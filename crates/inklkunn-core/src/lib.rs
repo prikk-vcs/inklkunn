@@ -57,6 +57,7 @@ pub mod read;
 pub mod reconcile;
 pub mod recovery;
 pub mod routes;
+pub mod views;
 pub mod wiki;
 
 pub use inklkunn_signer::message;
@@ -69,7 +70,7 @@ pub use accept::{
 pub use acceptance::{
     AcceptFailure, AcceptStep, AcceptanceParts, Accepted, AfterSeal, NoFollowUp, NoLedger,
     ProposalAcceptor, Reconciled, Signed, StoreActs, StoreLedger, SystemActFailure, SystemActs,
-    SystemRequest, SystemStep,
+    SystemRequest, SystemStep, ViewCreated, ViewFailure,
 };
 pub use assurance::Assurance;
 pub use authorize::{

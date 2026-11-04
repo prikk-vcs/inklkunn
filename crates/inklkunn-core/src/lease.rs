@@ -115,6 +115,8 @@ pub enum Purpose {
     Refresh,
     /// Recovery (handoff 004 T5).
     Recovery,
+    /// A view's creation (handoff 005 K-T8): one ref published, nothing in the history.
+    View,
 }
 
 impl Purpose {
@@ -126,8 +128,19 @@ impl Purpose {
             Purpose::Export => "export",
             Purpose::Refresh => "refresh",
             Purpose::Recovery => "recovery",
+            Purpose::View => "view",
         }
     }
+}
+
+/// Does a lease held for `purpose` (the word of a holder record) leave nothing in the repository to recover when
+/// its holder dies? An export and a refresh write nothing to the history, and a view's creation publishes one ref
+/// in one call, so a holder that died in the middle of one is no reason to flag the wiki *needs recovery*. The
+/// view's own record settles itself the next time a view is made.
+pub(crate) fn leaves_nothing_to_recover(purpose: &str) -> bool {
+    [Purpose::Export, Purpose::Refresh, Purpose::View]
+        .iter()
+        .any(|p| p.as_str() == purpose)
 }
 
 /// Why the wiki could not be had now (OP-01: *the wiki is busy*).

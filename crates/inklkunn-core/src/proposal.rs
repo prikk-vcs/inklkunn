@@ -567,6 +567,19 @@ impl ProposalService {
 
     // --- authorization and loading
 
+    /// May `principal` do `action` to `resource`? The acceptance path's other acts (a view's creation) are
+    /// authorized through the same authorizer as the proposals', so that there is one.
+    pub(crate) fn authorizes(
+        &self,
+        principal: &Principal,
+        action: Action,
+        resource: &Resource,
+    ) -> bool {
+        self.authorizer
+            .authorize(principal, action, resource)
+            .is_allowed()
+    }
+
     fn allow(&self, principal: &Principal, action: Action, resource: &Resource) -> Result<()> {
         if self
             .authorizer

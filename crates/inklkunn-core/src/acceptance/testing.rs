@@ -11,9 +11,9 @@ use inklkunn_signer::accept::{
     SealedChange, ViewCreationAct,
 };
 use inklkunn_store::{
-    Account, AccountId, AccountStore, Base, DisplayName, FileChange, MemoryAudit, MemoryStore,
-    NewWiki, ProposalId, ProposalRecord, ProposalStore, Role, RoleGrant, RoleStore, RootLayout,
-    Slug, Visibility, WikiRecord, WikiStore,
+    AcceptanceStore, Account, AccountId, AccountStore, Base, DisplayName, FileChange, MemoryAudit,
+    MemoryStore, NewWiki, ProposalId, ProposalRecord, ProposalStore, Role, RoleGrant, RoleStore,
+    RootLayout, Slug, Visibility, WikiRecord, WikiStore,
 };
 
 use super::{AcceptanceParts, ProposalAcceptor, StoreLedger, SystemActs};
@@ -36,6 +36,18 @@ pub(crate) struct Call {
 
 type Hook = Box<dyn Fn(&Call) + Send + Sync>;
 
+/// One call to the stand-in signer's `create_view`.
+#[derive(Debug, Clone)]
+pub(crate) struct ViewCall {
+    pub(crate) name: String,
+    pub(crate) from: String,
+    pub(crate) act: ViewCreationAct,
+    /// What the signer's guard (the store's ledger) said about the act **at the moment of the call**.
+    pub(crate) facts: Option<inklkunn_signer::accept::ViewCreationFacts>,
+    /// What the wiki's recorded lease holder was held for at the moment of the call.
+    pub(crate) lease_purpose: Option<String>,
+}
+
 /// A signer stand-in: answers from a script (a sealed change when the script is empty), keeps every call, and
 /// runs a hook when called.
 pub(crate) struct Double {
@@ -43,6 +55,14 @@ pub(crate) struct Double {
     answers: Mutex<VecDeque<Result<SealedChange, AcceptError>>>,
     calls: Mutex<Vec<Call>>,
     hook: Mutex<Option<Hook>>,
+    view_answers: Mutex<VecDeque<Result<(), AcceptError>>>,
+    view_calls: Mutex<Vec<ViewCall>>,
+    /// Where a view the stand-in creates appears (the in-memory repository).
+    views_in: Mutex<Option<Arc<Fake>>>,
+    /// Where the stand-in reads the lease holder's record (the service store).
+    leases_in: Mutex<Option<Arc<MemoryStore>>>,
+    /// After the next `create_view`, the repository cannot list its views.
+    views_break_after: Mutex<bool>,
 }
 
 impl Double {
@@ -52,7 +72,48 @@ impl Double {
             answers: Mutex::new(VecDeque::new()),
             calls: Mutex::new(Vec::new()),
             hook: Mutex::new(None),
+            view_answers: Mutex::new(VecDeque::new()),
+            view_calls: Mutex::new(Vec::new()),
+            views_in: Mutex::new(None),
+            leases_in: Mutex::new(None),
+            views_break_after: Mutex::new(false),
         })
+    }
+
+    /// The next `create_view` answers `answer` (and, when it is `Ok`, the view appears in the repository).
+    pub(crate) fn then_view(&self, answer: Result<(), AcceptError>) {
+        self.view_answers
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push_back(answer);
+    }
+
+    /// A view this stand-in creates appears in `fake`.
+    pub(crate) fn creates_views_in(&self, fake: Arc<Fake>) {
+        *self.views_in.lock().unwrap_or_else(PoisonError::into_inner) = Some(fake);
+    }
+
+    /// A `create_view` of this stand-in notes the purpose of the lease record it finds in `store`.
+    pub(crate) fn sees_leases_in(&self, store: Arc<MemoryStore>) {
+        *self
+            .leases_in
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(store);
+    }
+
+    /// After the next `create_view`, the in-memory repository cannot list its views any more.
+    pub(crate) fn then_views_cannot_be_listed(&self) {
+        *self
+            .views_break_after
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = true;
+    }
+
+    pub(crate) fn view_calls(&self) -> Vec<ViewCall> {
+        self.view_calls
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     /// The next call answers `answer`.
@@ -119,12 +180,64 @@ impl Accept for Double {
 
     fn create_view(
         &self,
-        _: &inklkunn_store::WikiId,
-        _: &str,
-        _: &str,
-        _: &ViewCreationAct,
+        wiki: &inklkunn_store::WikiId,
+        name: &str,
+        from: &str,
+        act: &ViewCreationAct,
     ) -> Result<(), AcceptError> {
-        Err(AcceptError::NotPending)
+        // The guard of the real signer: the act is open in the ledger and names this wiki, view and ref.
+        let facts = self.ledger.view_creation(act).unwrap_or(None);
+        self.view_calls
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(ViewCall {
+                name: name.to_owned(),
+                from: from.to_owned(),
+                act: act.clone(),
+                facts: facts.clone(),
+                lease_purpose: self
+                    .leases_in
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .as_ref()
+                    .and_then(|store| store.lease_holder(wiki).ok().flatten())
+                    .map(|h| h.purpose),
+            });
+        match facts {
+            Some(f) if f.wiki == *wiki && f.name == name && f.from == from => {}
+            _ => return Err(AcceptError::NotPending),
+        }
+        let answer = self
+            .view_answers
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .pop_front()
+            .unwrap_or(Ok(()));
+        if matches!(answer, Ok(()) | Err(AcceptError::SeedsNotRemoved { .. }))
+            && let Some(fake) = self
+                .views_in
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .as_ref()
+        {
+            fake.add_view(name);
+        }
+        if *self
+            .views_break_after
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            && let Some(fake) = self
+                .views_in
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .as_ref()
+        {
+            fake.fail_views(Some(inklkunn_prikk::StorageError::Driver {
+                verb: "branch",
+                detail: "the repository cannot list its views".to_owned(),
+            }));
+        }
+        answer
     }
 }
 
@@ -255,6 +368,8 @@ impl Rig {
         ));
         let ledger = Arc::new(StoreLedger::new(store.clone(), store.clone()));
         let double = Double::new(ledger.clone());
+        double.creates_views_in(fake.clone());
+        double.sees_leases_in(store.clone());
         Rig {
             _dir: dir,
             store,

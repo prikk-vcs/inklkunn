@@ -66,9 +66,11 @@ pub(crate) mod shared;
 mod system;
 #[cfg(test)]
 pub(crate) mod testing;
+mod views;
 
 pub use ledger::{NoLedger, StoreActs, StoreLedger, digest_from_hex, message_digest};
 pub use system::{SystemActFailure, SystemActs, SystemRequest, SystemSigned, SystemStep};
+pub use views::{ViewCreated, ViewFailure};
 
 use prepare::{PrepareError, Prepared};
 use shared::{Blocked, TipError};

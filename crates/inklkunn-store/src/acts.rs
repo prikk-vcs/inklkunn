@@ -310,6 +310,12 @@ pub trait ActStore: Send + Sync {
     // these as the defaults do: it refuses to begin one, finds none open and lists none, so a service over it
     // says that views cannot be created, and a reader of views sees them without an origin.
 
+    /// Does this store keep the record of a view's creation at all? A service asks before it offers to create a
+    /// view, so that it never takes a first step it cannot record.
+    fn keeps_view_acts(&self) -> bool {
+        false
+    }
+
     /// Start a view's creation. The wiki must be there ([`NotFound`](crate::StoreError::NotFound)); the id must be
     /// new and **no other act that stands may hold the name** in this wiki
     /// ([`AlreadyRecorded`](crate::StoreError::AlreadyRecorded) in both cases: nothing is written then). The name

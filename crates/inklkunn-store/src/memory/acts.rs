@@ -202,6 +202,10 @@ impl ActStore for MemoryStore {
             .collect())
     }
 
+    fn keeps_view_acts(&self) -> bool {
+        true
+    }
+
     fn begin_view_act(&self, act: &ViewActRecord) -> Result<()> {
         if !self.wiki_exists(&act.wiki) {
             return Err(StoreError::NotFound);

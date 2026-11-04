@@ -532,9 +532,7 @@ impl Recovery {
     ) -> Result<Witness, RecoveryError> {
         let p = &self.parts;
         let repo = p.layout.repo_dir(&wiki.id);
-        let dead = dead.filter(|h| {
-            h.purpose != Purpose::Export.as_str() && h.purpose != Purpose::Refresh.as_str()
-        });
+        let dead = dead.filter(|h| !crate::lease::leaves_nothing_to_recover(&h.purpose));
         let acts = self.unfinished_acts(wiki, dead.as_ref())?;
         let status_read = p.storage.status(&repo);
         let table = self.processes.processes();
@@ -1225,9 +1223,7 @@ fn reasons_of(
         out.push("open-system-act");
     }
     // An export's or a refresh's record that was left leaves nothing in the repository to recover.
-    if dead.is_some_and(|h| {
-        h.purpose != Purpose::Export.as_str() && h.purpose != Purpose::Refresh.as_str()
-    }) {
+    if dead.is_some_and(|h| !crate::lease::leaves_nothing_to_recover(&h.purpose)) {
         out.push("dead-holder");
     }
     if acts.recovery_acts(wiki)?.iter().any(|e| e.end.is_none()) {

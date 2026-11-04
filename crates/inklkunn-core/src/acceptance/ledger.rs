@@ -21,7 +21,8 @@ use inklkunn_signer::{
     ViewCreationFacts,
 };
 use inklkunn_store::{
-    AcceptanceId, AcceptanceOutcome, AcceptanceStore, ActStore, RecoveryActId, SystemActId, WikiId,
+    AcceptanceId, AcceptanceOutcome, AcceptanceStore, ActStore, RecoveryActId, SystemActId,
+    ViewActId, WikiId,
 };
 use sha2::{Digest as _, Sha256};
 
@@ -144,9 +145,25 @@ impl AcceptanceLedger for StoreLedger {
         Ok(None)
     }
 
-    fn view_creation(&self, _: &ViewCreationAct) -> Result<Option<ViewCreationFacts>, LedgerError> {
-        // View creation has its own recorded act (a later handoff); until it does, none is pending.
-        Ok(None)
+    fn view_creation(
+        &self,
+        act: &ViewCreationAct,
+    ) -> Result<Option<ViewCreationFacts>, LedgerError> {
+        // The act is the record the service wrote before it asked (handoff 005 K-T8): **open** (not ended), and what
+        // it names is all the signer may create. A name that is not an act's id, an act that ended, and an act of a
+        // store that keeps none are all "not pending".
+        let Some(id) = ViewActId::parse(act.as_str()) else {
+            return Ok(None);
+        };
+        let open = self
+            .acts
+            .open_view_act(&id)
+            .map_err(|e| LedgerError(format!("the view-creation record: {e}")))?;
+        Ok(open.map(|a| ViewCreationFacts {
+            wiki: a.wiki,
+            name: format!("heads/{}", a.name),
+            from: format!("heads/{}", a.forked_from),
+        }))
     }
 
     fn recovery(&self, act: &RecoveryToken) -> Result<Option<RecoveryFacts>, LedgerError> {

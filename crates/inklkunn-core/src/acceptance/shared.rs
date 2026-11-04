@@ -11,7 +11,7 @@ use inklkunn_store::{
 };
 
 use super::{Reconciled, StoreActs};
-use crate::lease::{Lease, Purpose};
+use crate::lease::Lease;
 use crate::reconcile::{
     ReadBounds, ReconcileError, Report, reconcile_since, reconcile_with, record_findings,
 };
@@ -76,9 +76,9 @@ pub(crate) fn recovery_guard(
         .into_iter()
         .find(|e| e.end.is_none());
     // An export or a refresh that died leaves nothing in the repository to recover.
-    let died = lease.replaced().filter(|h| {
-        h.purpose != Purpose::Export.as_str() && h.purpose != Purpose::Refresh.as_str()
-    });
+    let died = lease
+        .replaced()
+        .filter(|h| !crate::lease::leaves_nothing_to_recover(&h.purpose));
     let interrupted =
         open_acceptance.is_some() || pending.is_some() || open_act.is_some() || died.is_some();
     if !interrupted {

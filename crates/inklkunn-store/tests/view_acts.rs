@@ -38,6 +38,7 @@ fn the_suite(store: &(impl ActStore + WikiStore + AccountStore)) {
     let by = account(store);
 
     // --- Nothing yet; the kinds are two words and read back.
+    assert!(store.keeps_view_acts());
     assert!(store.view_acts(&w.id).unwrap().is_empty());
     assert_eq!(ViewKind::ALL.len(), 2);
     for kind in ViewKind::ALL {
@@ -155,4 +156,21 @@ fn the_suite(store: &(impl ActStore + WikiStore + AccountStore)) {
 #[test]
 fn the_memory_store_keeps_the_record_of_a_views_creation() {
     the_suite(&MemoryStore::new());
+}
+
+#[test]
+fn a_store_that_keeps_none_says_so_refuses_to_begin_one_and_lists_none() {
+    // The SQLite store keeps no record of a view's creation until the schema that would hold it is decided: the
+    // defaults of the trait answer, so a service over it never takes a first step it cannot record.
+    let store = inklkunn_store::SqliteStore::open_in_memory().unwrap();
+    let w = wiki(&store, "views");
+    let by = account(&store);
+    assert!(!store.keeps_view_acts());
+    let a = act(&w.id, &by, "draft", ViewKind::Experimental, 1);
+    assert!(matches!(
+        store.begin_view_act(&a),
+        Err(StoreError::Backend(_))
+    ));
+    assert_eq!(store.open_view_act(&a.id).unwrap(), None);
+    assert!(store.view_acts(&w.id).unwrap().is_empty());
 }
