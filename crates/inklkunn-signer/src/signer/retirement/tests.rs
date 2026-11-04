@@ -287,7 +287,7 @@ fn what_a_retirement_records_is_what_it_traces_to_the_keys_own_history() {
 fn everything_that_is_not_traced_is_named() {
     // Z1. `a` is traced. `b` is the retired key's but not among the blocks known when it was replaced (a late block);
     // `c` lost its signature and the key did not seal it; ref state `2` is in no view's log up to the recorded tips;
-    // `t` is a tag; and one recorded tip is not in its view's log.
+    // `e` is a tag. (A recorded tip that is not in its view's log is the next test's.)
     let t = trust(&[
         ("block", 'a'),
         ("block", 'b'),
@@ -297,20 +297,17 @@ fn everything_that_is_not_traced_is_named() {
         ("tag", 'e'),
     ]);
     let (blocks, states) = (ids(&['a']), ids(&['1']));
-    let mut known = known(&blocks, &states);
-    let lost_block = id('9');
-    known.lost.push(("heads/side", lost_block.as_str()));
+    let known = known(&blocks, &states);
     let found = record_of(&t, &ids(&['a', 'b']), &known, &[]);
     assert_eq!(found.record.blocks, ids(&['a']));
     assert_eq!(found.record.ref_states, ids(&['1']));
     let said = found.untraceable.join("\n");
-    assert_eq!(found.untraceable.len(), 5, "{said}");
+    assert_eq!(found.untraceable.len(), 4, "{said}");
     for (needle, why) in [
         (id('b'), "sealed with the key after it was replaced"),
         (id('c'), "the key did not seal it"),
         (id('2'), "no view's log shows it"),
         (id('e'), "tag"),
-        (lost_block.clone(), "heads/side"),
     ] {
         assert!(
             found
@@ -327,7 +324,65 @@ fn everything_that_is_not_traced_is_named() {
         text.contains(UNTRACEABLE_SENTENCE) && text.contains(&id('b')) && text.contains(&id('e'))
     );
     assert!(text.contains(&abandon_retirement_command(&wiki)), "{text}");
-    assert!(text.starts_with("5 finding(s) of the key k1"), "{text}");
+    assert!(text.starts_with("4 finding(s) of the key k1"), "{text}");
+}
+
+#[test]
+fn a_lost_tip_is_named_first_and_its_views_blocks_are_not_said_to_be_sealed_after_the_replacement()
+{
+    // Z8. `b` is the retired key's and not among the blocks known; the recorded tip of `heads/side` is not in its
+    // log. Nothing of that view is known, so `b` is not *known* to have been sealed after the key was replaced: it is
+    // said to be absent from the history up to the recorded block. The lost tip comes before it.
+    let t = trust(&[("block", 'a'), ("block", 'b'), ("tag", 'e')]);
+    let (blocks, states) = (ids(&['a']), Vec::new());
+    let mut known = known(&blocks, &states);
+    let lost_block = id('9');
+    known.lost.push(("heads/side", lost_block.as_str()));
+    let found = record_of(&t, &ids(&['a', 'b']), &known, &[]);
+    assert_eq!(found.record.blocks, ids(&['a']));
+    let said = found.untraceable.join("\n");
+    assert_eq!(found.untraceable.len(), 3, "{said}");
+    let first = found.untraceable.first().expect("a finding");
+    assert!(
+        first.contains("heads/side")
+            && first.contains(&lost_block)
+            && first.contains("is not in its history"),
+        "{said}"
+    );
+    let late = found
+        .untraceable
+        .iter()
+        .find(|u| u.contains(&id('b')))
+        .expect("the block is named");
+    assert!(
+        late.contains(
+            "not in that view's history up to the newest block recorded when the key was replaced"
+        ),
+        "{said}"
+    );
+    assert!(
+        !said.contains("sealed with the key after it was replaced"),
+        "{said}"
+    );
+}
+
+#[test]
+fn a_lost_tip_is_in_the_named_list_whatever_the_cap_hides_of_the_rest() {
+    // Z8: more than NAMED_AT_MOST findings with a lost tip among them: it is named, not counted in "and N more".
+    let mut t = trust(&[]);
+    t.tags = (0..NAMED_AT_MOST + 5).map(|n| format!("t{n:02}")).collect();
+    let (blocks, states): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
+    let mut known = known(&blocks, &states);
+    let lost_block = id('9');
+    known.lost.push(("heads/side", lost_block.as_str()));
+    let found = record_of(&t, &[], &known, &[]);
+    assert_eq!(found.untraceable.len(), NAMED_AT_MOST + 6);
+    let text = untraceable_text(&WikiId::new(), "k1", &found.untraceable);
+    assert!(
+        text.contains(&lost_block) && text.contains("heads/side"),
+        "{text}"
+    );
+    assert!(text.contains("and 6 more"), "{text}");
 }
 
 #[test]

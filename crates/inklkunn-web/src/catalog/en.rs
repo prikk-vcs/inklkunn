@@ -1046,11 +1046,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.retirement_unfinished.detail",
-        "A change to this wiki's keys is not finished, so nothing new can be signed into its history until the person who runs this wiki has finished it. The change was not made, and the proposal is kept.",
+        "A change to this wiki's keys is not finished, so nothing new can be signed into its history until the person who runs this wiki finishes or gives up a change to its keys. The change was not made, and the proposal is kept.",
     ),
     msg(
         "problem.retirement_unfinished.hint",
-        "Tell the person who runs this wiki. When they have finished it, accept the proposal again.",
+        "Tell the person who runs this wiki. When they have finished or given up the change, accept the proposal again.",
     ),
     // the inbox, following a page, and the flags of changes (handoff 004 T6)
     msg("title.inbox", "Inbox · {product}"),
@@ -1271,7 +1271,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "outcome_note.retirement_unfinished",
-        "A change to this wiki's keys is not finished, so nothing new can be signed into its history until the person who runs this wiki has finished it. Nothing was changed, and the proposal is kept. Tell that person; once they have finished it, accept the proposal again.",
+        "A change to this wiki's keys is not finished, so nothing new can be signed into its history until the person who runs this wiki finishes or gives up a change to its keys. Nothing was changed, and the proposal is kept. Tell that person; once it is finished or given up, accept the proposal again.",
     ),
     msg("outcome.unavailable", "Could not be done now"),
     msg(

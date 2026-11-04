@@ -45,6 +45,33 @@ fn a_retirement_that_is_not_finished_is_a_page_of_its_own_and_the_log_keeps_the_
 }
 
 #[test]
+fn the_pause_sentence_does_not_promise_that_finishing_resumes_writes() {
+    // Z8: with findings nothing traces, `finish-retirement` only refuses, so the sentence people whose proposal is
+    // held read names the person who runs the wiki finishing *or giving up* a change to its keys, not a command or a
+    // finish that resumes writes. English and the Japanese preview say the same.
+    use crate::catalog::{EN, JA_DEF, Lang, T};
+    for (lang, give_up) in [(EN, "gives up"), (Lang::from_def(&JA_DEF), "取りやめ")] {
+        let t = T::new(lang);
+        for key in [
+            Key::ProblemRetirementUnfinishedDetail,
+            Key::OutcomeNoteRetirementUnfinished,
+        ] {
+            let text = t.get(key);
+            assert!(text.contains(give_up), "{text}");
+            assert!(!text.contains("finish-retirement"), "{text}");
+        }
+    }
+    let english = T::new(EN).get(Key::OutcomeNoteRetirementUnfinished);
+    assert!(
+        english.contains(
+            "until the person who runs this wiki finishes or gives up a change to its keys"
+        ),
+        "{english}"
+    );
+    assert!(!english.contains("has finished it"), "{english}");
+}
+
+#[test]
 fn a_knowledge_file_refused_before_the_signer_is_a_page_of_its_own_and_the_log_names_the_file() {
     let logged = Mutex::new(Vec::new());
     let log = |line: &str| logged.lock().unwrap().push(line.to_owned());

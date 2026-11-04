@@ -375,7 +375,10 @@ fn judge_named(trust: &PublicationTrust, recorded: &Recorded) -> Judgement {
 /// uses); a ref state when it is a known one; a ref update as it is. Everything else is **untraceable** and named: a
 /// block sealed with the key afterwards, a block another key sealed, a ref state no log entry up to the recorded tips
 /// shows, a tag (no retirement records a tag), a recorded tip the repository no longer shows. A caller that finds
-/// anything untraceable records nothing.
+/// anything untraceable records nothing. **A lost tip is named first** (Z8), so the cap of [`NAMED_AT_MOST`] never
+/// hides it; while a tip is lost, a block the key sealed that is not known is not said to have been sealed after the
+/// key was replaced (nothing of that view is known, so that is not known to be true), only that the history up to
+/// the recorded block does not show it.
 pub(super) fn record_of(
     trust: &PublicationTrust,
     signed_by_key: &[String],
@@ -386,7 +389,13 @@ pub(super) fn record_of(
         earlier.iter().any(|(_, e)| pick(e).contains(id))
     };
     let signed_by_retired: HashSet<&str> = signed_by_key.iter().map(String::as_str).collect();
-    let mut untraceable = Vec::new();
+    let mut untraceable: Vec<String> = known
+        .lost
+        .iter()
+        .map(|(view, block)| {
+            format!("the newest block recorded for {view} ({block}) is not in its history")
+        })
+        .collect();
     let mut out = Excused::default();
     for block in &trust.blocks {
         if earlier_has(|e| &e.blocks, block) {
@@ -398,9 +407,13 @@ pub(super) fn record_of(
             ));
         } else if known.blocks.contains(block.as_str()) {
             out.blocks.push(block.clone());
-        } else {
+        } else if known.lost.is_empty() {
             untraceable.push(format!(
                 "block {block} (sealed with the key after it was replaced)"
+            ));
+        } else {
+            untraceable.push(format!(
+                "block {block} (not in that view's history up to the newest block recorded when the key was replaced)"
             ));
         }
     }
@@ -423,9 +436,6 @@ pub(super) fn record_of(
         .cloned()
         .collect();
     untraceable.extend(trust.tags.iter().map(|tag| format!("tag {tag}")));
-    untraceable.extend(known.lost.iter().map(|(view, block)| {
-        format!("the newest block recorded for {view} ({block}) is not in its history")
-    }));
     Findings {
         record: out,
         untraceable,

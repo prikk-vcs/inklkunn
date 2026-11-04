@@ -1109,6 +1109,24 @@ long list, `known_when_replaced` counting from the oldest entry, the plan's note
 seen to fail, restored): 24 mutations; three survived at first (the finish and retirement texts, and `status`'s sentence when the check
 runs) and their tests were strengthened until they were killed; two were reapplied after a formatting split.
 
+Follow-ups from the review of 2026-11-04, second (handoff 004, Z7, Z8).
+
+- **Z7.** `inklkunn wiki keys status` exits non-zero whenever a retirement is unfinished (writes are paused), whatever the late-seal
+  check could see. The check cannot see a key that is out of trust, so after `retire` ended unfinished (a close, a tag, a late block)
+  every `status` used to exit 0. The `UNFINISHED` line is still printed; the error says to look at it. A wiki with no unfinished
+  retirement keeps its exits.
+- **Z8.** A recorded tip that is not in its view's log is named **first** among the untraceable findings, so the cap of twenty names
+  never hides it; while a tip is lost, the blocks the key sealed that are not known are worded *not in that view's history up to the
+  newest block recorded when the key was replaced*, not *sealed with the key after it was replaced* (which is not known to be true
+  then). The sentence shown to people whose proposal is held while a retirement is unfinished (the API's detail and hint, and the
+  outcome's note, English and the Japanese preview) says writes resume *when the person who runs this wiki finishes or gives up a
+  change to its keys*; it no longer promises that finishing does.
+
+Z7 and Z8 add **1 prikk-dependent test** (`EXPECTED_SKIPS` 259 → 260): `status` after a `branch close` and after a tag by the
+superseded key. The tests that need no prikk: a lost tip named first and the neutral wording, the lost tip inside the cap, the
+pause sentence. The three `keys/tests.rs` tests that pinned exit 0 for an unfinished retirement now pin 1. Every fix was mutated
+(reverted, the tests seen to fail, restored). Store schema unchanged (15).
+
 ## [0.1.0] — 2026-10-31
 
 **M1 — read a wiki.** The first release: a standalone server that serves a prikk repository as a wiki. Pages in the
