@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | Claims, sources and views (RFC 005 part 2, D-1 … D-12), on part 1's decisions D-1 … D-4. |
-| Status | RFC 005 part 2 accepted by the owner 2026-10-31. **K-T1 … K-T4 are assignable now** (files, validator, merge, index: no surface, no sign-in needed); **K-T5 onward after 0.2.0 is cut** (they need signed-in proposers, the proposal path served and the reviewers' forms). The spike's follow-up K1 goes first. |
+| Status | RFC 005 part 2 accepted by the owner 2026-10-31. **K-T1 … K-T4 are assignable now** (files, validator, merge, index: no surface, no sign-in needed); **K-T5 onward are assignable now: 0.2.0 was cut on 2026-11-04** (signed-in proposers, the proposal path served and the reviewers' forms are released). The spike's follow-up K1 goes first. |
 | Basis | `rfcs/accepted/005-knowledge-layer-part-1-claim-identity.md` (D-1 … D-4), `rfcs/accepted/005-knowledge-layer-part-2-claims-evidence-views.md` (D-1 … D-12, *How this was checked*); requirements `KN-1 … KN-9`, `CM-5`, `CM-7`, `CM-11`, `NG-3`, `PU-6`, `PR-1`; RFC 004 (proposals, the merge, the inbox, metrics D-10); RFC 003 (the extract per tip, the derived indexes, health lists, the API and its OpenAPI document); wiki-commons XFER-1. |
 | Audience | The dev team. The two lenses of handoff 003 apply unchanged, and part 2's *How this was checked* is the reviewer's checklist. |
 | Handback | One review request per group: K-T1 … K-T4; K-T5 … K-T8; K-T9 … K-T11. Each with the usual gates, both test runs, the mutation table, and (for surfaces) every new page state in both languages. |
