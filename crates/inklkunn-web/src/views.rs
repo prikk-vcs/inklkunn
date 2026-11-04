@@ -4,11 +4,11 @@
 //! with the about page) unless they choose another; **no view is called canonical, adopted or official**, and
 //! none is ranked: the list is the default view and then the others by name, which says nothing about them.
 //!
-//! - [`list`]: `GET /{slug}/-/views`, the wiki's open views with the kind and origin the service recorded.
+//! - `list`: `GET /{slug}/-/views`, the wiki's open views with the kind and origin the service recorded.
 //! - [`new`]: `GET|POST /{slug}/-/views/new`, the form that creates an alternative view (`create-view`, reviewers
 //!   and above by default; no script; signed in; the session's token like every write), and the page that says how
 //!   a creation ended, for each way it can.
-//! - [`compare`]: `GET /{slug}/-/views/compare` (claims and pages that differ, claim by claim and page by page) and
+//! - `compare`: `GET /{slug}/-/views/compare` (claims and pages that differ, claim by claim and page by page) and
 //!   `…/compare/{title}` (one page's own diff between the two views, as RFC 003's diff is).
 //! - `paths`: their addresses. `fields`: the names of the form's fields.
 //!
