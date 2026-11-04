@@ -2166,6 +2166,206 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg("why.heading", "Why is this here?"),
     msg("why.back", "Back to {page}"),
+    // views: creating and comparing (K-T8)
+    msg("title.views", "Views · {wiki} · {product}"),
+    msg("views.heading", "Views"),
+    msg(
+        "views.intro",
+        "A view is a named version of the whole wiki. Readers see the default view unless they choose another one.",
+    ),
+    msg("views.default_name", "the default view"),
+    msg("views.named", "the view “{view}”"),
+    msg("views.default_note", "Shown when no view is named."),
+    msg("views.kind_experimental", "Experimental"),
+    msg("views.kind_interpretation", "Interpretation"),
+    msg(
+        "views.kind_experimental_note",
+        "A working state. Its changes may be taken back into the view it was forked from, or dropped.",
+    ),
+    msg(
+        "views.kind_interpretation_note",
+        "A competing understanding, kept beside the default view.",
+    ),
+    msg("views.forked_from", "Forked from {view}."),
+    msg(
+        "views.no_origin",
+        "The wiki did not record where this view came from.",
+    ),
+    msg("views.read_link", "Read {view}"),
+    msg(
+        "views.compare_with_default",
+        "Compare {view} with the default view",
+    ),
+    msg(
+        "views.omitted",
+        "The first {shown} views are listed here; the other {omitted} are not shown.",
+    ),
+    msg("views.only_default", "This wiki has only its default view."),
+    msg("views.create_link", "Create a view"),
+    msg("views.compare_link", "Compare two views"),
+    msg("views.all_link", "All views of this wiki"),
+    msg("title.views_new", "Create a view · {wiki} · {product}"),
+    msg("views_new.heading", "Create a view"),
+    msg(
+        "views_new.intro",
+        "A view is a named version of the whole wiki, forked from a view that is already there. Anyone who may read it can propose a change in it. Creating a view is recorded: who made it, when, and what it was forked from.",
+    ),
+    msg("views_new.name_label", "Name"),
+    msg(
+        "views_new.name_hint",
+        "Lower-case letters, digits, dots, hyphens and underscores, starting with a letter or a digit; at most 64 characters.",
+    ),
+    msg("views_new.kind_legend", "What the view is for"),
+    msg("views_new.from_label", "Fork it from"),
+    msg("views_new.submit", "Create the view"),
+    msg("views_new.problem_name_empty", "Give the view a name."),
+    msg(
+        "views_new.problem_name_start",
+        "A name starts with a lower-case letter or a digit.",
+    ),
+    msg(
+        "views_new.problem_name_chars",
+        "A name has only lower-case letters, digits, dots, hyphens and underscores, and neither two dots in a row nor a dot at the end.",
+    ),
+    msg(
+        "views_new.problem_name_long",
+        "A name has at most 64 characters.",
+    ),
+    msg("views_new.problem_kind", "Choose what the view is for."),
+    msg(
+        "views_new.problem_from",
+        "Choose a view that is there to fork it from.",
+    ),
+    msg(
+        "views_new.problem_taken",
+        "A view with that name is already there. Choose another name.",
+    ),
+    msg(
+        "views_new.not_allowed",
+        "Your role in this wiki does not include creating views. Nothing was changed.",
+    ),
+    msg(
+        "views_new.busy",
+        "Another change is being made to the wiki. Nothing was changed; try again in a moment.",
+    ),
+    msg("views_new.too_many_heading", "Too many views"),
+    msg(
+        "views_new.too_many",
+        "This wiki already has {bound} open views, the most it keeps. Nothing was changed.",
+    ),
+    msg(
+        "views_new.retirement_heading",
+        "Not created: a change to this wiki's keys is not finished",
+    ),
+    msg(
+        "views_new.retirement",
+        "A change to this wiki's keys is not finished, so nothing new can be made in its history until the person who runs this wiki finishes or gives up that change. Nothing was changed. Tell that person; once it is finished or given up, create the view again.",
+    ),
+    msg("views_new.failed_heading", "The view was not created"),
+    msg(
+        "views_new.failed",
+        "The history did not accept the new view. Nothing was changed.",
+    ),
+    msg(
+        "views_new.uncertain",
+        "The wiki's views could not be read after the view was made. It may or may not be there: look at the list of views before you try again, and tell the person who runs this server.",
+    ),
+    msg(
+        "views_new.not_kept_heading",
+        "Creating views is not available on this server",
+    ),
+    msg(
+        "views_new.not_kept",
+        "This server does not keep the record a new view needs, so no view can be created here yet. Nothing was changed.",
+    ),
+    msg(
+        "views_new.unconfigured_heading",
+        "Creating views is not set up on this server",
+    ),
+    msg(
+        "views_new.unconfigured",
+        "This server is not set up to sign changes into the history, so no view can be created; tell the person who runs this server. Nothing was changed.",
+    ),
+    msg("title.compare", "Compare views · {wiki} · {product}"),
+    msg("compare.heading", "Compare views"),
+    msg(
+        "compare.intro",
+        "This lists where two views differ. It does not say which one is right.",
+    ),
+    msg("compare.a_label", "First view"),
+    msg("compare.b_label", "Second view"),
+    msg("compare.go", "Compare"),
+    msg("compare.pick_two", "Choose two different views to compare."),
+    msg("compare.pair", "Comparing {a} and {b}"),
+    msg("compare.same", "The two views hold the same content."),
+    msg("compare.claims_heading", "Claims that differ"),
+    msg(
+        "compare.claims_none",
+        "No claim differs between the two views.",
+    ),
+    msg("compare.claim_said_in", "A claim said in {page}"),
+    msg("compare.claim_unplaced", "A claim that no page says"),
+    msg("compare.diff_wording", "It is worded differently."),
+    msg(
+        "compare.diff_status",
+        "Its status: {a} in {va}, {b} in {vb}.",
+    ),
+    msg("compare.diff_sources", "Its sources differ."),
+    msg("compare.only_in", "Only in {view}."),
+    msg(
+        "compare.unreadable_in",
+        "Its file in {view} cannot be read, so nothing is said of it there.",
+    ),
+    msg("compare.status_accepted", "accepted"),
+    msg("compare.status_contested", "contested"),
+    msg("compare.status_unresolved", "unresolved"),
+    msg("compare.status_unknown", "not decided"),
+    msg(
+        "compare.claims_omitted",
+        "{shown} claims are listed; {omitted} more also differ and are not shown.",
+    ),
+    msg("compare.pages_heading", "Pages that differ"),
+    msg(
+        "compare.pages_none",
+        "No page differs between the two views.",
+    ),
+    msg("compare.page_differs", "The page differs."),
+    msg("compare.page_link", "How {page} differs"),
+    msg(
+        "compare.pages_omitted",
+        "{shown} pages are listed; {omitted} more also differ and are not shown.",
+    ),
+    msg("compare.back", "All views"),
+    msg(
+        "title.compare_page",
+        "{page}: how it differs · {wiki} · {product}",
+    ),
+    msg(
+        "compare.page_heading",
+        "{title}: how it differs between two views",
+    ),
+    msg(
+        "compare.page_range",
+        "Lines marked removed are in {a} only; lines marked added are in {b} only.",
+    ),
+    msg("compare.page_read", "Read {page} in {view}"),
+    msg("compare.page_back", "Back to the comparison"),
+    msg("compare.page_absent", "Neither view has this page."),
+    msg("claim.others_heading", "Other views"),
+    msg(
+        "claim.others_none",
+        "No other view reads this claim differently.",
+    ),
+    msg("claim.others_compare", "Compare with {view}"),
+    msg(
+        "claim.others_limit",
+        "Only {shown} other views are checked on this page; compare views to see the others.",
+    ),
+    msg(
+        "claim.others_unchecked",
+        "Some views could not be read just now, so they are not listed here.",
+    ),
+    // views: creating and comparing (K-T8): end
     // the knowledge layer's reader (K-T6): end
     // Why is this here? (K-T7)
     msg("title.why", "Why is this here? {page} · {wiki} · {product}"),

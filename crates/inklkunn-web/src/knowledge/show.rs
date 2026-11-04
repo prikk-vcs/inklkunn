@@ -12,8 +12,9 @@
 //! that is absent and one the visitor may not read are one page), and an address that names no claim of the wiki
 //! (not an id, or an id the wiki does not hold) is one plain page that says so.
 //!
-//! *Other views:* is left out. Which views read a claim differently is the comparison of views (handoff K-T8), and
-//! until it exists the page does not say that no view differs, which it has not checked.
+//! *Other views:* names each other view where the claim reads differently from this one, with a link to compare
+//! the two (handoff K-T8; `others`). The page says that no other view reads it differently only when it has looked
+//! at every other view; a view it could not read, or did not reach, is said to be unchecked.
 
 use std::collections::HashMap;
 
@@ -29,6 +30,7 @@ use inklkunn_markup::path::path_to_title;
 use inklkunn_store::{KnowledgeClaimRow, WikiRecord};
 
 use super::marks::distinct;
+use super::others::{self, Others, Section};
 use super::{paths, words};
 use crate::catalog::{Key, Rich, T};
 use crate::discover::Subject;
@@ -80,6 +82,7 @@ struct ClaimTpl<'a> {
     sources_none: Option<String>,
     status_heading: String,
     status: StatusLine,
+    others: Option<Section>,
 }
 
 /// What a request for a claim's page came to, before any template.
@@ -100,6 +103,8 @@ struct Found {
     claim: KnowledgeClaimRow,
     /// Whether the proposal that decided the status is one this wiki's records hold and the visitor may read.
     proposal_known: bool,
+    /// The other views where the claim reads differently; `None` when the wiki has no other open view.
+    others: Option<Others>,
 }
 
 fn load(
@@ -155,12 +160,14 @@ fn load(
                 .get(&services.identity.principal(headers), &wiki, &p)
                 .is_ok()
         });
+    let others = others::gather(services, &wiki, view.as_deref(), &index, id);
     Loaded::Claim(Box::new(Found {
         wiki,
         view,
         index,
         claim,
         proposal_known,
+        others,
     }))
 }
 
@@ -299,6 +306,7 @@ fn render(page: &Page, found: &Found, id: &str) -> Response {
         sources,
         status_heading: page.get(Key::ClaimStatusHeading),
         status: status_line(t, found),
+        others: found.others.as_ref().map(|o| o.section(t, wiki)),
     }
     .render();
     answer(StatusCode::OK, &page, rendered)

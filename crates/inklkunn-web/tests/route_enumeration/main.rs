@@ -106,7 +106,11 @@ async fn every_guarded_route_answers_a_restricted_wiki_exactly_as_one_that_is_no
                 && entry.path != "/{slug}/-/proposals/{id}")
                 || (entry.path.starts_with("/{slug}/-/api/v1/proposals")
                     && entry.methods == ["POST"]);
-            let expected = if writes {
+            // A view's creation is its own action (RFC 005 part 2 D-9; handoff 005 K-T8).
+            let creates_a_view = entry.path == "/{slug}/-/views/new";
+            let expected = if creates_a_view {
+                vec![Action::CreateView]
+            } else if writes {
                 [
                     Action::Propose,
                     Action::Comment,

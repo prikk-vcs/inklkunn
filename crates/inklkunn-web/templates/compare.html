@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+<p>{{ intro }}</p>
+<form method="get" action="{{ action }}" class="proposal-form">
+<div class="field">
+<label for="compare-a">{{ a_label }}</label>
+<select id="compare-a" name="{{ a_field }}">
+{% for o in a_options %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
+{% endfor %}</select>
+</div>
+<div class="field">
+<label for="compare-b">{{ b_label }}</label>
+<select id="compare-b" name="{{ b_field }}">
+{% for o in b_options %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
+{% endfor %}</select>
+</div>
+<p class="buttons"><button type="submit">{{ go }}</button></p>
+</form>
+{% if let Some(text) = pick_two %}<p role="status">{{ text }}</p>
+{% endif %}{% if let Some(r) = report %}{% if let Some(text) = r.same %}<p>{{ text }}</p>
+{% endif %}<section aria-labelledby="claims">
+<h2 id="claims">{{ r.claims_heading }}</h2>
+{% if let Some(text) = r.claims_none %}<p>{{ text }}</p>
+{% endif %}{% if !r.claims.is_empty() %}<ul class="compare-claims">
+{% for c in r.claims %}<li>
+<p class="change-head"><a href="{{ c.href }}">{{ c.label }}</a></p>
+{% for fact in c.facts %}<p class="note">{{ fact }}</p>
+{% endfor %}</li>
+{% endfor %}</ul>
+{% endif %}{% if let Some(text) = r.claims_omitted %}<p>{{ text }}</p>
+{% endif %}</section>
+<section aria-labelledby="pages">
+<h2 id="pages">{{ r.pages_heading }}</h2>
+{% if let Some(text) = r.pages_none %}<p>{{ text }}</p>
+{% endif %}{% if !r.pages.is_empty() %}<ul class="compare-pages">
+{% for p in r.pages %}<li>
+<p class="change-head"><a href="{{ p.href }}">{{ p.label }}</a></p>
+{% for fact in p.facts %}<p class="note">{{ fact }}</p>
+{% endfor %}</li>
+{% endfor %}</ul>
+{% endif %}{% if let Some(text) = r.pages_omitted %}<p>{{ text }}</p>
+{% endif %}</section>
+{% endif %}<p><a href="{{ back.href }}">{{ back.label }}</a></p>
+{% endblock %}

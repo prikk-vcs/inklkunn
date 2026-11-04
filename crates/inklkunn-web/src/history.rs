@@ -174,9 +174,9 @@ fn view_note(t: T, view: Option<&str>) -> Option<String> {
 
 // ------------------------------------------------------------------------------------ small view models
 
-struct LinkView {
-    href: String,
-    label: String,
+pub(crate) struct LinkView {
+    pub(crate) href: String,
+    pub(crate) label: String,
 }
 
 fn who_text(t: T, who: &Who) -> String {
@@ -640,20 +640,22 @@ pub(crate) struct HunkTpl {
 
 #[derive(Template)]
 #[template(path = "diff.html")]
-struct DiffTpl<'a> {
-    page: &'a Page,
-    shell: &'a Shell,
-    title: String,
-    heading: String,
-    view_note: Option<String>,
-    range: Rich,
-    summary: Vec<String>,
-    notes: Vec<String>,
-    refinement: Option<String>,
-    hunks: Vec<HunkTpl>,
-    added_label: String,
-    removed_label: String,
-    current: LinkView,
+pub(crate) struct DiffTpl<'a> {
+    pub(crate) page: &'a Page,
+    pub(crate) shell: &'a Shell,
+    pub(crate) title: String,
+    pub(crate) heading: String,
+    pub(crate) view_note: Option<String>,
+    pub(crate) range: Rich,
+    pub(crate) summary: Vec<String>,
+    pub(crate) notes: Vec<String>,
+    pub(crate) refinement: Option<String>,
+    pub(crate) hunks: Vec<HunkTpl>,
+    pub(crate) added_label: String,
+    pub(crate) removed_label: String,
+    pub(crate) current: LinkView,
+    /// Further ways on, after the one to the page as it is now: a diff between views names the page in each.
+    pub(crate) more: Vec<LinkView>,
 }
 
 pub(crate) fn hunk_view(t: T, hunk: &HunkView) -> HunkTpl {
@@ -800,6 +802,7 @@ fn render_diff(page: &Page, start: &Start, diff: &PageDiff) -> Response {
             href: WikiLinks::new(t, slug, view).page_href(&diff.title),
             label: t.msg(Key::HistoryCurrent).with("title", &diff.title).text(),
         },
+        more: Vec::new(),
     }
     .render();
     answer(StatusCode::OK, page, rendered)

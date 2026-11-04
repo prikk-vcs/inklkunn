@@ -12,9 +12,11 @@
 //!   each with an anchor, and for each the change that last changed it and the one that first wrote it, with the
 //!   proposal, the people as the message records them, the review and the sources given, derived from the history
 //!   and the proposal records alone, and labelled *traced by matching the text* wherever no anchor carries the chain.
+//! - `others`: *Other views:* on a claim's page, each view where the claim reads differently (handoff K-T8).
 //! - `paths`: their addresses. `words`: what each word of a claim's file is called.
 
 pub(crate) mod marks;
+pub(crate) mod others;
 pub(crate) mod paths;
 pub(crate) mod show;
 pub(crate) mod why;

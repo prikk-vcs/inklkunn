@@ -23,4 +23,5 @@
 {% endif %}{% endfor %}</div>
 {% endif %}</section>
 {% endfor %}<p><a href="{{ current.href }}">{{ current.label }}</a></p>
-{% endblock %}
+{% for link in more %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
+{% endfor %}{% endblock %}

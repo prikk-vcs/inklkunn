@@ -17,4 +17,15 @@
 {% endfor %}</ul>
 {% endif %}<h2>{{ status_heading }}</h2>
 <p class="claim-status">{{ status.sentence }}{% if let Some(by) = status.decided %} {{ by }}{% endif %}{% if let Some(text) = status.unlisted %} {{ text }}{% endif %}{% if let Some(note) = status.earlier %} <span class="claim-note">{{ note }}</span>{% endif %}</p>
-{% endblock %}
+{% if let Some(o) = others %}<h2>{{ o.heading }}</h2>
+{% if let Some(text) = o.none %}<p>{{ text }}</p>
+{% endif %}{% if !o.lines.is_empty() %}<ul class="claim-others">
+{% for line in o.lines %}<li>
+<p class="change-head">{{ line.label }}</p>
+{% for fact in line.facts %}<p class="note">{{ fact }}</p>
+{% endfor %}<p><a href="{{ line.compare.href }}">{{ line.compare.label }}</a></p>
+</li>
+{% endfor %}</ul>
+{% endif %}{% if let Some(text) = o.limit %}<p>{{ text }}</p>
+{% endif %}{% if let Some(text) = o.unchecked %}<p>{{ text }}</p>
+{% endif %}{% endif %}{% endblock %}

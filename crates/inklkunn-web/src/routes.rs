@@ -21,7 +21,7 @@ use crate::pages::{self, LANGUAGE_PATH, PageState};
 use crate::services::Services;
 use crate::{
     account, api, changes, csrf, discover, health, history, inbox, knowledge, probe, proposals,
-    raw, search, signin, style, watch, wiki,
+    raw, search, signin, style, views, watch, wiki,
 };
 
 /// One declared entry point and the handler that serves it.
@@ -50,6 +50,7 @@ fn page_specs() -> Vec<Spec> {
     let mut specs = proposal_specs();
     specs.extend(account_specs());
     specs.extend(wiki_specs());
+    specs.extend(view_specs());
     specs
 }
 
@@ -173,6 +174,42 @@ fn proposal_specs() -> Vec<Spec> {
             methods: &["GET", "HEAD"],
             guard: Guard::Action(Action::Read),
             handler: || get(proposals::list::discussion),
+        },
+    ]
+}
+
+/// The views' entry points (RFC 005 part 2 D-9; handoff 005 K-T8): the list, the form that creates one, the
+/// comparison of two. Each begins with the wiki's read check, so a wiki the visitor may not read answers as one that
+/// is not there; the form's handlers then ask `create-view` of the authorizer before they show a form or act.
+fn view_specs() -> Vec<Spec> {
+    vec![
+        Spec {
+            path: "/{slug}/-/views",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(views::list::list),
+        },
+        Spec {
+            path: "/{slug}/-/views/new",
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Action(Action::CreateView),
+            handler: form_route!(
+                views::new::new_form,
+                views::new::new_post,
+                views::new::FORM_LIMIT
+            ),
+        },
+        Spec {
+            path: "/{slug}/-/views/compare",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(views::compare::compare),
+        },
+        Spec {
+            path: "/{slug}/-/views/compare/{*title}",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(views::compare::compare_page),
         },
     ]
 }

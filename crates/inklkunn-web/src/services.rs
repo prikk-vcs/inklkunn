@@ -11,8 +11,10 @@ use std::sync::Arc;
 
 use axum::http::HeaderMap;
 use inklkunn_core::proposal::ProposalService;
+use inklkunn_core::views::ViewKind;
 use inklkunn_core::{
     AcceptFailure, Accepted, Authorizer, Inbox, Principal, ProposalAcceptor, ReadService, Verifier,
+    ViewCreated, ViewFailure,
 };
 use inklkunn_store::{AcceptanceStore, AccountStore, ActStore, ProposalId, WikiRecord, WikiStore};
 
@@ -114,6 +116,20 @@ pub trait Acceptor: Send + Sync {
     fn is_configured(&self) -> bool {
         true
     }
+
+    /// Create the alternative view `name`, forked from the view `from` (the wiki's default view when `None`), as
+    /// `principal` (RFC 005 part 2 D-9; handoff 005 K-T8). It authorizes `create-view` itself, before anything is
+    /// done, and blocks the calling thread like `accept`. An acceptor that cannot (the default) is `NotKept`.
+    fn create_view(
+        &self,
+        _principal: &Principal,
+        _wiki: &WikiRecord,
+        _name: &str,
+        _from: Option<&str>,
+        _kind: ViewKind,
+    ) -> Result<ViewCreated, ViewFailure> {
+        Err(ViewFailure::NotKept)
+    }
 }
 
 /// The acceptor of a server that was started **without** the means to sign (no operator secret file, or a key
@@ -150,6 +166,17 @@ impl Acceptor for ProposalAcceptor {
         revision: u32,
     ) -> Result<Accepted, AcceptFailure> {
         ProposalAcceptor::accept(self, principal, wiki, id, revision)
+    }
+
+    fn create_view(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        name: &str,
+        from: Option<&str>,
+        kind: ViewKind,
+    ) -> Result<ViewCreated, ViewFailure> {
+        ProposalAcceptor::create_view(self, principal, wiki, name, from, kind)
     }
 }
 

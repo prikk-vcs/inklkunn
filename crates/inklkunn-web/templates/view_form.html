@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+{% if !problems.is_empty() %}<div class="form-problems" role="alert">
+<h2 id="problems">{{ page.get(Key::ProposeProblems) }}</h2>
+<ul>
+{% for p in problems %}<li>{{ p }}</li>
+{% endfor %}</ul>
+</div>
+{% endif %}<p>{{ intro }}</p>
+<form method="post" action="{{ action }}" class="proposal-form">
+{% include "csrf.html" %}
+<div class="field">
+<label for="view-name">{{ name_label }}</label>
+<input id="view-name" name="{{ name_field }}" type="text" value="{{ name }}" maxlength="64" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="view-name-hint">
+<p id="view-name-hint" class="note">{{ name_hint }}</p>
+</div>
+<fieldset>
+<legend>{{ kind_legend }}</legend>
+{% for k in kinds %}<p><input id="view-kind-{{ k.value }}" type="radio" name="{{ kind_field }}" value="{{ k.value }}" aria-describedby="view-kind-{{ k.value }}-note"{% if k.checked %} checked{% endif %}> <label for="view-kind-{{ k.value }}">{{ k.label }}</label></p>
+<p id="view-kind-{{ k.value }}-note" class="note">{{ k.note }}</p>
+{% endfor %}</fieldset>
+<div class="field">
+<label for="view-from">{{ from_label }}</label>
+<select id="view-from" name="{{ from_field }}">
+{% for o in options %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
+{% endfor %}</select>
+</div>
+<p class="buttons"><button type="submit">{{ submit }}</button></p>
+</form>
+<p><a href="{{ back.href }}">{{ back.label }}</a></p>
+{% endblock %}

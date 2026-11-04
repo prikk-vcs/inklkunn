@@ -255,6 +255,8 @@ struct AboutTpl<'a> {
     heading: String,
     license: String,
     view: String,
+    views_href: String,
+    views_label: String,
     badge: Rich,
     preview: bool,
 }
@@ -815,6 +817,8 @@ pub(crate) async fn about(
                     .unwrap_or(&wiki.default_view),
             )
             .text(),
+        views_href: crate::views::paths::list(wiki.slug.as_str()),
+        views_label: page.get(Key::ViewsAllLink),
         badge: badge(t, &wiki, false),
         preview: crate::catalog::languages()
             .iter()

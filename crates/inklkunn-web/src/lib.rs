@@ -49,6 +49,7 @@ mod signin;
 pub mod style;
 mod time;
 mod url;
+pub mod views;
 mod watch;
 mod wiki;
 

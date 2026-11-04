@@ -54,8 +54,10 @@ struct State {
     tip_message: String,
     /// Older changes of each view, newest first: `(block id, message)`.
     older: BTreeMap<String, Vec<(String, String)>>,
-    /// Views besides `heads/main`; all sit at the same state.
+    /// Views besides `heads/main`; all sit at the same state unless `view_versions` puts one elsewhere.
     extra_views: Vec<String>,
+    /// The version (the block and the files) an extra view sits at, when it is not the newest.
+    view_versions: BTreeMap<String, u64>,
     /// The pages (paths) each change touched, by block id.
     touched: BTreeMap<String, Vec<String>>,
     /// How many times `show` was asked.
@@ -168,6 +170,14 @@ impl Fake {
         self.state().extra_views.push(name.to_owned());
     }
 
+    /// An open view besides `heads/main`, **at an older version**: its tip is the block of `version` and its
+    /// files are that version's, so that two views differ once `heads/main` has moved on.
+    pub fn add_view_at(&self, name: &str, version: u64) {
+        let mut s = self.state();
+        s.extra_views.push(name.to_owned());
+        s.view_versions.insert(name.to_owned(), version);
+    }
+
     /// An older change of `view`, after the ones already added (so add the newest first).
     pub fn push_change(&self, view: &str, block: &str, message: &str) {
         self.state()
@@ -264,7 +274,7 @@ impl Storage for Fake {
         }];
         views.extend(s.extra_views.iter().map(|name| View {
             name: format!("heads/{name}"),
-            state_id: state_id(s.version),
+            state_id: state_id(s.view_versions.get(name).copied().unwrap_or(s.version)),
             closed: false,
             current: false,
         }));
@@ -401,7 +411,12 @@ impl Storage for Fake {
             blocks
         } else {
             let limit = limit.map_or(1_000, |l| usize::try_from(l).unwrap_or(usize::MAX));
-            (1..=s.version)
+            let top = view
+                .as_arg()
+                .strip_prefix("heads/")
+                .and_then(|name| s.view_versions.get(name).copied())
+                .unwrap_or(s.version);
+            (1..=top)
                 .rev()
                 .take(limit)
                 .map(|v| HistoryBlock {

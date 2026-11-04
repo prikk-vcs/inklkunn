@@ -2241,6 +2241,206 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg("why.heading", "なぜここにあるのか"),
     msg("why.back", "{page} に戻る"),
+    // views: creating and comparing (K-T8)
+    msg("title.views", "ビュー · {wiki} · {product}"),
+    msg("views.heading", "ビュー"),
+    msg(
+        "views.intro",
+        "ビューは、ウィキ全体の名前付きのバージョンです。読者は、別のビューを選ばない限り、既定のビューを見ます。",
+    ),
+    msg("views.default_name", "既定のビュー"),
+    msg("views.named", "ビュー「{view}」"),
+    msg(
+        "views.default_note",
+        "ビューを指定しないときに表示されます。",
+    ),
+    msg("views.kind_experimental", "実験的"),
+    msg("views.kind_interpretation", "解釈"),
+    msg(
+        "views.kind_experimental_note",
+        "作業中の状態です。その変更は、分岐元のビューに取り込まれることも、破棄されることもあります。",
+    ),
+    msg(
+        "views.kind_interpretation_note",
+        "競合する理解を、既定のビューと並べて保っています。",
+    ),
+    msg("views.forked_from", "{view}から分岐しました。"),
+    msg(
+        "views.no_origin",
+        "このビューの出どころは、ウィキに記録されていません。",
+    ),
+    msg("views.read_link", "{view}を読む"),
+    msg("views.compare_with_default", "{view}を既定のビューと比べる"),
+    msg(
+        "views.omitted",
+        "ここには最初の {shown} 件のビューを表示しています。残りの {omitted} 件は表示していません。",
+    ),
+    msg(
+        "views.only_default",
+        "このウィキには既定のビューしかありません。",
+    ),
+    msg("views.create_link", "ビューを作成する"),
+    msg("views.compare_link", "2 つのビューを比べる"),
+    msg("views.all_link", "このウィキのすべてのビュー"),
+    msg("title.views_new", "ビューを作成 · {wiki} · {product}"),
+    msg("views_new.heading", "ビューを作成"),
+    msg(
+        "views_new.intro",
+        "ビューは、すでにあるビューから分岐させた、ウィキ全体の名前付きのバージョンです。読める人なら誰でも、そのビューに変更を提案できます。ビューの作成は記録されます（作成した人、時刻、分岐元）。",
+    ),
+    msg("views_new.name_label", "名前"),
+    msg(
+        "views_new.name_hint",
+        "半角の小文字、数字、ドット、ハイフン、アンダースコア。先頭は小文字か数字で、64 文字までです。",
+    ),
+    msg("views_new.kind_legend", "このビューの目的"),
+    msg("views_new.from_label", "分岐元"),
+    msg("views_new.submit", "ビューを作成する"),
+    msg(
+        "views_new.problem_name_empty",
+        "ビューの名前を入力してください。",
+    ),
+    msg(
+        "views_new.problem_name_start",
+        "名前の先頭は、半角の小文字か数字にしてください。",
+    ),
+    msg(
+        "views_new.problem_name_chars",
+        "名前に使えるのは、半角の小文字、数字、ドット、ハイフン、アンダースコアだけです（ドットの連続や末尾のドットは使えません）。",
+    ),
+    msg("views_new.problem_name_long", "名前は 64 文字までです。"),
+    msg(
+        "views_new.problem_kind",
+        "このビューの目的を選んでください。",
+    ),
+    msg(
+        "views_new.problem_from",
+        "分岐元には、すでにあるビューを選んでください。",
+    ),
+    msg(
+        "views_new.problem_taken",
+        "その名前のビューはすでにあります。ほかの名前を選んでください。",
+    ),
+    msg(
+        "views_new.not_allowed",
+        "このウィキでのあなたの役割には、ビューを作成する権限がありません。何も変更していません。",
+    ),
+    msg(
+        "views_new.busy",
+        "ウィキに別の変更を加えている最中です。何も変更していません。しばらくしてからもう一度お試しください。",
+    ),
+    msg("views_new.too_many_heading", "ビューが多すぎます"),
+    msg(
+        "views_new.too_many",
+        "このウィキにはすでに {bound} 件のビューが開いており、これが上限です。何も変更していません。",
+    ),
+    msg(
+        "views_new.retirement_heading",
+        "作成されませんでした: このウィキの鍵の変更が完了していません",
+    ),
+    msg(
+        "views_new.retirement",
+        "このウィキの鍵の変更が完了していないため、運用している人がその変更を完了するか取りやめるまで、履歴に新しいものを作れません。何も変更していません。その人に伝えてください。完了または取りやめの後に、もう一度ビューを作成してください。",
+    ),
+    msg("views_new.failed_heading", "ビューは作成されませんでした"),
+    msg(
+        "views_new.failed",
+        "履歴は、新しいビューを受け付けませんでした。何も変更していません。",
+    ),
+    msg(
+        "views_new.uncertain",
+        "ビューを作ったあとで、ウィキのビューを読めませんでした。ビューができているかどうかは分かりません。もう一度試す前にビューの一覧を確認し、このサーバーを運用している人に伝えてください。",
+    ),
+    msg(
+        "views_new.not_kept_heading",
+        "このサーバーではビューを作成できません",
+    ),
+    msg(
+        "views_new.not_kept",
+        "このサーバーには、新しいビューに必要な記録を保つ仕組みがないため、今はここでビューを作成できません。何も変更していません。",
+    ),
+    msg(
+        "views_new.unconfigured_heading",
+        "このサーバーではビューの作成が設定されていません",
+    ),
+    msg(
+        "views_new.unconfigured",
+        "このサーバーには履歴へ署名する設定がないため、ビューを作成できません（このサーバーを運用している人に伝えてください）。何も変更していません。",
+    ),
+    msg("title.compare", "ビューの比較 · {wiki} · {product}"),
+    msg("compare.heading", "ビューの比較"),
+    msg(
+        "compare.intro",
+        "2 つのビューの違いを一覧にします。どちらが正しいかは示しません。",
+    ),
+    msg("compare.a_label", "1 つ目のビュー"),
+    msg("compare.b_label", "2 つ目のビュー"),
+    msg("compare.go", "比べる"),
+    msg("compare.pick_two", "異なる 2 つのビューを選んでください。"),
+    msg("compare.pair", "{a}と{b}の比較"),
+    msg("compare.same", "2 つのビューの内容は同じです。"),
+    msg("compare.claims_heading", "違いのある主張"),
+    msg(
+        "compare.claims_none",
+        "2 つのビューで違いのある主張はありません。",
+    ),
+    msg("compare.claim_said_in", "{page}にある主張"),
+    msg("compare.claim_unplaced", "どのページにも書かれていない主張"),
+    msg("compare.diff_wording", "文面が異なります。"),
+    msg("compare.diff_status", "状態: {va}では{a}、{vb}では{b}。"),
+    msg("compare.diff_sources", "出典が異なります。"),
+    msg("compare.only_in", "{view}にだけあります。"),
+    msg(
+        "compare.unreadable_in",
+        "{view}にあるこの主張のファイルは読めないため、そこでの状態は示せません。",
+    ),
+    msg("compare.status_accepted", "受け入れ済み"),
+    msg("compare.status_contested", "異論あり"),
+    msg("compare.status_unresolved", "未解決"),
+    msg("compare.status_unknown", "未決定"),
+    msg(
+        "compare.claims_omitted",
+        "{shown} 件の主張を表示しています。違いのある主張がほかに {omitted} 件ありますが、表示していません。",
+    ),
+    msg("compare.pages_heading", "違いのあるページ"),
+    msg(
+        "compare.pages_none",
+        "2 つのビューで違いのあるページはありません。",
+    ),
+    msg("compare.page_differs", "ページの内容が異なります。"),
+    msg("compare.page_link", "{page}の違い"),
+    msg(
+        "compare.pages_omitted",
+        "{shown} 件のページを表示しています。違いのあるページがほかに {omitted} 件ありますが、表示していません。",
+    ),
+    msg("compare.back", "ビューの一覧"),
+    msg("title.compare_page", "{page}: 違い · {wiki} · {product}"),
+    msg("compare.page_heading", "{title}: 2 つのビューでの違い"),
+    msg(
+        "compare.page_range",
+        "「削除」の行は{a}だけに、「追加」の行は{b}だけにあります。",
+    ),
+    msg("compare.page_read", "{view}で{page}を読む"),
+    msg("compare.page_back", "比較へ戻る"),
+    msg(
+        "compare.page_absent",
+        "どちらのビューにもこのページはありません。",
+    ),
+    msg("claim.others_heading", "ほかのビュー"),
+    msg(
+        "claim.others_none",
+        "ほかのビューで、この主張が異なって読めるものはありません。",
+    ),
+    msg("claim.others_compare", "{view}と比べる"),
+    msg(
+        "claim.others_limit",
+        "このページで調べるほかのビューは {shown} 件までです。そのほかのビューは、ビューの比較で確かめてください。",
+    ),
+    msg(
+        "claim.others_unchecked",
+        "今は読めなかったビューがあるため、ここには載せていません。",
+    ),
+    // views: creating and comparing (K-T8): end
     // the knowledge layer's reader (K-T6): end
     // Why is this here? (K-T7)
     msg(

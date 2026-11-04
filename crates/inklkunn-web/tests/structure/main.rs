@@ -20,6 +20,9 @@ mod knowledge_states;
 mod past_states;
 mod proposal_states;
 mod rules;
+#[path = "../views/stubs.rs"]
+mod view_stubs;
+mod views_states;
 mod wiki_states;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -195,7 +198,8 @@ const EXPECTED_PAGES: usize = VISITS.len()
     + past_states::SCENARIOS.len()
     + knowledge_states::SCENARIOS.len()
     + proposal_states::count()
-    + claim_forms_states::count();
+    + claim_forms_states::count()
+    + views_states::count();
 
 async fn build_states(extra: &[(&str, &str)]) -> Out {
     let router = router();
@@ -247,6 +251,7 @@ async fn build_states(extra: &[(&str, &str)]) -> Out {
     wiki_states::build(extra, &mut out).await;
     proposal_states::build(extra, &mut out).await;
     claim_forms_states::build(extra, &mut out).await;
+    views_states::build(extra, &mut out).await;
     out
 }
 

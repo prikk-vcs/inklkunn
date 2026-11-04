@@ -284,7 +284,7 @@ fn the_switcher_and_the_stylesheet_are_public_routes_with_a_reason_under_the_res
 
 #[test]
 fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
-    use inklkunn_core::Action::{Accept, Comment, Propose, Read, Review};
+    use inklkunn_core::Action::{Accept, Comment, CreateView, Propose, Read, Review};
     let table = application_table().unwrap();
     // The read API's endpoints are held to the same rule by `tests/api` (description.rs); this list is the pages'.
     // Each carries the action its handler authorizes with: the proposals' writes are not reads (RFC 004 D-2, D-3).
@@ -332,6 +332,10 @@ fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
             ("/{slug}/-/describe/{*title}", Read),
             ("/{slug}/-/sitemap.xml", Read),
             ("/{slug}/{*title}", Read),
+            ("/{slug}/-/views", Read),
+            ("/{slug}/-/views/new", CreateView),
+            ("/{slug}/-/views/compare", Read),
+            ("/{slug}/-/views/compare/{*title}", Read),
         ]
     );
     // Whatever a route writes, it declares the writing methods only where it declares a non-read action or is

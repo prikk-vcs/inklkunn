@@ -188,7 +188,7 @@ pub(crate) fn parts(
 }
 
 /// A name no earlier link has: the second paragraph that begins alike is told from the first by a count.
-pub(super) fn distinct(used: &mut HashMap<String, usize>, name: String) -> String {
+pub(crate) fn distinct(used: &mut HashMap<String, usize>, name: String) -> String {
     let seen = used.entry(name.clone()).or_insert(0);
     *seen += 1;
     if *seen == 1 {

@@ -424,3 +424,36 @@ exact :: curate.rs :: limit :: a placeholder name of a catalog message
 exact :: touched.rs :: status :: a placeholder name of a catalog message
 exact :: touched.rs :: words :: a placeholder name of a catalog message
 exact :: touched.rs :: summary :: a placeholder name of a catalog message
+
+# --- K-T8: views, listed, created and compared (handoff 005; RFC 005 part 2 D-9). `views/paths.rs` and `views/fields.rs` are scoped above by their names.
+exact :: views.rs :: view :: a placeholder name of a catalog message
+exact :: list.rs :: view :: a placeholder name of a catalog message
+exact :: list.rs :: shown :: a placeholder name of a catalog message
+exact :: list.rs :: omitted :: a placeholder name of a catalog message
+exact :: list.rs :: view-{} :: the fragment identifier of a view's entry in the list (an address, no sentence)
+exact :: list.rs :: -/views :: the address of the list, as the page head names it (an address, no sentence)
+exact :: list.rs :: the views of wiki `{}` could not be read now: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: new.rs :: bound :: a placeholder name of a catalog message
+exact :: new.rs :: the views could not be read now: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: new.rs :: a view was created and a temporary directory of seeds could not be removed :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: new.rs :: a view was not created: the wiki needs recovery ({}) :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: new.rs :: a view was not created: {why} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: new.rs :: creating a view (act {act}) failed ({word}): {detail} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: new.rs :: a view could not be created now: {why} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: new.rs :: it is not known whether a view was created: {why} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: new.rs :: the records failed while a view was created: {error} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: compare.rs :: {what} of wiki `{}` could not be read now: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: compare.rs :: the views :: the subject of that line for the person who runs the server; no response carries it
+exact :: compare.rs :: a comparison of views :: the subject of that line for the person who runs the server; no response carries it
+exact :: compare.rs :: a page's difference between views of wiki `{}` could not be read now: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: compare.rs :: heads/ :: the repository's prefix of a view's name, taken off to name the view the way an address does (no sentence)
+exact :: compare.rs :: wiki :: a placeholder name of a catalog message
+exact :: compare.rs :: view :: a placeholder name of a catalog message
+exact :: compare.rs :: page :: a placeholder name of a catalog message
+exact :: compare.rs :: title :: a placeholder name of a catalog message
+exact :: compare.rs :: shown :: a placeholder name of a catalog message
+exact :: compare.rs :: omitted :: a placeholder name of a catalog message
+exact :: compare.rs :: limit :: a placeholder name of a catalog message
+exact :: others.rs :: heads/{other} :: the repository's name of a view, built from its short name to ask for its index (no sentence)
+exact :: others.rs :: view :: a placeholder name of a catalog message
+exact :: others.rs :: shown :: a placeholder name of a catalog message
