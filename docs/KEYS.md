@@ -87,7 +87,7 @@ commit point of every rotation the key record keeps, for the replaced maintainer
 every view**, and `inklkunn wiki keys status <wiki>` (and every rotation, which also writes a `keys-late-seal`
 event to the audit trail for each finding) lists the superseded keys and **reports every block one of them
 sealed that is not in the history up to those points**: *sealed by a superseded key after the rotation*. It
-changes nothing by itself, and `status` exits non-zero when it finds one. prikk lists who sealed a block only for keys
+changes nothing by itself, and `status` exits non-zero when it finds one, and whenever a retirement is unfinished (writes are paused). prikk lists who sealed a block only for keys
 it still trusts, so **the check cannot see a key that is out of the trust store**: for such a key `status` says so
 instead of saying that no block was sealed after the rotation, and for the key of an unfinished retirement it prints the
 untraceable findings (below). A record that calls a key retired while the repository trusts it again means the repository is
