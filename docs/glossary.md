@@ -1002,6 +1002,93 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `claim.none_body` | under it | "This wiki has no claim at that address, or it cannot be read now." | "このウィキには、そのアドレスの主張がないか、現在は読み取れません。" |
 | `why.heading` | the heading of that page | "Why is this here?" | "なぜここにあるのか" |
 | `why.back` | on that page: the link back to the page; `{page}` is its title | "Back to {page}" | "{page} に戻る" |
+| `title.views` | the title of the page that lists a wiki's views; `{wiki}` is the wiki's name | "Views · {wiki} · {product}" | "ビュー · {wiki} · {product}" |
+| `views.heading` | the heading of the page that lists a wiki's views | "Views" | "ビュー" |
+| `views.intro` | under that heading | "A view is a named version of the whole wiki. Readers see the default view unless they choose another one." | "ビューは、ウィキ全体の名前付きのバージョンです。読者は、別のビューを選ばない限り、既定のビューを見ます。" |
+| `views.default_name` | what the wiki's default view is called wherever it is named; it has no other name | "the default view" | "既定のビュー" |
+| `views.named` | a view by its name inside a sentence; `{view}` is the name | "the view “{view}”" | "ビュー「{view}」" |
+| `views.default_note` | under the default view in the list | "Shown when no view is named." | "ビューを指定しないときに表示されます。" |
+| `views.kind_experimental` | the kind of an alternative view: a working state | "Experimental" | "実験的" |
+| `views.kind_interpretation` | the kind of an alternative view: a competing understanding | "Interpretation" | "解釈" |
+| `views.kind_experimental_note` | under the kind experimental | "A working state. Its changes may be taken back into the view it was forked from, or dropped." | "作業中の状態です。その変更は、分岐元のビューに取り込まれることも、破棄されることもあります。" |
+| `views.kind_interpretation_note` | under the kind interpretation | "A competing understanding, kept beside the default view." | "競合する理解を、既定のビューと並べて保っています。" |
+| `views.forked_from` | in the list: where an alternative view was forked from; `{view}` is a view named in words | "Forked from {view}." | "{view}から分岐しました。" |
+| `views.no_origin` | in the list: a view the wiki has no record of making | "The wiki did not record where this view came from." | "このビューの出どころは、ウィキに記録されていません。" |
+| `views.read_link` | in the list: the link that opens a view; `{view}` is the view named in words | "Read {view}" | "{view}を読む" |
+| `views.compare_with_default` | in the list: the link that compares a view with the default view; `{view}` is the view named in words | "Compare {view} with the default view" | "{view}を既定のビューと比べる" |
+| `views.omitted` | under the list when the wiki has more views than are listed; `{shown}` and `{omitted}` are numbers | "The first {shown} views are listed here; the other {omitted} are not shown." | "ここには最初の {shown} 件のビューを表示しています。残りの {omitted} 件は表示していません。" |
+| `views.only_default` | under the list of a wiki that has only its default view | "This wiki has only its default view." | "このウィキには既定のビューしかありません。" |
+| `views.create_link` | beside the list, for a person who may create views: the link to the form | "Create a view" | "ビューを作成する" |
+| `views.compare_link` | beside the list: the link to the page that compares two views | "Compare two views" | "2 つのビューを比べる" |
+| `views.all_link` | on the about page: the link to the list of the wiki's views | "All views of this wiki" | "このウィキのすべてのビュー" |
+| `title.views_new` | the title of the form that creates a view; `{wiki}` is the wiki's name | "Create a view · {wiki} · {product}" | "ビューを作成 · {wiki} · {product}" |
+| `views_new.heading` | the heading of the form that creates a view | "Create a view" | "ビューを作成" |
+| `views_new.intro` | under that heading | "A view is a named version of the whole wiki, forked from a view that is already there. Anyone who may read it can propose a change in it. Creating a view is recorded: who made it, when, and what it was forked from." | "ビューは、すでにあるビューから分岐させた、ウィキ全体の名前付きのバージョンです。読める人なら誰でも、そのビューに変更を提案できます。ビューの作成は記録されます（作成した人、時刻、分岐元）。" |
+| `views_new.name_label` | the label of the field for the new view's name | "Name" | "名前" |
+| `views_new.name_hint` | under that field | "Lower-case letters, digits, dots, hyphens and underscores, starting with a letter or a digit; at most 64 characters." | "半角の小文字、数字、ドット、ハイフン、アンダースコア。先頭は小文字か数字で、64 文字までです。" |
+| `views_new.kind_legend` | the legend of the choice of what the new view is for | "What the view is for" | "このビューの目的" |
+| `views_new.from_label` | the label of the choice of the view to fork from | "Fork it from" | "分岐元" |
+| `views_new.submit` | the button that creates the view | "Create the view" | "ビューを作成する" |
+| `views_new.problem_name_empty` | a problem: no name was given | "Give the view a name." | "ビューの名前を入力してください。" |
+| `views_new.problem_name_start` | a problem: the name does not start with a lower-case letter or a digit | "A name starts with a lower-case letter or a digit." | "名前の先頭は、半角の小文字か数字にしてください。" |
+| `views_new.problem_name_chars` | a problem: the name has a character a name may not have | "A name has only lower-case letters, digits, dots, hyphens and underscores, and neither two dots in a row nor a dot at the end." | "名前に使えるのは、半角の小文字、数字、ドット、ハイフン、アンダースコアだけです（ドットの連続や末尾のドットは使えません）。" |
+| `views_new.problem_name_long` | a problem: the name is longer than 64 characters | "A name has at most 64 characters." | "名前は 64 文字までです。" |
+| `views_new.problem_kind` | a problem: no kind was chosen | "Choose what the view is for." | "このビューの目的を選んでください。" |
+| `views_new.problem_from` | a problem: the view to fork from is not one of the wiki's views | "Choose a view that is there to fork it from." | "分岐元には、すでにあるビューを選んでください。" |
+| `views_new.problem_taken` | a problem: a view of that name is already there | "A view with that name is already there. Choose another name." | "その名前のビューはすでにあります。ほかの名前を選んでください。" |
+| `views_new.not_allowed` | under the outcome not allowed, for creating a view | "Your role in this wiki does not include creating views. Nothing was changed." | "このウィキでのあなたの役割には、ビューを作成する権限がありません。何も変更していません。" |
+| `views_new.busy` | under the outcome the wiki is busy, for creating a view | "Another change is being made to the wiki. Nothing was changed; try again in a moment." | "ウィキに別の変更を加えている最中です。何も変更していません。しばらくしてからもう一度お試しください。" |
+| `views_new.too_many_heading` | the outcome of creating a view in a wiki that has as many as it may keep | "Too many views" | "ビューが多すぎます" |
+| `views_new.too_many` | under that outcome; `{bound}` is the number | "This wiki already has {bound} open views, the most it keeps. Nothing was changed." | "このウィキにはすでに {bound} 件のビューが開いており、これが上限です。何も変更していません。" |
+| `views_new.retirement_heading` | the outcome of creating a view while a change to the wiki's keys is not finished | "Not created: a change to this wiki's keys is not finished" | "作成されませんでした: このウィキの鍵の変更が完了していません" |
+| `views_new.retirement` | under that outcome | "A change to this wiki's keys is not finished, so nothing new can be made in its history until the person who runs this wiki finishes or gives up that change. Nothing was changed. Tell that person; once it is finished or given up, create the view again." | "このウィキの鍵の変更が完了していないため、運用している人がその変更を完了するか取りやめるまで、履歴に新しいものを作れません。何も変更していません。その人に伝えてください。完了または取りやめの後に、もう一度ビューを作成してください。" |
+| `views_new.failed_heading` | the outcome of creating a view that the history refused | "The view was not created" | "ビューは作成されませんでした" |
+| `views_new.failed` | under that outcome | "The history did not accept the new view. Nothing was changed." | "履歴は、新しいビューを受け付けませんでした。何も変更していません。" |
+| `views_new.uncertain` | under the outcome the result is not certain, for creating a view | "The wiki's views could not be read after the view was made. It may or may not be there: look at the list of views before you try again, and tell the person who runs this server." | "ビューを作ったあとで、ウィキのビューを読めませんでした。ビューができているかどうかは分かりません。もう一度試す前にビューの一覧を確認し、このサーバーを運用している人に伝えてください。" |
+| `views_new.not_kept_heading` | the outcome of opening the form on a server that cannot create views | "Creating views is not available on this server" | "このサーバーではビューを作成できません" |
+| `views_new.not_kept` | under that outcome | "This server does not keep the record a new view needs, so no view can be created here yet. Nothing was changed." | "このサーバーには、新しいビューに必要な記録を保つ仕組みがないため、今はここでビューを作成できません。何も変更していません。" |
+| `views_new.unconfigured_heading` | the outcome of creating a view on a server started without the means to sign | "Creating views is not set up on this server" | "このサーバーではビューの作成が設定されていません" |
+| `views_new.unconfigured` | under that outcome | "This server is not set up to sign changes into the history, so no view can be created; tell the person who runs this server. Nothing was changed." | "このサーバーには履歴へ署名する設定がないため、ビューを作成できません（このサーバーを運用している人に伝えてください）。何も変更していません。" |
+| `title.compare` | the title of the page that compares two views; `{wiki}` is the wiki's name | "Compare views · {wiki} · {product}" | "ビューの比較 · {wiki} · {product}" |
+| `compare.heading` | the heading of the page that compares two views | "Compare views" | "ビューの比較" |
+| `compare.intro` | under that heading | "This lists where two views differ. It does not say which one is right." | "2 つのビューの違いを一覧にします。どちらが正しいかは示しません。" |
+| `compare.a_label` | the label of the choice of the first view | "First view" | "1 つ目のビュー" |
+| `compare.b_label` | the label of the choice of the second view | "Second view" | "2 つ目のビュー" |
+| `compare.go` | the button that compares the two views chosen | "Compare" | "比べる" |
+| `compare.pick_two` | a note when the two views chosen are one and the same | "Choose two different views to compare." | "異なる 2 つのビューを選んでください。" |
+| `compare.pair` | the heading of a comparison; `{a}` and `{b}` are the two views named in words | "Comparing {a} and {b}" | "{a}と{b}の比較" |
+| `compare.same` | under that heading when nothing differs | "The two views hold the same content." | "2 つのビューの内容は同じです。" |
+| `compare.claims_heading` | the heading of the claims that differ | "Claims that differ" | "違いのある主張" |
+| `compare.claims_none` | under it when no claim differs | "No claim differs between the two views." | "2 つのビューで違いのある主張はありません。" |
+| `compare.claim_said_in` | a claim in the list, by the page it is said in; `{page}` is the page's title | "A claim said in {page}" | "{page}にある主張" |
+| `compare.claim_unplaced` | a claim in the list that no page says now | "A claim that no page says" | "どのページにも書かれていない主張" |
+| `compare.diff_wording` | what differs about a claim: the paragraphs it is said in read differently | "It is worded differently." | "文面が異なります。" |
+| `compare.diff_status` | what differs about a claim: its status; `{a}` and `{b}` are statuses, `{va}` and `{vb}` the views | "Its status: {a} in {va}, {b} in {vb}." | "状態: {va}では{a}、{vb}では{b}。" |
+| `compare.diff_sources` | what differs about a claim: the sources that bear on it, or how, or what they are | "Its sources differ." | "出典が異なります。" |
+| `compare.only_in` | what differs about a claim or a page: only one view has it; `{view}` is that view named in words | "Only in {view}." | "{view}にだけあります。" |
+| `compare.unreadable_in` | what differs about a claim: a view has a file for it that cannot be read; `{view}` is that view named in words | "Its file in {view} cannot be read, so nothing is said of it there." | "{view}にあるこの主張のファイルは読めないため、そこでの状態は示せません。" |
+| `compare.status_accepted` | a claim's status in a comparison | "accepted" | "受け入れ済み" |
+| `compare.status_contested` | a claim's status in a comparison | "contested" | "異論あり" |
+| `compare.status_unresolved` | a claim's status in a comparison | "unresolved" | "未解決" |
+| `compare.status_unknown` | a claim's status in a comparison: nobody decided | "not decided" | "未決定" |
+| `compare.claims_omitted` | under the list of claims when more differ than are listed; `{shown}` and `{omitted}` are numbers | "{shown} claims are listed; {omitted} more also differ and are not shown." | "{shown} 件の主張を表示しています。違いのある主張がほかに {omitted} 件ありますが、表示していません。" |
+| `compare.pages_heading` | the heading of the pages that differ | "Pages that differ" | "違いのあるページ" |
+| `compare.pages_none` | under it when no page differs | "No page differs between the two views." | "2 つのビューで違いのあるページはありません。" |
+| `compare.page_differs` | a page in the list that both views have and read differently | "The page differs." | "ページの内容が異なります。" |
+| `compare.page_link` | a page in the list: the link to how the page differs; `{page}` is its title | "How {page} differs" | "{page}の違い" |
+| `compare.pages_omitted` | under the list of pages when more differ than are listed; `{shown}` and `{omitted}` are numbers | "{shown} pages are listed; {omitted} more also differ and are not shown." | "{shown} 件のページを表示しています。違いのあるページがほかに {omitted} 件ありますが、表示していません。" |
+| `compare.back` | the link from a comparison to the list of views | "All views" | "ビューの一覧" |
+| `title.compare_page` | the title of the page that shows how one page differs between two views; `{page}` is its title | "{page}: how it differs · {wiki} · {product}" | "{page}: 違い · {wiki} · {product}" |
+| `compare.page_heading` | the heading of that page; `{title}` is the page's title | "{title}: how it differs between two views" | "{title}: 2 つのビューでの違い" |
+| `compare.page_range` | under that heading; `{a}` and `{b}` are the two views named in words | "Lines marked removed are in {a} only; lines marked added are in {b} only." | "「削除」の行は{a}だけに、「追加」の行は{b}だけにあります。" |
+| `compare.page_read` | on that page: the link to read the page in one view; `{page}` is its title, `{view}` the view named in words | "Read {page} in {view}" | "{view}で{page}を読む" |
+| `compare.page_back` | on that page: the link back to the comparison | "Back to the comparison" | "比較へ戻る" |
+| `compare.page_absent` | on that page: the page is in neither view | "Neither view has this page." | "どちらのビューにもこのページはありません。" |
+| `claim.others_heading` | the heading of the section of a claim's page that names the views where it reads differently | "Other views" | "ほかのビュー" |
+| `claim.others_none` | under that heading when no other view reads the claim differently | "No other view reads this claim differently." | "ほかのビューで、この主張が異なって読めるものはありません。" |
+| `claim.others_compare` | in that section: the link that compares this view with another; `{view}` is the other view named in words | "Compare with {view}" | "{view}と比べる" |
+| `claim.others_limit` | in that section when the wiki has more views than are checked here; `{shown}` is a number | "Only {shown} other views are checked on this page; compare views to see the others." | "このページで調べるほかのビューは {shown} 件までです。そのほかのビューは、ビューの比較で確かめてください。" |
+| `claim.others_unchecked` | in that section when some views could not be read just now | "Some views could not be read just now, so they are not listed here." | "今は読めなかったビューがあるため、ここには載せていません。" |
 | `title.why` | the title of that page; `{page}` is the page's title, `{wiki}` the wiki's name | "Why is this here? {page} · {wiki} · {product}" | "なぜここにあるのか: {page} · {wiki} · {product}" |
 | `why.intro` | under the heading of that page; `{page}` is the page's title | "Where each paragraph of {page} came from, as far as the page's history says. Every paragraph here can be linked to." | "{page} の各段落がどこから来たのかを、このページの履歴の範囲で示します。ここにある各段落には、それぞれリンクできます。" |
 | `why.history_link` | on that page: the link to the page's history; `{page}` is its title | "The whole history of {page}" | "{page} の履歴全体" |
@@ -1196,93 +1283,6 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `touch.reconfirm_later` | on a proposal that is not accepted yet, under that list | "Once this proposal is accepted, a person can propose judging these claims again here, in one step." | "この提案が受け入れられたら、ここから一度の操作で、これらの主張を改めて判断する提案ができます。" |
 | `touch.reconfirm_summary` | the summary of the proposal that judges the claims again; `{summary}` is the summary of the proposal that reworded them | "Judge the claims again after: {summary}" | "改めて判断する: {summary}" |
 | `touch.nothing_to_judge` | a note: every claim of the list is judged on the wording it has now | "Nothing needs judging again: each of these claims is judged on the wording it has now." | "改めて判断する必要はありません。これらの主張はどれも、いまの文面について判断されています。" |
-| `title.views` | the title of the page that lists a wiki's views; `{wiki}` is the wiki's name | "Views · {wiki} · {product}" | "ビュー · {wiki} · {product}" |
-| `views.heading` | the heading of the page that lists a wiki's views | "Views" | "ビュー" |
-| `views.intro` | under that heading | "A view is a named version of the whole wiki. Readers see the default view unless they choose another one." | "ビューは、ウィキ全体の名前付きのバージョンです。読者は、別のビューを選ばない限り、既定のビューを見ます。" |
-| `views.default_name` | what the wiki's default view is called wherever it is named; it has no other name | "the default view" | "既定のビュー" |
-| `views.named` | a view by its name inside a sentence; `{view}` is the name | "the view “{view}”" | "ビュー「{view}」" |
-| `views.default_note` | under the default view in the list | "Shown when no view is named." | "ビューを指定しないときに表示されます。" |
-| `views.kind_experimental` | the kind of an alternative view: a working state | "Experimental" | "実験的" |
-| `views.kind_interpretation` | the kind of an alternative view: a competing understanding | "Interpretation" | "解釈" |
-| `views.kind_experimental_note` | under the kind experimental | "A working state. Its changes may be taken back into the view it was forked from, or dropped." | "作業中の状態です。その変更は、分岐元のビューに取り込まれることも、破棄されることもあります。" |
-| `views.kind_interpretation_note` | under the kind interpretation | "A competing understanding, kept beside the default view." | "競合する理解を、既定のビューと並べて保っています。" |
-| `views.forked_from` | in the list: where an alternative view was forked from; `{view}` is a view named in words | "Forked from {view}." | "{view}から分岐しました。" |
-| `views.no_origin` | in the list: a view the wiki has no record of making | "The wiki did not record where this view came from." | "このビューの出どころは、ウィキに記録されていません。" |
-| `views.read_link` | in the list: the link that opens a view; `{view}` is the view named in words | "Read {view}" | "{view}を読む" |
-| `views.compare_with_default` | in the list: the link that compares a view with the default view; `{view}` is the view named in words | "Compare {view} with the default view" | "{view}を既定のビューと比べる" |
-| `views.omitted` | under the list when the wiki has more views than are listed; `{shown}` and `{omitted}` are numbers | "The first {shown} views are listed here; the other {omitted} are not shown." | "ここには最初の {shown} 件のビューを表示しています。残りの {omitted} 件は表示していません。" |
-| `views.only_default` | under the list of a wiki that has only its default view | "This wiki has only its default view." | "このウィキには既定のビューしかありません。" |
-| `views.create_link` | beside the list, for a person who may create views: the link to the form | "Create a view" | "ビューを作成する" |
-| `views.compare_link` | beside the list: the link to the page that compares two views | "Compare two views" | "2 つのビューを比べる" |
-| `views.all_link` | on the about page: the link to the list of the wiki's views | "All views of this wiki" | "このウィキのすべてのビュー" |
-| `title.views_new` | the title of the form that creates a view; `{wiki}` is the wiki's name | "Create a view · {wiki} · {product}" | "ビューを作成 · {wiki} · {product}" |
-| `views_new.heading` | the heading of the form that creates a view | "Create a view" | "ビューを作成" |
-| `views_new.intro` | under that heading | "A view is a named version of the whole wiki, forked from a view that is already there. Anyone who may read it can propose a change in it. Creating a view is recorded: who made it, when, and what it was forked from." | "ビューは、すでにあるビューから分岐させた、ウィキ全体の名前付きのバージョンです。読める人なら誰でも、そのビューに変更を提案できます。ビューの作成は記録されます（作成した人、時刻、分岐元）。" |
-| `views_new.name_label` | the label of the field for the new view's name | "Name" | "名前" |
-| `views_new.name_hint` | under that field | "Lower-case letters, digits, dots, hyphens and underscores, starting with a letter or a digit; at most 64 characters." | "半角の小文字、数字、ドット、ハイフン、アンダースコア。先頭は小文字か数字で、64 文字までです。" |
-| `views_new.kind_legend` | the legend of the choice of what the new view is for | "What the view is for" | "このビューの目的" |
-| `views_new.from_label` | the label of the choice of the view to fork from | "Fork it from" | "分岐元" |
-| `views_new.submit` | the button that creates the view | "Create the view" | "ビューを作成する" |
-| `views_new.problem_name_empty` | a problem: no name was given | "Give the view a name." | "ビューの名前を入力してください。" |
-| `views_new.problem_name_start` | a problem: the name does not start with a lower-case letter or a digit | "A name starts with a lower-case letter or a digit." | "名前の先頭は、半角の小文字か数字にしてください。" |
-| `views_new.problem_name_chars` | a problem: the name has a character a name may not have | "A name has only lower-case letters, digits, dots, hyphens and underscores, and neither two dots in a row nor a dot at the end." | "名前に使えるのは、半角の小文字、数字、ドット、ハイフン、アンダースコアだけです（ドットの連続や末尾のドットは使えません）。" |
-| `views_new.problem_name_long` | a problem: the name is longer than 64 characters | "A name has at most 64 characters." | "名前は 64 文字までです。" |
-| `views_new.problem_kind` | a problem: no kind was chosen | "Choose what the view is for." | "このビューの目的を選んでください。" |
-| `views_new.problem_from` | a problem: the view to fork from is not one of the wiki's views | "Choose a view that is there to fork it from." | "分岐元には、すでにあるビューを選んでください。" |
-| `views_new.problem_taken` | a problem: a view of that name is already there | "A view with that name is already there. Choose another name." | "その名前のビューはすでにあります。ほかの名前を選んでください。" |
-| `views_new.not_allowed` | under the outcome not allowed, for creating a view | "Your role in this wiki does not include creating views. Nothing was changed." | "このウィキでのあなたの役割には、ビューを作成する権限がありません。何も変更していません。" |
-| `views_new.busy` | under the outcome the wiki is busy, for creating a view | "Another change is being made to the wiki. Nothing was changed; try again in a moment." | "ウィキに別の変更を加えている最中です。何も変更していません。しばらくしてからもう一度お試しください。" |
-| `views_new.too_many_heading` | the outcome of creating a view in a wiki that has as many as it may keep | "Too many views" | "ビューが多すぎます" |
-| `views_new.too_many` | under that outcome; `{bound}` is the number | "This wiki already has {bound} open views, the most it keeps. Nothing was changed." | "このウィキにはすでに {bound} 件のビューが開いており、これが上限です。何も変更していません。" |
-| `views_new.retirement_heading` | the outcome of creating a view while a change to the wiki's keys is not finished | "Not created: a change to this wiki's keys is not finished" | "作成されませんでした: このウィキの鍵の変更が完了していません" |
-| `views_new.retirement` | under that outcome | "A change to this wiki's keys is not finished, so nothing new can be made in its history until the person who runs this wiki finishes or gives up that change. Nothing was changed. Tell that person; once it is finished or given up, create the view again." | "このウィキの鍵の変更が完了していないため、運用している人がその変更を完了するか取りやめるまで、履歴に新しいものを作れません。何も変更していません。その人に伝えてください。完了または取りやめの後に、もう一度ビューを作成してください。" |
-| `views_new.failed_heading` | the outcome of creating a view that the history refused | "The view was not created" | "ビューは作成されませんでした" |
-| `views_new.failed` | under that outcome | "The history did not accept the new view. Nothing was changed." | "履歴は、新しいビューを受け付けませんでした。何も変更していません。" |
-| `views_new.uncertain` | under the outcome the result is not certain, for creating a view | "The wiki's views could not be read after the view was made. It may or may not be there: look at the list of views before you try again, and tell the person who runs this server." | "ビューを作ったあとで、ウィキのビューを読めませんでした。ビューができているかどうかは分かりません。もう一度試す前にビューの一覧を確認し、このサーバーを運用している人に伝えてください。" |
-| `views_new.not_kept_heading` | the outcome of opening the form on a server that cannot create views | "Creating views is not available on this server" | "このサーバーではビューを作成できません" |
-| `views_new.not_kept` | under that outcome | "This server does not keep the record a new view needs, so no view can be created here yet. Nothing was changed." | "このサーバーには、新しいビューに必要な記録を保つ仕組みがないため、今はここでビューを作成できません。何も変更していません。" |
-| `views_new.unconfigured_heading` | the outcome of creating a view on a server started without the means to sign | "Creating views is not set up on this server" | "このサーバーではビューの作成が設定されていません" |
-| `views_new.unconfigured` | under that outcome | "This server is not set up to sign changes into the history, so no view can be created; tell the person who runs this server. Nothing was changed." | "このサーバーには履歴へ署名する設定がないため、ビューを作成できません（このサーバーを運用している人に伝えてください）。何も変更していません。" |
-| `title.compare` | the title of the page that compares two views; `{wiki}` is the wiki's name | "Compare views · {wiki} · {product}" | "ビューの比較 · {wiki} · {product}" |
-| `compare.heading` | the heading of the page that compares two views | "Compare views" | "ビューの比較" |
-| `compare.intro` | under that heading | "This lists where two views differ. It does not say which one is right." | "2 つのビューの違いを一覧にします。どちらが正しいかは示しません。" |
-| `compare.a_label` | the label of the choice of the first view | "First view" | "1 つ目のビュー" |
-| `compare.b_label` | the label of the choice of the second view | "Second view" | "2 つ目のビュー" |
-| `compare.go` | the button that compares the two views chosen | "Compare" | "比べる" |
-| `compare.pick_two` | a note when the two views chosen are one and the same | "Choose two different views to compare." | "異なる 2 つのビューを選んでください。" |
-| `compare.pair` | the heading of a comparison; `{a}` and `{b}` are the two views named in words | "Comparing {a} and {b}" | "{a}と{b}の比較" |
-| `compare.same` | under that heading when nothing differs | "The two views hold the same content." | "2 つのビューの内容は同じです。" |
-| `compare.claims_heading` | the heading of the claims that differ | "Claims that differ" | "違いのある主張" |
-| `compare.claims_none` | under it when no claim differs | "No claim differs between the two views." | "2 つのビューで違いのある主張はありません。" |
-| `compare.claim_said_in` | a claim in the list, by the page it is said in; `{page}` is the page's title | "A claim said in {page}" | "{page}にある主張" |
-| `compare.claim_unplaced` | a claim in the list that no page says now | "A claim that no page says" | "どのページにも書かれていない主張" |
-| `compare.diff_wording` | what differs about a claim: the paragraphs it is said in read differently | "It is worded differently." | "文面が異なります。" |
-| `compare.diff_status` | what differs about a claim: its status; `{a}` and `{b}` are statuses, `{va}` and `{vb}` the views | "Its status: {a} in {va}, {b} in {vb}." | "状態: {va}では{a}、{vb}では{b}。" |
-| `compare.diff_sources` | what differs about a claim: the sources that bear on it, or how, or what they are | "Its sources differ." | "出典が異なります。" |
-| `compare.only_in` | what differs about a claim or a page: only one view has it; `{view}` is that view named in words | "Only in {view}." | "{view}にだけあります。" |
-| `compare.unreadable_in` | what differs about a claim: a view has a file for it that cannot be read; `{view}` is that view named in words | "Its file in {view} cannot be read, so nothing is said of it there." | "{view}にあるこの主張のファイルは読めないため、そこでの状態は示せません。" |
-| `compare.status_accepted` | a claim's status in a comparison | "accepted" | "受け入れ済み" |
-| `compare.status_contested` | a claim's status in a comparison | "contested" | "異論あり" |
-| `compare.status_unresolved` | a claim's status in a comparison | "unresolved" | "未解決" |
-| `compare.status_unknown` | a claim's status in a comparison: nobody decided | "not decided" | "未決定" |
-| `compare.claims_omitted` | under the list of claims when more differ than are listed; `{shown}` and `{omitted}` are numbers | "{shown} claims are listed; {omitted} more also differ and are not shown." | "{shown} 件の主張を表示しています。違いのある主張がほかに {omitted} 件ありますが、表示していません。" |
-| `compare.pages_heading` | the heading of the pages that differ | "Pages that differ" | "違いのあるページ" |
-| `compare.pages_none` | under it when no page differs | "No page differs between the two views." | "2 つのビューで違いのあるページはありません。" |
-| `compare.page_differs` | a page in the list that both views have and read differently | "The page differs." | "ページの内容が異なります。" |
-| `compare.page_link` | a page in the list: the link to how the page differs; `{page}` is its title | "How {page} differs" | "{page}の違い" |
-| `compare.pages_omitted` | under the list of pages when more differ than are listed; `{shown}` and `{omitted}` are numbers | "{shown} pages are listed; {omitted} more also differ and are not shown." | "{shown} 件のページを表示しています。違いのあるページがほかに {omitted} 件ありますが、表示していません。" |
-| `compare.back` | the link from a comparison to the list of views | "All views" | "ビューの一覧" |
-| `title.compare_page` | the title of the page that shows how one page differs between two views; `{page}` is its title | "{page}: how it differs · {wiki} · {product}" | "{page}: 違い · {wiki} · {product}" |
-| `compare.page_heading` | the heading of that page; `{title}` is the page's title | "{title}: how it differs between two views" | "{title}: 2 つのビューでの違い" |
-| `compare.page_range` | under that heading; `{a}` and `{b}` are the two views named in words | "Lines marked removed are in {a} only; lines marked added are in {b} only." | "「削除」の行は{a}だけに、「追加」の行は{b}だけにあります。" |
-| `compare.page_read` | on that page: the link to read the page in one view; `{page}` is its title, `{view}` the view named in words | "Read {page} in {view}" | "{view}で{page}を読む" |
-| `compare.page_back` | on that page: the link back to the comparison | "Back to the comparison" | "比較へ戻る" |
-| `compare.page_absent` | on that page: the page is in neither view | "Neither view has this page." | "どちらのビューにもこのページはありません。" |
-| `claim.others_heading` | the heading of the section of a claim's page that names the views where it reads differently | "Other views" | "ほかのビュー" |
-| `claim.others_none` | under that heading when no other view reads the claim differently | "No other view reads this claim differently." | "ほかのビューで、この主張が異なって読めるものはありません。" |
-| `claim.others_compare` | in that section: the link that compares this view with another; `{view}` is the other view named in words | "Compare with {view}" | "{view}と比べる" |
-| `claim.others_limit` | in that section when the wiki has more views than are checked here; `{shown}` is a number | "Only {shown} other views are checked on this page; compare views to see the others." | "このページで調べるほかのビューは {shown} 件までです。そのほかのビューは、ビューの比較で確かめてください。" |
-| `claim.others_unchecked` | in that section when some views could not be read just now | "Some views could not be read just now, so they are not listed here." | "今は読めなかったビューがあるため、ここには載せていません。" |
 
 ## 3. Words the interface does not say
 
