@@ -6,7 +6,8 @@ use crate::acts::{
     ActStore, MAX_RECOVERY_PLAN_BYTES, OverlapRecord, RecoveryActEnd, RecoveryActEntry,
     RecoveryActRecord, RecoveryFlag, SystemActEnd, SystemActEntry, SystemActRecord,
 };
-use crate::record::{ProposalId, RecoveryActId, SystemActId, WikiId, WikiRecord};
+use crate::record::{ProposalId, RecoveryActId, SystemActId, ViewActId, WikiId, WikiRecord};
+use crate::views::{ViewActEnd, ViewActEntry, ViewActOutcome, ViewActRecord};
 use crate::{Result, StoreError};
 
 use super::MemoryStore;
@@ -20,6 +21,8 @@ pub(super) struct Acts {
     ends: Vec<SystemActEnd>,
     recoveries: Vec<RecoveryActRecord>,
     recovery_ends: Vec<RecoveryActEnd>,
+    view_acts: Vec<ViewActRecord>,
+    view_ends: Vec<ViewActEnd>,
 }
 
 impl MemoryStore {
@@ -195,6 +198,67 @@ impl ActStore for MemoryStore {
             .map(|a| RecoveryActEntry {
                 act: a.clone(),
                 end: d.recovery_ends.iter().find(|e| e.act == a.id).cloned(),
+            })
+            .collect())
+    }
+
+    fn begin_view_act(&self, act: &ViewActRecord) -> Result<()> {
+        if !self.wiki_exists(&act.wiki) {
+            return Err(StoreError::NotFound);
+        }
+        let mut d = self.acts_lock();
+        if d.view_acts.iter().any(|a| a.id == act.id) {
+            return Err(StoreError::AlreadyRecorded);
+        }
+        // The name belongs to the first act that stands: one that failed took nothing in and frees it.
+        let held = d
+            .view_acts
+            .iter()
+            .filter(|a| a.wiki == act.wiki && a.name == act.name)
+            .any(|a| {
+                !matches!(
+                    d.view_ends
+                        .iter()
+                        .find(|e| e.act == a.id)
+                        .map(|e| &e.outcome),
+                    Some(ViewActOutcome::Failed { .. })
+                )
+            });
+        if held {
+            return Err(StoreError::AlreadyRecorded);
+        }
+        d.view_acts.push(act.clone());
+        Ok(())
+    }
+
+    fn finish_view_act(&self, end: &ViewActEnd) -> Result<()> {
+        let mut d = self.acts_lock();
+        if !d.view_acts.iter().any(|a| a.id == end.act) {
+            return Err(StoreError::NotFound);
+        }
+        if d.view_ends.iter().any(|e| e.act == end.act) {
+            return Err(StoreError::AlreadyRecorded);
+        }
+        d.view_ends.push(end.clone());
+        Ok(())
+    }
+
+    fn open_view_act(&self, id: &ViewActId) -> Result<Option<ViewActRecord>> {
+        let d = self.acts_lock();
+        if d.view_ends.iter().any(|e| e.act == *id) {
+            return Ok(None);
+        }
+        Ok(d.view_acts.iter().find(|a| a.id == *id).cloned())
+    }
+
+    fn view_acts(&self, wiki: &WikiId) -> Result<Vec<ViewActEntry>> {
+        let d = self.acts_lock();
+        Ok(d.view_acts
+            .iter()
+            .filter(|a| a.wiki == *wiki)
+            .map(|a| ViewActEntry {
+                act: a.clone(),
+                end: d.view_ends.iter().find(|e| e.act == a.id).cloned(),
             })
             .collect())
     }

@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::Result;
 use crate::acceptance::AcceptanceOutcome;
-use crate::record::{ProposalId, RecoveryActId, SystemActId, WikiId, WikiRecord};
+use crate::record::{ProposalId, RecoveryActId, SystemActId, ViewActId, WikiId, WikiRecord};
+use crate::views::{ViewActEnd, ViewActEntry, ViewActRecord};
 
 /// Why a wiki is flagged *needs recovery* (RFC 004 D-6): which incomplete state the last act left. Every
 /// reason is a fixed word; none is prikk's text.
@@ -304,4 +305,37 @@ pub trait ActStore: Send + Sync {
 
     /// Every recovery act of the wiki with its end, oldest first.
     fn recovery_acts(&self, wiki: &WikiId) -> Result<Vec<RecoveryActEntry>>;
+
+    // --- the record of a view's creation (RFC 005 part 2 D-9; handoff 005 K-T8). A store that keeps none answers
+    // these as the defaults do: it refuses to begin one, finds none open and lists none, so a service over it
+    // says that views cannot be created, and a reader of views sees them without an origin.
+
+    /// Start a view's creation. The wiki must be there ([`NotFound`](crate::StoreError::NotFound)); the id must be
+    /// new and **no other act that stands may hold the name** in this wiki
+    /// ([`AlreadyRecorded`](crate::StoreError::AlreadyRecorded) in both cases: nothing is written then). The name
+    /// of an act that failed is free again.
+    fn begin_view_act(&self, _act: &ViewActRecord) -> Result<()> {
+        Err(crate::StoreError::Backend(
+            "this store keeps no record of a view's creation".to_owned(),
+        ))
+    }
+
+    /// Record how a view's creation ended. Once: a second end is
+    /// [`AlreadyRecorded`](crate::StoreError::AlreadyRecorded); an act that is not there is
+    /// [`NotFound`](crate::StoreError::NotFound).
+    fn finish_view_act(&self, _end: &ViewActEnd) -> Result<()> {
+        Err(crate::StoreError::Backend(
+            "this store keeps no record of a view's creation".to_owned(),
+        ))
+    }
+
+    /// The view-creation act `id` names, **only if it has not ended**: the question the signer's guard asks.
+    fn open_view_act(&self, _id: &ViewActId) -> Result<Option<ViewActRecord>> {
+        Ok(None)
+    }
+
+    /// Every view-creation act of the wiki with its end, oldest first.
+    fn view_acts(&self, _wiki: &WikiId) -> Result<Vec<ViewActEntry>> {
+        Ok(Vec::new())
+    }
 }

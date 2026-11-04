@@ -206,6 +206,12 @@ uuid_id! {
 }
 
 uuid_id! {
+    /// The opaque id of a view's creation (RFC 005 part 2 D-9, handoff 005 K-T8): the recorded act the signer's
+    /// `create_view` is bound to, and the record of where the view came from.
+    ViewActId
+}
+
+uuid_id! {
     /// The opaque id of an intent (RFC 004 D-4, CON-3): what the service meant to seal, written before it asks.
     IntentId
 }

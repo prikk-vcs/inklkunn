@@ -37,6 +37,7 @@ pub mod proposal;
 pub mod record;
 pub mod root;
 pub mod sqlite;
+pub mod views;
 
 pub use acceptance::{
     AcceptanceBegin, AcceptanceEntry, AcceptanceOutcome, AcceptanceRecord, AcceptanceResult,
@@ -75,10 +76,11 @@ pub use record::{
     AcceptanceId, AccountId, Attempt, Checkpoint, CommentId, DecisionId, DisplayName,
     DisplayNameError, InboxEventId, IntentId, InvitationId, NewWiki, NewWikiError, NotRun,
     PrikkVersion, ProposalId, RecoveryActId, Slug, SlugError, SystemActId, TokenId, Verification,
-    VerificationState, Visibility, WikiId, WikiRecord,
+    VerificationState, ViewActId, Visibility, WikiId, WikiRecord,
 };
 pub use root::RootLayout;
 pub use sqlite::SqliteStore;
+pub use views::{ViewActEnd, ViewActEntry, ViewActOutcome, ViewActRecord, ViewKind};
 
 /// Why a store call failed. Every variant is one plain fact; a backend's own text appears only in
 /// [`StoreError::Backend`], never dressed as a user-facing refusal.
