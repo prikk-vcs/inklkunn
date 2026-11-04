@@ -133,6 +133,12 @@ fn proposal_specs() -> Vec<Spec> {
             handler: post_route!(proposals::accept::accept, pages::FORM_LIMIT),
         },
         Spec {
+            path: "/{slug}/-/proposals/{id}/reconfirm",
+            methods: &["POST"],
+            guard: Guard::Action(Action::Propose),
+            handler: post_route!(proposals::touched::reconfirm, proposals::SMALL_FORM_LIMIT),
+        },
+        Spec {
             path: "/{slug}/-/proposals/{id}/decline",
             methods: &["GET", "HEAD", "POST"],
             guard: Guard::Action(Action::Accept),

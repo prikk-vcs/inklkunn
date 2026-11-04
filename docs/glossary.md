@@ -1186,6 +1186,18 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `curate.confirm_hint` | under that box | "Use this when the claim was reworded and you have read its sources against the new wording." | "主張の文面が変わり、出典を新しい文面と照らして読んだときに使ってください。" |
 | `curate.submit` | the button that sends the curation proposal for review | "Send for review" | "レビューに送る" |
 | `curate.nothing` | a problem: the form differs from what the wiki has in nothing | "Nothing in the form differs from what the wiki has now. Change something first." | "フォームの内容は、ウィキの現在の内容と変わりません。先に何かを変更してください。" |
+| `touch.heading` | the heading of the list of claims a proposal touches | "Claims this change touches" | "この変更が触れる主張" |
+| `touch.intro` | under that heading | "These claims are said in paragraphs this change rewords or removes. The wiki shows what it can see; it does not say whether a reworded paragraph still means the same." | "これらの主張は、この変更で文面が変わる、または削除される段落に書かれています。ウィキは見えることだけを示し、文面が変わった段落が同じ意味かどうかは判断しません。" |
+| `touch.reworded` | a line of that list; `{words}` is how the paragraph reads after the change | "The paragraph “{words}” is reworded. It stays the same claim, because its marker stays." | "段落「{words}」の文面が変わります。目印が残るため、同じ主張のままです。" |
+| `touch.removed` | a line of that list; `{words}` is how the paragraph read before | "The paragraph “{words}” is removed. The claim is no longer said there." | "段落「{words}」が削除されます。この主張はそこには書かれなくなります。" |
+| `touch.links_earlier` | under such a line: sources that were judged on the wording the paragraph had; `{count}` is how many | "{count} source was judged on the earlier wording. It will be shown as judged on an earlier wording." / "{count} sources were judged on the earlier wording. They will be shown as judged on an earlier wording." | "{count} 件の出典は以前の文面について判断されています。以前の文面について判断されたものとして表示されます。" |
+| `touch.standing_earlier` | under such a line: the community status was decided on the earlier wording; `{status}` is the status | "Its community status ({status}) was decided on the earlier wording. It will be shown as judged on an earlier wording." | "コミュニティでの扱い（{status}）は以前の文面について決められています。以前の文面について判断されたものとして表示されます。" |
+| `touch.nothing_earlier` | under such a line: nothing was judged on the earlier wording | "Nothing was judged on the earlier wording." | "以前の文面について判断されたものはありません。" |
+| `touch.reconfirm_hint` | above the button that proposes judging those claims again, on an accepted proposal | "One proposal for all of them: it judges their sources, and their status where one was decided, on the wording they have now. It changes no page, and someone has to accept it." | "すべてをまとめて一つの提案にします。出典と、決められている場合はコミュニティでの扱いを、いまの文面について改めて判断します。ページは変更せず、受け入れる人が必要です。" |
+| `touch.reconfirm_button` | the button that proposes judging those claims again | "Propose judging them again" | "改めて判断する提案をする" |
+| `touch.reconfirm_later` | on a proposal that is not accepted yet, under that list | "Once this proposal is accepted, a person can propose judging these claims again here, in one step." | "この提案が受け入れられたら、ここから一度の操作で、これらの主張を改めて判断する提案ができます。" |
+| `touch.reconfirm_summary` | the summary of the proposal that judges the claims again; `{summary}` is the summary of the proposal that reworded them | "Judge the claims again after: {summary}" | "改めて判断する: {summary}" |
+| `touch.nothing_to_judge` | a note: every claim of the list is judged on the wording it has now | "Nothing needs judging again: each of these claims is judged on the wording it has now." | "改めて判断する必要はありません。これらの主張はどれも、いまの文面について判断されています。" |
 
 ## 3. Words the interface does not say
 

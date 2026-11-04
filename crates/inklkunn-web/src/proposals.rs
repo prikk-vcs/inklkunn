@@ -54,6 +54,7 @@ pub(crate) mod render;
 pub(crate) mod review;
 pub(crate) mod show;
 pub(crate) mod submit;
+pub(crate) mod touched;
 pub(crate) mod urlencoded;
 pub(crate) mod words;
 

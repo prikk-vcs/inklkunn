@@ -67,6 +67,12 @@ struct DecideFormView {
     request: String,
 }
 
+struct ReconfirmView {
+    action: String,
+    hint: String,
+    button: String,
+}
+
 struct AcceptView {
     action: String,
     revision_name: &'static str,
@@ -97,6 +103,11 @@ struct ProposalTpl<'a> {
     know_heading: String,
     know_notes: Vec<String>,
     know: Vec<super::knowledge::Line>,
+    touch_heading: String,
+    touch_intro: String,
+    touch: Vec<super::knowledge::Line>,
+    reconfirm: Option<ReconfirmView>,
+    reconfirm_later: Option<String>,
     thread_id: &'static str,
     thread_heading: String,
     thread: Vec<CommentView>,
@@ -589,6 +600,35 @@ pub(crate) fn draw(
     });
     let overlaps = super::overlaps::view(ctx, t, record, latest);
 
+    // The claims the change touches, and what it does to what they were judged on (part 1 D-1 c).
+    let pages: Vec<(String, Option<String>, Option<String>)> = files
+        .iter()
+        .zip(&olds)
+        .map(|((path, _, new), old)| (path.clone(), old.clone(), new.clone()))
+        .collect();
+    let touched = match &r.content {
+        Some(content) if !pages.is_empty() => {
+            match super::touched::of_revision(ctx, &record.view, &content.base.block_id, &pages) {
+                Ok(found) => found,
+                Err(e) => return crate::proposals::new::read_failure(page, ctx, e),
+            }
+        }
+        _ => Vec::new(),
+    };
+    let leaves = super::touched::leaves_earlier(&touched);
+    let reconfirm = (leaves
+        && record.state == ProposalState::Accepted
+        && ctx.account().is_some()
+        && ctx.may_wiki(Action::Propose))
+    .then(|| ReconfirmView {
+        action: paths::act(slug, id.as_str(), paths::ACT_RECONFIRM),
+        hint: t.get(Key::TouchReconfirmHint),
+        button: t.get(Key::TouchReconfirmButton),
+    });
+    let reconfirm_later =
+        (leaves && record.state.is_open()).then(|| t.get(Key::TouchReconfirmLater));
+    let touch = super::touched::lines(t, &touched);
+
     // What the proposal does to claims and sources, and whether it is a curation proposal.
     let (know, know_notes) = match &r.content {
         Some(content) => {
@@ -717,6 +757,11 @@ pub(crate) fn draw(
         know_heading: t.get(Key::KnowHeading),
         know_notes,
         know,
+        touch_heading: t.get(Key::TouchHeading),
+        touch_intro: t.get(Key::TouchIntro),
+        touch,
+        reconfirm,
+        reconfirm_later,
         thread_id: fields::ID_THREAD,
         thread_heading: t.get(Key::ThreadHeading),
         thread: general.into_iter().flat_map(|th| th.views).collect(),

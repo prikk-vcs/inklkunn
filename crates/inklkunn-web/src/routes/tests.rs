@@ -304,6 +304,7 @@ fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
             ("/{slug}/-/proposals/{id}/comment", Comment),
             ("/{slug}/-/proposals/{id}/decide", Review),
             ("/{slug}/-/proposals/{id}/accept", Accept),
+            ("/{slug}/-/proposals/{id}/reconfirm", Propose),
             ("/{slug}/-/proposals/{id}/decline", Accept),
             ("/{slug}/-/proposals/{id}/ask", Accept),
             ("/{slug}/-/proposals/{id}/withdraw", Propose),

@@ -1448,6 +1448,20 @@ keys! {
     CurateSubmit => "curate.submit",
     CurateNothing => "curate.nothing",
     // knowledge: the curation proposal (handoff 005 K-T5): end
+    // knowledge: the claims a change touches (handoff 005 K-T5): start
+    TouchHeading => "touch.heading",
+    TouchIntro => "touch.intro",
+    TouchReworded => "touch.reworded",
+    TouchRemoved => "touch.removed",
+    TouchLinksEarlier => "touch.links_earlier",
+    TouchStandingEarlier => "touch.standing_earlier",
+    TouchNothingEarlier => "touch.nothing_earlier",
+    TouchReconfirmHint => "touch.reconfirm_hint",
+    TouchReconfirmButton => "touch.reconfirm_button",
+    TouchReconfirmLater => "touch.reconfirm_later",
+    TouchReconfirmSummary => "touch.reconfirm_summary",
+    TouchNothingToJudge => "touch.nothing_to_judge",
+    // knowledge: the claims a change touches (handoff 005 K-T5): end
 }
 
 /// A typed value for a placeholder. Text is HTML-escaped; a link is an escaped label plus an `href` the

@@ -13,6 +13,7 @@ mod flows;
 mod review;
 mod rules;
 mod safety;
+mod touched;
 
 use axum::http::StatusCode;
 use common::{Answer, World, add_person, get_as, page, person, post_form, with_accounts};

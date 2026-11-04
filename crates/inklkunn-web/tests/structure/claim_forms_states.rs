@@ -120,6 +120,26 @@ impl Env {
             .unwrap()
     }
 
+    /// A proposal of the writer's that rewords the paragraph a claim is said in, held for review.
+    fn rewording(&self) -> ProposalRecord {
+        let edit = ProposalEdit {
+            summary: "Another year".to_owned(),
+            files: vec![FileChange {
+                path: "pages/Bridge.md".to_owned(),
+                text: Some(BRIDGE.replace("1950", "1951")),
+            }],
+            ..ProposalEdit::default()
+        };
+        let who = Self::who(&self.writer);
+        let draft = self
+            .service()
+            .create(&who, &self.w.wiki, None, edit)
+            .unwrap();
+        self.service()
+            .submit(&who, &self.w.wiki, &draft.id)
+            .unwrap()
+    }
+
     /// A curation proposal of the writer's: a status, no page, held for review.
     fn curating(&self) -> ProposalRecord {
         let id = ClaimId::parse("01930000-0000-7000-8000-000000000001").unwrap();
@@ -377,6 +397,27 @@ pub(super) const SCENARIOS: &[Scenario] = &[
         status: 200,
         make: |e| {
             let p = e.setting_a_status();
+            get(&format!("/handbook/-/proposals/{}", p.id), &e.writer)
+        },
+    },
+    Scenario {
+        id: "proposal-touching-claims",
+        identity: "proposal-touching-claims",
+        status: 200,
+        make: |e| {
+            let p = e.rewording();
+            get(&format!("/handbook/-/proposals/{}", p.id), &e.writer)
+        },
+    },
+    Scenario {
+        id: "proposal-touching-claims-accepted",
+        identity: "proposal-touching-claims",
+        status: 200,
+        make: |e| {
+            let p = e.rewording();
+            crate::common::accept_by_hand(&e.w, &p.id, &person(4), &e.writer);
+            e.w.fake
+                .set("pages/Bridge.md", &BRIDGE.replace("1950", "1951"));
             get(&format!("/handbook/-/proposals/{}", p.id), &e.writer)
         },
     },

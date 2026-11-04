@@ -421,3 +421,6 @@ exact :: curate.rs :: title :: a placeholder name of a catalog message
 exact :: curate.rs :: words :: a placeholder name of a catalog message
 exact :: curate.rs :: wiki :: a placeholder name of a catalog message
 exact :: curate.rs :: limit :: a placeholder name of a catalog message
+exact :: touched.rs :: status :: a placeholder name of a catalog message
+exact :: touched.rs :: words :: a placeholder name of a catalog message
+exact :: touched.rs :: summary :: a placeholder name of a catalog message

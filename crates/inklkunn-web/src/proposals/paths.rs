@@ -132,6 +132,7 @@ pub(crate) const ACT_ACCEPT: &str = "accept";
 pub(crate) const ACT_DECLINE: &str = "decline";
 pub(crate) const ACT_WITHDRAW: &str = "withdraw";
 pub(crate) const ACT_ASK: &str = "ask";
+pub(crate) const ACT_RECONFIRM: &str = "reconfirm";
 
 /// The form that continues a draft, with the sign that it was just saved.
 pub(crate) fn edit_saved(slug: &str, id: &str) -> String {

@@ -2581,4 +2581,49 @@ pub const CATALOG: &[Entry] = &[
         "Nothing in the form differs from what the wiki has now. Change something first.",
     ),
     // knowledge: the curation proposal (handoff 005 K-T5): end
+    // knowledge: the claims a change touches (handoff 005 K-T5): start
+    msg("touch.heading", "Claims this change touches"),
+    msg(
+        "touch.intro",
+        "These claims are said in paragraphs this change rewords or removes. The wiki shows what it can see; it does not say whether a reworded paragraph still means the same.",
+    ),
+    msg(
+        "touch.reworded",
+        "The paragraph “{words}” is reworded. It stays the same claim, because its marker stays.",
+    ),
+    msg(
+        "touch.removed",
+        "The paragraph “{words}” is removed. The claim is no longer said there.",
+    ),
+    plural_msg(
+        "touch.links_earlier",
+        "{count} source was judged on the earlier wording. It will be shown as judged on an earlier wording.",
+        "{count} sources were judged on the earlier wording. They will be shown as judged on an earlier wording.",
+    ),
+    msg(
+        "touch.standing_earlier",
+        "Its community status ({status}) was decided on the earlier wording. It will be shown as judged on an earlier wording.",
+    ),
+    msg(
+        "touch.nothing_earlier",
+        "Nothing was judged on the earlier wording.",
+    ),
+    msg(
+        "touch.reconfirm_hint",
+        "One proposal for all of them: it judges their sources, and their status where one was decided, on the wording they have now. It changes no page, and someone has to accept it.",
+    ),
+    msg("touch.reconfirm_button", "Propose judging them again"),
+    msg(
+        "touch.reconfirm_later",
+        "Once this proposal is accepted, a person can propose judging these claims again here, in one step.",
+    ),
+    msg(
+        "touch.reconfirm_summary",
+        "Judge the claims again after: {summary}",
+    ),
+    msg(
+        "touch.nothing_to_judge",
+        "Nothing needs judging again: each of these claims is judged on the wording it has now.",
+    ),
+    // knowledge: the claims a change touches (handoff 005 K-T5): end
 ];

@@ -34,6 +34,21 @@
 {% endfor %}</ul>{% endif %}</li>
 {% endfor %}</ul>
 </section>
+{% endif %}{% if !touch.is_empty() %}<section aria-labelledby="touched">
+<h2 id="touched">{{ touch_heading }}</h2>
+<p>{{ touch_intro }}</p>
+<ul>
+{% for line in touch %}<li>{{ line.text }}{% if !line.more.is_empty() %}<ul>
+{% for m in line.more %}<li>{{ m }}</li>
+{% endfor %}</ul>{% endif %}</li>
+{% endfor %}</ul>
+{% if let Some(f) = reconfirm %}<form method="post" action="{{ f.action }}" class="reconfirm-form">
+{% include "csrf.html" %}
+<p>{{ f.hint }}</p>
+<p><button type="submit">{{ f.button }}</button></p>
+</form>
+{% endif %}{% if let Some(text) = reconfirm_later %}<p class="note">{{ text }}</p>
+{% endif %}</section>
 {% endif %}<section aria-labelledby="{{ thread_id }}">
 <h2 id="{{ thread_id }}">{{ thread_heading }}</h2>
 {% if let Some(text) = no_thread %}<p>{{ text }}</p>

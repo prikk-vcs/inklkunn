@@ -51,7 +51,7 @@ type Fields = super::urlencoded::Raw;
 // ------------------------------------------------------------------------------------ the claim as it was
 
 /// The claim, its sources and its wording, as a base had them.
-struct Loaded {
+pub(super) struct Loaded {
     claim: Claim,
     /// Each source the claim cites (`None`: its file is not there or cannot be read), in the claim's order.
     cited: Vec<Option<Source>>,
@@ -59,8 +59,20 @@ struct Loaded {
     wording: Option<(String, Digest)>,
 }
 
+impl Loaded {
+    /// The claim.
+    pub(super) fn claim(&self) -> &Claim {
+        &self.claim
+    }
+
+    /// The digest of the wording the claim has, when it is said in a paragraph.
+    pub(super) fn digest(&self) -> Option<&Digest> {
+        self.wording.as_ref().map(|(_, d)| d)
+    }
+}
+
 /// Read the claim `id` and what it cites at `base_block` of `view`. `Ok(None)`: there is no such claim then.
-fn load(
+pub(super) fn load(
     ctx: &Ctx,
     view: Option<&str>,
     base_block: &str,

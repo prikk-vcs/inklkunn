@@ -2649,4 +2649,45 @@ pub const CATALOG: &[Entry] = &[
         "フォームの内容は、ウィキの現在の内容と変わりません。先に何かを変更してください。",
     ),
     // knowledge: the curation proposal (handoff 005 K-T5): end
+    // knowledge: the claims a change touches (handoff 005 K-T5): start
+    msg("touch.heading", "この変更が触れる主張"),
+    msg(
+        "touch.intro",
+        "これらの主張は、この変更で文面が変わる、または削除される段落に書かれています。ウィキは見えることだけを示し、文面が変わった段落が同じ意味かどうかは判断しません。",
+    ),
+    msg(
+        "touch.reworded",
+        "段落「{words}」の文面が変わります。目印が残るため、同じ主張のままです。",
+    ),
+    msg(
+        "touch.removed",
+        "段落「{words}」が削除されます。この主張はそこには書かれなくなります。",
+    ),
+    msg(
+        "touch.links_earlier",
+        "{count} 件の出典は以前の文面について判断されています。以前の文面について判断されたものとして表示されます。",
+    ),
+    msg(
+        "touch.standing_earlier",
+        "コミュニティでの扱い（{status}）は以前の文面について決められています。以前の文面について判断されたものとして表示されます。",
+    ),
+    msg(
+        "touch.nothing_earlier",
+        "以前の文面について判断されたものはありません。",
+    ),
+    msg(
+        "touch.reconfirm_hint",
+        "すべてをまとめて一つの提案にします。出典と、決められている場合はコミュニティでの扱いを、いまの文面について改めて判断します。ページは変更せず、受け入れる人が必要です。",
+    ),
+    msg("touch.reconfirm_button", "改めて判断する提案をする"),
+    msg(
+        "touch.reconfirm_later",
+        "この提案が受け入れられたら、ここから一度の操作で、これらの主張を改めて判断する提案ができます。",
+    ),
+    msg("touch.reconfirm_summary", "改めて判断する: {summary}"),
+    msg(
+        "touch.nothing_to_judge",
+        "改めて判断する必要はありません。これらの主張はどれも、いまの文面について判断されています。",
+    ),
+    // knowledge: the claims a change touches (handoff 005 K-T5): end
 ];

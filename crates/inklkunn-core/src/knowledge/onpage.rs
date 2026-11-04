@@ -9,7 +9,8 @@ use std::collections::BTreeSet;
 use inklkunn_store::WikiRecord;
 
 use super::compose::page_id_of;
-use super::{Claim, ClaimId, File, claim_path, read_file};
+use super::touched::{PageChange, Touch, changed_blocks, judge};
+use super::{Claim, ClaimId, Digest, Expression, File, claim_path, read_file};
 use crate::read::{ReadError, ReadService};
 
 /// The most claims one page is asked about. A page that holds more is a page whose claims the forms hold the
@@ -85,4 +86,62 @@ pub fn blocks_said(claims: &[Claim], page_id: &str) -> BTreeSet<String> {
         .filter(|e| e.page_id == page_id)
         .map(|e| e.block.clone())
         .collect()
+}
+
+/// The most claims one change is asked about; a change that touches more says so (the caller counts).
+pub const MAX_TOUCHED: usize = 200;
+
+/// The claims `changes` touch (a paragraph they are said in is reworded or goes), read from the view's index and from
+/// the claim files as they were at `base_block`, with what the change does to what each was judged on. In the order
+/// of the pages, the paragraphs and the claims. Claims the change itself makes are not among them: they are judged
+/// on the wording they are made with.
+pub fn touches(
+    reads: &ReadService,
+    wiki: &WikiRecord,
+    view: Option<&str>,
+    base_block: &str,
+    changes: &[PageChange<'_>],
+) -> Result<Vec<Touch>, ReadError> {
+    let index = reads.knowledge_index(wiki, view)?;
+    let mut ids: BTreeSet<String> = BTreeSet::new();
+    for change in changes {
+        let Some(page_id) = change.page_id() else {
+            continue;
+        };
+        let blocks: BTreeSet<String> = index
+            .rows()
+            .anchors
+            .iter()
+            .filter(|a| a.page_id == page_id)
+            .map(|a| a.block.clone())
+            .collect();
+        for block in changed_blocks(change, &blocks) {
+            ids.extend(index.claims_at(&page_id, &block).map(|a| a.claim.clone()));
+        }
+    }
+    // What the rest of the view has, for a paragraph in a page the change does not write.
+    let rest = |e: &Expression| {
+        index
+            .claims_at(&e.page_id, &e.block)
+            .find_map(|a| a.digest.as_deref().and_then(Digest::parse))
+    };
+    let mut out = Vec::new();
+    for id in ids.iter().take(MAX_TOUCHED) {
+        let Some(id) = ClaimId::parse(id) else {
+            continue;
+        };
+        let path = claim_path(&id);
+        let Some(text) = reads.source_at(wiki, base_block, &path)? else {
+            continue;
+        };
+        if let Ok(File::Claim(claim)) = read_file(&path, text.as_bytes())
+            && let Some(touch) = judge(&claim, changes, &rest)
+        {
+            out.push(touch);
+        }
+    }
+    out.sort_by(|a, b| {
+        (&a.path, &a.block, a.claim.as_str()).cmp(&(&b.path, &b.block, b.claim.as_str()))
+    });
+    Ok(out)
 }

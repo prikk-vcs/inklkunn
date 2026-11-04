@@ -20,6 +20,7 @@
 //! - [`compose`], [`marker`], [`onpage`] and [`summary`]: making a claim and attaching a source in a proposal
 //!   (part 2 D-3, handoff K-T5): the files a paragraph and a source come to, the paragraph's `^id` held by a form
 //!   and put back (part 1 D-1 b), what a page holds, and what a revision's knowledge files do, in facts.
+//! - [`touched`]: the claims a change touches and what it does to what they were judged on (part 1 D-1 c).
 //! - [`curation`]: the curation proposal, the only way a community status, a review date or an availability is
 //!   set, and the stamp that names the proposal that decided.
 
@@ -37,6 +38,7 @@ pub mod onpage;
 mod path;
 mod source;
 pub mod summary;
+pub mod touched;
 mod tree;
 mod yaml;
 

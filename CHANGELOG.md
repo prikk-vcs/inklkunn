@@ -42,6 +42,30 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   holds a claim carries the *Sources and views* link. `ChangeInfo` gains `proposal` (the message's `Proposal:` trailer);
   the core's read service gains `page_why`. Both languages, with glossary rows (and the word *anchor*); every state is in
   the structural tests.
+- **K-T5 (handoff 005; RFC 005 part 1 D-1, part 2 D-3): making claims and attaching sources.** In the propose form's part
+  menu every paragraph gains *Attach a source* and *Challenge this* (a heading or a list has neither): a form in plain
+  words (what kind of source, its title, author, date and reference, how directly it speaks to the paragraph, a note; the
+  kind of statement only when the paragraph is not a claim yet) that makes the claim and the source **in the same proposal
+  as any page edit**, giving the paragraph its `^id` and the page an `id` where they were missing, and adds the source to
+  the claim when the paragraph already is one. A web address is refused unless it is `http` or `https`. The `^id` of a
+  paragraph others rely on is held by the form and never shown in the text box: it says in one sentence that others rely
+  on the paragraph, puts the marker back on the first paragraph of what was written in the form for that one paragraph,
+  and, in a form for several paragraphs, back on a paragraph that is exactly the words it was shown with; **removing**
+  such a paragraph (or rewording it among others) is an explicit act the person confirms with a box, which also takes the
+  expression out of the claim, and the reviewer sees it. A draft or a revision carries the claim and source files forward.
+  A proposal's page lists the claims and sources it records, in facts and without a verdict, and says when it sets what only
+  curation may. The **curation proposal** is its own small form at `/{slug}/-/proposals/curate?claim=<id>` (status, relation,
+  bearing, `last_reviewed`, `availability`, and *judge the sources and the status again on the wording the claim has*; no
+  page text), read as the base had the claim; `community_status`, a source's `last_reviewed` and its `availability` are set
+  **only** by an accepted curation proposal (a revision of knowledge files alone, no rename: a fact about its content), refused
+  before the signer is asked in any other (rule `status`), named by the accepting proposal whatever the file says, and a test
+  tries every other way in (the page-edit form, a direct file change, the write API, the import, a system change, which no
+  longer writes `knowledge/`). The proposal page also lists **the claims a change touches** (a paragraph reworded or
+  removed) with the consequence for what was judged on the earlier wording (*judged on an earlier wording*), and, once
+  the proposal is accepted, **one step** that proposes judging all of them again as a single curation proposal. 162
+  messages in both languages with their glossary rows; every new state through the structural rules. **Not in this
+  entry:** the reviewers' identity decisions and re-confirmations recorded and counted in the participation metrics (part 1
+  D-1 d) need a store record the schema does not have (a decision request).
 
 ## [0.2.0] — 2026-11-04
 

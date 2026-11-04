@@ -63,6 +63,7 @@ pub(crate) fn scene() -> Scene {
     let (writer, observer) = (person(1), person(6));
     add_person(&w, &writer, "Aiko Tanaka", Some(Role::Contributor));
     add_person(&w, &observer, "Olu Reader", Some(Role::Observer));
+    add_person(&w, &person(4), "Mika Ito", Some(Role::Maintainer));
     Scene {
         w,
         writer,
@@ -90,7 +91,7 @@ pub(crate) async fn send(
 }
 
 /// The fields of the form for the `ordinal`-th part of a page, with `text`.
-fn part(
+pub(crate) fn part(
     path: &str,
     title: &str,
     ordinal: usize,
