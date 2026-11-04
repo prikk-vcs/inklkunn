@@ -831,6 +831,10 @@ pub const CATALOG: &[Entry] = &[
         "health.rule_owned",
         "The change also changes a page key that only the service writes.",
     ),
+    msg(
+        "health.rule_status",
+        "The change sets a community status, a review date or an availability outside a curation proposal.",
+    ),
     msg("title.links", "Links to {page} · {wiki} · {product}"),
     msg("links.heading", "Pages that link to {page}"),
     msg(

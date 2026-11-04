@@ -45,11 +45,14 @@ pub enum Rule {
     InUse,
     /// The change also changes a key of a page that only the service writes.
     Owned,
+    /// The change sets what only a curation proposal sets: a claim's community status, a source's `last_reviewed`
+    /// or `availability` (part 2 D-3: never by a count, a tally or a timer, and never beside a page edit).
+    Status,
 }
 
 impl Rule {
     /// Every rule, in the order the surfaces list them.
-    pub const ALL: [Rule; 16] = [
+    pub const ALL: [Rule; 17] = [
         Rule::Path,
         Rule::NotText,
         Rule::TooLong,
@@ -66,6 +69,7 @@ impl Rule {
         Rule::Anchor,
         Rule::InUse,
         Rule::Owned,
+        Rule::Status,
     ];
 
     /// The stable code.
@@ -87,6 +91,7 @@ impl Rule {
             Rule::Anchor => "anchor",
             Rule::InUse => "in-use",
             Rule::Owned => "owned-key",
+            Rule::Status => "status",
         }
     }
 
@@ -118,6 +123,9 @@ impl Rule {
             }
             Rule::InUse => "the file is removed while another file still names it",
             Rule::Owned => "the change also changes a page key that only the service writes",
+            Rule::Status => {
+                "the change sets a community status, a review date or an availability outside a curation proposal"
+            }
         }
     }
 }

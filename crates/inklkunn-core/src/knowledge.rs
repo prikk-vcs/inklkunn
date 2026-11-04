@@ -17,16 +17,26 @@
 //!   a value changed on both sides an overlap with both texts, nothing lost.
 //! - [`index`]: the derived knowledge index of a tip (part 2 D-6), built from the same `extract` of the tip as the
 //!   title index and the link graph.
+//! - [`compose`], [`marker`], [`onpage`] and [`summary`]: making a claim and attaching a source in a proposal
+//!   (part 2 D-3, handoff K-T5): the files a paragraph and a source come to, the paragraph's `^id` held by a form
+//!   and put back (part 1 D-1 b), what a page holds, and what a revision's knowledge files do, in facts.
+//! - [`curation`]: the curation proposal, the only way a community status, a review date or an availability is
+//!   set, and the stamp that names the proposal that decided.
 
 mod anchor;
 pub mod check;
 mod claim;
+pub mod compose;
+pub mod curation;
 mod fault;
 pub mod index;
+pub mod marker;
 pub mod merge;
 mod model;
+pub mod onpage;
 mod path;
 mod source;
+pub mod summary;
 mod tree;
 mod yaml;
 

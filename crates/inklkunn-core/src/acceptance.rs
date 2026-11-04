@@ -813,6 +813,7 @@ impl ProposalAcceptor {
         tip: &str,
         files: &[PreparedFile],
         renames: &[(PathBuf, PathBuf)],
+        curation: bool,
     ) -> Result<(), AcceptFailure> {
         let refusals = crate::knowledge::check::check_change(
             &self.parts.reads,
@@ -820,8 +821,11 @@ impl ProposalAcceptor {
             repo,
             wiki,
             tip,
-            files,
-            renames,
+            &crate::knowledge::check::Written {
+                files,
+                renames,
+                curation,
+            },
         )
         .map_err(|e| AcceptFailure::Unavailable(e.to_string()))?;
         if refusals.is_empty() {
@@ -949,8 +953,20 @@ impl ProposalAcceptor {
                 reauthored,
             } => (files, renames, reauthored),
         };
-        // RFC 005 part 2 D-5: the knowledge files are judged before the signer is asked.
-        self.check_knowledge(wiki, &repo, &tip, &files, &renames)?;
+        // RFC 005 part 2 D-3, D-5: a curation proposal names itself as the decision of the standing and the review
+        // it sets, and the knowledge files are judged before the signer is asked.
+        let curation = crate::knowledge::curation::is_curation(&content);
+        if curation {
+            crate::knowledge::curation::stamp(
+                &*self.parts.storage,
+                &repo,
+                &tip,
+                &mut files,
+                id.as_str(),
+            )
+            .map_err(|e| AcceptFailure::Unavailable(e.to_string()))?;
+        }
+        self.check_knowledge(wiki, &repo, &tip, &files, &renames, curation)?;
         self.observe(AcceptStep::Prepared);
         // CM-5: the blocks the proposal's comments are about carry their ids into the history.
         let comments = self.parts.proposals.comments(principal, wiki, id)?;

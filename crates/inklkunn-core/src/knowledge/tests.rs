@@ -29,9 +29,15 @@ pub(crate) fn digest_of_block(block: &str) -> Digest {
 
 mod acceptance;
 mod check;
+mod compose;
+mod curation;
 mod digest;
 mod health;
 mod index;
+mod marker;
 mod merge;
+mod onpage;
 mod refusals;
 mod roundtrip;
+mod status;
+mod summary;

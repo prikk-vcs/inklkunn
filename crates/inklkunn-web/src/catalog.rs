@@ -689,6 +689,7 @@ keys! {
     HealthRuleAnchor => "health.rule_anchor",
     HealthRuleInUse => "health.rule_in_use",
     HealthRuleOwned => "health.rule_owned",
+    HealthRuleStatus => "health.rule_status",
     TitleLinks => "title.links",
     LinksHeading => "links.heading",
     LinksMissing => "links.missing",

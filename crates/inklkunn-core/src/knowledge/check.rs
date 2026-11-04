@@ -33,8 +33,8 @@ use inklkunn_store::WikiRecord;
 
 use super::tree::{TreeError, read_tree};
 use super::{
-    AnchorState, Expression, Fault, File, KNOWLEDGE_DIR, Rule, anchor_state, claim_path, family_of,
-    is_keep, is_knowledge_path, read_file, source_path,
+    AnchorState, Availability, CommunityStatus, Expression, Fault, File, KNOWLEDGE_DIR, Reviewed,
+    Rule, anchor_state, claim_path, family_of, is_keep, is_knowledge_path, read_file, source_path,
 };
 use crate::import::shown;
 use crate::read::{ReadError, ReadService, entries_from_tree};
@@ -106,6 +106,61 @@ pub trait Pages {
     fn text(&self, path: &str) -> Option<String>;
 }
 
+/// What only a curation proposal sets (part 2 D-3, D-10): a claim's community status; a source's `last_reviewed` and
+/// `availability`. A file the tip does not have has the baseline: nothing decided, nothing checked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Curated {
+    /// A claim's standing.
+    Claim(CommunityStatus),
+    /// A source's freshness.
+    Source {
+        /// Whether it can be had, as a person who checked says.
+        availability: Availability,
+        /// When a person last checked it.
+        reviewed: Option<Reviewed>,
+    },
+}
+
+impl Curated {
+    /// What `file` holds of it.
+    pub fn of(file: &File) -> Curated {
+        match file {
+            File::Claim(c) => Curated::Claim(c.community_status.clone()),
+            File::Source(s) => Curated::Source {
+                availability: s.availability,
+                reviewed: s.last_reviewed.clone(),
+            },
+        }
+    }
+
+    /// What a file that was never there holds: nothing decided and nothing checked.
+    pub fn baseline(file: &File) -> Curated {
+        match file {
+            File::Claim(_) => Curated::Claim(CommunityStatus::undecided()),
+            File::Source(_) => Curated::Source {
+                availability: Availability::Unknown,
+                reviewed: None,
+            },
+        }
+    }
+
+    /// The format's key the difference between two is about.
+    fn field(&self, other: &Curated) -> &'static str {
+        match (self, other) {
+            (Curated::Claim(_), _) => "community_status",
+            (
+                Curated::Source {
+                    availability: a, ..
+                },
+                Curated::Source {
+                    availability: b, ..
+                },
+            ) if a != b => "availability",
+            _ => "last_reviewed",
+        }
+    }
+}
+
 /// The change, as the validator needs it.
 #[derive(Debug, Default)]
 pub struct Touched {
@@ -117,6 +172,11 @@ pub struct Touched {
     pub page_ids: BTreeSet<String>,
     /// Paths of the pages the change writes whose owned keys it alters.
     pub owned: BTreeSet<String>,
+    /// What the tip had, of [`Curated`], for each knowledge file the change writes or removes that the tip has.
+    pub curated_before: BTreeMap<String, Curated>,
+    /// The change is a curation proposal (its files are knowledge files and nothing else,
+    /// [`super::curation::is_curation`]); only then may it set what only curation sets. **Not by default.**
+    pub curation: bool,
 }
 
 /// Judge a change. `files` is every knowledge file of the view as the change would leave it (path, first bytes),
@@ -144,6 +204,16 @@ pub fn validate(
                 if !broken(file, pages, None).is_empty() {
                     out.insert(Refusal::rule(path, Rule::Anchor, "expressions"));
                 }
+                // What only a curation proposal sets (part 2 D-3): the file must hold what the tip had of it.
+                let was = touched
+                    .curated_before
+                    .get(path)
+                    .cloned()
+                    .unwrap_or_else(|| Curated::baseline(file));
+                let now = Curated::of(file);
+                if now != was && !touched.curation {
+                    out.insert(Refusal::rule(path, Rule::Status, now.field(&was)));
+                }
             }
             Some(Err(fault)) => {
                 out.insert(Refusal::of(path, fault.clone()));
@@ -167,6 +237,17 @@ pub fn validate(
             if now.iter().any(|e| !before.contains(e)) {
                 out.insert(Refusal::rule(path, Rule::Anchor, "expressions"));
             }
+        }
+    }
+    // A claim whose standing was decided is not taken away outside a curation proposal either.
+    for path in &touched.removed {
+        if !touched.curation
+            && matches!(
+                touched.curated_before.get(path),
+                Some(Curated::Claim(status)) if *status != CommunityStatus::undecided()
+            )
+        {
+            out.insert(Refusal::rule(path, Rule::Status, "community_status"));
         }
     }
     for path in &touched.removed {
@@ -367,6 +448,17 @@ fn read_bounded(path: &Path, max: u64) -> Option<String> {
     String::from_utf8(std::fs::read(path).ok()?).ok()
 }
 
+/// What an acceptance is about to write.
+#[derive(Debug, Clone, Copy)]
+pub struct Written<'a> {
+    /// The files to write or remove.
+    pub files: &'a [PreparedFile],
+    /// The renames.
+    pub renames: &'a [(PathBuf, PathBuf)],
+    /// The proposal is a curation proposal ([`super::curation::is_curation`]).
+    pub curation: bool,
+}
+
 /// Judge a prepared change against the tip `tip_block`: `Ok(vec![])` when it is sound.
 ///
 /// Free of cost for a wiki that has no knowledge layer: when neither the change nor the tip holds a path under
@@ -378,9 +470,13 @@ pub fn check_change(
     repo: &Path,
     wiki: &WikiRecord,
     tip_block: &str,
-    files: &[PreparedFile],
-    renames: &[(PathBuf, PathBuf)],
+    change: &Written<'_>,
 ) -> Result<Vec<Refusal>, CheckError> {
+    let Written {
+        files,
+        renames,
+        curation,
+    } = *change;
     let path_text = |p: &Path| p.to_string_lossy().into_owned();
     // A keep-file is no knowledge file: a new wiki's `knowledge/` holds nothing else.
     let mine = |p: &str| is_knowledge_path(p) && !is_keep(p);
@@ -412,6 +508,7 @@ pub fn check_change(
                 config.page_max_bytes,
                 files,
                 renames,
+                curation,
             )
         })
         .map_err(CheckError::Read)?
@@ -423,6 +520,7 @@ fn judge(
     page_max_bytes: u64,
     files: &[PreparedFile],
     renames: &[(PathBuf, PathBuf)],
+    curation: bool,
 ) -> Result<Vec<Refusal>, CheckError> {
     let path_text = |p: &Path| p.to_string_lossy().into_owned();
     // The knowledge files of the result: the tip's, the change on them.
@@ -431,7 +529,22 @@ fn judge(
         .into_iter()
         .map(|f| (f.path, f.bytes))
         .collect();
-    let mut touched = Touched::default();
+    let mut touched = Touched {
+        curation,
+        ..Touched::default()
+    };
+    // What the tip had of what only curation sets, for the files the change writes or moves.
+    for path in files
+        .iter()
+        .map(|f| path_text(&f.path))
+        .chain(renames.iter().map(|(from, _)| path_text(from)))
+    {
+        if let Some(bytes) = knowledge.get(&path)
+            && let Ok(file) = read_file(&path, bytes)
+        {
+            touched.curated_before.insert(path, Curated::of(&file));
+        }
+    }
     for (from, to) in renames {
         let (from, to) = (path_text(from), path_text(to));
         if is_knowledge_path(&from)

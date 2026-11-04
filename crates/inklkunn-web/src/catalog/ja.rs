@@ -894,6 +894,10 @@ pub const CATALOG: &[Entry] = &[
         "health.rule_owned",
         "サービスだけが書くページのキーも変更されています。",
     ),
+    msg(
+        "health.rule_status",
+        "コミュニティの状態、確認日、入手できるかどうかが、キュレーション提案ではない変更で設定されています。",
+    ),
     msg("title.links", "{page} へのリンク · {wiki} · {product}"),
     msg("links.heading", "{page} へのリンク元のページ"),
     msg(

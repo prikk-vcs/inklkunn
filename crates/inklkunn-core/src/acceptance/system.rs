@@ -294,6 +294,24 @@ impl SystemActs {
         label: &SystemLabel,
         request: SystemRequest,
     ) -> Result<SystemSigned, SystemActFailure> {
+        // The knowledge layer is changed by proposals only (RFC 005 part 2 D-3): a community status is set by an
+        // accepted curation proposal and by nothing the service does for itself.
+        let knowledge = |p: &std::path::Path| {
+            p.to_str().is_some_and(|p| {
+                crate::knowledge::is_knowledge_path(p) && !crate::knowledge::is_keep(p)
+            })
+        };
+        if request.files.iter().any(|f| knowledge(&f.path))
+            || request
+                .renames
+                .iter()
+                .any(|(from, to)| knowledge(from) || knowledge(to))
+        {
+            return Err(SystemActFailure::Invalid(
+                "a system change does not write the knowledge layer: its files are changed by proposals"
+                    .to_owned(),
+            ));
+        }
         // The message first: a request that cannot be described is refused before anything else is touched.
         let described =
             |e: inklkunn_signer::message::MessageError| SystemActFailure::Invalid(e.to_string());
