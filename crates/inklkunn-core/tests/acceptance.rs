@@ -1054,3 +1054,167 @@ fn a_claim_with_its_source_and_its_block_is_signed_and_an_unsound_change_is_refu
     ));
     assert_eq!(w.history().len(), blocks);
 }
+
+// ------------------------------------------------------------------------------------ claims, sources and curation (K-T5)
+
+#[test]
+fn a_source_is_attached_and_a_status_curated_through_the_whole_path_on_a_real_history() {
+    use inklkunn_core::knowledge::compose::{
+        Attachment, Curation, LinkEdit, SourceDraft, SourceEdit, attach, curate,
+    };
+    use inklkunn_core::knowledge::{
+        Availability, Bearing, Claim, File, Link, Rule, SourceKind, Standing, StatementKind,
+        read_file,
+    };
+    let Some(w) = World::new("knowledge-attach", LeaseConfig::default()) else {
+        return;
+    };
+
+    // 1. A source is attached to the first paragraph, in the same proposal as a page edit: the claim, the
+    //    source and the page (marker and identifier already there) are one sealed change.
+    let start = HOME.find("One.").unwrap();
+    let edited = HOME.replace("Three.", "Three, as well.");
+    let attached = attach(
+        &edited,
+        &(start..start + "One.".len()),
+        None,
+        &Attachment {
+            source: SourceDraft {
+                kind: SourceKind::Secondary,
+                title: Some("A history".to_owned()),
+                author: None,
+                date: None,
+                reference: None,
+            },
+            relation: Link::Supports,
+            bearing: Bearing::Direct,
+            note: None,
+            kind: StatementKind::Observation,
+        },
+    )
+    .unwrap();
+    let [(claim_file, claim_text), (source_file, source_text)] = attached.files;
+    let p = w.propose(
+        "A source for the first paragraph",
+        &[
+            ("pages/Home.md", Some(&attached.page)),
+            (claim_file.as_str(), Some(&claim_text)),
+            (source_file.as_str(), Some(&source_text)),
+        ],
+    );
+    let blocks = w.history().len();
+    let done = signed(w.accept(&p).unwrap());
+    assert_eq!(done.reconciliation, Reconciled::Clean);
+    assert_eq!(w.history().len(), blocks + 1, "one proposal, one change");
+    w.reads.forget_wiki(&w.wiki);
+    let index = w.reads.knowledge_index(&w.wiki, None).unwrap();
+    assert_eq!(index.claims().len(), 1);
+    assert!(index.invalid().is_empty(), "{:?}", index.invalid());
+    let id = attached.claim.to_string();
+    assert!(
+        index
+            .links_of(&id)
+            .all(|l| l.judgement == "current" && l.relation == "supports")
+    );
+    assert_eq!(index.claim(&id).unwrap().standing, "unknown");
+
+    // 2. A curation proposal sets the status; the acceptance names itself as the decision.
+    let File::Claim(claim) = read_file(&claim_file, w.page(&claim_file).as_bytes()).unwrap() else {
+        panic!("a claim");
+    };
+    let File::Source(source) = read_file(&source_file, w.page(&source_file).as_bytes()).unwrap()
+    else {
+        panic!("a source");
+    };
+    let now = inklkunn_core::knowledge::anchor_state(&w.page("pages/Home.md"), &attached.block);
+    let inklkunn_core::knowledge::AnchorState::Present(now) = now else {
+        panic!("present");
+    };
+    let edit = Curation {
+        status: Standing::Contested,
+        links: vec![LinkEdit {
+            source: source.id.clone(),
+            relation: Link::Supports,
+            bearing: Bearing::Direct,
+        }],
+        sources: vec![SourceEdit {
+            source: source.id.clone(),
+            reviewed: "2026-11-04".to_owned(),
+            availability: Availability::Available,
+        }],
+        confirm: false,
+    };
+    let files = curate(&claim, std::slice::from_ref(&source), Some(&now), &edit).unwrap();
+    let refs: Vec<(&str, Option<&str>)> = files
+        .iter()
+        .map(|(p, t)| (p.as_str(), Some(t.as_str())))
+        .collect();
+    let curation = w.propose("Contested; checked today", &refs);
+    signed(w.accept(&curation).unwrap());
+    let File::Claim(decided) = read_file(&claim_file, w.page(&claim_file).as_bytes()).unwrap()
+    else {
+        panic!("a claim");
+    };
+    assert_eq!(decided.community_status.status, Standing::Contested);
+    assert_eq!(
+        decided.community_status.proposal.as_deref(),
+        Some(curation.id.as_str())
+    );
+    assert_eq!(decided.community_status.judged_on, Some(now));
+    let File::Source(checked) = read_file(&source_file, w.page(&source_file).as_bytes()).unwrap()
+    else {
+        panic!("a source");
+    };
+    assert_eq!(checked.availability, Availability::Available);
+    assert_eq!(
+        checked.last_reviewed.and_then(|r| r.proposal).as_deref(),
+        Some(curation.id.as_str())
+    );
+    w.reads.forget_wiki(&w.wiki);
+    let index = w.reads.knowledge_index(&w.wiki, None).unwrap();
+    let row = index.claim(&id).unwrap();
+    assert_eq!(
+        (row.standing.as_str(), row.standing_judgement.as_str()),
+        ("contested", "current")
+    );
+
+    // 3. No other proposal sets a status: a page edit that does is refused before the signer is asked.
+    let mut forced: Claim = (*decided).clone();
+    forced.community_status.status = Standing::Accepted;
+    let blocks = w.history().len();
+    let p = w.propose(
+        "A status beside a page edit",
+        &[
+            (claim_file.as_str(), Some(&forced.to_yaml())),
+            (
+                "pages/Other.md",
+                Some(&OTHER.replace("Hello.", "Hello again.")),
+            ),
+        ],
+    );
+    match w.accept(&p) {
+        Err(AcceptFailure::KnowledgeInvalid(r)) => {
+            assert_eq!(
+                r.iter()
+                    .map(|r| (r.file.as_str(), r.rule))
+                    .collect::<Vec<_>>(),
+                [(claim_file.as_str(), Rule::Status)]
+            );
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(w.history().len(), blocks);
+    assert_eq!(w.state(&p), ProposalState::HeldForReview);
+
+    // 4. The paragraph is reworded (its marker stays): the status and the source are now shown as judged on an
+    //    earlier wording, until a curation proposal judges them again.
+    let reworded = w
+        .page("pages/Home.md")
+        .replace("One.", "One, in other words.");
+    let p = w.propose("Reword", &[("pages/Home.md", Some(&reworded))]);
+    signed(w.accept(&p).unwrap());
+    w.reads.forget_wiki(&w.wiki);
+    let index = w.reads.knowledge_index(&w.wiki, None).unwrap();
+    assert_eq!(index.claim(&id).unwrap().standing_judgement, "earlier");
+    assert!(index.links_of(&id).all(|l| l.judgement == "earlier"));
+}

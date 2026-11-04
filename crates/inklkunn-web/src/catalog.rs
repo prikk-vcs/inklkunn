@@ -1426,6 +1426,28 @@ keys! {
     KnowRelSplitFrom => "know.rel_split_from",
     KnowRelMergedInto => "know.rel_merged_into",
     // knowledge: claims and sources in the proposal path (handoff 005 K-T5): end
+    // knowledge: the curation proposal (handoff 005 K-T5): start
+    TitleCurate => "title.curate",
+    CurateHeading => "curate.heading",
+    CurateIntro => "curate.intro",
+    CurateWording => "curate.wording",
+    CurateWordingNone => "curate.wording_none",
+    CurateLabelStatus => "curate.label_status",
+    CurateStatusHint => "curate.status_hint",
+    CurateEarlier => "curate.earlier",
+    CurateSourceLegend => "curate.source_legend",
+    CurateSourceUntitled => "curate.source_untitled",
+    CurateLabelRelation => "curate.label_relation",
+    CurateLabelBearing => "curate.label_bearing",
+    CurateLabelReviewed => "curate.label_reviewed",
+    CurateReviewedHint => "curate.reviewed_hint",
+    CurateLabelAvailability => "curate.label_availability",
+    CurateAvailabilityHint => "curate.availability_hint",
+    CurateConfirm => "curate.confirm",
+    CurateConfirmHint => "curate.confirm_hint",
+    CurateSubmit => "curate.submit",
+    CurateNothing => "curate.nothing",
+    // knowledge: the curation proposal (handoff 005 K-T5): end
 }
 
 /// A typed value for a placeholder. Text is HTML-escaped; a link is an escaped label plus an `href` the

@@ -89,6 +89,16 @@ fn proposal_specs() -> Vec<Spec> {
             ),
         },
         Spec {
+            path: "/{slug}/-/proposals/curate",
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Action(Action::Propose),
+            handler: form_route!(
+                proposals::curate::curate_form,
+                proposals::curate::curate_post,
+                proposals::PROPOSAL_FORM_LIMIT
+            ),
+        },
+        Spec {
             path: "/{slug}/-/proposals/{id}",
             methods: &["GET", "HEAD"],
             guard: Guard::Action(Action::Read),

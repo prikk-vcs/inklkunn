@@ -120,6 +120,31 @@ impl Env {
             .unwrap()
     }
 
+    /// A curation proposal of the writer's: a status, no page, held for review.
+    fn curating(&self) -> ProposalRecord {
+        let id = ClaimId::parse("01930000-0000-7000-8000-000000000001").unwrap();
+        let mut claim = Claim::new(id.clone());
+        claim.kind = StatementKind::Observation;
+        claim.expressions = vec![Expression::new("bridge-page", "k1").unwrap()];
+        claim.community_status.status = inklkunn_core::knowledge::Standing::Contested;
+        let edit = ProposalEdit {
+            summary: "Contested".to_owned(),
+            files: vec![FileChange {
+                path: claim_path(&id),
+                text: Some(claim.to_yaml()),
+            }],
+            ..ProposalEdit::default()
+        };
+        let who = Self::who(&self.writer);
+        let draft = self
+            .service()
+            .create(&who, &self.w.wiki, None, edit)
+            .unwrap();
+        self.service()
+            .submit(&who, &self.w.wiki, &draft.id)
+            .unwrap()
+    }
+
     /// A proposal of the writer's that sets a community status beside a page edit, held for review.
     fn setting_a_status(&self) -> ProposalRecord {
         let claim_text = {
@@ -215,6 +240,29 @@ pub(super) struct Scenario {
 }
 
 const NEW: &str = "/handbook/-/proposals/new";
+const CURATE: &str = "/handbook/-/proposals/curate";
+const CLAIM: &str = "01930000-0000-7000-8000-000000000001";
+
+/// What the curation form sends, with this button and this status.
+fn curate_form(name: &'static str, button: &str, status: &str) -> Vec<(&'static str, String)> {
+    vec![
+        (name, button.to_owned()),
+        ("base_state", state_id(1)),
+        ("base_block", block_id(1)),
+        ("claim", CLAIM.to_owned()),
+        ("links", "1".to_owned()),
+        ("status", status.to_owned()),
+        (
+            "c0_source",
+            "01931111-0000-7000-8000-000000000001".to_owned(),
+        ),
+        ("c0_relation", "supports".to_owned()),
+        ("c0_bearing", "direct".to_owned()),
+        ("c0_reviewed", String::new()),
+        ("c0_availability", "unknown".to_owned()),
+        ("summary", "Curate".to_owned()),
+    ]
+}
 
 pub(super) const SCENARIOS: &[Scenario] = &[
     Scenario {
@@ -329,6 +377,33 @@ pub(super) const SCENARIOS: &[Scenario] = &[
         status: 200,
         make: |e| {
             let p = e.setting_a_status();
+            get(&format!("/handbook/-/proposals/{}", p.id), &e.writer)
+        },
+    },
+    Scenario {
+        id: "curate-form",
+        identity: "curate",
+        status: 200,
+        make: |e| get(&format!("{CURATE}?claim={CLAIM}"), &e.writer),
+    },
+    Scenario {
+        id: "curate-problems",
+        identity: "curate",
+        status: 422,
+        make: |e| post(CURATE, &e.writer, curate_form("op", "submit", "unknown")),
+    },
+    Scenario {
+        id: "curate-changes",
+        identity: "curate",
+        status: 200,
+        make: |e| post(CURATE, &e.writer, curate_form("op", "changes", "contested")),
+    },
+    Scenario {
+        id: "proposal-curation",
+        identity: "proposal-curation",
+        status: 200,
+        make: |e| {
+            let p = e.curating();
             get(&format!("/handbook/-/proposals/{}", p.id), &e.writer)
         },
     },

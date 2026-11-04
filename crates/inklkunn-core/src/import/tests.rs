@@ -121,6 +121,30 @@ fn a_clean_folder_is_planned_in_path_order_with_pages_and_attachments_counted() 
     assert!(report.contains("not imported:") && !report.contains("refused"));
 }
 
+#[test]
+fn a_folder_that_carries_claims_with_a_community_status_imports_none_of_them() {
+    // RFC 005 part 2 D-3: a community status changes only through an accepted curation proposal. A bundle from
+    // outside may carry `knowledge/` with decisions another wiki took; the import reads none of it, and says so.
+    let d = dir("knowledge");
+    put(&d.0, "pages/A.md", GOOD.as_bytes());
+    put(
+        &d.0,
+        "knowledge/claims/01930000-0000-7000-8000-000000000001.yaml",
+        b"kind: observation\nlifecycle: adopted\ncommunity_status:\n  status: accepted\nexpressions: []\nrelations: []\nsources: []\n",
+    );
+    put(
+        &d.0,
+        "knowledge/sources/01931111-0000-7000-8000-000000000001.yaml",
+        b"kind: primary\navailability: available\n",
+    );
+    let plan = plan_folder(&d.0, &nothing(), false).unwrap();
+    assert!(plan.is_importable(), "{}", plan.report());
+    let paths: Vec<&str> = plan.files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, vec!["pages/A.md"]);
+    let skipped: Vec<&str> = plan.not_imported.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(skipped, vec!["knowledge"]);
+}
+
 /// The hostile folder: every case a bundle from outside may carry (ENF-4).
 fn hostile(root: &Path) {
     put(root, "pages/Good.md", GOOD.as_bytes());

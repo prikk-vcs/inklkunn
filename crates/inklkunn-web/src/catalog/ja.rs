@@ -2597,4 +2597,56 @@ pub const CATALOG: &[Entry] = &[
     msg("know.rel_split_from", "から分かれた"),
     msg("know.rel_merged_into", "に統合された"),
     // knowledge: claims and sources in the proposal path (handoff 005 K-T5): end
+    // knowledge: the curation proposal (handoff 005 K-T5): start
+    msg(
+        "title.curate",
+        "主張をキュレーションする · {wiki} · {product}",
+    ),
+    msg("curate.heading", "主張をキュレーションする"),
+    msg(
+        "curate.intro",
+        "キュレーション提案は、主張の扱い、出典が主張にどうかかわるか、出典を最後に確認した日を変更します。ページは変更しません。権限のある人が履歴に取り込むまで何も変わりません。コミュニティでの扱いは、この方法でのみ設定されます。",
+    ),
+    msg("curate.wording", "現在の書かれ方: 「{words}」"),
+    msg(
+        "curate.wording_none",
+        "この主張は現在、どの段落にも書かれていません。",
+    ),
+    msg("curate.label_status", "コミュニティでの扱い"),
+    msg(
+        "curate.status_hint",
+        "この主張についてコミュニティが決めたこと。この提案が受け入れられたときに設定されます。",
+    ),
+    msg(
+        "curate.earlier",
+        "これは、この主張の以前の文面について判断されたものです。",
+    ),
+    msg("curate.source_legend", "出典: {title}"),
+    msg("curate.source_untitled", "タイトルのない出典"),
+    msg("curate.label_relation", "主張との関係"),
+    msg("curate.label_bearing", "主張にどの程度直接ふれているか"),
+    msg("curate.label_reviewed", "最後に確認した日（年-月-日）"),
+    msg(
+        "curate.reviewed_hint",
+        "確認した人が設定します。誰も確認していなければ空のままにしてください。",
+    ),
+    msg("curate.label_availability", "出典を入手できるか"),
+    msg(
+        "curate.availability_hint",
+        "確認した人が判断します。自動では確認されません。",
+    ),
+    msg(
+        "curate.confirm",
+        "出典と扱いを、主張の現在の文面について改めて判断する",
+    ),
+    msg(
+        "curate.confirm_hint",
+        "主張の文面が変わり、出典を新しい文面と照らして読んだときに使ってください。",
+    ),
+    msg("curate.submit", "レビューに送る"),
+    msg(
+        "curate.nothing",
+        "フォームの内容は、ウィキの現在の内容と変わりません。先に何かを変更してください。",
+    ),
+    // knowledge: the curation proposal (handoff 005 K-T5): end
 ];

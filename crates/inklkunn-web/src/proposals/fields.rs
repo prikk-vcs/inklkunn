@@ -58,6 +58,22 @@ pub(crate) const A_CLAIM_KIND: &str = "a_claim_kind";
 /// paragraph's `^id`.
 pub(crate) const DROP: &str = "drop_";
 
+// --- the curation proposal's form (RFC 005 part 2 D-3)
+pub(crate) const CLAIM: &str = "claim";
+pub(crate) const STATUS: &str = "status";
+pub(crate) const CONFIRM: &str = "confirm";
+/// How many sources the claim cites: the form carries one group of fields for each.
+pub(crate) const LINKS: &str = "links";
+/// The name of field `what` of the `i`-th source of the claim (`c0_relation`).
+pub(crate) fn curated_field(i: usize, what: &str) -> String {
+    format!("c{i}_{what}")
+}
+pub(crate) const C_SOURCE: &str = "source";
+pub(crate) const C_RELATION: &str = "relation";
+pub(crate) const C_BEARING: &str = "bearing";
+pub(crate) const C_REVIEWED: &str = "reviewed";
+pub(crate) const C_AVAILABILITY: &str = "availability";
+
 // --- query parameters of the entry points
 pub(crate) const Q_PAGE: &str = "page";
 pub(crate) const Q_NEW: &str = "new";

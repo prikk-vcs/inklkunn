@@ -417,3 +417,7 @@ exact :: knowledge.rs :: relation :: a placeholder name of a catalog message
 exact :: knowledge.rs :: title :: a placeholder name of a catalog message
 exact :: new.rs :: excerpt :: a placeholder name of a catalog message
 exact :: submit.rs :: excerpt :: a placeholder name of a catalog message
+exact :: curate.rs :: title :: a placeholder name of a catalog message
+exact :: curate.rs :: words :: a placeholder name of a catalog message
+exact :: curate.rs :: wiki :: a placeholder name of a catalog message
+exact :: curate.rs :: limit :: a placeholder name of a catalog message

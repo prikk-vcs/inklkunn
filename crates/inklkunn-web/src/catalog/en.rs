@@ -2529,4 +2529,56 @@ pub const CATALOG: &[Entry] = &[
     msg("know.rel_split_from", "came out of"),
     msg("know.rel_merged_into", "was joined into"),
     // knowledge: claims and sources in the proposal path (handoff 005 K-T5): end
+    // knowledge: the curation proposal (handoff 005 K-T5): start
+    msg("title.curate", "Curate a claim · {wiki} · {product}"),
+    msg("curate.heading", "Curate a claim"),
+    msg(
+        "curate.intro",
+        "A curation proposal changes how a claim stands, how its sources bear on it, and when its sources were last checked. It changes no page. Nothing changes until someone who is allowed to takes it into the history; a community status is set this way and no other.",
+    ),
+    msg("curate.wording", "It is said as: “{words}”"),
+    msg(
+        "curate.wording_none",
+        "It is not said in any paragraph now.",
+    ),
+    msg("curate.label_status", "Community status"),
+    msg(
+        "curate.status_hint",
+        "What the community has decided about this claim. It is set by this proposal, once someone accepts it.",
+    ),
+    msg(
+        "curate.earlier",
+        "This was judged on an earlier wording of the claim.",
+    ),
+    msg("curate.source_legend", "Source: {title}"),
+    msg("curate.source_untitled", "a source without a title"),
+    msg("curate.label_relation", "How it relates to the claim"),
+    msg(
+        "curate.label_bearing",
+        "How directly it speaks to the claim",
+    ),
+    msg("curate.label_reviewed", "Last checked on (year-month-day)"),
+    msg(
+        "curate.reviewed_hint",
+        "Set by a person who checked it. Leave it empty if nobody has.",
+    ),
+    msg("curate.label_availability", "Whether the source can be had"),
+    msg(
+        "curate.availability_hint",
+        "As the person who checked says. Nothing checks it for you.",
+    ),
+    msg(
+        "curate.confirm",
+        "Judge the sources and the status again on the wording the claim has now",
+    ),
+    msg(
+        "curate.confirm_hint",
+        "Use this when the claim was reworded and you have read its sources against the new wording.",
+    ),
+    msg("curate.submit", "Send for review"),
+    msg(
+        "curate.nothing",
+        "Nothing in the form differs from what the wiki has now. Change something first.",
+    ),
+    // knowledge: the curation proposal (handoff 005 K-T5): end
 ];

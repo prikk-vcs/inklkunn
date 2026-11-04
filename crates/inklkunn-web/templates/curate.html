@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+{% if !problems.is_empty() %}<div class="form-problems" role="alert">
+<h2 id="problems">{{ page.get(Key::ProposeProblems) }}</h2>
+<ul>
+{% for p in problems %}<li>{{ p }}</li>
+{% endfor %}</ul>
+</div>
+{% endif %}<p>{{ intro }}</p>
+<p>{{ wording }}</p>
+<form method="post" action="{{ action }}" class="proposal-form curate-form">
+{% include "csrf.html" %}
+{% for h in hidden %}<input type="hidden" name="{{ h.name }}" value="{{ h.value }}">
+{% endfor %}<div class="field">
+<label for="{{ status_name }}">{{ status_label }}</label>
+<select id="{{ status_name }}" name="{{ status_name }}" aria-describedby="{{ status_name }}-hint">
+{% for o in statuses %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
+{% endfor %}</select>
+<p id="{{ status_name }}-hint" class="note">{{ status_hint }}</p>
+{% if let Some(text) = status_earlier %}<p class="note">{{ text }}</p>
+{% endif %}</div>
+{% for s in sources %}<fieldset class="source-fields">
+<legend>{{ s.legend }}</legend>
+{% if let Some(text) = s.earlier %}<p class="note">{{ text }}</p>
+{% endif %}<div class="field">
+<label for="{{ s.relation_name }}">{{ s.relation_label }}</label>
+<select id="{{ s.relation_name }}" name="{{ s.relation_name }}">
+{% for o in s.relations %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
+{% endfor %}</select>
+</div>
+<div class="field">
+<label for="{{ s.bearing_name }}">{{ s.bearing_label }}</label>
+<select id="{{ s.bearing_name }}" name="{{ s.bearing_name }}">
+{% for o in s.bearings %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
+{% endfor %}</select>
+</div>
+{% if s.checkable %}<div class="field">
+<label for="{{ s.reviewed_name }}">{{ s.reviewed_label }}</label>
+<input id="{{ s.reviewed_name }}" name="{{ s.reviewed_name }}" type="text" value="{{ s.reviewed }}" aria-describedby="{{ s.reviewed_name }}-hint">
+<p id="{{ s.reviewed_name }}-hint" class="note">{{ s.reviewed_hint }}</p>
+</div>
+<div class="field">
+<label for="{{ s.availability_name }}">{{ s.availability_label }}</label>
+<select id="{{ s.availability_name }}" name="{{ s.availability_name }}" aria-describedby="{{ s.availability_name }}-hint">
+{% for o in s.availabilities %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
+{% endfor %}</select>
+<p id="{{ s.availability_name }}-hint" class="note">{{ s.availability_hint }}</p>
+</div>
+{% endif %}</fieldset>
+{% endfor %}<div class="field">
+<label><input type="checkbox" name="{{ confirm_name }}" value="1"{% if confirm_checked %} checked{% endif %} aria-describedby="{{ confirm_name }}-hint"> {{ confirm_label }}</label>
+<p id="{{ confirm_name }}-hint" class="note">{{ confirm_hint }}</p>
+</div>
+<div class="field">
+<label for="summary">{{ summary_label }}</label>
+<input id="summary" name="summary" type="text" maxlength="{{ summary_max }}" value="{{ summary }}" aria-describedby="summary-hint">
+<p id="summary-hint" class="note">{{ summary_hint }}</p>
+</div>
+<p class="buttons">{% for b in buttons %}<button type="submit" name="{{ op_name }}" value="{{ b.value }}">{{ b.label }}</button>
+{% endfor %}</p>
+</form>
+{% if !changes.is_empty() %}<section aria-labelledby="changes">
+<h2 id="changes">{{ changes_heading }}</h2>
+<ul>
+{% for line in changes %}<li>{{ line.text }}{% if !line.more.is_empty() %}<ul>
+{% for m in line.more %}<li>{{ m }}</li>
+{% endfor %}</ul>{% endif %}</li>
+{% endfor %}</ul>
+</section>
+{% endif %}<p><a href="{{ back.href }}">{{ back.label }}</a></p>
+{% endblock %}

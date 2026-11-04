@@ -1166,6 +1166,26 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `know.rel_contradicts` | how a claim relates to another, inside a sentence | "is at odds with" | "食い違っている" |
 | `know.rel_split_from` | how a claim relates to another, inside a sentence | "came out of" | "から分かれた" |
 | `know.rel_merged_into` | how a claim relates to another, inside a sentence | "was joined into" | "に統合された" |
+| `title.curate` | the title of the form that curates a claim | "Curate a claim · {wiki} · {product}" | "主張をキュレーションする · {wiki} · {product}" |
+| `curate.heading` | the heading of that form | "Curate a claim" | "主張をキュレーションする" |
+| `curate.intro` | under the heading of that form | "A curation proposal changes how a claim stands, how its sources bear on it, and when its sources were last checked. It changes no page. Nothing changes until someone who is allowed to takes it into the history; a community status is set this way and no other." | "キュレーション提案は、主張の扱い、出典が主張にどうかかわるか、出典を最後に確認した日を変更します。ページは変更しません。権限のある人が履歴に取り込むまで何も変わりません。コミュニティでの扱いは、この方法でのみ設定されます。" |
+| `curate.wording` | under that: how the claim is said now; `{words}` is the paragraph's words | "It is said as: “{words}”" | "現在の書かれ方: 「{words}」" |
+| `curate.wording_none` | under that, when the claim is said in no paragraph now | "It is not said in any paragraph now." | "この主張は現在、どの段落にも書かれていません。" |
+| `curate.label_status` | the label of the choice of the community status | "Community status" | "コミュニティでの扱い" |
+| `curate.status_hint` | under that choice | "What the community has decided about this claim. It is set by this proposal, once someone accepts it." | "この主張についてコミュニティが決めたこと。この提案が受け入れられたときに設定されます。" |
+| `curate.earlier` | beside a status or a source that was judged on a wording the claim no longer has | "This was judged on an earlier wording of the claim." | "これは、この主張の以前の文面について判断されたものです。" |
+| `curate.source_legend` | the legend of the group of fields about one source; `{title}` is its title | "Source: {title}" | "出典: {title}" |
+| `curate.source_untitled` | in place of the title of a source that has none | "a source without a title" | "タイトルのない出典" |
+| `curate.label_relation` | the label of the choice of how a source relates to the claim | "How it relates to the claim" | "主張との関係" |
+| `curate.label_bearing` | the label of the choice of how directly a source speaks to the claim | "How directly it speaks to the claim" | "主張にどの程度直接ふれているか" |
+| `curate.label_reviewed` | the label of the day a person last checked the source | "Last checked on (year-month-day)" | "最後に確認した日（年-月-日）" |
+| `curate.reviewed_hint` | under that field | "Set by a person who checked it. Leave it empty if nobody has." | "確認した人が設定します。誰も確認していなければ空のままにしてください。" |
+| `curate.label_availability` | the label of the choice of whether the source can be had | "Whether the source can be had" | "出典を入手できるか" |
+| `curate.availability_hint` | under that choice | "As the person who checked says. Nothing checks it for you." | "確認した人が判断します。自動では確認されません。" |
+| `curate.confirm` | the box that judges the sources and the status again on the wording the claim has now | "Judge the sources and the status again on the wording the claim has now" | "出典と扱いを、主張の現在の文面について改めて判断する" |
+| `curate.confirm_hint` | under that box | "Use this when the claim was reworded and you have read its sources against the new wording." | "主張の文面が変わり、出典を新しい文面と照らして読んだときに使ってください。" |
+| `curate.submit` | the button that sends the curation proposal for review | "Send for review" | "レビューに送る" |
+| `curate.nothing` | a problem: the form differs from what the wiki has in nothing | "Nothing in the form differs from what the wiki has now. Change something first." | "フォームの内容は、ウィキの現在の内容と変わりません。先に何かを変更してください。" |
 
 ## 3. Words the interface does not say
 

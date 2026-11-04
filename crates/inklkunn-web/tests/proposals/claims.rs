@@ -15,26 +15,26 @@ use crate::common::{
     Answer, World, add_person, block_id, get_as, person, post_form, state_id, with_accounts,
 };
 
-const BRIDGE: &str = "---\ntitle: Bridge\nid: bridge-page\n---\n\nIt opened in 1950. ^k1\n\nIt is long.\n\n# Notes\n\nA note.\n";
+pub(crate) const BRIDGE: &str = "---\ntitle: Bridge\nid: bridge-page\n---\n\nIt opened in 1950. ^k1\n\nIt is long.\n\n# Notes\n\nA note.\n";
 const PLAIN: &str = "---\ntitle: Plain\n---\n\nNo identifier here.\n";
 
-struct Scene {
-    w: World,
-    writer: AccountId,
-    observer: AccountId,
-    claim: Claim,
+pub(crate) struct Scene {
+    pub(crate) w: World,
+    pub(crate) writer: AccountId,
+    pub(crate) observer: AccountId,
+    pub(crate) claim: Claim,
 }
 
-fn claim_id() -> ClaimId {
+pub(crate) fn claim_id() -> ClaimId {
     ClaimId::parse("01930000-0000-7000-8000-000000000001").expect("a claim id")
 }
 
-fn source_id() -> SourceId {
+pub(crate) fn source_id() -> SourceId {
     SourceId::parse("01931111-0000-7000-8000-000000000001").expect("a source id")
 }
 
 /// A wiki with a page that holds a claim, its source, a page with no identifier, and two people.
-fn scene() -> Scene {
+pub(crate) fn scene() -> Scene {
     let mut claim = Claim::new(claim_id());
     claim.kind = StatementKind::Observation;
     claim.lifecycle = Lifecycle::Proposed;
@@ -71,15 +71,20 @@ fn scene() -> Scene {
     }
 }
 
-fn principal(id: &AccountId) -> Principal {
+pub(crate) fn principal(id: &AccountId) -> Principal {
     Principal::session(&IdentityAuthority::for_tests(), id.clone())
 }
 
-async fn open(s: &Scene, uri: &str, account: &AccountId) -> Answer {
+pub(crate) async fn open(s: &Scene, uri: &str, account: &AccountId) -> Answer {
     get_as(&s.w, uri, Some(account)).await
 }
 
-async fn send(s: &Scene, uri: &str, account: &AccountId, fields: &[(&str, String)]) -> Answer {
+pub(crate) async fn send(
+    s: &Scene,
+    uri: &str,
+    account: &AccountId,
+    fields: &[(&str, String)],
+) -> Answer {
     let borrowed: Vec<(&str, &str)> = fields.iter().map(|(k, v)| (*k, v.as_str())).collect();
     post_form(&s.w, uri, Some(account), &borrowed).await
 }
@@ -136,18 +141,18 @@ fn with(
     fields
 }
 
-const NEW: &str = "/handbook/-/proposals/new";
+pub(crate) const NEW: &str = "/handbook/-/proposals/new";
 
 /// The address a redirect leads to.
-fn location(a: &Answer) -> String {
+pub(crate) fn location(a: &Answer) -> String {
     assert_eq!(a.status, StatusCode::SEE_OTHER, "{}", a.body());
     a.header("location").expect("a location").to_owned()
 }
 
-type Files = Vec<(String, Option<String>)>;
+pub(crate) type Files = Vec<(String, Option<String>)>;
 
 /// The files of the latest revision (or the draft) of the proposal an address names.
-fn files_of(s: &Scene, address: &str) -> Files {
+pub(crate) fn files_of(s: &Scene, address: &str) -> Files {
     let raw = address
         .rsplit('/')
         .next()
@@ -176,7 +181,7 @@ fn files_of(s: &Scene, address: &str) -> Files {
         .collect()
 }
 
-fn file<'a>(files: &'a Files, path: &str) -> &'a str {
+pub(crate) fn file<'a>(files: &'a Files, path: &str) -> &'a str {
     files
         .iter()
         .find(|(p, _)| p == path)
@@ -184,7 +189,7 @@ fn file<'a>(files: &'a Files, path: &str) -> &'a str {
         .unwrap_or_else(|| panic!("no file {path} in {files:?}"))
 }
 
-fn claims_in(files: &Files) -> Vec<Claim> {
+pub(crate) fn claims_in(files: &Files) -> Vec<Claim> {
     files
         .iter()
         .filter_map(|(p, t)| match read_file(p, t.as_deref()?.as_bytes()) {
@@ -194,7 +199,7 @@ fn claims_in(files: &Files) -> Vec<Claim> {
         .collect()
 }
 
-fn sources_in(files: &Files) -> Vec<Source> {
+pub(crate) fn sources_in(files: &Files) -> Vec<Source> {
     files
         .iter()
         .filter_map(|(p, t)| match read_file(p, t.as_deref()?.as_bytes()) {
@@ -204,7 +209,7 @@ fn sources_in(files: &Files) -> Vec<Source> {
         .collect()
 }
 
-fn paths(files: &Files) -> Vec<&str> {
+pub(crate) fn paths(files: &Files) -> Vec<&str> {
     files.iter().map(|(p, _)| p.as_str()).collect()
 }
 
@@ -772,7 +777,7 @@ async fn a_draft_keeps_the_claim_and_a_revision_carries_it_forward() {
 // ---------------------------------------------------------------------------------------------- what only curation sets
 
 /// A proposal of the writer's with these files (pages and knowledge files), held for review.
-fn held_with(s: &Scene, files: Vec<(String, Option<String>)>) -> String {
+pub(crate) fn held_with(s: &Scene, files: Vec<(String, Option<String>)>) -> String {
     let edit = inklkunn_core::proposal::ProposalEdit {
         summary: "A change".to_owned(),
         files: files

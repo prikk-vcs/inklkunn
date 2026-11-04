@@ -8,6 +8,7 @@ mod bodies;
 mod claims;
 #[path = "../common/mod.rs"]
 mod common;
+mod curate;
 mod flows;
 mod review;
 mod rules;

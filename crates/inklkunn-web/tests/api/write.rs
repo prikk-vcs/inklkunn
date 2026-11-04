@@ -1983,3 +1983,47 @@ async fn a_server_started_without_the_means_to_sign_answers_signing_not_configur
             .unwrap();
     assert_eq!(record.state, inklkunn_store::ProposalState::HeldForReview);
 }
+
+// ------------------------------------------------------------------------------------ what only curation sets (K-T5)
+
+#[tokio::test]
+async fn the_write_api_writes_no_claim_or_source_file_so_it_cannot_set_a_community_status() {
+    use inklkunn_core::knowledge::{
+        Claim, ClaimId, Expression, Source, SourceId, Standing, claim_path, source_path,
+    };
+    let (c, _dir) = with_acceptor(cast());
+    // A page that carries an identifier and a paragraph with a marker, and a claim said there that arrives decided.
+    let page = HOME
+        .replace("title: Home\n", "title: Home\nid: home-page\n")
+        .replace("Second paragraph.", "Second paragraph. ^b1");
+    let mut claim = Claim::new(ClaimId::new());
+    claim.expressions = vec![Expression::new("home-page", "b1").unwrap()];
+    claim.community_status.status = Standing::Accepted;
+    let source = Source::new(SourceId::new());
+    for files in [
+        json!([
+            {"path": "pages/Home.md", "text": page},
+            {"path": claim_path(&claim.id), "text": claim.to_yaml()},
+        ]),
+        json!([{"path": source_path(&source.id), "text": source.to_yaml()}]),
+    ] {
+        let body = json!({"summary": "A status through the API", "submit": true, "files": files});
+        let opened = post(
+            &c.w,
+            &format!("{API}/proposals"),
+            &[session(&c.contributor), tip()],
+            body.to_string(),
+        )
+        .await;
+        // Refused as the API refuses any path outside the pages: the knowledge layer is changed by the forms and
+        // the curation proposal, through the one acceptance (the API's curation proposal is a later task).
+        assert_eq!(opened.status, 422, "{}", opened.text());
+        assert_eq!(opened.json().at("/reason"), "path-outside-pages");
+    }
+    let all =
+        c.w.services
+            .proposals
+            .list(&principal(&c.contributor), &c.w.wiki, &Default::default())
+            .unwrap();
+    assert!(all.is_empty());
+}

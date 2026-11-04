@@ -90,6 +90,11 @@ pub(crate) fn new_page(slug: &str, title: Option<&str>) -> String {
     }
 }
 
+/// The form that a curation proposal is sent from.
+pub(crate) fn curate_action(slug: &str) -> String {
+    format!("/{slug}/-/proposals/curate")
+}
+
 /// The form that opens a new proposal.
 pub(crate) fn new_action(slug: &str) -> String {
     format!("/{slug}/-/proposals/new")
