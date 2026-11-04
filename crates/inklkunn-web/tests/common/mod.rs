@@ -24,9 +24,12 @@ use inklkunn_store::{
 use inklkunn_web::{AnonymousOnly, Services};
 
 mod inbox;
+mod knowledge;
 mod past;
 #[allow(unused_imports)]
 pub use inbox::*;
+#[allow(unused_imports)]
+pub use knowledge::*;
 #[allow(unused_imports)]
 pub use past::*;
 

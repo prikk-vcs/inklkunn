@@ -15,13 +15,14 @@
 {% endfor %}</ul>
 </nav>
 {% endif %}<article class="page-body"{% if let Some(language) = body_lang %} lang="{{ language }}"{% endif %}>
-{{ body }}
+{% for part in body %}{{ part.html }}{% for tool in part.tools %} <a class="claim-link" href="{{ tool.href }}" aria-label="{{ tool.name }}">{{ tool.text }}</a>{% endfor %}{% endfor %}
 </article>
 <div class="page-info">
 <p>{{ license }}</p>
 <p class="badge">{{ badge }}</p>
 <p><a href="{{ history_href }}">{{ page.get(Key::PageLinkHistory) }}</a></p>
-{% if let Some(p) = propose %}<ul class="propose-links change-links">
+{% if let Some(href) = why_href %}<p><a href="{{ href }}">{{ page.get(Key::PageLinkWhy) }}</a></p>
+{% endif %}{% if let Some(p) = propose %}<ul class="propose-links change-links">
 <li><a href="{{ p.change.href }}">{{ p.change.label }}</a></li>
 <li><a href="{{ p.part.href }}">{{ p.part.label }}</a></li>
 <li><a href="{{ p.talk.href }}">{{ p.talk.label }}</a></li>

@@ -15,6 +15,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 mod dom;
+mod knowledge_states;
 mod past_states;
 mod proposal_states;
 mod rules;
@@ -191,6 +192,7 @@ const JAPANESE: &[(&str, &str)] = &[("cookie", "inklkunn_lang=ja")];
 const EXPECTED_PAGES: usize = VISITS.len()
     + wiki_states::SCENARIOS.len()
     + past_states::SCENARIOS.len()
+    + knowledge_states::SCENARIOS.len()
     + proposal_states::count();
 
 async fn build_states(extra: &[(&str, &str)]) -> Out {

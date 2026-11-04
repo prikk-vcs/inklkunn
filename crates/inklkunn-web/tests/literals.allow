@@ -366,3 +366,22 @@ exact :: words.rs :: keys :: a placeholder name of a catalog message
 exact :: proposals.rs :: wiki `{}`: {line} :: a line for the operator's log; no response carries it
 exact :: proposals.rs :: a proposal's base could not be read now: {cause} :: a line for the operator's log; no response carries it
 exact :: proposals.rs :: the proposal records could not be used: {cause} :: a line for the operator's log; no response carries it
+
+# --- K-T6: what a reader sees of the knowledge layer (handoff 005; RFC 005 part 2 D-7). `knowledge/paths.rs` is scoped above by its name.
+exact :: marks.rs :: the claims of a page of wiki `{}` could not be read now: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: marks.rs :: text :: a placeholder name of a catalog message
+exact :: marks.rs :: paragraph :: a placeholder name of a catalog message
+exact :: marks.rs :: total :: a placeholder name of a catalog message
+exact :: marks.rs :: {name} ({seen}) :: the count that tells the second of two alike link names from the first (a number and brackets, no word)
+exact :: marks.rs :: <{tag} id="{HEADING_ID_PREFIX}^ :: the opening of a block's element in the sanitized body, as the renderer writes it: markup looked for, never written
+exact :: marks.rs :: <{tag} :: the opening of an element in the sanitized body, looked for to count nested items; never written
+exact :: marks.rs :: </{tag}> :: the closing of an element in the sanitized body, looked for; never written
+exact :: marks.rs :: &quot; :: an entity the sanitizer writes, read back to plain text for a link's accessible name
+exact :: marks.rs :: &nbsp; :: an entity the sanitizer writes, read back to plain text for a link's accessible name
+exact :: marks.rs :: &amp; :: an entity the sanitizer writes, read back to plain text for a link's accessible name
+exact :: marks.rs :: {start}… :: the beginning of a paragraph, cut and marked with an ellipsis (a character, no word)
+exact :: show.rs :: the claims of wiki `{}` could not be read now: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: show.rs :: kind :: a placeholder name of a catalog message
+exact :: show.rs :: how :: a placeholder name of a catalog message
+exact :: why.rs :: view :: a placeholder name of a catalog message
+exact :: why.rs :: page :: a placeholder name of a catalog message

@@ -824,7 +824,11 @@ pub(super) async fn build(extra: &[(&str, &str)], out: &mut Out) {
         "http://localhost:8081",
     )
     .unwrap();
-    for sc in SCENARIOS.iter().chain(super::past_states::SCENARIOS) {
+    for sc in SCENARIOS
+        .iter()
+        .chain(super::past_states::SCENARIOS)
+        .chain(super::knowledge_states::SCENARIOS)
+    {
         let w = common::with_accounts(handbook());
         let router = site_with(&config, Some(w.services.clone())).unwrap();
         let request = |method: &str, uri: &str, headers: &[(&str, &str)]| {

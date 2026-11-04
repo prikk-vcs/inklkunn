@@ -77,6 +77,8 @@ T6, RFC 004) take the word from here and do not choose their own.
 | A link made for one person to make their account | invitation | 招待 | yes | One-time and ending; the server's operator makes it (DR-11) | Drafted |
 | A secret a program uses to act as an account, with a scope | API token | API トークン | yes | Shown once; it can do no more than its scope and the account's roles allow (RFC 002 D-1) | Drafted · ja: loanword |
 | The service that vouches for who a person is, when the operator has set one up (OpenID Connect) | provider | プロバイダー | yes | Named by its host (`Sign in with accounts.example.org`) and otherwise just "the provider": a person who has one knows it; never "identity provider" or "SSO", which only an administrator says (the OpenID Connect handoff U3) | Drafted · ja: loanword |
+| A statement a paragraph makes that someone has attached sources to or disagreed with | claim | 主張 | yes | RFC 005: only a paragraph someone made a claim has one; the page never says whether a claim is true or false, and a claim has no score | Drafted |
+| Where a claim came from, as a person recorded how it bears on the claim | source | 出典 | yes | A source supports or challenges a claim and says how directly; the page never ranks sources | Drafted |
 
 ## 2. Messages
 
@@ -949,6 +951,55 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `account.password_button` | the button that changes the password | "Change password" | "パスワードを変更" |
 | `account.password_wrong` | a problem: the current password given was not right | "The current password was not right. Nothing was changed." | "現在のパスワードが違います。何も変更されていません。" |
 | `account.password_changed` | a note at the top of the account page after the password was changed | "Your password was changed. Every other session and every API token of this account has ended." | "パスワードを変更しました。このアカウントの他のセッションとすべての API トークンは終了しました。" |
+| `page.link_why` | a page's tools: the link to the page that shows where each paragraph came from | "Why is this here?" | "なぜここにあるのか" |
+| `claim.link` | at the end of a paragraph that holds a claim: the link to that claim's page | "Sources and views" | "出典とビュー" |
+| `claim.link_name` | the accessible name of that link; `{paragraph}` says which paragraph | "Sources and views: {paragraph}" | "出典とビュー: {paragraph}" |
+| `claim.link_name_nth` | the accessible name of that link where a paragraph holds several claims; `{n}` of `{total}` | "Sources and views, claim {n} of {total}: {paragraph}" | "出典とビュー（主張 {n}/{total}）: {paragraph}" |
+| `claim.paragraph_start` | in that name: the paragraph, by its first words (`{text}`) | "paragraph beginning “{text}”" | "「{text}」で始まる段落" |
+| `claim.paragraph_empty` | in that name: a paragraph with no words to quote | "paragraph without text" | "文字のない段落" |
+| `title.claim` | the title of a claim's page; `{wiki}` is the wiki's name | "Sources and views · {wiki} · {product}" | "出典とビュー · {wiki} · {product}" |
+| `claim.heading` | the heading of a claim's page | "Sources and views" | "出典とビュー" |
+| `claim.kind` | the first line of a claim's page; `{kind}` is one of the kinds below | "What kind of statement it is: {kind}." | "この主張の種類: {kind}。" |
+| `claim.kind_observation` | a kind of statement | "an observation" | "観察" |
+| `claim.kind_interpretation` | a kind of statement | "an interpretation" | "解釈" |
+| `claim.kind_hypothesis` | a kind of statement | "a hypothesis" | "仮説" |
+| `claim.kind_opinion` | a kind of statement | "an opinion" | "意見" |
+| `claim.kind_decision` | a kind of statement | "a decision" | "決定" |
+| `claim.kind_policy` | a kind of statement | "a policy" | "方針" |
+| `claim.kind_question` | a kind of statement | "a question" | "問い" |
+| `claim.kind_unknown` | a kind of statement: none was said | "not said" | "示されていません" |
+| `claim.said_heading` | the heading of the list of pages that say the claim | "Where it is said" | "この主張が述べられている場所" |
+| `claim.said_nowhere` | in place of that list when no page has the paragraph now | "No page has the paragraph this claim is said in, as the pages are now." | "この主張が述べられている段落は、現在のどのページにもありません。" |
+| `claim.sources_heading` | the heading of a claim's sources | "Sources" | "出典" |
+| `claim.sources_none` | under it when the claim has none | "No source is attached to this claim." | "この主張に付けられた出典はありません。" |
+| `claim.source_line` | one source of a claim; `{id}` is its identifier, `{kind}` one of the kinds below, `{how}` one of the phrases below | "Source {id} ({kind}): {how}." | "出典 {id}（{kind}）: {how}。" |
+| `claim.source_primary` | a kind of source | "primary" | "一次" |
+| `claim.source_secondary` | a kind of source | "secondary" | "二次" |
+| `claim.source_observational` | a kind of source | "observational" | "観察" |
+| `claim.source_computational` | a kind of source | "computational" | "計算" |
+| `claim.source_anecdotal` | a kind of source | "anecdotal" | "逸話" |
+| `claim.source_other` | a kind of source | "another kind" | "その他" |
+| `claim.source_unreadable` | in place of the kind of a source whose file the wiki cannot read | "its file cannot be read" | "ファイルを読み取れません" |
+| `claim.how_supports_direct` | how a source bears on a claim: it supports it, and speaks to it directly | "supports, directly" | "直接に裏付けている" |
+| `claim.how_supports_partial` | how a source bears on a claim | "supports, in part" | "一部を裏付けている" |
+| `claim.how_supports_indirect` | how a source bears on a claim | "supports, indirectly" | "間接的に裏付けている" |
+| `claim.how_challenges_direct` | how a source bears on a claim: it challenges it, and speaks to it directly | "challenges, directly" | "直接に異議を唱えている" |
+| `claim.how_challenges_partial` | how a source bears on a claim | "challenges, in part" | "一部に異議を唱えている" |
+| `claim.how_challenges_indirect` | how a source bears on a claim | "challenges, indirectly" | "間接的に異議を唱えている" |
+| `claim.judged_earlier` | beside a source or a status: it was judged on a wording the paragraph no longer has, until a reviewer confirms it | "Judged on an earlier wording." | "以前の文言に基づいて判断されたものです。" |
+| `claim.status_heading` | the heading of a claim's status | "Status in this view" | "このビューでの状態" |
+| `claim.status_accepted` | a claim's status | "This claim is accepted in this view." | "このビューでは、この主張は認められています。" |
+| `claim.status_contested` | a claim's status | "This claim is contested in this view." | "このビューでは、この主張は争われています。" |
+| `claim.status_unresolved` | a claim's status | "This claim is unresolved in this view." | "このビューでは、この主張は未解決です。" |
+| `claim.status_unknown` | a claim's status: nobody has decided | "This claim has not been decided in this view." | "このビューでは、この主張はまだ決定されていません。" |
+| `claim.decided_by` | under a status that was decided; `{proposal}` is the link to the proposal that decided it | "Decided by {proposal}." | "{proposal}によって決定されました。" |
+| `claim.decided_link` | the link to that proposal | "the proposal that decided it" | "決定した提案" |
+| `claim.decided_unlisted` | under a status that was decided, when the proposal is not among this wiki's records | "Decided by a proposal that this wiki's records do not hold." | "このウィキの記録にない提案によって決定されました。" |
+| `claim.none_heading` | the heading when an address names no claim of the wiki | "No such claim" | "そのような主張はありません" |
+| `claim.none_body` | under it | "This wiki has no claim at that address, or it cannot be read now." | "このウィキには、そのアドレスの主張がないか、現在は読み取れません。" |
+| `why.heading` | the heading of that page | "Why is this here?" | "なぜここにあるのか" |
+| `why.not_available` | on that page: it is not part of this release | "Showing where each paragraph of a page came from is not available in this release." | "ページの各段落がどこから来たのかを示す機能は、このリリースにはありません。" |
+| `why.back` | on that page: the link back to the page; `{page}` is its title | "Back to {page}" | "{page} に戻る" |
 
 ## 3. Words the interface does not say
 

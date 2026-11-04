@@ -30,6 +30,8 @@ use inklkunn_store::{Slug, VerificationState, WikiId, WikiRecord};
 
 use crate::catalog::{Key, Rich, T};
 use crate::discover::Subject;
+use crate::knowledge::marks::{self, BodyPart, ParagraphClaim};
+use crate::knowledge::paths as knowledge_paths;
 use crate::pages::{self, Page, PageState, answer, render_form_refused};
 use crate::present::WikiLinks;
 use crate::services::Services;
@@ -179,10 +181,14 @@ struct PageTpl<'a> {
     contents_label: String,
     toc: Vec<TocItem>,
     body_lang: Option<String>,
-    body: Body,
+    /// The body, cut where a paragraph that holds a claim ends and printed in order with its links (one part, the
+    /// whole body, for a page with no claims).
+    body: Vec<BodyPart>,
     license: String,
     badge: Rich,
     history_href: String,
+    /// The link to the page that shows where each paragraph came from (not offered on a permalink).
+    why_href: Option<String>,
     banner: Option<Banner>,
     propose: Option<ProposeLinks>,
 }
@@ -369,6 +375,8 @@ pub(crate) enum Shown {
         view: Box<PageView>,
         asked: String,
         view_name: Option<String>,
+        /// The claims said in the page's paragraphs, from the knowledge index of the tip.
+        claims: Vec<ParagraphClaim>,
     },
     Missing {
         wiki: Box<WikiRecord>,
@@ -426,6 +434,7 @@ fn read_page(services: &Services, headers: &HeaderMap, t: T, slug: &str, raw_res
         .page(&wiki, view_full.as_deref(), &address.title, &links)
     {
         Ok(PageOutcome::Found(view)) => Shown::Found {
+            claims: marks::for_page(services, &wiki, view_full.as_deref(), &view),
             wiki,
             view,
             asked: address.title,
@@ -466,6 +475,7 @@ fn read_page(services: &Services, headers: &HeaderMap, t: T, slug: &str, raw_res
                     view: Box::new(view),
                     asked: address.title,
                     view_name,
+                    claims: Vec::new(),
                 },
                 None => Shown::Unavailable { wiki },
             }
@@ -518,7 +528,8 @@ pub(crate) fn present(page: &Page, shown: Shown) -> Response {
             view,
             asked,
             view_name,
-        } => found(page, &wiki, &view, &asked, view_name.as_deref()),
+            claims,
+        } => found(page, &wiki, &view, &asked, view_name.as_deref(), &claims),
         Shown::Missing { wiki, title } => notice(
             page,
             &wiki,
@@ -629,8 +640,9 @@ fn found(
     view: &PageView,
     asked: &str,
     view_name: Option<&str>,
+    claims: &[ParagraphClaim],
 ) -> Response {
-    found_with(
+    found_marked(
         page,
         wiki,
         view,
@@ -640,6 +652,7 @@ fn found(
             title: None,
             banner: None,
         },
+        claims,
     )
 }
 
@@ -652,6 +665,19 @@ pub(crate) fn found_with(
     asked: &str,
     view_name: Option<&str>,
     variant: Variant,
+) -> Response {
+    found_marked(page, wiki, view, asked, view_name, variant, &[])
+}
+
+/// [`found_with`], with the claims said in the page's paragraphs: each claimed paragraph carries its one link.
+fn found_marked(
+    page: &Page,
+    wiki: &WikiRecord,
+    view: &PageView,
+    asked: &str,
+    view_name: Option<&str>,
+    variant: Variant,
+    claims: &[ParagraphClaim],
 ) -> Response {
     let t = page.t();
     let shell = Shell::of(wiki);
@@ -695,6 +721,10 @@ pub(crate) fn found_with(
                 .text()
         }),
         history_href: crate::url::history_path(wiki.slug.as_str(), view_name, &heading, None),
+        why_href: variant
+            .banner
+            .is_none()
+            .then(|| knowledge_paths::why(wiki.slug.as_str(), view_name, &view.meta.title)),
         propose: variant.banner.is_none().then(|| {
             let slug = wiki.slug.as_str();
             ProposeLinks {
@@ -728,7 +758,7 @@ pub(crate) fn found_with(
             })
             .collect(),
         body_lang: view.meta.lang.clone().filter(|l| l != page.lang_tag()),
-        body: Body(view.html.clone()),
+        body: marks::parts(&view.html, claims, t, wiki.slug.as_str(), view_name),
         license: t.msg(Key::PageLicense).with("license", license).text(),
         badge: badge(t, wiki, view.stale),
     }

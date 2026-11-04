@@ -20,8 +20,8 @@ use crate::origin::Dispatch;
 use crate::pages::{self, LANGUAGE_PATH, PageState};
 use crate::services::Services;
 use crate::{
-    account, api, changes, csrf, discover, health, history, inbox, probe, proposals, raw, search,
-    signin, style, watch, wiki,
+    account, api, changes, csrf, discover, health, history, inbox, knowledge, probe, proposals,
+    raw, search, signin, style, watch, wiki,
 };
 
 /// One declared entry point and the handler that serves it.
@@ -442,6 +442,19 @@ fn wiki_specs() -> Vec<Spec> {
             methods: &["GET", "HEAD"],
             guard: Guard::Action(Action::Read),
             handler: || get(health::health_list),
+        },
+        // --- handoff 005 K-T6: what a reader sees of the knowledge layer (RFC 005 part 2 D-7).
+        Spec {
+            path: "/{slug}/-/claim/{id}",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(knowledge::show::claim_page),
+        },
+        Spec {
+            path: "/{slug}/-/why/{*title}",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(knowledge::why::why_page),
         },
         Spec {
             path: "/{slug}/-/links/{*title}",

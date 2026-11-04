@@ -323,6 +323,8 @@ fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
             ("/{slug}/-/opensearch.xml", Read),
             ("/{slug}/-/health", Read),
             ("/{slug}/-/health/{list}", Read),
+            ("/{slug}/-/claim/{id}", Read),
+            ("/{slug}/-/why/{*title}", Read),
             ("/{slug}/-/links/{*title}", Read),
             ("/{slug}/-/site.json", Read),
             ("/{slug}/-/describe/{*title}", Read),

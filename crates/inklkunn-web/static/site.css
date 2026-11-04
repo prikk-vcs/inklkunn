@@ -338,3 +338,11 @@ nav.account form { display: inline; margin: 0; }
 .sign-in-form .field, .account-section .field { margin-block-end: 0.75rem; }
 .sign-in-form label, .account-section label { display: block; }
 .problem { font-weight: 600; }
+
+/* What a reader sees of the knowledge layer (RFC 005 part 2 D-7; handoff 005 K-T6). The link under a paragraph
+   that holds a claim is quiet: smaller, in the muted text colour, underlined like any link. Nothing here ranks:
+   no rule is named for a relation, a bearing or a status (a source that supports a claim and one that challenges
+   it look alike, as do the four statuses), and nothing is coloured, drawn or counted. tests/stylesheet holds it. */
+.claim-link { font-size: 0.85em; color: var(--muted); }
+.claim-note { color: var(--muted); }
+.claim-said li, .claim-sources li { overflow-wrap: anywhere; }

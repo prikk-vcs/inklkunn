@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+{% if let Some(note) = view_note %}<p class="view-note">{{ note }}</p>
+{% endif %}<p>{{ kind }}</p>
+<h2>{{ said_heading }}</h2>
+{% if let Some(text) = said_nowhere %}<p>{{ text }}</p>
+{% else %}<ul class="claim-said">
+{% for s in said %}<li><a href="{{ s.href }}">{{ s.text }}</a></li>
+{% endfor %}</ul>
+{% endif %}<h2>{{ sources_heading }}</h2>
+{% if let Some(text) = sources_none %}<p>{{ text }}</p>
+{% else %}<ul class="claim-sources">
+{% for s in sources %}<li>{{ s.line }}{% if let Some(note) = s.earlier %} <span class="claim-note">{{ note }}</span>{% endif %}</li>
+{% endfor %}</ul>
+{% endif %}<h2>{{ status_heading }}</h2>
+<p class="claim-status">{{ status.sentence }}{% if let Some(by) = status.decided %} {{ by }}{% endif %}{% if let Some(text) = status.unlisted %} {{ text }}{% endif %}{% if let Some(note) = status.earlier %} <span class="claim-note">{{ note }}</span>{% endif %}</p>
+{% endblock %}
