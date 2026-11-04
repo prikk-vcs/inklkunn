@@ -274,6 +274,11 @@
   adding a path:** a retirement records only what it can trace to the key's own history, or nothing — the key stays out of
   trust, writes stay paused, and the way out (restore from before the compromise, or abandon) is named. **Z1 is the condition
   for retiring a key on a live wiki.** Pushed.
+- **2026-11-04 — handoff 004's Z1 – Z6 reviewed: Approved** (`cb3e36f`; 2,198 tests in both runs, 259 self-skips; every
+  thief act reproduced on real prikk is refused, and no act of the service's own is called untraceable). Follow-ups Z7 – Z9 in a
+  short request: `status` exits non-zero while a retirement is unfinished; a lost tip named first; **the CHANGELOG's entries since
+  0.1.0 sat under the 0.1.0 heading** and move under `[Unreleased]` (0.2.0's notes would have left them out). **Once Z7 is in, a
+  key may be retired on a live wiki.** Pushed.
 
 ## Pending on the owner
 
@@ -297,7 +302,7 @@
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and handoff 003's T1 – T3 are built and
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
-(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **The dev team's order now:** handoff 004's **Z1 – Z6** before 0.2.0, with the readiness report refreshed; then the architect's release rehearsal, and the
+(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **The dev team's order now:** handoff 004's follow-ups **Z7 – Z9** before 0.2.0; then the architect's release rehearsal, and the
 architect brings the 0.2.0 decision to the owner. K-T5 onward after 0.2.0.
 
 ## Issue register

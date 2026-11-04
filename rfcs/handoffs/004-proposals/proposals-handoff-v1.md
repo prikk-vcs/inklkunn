@@ -444,3 +444,19 @@ request, `004-proposals-corrections-7-review-request.md`. **Z1 is the condition 
   finishes): *recover first*, naming `inklkunn wiki recover <wiki>`. A recorded tip missing from its view's log is
   untraceable under Z1 (its words, not *this service did not make them*).
 - **Z6.** The readiness report and the CHANGELOG say what Z1 makes of a compromised key (one sentence each).
+
+## Follow-ups from the review of 2026-11-04, second (binding; **before 0.2.0**)
+
+Z1 – Z6 are **Approved** (`.git-exclude/reviewed/004-proposals-corrections-7-review-result.md`): a retirement records only what it
+traces to the key's own history, or nothing. Hand back Z7 – Z9 as one short request, `004-proposals-corrections-8-review-request.md`.
+**Once Z7 is in, a key may be retired on a live wiki.**
+
+- **Z7.** `inklkunn wiki keys status` exits non-zero whenever a retirement is unfinished (writes are paused), whatever the
+  late-seal check could see; the test that pins exit 0 in that state changes.
+- **Z8.** A lost recorded tip is named **first**, so the twenty-name cap never hides it; the blocks of a view whose tip is lost are
+  worded neutrally (*not in that view's history up to the newest block recorded when the key was replaced*), not *sealed after it
+  was replaced*. The editors' pause sentence does not promise that `finish-retirement` resumes writes (*until the person who runs
+  this wiki finishes or gives up a change to its keys*).
+- **Z9.** `CHANGELOG.md`: everything added since the 0.1.0 tag (from *Spike C* on) moves under `## [Unreleased]`, in order; new
+  entries go under `[Unreleased]`, never at the file's end. A test, or a line in `pin-check`, that no text follows the oldest
+  release's section that the tagged file did not have is welcome but not required.
