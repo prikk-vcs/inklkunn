@@ -190,7 +190,7 @@ mod world {
             std::fs::write(
                 &path,
                 format!(
-                    "#!/bin/sh\nif [ \"$1 $2 $3\" = \"trust maintainer remove\" ]; then {real} \"$@\"; rc=$?; touch {ctl}/removed; exit $rc; fi\nif [ \"$1\" = verify ] && [ -e {ctl}/removed ] && [ -e {ctl}/verify-dies ]; then echo 'error: injected' >&2; exit 2; fi\nif [ \"$1\" = verify ] && [ -e {ctl}/forge ]; then read A M < {ctl}/forge; rm {ctl}/forge; echo forged > Forged.md; PRIKK_AUTHOR_KEY_ID=$A PRIKK_AUTHOR_SEED_FILE={loot}/author.seed PRIKK_MAINTAINER_KEY_ID=$M PRIKK_MAINTAINER_SEED_FILE={loot}/maintainer.seed {real} commit -m forged >&2 || exit 9; PRIKK_AUTHOR_KEY_ID=$A PRIKK_AUTHOR_SEED_FILE={loot}/author.seed PRIKK_MAINTAINER_KEY_ID=$M PRIKK_MAINTAINER_SEED_FILE={loot}/maintainer.seed {real} seal --allow-no-audit >&2 || exit 9; fi\nif [ -n \"$PRIKK_MAINTAINER_SEED_FILE\" ] && [ -f \"$PRIKK_MAINTAINER_SEED_FILE\" ] && [ ! -e {loot}/maintainer.seed ]; then mkdir -p {loot}; cp \"$PRIKK_MAINTAINER_SEED_FILE\" {loot}/maintainer.seed; fi\nif [ -n \"$PRIKK_AUTHOR_SEED_FILE\" ] && [ -f \"$PRIKK_AUTHOR_SEED_FILE\" ] && [ ! -e {loot}/author.seed ]; then mkdir -p {loot}; cp \"$PRIKK_AUTHOR_SEED_FILE\" {loot}/author.seed; fi\nexec {real} \"$@\"\n",
+                    "#!/bin/sh\nif [ \"$1 $2 $3\" = \"trust maintainer remove\" ]; then {real} \"$@\"; rc=$?; touch {ctl}/removed; exit $rc; fi\nif [ \"$1\" = verify ] && [ -e {ctl}/removed ] && [ -e {ctl}/verify-dies ]; then echo 'error: injected' >&2; exit 2; fi\nif [ \"$1\" = verify ] && [ -e {ctl}/forge-act ]; then read A M ARGS < {ctl}/forge-act; rm {ctl}/forge-act; PRIKK_AUTHOR_KEY_ID=$A PRIKK_AUTHOR_SEED_FILE={loot}/author.seed PRIKK_MAINTAINER_KEY_ID=$M PRIKK_MAINTAINER_SEED_FILE={loot}/maintainer.seed {real} $ARGS >&2 || exit 9; fi\nif [ \"$1\" = verify ] && [ -e {ctl}/forge ]; then read A M < {ctl}/forge; rm {ctl}/forge; echo forged > Forged.md; PRIKK_AUTHOR_KEY_ID=$A PRIKK_AUTHOR_SEED_FILE={loot}/author.seed PRIKK_MAINTAINER_KEY_ID=$M PRIKK_MAINTAINER_SEED_FILE={loot}/maintainer.seed {real} commit -m forged >&2 || exit 9; PRIKK_AUTHOR_KEY_ID=$A PRIKK_AUTHOR_SEED_FILE={loot}/author.seed PRIKK_MAINTAINER_KEY_ID=$M PRIKK_MAINTAINER_SEED_FILE={loot}/maintainer.seed {real} seal --allow-no-audit >&2 || exit 9; fi\nif [ -n \"$PRIKK_MAINTAINER_SEED_FILE\" ] && [ -f \"$PRIKK_MAINTAINER_SEED_FILE\" ] && [ ! -e {loot}/maintainer.seed ]; then mkdir -p {loot}; cp \"$PRIKK_MAINTAINER_SEED_FILE\" {loot}/maintainer.seed; fi\nif [ -n \"$PRIKK_AUTHOR_SEED_FILE\" ] && [ -f \"$PRIKK_AUTHOR_SEED_FILE\" ] && [ ! -e {loot}/author.seed ]; then mkdir -p {loot}; cp \"$PRIKK_AUTHOR_SEED_FILE\" {loot}/author.seed; fi\nexec {real} \"$@\"\n",
                     real = real.display(),
                     loot = loot.display(),
                     ctl = data_dir.join("ctl").display()
@@ -381,6 +381,16 @@ mod world {
             std::fs::write(
                 self.settings.data_dir.join("ctl").join("forge"),
                 format!("{author_key_id} {maintainer_key_id}\n"),
+            )
+            .unwrap();
+        }
+
+        /// As [`World::arm_forgery`], for an act that seals no block: the thief runs `prikk <args>` (a branch close, a
+        /// tag).
+        pub fn arm_forged_act(&self, author_key_id: &str, maintainer_key_id: &str, args: &str) {
+            std::fs::write(
+                self.settings.data_dir.join("ctl").join("forge-act"),
+                format!("{author_key_id} {maintainer_key_id} {args}\n"),
             )
             .unwrap();
         }
@@ -703,12 +713,16 @@ fn a_retirement_that_ends_without_its_record_exits_non_zero_names_the_command_an
             && d.contains("finish-retirement")),
         "{events:?}"
     );
-    // `status` says it, with the command.
-    let (status, out, _) = w.cli("wiki keys status handbook");
-    assert_eq!(status, 0, "{out}");
+    // `status` says it, with the command, and exits non-zero: writes are paused (Z7), nothing untraceable needed.
+    let (status, out, err) = w.cli("wiki keys status handbook");
+    assert_eq!(status, 1, "{out}{err}");
     assert!(
         out.contains("UNFINISHED") && out.contains(&command) && out.contains(&abandon),
         "{out}"
+    );
+    assert!(
+        err.contains("is not finished") && err.contains("nothing new is sealed"),
+        "{err}"
     );
     // Nothing else can be done to the keys meanwhile.
     let (status, _, err) = w.cli("wiki keys rotate handbook --confirm handbook");
@@ -1238,7 +1252,10 @@ fn abandon_refuses_when_the_key_record_is_older_than_the_audit_trail_and_changes
     std::fs::remove_dir_all(&w.settings.key_dir).unwrap();
     std::fs::rename(&backup, &w.settings.key_dir).unwrap();
     let (status, out, _) = w.cli("wiki keys status handbook");
-    assert_eq!(status, 0);
+    assert_eq!(
+        status, 1,
+        "the record says unfinished, so writes are paused: {out}"
+    );
     assert!(out.contains("UNFINISHED"), "the old record: {out}");
     let trusted_before = w.verifies();
     let (status, out, err) = w.cli("wiki keys abandon-retirement handbook --confirm handbook");
@@ -1321,9 +1338,11 @@ fn retire_with_a_late_block_leaves_the_retirement_unfinished_names_it_and_status
     );
 
     // `status` says the retirement is unfinished, names the block and carries the one sentence, and no command that
-    // cannot work.
-    let (status, out, _) = w.cli("wiki keys status handbook");
-    assert_eq!(status, 0, "{out}");
+    // cannot work. It exits non-zero (Z7): writes are paused, and the late-seal check cannot see a key that is out of
+    // trust, so that check alone would have said 0.
+    let (status, out, err) = w.cli("wiki keys status handbook");
+    assert_eq!(status, 1, "{out}{err}");
+    assert!(err.contains("is not finished"), "{err}");
     let unfinished = out
         .lines()
         .find(|l| l.starts_with("UNFINISHED"))
@@ -1355,6 +1374,53 @@ fn retire_with_a_late_block_leaves_the_retirement_unfinished_names_it_and_status
     let (status, out, err) = w.cli("wiki keys abandon-retirement handbook --confirm handbook");
     assert_eq!(status, 0, "{out}{err}");
     assert!(w.verifies(), "the key is trusted again");
+}
+
+#[test]
+fn status_exits_non_zero_while_a_retirement_is_unfinished_after_a_close_or_a_tag_by_the_superseded_key()
+ {
+    // Z7. A branch closed or a tag made with the superseded key leaves the retirement unfinished (nothing traces it),
+    // and the late-seal check cannot see either: `status` still exits non-zero and prints the UNFINISHED line.
+    for (tag, act) in [
+        ("z7-close", "branch close heads/main"),
+        ("z7-tag", "tag create tags/stolen --target heads/main"),
+    ] {
+        let Some(w) = world::leaky_world(tag) else {
+            return;
+        };
+        let (author, maintainer) = w.recorded_ids();
+        let (author, k1) = (author.unwrap(), maintainer.unwrap());
+        // A wiki with no retirement unfinished keeps its exits.
+        let (status, out, err) = w.cli("wiki keys status handbook");
+        assert_eq!(status, 0, "{tag}: {out}{err}");
+        let (status, out, err) = w.cli("wiki keys rotate handbook --confirm handbook");
+        assert_eq!(status, 0, "{tag}: {out}{err}");
+        w.arm_forged_act(&author, &k1, act);
+        let (status, out, err) = w.cli("wiki keys status handbook");
+        assert_eq!(status, 0, "{tag}: the act is not a late seal: {out}{err}");
+        let (status, out, err) = w.cli(&format!(
+            "wiki keys retire handbook --key {k1} --confirm handbook --accept-unverifiable-history"
+        ));
+        assert_eq!(status, 1, "{tag}: {out}{err}");
+        assert!(
+            err.contains(inklkunn_core::UNTRACEABLE_SENTENCE),
+            "{tag}: {err}"
+        );
+        let (status, out, err) = w.cli("wiki keys status handbook");
+        assert_eq!(status, 1, "{tag}: {out}{err}");
+        assert!(
+            out.lines()
+                .any(|l| l.starts_with("UNFINISHED")
+                    && l.contains(inklkunn_core::UNTRACEABLE_SENTENCE)),
+            "{tag}: {out}"
+        );
+        assert!(err.contains("is not finished"), "{tag}: {err}");
+        // Giving the retirement up is the way out, and `status` exits 0 again.
+        let (status, out, err) = w.cli("wiki keys abandon-retirement handbook --confirm handbook");
+        assert_eq!(status, 0, "{tag}: {out}{err}");
+        let (status, out, err) = w.cli("wiki keys status handbook");
+        assert_eq!(status, 0, "{tag}: {out}{err}");
+    }
 }
 
 // ---- status says what the repository trusts, and names the command (handoff 004, Y2, Y3)

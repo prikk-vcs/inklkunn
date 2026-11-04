@@ -412,10 +412,10 @@ fn run(
         Command::Status { .. } => {
             let status = signer.key_status(&record.id).map_err(|e| e.to_string())?;
             print_status(out, &record, &status);
-            if let Some(key) = signer
+            let unfinished = signer
                 .unfinished_retirement(&record.id)
-                .map_err(|e| e.to_string())?
-            {
+                .map_err(|e| e.to_string())?;
+            if let Some(key) = &unfinished {
                 let _ = write!(
                     out,
                     "UNFINISHED: the retirement of maintainer key {key} was begun and is not finished, so nothing new is sealed in this wiki, nothing is excused \
@@ -434,19 +434,25 @@ fn run(
                              (the key stays trusted and nothing is retired; `{}` retires it later)",
                             inklkunn_core::finish_retirement_command(&record.id),
                             inklkunn_core::abandon_retirement_command(&record.id),
-                            retire_command(&record.id, &key)
+                            retire_command(&record.id, key)
                         );
                     }
                 }
             }
             let late = report_superseded(&signer, &record, &repo, out, err)?;
-            if late.is_empty() {
-                Ok(())
-            } else {
+            if !late.is_empty() {
                 Err(format!(
                     "{} block(s) were sealed by a superseded maintainer key after the rotation that replaced it; see above",
                     late.len()
                 ))
+            } else if let Some(key) = unfinished {
+                // Writes are paused whatever the late-seal check could see (Z7): it cannot see a key that is out of
+                // trust, so an unfinished retirement is its own failure, for a script to tell.
+                Err(format!(
+                    "the retirement of maintainer key {key} is not finished, so nothing new is sealed in this wiki; see UNFINISHED above"
+                ))
+            } else {
+                Ok(())
             }
         }
         Command::Create { .. } => {
