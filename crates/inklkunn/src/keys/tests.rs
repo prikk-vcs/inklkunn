@@ -1533,6 +1533,41 @@ fn status_does_not_say_that_no_block_was_sealed_after_the_rotation_of_a_key_it_c
             && out.contains("only for the keys it still trusts"),
         "{out}"
     );
+    // The same when the check does run (a block signed by a key that is trusted is listed): it looked at nothing that
+    // could be K1's, so it still must not say that nothing was found for it.
+    let real = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+        .map(|d| d.join("prikk"))
+        .find(|c| c.is_file())
+        .unwrap();
+    let standin = w.settings.data_dir.join("prikk-lists-a-signer");
+    std::fs::write(
+        &standin,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = verify ] && [ $# -eq 1 ]; then {real} verify; rc=$?; echo 'sealed-block {block}: a-trusted-key'; exit $rc; fi\nexec {real} \"$@\"\n",
+            real = real.display(),
+            block = "a".repeat(64)
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&standin, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let (status, out, err) = w.cli_with_prikk("wiki keys status handbook", standin.as_os_str());
+    assert_eq!(status, 0, "{out}{err}");
+    assert!(
+        !out.contains("no block was sealed by a superseded key after its rotation")
+            && out.contains(&format!("this check cannot see {k1}")),
+        "{out}"
+    );
+    // With a second superseded key that is still trusted, the check says what it did see, and what it could not.
+    let (status, _, err) = w.cli("wiki keys rotate handbook --confirm handbook");
+    assert_eq!(status, 0, "{err}");
+    let (status, out, err) = w.cli_with_prikk("wiki keys status handbook", standin.as_os_str());
+    assert_eq!(status, 0, "{out}{err}");
+    assert!(
+        out.contains(
+            "no block was sealed after its rotation by a superseded key that is still trusted;"
+        ) && out.contains(&format!("this check cannot see {k1}")),
+        "{out}"
+    );
 }
 
 #[test]

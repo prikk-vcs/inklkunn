@@ -2210,6 +2210,11 @@ impl World {
             !why.contains("wiki recover"),
             "no text sends the operator to recover for this: {why}"
         );
+        // The one sentence is the way out: no "finish it later" is offered beside it.
+        assert!(
+            !why.contains("no later run") && !why.contains("finished or given up"),
+            "{why}"
+        );
         assert!(
             !self.trusted_ids().contains(&k1.to_owned()),
             "the key is out of trust"
@@ -2261,6 +2266,7 @@ impl World {
                     assert!(text.contains(id), "{id}: {text}");
                 }
                 assert!(text.contains("nothing was recorded"), "{text}");
+                assert!(!text.contains("no later run"), "{text}");
             }
             other => panic!("{other:?}"),
         }
