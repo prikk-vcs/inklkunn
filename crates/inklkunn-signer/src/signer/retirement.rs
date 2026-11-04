@@ -933,7 +933,7 @@ impl Signer {
         Ok(meta.retiring.map(|r| r.maintainer_key_id))
     }
 
-    /// What cannot be traced in the unfinished retirement of this wiki's repository, said in words ([`untraceable_text`])
+    /// What cannot be traced in the unfinished retirement of this wiki's repository, said in words (`untraceable_text`)
     /// (Z1); `None` when no retirement is unfinished, when its key is still trusted (nothing was removed, so there is
     /// nothing to trace), or when it is unfinished for another reason. Read-only: the same trace the end of a
     /// retirement makes, on the repository as it is now, recording nothing.

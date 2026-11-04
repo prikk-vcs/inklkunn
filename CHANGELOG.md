@@ -1731,3 +1731,54 @@ trusted; abandon then retire again; a rotation that retires the replaced key bes
 an unfinished retirement, for an unreadable trust list, and for the unfinished key beside another). Two tests need no prikk
 (`record_of` with a late seal; `RetireNotBegun`'s text). Every fix was mutated (reverted, the test seen to fail, restored): 31
 mutations, none survived; one first did not apply (a formatting split) and was redone as two.
+
+Corrections from the review of 2026-11-04 (handoff 004, Z1 – Z6).
+
+**Z1 amends Y1: there is no separate late-seal path any more.** The fifth round on retirement had added a path each time; this one
+removes one.
+
+- **Z1 — a retirement records only what it can trace, or nothing.** After the removal every finding of the fresh `verify` must be
+  traceable to the key's own history as the service made it: a block in `known_when_replaced` (the one function the late-seal check
+  of `status` uses too); a ref state in the same function's other half — the `ref_state_id` of each view's log entries from the
+  **oldest** entry whose block is the recorded tip back to the start (`Writes::view_blocks` keeps the ref state it used to drop, so
+  one function yields blocks and ref states); ref updates as they were. A `tag` finding is now parsed (`PublicationTrust::tags`)
+  instead of being a line of an unknown shape, and is untraceable, as is a late block, a ref state nothing in the history explains
+  (a `branch close`, a `branch create` or any other act with the stolen key that seals no block), a block another key lost
+  (W4's case, now one rule) and a recorded tip the repository no longer shows (said in its own words). If **anything** is
+  untraceable the retirement records nothing and stays unfinished: the key is out of the trust store, writes stay paused (W1), the
+  key record gains nothing. `retire` / `rotate --retire-old` (as `RetiredUnrecorded`), `finish-retirement` (a refusal) and `status`'s
+  `UNFINISHED` line (`Signer::untraceable_in_unfinished_retirement`, the same trace made read-only) name every finding (the first 20
+  by name, then a count) and say `UNTRACEABLE_SENTENCE` once: *the repository holds acts with this key that cannot be traced to what
+  it sealed for this service; nothing excuses them, and this service seals nothing more until the history is restored from before
+  them (`docs/KEYS.md`, compromise) or the retirement is given up with `abandon-retirement`, which trusts the key again*. Removed:
+  `OldKeyOutcome::Retired { late_seals }` (a plain `Retired` again), `RetirementFinished::late_seals`, `LATE_SEALS_SENTENCE`, the
+  exit-1 late path of the command line and the audit detail's late-seal count. A compromised key whose acts the service cannot
+  trace is therefore never half-retired: it is out of trust, the wiki is paused, and the operator is told the two ways out.
+- **Z2 — no loop.** Recovery stops with `retirement-unfinished` (never `doctor-trouble`) with the same sentence in its note; no
+  text sends the operator to `inklkunn wiki recover` for it. A `verify` that fails by publication trust alone on findings no
+  retirement recorded is a `Refused` that says recovery does not cure it (it used to be `NeedsRecovery`, whose wrapper said
+  *run `inklkunn wiki recover`, then retire*). `docs/RECOVERY.md` says so in a paragraph of its own.
+- **Z3 — `docs/KEYS.md`.** An act made with a key after it was replaced needs write access to the wiki's repository outside this
+  service: a host compromise. Restore the repository, the key directory and the store **together** from a backup taken before it
+  (every later write is lost) and retire again, or abandon and accept the key as trusted. Step 5 no longer says the acceptance
+  records do not exist.
+- **Z-b.** `status` no longer says *no block was sealed by a superseded key after its rotation* when a superseded key is out of the
+  trust store (prikk lists the signer of a block only for trusted keys): it says the check cannot see that key.
+- **Z4.** `status` says *the repository looks older than the key record: restore the key directory from the same backup, then
+  retire it again* when the record calls a key retired and the repository trusts it again.
+- **Z5.** A rotation, `Keep` or `Retire`, refuses while a publication is pending (the state recovery's `complete-publication`
+  finishes), naming `inklkunn wiki recover <wiki>`.
+- **Z6.** This entry and the readiness report say what Z1 makes of a compromised key.
+
+Public API: `OldKeyOutcome::Retired` is a unit variant again; `RetirementFinished` loses `late_seals`; `LATE_SEALS_SENTENCE` is
+`UNTRACEABLE_SENTENCE`; `untraceable_text` and `Signer::untraceable_in_unfinished_retirement` are new. Store schema unchanged (15).
+
+Z1 – Z6 add **8 prikk-dependent tests** (`EXPECTED_SKIPS` 251 → 259, measured with prikk shimmed off; 11 added and 5 Y1 tests removed in
+`signer/lifecycle/tests.rs`: a late block; a `branch close`; a `branch create`; a tag; all three beside the service's own acts; a lost
+tip; the same retirement with none of them; a view the service made; finish with the key still trusted; a failure no retirement
+recorded does not send anyone to recover; a rotation that retires beside a kept key's acts. One in `tests/recover.rs`, a rotation
+while a publication is pending. In `keys/tests.rs` the two Y1 tests became one plus `status` for a key it cannot see (Z-b) and for
+a repository older than the record (Z4)). The tests that need no prikk: `record_of` with everything untraceable, the tag, the
+long list, `known_when_replaced` counting from the oldest entry, the plan's note and stop. Every fix was mutated (reverted, the test
+seen to fail, restored): 24 mutations; three survived at first (the finish and retirement texts, and `status`'s sentence when the check
+runs) and their tests were strengthened until they were killed; two were reapplied after a formatting split.
