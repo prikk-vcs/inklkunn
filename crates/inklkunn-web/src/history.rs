@@ -95,7 +95,17 @@ fn start(
 
 /// What went wrong in a read, as the page that says so. The cause goes to the operator's log.
 fn failed(services: &Services, wiki: Box<WikiRecord>, what: &str, e: ReadError) -> Early {
-    Early::Shown(match e {
+    Early::Shown(shown_for(services, wiki, what, e))
+}
+
+/// The page that says what went wrong in a read of a page's past (shared with *Why is this here?*).
+pub(crate) fn shown_for(
+    services: &Services,
+    wiki: Box<WikiRecord>,
+    what: &str,
+    e: ReadError,
+) -> Shown {
+    match e {
         ReadError::InvalidTitle(_) => Shown::InvalidTitle { wiki },
         ReadError::NoSuchView(view) => Shown::NoSuchView {
             wiki,
@@ -109,7 +119,7 @@ fn failed(services: &Services, wiki: Box<WikiRecord>, what: &str, e: ReadError) 
             ));
             Shown::Unavailable { wiki }
         }
-    })
+    }
 }
 
 /// The pages that match a title and none is nearer, as the choices the page view offers.
@@ -261,7 +271,7 @@ impl Flag {
     }
 }
 
-fn flags(t: T, info: &ChangeInfo) -> Vec<String> {
+pub(crate) fn flags(t: T, info: &ChangeInfo) -> Vec<String> {
     Flag::of(info).into_iter().map(|f| t.get(f.key())).collect()
 }
 

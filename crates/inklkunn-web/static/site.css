@@ -346,3 +346,13 @@ nav.account form { display: inline; margin: 0; }
 .claim-link { font-size: 0.85em; color: var(--muted); }
 .claim-note { color: var(--muted); }
 .claim-said li, .claim-sources li { overflow-wrap: anywhere; }
+
+/* Why is this here? (RFC 005 part 2 D-8; handoff 005 K-T7). A list of paragraphs, each with its sentences, and a
+   list of the changes they name. Nothing here ranks or marks: the notes are quiet (the muted text colour), and a
+   paragraph's chain looks like any other chain. tests/stylesheet holds it. */
+.why-paragraphs, .why-changes { list-style: none; padding-inline-start: 0; }
+.why-paragraphs > li, .why-changes > li { margin-block: 1rem; padding-block-start: 0.75rem; border-block-start: 1px solid var(--line); }
+.why-label, .why-excerpt { margin-block: 0 0.25rem; }
+.why-excerpt, .why-chain li, .why-review li, .why-sources li, .why-people li { overflow-wrap: anywhere; }
+.why-chain, .why-people, .why-review, .why-sources, .why-links { margin-block: 0 0.5rem; padding-inline-start: 1.25rem; }
+.why-note, .why-basis { color: var(--muted); }

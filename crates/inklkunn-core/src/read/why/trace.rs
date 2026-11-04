@@ -29,7 +29,7 @@ pub enum Basis {
     Text,
 }
 
-/// What became known of a paragraph's past. The numbers are of the steps fed to the [`Tracer`] (the first fed is 0).
+/// What became known of a paragraph's past. The numbers are of the steps read, newest first (the first is 0), that is, places in [`WhyPage::changes`](super::WhyPage::changes).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Chain {
     /// The newest step at which the paragraph's wording differs from the one before, or at which it was written:

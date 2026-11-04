@@ -2161,10 +2161,95 @@ pub const CATALOG: &[Entry] = &[
         "This wiki has no claim at that address, or it cannot be read now.",
     ),
     msg("why.heading", "Why is this here?"),
-    msg(
-        "why.not_available",
-        "Showing where each paragraph of a page came from is not available in this release.",
-    ),
     msg("why.back", "Back to {page}"),
     // the knowledge layer's reader (K-T6): end
+    // Why is this here? (K-T7)
+    msg("title.why", "Why is this here? {page} · {wiki} · {product}"),
+    msg(
+        "why.intro",
+        "Where each paragraph of {page} came from, as far as the page's history says. Every paragraph here can be linked to.",
+    ),
+    msg("why.history_link", "The whole history of {page}"),
+    plural_msg(
+        "why.bounded",
+        "Only the latest {count} change to this page was read here. There are older changes, and what came before is not shown.",
+        "Only the latest {count} changes to this page were read here. There are older changes, and what came before them is not shown.",
+    ),
+    msg(
+        "why.bounded_none",
+        "No change to this page was found among the latest changes of this wiki that one request can read. There are older changes, and they are not shown.",
+    ),
+    msg(
+        "why.unfollowed",
+        "The history of this page could not be followed to its start: an earlier version could not be read, or the history lists no change that wrote the page. What is said below holds only for the changes that were read.",
+    ),
+    plural_msg(
+        "why.left_out",
+        "{count} more paragraph is not followed: only the first {limit} paragraphs of a page are.",
+        "{count} more paragraphs are not followed: only the first {limit} paragraphs of a page are.",
+    ),
+    msg("why.paragraphs_heading", "Paragraphs"),
+    msg("why.no_paragraphs", "This page has no paragraphs."),
+    msg("why.paragraph_label", "Paragraph {n}"),
+    msg(
+        "why.written_unchanged",
+        "Written in {change}. Not changed since.",
+    ),
+    msg("why.last_changed", "Last changed in {change}."),
+    msg("why.first_written", "First written in {change}."),
+    msg(
+        "why.first_before",
+        "First written before the oldest change read here.",
+    ),
+    msg(
+        "why.unchanged_read",
+        "Not changed in the changes read here.",
+    ),
+    msg(
+        "why.found_written_unchanged",
+        "Earliest wording found in {change}. No change to it was found since.",
+    ),
+    msg("why.found_last", "Latest change found in {change}."),
+    msg(
+        "why.found_first",
+        "Earliest wording found in {change}. No earlier wording matches it.",
+    ),
+    msg(
+        "why.basis_anchor",
+        "Followed through its anchor: in every change read, the one paragraph with this anchor is this paragraph.",
+    ),
+    msg(
+        "why.basis_text",
+        "Traced by matching the text. Nothing carries this paragraph through every change but its words, so each earlier wording was found by comparing text. If several paragraphs were reworded at once, it may be a different paragraph.",
+    ),
+    msg("why.changes_heading", "Changes read"),
+    msg("why.changes_none", "No change to this page was read."),
+    msg("why.change_open", "See change {number} in the history"),
+    msg("why.proposal", "Made from the proposal {proposal}."),
+    msg(
+        "why.proposal_unlisted",
+        "The message of this change names a proposal that is not among the records of this wiki that you may read.",
+    ),
+    msg(
+        "why.proposal_unconfirmed",
+        "This wiki's records do not show that this proposal was accepted as this change, so its review is not shown here.",
+    ),
+    msg("why.review_heading", "Review"),
+    msg(
+        "why.review_none",
+        "Nobody commented or decided on this proposal.",
+    ),
+    msg("why.decision_words", "They wrote: “{text}”"),
+    msg(
+        "why.comment",
+        "{author} commented, on revision {number}: “{text}”",
+    ),
+    plural_msg(
+        "why.review_more",
+        "{count} more item of the review is on the proposal's page.",
+        "{count} more items of the review are on the proposal's page.",
+    ),
+    msg("why.sources_heading", "Sources given with the proposal"),
+    msg("why.sources_none", "No source was given with the proposal."),
+    // Why is this here? (K-T7): end
 ];

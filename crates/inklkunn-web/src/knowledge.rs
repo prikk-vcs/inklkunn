@@ -8,8 +8,10 @@
 //!
 //! - [`marks`]: the link on a claimed paragraph, cut into the sanitized body without changing a byte of it.
 //! - `show`: a claim's page, `/{slug}/-/claim/{id}`.
-//! - `why`: `/{slug}/-/why/{title}`, the page the *Why is this here?* link leads to (K-T7's; until then one honest
-//!   *not available in this release* state, so nothing links to a page that is not there).
+//! - `why`: `/{slug}/-/why/{title}` (K-T7), the page the *Why is this here?* link leads to: a page's paragraphs,
+//!   each with an anchor, and for each the change that last changed it and the one that first wrote it, with the
+//!   proposal, the people as the message records them, the review and the sources given, derived from the history
+//!   and the proposal records alone, and labelled *traced by matching the text* wherever no anchor carries the chain.
 //! - `paths`: their addresses. `words`: what each word of a claim's file is called.
 
 pub(crate) mod marks;

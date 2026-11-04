@@ -385,3 +385,18 @@ exact :: show.rs :: kind :: a placeholder name of a catalog message
 exact :: show.rs :: how :: a placeholder name of a catalog message
 exact :: why.rs :: view :: a placeholder name of a catalog message
 exact :: why.rs :: page :: a placeholder name of a catalog message
+exact :: why.rs :: reviewer :: a placeholder name of a catalog message
+exact :: why.rs :: number :: a placeholder name of a catalog message
+exact :: why.rs :: text :: a placeholder name of a catalog message
+exact :: why.rs :: author :: a placeholder name of a catalog message
+exact :: why.rs :: proposal :: a placeholder name of a catalog message
+exact :: why.rs :: change :: a placeholder name of a catalog message
+exact :: why.rs :: paragraph :: a placeholder name of a catalog message
+exact :: why.rs :: total :: a placeholder name of a catalog message
+exact :: why.rs :: limit :: a placeholder name of a catalog message
+exact :: why.rs :: wiki :: a placeholder name of a catalog message
+exact :: why.rs :: {start}… :: the beginning of a paragraph, cut and marked with an ellipsis (a character, no word)
+exact :: why.rs :: {sentence} {} :: two sentences of the catalog joined by a space (no word of its own)
+exact :: why.rs :: {own}#{} :: the page's own address and the fragment of a change on it (code, not words)
+exact :: why.rs :: the paragraphs of a page :: what the operator's log says was being read when a read failed (English by decision: operator vocabulary); no response carries it
+exact :: why.rs :: the claims of a page of wiki `{}` could not be read now: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it

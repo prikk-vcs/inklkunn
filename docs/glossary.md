@@ -79,6 +79,7 @@ T6, RFC 004) take the word from here and do not choose their own.
 | The service that vouches for who a person is, when the operator has set one up (OpenID Connect) | provider | プロバイダー | yes | Named by its host (`Sign in with accounts.example.org`) and otherwise just "the provider": a person who has one knows it; never "identity provider" or "SSO", which only an administrator says (the OpenID Connect handoff U3) | Drafted · ja: loanword |
 | A statement a paragraph makes that someone has attached sources to or disagreed with | claim | 主張 | yes | RFC 005: only a paragraph someone made a claim has one; the page never says whether a claim is true or false, and a claim has no score | Drafted |
 | Where a claim came from, as a person recorded how it bears on the claim | source | 出典 | yes | A source supports or challenges a claim and says how directly; the page never ranks sources | Drafted |
+| A paragraph's own mark (`^id`) that names it through every rewording | anchor | アンカー | yes | RFC 005: a chain of changes followed through an anchor is exact; a paragraph without one is traced by matching its text, and the page says so | Drafted · ja: loanword |
 
 ## 2. Messages
 
@@ -998,8 +999,40 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `claim.none_heading` | the heading when an address names no claim of the wiki | "No such claim" | "そのような主張はありません" |
 | `claim.none_body` | under it | "This wiki has no claim at that address, or it cannot be read now." | "このウィキには、そのアドレスの主張がないか、現在は読み取れません。" |
 | `why.heading` | the heading of that page | "Why is this here?" | "なぜここにあるのか" |
-| `why.not_available` | on that page: it is not part of this release | "Showing where each paragraph of a page came from is not available in this release." | "ページの各段落がどこから来たのかを示す機能は、このリリースにはありません。" |
 | `why.back` | on that page: the link back to the page; `{page}` is its title | "Back to {page}" | "{page} に戻る" |
+| `title.why` | the title of that page; `{page}` is the page's title, `{wiki}` the wiki's name | "Why is this here? {page} · {wiki} · {product}" | "なぜここにあるのか: {page} · {wiki} · {product}" |
+| `why.intro` | under the heading of that page; `{page}` is the page's title | "Where each paragraph of {page} came from, as far as the page's history says. Every paragraph here can be linked to." | "{page} の各段落がどこから来たのかを、このページの履歴の範囲で示します。ここにある各段落には、それぞれリンクできます。" |
+| `why.history_link` | on that page: the link to the page's history; `{page}` is its title | "The whole history of {page}" | "{page} の履歴全体" |
+| `why.bounded` | on that page: the changes read stopped at the bounds the history page has, with the number read | "Only the latest {count} change to this page was read here. There are older changes, and what came before is not shown." / "Only the latest {count} changes to this page were read here. There are older changes, and what came before them is not shown." | "このページの変更のうち、最新の {count} 件だけをここで読みました。それより古い変更があり、その前のことは示されません。" |
+| `why.bounded_none` | on that page: the bounds ended the reading before any change to the page was met | "No change to this page was found among the latest changes of this wiki that one request can read. There are older changes, and they are not shown." | "一度のリクエストで読めるこのウィキの最新の変更の中に、このページの変更は見つかりませんでした。それより古い変更があり、示されません。" |
+| `why.unfollowed` | on that page: the reading ended for a reason other than the bounds | "The history of this page could not be followed to its start: an earlier version could not be read, or the history lists no change that wrote the page. What is said below holds only for the changes that were read." | "このページの履歴を最初までたどれませんでした。古い版を読めなかったか、このページを書いた変更が履歴に載っていません。以下は、読めた変更についてだけ言えることです。" |
+| `why.left_out` | on that page, after the list: the paragraphs beyond the most one page follows | "{count} more paragraph is not followed: only the first {limit} paragraphs of a page are." / "{count} more paragraphs are not followed: only the first {limit} paragraphs of a page are." | "さらに {count} 件の段落はたどっていません。1 ページでたどるのは最初の {limit} 件の段落までです。" |
+| `why.paragraphs_heading` | the heading of the list of the page's paragraphs | "Paragraphs" | "段落" |
+| `why.no_paragraphs` | in place of that list | "This page has no paragraphs." | "このページには段落がありません。" |
+| `why.paragraph_label` | the link to one paragraph of the list, which is also its anchor; `{n}` is its place in the page | "Paragraph {n}" | "段落 {n}" |
+| `why.written_unchanged` | under a paragraph followed through its anchor; `{change}` is the link to the change | "Written in {change}. Not changed since." | "{change}で書かれました。それ以降は変更されていません。" |
+| `why.last_changed` | under a paragraph followed through its anchor | "Last changed in {change}." | "最後に変更されたのは{change}です。" |
+| `why.first_written` | under a paragraph followed through its anchor | "First written in {change}." | "最初に書かれたのは{change}です。" |
+| `why.first_before` | under a paragraph whose first writing was not reached | "First written before the oldest change read here." | "ここで読んだ最も古い変更より前に書かれました。" |
+| `why.unchanged_read` | under a paragraph that none of the changes read changed | "Not changed in the changes read here." | "ここで読んだ変更の中では、変更されていません。" |
+| `why.found_written_unchanged` | under a paragraph traced by matching the text | "Earliest wording found in {change}. No change to it was found since." | "最も古い文言が見つかったのは{change}です。それ以降の変更は見つかりませんでした。" |
+| `why.found_last` | under a paragraph traced by matching the text | "Latest change found in {change}." | "見つかった最新の変更は{change}です。" |
+| `why.found_first` | under a paragraph traced by matching the text | "Earliest wording found in {change}. No earlier wording matches it." | "最も古い文言が見つかったのは{change}です。それより前に一致する文言は見つかりませんでした。" |
+| `why.basis_anchor` | under a paragraph: how it was followed | "Followed through its anchor: in every change read, the one paragraph with this anchor is this paragraph." | "アンカーでたどりました。読んだすべての変更で、このアンカーを持つ段落はこの段落ただ一つです。" |
+| `why.basis_text` | under a paragraph: how it was followed, where no anchor carries it | "Traced by matching the text. Nothing carries this paragraph through every change but its words, so each earlier wording was found by comparing text. If several paragraphs were reworded at once, it may be a different paragraph." | "文面の一致でたどりました。この段落を全変更にわたって結びつけるものは文面しかないため、以前の文言は文を比べて見つけています。複数の段落が同時に書き換えられた場合は、別の段落をたどっているかもしれません。" |
+| `why.changes_heading` | the heading of the list of the changes the paragraphs name | "Changes read" | "読んだ変更" |
+| `why.changes_none` | under it when there is none | "No change to this page was read." | "このページの変更は読んでいません。" |
+| `why.change_open` | a change in that list: the link to the change's own page | "See change {number} in the history" | "履歴で変更 {number} を見る" |
+| `why.proposal` | a change in that list: the proposal its message names, linked by its summary | "Made from the proposal {proposal}." | "提案{proposal}から作られた変更です。" |
+| `why.proposal_unlisted` | a change in that list whose proposal cannot be shown | "The message of this change names a proposal that is not among the records of this wiki that you may read." | "この変更のメッセージが示す提案は、あなたが読めるこのウィキの記録にありません。" |
+| `why.proposal_unconfirmed` | a change in that list whose message names a proposal that the acceptance records do not tie to it | "This wiki's records do not show that this proposal was accepted as this change, so its review is not shown here." | "この提案がこの変更として受け入れられたことは、このウィキの記録からは確認できないため、そのレビューはここに示しません。" |
+| `why.review_heading` | a change in that list: the heading of what was said about the proposal | "Review" | "レビュー" |
+| `why.review_none` | under it when there is nothing | "Nobody commented or decided on this proposal." | "この提案にコメントや決定をした人はいません。" |
+| `why.decision_words` | after a decision, when the reviewer wrote words with it | "They wrote: “{text}”" | "次のように書き添えました:「{text}」" |
+| `why.comment` | a comment in the review | "{author} commented, on revision {number}: “{text}”" | "{author}さんが改訂 {number} についてコメントしました:「{text}」" |
+| `why.review_more` | after the review, when it is longer than one page of this kind shows | "{count} more item of the review is on the proposal's page." / "{count} more items of the review are on the proposal's page." | "レビューのうちさらに {count} 件は提案のページにあります。" |
+| `why.sources_heading` | a change in that list: the heading of the sources the proposer gave | "Sources given with the proposal" | "提案に添えられた出典" |
+| `why.sources_none` | under it when there is none | "No source was given with the proposal." | "提案に出典は添えられていません。" |
 
 ## 3. Words the interface does not say
 

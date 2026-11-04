@@ -2236,10 +2236,98 @@ pub const CATALOG: &[Entry] = &[
         "このウィキには、そのアドレスの主張がないか、現在は読み取れません。",
     ),
     msg("why.heading", "なぜここにあるのか"),
-    msg(
-        "why.not_available",
-        "ページの各段落がどこから来たのかを示す機能は、このリリースにはありません。",
-    ),
     msg("why.back", "{page} に戻る"),
     // the knowledge layer's reader (K-T6): end
+    // Why is this here? (K-T7)
+    msg(
+        "title.why",
+        "なぜここにあるのか: {page} · {wiki} · {product}",
+    ),
+    msg(
+        "why.intro",
+        "{page} の各段落がどこから来たのかを、このページの履歴の範囲で示します。ここにある各段落には、それぞれリンクできます。",
+    ),
+    msg("why.history_link", "{page} の履歴全体"),
+    plural_msg(
+        "why.bounded",
+        "このページの変更のうち、最新の {count} 件だけをここで読みました。それより古い変更があり、その前のことは示されません。",
+        "このページの変更のうち、最新の {count} 件だけをここで読みました。それより古い変更があり、その前のことは示されません。",
+    ),
+    msg(
+        "why.bounded_none",
+        "一度のリクエストで読めるこのウィキの最新の変更の中に、このページの変更は見つかりませんでした。それより古い変更があり、示されません。",
+    ),
+    msg(
+        "why.unfollowed",
+        "このページの履歴を最初までたどれませんでした。古い版を読めなかったか、このページを書いた変更が履歴に載っていません。以下は、読めた変更についてだけ言えることです。",
+    ),
+    plural_msg(
+        "why.left_out",
+        "さらに {count} 件の段落はたどっていません。1 ページでたどるのは最初の {limit} 件の段落までです。",
+        "さらに {count} 件の段落はたどっていません。1 ページでたどるのは最初の {limit} 件の段落までです。",
+    ),
+    msg("why.paragraphs_heading", "段落"),
+    msg("why.no_paragraphs", "このページには段落がありません。"),
+    msg("why.paragraph_label", "段落 {n}"),
+    msg(
+        "why.written_unchanged",
+        "{change}で書かれました。それ以降は変更されていません。",
+    ),
+    msg("why.last_changed", "最後に変更されたのは{change}です。"),
+    msg("why.first_written", "最初に書かれたのは{change}です。"),
+    msg(
+        "why.first_before",
+        "ここで読んだ最も古い変更より前に書かれました。",
+    ),
+    msg(
+        "why.unchanged_read",
+        "ここで読んだ変更の中では、変更されていません。",
+    ),
+    msg(
+        "why.found_written_unchanged",
+        "最も古い文言が見つかったのは{change}です。それ以降の変更は見つかりませんでした。",
+    ),
+    msg("why.found_last", "見つかった最新の変更は{change}です。"),
+    msg(
+        "why.found_first",
+        "最も古い文言が見つかったのは{change}です。それより前に一致する文言は見つかりませんでした。",
+    ),
+    msg(
+        "why.basis_anchor",
+        "アンカーでたどりました。読んだすべての変更で、このアンカーを持つ段落はこの段落ただ一つです。",
+    ),
+    msg(
+        "why.basis_text",
+        "文面の一致でたどりました。この段落を全変更にわたって結びつけるものは文面しかないため、以前の文言は文を比べて見つけています。複数の段落が同時に書き換えられた場合は、別の段落をたどっているかもしれません。",
+    ),
+    msg("why.changes_heading", "読んだ変更"),
+    msg("why.changes_none", "このページの変更は読んでいません。"),
+    msg("why.change_open", "履歴で変更 {number} を見る"),
+    msg("why.proposal", "提案{proposal}から作られた変更です。"),
+    msg(
+        "why.proposal_unlisted",
+        "この変更のメッセージが示す提案は、あなたが読めるこのウィキの記録にありません。",
+    ),
+    msg(
+        "why.proposal_unconfirmed",
+        "この提案がこの変更として受け入れられたことは、このウィキの記録からは確認できないため、そのレビューはここに示しません。",
+    ),
+    msg("why.review_heading", "レビュー"),
+    msg(
+        "why.review_none",
+        "この提案にコメントや決定をした人はいません。",
+    ),
+    msg("why.decision_words", "次のように書き添えました:「{text}」"),
+    msg(
+        "why.comment",
+        "{author}さんが改訂 {number} についてコメントしました:「{text}」",
+    ),
+    plural_msg(
+        "why.review_more",
+        "レビューのうちさらに {count} 件は提案のページにあります。",
+        "レビューのうちさらに {count} 件は提案のページにあります。",
+    ),
+    msg("why.sources_heading", "提案に添えられた出典"),
+    msg("why.sources_none", "提案に出典は添えられていません。"),
+    // Why is this here? (K-T7): end
 ];

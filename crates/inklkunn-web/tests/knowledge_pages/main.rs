@@ -294,32 +294,21 @@ async fn the_why_link_is_not_offered_on_a_permalink() {
 }
 
 #[tokio::test]
-async fn the_link_leads_to_a_page_that_is_there_and_says_honestly_that_it_is_not_in_this_release() {
+async fn the_link_leads_to_the_page_that_shows_where_each_paragraph_came_from() {
     let w = handbook();
     let a = get(&w, "/handbook/-/why/Home").await;
-    assert_eq!(a.status, StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(a.status, StatusCode::OK);
     let body = main_of(&a);
     assert!(body.contains("<h1>Why is this here?</h1>"), "{body}");
-    assert!(
-        body.contains(
-            "Showing where each paragraph of a page came from is not available in this release."
-        ),
-        "{body}"
-    );
     assert!(
         body.contains("<a href=\"/handbook/Home\">Back to Home</a>"),
         "{body}"
     );
-    // In a view the way back stays in it.
-    let in_view = get(&w, "/handbook/-/why/Home?view=main").await;
+    // Each paragraph of the page the link names has an anchor.
     assert!(
-        main_of(&in_view).contains("<a href=\"/handbook/~main/Home\">Back to Home</a>"),
-        "{}",
-        main_of(&in_view)
+        body.contains("<li id=\"w-^b1\">") && body.contains("<li id=\"w-2\">"),
+        "{body}"
     );
-    // A view the address cannot spell is the page for a view that is not there.
-    let bad = get(&w, "/handbook/-/why/Home?view=..%2Fx").await;
-    assert_eq!(bad.status, StatusCode::NOT_FOUND);
     let ja = request(&w, APP, "GET", "/handbook/-/why/Home", JA)
         .await
         .body();
@@ -327,18 +316,19 @@ async fn the_link_leads_to_a_page_that_is_there_and_says_honestly_that_it_is_not
 }
 
 #[tokio::test]
-async fn that_state_is_the_same_for_a_page_that_is_there_and_one_that_is_not() {
+async fn a_title_no_page_has_gets_the_page_every_missing_title_gets() {
     let w = handbook();
-    let real = get(&w, "/handbook/-/why/Home").await;
     let none = get(&w, "/handbook/-/why/Nothing%20here").await;
-    assert_eq!(real.status, none.status);
-    assert_eq!(
-        real.body().replace("Home", "X"),
-        none.body()
-            .replace("Nothing here", "X")
-            .replace("Nothing%20here", "X"),
-        "the answer must not depend on whether the page exists"
+    assert_eq!(none.status, StatusCode::NOT_FOUND);
+    assert!(
+        main_of(&none).contains("This page does not exist yet"),
+        "{}",
+        main_of(&none)
     );
+    // A wiki that is not there is the generic page, not this one.
+    let ghost = get(&w, "/no-such-wiki/-/why/Home").await;
+    assert_eq!(ghost.status, StatusCode::NOT_FOUND);
+    assert!(!ghost.body().contains("This page does not exist yet"));
 }
 
 // ------------------------------------------------------------------------------------ the claim's page

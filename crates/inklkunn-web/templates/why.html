@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+{% if let Some(note) = view_note %}<p class="view-note">{{ note }}</p>
+{% endif %}<p>{{ intro }}</p>
+<ul class="why-links">
+{% for l in links %}<li><a href="{{ l.href }}">{{ l.label }}</a></li>
+{% endfor %}</ul>
+{% for note in notes %}<p class="why-note" role="note">{{ note }}</p>
+{% endfor %}<h2>{{ paragraphs_heading }}</h2>
+{% if let Some(text) = none %}<p>{{ text }}</p>
+{% else %}<ol class="why-paragraphs">
+{% for p in paragraphs %}<li id="{{ p.id }}">
+<p class="why-label"><a href="{{ p.href }}">{{ p.label }}</a></p>
+<p class="why-excerpt">{{ p.excerpt }}</p>
+{% for c in p.claims %}<p class="why-claim"><a class="claim-link" href="{{ c.href }}" aria-label="{{ c.name }}">{{ c.text }}</a></p>
+{% endfor %}<ul class="why-chain">
+{% for f in p.facts %}<li>{{ f }}</li>
+{% endfor %}{% if let Some(b) = p.basis %}<li class="why-basis">{{ b }}</li>
+{% endif %}</ul>
+</li>
+{% endfor %}</ol>
+{% endif %}<h2>{{ changes_heading }}</h2>
+{% if let Some(text) = changes_none %}<p>{{ text }}</p>
+{% else %}<ol class="why-changes">
+{% for c in changes %}<li id="{{ c.id }}">
+<h3>{{ c.heading }}</h3>
+{% if let Some(s) = c.summary %}<p class="summary">{{ s }}</p>
+{% endif %}<ul class="why-people">
+{% for line in c.people %}<li>{{ line }}</li>
+{% endfor %}</ul>
+{% if let Some(p) = c.proposal %}<p>{{ p }}</p>
+{% endif %}{% if let Some(n) = c.note %}<p class="why-note">{{ n }}</p>
+{% endif %}{% if let Some(r) = c.review %}<h4>{{ r.heading }}</h4>
+{% if let Some(text) = r.none %}<p>{{ text }}</p>
+{% else %}<ul class="why-review">
+{% for item in r.items %}<li>{{ item }}</li>
+{% endfor %}</ul>
+{% endif %}{% if let Some(text) = r.more %}<p class="why-note">{{ text }}</p>
+{% endif %}{% endif %}{% if let Some(s) = c.sources %}<h4>{{ s.heading }}</h4>
+{% if let Some(text) = s.none %}<p>{{ text }}</p>
+{% else %}<ul class="why-sources">
+{% for item in s.items %}<li>{{ item }}</li>
+{% endfor %}</ul>
+{% endif %}{% endif %}<p><a href="{{ c.open.href }}">{{ c.open.label }}</a></p>
+</li>
+{% endfor %}</ol>
+{% endif %}{% endblock %}
