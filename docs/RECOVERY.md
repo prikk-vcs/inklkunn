@@ -143,14 +143,21 @@ inklkunn wiki keys abandon-retirement <wiki> --confirm <slug>  # gives it up: th
 Abandoning leaves the old key trusted and retires nothing; `inklkunn wiki keys retire <wiki> --key <id> --confirm <slug>
 --accept-unverifiable-history` retires it later, by its id (`docs/KEYS.md`).
 
-A retirement that finished can still leave `verify` failing for a block nothing excuses: a **late seal**, a block the old key
-sealed after the rotation that replaced it, which `retire` / `finish-retirement` named when they ended. Recovery does not call
-that failure *only a retired key*: the block is one this service did not make (`docs/KEYS.md`, the compromise runbook).
-
-then `inklkunn wiki recover <wiki>`. You never run `prikk trust maintainer` yourself. If `finish-retirement` refuses with
+After either command, run `inklkunn wiki recover <wiki>`. You never run `prikk trust maintainer` yourself. If `finish-retirement` refuses with
 a reason no later run can cure (the repository changed outside inklkunn, the trusted keys are not the ones the retirement
 began with, a block that lost its signature was not the old key's, prikk counted something different), it says so and
 names `abandon-retirement`; do not edit the key record. See `docs/KEYS.md`.
+
+**Findings that cannot be traced: recovery does not cure them.** When the retirement's `verify` after the removal names an
+act the service did not make with the old key (a block sealed with it after the rotation that replaced it, a ref state
+from a `branch close` or `branch create`, a tag), `retire` / `rotate --retire-old` / `finish-retirement` record nothing and
+the retirement stays unfinished: the plan stops at `retirement-unfinished` (never at `doctor-trouble`), and the stop and
+`status` carry one sentence: *the repository holds acts with this key that cannot be traced to what it sealed for this
+service; nothing excuses them, and this service seals nothing more until the history is restored from before them
+(`docs/KEYS.md`, compromise) or the retirement is given up with `abandon-retirement`, which trusts the key again*.
+`inklkunn wiki recover` cannot cure this, and no text tells you to run it for it; `finish-retirement` refuses with the
+same findings. The way out is in `docs/KEYS.md` (the compromise runbook, step 4): restore the repository, the key
+directory and the store together from a backup taken before the act, or give the retirement up.
 
 ## A killed `seal` on a wiki with a retired key: finished by recovery, or `cleanup-beside-trust-findings`
 

@@ -7,7 +7,7 @@ use inklkunn_prikk::storage::{Operation, PathRef, Queue, QueuedPatch};
 use inklkunn_signer::recover::text::{
     ACKNOWLEDGED_DAMAGE_CODE, Diagnostic, DoctorReport, HeldLock, Severity, UNREACHED_OBJECT_CODE,
 };
-use inklkunn_signer::{RecoveryOp, WorktreeState};
+use inklkunn_signer::{RecoveryOp, UNTRACEABLE_SENTENCE, WorktreeState};
 use inklkunn_store::{
     AcceptanceId, AccountId, LeaseHolder, ProposalId, ProposalState, RecoveryFlag, RecoveryReason,
     SystemActId, WikiId,
@@ -983,6 +983,49 @@ fn an_unfinished_retirement_stops_the_plan_on_the_findings_it_leaves_and_names_t
             .contains("finish-retirement")
     );
     assert_eq!(Stop::RetirementUnfinished.as_str(), "retirement-unfinished");
+}
+
+#[test]
+fn findings_that_cannot_be_traced_stop_the_plan_as_retirement_unfinished_and_never_as_doctor_trouble()
+ {
+    // Z2. The retirement found acts it cannot trace to what the key sealed for this service (a late block, a closed
+    // branch, a tag): the key is out of trust, nothing is recorded, and `doctor` reports findings nothing excuses.
+    // The stop is `retirement-unfinished`, never `doctor-trouble`, whatever else `doctor` reports beside them, and the
+    // note carries the one sentence and sends nobody to `recover` to cure it.
+    let note = format!(
+        "the retirement of key k was begun and cannot be finished, so nothing is excused and nothing new is sealed: 1 finding(s) of the key k cannot be traced: tag t; {UNTRACEABLE_SENTENCE} (`inklkunn wiki keys abandon-retirement w --confirm <the wiki's slug>`)"
+    );
+    for others in [
+        vec![untrusted_block()],
+        vec![
+            untrusted_block(),
+            diag(Severity::Error, "PRIKK-DOCTOR-OBJECT-MISSING", None),
+        ],
+    ] {
+        let mut w = flagged();
+        w.doctor = doctor(others);
+        w.retirement_unfinished = Some(note.clone());
+        let plan = build(&w);
+        assert_eq!(plan.stop, Some(Stop::RetirementUnfinished));
+        assert_ne!(plan.stop, Some(Stop::DoctorTrouble));
+        assert!(plan.steps.is_empty());
+        assert!(
+            plan.notes.iter().any(|n| n.contains(UNTRACEABLE_SENTENCE)),
+            "{:?}",
+            plan.notes
+        );
+        assert!(
+            !plan.notes.iter().any(|n| n.contains("wiki recover")),
+            "{:?}",
+            plan.notes
+        );
+    }
+    // The stop's own words do not promise that recovery cures it.
+    assert!(
+        Stop::RetirementUnfinished
+            .meaning()
+            .contains("recovery does not cure them either")
+    );
 }
 
 #[test]
