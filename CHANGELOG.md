@@ -15,7 +15,7 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   earlier wording* where the paragraph's words are no longer those it was judged on, and its status in this view
   (accepted, contested, unresolved, not decided) with the proposal that decided it; it is read from the derived knowledge
   index (`claims_on_page`), authorized as pages are, and an address that names no claim is one plain page. *Other views*
-  is left out until views can be compared (K-T8): the page does not say that no view differs, which it has not checked.
+  is filled in by K-T8 (below): it says that no view differs only for views it has checked.
   The *Why is this here?* link leads to `/{slug}/-/why/{title}` (K-T7, below). The retired-words test gains *true*, *false*, *verified* (only the
   verification badge's label, held to one message and one place), *proven*, *canonical*, *adopted*, *official* and their
   Japanese terms; a stylesheet test holds that nothing drawn for a claim is coloured apart, pictured or counted and that no
