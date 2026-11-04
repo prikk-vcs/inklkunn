@@ -246,7 +246,6 @@ async fn build_states(extra: &[(&str, &str)]) -> Out {
     }
     wiki_states::build(extra, &mut out).await;
     proposal_states::build(extra, &mut out).await;
-    knowledge_states::build(extra, &mut out).await;
     claim_forms_states::build(extra, &mut out).await;
     out
 }
