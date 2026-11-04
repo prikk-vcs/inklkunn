@@ -1335,6 +1335,12 @@ fn retire_with_a_late_block_leaves_the_retirement_unfinished_names_it_and_status
             && !unfinished.contains("finish it with"),
         "{unfinished}"
     );
+    // ... and does not say that nothing was sealed after the rotation: the check cannot see a key that is out of trust.
+    assert!(
+        !out.contains("no block was sealed by a superseded key after its rotation")
+            && out.contains(&format!("this check cannot see {k1}")),
+        "{out}"
+    );
     // `finish-retirement` refuses with the same findings and records nothing.
     let (status, out, err) = w.cli("wiki keys finish-retirement handbook");
     assert_eq!(status, 1, "{out}{err}");
@@ -1497,6 +1503,90 @@ fn status_names_no_retire_command_for_the_key_whose_retirement_is_unfinished_and
         shown.contains("to retire it")
             && shown.contains(&format!("--key {k1} "))
             && shown.contains("once the unfinished retirement above is finished or given up"),
+        "{shown}"
+    );
+}
+// ---- status after a retirement (handoff 004, Z4, Z-b)
+
+#[test]
+fn status_does_not_say_that_no_block_was_sealed_after_the_rotation_of_a_key_it_cannot_see() {
+    // Z-b. prikk lists who sealed a block only for the keys it trusts; once the key is out of the trust store the
+    // check has nothing to look at, and must not report that it found nothing.
+    let Some(w) = world::world("z-b") else {
+        return;
+    };
+    let k1 = w.recorded_ids().1.unwrap();
+    let (status, _, err) = w.cli("wiki keys rotate handbook --confirm handbook");
+    assert_eq!(status, 0, "{err}");
+    let (status, out, _) = w.cli(&format!(
+        "wiki keys retire handbook --key {k1} --confirm handbook --accept-unverifiable-history"
+    ));
+    assert_eq!(status, 0, "{out}");
+    let (status, out, err) = w.cli("wiki keys status handbook");
+    assert_eq!(status, 0, "{out}{err}");
+    assert!(
+        !out.contains("no block was sealed by a superseded key after its rotation"),
+        "{out}"
+    );
+    assert!(
+        out.contains(&format!("this check cannot see {k1}"))
+            && out.contains("only for the keys it still trusts"),
+        "{out}"
+    );
+}
+
+#[test]
+fn status_says_when_the_record_calls_a_key_retired_but_the_repository_trusts_it_again() {
+    // Z4. The repository is restored on its own from before the retirement: the key record says *retired*, the
+    // repository's trust list holds the key. The stand-in records the trust list while the key is trusted and shows
+    // that list again once the key has been retired (only the driver, the signer and the fetcher spawn a process).
+    let Some(w) = world::world("z4") else {
+        return;
+    };
+    let k1 = w.recorded_ids().1.unwrap();
+    let (status, _, err) = w.cli("wiki keys rotate handbook --confirm handbook");
+    assert_eq!(status, 0, "{err}");
+    let real = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+        .map(|d| d.join("prikk"))
+        .find(|c| c.is_file())
+        .unwrap();
+    let ctl = w.settings.data_dir.join("trust-list");
+    let standin = w.settings.data_dir.join("prikk-old-repository");
+    std::fs::write(
+        &standin,
+        format!(
+            "#!/bin/sh\nif [ \"$1 $2 $3\" = \"trust maintainer list\" ]; then if [ -e {ctl}.replay ]; then cat {ctl}; exit 0; fi; if [ -e {ctl} ]; then exec {real} \"$@\"; fi; {real} \"$@\" | tee {ctl}; exit 0; fi\nexec {real} \"$@\"\n",
+            real = real.display(),
+            ctl = ctl.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&standin, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let (status, out, _) = w.cli_with_prikk("wiki keys status handbook", standin.as_os_str());
+    assert_eq!(status, 0, "{out}");
+    assert!(
+        !out.contains("looks older"),
+        "a key that is not retired draws no such line: {out}"
+    );
+    let (status, out, err) = w.cli(&format!(
+        "wiki keys retire handbook --key {k1} --confirm handbook --accept-unverifiable-history"
+    ));
+    assert_eq!(status, 0, "{out}{err}");
+    // As the retired wiki is: the key out of the trust store, nothing said about an older repository.
+    let (_, out, _) = w.cli_with_prikk("wiki keys status handbook", standin.as_os_str());
+    assert!(!w.verifies());
+    assert!(!out.contains("looks older"), "{out}");
+    // The repository now shows the key trusted again (the replayed list), the record still says retired.
+    std::fs::write(format!("{}.replay", ctl.display()), "").unwrap();
+    let (status, out, err) = w.cli_with_prikk("wiki keys status handbook", standin.as_os_str());
+    assert_eq!(status, 0, "{out}{err}");
+    let shown = status_of_superseded(&out, &k1);
+    assert!(
+        shown.contains("retired, 3 finding(s) of publication trust recorded")
+            && shown.contains("still trusted")
+            && shown.contains(
+                "the repository looks older than the key record: restore the key directory from the same backup, then retire it again"
+            ),
         "{shown}"
     );
 }

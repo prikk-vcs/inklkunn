@@ -979,11 +979,16 @@ fn report_superseded(
     // the key first).
     let trusted = signer.trusted_maintainer_ids(repo);
     let unfinished = signer.unfinished_retirement(&record.id).ok().flatten();
+    // The keys the late-seal check cannot see: prikk lists who sealed a block only for the keys it still trusts (Z-b).
+    let mut blind: Vec<&str> = Vec::new();
     for k in &keys {
         let is_trusted = trusted
             .as_ref()
             .ok()
             .map(|ids| ids.contains(&k.maintainer_key_id));
+        if is_trusted != Some(true) {
+            blind.push(k.maintainer_key_id.as_str());
+        }
         let _ = writeln!(
             out,
             "superseded maintainer key {} (generation {}, replaced {}, {}{}); the newest block of {} view(s) was recorded then",
@@ -1009,6 +1014,14 @@ fn report_superseded(
         // The command that retires it, beside every superseded key that is still trusted and not retired (Y3). The key
         // whose retirement is unfinished is the exception: `UNFINISHED` above names what ends that one, and `retire`
         // refuses it until then.
+        if k.retired && is_trusted == Some(true) {
+            // The record calls the key retired and the repository trusts it again (Z4): the repository was restored on
+            // its own from before the retirement.
+            let _ = writeln!(
+                out,
+                "  the repository looks older than the key record: restore the key directory from the same backup, then retire it again"
+            );
+        }
         let being_retired = unfinished.as_deref() == Some(k.maintainer_key_id.as_str());
         if is_trusted == Some(true) && !k.retired && !being_retired {
             let _ = writeln!(
@@ -1023,18 +1036,39 @@ fn report_superseded(
             );
         }
     }
+    let blindness = if blind.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "this check cannot see {} (out of the trust store, or not known to be in it): prikk lists who sealed a block only for the keys it still trusts, so nothing is said of what such a key sealed after its rotation",
+            blind.join(", ")
+        )
+    };
     match signer.seals_by_superseded_keys(repo) {
         Ok(late) if late.is_empty() => {
-            let _ = writeln!(
-                out,
-                "no block was sealed by a superseded key after its rotation (this covers a leaked seed used against \
-                 the repository while these records are intact; it does not help if the host itself was taken over)"
-            );
+            if blind.is_empty() {
+                let _ = writeln!(
+                    out,
+                    "no block was sealed by a superseded key after its rotation (this covers a leaked seed used against \
+                     the repository while these records are intact; it does not help if the host itself was taken over)"
+                );
+            } else if blind.len() == keys.len() {
+                // Nothing the check could look at: it must not say that nothing was found.
+                let _ = writeln!(out, "{blindness}");
+            } else {
+                let _ = writeln!(
+                    out,
+                    "no block was sealed after its rotation by a superseded key that is still trusted; {blindness}"
+                );
+            }
             Ok(late)
         }
         Ok(late) => {
             for seal in &late {
                 let _ = writeln!(out, "WARNING: {seal}");
+            }
+            if !blind.is_empty() {
+                let _ = writeln!(out, "{blindness}");
             }
             Ok(late)
         }
@@ -1043,6 +1077,9 @@ fn report_superseded(
                 err,
                 "inklkunn: the check for seals by superseded keys could not run: {e}"
             );
+            if !blind.is_empty() {
+                let _ = writeln!(out, "{blindness}");
+            }
             Ok(Vec::new())
         }
     }
