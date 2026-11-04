@@ -18,8 +18,8 @@ mod checks;
 mod css;
 
 use checks::{
-    direction_findings, focus_findings, loads_findings, motion_findings, scheme_findings,
-    shortcut_findings, target_findings,
+    direction_findings, focus_findings, loads_findings, motion_findings, ranking_findings,
+    scheme_findings, shortcut_findings, target_findings,
 };
 use css::{Theme, contrast_findings, contrast_rows, hex, token_findings};
 
@@ -106,6 +106,14 @@ fn no_shortcut_hides_overflow_or_wins_a_specificity_fight() {
 fn nothing_is_loaded_from_anywhere() {
     let f = loads_findings(CSS);
     assert!(f.is_empty(), "{f:#?}");
+}
+
+#[test]
+fn nothing_the_stylesheet_draws_for_a_claim_ranks_and_no_rule_is_named_for_a_verdict() {
+    let f = ranking_findings(CSS);
+    assert!(f.is_empty(), "{f:#?}");
+    // The rules about a claim are really there (the check is not passing on an absent subject).
+    assert!(CSS.contains(".claim-link"));
 }
 
 #[test]
@@ -437,5 +445,102 @@ fn colour_scheme_and_forced_colours_fail_when_absent() {
     assert!(!scheme_findings(&replaced("button{border:1px solid ButtonBorder}", "")).is_empty());
     assert!(
         !scheme_findings(&replaced(":focus-visible{outline:2px solid Highlight}", "")).is_empty()
+    );
+}
+
+#[test]
+fn ranking_fails_on_a_rule_named_for_a_verdict_a_relation_or_a_status() {
+    assert_eq!(ranking_findings(GOOD), Vec::<String>::new());
+    for name in [
+        "verified",
+        "true",
+        "false",
+        "canonical",
+        "official",
+        "adopted",
+        "proven",
+        "score",
+        "supports",
+        "challenges",
+        "direct",
+        "partial",
+        "indirect",
+        "accepted",
+        "contested",
+        "unresolved",
+    ] {
+        for selector in [
+            format!(".{name}"),
+            format!(".claim-{name}"),
+            format!(".is-{name} a"),
+        ] {
+            let f = ranking_findings(&format!("{GOOD}\n{selector}{{font-weight:600}}"));
+            assert!(
+                f.iter().any(|x| x.contains(&format!("{name:?}"))),
+                "{selector}: {f:?}"
+            );
+        }
+    }
+    // A name that only contains one of the words is not named for it.
+    assert_eq!(
+        ranking_findings(&format!(
+            "{GOOD}\n.directory{{margin:0}}.trueness{{margin:0}}"
+        )),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn ranking_fails_on_a_colour_a_picture_or_a_number_drawn_for_a_claim() {
+    let quiet = format!(
+        "{GOOD}\n.claim-link{{font-size:.85em;color:var(--muted)}}.claim-note{{color:var(--muted)}}"
+    );
+    assert_eq!(ranking_findings(&quiet), Vec::<String>::new());
+    for (rule, why) in [
+        (
+            ".claim-link{color:var(--accent)}",
+            "the accent singles a thing out",
+        ),
+        (".claim-link{color:#2a7a2a}", "a colour written in a rule"),
+        (".claim-link{color:rgb(0,128,0)}", "a colour function"),
+        (
+            ".claim-link{background:var(--accent)}",
+            "a background in the accent",
+        ),
+        (
+            ".claim-link{border-color:var(--nope)}",
+            "a token that is not neutral",
+        ),
+        (
+            ".claim-link{text-decoration-color:hsl(0 80% 40%)}",
+            "a decoration colour",
+        ),
+        (".claim-link::before{content:'x'}", "an icon"),
+        (".claim-link::after{content:counter(n)}", "a number"),
+        (".claim-sources{counter-reset:n}", "a counter"),
+        (".claim-sources li{counter-increment:n}", "a counter"),
+        (".claim-said{list-style-image:url(x.png)}", "a picture"),
+        (".claim-said{list-style:decimal}", "numbered"),
+        (".claim-said{list-style-type:upper-roman}", "numbered"),
+        (
+            ".claim-link{background-image:linear-gradient(red,blue)}",
+            "a picture",
+        ),
+        (".claim-link{filter:grayscale(1)}", "a filter"),
+    ] {
+        let f = ranking_findings(&format!("{quiet}\n{rule}"));
+        assert!(!f.is_empty(), "{why}: {rule}");
+    }
+    // The same declarations on a rule that is not about a claim are not this check's.
+    assert_eq!(
+        ranking_findings(&format!("{GOOD}\n.badge{{color:var(--accent)}}")),
+        Vec::<String>::new()
+    );
+    // And the quiet ones may be written the way the sheet writes them.
+    assert_eq!(
+        ranking_findings(&format!(
+            "{quiet}\n.claim-said{{list-style:disc}}.claim-link{{color:var(--fg);background:var(--bg);border:1px solid var(--line)}}"
+        )),
+        Vec::<String>::new()
     );
 }

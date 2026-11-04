@@ -297,3 +297,123 @@ pub(crate) fn scheme_findings(css: &str) -> Vec<String> {
     }
     out
 }
+
+// ---------------------------------------------------------------------------------------------------------
+// Nothing ranks (RFC 005 part 2 D-7; handoff 005 K-T6)
+
+/// Words no selector of the stylesheet may carry: a verdict, or a relation, a bearing or a status given a look
+/// of its own. A source that supports a claim and one that challenges it look alike, as do the four statuses,
+/// so no rule is named for one of them.
+const RANKING_NAMES: &[&str] = &[
+    "true",
+    "false",
+    "verified",
+    "proven",
+    "canonical",
+    "adopted",
+    "official",
+    "score",
+    "rank",
+    "ranked",
+    "trusted",
+    "reliable",
+    "supports",
+    "challenges",
+    "direct",
+    "partial",
+    "indirect",
+    "accepted",
+    "contested",
+    "unresolved",
+];
+
+/// The colour tokens a rule about a claim may use: the text, the muted text, the page and its lines. Not the
+/// accent, which singles a thing out.
+const NEUTRAL_TOKENS: &[&str] = &["--fg", "--muted", "--bg", "--line", "--control"];
+
+/// Properties that draw a number, an icon or a picture of their own.
+const DRAWN: &[&str] = &[
+    "content",
+    "counter-increment",
+    "counter-reset",
+    "counter-set",
+    "list-style-image",
+    "background-image",
+    "mask",
+    "mask-image",
+    "border-image",
+    "filter",
+];
+
+fn is_colour_property(p: &str) -> bool {
+    p == "color"
+        || p.starts_with("background")
+        || p.starts_with("border")
+        || p.starts_with("outline")
+        || p.starts_with("text-decoration")
+        || matches!(
+            p,
+            "fill" | "stroke" | "accent-color" | "caret-color" | "box-shadow" | "text-shadow"
+        )
+}
+
+/// The `--name`s a value takes from `var(--name)`.
+fn tokens_in(v: &str) -> Vec<&str> {
+    v.split("var(")
+        .skip(1)
+        .filter_map(|rest| rest.split([')', ',']).next())
+        .map(str::trim)
+        .collect()
+}
+
+/// What in the stylesheet could rank a claim, a source or a view by how it looks.
+pub(crate) fn ranking_findings(css: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for r in parse(css) {
+        for sel in &r.selectors {
+            for part in sel
+                .to_lowercase()
+                .split(|c: char| !c.is_ascii_alphanumeric())
+                .filter(|p| !p.is_empty())
+            {
+                if RANKING_NAMES.contains(&part) {
+                    out.push(format!("the selector `{sel}` is named for {part:?}"));
+                }
+            }
+        }
+        // Everything drawn for a claim is quiet: one muted text colour and nothing that is drawn or counted.
+        if !r.selectors.iter().any(|s| s.contains("claim")) {
+            continue;
+        }
+        let who = r.selectors.join(", ");
+        for (p, v) in &r.decls {
+            if DRAWN.contains(&p.as_str()) && v != "none" {
+                out.push(format!("`{who}` draws with `{p}: {v}`"));
+            }
+            if p.starts_with("list-style")
+                && !matches!(v.as_str(), "none" | "disc" | "circle" | "square")
+            {
+                out.push(format!("`{who}` numbers or draws its list with `{p}: {v}`"));
+            }
+            if is_colour_property(p) {
+                let lowered = v.to_lowercase();
+                if lowered.contains('#')
+                    || lowered.contains("rgb")
+                    || lowered.contains("hsl")
+                    || lowered.contains("oklch")
+                    || lowered.contains("color(")
+                {
+                    out.push(format!("`{who}` writes a colour of its own: `{p}: {v}`"));
+                }
+                for t in tokens_in(v) {
+                    if !NEUTRAL_TOKENS.contains(&t) {
+                        out.push(format!(
+                            "`{who}` uses `{t}`, which singles it out: `{p}: {v}`"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    out
+}

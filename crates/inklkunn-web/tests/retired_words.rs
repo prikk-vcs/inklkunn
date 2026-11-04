@@ -234,7 +234,22 @@ fn message(key: &'static str, text: &'static str) -> Entry {
 #[test]
 fn the_glossary_lists_the_retired_words_the_handoff_names() {
     let r = retired();
-    for word in ["sealed", "commit", "patch", "block", "ref", "rebase"] {
+    for word in [
+        "sealed",
+        "commit",
+        "patch",
+        "block",
+        "ref",
+        "rebase",
+        // The knowledge layer (RFC 005 part 2 D-7): nothing says that a claim is true, and no view is canonical.
+        "true",
+        "false",
+        "verified",
+        "proven",
+        "canonical",
+        "adopted",
+        "official",
+    ] {
         assert!(
             r.english.iter().any(|w| w == word),
             "{word} is not retired: {:?}",
@@ -249,6 +264,13 @@ fn the_glossary_lists_the_retired_words_the_handoff_names() {
         "ブロック",
         "リファレンス",
         "リベース",
+        "真実",
+        "虚偽",
+        "検証済み",
+        "証明済み",
+        "正典",
+        "採用済み",
+        "公式",
     ] {
         assert!(
             r.japanese.iter().any(|w| w == term),
@@ -266,6 +288,69 @@ fn no_message_of_any_language_uses_a_retired_word_and_the_allowlist_has_no_dead_
     assert_eq!(stale, Vec::<String>::new());
     // Both languages are looked at, not only English.
     assert_eq!(languages().len(), 2);
+}
+
+/// The allowlist entries that let a message say *verified* (or the Japanese term), and the key of each.
+fn verified_exceptions(allow: &[Allowed]) -> Vec<&str> {
+    allow
+        .iter()
+        .filter(|a| a.term == "verified" || a.term == "検証済み")
+        .map(|a| a.key.as_str())
+        .collect()
+}
+
+#[test]
+fn verified_stays_prikks_word_for_the_history_alone() {
+    // One message says it, in each language: the label of the verification badge (RFC 005 part 2 D-7).
+    let allow = parse_allow(&read(root().join("tests/retired_words.allow"))).unwrap();
+    assert_eq!(
+        verified_exceptions(&allow),
+        ["assurance.verified", "assurance.verified"]
+    );
+    // And that label is chosen in one place only: where the badge is drawn (`wiki.rs`, which the verification
+    // page shares). Another page that named it would put prikk's word on something else.
+    let mut users = Vec::new();
+    let mut stack = vec![root().join("src")];
+    while let Some(dir) = stack.pop() {
+        for e in std::fs::read_dir(&dir).unwrap().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|x| x == "rs")
+                && read(p.clone()).contains("Key::AssuranceVerified")
+            {
+                users.push(p.strip_prefix(root().join("src")).unwrap().to_owned());
+            }
+        }
+    }
+    users.sort();
+    let users: Vec<String> = users.iter().map(|p| p.display().to_string()).collect();
+    assert_eq!(users, ["wiki.rs"]);
+}
+
+#[test]
+fn the_claim_pages_say_nothing_that_ranks() {
+    // Every message of the knowledge layer's reader, in both languages, is checked by the test above like every
+    // other; this names them, so that a rename cannot take them out of the check unnoticed.
+    let keys: Vec<&str> = Key::ALL
+        .iter()
+        .map(|k| k.id())
+        .filter(|id| id.starts_with("claim.") || id.starts_with("why.") || *id == "title.claim")
+        .collect();
+    assert!(keys.len() >= 40, "{keys:?}");
+    for lang in languages() {
+        for e in lang.entries.iter().filter(|e| keys.contains(&e.key)) {
+            for form in [e.one, e.other] {
+                assert_eq!(
+                    terms_in(form, &retired()),
+                    Vec::<&str>::new(),
+                    "{} `{}`",
+                    lang.tag,
+                    e.key
+                );
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------- the check can fail
@@ -300,6 +385,19 @@ fn every_retired_english_word_is_found_wherever_it_hides() {
         ("pre-commit", "commit"),
         ("commitしました", "commit"),
         ("{count} patches", "patches"),
+        // The knowledge layer's words (RFC 005 part 2 D-7).
+        ("This claim is true.", "true"),
+        ("TRUE or false", "true"),
+        ("It is false.", "false"),
+        ("(false)", "false"),
+        ("Verified", "verified"),
+        ("A verified claim", "verified"),
+        ("A proven claim", "proven"),
+        ("The canonical view", "canonical"),
+        ("canonical, in {view}", "canonical"),
+        ("The adopted view", "adopted"),
+        ("The official source", "official"),
+        ("Official.", "official"),
     ] {
         let found = found_in(text);
         assert!(
@@ -326,6 +424,13 @@ fn every_retired_japanese_term_is_found_and_ordinary_words_are_not_mistaken_for_
         "パッチ",
         "ブロック",
         "リファレンス",
+        "真実",
+        "虚偽",
+        "検証済み",
+        "証明済み",
+        "正典",
+        "採用済み",
+        "公式",
     ] {
         let found = found_in(&format!("これは{term}です。"));
         assert!(
@@ -334,7 +439,6 @@ fn every_retired_japanese_term_is_found_and_ordinary_words_are_not_mistaken_for_
         );
     }
     for ok in [
-        "検証済み",
         "署名して履歴に記録済み",
         "変更 {target}",
         "{ref}",
@@ -362,6 +466,16 @@ fn ordinary_words_and_placeholders_are_not_mistaken_for_retired_ones() {
         "Proofs",
         "No branch has changed.",
         "A recorded change.",
+        // Whole words only: these are not the knowledge layer's retired words.
+        "Verification",
+        "Unverified",
+        "Truest",
+        "Untrue",
+        "Falsehood",
+        "Officials",
+        "Adoption",
+        "Proof",
+        "The view shown when none is named is the default view.",
     ] {
         // A whole-word match, not a substring match ("commitment", "blocked", "prefs"), and placeholder names
         // are code.

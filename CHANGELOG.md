@@ -5,6 +5,24 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
 
 ## [Unreleased]
 
+- **K-T6 (handoff 005; RFC 005 part 2 D-7): what a reader sees of the knowledge layer.** A paragraph that holds a claim
+  carries one quiet link, *Sources and views*, at its end (named by the paragraph it is on, so every link's name is
+  distinct; a paragraph with several claims has one link for each); the sanitized body is only cut at the paragraph's
+  closing tag and printed in order, so **a page with no claims is the page it was, byte for byte** (held against the
+  pages as 0.2.0 drew them), plus one *Why is this here?* link among the page's tools (not on a permalink). The claim's
+  page (`/{slug}/-/claim/{id}`, `?view=` for a view) says in words what kind of statement it is, where it is said, each
+  source with its relation and how directly it speaks to it (*supports, directly*; *challenges, in part*), *judged on an
+  earlier wording* where the paragraph's words are no longer those it was judged on, and its status in this view
+  (accepted, contested, unresolved, not decided) with the proposal that decided it; it is read from the derived knowledge
+  index (`claims_on_page`), authorized as pages are, and an address that names no claim is one plain page. *Other views*
+  is left out until views can be compared (K-T8): the page does not say that no view differs, which it has not checked.
+  The *Why is this here?* link leads to `/{slug}/-/why/{title}`, which answers **not available in this release** (501,
+  the same for every title) until K-T7 replaces it. The retired-words test gains *true*, *false*, *verified* (only the
+  verification badge's label, held to one message and one place), *proven*, *canonical*, *adopted*, *official* and their
+  Japanese terms; a stylesheet test holds that nothing drawn for a claim is coloured apart, pictured or counted and that no
+  rule is named for a verdict, a relation, a bearing or a status. Every message is in both languages with its glossary
+  row; every state is in the structural tests.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

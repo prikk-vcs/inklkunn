@@ -9,4 +9,9 @@
 #
 # A message whose key starts `explain.` is an explanation the reader opens on demand and needs no line here.
 # An entry that no message needs any more fails the test, so this file cannot collect dead lines. It is empty
-# today: no message of either catalog uses a retired word.
+# today: no message of either catalog uses a retired word, except the one label below.
+
+# The word Verified is prikk's, for the history alone (RFC 005 part 2 D-7): the label of the verification badge, which
+# the badge and the verification page print, and no other message.
+assurance.verified :: verified :: the label of the verification badge: prikk's word for the history alone, never said of a claim, a source or a view
+assurance.verified :: 検証済み :: the Japanese label of the verification badge: prikk's word for the history alone, never said of a claim, a source or a view

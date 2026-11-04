@@ -1021,6 +1021,10 @@ Japanese term is matched anywhere in the text. A legitimate exception goes in
 | ref, refs | リファレンス | view | A version-control name for a branch or a tag; the wiki's word is "view" |
 | conflict, conflicts, conflicting | コンフリクト | the changes overlap | A version-control name; the word of an acceptance that stops is "changes overlap" (RFC 004 D-12), and a person, not the service, decides what to keep |
 | merge, merges, merged, merging | マージ | re-authored against the current page; combined | A version-control verb; the reader is told the result (re-authored, or the places that overlap), not the operation |
+| true, false | 真実, 虚偽 | what the sources do (supports, challenges) and the status people decided | The wiki records how a source bears on a claim and what people decided; it never says that a claim is true or false (RFC 005 part 2 D-7) |
+| proven, canonical, official | 証明済み, 正典, 公式 | the default view; supports, challenges | Nothing is proven, and no view or claim is called canonical or official (RFC 005 part 2 D-7, D-9) |
+| adopted | 採用済み | the default view | A view is not adopted by anyone: the shipped word for the view shown when none is named is the default view (RFC 005 part 2 D-9) |
+| verified | 検証済み | signed into the history | prikk's word for the history alone: only the verification badge and the verification page say it, so a reader cannot take a claim for something that was verified (RFC 005 part 2 D-7) |
 
 ## 4. Japanese: what the reviewers are asked
 
