@@ -80,8 +80,6 @@ T6, RFC 004) take the word from here and do not choose their own.
 | A statement a paragraph makes that someone has attached sources to or disagreed with | claim | 主張 | yes | RFC 005: only a paragraph someone made a claim has one; the page never says whether a claim is true or false, and a claim has no score | Drafted |
 | Where a claim came from, as a person recorded how it bears on the claim | source | 出典 | yes | A source supports or challenges a claim and says how directly; the page never ranks sources | Drafted |
 | A paragraph's own mark (`^id`) that names it through every rewording | anchor | アンカー | yes | RFC 005: a chain of changes followed through an anchor is exact; a paragraph without one is traced by matching its text, and the page says so | Drafted · ja: loanword |
-| A paragraph that others can ask about: what it rests on and whether people disagree (RFC 005) | claim | 主張 | yes | Made where someone attaches a source to a paragraph; most text is never a claim. Never a verdict: the word says a statement is recorded, not that it is true | Drafted · ja: hard term |
-| What a claim rests on, or is challenged by: a book, an article, a record, a person's account | source | 出典 | yes | Shared by any number of claims; each claim says how directly a source speaks to it, never how good the source is | Drafted · ja: hard term |
 | A proposal that changes claims and sources and no page: where a community status, a review date and an availability are set | curation proposal | キュレーション提案 | yes | The only way a community status changes (RFC 005 part 2 D-3): never by a count, a tally or a timer | Drafted · ja: loanword |
 
 ## 2. Messages
