@@ -443,16 +443,21 @@ fn a_view_is_created_changed_through_a_proposal_and_compared_against_a_real_prik
 
     // A change is accepted **into the view**, by the normal proposal path: the wording, the status and a second
     // source of the claim.
-    let signed = w.change(
+    // The wording is a page change; the status and the second source are a curation proposal (knowledge files
+    // only), because a status changes only through one (RFC 005 part 2 D-3).
+    let reworded = w.change(
         Some("heads/reading"),
         "Read the year differently",
-        &[
-            pair("pages/Home.md", home(SAID_ELSEWHERE)),
-            pair(
-                &claim_path(&claim_id()),
-                claim_file(SAID_ELSEWHERE, Standing::Contested, &[1, 2]),
-            ),
-        ],
+        &[pair("pages/Home.md", home(SAID_ELSEWHERE))],
+    );
+    assert!(matches!(reworded, Accepted::Signed(_)), "{reworded:?}");
+    let signed = w.change(
+        Some("heads/reading"),
+        "Contest the claim, with a second source",
+        &[pair(
+            &claim_path(&claim_id()),
+            claim_file(SAID_ELSEWHERE, Standing::Contested, &[1, 2]),
+        )],
     );
     assert!(matches!(signed, Accepted::Signed(_)), "{signed:?}");
     assert_eq!(w.tip(MAIN), main_tip, "the default view did not move");
