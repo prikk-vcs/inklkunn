@@ -331,6 +331,63 @@ fn everything_that_is_not_traced_is_named() {
 }
 
 #[test]
+fn what_was_known_when_a_key_was_replaced_is_the_log_from_the_oldest_entry_of_the_recorded_tip_back()
+ {
+    let log = |entries: &[(char, char)]| -> Vec<(String, String)> {
+        entries.iter().map(|(b, s)| (id(*b), id(*s))).collect()
+    };
+    // Newest first: d, c, b, a. The tip recorded was `b`: `b` and `a` are known, with their ref states; `c` and `d`
+    // (and their ref states) are not.
+    let histories = [(
+        "heads/main".to_owned(),
+        log(&[('d', '4'), ('c', '3'), ('b', '2'), ('a', '1')]),
+    )];
+    let kept = [RecordedTip {
+        view: "heads/main".to_owned(),
+        block_id: id('b'),
+    }];
+    let known = known_when_replaced(&kept, &histories);
+    let (a, b, c) = (id('a'), id('b'), id('c'));
+    assert!(known.blocks.contains(a.as_str()) && known.blocks.contains(b.as_str()));
+    assert!(!known.blocks.contains(c.as_str()));
+    assert!(
+        known.ref_states.contains(id('1').as_str()) && known.ref_states.contains(id('2').as_str())
+    );
+    assert!(
+        !known.ref_states.contains(id('3').as_str())
+            && !known.ref_states.contains(id('4').as_str())
+    );
+    assert!(known.lost.is_empty());
+    // A block that stands twice in a log counts from its OLDEST entry: what stands newer than that is not known.
+    let histories = [(
+        "heads/main".to_owned(),
+        log(&[('b', '9'), ('c', '3'), ('b', '2'), ('a', '1')]),
+    )];
+    let known = known_when_replaced(&kept, &histories);
+    assert!(!known.ref_states.contains(id('9').as_str()) && !known.blocks.contains(c.as_str()));
+    // An empty tip knows nothing and loses nothing; a tip the log does not show, or a view it does not show, is lost.
+    let empty = [RecordedTip {
+        view: "heads/main".to_owned(),
+        block_id: String::new(),
+    }];
+    let known = known_when_replaced(&empty, &histories);
+    assert!(known.blocks.is_empty() && known.lost.is_empty());
+    let missing = [
+        RecordedTip {
+            view: "heads/main".to_owned(),
+            block_id: id('f'),
+        },
+        RecordedTip {
+            view: "heads/gone".to_owned(),
+            block_id: id('a'),
+        },
+    ];
+    let known = known_when_replaced(&missing, &histories);
+    assert!(known.blocks.is_empty());
+    assert_eq!(known.lost.len(), 2);
+}
+
+#[test]
 fn a_long_list_of_untraceable_findings_is_counted_and_the_first_are_named() {
     let many: Vec<String> = (0..NAMED_AT_MOST + 5).map(|n| format!("tag {n}")).collect();
     let text = untraceable_text(&WikiId::new(), "k1", &many);
