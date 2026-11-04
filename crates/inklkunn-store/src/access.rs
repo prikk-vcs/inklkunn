@@ -21,9 +21,9 @@ pub enum Role {
     Questioner,
     /// Proposes changes.
     Contributor,
-    /// Reviews proposals.
+    /// Reviews proposals, creates views.
     Reviewer,
-    /// Accepts proposals, creates views, moderates.
+    /// Accepts proposals, moderates.
     Maintainer,
     /// Administers the wiki: roles, keys, exports and imports.
     Admin,
@@ -69,9 +69,9 @@ pub enum Scope {
     Read,
     /// Also comment and propose.
     Propose,
-    /// Also review.
+    /// Also review and create views.
     Review,
-    /// Also accept, create views and moderate.
+    /// Also accept and moderate.
     Accept,
     /// Everything the account may do.
     Admin,

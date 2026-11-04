@@ -54,8 +54,8 @@ fn documented(role: Role) -> Vec<Action> {
         Role::Observer => vec![Read],
         Role::Questioner => vec![Read, Comment],
         Role::Contributor => vec![Read, Comment, Propose],
-        Role::Reviewer => vec![Read, Comment, Propose, Review],
-        Role::Maintainer => vec![Read, Comment, Propose, Review, Accept, CreateView, Moderate],
+        Role::Reviewer => vec![Read, Comment, Propose, Review, CreateView],
+        Role::Maintainer => vec![Read, Comment, Propose, Review, CreateView, Accept, Moderate],
         Role::Admin => Action::ALL.to_vec(),
     }
 }
@@ -66,8 +66,8 @@ fn scope_reaches(scope: Scope) -> Vec<Action> {
     match scope {
         Scope::Read => vec![Read],
         Scope::Propose => vec![Read, Comment, Propose],
-        Scope::Review => vec![Read, Comment, Propose, Review],
-        Scope::Accept => vec![Read, Comment, Propose, Review, Accept, CreateView, Moderate],
+        Scope::Review => vec![Read, Comment, Propose, Review, CreateView],
+        Scope::Accept => vec![Read, Comment, Propose, Review, CreateView, Accept, Moderate],
         Scope::Admin => Action::ALL.to_vec(),
     }
 }

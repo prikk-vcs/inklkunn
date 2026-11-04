@@ -247,20 +247,23 @@ impl Action {
             Action::Read => Role::Observer,
             Action::Comment => Role::Questioner,
             Action::Propose => Role::Contributor,
-            Action::Review => Role::Reviewer,
-            Action::Accept | Action::CreateView | Action::Moderate => Role::Maintainer,
+            // Creating a view is a reviewers' act (the owner's ruling, 2026-10-31; RFC 005 part 2 D-9): a view is a
+            // lasting community object, and the people who read proposals for the wiki are the ones who start one.
+            Action::Review | Action::CreateView => Role::Reviewer,
+            Action::Accept | Action::Moderate => Role::Maintainer,
             Action::Admin | Action::Export | Action::Import => Role::Admin,
         }
     }
 
     /// The narrowest token scope that covers this (RFC 002 D-1: `read ⊂ propose ⊂ review ⊂ accept ⊂
-    /// admin`). Commenting is covered by `propose`; creating views and moderating by `accept`.
+    /// admin`). Commenting is covered by `propose`; creating a view by `review`, as the role that may do it
+    /// is the reviewer's; moderating by `accept`.
     pub const fn required_scope(self) -> Scope {
         match self {
             Action::Read => Scope::Read,
             Action::Comment | Action::Propose => Scope::Propose,
-            Action::Review => Scope::Review,
-            Action::Accept | Action::CreateView | Action::Moderate => Scope::Accept,
+            Action::Review | Action::CreateView => Scope::Review,
+            Action::Accept | Action::Moderate => Scope::Accept,
             Action::Admin | Action::Export | Action::Import => Scope::Admin,
         }
     }
