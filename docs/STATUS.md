@@ -279,6 +279,10 @@
   short request: `status` exits non-zero while a retirement is unfinished; a lost tip named first; **the CHANGELOG's entries since
   0.1.0 sat under the 0.1.0 heading** and move under `[Unreleased]` (0.2.0's notes would have left them out). **Once Z7 is in, a
   key may be retired on a live wiki.** Pushed.
+- **2026-11-04 — Z7 – Z9 reviewed: Approved** (`1778207`; 2,202 tests in both runs, 260 self-skips). **Handoff 004's
+  corrections are closed; a key may be retired on a live wiki.** The CHANGELOG's `[0.1.0]` section is byte-identical to the
+  tag's again, everything since under `[Unreleased]`. **Every condition of 0.2.0 owed by the dev team is met**; next, the
+  architect's candidate and rehearsal, then the owner's decision. Pushed.
 
 ## Pending on the owner
 
@@ -302,7 +306,7 @@
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and handoff 003's T1 – T3 are built and
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
-(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **The dev team's order now:** handoff 004's follow-ups **Z7 – Z9** before 0.2.0; then the architect's release rehearsal, and the
+(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04): nothing owed by the dev team for 0.2.0.** Next: the architect's candidate and release rehearsal, and the
 architect brings the 0.2.0 decision to the owner. K-T5 onward after 0.2.0.
 
 ## Issue register

@@ -460,3 +460,9 @@ traces to the key's own history, or nothing. Hand back Z7 – Z9 as one short re
 - **Z9.** `CHANGELOG.md`: everything added since the 0.1.0 tag (from *Spike C* on) moves under `## [Unreleased]`, in order; new
   entries go under `[Unreleased]`, never at the file's end. A test, or a line in `pin-check`, that no text follows the oldest
   release's section that the tagged file did not have is welcome but not required.
+
+## Review of Z7 – Z9 (2026-11-04)
+
+**Approved** (`.git-exclude/reviewed/004-proposals-corrections-8-review-result.md`): handoff 004's corrections are closed, and a
+key may be retired on a live wiki. At the next touch of `signer/retirement.rs`, `seal_pause`'s operator sentence says *finishes or
+gives up* instead of naming only `finish-retirement` (not a 0.2.0 condition).
