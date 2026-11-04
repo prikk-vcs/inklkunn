@@ -23,7 +23,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use inklkunn_core::knowledge::index::{self, KnowledgeIndex};
-use inklkunn_core::knowledge::{ClaimId, Standing};
+use inklkunn_core::knowledge::Standing;
 use inklkunn_core::read::{Presentation, ReadError};
 use inklkunn_markup::path::path_to_title;
 use inklkunn_store::{KnowledgeClaimRow, WikiRecord};
@@ -142,7 +142,7 @@ fn load(
             });
         }
     };
-    let Some(claim) = ClaimId::parse(id).and_then(|c| index.claim(c.as_str()).cloned()) else {
+    let Some(claim) = index.claim(id).cloned() else {
         return Loaded::NoClaim(Box::new(wiki));
     };
     let proposal_known = claim
