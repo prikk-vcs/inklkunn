@@ -25,7 +25,16 @@
 {% endif %}<section aria-labelledby="changes">
 <h2 id="changes">{{ changes_heading }}</h2>
 {% if let Some(changes) = changes %}{% include "proposal_changes.html" %}{% endif %}</section>
-<section aria-labelledby="{{ thread_id }}">
+{% if !know.is_empty() %}<section aria-labelledby="knowledge">
+<h2 id="knowledge">{{ know_heading }}</h2>
+{% for n in know_notes %}<p class="note">{{ n }}</p>
+{% endfor %}<ul>
+{% for line in know %}<li>{{ line.text }}{% if !line.more.is_empty() %}<ul>
+{% for m in line.more %}<li>{{ m }}</li>
+{% endfor %}</ul>{% endif %}</li>
+{% endfor %}</ul>
+</section>
+{% endif %}<section aria-labelledby="{{ thread_id }}">
 <h2 id="{{ thread_id }}">{{ thread_heading }}</h2>
 {% if let Some(text) = no_thread %}<p>{{ text }}</p>
 {% endif %}{% for c in thread %}{% include "proposal_comment.html" %}{% endfor %}{% if let Some(f) = comment_form %}<form method="post" action="{{ f.action }}" class="comment-form">

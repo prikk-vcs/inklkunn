@@ -5,6 +5,7 @@
 
 mod accept;
 mod bodies;
+mod claims;
 #[path = "../common/mod.rs"]
 mod common;
 mod flows;

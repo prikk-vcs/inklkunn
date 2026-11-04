@@ -192,9 +192,10 @@ pub fn reattach_all(
     Reattached { text, lost }
 }
 
-/// The paragraph the claim at `id` is in `text`, with its words (no marker), when the page has it once.
-pub fn words_at(text: &str, id: &str) -> Option<String> {
-    let (_, body) = body_of(text, true);
+/// The words of the paragraph whose `^id` is `id` in `text` (marker left out), when the text has it once.
+/// `whole_page` says whether `text` begins with a page's information block.
+pub fn words_with_id(text: &str, id: &str, whole_page: bool) -> Option<String> {
+    let (_, body) = body_of(text, whole_page);
     let found = blocks(body);
     let mut named = found.iter().filter(|b| b.id == Some(id));
     match (named.next(), named.next()) {

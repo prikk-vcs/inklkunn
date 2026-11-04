@@ -9,25 +9,30 @@
 //! checked for a summary and for a change **before** it is created, so a refused submission leaves no draft
 //! behind.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::ops::Range;
 
 use axum::extract::rejection::{PathRejection, QueryRejection};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use inklkunn_core::Action;
+use inklkunn_core::knowledge::compose::page_id_of;
 use inklkunn_core::proposal::{Invalid, ProposalEdit, ProposalError};
 use inklkunn_core::read::ReadError;
 use inklkunn_markup::path::{PathError, is_inside_pages, path_to_title, title_to_path};
 use inklkunn_markup::{LintContext, Page as MarkupPage, lint};
 use inklkunn_store::{Base, FileChange, ProposalId, ProposalRecord, ProposalState};
 
+use super::claims::{self, Failure as ClaimFailure, Held, Lost, Work};
 use super::form::{
     Eol, FormError, Front, Markup, Op, Submitted, SubmittedPage, check_bounds, check_owned_keys,
     for_display, read,
 };
+use super::knowledge::file_lines;
 use super::new::{
-    FormPage, FormState, Kind, PreviewView, read_failure, render_form, short, view_of,
+    FormPage, FormState, Kind, KnowledgeState, PreviewView, read_failure, render_form, short,
+    view_of,
 };
 use super::parts::{self, Selection};
 use super::render::{self, Alone, PageInput};
@@ -103,7 +108,19 @@ pub(crate) async fn edit_form(
             Err(error) => return refused(page, &ctx, &error, Vec::new()),
         };
         let saved = params.contains_key(fields::Q_SAVED);
-        render_form(page, &ctx, existing.state(&ctx, saved), StatusCode::OK)
+        let carried = match file_lines(
+            &ctx,
+            page.t(),
+            &existing.content.base.block_id,
+            &existing.content.files,
+        ) {
+            Ok((lines, _)) => lines,
+            Err(e) => return read_failure(page, &ctx, e),
+        };
+        match existing.state(&ctx, saved, carried) {
+            Ok(state) => render_form(page, &ctx, state, StatusCode::OK),
+            Err(e) => read_failure(page, &ctx, e),
+        }
     })
     .await
 }
@@ -176,26 +193,51 @@ impl Existing {
         Ok(Existing { record, content })
     }
 
-    /// The form that shows it.
-    fn state(&self, ctx: &Ctx, saved: bool) -> FormState {
-        FormState {
+    /// The form that shows it. The proposal's claim and source files are not text for a person to edit: they are
+    /// carried forward and listed.
+    fn state(
+        &self,
+        ctx: &Ctx,
+        saved: bool,
+        carried: Vec<super::knowledge::Line>,
+    ) -> Result<FormState, inklkunn_core::read::ReadError> {
+        // The markers of the paragraphs others rely on are held, those the proposal makes among them.
+        let work = Work::new(
+            ctx,
+            Some(&self.record.view),
+            &self.content.base.block_id,
+            &self.content.files,
+        );
+        let own = work.own();
+        let mut held = Held::None;
+        let mut pages = Vec::new();
+        for f in self
+            .content
+            .files
+            .iter()
+            .filter(|f| inklkunn_core::knowledge::family_of(&f.path).is_none())
+        {
+            let text = f.text.as_deref().unwrap_or("");
+            let known = claims::known(ctx, Some(&self.record.view), text, &own)?;
+            let (shown, mark) = claims::show(text, &known, Selection::Whole);
+            if mark != Held::None {
+                held = Held::Many;
+            }
+            pages.push(FormPage {
+                path: Some(f.path.clone()),
+                title: path_to_title(&f.path).unwrap_or_else(|| f.path.clone()),
+                new_page: false,
+                removed: f.text.is_none(),
+                text: for_display(&shown),
+            });
+        }
+        Ok(FormState {
             action: paths::act(ctx.slug(), self.record.id.as_str(), paths::ACT_EDIT),
             kind: Kind::Revise,
             base: self.content.base.clone(),
             view: short(Some(&self.record.view))
                 .filter(|_| self.record.view != ctx.wiki.default_view),
-            pages: self
-                .content
-                .files
-                .iter()
-                .map(|f| FormPage {
-                    path: Some(f.path.clone()),
-                    title: path_to_title(&f.path).unwrap_or_else(|| f.path.clone()),
-                    new_page: false,
-                    removed: f.text.is_none(),
-                    text: for_display(f.text.as_deref().unwrap_or("")),
-                })
-                .collect(),
+            pages,
             selection: Selection::Whole,
             excerpt: String::new(),
             renames: self.content.renames.clone(),
@@ -212,7 +254,12 @@ impl Existing {
             suggestions: Vec::new(),
             previews: Vec::new(),
             changes: None,
-        }
+            knowledge: KnowledgeState {
+                held,
+                carried,
+                ..KnowledgeState::default()
+            },
+        })
     }
 }
 
@@ -231,6 +278,12 @@ struct Prepared {
     pages: Vec<Whole>,
     problems: Vec<String>,
     excerpt: String,
+    /// Whether markers of claim paragraphs were held for the person.
+    held: Held,
+    /// The paragraphs others rely on that the text leaves out, with the id of the page they are in.
+    lost: Vec<(String, Lost)>,
+    /// Where the part the person edited ended up in the page (a form for one part).
+    region: Option<Range<usize>>,
 }
 
 fn title_problem(t: T, why: &PathError) -> String {
@@ -250,13 +303,19 @@ fn prepare(
     sub: &Submitted,
     base: &Base,
     view: Option<&str>,
+    started: &BTreeMap<String, String>,
+    own: &[inklkunn_core::knowledge::Claim],
 ) -> Result<Prepared, Stop> {
     let t = page.t();
     let mut out = Prepared {
         pages: Vec::new(),
         problems: Vec::new(),
         excerpt: String::new(),
+        held: Held::None,
+        lost: Vec::new(),
+        region: None,
     };
+    let unreadable = |e| Box::new(read_failure(page, ctx, e));
     for (i, p) in sub.pages.iter().enumerate() {
         let (path, title, old) = match page_base(page, ctx, p, base, view, &mut out.problems)? {
             Some(found) => found,
@@ -277,7 +336,18 @@ fn prepare(
                     Some(found) => {
                         out.excerpt = found.excerpt.clone();
                         let eol = Eol::of(old_text);
-                        parts::splice(old_text, &found, &eol.apply(&p.text))
+                        // The markers of the paragraphs others rely on are the form's: put back.
+                        let slice = old_text.get(found.range.clone()).unwrap_or("");
+                        let known = claims::known(ctx, view, old_text, own).map_err(unreadable)?;
+                        let restored =
+                            claims::restore(slice, &eol.apply(&p.text), &known, sub.selection);
+                        out.held = claims::show(slice, &known, sub.selection).1;
+                        let at = found.range.start;
+                        out.region = Some(at..at + restored.text.len());
+                        let page_id = page_id_of(old_text).unwrap_or_default();
+                        out.lost
+                            .extend(restored.lost.into_iter().map(|l| (page_id.clone(), l)));
+                        parts::splice(old_text, &found, &restored.text)
                     }
                     None => {
                         out.problems.push(t.get(Key::InvalidIncomplete));
@@ -285,7 +355,20 @@ fn prepare(
                     }
                 }
             }
-            (Some(old_text), _, _) => Some(Eol::of(old_text).apply(&p.text)),
+            (Some(old_text), _, _) => {
+                let eol = Eol::of(old_text);
+                // A revision starts from the text the proposal has, not from the base.
+                let from = started.get(&path).map_or(old_text.as_str(), String::as_str);
+                let known = claims::known(ctx, view, from, own).map_err(unreadable)?;
+                let restored = claims::restore(from, &eol.apply(&p.text), &known, Selection::Whole);
+                if claims::show(from, &known, Selection::Whole).1 != Held::None {
+                    out.held = Held::Many;
+                }
+                let page_id = page_id_of(from).unwrap_or_default();
+                out.lost
+                    .extend(restored.lost.into_iter().map(|l| (page_id.clone(), l)));
+                Some(restored.text)
+            }
             (None, _, _) => Some(Eol::Lf.apply(&p.text)),
         };
         let Some(new) = new else {
@@ -420,13 +503,68 @@ fn post(
     if held.is_none() && !ctx.may_wiki(Action::Propose) {
         return refused(page, ctx, &ProposalError::NotAllowed, Vec::new());
     }
-    let prepared = match prepare(page, ctx, &sub, &base, full_view.as_deref()) {
+    // The claim and source files a revision already has are carried forward; this post may add to them.
+    let carried: Vec<FileChange> = held
+        .as_ref()
+        .map_or_else(Vec::new, |h| h.content.files.clone());
+    let started: BTreeMap<String, String> = carried
+        .iter()
+        .filter(|f| inklkunn_core::knowledge::family_of(&f.path).is_none())
+        .filter_map(|f| Some((f.path.clone(), f.text.clone()?)))
+        .collect();
+    let mut work = Work::new(ctx, full_view.as_deref(), &base.block_id, &carried);
+    let mut prepared = match prepare(
+        page,
+        ctx,
+        &sub,
+        &base,
+        full_view.as_deref(),
+        &started,
+        &work.own(),
+    ) {
         Ok(p) => p,
         Err(response) => return *response,
     };
     let mut problems = prepared.problems.clone();
+    // A paragraph others rely on that the text leaves out is an act the person confirms (RFC 005 part 1 D-1 b).
+    let mut dropping: Vec<Lost> = Vec::new();
+    for (page_id, lost) in &prepared.lost {
+        dropping.push(lost.clone());
+        if sub.drops.contains(&lost.id) {
+            if let Err(e) = work.drop_expression(page_id, &lost.id) {
+                return read_failure(page, ctx, e);
+            }
+        } else {
+            problems.push(
+                t.msg(Key::ProposeClaimLost)
+                    .with("excerpt", &lost.excerpt)
+                    .text(),
+            );
+        }
+    }
+    // A source attached to the paragraph the form edits, in the same proposal as the page edit.
+    if let Some(what) = &sub.attach {
+        match (prepared.pages.as_mut_slice(), prepared.region.clone()) {
+            ([only], Some(region)) if only.old.is_some() => {
+                let text = only.new.clone().unwrap_or_default();
+                match work.attach(&text, &region, what) {
+                    Ok(changed) => only.new = Some(changed),
+                    Err(ClaimFailure::Read(e)) => return read_failure(page, ctx, e),
+                    Err(ClaimFailure::Mistake(m)) => problems.push(claims::mistake_text(t, m)),
+                }
+            }
+            _ => problems.push(t.get(Key::InvalidIncomplete)),
+        }
+    }
+    let knowledge_files = work.files();
+    let (carried_lines, _) = match file_lines(ctx, t, &base.block_id, &knowledge_files) {
+        Ok(found) => found,
+        Err(e) => return read_failure(page, ctx, e),
+    };
+    let prepared = prepared;
     let changed: Vec<&Whole> = prepared.pages.iter().filter(|w| w.new != w.old).collect();
-    // A draft keeps every page it was given; a submission sends what changes.
+    // A draft keeps every page it was given; a submission sends what changes. The claim and source files go with
+    // either: they are part of the same proposal.
     let files = |only_changed: bool| -> Vec<FileChange> {
         prepared
             .pages
@@ -436,6 +574,7 @@ fn post(
                 path: w.path.clone(),
                 text: w.new.clone(),
             })
+            .chain(knowledge_files.iter().cloned())
             .collect()
     };
     let view_name = short(full_view.as_deref())
@@ -487,6 +626,13 @@ fn post(
             suggestions: Vec::new(),
             previews: Vec::new(),
             changes: None,
+            knowledge: KnowledgeState {
+                held: prepared.held,
+                attach: sub.attach.clone().map(|a| (a, prepared.held == Held::One)),
+                drops: dropping.clone(),
+                confirmed: sub.drops.clone(),
+                carried: carried_lines.clone(),
+            },
         }
     };
     match sub.op {
@@ -537,7 +683,7 @@ fn post(
                 if sub.summary.is_empty() {
                     problems.push(words::invalid_text(t, Invalid::SummaryMissing));
                 }
-                if changed.is_empty() && sub.renames.is_empty() {
+                if changed.is_empty() && knowledge_files.is_empty() && sub.renames.is_empty() {
                     problems.push(words::invalid_text(t, Invalid::NothingProposed));
                 }
             }

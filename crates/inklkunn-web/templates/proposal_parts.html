@@ -15,7 +15,7 @@
 <section aria-labelledby="parts">
 <h2 id="parts">{{ parts_heading }}</h2>
 <ul class="choices">
-{% for p in parts %}<li><a href="{{ p.href }}">{{ p.label }}</a></li>
+{% for p in parts %}<li><a href="{{ p.change.href }}">{{ p.change.label }}</a>{% if let Some(a) = p.attach %} · <a href="{{ a.href }}" aria-label="{{ a.name }}">{{ a.label }}</a>{% endif %}{% if let Some(c) = p.challenge %} · <a href="{{ c.href }}" aria-label="{{ c.name }}">{{ c.label }}</a>{% endif %}</li>
 {% endfor %}</ul>
 {% if let Some(text) = cut %}<p class="note">{{ text }}</p>
 {% endif %}</section>

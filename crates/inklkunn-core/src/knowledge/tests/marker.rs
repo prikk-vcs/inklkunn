@@ -2,7 +2,9 @@
 
 use std::collections::BTreeSet;
 
-use crate::knowledge::marker::{held_part, hide_markers, reattach_all, reattach_part};
+use crate::knowledge::marker::{
+    held_part, hide_markers, reattach_all, reattach_part, words_with_id,
+};
 
 fn ids(list: &[&str]) -> BTreeSet<String> {
     list.iter().map(|s| (*s).to_owned()).collect()
@@ -135,4 +137,20 @@ fn a_marker_cannot_be_put_back_on_nothing_on_a_heading_or_over_another_marker() 
         reattach_part("Written ^c1", "c1").as_deref(),
         Some("Written ^c1")
     );
+}
+
+#[test]
+fn the_words_of_a_paragraph_are_found_by_its_marker_without_it() {
+    assert_eq!(
+        words_with_id(PAGE, "c2", true).as_deref(),
+        Some("Two said.")
+    );
+    assert_eq!(words_with_id(PAGE, "none", true), None);
+    assert_eq!(
+        words_with_id("A. ^x\n\nB. ^x\n", "x", false),
+        None,
+        "twice is not found"
+    );
+    // A heading line that looks like a marker is not a paragraph's.
+    assert_eq!(words_with_id("# Head ^h\n", "h", false), None);
 }

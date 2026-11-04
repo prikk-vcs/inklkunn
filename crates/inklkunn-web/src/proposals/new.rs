@@ -19,16 +19,21 @@ use axum::extract::rejection::{PathRejection, QueryRejection};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
+use inklkunn_core::knowledge::{Bearing, Link, ReferenceForm, SourceKind, StatementKind};
 use inklkunn_core::proposal::ProposalError;
 use inklkunn_core::read::{PageProblem, Presentation, ReadError};
 use inklkunn_core::{Action, Resource};
 use inklkunn_store::{Base, Rename};
 
-use super::form::for_display;
+use super::claims::{self, Held};
+use super::form::{AttachInput, for_display};
+use super::labels::{
+    OptionView, bearing_option, options, reference_option, source_kind_option, statement_option,
+};
 use super::parts::{self, Selection};
 use super::render::{ChangesView, LinkView};
 use super::{Ctx, fields, needs_account, paths, refused, see, serve};
-use crate::catalog::Key;
+use crate::catalog::{Key, T};
 use crate::discover::Subject;
 use crate::pages::{Page, PageState, answer};
 use crate::present::WikiLinks;
@@ -107,6 +112,57 @@ struct FormTpl<'a> {
     suggestions: Vec<String>,
     previews: Vec<PreviewView>,
     changes: Option<ChangesView>,
+    claim_note: Option<String>,
+    attach: Option<AttachView>,
+    drops_legend: String,
+    drops: Vec<DropView>,
+    carried_heading: String,
+    carried: Vec<super::knowledge::Line>,
+}
+
+/// A paragraph that others rely on that the text no longer has: the box that confirms its removal.
+pub(super) struct DropView {
+    pub(super) name: String,
+    pub(super) label: String,
+    pub(super) checked: bool,
+}
+
+/// The fields of a source, ready to print.
+pub(super) struct AttachView {
+    pub(super) legend: String,
+    pub(super) note: Option<String>,
+    pub(super) kinds: Vec<OptionView>,
+    pub(super) kind_name: &'static str,
+    pub(super) kind_label: String,
+    pub(super) title_name: &'static str,
+    pub(super) title: String,
+    pub(super) title_label: String,
+    pub(super) author_name: &'static str,
+    pub(super) author: String,
+    pub(super) author_label: String,
+    pub(super) date_name: &'static str,
+    pub(super) date: String,
+    pub(super) date_label: String,
+    pub(super) date_hint: String,
+    pub(super) ref_forms: Vec<OptionView>,
+    pub(super) ref_form_name: &'static str,
+    pub(super) ref_form_label: String,
+    pub(super) ref_name: &'static str,
+    pub(super) reference: String,
+    pub(super) ref_label: String,
+    pub(super) ref_hint: String,
+    pub(super) bearings: Vec<OptionView>,
+    pub(super) bearing_name: &'static str,
+    pub(super) bearing_label: String,
+    pub(super) note_name: &'static str,
+    pub(super) note_text: String,
+    pub(super) note_label: String,
+    pub(super) note_hint: String,
+    /// Asked only when the paragraph is not a claim yet.
+    pub(super) claim_kinds: Option<Vec<OptionView>>,
+    pub(super) claim_kind_name: &'static str,
+    pub(super) claim_kind_label: String,
+    pub(super) claim_kind_hint: String,
 }
 
 /// What a form shows.
@@ -131,6 +187,23 @@ pub(super) struct FormState {
     pub(super) suggestions: Vec<String>,
     pub(super) previews: Vec<PreviewView>,
     pub(super) changes: Option<ChangesView>,
+    /// What the form does for the claims on the page.
+    pub(super) knowledge: KnowledgeState,
+}
+
+/// What a form does for the claims on the page (RFC 005 part 1 D-1 b; part 2 D-3).
+#[derive(Default)]
+pub(super) struct KnowledgeState {
+    /// Whether the form holds paragraphs' markers for the person.
+    pub(super) held: Held,
+    /// A source attached to the paragraph the form edits, and whether the paragraph is a claim already.
+    pub(super) attach: Option<(AttachInput, bool)>,
+    /// The paragraphs others rely on that the text leaves out.
+    pub(super) drops: Vec<claims::Lost>,
+    /// The removals the person confirmed (by `^id`).
+    pub(super) confirmed: std::collections::BTreeSet<String>,
+    /// What the proposal already does to claims and sources (a revision carries it forward).
+    pub(super) carried: Vec<super::knowledge::Line>,
 }
 
 /// What the form is for, for its heading.
@@ -161,10 +234,13 @@ pub(super) fn render_form(
         .first()
         .map(|p| p.title.clone())
         .unwrap_or_default();
-    let (title_key, heading_key) = match state.kind {
-        Kind::Page => (Key::TitleProposePage, Key::ProposeHeadingPage),
-        Kind::NewPage => (Key::TitleProposeNew, Key::ProposeHeadingNew),
-        Kind::Revise => (Key::TitleProposeRevise, Key::ProposeHeadingRevise),
+    let relation = state.knowledge.attach.as_ref().map(|(a, _)| a.relation);
+    let (title_key, heading_key) = match (state.kind, relation) {
+        (Kind::Page, Some(Link::Supports)) => (Key::TitleAttach, Key::AttachHeadingSupports),
+        (Kind::Page, Some(Link::Challenges)) => (Key::TitleChallenge, Key::AttachHeadingChallenges),
+        (Kind::Page, None) => (Key::TitleProposePage, Key::ProposeHeadingPage),
+        (Kind::NewPage, _) => (Key::TitleProposeNew, Key::ProposeHeadingNew),
+        (Kind::Revise, _) => (Key::TitleProposeRevise, Key::ProposeHeadingRevise),
     };
     let slug = ctx.slug();
     let view_name = state.view.as_deref();
@@ -191,6 +267,12 @@ pub(super) fn render_form(
         hidden.push(Hidden {
             name: fields::VIEW.to_owned(),
             value: view.to_owned(),
+        });
+    }
+    if let Some(relation) = relation {
+        hidden.push(Hidden {
+            name: fields::ATTACH.to_owned(),
+            value: relation.word().to_owned(),
         });
     }
     let (part_kind, part_ordinal) = match state.selection {
@@ -316,6 +398,34 @@ pub(super) fn render_form(
         value: fields::OP_SUBMIT,
         label: t.get(state.submit_key),
     });
+    let claim_note = match state.knowledge.held {
+        Held::None => None,
+        Held::One => Some(t.get(Key::ProposeClaimHeldOne)),
+        Held::Many => Some(t.get(Key::ProposeClaimHeldMany)),
+    };
+    let attach = state
+        .knowledge
+        .attach
+        .as_ref()
+        .map(|(a, exists)| attach_view(t, a, *exists));
+    let drops: Vec<DropView> = state
+        .knowledge
+        .drops
+        .iter()
+        .map(|d| DropView {
+            name: format!("{}{}", fields::DROP, d.id),
+            label: t
+                .msg(Key::ProposeClaimDrop)
+                .with("excerpt", &d.excerpt)
+                .text(),
+            checked: state.knowledge.confirmed.contains(&d.id),
+        })
+        .collect();
+    let intro = match relation {
+        Some(Link::Supports) => t.get(Key::AttachIntroSupports),
+        Some(Link::Challenges) => t.get(Key::AttachIntroChallenges),
+        None => t.get(Key::ProposeIntro),
+    };
     let rendered = FormTpl {
         page: &page.wiki_head(&ctx.wiki, Subject::Wiki),
         shell: &shell,
@@ -326,7 +436,7 @@ pub(super) fn render_form(
             .product()
             .text(),
         heading: t.msg(heading_key).with("page", &first_title).text(),
-        intro: t.get(Key::ProposeIntro),
+        intro,
         scope,
         choose,
         saved: state.saved.then(|| t.get(Key::ProposeSaved)),
@@ -347,10 +457,98 @@ pub(super) fn render_form(
         suggestions: state.suggestions,
         previews: state.previews,
         changes: state.changes,
+        claim_note,
+        attach,
+        drops_legend: t.get(Key::ProposeClaimDropLegend),
+        drops,
+        carried_heading: t.get(Key::KnowHeading),
+        carried: state.knowledge.carried,
     }
     .render();
     let head = page.wiki_head(&ctx.wiki, Subject::Wiki);
     answer(status, &head, rendered)
+}
+
+/// A source's fields as the form prints them, with what was written (or the starting values).
+fn attach_view(t: T, a: &AttachInput, claim_exists: bool) -> AttachView {
+    let label = |k: Key| t.get(k);
+    AttachView {
+        legend: t.get(Key::AttachLegend),
+        note: claim_exists.then(|| t.get(Key::AttachClaimExists)),
+        kinds: options(
+            SourceKind::ALL,
+            SourceKind::word,
+            source_kind_option,
+            a.kind,
+            label,
+        ),
+        kind_name: fields::A_KIND,
+        kind_label: t.get(Key::AttachLabelKind),
+        title_name: fields::A_TITLE,
+        title: a.title.clone(),
+        title_label: t.get(Key::AttachLabelTitle),
+        author_name: fields::A_AUTHOR,
+        author: a.author.clone(),
+        author_label: t.get(Key::AttachLabelAuthor),
+        date_name: fields::A_DATE,
+        date: a.date.clone(),
+        date_label: t.get(Key::AttachLabelDate),
+        date_hint: t.get(Key::AttachHintDate),
+        ref_forms: options(
+            ReferenceForm::ALL,
+            ReferenceForm::word,
+            reference_option,
+            a.reference_form,
+            label,
+        ),
+        ref_form_name: fields::A_REF_FORM,
+        ref_form_label: t.get(Key::AttachLabelRefForm),
+        ref_name: fields::A_REF,
+        reference: a.reference.clone(),
+        ref_label: t.get(Key::AttachLabelRef),
+        ref_hint: t.get(Key::AttachHintRef),
+        bearings: options(
+            Bearing::ALL,
+            Bearing::word,
+            bearing_option,
+            a.bearing,
+            label,
+        ),
+        bearing_name: fields::A_BEARING,
+        bearing_label: t.get(Key::AttachLabelBearing),
+        note_name: fields::A_NOTE,
+        note_text: a.note.clone(),
+        note_label: t.get(Key::AttachLabelNote),
+        note_hint: t.get(Key::AttachHintNote),
+        claim_kinds: (!claim_exists).then(|| {
+            options(
+                StatementKind::ALL,
+                StatementKind::word,
+                statement_option,
+                a.claim_kind,
+                label,
+            )
+        }),
+        claim_kind_name: fields::A_CLAIM_KIND,
+        claim_kind_label: t.get(Key::AttachLabelClaimKind),
+        claim_kind_hint: t.get(Key::AttachClaimKindHint),
+    }
+}
+
+/// The values a source form starts with: nothing written, the neutral choices.
+pub(super) fn starting_source(relation: Link) -> AttachInput {
+    AttachInput {
+        relation,
+        kind: SourceKind::Other,
+        title: String::new(),
+        author: String::new(),
+        date: String::new(),
+        reference_form: ReferenceForm::Url,
+        reference: String::new(),
+        bearing: Bearing::Direct,
+        note: String::new(),
+        claim_kind: StatementKind::Unknown,
+    }
 }
 
 // ------------------------------------------------------------------------------------ reading the wiki
@@ -465,6 +663,7 @@ fn open_form(page: &Page, ctx: &Ctx, params: &HashMap<String, String>) -> Respon
                 suggestions: Vec::new(),
                 previews: Vec::new(),
                 changes: None,
+                knowledge: KnowledgeState::default(),
             },
             StatusCode::OK,
         );
@@ -517,7 +716,22 @@ fn open_form(page: &Page, ctx: &Ctx, params: &HashMap<String, String>) -> Respon
     let Some(found) = parts::find(&text, selection) else {
         return see(&paths::choose_part(slug, &raw.title, view_name.as_deref()));
     };
-    let shown = text.get(found.range.clone()).unwrap_or("").to_owned();
+    // A source is attached to one paragraph (RFC 005 part 2 D-3).
+    let relation = params.get(fields::ATTACH).map(|word| Link::from_word(word));
+    let attaching = match (relation, selection) {
+        (None, _) => None,
+        (Some(Some(relation)), Selection::Block(_)) if found.paragraph => Some(relation),
+        _ => {
+            return see(&paths::choose_part(slug, &raw.title, view_name.as_deref()));
+        }
+    };
+    let known = match claims::known(ctx, full_view.as_deref(), &text, &[]) {
+        Ok(known) => known,
+        Err(e) => return read_failure(page, ctx, e),
+    };
+    let slice = text.get(found.range.clone()).unwrap_or("");
+    let (shown, held) = claims::show(slice, &known, selection);
+    let attach = attaching.map(|relation| (starting_source(relation), held == Held::One));
     render_form(
         page,
         ctx,
@@ -545,6 +759,11 @@ fn open_form(page: &Page, ctx: &Ctx, params: &HashMap<String, String>) -> Respon
             suggestions: Vec::new(),
             previews: Vec::new(),
             changes: None,
+            knowledge: KnowledgeState {
+                held,
+                attach,
+                ..KnowledgeState::default()
+            },
         },
         StatusCode::OK,
     )
@@ -565,9 +784,23 @@ struct PartsTpl<'a> {
     sections: Vec<LinkView>,
     no_sections: String,
     parts_heading: String,
-    parts: Vec<LinkView>,
+    parts: Vec<PartChoice>,
     cut: Option<String>,
     back: LinkView,
+}
+
+/// A link with the name a screen reader says for it.
+struct NamedLink {
+    href: String,
+    label: String,
+    name: String,
+}
+
+/// One part in the chooser: the link to change it, and, for a paragraph, the two ways to bring a source to it.
+struct PartChoice {
+    change: LinkView,
+    attach: Option<NamedLink>,
+    challenge: Option<NamedLink>,
 }
 
 fn choose(page: &Page, ctx: &Ctx, title: &str, view: Option<&str>, text: &str) -> Response {
@@ -589,17 +822,29 @@ fn choose(page: &Page, ctx: &Ctx, title: &str, view: Option<&str>, text: &str) -
     let all = parts::parts(text);
     let cut = (all.len() > parts::MAX_LISTED)
         .then(|| t.msg(Key::PartsCut).with("limit", parts::MAX_LISTED).text());
-    let listed: Vec<LinkView> = all
+    let listed: Vec<PartChoice> = all
         .into_iter()
         .enumerate()
         .take(parts::MAX_LISTED)
-        .map(|(n, p)| LinkView {
-            href: paths::change_part(slug, title, view, fields::PART_BLOCK, n),
-            label: t
-                .msg(Key::PartsPartLabel)
-                .with("number", n + 1)
-                .with("excerpt", p.excerpt)
-                .text(),
+        .map(|(n, p)| PartChoice {
+            change: LinkView {
+                href: paths::change_part(slug, title, view, fields::PART_BLOCK, n),
+                label: t
+                    .msg(Key::PartsPartLabel)
+                    .with("number", n + 1)
+                    .with("excerpt", p.excerpt)
+                    .text(),
+            },
+            attach: p.paragraph.then(|| NamedLink {
+                href: paths::attach(slug, title, view, n, Link::Supports.word()),
+                label: t.get(Key::PartsAttach),
+                name: t.msg(Key::PartsAttachFor).with("number", n + 1).text(),
+            }),
+            challenge: p.paragraph.then(|| NamedLink {
+                href: paths::attach(slug, title, view, n, Link::Challenges.word()),
+                label: t.get(Key::PartsChallenge),
+                name: t.msg(Key::PartsChallengeFor).with("number", n + 1).text(),
+            }),
         })
         .collect();
     let head = page.wiki_head(&ctx.wiki, Subject::Wiki);

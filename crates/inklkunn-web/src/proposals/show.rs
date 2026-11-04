@@ -23,6 +23,7 @@ use inklkunn_store::{
 
 use super::anchor::{Landing, land};
 use super::changes::delta;
+use super::knowledge::file_lines;
 use super::overlaps::OverlapsView;
 use super::render::{
     Beside, ChangesView, CommentView, LinkView, PageInput, build, on_parse, on_value,
@@ -93,6 +94,9 @@ struct ProposalTpl<'a> {
     overlaps: Option<OverlapsView>,
     changes_heading: String,
     changes: Option<ChangesView>,
+    know_heading: String,
+    know_notes: Vec<String>,
+    know: Vec<super::knowledge::Line>,
     thread_id: &'static str,
     thread_heading: String,
     thread: Vec<CommentView>,
@@ -387,7 +391,12 @@ pub(crate) fn draw(
     let mut files: Vec<(String, String, Option<String>)> = Vec::new();
     let mut olds: Vec<Option<String>> = Vec::new();
     if let Some(content) = &r.content {
-        for f in &content.files {
+        // The pages; the claim and source files are listed on their own (RFC 005 part 2 D-3).
+        for f in content
+            .files
+            .iter()
+            .filter(|f| inklkunn_core::knowledge::family_of(&f.path).is_none())
+        {
             let old = match ctx
                 .services
                 .read
@@ -501,11 +510,7 @@ pub(crate) fn draw(
             )
             .text(),
     ];
-    facts.push(
-        t.msg(Key::FactPages)
-            .n(r.content.as_ref().map_or(0, |c| c.files.len() as u64))
-            .text(),
-    );
+    facts.push(t.msg(Key::FactPages).n(files.len() as u64).text());
     if let Some(n) = latest {
         facts.push(
             t.msg(Key::FactRevision)
@@ -583,6 +588,26 @@ pub(crate) fn draw(
         },
     });
     let overlaps = super::overlaps::view(ctx, t, record, latest);
+
+    // What the proposal does to claims and sources, and whether it is a curation proposal.
+    let (know, know_notes) = match &r.content {
+        Some(content) => {
+            let (lines, items) = match file_lines(ctx, t, &content.base.block_id, &content.files) {
+                Ok(found) => found,
+                Err(e) => return crate::proposals::new::read_failure(page, ctx, e),
+            };
+            let mut notes = Vec::new();
+            if !lines.is_empty() {
+                if inklkunn_core::knowledge::curation::is_curation(content) {
+                    notes.push(t.get(Key::KnowIsCuration));
+                } else if inklkunn_core::knowledge::summary::sets_curated(&items) {
+                    notes.push(t.get(Key::KnowNotCuration));
+                }
+            }
+            (lines, notes)
+        }
+        None => (Vec::new(), Vec::new()),
+    };
 
     // The comment form: about a part, or a reply, or neither.
     let comment_form = can_comment.then(|| {
@@ -689,6 +714,9 @@ pub(crate) fn draw(
         overlaps,
         changes_heading: t.get(Key::ProposalChangesHeading),
         changes: Some(changes),
+        know_heading: t.get(Key::KnowHeading),
+        know_notes,
+        know,
         thread_id: fields::ID_THREAD,
         thread_heading: t.get(Key::ThreadHeading),
         thread: general.into_iter().flat_map(|th| th.views).collect(),

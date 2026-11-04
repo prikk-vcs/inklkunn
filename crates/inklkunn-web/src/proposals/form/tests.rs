@@ -194,3 +194,89 @@ fn information_at_the_top_that_cannot_be_read_is_refused() {
         Ok(())
     );
 }
+
+// --- the source fields and the confirmed removals (RFC 005 part 2 D-3; part 1 D-1 b)
+
+fn with_source(extra: &[(&str, &str)]) -> HashMap<String, String> {
+    let mut f = form_with("x");
+    for (k, v) in [
+        ("attach", "challenges"),
+        ("a_kind", "primary"),
+        ("a_title", "  A title "),
+        ("a_ref_form", "doi"),
+        ("a_ref", "10.1/x"),
+        ("a_bearing", "partial"),
+        ("a_note", "page 4"),
+    ]
+    .iter()
+    .chain(extra)
+    {
+        f.insert((*k).to_owned(), (*v).to_owned());
+    }
+    f
+}
+
+#[test]
+fn a_source_is_read_in_the_cores_words() {
+    let f = read(&with_source(&[])).unwrap();
+    let a = f.attach.expect("a source");
+    assert_eq!(a.relation, Link::Challenges);
+    assert_eq!(a.kind, SourceKind::Primary);
+    assert_eq!(a.title, "A title");
+    assert_eq!(a.reference_form, ReferenceForm::Doi);
+    assert_eq!(a.bearing, Bearing::Partial);
+    assert_eq!(a.note, "page 4");
+    assert_eq!(a.claim_kind, StatementKind::Unknown, "asked only sometimes");
+    let f = read(&with_source(&[("a_claim_kind", "opinion")])).unwrap();
+    assert_eq!(f.attach.unwrap().claim_kind, StatementKind::Opinion);
+    // A form with no source says none.
+    assert_eq!(read(&form_with("x")).unwrap().attach, None);
+}
+
+#[test]
+fn a_source_with_a_word_the_core_does_not_have_is_a_form_a_page_did_not_offer() {
+    for (key, bad) in [
+        ("attach", "proves"),
+        ("a_kind", "reliable"),
+        ("a_ref_form", "rumour"),
+        ("a_bearing", "strong"),
+        ("a_claim_kind", "fact"),
+    ] {
+        assert_eq!(
+            read(&with_source(&[(key, bad)])),
+            Err(FormError::Incomplete),
+            "{key}"
+        );
+    }
+    // A field the form always sends, missing.
+    let mut f = with_source(&[]);
+    f.remove("a_bearing");
+    assert_eq!(read(&f), Err(FormError::Incomplete));
+}
+
+#[test]
+fn the_texts_of_a_source_count_toward_the_proposals_size() {
+    let big = "x".repeat(MAX_PROPOSAL_BYTES as usize + 1);
+    let f = read(&with_source(&[("a_note", &big)])).unwrap();
+    assert_eq!(check_bounds(&f), Err(FormError::TooLarge));
+}
+
+#[test]
+fn a_removal_the_person_confirmed_is_named_by_the_paragraphs_id() {
+    let mut f = form_with("x");
+    for (k, v) in [
+        ("drop_k1", "1"),
+        ("drop_k-2_x", "1"),
+        ("drop_off", "0"),
+        ("drop_", "1"),
+        ("drop_bad id", "1"),
+        ("drop_a/b", "1"),
+    ] {
+        f.insert(k.to_owned(), v.to_owned());
+    }
+    let drops: Vec<String> = read(&f).unwrap().drops.into_iter().collect();
+    assert_eq!(drops, ["k-2_x", "k1"]);
+    let long = format!("drop_{}", "a".repeat(129));
+    f.insert(long, "1".to_owned());
+    assert_eq!(read(&f).unwrap().drops.len(), 2, "an id has a bound");
+}

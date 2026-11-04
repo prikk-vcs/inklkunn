@@ -83,6 +83,8 @@ pub enum Item {
         claim: ClaimId,
         /// What kind of statement.
         kind: StatementKind,
+        /// Its community status as the file has it (only a curation proposal may set one).
+        standing: Standing,
         /// Where it is said.
         said: Vec<Expression>,
         /// What it cites.
@@ -103,6 +105,8 @@ pub enum Item {
         kind: SourceKind,
         /// Its title as written, if it has one.
         title: Option<String>,
+        /// The file says someone checked it (a review date or an availability): only a curation proposal may.
+        checked: bool,
     },
     /// A source that exists is changed.
     SourceChanged {
@@ -267,6 +271,7 @@ pub fn summarize(
             (None, File::Claim(c)) => out.push(Item::ClaimMade {
                 claim: c.id.clone(),
                 kind: c.kind,
+                standing: c.community_status.status,
                 said: c.expressions.clone(),
                 cites: c.sources.iter().map(cite_of).collect(),
             }),
@@ -283,6 +288,7 @@ pub fn summarize(
                 source: s.id.clone(),
                 kind: s.kind,
                 title: s.identity.title.clone(),
+                checked: s.last_reviewed.is_some() || s.availability != Availability::Unknown,
             }),
             (Some(File::Source(b)), File::Source(a)) => {
                 let changes = source_changes(&b, &a);
@@ -298,4 +304,19 @@ pub fn summarize(
         }
     }
     out
+}
+
+/// Does any item set what only a curation proposal sets: a community status, a review date, an availability?
+pub fn sets_curated(items: &[Item]) -> bool {
+    items.iter().any(|item| match item {
+        Item::ClaimMade { standing, .. } => *standing != Standing::Unknown,
+        Item::ClaimChanged { changes, .. } => changes
+            .iter()
+            .any(|c| matches!(c, ClaimChange::Standing { .. })),
+        Item::SourceRecorded { checked, .. } => *checked,
+        Item::SourceChanged { changes, .. } => changes
+            .iter()
+            .any(|c| matches!(c, SourceChange::Reviewed(_) | SourceChange::Availability(_))),
+        Item::Removed { .. } | Item::Unreadable { .. } => false,
+    })
 }

@@ -55,3 +55,19 @@ fn an_excerpt_is_one_line_and_cut() {
     assert!(e.ends_with('…'));
     assert_eq!(excerpt("short\nline"), "short");
 }
+
+#[test]
+fn a_part_begins_with_its_words_and_never_with_its_marker_and_only_a_paragraph_is_one() {
+    let text = "Said. ^k1\n\n# Head ^h\n\nTwo lines\nof words ^k2\n\n^k3\n\n- a list ^k4\n";
+    let found = parts(text);
+    let begins: Vec<&str> = found.iter().map(|f| f.excerpt.as_str()).collect();
+    assert_eq!(
+        begins,
+        ["Said.", "# Head ^h", "Two lines", "^k3", "- a list ^k4"]
+    );
+    let paragraphs: Vec<bool> = found.iter().map(|f| f.paragraph).collect();
+    assert_eq!(paragraphs, [true, false, true, true, false]);
+    // A section, and the whole page, are no paragraph.
+    assert!(sections("# One\n\nText.\n").iter().all(|f| !f.paragraph));
+    assert!(!find(text, Selection::Whole).unwrap().paragraph);
+}

@@ -12,6 +12,7 @@
 //! the cookie the language page sets.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+mod claim_forms_states;
 #[path = "../common/mod.rs"]
 mod common;
 mod dom;
@@ -193,7 +194,8 @@ const EXPECTED_PAGES: usize = VISITS.len()
     + wiki_states::SCENARIOS.len()
     + past_states::SCENARIOS.len()
     + knowledge_states::SCENARIOS.len()
-    + proposal_states::count();
+    + proposal_states::count()
+    + claim_forms_states::count();
 
 async fn build_states(extra: &[(&str, &str)]) -> Out {
     let router = router();
@@ -244,6 +246,8 @@ async fn build_states(extra: &[(&str, &str)]) -> Out {
     }
     wiki_states::build(extra, &mut out).await;
     proposal_states::build(extra, &mut out).await;
+    knowledge_states::build(extra, &mut out).await;
+    claim_forms_states::build(extra, &mut out).await;
     out
 }
 

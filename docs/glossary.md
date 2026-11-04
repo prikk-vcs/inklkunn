@@ -80,6 +80,9 @@ T6, RFC 004) take the word from here and do not choose their own.
 | A statement a paragraph makes that someone has attached sources to or disagreed with | claim | 主張 | yes | RFC 005: only a paragraph someone made a claim has one; the page never says whether a claim is true or false, and a claim has no score | Drafted |
 | Where a claim came from, as a person recorded how it bears on the claim | source | 出典 | yes | A source supports or challenges a claim and says how directly; the page never ranks sources | Drafted |
 | A paragraph's own mark (`^id`) that names it through every rewording | anchor | アンカー | yes | RFC 005: a chain of changes followed through an anchor is exact; a paragraph without one is traced by matching its text, and the page says so | Drafted · ja: loanword |
+| A paragraph that others can ask about: what it rests on and whether people disagree (RFC 005) | claim | 主張 | yes | Made where someone attaches a source to a paragraph; most text is never a claim. Never a verdict: the word says a statement is recorded, not that it is true | Drafted · ja: hard term |
+| What a claim rests on, or is challenged by: a book, an article, a record, a person's account | source | 出典 | yes | Shared by any number of claims; each claim says how directly a source speaks to it, never how good the source is | Drafted · ja: hard term |
+| A proposal that changes claims and sources and no page: where a community status, a review date and an availability are set | curation proposal | キュレーション提案 | yes | The only way a community status changes (RFC 005 part 2 D-3): never by a count, a tally or a timer | Drafted · ja: loanword |
 
 ## 2. Messages
 
@@ -1034,6 +1037,135 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `why.review_more` | after the review, when it is longer than one page of this kind shows | "{count} more item of the review is on the proposal's page." / "{count} more items of the review are on the proposal's page." | "レビューのうちさらに {count} 件は提案のページにあります。" |
 | `why.sources_heading` | a change in that list: the heading of the sources the proposer gave | "Sources given with the proposal" | "提案に添えられた出典" |
 | `why.sources_none` | under it when there is none | "No source was given with the proposal." | "提案に出典は添えられていません。" |
+| `parts.attach` | the link after a paragraph in the list of parts: the form that attaches a source to it | "Attach a source" | "出典を付ける" |
+| `parts.challenge` | the link after a paragraph in the list of parts: the form that adds a source that speaks against it | "Challenge this" | "これに異議を示す" |
+| `parts.attach_for` | the name a screen reader says for that link; `{number}` is the number of the part | "Attach a source to part {number}" | "部分 {number} に出典を付ける" |
+| `parts.challenge_for` | the name a screen reader says for that link; `{number}` is the number of the part | "Challenge this: part {number}" | "これに異議を示す: 部分 {number}" |
+| `title.attach` | the title of the form that attaches a source to a paragraph | "Attach a source to {page} · {wiki} · {product}" | "{page} に出典を付ける · {wiki} · {product}" |
+| `title.challenge` | the title of the form that adds a source that speaks against a paragraph | "Challenge a part of {page} · {wiki} · {product}" | "{page} の一部に異議を示す · {wiki} · {product}" |
+| `attach.heading_supports` | the heading of the form that attaches a source | "Attach a source to {page}" | "{page} に出典を付ける" |
+| `attach.heading_challenges` | the heading of the form that adds a source that speaks against a paragraph | "Challenge a part of {page}" | "{page} の一部に異議を示す" |
+| `attach.intro_supports` | under the heading of the form that attaches a source | "A source is what a statement rests on: a book, an article, a record, a person's account. Attaching one records this paragraph as a claim, so that others can see what it rests on. You can also change the words of the paragraph; the change and the source go in one proposal." | "出典とは、ある記述のよりどころとなるものです。本、記事、記録、人の証言などがあります。出典を付けると、この段落が主張として記録され、何をよりどころにしているかを他の人が見られるようになります。段落の文章も変更できます。変更と出典は一つの提案になります。" |
+| `attach.intro_challenges` | under the heading of the form that adds a source that speaks against a paragraph | "A challenging source speaks against a statement, or against part of it. Adding one records this paragraph as a claim and shows what is said against it. You can also change the words of the paragraph; the change and the source go in one proposal." | "異議を示す出典は、ある記述、またはその一部に反することを述べています。追加すると、この段落が主張として記録され、何がそれに反して述べられているかが示されます。段落の文章も変更できます。変更と出典は一つの提案になります。" |
+| `attach.claim_exists` | in that form, when the paragraph is a claim already | "This paragraph is a claim already. The source is added to it." | "この段落はすでに主張として記録されています。出典はその主張に追加されます。" |
+| `attach.legend` | the legend of the group of fields that describe the source | "The source" | "出典" |
+| `attach.label_kind` | the label of the choice of what kind of source it is | "What kind of source it is" | "出典の種類" |
+| `attach.kind_primary` | a kind of source in that choice | "A first-hand source" | "一次資料" |
+| `attach.kind_secondary` | a kind of source in that choice | "A source about first-hand sources" | "一次資料について述べた資料" |
+| `attach.kind_observational` | a kind of source in that choice | "A record of an observation" | "観察の記録" |
+| `attach.kind_computational` | a kind of source in that choice | "The result of a computation" | "計算の結果" |
+| `attach.kind_anecdotal` | a kind of source in that choice | "A person's account of what they saw or heard" | "見聞きしたことについての本人の話" |
+| `attach.kind_other` | a kind of source in that choice | "Another kind" | "その他" |
+| `attach.label_title` | the label of the source's title | "Title" | "タイトル" |
+| `attach.label_author` | the label of the source's author or publisher | "Author or publisher" | "著者または発行者" |
+| `attach.label_date` | the label of the source's date | "Date, as written" | "日付（書かれているとおり）" |
+| `attach.hint_date` | under that field | "A year, a season or a day, as the source gives it." | "出典に書かれているとおりに、年、季節、日などを書いてください。" |
+| `attach.label_ref_form` | the label of the choice of how the source is referred to | "How you refer to it" | "参照の方法" |
+| `attach.ref_url` | a way to refer to a source in that choice | "A web address" | "ウェブのアドレス" |
+| `attach.ref_doi` | a way to refer to a source in that choice | "A DOI" | "DOI" |
+| `attach.ref_isbn` | a way to refer to a source in that choice | "An ISBN" | "ISBN" |
+| `attach.ref_page` | a way to refer to a source in that choice | "A page in this wiki" | "このウィキのページ" |
+| `attach.ref_citation` | a way to refer to a source in that choice | "A citation in words" | "文章で書いた引用情報" |
+| `attach.label_ref` | the label of the reference itself | "The reference" | "参照先" |
+| `attach.hint_ref` | under that field | "Leave it empty if the title says enough. A web address starts with https or http and has no spaces in it." | "タイトルだけで足りるときは空のままで構いません。ウェブのアドレスは https または http で始め、空白を含めないでください。" |
+| `attach.label_bearing` | the label of the choice of how directly the source speaks to the paragraph | "How directly the source speaks to this paragraph" | "出典がこの段落にどの程度直接ふれているか" |
+| `attach.bearing_direct` | a choice in that list | "It speaks to the whole of it" | "段落全体にふれている" |
+| `attach.bearing_partial` | a choice in that list | "It speaks to part of it" | "段落の一部にふれている" |
+| `attach.bearing_indirect` | a choice in that list | "It speaks to it only by implication" | "言外の含みとしてふれている" |
+| `attach.label_note` | the label of the note on the source | "A note (optional)" | "メモ（任意）" |
+| `attach.hint_note` | under that field | "Where to look in the source, or what it says." | "出典のどこを見ればよいか、または何が書かれているか。" |
+| `attach.label_claim_kind` | the label of the choice of what kind of statement the paragraph is | "What kind of statement this paragraph is" | "この段落はどんな種類の記述か" |
+| `attach.claim_kind_hint` | under that choice | "Say what you can. “Not said” is fine." | "わかる範囲で選んでください。「未記入」でも構いません。" |
+| `attach.claim_kind_observation` | a kind of statement in that choice | "An observation" | "観察" |
+| `attach.claim_kind_interpretation` | a kind of statement in that choice | "An interpretation" | "解釈" |
+| `attach.claim_kind_hypothesis` | a kind of statement in that choice | "A hypothesis" | "仮説" |
+| `attach.claim_kind_opinion` | a kind of statement in that choice | "An opinion" | "意見" |
+| `attach.claim_kind_decision` | a kind of statement in that choice | "A decision" | "決定" |
+| `attach.claim_kind_policy` | a kind of statement in that choice | "A policy" | "方針" |
+| `attach.claim_kind_question` | a kind of statement in that choice | "A question" | "問い" |
+| `attach.claim_kind_unknown` | a kind of statement in that choice | "Not said" | "未記入" |
+| `attach.no_paragraph` | a problem: the part that was edited has no paragraph to attach a source to | "The part you edited has no paragraph a source can be attached to." | "編集した部分には、出典を付けられる段落がありません。" |
+| `attach.page_unreadable` | a problem: the information at the top of the page cannot be read | "The information at the top of this page cannot be read, so the page cannot be given the identifier a claim needs." | "このページの先頭の情報を読み取れないため、主張に必要な識別子をページに付けられません。" |
+| `attach.several_claims` | a problem: more than one claim is recorded for the paragraph | "More than one claim is recorded for this paragraph, and this form cannot tell which the source is for." | "この段落には複数の主張が記録されており、このフォームでは出典がどれのためのものかを判断できません。" |
+| `attach.full` | a problem: the claim has as many sources as a claim may have | "This claim already has as many sources as one claim may have." | "この主張には、一つの主張が持てる数の出典がすでにあります。" |
+| `attach.says_nothing` | a problem: the source has neither a title nor a reference | "A source needs a title or a reference." | "出典にはタイトルか参照先が必要です。" |
+| `attach.too_long` | a problem: a text of the source is too long; `{limit}` is the most characters | "A text in the source is longer than {limit} characters." | "出典の文章が {limit} 文字を超えています。" |
+| `attach.control` | a problem: a text of the source holds a character that cannot be kept | "A text in the source holds a character that cannot be kept, such as a line break." | "出典の文章に、改行など、保存できない文字が含まれています。" |
+| `attach.not_web` | a problem: a web address is not one | "A web address has to start with https or http and have no spaces in it." | "ウェブのアドレスは https または http で始め、空白を含めないでください。" |
+| `attach.unwritable` | a problem: what was made could not be read back | "The source could not be written down. Nothing was changed; try again." | "出典を書き込めませんでした。何も変更されていません。もう一度お試しください。" |
+| `curate.not_a_day` | a problem: a date is not written as a day | "A date has to be written year, month, day, like 2026-11-04." | "日付は 2026-11-04 のように、年、月、日の順に書いてください。" |
+| `curate.unknown_source` | a problem: the claim does not cite a source that the form names | "The claim does not cite one of the sources in the form. Open the form again." | "この主張は、フォームにある出典の一つを引用していません。フォームを開き直してください。" |
+| `curate.no_wording` | a problem: the claim is said nowhere now | "The claim is not said in any paragraph now, so there is no wording to judge a source or a status on." | "この主張はいま、どの段落にも書かれていないため、出典や状態を判断する文章がありません。" |
+| `propose.claim_held_one` | above the text of a paragraph that has sources attached | "Others rely on this paragraph: sources are attached to it. Its marker is kept for you, so just edit the words." | "この段落は他の人が頼りにしています。出典が付いています。目印はこちらで保っておくので、文章だけを編集してください。" |
+| `propose.claim_held_many` | above a text that holds paragraphs that have sources attached | "Some paragraphs here have sources attached, and others rely on them. Their markers are kept for you as long as you leave their words as they are. To reword one of them, change that part on its own." | "ここには出典が付いていて、他の人が頼りにしている段落があります。その段落の文章をそのままにしている間は、目印はこちらで保っておきます。その段落の文章を変えるときは、その部分だけを単独で変更してください。" |
+| `propose.claim_lost` | a problem: the text leaves out a paragraph that has sources attached; `{excerpt}` is how it begins | "The paragraph that begins “{excerpt}” has sources attached, and this change leaves it out. To reword it, change that part on its own. To remove it, tick the box below." | "「{excerpt}」で始まる段落には出典が付いていますが、この変更ではその段落がなくなります。文章を変えたいときは、その部分だけを単独で変更してください。削除するときは、下の欄にチェックを入れてください。" |
+| `propose.claim_drop_legend` | the legend of the box that confirms the removal of a paragraph that has sources attached | "Paragraphs you are removing" | "削除する段落" |
+| `propose.claim_drop` | the box that confirms that removal; `{excerpt}` is how the paragraph begins | "Remove “{excerpt}”. It stops being where its claim is said, and the reviewer will see that." | "「{excerpt}」を削除する。この段落は主張が書かれている場所ではなくなり、レビュアーにもそのことが示されます。" |
+| `know.heading` | the heading of the list of what a proposal does to claims and sources | "Claims and sources in this proposal" | "この提案での主張と出典" |
+| `know.claim_made` | a line of that list: a claim is recorded; `{kind}` is what kind of statement, `{count}` in how many places it is said | "Records a claim ({kind}), said in {count} place." / "Records a claim ({kind}), said in {count} places." | "主張を記録します（{kind}）。{count} か所に書かれています。" |
+| `know.cite` | under that line, and for a claim's sources | "Cites a source: it {relation} the claim {bearing}." | "出典を引用します: {relation}（{bearing}）。" |
+| `know.source_recorded` | a line of that list: a source is recorded; `{kind}` is what kind, `{title}` how it is titled | "Records a source ({kind}): {title}" | "出典を記録します（{kind}）: {title}" |
+| `know.source_recorded_untitled` | a line of that list: a source without a title is recorded | "Records a source ({kind})." | "出典を記録します（{kind}）。" |
+| `know.claim_changed` | a line of that list: a claim that exists is changed, the changes follow | "Changes a claim:" | "既存の主張を変更します:" |
+| `know.source_changed` | a line of that list: a source that exists is changed, the changes follow | "Changes a source:" | "既存の出典を変更します:" |
+| `know.removed_claim` | a line of that list | "Removes a claim." | "主張を削除します。" |
+| `know.removed_source` | a line of that list | "Removes a source." | "出典を削除します。" |
+| `know.unreadable` | a line of that list: a file is not in the form the wiki reads; `{reason}` says which rule | "A file in this proposal is not in the form the wiki reads. {reason}" | "この提案のファイルは、ウィキが読める形になっていません。{reason}" |
+| `know.change_kind` | under a changed claim | "The kind of statement becomes {kind}." | "記述の種類が {kind} になります。" |
+| `know.change_lifecycle` | under a changed claim | "Where it stands in its life becomes: {lifecycle}." | "主張の扱いの段階が「{lifecycle}」になります。" |
+| `know.change_standing` | under a changed claim: its community status changes | "Its community status changes from {from} to {to}." | "コミュニティでの扱いが「{from}」から「{to}」に変わります。" |
+| `know.change_said` | under a changed claim | "It is said in one more paragraph." | "もう一つの段落にも書かれることになります。" |
+| `know.change_unsaid` | under a changed claim: a paragraph stops being where it is said | "It is no longer said in a paragraph: the paragraph is removed, or the claim lets it go." | "ある段落には書かれなくなります。段落が削除されるか、主張がその段落から外れます。" |
+| `know.change_related` | under a changed claim; `{relation}` says how it relates to another claim | "A relation to another claim is added: {relation}." | "別の主張との関係が加わります: {relation}。" |
+| `know.change_unrelated` | under a changed claim | "A relation to another claim is removed: {relation}." | "別の主張との関係がなくなります: {relation}。" |
+| `know.change_uncited` | under a changed claim | "It no longer cites a source." | "出典を一つ引用しなくなります。" |
+| `know.change_recited` | under a changed claim: how a source it cites speaks to it changes | "A source it cites now {relation} it {bearing}." | "引用している出典と主張の関係が変わります: {relation}（{bearing}）。" |
+| `know.change_noted` | under a changed claim | "The note on a source it cites changes." | "引用している出典のメモが変わります。" |
+| `know.source_change_kind` | under a changed source | "Its kind becomes {kind}." | "種類が {kind} になります。" |
+| `know.source_change_identity` | under a changed source | "Who or what it is, as written, changes." | "書かれている出典の名前や著者などが変わります。" |
+| `know.source_change_reference` | under a changed source | "Where it is found changes." | "参照先が変わります。" |
+| `know.source_change_snapshot` | under a changed source | "The copy kept of it changes." | "保存されている写しが変わります。" |
+| `know.source_change_reviewed` | under a changed source; `{day}` is the day | "Last checked on {day}." | "最後に確認した日が {day} になります。" |
+| `know.source_change_unreviewed` | under a changed source | "It is no longer marked as checked." | "確認済みの印がなくなります。" |
+| `know.source_change_availability` | under a changed source | "Whether it can be had becomes: {availability}." | "入手できるかどうかが「{availability}」になります。" |
+| `know.source_change_superseded` | under a changed source | "It is now replaced by another source." | "別の出典に置き換えられます。" |
+| `know.is_curation` | on a proposal that changes claims and sources and no page | "This is a curation proposal: it changes claims and sources and no page." | "これはキュレーション提案です。主張と出典を変更し、ページは変更しません。" |
+| `know.not_curation` | on a proposal that sets what only a curation proposal may set | "This proposal sets a community status, a review date or an availability, which only a curation proposal may set. It cannot be accepted as it is." | "この提案はコミュニティでの扱い、確認日、入手できるかどうかを設定していますが、これらを設定できるのはキュレーション提案だけです。このままでは受け入れられません。" |
+| `know.kind_observation` | a kind of statement, inside a sentence | "an observation" | "観察" |
+| `know.kind_interpretation` | a kind of statement, inside a sentence | "an interpretation" | "解釈" |
+| `know.kind_hypothesis` | a kind of statement, inside a sentence | "a hypothesis" | "仮説" |
+| `know.kind_opinion` | a kind of statement, inside a sentence | "an opinion" | "意見" |
+| `know.kind_decision` | a kind of statement, inside a sentence | "a decision" | "決定" |
+| `know.kind_policy` | a kind of statement, inside a sentence | "a policy" | "方針" |
+| `know.kind_question` | a kind of statement, inside a sentence | "a question" | "問い" |
+| `know.kind_unknown` | a kind of statement, inside a sentence | "kind not said" | "種類は未記入" |
+| `know.source_primary` | a kind of source, inside a sentence | "first-hand" | "一次資料" |
+| `know.source_secondary` | a kind of source, inside a sentence | "about first-hand sources" | "一次資料について述べた資料" |
+| `know.source_observational` | a kind of source, inside a sentence | "a record of an observation" | "観察の記録" |
+| `know.source_computational` | a kind of source, inside a sentence | "the result of a computation" | "計算の結果" |
+| `know.source_anecdotal` | a kind of source, inside a sentence | "a person's account" | "本人の話" |
+| `know.source_other` | a kind of source, inside a sentence | "of another kind" | "その他の種類" |
+| `know.supports` | how a source relates to a claim, inside a sentence | "supports" | "支持する" |
+| `know.challenges` | how a source relates to a claim, inside a sentence | "challenges" | "異議を示す" |
+| `know.directly` | how directly a source speaks to a claim, inside a sentence | "directly" | "直接" |
+| `know.in_part` | how directly a source speaks to a claim, inside a sentence | "in part" | "部分的に" |
+| `know.by_implication` | how directly a source speaks to a claim, inside a sentence | "by implication" | "間接的に" |
+| `know.life_proposed` | where a claim stands in its life, inside a sentence | "put forward" | "提示された" |
+| `know.life_adopted` | where a claim stands in its life, inside a sentence | "taken up" | "取り上げられた" |
+| `know.life_retired` | where a claim stands in its life, inside a sentence | "retired" | "役目を終えた" |
+| `know.life_unknown` | where a claim stands in its life, inside a sentence | "not said" | "未記入" |
+| `know.standing_accepted` | a claim's community status, inside a sentence | "accepted" | "受け入れられている" |
+| `know.standing_contested` | a claim's community status, inside a sentence | "contested" | "争われている" |
+| `know.standing_unresolved` | a claim's community status, inside a sentence | "unresolved" | "決着していない" |
+| `know.standing_unknown` | a claim's community status, inside a sentence | "not decided" | "未決定" |
+| `know.available` | whether a source can be had, inside a sentence | "it can be had" | "入手できる" |
+| `know.unavailable` | whether a source can be had, inside a sentence | "it cannot be had" | "入手できない" |
+| `know.availability_unknown` | whether a source can be had, inside a sentence | "not known" | "不明" |
+| `know.rel_refines` | how a claim relates to another, inside a sentence | "refines" | "より詳しく述べている" |
+| `know.rel_supersedes` | how a claim relates to another, inside a sentence | "replaces" | "置き換える" |
+| `know.rel_contradicts` | how a claim relates to another, inside a sentence | "is at odds with" | "食い違っている" |
+| `know.rel_split_from` | how a claim relates to another, inside a sentence | "came out of" | "から分かれた" |
+| `know.rel_merged_into` | how a claim relates to another, inside a sentence | "was joined into" | "に統合された" |
 
 ## 3. Words the interface does not say
 

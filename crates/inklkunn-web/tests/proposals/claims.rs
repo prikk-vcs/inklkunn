@@ -1,0 +1,836 @@
+//! Making claims and attaching sources in the proposal form (RFC 005 part 2 D-3; part 1 D-1 b): the part menu, the
+//! form that attaches or challenges, the paragraph's marker the form holds, the removal of a paragraph that others
+//! rely on as an act the person confirms, and what the proposal's page says of the claims and sources it records.
+//! The repository is an in-memory double, so these run in both test runs.
+
+use axum::http::StatusCode;
+use inklkunn_core::knowledge::{
+    Bearing, Claim, ClaimId, Expression, File, Lifecycle, Link, Source, SourceId, SourceLink,
+    StatementKind, block_digest, claim_path, read_file, source_path,
+};
+use inklkunn_core::{IdentityAuthority, Principal};
+use inklkunn_store::{AccountId, ProposalId, Role};
+
+use crate::common::{
+    Answer, World, add_person, block_id, get_as, person, post_form, state_id, with_accounts,
+};
+
+const BRIDGE: &str = "---\ntitle: Bridge\nid: bridge-page\n---\n\nIt opened in 1950. ^k1\n\nIt is long.\n\n# Notes\n\nA note.\n";
+const PLAIN: &str = "---\ntitle: Plain\n---\n\nNo identifier here.\n";
+
+struct Scene {
+    w: World,
+    writer: AccountId,
+    observer: AccountId,
+    claim: Claim,
+}
+
+fn claim_id() -> ClaimId {
+    ClaimId::parse("01930000-0000-7000-8000-000000000001").expect("a claim id")
+}
+
+fn source_id() -> SourceId {
+    SourceId::parse("01931111-0000-7000-8000-000000000001").expect("a source id")
+}
+
+/// A wiki with a page that holds a claim, its source, a page with no identifier, and two people.
+fn scene() -> Scene {
+    let mut claim = Claim::new(claim_id());
+    claim.kind = StatementKind::Observation;
+    claim.lifecycle = Lifecycle::Proposed;
+    claim.expressions = vec![Expression::new("bridge-page", "k1").expect("an expression")];
+    let blocks = inklkunn_markup::blocks("It opened in 1950. ^k1");
+    claim.sources = vec![SourceLink {
+        source: source_id(),
+        relation: Link::Supports,
+        bearing: Bearing::Direct,
+        note: None,
+        judged_on: block_digest(blocks.first().expect("a block")),
+    }];
+    let mut source = Source::new(source_id());
+    source.identity.title = Some("A history of the bridge".to_owned());
+    let (claim_file, source_file) = (claim_path(&claim.id), source_path(&source.id));
+    let w = with_accounts(World::new(
+        "handbook",
+        "The Handbook",
+        &[
+            ("pages/Bridge.md", BRIDGE),
+            ("pages/Plain.md", PLAIN),
+            (claim_file.as_str(), &claim.to_yaml()),
+            (source_file.as_str(), &source.to_yaml()),
+        ],
+    ));
+    let (writer, observer) = (person(1), person(6));
+    add_person(&w, &writer, "Aiko Tanaka", Some(Role::Contributor));
+    add_person(&w, &observer, "Olu Reader", Some(Role::Observer));
+    Scene {
+        w,
+        writer,
+        observer,
+        claim,
+    }
+}
+
+fn principal(id: &AccountId) -> Principal {
+    Principal::session(&IdentityAuthority::for_tests(), id.clone())
+}
+
+async fn open(s: &Scene, uri: &str, account: &AccountId) -> Answer {
+    get_as(&s.w, uri, Some(account)).await
+}
+
+async fn send(s: &Scene, uri: &str, account: &AccountId, fields: &[(&str, String)]) -> Answer {
+    let borrowed: Vec<(&str, &str)> = fields.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    post_form(&s.w, uri, Some(account), &borrowed).await
+}
+
+/// The fields of the form for the `ordinal`-th part of a page, with `text`.
+fn part(
+    path: &str,
+    title: &str,
+    ordinal: usize,
+    text: &str,
+    op: &str,
+) -> Vec<(&'static str, String)> {
+    vec![
+        ("op", op.to_owned()),
+        ("pages", "1".to_owned()),
+        ("renames", "0".to_owned()),
+        ("part", "block".to_owned()),
+        ("ordinal", ordinal.to_string()),
+        ("base_state", state_id(1)),
+        ("base_block", block_id(1)),
+        ("p0_path", path.to_owned()),
+        ("p0_title", title.to_owned()),
+        ("p0_text", text.to_owned()),
+        ("summary", "A source for the bridge".to_owned()),
+        ("sources", String::new()),
+    ]
+}
+
+/// The fields a source form sends.
+fn source_fields(relation: &str, title: &str) -> Vec<(&'static str, String)> {
+    vec![
+        ("attach", relation.to_owned()),
+        ("a_kind", "anecdotal".to_owned()),
+        ("a_title", title.to_owned()),
+        ("a_author", String::new()),
+        ("a_date", "1962".to_owned()),
+        ("a_ref_form", "url".to_owned()),
+        ("a_ref", "https://example.org/history".to_owned()),
+        ("a_bearing", "partial".to_owned()),
+        ("a_note", "page 4".to_owned()),
+        ("a_claim_kind", "opinion".to_owned()),
+    ]
+}
+
+/// `fields` with these replaced or added.
+fn with(
+    mut fields: Vec<(&'static str, String)>,
+    more: Vec<(&'static str, String)>,
+) -> Vec<(&'static str, String)> {
+    for (k, v) in more {
+        fields.retain(|(name, _)| *name != k);
+        fields.push((k, v));
+    }
+    fields
+}
+
+const NEW: &str = "/handbook/-/proposals/new";
+
+/// The address a redirect leads to.
+fn location(a: &Answer) -> String {
+    assert_eq!(a.status, StatusCode::SEE_OTHER, "{}", a.body());
+    a.header("location").expect("a location").to_owned()
+}
+
+type Files = Vec<(String, Option<String>)>;
+
+/// The files of the latest revision (or the draft) of the proposal an address names.
+fn files_of(s: &Scene, address: &str) -> Files {
+    let raw = address
+        .rsplit('/')
+        .next()
+        .and_then(|last| last.split('?').next())
+        .expect("an id");
+    let id = ProposalId::parse(raw).unwrap_or_else(|| {
+        // `…/proposals/<id>/edit?saved=1`
+        let parts: Vec<&str> = address.split('/').collect();
+        let at = parts
+            .iter()
+            .position(|p| *p == "proposals")
+            .expect("proposals");
+        ProposalId::parse(parts.get(at + 1).expect("an id")).expect("a proposal id")
+    });
+    let who = principal(&s.writer);
+    let service = &s.w.services.proposals;
+    let revisions = service.revisions(&who, &s.w.wiki, &id).expect("revisions");
+    let content = match revisions.last() {
+        Some(latest) => latest.content.clone(),
+        None => service.draft(&who, &s.w.wiki, &id).expect("a draft"),
+    };
+    content
+        .files
+        .into_iter()
+        .map(|f| (f.path, f.text))
+        .collect()
+}
+
+fn file<'a>(files: &'a Files, path: &str) -> &'a str {
+    files
+        .iter()
+        .find(|(p, _)| p == path)
+        .and_then(|(_, t)| t.as_deref())
+        .unwrap_or_else(|| panic!("no file {path} in {files:?}"))
+}
+
+fn claims_in(files: &Files) -> Vec<Claim> {
+    files
+        .iter()
+        .filter_map(|(p, t)| match read_file(p, t.as_deref()?.as_bytes()) {
+            Ok(File::Claim(c)) => Some(*c),
+            _ => None,
+        })
+        .collect()
+}
+
+fn sources_in(files: &Files) -> Vec<Source> {
+    files
+        .iter()
+        .filter_map(|(p, t)| match read_file(p, t.as_deref()?.as_bytes()) {
+            Ok(File::Source(s)) => Some(*s),
+            _ => None,
+        })
+        .collect()
+}
+
+fn paths(files: &Files) -> Vec<&str> {
+    files.iter().map(|(p, _)| p.as_str()).collect()
+}
+
+// ---------------------------------------------------------------------------------------------- the part menu
+
+#[tokio::test]
+async fn the_part_menu_offers_a_source_for_each_paragraph_and_for_nothing_else() {
+    let s = scene();
+    let a = open(
+        &s,
+        "/handbook/-/proposals/new?page=Bridge&parts=1",
+        &s.writer,
+    )
+    .await;
+    assert_eq!(a.status, StatusCode::OK);
+    let body = a.body();
+    // Three paragraphs; the heading has none.
+    assert_eq!(body.matches(">Attach a source</a>").count(), 3, "{body}");
+    assert_eq!(body.matches(">Challenge this</a>").count(), 3, "{body}");
+    assert!(
+        body.contains("aria-label=\"Attach a source to part 2\""),
+        "{body}"
+    );
+    assert!(
+        body.contains("aria-label=\"Challenge this: part 2\""),
+        "{body}"
+    );
+    assert!(
+        body.contains("attach=supports") && body.contains("attach=challenges"),
+        "{body}"
+    );
+    let heading = body
+        .lines()
+        .find(|l| l.contains("Part 3: # Notes"))
+        .expect("the heading's line");
+    assert!(!heading.contains("Attach a source"), "{heading}");
+}
+
+#[tokio::test]
+async fn the_form_that_attaches_a_source_asks_for_the_source_and_nothing_about_identity() {
+    let s = scene();
+    let uri = "/handbook/-/proposals/new?page=Bridge&part=block&ordinal=1&attach=supports";
+    let a = open(&s, uri, &s.writer).await;
+    assert_eq!(a.status, StatusCode::OK);
+    let body = a.body();
+    assert!(
+        body.contains("<h1>Attach a source to Bridge</h1>"),
+        "{body}"
+    );
+    assert!(body.contains("A source is what a statement rests on"));
+    for name in [
+        "attach",
+        "a_kind",
+        "a_title",
+        "a_author",
+        "a_date",
+        "a_ref_form",
+        "a_ref",
+        "a_bearing",
+        "a_note",
+        "a_claim_kind",
+    ] {
+        assert!(body.contains(&format!("name=\"{name}\"")), "{name}: {body}");
+    }
+    assert!(
+        body.contains("<input type=\"hidden\" name=\"attach\" value=\"supports\">"),
+        "{body}"
+    );
+    // The paragraph is in the text box, as it is; the form needs no script.
+    assert!(body.contains("It is long."), "{body}");
+    assert!(!body.contains("<script"));
+    // The choices are in words, and none of them ranks.
+    for word in [
+        "A first-hand source",
+        "It speaks to the whole of it",
+        "It speaks to it only by implication",
+        "An observation",
+    ] {
+        assert!(body.contains(word), "{word}: {body}");
+    }
+    for ranked in ["reliable", "credible", "authoritative", "weak", "strong"] {
+        assert!(!body.to_lowercase().contains(ranked), "{ranked}");
+    }
+    // The other way in.
+    let challenge = "/handbook/-/proposals/new?page=Bridge&part=block&ordinal=1&attach=challenges";
+    let body = open(&s, challenge, &s.writer).await.body();
+    assert!(
+        body.contains("<h1>Challenge a part of Bridge</h1>"),
+        "{body}"
+    );
+    assert!(body.contains("A challenging source speaks against"));
+}
+
+#[tokio::test]
+async fn a_source_form_is_refused_for_what_is_not_a_paragraph_or_not_one_part() {
+    let s = scene();
+    for uri in [
+        // The heading (a part that is no paragraph).
+        "/handbook/-/proposals/new?page=Bridge&part=block&ordinal=2&attach=supports",
+        // The whole page, a section.
+        "/handbook/-/proposals/new?page=Bridge&attach=supports",
+        "/handbook/-/proposals/new?page=Bridge&part=section&ordinal=0&attach=supports",
+        // A word the form does not have.
+        "/handbook/-/proposals/new?page=Bridge&part=block&ordinal=1&attach=proves",
+    ] {
+        let a = open(&s, uri, &s.writer).await;
+        let to = location(&a);
+        assert!(to.contains("parts=1"), "{uri}: {to}");
+    }
+}
+
+#[tokio::test]
+async fn someone_who_may_not_propose_is_not_given_the_form() {
+    let s = scene();
+    let uri = "/handbook/-/proposals/new?page=Bridge&part=block&ordinal=1&attach=supports";
+    let a = open(&s, uri, &s.observer).await;
+    assert_eq!(a.status, StatusCode::FORBIDDEN);
+    assert!(!a.body().contains("name=\"a_title\""));
+    let a = get_as(&s.w, uri, None).await;
+    assert_eq!(a.status, StatusCode::FORBIDDEN);
+    assert!(!a.body().contains("name=\"a_title\""));
+}
+
+// ---------------------------------------------------------------------------------------------- the marker
+
+#[tokio::test]
+async fn the_form_for_a_claim_paragraph_holds_its_marker_and_says_that_others_rely_on_it() {
+    let s = scene();
+    let uri = "/handbook/-/proposals/new?page=Bridge&part=block&ordinal=0";
+    let body = open(&s, uri, &s.writer).await.body();
+    assert!(
+        body.contains("Others rely on this paragraph: sources are attached to it."),
+        "{body}"
+    );
+    assert!(body.contains("It opened in 1950."), "{body}");
+    assert!(
+        !body.contains("^k1"),
+        "the marker is never in the text box: {body}"
+    );
+    // A paragraph that is not a claim shows what it is and says nothing of the kind.
+    let plain = "/handbook/-/proposals/new?page=Bridge&part=block&ordinal=1";
+    let body = open(&s, plain, &s.writer).await.body();
+    assert!(!body.contains("Others rely on"), "{body}");
+}
+
+#[tokio::test]
+async fn rewording_a_claim_paragraph_keeps_its_marker_and_costs_nothing_else() {
+    let s = scene();
+    let fields = part(
+        "pages/Bridge.md",
+        "Bridge",
+        0,
+        "It opened in 1951.",
+        "submit",
+    );
+    let a = send(&s, NEW, &s.writer, &fields).await;
+    let files = files_of(&s, &location(&a));
+    assert_eq!(paths(&files), ["pages/Bridge.md"]);
+    assert_eq!(
+        file(&files, "pages/Bridge.md"),
+        BRIDGE.replace("It opened in 1950. ^k1", "It opened in 1951. ^k1")
+    );
+}
+
+#[tokio::test]
+async fn a_text_nobody_touched_is_the_page_byte_for_byte_and_no_change() {
+    let s = scene();
+    // The part as the form showed it, sent back: the page is unchanged, so there is nothing to propose.
+    let fields = part(
+        "pages/Bridge.md",
+        "Bridge",
+        0,
+        "It opened in 1950.",
+        "submit",
+    );
+    let a = send(&s, NEW, &s.writer, &fields).await;
+    assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        a.body().contains("The text is the same as the page"),
+        "{}",
+        a.body()
+    );
+}
+
+#[tokio::test]
+async fn emptying_a_claim_paragraph_is_an_explicit_act_and_the_claim_loses_the_expression() {
+    let s = scene();
+    let fields = part("pages/Bridge.md", "Bridge", 0, "", "submit");
+    let a = send(&s, NEW, &s.writer, &fields).await;
+    assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let body = a.body();
+    assert!(
+        body.contains("The paragraph that begins “It opened in 1950.” has sources attached"),
+        "{body}"
+    );
+    assert!(body.contains("name=\"drop_k1\""), "{body}");
+    assert!(
+        !body.contains("name=\"drop_k1\" value=\"1\" checked"),
+        "{body}"
+    );
+
+    // Confirmed: the proposal removes the paragraph and says the claim is said there no more.
+    let confirmed = with(fields, vec![("drop_k1", "1".to_owned())]);
+    let a = send(&s, NEW, &s.writer, &confirmed).await;
+    let to = location(&a);
+    let files = files_of(&s, &to);
+    assert_eq!(
+        paths(&files),
+        ["pages/Bridge.md", claim_path(&s.claim.id).as_str(),]
+    );
+    assert!(!file(&files, "pages/Bridge.md").contains("It opened in 1950"));
+    let claims = claims_in(&files);
+    assert!(claims.iter().all(|c| c.expressions.is_empty()));
+    assert_eq!(claims.len(), 1);
+    // The reviewer is shown it.
+    let page = open(&s, &to, &s.writer).await.body();
+    assert!(
+        page.contains("It is no longer said in a paragraph"),
+        "{page}"
+    );
+}
+
+#[tokio::test]
+async fn a_form_for_several_paragraphs_keeps_the_markers_it_held_and_refuses_to_reword_a_claim_paragraph()
+ {
+    let s = scene();
+    let uri = "/handbook/-/proposals/new?page=Bridge";
+    let body = open(&s, uri, &s.writer).await.body();
+    assert!(
+        body.contains("Some paragraphs here have sources attached"),
+        "{body}"
+    );
+    assert!(!body.contains("^k1"), "{body}");
+    let fields = |text: &str| {
+        vec![
+            ("op", "submit".to_owned()),
+            ("pages", "1".to_owned()),
+            ("renames", "0".to_owned()),
+            ("part", "whole".to_owned()),
+            ("base_state", state_id(1)),
+            ("base_block", block_id(1)),
+            ("p0_path", "pages/Bridge.md".to_owned()),
+            ("p0_title", "Bridge".to_owned()),
+            ("p0_text", text.to_owned()),
+            ("summary", "Edit".to_owned()),
+            ("sources", String::new()),
+        ]
+    };
+    let shown = BRIDGE.replace(" ^k1", "");
+    // Another paragraph changes: the claim paragraph keeps its marker as it was.
+    let edited = shown.replace("It is long.", "It is very long.");
+    let a = send(&s, NEW, &s.writer, &fields(&edited)).await;
+    let files = files_of(&s, &location(&a));
+    assert_eq!(
+        file(&files, "pages/Bridge.md"),
+        BRIDGE.replace("It is long.", "It is very long.")
+    );
+    // The claim paragraph's words change here: the marker is not guessed back.
+    let reworded = shown.replace("in 1950.", "in 1951.");
+    let a = send(&s, NEW, &s.writer, &fields(&reworded)).await;
+    assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let body = a.body();
+    assert!(body.contains("change that part on its own"), "{body}");
+    assert!(body.contains("name=\"drop_k1\""), "{body}");
+}
+
+// ---------------------------------------------------------------------------------------------- attaching
+
+#[tokio::test]
+async fn attaching_a_source_to_a_paragraph_makes_the_claim_and_the_source_in_the_same_proposal() {
+    let s = scene();
+    let fields = with(
+        part("pages/Bridge.md", "Bridge", 1, "It is long.", "submit"),
+        source_fields("supports", "A survey of bridges"),
+    );
+    let a = send(&s, NEW, &s.writer, &fields).await;
+    let to = location(&a);
+    let files = files_of(&s, &to);
+    // The page (marked), the claim and the source: three files in one proposal.
+    assert_eq!(files.len(), 3, "{files:?}");
+    let page = file(&files, "pages/Bridge.md");
+    assert!(page.starts_with("---\ntitle: Bridge\nid: bridge-page\n---\n"));
+    let claims = claims_in(&files);
+    let [claim] = claims.as_slice() else {
+        panic!("{claims:?}")
+    };
+    let [expression] = claim.expressions.as_slice() else {
+        panic!("{claim:?}")
+    };
+    assert_eq!(expression.page_id, "bridge-page");
+    assert!(page.contains(&format!("It is long. ^{}\n", expression.block)));
+    assert_eq!(claim.kind, StatementKind::Opinion);
+    assert_eq!(claim.lifecycle, Lifecycle::Proposed);
+    let [link] = claim.sources.as_slice() else {
+        panic!("{claim:?}")
+    };
+    assert_eq!(
+        (link.relation, link.bearing),
+        (Link::Supports, Bearing::Partial)
+    );
+    assert_eq!(link.note.as_deref(), Some("page 4"));
+    let sources = sources_in(&files);
+    let [source] = sources.as_slice() else {
+        panic!("{sources:?}")
+    };
+    assert_eq!(source.id, link.source);
+    assert_eq!(
+        source.identity.title.as_deref(),
+        Some("A survey of bridges")
+    );
+    // The proposal page tells the reviewer, in words and without a verdict.
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(
+        body.contains("Claims and sources in this proposal"),
+        "{body}"
+    );
+    // One page changes; the claim and the source are not pages and are not drawn as text.
+    assert!(body.contains("It changes 1 page."), "{body}");
+    assert_eq!(body.matches("Page: ").count(), 1, "{body}");
+    assert!(!body.contains("lifecycle: proposed"), "{body}");
+    assert!(
+        body.contains("Records a claim (an opinion), said in 1 place."),
+        "{body}"
+    );
+    assert!(
+        body.contains("Cites a source: it supports the claim in part."),
+        "{body}"
+    );
+    assert!(
+        body.contains("Records a source (a person&#39;s account): A survey of bridges")
+            || body.contains("Records a source (a person's account): A survey of bridges"),
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn challenging_a_paragraph_attaches_a_source_that_challenges() {
+    let s = scene();
+    let fields = with(
+        part("pages/Bridge.md", "Bridge", 1, "It is long.", "submit"),
+        source_fields("challenges", "A correction"),
+    );
+    let to = location(&send(&s, NEW, &s.writer, &fields).await);
+    let files = files_of(&s, &to);
+    let claims = claims_in(&files);
+    let link = claims
+        .first()
+        .and_then(|c| c.sources.first())
+        .expect("a link");
+    assert_eq!(link.relation, Link::Challenges);
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(
+        body.contains("Cites a source: it challenges the claim in part."),
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn a_page_that_has_no_identifier_is_given_one_with_the_claim() {
+    let s = scene();
+    let fields = with(
+        part(
+            "pages/Plain.md",
+            "Plain",
+            0,
+            "No identifier here.",
+            "submit",
+        ),
+        source_fields("supports", "A note"),
+    );
+    let files = files_of(&s, &location(&send(&s, NEW, &s.writer, &fields).await));
+    let page = file(&files, "pages/Plain.md");
+    let id = inklkunn_core::knowledge::compose::page_id_of(page).expect("an identifier");
+    let claims = claims_in(&files);
+    assert_eq!(
+        claims
+            .first()
+            .and_then(|c| c.expressions.first())
+            .map(|e| e.page_id.as_str()),
+        Some(id.as_str())
+    );
+}
+
+#[tokio::test]
+async fn a_source_for_a_paragraph_that_is_a_claim_goes_to_that_claim() {
+    let s = scene();
+    // The part as the form showed it (marker held), with a source; the page does not change.
+    let fields = with(
+        part(
+            "pages/Bridge.md",
+            "Bridge",
+            0,
+            "It opened in 1950.",
+            "submit",
+        ),
+        source_fields("challenges", "Another history"),
+    );
+    // The claim kind is not asked for a claim that exists, and is not sent.
+    let fields: Vec<_> = fields
+        .into_iter()
+        .filter(|(k, _)| *k != "a_claim_kind")
+        .collect();
+    let files = files_of(&s, &location(&send(&s, NEW, &s.writer, &fields).await));
+    assert_eq!(files.len(), 2, "{files:?}");
+    assert!(!paths(&files).contains(&"pages/Bridge.md"));
+    let claims = claims_in(&files);
+    let [claim] = claims.as_slice() else {
+        panic!("{claims:?}")
+    };
+    assert_eq!(claim.id, s.claim.id, "no new claim");
+    assert_eq!(claim.sources.len(), 2);
+    assert_eq!(claim.kind, StatementKind::Observation, "the kind stands");
+    // The form for it asks no kind and says the claim is there.
+    let uri = "/handbook/-/proposals/new?page=Bridge&part=block&ordinal=0&attach=supports";
+    let body = open(&s, uri, &s.writer).await.body();
+    assert!(!body.contains("name=\"a_claim_kind\""), "{body}");
+    assert!(
+        body.contains("This paragraph is a claim already."),
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn what_is_wrong_with_a_source_is_said_on_the_form_with_the_text_still_in_it() {
+    let s = scene();
+    let wrong = |title: &str, extra: Vec<(&'static str, String)>| {
+        with(
+            with(
+                part(
+                    "pages/Bridge.md",
+                    "Bridge",
+                    1,
+                    "It is long, really.",
+                    "submit",
+                ),
+                source_fields("supports", title),
+            ),
+            extra,
+        )
+    };
+    let nothing = wrong("", vec![("a_ref", String::new())]);
+    let a = send(&s, NEW, &s.writer, &nothing).await;
+    assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let body = a.body();
+    assert!(
+        body.contains("A source needs a title or a reference."),
+        "{body}"
+    );
+    assert!(
+        body.contains("It is long, really."),
+        "the person's text stays: {body}"
+    );
+    let web = wrong("T", vec![("a_ref", "javascript:alert(1)".to_owned())]);
+    let body = send(&s, NEW, &s.writer, &web).await.body();
+    assert!(
+        body.contains("A web address has to start with https or http"),
+        "{body}"
+    );
+    // The value the person wrote is printed escaped, never as markup.
+    assert!(!body.contains("value=\"javascript:alert(1)\"<"), "{body}");
+    let long = wrong("T", vec![("a_note", "x".repeat(2_001))]);
+    let body = send(&s, NEW, &s.writer, &long).await.body();
+    assert!(body.contains("longer than 2000 characters"), "{body}");
+    // Nothing was made by any of them.
+    let all =
+        s.w.services
+            .proposals
+            .list(&principal(&s.writer), &s.w.wiki, &Default::default())
+            .expect("a list");
+    assert!(all.is_empty());
+}
+
+#[tokio::test]
+async fn a_source_form_posted_for_more_than_one_paragraph_is_not_one_a_page_offered() {
+    let s = scene();
+    let mut fields = with(
+        part("pages/Bridge.md", "Bridge", 1, "It is long.", "submit"),
+        source_fields("supports", "T"),
+    );
+    fields = with(fields, vec![("part", "whole".to_owned())]);
+    let a = send(&s, NEW, &s.writer, &fields).await;
+    assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let all =
+        s.w.services
+            .proposals
+            .list(&principal(&s.writer), &s.w.wiki, &Default::default())
+            .expect("a list");
+    assert!(all.is_empty());
+}
+
+// ---------------------------------------------------------------------------------------------- drafts and revisions
+
+#[tokio::test]
+async fn a_draft_keeps_the_claim_and_a_revision_carries_it_forward() {
+    let s = scene();
+    let fields = with(
+        part("pages/Bridge.md", "Bridge", 1, "It is long.", "draft"),
+        source_fields("supports", "A survey"),
+    );
+    let to = location(&send(&s, NEW, &s.writer, &fields).await);
+    assert!(to.contains("/edit"), "{to}");
+    let files = files_of(&s, &to);
+    assert_eq!(files.len(), 3);
+    // The form that resumes it lists the claim and the source, and has the page to edit.
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(
+        body.contains("Claims and sources in this proposal"),
+        "{body}"
+    );
+    assert!(body.contains("Records a claim"), "{body}");
+    assert!(body.contains("name=\"p0_text\""), "{body}");
+    assert!(
+        !body.contains("p1_text"),
+        "the knowledge files are not text boxes: {body}"
+    );
+    assert!(
+        body.contains("It is long.\n") && !body.contains(" ^k"),
+        "the marker the proposal made is held too: {body}"
+    );
+    // Sent for review as it stands: the three files go.
+    let id = to.split('/').nth(4).expect("an id").to_owned();
+    let page = files
+        .iter()
+        .find(|(p, _)| p == "pages/Bridge.md")
+        .and_then(|(_, t)| t.clone())
+        .expect("the page");
+    let blocks: std::collections::BTreeSet<String> = claims_in(&files)
+        .iter()
+        .flat_map(|c| c.expressions.iter().map(|e| e.block.clone()))
+        .collect();
+    let hidden_page = inklkunn_core::knowledge::marker::hide_markers(&page, &blocks, true);
+    assert!(hidden_page.contains("It is long.\n"), "{hidden_page}");
+    let resumed = vec![
+        ("op", "submit".to_owned()),
+        ("pages", "1".to_owned()),
+        ("renames", "0".to_owned()),
+        ("part", "whole".to_owned()),
+        ("base_state", state_id(1)),
+        ("base_block", block_id(1)),
+        ("p0_path", "pages/Bridge.md".to_owned()),
+        ("p0_title", "Bridge".to_owned()),
+        ("p0_text", hidden_page),
+        ("summary", "A source for the bridge".to_owned()),
+        ("sources", String::new()),
+    ];
+    let a = send(
+        &s,
+        &format!("/handbook/-/proposals/{id}/edit"),
+        &s.writer,
+        &resumed,
+    )
+    .await;
+    let to = location(&a);
+    let sent = files_of(&s, &to);
+    assert_eq!(sent.len(), 3, "{sent:?}");
+    assert_eq!(sources_in(&sent).len(), 1);
+    assert_eq!(claims_in(&sent).len(), 1);
+    assert_eq!(
+        file(&sent, "pages/Bridge.md"),
+        page,
+        "the marker went back where it was"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------- what only curation sets
+
+/// A proposal of the writer's with these files (pages and knowledge files), held for review.
+fn held_with(s: &Scene, files: Vec<(String, Option<String>)>) -> String {
+    let edit = inklkunn_core::proposal::ProposalEdit {
+        summary: "A change".to_owned(),
+        files: files
+            .into_iter()
+            .map(|(path, text)| inklkunn_store::FileChange { path, text })
+            .collect(),
+        ..Default::default()
+    };
+    let who = principal(&s.writer);
+    let draft =
+        s.w.services
+            .proposals
+            .create(&who, &s.w.wiki, None, edit)
+            .expect("a draft");
+    s.w.services
+        .proposals
+        .submit(&who, &s.w.wiki, &draft.id)
+        .expect("held for review");
+    format!("/handbook/-/proposals/{}", draft.id)
+}
+
+#[tokio::test]
+async fn a_status_beside_a_page_edit_is_said_to_be_refused_and_the_change_to_it_is_listed() {
+    let s = scene();
+    let mut decided = s.claim.clone();
+    decided.community_status.status = inklkunn_core::knowledge::Standing::Accepted;
+    let to = held_with(
+        &s,
+        vec![
+            (claim_path(&decided.id), Some(decided.to_yaml())),
+            (
+                "pages/Bridge.md".to_owned(),
+                Some(BRIDGE.replace("A note.", "A longer note.")),
+            ),
+        ],
+    );
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(
+        body.contains("Its community status changes from not decided to accepted."),
+        "{body}"
+    );
+    assert!(body.contains("only a curation proposal may set"), "{body}");
+    assert!(body.contains("It cannot be accepted as it is."), "{body}");
+    // A claim file that changes nothing about it says nothing of the kind.
+    let to = held_with(
+        &s,
+        vec![
+            (claim_path(&s.claim.id), Some(s.claim.to_yaml())),
+            (
+                "pages/Bridge.md".to_owned(),
+                Some(BRIDGE.replace("A note.", "A longer note.")),
+            ),
+        ],
+    );
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(!body.contains("only a curation proposal may set"), "{body}");
+    assert!(
+        !body.contains("Claims and sources in this proposal"),
+        "{body}"
+    );
+}

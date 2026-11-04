@@ -9,8 +9,9 @@
 //! line endings of a page are the page's own: a page whose line breaks were all CR LF keeps them, and every
 //! other page is written with LF. A text a person never touched is therefore the page, byte for byte.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+use inklkunn_core::knowledge::{Bearing, Link, ReferenceForm, SourceKind, StatementKind};
 use inklkunn_core::proposal::files::{changed_owned_keys, front_keys};
 use inklkunn_core::proposal::{MAX_PAGE_BYTES, MAX_PROPOSAL_BYTES};
 use inklkunn_store::{Base, Rename};
@@ -57,6 +58,23 @@ pub(crate) struct SubmittedPage {
     pub(crate) text: String,
 }
 
+/// The source a form attaches to a paragraph (RFC 005 part 2 D-3), as it was written: the texts are checked by the
+/// core when the files are made ([`inklkunn_core::knowledge::compose`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AttachInput {
+    pub(crate) relation: Link,
+    pub(crate) kind: SourceKind,
+    pub(crate) title: String,
+    pub(crate) author: String,
+    pub(crate) date: String,
+    pub(crate) reference_form: ReferenceForm,
+    pub(crate) reference: String,
+    pub(crate) bearing: Bearing,
+    pub(crate) note: String,
+    /// What kind of statement the paragraph is, asked only when it is not a claim yet.
+    pub(crate) claim_kind: StatementKind,
+}
+
 /// What a form says.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Submitted {
@@ -68,6 +86,10 @@ pub(crate) struct Submitted {
     pub(crate) pages: Vec<SubmittedPage>,
     pub(crate) renames: Vec<Rename>,
     pub(crate) selection: Selection,
+    /// A source is attached to the paragraph the form edits.
+    pub(crate) attach: Option<AttachInput>,
+    /// The `^id`s of the paragraphs that others rely on whose removal the person confirmed.
+    pub(crate) drops: BTreeSet<String>,
 }
 
 /// Why a form could not be read.
@@ -143,6 +165,23 @@ pub(crate) fn read(fields: &HashMap<String, String>) -> Result<Submitted, FormEr
         (fields::PART_BLOCK, Some(n)) => Selection::Block(n),
         _ => return Err(FormError::Incomplete),
     };
+    let attach = match field(fields, fields::ATTACH) {
+        None => None,
+        Some(word) => Some(read_attach(fields, word)?),
+    };
+    let drops = fields
+        .iter()
+        .filter(|(_, v)| v.as_str() == "1")
+        .filter_map(|(k, _)| k.strip_prefix(fields::DROP))
+        .filter(|id| {
+            !id.is_empty()
+                && id.len() <= MAX_BLOCK_ID
+                && id
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        })
+        .map(str::to_owned)
+        .collect();
     let base = match (
         field(fields, fields::BASE_STATE),
         field(fields, fields::BASE_BLOCK),
@@ -164,6 +203,34 @@ pub(crate) fn read(fields: &HashMap<String, String>) -> Result<Submitted, FormEr
         pages,
         renames,
         selection,
+        attach,
+        drops,
+    })
+}
+
+/// The longest `^id` a field name may spell (the markup profile's own bound).
+const MAX_BLOCK_ID: usize = 128;
+
+/// The source fields of a form, in the core's words; a field that is missing or says a word the core does not have
+/// is a form that was not the one a page offers.
+fn read_attach(fields: &HashMap<String, String>, relation: &str) -> Result<AttachInput, FormError> {
+    let word = |name: &str| field(fields, name).ok_or(FormError::Incomplete);
+    let text = |name: &str| field(fields, name).unwrap_or("").trim().to_owned();
+    Ok(AttachInput {
+        relation: Link::from_word(relation).ok_or(FormError::Incomplete)?,
+        kind: SourceKind::from_word(word(fields::A_KIND)?).ok_or(FormError::Incomplete)?,
+        title: text(fields::A_TITLE),
+        author: text(fields::A_AUTHOR),
+        date: text(fields::A_DATE),
+        reference_form: ReferenceForm::from_word(word(fields::A_REF_FORM)?)
+            .ok_or(FormError::Incomplete)?,
+        reference: text(fields::A_REF),
+        bearing: Bearing::from_word(word(fields::A_BEARING)?).ok_or(FormError::Incomplete)?,
+        note: text(fields::A_NOTE),
+        claim_kind: StatementKind::from_word(
+            field(fields, fields::A_CLAIM_KIND).unwrap_or(StatementKind::Unknown.word()),
+        )
+        .ok_or(FormError::Incomplete)?,
     })
 }
 
@@ -173,11 +240,15 @@ pub(crate) fn check_bounds(form: &Submitted) -> Result<(), FormError> {
     if form.pages.iter().any(|p| p.text.len() > MAX_PAGE_BYTES) {
         return Err(FormError::PageTooLarge);
     }
-    let total: usize = form
-        .pages
-        .iter()
-        .map(|p| p.text.len() + p.path.as_ref().map_or(0, String::len) + p.title.len())
-        .sum::<usize>()
+    let attached = form.attach.as_ref().map_or(0, |a| {
+        a.title.len() + a.author.len() + a.date.len() + a.reference.len() + a.note.len()
+    });
+    let total: usize = attached
+        + form
+            .pages
+            .iter()
+            .map(|p| p.text.len() + p.path.as_ref().map_or(0, String::len) + p.title.len())
+            .sum::<usize>()
         + form
             .renames
             .iter()

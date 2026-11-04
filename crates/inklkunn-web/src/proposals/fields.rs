@@ -42,6 +42,22 @@ pub(crate) fn rename_field(i: usize, what: &str) -> String {
 pub(crate) const F_FROM: &str = "from";
 pub(crate) const F_TO: &str = "to";
 
+// --- attaching a source to a paragraph (RFC 005 part 2 D-3): the entry point's query and the form's fields
+/// `supports` or `challenges`, in the core's own words: which kind of source the form attaches.
+pub(crate) const ATTACH: &str = "attach";
+pub(crate) const A_KIND: &str = "a_kind";
+pub(crate) const A_TITLE: &str = "a_title";
+pub(crate) const A_AUTHOR: &str = "a_author";
+pub(crate) const A_DATE: &str = "a_date";
+pub(crate) const A_REF_FORM: &str = "a_ref_form";
+pub(crate) const A_REF: &str = "a_ref";
+pub(crate) const A_BEARING: &str = "a_bearing";
+pub(crate) const A_NOTE: &str = "a_note";
+pub(crate) const A_CLAIM_KIND: &str = "a_claim_kind";
+/// The start of the name of a field that confirms the removal of a paragraph that others rely on; the rest is the
+/// paragraph's `^id`.
+pub(crate) const DROP: &str = "drop_";
+
 // --- query parameters of the entry points
 pub(crate) const Q_PAGE: &str = "page";
 pub(crate) const Q_NEW: &str = "new";

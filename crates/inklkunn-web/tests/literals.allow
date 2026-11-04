@@ -400,3 +400,20 @@ exact :: why.rs :: {sentence} {} :: two sentences of the catalog joined by a spa
 exact :: why.rs :: {own}#{} :: the page's own address and the fragment of a change on it (code, not words)
 exact :: why.rs :: the paragraphs of a page :: what the operator's log says was being read when a read failed (English by decision: operator vocabulary); no response carries it
 exact :: why.rs :: the claims of a page of wiki `{}` could not be read now: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+# --- claims and sources in the proposal path (handoff 005 K-T5)
+exact :: claims.rs :: limit :: a placeholder name of a catalog message
+exact :: claims.rs :: title :: the name of a field of the knowledge format, handed to the core's check of a text; no sentence
+exact :: claims.rs :: author :: the name of a field of the knowledge format, handed to the core's check of a text; no sentence
+exact :: claims.rs :: date :: the name of a field of the knowledge format, handed to the core's check of a text; no sentence
+exact :: claims.rs :: note :: the name of a field of the knowledge format, handed to the core's check of a text; no sentence
+exact :: knowledge.rs :: availability :: a placeholder name of a catalog message
+exact :: knowledge.rs :: bearing :: a placeholder name of a catalog message
+exact :: knowledge.rs :: day :: a placeholder name of a catalog message
+exact :: knowledge.rs :: from :: a placeholder name of a catalog message
+exact :: knowledge.rs :: kind :: a placeholder name of a catalog message
+exact :: knowledge.rs :: lifecycle :: a placeholder name of a catalog message
+exact :: knowledge.rs :: reason :: a placeholder name of a catalog message
+exact :: knowledge.rs :: relation :: a placeholder name of a catalog message
+exact :: knowledge.rs :: title :: a placeholder name of a catalog message
+exact :: new.rs :: excerpt :: a placeholder name of a catalog message
+exact :: submit.rs :: excerpt :: a placeholder name of a catalog message

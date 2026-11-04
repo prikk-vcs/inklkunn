@@ -32,6 +32,8 @@ pub(crate) struct Found {
     pub(crate) range: Range<usize>,
     /// What it begins with, one line.
     pub(crate) excerpt: String,
+    /// It is one paragraph: the block a claim can be said in.
+    pub(crate) paragraph: bool,
 }
 
 /// The offset of the body in a page's text.
@@ -48,6 +50,20 @@ pub(crate) fn excerpt(text: &str) -> String {
         out.push('…');
     }
     out
+}
+
+/// A paragraph's words without its `^id` marker: what a person is told a part begins with. The marker is for the
+/// service; a paragraph that has one reads as it does without it.
+fn unmarked<'a>(block: &Block<'a>) -> &'a str {
+    match (block.kind, block.id) {
+        (BlockKind::Paragraph, Some(id)) => block
+            .text
+            .strip_suffix(&format!("^{id}"))
+            .map(str::trim_end)
+            .filter(|words| !words.is_empty())
+            .unwrap_or(block.text),
+        _ => block.text,
+    }
 }
 
 /// The heading level of a heading block: the `#`s of an ATX heading, 1 or 2 for a setext one.
@@ -89,6 +105,7 @@ pub(crate) fn sections(text: &str) -> Vec<Found> {
         out.push(Found {
             range: offset + block.range.start..offset + last.range.end,
             excerpt: heading_text(block),
+            paragraph: false,
         });
     }
     out
@@ -102,7 +119,8 @@ pub(crate) fn parts(text: &str) -> Vec<Found> {
         .into_iter()
         .map(|b| Found {
             range: offset + b.range.start..offset + b.range.end,
-            excerpt: excerpt(b.text),
+            excerpt: excerpt(unmarked(&b)),
+            paragraph: b.kind == BlockKind::Paragraph,
         })
         .collect()
 }
@@ -114,6 +132,7 @@ pub(crate) fn find(text: &str, selection: Selection) -> Option<Found> {
         Selection::Whole => Some(Found {
             range: 0..text.len(),
             excerpt: excerpt(text),
+            paragraph: false,
         }),
         Selection::Section(n) => sections(text).into_iter().nth(n),
         Selection::Block(n) => parts(text).into_iter().nth(n),

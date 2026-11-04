@@ -50,6 +50,27 @@ pub(crate) fn change_part(
     new_with(slug, &q)
 }
 
+/// The form that attaches a source (`relation` is the core's word: `supports` or `challenges`) to one part of a page.
+pub(crate) fn attach(
+    slug: &str,
+    title: &str,
+    view: Option<&str>,
+    ordinal: usize,
+    relation: &str,
+) -> String {
+    let ordinal = ordinal.to_string();
+    let mut q = vec![
+        (fields::Q_PAGE, title),
+        (fields::PART, fields::PART_BLOCK),
+        (fields::ORDINAL, ordinal.as_str()),
+        (fields::ATTACH, relation),
+    ];
+    if let Some(v) = view {
+        q.push((fields::VIEW, v));
+    }
+    new_with(slug, &q)
+}
+
 /// The chooser of what to change in a page.
 pub(crate) fn choose_part(slug: &str, title: &str, view: Option<&str>) -> String {
     let mut q = vec![(fields::Q_PAGE, title), (fields::Q_PARTS, "1")];
