@@ -756,7 +756,7 @@ dependencies = [
 
 [[package]]
 name = "inklkunn"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "inklkunn-auth",
  "inklkunn-core",
@@ -770,7 +770,7 @@ dependencies = [
 
 [[package]]
 name = "inklkunn-auth"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "argon2",
  "base64ct",
@@ -787,11 +787,11 @@ dependencies = [
 
 [[package]]
 name = "inklkunn-boundary-check"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "inklkunn-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ammonia",
  "inklkunn-markup",
@@ -806,7 +806,7 @@ dependencies = [
 
 [[package]]
 name = "inklkunn-corpus"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "inklkunn-core",
  "inklkunn-markup",
@@ -816,7 +816,7 @@ dependencies = [
 
 [[package]]
 name = "inklkunn-fetch"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "inklkunn-fetch",
  "inklkunn-prikk",
@@ -824,11 +824,11 @@ dependencies = [
 
 [[package]]
 name = "inklkunn-floor-check"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "inklkunn-markup"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "proptest",
  "pulldown-cmark",
@@ -839,11 +839,11 @@ dependencies = [
 
 [[package]]
 name = "inklkunn-pin-check"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "inklkunn-prikk"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "inklkunn-prikk",
  "serde",
@@ -852,7 +852,7 @@ dependencies = [
 
 [[package]]
 name = "inklkunn-signer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "argon2",
  "chacha20poly1305",
@@ -870,7 +870,7 @@ dependencies = [
 
 [[package]]
 name = "inklkunn-store"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "rusqlite",
  "serde",
@@ -879,7 +879,7 @@ dependencies = [
 
 [[package]]
 name = "inklkunn-web"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "askama",
  "axum",

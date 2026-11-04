@@ -13,12 +13,12 @@ name = "inklkunn"
 path = "src/main.rs"
 
 [dependencies]
-inklkunn-auth = { path = "../inklkunn-auth", version = "0.1.0" }
-inklkunn-core = { path = "../inklkunn-core", version = "0.1.0" }
-inklkunn-fetch = { path = "../inklkunn-fetch", version = "0.1.0" }
-inklkunn-prikk = { path = "../inklkunn-prikk", version = "0.1.0" }
-inklkunn-store = { path = "../inklkunn-store", version = "0.1.0" }
-inklkunn-web = { path = "../inklkunn-web", version = "0.1.0" }
+inklkunn-auth = { path = "../inklkunn-auth", version = "0.2.0" }
+inklkunn-core = { path = "../inklkunn-core", version = "0.2.0" }
+inklkunn-fetch = { path = "../inklkunn-fetch", version = "0.2.0" }
+inklkunn-prikk = { path = "../inklkunn-prikk", version = "0.2.0" }
+inklkunn-store = { path = "../inklkunn-store", version = "0.2.0" }
+inklkunn-web = { path = "../inklkunn-web", version = "0.2.0" }
 # Already locked and built for two other crates of the workspace: the safe `prctl` wrapper that makes the
 # process non-dumpable (`PR_SET_DUMPABLE`), and `getuid` for the secret file's owner. No new crate.
 rustix = { version = "1", default-features = false, features = ["process", "std"] }
@@ -29,9 +29,9 @@ rustix = { version = "1", default-features = false, features = ["process", "std"
 rusqlite = { workspace = true }
 # The tests that prepare a server more than once in a process need an authority each (`claim` answers once);
 # the product build never enables it.
-inklkunn-core = { path = "../inklkunn-core", version = "0.1.0", features = ["test-authority"] }
+inklkunn-core = { path = "../inklkunn-core", version = "0.2.0", features = ["test-authority"] }
 # The outbound wiring's tests run the fetcher unconfined with a stand-in curl; the product build never enables it.
-inklkunn-fetch = { path = "../inklkunn-fetch", version = "0.1.0", features = ["test-knobs"] }
+inklkunn-fetch = { path = "../inklkunn-fetch", version = "0.2.0", features = ["test-knobs"] }
 
 [lints]
 workspace = true

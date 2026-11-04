@@ -1,9 +1,36 @@
 # Changelog
 
-Releases are bare version tags; each section is the release's notes (assembled into the GitHub release by
-`release.yml`). Kept by hand, per release.
+Releases are bare version tags; each section is the release's notes. A section's lead (up to *The entries below…*) is
+the GitHub release's text, with a link to the whole section (`release.yml`). Kept by hand, per release.
 
 ## [Unreleased]
+
+## [0.2.0] — 2026-11-04
+
+**M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the
+wiki's signed history. Accounts come into being by the operator's invitation (`inklkunn account invite`), or by joining
+where the server allows it (`INKLKUNN_JOIN`, default `off`); sign-in is a local password or an OpenID Connect provider. A
+proposal is written through a form that needs no script — a whole page, a section, a paragraph, or a new page (every link
+to a page that does not exist leads there) — and its page shows what changes, word by word. Reviewers comment, approve or
+ask for changes (nobody decides on their own proposal); accepting seals the change into the history with the wiki's key,
+shows it on the page, and checks the history again. A proposal whose base moved is re-authored without its author; two
+edits of the same paragraph stop with both texts side by side. The same through a write API with scoped tokens
+(OpenAPI 3.1). Also: undo as a proposal, an inbox and following, quotas that refuse by name, recovery from a stopped
+acceptance (`inklkunn wiki recover`, `docs/RECOVERY.md`), key rotation and retirement (`docs/KEYS.md`), participation
+metrics (`inklkunn wiki metrics`), and the knowledge layer's files and checks without a surface yet.
+
+**Before you upgrade or deploy.** The server now opens the key store and holds the means to sign (0.1.0's held none): keep
+the operator's secret file readable by the service's user only (SECURITY.md), and **restart the server after the key store
+first appears**. It must sit **behind TLS** (the cookies are `Secure`), and **declare your reverse proxy** in
+`INKLKUNN_TRUSTED_PROXIES` (its own addresses only), or every visitor counts as one address and thirty bad passwords by anyone lock
+every password sign-in for fifteen minutes. The store migrates itself from 0.1.0's schema at the first start; 0.1.0's key records open as they are.
+**Not in this release:** the knowledge layer's pages (M3), governance and removal of content (M4: removal from a signed
+history is lossy; do not host content you may have to erase). OpenID Connect has run against a stand-in provider and a
+real browser, not yet against a third-party provider; no person who uses assistive technology has tested the site yet
+(the about page says so); Japanese is a labelled preview. Runtime: prikk ≥ 0.54.0, bubblewrap and prlimit on the host
+(curl for OpenID Connect), or the container image.
+
+The entries below are in the order the work landed.
 
 - **Proposals T2 (RFC 004 D-5; handoff 004): the block-aware three-way merge.** `inklkunn_markup::blocks` segments a body
   into its top-level blocks from the parser's own structure (paragraph, heading, list, quotation, table, code block, HTML,

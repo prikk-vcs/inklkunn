@@ -16,9 +16,11 @@ released from M0; this document exists so that the first release is a rehearsed 
 3. **The pins reviewed**: `pin-check` passes (actions by SHA, images by digest, runners named, the
    toolchain and the supply-chain tools pinned, the MSRV job equal to `rust-version`, the rehearsal guard
    exact); `floor-check` passes (one prikk floor and one set of asset checksums; the corpus digest).
-4. **`CHANGELOG.md`**: the release's entries move under `## [X.Y.Z] — YYYY-MM-DD` (the brackets matter: `release.yml`
-   takes the notes from that heading to the next `## [`), with a lead paragraph a reader needs, and an empty
-   `## [Unreleased]` stays above it.
+4. **`CHANGELOG.md`**: the release's entries move under `## [X.Y.Z] — YYYY-MM-DD`, after a lead a reader needs and the line
+   `The entries below are in the order the work landed.`; an empty `## [Unreleased]` stays above it. The GitHub release's
+   body is that lead and a link to the whole section at the tag (`.github/release-notes.sh`; a release body holds at most
+   125,000 characters, and 0.2.0's section alone is longer); the gates job checks it exists and fits before anything is
+   built or published (the brackets in the heading matter).
 5. **Versions**: `Cargo.toml`'s workspace version is `X.Y.Z`, and so is the `version = "…"` beside every
    intra-workspace `path` dependency (cargo-deny's wildcard rule wants one; `grep -rn 'version = "' crates/*/Cargo.toml`);
    `README.md` and `docs/STATUS.md` say so.

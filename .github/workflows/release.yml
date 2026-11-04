@@ -55,6 +55,13 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           V="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
           test "$TAG" = "$V" || { echo "tag $TAG != workspace version $V" >&2; exit 1; }
+      - name: The release notes exist and fit a GitHub release (before anything is built or published)
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          .github/release-notes.sh "${GITHUB_REF_NAME}" "${GITHUB_REPOSITORY}" > release-notes.md
+          N="$(LC_ALL=C wc -c < release-notes.md)"
+          test "$N" -le 100000 || { echo "the release notes are $N bytes; a GitHub release body holds at most 125,000 characters" >&2; exit 1; }
       - name: Install prikk at the floor (checksum recorded in this file) and the sandbox tools
         run: |
           set -euo pipefail
@@ -262,11 +269,7 @@ jobs:
         if: github.event_name == 'push'
         run: |
           set -euo pipefail
-          awk -v tag="${GITHUB_REF_NAME}" '
-            $0 ~ "^## \\[" tag "\\]" {p=1; next}
-            p && /^## \[/ {exit}
-            p {print}' CHANGELOG.md > release-notes.md
-          test -s release-notes.md || { echo "no CHANGELOG section for ${GITHUB_REF_NAME}" >&2; exit 1; }
+          .github/release-notes.sh "${GITHUB_REF_NAME}" "${GITHUB_REPOSITORY}" > release-notes.md
           printf '\n---\n**Runtime prerequisites:** Linux with glibc >= 2.35, prikk >= %s, bubblewrap, prlimit (util-linux) on the host, or the container image `ghcr.io/prikk-vcs/inklkunn:%s` (amd64 and arm64).\n' "$PRIKK_VERSION" "$GITHUB_REF_NAME" >> release-notes.md
       - name: Create the GitHub release (tag push)
         if: github.event_name == 'push'
