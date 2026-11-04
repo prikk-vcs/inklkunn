@@ -469,6 +469,24 @@ fn open_act(rig: &Rig, name: &str) -> ViewActRecord {
 }
 
 #[test]
+fn the_name_of_a_view_that_was_closed_stays_taken() {
+    let rig = Rig::new("v14b");
+    let (_, who) = reviewer(&rig);
+    // An act that created its view, whose view is no longer among the open ones.
+    let old = open_act(&rig, "retired");
+    rig.store
+        .finish_view_act(&ViewActEnd {
+            act: old.id,
+            outcome: ViewActOutcome::Created,
+            at: 2,
+        })
+        .unwrap();
+    assert_eq!(made(&rig, &who, "retired"), Err(ViewFailure::NameTaken));
+    assert!(rig.double.view_calls().is_empty());
+    assert_eq!(entries(&rig).len(), 1);
+}
+
+#[test]
 fn an_act_that_never_ended_is_settled_from_the_repository_before_the_next_creation() {
     let rig = Rig::new("v14");
     let (_, who) = reviewer(&rig);

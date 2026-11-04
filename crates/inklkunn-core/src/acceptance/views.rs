@@ -209,7 +209,12 @@ impl ProposalAcceptor {
             created_by: creator,
             created_at: (self.clock)(),
         };
-        p.acts.begin_view_act(&act)?;
+        // A name held by an act that stands but is not among the open views belongs to a view that was closed: it is
+        // taken, and stays so (prikk does not make a closed branch's name again either).
+        p.acts.begin_view_act(&act).map_err(|e| match e {
+            StoreError::AlreadyRecorded => ViewFailure::NameTaken,
+            other => ViewFailure::Store(other),
+        })?;
 
         // 4. The signer, on this thread, inside the lease.
         let answer = {
