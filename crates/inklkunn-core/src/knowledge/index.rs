@@ -178,6 +178,19 @@ impl KnowledgeIndex {
             .filter(move |a| a.page_id == page_id && a.block == block)
     }
 
+    /// The claims said in a page, at blocks the page really has (once): where a reader of the page is offered the
+    /// claim. An anchor whose page or block is missing or repeated is not among them, because there is no
+    /// paragraph to offer it on; the index still states it ([`KnowledgeIndex::anchors_of`]).
+    pub fn claims_on_page<'a>(
+        &'a self,
+        page_id: &'a str,
+    ) -> impl Iterator<Item = &'a KnowledgeAnchorRow> {
+        self.rows
+            .anchors
+            .iter()
+            .filter(move |a| a.page_id == page_id && a.state == PRESENT)
+    }
+
     /// The files under `knowledge/` that cannot be read, by path, each with the rule it broke.
     pub fn invalid(&self) -> &[KnowledgeInvalidRow] {
         &self.rows.invalid

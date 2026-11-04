@@ -433,3 +433,42 @@ fn the_keep_file_of_a_new_wiki_is_no_knowledge_file() {
     assert!(k.claims().is_empty() && k.sources().is_empty());
     assert!(kix::build(std::path::Path::new("/nonexistent"), &[], 10, 10).is_ok());
 }
+
+#[test]
+fn the_claims_of_a_page_are_those_at_blocks_it_really_has_once() {
+    let mut c = claim_on(1, "Said. ^b1", 1);
+    c.expressions = vec![
+        Expression::new("p1", "b1").expect("e"),
+        Expression::new("p1", "gone").expect("e"),
+        Expression::new("dup", "b1").expect("e"),
+        Expression::new("rep", "twice").expect("e"),
+    ];
+    c.normalize();
+    let mut extra = files(std::slice::from_ref(&c), &[Source::new(source_id(1))]);
+    extra.push((
+        "pages/D1.md".to_owned(),
+        "---\ntitle: D1\nid: dup\n---\n\nx ^b1\n".to_owned(),
+    ));
+    extra.push((
+        "pages/D2.md".to_owned(),
+        "---\ntitle: D2\nid: dup\n---\n\ny ^b1\n".to_owned(),
+    ));
+    extra.push((
+        "pages/R.md".to_owned(),
+        "---\ntitle: R\nid: rep\n---\n\nx ^twice\n\ny ^twice\n".to_owned(),
+    ));
+    let w = world(&extra);
+    let k = knowledge(&w);
+    let blocks = |page: &str| -> Vec<String> {
+        k.claims_on_page(page)
+            .map(|a| format!("{}@{}", a.claim, a.block))
+            .collect()
+    };
+    // The one block the page has; not the block it lost, not a page two share, not a block written twice.
+    assert_eq!(blocks("p1"), vec![format!("{}@b1", c.id)]);
+    assert!(blocks("dup").is_empty());
+    assert!(blocks("rep").is_empty());
+    assert!(blocks("nowhere").is_empty());
+    // The index still states the anchors that cannot be offered.
+    assert_eq!(k.anchors_of(c.id.as_str()).count(), 4);
+}
