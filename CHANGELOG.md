@@ -16,12 +16,32 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   (accepted, contested, unresolved, not decided) with the proposal that decided it; it is read from the derived knowledge
   index (`claims_on_page`), authorized as pages are, and an address that names no claim is one plain page. *Other views*
   is left out until views can be compared (K-T8): the page does not say that no view differs, which it has not checked.
-  The *Why is this here?* link leads to `/{slug}/-/why/{title}`, which answers **not available in this release** (501,
-  the same for every title) until K-T7 replaces it. The retired-words test gains *true*, *false*, *verified* (only the
+  The *Why is this here?* link leads to `/{slug}/-/why/{title}` (K-T7, below). The retired-words test gains *true*, *false*, *verified* (only the
   verification badge's label, held to one message and one place), *proven*, *canonical*, *adopted*, *official* and their
   Japanese terms; a stylesheet test holds that nothing drawn for a claim is coloured apart, pictured or counted and that no
   rule is named for a verdict, a relation, a bearing or a status. Every message is in both languages with its glossary
   row; every state is in the structural tests.
+- **K-T7 (handoff 005; RFC 005 part 2 D-8): *Why is this here?*.** `/{slug}/-/why/{title}` (`?view=` for a view), which
+  until now answered *not available in this release*, lists the paragraphs of a page, each with an anchor so that a single
+  paragraph can be linked to (`#w-^b1` for a paragraph with an `^id`, `#w-3` for any other), and for each the change that
+  **last changed** it and the change that **first wrote** it, linked to the changes listed below them. For each change
+  the page gives the people as its message records them (the history page's own sentences, no more), the proposal it was
+  made from, the proposal's review (decisions and comments, at most twenty items, each cut where long, the rest counted),
+  the sources the proposer gave, and the way to the change itself. **A proposal the visitor may not read is one plain
+  sentence, and a proposal that the acceptance records do not tie to the change has no review shown.** Everything is derived
+  from prikk's history and the service's records, read as the visitor may read them: no new store. **The chain never claims
+  more than the method has.** A paragraph with an `^id` that is the one block with it on both sides of every step is
+  followed *through its anchor*, and the page says *First written in*; any other paragraph is followed with the product's
+  own segmentation and the merge's own matching and is labelled **traced by matching the text**, with what that means
+  (*earliest wording found in…*, not *first written in…*, because two paragraphs reworded together have nothing to match).
+  **Bounded by the history page's own step**: at most the 20 changes of the page that one history page lists (and so its
+  inspection, `show` and log-window bounds), one `cat` per change read and one more for the page before the oldest,
+  two texts held at a time, at most 400 paragraphs followed; where the bounds end the reading the page says so in words with the
+  number of changes read, and a history that could not be followed to its start says that. The reads go through the same
+  storage as the history page's, so the admission gate, the deadlines and the ceilings are the same. A paragraph that
+  holds a claim carries the *Sources and views* link. `ChangeInfo` gains `proposal` (the message's `Proposal:` trailer);
+  the core's read service gains `page_why`. Both languages, with glossary rows (and the word *anchor*); every state is in
+  the structural tests.
 
 ## [0.2.0] — 2026-11-04
 
