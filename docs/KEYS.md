@@ -87,7 +87,12 @@ commit point of every rotation the key record keeps, for the replaced maintainer
 every view**, and `inklkunn wiki keys status <wiki>` (and every rotation, which also writes a `keys-late-seal`
 event to the audit trail for each finding) lists the superseded keys and **reports every block one of them
 sealed that is not in the history up to those points**: *sealed by a superseded key after the rotation*. It
-changes nothing by itself, and `status` exits non-zero when it finds one.
+changes nothing by itself, and `status` exits non-zero when it finds one. prikk lists who sealed a block only for keys
+it still trusts, so **the check cannot see a key that is out of the trust store**: for such a key `status` says so
+instead of saying that no block was sealed after the rotation, and for the key of an unfinished retirement it prints the
+untraceable findings (below). A record that calls a key retired while the repository trusts it again means the repository is
+older than the key record (restored on its own): `status` says to restore the key directory from the same backup and
+retire the key again.
 
 **What it covers:** a leaked seed used against the wiki's own repository while the service's records are intact
 (a leaked backup, a leaked seed file). **What it does not:** a host that has been taken over (the records are
@@ -111,23 +116,33 @@ empty tip: every block of that view is then "after"), and a repository that no l
    `inklkunn wiki keys retire <wiki> --key <id> --confirm <slug> --accept-unverifiable-history` (`status` lists the
    superseded keys, whether each is retired and whether the repository still trusts it, and names this command beside each key
    that is still trusted; `retire` has the cost of `rotate --retire-old`, the loss of the *Verified* label, and the same flag). The current key cannot be retired: rotate first.
-   **A retirement never excuses a late seal** (handoff 004, Y1). It records only the blocks the key sealed up to the
-   newest blocks the key record kept when that key was replaced (the same set the check in `status` calls *known*). A
-   block the key sealed **after** that is one this service did not make: the retirement still removes the key (a leaked key
-   is never kept trusted for it), leaves the block out of the record on purpose, names it (`retire`, `rotate
-   --retire-old` and `finish-retirement` print each such block's id and *these blocks were sealed with this key after it
-   was replaced, so this service did not make them; verification keeps failing on them, and nothing excuses them*, and
-   exit 1), and the verification page and recovery do not call that failure *only a retired key*. What it means: a block
-   in the history that the service did not make. Export the history, read the block, decide; nothing in the product
-   rewrites history. The key record keeps nothing new for this. (prikk names no signer for a ref state or a ref update,
-   so those the late seal made are in the record beside the service's own; the late block is what keeps the failure
-   unexplained.)
+   **A retirement records only what it can trace, or nothing** (handoff 004, Z1). After the key is removed, every
+   finding of `prikk verify` must be traceable to the key's own history as this service made it: a block the key sealed
+   up to the newest blocks the key record kept when that key was replaced (the same set the check in `status` calls
+   *known*); a ref state that is the `ref_state_id` of one of that history's log entries; ref updates as they are. A
+   block sealed with the key **after** that (a late seal), a ref state no log entry shows (a `branch close`, a
+   `branch create` or any other act with the stolen key that seals no block), a tag, a block that lost its signature
+   and was not the key's, or a recorded tip the repository no longer shows: if **anything** is untraceable, the
+   retirement **records nothing and stays unfinished**. The key stays out of the trust store (a leaked key is never kept
+   trusted for it), the key record gains nothing, writes stay paused as for any unfinished retirement, and `retire`,
+   `rotate --retire-old`, `finish-retirement` and the `UNFINISHED` line of `status` each name every such finding and say
+   one sentence: *the repository holds acts with this key that cannot be traced to what it sealed for this service;
+   nothing excuses them, and this service seals nothing more until the history is restored from before them (this
+   section) or the retirement is given up with `abandon-retirement`, which trusts the key again*. Recovery stops at
+   `retirement-unfinished` with the same sentence; `inklkunn wiki recover` does not cure this and no text sends you there.
+   **What it means.** An act made with a key after it was replaced needs write access to the wiki's repository
+   *outside this service*. Treat it as a **host compromise**: restore the repository, the key directory and the store
+   **together** from a backup taken before the act (every write after the backup is lost), run `status`, and retire
+   again; or give the retirement up with `abandon-retirement` and accept the leaked key as trusted (the wiki then
+   verifies, and the act stays in its history). Nothing in the product excuses an act it cannot trace, and nothing
+   rewrites history.
 5. **Read what happened.** Export the audit trail (`inklkunn audit export`: JSON Lines, oldest first) and read
    the wiki's history with `prikk log` in its repository. Because the history the old key sealed no longer
    verifies, `prikk verify` cannot be the check any more. The reconciliation (RFC 002 D-7: every sealed change
-   against an acceptance record, and the reverse) is the check that fits, **but it is a library function today
-   and not yet a command or a schedule**, and the acceptance records it reads are RFC 004's, which do not exist
-   yet: until they do, the comparison is by hand, change by change, against the proposals the wiki shows.
+   against an acceptance record, and the reverse) is the check that fits. The acceptance records it reads are RFC 004's, and
+   they exist: every acceptance is recorded. The reconciliation runs as a step of `inklkunn wiki recover` and has no command
+   or schedule of its own; for the window of a compromise, compare the history change by change with the acceptances the
+   wiki shows.
 6. **State what was signed during the window**, to the wiki's maintainers.
 7. **Change the operator's secret** (it re-seals nothing; plan a re-key of the key records — not yet a command).
 
@@ -166,8 +181,9 @@ the ones it trusted then, less the retired key (a key added or removed outside i
 recorded under this retirement). Then it takes the `verify` after the removal and records its findings exactly as the
 retirement itself would have, and clears the state. It **records nothing and keeps the state** when `verify` cannot run or
 is not a clean publication-trust failure, when the count of what prikk checked differs, when the repository changed
-outside inklkunn, and when a block that lost its trusted signature was not the old key's (a record that left it out
-would look complete and would not be). A refusal that no later run can cure says so and names `abandon-retirement`.
+outside inklkunn, and when **anything is untraceable** (compromise runbook, step 4: a late block, a ref state or a tag
+nothing in the key's history explains, a block that lost its trusted signature and was not the old key's: a record that
+left it out would look complete and would not be). A refusal that no later run can cure says so and names `abandon-retirement`.
 
 `abandon-retirement` gives the retirement up. With the old key still trusted it clears the state; the rotation stands,
 as a rotation that kept the old key. With the old key already removed it adopts the old key in the repository's trust
