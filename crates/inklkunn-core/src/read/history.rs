@@ -136,6 +136,9 @@ pub struct ChangeInfo {
     pub summary: String,
     /// What the message says about the people.
     pub provenance: Provenance,
+    /// The proposal the message names (its `Proposal:` trailer), for a proposal or a rollback in the service's
+    /// form: the id as a text, never checked against the wiki's records here.
+    pub proposal: Option<String>,
 }
 
 /// What a change did to the page the history is of.
@@ -484,16 +487,20 @@ fn provenance(message: &Message) -> Provenance {
     }
 }
 
-/// The summary and the people of a block: from the first of its patch messages that is in CT-03 form, else the
-/// first line of the first message with the people *not recorded*.
-fn read_messages(messages: &[PatchMessage]) -> (String, Provenance) {
+/// The summary, the people and the proposal of a block: from the first of its patch messages that is in CT-03
+/// form, else the first line of the first message with the people *not recorded* and no proposal.
+fn read_messages(messages: &[PatchMessage]) -> (String, Provenance, Option<String>) {
     for pm in messages {
         if let Ok(message) = Message::parse(&pm.message) {
-            return (message.summary().as_str().to_owned(), provenance(&message));
+            return (
+                message.summary().as_str().to_owned(),
+                provenance(&message),
+                message.proposal_id().map(|p| p.as_str().to_owned()),
+            );
         }
     }
     let first = messages.first().map(|m| one_line(&m.message));
-    (first.unwrap_or_default(), Provenance::NotRecorded)
+    (first.unwrap_or_default(), Provenance::NotRecorded, None)
 }
 
 /// The changes of a log, newest first, each read once: the raw log (with every message whole) is not kept, only
@@ -503,7 +510,7 @@ fn infos_of(blocks: &[HistoryBlock]) -> Vec<ChangeInfo> {
         .iter()
         .enumerate()
         .map(|(at, block)| {
-            let (summary, provenance) = read_messages(&block.patch_messages);
+            let (summary, provenance, proposal) = read_messages(&block.patch_messages);
             let first = block.kind == "Root" || block.previous_ref_state_id.is_none();
             ChangeInfo {
                 block_id: block.block_id.clone(),
@@ -518,6 +525,7 @@ fn infos_of(blocks: &[HistoryBlock]) -> Vec<ChangeInfo> {
                 undoes: block.rollback_block,
                 summary,
                 provenance,
+                proposal,
             }
         })
         .collect()
@@ -775,6 +783,22 @@ impl ReadService {
             Target::Page { path, title } => (path, title),
             Target::Ambiguous(candidates) => return Ok(HistoryOutcome::Ambiguous { candidates }),
         };
+        Ok(HistoryOutcome::Page(Box::new(
+            self.history_step(wiki, tip, path, title, after)?,
+        )))
+    }
+
+    /// One step of the history of the page at `path`, read at `tip`: what [`ReadService::page_history`] answers
+    /// once the title is resolved. The pages that need the same step of the same tip (*Why is this here?*) call it
+    /// with the tip they resolved the title at, so that the title and the history are of one state.
+    pub(super) fn history_step(
+        &self,
+        wiki: &WikiRecord,
+        tip: Tip,
+        path: String,
+        title: String,
+        after: Option<u64>,
+    ) -> Result<PageHistory, ReadError> {
         // Blocks are numbered 1, 2, 3 … in a view's log, newest last: the window must reach from the newest
         // block past `after` and this step's share.
         let first = self.window_for(wiki, &tip, DEFAULT_WINDOW)?;
@@ -834,14 +858,14 @@ impl ReadService {
                 });
             }
         }
-        Ok(HistoryOutcome::Page(Box::new(PageHistory {
+        Ok(PageHistory {
             title,
             path,
             tip,
             rows,
             older: if stopped { last } else { None },
             beyond_window: !stopped && !window.complete,
-        })))
+        })
     }
 
     /// The change in the view's history with this block id, as the held log describes it (no `show`): `None`

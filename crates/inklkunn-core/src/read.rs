@@ -65,6 +65,7 @@ mod rollback;
 mod sanitize;
 mod search;
 mod tip;
+mod why;
 
 // The read API's reads (handoff 003 T8).
 mod api;
@@ -119,6 +120,10 @@ pub use rollback::{MAX_ROLLBACK_PAGES, NoRollback, RollbackOutcome, RollbackPlan
 pub use sanitize::{HTML_SUBSET, SafeHtml, Sanitizer};
 pub use search::{SearchHit, SearchOutcome, Segment as SnippetSegment, fold, highlight};
 pub use tip::Tip;
+pub use why::{
+    Basis, Chain, EXCERPT_CHARS, MAX_WHY_PARAGRAPHS, Paragraph, Reach, WhyOutcome, WhyPage,
+    WhyParagraph,
+};
 
 // The read API's reads (handoff 003 T8).
 pub use api::{

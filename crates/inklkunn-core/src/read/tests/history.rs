@@ -14,7 +14,7 @@ fn nth<T>(items: &[T], i: usize) -> &T {
     items.get(i).expect("an item")
 }
 
-fn op(kind: &str, paths: &[&str]) -> Operation {
+pub(super) fn op(kind: &str, paths: &[&str]) -> Operation {
     Operation {
         kind: kind.to_owned(),
         paths: paths
@@ -28,7 +28,7 @@ fn op(kind: &str, paths: &[&str]) -> Operation {
     }
 }
 
-fn change(ops: Vec<Operation>) -> inklkunn_prikk::Result<Change> {
+pub(super) fn change(ops: Vec<Operation>) -> inklkunn_prikk::Result<Change> {
     Ok(Change {
         schema_version: "show-report-v1".to_owned(),
         patches: vec![Patch {
@@ -90,7 +90,7 @@ fn numbers(h: &PageHistory) -> Vec<u64> {
     h.rows.iter().map(|r| r.change.number).collect()
 }
 
-fn ct03_proposal() -> String {
+pub(super) fn ct03_proposal() -> String {
     let message = Message::proposal(
         Summary::new("Correct the opening").expect("summary"),
         inklkunn_store::ProposalId::parse("019a0000-0000-7000-8000-00000000aaaa").expect("id"),

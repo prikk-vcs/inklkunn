@@ -55,6 +55,18 @@ pub fn align_blocks(base: &str, other: &str) -> Vec<Option<usize>> {
     page::align_blocks(base, other)
 }
 
+/// The alignment of [`align_blocks`], for the pages of this crate that follow a paragraph through a history (*Why is
+/// this here?*, RFC 005 part 2 D-8): the merge's own matching and never a copy of it. Not public, for the reason
+/// `align_blocks` is not.
+pub(crate) fn alignment(base: &str, other: &str) -> Vec<Option<usize>> {
+    page::align_blocks(base, other)
+}
+
+/// The blocks of a page's body in the order [`alignment`] indexes them.
+pub(crate) fn blocks_of_page(text: &str) -> Vec<inklkunn_markup::Block<'_>> {
+    page::page_blocks(text)
+}
+
 /// A page's path and text, as one side of a merge has it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PageText {

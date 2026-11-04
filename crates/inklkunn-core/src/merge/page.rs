@@ -93,10 +93,15 @@ struct Parts<'a> {
 }
 
 /// For each block of the page `base`, the index of the block of the page `other` that the merge's alignment says it
-/// is (`None`: removed). The alignment the merge makes between a base and a side, exposed for measurement.
-#[cfg(any(test, feature = "measurement-alignment"))]
+/// is (`None`: removed). The alignment the merge makes between a base and a side, exposed for measurement and for
+/// the pages that trace a paragraph through a history.
 pub(super) fn align_blocks(base: &str, other: &str) -> Vec<Option<usize>> {
     super::engine::align(&Parts::of(base).units(), &Parts::of(other).units(), true)
+}
+
+/// The top-level blocks of a page's body as the alignment counts them (the indexes `align_blocks` answers in).
+pub(super) fn page_blocks(text: &str) -> Vec<Block<'_>> {
+    Parts::of(text).blocks
 }
 
 impl<'a> Parts<'a> {
