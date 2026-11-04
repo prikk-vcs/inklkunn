@@ -570,6 +570,9 @@ pub(crate) struct PublicationTrust {
     pub(crate) ref_states: Vec<String>,
     /// Ref updates with none.
     pub(crate) ref_updates: Vec<String>,
+    /// Tags with none. No retirement records a tag (Z1): a tag made with a superseded key is a finding that nothing
+    /// traces to what the service sealed.
+    pub(crate) tags: Vec<String>,
     /// `publication trust issues: N`, when the line is there **exactly once** (two such lines are refused, and
     /// counted in `unrecognised`).
     pub(crate) issues: Option<u64>,
@@ -578,6 +581,9 @@ pub(crate) struct PublicationTrust {
     /// `publication-trust` lines of any other shape.
     pub(crate) unrecognised: usize,
 }
+
+/// One entry of a view's log: the block and the id of the ref state after it.
+pub(crate) type Logged = (String, String);
 
 /// One look at `prikk verify`: its JSON verdict and its text (see [`Writes::verify_run`]).
 #[derive(Debug)]
@@ -621,6 +627,7 @@ pub(crate) fn parse_publication_trust(text: &str) -> PublicationTrust {
             Some(("block", id)) => out.blocks.push(id.to_owned()),
             Some(("ref-state", id)) => out.ref_states.push(id.to_owned()),
             Some(("ref-update", id)) => out.ref_updates.push(id.to_owned()),
+            Some(("tag", id)) => out.tags.push(id.to_owned()),
             _ => out.unrecognised += 1,
         }
     }
@@ -1109,13 +1116,15 @@ impl Writes {
         Ok(views.views.into_iter().map(|v| v.name).collect())
     }
 
-    /// The block ids of a view's history, newest first, at most `limit` of them (`log --ref <view> --limit`).
+    /// A view's history, newest first, at most `limit` entries (`log --ref <view> --limit`): each entry's block id and
+    /// the id of the ref state after it, which a retirement needs to tell the ref states the service made from the
+    /// others (Z1).
     pub(crate) fn view_blocks(
         &self,
         repo: &Path,
         view: &str,
         limit: u64,
-    ) -> Result<Vec<String>, SignerError> {
+    ) -> Result<Vec<Logged>, SignerError> {
         let limit = limit.to_string();
         let stdout = self.read(
             repo,
@@ -1123,7 +1132,11 @@ impl Writes {
         )?;
         let history: History = parse_report("log", &stdout, schema::LOG_REPORT)
             .map_err(|e| SignerError::Damaged(e.to_string()))?;
-        Ok(history.blocks.into_iter().map(|b| b.block_id).collect())
+        Ok(history
+            .blocks
+            .into_iter()
+            .map(|b| (b.block_id, b.ref_state_id))
+            .collect())
     }
 
     /// `prikk verify`'s text and whether it exited 0, whatever its exit (a failing verification still prints its

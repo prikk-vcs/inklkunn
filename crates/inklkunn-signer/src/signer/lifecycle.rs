@@ -43,20 +43,14 @@ pub enum OldKeyOutcome {
     /// It was left trusted, as asked.
     Kept,
     /// It was removed from the repository's trust, as asked, and the key record holds the findings the removal
-    /// caused (handoff 004, P2′): a later failure made of exactly those is excused.
-    ///
-    /// **Except the key's late seals** (Y1): `late_seals` are the blocks the key sealed after the rotation that
-    /// replaced it. This service did not make them, the record leaves them out, `verify` keeps failing on them and
-    /// nothing excuses them ([`LATE_SEALS_SENTENCE`]). Empty for a key that sealed nothing after it was replaced.
-    ///
-    /// [`LATE_SEALS_SENTENCE`]: crate::LATE_SEALS_SENTENCE
-    Retired {
-        /// The ids of those blocks.
-        late_seals: Vec<String>,
-    },
+    /// caused (handoff 004, P2′): a later failure made of exactly those is excused. Only when every finding of the
+    /// removal was traceable to the key's own history (Z1); otherwise [`OldKeyOutcome::RetiredUnrecorded`].
+    Retired,
     /// The key was removed from the repository's trust, as asked, **but its findings are not recorded**: `verify`
-    /// could not be run after the removal, the two looks disagreed, the count of what prikk checked changed, a block
-    /// that lost its signature was not the key's, the record was too large or could not be written. The key record
+    /// could not be run after the removal, the two looks disagreed, the count of what prikk checked changed, a finding
+    /// could not be traced to what the key sealed for this service (a late block, a tag, a ref state nothing in its
+    /// history explains, a block another key lost: Z1, said with [`UNTRACEABLE_SENTENCE`]), the record was too large or
+    /// could not be written. The key record
     /// keeps the state the retirement began from (`retiring`), nothing is excused, and **nothing new is sealed**
     /// until `inklkunn wiki keys finish-retirement <wiki>` ([`Signer::finish_retirement`]) completes the record from
     /// that state, or `inklkunn wiki keys abandon-retirement <wiki> --confirm <slug>`
@@ -65,6 +59,7 @@ pub enum OldKeyOutcome {
     ///
     /// [`Signer::finish_retirement`]: crate::Signer::finish_retirement
     /// [`Signer::abandon_retirement`]: crate::Signer::abandon_retirement
+    /// [`UNTRACEABLE_SENTENCE`]: crate::UNTRACEABLE_SENTENCE
     RetiredUnrecorded(String),
     /// Removal was asked for and **failed**: the keys *were* rotated and the old maintainer key is **still
     /// trusted**, and the retirement stays begun (nothing new is sealed). The text is prikk's, for operators;

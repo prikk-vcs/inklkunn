@@ -73,21 +73,20 @@ fn what_prikk_prints_about_publication_trust_is_read_strictly() {
             ("ref-state", '1'),
             ("ref-update", '9'),
             ("block", 'b'),
+            ("tag", 'e'),
         ],
-        4,
+        5,
     ));
     assert_eq!(t.blocks, [id('a'), id('b')]);
     assert_eq!(t.ref_states, [id('1')]);
     assert_eq!(t.ref_updates, [id('9')]);
-    assert_eq!(t.issues, Some(4));
+    // A tag is read (Z1): a finding of a kind no retirement records, not a line of an unknown shape.
+    assert_eq!(t.tags, [id('e')]);
+    assert_eq!(t.issues, Some(5));
     assert_eq!(t.issues_lines, 1);
     assert_eq!(t.unrecognised, 0);
     // A line of another shape is counted, never guessed at: another kind, a short id, upper case, other words.
     let odd = [
-        format!(
-            "publication-trust [PRIKK-TRUST-PUBLICATION-UNTRUSTED]: tag {} has no trusted MAINTAINER signature",
-            id('a')
-        ),
         "publication-trust [PRIKK-TRUST-PUBLICATION-UNTRUSTED]: block abc has no trusted MAINTAINER signature"
             .to_owned(),
         format!(
@@ -106,6 +105,7 @@ fn what_prikk_prints_about_publication_trust_is_read_strictly() {
     let t = parse_publication_trust(&odd.join("\n"));
     assert_eq!(t.unrecognised, odd.len());
     assert!(t.blocks.is_empty() && t.ref_states.is_empty() && t.ref_updates.is_empty());
+    assert!(t.tags.is_empty());
     assert_eq!(t.issues, None);
 }
 
@@ -240,70 +240,120 @@ fn a_retirement_with_no_record_excuses_nothing_and_two_retirements_add_up() {
     assert_eq!(keys, ["first", "second"]);
 }
 
+/// What was known when a key was replaced: these blocks and these ref states, and no lost tip.
+fn known<'a>(blocks: &'a [String], states: &'a [String]) -> Known<'a> {
+    Known {
+        blocks: blocks.iter().map(String::as_str).collect(),
+        ref_states: states.iter().map(String::as_str).collect(),
+        lost: Vec::new(),
+    }
+}
+
 #[test]
-fn what_a_retirement_records_is_the_blocks_the_retired_key_signed_and_the_new_ref_findings() {
+fn what_a_retirement_records_is_what_it_traces_to_the_keys_own_history() {
+    let t = trust(&[
+        ("block", 'a'),
+        ("block", 'b'),
+        ("ref-state", '1'),
+        ("ref-update", '8'),
+    ]);
+    // The verify before listed `a` and `b` as the retired key's and the history up to the recorded tips holds both,
+    // and the ref state `1`: everything is traced, and the ref update is recorded as it is.
+    let signed_by_key = ids(&['a', 'b', 'd']);
+    let (blocks, states) = (ids(&['a', 'b', 'd']), ids(&['1']));
+    let found = record_of(&t, &signed_by_key, &known(&blocks, &states), &[]);
+    assert!(found.untraceable.is_empty(), "{:?}", found.untraceable);
+    assert_eq!(found.record.blocks, ids(&['a', 'b']));
+    assert_eq!(found.record.ref_states, ids(&['1']));
+    assert_eq!(found.record.ref_updates, ids(&['8']));
+    // What an earlier retirement recorded is not recorded again, and is not asked to be traced again.
+    let earlier = [(
+        "first",
+        &Excused {
+            blocks: ids(&['b']),
+            ref_states: ids(&['1']),
+            ref_updates: vec![],
+        },
+    )];
+    let nothing: Vec<String> = Vec::new();
+    let found = record_of(&t, &signed_by_key, &known(&nothing, &nothing), &earlier);
+    // `a` is traced to nothing here; `b` and the ref state are the earlier retirement's.
+    assert_eq!(found.untraceable.len(), 1, "{:?}", found.untraceable);
+    assert!(found.untraceable.iter().all(|u| u.contains(&id('a'))));
+    assert_eq!(found.record.ref_updates, ids(&['8']));
+}
+
+#[test]
+fn everything_that_is_not_traced_is_named() {
+    // Z1. `a` is traced. `b` is the retired key's but not among the blocks known when it was replaced (a late block);
+    // `c` lost its signature and the key did not seal it; ref state `2` is in no view's log up to the recorded tips;
+    // `t` is a tag; and one recorded tip is not in its view's log.
     let t = trust(&[
         ("block", 'a'),
         ("block", 'b'),
         ("block", 'c'),
         ("ref-state", '1'),
-        ("ref-update", '8'),
+        ("ref-state", '2'),
+        ("tag", 'e'),
     ]);
-    // The verify before listed `a` and `b` as the retired key's (and `c` as another key's, and had no line for `d`):
-    // what the retirement kept is the blocks the retired key signed.
-    let signed_by_key = ids(&['a', 'b', 'd']);
-    let known_ids = ids(&['a', 'b', 'd']);
-    let known: HashSet<&str> = known_ids.iter().map(String::as_str).collect();
-    let found = record_of(&t, &signed_by_key, &known, &[]);
-    assert_eq!(found.record.blocks, ids(&['a', 'b']));
-    assert_eq!(
-        found.left_out, 1,
-        "the block another key signed is left out"
-    );
-    assert!(found.late_seals.is_empty());
+    let (blocks, states) = (ids(&['a']), ids(&['1']));
+    let mut known = known(&blocks, &states);
+    let lost_block = id('9');
+    known.lost.push(("heads/side", lost_block.as_str()));
+    let found = record_of(&t, &ids(&['a', 'b']), &known, &[]);
+    assert_eq!(found.record.blocks, ids(&['a']));
     assert_eq!(found.record.ref_states, ids(&['1']));
-    assert_eq!(found.record.ref_updates, ids(&['8']));
-    // A block that no line lists is not the retired key's either.
-    let found = record_of(&t, &[], &known, &[]);
-    assert!(found.record.blocks.is_empty());
-    assert_eq!(found.left_out, 3);
-    // What an earlier retirement recorded is not recorded again.
-    let earlier = [(
-        "first",
-        &Excused {
-            blocks: ids(&['c']),
-            ref_states: ids(&['1']),
-            ref_updates: vec![],
-        },
-    )];
-    let found = record_of(&t, &signed_by_key, &known, &earlier);
-    assert_eq!((found.record.blocks, found.left_out), (ids(&['a', 'b']), 0));
-    assert!(found.record.ref_states.is_empty());
-    assert_eq!(found.record.ref_updates, ids(&['8']));
+    let said = found.untraceable.join("\n");
+    assert_eq!(found.untraceable.len(), 5, "{said}");
+    for (needle, why) in [
+        (id('b'), "sealed with the key after it was replaced"),
+        (id('c'), "the key did not seal it"),
+        (id('2'), "no view's log shows it"),
+        (id('e'), "tag"),
+        (lost_block.clone(), "heads/side"),
+    ] {
+        assert!(
+            found
+                .untraceable
+                .iter()
+                .any(|u| u.contains(&needle) && u.contains(why)),
+            "{needle}: {said}"
+        );
+    }
+    // The text names every finding and carries the one sentence.
+    let wiki = WikiId::new();
+    let text = untraceable_text(&wiki, "k1", &found.untraceable);
+    assert!(
+        text.contains(UNTRACEABLE_SENTENCE) && text.contains(&id('b')) && text.contains(&id('e'))
+    );
+    assert!(text.contains(&abandon_retirement_command(&wiki)), "{text}");
+    assert!(text.starts_with("5 finding(s) of the key k1"), "{text}");
 }
 
 #[test]
-fn a_block_the_retired_key_sealed_after_it_was_replaced_is_a_late_seal_and_is_never_recorded() {
-    // Y1. `b` is the retired key's but is not among the blocks that existed when the key was replaced: it is named
-    // as a late seal, it is not recorded, and it is not W4's block that someone else signed (no `left_out`).
-    let t = trust(&[("block", 'a'), ("block", 'b'), ("block", 'c')]);
-    let signed_by_key = ids(&['a', 'b']);
-    let known_ids = ids(&['a']);
-    let known: HashSet<&str> = known_ids.iter().map(String::as_str).collect();
-    let found = record_of(&t, &signed_by_key, &known, &[]);
-    assert_eq!(found.record.blocks, ids(&['a']));
-    assert_eq!(found.late_seals, ids(&['b']));
-    assert_eq!(found.left_out, 1, "only `c`, another key's, is left out");
-    // A block an earlier retirement recorded is neither recorded again nor called late.
-    let earlier = [(
-        "first",
-        &Excused {
-            blocks: ids(&['b']),
-            ..Excused::default()
-        },
-    )];
-    let found = record_of(&t, &signed_by_key, &known, &earlier);
-    assert!(found.late_seals.is_empty());
+fn a_long_list_of_untraceable_findings_is_counted_and_the_first_are_named() {
+    let many: Vec<String> = (0..NAMED_AT_MOST + 5).map(|n| format!("tag {n}")).collect();
+    let text = untraceable_text(&WikiId::new(), "k1", &many);
+    assert!(
+        text.starts_with(&format!("{} finding(s)", many.len())),
+        "{text}"
+    );
+    assert!(text.contains("tag 0") && text.contains(&format!("tag {}", NAMED_AT_MOST - 1)));
+    assert!(!text.contains(&format!("tag {NAMED_AT_MOST};")), "{text}");
+    assert!(text.contains("and 5 more"), "{text}");
+}
+
+#[test]
+fn a_tag_is_never_explained_by_a_retirement() {
+    let t = trust(&[("block", 'a'), ("tag", 'e')]);
+    let sets = [recorded_by("old")];
+    assert!(matches!(
+        judged(&trust_only(), &t, &sets),
+        Judgement::Unexplained(why) if why.contains("tag")
+    ));
+    // ... and a tag is a finding of the shape prikk prints, so it is not a parse failure.
+    assert_eq!(t.unrecognised, 0);
+    assert!(only_publication_trust(&trust_only(), &t).is_ok());
 }
 
 #[test]

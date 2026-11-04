@@ -342,10 +342,7 @@ fn retiring_the_old_key_stops_it_sealing_and_prikk_then_cannot_verify_what_it_se
         .signer
         .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
         .unwrap();
-    assert_eq!(
-        rotation.old_key,
-        OldKeyOutcome::Retired { late_seals: vec![] }
-    );
+    assert_eq!(rotation.old_key, OldKeyOutcome::Retired);
 
     // The new keys seal.
     w.seal_with_current_keys("second\n");
@@ -1385,8 +1382,7 @@ fn a_finish_that_would_leave_blocks_out_records_nothing_keeps_the_state_and_name
             why.clone()
         };
         assert!(
-            finish_text.contains("were not sealed by the retired key")
-                && finish_text.contains(&abandon),
+            finish_text.contains("the key did not seal it") && finish_text.contains(&abandon),
             "via_finish={via_finish}: {finish_text}"
         );
         let facts = w.facts();
@@ -1534,7 +1530,7 @@ fn a_key_kept_at_rotation_is_retired_later_by_its_id_and_the_record_is_made_on_i
     w.seal_with_current_keys("sealed by the new key\n");
     assert!(w.verify().0, "the old key is still trusted");
     let outcome = w.retire_by_id(&w.signer, &k1).unwrap();
-    assert_eq!(outcome, OldKeyOutcome::Retired { late_seals: vec![] });
+    assert_eq!(outcome, OldKeyOutcome::Retired);
     let facts = w.facts();
     assert!(facts.retiring.is_none());
     let entry = w.entry(&k1);
@@ -1597,7 +1593,7 @@ fn a_retirement_abandoned_after_the_removal_is_retired_later_by_its_id_and_the_m
             assert_eq!(finished.findings_recorded, 3);
         } else {
             let outcome = w.retire_by_id(&w.signer, &k1).unwrap();
-            assert_eq!(outcome, OldKeyOutcome::Retired { late_seals: vec![] });
+            assert_eq!(outcome, OldKeyOutcome::Retired);
         }
         let facts = w.facts();
         assert!(facts.retiring.is_none());
@@ -1660,7 +1656,7 @@ fn the_current_key_an_unknown_id_a_retired_key_and_a_key_not_trusted_are_refused
     // A key already retired.
     assert_eq!(
         w.retire_by_id(&w.signer, &k1).unwrap(),
-        OldKeyOutcome::Retired { late_seals: vec![] }
+        OldKeyOutcome::Retired
     );
     let before = w.facts();
     let r = w.retire_by_id(&w.signer, &k1);
@@ -1725,7 +1721,7 @@ fn of_two_superseded_keys_the_older_is_retired_by_id_on_its_own_entry() {
     // The older one first: the entry that gets the record is K1's, not the newest superseded one's.
     assert_eq!(
         w.retire_by_id(&w.signer, &k1).unwrap(),
-        OldKeyOutcome::Retired { late_seals: vec![] }
+        OldKeyOutcome::Retired
     );
     let first = w.entry(&k1);
     let second = w.entry(&k2);
@@ -1740,7 +1736,7 @@ fn of_two_superseded_keys_the_older_is_retired_by_id_on_its_own_entry() {
     // Then the other: its record is its own, and disjoint from the first.
     assert_eq!(
         w.retire_by_id(&w.signer, &k2).unwrap(),
-        OldKeyOutcome::Retired { late_seals: vec![] }
+        OldKeyOutcome::Retired
     );
     let second = w.entry(&k2);
     assert!(second.retired && !second.excused.is_empty(), "{second:?}");
@@ -1770,10 +1766,7 @@ fn a_rotation_that_retires_is_the_rotation_followed_by_the_retirement_of_the_key
         .signer
         .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
         .unwrap();
-    assert_eq!(
-        rotation.old_key,
-        OldKeyOutcome::Retired { late_seals: vec![] }
-    );
+    assert_eq!(rotation.old_key, OldKeyOutcome::Retired);
     assert_eq!(rotation.previous_maintainer_key_id, k1);
     assert!(w.entry(&k1).retired);
     assert!(w.facts().retiring.is_none());
@@ -1809,7 +1802,7 @@ fn a_retirement_that_could_not_be_begun_after_the_rotation_is_its_own_outcome_an
     std::fs::remove_file(ctl.join("list-dies-after-add")).unwrap();
     assert_eq!(
         w.retire_by_id(&w.signer, &k1).unwrap(),
-        OldKeyOutcome::Retired { late_seals: vec![] }
+        OldKeyOutcome::Retired
     );
     assert!(w.entry(&k1).retired);
 }
@@ -2151,110 +2144,285 @@ fn a_key_record_that_cannot_be_read_refuses_the_seal_it_does_not_count_as_no_ret
     assert_eq!(w.signer.seal_pause(&w.wiki), Ok(None));
 }
 
-// ---- a retirement never excuses a late seal (handoff 004, Y1)
+// ---- a retirement records only what it can trace, or nothing (handoff 004, Z1)
 
 impl World {
-    /// K1 kept at a rotation and stolen; the service seals on with the new keys; a thief seals with K1. Gives back
-    /// K1's id, the thief's block and the legitimate block K1 sealed before the rotation.
-    fn kept_key_with_a_late_seal(&self, tag: &str) -> (String, String, String) {
+    /// K1 kept at a rotation and stolen; the service seals on with the new keys. Gives K1's id, the loot and the
+    /// stolen key ids.
+    fn kept_and_stolen(&self, tag: &str) -> (String, Dir, (String, String)) {
         let k1 = self.facts().maintainer_key_id;
-        let before_rotation = self.tip_block();
         let loot = dir(Path::new("/dev/shm"), tag);
         let stolen = self.steal_seeds(&loot.0);
         assert_eq!(self.keep_rotation().old_key, OldKeyOutcome::Kept);
         self.seal_with_current_keys("sealed by the new key\n");
-        assert_eq!(self.seal_with_stolen(&loot.0, &stolen), None);
-        let forged = self.tip_block();
-        assert_eq!(
-            self.signer.seals_by_superseded_keys(&self.repo).unwrap(),
-            vec![LateSeal {
-                generation: 1,
-                maintainer_key_id: k1.clone(),
-                block_id: forged.clone(),
-            }]
+        (k1, loot, stolen)
+    }
+
+    /// An act of prikk made with the stolen keys; what it printed (it must have worked).
+    fn act_stolen(&self, loot: &Dir, ids: &(String, String), args: &[&str]) -> String {
+        let o = Command::new(&self.prikk)
+            .args(args)
+            .current_dir(&self.repo)
+            .env("PRIKK_AUTHOR_KEY_ID", &ids.0)
+            .env("PRIKK_AUTHOR_SEED_FILE", loot.0.join("author.seed"))
+            .env("PRIKK_MAINTAINER_KEY_ID", &ids.1)
+            .env("PRIKK_MAINTAINER_SEED_FILE", loot.0.join("maintainer.seed"))
+            .output()
+            .unwrap();
+        assert!(
+            o.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&o.stderr)
         );
-        assert!(self.verify().0, "K1 is still trusted");
-        (k1, forged, before_rotation)
+        String::from_utf8_lossy(&o.stdout).into_owned()
     }
 
-    /// The maintainer key ids the repository trusts.
-    fn trusted_ids_now(&self) -> Vec<String> {
-        self.signer
-            .writes
-            .trusted_maintainers(&self.repo)
-            .unwrap()
-            .into_iter()
-            .map(|k| k.key_id)
-            .collect()
+    /// The id on the line of prikk's answer that starts with `label` (`RefState: <id>`, `tag object: <id>`).
+    fn id_after(said: &str, label: &str) -> String {
+        said.lines()
+            .find_map(|l| l.strip_prefix(label))
+            .unwrap_or_else(|| panic!("no `{label}` in {said}"))
+            .trim()
+            .to_owned()
     }
-}
 
-#[test]
-fn a_late_seal_by_a_retired_key_is_named_not_recorded_and_nothing_excuses_it() {
-    let Some(w) = world("y1-late") else { return };
-    let (k1, forged, made_by_the_service) = w.kept_key_with_a_late_seal("y1-late-loot");
-    let outcome = w.retire_by_id(&w.signer, &k1).unwrap();
-    // The key is removed all the same, the record is made, and the late block is named.
-    assert_eq!(
-        outcome,
-        OldKeyOutcome::Retired {
-            late_seals: vec![forged.clone()]
+    /// The wiki is as a retirement that found something untraceable leaves it: K1 is out of the trust store, the
+    /// record holds nothing, the state to finish from is kept and writes are paused, and the refusals of `outcome`,
+    /// of `finish-retirement` and of a second key command each name every finding in `named` with the one sentence
+    /// and send nobody to `recover`. Gives the text of the outcome.
+    fn assert_unfinished_untraceable(
+        &self,
+        k1: &str,
+        outcome: &OldKeyOutcome,
+        named: &[&str],
+    ) -> String {
+        let OldKeyOutcome::RetiredUnrecorded(why) = outcome else {
+            panic!("{outcome:?}");
+        };
+        assert!(
+            why.contains(crate::UNTRACEABLE_SENTENCE),
+            "the one sentence: {why}"
+        );
+        for id in named {
+            assert!(why.contains(id), "{id} is named: {why}");
         }
-    );
-    assert!(
-        !w.trusted_ids_now().contains(&k1),
-        "the key is out of trust"
-    );
-    assert!(w.facts().retiring.is_none());
-    let entry = w.entry(&k1);
-    assert!(entry.retired);
-    assert!(
-        entry.excused.blocks.contains(&made_by_the_service),
-        "what the key sealed before it was replaced is recorded: {entry:?}"
-    );
-    // prikk names no signer for a ref state or a ref update, so the thief's two are in the set beside the service's
-    // two (it is the BLOCK that cannot be told from the key's; and it is the block that keeps the failure unexplained).
-    assert_eq!(entry.excused.len(), 5, "{entry:?}");
-    assert!(
-        !entry.excused.blocks.contains(&forged),
-        "the late seal is not recorded: {entry:?}"
-    );
-    // Verification keeps failing on the late block and nothing explains it: no *only a retired key* anywhere.
-    let (ok, out) = w.verify();
-    assert!(!ok && out.contains(&forged), "{out}");
-    assert_eq!(
-        w.signer.retirement_explains(&w.repo, &w.wiki),
-        Ok(None),
-        "the verification page would carry no explanation"
-    );
-    assert_eq!(
-        w.signer
-            .retirement_explains_beside_cleanup(&w.repo, &w.wiki),
-        Ok(None)
-    );
-    // Recovery's `verify` step asks the same question and gets the same answer: it does not describe the late block
-    // as the retired key's.
-    assert!(matches!(
-        crate::recover::Recover::verify_after_retirement(&w.signer, &w.wiki),
-        Ok(None)
-    ));
-    // The wiki goes on: the service seals with its new keys, and the late block stays unexplained.
-    assert_eq!(w.signer.seal_pause(&w.wiki), Ok(None));
-    w.seal_with_current_keys("and on\n");
-    assert_eq!(w.signer.retirement_explains(&w.repo, &w.wiki), Ok(None));
-    // The sentence that says what it means is one constant.
-    assert!(crate::LATE_SEALS_SENTENCE.contains("nothing excuses them"));
+        assert!(
+            !why.contains("wiki recover"),
+            "no text sends the operator to recover for this: {why}"
+        );
+        assert!(
+            !self.trusted_ids().contains(&k1.to_owned()),
+            "the key is out of trust"
+        );
+        let facts = self.facts();
+        assert_eq!(
+            facts
+                .retiring
+                .as_ref()
+                .map(|r| r.maintainer_key_id.as_str()),
+            Some(k1)
+        );
+        let entry = self.entry(k1);
+        assert!(
+            !entry.retired && entry.excused.is_empty(),
+            "the record gains nothing: {entry:?}"
+        );
+        assert!(
+            self.signer.seal_pause(&self.wiki).unwrap().is_some(),
+            "writes are paused"
+        );
+        assert_eq!(
+            self.signer.retirement_explains(&self.repo, &self.wiki),
+            Ok(None),
+            "nothing is excused"
+        );
+        // What `status` and recovery read: the same findings, the same sentence.
+        let said = self
+            .signer
+            .untraceable_in_unfinished_retirement(&self.repo)
+            .unwrap()
+            .expect("the unfinished retirement has untraceable findings");
+        assert!(said.contains(crate::UNTRACEABLE_SENTENCE), "{said}");
+        for id in named {
+            assert!(said.contains(id), "{id}: {said}");
+        }
+        let note = self
+            .signer
+            .unfinished_retirement_note(&self.wiki)
+            .expect("an unfinished retirement has a note");
+        assert!(note.contains(crate::UNTRACEABLE_SENTENCE), "{note}");
+        assert!(!note.contains("wiki recover"), "{note}");
+        // `finish-retirement` refuses with the same words and records nothing.
+        let r = self.finish(&self.signer);
+        match &r {
+            Err(SignerError::Refused(text)) => {
+                assert!(text.contains(crate::UNTRACEABLE_SENTENCE), "{text}");
+                for id in named {
+                    assert!(text.contains(id), "{id}: {text}");
+                }
+                assert!(text.contains("nothing was recorded"), "{text}");
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(self.facts(), facts, "nothing was recorded");
+        // ... and no other key command goes on beside it.
+        assert!(matches!(
+            self.retire_by_id(&self.signer, k1),
+            Err(SignerError::Refused(text)) if text.contains("not finished")
+        ));
+        assert!(matches!(
+            self.signer
+                .rotate_keys(&crate::KeyAuthority::for_tests(), &self.repo, OldKey::Keep),
+            Err(SignerError::Refused(text)) if text.contains("not finished")
+        ));
+        why.clone()
+    }
 }
 
 #[test]
-fn the_same_retirement_with_no_late_seal_records_everything_and_explains_the_failure_as_before() {
-    let Some(w) = world("y1-none") else { return };
+fn a_late_block_ends_the_retirement_unfinished_with_nothing_recorded() {
+    let Some(w) = world("z1-late") else { return };
+    let (k1, loot, stolen) = w.kept_and_stolen("z1-late-loot");
+    assert_eq!(w.seal_with_stolen(&loot.0, &stolen), None);
+    let forged = w.tip_block();
+    let outcome = w.retire_by_id(&w.signer, &k1).unwrap();
+    w.assert_unfinished_untraceable(&k1, &outcome, &[forged.as_str()]);
+    // The late block is named for what it is.
+    let OldKeyOutcome::RetiredUnrecorded(why) = &outcome else {
+        panic!("{outcome:?}");
+    };
+    assert!(
+        why.contains(&format!(
+            "block {forged} (sealed with the key after it was replaced)"
+        )),
+        "{why}"
+    );
+    // Nothing excuses it afterwards either: the wiki's failure is unexplained, and giving the retirement up is the
+    // way out that the sentence names.
+    assert!(!w.verify().0);
+    let done = w.abandon(&w.signer).unwrap();
+    assert!(done.restored);
+    assert!(w.verify().0, "the key is trusted again");
+    assert!(w.signer.seal_pause(&w.wiki).unwrap().is_none());
+    // Retired again, it is the same.
+    let again = w.retire_by_id(&w.signer, &k1).unwrap();
+    w.assert_unfinished_untraceable(&k1, &again, &[forged.as_str()]);
+}
+
+#[test]
+fn a_branch_closed_by_the_superseded_key_is_untraceable_and_ends_the_retirement_unfinished() {
+    let Some(w) = world("z1-close") else { return };
+    let (k1, loot, stolen) = w.kept_and_stolen("z1-close-loot");
+    let said = w.act_stolen(&loot, &stolen, &["branch", "close", "heads/main"]);
+    let state = World::id_after(&said, "RefState: ");
+    let outcome = w.retire_by_id(&w.signer, &k1).unwrap();
+    // No block was made, so C11's check has nothing to say; the ref state is what is named.
+    assert_eq!(w.signer.seals_by_superseded_keys(&w.repo).unwrap(), vec![]);
+    let why = w.assert_unfinished_untraceable(&k1, &outcome, &[state.as_str()]);
+    assert!(why.contains(&format!("ref state {state}")), "{why}");
+}
+
+#[test]
+fn a_branch_created_by_the_superseded_key_is_untraceable_and_ends_the_retirement_unfinished() {
+    let Some(w) = world("z1-create") else { return };
+    let (k1, loot, stolen) = w.kept_and_stolen("z1-create-loot");
+    let said = w.act_stolen(
+        &loot,
+        &stolen,
+        &["branch", "create", "heads/stolen", "--from", "heads/main"],
+    );
+    let state = World::id_after(&said, "RefState: ");
+    let outcome = w.retire_by_id(&w.signer, &k1).unwrap();
+    assert_eq!(w.signer.seals_by_superseded_keys(&w.repo).unwrap(), vec![]);
+    let why = w.assert_unfinished_untraceable(&k1, &outcome, &[state.as_str()]);
+    assert!(why.contains(&format!("ref state {state}")), "{why}");
+}
+
+#[test]
+fn a_tag_made_by_the_superseded_key_is_untraceable_not_a_parse_failure() {
+    let Some(w) = world("z1-tag") else { return };
+    let (k1, loot, stolen) = w.kept_and_stolen("z1-tag-loot");
+    let said = w.act_stolen(
+        &loot,
+        &stolen,
+        &["tag", "create", "tags/stolen", "--target", "heads/main"],
+    );
+    let tag = World::id_after(&said, "tag object: ");
+    let outcome = w.retire_by_id(&w.signer, &k1).unwrap();
+    let why = w.assert_unfinished_untraceable(&k1, &outcome, &[tag.as_str()]);
+    assert!(why.contains(&format!("tag {tag}")), "{why}");
+    assert!(
+        !why.contains("not a clean publication-trust failure"),
+        "a tag is a finding of the known shape: {why}"
+    );
+}
+
+#[test]
+fn the_acts_of_a_thief_beside_the_services_own_are_all_named_and_none_is_recorded() {
+    let Some(w) = world("z1-all") else { return };
+    let (k1, loot, stolen) = w.kept_and_stolen("z1-all-loot");
+    assert_eq!(w.seal_with_stolen(&loot.0, &stolen), None);
+    let forged = w.tip_block();
+    let tag = World::id_after(
+        &w.act_stolen(
+            &loot,
+            &stolen,
+            &["tag", "create", "tags/stolen", "--target", "heads/main"],
+        ),
+        "tag object: ",
+    );
+    let outcome = w.retire_by_id(&w.signer, &k1).unwrap();
+    let why = w.assert_unfinished_untraceable(&k1, &outcome, &[forged.as_str(), tag.as_str()]);
+    // The service's own findings are not named: its blocks and ref states up to the recorded tips are traced.
+    assert!(why.contains("finding(s) of the key"), "{why}");
+}
+
+#[test]
+fn a_recorded_tip_the_repository_does_not_show_is_untraceable_in_its_own_words() {
+    // Z5. The key record says the key's last block of heads/main was a block the log of heads/main does not hold (a
+    // repository older than the record, say). Nothing of that view is known, and the retirement says so; it does not
+    // say that the service did not make anything.
+    let Some(w) = world("z1-lost") else { return };
+    let k1 = w.facts().maintainer_key_id;
+    assert_eq!(w.keep_rotation().old_key, OldKeyOutcome::Kept);
+    let bogus = "9".repeat(64);
+    w.signer
+        .store
+        .update_meta(&w.wiki, |m| {
+            for s in &mut m.superseded {
+                for tip in &mut s.views {
+                    tip.block_id.clone_from(&bogus);
+                }
+            }
+        })
+        .unwrap();
+    let outcome = w.retire_by_id(&w.signer, &k1).unwrap();
+    let why = w.assert_unfinished_untraceable(&k1, &outcome, &[bogus.as_str()]);
+    assert!(
+        why.contains(&format!(
+            "the newest block recorded for heads/main ({bogus}) is not in its history"
+        )),
+        "{why}"
+    );
+    assert!(!why.contains("did not make"), "{why}");
+}
+
+#[test]
+fn the_same_retirement_with_nothing_untraceable_records_everything_and_explains_the_failure_as_before()
+ {
+    let Some(w) = world("z1-none") else { return };
     let k1 = w.facts().maintainer_key_id;
     w.keep_rotation();
     w.seal_with_current_keys("sealed by the new key\n");
     let outcome = w.retire_by_id(&w.signer, &k1).unwrap();
-    assert_eq!(outcome, OldKeyOutcome::Retired { late_seals: vec![] });
+    assert_eq!(outcome, OldKeyOutcome::Retired);
     assert_eq!(w.entry(&k1).excused.len(), 3);
+    assert!(w.facts().retiring.is_none());
+    assert_eq!(w.signer.seal_pause(&w.wiki), Ok(None));
+    assert_eq!(
+        w.signer.untraceable_in_unfinished_retirement(&w.repo),
+        Ok(None)
+    );
     assert!(!w.verify().0);
     assert!(matches!(
         w.signer.retirement_explains(&w.repo, &w.wiki),
@@ -2267,90 +2435,118 @@ fn the_same_retirement_with_no_late_seal_records_everything_and_explains_the_fai
 }
 
 #[test]
-fn finishing_a_retirement_does_not_widen_what_it_records_and_names_the_late_seal() {
-    let Some(w) = world("y1-finish") else { return };
-    let (k1, forged, _) = w.kept_key_with_a_late_seal("y1-finish-loot");
-    // The retirement is stopped before its record (the `verify` after the removal dies), then finished.
-    let (ctl, signer) = w.faulty();
-    std::fs::write(ctl.join("verify-dies"), "").unwrap();
-    let outcome = w.retire_by_id(&signer, &k1).unwrap();
-    assert!(
-        matches!(outcome, OldKeyOutcome::RetiredUnrecorded(_)),
-        "{outcome:?}"
-    );
-    std::fs::remove_file(ctl.join("verify-dies")).unwrap();
-    let done = w.finish(&signer).unwrap();
-    assert_eq!(done.late_seals, vec![forged.clone()]);
-    assert_eq!(done.findings_recorded, w.entry(&k1).excused.len());
-    assert!(!w.entry(&k1).excused.blocks.contains(&forged));
-    assert_eq!(w.signer.retirement_explains(&w.repo, &w.wiki), Ok(None));
-    // Finishing with the key still trusted (the removal never happened) takes the same road.
-    let Some(w) = world("y1-finish-trusted") else {
+fn a_view_the_service_made_and_a_branch_it_sealed_on_are_traced_to_the_keys_own_history() {
+    // The ref states of a view the key's service created and sealed on before the rotation are in that view's log, so
+    // they are traced; the retirement records them and nothing is untraceable.
+    let Some(w) = world("z1-views") else { return };
+    let k1 = w.facts().maintainer_key_id;
+    let seeds = w.signer.seeds(&w.wiki);
+    w.signer
+        .writes
+        .branch_create(&w.repo, &seeds, "heads/side", "heads/main")
+        .unwrap();
+    assert!(!seeds.left_over());
+    w.seal_with_current_keys("on main\n");
+    w.keep_rotation();
+    w.seal_with_current_keys("after the rotation\n");
+    let outcome = w.retire_by_id(&w.signer, &k1).unwrap();
+    assert_eq!(outcome, OldKeyOutcome::Retired);
+    assert!(w.facts().retiring.is_none());
+    assert!(w.entry(&k1).retired);
+}
+
+#[test]
+fn finishing_traces_the_same_way_when_the_removal_never_happened() {
+    // The retirement stops before the removal (it fails), the thief's act is already in the history; finishing
+    // removes the key itself and then refuses for the same reason as the retirement would have.
+    let Some(w) = world("z1-finish-trusted") else {
         return;
     };
-    let (k1, forged, _) = w.kept_key_with_a_late_seal("y1-finish-trusted-loot");
+    let (k1, loot, stolen) = w.kept_and_stolen("z1-finish-trusted-loot");
+    assert_eq!(w.seal_with_stolen(&loot.0, &stolen), None);
+    let forged = w.tip_block();
     let (ctl, signer) = w.faulty();
     std::fs::write(ctl.join("remove-fails"), "").unwrap();
-    let outcome = w.retire_by_id(&signer, &k1).unwrap();
-    assert!(
-        matches!(outcome, OldKeyOutcome::RetireFailed(_)),
-        "{outcome:?}"
-    );
-    std::fs::remove_file(ctl.join("remove-fails")).unwrap();
-    let done = w.finish(&signer).unwrap();
-    assert!(done.removed_now);
-    assert_eq!(done.late_seals, vec![forged.clone()]);
-    assert!(!w.entry(&k1).excused.blocks.contains(&forged));
-    assert_eq!(w.signer.retirement_explains(&w.repo, &w.wiki), Ok(None));
-}
-
-#[test]
-fn abandoning_a_retirement_with_a_late_seal_retrusts_the_key_and_retiring_again_names_the_same_block()
- {
-    let Some(w) = world("y1-abandon") else { return };
-    let (k1, forged, _) = w.kept_key_with_a_late_seal("y1-abandon-loot");
-    let (ctl, signer) = w.faulty();
-    std::fs::write(ctl.join("verify-dies"), "").unwrap();
     assert!(matches!(
         w.retire_by_id(&signer, &k1).unwrap(),
-        OldKeyOutcome::RetiredUnrecorded(_)
+        OldKeyOutcome::RetireFailed(_)
     ));
-    let done = w.abandon(&signer).unwrap();
-    assert!(done.restored);
-    // Nothing was recorded or excused by the abandoned attempt; the key is trusted and the repository verifies.
-    assert!(!w.entry(&k1).retired && w.entry(&k1).excused.is_empty());
-    assert!(w.verify().0);
-    std::fs::remove_file(ctl.join("verify-dies")).unwrap();
-    std::fs::remove_file(ctl.join("removed")).unwrap();
-    // Retired again, it is the same: the late block is named and not recorded.
-    let outcome = w.retire_by_id(&w.signer, &k1).unwrap();
+    // The key is still trusted: there is nothing to trace yet.
     assert_eq!(
-        outcome,
-        OldKeyOutcome::Retired {
-            late_seals: vec![forged.clone()]
-        }
+        w.signer.untraceable_in_unfinished_retirement(&w.repo),
+        Ok(None)
     );
-    assert!(!w.entry(&k1).excused.blocks.contains(&forged));
+    std::fs::remove_file(ctl.join("remove-fails")).unwrap();
+    match w.finish(&signer) {
+        Err(SignerError::Refused(text)) => {
+            assert!(text.contains(crate::UNTRACEABLE_SENTENCE), "{text}");
+            assert!(text.contains(&forged), "{text}");
+        }
+        other => panic!("{other:?}"),
+    }
+    // The key was removed by that finish, and the wiki is in the state of every other untraceable retirement.
+    assert!(!w.trusted_ids().contains(&k1));
+    assert!(w.facts().retiring.is_some());
+    assert!(w.entry(&k1).excused.is_empty());
+    assert!(w.signer.seal_pause(&w.wiki).unwrap().is_some());
 }
 
 #[test]
-fn a_rotation_that_retires_the_replaced_key_does_not_call_a_kept_keys_late_seal_its_own() {
+fn a_failure_by_publication_trust_that_no_retirement_recorded_does_not_send_anyone_to_recover() {
+    // Z2. K2's key was removed from the repository's trust by hand (`prikk trust maintainer remove`): `verify` fails
+    // by publication trust on findings no retirement recorded. `inklkunn wiki recover` does not cure that, and a
+    // retirement's refusal must not say it does.
+    let Some(w) = world("z2-text") else { return };
+    let k1 = w.facts().maintainer_key_id;
+    w.keep_rotation();
+    let k2 = w.facts().maintainer_key_id;
+    w.seal_with_current_keys("sealed by the second key\n");
+    w.keep_rotation();
+    assert!(w.verify().0);
+    let o = w.prikk(&["trust", "maintainer", "remove", "--key-id", &k2]);
+    assert!(o.status.success());
+    assert!(
+        !w.verify().0,
+        "the second key's blocks have no trusted signature"
+    );
+    let r = w.retire_by_id(&w.signer, &k1);
+    match &r {
+        Err(SignerError::Refused(text)) => {
+            assert!(text.contains("does not cure"), "{text}");
+            assert!(text.contains("docs/KEYS.md"), "{text}");
+            assert!(!text.contains("run `inklkunn wiki recover"), "{text}");
+        }
+        other => panic!("{other:?}"),
+    }
+    let rotated = w
+        .signer
+        .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Retire);
+    match &rotated {
+        Err(SignerError::Refused(text)) => {
+            assert!(text.contains("does not cure"), "{text}");
+            assert!(!text.contains("run `inklkunn wiki recover"), "{text}");
+        }
+        other => panic!("{other:?}"),
+    }
+    assert!(w.facts().retiring.is_none(), "nothing was begun");
+}
+
+#[test]
+fn a_rotation_that_retires_the_replaced_key_does_not_trace_a_kept_keys_acts_to_it() {
     // K1 was kept at the first rotation and a thief sealed with it; the second rotation retires K2, the key it
-    // replaces. K2 sealed nothing late, and K1's late block (K1 is still trusted) is not K2's to name.
-    let Some(w) = world("y1-rotate-retire") else {
+    // replaces. K2 did nothing untraceable, and K1's late block (K1 is still trusted) is not K2's to name.
+    let Some(w) = world("z1-rotate-retire") else {
         return;
     };
-    let (k1, _forged, _) = w.kept_key_with_a_late_seal("y1-rotate-retire-loot");
+    let (k1, loot, stolen) = w.kept_and_stolen("z1-rotate-retire-loot");
+    assert_eq!(w.seal_with_stolen(&loot.0, &stolen), None);
     let k2 = w.facts().maintainer_key_id;
     let rotation = w
         .signer
         .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
         .unwrap();
     assert_eq!(rotation.previous_maintainer_key_id, k2);
-    assert_eq!(
-        rotation.old_key,
-        OldKeyOutcome::Retired { late_seals: vec![] }
-    );
+    assert_eq!(rotation.old_key, OldKeyOutcome::Retired);
     assert!(w.entry(&k2).retired);
     assert!(!w.entry(&k1).retired, "K1 stays trusted");
 }

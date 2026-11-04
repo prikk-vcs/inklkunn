@@ -18,11 +18,15 @@
 //! 3. `verify` **after**. Its report names every block, ref state and ref update that now has no trusted
 //!    signature. Those ids are recorded in the authenticated key record ([`Excused`]); a block is recorded only
 //!    when step 1 listed the retired key as its signer, and only if prikk counted the same number of publication
-//!    trust records before and after (nothing was published in between; Q4). **A late seal is never recorded** (Y1):
-//!    of the blocks step 1 listed as the key's, only those up to the tips the key record kept when the key was
-//!    superseded ([`known_when_replaced`], the set the late-seal check uses) are recorded. Blocks the key sealed
-//!    afterwards were not made by this service; the key is removed all the same, those blocks are left out and named
-//!    ([`LATE_SEALS_SENTENCE`]), and `verify` keeps failing on them with nothing to excuse it.
+//!    trust records before and after (nothing was published in between; Q4). **A retirement records only what it can
+//!    trace, or nothing** (Z1): every finding must be traceable to the key's own history as the service made it. A
+//!    block must be one the verify before listed as the key's and one that existed when the key was replaced; a ref
+//!    state must be one of the log entries up to the tips the key record kept then ([`known_when_replaced`], the one
+//!    definition the late-seal check uses too); ref updates are recorded as they are (the ref state they belong to is
+//!    what is traced). A tag, a late block, a ref state nothing in the history explains, a block another key lost, a
+//!    recorded tip the repository no longer shows: if **anything** is untraceable the retirement records nothing and
+//!    stays unfinished, with the key out of the trust store and the seal paused as for any unfinished retirement. It
+//!    is W4's case, with nothing of its own.
 //!
 //! **A retirement never strands a wiki** (handoff 004, Q1, W1 – W7). Before step 2 the key record stores a `retiring`
 //! state: the blocks step 1 listed as the key's, the count, the tip of every view, the retired key's public key and
@@ -38,7 +42,8 @@
 //!   (W2): with the key still trusted it takes a fresh `verify` (which must pass), rewrites the state from it and
 //!   removes the key itself; with the key already removed it requires every view's tip to be the one the state kept
 //!   and the trust list to be exactly the kept list without the key (W5). Then it takes the `verify` after and records
-//!   its findings, **and records nothing** when a block that lost its signature was not the key's (W4).
+//!   its findings, **and records nothing** when anything is untraceable (W4, Z1): the refusal names each such finding
+//!   and says, in the one sentence [`UNTRACEABLE_SENTENCE`], that nothing excuses them and what the way out is.
 //! - [`Signer::abandon_retirement`] (`inklkunn wiki keys abandon-retirement <wiki> --confirm <slug>`) gives the
 //!   retirement up (W3): the rotation stands, the old key is trusted again (adopted again from the public key the
 //!   state kept, if it had been removed), nothing is retired.
@@ -74,7 +79,7 @@ use inklkunn_prikk::storage::Verification;
 use inklkunn_store::{AuditLog, WikiId};
 
 use super::lifecycle::OldKeyOutcome;
-use super::superseded::known_when_replaced;
+use super::superseded::{Known, known_when_replaced};
 use super::{Signer, SignerError, ks};
 use crate::KeyAuthority;
 use crate::key_store::{Excused, MAX_EXCUSED_SUBJECTS, MAX_RECORDED_VIEWS, RecordedTip, Retiring};
@@ -132,9 +137,6 @@ pub struct RetirementFinished {
     pub maintainer_key_id: String,
     /// How many blocks, ref states and ref updates the record now holds for it.
     pub findings_recorded: usize,
-    /// The blocks the key sealed after the rotation that replaced it (Y1): not recorded, and [`LATE_SEALS_SENTENCE`]
-    /// says what that means.
-    pub late_seals: Vec<String>,
     /// The command removed the key from the repository's trust itself (it was still trusted).
     pub removed_now: bool,
 }
@@ -234,7 +236,8 @@ pub(crate) fn only_publication_trust(
 
 /// The publication-trust lines of the text are of the known shape and as many as prikk counts. Returns how many.
 fn trust_lines(trust: &PublicationTrust) -> Result<usize, &'static str> {
-    let named = trust.blocks.len() + trust.ref_states.len() + trust.ref_updates.len();
+    let named =
+        trust.blocks.len() + trust.ref_states.len() + trust.ref_updates.len() + trust.tags.len();
     if named == 0 {
         return Err("no publication-trust finding is named");
     }
@@ -316,6 +319,11 @@ fn judge_named(trust: &PublicationTrust, recorded: &Recorded) -> Judgement {
         set(|e| &e.ref_states),
         set(|e| &e.ref_updates),
     );
+    if !trust.tags.is_empty() {
+        return Judgement::Unexplained(
+            "a tag has no trusted signature, and no retirement records a tag",
+        );
+    }
     if trust.blocks.iter().any(|b| !blocks.contains(b.as_str())) {
         return Judgement::Unexplained(
             "a block has no trusted signature and no retirement recorded it",
@@ -362,79 +370,107 @@ fn judge_named(trust: &PublicationTrust, recorded: &Recorded) -> Judgement {
 /// before listed as sealed by the retired key (`signed_by_key`), and what earlier retirements recorded already (those
 /// are not recorded again).
 ///
-/// A block the retired key sealed is recorded only when it is **known** (`known`: the blocks that existed when the key
-/// was replaced, [`known_when_replaced`], the same set the late-seal check uses; Y1). A block the key sealed
-/// afterwards is a **late seal**: this service did not make it, so it is not recorded and no retirement excuses it.
-///
-/// Returns the new findings, how many named blocks were **left out** because the verify before did not list the
-/// retired key as their signer, and the late seals.
-pub(crate) fn record_of(
+/// **Everything is traced or nothing is recorded** (Z1). A block is recorded when the retired key sealed it and it is
+/// **known** (`known`: what existed when the key was replaced, [`known_when_replaced`], the set the late-seal check
+/// uses); a ref state when it is a known one; a ref update as it is. Everything else is **untraceable** and named: a
+/// block sealed with the key afterwards, a block another key sealed, a ref state no log entry up to the recorded tips
+/// shows, a tag (no retirement records a tag), a recorded tip the repository no longer shows. A caller that finds
+/// anything untraceable records nothing.
+pub(super) fn record_of(
     trust: &PublicationTrust,
     signed_by_key: &[String],
-    known: &HashSet<&str>,
+    known: &Known,
     earlier: &Recorded,
 ) -> Findings {
     let earlier_has = |pick: fn(&Excused) -> &Vec<String>, id: &String| {
         earlier.iter().any(|(_, e)| pick(e).contains(id))
     };
     let signed_by_retired: HashSet<&str> = signed_by_key.iter().map(String::as_str).collect();
-    let mut left_out = 0;
-    let mut late_seals = Vec::new();
+    let mut untraceable = Vec::new();
     let mut out = Excused::default();
     for block in &trust.blocks {
         if earlier_has(|e| &e.blocks, block) {
             continue;
         }
-        if signed_by_retired.contains(block.as_str()) {
-            if known.contains(block.as_str()) {
-                out.blocks.push(block.clone());
-            } else {
-                late_seals.push(block.clone());
-            }
+        if !signed_by_retired.contains(block.as_str()) {
+            untraceable.push(format!(
+                "block {block} (it lost its signature, and the key did not seal it)"
+            ));
+        } else if known.blocks.contains(block.as_str()) {
+            out.blocks.push(block.clone());
         } else {
-            left_out += 1;
+            untraceable.push(format!(
+                "block {block} (sealed with the key after it was replaced)"
+            ));
         }
     }
-    out.ref_states = trust
-        .ref_states
-        .iter()
-        .filter(|s| !earlier_has(|e| &e.ref_states, s))
-        .cloned()
-        .collect();
+    for state in &trust.ref_states {
+        if earlier_has(|e| &e.ref_states, state) {
+            continue;
+        }
+        if known.ref_states.contains(state.as_str()) {
+            out.ref_states.push(state.clone());
+        } else {
+            untraceable.push(format!(
+                "ref state {state} (no view's log shows it up to the newest blocks recorded when the key was replaced)"
+            ));
+        }
+    }
     out.ref_updates = trust
         .ref_updates
         .iter()
         .filter(|u| !earlier_has(|e| &e.ref_updates, u))
         .cloned()
         .collect();
+    untraceable.extend(trust.tags.iter().map(|tag| format!("tag {tag}")));
+    untraceable.extend(known.lost.iter().map(|(view, block)| {
+        format!("the newest block recorded for {view} ({block}) is not in its history")
+    }));
     Findings {
         record: out,
-        left_out,
-        late_seals,
+        untraceable,
     }
 }
 
 /// What [`record_of`] made of a failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Findings {
-    /// What the retirement records.
+    /// What the retirement would record.
     pub(crate) record: Excused,
-    /// How many named blocks the retired key did not seal.
-    pub(crate) left_out: usize,
-    /// The blocks the retired key sealed **after** it was replaced (Y1): recorded nowhere.
-    pub(crate) late_seals: Vec<String>,
+    /// What cannot be traced to the key's own history, each said in words with its id. Not empty: the retirement
+    /// records nothing.
+    pub(crate) untraceable: Vec<String>,
 }
 
-/// What the end of a retirement made.
-pub(super) struct Concluded {
-    /// How many findings the key record now holds for the key.
-    pub(super) recorded: usize,
-    /// The blocks the key sealed after it was replaced (Y1), which the record leaves out.
-    pub(super) late_seals: Vec<String>,
-}
+/// The one sentence that says what untraceable findings mean (Z1), after the findings themselves. The way out is the
+/// repository's history as it was before them, or giving the retirement up: nothing in the product excuses an act it
+/// cannot trace, and nothing rewrites history.
+pub const UNTRACEABLE_SENTENCE: &str = "the repository holds acts with this key that cannot be traced to what it sealed for this service; nothing excuses them, and this service seals nothing more until the history is restored from before them (docs/KEYS.md, compromise) or the retirement is given up with abandon-retirement, which trusts the key again";
 
-/// What a retirement says of the blocks the retired key sealed after it was replaced (Y1): said with each block's id.
-pub const LATE_SEALS_SENTENCE: &str = "these blocks were sealed with this key after it was replaced, so this service did not make them; verification keeps failing on them, and nothing excuses them";
+/// The most untraceable findings said one by one in a text; the count says the rest.
+const NAMED_AT_MOST: usize = 20;
+
+/// What a refusal, the status line and a recovery stop say of untraceable findings: the key, each finding (the first
+/// [`NAMED_AT_MOST`] by name), [`UNTRACEABLE_SENTENCE`], and the command that gives the retirement up.
+pub fn untraceable_text(wiki: &WikiId, key: &str, untraceable: &[String]) -> String {
+    let shown: Vec<&str> = untraceable
+        .iter()
+        .take(NAMED_AT_MOST)
+        .map(String::as_str)
+        .collect();
+    let more = untraceable.len().saturating_sub(NAMED_AT_MOST);
+    format!(
+        "{} finding(s) of the key {key} cannot be traced: {}{}; {UNTRACEABLE_SENTENCE} (`{}`)",
+        untraceable.len(),
+        shown.join("; "),
+        if more > 0 {
+            format!("; and {more} more")
+        } else {
+            String::new()
+        },
+        abandon_retirement_command(wiki)
+    )
+}
 
 /// The most findings a retirement may record, read before the key leaves the trust store from the count prikk
 /// prints (`checked publication trust records: N`): a wiki past it is refused and nothing changes.
@@ -551,6 +587,13 @@ impl Signer {
             let recorded: Vec<(&str, &Excused)> =
                 retired.iter().map(|(k, e)| (k.as_str(), e)).collect();
             if let Judgement::Unexplained(why) = judge(&run.report, &trust, &recorded) {
+                // A failure by publication trust alone, whose findings no retirement recorded, is not one recovery
+                // cures (Z2): the text must not send the operator there.
+                if only_publication_trust(&run.report, &trust).is_ok() {
+                    return Err(SignerError::Refused(format!(
+                        "`prikk verify` fails by publication trust on findings no retirement of this wiki recorded ({why}), which `inklkunn wiki recover` does not cure (docs/KEYS.md, compromise); the key was not retired and is still trusted{NOTHING_CHANGED}"
+                    )));
+                }
                 return Err(SignerError::NeedsRecovery(format!(
                     "`prikk verify` fails ({why}), so the key was not retired and is still trusted"
                 )));
@@ -613,27 +656,28 @@ impl Signer {
     /// from trust, nothing is excused, and the state stays for [`Signer::finish_retirement`] (when a later run can
     /// cure it) or for [`Signer::abandon_retirement`] (when none can).
     ///
-    /// **Nothing is recorded when a block that lost its signature was not the retired key's** (W4): such a block would
-    /// stop the wiki, no command adds it to a record, and a record that looks complete while it is not is worse than
-    /// none. The way out is [`Signer::abandon_retirement`].
-    ///
-    /// **A late seal is not W4's block** (Y1): a block the retired key sealed after the rotation that replaced it
-    /// (`kept` are the tips the key record kept then) is left out of the record **on purpose**, the key stays removed,
-    /// and the block is given back so that it is named.
+    /// **Nothing is recorded when anything is untraceable** (W4, Z1): a block that lost its signature and was not the
+    /// retired key's, a block it sealed after it was replaced (`kept` are the tips the key record kept then), a ref
+    /// state or a tag nothing in the key's own history explains. Such a finding would stop the wiki, no command adds it
+    /// to a record, and a record that looks complete while it is not is worse than none. The findings are given back,
+    /// named, in [`Findings::untraceable`]; the caller records nothing when there are any.
     pub(super) fn findings_after_retirement(
         &self,
         repo: &std::path::Path,
         retiring: &Retiring,
         kept: &[RecordedTip],
         earlier: &[(String, Excused)],
-    ) -> Result<(Excused, Vec<String>), Cannot> {
+    ) -> Result<Findings, Cannot> {
         let run = self.writes.verify_run(repo).map_err(|e| {
             Cannot::later(format!(
                 "`prikk verify` could not be run after the key was removed from trust ({e})"
             ))
         })?;
         if run.report.verdict.ok {
-            return Ok((Excused::default(), Vec::new()));
+            return Ok(Findings {
+                record: Excused::default(),
+                untraceable: Vec::new(),
+            });
         }
         let trust = parse_publication_trust(&run.text);
         only_publication_trust(&run.report, &trust).map_err(|why| {
@@ -652,31 +696,22 @@ impl Signer {
             )));
         }
         let earlier: Vec<(&str, &Excused)> = earlier.iter().map(|(k, e)| (k.as_str(), e)).collect();
-        // The blocks that existed when the key was replaced: the one definition, shared with the late-seal check (Y1).
+        // What existed when the key was replaced: the one definition, shared with the late-seal check (Y1, Z1).
         let histories = self.view_histories(repo).map_err(|e| {
             Cannot::later(format!(
-                "the history of the wiki's views could not be read to tell the key's late seals from its earlier ones ({e})"
+                "the history of the wiki's views could not be read to trace the findings to what the key sealed for this service ({e})"
             ))
         })?;
         let known = known_when_replaced(kept, &histories);
-        let Findings {
-            record,
-            left_out,
-            late_seals,
-        } = record_of(&trust, &retiring.signed_by_key, &known, &earlier);
-        if left_out > 0 {
-            return Err(Cannot::never(format!(
-                "{left_out} block(s) that now lack a trusted signature were not sealed by the retired key (the verify before the removal did not list it as their signer), so no record of this retirement would be complete, and they would stop the wiki"
-            )));
-        }
-        if record.len() > record_limit() {
+        let found = record_of(&trust, &retiring.signed_by_key, &known, &earlier);
+        if found.untraceable.is_empty() && found.record.len() > record_limit() {
             return Err(Cannot::never(format!(
                 "the retirement names {} findings and a record keeps at most {}",
-                record.len(),
+                found.record.len(),
                 record_limit()
             )));
         }
-        Ok((record, late_seals))
+        Ok(found)
     }
 
     /// The end of a retirement, once the key is out of the trust store (W2, W6): the `verify` after, the record, the
@@ -687,7 +722,7 @@ impl Signer {
         repo: &std::path::Path,
         wiki: &WikiId,
         retiring: &Retiring,
-    ) -> Result<Concluded, Cannot> {
+    ) -> Result<usize, Cannot> {
         let meta = self
             .store
             .status(wiki)
@@ -704,14 +739,14 @@ impl Signer {
                 "the key record holds no superseded key {key} that is still to be retired, so there is no entry to record the findings on"
             )));
         };
-        let earlier: Vec<(String, Excused)> = meta
-            .superseded
-            .iter()
-            .filter(|s| s.retired)
-            .map(|s| (s.maintainer_key_id.clone(), s.excused.clone()))
-            .collect();
-        let (found, late_seals) =
-            self.findings_after_retirement(repo, retiring, &entry.views, &earlier)?;
+        let earlier = earlier_records(&meta);
+        let Findings {
+            record: found,
+            untraceable,
+        } = self.findings_after_retirement(repo, retiring, &entry.views, &earlier)?;
+        if !untraceable.is_empty() {
+            return Err(Cannot::untraceable(wiki, key, &untraceable));
+        }
         let recorded = found.len();
         self.store
             .update_meta(wiki, |m| {
@@ -728,10 +763,7 @@ impl Signer {
             .map_err(|e| {
                 Cannot::later(format!("the key record could not be updated ({})", ks(e)))
             })?;
-        Ok(Concluded {
-            recorded,
-            late_seals,
-        })
+        Ok(recorded)
     }
 
     /// Run the end of a retirement after the key left the trust store: the outcome it reports.
@@ -742,9 +774,7 @@ impl Signer {
         retiring: &Retiring,
     ) -> OldKeyOutcome {
         match self.conclude_retirement(repo, wiki, retiring) {
-            Ok(done) => OldKeyOutcome::Retired {
-                late_seals: done.late_seals,
-            },
+            Ok(_) => OldKeyOutcome::Retired,
             Err(cannot) => unrecorded(&cannot, wiki, &retiring.maintainer_key_id),
         }
     }
@@ -903,6 +933,50 @@ impl Signer {
         Ok(meta.retiring.map(|r| r.maintainer_key_id))
     }
 
+    /// What cannot be traced in the unfinished retirement of this wiki's repository, said in words ([`untraceable_text`])
+    /// (Z1); `None` when no retirement is unfinished, when its key is still trusted (nothing was removed, so there is
+    /// nothing to trace), or when it is unfinished for another reason. Read-only: the same trace the end of a
+    /// retirement makes, on the repository as it is now, recording nothing.
+    pub fn untraceable_in_unfinished_retirement(
+        &self,
+        repo: &std::path::Path,
+    ) -> Result<Option<String>, SignerError> {
+        let wiki = self.wiki_of(repo)?;
+        let meta = self.store.status(&wiki).map_err(ks)?;
+        let Some(retiring) = &meta.retiring else {
+            return Ok(None);
+        };
+        let key = retiring.maintainer_key_id.as_str();
+        if self
+            .writes
+            .trusted_maintainers(repo)?
+            .iter()
+            .any(|k| k.key_id == key)
+        {
+            return Ok(None);
+        }
+        let Some(entry) = meta
+            .superseded
+            .iter()
+            .find(|s| s.maintainer_key_id == key && !s.retired)
+        else {
+            return Ok(None);
+        };
+        Ok(
+            match self.findings_after_retirement(
+                repo,
+                retiring,
+                &entry.views,
+                &earlier_records(&meta),
+            ) {
+                Ok(found) if !found.untraceable.is_empty() => {
+                    Some(untraceable_text(&wiki, key, &found.untraceable))
+                }
+                _ => None,
+            },
+        )
+    }
+
     /// Finish a retirement that was begun and not finished (handoff 004, Q1, W2, W4, W5), from whatever step remains,
     /// under the wiki's write lock:
     ///
@@ -998,19 +1072,25 @@ impl Signer {
                 )));
             }
         }
-        let concluded = self
+        let findings_recorded = self
             .conclude_retirement(repo, &wiki, &retiring)
             .map_err(|cannot| {
-                SignerError::Refused(format!(
-                    "the retirement of key {key} cannot be finished: {}; {}; nothing was recorded",
-                    cannot.why,
-                    way_out(&wiki, &key, cannot.curable)
-                ))
+                SignerError::Refused(if cannot.untraceable {
+                    format!(
+                        "the retirement of key {key} cannot be finished: {}; nothing was recorded",
+                        cannot.why
+                    )
+                } else {
+                    format!(
+                        "the retirement of key {key} cannot be finished: {}; {}; nothing was recorded",
+                        cannot.why,
+                        way_out(&wiki, &key, cannot.curable)
+                    )
+                })
             })?;
         Ok(RetirementFinished {
             maintainer_key_id: key,
-            findings_recorded: concluded.recorded,
-            late_seals: concluded.late_seals,
+            findings_recorded,
             removed_now,
         })
     }
@@ -1114,6 +1194,13 @@ impl Signer {
     /// ways out; `None` when nothing is unfinished or the record cannot be read.
     pub(crate) fn unfinished_retirement_note(&self, wiki: &WikiId) -> Option<String> {
         let key = self.unfinished_retirement(wiki).ok().flatten()?;
+        // Findings nothing traces: the retirement cannot be finished, and recovery cannot cure it either (Z2).
+        if let Ok(Some(text)) = self.untraceable_in_unfinished_retirement(&self.root.repo_dir(wiki))
+        {
+            return Some(format!(
+                "the retirement of key {key} was begun and cannot be finished, so nothing is excused and nothing new is sealed: {text}"
+            ));
+        }
         Some(format!(
             "the retirement of key {key} was begun and its record not finished, so nothing is excused and nothing new is sealed: run `{}`, or {}",
             finish_retirement_command(wiki),
@@ -1145,24 +1232,48 @@ impl Signer {
 /// Why the end of a retirement cannot be recorded now, and whether a later run of `finish-retirement` can cure it.
 #[derive(Debug)]
 pub(super) struct Cannot {
-    /// For the operator.
+    /// For the operator. For untraceable findings it is [`untraceable_text`], which carries the way out itself.
     pub(super) why: String,
     /// A later run can cure it (prikk could not run, the key record could not be written); otherwise only
     /// `abandon-retirement` is a way out.
     pub(super) curable: bool,
+    /// What cannot be recorded is findings nothing traces to the key's own history (Z1): `why` says so.
+    pub(super) untraceable: bool,
 }
 
 impl Cannot {
     fn later(why: String) -> Self {
-        Cannot { why, curable: true }
+        Cannot {
+            why,
+            curable: true,
+            untraceable: false,
+        }
     }
 
     fn never(why: String) -> Self {
         Cannot {
             why,
             curable: false,
+            untraceable: false,
         }
     }
+
+    fn untraceable(wiki: &WikiId, key: &str, findings: &[String]) -> Self {
+        Cannot {
+            why: untraceable_text(wiki, key, findings),
+            curable: false,
+            untraceable: true,
+        }
+    }
+}
+
+/// What earlier retirements recorded, by the key each is of.
+fn earlier_records(meta: &crate::key_store::Meta) -> Vec<(String, Excused)> {
+    meta.superseded
+        .iter()
+        .filter(|s| s.retired)
+        .map(|s| (s.maintainer_key_id.clone(), s.excused.clone()))
+        .collect()
 }
 
 /// The command that retires the superseded maintainer key `key` of `wiki` (X1). It carries the flag that accepts the
@@ -1242,6 +1353,12 @@ fn way_out(wiki: &WikiId, key: &str, curable: bool) -> String {
 
 /// The outcome a retirement reports when its record could not be completed.
 fn unrecorded(cannot: &Cannot, wiki: &WikiId, key: &str) -> OldKeyOutcome {
+    if cannot.untraceable {
+        return OldKeyOutcome::RetiredUnrecorded(format!(
+            "{}; the key is out of the trust store, nothing was recorded, and nothing new is sealed",
+            cannot.why
+        ));
+    }
     OldKeyOutcome::RetiredUnrecorded(format!(
         "{}; the key is out of the trust store and nothing is excused, and nothing new is sealed, until the retirement is finished or given up: {}",
         cannot.why,

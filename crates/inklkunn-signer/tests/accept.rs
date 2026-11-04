@@ -2414,14 +2414,16 @@ fn a_retirement_is_refused_while_verify_fails_and_nothing_changes() {
         &f.repo,
         inklkunn_signer::OldKey::Retire,
     );
-    let Err(SignerError::NeedsRecovery(why)) = &r else {
+    // Findings of publication trust that no retirement recorded are not ones recovery cures (Z2): the refusal says
+    // what they are, and does not send the operator to `recover`.
+    let Err(SignerError::Refused(why)) = &r else {
         panic!("a wiki that does not verify was retired from: {r:?}");
     };
     assert!(
-        why.contains("publication trust") || why.contains("verify"),
+        why.contains("publication trust") && why.contains("does not cure"),
         "{why}"
     );
-    assert!(r.unwrap_err().to_string().contains("needs recovery first"));
+    assert!(!why.contains("run `inklkunn wiki recover"), "{why}");
     // Nothing changed: the same keys, the same trust (the old key still there, no new key adopted), no record.
     assert_eq!(f.signer.key_status(&f.wiki).unwrap(), status);
     assert_eq!(f.prikk_text(&["trust", "maintainer", "list"]), trusted);
@@ -2463,7 +2465,7 @@ fn a_second_retirement_starts_from_what_the_first_recorded_and_the_two_add_up() 
         &f.repo,
         inklkunn_signer::OldKey::Retire,
     );
-    assert!(matches!(r, Err(SignerError::NeedsRecovery(_))), "{r:?}");
+    assert!(matches!(r, Err(SignerError::Refused(_))), "{r:?}");
     the_wiki_is_stopped(&f, "a stranger after two retirements");
 }
 
@@ -2949,10 +2951,7 @@ fn a_retirement_that_could_not_be_begun_after_the_rotation_pauses_nothing() {
             &rotation.previous_maintainer_key_id,
         )
         .expect("retired by its id");
-    assert_eq!(
-        outcome,
-        inklkunn_signer::OldKeyOutcome::Retired { late_seals: vec![] }
-    );
+    assert_eq!(outcome, inklkunn_signer::OldKeyOutcome::Retired);
 }
 
 #[test]

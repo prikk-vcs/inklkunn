@@ -687,7 +687,7 @@ fn a_retirement_that_ends_without_its_record_exits_non_zero_names_the_command_an
     let command = format!("wiki keys finish-retirement {}", w.record.id);
     let abandon = format!("wiki keys abandon-retirement {}", w.record.id);
     assert!(
-        err.contains("NOT recorded completely")
+        err.contains("NOT recorded")
             && err.contains(&command)
             && err.contains(&abandon)
             && err.contains("nothing new is sealed"),
@@ -1115,9 +1115,9 @@ fn a_superseded_key_is_retired_at_the_command_line_by_its_id_audited_and_the_ref
         out.contains(&format!("{k1} was removed from the repository's trust")),
         "{out}"
     );
-    // No late seal, so none is named (Y1).
+    // Nothing untraceable, so nothing is said of it (Z1).
     assert!(
-        !out.contains("WARNING") && !out.contains(inklkunn_core::LATE_SEALS_SENTENCE),
+        !out.contains("WARNING") && !out.contains(inklkunn_core::UNTRACEABLE_SENTENCE),
         "{out}"
     );
     assert!(!w.verifies(), "the key is out of the trust store");
@@ -1267,12 +1267,21 @@ fn abandon_refuses_when_the_key_record_is_older_than_the_audit_trail_and_changes
     assert_eq!(abandoning.get(1).unwrap().1, "failed");
 }
 
-// ---- a retirement never excuses a late seal (handoff 004, Y1)
+// ---- a retirement records only what it can trace, or nothing (handoff 004, Z1)
+
+/// The id of the late seal `status` shows (`WARNING: block <id> ...`).
+fn late_block_in(out: &str) -> String {
+    out.lines()
+        .find_map(|l| l.strip_prefix("WARNING: block "))
+        .and_then(|l| l.split_whitespace().next())
+        .expect("the late seal is shown")
+        .to_owned()
+}
 
 #[test]
-fn retire_names_each_late_seal_and_what_it_means_exits_1_and_the_key_is_out_but_nothing_excuses_the_block()
+fn retire_with_a_late_block_leaves_the_retirement_unfinished_names_it_and_status_and_finish_say_the_same()
  {
-    let Some(w) = world::leaky_world("y1-cli") else {
+    let Some(w) = world::leaky_world("z1-cli") else {
         return;
     };
     let (author, maintainer) = w.recorded_ids();
@@ -1283,44 +1292,26 @@ fn retire_names_each_late_seal_and_what_it_means_exits_1_and_the_key_is_out_but_
     w.arm_forgery(&author, &k1);
     let (status, out, _) = w.cli("wiki keys status handbook");
     assert_eq!(status, 1, "{out}");
-    let forged = out
-        .lines()
-        .find_map(|l| l.strip_prefix("WARNING: block "))
-        .and_then(|l| l.split_whitespace().next())
-        .expect("the late seal is shown")
-        .to_owned();
+    let forged = late_block_in(&out);
     assert!(w.verifies(), "the key is still trusted");
 
+    // The retirement removes the key, records nothing, stays unfinished, and exits 1 with the block named.
     let (status, out, err) = w.cli(&format!(
         "wiki keys retire handbook --key {k1} --confirm handbook --accept-unverifiable-history"
     ));
-    // The key is out of trust and the record is made; the command still exits 1, with the block named.
     assert_eq!(status, 1, "{out}{err}");
     assert!(
-        out.contains(&format!(
-            "WARNING: block {forged} was sealed with maintainer key {k1}"
-        )) && out.contains(inklkunn_core::LATE_SEALS_SENTENCE),
-        "{out}"
-    );
-    assert!(
-        err.contains("is retired and its record is made") && err.contains("1 block(s)"),
+        err.contains(&format!(
+            "block {forged} (sealed with the key after it was replaced)"
+        )) && err.contains(inklkunn_core::UNTRACEABLE_SENTENCE),
         "{err}"
     );
-    assert!(!w.verifies(), "the key is out of the trust store");
-    // The trail says the retirement finished, and that one late seal was not recorded.
-    let events = w.audit_events();
-    let ended = events
-        .iter()
-        .rfind(|(a, o, _)| a == "keys-retire" && o == "allowed")
-        .unwrap();
     assert!(
-        ended
-            .2
-            .starts_with(&format!("retirement recorded: key {k1}"))
-            && ended.2.contains("1 late seal(s)"),
-        "{events:?}"
+        !err.contains("wiki recover") && !out.contains("wiki recover"),
+        "{out}{err}"
     );
-    assert!(inklkunn_core::retirement_finished_in(&w.store, &w.record.id, &k1).unwrap());
+    assert!(!w.verifies(), "the key is out of the trust store");
+    assert!(!inklkunn_core::retirement_finished_in(&w.store, &w.record.id, &k1).unwrap());
     // The verdict stored afterwards is a failure nothing explains: the page carries no *retired key* sentence.
     let record = w.store.get(&w.record.id).unwrap();
     assert!(
@@ -1328,56 +1319,36 @@ fn retire_names_each_late_seal_and_what_it_means_exits_1_and_the_key_is_out_but_
         "{:?}",
         record.verification_explained_by
     );
-}
 
-#[test]
-fn finish_retirement_names_the_late_seal_too_records_without_it_and_exits_1() {
-    let Some(w) = world::leaky_world("y1-cli-finish") else {
-        return;
-    };
-    let (author, maintainer) = w.recorded_ids();
-    let (author, k1) = (author.unwrap(), maintainer.unwrap());
-    let (status, out, err) = w.cli("wiki keys rotate handbook --confirm handbook");
-    assert_eq!(status, 0, "{out}{err}");
-    w.arm_forgery(&author, &k1);
-    let (_, out, _) = w.cli("wiki keys status handbook");
-    let forged = out
+    // `status` says the retirement is unfinished, names the block and carries the one sentence, and no command that
+    // cannot work.
+    let (status, out, _) = w.cli("wiki keys status handbook");
+    assert_eq!(status, 0, "{out}");
+    let unfinished = out
         .lines()
-        .find_map(|l| l.strip_prefix("WARNING: block "))
-        .and_then(|l| l.split_whitespace().next())
-        .expect("the late seal is shown")
-        .to_owned();
-    // The retirement stops after the removal (`verify` cannot run), then is finished.
-    let ctl = w.settings.data_dir.join("ctl").join("verify-dies");
-    std::fs::write(&ctl, "").unwrap();
-    let (status, out, err) = w.cli(&format!(
-        "wiki keys retire handbook --key {k1} --confirm handbook --accept-unverifiable-history"
-    ));
-    assert_eq!(status, 1, "{out}{err}");
-    assert!(err.contains("NOT recorded completely"), "{err}");
-    std::fs::remove_file(&ctl).unwrap();
+        .find(|l| l.starts_with("UNFINISHED"))
+        .expect("the line");
+    assert!(
+        unfinished.contains(&forged)
+            && unfinished.contains(inklkunn_core::UNTRACEABLE_SENTENCE)
+            && unfinished.contains("abandon-retirement")
+            && !unfinished.contains("finish it with"),
+        "{unfinished}"
+    );
+    // `finish-retirement` refuses with the same findings and records nothing.
     let (status, out, err) = w.cli("wiki keys finish-retirement handbook");
     assert_eq!(status, 1, "{out}{err}");
     assert!(
-        out.contains(&format!(
-            "WARNING: block {forged} was sealed with maintainer key {k1}"
-        )) && out.contains(inklkunn_core::LATE_SEALS_SENTENCE),
-        "{out}"
+        err.contains(&forged)
+            && err.contains(inklkunn_core::UNTRACEABLE_SENTENCE)
+            && err.contains("nothing was recorded"),
+        "{err}"
     );
-    assert!(err.contains("is retired and its record is made"), "{err}");
-    let events = w.audit_events();
-    let ended = events
-        .iter()
-        .rfind(|(a, o, _)| a == "keys-finish-retirement" && o == "allowed")
-        .unwrap();
-    assert!(
-        ended
-            .2
-            .starts_with(&format!("retirement recorded: key {k1}"))
-            && ended.2.contains("1 late seal(s)"),
-        "{events:?}"
-    );
-    assert!(inklkunn_core::retirement_finished_in(&w.store, &w.record.id, &k1).unwrap());
+    assert!(!inklkunn_core::retirement_finished_in(&w.store, &w.record.id, &k1).unwrap());
+    // The way out the sentence names: give the retirement up, and the key is trusted again.
+    let (status, out, err) = w.cli("wiki keys abandon-retirement handbook --confirm handbook");
+    assert_eq!(status, 0, "{out}{err}");
+    assert!(w.verifies(), "the key is trusted again");
 }
 
 // ---- status says what the repository trusts, and names the command (handoff 004, Y2, Y3)

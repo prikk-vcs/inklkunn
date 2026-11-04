@@ -326,7 +326,7 @@ impl Recover for Signer {
         // ... and its parent is the block the change was made on, for every acceptance (Q7, W8).
         let pinned = &expected.pinned_tip;
         let blocks = w.view_blocks(&repo, view, 2)?;
-        if blocks.get(1).map(String::as_str) != Some(pinned.as_str()) {
+        if blocks.get(1).map(|(block, _)| block.as_str()) != Some(pinned.as_str()) {
             return mismatch(
                 "the published block was not made on the block the change was made on",
             );
