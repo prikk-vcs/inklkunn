@@ -151,3 +151,18 @@ suggest "true". A newcomer who never touches a claim sees an ordinary wiki with 
 On acceptance the architect writes `rfcs/handoffs/005-knowledge-layer/knowledge-layer-handoff-v1.md`. It is assigned
 when M2 (0.2.0) is cut, since it builds on the proposal path and sign-in; the files, the validator, the merge and the
 index (D-1 … D-6) may start earlier if the dev team has room, as they touch no surface.
+
+## Clarifications (the architect, 2026-11-08, from the review of K-T5 – K-T8)
+
+- **D-3, the re-confirmation step.** The reviewers' one step on the proposal page (part 1 D-1 c) proposes the re-judgement of
+  every claim the change touches as **one curation proposal, once the change is accepted**; until that proposal is accepted,
+  each such claim reads *judged on an earlier wording*. A digest so never names wording that is not in the history, and a
+  status keeps changing only through an accepted curation proposal (KN-2). The re-judgement is shown on its proposal's page,
+  line by line, like every other change of trust (part 1 H-1 point 3).
+- **D-3, what curation covers.** A community status; a source's `last_reviewed` and `availability`; and any change to an
+  existing source link (its `relation`, `bearing` or `judged_on`, or its removal). Attaching a new source link stays with the
+  page edit it belongs to.
+- **Part 1 D-1 d, what is measured.** Per accepted change and per claim it touches: *kept* (the default of H-1 point 2),
+  *dropped* (a confirmed removal of the expression), and later *re-confirmed by* (the curation proposal that re-judged it). An
+  **override** is the default rejected: a confirmed drop, or *request changes* on a proposal that touches a claim. The
+  participation metrics report the overrides beside the defaults kept.

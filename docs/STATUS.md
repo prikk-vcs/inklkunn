@@ -297,6 +297,15 @@
   published: the release's text is now the section's lead and a link to the whole section (`.github/release-notes.sh`),
   checked in the gates job before anything is built. Japanese ships as a labelled preview again; the about page says no
   person who uses assistive technology has tested the site (a pass before 0.3.0). `release/0.2` merged back (fast-forward).
+- **2026-11-08 — the knowledge layer's K-T5 – K-T8 reviewed: Conditionally Approved** (`4e79a4a`, 27 commits; 2,496 tests
+  with prikk 0.55.0 and without, 264 self-skips; three adversarial readings). The integrity core holds (a status changes only
+  through a curation proposal acceptance recognizes from the content; a page with no claims is unchanged). **K3 – K14 before
+  0.3.0**: store schema 16 (view-creation records and D-1 d's review record); a killed view creation must flag the wiki (K4);
+  **a re-judgement of trust must be shown on its proposal's page (K5)** and changing an existing source link is curation (K6);
+  no proposal that can never be accepted (K7); *Why is this here?* exact only when it is (K8); sources named on the claim page
+  (K9). Decision 3 settled with the dev team's design (re-confirmation as one curation proposal after acceptance), recorded as a
+  clarification of RFC 005 part 2 D-3. **Environment:** prikk is no longer on this machine's `PATH` (a 0.56.0 build appeared in
+  `~/.pgtmp` on 2026-11-08, unannounced to us); the review ran with the owner's 0.55.0 build. Pushed.
 
 ## Pending on the owner
 
@@ -319,9 +328,9 @@
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and handoff 003's T1 – T3 are built and
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
-(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **The dev team's order now:** the knowledge layer's
-K-T5 – K-T8 (M3: making claims, what a reader sees, *Why is this here?*, views), then K-T9 – K-T11; and, at the next touch of
-`signer/retirement.rs`, `seal_pause`'s operator sentence (Z7 – Z9 review). An assistive-technology pass is arranged before 0.3.0.
+(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08).** **The dev team's order now:** handoff 005's
+corrections **K3 – K14** with K-T9 – K-T11 beside them (all before 0.3.0); and, at the next touch of `signer/retirement.rs`,
+`seal_pause`'s operator sentence (Z7 – Z9 review). An assistive-technology pass is arranged before 0.3.0.
 
 ## Issue register
 

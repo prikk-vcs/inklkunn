@@ -100,3 +100,53 @@ verification badge's meaning.
 **Approved** (`.git-exclude/reviewed/005-knowledge-layer-k-t1-k-t4-review-result.md`). Follow-up **K2** with the next package: one list
 of owned page keys (`knowledge/check.rs` uses the proposal service's `OWNED_KEYS`). K-T5 onward after 0.2.0, as before.
 
+
+## Corrections from the review of 2026-11-08 (binding; **before 0.3.0**)
+
+K-T5 – K-T8 are **Conditionally Approved** (`.git-exclude/reviewed/005-knowledge-layer-k-t5-k-t8-review-result.md`). Hand back
+K3 – K14 as one request, `005-knowledge-layer-corrections-review-request.md`; K-T9 – K-T11 may proceed beside them. **Creating views
+on a real server waits for K3 and K4 together.**
+
+- **K3 — store schema 16, one migration.** (a) `view_acts` and `view_act_ends` as proposed, tightened: a name is unique among
+  **standing** acts (open or created) — checked inside the `IMMEDIATE` transaction as the other acts are, or by a `BEFORE INSERT`
+  trigger; `CHECK` the name's form (`name = lower(name)`, 1 – 64 characters, a `GLOB` of the allowed characters); `act_id
+  REFERENCES view_acts(id)` and `wiki_id` referencing the wiki; `CHECK ((outcome = 'created' AND word IS NULL) OR (outcome =
+  'failed' AND word IS NOT NULL))`; an index on `(wiki_id, name)`; the write-once triggers. (b) **The review record of part 1
+  D-1 d**, append-only: per accepted change and per claim it touches, *kept*, *dropped* (a confirmed removal), and later
+  *re-confirmed by* (the curation proposal, naming the change it re-confirms); `inklkunn wiki metrics` counts the **overrides**
+  (a confirmed drop, or *request changes* on a proposal that touches a claim) beside the defaults kept. The migration from 15 is
+  additive and tested on both stores; the pins move to 16.
+- **K4 — a view creation is a recoverable act.** `Purpose::View` leaves `leaves_nothing_to_recover`, so a holder that died
+  creating a view flags the wiki. Recovery treats an open view act as a known act: prikk shows the view → the act ends
+  *created*; prikk shows an incomplete publication of exactly that view's ref → the step prikk itself recommends, run by the
+  signer bound to the recovery act as P15's `complete-publication` is, or a stop with its own word and a `docs/RECOVERY.md`
+  section; anything else → a stop. `settle_earlier_acts` settles only what recovery's witnesses agree on (or leaves it to
+  recovery). Tests: a real kill during `branch create`.
+- **K5 — trust never moves unseen.** The proposal page shows every re-judgement — a source link's or a status's `judged_on`
+  rebound to new wording — as its own line with an excerpt of the new wording; a proposal whose knowledge change would show
+  nothing on its page cannot be submitted.
+- **K6 — the gate is D-3.** Changing an existing source link's `relation`, `bearing` or `judged_on`, or removing it, is a curation
+  change only; adding a link stays with the page edit it belongs to.
+- **K7 — no proposal that can never be accepted.** The acceptance gate's knowledge rules (a curated value outside a curation; the
+  removal of a decided claim; K6) run at submit and at every revision, refusing in the same words; the proposal page's warning
+  is the same rule.
+- **K8 — *Why is this here?* is exact only when it is.** A step that finds no earlier counterpart clears *followed through its
+  anchor* (only a page's creation is exact); a test with *Attach a source* adding `^b1` while the next paragraph is reworded.
+- **K9 — a source has a name on the claim page.** The derived index keeps each source's title, author or publisher and date as
+  written, and reference (each cut at about 300 characters when the index is built; escaped when shown); the derived store's
+  schema moves and is rebuilt.
+- **K10 — markers.** A held `^id` returns to the k-th occurrence of equal words, never the first; the one-paragraph form keeps
+  the whitespace before the marker as it was.
+- **K11 — the reconfirm step** works from the **accepted** revision, names the change it re-confirms (recorded by K3 b), and is
+  not offered again while its curation proposal is open.
+- **K12 — views.** The name check sees every view, closed ones included, ignoring case; the name is validated before it enters
+  any resource or audit name; *Compare views* is cached by its two tips (both immutable) or counts lines without keeping hunks,
+  and the claim page's *Other views* uses the same; view names that are retired words (*official*, *canonical*, *adopted*,
+  *true*, *false*, *verified*, *proven*) are refused.
+- **K13 — *Why is this here?*, smaller.** A per-request work budget on the alignment that ends in the existing *bounded*
+  wording; a repeated `^id` uses the paragraph's number for the element id; a change whose message names a proposal the records
+  do not tie to it reads *the message of this change names the proposal …*; a sanitizer test with `</p>` and `<p id="h-^b1">` in
+  an image's alt and a link's title.
+- **K14 — small.** Source text fields refuse bidirectional and format characters (U+202A – U+202E, U+2066 – U+2069, U+200E,
+  U+200F); un-deciding a status records the deciding proposal.
+- **Recorded gap (not owed for 0.3.0):** attaching an existing source instead of a new one (D-2, KN-4).
