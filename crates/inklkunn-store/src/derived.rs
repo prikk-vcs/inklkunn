@@ -205,6 +205,14 @@ pub struct KnowledgeSourceRow {
     pub last_reviewed: Option<String>,
     /// The source that replaces it.
     pub superseded_by: Option<String>,
+    /// Its title, as written, cut at the bound the index is built with (K9).
+    pub title: Option<String>,
+    /// Its author or publisher, as written, cut likewise.
+    pub author: Option<String>,
+    /// Its date, as written (a year, a season, a day), cut likewise.
+    pub date: Option<String>,
+    /// Where it is found (its reference's value), as written, cut likewise.
+    pub reference: Option<String>,
 }
 
 /// A claim's relation to another claim.

@@ -13,7 +13,7 @@
 {% endif %}<h2>{{ sources_heading }}</h2>
 {% if let Some(text) = sources_none %}<p>{{ text }}</p>
 {% else %}<ul class="claim-sources">
-{% for s in sources %}<li>{{ s.line }}{% if let Some(note) = s.earlier %} <span class="claim-note">{{ note }}</span>{% endif %}</li>
+{% for s in sources %}<li>{{ s.line }}{% for d in s.details %} {{ d }}{% endfor %}{% if let Some(note) = s.earlier %} <span class="claim-note">{{ note }}</span>{% endif %}</li>
 {% endfor %}</ul>
 {% endif %}<h2>{{ status_heading }}</h2>
 <p class="claim-status">{{ status.sentence }}{% if let Some(by) = status.decided %} {{ by }}{% endif %}{% if let Some(text) = status.unlisted %} {{ text }}{% endif %}{% if let Some(note) = status.earlier %} <span class="claim-note">{{ note }}</span>{% endif %}</p>

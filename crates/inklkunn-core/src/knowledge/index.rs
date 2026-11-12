@@ -4,7 +4,7 @@
 //! so that *which claims rely on this source*, *where is this claim said* and *was this relation judged on the
 //! wording the claim has now* are answered without reading the files again. It is built from **the same
 //! `extract` of the tip** that builds the title index (the read service does both in one pass over one extracted
-//! tree), stored in the derived store (schema version 13) and dropped and rebuilt with the rest of it.
+//! tree), stored in the derived store (schema version 13; 17 adds the sources' names) and dropped and rebuilt with the rest of it.
 //!
 //! What is in it:
 //!
@@ -299,8 +299,26 @@ pub fn build(
     Ok(rows.sorted())
 }
 
+/// The most characters of a source's title, author, date or reference the index keeps.
+pub const MAX_SOURCE_NAME_CHARS: usize = 300;
+
+/// `text` as it was written, cut to [`MAX_SOURCE_NAME_CHARS`] characters (on a character boundary, never inside a
+/// code point) with an ellipsis where it was cut, so that a reader can see that it was.
+fn kept(text: &str) -> String {
+    if text.chars().count() <= MAX_SOURCE_NAME_CHARS {
+        return text.to_owned();
+    }
+    let mut cut: String = text.chars().take(MAX_SOURCE_NAME_CHARS - 1).collect();
+    cut.push('…');
+    cut
+}
+
 fn source_row(source: &Source) -> KnowledgeSourceRow {
     KnowledgeSourceRow {
+        title: source.identity.title.as_deref().map(kept),
+        author: source.identity.author.as_deref().map(kept),
+        date: source.identity.date.as_deref().map(kept),
+        reference: source.reference.as_ref().map(|r| kept(&r.value)),
         id: source.id.to_string(),
         kind: source.kind.word().to_owned(),
         availability: source.availability.word().to_owned(),

@@ -27,7 +27,7 @@ use inklkunn_core::knowledge::Standing;
 use inklkunn_core::knowledge::index::{self, KnowledgeIndex};
 use inklkunn_core::read::{Presentation, ReadError};
 use inklkunn_markup::path::path_to_title;
-use inklkunn_store::{KnowledgeClaimRow, WikiRecord};
+use inklkunn_store::{KnowledgeClaimRow, KnowledgeSourceRow, WikiRecord};
 
 use super::marks::distinct;
 use super::others::{self, Others, Section};
@@ -54,6 +54,9 @@ struct Said {
 /// One source of the claim, in a sentence.
 struct SourceLine {
     line: String,
+    /// What else the source says of itself, each as a sentence of its own (where it is found; the one way to
+    /// tell a source that names itself in no way).
+    details: Vec<String>,
     earlier: Option<String>,
 }
 
@@ -224,7 +227,59 @@ fn said_in(t: T, found: &Found) -> Vec<Said> {
         .collect()
 }
 
-/// The claim's sources, each in a sentence: which source, what kind, and how it bears on the claim.
+/// A text a source gave of itself, on one line; `None` when nothing is left of it.
+fn one_line(text: Option<&str>) -> Option<String> {
+    let line = text?.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!line.is_empty()).then_some(line)
+}
+
+/// What a readable source is called on the claim's page: its title (else *a source without a title*), then its
+/// author or publisher and its date, each as it was written; and the sentences that go after its line. The
+/// identifier is told only of a source that names itself in no way, since nothing else would tell it from
+/// another. Never a score; every text is printed escaped.
+fn source_name(t: T, source: &KnowledgeSourceRow) -> (String, Vec<String>) {
+    let (title, author, date, reference) = (
+        one_line(source.title.as_deref()),
+        one_line(source.author.as_deref()),
+        one_line(source.date.as_deref()),
+        one_line(source.reference.as_deref()),
+    );
+    let nameless = [&title, &author, &date, &reference]
+        .iter()
+        .all(|part| part.is_none());
+    let first = match &title {
+        Some(title) => t.msg(Key::ClaimSourceTitled).with("title", title).text(),
+        None => t.get(Key::ClaimSourceUntitled),
+    };
+    let parts = [
+        author.map(|a| t.msg(Key::ClaimSourceBy).with("author", a).text()),
+        date.map(|d| t.msg(Key::ClaimSourceDated).with("date", d).text()),
+    ];
+    let name = parts.into_iter().flatten().fold(first, |name, part| {
+        t.msg(Key::ClaimSourceJoin)
+            .with("first", name)
+            .with("second", part)
+            .text()
+    });
+    let mut details = Vec::new();
+    if let Some(reference) = reference {
+        details.push(
+            t.msg(Key::ClaimSourceFoundAt)
+                .with("reference", reference)
+                .text(),
+        );
+    }
+    if nameless {
+        details.push(
+            t.msg(Key::ClaimSourceIdentifier)
+                .with("id", &source.id)
+                .text(),
+        );
+    }
+    (name, details)
+}
+
+/// The claim's sources, each in a sentence: what the source is called, what kind, and how it bears on the claim.
 fn source_lines(t: T, found: &Found) -> Vec<SourceLine> {
     found
         .index
@@ -232,18 +287,33 @@ fn source_lines(t: T, found: &Found) -> Vec<SourceLine> {
         .filter_map(|link| {
             // A phrase for a relation or a bearing this build does not know is not made up: the source is left out.
             let how = words::how(&link.relation, &link.bearing)?;
-            let kind = match found.index.source(&link.source) {
-                Some(source) => t.get(words::source_kind(&source.kind)),
-                None => t.get(Key::ClaimSourceUnreadable),
-            };
-            Some(SourceLine {
-                line: t
-                    .msg(Key::ClaimSourceLine)
-                    .with("id", &link.source)
-                    .with("kind", kind)
-                    .with("how", t.get(how))
-                    .text(),
-                earlier: (link.judgement == index::EARLIER).then(|| t.get(Key::ClaimJudgedEarlier)),
+            let earlier =
+                (link.judgement == index::EARLIER).then(|| t.get(Key::ClaimJudgedEarlier));
+            Some(match found.index.source(&link.source) {
+                Some(source) => {
+                    let (name, details) = source_name(t, source);
+                    SourceLine {
+                        line: t
+                            .msg(Key::ClaimSourceLineNamed)
+                            .with("name", name)
+                            .with("kind", t.get(words::source_kind(&source.kind)))
+                            .with("how", t.get(how))
+                            .text(),
+                        details,
+                        earlier,
+                    }
+                }
+                // Its file cannot be read, so there is nothing it says of itself: the identifier is all there is.
+                None => SourceLine {
+                    line: t
+                        .msg(Key::ClaimSourceLine)
+                        .with("id", &link.source)
+                        .with("kind", t.get(Key::ClaimSourceUnreadable))
+                        .with("how", t.get(how))
+                        .text(),
+                    details: Vec::new(),
+                    earlier,
+                },
             })
         })
         .collect()

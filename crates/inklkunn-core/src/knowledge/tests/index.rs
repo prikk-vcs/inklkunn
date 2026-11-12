@@ -337,6 +337,58 @@ fn rebuilt_with_the_derived_store_cleared_it_is_the_same_index() {
 }
 
 #[test]
+fn a_source_has_a_name_in_the_index_as_written_and_cut_where_it_is_long() {
+    let mut named = Source::new(source_id(1));
+    named.identity = Identity {
+        title: Some("The Bridge Survey".to_owned()),
+        author: Some("The Harbour Authority".to_owned()),
+        date: Some("Spring 1950".to_owned()),
+    };
+    named.reference = Some(Reference {
+        form: ReferenceForm::Url,
+        value: "https://example.org/survey".to_owned(),
+    });
+    // A title of 301 characters, every one of them three bytes: cut between characters, with an ellipsis.
+    let mut long = Source::new(source_id(2));
+    long.identity.title = Some("橋".repeat(kix::MAX_SOURCE_NAME_CHARS + 1));
+    long.identity.author = Some("a".repeat(kix::MAX_SOURCE_NAME_CHARS));
+    long.reference = Some(Reference {
+        form: ReferenceForm::Url,
+        value: format!("https://example.org/{}", "x".repeat(400)),
+    });
+    let bare = Source::new(source_id(3));
+    let w = world(&files(&[claim_on(1, "Said. ^b1", 1)], &[named, long, bare]));
+    let k = knowledge(&w);
+    let row = k.source(source_id(1).as_str()).expect("a source");
+    assert_eq!(row.title.as_deref(), Some("The Bridge Survey"));
+    assert_eq!(row.author.as_deref(), Some("The Harbour Authority"));
+    assert_eq!(row.date.as_deref(), Some("Spring 1950"));
+    assert_eq!(row.reference.as_deref(), Some("https://example.org/survey"));
+    let row = k.source(source_id(2).as_str()).expect("a source");
+    let title = row.title.as_deref().expect("a title");
+    assert_eq!(title.chars().count(), kix::MAX_SOURCE_NAME_CHARS);
+    assert!(title.ends_with('…'));
+    assert!(title.starts_with("橋橋橋"));
+    // Exactly the bound is kept whole.
+    assert_eq!(
+        row.author.as_deref(),
+        Some("a".repeat(kix::MAX_SOURCE_NAME_CHARS).as_str())
+    );
+    let reference = row.reference.as_deref().expect("a reference");
+    assert_eq!(reference.chars().count(), kix::MAX_SOURCE_NAME_CHARS);
+    assert!(reference.ends_with('…'));
+    // A source that says nothing of itself has no name in the index.
+    let row = k.source(source_id(3).as_str()).expect("a source");
+    assert_eq!(
+        (&row.title, &row.author, &row.date, &row.reference),
+        (&None, &None, &None, &None)
+    );
+    // Cleared and built again, it is the same index, names and all.
+    w.service.clear_derived(&w.wiki).expect("cleared");
+    assert_eq!(knowledge(&w).rows(), k.rows());
+}
+
+#[test]
 fn a_title_index_stored_before_the_knowledge_index_existed_gets_one_on_demand() {
     let w = world(&files(
         &[claim_on(1, "Said. ^b1", 1)],

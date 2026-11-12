@@ -10,7 +10,9 @@
 //! word for (no such page, two pages, no such view, a title that names nothing, prikk busy). Each is a page the
 //! structural rules run on, in both languages.
 
-use inklkunn_core::knowledge::{Bearing, Link, SourceKind, Standing};
+use inklkunn_core::knowledge::{
+    Bearing, Identity, Link, Reference, ReferenceForm, SourceKind, Standing,
+};
 use inklkunn_core::proposal::{NewComment, ProposalEdit};
 use inklkunn_core::{IdentityAuthority, Principal};
 use inklkunn_store::{DecisionKind, FileChange, Role};
@@ -56,6 +58,34 @@ fn sourced(w: &World) {
         sources.push(source(n, kind));
     }
     put(w, &home_with(SAID), &[c], &sources);
+}
+
+/// A claim whose sources name themselves in every way a source can, and one that does not.
+fn named_sources(w: &World) {
+    let mut c = claim(1, Standing::Contested, Some(PROPOSAL), SAID);
+    let mut full = source(1, SourceKind::Primary);
+    full.identity = Identity {
+        title: Some("The Bridge Survey".to_owned()),
+        author: Some("The Harbour Authority".to_owned()),
+        date: Some("Spring 1950".to_owned()),
+    };
+    full.reference = Some(Reference {
+        form: ReferenceForm::Doi,
+        value: "10.1000/survey".to_owned(),
+    });
+    let mut titled = source(2, SourceKind::Secondary);
+    titled.identity.title = Some("橋の調査".to_owned());
+    c.sources = vec![
+        link(1, Link::Supports, Bearing::Direct, SAID),
+        link(2, Link::Challenges, Bearing::Partial, SAID),
+        link(3, Link::Supports, Bearing::Indirect, SAID),
+    ];
+    put(
+        w,
+        &home_with(SAID),
+        &[c],
+        &[full, titled, source(3, SourceKind::Other)],
+    );
 }
 
 fn reworded(w: &World) {
@@ -187,6 +217,16 @@ pub(super) const SCENARIOS: &[Scenario] = &[
         status: 200,
         warm: &[],
         setup: no_paragraph,
+        method: "GET",
+        uri: CLAIM,
+        headers: &[],
+    },
+    Scenario {
+        id: "claim-page-named-sources",
+        identity: "claim-page",
+        status: 200,
+        warm: &[],
+        setup: named_sources,
         method: "GET",
         uri: CLAIM,
         headers: &[],

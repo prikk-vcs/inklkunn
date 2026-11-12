@@ -33,7 +33,7 @@ use crate::record::{
 use crate::{Result, StoreError, WikiStore};
 
 /// The schema version this build writes and reads: the last of [`MIGRATIONS`].
-pub const SCHEMA_VERSION: i64 = 15;
+pub const SCHEMA_VERSION: i64 = 17;
 
 /// Version 1: M0's schema, the wiki records.
 const V1: &str = "
@@ -721,6 +721,25 @@ ALTER TABLE wikis ADD COLUMN verification_explained_by TEXT
     CHECK (verification_explained_by IS NULL OR verification_state = 'failed');
 ";
 
+/// Version 17 (handoff 005 corrections, K9): a source has a name in the derived knowledge index: its title, author or
+/// publisher, date and reference, as written and cut at a bound when the index is built. **Derived data only**: the
+/// index of every tip is dropped here (all its tables, the tips row with them), so that none is read without the
+/// columns it now has; each is rebuilt from the tip's files when it is next asked for (INV-5). Version 16 is the
+/// view-creation and review records of another correction (K3) and is not in this build's list.
+const V17: &str = "
+ALTER TABLE knowledge_sources ADD COLUMN title     TEXT;
+ALTER TABLE knowledge_sources ADD COLUMN author    TEXT;
+ALTER TABLE knowledge_sources ADD COLUMN date      TEXT;
+ALTER TABLE knowledge_sources ADD COLUMN reference TEXT;
+DELETE FROM knowledge_tips;
+DELETE FROM knowledge_claims;
+DELETE FROM knowledge_sources;
+DELETE FROM knowledge_relations;
+DELETE FROM knowledge_links;
+DELETE FROM knowledge_anchors;
+DELETE FROM knowledge_invalid;
+";
+
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and
 /// [`SCHEMA_VERSION`] moves with it (a test holds the two together).
 pub const MIGRATIONS: &[(i64, &str)] = &[
@@ -739,6 +758,7 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (13, V13),
     (14, V14),
     (15, V15),
+    (17, V17),
 ];
 
 /// The SQLite-backed store.

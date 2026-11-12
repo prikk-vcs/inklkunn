@@ -41,6 +41,10 @@ fn rows(tag: &str) -> KnowledgeRows {
             availability: "unavailable".into(),
             last_reviewed: Some("2026-10-31".into()),
             superseded_by: None,
+            title: Some("日本語の題名".into()),
+            author: Some("The Harbour Authority".into()),
+            date: Some("Spring 1950".into()),
+            reference: Some("https://example.org/survey".into()),
         }],
         relations: vec![KnowledgeRelationRow {
             claim: format!("c-{tag}-2"),
@@ -303,4 +307,103 @@ fn a_version_12_database_is_migrated_to_13_keeping_everything_and_only_once() {
     drop(SqliteStore::open(&fresh).expect("fresh"));
     assert_eq!(names(&db), names(&fresh));
     assert!(names(&db).contains(&"knowledge_links".to_owned()));
+}
+
+/// A database as version 15 left it, with a knowledge index of one tip stored whole, in the shape that version
+/// gave a source (no name).
+fn make_version_15_with_an_index(db: &std::path::Path, wiki_id: &str) {
+    let raw = rusqlite::Connection::open(db).expect("raw open");
+    for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v <= 15) {
+        raw.execute_batch(sql)
+            .unwrap_or_else(|e| panic!("v{version}: {e}"));
+    }
+    raw.execute(
+        "INSERT INTO schema_meta (key, value) VALUES ('schema_version', '15')",
+        [],
+    )
+    .expect("version");
+    raw.execute(
+        "INSERT INTO wikis (id, slug, display_name, default_view, default_license, languages, visibility, \
+         policy_bootstrap, prikk_format_version, verification_state, verification_at, author_key_id, \
+         maintainer_key_id, created_at, seq) VALUES (?1, 'old', 'Old', 'heads/main', 'CC-BY-SA-4.0', \
+         '[\"en\"]', 'public', 'default', NULL, 'verified', 1700000000, NULL, NULL, 1700000000, 1)",
+        [wiki_id],
+    )
+    .expect("a wiki");
+    raw.execute(
+        "INSERT INTO title_index_entries (wiki_id, tip, path, title, aliases, redirect, page_id, kind, problem) \
+         VALUES (?1, ?2, 'pages/Home.md', 'Home', '[]', NULL, NULL, 'page', NULL)",
+        [wiki_id, TIP_A],
+    )
+    .expect("a title index row");
+    raw.execute(
+        "INSERT INTO title_index_tips (wiki_id, tip, entries, built_at) VALUES (?1, ?2, 1, 5)",
+        [wiki_id, TIP_A],
+    )
+    .expect("a title index tip");
+    raw.execute(
+        "INSERT INTO knowledge_sources (wiki_id, tip, id, kind, availability, last_reviewed, superseded_by) \
+         VALUES (?1, ?2, 's-old', 'primary', 'available', NULL, NULL)",
+        [wiki_id, TIP_A],
+    )
+    .expect("a source of the old shape");
+    raw.execute(
+        "INSERT INTO knowledge_tips (wiki_id, tip, row_count, built_at) VALUES (?1, ?2, 1, 5)",
+        [wiki_id, TIP_A],
+    )
+    .expect("a knowledge index tip");
+}
+
+#[test]
+fn a_version_15_database_is_migrated_with_its_knowledge_index_dropped_so_that_it_is_rebuilt() {
+    let tmp = temp("kn-v15");
+    let db = tmp.0.join("store.sqlite");
+    let wiki_id = "019a0000-0000-7000-8000-0000000000f5";
+    make_version_15_with_an_index(&db, wiki_id);
+    // As the old version left it, the index reads as whole.
+    {
+        let raw = rusqlite::Connection::open(&db).expect("raw");
+        let tips: i64 = raw
+            .query_row("SELECT COUNT(*) FROM knowledge_tips", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(tips, 1);
+    }
+    let store = SqliteStore::open(&db).expect("a version 15 database opens");
+    let w = store.list().unwrap().remove(0);
+    // The index of the old shape is not read: a miss, which the read service answers by building it again.
+    assert_eq!(store.knowledge_index(&w.id, TIP_A).unwrap(), None);
+    // Nothing of it is left in any table, and what is not derived is.
+    let raw = rusqlite::Connection::open(&db).expect("raw");
+    for table in [
+        "knowledge_tips",
+        "knowledge_claims",
+        "knowledge_sources",
+        "knowledge_relations",
+        "knowledge_links",
+        "knowledge_anchors",
+        "knowledge_invalid",
+    ] {
+        let n: i64 = raw
+            .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 0, "{table}");
+    }
+    assert_eq!(
+        store.title_index(&w.id, TIP_A).unwrap().map(|e| e.len()),
+        Some(1),
+        "the title index is not touched"
+    );
+    // The index of the new shape is stored and read back, names and all.
+    store
+        .put_knowledge_index(&w.id, TIP_A, &rows("n"), 9)
+        .unwrap();
+    let back = store.knowledge_index(&w.id, TIP_A).unwrap().expect("whole");
+    let named = back.sources.first().expect("a source");
+    assert_eq!(named.title.as_deref(), Some("日本語の題名"));
+    assert_eq!(named.author.as_deref(), Some("The Harbour Authority"));
+    assert_eq!(named.date.as_deref(), Some("Spring 1950"));
+    assert_eq!(
+        named.reference.as_deref(),
+        Some("https://example.org/survey")
+    );
 }

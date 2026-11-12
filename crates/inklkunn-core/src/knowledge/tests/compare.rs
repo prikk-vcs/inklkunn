@@ -50,6 +50,10 @@ fn source(n: u8, kind: &str, availability: &str) -> KnowledgeSourceRow {
         availability: availability.to_owned(),
         last_reviewed: None,
         superseded_by: None,
+        title: None,
+        author: None,
+        date: None,
+        reference: None,
     }
 }
 

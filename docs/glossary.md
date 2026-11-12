@@ -983,6 +983,14 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `claim.source_anecdotal` | a kind of source | "anecdotal" | "逸話" |
 | `claim.source_other` | a kind of source | "another kind" | "その他" |
 | `claim.source_unreadable` | in place of the kind of a source whose file the wiki cannot read | "its file cannot be read" | "ファイルを読み取れません" |
+| `claim.source_line_named` | one source of a claim whose file the wiki can read; `{name}` is made of the messages below, `{kind}` is one of the kinds above, `{how}` one of the phrases below | "{name} ({kind}): {how}." | "{name}（{kind}）: {how}。" |
+| `claim.source_titled` | the first part of a source's name: its title, as written | "“{title}”" | "「{title}」" |
+| `claim.source_untitled` | in place of it when the source gives no title | "A source without a title" | "題名のない出典" |
+| `claim.source_by` | a part of a source's name: its author or publisher, as written | "by {author}" | "{author} による" |
+| `claim.source_dated` | a part of a source's name: its date, as written (a year, a season, a day) | "dated {date}" | "日付 {date}" |
+| `claim.source_join` | joins two parts of a source's name | "{first}, {second}" | "{first}、{second}" |
+| `claim.source_found_at` | after a source's line, when it gives a reference: the reference as written, never made a link | "Where it is found: {reference}." | "所在: {reference}。" |
+| `claim.source_identifier` | after the line of a source that gives no title, author, date or reference: its identifier, the one way left to tell it from another | "Its identifier is {id}." | "識別子: {id}。" |
 | `claim.how_supports_direct` | how a source bears on a claim: it supports it, and speaks to it directly | "supports, directly" | "直接に裏付けている" |
 | `claim.how_supports_partial` | how a source bears on a claim | "supports, in part" | "一部を裏付けている" |
 | `claim.how_supports_indirect` | how a source bears on a claim | "supports, indirectly" | "間接的に裏付けている" |

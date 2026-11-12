@@ -111,6 +111,17 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   proposal …*. The claim links' insertion relies on the sanitizer's serializer escaping `<` in attributes; that is now a
   tested fact (`</p>` and `<p id="h-^b1">` in an image's alt and a link's title).
 
+- **K9 (handoff 005 corrections): a source has a name on the claim page.** The derived knowledge index keeps each
+  source's title, author or publisher, date (as written) and reference, each cut at 300 characters when the index is
+  built (on a character boundary, with a visible ellipsis where it was cut). The claim page's *Sources* line names a
+  source by them (*“The Bridge Survey”, by The Harbour Authority, dated Spring 1950 (primary): supports, directly.*, with
+  *Where it is found: …* after it, as words and never a link), one line each and escaped; a source that gives no title
+  is *a source without a title*, and only one that gives nothing at all is told by its identifier. Never a score. **The
+  store's schema moves from 15 to 17** (16 is the view-creation and review records of K3; this build's list skips it,
+  the migration test's reserved list says so): four columns on `knowledge_sources`, and the derived knowledge index of
+  every tip is dropped by the migration so that it is rebuilt, whole, when next asked for; an index cleared and built again
+  is the same index.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

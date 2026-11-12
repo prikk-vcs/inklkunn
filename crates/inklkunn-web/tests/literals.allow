@@ -457,3 +457,8 @@ exact :: compare.rs :: limit :: a placeholder name of a catalog message
 exact :: others.rs :: heads/{other} :: the repository's name of a view, built from its short name to ask for its index (no sentence)
 exact :: others.rs :: view :: a placeholder name of a catalog message
 exact :: others.rs :: shown :: a placeholder name of a catalog message
+exact :: show.rs :: date :: a placeholder name of a catalog message
+exact :: show.rs :: first :: a placeholder name of a catalog message
+exact :: show.rs :: second :: a placeholder name of a catalog message
+exact :: show.rs :: reference :: a placeholder name of a catalog message
+exact :: show.rs :: name :: a placeholder name of a catalog message

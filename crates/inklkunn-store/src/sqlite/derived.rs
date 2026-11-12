@@ -440,8 +440,9 @@ impl DerivedStore for SqliteStore {
             for s in &rows.sources {
                 tx.execute(
                     "INSERT OR REPLACE INTO knowledge_sources \
-                     (wiki_id, tip, id, kind, availability, last_reviewed, superseded_by) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                     (wiki_id, tip, id, kind, availability, last_reviewed, superseded_by, \
+                      title, author, date, reference) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                     params![
                         w,
                         t,
@@ -449,7 +450,11 @@ impl DerivedStore for SqliteStore {
                         s.kind,
                         s.availability,
                         s.last_reviewed,
-                        s.superseded_by
+                        s.superseded_by,
+                        s.title,
+                        s.author,
+                        s.date,
+                        s.reference
                     ],
                 )
                 .map_err(backend)?;
@@ -713,7 +718,7 @@ fn read_knowledge(conn: &rusqlite::Connection, wiki: &WikiId, tip: &str) -> Resu
     }
     let mut stmt = conn
         .prepare(
-            "SELECT id, kind, availability, last_reviewed, superseded_by \
+            "SELECT id, kind, availability, last_reviewed, superseded_by, title, author, date, reference \
              FROM knowledge_sources WHERE wiki_id = ?1 AND tip = ?2 ORDER BY id",
         )
         .map_err(backend)?;
@@ -725,6 +730,10 @@ fn read_knowledge(conn: &rusqlite::Connection, wiki: &WikiId, tip: &str) -> Resu
                 availability: r.get(2)?,
                 last_reviewed: r.get(3)?,
                 superseded_by: r.get(4)?,
+                title: r.get(5)?,
+                author: r.get(6)?,
+                date: r.get(7)?,
+                reference: r.get(8)?,
             })
         })
         .map_err(backend)?

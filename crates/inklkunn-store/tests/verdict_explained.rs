@@ -250,7 +250,6 @@ fn a_version_14_database_is_migrated_to_15_keeping_every_wiki_and_only_once() {
     {
         let store = SqliteStore::open(&db).expect("a version 14 database opens");
         assert_eq!(version(), SCHEMA_VERSION.to_string());
-        assert_eq!(SCHEMA_VERSION, 15);
         // Every wiki is there, its verdict kept, with nothing explained (the verdict was recorded without it).
         let failed = store.get(&WikiId::parse(failed).unwrap()).unwrap();
         assert_eq!(

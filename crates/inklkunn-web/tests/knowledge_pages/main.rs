@@ -14,7 +14,9 @@ use common::{
     APP, Answer, HOME_ID, World, claim, claim_id, get, home_with, link, page, put, request, source,
     source_id,
 };
-use inklkunn_core::knowledge::{Bearing, Link, SourceKind, Standing};
+use inklkunn_core::knowledge::{
+    Bearing, Identity, Link, Reference, ReferenceForm, SourceKind, Standing,
+};
 use inklkunn_store::Visibility;
 
 const JA: &[(&str, &str)] = &[("cookie", "inklkunn_lang=ja")];
@@ -350,17 +352,18 @@ async fn a_claim_page_says_its_kind_its_sources_and_its_status_in_words() {
         main.contains("<a href=\"/handbook/Home#h-^b1\">Home</a>"),
         "{main}"
     );
-    // Each source with its relation and how directly it speaks, and nothing else about it.
+    // Each source with its relation and how directly it speaks, and nothing else about it. These two say nothing
+    // of themselves, so the identifier is the one way left to tell them apart.
     assert!(
         main.contains(&format!(
-            "Source {} (primary): supports, directly.",
+            "A source without a title (primary): supports, directly. Its identifier is {}.",
             source_id(1)
         )),
         "{main}"
     );
     assert!(
         main.contains(&format!(
-            "Source {} (secondary): challenges, in part.",
+            "A source without a title (secondary): challenges, in part. Its identifier is {}.",
             source_id(2)
         )),
         "{main}"
@@ -375,6 +378,105 @@ async fn a_claim_page_says_its_kind_its_sources_and_its_status_in_words() {
     for h in ["Where it is said", "Sources", "Status in this view"] {
         assert!(main.contains(&format!("<h2>{h}</h2>")), "{h}: {main}");
     }
+}
+
+/// A claim with three sources: one that names itself fully, one by its title alone, one by its reference alone.
+fn with_named_sources(w: &World, title: &str, author: &str) {
+    let said = "The bridge opened in 1950.";
+    let mut c = claim(1, Standing::Contested, None, said);
+    c.sources = vec![
+        link(1, Link::Supports, Bearing::Direct, said),
+        link(2, Link::Challenges, Bearing::Partial, said),
+        link(3, Link::Supports, Bearing::Indirect, said),
+    ];
+    let mut full = source(1, SourceKind::Primary);
+    full.identity = Identity {
+        title: Some(title.to_owned()),
+        author: Some(author.to_owned()),
+        date: Some("Spring 1950".to_owned()),
+    };
+    full.reference = Some(Reference {
+        form: ReferenceForm::Url,
+        value: "https://example.org/survey".to_owned(),
+    });
+    let mut titled = source(2, SourceKind::Secondary);
+    titled.identity.title = Some("A Short History".to_owned());
+    let mut referenced = source(3, SourceKind::Observational);
+    referenced.reference = Some(Reference {
+        form: ReferenceForm::Citation,
+        value: "Harbour Notes 12, p. 4".to_owned(),
+    });
+    put(w, &home_with(said), &[c], &[full, titled, referenced]);
+}
+
+#[tokio::test]
+async fn a_source_is_named_by_what_it_says_of_itself_and_the_identifier_is_not_its_name() {
+    let w = handbook();
+    with_named_sources(&w, "The Bridge Survey", "The Harbour Authority");
+    let main = main_of(&get(&w, &claim_uri(1)).await);
+    assert!(
+        main.contains("“The Bridge Survey”, by The Harbour Authority, dated Spring 1950 (primary): supports, directly. Where it is found: https://example.org/survey."),
+        "{main}"
+    );
+    assert!(
+        main.contains("“A Short History” (secondary): challenges, in part."),
+        "{main}"
+    );
+    // A source with a reference and no title is still a source without a title, and says where it is found.
+    assert!(
+        main.contains("A source without a title (observational): supports, indirectly. Where it is found: Harbour Notes 12, p. 4."),
+        "{main}"
+    );
+    // Not one of them is known by its identifier: it is told only of a source that gives nothing else.
+    for n in 1..=3 {
+        assert!(!main.contains(&source_id(n).to_string()), "{main}");
+    }
+    assert!(!main.contains("Source 0"), "{main}");
+    // A reference is words, never a link the wiki sends a reader to.
+    assert!(!main.contains("href=\"https://example.org"), "{main}");
+}
+
+#[tokio::test]
+async fn what_a_source_says_of_itself_is_escaped_and_on_one_line() {
+    let w = handbook();
+    with_named_sources(
+        &w,
+        "A <script>alert(1)</script> title\n\nin   two   lines",
+        "Tom & \"Jerry\" <b>Ltd</b>",
+    );
+    let main = main_of(&get(&w, &claim_uri(1)).await);
+    assert!(!main.contains("<script>alert"), "{main}");
+    assert!(!main.contains("<b>Ltd"), "{main}");
+    assert!(
+        main.contains("“A &#60;script&#62;alert(1)&#60;/script&#62; title in two lines”"),
+        "{main}"
+    );
+    assert!(
+        main.contains("by Tom &#38; &#34;Jerry&#34; &#60;b&#62;Ltd&#60;/b&#62;"),
+        "{main}"
+    );
+}
+
+#[tokio::test]
+async fn a_source_is_named_in_japanese_with_the_japanese_words_around_its_own() {
+    let w = handbook();
+    with_named_sources(&w, "橋の調査", "港湾局");
+    let main = main_of(&request(&w, APP, "GET", &claim_uri(1), JA).await);
+    assert!(
+        main.contains("「橋の調査」、港湾局 による、日付 Spring 1950（一次）: 直接に裏付けている。 所在: https://example.org/survey。"),
+        "{main}"
+    );
+    assert!(main.contains("題名のない出典"), "{main}");
+}
+
+#[tokio::test]
+async fn a_long_name_is_cut_once_with_an_ellipsis_where_it_was_cut() {
+    let w = handbook();
+    with_named_sources(&w, &"橋".repeat(500), "The Harbour Authority");
+    let main = main_of(&get(&w, &claim_uri(1)).await);
+    let long = format!("“{}…”", "橋".repeat(299));
+    assert!(main.contains(&long), "{main}");
+    assert!(!main.contains(&"橋".repeat(300)), "{main}");
 }
 
 #[tokio::test]
@@ -422,7 +524,10 @@ async fn a_relation_judged_on_a_wording_the_paragraph_no_longer_has_says_so_unti
     // The one relation not yet confirmed still says so; the others do not.
     assert_eq!(count(&main, "Judged on an earlier wording."), 1, "{main}");
     assert!(
-        main.contains("challenges, in part.</li>") || main.contains("challenges, in part. <span"),
+        main.contains(&format!(
+            "challenges, in part. Its identifier is {}. <span class=\"claim-note\">Judged on an earlier wording.</span>",
+            source_id(2)
+        )),
         "{main}"
     );
 }
