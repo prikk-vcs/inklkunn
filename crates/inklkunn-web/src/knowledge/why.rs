@@ -300,16 +300,23 @@ fn change_view(
     } else {
         record.summary.clone()
     };
+    // *Made from* is said only of a proposal the acceptance records seal as this change; the message of a change
+    // can name any proposal, and then it is the message that is quoted.
+    let sealed = reading.sealed_as(&id, &info.block_id);
     out.proposal = Some(
-        t.msg(Key::WhyProposal)
-            .link(
-                "proposal",
-                label,
-                crate::proposals::paths::proposal(slug, id.as_str()),
-            )
-            .html(),
+        t.msg(if sealed {
+            Key::WhyProposal
+        } else {
+            Key::WhyProposalNamed
+        })
+        .link(
+            "proposal",
+            label,
+            crate::proposals::paths::proposal(slug, id.as_str()),
+        )
+        .html(),
     );
-    if !reading.sealed_as(&id, &info.block_id) {
+    if !sealed {
         out.note = Some(t.get(Key::WhyProposalUnconfirmed));
         return out;
     }
@@ -412,11 +419,25 @@ fn paragraph_views(
 ) -> Vec<ParagraphView> {
     let mut used = HashMap::new();
     let own = paths::why(wiki.slug.as_str(), view, &page.title);
+    // An `^id` that two paragraphs of the page carry names neither: each is named by its number, so that no two
+    // elements of the page have the same id.
+    let mut carried: HashMap<&str, usize> = HashMap::new();
+    for id in page
+        .paragraphs
+        .iter()
+        .filter_map(|p| p.paragraph.id.as_deref())
+    {
+        *carried.entry(id).or_default() += 1;
+    }
     page.paragraphs
         .iter()
         .map(|p| {
             let paragraph = &p.paragraph;
-            let id = paths::why_paragraph_id(paragraph.ordinal, paragraph.id.as_deref());
+            let anchor = paragraph
+                .id
+                .as_deref()
+                .filter(|b| carried.get(b).copied() == Some(1));
+            let id = paths::why_paragraph_id(paragraph.ordinal, anchor);
             let here: Vec<&ParagraphClaim> = paragraph.id.as_deref().map_or_else(Vec::new, |b| {
                 claims.iter().filter(|c| c.block == b).collect()
             });
@@ -561,7 +582,11 @@ fn prepare(
     match found.reach {
         Reach::Whole => {}
         Reach::Bounded if found.changes.is_empty() => notes.push(t.get(Key::WhyBoundedNone)),
-        Reach::Bounded => notes.push(t.msg(Key::WhyBounded).n(found.changes.len() as u64).text()),
+        Reach::Spent if found.changes.is_empty() => notes.push(t.get(Key::WhySpentNone)),
+        // The changes listed are the ones that were read: the count is the same one the bounds' note gives.
+        Reach::Bounded | Reach::Spent => {
+            notes.push(t.msg(Key::WhyBounded).n(found.changes.len() as u64).text());
+        }
         Reach::Unfollowed => notes.push(t.get(Key::WhyUnfollowed)),
     }
     if found.left_out > 0 {

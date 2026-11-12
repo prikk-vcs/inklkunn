@@ -21,7 +21,9 @@
 //! beyond them, and the answer says that it stopped there ([`Reach::Bounded`]). The versions are read one at a time,
 //! two held at once, so the memory is two pages and a small record per paragraph, whatever the history; at most one
 //! `cat` per change read, through the same storage (and so the same admission gate, deadlines and ceilings) as every
-//! other read. A paragraph beyond the first [`MAX_WHY_PARAGRAPHS`] of a page is not followed; the answer counts them.
+//! other read. **Bounded in work as well**: the alignments of one request share [`MAX_WHY_WORK`] units of work, and
+//! the reading ends at the step that would pass it ([`Reach::Spent`]), the changes it did not read left out of the
+//! answer. A paragraph beyond the first [`MAX_WHY_PARAGRAPHS`] of a page is not followed; the answer counts them.
 //!
 //! **What the answer never claims.** A paragraph with an `^id` that is the one block with it on both sides of every
 //! step is followed by its anchor ([`Basis::Anchor`]); any other is followed by matching the text
@@ -36,13 +38,19 @@ use inklkunn_store::IndexEntry;
 
 use super::history::{ChangeInfo, HistoryRow, MAX_INSPECTED_PER_REQUEST, PageEvent};
 use super::{Lookup, PageProblem, ReadError, ReadService, Tip};
-use trace::Tracer;
+use trace::{Fed, Tracer};
 
 pub use trace::{Basis, Chain, EXCERPT_CHARS, Paragraph};
 
 /// The most paragraphs of one page that are followed: the same figure as the history's bound on the blocks one
 /// request inspects, since each paragraph is one more thing the request follows.
 pub const MAX_WHY_PARAGRAPHS: usize = MAX_INSPECTED_PER_REQUEST;
+
+/// The most work one request spends aligning the page's versions: one unit is a byte read, a block looked at or a
+/// cell of an alignment's table. Twenty alignments of a page of 1 MiB would, without it, do whatever the page
+/// makes them do; with it a request is bounded in time as it is in reads. The reading ends at the step that would
+/// pass it ([`Reach::Spent`]).
+pub const MAX_WHY_WORK: usize = 32_000_000;
 
 /// How far back the paragraphs could be followed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,6 +60,9 @@ pub enum Reach {
     /// The history page's bounds ended the reading while some paragraph still had an earlier wording: older
     /// changes exist that were not read.
     Bounded,
+    /// The reading ended at [`MAX_WHY_WORK`]: the changes listed after those in [`WhyPage::changes`] (older ones)
+    /// were not read, and [`WhyPage::changes`] holds only the changes that were. Older changes exist.
+    Spent,
     /// The reading ended for another reason (an earlier version could not be read, or the history lists no
     /// change that wrote the page): what lies before is not known.
     Unfollowed,
@@ -77,7 +88,8 @@ pub struct WhyPage {
     pub page_id: Option<String>,
     /// The tip everything was read at.
     pub tip: Tip,
-    /// The changes that touched the page among those the history page's bounds let be read, newest first.
+    /// The changes that touched the page among those the history page's bounds let be read, newest first, and
+    /// that were read: when the reading was [`Reach::Spent`], only those before the step it stopped at.
     pub changes: Vec<ChangeInfo>,
     /// The paragraphs, in the page's order, at most [`MAX_WHY_PARAGRAPHS`].
     pub paragraphs: Vec<WhyParagraph>,
@@ -155,9 +167,11 @@ impl ReadService {
             entry.title.clone(),
             None,
         )?;
-        let mut tracer = Tracer::begin(&current, MAX_WHY_PARAGRAPHS);
+        let mut tracer = Tracer::begin(&current, MAX_WHY_PARAGRAPHS, MAX_WHY_WORK);
         let rows = &history.rows;
         let mut unfollowed = false;
+        // The step the work budget ended the reading at: the changes from there on were not read.
+        let mut spent_at: Option<usize> = None;
         for (step, row) in rows.iter().enumerate() {
             if !tracer.is_following() {
                 break;
@@ -198,10 +212,15 @@ impl ReadService {
                     }
                 }
             };
-            tracer.feed(step, older.as_deref());
+            if tracer.feed(step, older.as_deref()) == Fed::OutOfWork {
+                spent_at = Some(step);
+                break;
+            }
         }
         let reach = if !tracer.is_following() {
             Reach::Whole
+        } else if spent_at.is_some() {
+            Reach::Spent
         } else if !unfollowed && (history.older.is_some() || history.beyond_window) {
             Reach::Bounded
         } else {
@@ -219,7 +238,12 @@ impl ReadService {
             path: entry.path,
             page_id: entry.page_id,
             tip: history.tip,
-            changes: history.rows.into_iter().map(|row| row.change).collect(),
+            changes: history
+                .rows
+                .into_iter()
+                .take(spent_at.unwrap_or(usize::MAX))
+                .map(|row| row.change)
+                .collect(),
             paragraphs,
             left_out: tracer.left_out(),
             reach,

@@ -16,10 +16,20 @@ use std::collections::HashMap;
 
 use inklkunn_markup::Block;
 
-use crate::merge::{alignment, blocks_of_page};
+use crate::merge::{Meter, alignment, blocks_of_page};
 
 /// The most characters of a paragraph's beginning that name it.
 pub const EXCERPT_CHARS: usize = 120;
+
+/// What feeding a version came to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fed {
+    /// The step was read: every paragraph still followed was placed in it.
+    Read,
+    /// The tracer's work budget would have been passed by the step: nothing of it was applied and no later step
+    /// will be. What was known before it stands.
+    OutOfWork,
+}
 
 /// How a paragraph was followed back.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,6 +82,8 @@ pub struct Tracer {
     tracks: Vec<Track>,
     /// The blocks of the page the tracer began with that were left out because there were more than it follows.
     left_out: usize,
+    /// The work the steps may do between them.
+    work: Meter,
 }
 
 /// A paragraph's text on one line, the trailing `^id` left out, cut to [`EXCERPT_CHARS`] characters.
@@ -106,8 +118,9 @@ fn repeated_ids<'a>(blocks: &[Block<'a>]) -> HashMap<&'a str, bool> {
 }
 
 impl Tracer {
-    /// Begin with the page as it is, following at most `cap` of its blocks (the first).
-    pub fn begin(current: &str, cap: usize) -> Tracer {
+    /// Begin with the page as it is, following at most `cap` of its blocks (the first), and allowing the steps
+    /// fed at most `work` units of work between them (see [`Tracer::feed`]).
+    pub fn begin(current: &str, cap: usize, work: usize) -> Tracer {
         let blocks = blocks_of_page(current);
         let left_out = blocks.len().saturating_sub(cap);
         let paragraphs: Vec<Paragraph> = blocks
@@ -136,6 +149,7 @@ impl Tracer {
             paragraphs,
             tracks,
             left_out,
+            work: Meter::new(work),
         }
     }
 
@@ -157,7 +171,12 @@ impl Tracer {
 
     /// Feed the version before step `step`'s change: `older` is the page's text before it, `None` when the change
     /// wrote the page (the page was not there before it).
-    pub fn feed(&mut self, step: usize, older: Option<&str>) {
+    ///
+    /// **Bounded in work.** A step with an earlier version costs the two texts' bytes (each is read twice: cut
+    /// into blocks for the alignment and again for the comparison of the paired blocks), their blocks and the cells
+    /// of the alignment's tables; the steps fed share the budget given to [`Tracer::begin`]. A step that would pass
+    /// it is not made at all ([`Fed::OutOfWork`]).
+    pub fn feed(&mut self, step: usize, older: Option<&str>) -> Fed {
         let Some(older_text) = older else {
             for track in &mut self.tracks {
                 if track.at.take().is_some() {
@@ -165,9 +184,15 @@ impl Tracer {
                     track.last_changed.get_or_insert(step);
                 }
             }
-            return;
+            return Fed::Read;
         };
-        let map = alignment(&self.newer, older_text);
+        let scanned = self.newer.len().saturating_add(older_text.len());
+        if self.work.charge(scanned.saturating_mul(2)).is_err() {
+            return Fed::OutOfWork;
+        }
+        let Ok(map) = alignment(&self.newer, older_text, &mut self.work) else {
+            return Fed::OutOfWork;
+        };
         {
             let newer = blocks_of_page(&self.newer);
             let before = blocks_of_page(older_text);
@@ -203,6 +228,7 @@ impl Tracer {
             }
         }
         older_text.clone_into(&mut self.newer);
+        Fed::Read
     }
 
     /// What became known of each paragraph, in the page's order.

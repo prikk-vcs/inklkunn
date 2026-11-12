@@ -6,7 +6,7 @@ use std::ops::Range;
 use inklkunn_markup::frontmatter::{self, Entry};
 use inklkunn_markup::{Block, blocks};
 
-use super::engine::{Piece, Unit, Verdict, pieces, slice, verdict};
+use super::engine::{Meter, OutOfWork, Piece, Unit, Verdict, pieces, slice, verdict};
 use super::line::line_level;
 use super::{Overlap, PageRef, Place};
 
@@ -97,6 +97,20 @@ struct Parts<'a> {
 /// the pages that trace a paragraph through a history.
 pub(super) fn align_blocks(base: &str, other: &str) -> Vec<Option<usize>> {
     super::engine::align(&Parts::of(base).units(), &Parts::of(other).units(), true)
+}
+
+/// [`align_blocks`], counting its work on `meter` and stopped when the meter's limit would be passed.
+pub(super) fn align_blocks_metered(
+    base: &str,
+    other: &str,
+    meter: &mut Meter,
+) -> Result<Vec<Option<usize>>, OutOfWork> {
+    super::engine::align_metered(
+        &Parts::of(base).units(),
+        &Parts::of(other).units(),
+        true,
+        meter,
+    )
 }
 
 /// The top-level blocks of a page's body as the alignment counts them (the indexes `align_blocks` answers in).

@@ -1159,3 +1159,27 @@ fn align_blocks_is_the_alignment_the_merge_makes_between_a_base_and_a_side() {
     // No page, no blocks.
     assert_eq!(align_blocks("", ""), Vec::<Option<usize>>::new());
 }
+
+#[test]
+fn the_alignment_counts_its_work_and_stops_where_the_limit_would_be_passed() {
+    // Ten blocks against ten: twenty units looked at, and no table (the start is common).
+    let same: String = (0..10).map(|n| format!("Block {n}.\n\n")).collect();
+    assert_eq!(
+        alignment(&same, &same, &mut Meter::new(20)).map(|m| m.len()),
+        Ok(10)
+    );
+    assert_eq!(alignment(&same, &same, &mut Meter::new(19)), Err(OutOfWork));
+    // Three against three with nothing in common and no unique text: six units, then a table of nine cells.
+    let (x, y) = ("x\n\nx\n\nx\n", "y\n\ny\n\ny\n");
+    assert_eq!(
+        alignment(x, y, &mut Meter::new(15)),
+        Ok(vec![None, None, None])
+    );
+    assert_eq!(alignment(x, y, &mut Meter::new(14)), Err(OutOfWork));
+    // The work of one alignment is counted against the work of the next.
+    let mut meter = Meter::new(21);
+    assert!(alignment(&same, &same, &mut meter).is_ok());
+    assert_eq!(alignment(x, y, &mut meter), Err(OutOfWork));
+    // The merge's own alignment is never stopped.
+    assert_eq!(align_blocks(x, y), [None, None, None]);
+}

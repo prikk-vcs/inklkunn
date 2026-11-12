@@ -100,6 +100,17 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   there. Only a paragraph whose `^id` carried it through every step to the page's creation is still said to be followed
   through its anchor.
 
+- **K13 (handoff 005 corrections): *Why is this here?*, smaller.** A request has a work budget
+  (`MAX_WHY_WORK`, 32 million units: a byte read, a block looked at, a cell of an alignment's table) shared by the up to
+  twenty alignments of a page's versions; the reading ends at the step that would pass it (`Reach::Spent`), the page
+  lists only the changes it did read and says so in the existing *Only the latest N changes … were read here* words (a
+  reading that could not read even one change has its own sentence, since *no change was found* would not be true). The
+  merge's alignment counts nothing and is never stopped. A `^id` that two paragraphs carry gives way to the paragraphs'
+  numbers for the element ids, so no two elements of the page have one id. A change whose message names a proposal the
+  acceptance records do not tie to it reads *The message of this change names the proposal …*, not *Made from the
+  proposal …*. The claim links' insertion relies on the sanitizer's serializer escaping `<` in attributes; that is now a
+  tested fact (`</p>` and `<p id="h-^b1">` in an image's alt and a link's title).
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

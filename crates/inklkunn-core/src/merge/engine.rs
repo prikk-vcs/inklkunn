@@ -30,12 +30,61 @@ pub(super) struct Unit<'a> {
 /// The most cells of a longest-common-subsequence table the engine builds for one stretch.
 pub(super) const MAX_CELLS: usize = 250_000;
 
+/// A count of the work alignments do and the most they may do between them, for the callers that must bound it
+/// (*Why is this here?* aligns up to twenty versions of a page in one request). One unit of work is a unit of a
+/// sequence looked at or a cell of a table filled; the merge does not count and is never stopped.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Meter {
+    spent: usize,
+    limit: usize,
+}
+
+/// The meter's limit was passed: the alignment was stopped and has no answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct OutOfWork;
+
+impl Meter {
+    /// A meter that allows `limit` units of work in all.
+    pub(crate) fn new(limit: usize) -> Meter {
+        Meter { spent: 0, limit }
+    }
+
+    /// A meter that never stops anything.
+    fn unlimited() -> Meter {
+        Meter::new(usize::MAX)
+    }
+
+    /// Count `units` more; refused (and not counted) when that would pass the limit.
+    pub(crate) fn charge(&mut self, units: usize) -> Result<(), OutOfWork> {
+        match self.spent.checked_add(units) {
+            Some(total) if total <= self.limit => {
+                self.spent = total;
+                Ok(())
+            }
+            _ => Err(OutOfWork),
+        }
+    }
+}
+
 /// For each unit of `base`, the index of the unit of `other` it is the same unit as.
 pub(super) fn align(
     base: &[Unit<'_>],
     other: &[Unit<'_>],
     pair_changed: bool,
 ) -> Vec<Option<usize>> {
+    align_metered(base, other, pair_changed, &mut Meter::unlimited())
+        .unwrap_or_else(|OutOfWork| vec![None; base.len()])
+}
+
+/// [`align`], counting its work on `meter`: stopped, with no answer, at the unit of work that would pass the
+/// meter's limit.
+pub(crate) fn align_metered(
+    base: &[Unit<'_>],
+    other: &[Unit<'_>],
+    pair_changed: bool,
+    meter: &mut Meter,
+) -> Result<Vec<Option<usize>>, OutOfWork> {
+    meter.charge(base.len().saturating_add(other.len()))?;
     let mut map: Vec<Option<usize>> = vec![None; base.len()];
     let mut taken: Vec<bool> = vec![false; other.len()];
 
@@ -90,12 +139,20 @@ pub(super) fn align(
     let (mut next_b, mut next_o) = (0usize, 0usize);
     for (b, o) in anchors {
         if b >= next_b && o >= next_o {
-            fill(base, other, next_b..b, next_o..o, pair_changed, &mut map);
+            fill(
+                base,
+                other,
+                next_b..b,
+                next_o..o,
+                pair_changed,
+                &mut map,
+                meter,
+            )?;
         }
         next_b = b + 1;
         next_o = o + 1;
     }
-    map
+    Ok(map)
 }
 
 /// How often a key occurs on one side, and where it first does.
@@ -213,7 +270,8 @@ fn fill(
     mut o: Range<usize>,
     pair_changed: bool,
     map: &mut [Option<usize>],
-) {
+    meter: &mut Meter,
+) -> Result<(), OutOfWork> {
     let same = |bi: usize, oi: usize| match (base.get(bi), other.get(oi)) {
         (Some(x), Some(y)) => x.text == y.text,
         _ => false,
@@ -234,11 +292,12 @@ fn fill(
     }
     let (n, m) = (b.len(), o.len());
     if n == 0 || m == 0 {
-        return;
+        return Ok(());
     }
-    if n.checked_mul(m).is_none_or(|cells| cells > MAX_CELLS) {
-        return;
-    }
+    let Some(cells) = n.checked_mul(m).filter(|cells| *cells <= MAX_CELLS) else {
+        return Ok(());
+    };
+    meter.charge(cells)?;
     // table[i][j]: the length of the longest common subsequence of b[i..] and o[j..].
     let width = m + 1;
     let mut table = vec![0u32; (n + 1) * width];
@@ -275,7 +334,7 @@ fn fill(
         }
     }
     if !pair_changed {
-        return;
+        return Ok(());
     }
     // One unit on each side between two matches: that unit changed.
     matches.push((n, m));
@@ -290,6 +349,7 @@ fn fill(
         pi = i + 1;
         pj = j + 1;
     }
+    Ok(())
 }
 
 /// A stretch of the three sequences.

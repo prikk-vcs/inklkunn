@@ -242,3 +242,54 @@ fn an_element_that_is_never_closed_has_no_end_to_put_a_link_at() {
     // `<pre>` is not a paragraph inside a paragraph.
     assert_eq!(closing("a<pre>x</pre>b</p>", 0, "p"), Some(14));
 }
+
+/// The cutting finds a paragraph's end by the text of the sanitized body, so it depends on what the serializer
+/// writes in an attribute: the closing tag of the paragraph and the opening tag of another one, written into an
+/// image's alt text or a link's title, must come out as text of the attribute and never as tags.
+#[test]
+fn the_tags_of_a_paragraph_written_in_an_attribute_are_escaped_by_the_sanitizer() {
+    let hostile = "</p><p id=\"h-^b1\">";
+    let encoded = "&lt;/p&gt;&lt;p id=&quot;h-^b1&quot;&gt;";
+    let inputs = [
+        // As the renderer writes it (the author's text entity-escaped), and as a database row might hold it
+        // (raw, in single quotes: a double quote would end the attribute).
+        format!(
+            "<p id=\"h-^b1\">Before <img src=\"pic.png\" alt=\"{encoded}\"> after.</p>\n<p id=\"h-^b2\">Next.</p>\n"
+        ),
+        format!(
+            "<p id=\"h-^b1\">Before <a href=\"/Page\" title=\"{encoded}\">link</a> after.</p>\n<p id=\"h-^b2\">Next.</p>\n"
+        ),
+        "<p id=\"h-^b1\">Before <img src=\"pic.png\" alt='</p><p id=\"h-^b1\">'> after.</p>\n<p id=\"h-^b2\">Next.</p>\n".to_owned(),
+        "<p id=\"h-^b1\">Before <a href=\"/Page\" title='</p><p id=\"h-^b1\">'>link</a> after.</p>\n<p id=\"h-^b2\">Next.</p>\n".to_owned(),
+    ];
+    for input in inputs {
+        let html = body(&input);
+        let clean = html.as_str();
+        // The attribute holds the text, and the text holds no tag.
+        assert!(!clean.contains(hostile), "{clean}");
+        assert!(
+            clean.contains("&lt;/p&gt;&lt;p id=&quot;h-^b1&quot;&gt;"),
+            "{clean}"
+        );
+        assert_eq!(clean.matches("<p ").count(), 2, "{clean}");
+        assert_eq!(clean.matches("</p>").count(), 2, "{clean}");
+        // The claimed paragraph is found once, and the link goes at the end of that paragraph and no other.
+        let parts = cut(&html, &[claim("b1", C1), claim("b2", C2)]);
+        assert_eq!(printed(&parts), clean);
+        let linked: Vec<&str> = parts
+            .iter()
+            .flat_map(|p| p.tools.iter().map(|t| t.href.as_str()))
+            .collect();
+        assert_eq!(
+            linked,
+            [
+                format!("/handbook/-/claim/{C1}"),
+                format!("/handbook/-/claim/{C2}")
+            ],
+            "{clean}"
+        );
+        let first = parts.first().expect("a stretch").html.to_string();
+        assert!(first.ends_with(" after."), "{first}");
+        assert!(first.starts_with("<p id=\"h-^b1\">Before "), "{first}");
+    }
+}

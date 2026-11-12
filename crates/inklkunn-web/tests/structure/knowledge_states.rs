@@ -313,6 +313,26 @@ pub(super) const SCENARIOS: &[Scenario] = &[
         headers: &[],
     },
     Scenario {
+        id: "why-page-work-spent",
+        identity: "why-home",
+        status: 200,
+        warm: &[],
+        setup: heavy_home,
+        method: "GET",
+        uri: "/handbook/-/why/Home",
+        headers: &[],
+    },
+    Scenario {
+        id: "why-page-work-spent-before-any-change",
+        identity: "why-home",
+        status: 200,
+        warm: &[],
+        setup: heaviest_home,
+        method: "GET",
+        uri: "/handbook/-/why/Home",
+        headers: &[],
+    },
+    Scenario {
         id: "why-page-no-paragraphs",
         identity: "why-home",
         status: 200,
@@ -520,6 +540,41 @@ fn long_home(w: &World) {
                 &format!("# Welcome\n\nEdit {v}.\n\nA paragraph that stays as it is.\n"),
             ),
         );
+        w.fake.say(v, "Edit the home page");
+        w.fake
+            .show(v, shown(vec![op("edit-text", &["pages/Home.md"])]));
+    }
+}
+
+/// Thirty edits of a page of about 600 KB: the work one request may spend is gone after a few of them.
+fn heavy_home(w: &World) {
+    script_history(w);
+    for v in 5..=34_u64 {
+        let body: String = (0..40_000)
+            .map(|n| {
+                if n == 3 {
+                    format!("Paragraph {n} edit {v}.\n\n")
+                } else {
+                    format!("Paragraph {n}.\n\n")
+                }
+            })
+            .collect();
+        w.fake.set("pages/Home.md", &page(&["title: Home"], &body));
+        w.fake.say(v, "Edit the home page");
+        w.fake
+            .show(v, shown(vec![op("edit-text", &["pages/Home.md"])]));
+    }
+}
+
+/// One edit of a page whose two versions have two hundred stretches of five hundred paragraphs against five
+/// hundred, none of whose text is unique: the work of the first step alone is more than a request may spend.
+fn heaviest_home(w: &World) {
+    script_history(w);
+    for (v, word) in [(5_u64, "x"), (6, "y")] {
+        let body: String = (0..200)
+            .map(|n| format!("{}Anchor {n}.\n\n", format!("{word}\n\n").repeat(500)))
+            .collect();
+        w.fake.set("pages/Home.md", &page(&["title: Home"], &body));
         w.fake.say(v, "Edit the home page");
         w.fake
             .show(v, shown(vec![op("edit-text", &["pages/Home.md"])]));

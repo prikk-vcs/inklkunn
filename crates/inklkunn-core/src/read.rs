@@ -126,8 +126,8 @@ pub use sanitize::{HTML_SUBSET, SafeHtml, Sanitizer};
 pub use search::{SearchHit, SearchOutcome, Segment as SnippetSegment, fold, highlight};
 pub use tip::Tip;
 pub use why::{
-    Basis, Chain, EXCERPT_CHARS, MAX_WHY_PARAGRAPHS, Paragraph, Reach, WhyOutcome, WhyPage,
-    WhyParagraph,
+    Basis, Chain, EXCERPT_CHARS, MAX_WHY_PARAGRAPHS, MAX_WHY_WORK, Paragraph, Reach, WhyOutcome,
+    WhyPage, WhyParagraph,
 };
 
 // The read API's reads (handoff 003 T8).

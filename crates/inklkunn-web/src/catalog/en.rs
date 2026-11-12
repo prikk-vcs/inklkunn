@@ -2384,6 +2384,10 @@ pub const CATALOG: &[Entry] = &[
         "No change to this page was found among the latest changes of this wiki that one request can read. There are older changes, and they are not shown.",
     ),
     msg(
+        "why.spent_none",
+        "The work one request may spend on this page was used up before any change to it could be read. There are changes, and they are not shown.",
+    ),
+    msg(
         "why.unfollowed",
         "The history of this page could not be followed to its start: an earlier version could not be read, or the history lists no change that wrote the page. What is said below holds only for the changes that were read.",
     ),
@@ -2430,6 +2434,10 @@ pub const CATALOG: &[Entry] = &[
     msg("why.changes_none", "No change to this page was read."),
     msg("why.change_open", "See change {number} in the history"),
     msg("why.proposal", "Made from the proposal {proposal}."),
+    msg(
+        "why.proposal_named",
+        "The message of this change names the proposal {proposal}.",
+    ),
     msg(
         "why.proposal_unlisted",
         "The message of this change names a proposal that is not among the records of this wiki that you may read.",

@@ -540,6 +540,73 @@ fn a_page_of_a_great_many_paragraphs_follows_the_first_ones_and_counts_the_rest(
     assert_eq!(last(&page, "Paragraph 2."), None);
 }
 
+/// A page of about 600 KB: forty thousand short paragraphs, the fourth of which says which edit it is.
+fn big_page(edit: usize) -> String {
+    (0..40_000)
+        .map(|n| {
+            if n == 3 {
+                format!("Paragraph {n} edit {edit}.\n\n")
+            } else {
+                format!("Paragraph {n}.\n\n")
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn a_request_has_a_work_budget_and_a_reading_that_passes_it_ends_where_the_next_step_would() {
+    // Thirty edits of a large page: each step reads both versions through, so the budget is passed after a few
+    // steps, long before the twenty the history page lists.
+    let bodies: Vec<String> = (0..30).map(big_page).collect();
+    let refs: Vec<&str> = bodies.iter().map(String::as_str).collect();
+    let w = story(&refs);
+    let page = why(&w, "Home");
+    assert_eq!(page.reach, Reach::Spent, "{:?}", page.changes.len());
+    // The changes listed are the ones that were read, newest first, and fewer than the history page lists.
+    assert!(!page.changes.is_empty());
+    assert!(
+        page.changes.len() < HISTORY_PAGE_ROWS,
+        "{}",
+        page.changes.len()
+    );
+    assert_eq!(page.changes.first().map(|c| c.number), Some(30));
+    // What was found stands, and nothing is said of what was not reached.
+    assert_eq!(last(&page, "Paragraph 3 "), Some(30));
+    assert_eq!(first(&page, "Paragraph 3 "), None);
+    assert_eq!(first(&page, "Paragraph 2."), None);
+    assert_eq!(last(&page, "Paragraph 2."), None);
+}
+
+#[test]
+fn a_page_whose_first_step_passes_the_work_budget_reads_no_change() {
+    // Two hundred stretches of five hundred blocks against five hundred, none of whose text is unique: a table of
+    // 250 000 cells for each, far more than one request may fill.
+    let side = |word: &str| -> String {
+        (0..200)
+            .map(|n| format!("{}Anchor {n}.\n\n", format!("{word}\n\n").repeat(500)))
+            .collect()
+    };
+    let w = story(&[&side("x"), &side("y")]);
+    let page = why(&w, "Home");
+    assert_eq!(page.reach, Reach::Spent);
+    assert!(page.changes.is_empty());
+    assert_eq!(para(&page, "y").chain.last_changed, None);
+    assert_eq!(para(&page, "y").chain.first_written, None);
+}
+
+#[test]
+fn a_page_within_the_work_budget_is_read_whole() {
+    // The same shapes, smaller: the budget is for the pages that need more than a request may spend.
+    let bodies: Vec<String> = (0..4)
+        .map(|n| big_page(n).chars().take(60_000).collect())
+        .collect();
+    let refs: Vec<&str> = bodies.iter().map(String::as_str).collect();
+    let w = story(&refs);
+    let page = why(&w, "Home");
+    assert_eq!(page.reach, Reach::Whole);
+    assert_eq!(first(&page, "Paragraph 3 "), Some(1));
+}
+
 #[test]
 fn a_page_with_no_change_listed_in_the_bounds_says_it_stopped() {
     // Sixty changes to the guide after the page was written: one request's `show`s do not reach the page.

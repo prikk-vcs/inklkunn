@@ -291,6 +291,14 @@ async fn a_proposal_the_records_do_not_tie_to_the_change_shows_no_review() {
         "{two}"
     );
     assert!(!two.contains("A secret comment"), "{two}");
+    // The message names it; the records do not say the change was made from it.
+    assert!(
+        two.contains(&format!(
+            "The message of this change names the proposal <a href=\"/handbook/-/proposals/{id}\">Improve the second paragraph</a>."
+        )),
+        "{two}"
+    );
+    assert!(!two.contains("Made from the proposal"), "{two}");
     assert!(!two.contains("<h4>Review</h4>"), "{two}");
     assert!(!two.contains("Sources given"), "{two}");
 }
@@ -404,6 +412,11 @@ async fn a_proposal_sealed_as_another_change_is_not_tied_to_this_one() {
         "{three}"
     );
     assert!(!three.contains("A comment of another change"), "{three}");
+    assert!(
+        three.contains("The message of this change names the proposal"),
+        "{three}"
+    );
+    assert!(!three.contains("Made from the proposal"), "{three}");
     // Version 2, the one it was sealed as, shows the review.
     let two = change_block(&body, 2);
     assert!(two.contains("A comment of another change"), "{two}");

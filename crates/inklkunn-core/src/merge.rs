@@ -40,6 +40,8 @@ use inklkunn_markup::parse_metadata;
 
 use page::merge_text;
 
+pub(crate) use engine::{Meter, OutOfWork};
+
 /// Which block of the page text `other` is the same block as each block of the page text `base` (their top-level
 /// blocks, [`inklkunn_markup::blocks`]), by **the alignment the merge itself makes** between a base and a side: the same
 /// `^id`, then the same unique text, then a bounded longest-common-subsequence of what remains, where a stretch of one
@@ -56,10 +58,15 @@ pub fn align_blocks(base: &str, other: &str) -> Vec<Option<usize>> {
 }
 
 /// The alignment of [`align_blocks`], for the pages of this crate that follow a paragraph through a history (*Why is
-/// this here?*, RFC 005 part 2 D-8): the merge's own matching and never a copy of it. Not public, for the reason
-/// `align_blocks` is not.
-pub(crate) fn alignment(base: &str, other: &str) -> Vec<Option<usize>> {
-    page::align_blocks(base, other)
+/// this here?*, RFC 005 part 2 D-8): the merge's own matching and never a copy of it, counting its work on `meter`
+/// and stopped (with no answer) when the meter's limit would be passed. Not public, for the reason `align_blocks`
+/// is not.
+pub(crate) fn alignment(
+    base: &str,
+    other: &str,
+    meter: &mut Meter,
+) -> Result<Vec<Option<usize>>, OutOfWork> {
+    page::align_blocks_metered(base, other, meter)
 }
 
 /// The blocks of a page's body in the order [`alignment`] indexes them.

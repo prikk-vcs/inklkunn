@@ -307,6 +307,27 @@ async fn what_a_paragraph_or_a_message_says_is_escaped_and_never_markup() {
     assert!(!body.contains("<script"), "{body}");
 }
 
+#[tokio::test]
+async fn an_id_two_paragraphs_carry_names_neither_so_no_two_elements_share_an_id() {
+    let w = story(&["One. ^b1\n\nTwo. ^b1\n\nThree. ^b3\n"]);
+    let body = main_of(&get(&w, "/handbook/-/why/Home").await);
+    // The repeated id gives way to the paragraphs' numbers; the id that is one paragraph's alone stays.
+    assert!(body.contains("<li id=\"w-1\">"), "{body}");
+    assert!(body.contains("<li id=\"w-2\">"), "{body}");
+    assert!(body.contains("<li id=\"w-^b3\">"), "{body}");
+    assert!(!body.contains("w-^b1"), "{body}");
+    // No two elements of the page have one id.
+    let mut ids: Vec<&str> = body
+        .split(" id=\"")
+        .skip(1)
+        .filter_map(|rest| rest.split('"').next())
+        .collect();
+    let total = ids.len();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), total, "{body}");
+}
+
 // ------------------------------------------------------------------------------------ the bounds
 
 #[tokio::test]
@@ -336,6 +357,60 @@ async fn a_long_history_is_read_within_the_history_pages_bounds_and_the_page_say
     // At most the changes the history page lists are shown, and prikk was asked for no more than its bound.
     assert!(body.matches("<li id=\"c-").count() <= 20, "{body}");
     assert!(w.fake.shows() <= 24, "{} shows", w.fake.shows());
+}
+
+#[tokio::test]
+async fn a_reading_that_spends_the_requests_work_says_how_many_changes_it_read() {
+    let bodies: Vec<String> = (0..30)
+        .map(|edit| {
+            (0..40_000)
+                .map(|n| {
+                    if n == 3 {
+                        format!("Paragraph {n} edit {edit}.\n\n")
+                    } else {
+                        format!("Paragraph {n}.\n\n")
+                    }
+                })
+                .collect()
+        })
+        .collect();
+    let refs: Vec<&str> = bodies.iter().map(String::as_str).collect();
+    let w = story(&refs);
+    let body = main_of(&get(&w, "/handbook/-/why/Home").await);
+    // The bounds' own words, with the number of changes that were read: fewer than the history page lists.
+    assert!(body.contains("Only the latest "), "{body}");
+    assert!(!body.contains("Only the latest 20 changes"), "{body}");
+    assert!(
+        body.contains(" changes to this page were read here. There are older changes, and what came before them is not shown."),
+        "{body}"
+    );
+    assert!(body.matches("<li id=\"c-").count() < 20, "{body}");
+}
+
+#[tokio::test]
+async fn a_reading_that_spends_the_requests_work_before_any_change_says_so_in_both_languages() {
+    let side = |word: &str| -> String {
+        (0..200)
+            .map(|n| format!("{}Anchor {n}.\n\n", format!("{word}\n\n").repeat(500)))
+            .collect()
+    };
+    let w = story(&[&side("x"), &side("y")]);
+    let a = get(&w, "/handbook/-/why/Home").await;
+    assert_eq!(a.status, StatusCode::OK);
+    let body = main_of(&a);
+    assert!(
+        body.contains("The work one request may spend on this page was used up before any change to it could be read. There are changes, and they are not shown."),
+        "{body}"
+    );
+    // Not the other words for a reading that stopped: nothing is said of changes not being found.
+    assert!(!body.contains("No change to this page was found"), "{body}");
+    assert!(!body.contains("Only the latest"), "{body}");
+    let ja = request(&w, APP, "GET", "/handbook/-/why/Home", JA).await;
+    assert!(
+        main_of(&ja).contains("変更を一件も読まないうちに使い切りました"),
+        "{}",
+        main_of(&ja)
+    );
 }
 
 #[tokio::test]
