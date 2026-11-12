@@ -321,22 +321,22 @@ fn the_places_a_claim_is_said_come_with_the_change_for_a_surface_to_find_the_wor
 // -- every change kind is described: property-style over every field and over random pairs
 
 /// A small deterministic generator (no dependency): xorshift64*.
-struct Dice(u64);
+pub(super) struct Dice(pub(super) u64);
 
 impl Dice {
-    fn next(&mut self) -> u64 {
+    pub(super) fn next(&mut self) -> u64 {
         self.0 ^= self.0 >> 12;
         self.0 ^= self.0 << 25;
         self.0 ^= self.0 >> 27;
         self.0.wrapping_mul(0x2545_f491_4f6c_dd1d)
     }
-    fn below(&mut self, n: usize) -> usize {
+    pub(super) fn below(&mut self, n: usize) -> usize {
         usize::try_from(self.next() % n as u64).unwrap_or(0)
     }
-    fn pick<T: Copy>(&mut self, from: &[T]) -> T {
+    pub(super) fn pick<T: Copy>(&mut self, from: &[T]) -> T {
         *from.get(self.below(from.len())).expect("a non-empty pool")
     }
-    fn chance(&mut self) -> bool {
+    pub(super) fn chance(&mut self) -> bool {
         self.below(2) == 0
     }
 }

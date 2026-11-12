@@ -109,7 +109,7 @@ pub(super) fn restore(
                 text: posted.to_owned(),
                 lost: Vec::new(),
             },
-            Some(id) => match reattach_part(posted, &id) {
+            Some(id) => match reattach_part(started, posted, &id) {
                 Some(text) => Restored {
                     text,
                     lost: Vec::new(),

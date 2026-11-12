@@ -6,15 +6,16 @@
 //! identity signal):
 //!
 //! - a form that edits **one paragraph** ([`reattach_part`]) hands the marker to the first paragraph of what the
-//!   person wrote, because that paragraph is the one the form was opened on;
+//!   person wrote, because that paragraph is the one the form was opened on, after the whitespace it had before it;
 //! - a form that edits **several** ([`reattach_all`]) hands a marker back to a paragraph that is exactly the text
-//!   it was shown with; a paragraph a person changed there is *lost* (its claim loses this expression unless the
-//!   person says so, and the form says that they must), and the way to reword a claim's paragraph is the form for
-//!   that paragraph.
+//!   it was shown with, **the same occurrence** of those words when several paragraphs have them; a paragraph a
+//!   person changed there, or one of several with equal words taken out or added, is *lost* (its claim loses this
+//!   expression unless the person says so, and the form says that they must), and the way to reword a claim's
+//!   paragraph is the form for that paragraph.
 //!
 //! Pure, and bounded by the text it is given. Only a **paragraph** can hold a claim (the prose block).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::ops::Range;
 
 use inklkunn_markup::{Block, BlockKind, blocks, frontmatter};
@@ -86,16 +87,29 @@ pub fn held_part(block_text: &str, ids: &BTreeSet<String>) -> Option<String> {
     Some(id.to_owned())
 }
 
-/// Append the marker `id` to the last line of `paragraph`'s words.
-fn with_marker(words: &str, id: &str) -> String {
-    format!("{} ^{id}", words.trim_end())
+/// The whitespace a held paragraph has between its words and its marker in `started`: a space, or a line break when
+/// the marker is on a line of its own. Putting the marker back with another would be an edit nobody made.
+fn separator(started: &str, id: &str) -> String {
+    blocks(started)
+        .iter()
+        .find(|b| b.id == Some(id))
+        .and_then(|b| b.text.strip_suffix(&format!("^{id}")))
+        .and_then(|head| head.get(head.trim_end().len()..))
+        .filter(|sep| !sep.is_empty())
+        .map_or_else(|| " ".to_owned(), str::to_owned)
 }
 
-/// What a person wrote in the form for one paragraph, with the marker put back: on the first paragraph of the text.
-/// `None` when it cannot be put back: nothing was written, the first block is not a paragraph, it already carries
-/// another `^id`, or the marker does not take (read again, the paragraph does not hold it). The caller then asks
-/// the person whether they mean to remove the paragraph.
-pub fn reattach_part(posted: &str, id: &str) -> Option<String> {
+/// Append the marker `id` to the last line of `paragraph`'s words, after `sep`.
+fn with_marker(words: &str, sep: &str, id: &str) -> String {
+    format!("{}{sep}^{id}", words.trim_end())
+}
+
+/// What a person wrote in the form for one paragraph, with the marker put back: on the first paragraph of the text,
+/// **after the whitespace it had before it in `started`** (the block the form was opened on), so a text nobody touched
+/// is the block byte for byte. `None` when it cannot be put back: nothing was written, the first block is not a
+/// paragraph, it already carries another `^id`, or the marker does not take (read again, the paragraph does not hold
+/// it). The caller then asks the person whether they mean to remove the paragraph.
+pub fn reattach_part(started: &str, posted: &str, id: &str) -> Option<String> {
     let found = blocks(posted);
     let first = found.first()?;
     // A first block that is not a paragraph (a heading, a list) cannot hold a marker: the read below says so.
@@ -109,7 +123,7 @@ pub fn reattach_part(posted: &str, id: &str) -> Option<String> {
     let changed = format!(
         "{}{}{}",
         posted.get(..first.range.start)?,
-        with_marker(first.text, id),
+        with_marker(first.text, &separator(started, id), id),
         posted.get(end..)?
     );
     // Read it again: the same blocks, the first one holding the marker.
@@ -134,6 +148,14 @@ pub struct Reattached {
 /// is in `ids`, into `posted` (what the person sent back, markers hidden). A paragraph of `posted` that is exactly
 /// the words a held paragraph was shown with gets its marker, **as `started` had it**, so a text nobody touched is
 /// the page byte for byte; the held paragraphs that match nothing are `lost`.
+///
+/// **Equal words are told apart by their place** (handoff 005 corrections K10), never by taking the first: the form
+/// showed `Same.` twice (the second was the claim's, `Same. ^c1`), so the marker goes back to the paragraph that is the
+/// same *occurrence* of those words in what was sent, the k-th among the paragraphs with equal words as the form showed
+/// them. And only when the number of such paragraphs is what the form showed: if a paragraph with those words was taken
+/// out or added, the text no longer says which of them the claim was, and the marker is `lost`, which asks the person
+/// to confirm a removal instead of moving a claim onto a paragraph that may be another. Words that were shown once
+/// and are sent once are matched as they always were.
 pub fn reattach_all(
     started: &str,
     posted: &str,
@@ -141,11 +163,42 @@ pub fn reattach_all(
     whole_page: bool,
 ) -> Reattached {
     let (_, started_body) = body_of(started, whole_page);
-    let held: Vec<(String, String, String)> = blocks(started_body)
+    let shown = blocks(started_body);
+    let is_held =
+        |b: &Block<'_>| b.id.is_some_and(|id| ids.contains(id)) && marker_range(b).is_some();
+    // The text each paragraph had in the form: a held one without its marker, any other as it is.
+    fn showed<'a>(b: &Block<'a>, held: bool) -> &'a str {
+        if held { words_of(b) } else { b.text }
+    }
+    let paragraphs: Vec<&Block<'_>> = shown
         .iter()
-        .filter(|b| b.id.is_some_and(|id| ids.contains(id)) && marker_range(b).is_some())
-        .filter_map(|b| Some((b.id?.to_owned(), words_of(b).to_owned(), b.text.to_owned())))
+        .filter(|b| b.kind == BlockKind::Paragraph)
         .collect();
+    // For each held paragraph: its id, its words, its text with the marker, which occurrence of those words it
+    // was among the paragraphs the form showed, and how many the form showed.
+    let mut held: Vec<(String, String, String, usize, usize)> = Vec::new();
+    for (at, b) in paragraphs.iter().enumerate() {
+        let (true, Some(id)) = (is_held(b), b.id) else {
+            continue;
+        };
+        let words = words_of(b);
+        let before = paragraphs
+            .iter()
+            .take(at)
+            .filter(|p| showed(p, is_held(p)) == words)
+            .count();
+        let all = paragraphs
+            .iter()
+            .filter(|p| showed(p, is_held(p)) == words)
+            .count();
+        held.push((
+            id.to_owned(),
+            words.to_owned(),
+            b.text.to_owned(),
+            before,
+            all,
+        ));
+    }
     if held.is_empty() {
         return Reattached {
             text: posted.to_owned(),
@@ -154,29 +207,19 @@ pub fn reattach_all(
     }
     let (offset, posted_body) = body_of(posted, whole_page);
     let found = blocks(posted_body);
-    // The paragraphs of `posted` still without an id, by their words, earliest first.
-    let mut free: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
-    for (j, b) in found.iter().enumerate() {
-        if b.kind == BlockKind::Paragraph && b.id.is_none() {
-            free.entry(b.text).or_default().push(j);
-        }
-    }
     let mut edits: Vec<(Range<usize>, String)> = Vec::new();
     let mut lost = Vec::new();
-    let mut used: BTreeSet<usize> = BTreeSet::new();
-    for (id, words, whole) in &held {
+    for (id, words, whole, occurrence, shown_count) in &held {
         // A paragraph that already carries the marker (the form was opened before the claim was made).
         if found.iter().any(|b| b.id == Some(id.as_str())) {
             continue;
         }
-        let at = free
-            .get(words.as_str())
-            .and_then(|list| list.iter().copied().find(|j| !used.contains(j)));
-        match at.and_then(|j| found.get(j).map(|b| (j, b))) {
-            Some((j, b)) => {
-                used.insert(j);
-                edits.push((offset + b.range.start..offset + b.range.end, whole.clone()));
-            }
+        let same: Vec<&Block<'_>> = found
+            .iter()
+            .filter(|b| b.kind == BlockKind::Paragraph && b.text == words.as_str())
+            .collect();
+        match same.get(*occurrence).filter(|_| same.len() == *shown_count) {
+            Some(b) => edits.push((offset + b.range.start..offset + b.range.end, whole.clone())),
             None => lost.push(id.clone()),
         }
     }

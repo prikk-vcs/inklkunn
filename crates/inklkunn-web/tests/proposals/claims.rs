@@ -1081,3 +1081,110 @@ async fn a_page_with_knowledge_files_that_change_nothing_says_so() {
         "an empty list is said, not left out: {body}"
     );
 }
+
+#[tokio::test]
+async fn a_marker_on_a_line_of_its_own_stays_there_in_the_form_for_one_paragraph() {
+    let s = scene();
+    let page = BRIDGE.replace("It opened in 1950. ^k1", "It opened in 1950.\n^k1");
+    s.w.fake.set("pages/Bridge.md", &page);
+    // The form is opened on the page as it now is (the second version of the repository).
+    let now = |fields| {
+        with(
+            fields,
+            vec![("base_state", state_id(2)), ("base_block", block_id(2))],
+        )
+    };
+    // Nothing touched: not a whitespace-only edit of the page (the marker was not moved onto the words' line).
+    let fields = now(part(
+        "pages/Bridge.md",
+        "Bridge",
+        0,
+        "It opened in 1950.",
+        "submit",
+    ));
+    let a = send(&s, NEW, &s.writer, &fields).await;
+    assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        a.body().contains("The text is the same as the page"),
+        "{}",
+        a.body()
+    );
+    // The words changed: the marker is where it was.
+    let fields = now(part(
+        "pages/Bridge.md",
+        "Bridge",
+        0,
+        "It opened in 1951.",
+        "submit",
+    ));
+    let a = send(&s, NEW, &s.writer, &fields).await;
+    let files = files_of(&s, &location(&a));
+    assert_eq!(
+        file(&files, "pages/Bridge.md"),
+        page.replace("It opened in 1950.\n^k1", "It opened in 1951.\n^k1")
+    );
+}
+
+#[tokio::test]
+async fn deleting_a_claim_paragraph_among_equal_words_is_asked_about_and_never_moved() {
+    let s = scene();
+    // The claim's paragraph is the second of two with the same words.
+    let page = BRIDGE.replace(
+        "It opened in 1950. ^k1\n\n",
+        "It opened in 1950.\n\nIt opened in 1950. ^k1\n\n",
+    );
+    s.w.fake.set("pages/Bridge.md", &page);
+    let shown = vec![
+        ("op", "submit".to_owned()),
+        ("pages", "1".to_owned()),
+        ("renames", "0".to_owned()),
+        ("part", "whole".to_owned()),
+        ("base_state", state_id(2)),
+        ("base_block", block_id(2)),
+        ("p0_path", "pages/Bridge.md".to_owned()),
+        ("p0_title", "Bridge".to_owned()),
+        (
+            "p0_text",
+            inklkunn_core::knowledge::marker::hide_markers(
+                &page,
+                &["k1".to_owned()].into_iter().collect(),
+                true,
+            ),
+        ),
+        ("summary", "Tidy".to_owned()),
+        ("sources", String::new()),
+    ];
+    // Sent back untouched with one more edit elsewhere: the marker is on the second, where it was.
+    let edited = with(
+        shown.clone(),
+        vec![(
+            "p0_text",
+            shown
+                .iter()
+                .find(|(k, _)| *k == "p0_text")
+                .map(|(_, v)| v.replace("A note.", "A longer note."))
+                .unwrap_or_default(),
+        )],
+    );
+    let a = send(&s, NEW, &s.writer, &edited).await;
+    let files = files_of(&s, &location(&a));
+    assert_eq!(
+        file(&files, "pages/Bridge.md"),
+        page.replace("A note.", "A longer note.")
+    );
+    // One of the two taken away: which one is not in the text, so the claim's paragraph is asked about.
+    let gone = with(
+        shown.clone(),
+        vec![(
+            "p0_text",
+            shown
+                .iter()
+                .find(|(k, _)| *k == "p0_text")
+                .map(|(_, v)| v.replacen("It opened in 1950.\n\n", "", 1))
+                .unwrap_or_default(),
+        )],
+    );
+    let a = send(&s, NEW, &s.writer, &gone).await;
+    assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(a.body().contains("name=\"drop_k1\""), "{}", a.body());
+}

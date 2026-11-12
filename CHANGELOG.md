@@ -193,6 +193,15 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   format does not compile until it is described; property-style tests hold it over every field, from many starting points,
   and over thousands of random pairs. `Item::ClaimChanged` carries where the claim is said (`said`) for the surface that
   finds the wording.
+- **K10 (handoff 005 corrections; RFC 005 part 1 D-1 b): markers.** A held `^id` is put back on the paragraph that is the
+  same *occurrence* of its words in what was sent, by its place among the paragraphs with equal words as the form showed
+  them, and no longer on the first one: untouched `Same.` / `Same. ^c1` comes back byte for byte. When the number of
+  paragraphs with those words is not what the form showed (one taken out, one added) the text cannot say which the claim
+  was, so the marker is *lost*, which asks the person to confirm a removal, instead of landing on a duplicate; words shown
+  once and sent once are matched as before. (`marker::reattach_all`; two held paragraphs with the same words, one of them
+  removed, now ask about both.) The one-paragraph form puts the marker back after the whitespace it had (a line break
+  when it stood on a line of its own, two spaces when it had two), so a text nobody touched is not a whitespace-only
+  edit: `marker::reattach_part` now takes the block the form was opened on (**public API: a new first argument**).
 
 ## [0.2.0] — 2026-11-04
 
