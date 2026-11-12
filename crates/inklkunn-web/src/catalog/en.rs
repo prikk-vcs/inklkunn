@@ -2276,7 +2276,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "views_new.uncertain",
-        "The wiki's views could not be read after the view was made. It may or may not be there: look at the list of views before you try again, and tell the person who runs this server.",
+        "It is not known whether the view was made: the wiki's views could not be read afterwards, or the view is listed and the repository did not say that making it was finished. It may or may not be there. Look at the list of views before you try again, and tell the person who runs this server: the wiki may take no change until that person has looked at it.",
     ),
     msg(
         "views_new.not_kept_heading",

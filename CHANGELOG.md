@@ -210,6 +210,31 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   row; `compose::Mistake::Direction`). A curation that sets a status back to *not decided* is a decision like any other:
   the acceptance writes its own proposal id into the claim's `community_status.proposal`, as it does for every other
   change of a standing, and a claim that nobody decided and a curation leaves so keeps none.
+- **K4 (handoff 005 corrections; review finding K-c): a view's creation is a recoverable act.** `Purpose::View` is no
+  longer one of the holders whose death leaves nothing to recover, and the guard of every write counts a view creation
+  that never ended as an unfinished act: **a holder that dies creating a view flags the wiki.** The reason is prikk's
+  (measured on 0.55.0 with real `SIGKILL`s of `branch create`): the ref's pointer is published and then the ref log is
+  appended, and killed between them the view is **listed** while `verify` fails (`doctor`: exactly
+  `PRIKK-VERIFY-REF-POINTER-LEADS-LOG`) and every other publication refuses until `prikk ref complete <ref>` (RFC 165 R4)
+  finishes it; the listing alone cannot tell a whole view from that one. `settle_earlier_acts` is gone: the creation
+  settles nothing from `branch list`, and when the view is listed and prikk did not say its call finished, the act
+  stays open, the wiki is flagged, and the caller is told *uncertain*. **Recovery treats an open view creation as a
+  known act** (`Witness::view_acts`, reason `open-view-act`; the listing now includes closed views, `Storage::all_views`,
+  `branch list --all`): the view is listed at the block it was forked from and `doctor` names nothing unfinished: the
+  act ends *created* (`end-view-created`); the same with exactly that ref's publication named: the new step
+  `complete-view-creation`, **prikk's own recommendation, `ref complete`, which is not P15's `seal`**, run by the signer
+  bound to the recovery act as `complete-publication` is (`RecoveryOp::CompleteViewCreation`, `Recover::complete_view_creation`;
+  it re-checks `doctor`, the recorded creation, prikk's own `--plan-only` (first publication, sequence 1, no log tip, no
+  tail, onto the block the source ref points at) and the lent lease, pauses for an unfinished key retirement, and refuses
+  to call it done while `doctor` still names the lead), then the same end; the view is not listed and nothing is
+  unfinished: *failed* (`interrupted`; `end-view-failed`); anything else is the new stop **`view-creation-unclear`**
+  (the view at another block, its block unreadable, not listed while `doctor` names its publication, a queue or a torn
+  commit beside it),
+  with a new section in `docs/RECOVERY.md`. The end steps read prikk again at the step and refuse a state that moved
+  since the plan. New signer verb `ref complete` (cost rule: `branch create`'s, flat); `Storage::all_views` has a default
+  (the open views) and the driver answers `branch list --all`. Tests: real kills of `branch create` (a loop of real
+  `SIGKILL`s whose landing is counted, and the state made on cue), the three plan rows and each stop, the signer's
+  binding and every refusal, the runbook's statements against prikk's and recovery's words.
 
 ## [0.2.0] — 2026-11-04
 
