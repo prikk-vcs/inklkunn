@@ -93,6 +93,13 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   comparison treats its two sides alike. Every message is in both languages with its glossary row; every state is in the
   structural tests; the route and enumeration tests carry `create-view`.
 
+- **K8 (handoff 005 corrections): *Why is this here?* is exact only when it is.** A step where the alignment finds no
+  earlier counterpart for a paragraph (*Attach a source* gives a paragraph its `^id` in the same change that rewords the
+  next one: two blocks against two are never paired) now clears *followed through its anchor*; the paragraph is
+  *traced by matching the text* and its beginning is *the earliest wording found*, not a claim that it was written
+  there. Only a paragraph whose `^id` carried it through every step to the page's creation is still said to be followed
+  through its anchor.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

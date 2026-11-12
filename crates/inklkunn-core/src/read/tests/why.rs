@@ -180,6 +180,39 @@ fn an_anchor_added_later_does_not_make_the_chain_exact() {
 }
 
 #[test]
+fn a_paragraph_given_its_anchor_while_its_neighbour_is_reworded_is_not_followed_through_the_anchor()
+{
+    // Change 2 is *Attach a source*: it adds `^b1` to the first paragraph and, in the same proposal, rewords the
+    // next. Two blocks against two share no id and no unique text, so they are never paired: the first paragraph
+    // has no counterpart across the step. It was written in change 1; the page must not say that it was written
+    // in change 2 *and* followed through its anchor.
+    let w = story(&[
+        "The bridge opened in 1950.\n\nIt crosses the river.\n",
+        "The bridge opened in 1950. ^b1\n\nIt crosses the wide river.\n",
+    ]);
+    let page = why(&w, "Home");
+    assert_eq!(page.reach, Reach::Whole);
+    assert_eq!(
+        para(&page, "The bridge").paragraph.id.as_deref(),
+        Some("b1")
+    );
+    assert_eq!(first(&page, "The bridge"), Some(2), "{page:?}");
+    assert_eq!(basis(&page, "The bridge"), Basis::Text, "{page:?}");
+    assert_eq!(basis(&page, "It crosses"), Basis::Text);
+}
+
+#[test]
+fn a_paragraph_followed_by_its_anchor_to_the_creation_of_the_page_is_exact() {
+    let w = story(&[
+        "The bridge opened. ^b1\n\nIt crosses.\n",
+        "The bridge opened. ^b1\n\nIt crosses, wide.\n",
+    ]);
+    let page = why(&w, "Home");
+    assert_eq!(first(&page, "The bridge"), Some(1));
+    assert_eq!(basis(&page, "The bridge"), Basis::Anchor);
+}
+
+#[test]
 fn an_anchor_that_two_blocks_carry_names_neither() {
     let w = story(&["One. ^b1\n\nTwo. ^b1\n", "One. ^b1\n\nTwo. ^b1\n\nThree.\n"]);
     let page = why(&w, "Home");

@@ -7,7 +7,8 @@
 //! longest-common-subsequence), and the segmentation is the product's ([`inklkunn_markup::blocks`]).
 //!
 //! **What a step can know.** A paragraph whose block carries an `^id` that is the one block with that id on both
-//! sides of the step is followed *by its anchor*. A paragraph followed in any other way, even for a single step,
+//! sides of the step is followed *by its anchor*. A step where the alignment finds no earlier counterpart ends the
+//! chain at the text: the paragraph is found written there, and only a page's creation is an exact beginning. A paragraph followed in any other way, even for a single step,
 //! is followed *by matching the text*, and the chain says so: a text that was reworded between two paragraphs that
 //! were reworded together can be matched to the wrong one, and no anchor is there to say it was not.
 
@@ -23,7 +24,8 @@ pub const EXCERPT_CHARS: usize = 120;
 /// How a paragraph was followed back.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Basis {
-    /// Through its `^id`, at every step: one block with that id on both sides of each.
+    /// Through its `^id`, at every step: one block with that id on both sides of each, down to the page's
+    /// creation (or to the end of what was read). A step with no earlier counterpart is never this.
     Anchor,
     /// By matching the text at one step or more: no anchor carried it through them all.
     Text,
@@ -176,7 +178,11 @@ impl Tracer {
                 let now = newer.get(at);
                 let then = counterpart.and_then(|c| before.get(c));
                 let (Some(now), Some(then)) = (now, then) else {
+                    // No earlier counterpart: where the paragraph begins is where the *text* stopped matching,
+                    // and no anchor carried it to here (a paragraph given its `^id` in the very change that
+                    // reworded its neighbour is not paired with what it was). Only a page's creation is exact.
                     track.at = None;
+                    track.anchored = false;
                     track.first_written = Some(step);
                     track.last_changed.get_or_insert(step);
                     continue;
