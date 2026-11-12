@@ -306,9 +306,10 @@ pub trait ActStore: Send + Sync {
     /// Every recovery act of the wiki with its end, oldest first.
     fn recovery_acts(&self, wiki: &WikiId) -> Result<Vec<RecoveryActEntry>>;
 
-    // --- the record of a view's creation (RFC 005 part 2 D-9; handoff 005 K-T8). A store that keeps none answers
-    // these as the defaults do: it refuses to begin one, finds none open and lists none, so a service over it
-    // says that views cannot be created, and a reader of views sees them without an origin.
+    // --- the record of a view's creation (RFC 005 part 2 D-9; handoff 005 K-T8, K3). Both of this crate's stores keep
+    // it. A store that keeps none answers these as the defaults do: it refuses to begin one, finds none open and
+    // lists none, so a service over it says that views cannot be created, and a reader of views sees them without
+    // an origin.
 
     /// Does this store keep the record of a view's creation at all? A service asks before it offers to create a
     /// view, so that it never takes a first step it cannot record.
@@ -316,8 +317,9 @@ pub trait ActStore: Send + Sync {
         false
     }
 
-    /// Start a view's creation. The wiki must be there ([`NotFound`](crate::StoreError::NotFound)); the id must be
-    /// new and **no other act that stands may hold the name** in this wiki
+    /// Start a view's creation. The wiki must be there ([`NotFound`](crate::StoreError::NotFound)); the name must be in the form
+    /// of [`is_view_name`](crate::views::is_view_name) ([`Backend`](crate::StoreError::Backend) otherwise); the id must
+    /// be new and **no other act that stands may hold the name** in this wiki
     /// ([`AlreadyRecorded`](crate::StoreError::AlreadyRecorded) in both cases: nothing is written then). The name
     /// of an act that failed is free again.
     fn begin_view_act(&self, _act: &ViewActRecord) -> Result<()> {

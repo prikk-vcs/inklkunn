@@ -18,6 +18,7 @@ mod identity;
 mod inbox;
 mod invitation;
 mod proposal;
+mod view_acts;
 
 use std::path::Path;
 use std::sync::{Mutex, PoisonError};
@@ -721,11 +722,66 @@ ALTER TABLE wikis ADD COLUMN verification_explained_by TEXT
     CHECK (verification_explained_by IS NULL OR verification_state = 'failed');
 ";
 
+/// Version 16 (handoff 005 K3; RFC 005 part 2 D-9): the record of a view's creation, the recorded act the signer's
+/// `create-view` is bound to. `view_acts` holds the start, written before the signer is asked, and `view_act_ends` how
+/// it ended, written once; both carry the write-once triggers of the system acts. **A name is held by one act that
+/// stands** (open or created) in a wiki: the store checks it inside the `IMMEDIATE` transaction and a `BEFORE INSERT`
+/// trigger refuses it from any connection; an act that failed took nothing in and frees the name. The name's form is
+/// checked by the database too (lower case, 1 - 64 characters of `a-z 0-9 . - _`, starting with a letter or a digit, no
+/// `..`, no trailing `.`: the form `inklkunn-core`'s `views::new_name` allows). An end names an act that is there, a
+/// created view has no word and a failed one always has.
+const V16: &str = "
+CREATE TABLE IF NOT EXISTS view_acts (
+    id          TEXT PRIMARY KEY,
+    seq         INTEGER NOT NULL,
+    wiki_id     TEXT NOT NULL REFERENCES wikis(id),
+    name        TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 64
+                    AND name = lower(name)
+                    AND name GLOB '[a-z0-9]*'
+                    AND name NOT GLOB '*[^a-z0-9._-]*'
+                    AND name NOT GLOB '*..*'
+                    AND name NOT GLOB '*.'),
+    forked_from TEXT NOT NULL CHECK (length(forked_from) >= 1),
+    from_block  TEXT NOT NULL CHECK (length(from_block) >= 1),
+    kind        TEXT NOT NULL CHECK (kind IN ('experimental', 'interpretation')),
+    created_by  TEXT NOT NULL CHECK (length(created_by) >= 1),
+    created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS view_acts_wiki ON view_acts(wiki_id, seq);
+CREATE INDEX IF NOT EXISTS view_acts_name ON view_acts(wiki_id, name);
+CREATE TRIGGER IF NOT EXISTS view_acts_no_update BEFORE UPDATE ON view_acts
+BEGIN SELECT RAISE(ABORT, 'view acts are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS view_acts_no_delete BEFORE DELETE ON view_acts
+BEGIN SELECT RAISE(ABORT, 'view acts are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS view_acts_no_replace BEFORE INSERT ON view_acts
+WHEN EXISTS (SELECT 1 FROM view_acts WHERE id = NEW.id)
+BEGIN SELECT RAISE(ABORT, 'view acts are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS view_acts_name_held BEFORE INSERT ON view_acts
+WHEN EXISTS (SELECT 1 FROM view_acts a LEFT JOIN view_act_ends e ON e.act_id = a.id
+             WHERE a.wiki_id = NEW.wiki_id AND a.name = NEW.name
+               AND (e.act_id IS NULL OR e.outcome = 'created'))
+BEGIN SELECT RAISE(ABORT, 'view acts are append-only: the name is held by an act that stands'); END;
+CREATE TABLE IF NOT EXISTS view_act_ends (
+    act_id  TEXT PRIMARY KEY REFERENCES view_acts(id),
+    outcome TEXT NOT NULL CHECK (outcome IN ('created', 'failed')),
+    word    TEXT,
+    at      INTEGER NOT NULL,
+    CHECK ((outcome = 'created' AND word IS NULL) OR (outcome = 'failed' AND word IS NOT NULL))
+);
+CREATE TRIGGER IF NOT EXISTS view_act_ends_no_update BEFORE UPDATE ON view_act_ends
+BEGIN SELECT RAISE(ABORT, 'view act ends are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS view_act_ends_no_delete BEFORE DELETE ON view_act_ends
+BEGIN SELECT RAISE(ABORT, 'view act ends are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS view_act_ends_no_replace BEFORE INSERT ON view_act_ends
+WHEN EXISTS (SELECT 1 FROM view_act_ends WHERE act_id = NEW.act_id)
+BEGIN SELECT RAISE(ABORT, 'view act ends are append-only'); END;
+";
+
 /// Version 17 (handoff 005 corrections, K9): a source has a name in the derived knowledge index: its title, author or
 /// publisher, date and reference, as written and cut at a bound when the index is built. **Derived data only**: the
 /// index of every tip is dropped here (all its tables, the tips row with them), so that none is read without the
 /// columns it now has; each is rebuilt from the tip's files when it is next asked for (INV-5). Version 16 is the
-/// view-creation and review records of another correction (K3) and is not in this build's list.
+/// view-creation and review records of another correction (K3).
 const V17: &str = "
 ALTER TABLE knowledge_sources ADD COLUMN title     TEXT;
 ALTER TABLE knowledge_sources ADD COLUMN author    TEXT;
@@ -758,6 +814,7 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (13, V13),
     (14, V14),
     (15, V15),
+    (16, V16),
     (17, V17),
 ];
 

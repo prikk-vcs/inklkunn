@@ -690,14 +690,31 @@ async fn a_server_that_cannot_create_views_says_so_before_it_shows_a_form() {
     )
     .await;
     assert_eq!(posted.status, StatusCode::SERVICE_UNAVAILABLE);
-    // A store that keeps no record of a view's creation.
+    // A store that keeps no record of a view's creation (a stub: neither real store is one since schema 16).
+    let (mut w, _) = attach(common::fresh(&e.w));
+    w.services = Arc::new(inklkunn_web::Services {
+        acts: Arc::new(stubs::KeepsNoViewActs(Arc::new(
+            inklkunn_store::MemoryStore::new(),
+        ))),
+        ..(*w.services).clone()
+    });
+    let a = get_as(&w, NEW, Some(&e.reviewer)).await;
+    assert_eq!(a.status, StatusCode::NOT_IMPLEMENTED);
+}
+
+#[tokio::test]
+async fn a_server_over_the_sqlite_store_no_longer_says_that_creating_views_is_not_available() {
+    // Schema 16 (K3): the SQLite store keeps the record of a view's creation, so the form is offered.
+    let e = env();
     let (mut w, _) = attach(common::fresh(&e.w));
     w.services = Arc::new(inklkunn_web::Services {
         acts: Arc::new(inklkunn_store::SqliteStore::open_in_memory().unwrap()),
         ..(*w.services).clone()
     });
     let a = get_as(&w, NEW, Some(&e.reviewer)).await;
-    assert_eq!(a.status, StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(a.status, StatusCode::OK, "{}", main_of(&a));
+    assert!(a.body().contains("name=\"kind\""), "{}", main_of(&a));
+    assert!(!a.body().contains("Creating views is not available"));
 }
 
 // ------------------------------------------------------------------------------------ comparing

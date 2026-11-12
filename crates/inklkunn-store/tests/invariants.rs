@@ -507,7 +507,7 @@ fn the_migration_list_is_ordered_and_ends_at_the_schema_version() {
     // Strictly increasing, and no version is skipped except one reserved for another branch of work (the
     // sign-in handoff's invitations are 14; the knowledge tables are 13; the view-creation records of the
     // knowledge-layer corrections are 16, which the source names (17) are written to follow).
-    const RESERVED: &[i64] = &[13, 16];
+    const RESERVED: &[i64] = &[13];
     assert!(
         versions.windows(2).all(|w| matches!(
             w,

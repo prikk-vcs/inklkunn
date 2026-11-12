@@ -121,6 +121,19 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   the migration test's reserved list says so): four columns on `knowledge_sources`, and the derived knowledge index of
   every tip is dropped by the migration so that it is rebuilt, whole, when next asked for; an index cleared and built again
   is the same index.
+- **K3 a (handoff 005 corrections): the SQLite store keeps the record of a view's creation (store schema 16).** Two
+  tables, `view_acts` (the start, written before the signer is asked) and `view_act_ends` (how it ended, written once),
+  added by an additive migration from 15 (tested on a version 15 file: the wikis are kept, the migrated schema is the
+  fresh schema). Both carry the write-once triggers of the system acts. **A name is held by one act that stands** (open
+  or created) in a wiki: the store checks it inside the `IMMEDIATE` transaction and a `BEFORE INSERT` trigger refuses it
+  from any connection; an act that failed frees it. The database checks the name's form (lower case, 1 - 64 characters
+  of `a-z 0-9 . - _`, starting with a letter or a digit, no `..`, no trailing `.`: the form `views::new_name` allows,
+  and a test holds the two to agree; the memory store refuses the same names), a created view carries no word and a
+  failed one always does, an end names an act that is there, and an index serves `(wiki_id, name)`.
+  `ActStore::keeps_view_acts` is `true` for both stores, so a server over SQLite stops answering *Creating views is not
+  available on this server* (the answer a store that keeps none, a stub, still gets; **creating views on a real server
+  is enabled by K3 and K4 together**: K4 makes a killed creation recoverable). `inklkunn_store::views::is_view_name` is
+  the form check. The pins move to 16.
 
 ## [0.2.0] — 2026-11-04
 

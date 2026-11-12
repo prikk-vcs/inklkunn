@@ -1,4 +1,4 @@
-//! The retired keys that explain a failed verdict are stored with it (handoff 004, Q5; store schema 15): on both
+//! The retired keys that explain a failed verdict are stored with it (handoff 004, Q5; store schema 15, still true at 16): on both
 //! stores, a verdict replaces the explanation and a passing one clears it, an attempt that could not run leaves it
 //! alone, the store refuses an explanation beside a verdict that did not fail or one that is not made of key ids,
 //! and a version 14 database is brought forward keeping every wiki.
@@ -203,7 +203,7 @@ fn the_database_itself_refuses_an_explanation_beside_a_verdict_that_did_not_fail
 }
 
 #[test]
-fn a_version_14_database_is_migrated_to_15_keeping_every_wiki_and_only_once() {
+fn a_version_14_database_is_migrated_forward_keeping_every_wiki_and_only_once() {
     use inklkunn_store::sqlite::{MIGRATIONS, SCHEMA_VERSION};
     let tmp = temp("v14");
     let db = tmp.0.join("store.sqlite");

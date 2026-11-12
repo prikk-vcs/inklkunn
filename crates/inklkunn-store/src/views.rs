@@ -102,3 +102,22 @@ impl ViewActEntry {
         )
     }
 }
+
+/// The longest name a view act records, in characters.
+pub const MAX_NAME_CHARS: usize = 64;
+
+/// Is `name` in the form a view's name has in the record (handoff 005 K3): 1 – [`MAX_NAME_CHARS`] characters of lower-case
+/// ASCII letters, digits, `.`, `-` and `_`, starting with a letter or a digit, with no `..` and no trailing `.`. It is the
+/// form `inklkunn-core`'s `views::new_name` allows, kept here as well so that **both stores refuse any other** and the
+/// SQLite database refuses it from any connection (a `CHECK`). Whether a name is *acceptable* (a retired word, a name
+/// already taken) is the service's to say before it records anything.
+pub fn is_view_name(name: &str) -> bool {
+    let plain = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit();
+    name.chars().next().is_some_and(plain)
+        && name.chars().count() <= MAX_NAME_CHARS
+        && name
+            .chars()
+            .all(|c| plain(c) || matches!(c, '.' | '-' | '_'))
+        && !name.contains("..")
+        && !name.ends_with('.')
+}

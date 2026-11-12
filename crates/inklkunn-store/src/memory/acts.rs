@@ -7,7 +7,7 @@ use crate::acts::{
     RecoveryActRecord, RecoveryFlag, SystemActEnd, SystemActEntry, SystemActRecord,
 };
 use crate::record::{ProposalId, RecoveryActId, SystemActId, ViewActId, WikiId, WikiRecord};
-use crate::views::{ViewActEnd, ViewActEntry, ViewActOutcome, ViewActRecord};
+use crate::views::{ViewActEnd, ViewActEntry, ViewActOutcome, ViewActRecord, is_view_name};
 use crate::{Result, StoreError};
 
 use super::MemoryStore;
@@ -207,6 +207,11 @@ impl ActStore for MemoryStore {
     }
 
     fn begin_view_act(&self, act: &ViewActRecord) -> Result<()> {
+        if !is_view_name(&act.name) {
+            return Err(StoreError::Backend(
+                "a view act names its view in the form a view's name has".to_owned(),
+            ));
+        }
         if !self.wiki_exists(&act.wiki) {
             return Err(StoreError::NotFound);
         }

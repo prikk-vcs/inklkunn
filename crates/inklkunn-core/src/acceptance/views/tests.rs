@@ -9,7 +9,7 @@ use std::time::Duration;
 use inklkunn_signer::accept::AcceptError;
 use inklkunn_store::{
     AcceptanceStore, AccountId, ActStore, LeaseHolder, RecoveryFlag, RecoveryReason, Role, Scope,
-    SqliteStore, ViewActEnd, ViewActId, ViewActOutcome, ViewActRecord, ViewKind,
+    ViewActEnd, ViewActId, ViewActOutcome, ViewActRecord, ViewKind,
 };
 
 use super::*;
@@ -444,13 +444,78 @@ fn a_store_that_keeps_no_record_is_refused_at_once() {
     let rig = Rig::new("v13");
     let (_, who) = reviewer(&rig);
     let mut parts = rig.parts(rig.double.clone());
-    parts.acts = std::sync::Arc::new(SqliteStore::open_in_memory().unwrap());
+    parts.acts = std::sync::Arc::new(KeepsNoViewActs(rig.store.clone()));
     let acceptor = ProposalAcceptor::new(parts).with_reconciliation(false);
     assert_eq!(
         acceptor.create_view(&who, &rig.wiki, "x", None, ViewKind::Experimental),
         Err(ViewFailure::NotKept)
     );
     assert!(rig.double.view_calls().is_empty());
+}
+
+/// An act store that keeps no record of a view's creation (K3: neither of the real stores is one any more): the older
+/// methods go to the store it wraps, the view-act ones are the trait's defaults.
+struct KeepsNoViewActs(std::sync::Arc<dyn ActStore>);
+
+type R<T> = inklkunn_store::Result<T>;
+
+impl ActStore for KeepsNoViewActs {
+    fn recovery_flag(&self, w: &inklkunn_store::WikiId) -> R<Option<inklkunn_store::RecoveryFlag>> {
+        self.0.recovery_flag(w)
+    }
+    fn set_recovery_flag(&self, f: &inklkunn_store::RecoveryFlag) -> R<bool> {
+        self.0.set_recovery_flag(f)
+    }
+    fn clear_recovery_flag(&self, w: &inklkunn_store::WikiId) -> R<bool> {
+        self.0.clear_recovery_flag(w)
+    }
+    fn record_overlap(&self, o: &inklkunn_store::OverlapRecord) -> R<()> {
+        self.0.record_overlap(o)
+    }
+    fn overlaps_of(&self, p: &inklkunn_store::ProposalId) -> R<Vec<inklkunn_store::OverlapRecord>> {
+        self.0.overlaps_of(p)
+    }
+    fn begin_system_act(&self, a: &inklkunn_store::SystemActRecord) -> R<()> {
+        self.0.begin_system_act(a)
+    }
+    fn finish_system_act(&self, e: &inklkunn_store::SystemActEnd) -> R<()> {
+        self.0.finish_system_act(e)
+    }
+    fn open_system_act(
+        &self,
+        i: &inklkunn_store::record::SystemActId,
+    ) -> R<Option<inklkunn_store::SystemActRecord>> {
+        self.0.open_system_act(i)
+    }
+    fn system_acts(&self, w: &inklkunn_store::WikiId) -> R<Vec<inklkunn_store::SystemActEntry>> {
+        self.0.system_acts(w)
+    }
+    fn insert_wiki_with_creation_act(
+        &self,
+        r: inklkunn_store::WikiRecord,
+        b: &inklkunn_store::SystemActRecord,
+        e: &inklkunn_store::SystemActEnd,
+    ) -> R<inklkunn_store::WikiRecord> {
+        self.0.insert_wiki_with_creation_act(r, b, e)
+    }
+    fn begin_recovery_act(&self, a: &inklkunn_store::RecoveryActRecord) -> R<()> {
+        self.0.begin_recovery_act(a)
+    }
+    fn finish_recovery_act(&self, e: &inklkunn_store::RecoveryActEnd) -> R<()> {
+        self.0.finish_recovery_act(e)
+    }
+    fn open_recovery_act(
+        &self,
+        i: &inklkunn_store::record::RecoveryActId,
+    ) -> R<Option<inklkunn_store::RecoveryActRecord>> {
+        self.0.open_recovery_act(i)
+    }
+    fn recovery_acts(
+        &self,
+        w: &inklkunn_store::WikiId,
+    ) -> R<Vec<inklkunn_store::RecoveryActEntry>> {
+        self.0.recovery_acts(w)
+    }
 }
 
 fn open_act(rig: &Rig, name: &str) -> ViewActRecord {

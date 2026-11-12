@@ -1,6 +1,7 @@
-//! The SQLite recovery flag, overlaps, system acts and recovery acts (schema versions 11 and 12). The overlaps, the
-//! system acts, the recovery acts and their ends carry the write-once triggers of [`V11`](super::V11) and
-//! [`V12`](super::V12), as the acceptance records do.
+//! The SQLite recovery flag, overlaps, system acts, recovery acts and view acts (schema versions 11, 12 and 16). The
+//! overlaps, the system acts, the recovery acts, the view acts and their ends carry the write-once triggers of
+//! [`V11`](super::V11), [`V12`](super::V12) and [`V16`](super::V16), as the acceptance records do (the view acts'
+//! SQL is in [`super::view_acts`]).
 
 use rusqlite::{OptionalExtension, Row, TransactionBehavior, params};
 
@@ -12,7 +13,8 @@ use crate::acts::{
     RecoveryActEntry, RecoveryActRecord, RecoveryEnding, RecoveryFlag, RecoveryReason,
     SystemActEnd, SystemActEntry, SystemActKind, SystemActRecord,
 };
-use crate::record::{ProposalId, RecoveryActId, SystemActId, WikiId, WikiRecord};
+use crate::record::{ProposalId, RecoveryActId, SystemActId, ViewActId, WikiId, WikiRecord};
+use crate::views::{ViewActEnd, ViewActEntry, ViewActRecord};
 use crate::{Result, StoreError};
 
 fn row_to_flag(row: &Row<'_>) -> rusqlite::Result<RecoveryFlag> {
@@ -414,5 +416,25 @@ impl ActStore for SqliteStore {
                 StoreError::Backend("a stored recovery act could not be read".to_owned())
             })
         })
+    }
+
+    fn keeps_view_acts(&self) -> bool {
+        true
+    }
+
+    fn begin_view_act(&self, act: &ViewActRecord) -> Result<()> {
+        self.begin_view_act_row(act)
+    }
+
+    fn finish_view_act(&self, end: &ViewActEnd) -> Result<()> {
+        self.finish_view_act_row(end)
+    }
+
+    fn open_view_act(&self, id: &ViewActId) -> Result<Option<ViewActRecord>> {
+        self.open_view_act_row(id)
+    }
+
+    fn view_acts(&self, wiki: &WikiId) -> Result<Vec<ViewActEntry>> {
+        self.view_act_rows(wiki)
     }
 }
