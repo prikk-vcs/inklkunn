@@ -220,6 +220,11 @@ pub enum Invalid {
     BadAnchor,
     /// A proposal cannot supersede itself.
     SupersedeSelf,
+    /// The knowledge files set what only a curation proposal sets (a community status, a review date, an
+    /// availability, a change to a source link a claim already has, the removal of a claim whose standing was
+    /// decided) and the proposal is not one: the acceptance would refuse it, so it is refused when it is sent
+    /// (RFC 005 part 2 D-3; handoff 005 corrections K7).
+    KnowledgeCurated,
 }
 
 /// Why a call to the service was refused. Every variant is one plain fact (RFC 004 D-6: failure is honest).
@@ -903,6 +908,7 @@ impl ProposalService {
         self.allow_pages(principal, wiki, &touched)?;
         validate(&p.summary, &p.sources, &draft, Finish::Submit)?;
         self.judge_files(principal, wiki, &draft)?;
+        self.judge_knowledge(wiki, &draft)?;
         // The wiki-wide hourly limit counts what is *sent*, so it is asked here and not when a draft is opened;
         // in one critical section with the change, so that two sends cannot both find room for the last one.
         let _admission = self
@@ -966,6 +972,7 @@ impl ProposalService {
         let content = self.content_of(&edit, base);
         validate(&edit.summary, &edit.sources, &content, Finish::Submit)?;
         self.judge_files(principal, wiki, &content)?;
+        self.judge_knowledge(wiki, &content)?;
         let now = (self.clock)();
         let change = ProposalChange {
             transition: ProposalTransition {

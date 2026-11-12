@@ -482,6 +482,88 @@ impl Rig {
             .unwrap_or_else(|e| panic!("submit: {e}"))
     }
 
+    /// A held proposal whose records are written **without the service's judgement of its knowledge files**
+    /// (K7 refuses at submit what the acceptance would always refuse): what the acceptance's own gate holds
+    /// against when a record reaches it some other way (an older proposal, a store written by hand).
+    pub(crate) fn propose_unjudged(
+        &self,
+        author: &Principal,
+        summary: &str,
+        files: &[(&str, Option<&str>)],
+    ) -> ProposalRecord {
+        use inklkunn_store::{
+            ProposalChange, ProposalOp, ProposalState, ProposalTransition, RevisionContent,
+            RevisionRecord,
+        };
+        let Principal::Account(person) = author else {
+            panic!("a person is needed to propose");
+        };
+        let account = person.id().clone();
+        let base = Base::new(&self.fake.state_id(), &self.fake.block_id())
+            .unwrap_or_else(|| panic!("a base"));
+        let content = RevisionContent {
+            base,
+            files: files
+                .iter()
+                .map(|(path, text)| FileChange {
+                    path: (*path).to_owned(),
+                    text: text.map(str::to_owned),
+                })
+                .collect(),
+            renames: Vec::new(),
+            minor: false,
+            automated: false,
+        };
+        let now = 1_000;
+        let record = ProposalRecord {
+            id: ProposalId::new(),
+            wiki: self.wiki.id.clone(),
+            view: self.wiki.default_view.clone(),
+            state: ProposalState::Draft,
+            author: account.clone(),
+            summary: summary.to_owned(),
+            sources: Vec::new(),
+            superseded_by: None,
+            created_at: now,
+            updated_at: now,
+            submitted_at: None,
+            closed_at: None,
+        };
+        let step = |op, from, to| ProposalTransition {
+            proposal: record.id.clone(),
+            op,
+            from,
+            to,
+            actor: account.clone(),
+            reason: None,
+            at: now,
+        };
+        self.store
+            .create_proposal(
+                &record,
+                &content,
+                &step(ProposalOp::Create, None, ProposalState::Draft),
+            )
+            .unwrap_or_else(|e| panic!("create: {e}"));
+        self.store
+            .change_proposal(&ProposalChange {
+                transition: step(
+                    ProposalOp::Submit,
+                    Some(ProposalState::Draft),
+                    ProposalState::HeldForReview,
+                ),
+                text: None,
+                revision: Some(RevisionRecord {
+                    proposal: record.id.clone(),
+                    seq: 1,
+                    content,
+                    created_at: now,
+                }),
+                superseded_by: None,
+            })
+            .unwrap_or_else(|e| panic!("submit: {e}"))
+    }
+
     pub(crate) fn state(&self, id: &ProposalId) -> inklkunn_store::ProposalState {
         self.store
             .proposal(id, None)

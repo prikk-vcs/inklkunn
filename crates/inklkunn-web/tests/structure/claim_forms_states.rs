@@ -190,14 +190,9 @@ impl Env {
             ],
             ..ProposalEdit::default()
         };
-        let who = Self::who(&self.writer);
-        let draft = self
-            .service()
-            .create(&who, &self.w.wiki, None, edit)
-            .unwrap();
-        self.service()
-            .submit(&who, &self.w.wiki, &draft.id)
-            .unwrap()
+        // The service refuses to send it (K7); an older record can still be there, and its page says so.
+        self.w
+            .hold_unjudged(&self.writer, &edit.summary, edit.files)
     }
 }
 

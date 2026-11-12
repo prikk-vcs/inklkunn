@@ -800,27 +800,66 @@ pub(crate) fn held_with(s: &Scene, files: Vec<(String, Option<String>)>) -> Stri
     format!("/handbook/-/proposals/{}", draft.id)
 }
 
+/// A proposal of the writer's held for review **without the service's judgement of its knowledge files**: what the
+/// service refuses when it is sent (K7) can still be in the records (an older proposal), and its page says so.
+pub(crate) fn held_unjudged(s: &Scene, files: Vec<(String, Option<String>)>) -> String {
+    let record = s.w.hold_unjudged(
+        &s.writer,
+        "A change",
+        files
+            .into_iter()
+            .map(|(path, text)| inklkunn_store::FileChange { path, text })
+            .collect(),
+    );
+    format!("/handbook/-/proposals/{}", record.id)
+}
+
 #[tokio::test]
 async fn a_status_beside_a_page_edit_is_said_to_be_refused_and_the_change_to_it_is_listed() {
     let s = scene();
     let mut decided = s.claim.clone();
     decided.community_status.status = inklkunn_core::knowledge::Standing::Accepted;
-    let to = held_with(
-        &s,
-        vec![
-            (claim_path(&decided.id), Some(decided.to_yaml())),
-            (
-                "pages/Bridge.md".to_owned(),
-                Some(BRIDGE.replace("A note.", "A longer note.")),
-            ),
-        ],
-    );
+    let files = vec![
+        (claim_path(&decided.id), Some(decided.to_yaml())),
+        (
+            "pages/Bridge.md".to_owned(),
+            Some(BRIDGE.replace("A note.", "A longer note.")),
+        ),
+    ];
+    // The service does not let it be sent (K7) ...
+    let who = principal(&s.writer);
+    let draft =
+        s.w.services
+            .proposals
+            .create(
+                &who,
+                &s.w.wiki,
+                None,
+                inklkunn_core::proposal::ProposalEdit {
+                    summary: "A change".to_owned(),
+                    files: files
+                        .iter()
+                        .cloned()
+                        .map(|(path, text)| inklkunn_store::FileChange { path, text })
+                        .collect(),
+                    ..Default::default()
+                },
+            )
+            .expect("a draft");
+    assert!(matches!(
+        s.w.services.proposals.submit(&who, &s.w.wiki, &draft.id),
+        Err(inklkunn_core::proposal::ProposalError::Invalid(
+            inklkunn_core::proposal::Invalid::KnowledgeCurated
+        ))
+    ));
+    // ... and a record that is there anyway says so on its page.
+    let to = held_unjudged(&s, files);
     let body = open(&s, &to, &s.writer).await.body();
     assert!(
         body.contains("Its community status changes from not decided to accepted."),
         "{body}"
     );
-    assert!(body.contains("only a curation proposal may set"), "{body}");
+    assert!(body.contains("only a curation proposal may do"), "{body}");
     assert!(body.contains("It cannot be accepted as it is."), "{body}");
     // A claim file that changes nothing about it says nothing of the kind.
     let to = held_with(
@@ -834,9 +873,109 @@ async fn a_status_beside_a_page_edit_is_said_to_be_refused_and_the_change_to_it_
         ],
     );
     let body = open(&s, &to, &s.writer).await.body();
-    assert!(!body.contains("only a curation proposal may set"), "{body}");
+    assert!(!body.contains("only a curation proposal may do"), "{body}");
     assert!(
         !body.contains("Claims and sources in this proposal"),
         "{body}"
     );
+}
+
+#[tokio::test]
+async fn the_page_warns_of_a_decided_claim_removed_and_of_a_source_link_changed() {
+    let s = scene();
+    let note = "only a curation proposal may do";
+    // A link the claim has, borne differently: curation (K6), and the page says it cannot be accepted as it is.
+    let mut rebeared = s.claim.clone();
+    rebeared.sources.first_mut().expect("a link").bearing = Bearing::Indirect;
+    let to = held_unjudged(
+        &s,
+        vec![(claim_path(&rebeared.id), Some(rebeared.to_yaml()))],
+    );
+    let body = open(&s, &to, &s.writer).await.body();
+    // A proposal of knowledge files alone is a curation proposal: no warning there.
+    assert!(!body.contains(note), "{body}");
+    let to = held_unjudged(
+        &s,
+        vec![
+            (claim_path(&rebeared.id), Some(rebeared.to_yaml())),
+            (
+                "pages/Bridge.md".to_owned(),
+                Some(BRIDGE.replace("A note.", "A longer note.")),
+            ),
+        ],
+    );
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(body.contains(note), "{body}");
+    // The link taken away.
+    let mut unlinked = s.claim.clone();
+    unlinked.sources.clear();
+    let to = held_unjudged(
+        &s,
+        vec![
+            (claim_path(&unlinked.id), Some(unlinked.to_yaml())),
+            (
+                "pages/Bridge.md".to_owned(),
+                Some(BRIDGE.replace("A note.", "A longer note.")),
+            ),
+        ],
+    );
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(body.contains(note), "{body}");
+    // A claim whose standing was decided, removed beside a page edit; one nobody decided is not warned about.
+    let mut decided = s.claim.clone();
+    decided.community_status.status = inklkunn_core::knowledge::Standing::Contested;
+    s.w.fake.set(&claim_path(&decided.id), &decided.to_yaml());
+    let to = held_unjudged(
+        &s,
+        vec![
+            (claim_path(&decided.id), None),
+            (
+                "pages/Bridge.md".to_owned(),
+                Some(BRIDGE.replace("A note.", "A longer note.")),
+            ),
+        ],
+    );
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(body.contains(note), "{body}");
+}
+
+#[tokio::test]
+async fn revising_a_proposal_that_sets_what_only_curation_sets_is_refused_in_the_pages_words() {
+    let s = scene();
+    let mut decided = s.claim.clone();
+    decided.community_status.status = inklkunn_core::knowledge::Standing::Accepted;
+    let to = held_unjudged(
+        &s,
+        vec![
+            (claim_path(&decided.id), Some(decided.to_yaml())),
+            (
+                "pages/Bridge.md".to_owned(),
+                Some(BRIDGE.replace("A note.", "A longer note.")),
+            ),
+        ],
+    );
+    let revise = vec![
+        ("op", "submit".to_owned()),
+        ("pages", "1".to_owned()),
+        ("renames", "0".to_owned()),
+        ("part", "whole".to_owned()),
+        ("base_state", state_id(1)),
+        ("base_block", block_id(1)),
+        ("p0_path", "pages/Bridge.md".to_owned()),
+        ("p0_title", "Bridge".to_owned()),
+        (
+            "p0_text",
+            BRIDGE.replace("A note.", "A longer note, again."),
+        ),
+        ("summary", "A longer note".to_owned()),
+        ("sources", String::new()),
+    ];
+    let a = send(&s, &format!("{to}/edit"), &s.writer, &revise).await;
+    assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", a.body());
+    let body = a.body();
+    // The sentence the proposal page's warning has: one rule, one set of words.
+    assert!(body.contains("only a curation proposal may do"), "{body}");
+    // The proposal is as it was: no second revision.
+    let page = open(&s, &to, &s.writer).await.body();
+    assert!(!page.contains("longer note, again"), "{page}");
 }

@@ -33,8 +33,9 @@ use inklkunn_store::WikiRecord;
 
 use super::tree::{TreeError, read_tree};
 use super::{
-    AnchorState, Availability, CommunityStatus, Expression, Fault, File, KNOWLEDGE_DIR, Reviewed,
-    Rule, anchor_state, claim_path, family_of, is_keep, is_knowledge_path, read_file, source_path,
+    AnchorState, Availability, Bearing, CommunityStatus, Digest, Expression, Fault, File,
+    KNOWLEDGE_DIR, Link, Reviewed, Rule, SourceId, anchor_state, claim_path, family_of, is_keep,
+    is_knowledge_path, read_file, source_path,
 };
 use crate::import::shown;
 use crate::read::{ReadError, ReadService, entries_from_tree};
@@ -106,12 +107,36 @@ pub trait Pages {
     fn text(&self, path: &str) -> Option<String>;
 }
 
-/// What only a curation proposal sets (part 2 D-3, D-10): a claim's community status; a source's `last_reviewed` and
-/// `availability`. A file the tip does not have has the baseline: nothing decided, nothing checked.
+/// What a claim's source link holds of what only curation changes (part 2 D-3): how the source bears on the claim,
+/// and the wording that was judged. The link's note is not among them: it is words, and goes with the page edit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Judged {
+    /// Supports or challenges.
+    pub relation: Link,
+    /// How directly the source speaks to the claim.
+    pub bearing: Bearing,
+    /// The wording the relation was judged on.
+    pub judged_on: Digest,
+}
+
+/// What only a curation proposal sets (part 2 D-3, D-10, and the clarification of 2026-11-08): a claim's community
+/// status and **every change to a source link it already has** (its relation, its bearing, the wording it was judged
+/// on, or its removal; attaching a new link stays with the page edit it belongs to); a source's `last_reviewed` and
+/// `availability`. A file the tip does not have has the baseline: nothing decided, no link, nothing checked.
+///
+/// **One rule for every surface**: acceptance ([`validate`]), the proposal service at submit and at every revision,
+/// and the proposal page's warning all ask [`Curated::departure`] and [`Curated::removal_refused`] (through
+/// [`curated_by`] where there is no tree), so a proposal the acceptance would refuse is never one that can be
+/// submitted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Curated {
-    /// A claim's standing.
-    Claim(CommunityStatus),
+    /// A claim's standing and the judgements of the sources it cites.
+    Claim {
+        /// The standing, the proposal that decided it and the wording it was decided on.
+        status: CommunityStatus,
+        /// Its source links' judgements, by source.
+        links: BTreeMap<SourceId, Judged>,
+    },
     /// A source's freshness.
     Source {
         /// Whether it can be had, as a person who checked says.
@@ -125,7 +150,23 @@ impl Curated {
     /// What `file` holds of it.
     pub fn of(file: &File) -> Curated {
         match file {
-            File::Claim(c) => Curated::Claim(c.community_status.clone()),
+            File::Claim(c) => Curated::Claim {
+                status: c.community_status.clone(),
+                links: c
+                    .sources
+                    .iter()
+                    .map(|l| {
+                        (
+                            l.source.clone(),
+                            Judged {
+                                relation: l.relation,
+                                bearing: l.bearing,
+                                judged_on: l.judged_on.clone(),
+                            },
+                        )
+                    })
+                    .collect(),
+            },
             File::Source(s) => Curated::Source {
                 availability: s.availability,
                 reviewed: s.last_reviewed.clone(),
@@ -133,10 +174,13 @@ impl Curated {
         }
     }
 
-    /// What a file that was never there holds: nothing decided and nothing checked.
+    /// What a file that was never there holds: nothing decided, no link and nothing checked.
     pub fn baseline(file: &File) -> Curated {
         match file {
-            File::Claim(_) => Curated::Claim(CommunityStatus::undecided()),
+            File::Claim(_) => Curated::Claim {
+                status: CommunityStatus::undecided(),
+                links: BTreeMap::new(),
+            },
             File::Source(_) => Curated::Source {
                 availability: Availability::Unknown,
                 reviewed: None,
@@ -144,21 +188,102 @@ impl Curated {
         }
     }
 
-    /// The format's key the difference between two is about.
-    fn field(&self, other: &Curated) -> &'static str {
-        match (self, other) {
-            (Curated::Claim(_), _) => "community_status",
+    /// Does `self` (what a change leaves) depart from `was` (what the tip had) in what only curation sets? The key
+    /// of the format the departure is about, or `None`. A link added is no departure; a link changed or taken
+    /// away is.
+    pub fn departure(&self, was: &Curated) -> Option<&'static str> {
+        match (was, self) {
+            (
+                Curated::Claim {
+                    status: a,
+                    links: before,
+                },
+                Curated::Claim {
+                    status: b,
+                    links: after,
+                },
+            ) => {
+                if a != b {
+                    Some("community_status")
+                } else if before
+                    .iter()
+                    .any(|(source, judged)| after.get(source) != Some(judged))
+                {
+                    Some("sources")
+                } else {
+                    None
+                }
+            }
             (
                 Curated::Source {
-                    availability: a, ..
+                    availability: a,
+                    reviewed: ra,
                 },
                 Curated::Source {
-                    availability: b, ..
+                    availability: b,
+                    reviewed: rb,
                 },
-            ) if a != b => "availability",
-            _ => "last_reviewed",
+            ) => {
+                if a != b {
+                    Some("availability")
+                } else if ra != rb {
+                    Some("last_reviewed")
+                } else {
+                    None
+                }
+            }
+            // A path names one family, so the two cannot differ for one path.
+            _ => None,
         }
     }
+
+    /// Is taking this away, outside a curation proposal, refused? A claim whose standing was decided is not
+    /// removed by any other proposal: its removal would take the decision with it.
+    pub fn removal_refused(&self) -> bool {
+        matches!(self, Curated::Claim { status, .. } if *status != CommunityStatus::undecided())
+    }
+}
+
+/// The knowledge files a revision writes (`files`: path, and the new text or `None` for a removal) that do what only
+/// a curation proposal may, judged against `before` (the text a path had at the proposal's base). The same rule as
+/// the acceptance's ([`Curated::departure`], [`Curated::removal_refused`]), run **without a tree**: it is what the
+/// proposal service asks at submit and at every revision, and what the proposal page's warning shows. A file that
+/// does not read is not judged here (the acceptance refuses it by its own rule). In path order.
+pub fn curated_by(
+    files: &[(String, Option<String>)],
+    before: &dyn Fn(&str) -> Option<String>,
+) -> Vec<Refusal> {
+    let mut sorted: Vec<&(String, Option<String>)> = files.iter().collect();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut out = Vec::new();
+    for (path, text) in sorted {
+        if family_of(path).is_none() {
+            continue;
+        }
+        let was = before(path).and_then(|t| read_file(path, t.as_bytes()).ok());
+        match text {
+            None => {
+                if was
+                    .as_ref()
+                    .is_some_and(|file| Curated::of(file).removal_refused())
+                {
+                    out.push(Refusal::rule(path, Rule::Status, "community_status"));
+                }
+            }
+            Some(text) => {
+                let Ok(now) = read_file(path, text.as_bytes()) else {
+                    continue;
+                };
+                let was = was
+                    .as_ref()
+                    .map_or_else(|| Curated::baseline(&now), Curated::of);
+                if let Some(field) = Curated::of(&now).departure(&was) {
+                    out.push(Refusal::rule(path, Rule::Status, field));
+                }
+            }
+        }
+    }
+    out
 }
 
 /// The change, as the validator needs it.
@@ -210,9 +335,10 @@ pub fn validate(
                     .get(path)
                     .cloned()
                     .unwrap_or_else(|| Curated::baseline(file));
-                let now = Curated::of(file);
-                if now != was && !touched.curation {
-                    out.insert(Refusal::rule(path, Rule::Status, now.field(&was)));
+                if !touched.curation
+                    && let Some(field) = Curated::of(file).departure(&was)
+                {
+                    out.insert(Refusal::rule(path, Rule::Status, field));
                 }
             }
             Some(Err(fault)) => {
@@ -242,10 +368,10 @@ pub fn validate(
     // A claim whose standing was decided is not taken away outside a curation proposal either.
     for path in &touched.removed {
         if !touched.curation
-            && matches!(
-                touched.curated_before.get(path),
-                Some(Curated::Claim(status)) if *status != CommunityStatus::undecided()
-            )
+            && touched
+                .curated_before
+                .get(path)
+                .is_some_and(Curated::removal_refused)
         {
             out.insert(Refusal::rule(path, Rule::Status, "community_status"));
         }

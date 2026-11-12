@@ -165,6 +165,19 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   again is already proposed*, linking to it, and pressing the button again makes nothing), nor for claims an accepted
   one already judged again (the page says each was judged again). Closing the proposal without accepting it offers the
   step again.
+- **K6 and K7 (handoff 005 corrections; RFC 005 part 2 D-3): the gate is D-3, and no proposal that can never be
+  accepted.** What only a curation proposal sets now includes **every change to a source link a claim already has**: its
+  `relation`, its `bearing`, the wording it was `judged_on`, or its removal (`Curated::Claim` carries the links'
+  judgements; `Curated::departure` is the one comparison). Attaching a new link stays with the page edit it belongs to, a
+  link's note stays words, and a new claim brings whatever links it likes; the refusal is the rule *status* with the key
+  `sources` (the rule's sentence, its catalog and glossary rows now name the links). The same rule runs where it can be
+  acted on: `ProposalService::submit` and `revise` refuse a proposal the acceptance would always refuse
+  (`Invalid::KnowledgeCurated`, API reason `knowledge-curated`: a curated value, a link changed or taken away, or the
+  removal of a claim whose standing was decided, none of them in a curation proposal), in the sentence the proposal page's
+  warning uses; a draft may still be saved. `check::curated_by` judges the files against the base without a tree and is
+  the one function behind the submission and the page's warning, and the acceptance's `validate` asks the same
+  `Curated::departure` and `Curated::removal_refused`. The page's warning now covers removals and links as well (it
+  ignored both); `summary::sets_curated` is removed in its favour.
 
 ## [0.2.0] — 2026-11-04
 

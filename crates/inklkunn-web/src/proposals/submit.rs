@@ -114,7 +114,7 @@ pub(crate) async fn edit_form(
             &existing.content.base.block_id,
             &existing.content.files,
         ) {
-            Ok((lines, _)) => lines,
+            Ok(known) => known.lines,
             Err(e) => return read_failure(page, &ctx, e),
         };
         match existing.state(&ctx, saved, carried) {
@@ -557,8 +557,8 @@ fn post(
         }
     }
     let knowledge_files = work.files();
-    let (carried_lines, _) = match file_lines(ctx, t, &base.block_id, &knowledge_files) {
-        Ok(found) => found,
+    let carried_lines = match file_lines(ctx, t, &base.block_id, &knowledge_files) {
+        Ok(found) => found.lines,
         Err(e) => return read_failure(page, ctx, e),
     };
     let prepared = prepared;

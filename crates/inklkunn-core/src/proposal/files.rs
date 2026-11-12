@@ -89,6 +89,38 @@ impl ProposalService {
         self.judge_owned_keys(principal, wiki, content, &present)
     }
 
+    /// Judge the knowledge files of `content` against the base, at **submit and at every revision** (handoff 005
+    /// corrections K7): a proposal the acceptance would always refuse is not one that can be sent. The rules are
+    /// the acceptance's own ([`crate::knowledge::check::curated_by`]: what only a curation proposal sets), run on
+    /// the files as the base had them; the acceptance still judges them again on the tip, where it is final.
+    pub(super) fn judge_knowledge(
+        &self,
+        wiki: &WikiRecord,
+        content: &RevisionContent,
+    ) -> Result<()> {
+        let given: Vec<(String, Option<String>)> = content
+            .files
+            .iter()
+            .filter(|f| crate::knowledge::family_of(&f.path).is_some())
+            .map(|f| (f.path.clone(), f.text.clone()))
+            .collect();
+        if given.is_empty() || crate::knowledge::curation::is_curation(content) {
+            return Ok(());
+        }
+        let mut before: BTreeMap<&str, Option<String>> = BTreeMap::new();
+        for (path, _) in &given {
+            before.insert(path, self.bases.page_text(wiki, &content.base, path)?);
+        }
+        let refused = crate::knowledge::check::curated_by(&given, &|path| {
+            before.get(path).cloned().flatten()
+        });
+        if refused.is_empty() {
+            Ok(())
+        } else {
+            Err(Invalid::KnowledgeCurated.into())
+        }
+    }
+
     fn judge_paths(&self, content: &RevisionContent, present: &BTreeSet<String>) -> Result<()> {
         // Only pages are judged here; a knowledge file's place and name are the knowledge layer's (K-T2).
         let pages = || content.files.iter().filter(|f| is_page_path(&f.path));

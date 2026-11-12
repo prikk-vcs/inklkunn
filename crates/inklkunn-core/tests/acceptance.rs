@@ -358,6 +358,76 @@ impl World {
             .unwrap_or_else(|e| panic!("submit: {e}"))
     }
 
+    /// A held proposal written to the records **without the service's judgement of its knowledge files** (the
+    /// service refuses at submit what the acceptance would always refuse): what the acceptance's own gate holds
+    /// against when a record reaches it some other way.
+    fn propose_unjudged(&self, summary: &str, files: &[(&str, Option<&str>)]) -> ProposalRecord {
+        use inklkunn_store::{
+            ProposalChange, ProposalOp, ProposalStore, ProposalTransition, RevisionContent,
+            RevisionRecord,
+        };
+        let content = RevisionContent {
+            base: self.proposals.capture_base(&self.wiki, None).unwrap(),
+            files: files
+                .iter()
+                .map(|(path, text)| FileChange {
+                    path: (*path).to_owned(),
+                    text: text.map(str::to_owned),
+                })
+                .collect(),
+            renames: Vec::new(),
+            minor: false,
+            automated: false,
+        };
+        let record = ProposalRecord {
+            id: inklkunn_store::ProposalId::new(),
+            wiki: self.wiki.id.clone(),
+            view: self.wiki.default_view.clone(),
+            state: ProposalState::Draft,
+            author: self.contributor_id.clone(),
+            summary: summary.to_owned(),
+            sources: Vec::new(),
+            superseded_by: None,
+            created_at: 1_000,
+            updated_at: 1_000,
+            submitted_at: None,
+            closed_at: None,
+        };
+        let step = |op, from, to| ProposalTransition {
+            proposal: record.id.clone(),
+            op,
+            from,
+            to,
+            actor: self.contributor_id.clone(),
+            reason: None,
+            at: 1_000,
+        };
+        self.store
+            .create_proposal(
+                &record,
+                &content,
+                &step(ProposalOp::Create, None, ProposalState::Draft),
+            )
+            .unwrap();
+        self.store
+            .change_proposal(&ProposalChange {
+                transition: step(
+                    ProposalOp::Submit,
+                    Some(ProposalState::Draft),
+                    ProposalState::HeldForReview,
+                ),
+                text: None,
+                revision: Some(RevisionRecord {
+                    proposal: record.id.clone(),
+                    seq: 1,
+                    content,
+                    created_at: 1_000,
+                }),
+                superseded_by: None,
+            })
+            .unwrap()
+    }
+
     fn accept(&self, p: &ProposalRecord) -> Result<Accepted, AcceptFailure> {
         self.acceptor.accept(&self.maintainer, &self.wiki, &p.id, 1)
     }
@@ -1180,20 +1250,46 @@ fn a_source_is_attached_and_a_status_curated_through_the_whole_path_on_a_real_hi
         ("contested", "current")
     );
 
-    // 3. No other proposal sets a status: a page edit that does is refused before the signer is asked.
+    // 3. No other proposal sets a status: a page edit that does is refused when it is sent (K7), and, were it to reach
+    //    the records some other way, at the acceptance, before the signer is asked.
     let mut forced: Claim = (*decided).clone();
     forced.community_status.status = Standing::Accepted;
     let blocks = w.history().len();
-    let p = w.propose(
-        "A status beside a page edit",
-        &[
-            (claim_file.as_str(), Some(&forced.to_yaml())),
-            (
-                "pages/Other.md",
-                Some(&OTHER.replace("Hello.", "Hello again.")),
-            ),
-        ],
-    );
+    let beside = [
+        (claim_file.as_str(), Some(forced.to_yaml())),
+        (
+            "pages/Other.md",
+            Some(OTHER.replace("Hello.", "Hello again.")),
+        ),
+    ];
+    let beside: Vec<(&str, Option<&str>)> =
+        beside.iter().map(|(p, t)| (*p, t.as_deref())).collect();
+    let draft = w
+        .proposals
+        .create(
+            &w.contributor,
+            &w.wiki,
+            None,
+            ProposalEdit {
+                summary: "A status beside a page edit".to_owned(),
+                files: beside
+                    .iter()
+                    .map(|(path, text)| FileChange {
+                        path: (*path).to_owned(),
+                        text: text.map(str::to_owned),
+                    })
+                    .collect(),
+                ..ProposalEdit::default()
+            },
+        )
+        .unwrap();
+    assert!(matches!(
+        w.proposals.submit(&w.contributor, &w.wiki, &draft.id),
+        Err(inklkunn_core::proposal::ProposalError::Invalid(
+            inklkunn_core::proposal::Invalid::KnowledgeCurated
+        ))
+    ));
+    let p = w.propose_unjudged("A status beside a page edit", &beside);
     match w.accept(&p) {
         Err(AcceptFailure::KnowledgeInvalid(r)) => {
             assert_eq!(

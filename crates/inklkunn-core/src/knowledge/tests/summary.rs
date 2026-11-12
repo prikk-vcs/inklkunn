@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use super::check::sound_claim;
 use super::*;
-use crate::knowledge::summary::{Cite, ClaimChange, Item, SourceChange, sets_curated, summarize};
+use crate::knowledge::summary::{Cite, ClaimChange, Item, SourceChange, summarize};
 
 fn nothing(_: &str) -> Option<String> {
     None
@@ -204,52 +204,4 @@ fn a_removal_is_said_by_the_id_and_a_file_that_does_not_read_by_its_rule_only() 
         ]
     );
     assert!(!format!("{got:?}").contains("secret"));
-}
-
-#[test]
-fn what_only_a_curation_proposal_sets_is_told_from_everything_else() {
-    let plain_claim = sound_claim(1);
-    let mut decided = sound_claim(2);
-    decided.community_status.status = Standing::Accepted;
-    let plain_source = Source::new(source_id(1));
-    let mut checked = Source::new(source_id(2));
-    checked.availability = Availability::Available;
-    let made = |c: &Claim| vec![(claim_path(&c.id), Some(c.to_yaml()))];
-    let recorded = |s: &Source| vec![(source_path(&s.id), Some(s.to_yaml()))];
-    assert!(!sets_curated(&summarize(&made(&plain_claim), &nothing)));
-    assert!(sets_curated(&summarize(&made(&decided), &nothing)));
-    assert!(!sets_curated(&summarize(
-        &recorded(&plain_source),
-        &nothing
-    )));
-    assert!(sets_curated(&summarize(&recorded(&checked), &nothing)));
-    // A change of status in a claim that exists, and of a review in a source that exists.
-    let old: BTreeMap<String, String> = [
-        (claim_path(&plain_claim.id), plain_claim.to_yaml()),
-        (source_path(&plain_source.id), plain_source.to_yaml()),
-    ]
-    .into();
-    let mut moved = plain_claim.clone();
-    moved.community_status.status = Standing::Contested;
-    assert!(sets_curated(&summarize(&made(&moved), &had(old.clone()))));
-    let mut reviewed = plain_source.clone();
-    reviewed.last_reviewed = Some(Reviewed {
-        date: "2026-11-04".to_owned(),
-        proposal: None,
-    });
-    assert!(sets_curated(&summarize(
-        &recorded(&reviewed),
-        &had(old.clone())
-    )));
-    // A retitled source and a removal set nothing.
-    let mut retitled = plain_source.clone();
-    retitled.identity.title = Some("T".to_owned());
-    assert!(!sets_curated(&summarize(
-        &recorded(&retitled),
-        &had(old.clone())
-    )));
-    assert!(!sets_curated(&summarize(
-        &[(claim_path(&plain_claim.id), None)],
-        &had(old)
-    )));
 }

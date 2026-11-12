@@ -143,6 +143,8 @@ pub(crate) fn invalid_text(t: T, why: Invalid) -> String {
         | Invalid::BadBase
         | Invalid::BadAnchor
         | Invalid::SupersedeSelf => t.get(Key::InvalidIncomplete),
+        // The one sentence the proposal page's warning uses too (K7).
+        Invalid::KnowledgeCurated => t.get(Key::KnowNotCuration),
         Invalid::ReasonMissing => t.get(Key::InvalidReasonMissing),
         Invalid::ReasonTooLong => t
             .msg(Key::InvalidReasonTooLong)

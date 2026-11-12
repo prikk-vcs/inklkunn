@@ -11,6 +11,7 @@ use crate::acceptance::testing::Rig;
 use crate::acceptance::{AcceptFailure, Accepted, SystemActFailure, SystemRequest};
 use crate::authorize::Principal;
 use crate::knowledge::compose::{Curation, LinkEdit, SourceEdit, curate};
+use crate::proposal::Invalid;
 use inklkunn_signer::PreparedFile;
 use inklkunn_store::SystemActKind;
 
@@ -45,7 +46,9 @@ fn scene(tag: &str) -> Scene {
 }
 
 fn accept(s: &Scene, files: &[(&str, Option<&str>)]) -> Result<Accepted, AcceptFailure> {
-    let p = s.rig.propose(&s.author, "A knowledge change", files);
+    let p = s
+        .rig
+        .propose_unjudged(&s.author, "A knowledge change", files);
     let outcome = s
         .rig
         .acceptor()
@@ -323,4 +326,174 @@ fn a_review_date_the_tip_already_has_keeps_the_proposal_that_set_it() {
     let (_, text) = files.first().expect("the source file");
     assert!(text.contains("aaaa") && !text.contains("bbbb"), "{text}");
     assert!(text.contains("availability: available"));
+}
+
+// ------------------------------------------------------------------------------------ K7: refused when it is sent
+
+fn edit(files: &[(&str, Option<&str>)]) -> crate::proposal::ProposalEdit {
+    crate::proposal::ProposalEdit {
+        summary: "A knowledge change".to_owned(),
+        files: files
+            .iter()
+            .map(|(path, text)| inklkunn_store::FileChange {
+                path: (*path).to_owned(),
+                text: text.map(str::to_owned),
+            })
+            .collect(),
+        ..crate::proposal::ProposalEdit::default()
+    }
+}
+
+/// What submitting `files` as a draft comes to, and what a revision of a held proposal with them comes to.
+fn sent(s: &Scene, files: &[(&str, Option<&str>)]) -> (Result<(), Invalid>, Result<(), Invalid>) {
+    let as_invalid = |r: Result<_, crate::proposal::ProposalError>| match r {
+        Ok(_) => Ok(()),
+        Err(crate::proposal::ProposalError::Invalid(why)) => Err(why),
+        Err(other) => panic!("not the refusal of the knowledge files: {other:?}"),
+    };
+    let service = &s.rig.proposals;
+    let draft = service
+        .create(&s.author, &s.rig.wiki, None, edit(files))
+        .expect("a draft is saved whatever it holds");
+    let submitted = as_invalid(service.submit(&s.author, &s.rig.wiki, &draft.id));
+    // A revision: of a proposal that is held for review (a plain one first).
+    let held = s.rig.propose(
+        &s.author,
+        "A page edit",
+        &[("pages/One.md", Some(&format!("{ONE}\nMore.\n")))],
+    );
+    let revised = as_invalid(service.revise(&s.author, &s.rig.wiki, &held.id, edit(files)));
+    (submitted, revised)
+}
+
+#[test]
+fn a_status_beside_a_page_edit_is_refused_when_it_is_sent_and_at_every_revision() {
+    let s = scene("k7-status");
+    let edited = ONE.replace("Other.", "Other, more.");
+    let files = [
+        (claim_path(&s.claim.id), contested(&s)),
+        ("pages/One.md".to_owned(), edited),
+    ];
+    let given: Vec<(&str, Option<&str>)> = files
+        .iter()
+        .map(|(p, t)| (p.as_str(), Some(t.as_str())))
+        .collect();
+    assert_eq!(
+        sent(&s, &given),
+        (
+            Err(Invalid::KnowledgeCurated),
+            Err(Invalid::KnowledgeCurated)
+        )
+    );
+}
+
+#[test]
+fn every_way_the_acceptance_refuses_is_refused_when_it_is_sent() {
+    let s = scene("k7-ways");
+    let page = ("pages/One.md", Some(ONE));
+    let refused = |files: &[(&str, Option<&str>)]| {
+        let mut with_page = files.to_vec();
+        with_page.push(page);
+        sent(&s, &with_page)
+    };
+    let both = (
+        Err(Invalid::KnowledgeCurated),
+        Err(Invalid::KnowledgeCurated),
+    );
+    // A source's availability.
+    let mut available = s.source.clone();
+    available.availability = Availability::Available;
+    assert_eq!(
+        refused(&[(&source_path(&available.id), Some(&available.to_yaml()))]),
+        both
+    );
+    // A link the claim already has, changed in each of its fields (K6).
+    for edit_link in [
+        (|l: &mut SourceLink| l.relation = Link::Challenges) as fn(&mut SourceLink),
+        |l| l.bearing = Bearing::Indirect,
+        |l| l.judged_on = digest_of("elsewhere"),
+    ] {
+        let mut relinked = s.claim.clone();
+        edit_link(relinked.sources.first_mut().expect("a link"));
+        assert_eq!(
+            refused(&[(&claim_path(&relinked.id), Some(&relinked.to_yaml()))]),
+            both
+        );
+    }
+    // The link taken away.
+    let mut unlinked = s.claim.clone();
+    unlinked.sources.clear();
+    assert_eq!(
+        refused(&[(&claim_path(&unlinked.id), Some(&unlinked.to_yaml()))]),
+        both
+    );
+    // A claim whose standing was decided, removed (K7).
+    let mut decided = s.claim.clone();
+    decided.community_status = CommunityStatus {
+        status: Standing::Accepted,
+        proposal: Some("01930000-0000-7000-8000-00000000aaaa".to_owned()),
+        judged_on: Some(digest_of_block("Said. ^b1")),
+    };
+    s.rig.fake.set(&claim_path(&decided.id), &decided.to_yaml());
+    assert_eq!(refused(&[(&claim_path(&decided.id), None)]), both);
+}
+
+#[test]
+fn what_the_acceptance_lets_through_is_sent() {
+    let s = scene("k7-through");
+    // A new link beside the page edit it belongs to, a new claim and a new source, and a retitled source.
+    let mut more = s.claim.clone();
+    more.sources.push(SourceLink {
+        source: source_id(2),
+        relation: Link::Supports,
+        bearing: Bearing::Partial,
+        note: None,
+        judged_on: digest_of_block("Said. ^b1"),
+    });
+    let other = Source::new(source_id(2));
+    let mut retitled = s.source.clone();
+    retitled.identity.title = Some("A title".to_owned());
+    let files = [
+        (claim_path(&more.id), more.to_yaml()),
+        (source_path(&other.id), other.to_yaml()),
+        (source_path(&retitled.id), retitled.to_yaml()),
+        ("pages/One.md".to_owned(), ONE.replace("Other.", "More.")),
+    ];
+    let given: Vec<(&str, Option<&str>)> = files
+        .iter()
+        .map(|(p, t)| (p.as_str(), Some(t.as_str())))
+        .collect();
+    assert_eq!(sent(&s, &given), (Ok(()), Ok(())));
+}
+
+#[test]
+fn a_curation_proposal_is_sent_and_a_draft_is_saved_whatever_it_holds() {
+    let s = scene("k7-curation");
+    let service = &s.rig.proposals;
+    let curated = [(claim_path(&s.claim.id), contested(&s))];
+    let given: Vec<(&str, Option<&str>)> = curated
+        .iter()
+        .map(|(p, t)| (p.as_str(), Some(t.as_str())))
+        .collect();
+    let draft = service
+        .create(&s.author, &s.rig.wiki, None, edit(&given))
+        .expect("a draft");
+    assert!(service.submit(&s.author, &s.rig.wiki, &draft.id).is_ok());
+    // Saving a draft is not sending it: a draft may hold what it will not be allowed to send.
+    let with_page = [
+        (claim_path(&s.claim.id), contested(&s)),
+        ("pages/One.md".to_owned(), ONE.replace("Other.", "More.")),
+    ];
+    let given: Vec<(&str, Option<&str>)> = with_page
+        .iter()
+        .map(|(p, t)| (p.as_str(), Some(t.as_str())))
+        .collect();
+    let draft = service
+        .create(&s.author, &s.rig.wiki, None, edit(&given))
+        .expect("a draft");
+    assert!(
+        service
+            .save_draft(&s.author, &s.rig.wiki, &draft.id, edit(&given))
+            .is_ok()
+    );
 }

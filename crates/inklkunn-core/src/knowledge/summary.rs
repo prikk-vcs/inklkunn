@@ -305,18 +305,3 @@ pub fn summarize(
     }
     out
 }
-
-/// Does any item set what only a curation proposal sets: a community status, a review date, an availability?
-pub fn sets_curated(items: &[Item]) -> bool {
-    items.iter().any(|item| match item {
-        Item::ClaimMade { standing, .. } => *standing != Standing::Unknown,
-        Item::ClaimChanged { changes, .. } => changes
-            .iter()
-            .any(|c| matches!(c, ClaimChange::Standing { .. })),
-        Item::SourceRecorded { checked, .. } => *checked,
-        Item::SourceChanged { changes, .. } => changes
-            .iter()
-            .any(|c| matches!(c, SourceChange::Reviewed(_) | SourceChange::Availability(_))),
-        Item::Removed { .. } | Item::Unreadable { .. } => false,
-    })
-}

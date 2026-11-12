@@ -139,6 +139,14 @@ pub(crate) fn lines(t: T, items: &[Item]) -> Vec<Line> {
         .collect()
 }
 
+/// What a proposal's knowledge files come to against the base they were written on.
+pub(crate) struct Known {
+    /// The lines of the proposal's page.
+    pub(crate) lines: Vec<Line>,
+    /// The files that do what only a curation proposal may ([`curated_by`], the acceptance's own rule).
+    pub(crate) curated: Vec<inklkunn_core::knowledge::check::Refusal>,
+}
+
 /// The lines for the knowledge files (`files`: path and new text, `None` for a removal) of a proposal written on the
 /// block `base_block`: each file is compared with the text the base had.
 pub(crate) fn file_lines(
@@ -146,7 +154,7 @@ pub(crate) fn file_lines(
     t: T,
     base_block: &str,
     files: &[inklkunn_store::FileChange],
-) -> Result<(Vec<Line>, Vec<Item>), inklkunn_core::read::ReadError> {
+) -> Result<Known, inklkunn_core::read::ReadError> {
     let mut before: std::collections::BTreeMap<String, Option<String>> =
         std::collections::BTreeMap::new();
     let mut given: Vec<(String, Option<String>)> = Vec::new();
@@ -162,10 +170,13 @@ pub(crate) fn file_lines(
         );
         given.push((f.path.clone(), f.text.clone()));
     }
-    let items = inklkunn_core::knowledge::summary::summarize(&given, &|path| {
-        before.get(path).cloned().flatten()
-    });
-    Ok((lines(t, &items), items))
+    let was = |path: &str| before.get(path).cloned().flatten();
+    let items = inklkunn_core::knowledge::summary::summarize(&given, &was);
+    let curated = inklkunn_core::knowledge::check::curated_by(&given, &was);
+    Ok(Known {
+        lines: lines(t, &items),
+        curated,
+    })
 }
 
 #[cfg(test)]

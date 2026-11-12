@@ -669,19 +669,20 @@ pub(crate) fn draw(
     // What the proposal does to claims and sources, and whether it is a curation proposal.
     let (know, know_notes) = match &r.content {
         Some(content) => {
-            let (lines, items) = match file_lines(ctx, t, &content.base.block_id, &content.files) {
+            let known = match file_lines(ctx, t, &content.base.block_id, &content.files) {
                 Ok(found) => found,
                 Err(e) => return crate::proposals::new::read_failure(page, ctx, e),
             };
             let mut notes = Vec::new();
-            if !lines.is_empty() {
+            if !known.lines.is_empty() {
                 if inklkunn_core::knowledge::curation::is_curation(content) {
                     notes.push(t.get(Key::KnowIsCuration));
-                } else if inklkunn_core::knowledge::summary::sets_curated(&items) {
+                } else if !known.curated.is_empty() {
+                    // The acceptance's own rule (K7): the same sentence the submission is refused with.
                     notes.push(t.get(Key::KnowNotCuration));
                 }
             }
-            (lines, notes)
+            (known.lines, notes)
         }
         None => (Vec::new(), Vec::new()),
     };

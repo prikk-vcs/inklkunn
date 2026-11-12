@@ -833,7 +833,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "health.rule_status",
-        "The change sets a community status, a review date or an availability outside a curation proposal.",
+        "The change sets a community status, a review date or an availability, or changes or removes a source link a claim already has, outside a curation proposal.",
     ),
     msg("title.links", "Links to {page} · {wiki} · {product}"),
     msg("links.heading", "Pages that link to {page}"),
@@ -2707,7 +2707,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.not_curation",
-        "This proposal sets a community status, a review date or an availability, which only a curation proposal may set. It cannot be accepted as it is.",
+        "This proposal sets a community status, a review date or an availability, or changes or removes a source link a claim already has, which only a curation proposal may do. It cannot be accepted as it is.",
     ),
     msg("know.kind_observation", "an observation"),
     msg("know.kind_interpretation", "an interpretation"),

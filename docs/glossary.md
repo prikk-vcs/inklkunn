@@ -442,7 +442,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `health.rule_anchor` | a reason in that list | "An expression names a page, or a paragraph of a page, that the wiki does not have." | "表現が、ウィキにないページまたはページ内の段落を指しています。" |
 | `health.rule_in_use` | a reason in that list | "The file is removed while another file still names it." | "別のファイルから指定されているファイルが削除されています。" |
 | `health.rule_owned` | a reason in that list | "The change also changes a page key that only the service writes." | "サービスだけが書くページのキーも変更されています。" |
-| `health.rule_status` | a reason in that list | "The change sets a community status, a review date or an availability outside a curation proposal." | "コミュニティの状態、確認日、入手できるかどうかが、キュレーション提案ではない変更で設定されています。" |
+| `health.rule_status` | a reason in that list | "The change sets a community status, a review date or an availability, or changes or removes a source link a claim already has, outside a curation proposal." | "コミュニティの状態、確認日、入手できるかどうかの設定、または主張がすでに持つ出典リンクの変更・削除が、キュレーション提案ではない変更で行われています。" |
 | `title.links` | the title of the page that lists the pages linking to a page; `{page}` is its title | "Links to {page} · {wiki} · {product}" | "{page} へのリンク · {wiki} · {product}" |
 | `links.heading` | its heading | "Pages that link to {page}" | "{page} へのリンク元のページ" |
 | `links.missing` | under that heading when no page has the title | "No page has this title yet. These pages link to it." | "このタイトルのページはまだありません。次のページがリンクしています。" |
@@ -1225,7 +1225,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `know.source_change_availability` | under a changed source | "Whether it can be had becomes: {availability}." | "入手できるかどうかが「{availability}」になります。" |
 | `know.source_change_superseded` | under a changed source | "It is now replaced by another source." | "別の出典に置き換えられます。" |
 | `know.is_curation` | on a proposal that changes claims and sources and no page | "This is a curation proposal: it changes claims and sources and no page." | "これはキュレーション提案です。主張と出典を変更し、ページは変更しません。" |
-| `know.not_curation` | on a proposal that sets what only a curation proposal may set | "This proposal sets a community status, a review date or an availability, which only a curation proposal may set. It cannot be accepted as it is." | "この提案はコミュニティでの扱い、確認日、入手できるかどうかを設定していますが、これらを設定できるのはキュレーション提案だけです。このままでは受け入れられません。" |
+| `know.not_curation` | on a proposal that sets what only a curation proposal may set | "This proposal sets a community status, a review date or an availability, or changes or removes a source link a claim already has, which only a curation proposal may do. It cannot be accepted as it is." | "この提案はコミュニティでの扱い、確認日、入手できるかどうかを設定するか、主張がすでに持つ出典リンクを変更・削除していますが、これができるのはキュレーション提案だけです。このままでは受け入れられません。" |
 | `know.kind_observation` | a kind of statement, inside a sentence | "an observation" | "観察" |
 | `know.kind_interpretation` | a kind of statement, inside a sentence | "an interpretation" | "解釈" |
 | `know.kind_hypothesis` | a kind of statement, inside a sentence | "a hypothesis" | "仮説" |

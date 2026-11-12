@@ -579,6 +579,79 @@ pub struct World {
 pub const NOW: i64 = 1_700_000_000;
 
 impl World {
+    /// A proposal of `author` held for review, its records written **without the proposal service's judgement of
+    /// its knowledge files** (the service refuses at submit what the acceptance would always refuse, K7): what
+    /// an older record can still hold, and what the proposal page then has to say.
+    pub fn hold_unjudged(
+        &self,
+        author: &inklkunn_store::AccountId,
+        summary: &str,
+        files: Vec<inklkunn_store::FileChange>,
+    ) -> inklkunn_store::ProposalRecord {
+        use inklkunn_store::{
+            ProposalChange, ProposalOp, ProposalRecord, ProposalState, ProposalStore,
+            ProposalTransition, RevisionContent, RevisionRecord,
+        };
+        let content = RevisionContent {
+            base: self
+                .services
+                .proposals
+                .capture_base(&self.wiki, None)
+                .expect("a base"),
+            files,
+            renames: Vec::new(),
+            minor: false,
+            automated: false,
+        };
+        let record = ProposalRecord {
+            id: inklkunn_store::ProposalId::new(),
+            wiki: self.wiki.id.clone(),
+            view: self.wiki.default_view.clone(),
+            state: ProposalState::Draft,
+            author: author.clone(),
+            summary: summary.to_owned(),
+            sources: Vec::new(),
+            superseded_by: None,
+            created_at: 1_000,
+            updated_at: 1_000,
+            submitted_at: None,
+            closed_at: None,
+        };
+        let step = |op, from, to| ProposalTransition {
+            proposal: record.id.clone(),
+            op,
+            from,
+            to,
+            actor: author.clone(),
+            reason: None,
+            at: 1_000,
+        };
+        self.store
+            .create_proposal(
+                &record,
+                &content,
+                &step(ProposalOp::Create, None, ProposalState::Draft),
+            )
+            .expect("created");
+        self.store
+            .change_proposal(&ProposalChange {
+                transition: step(
+                    ProposalOp::Submit,
+                    Some(ProposalState::Draft),
+                    ProposalState::HeldForReview,
+                ),
+                text: None,
+                revision: Some(RevisionRecord {
+                    proposal: record.id.clone(),
+                    seq: 1,
+                    content,
+                    created_at: 1_000,
+                }),
+                superseded_by: None,
+            })
+            .expect("held")
+    }
+
     pub fn new(slug: &str, name: &str, files: &[(&str, &str)]) -> World {
         Self::with_visibility(slug, name, Visibility::Public, files)
     }
