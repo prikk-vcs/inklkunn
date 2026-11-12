@@ -1,9 +1,9 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use inklkunn_core::knowledge::summary::{Cite, ClaimChange, Item, SourceChange};
+use inklkunn_core::knowledge::summary::{Cite, ClaimChange, Item, Rejudgement, SourceChange};
 use inklkunn_core::knowledge::{
-    Availability, Bearing, ClaimId, Expression, Family, Lifecycle, Link, Relation, RelationType,
-    Rule, SourceId, SourceKind, Standing, StatementKind,
+    Availability, Bearing, ClaimId, Digest, Expression, Family, Lifecycle, Link, Relation,
+    RelationType, Rule, SourceId, SourceKind, Standing, StatementKind,
 };
 
 use super::*;
@@ -18,7 +18,7 @@ fn source() -> SourceId {
 }
 
 fn english(items: &[Item]) -> Vec<(String, Vec<String>)> {
-    lines(T::new(EN), items)
+    lines(T::new(EN), items, &|_, _| None)
         .into_iter()
         .map(|l| (l.text, l.more))
         .collect()
@@ -66,6 +66,7 @@ fn a_claim_that_is_made_says_its_kind_where_it_is_said_and_each_source_it_cites(
 fn every_change_to_a_claim_that_exists_is_said_in_its_own_words() {
     let item = Item::ClaimChanged {
         claim: claim(),
+        said: Vec::new(),
         changes: vec![
             ClaimChange::Kind(StatementKind::Policy),
             ClaimChange::Lifecycle(Lifecycle::Retired),
@@ -193,7 +194,7 @@ fn a_file_that_does_not_read_is_said_by_its_rule_and_never_by_what_it_held() {
         family: Family::Source,
         rule: Rule::Value,
     }];
-    let line = lines(T::new(EN), &items).pop().unwrap();
+    let line = lines(T::new(EN), &items, &|_, _| None).pop().unwrap();
     assert!(line.text.contains("outside the words"), "{}", line.text);
 }
 
@@ -214,16 +215,138 @@ fn the_japanese_preview_has_every_one_and_none_is_a_marker_for_a_missing_message
         },
         Item::ClaimChanged {
             claim: claim(),
+            said: Vec::new(),
             changes: vec![ClaimChange::Standing {
                 from: Standing::Accepted,
                 to: Standing::Unresolved,
             }],
         },
     ];
-    for line in lines(t, &items) {
+    for line in lines(t, &items, &|_, _| None) {
         for text in std::iter::once(line.text).chain(line.more) {
             assert!(!text.contains("[know."), "{text}");
             assert!(!text.is_empty());
         }
+    }
+}
+
+// ------------------------------------------------------------------------------------ K5: re-judgements
+
+fn rejudged(changes: Vec<ClaimChange>) -> Item {
+    Item::ClaimChanged {
+        claim: claim(),
+        said: vec![Expression::new("p", "b").unwrap()],
+        changes,
+    }
+}
+
+fn digest(n: u8) -> Digest {
+    Digest::parse(&format!("{n:02x}").repeat(32)).unwrap()
+}
+
+fn said_with(
+    items: &[Item],
+    wording: &dyn Fn(&[Expression], &Digest) -> Option<String>,
+) -> Vec<String> {
+    lines(T::new(EN), items, wording)
+        .into_iter()
+        .flat_map(|l| l.more)
+        .collect()
+}
+
+#[test]
+fn a_re_judgement_is_a_line_of_its_own_with_the_wording_it_moved_to() {
+    let items = [rejudged(vec![
+        ClaimChange::Rejudged {
+            on: Rejudgement::Standing,
+            to: Some(digest(1)),
+        },
+        ClaimChange::Rejudged {
+            on: Rejudgement::Source(source()),
+            to: Some(digest(2)),
+        },
+    ])];
+    let wording = |said: &[Expression], d: &Digest| {
+        assert_eq!(said, &[Expression::new("p", "b").unwrap()]);
+        Some(format!("Words for {}.", d.as_str().get(..2).unwrap()))
+    };
+    assert_eq!(
+        said_with(&items, &wording),
+        [
+            "What its community status was judged on becomes this wording: “Words for 01.”",
+            "What a source it cites was judged on becomes this wording: “Words for 02.”",
+        ]
+    );
+}
+
+#[test]
+fn a_wording_nobody_has_and_a_wording_taken_away_are_said_as_what_they_are() {
+    let items = [rejudged(vec![
+        ClaimChange::Rejudged {
+            on: Rejudgement::Standing,
+            to: Some(digest(1)),
+        },
+        ClaimChange::Rejudged {
+            on: Rejudgement::Source(source()),
+            to: None,
+        },
+    ])];
+    assert_eq!(
+        said_with(&items, &|_, _| None),
+        [
+            "What its community status was judged on becomes a wording that none of the claim's paragraphs has once this proposal is made.",
+            "It is no longer recorded which wording a source it cites was judged on.",
+        ]
+    );
+}
+
+#[test]
+fn the_wording_is_one_bounded_line() {
+    let items = [rejudged(vec![ClaimChange::Rejudged {
+        on: Rejudgement::Source(source()),
+        to: Some(digest(3)),
+    }])];
+    // White space and line breaks collapse: two wordings that differ after a break must not read alike.
+    let got = said_with(&items, &|_, _| {
+        Some("First line.\n\n  Second   line.".to_owned())
+    });
+    assert_eq!(
+        got,
+        ["What a source it cites was judged on becomes this wording: “First line. Second line.”"]
+    );
+    // Long wording is cut, with a mark that it was.
+    let long = "a".repeat(1000);
+    let got = said_with(&items, &|_, _| Some(long.clone()));
+    let line = got.first().unwrap();
+    assert!(line.ends_with("…”"), "{line}");
+    assert!(line.chars().count() < 340, "{}", line.chars().count());
+}
+
+#[test]
+fn the_japanese_preview_has_every_re_judgement_line() {
+    let t = T::new(Lang::from_def(&JA_DEF));
+    let items = [rejudged(vec![
+        ClaimChange::Rejudged {
+            on: Rejudgement::Standing,
+            to: Some(digest(1)),
+        },
+        ClaimChange::Rejudged {
+            on: Rejudgement::Source(source()),
+            to: Some(digest(2)),
+        },
+        ClaimChange::Rejudged {
+            on: Rejudgement::Standing,
+            to: None,
+        },
+    ])];
+    let found = |_: &[Expression], d: &Digest| (*d == digest(1)).then(|| "文面。".to_owned());
+    let got: Vec<String> = lines(t, &items, &found)
+        .into_iter()
+        .flat_map(|l| l.more)
+        .collect();
+    assert_eq!(got.len(), 3);
+    assert!(got.first().unwrap().contains("「文面。」"), "{got:?}");
+    for text in &got {
+        assert!(!text.contains("[know."), "{text}");
     }
 }

@@ -8,8 +8,9 @@
 use std::collections::BTreeSet;
 
 use super::{
-    Availability, Bearing, Claim, ClaimId, Expression, Family, File, Lifecycle, Link, Relation,
-    Rule, Source, SourceId, SourceKind, Standing, StatementKind, family_of, read_file,
+    Availability, Bearing, Claim, ClaimId, CommunityStatus, Digest, Expression, Family, File,
+    Lifecycle, Link, Relation, Reviewed, Rule, Source, SourceId, SourceKind, SourceLink, Standing,
+    StatementKind, family_of, read_file,
 };
 
 /// A claim's citation of a source.
@@ -23,6 +24,15 @@ pub struct Cite {
     pub bearing: Bearing,
 }
 
+/// What a re-judgement is about.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Rejudgement {
+    /// The claim's community status.
+    Standing,
+    /// A source the claim cites.
+    Source(SourceId),
+}
+
 /// One change to a claim that exists.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimChange {
@@ -30,12 +40,23 @@ pub enum ClaimChange {
     Kind(StatementKind),
     /// Where it stands in its life.
     Lifecycle(Lifecycle),
-    /// **The community status** (only a curation proposal may).
+    /// **The community status** (only a curation proposal may). Only when the word itself changes: a status whose
+    /// word stays and whose wording moves is [`ClaimChange::Rejudged`].
     Standing {
         /// Before.
         from: Standing,
         /// After.
         to: Standing,
+    },
+    /// **Trust moved to other wording** (RFC 005 part 1 H-1 point 3): what the community status, or a source link, was
+    /// judged on is now another wording (or none). Never silent: every one of these is a line of its own, with the
+    /// wording it moved to.
+    Rejudged {
+        /// What was judged.
+        on: Rejudgement,
+        /// The wording it is judged on now: the digest of the paragraph's text (the claim's [`Item::ClaimChanged`]
+        /// `said` says where to look), `None` when it is no longer tied to one.
+        to: Option<Digest>,
     },
     /// Said in one more place.
     Said(Expression),
@@ -94,6 +115,9 @@ pub enum Item {
     ClaimChanged {
         /// The claim.
         claim: ClaimId,
+        /// Where it is said once the change is made: where a surface finds the wording a [`ClaimChange::Rejudged`]
+        /// moved to.
+        said: Vec<Expression>,
         /// What changes.
         changes: Vec<ClaimChange>,
     },
@@ -140,22 +164,47 @@ fn cite_of(link: &super::SourceLink) -> Cite {
 }
 
 /// What changes between two states of a claim.
+///
+/// **Total by construction** (handoff 005 corrections K5): both claims are taken apart field by field with no `..`, so
+/// a field added to [`Claim`], [`CommunityStatus`] or [`SourceLink`] does not compile until it is either described here
+/// or named as not being the person's to write. The only fields left out are the proposal ids the service writes itself
+/// at acceptance (`meaningful`).
 fn claim_changes(before: &Claim, after: &Claim) -> Vec<ClaimChange> {
+    let Claim {
+        id: _,
+        kind,
+        expressions,
+        relations,
+        lifecycle,
+        community_status,
+        sources,
+    } = before;
     let mut out = Vec::new();
-    if before.kind != after.kind {
+    if *kind != after.kind {
         out.push(ClaimChange::Kind(after.kind));
     }
-    if before.lifecycle != after.lifecycle {
+    if *lifecycle != after.lifecycle {
         out.push(ClaimChange::Lifecycle(after.lifecycle));
     }
-    if before.community_status != after.community_status {
+    let CommunityStatus {
+        status,
+        proposal: _,
+        judged_on,
+    } = community_status;
+    if *status != after.community_status.status {
         out.push(ClaimChange::Standing {
-            from: before.community_status.status,
+            from: *status,
             to: after.community_status.status,
         });
     }
+    if *judged_on != after.community_status.judged_on {
+        out.push(ClaimChange::Rejudged {
+            on: Rejudgement::Standing,
+            to: after.community_status.judged_on.clone(),
+        });
+    }
     let (old, new): (BTreeSet<_>, BTreeSet<_>) = (
-        before.expressions.iter().collect(),
+        expressions.iter().collect(),
         after.expressions.iter().collect(),
     );
     out.extend(
@@ -166,10 +215,8 @@ fn claim_changes(before: &Claim, after: &Claim) -> Vec<ClaimChange> {
         old.difference(&new)
             .map(|e| ClaimChange::Unsaid((*e).clone())),
     );
-    let (old, new): (BTreeSet<_>, BTreeSet<_>) = (
-        before.relations.iter().collect(),
-        after.relations.iter().collect(),
-    );
+    let (old, new): (BTreeSet<_>, BTreeSet<_>) =
+        (relations.iter().collect(), after.relations.iter().collect());
     out.extend(
         new.difference(&old)
             .map(|r| ClaimChange::Related((*r).clone())),
@@ -179,19 +226,32 @@ fn claim_changes(before: &Claim, after: &Claim) -> Vec<ClaimChange> {
             .map(|r| ClaimChange::Unrelated((*r).clone())),
     );
     for link in &after.sources {
-        match before.sources.iter().find(|l| l.source == link.source) {
+        match sources.iter().find(|l| l.source == link.source) {
             None => out.push(ClaimChange::Cited(cite_of(link))),
             Some(was) => {
-                if (was.relation, was.bearing) != (link.relation, link.bearing) {
+                let SourceLink {
+                    source: _,
+                    relation,
+                    bearing,
+                    note,
+                    judged_on,
+                } = was;
+                if (*relation, *bearing) != (link.relation, link.bearing) {
                     out.push(ClaimChange::Recited(cite_of(link)));
                 }
-                if was.note != link.note {
+                if *note != link.note {
                     out.push(ClaimChange::Noted(link.source.clone()));
+                }
+                if *judged_on != link.judged_on {
+                    out.push(ClaimChange::Rejudged {
+                        on: Rejudgement::Source(link.source.clone()),
+                        to: Some(link.judged_on.clone()),
+                    });
                 }
             }
         }
     }
-    for was in &before.sources {
+    for was in sources {
         if !after.sources.iter().any(|l| l.source == was.source) {
             out.push(ClaimChange::Uncited(was.source.clone()));
         }
@@ -200,30 +260,61 @@ fn claim_changes(before: &Claim, after: &Claim) -> Vec<ClaimChange> {
 }
 
 fn source_changes(before: &Source, after: &Source) -> Vec<SourceChange> {
+    let Source {
+        id: _,
+        kind,
+        identity,
+        reference,
+        snapshot,
+        last_reviewed,
+        superseded_by,
+        availability,
+    } = before;
     let mut out = Vec::new();
-    if before.kind != after.kind {
+    if *kind != after.kind {
         out.push(SourceChange::Kind(after.kind));
     }
-    if before.identity != after.identity {
+    if *identity != after.identity {
         out.push(SourceChange::Identity);
     }
-    if before.reference != after.reference {
+    if *reference != after.reference {
         out.push(SourceChange::Reference);
     }
-    if before.snapshot != after.snapshot {
+    if *snapshot != after.snapshot {
         out.push(SourceChange::Snapshot);
     }
-    let day = |s: &Source| s.last_reviewed.as_ref().map(|r| r.date.clone());
-    if day(before) != day(after) {
-        out.push(SourceChange::Reviewed(day(after)));
+    // The day; the proposal that said so is the service's own (stamped at acceptance).
+    let day = |r: &Option<Reviewed>| r.as_ref().map(|r| r.date.clone());
+    if day(last_reviewed) != day(&after.last_reviewed) {
+        out.push(SourceChange::Reviewed(day(&after.last_reviewed)));
     }
-    if before.availability != after.availability {
+    if *availability != after.availability {
         out.push(SourceChange::Availability(after.availability));
     }
-    if before.superseded_by != after.superseded_by {
+    if *superseded_by != after.superseded_by {
         out.push(SourceChange::Superseded);
     }
     out
+}
+
+/// A file as the person's change is about it: without the proposal ids the service writes itself at acceptance
+/// (a status's, a review's), whatever the file says ([`super::curation::stamp`]). Two files with the same meaningful
+/// content are the same change, and two that differ have a line on the proposal's page.
+fn meaningful(file: &File) -> File {
+    match file {
+        File::Claim(c) => {
+            let mut c = c.clone();
+            c.community_status.proposal = None;
+            File::Claim(c)
+        }
+        File::Source(s) => {
+            let mut s = s.clone();
+            if let Some(review) = &mut s.last_reviewed {
+                review.proposal = None;
+            }
+            File::Source(s)
+        }
+    }
 }
 
 /// The id a knowledge file's name spells.
@@ -280,6 +371,7 @@ pub fn summarize(
                 if !changes.is_empty() {
                     out.push(Item::ClaimChanged {
                         claim: a.id.clone(),
+                        said: a.expressions.clone(),
                         changes,
                     });
                 }
@@ -301,6 +393,55 @@ pub fn summarize(
             }
             // The family follows the path, so the two cannot differ for one path.
             _ => {}
+        }
+    }
+    out
+}
+
+/// The knowledge files among `files` whose change **no line of the proposal's page would describe** (handoff 005
+/// corrections K5: trust never moves unseen). Empty is the only answer a proposal may be sent with.
+///
+/// *Described* is this, and only this: the file as the proposal writes it, read and without the proposal ids the
+/// service stamps itself at acceptance (`meaningful`), is not the file the base had, and [`summarize`] gives no
+/// [`Item`] for it. A new file, a removal and a file that does not read are each an item of their own; a file that
+/// reads the same as the base's is no change and is not asked about. So the answer is non-empty exactly when
+/// [`summarize`] would print nothing for a file that changes something: a field the summary does not know. (The field
+/// lists of `claim_changes` and `source_changes` are exhaustive, and the property test over every field and
+/// random pairs holds this.) In path order.
+pub fn undescribed(
+    files: &[(String, Option<String>)],
+    before: &dyn Fn(&str) -> Option<String>,
+) -> Vec<String> {
+    undescribed_by(files, before, &summarize)
+}
+
+/// What describes a set of files: [`summarize`] is the page's own; a test may hand a blind one.
+pub type Describer<'a> =
+    &'a dyn Fn(&[(String, Option<String>)], &dyn Fn(&str) -> Option<String>) -> Vec<Item>;
+
+/// [`undescribed`], with the describer given (the proposal service asks it with [`summarize`], the one the page prints).
+pub fn undescribed_by(
+    files: &[(String, Option<String>)],
+    before: &dyn Fn(&str) -> Option<String>,
+    describe: Describer<'_>,
+) -> Vec<String> {
+    let mut sorted: Vec<&(String, Option<String>)> = files.iter().collect();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut out = Vec::new();
+    for (path, text) in sorted {
+        let (Some(_), Some(text)) = (family_of(path), text) else {
+            continue;
+        };
+        let (Some(was), Ok(now)) = (
+            before(path).and_then(|t| read_file(path, t.as_bytes()).ok()),
+            read_file(path, text.as_bytes()),
+        ) else {
+            continue;
+        };
+        if meaningful(&was) != meaningful(&now)
+            && describe(&[(path.clone(), Some(text.clone()))], before).is_empty()
+        {
+            out.push(path.clone());
         }
     }
     out

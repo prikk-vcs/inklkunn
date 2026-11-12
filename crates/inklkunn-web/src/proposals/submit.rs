@@ -29,7 +29,7 @@ use super::form::{
     Eol, FormError, Front, Markup, Op, Submitted, SubmittedPage, check_bounds, check_owned_keys,
     for_display, read,
 };
-use super::knowledge::file_lines;
+use super::knowledge::{Place, file_lines};
 use super::new::{
     FormPage, FormState, Kind, KnowledgeState, PreviewView, read_failure, render_form, short,
     view_of,
@@ -108,12 +108,11 @@ pub(crate) async fn edit_form(
             Err(error) => return refused(page, &ctx, &error, Vec::new()),
         };
         let saved = params.contains_key(fields::Q_SAVED);
-        let carried = match file_lines(
-            &ctx,
-            page.t(),
-            &existing.content.base.block_id,
-            &existing.content.files,
-        ) {
+        let place = Place {
+            view: Some(&existing.record.view),
+            base_block: &existing.content.base.block_id,
+        };
+        let carried = match file_lines(&ctx, page.t(), &place, &existing.content.files) {
             Ok(known) => known.lines,
             Err(e) => return read_failure(page, &ctx, e),
         };
@@ -557,7 +556,11 @@ fn post(
         }
     }
     let knowledge_files = work.files();
-    let carried_lines = match file_lines(ctx, t, &base.block_id, &knowledge_files) {
+    let place = Place {
+        view: full_view.as_deref(),
+        base_block: &base.block_id,
+    };
+    let carried_lines = match file_lines(ctx, t, &place, &knowledge_files) {
         Ok(found) => found.lines,
         Err(e) => return read_failure(page, ctx, e),
     };

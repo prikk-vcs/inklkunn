@@ -2850,4 +2850,27 @@ pub const CATALOG: &[Entry] = &[
         "Each of these claims was judged again on the wording it has now, by a proposal that was accepted.",
     ),
     // knowledge: the claims a change touches (handoff 005 K-T5): end
+    msg(
+        "invalid.knowledge_not_shown",
+        "A change to a claim or a source in this proposal is one this page would not describe, so nobody reviewing it could see what it does. It is not sent.",
+    ),
+    msg(
+        "know.change_rejudged",
+        "What {subject} was judged on becomes this wording: “{words}”",
+    ),
+    msg(
+        "know.change_rejudged_unseen",
+        "What {subject} was judged on becomes a wording that none of the claim's paragraphs has once this proposal is made.",
+    ),
+    msg(
+        "know.change_rejudged_cleared",
+        "It is no longer recorded which wording {subject} was judged on.",
+    ),
+    msg("know.rejudged_status", "its community status"),
+    msg("know.rejudged_source", "a source it cites"),
+    msg(
+        "know.nothing_changes",
+        "The claim and source files in this proposal are the files the wiki already has: they change nothing.",
+    ),
+    // knowledge: re-judgements shown (handoff 005 corrections K5): end
 ];

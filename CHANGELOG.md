@@ -178,6 +178,21 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   the one function behind the submission and the page's warning, and the acceptance's `validate` asks the same
   `Curated::departure` and `Curated::removal_refused`. The page's warning now covers removals and links as well (it
   ignored both); `summary::sets_curated` is removed in its favour.
+- **K5 (handoff 005 corrections; RFC 005 part 1 H-1): trust never moves unseen.** A re-judgement, a source link's or a
+  status's `judged_on` rebound to other wording, is now a line of its own on the proposal page
+  (`ClaimChange::Rejudged`), with the wording it moved to: the whole paragraph, white space made single spaces and cut at
+  240 characters, escaped when drawn; when no paragraph of the claim has that wording the line says so, and when the
+  claim is no longer tied to a wording it says that. A status whose wording alone changes no longer reads *accepted to
+  accepted* (`Standing` is only for a change of the word). The curation form's preview prints the same lines. The page
+  says so when a proposal's claim and source files are the files the wiki already has (an empty list used to print
+  nothing), and the knowledge section is drawn for a note alone. **A change the page would not describe cannot be sent**:
+  `ProposalService::submit` and `revise` ask `summary::undescribed` (a file whose content differs from the base's, without
+  the proposal ids the service stamps itself at acceptance, and for which `summarize` gives no item) and refuse with
+  `Invalid::KnowledgeNotShown` (API reason `knowledge-not-shown`). *Described* is defined in that one place, and
+  `claim_changes` and `source_changes` now take both files apart field by field with no `..`, so a field added to the
+  format does not compile until it is described; property-style tests hold it over every field, from many starting points,
+  and over thousands of random pairs. `Item::ClaimChanged` carries where the claim is said (`said`) for the surface that
+  finds the wording.
 
 ## [0.2.0] — 2026-11-04
 

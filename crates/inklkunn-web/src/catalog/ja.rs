@@ -2914,4 +2914,27 @@ pub const CATALOG: &[Entry] = &[
         "これらの主張はどれも、受け入れられた提案で、いまの文面について改めて判断されています。",
     ),
     // knowledge: the claims a change touches (handoff 005 K-T5): end
+    msg(
+        "invalid.knowledge_not_shown",
+        "この提案の主張または出典の変更には、このページが説明しないものがあり、確認する人が内容を見られません。送信できません。",
+    ),
+    msg(
+        "know.change_rejudged",
+        "{subject}を判断したときの文面が、次の文面に変わります：「{words}」",
+    ),
+    msg(
+        "know.change_rejudged_unseen",
+        "{subject}を判断したときの文面が、この提案のあとには主張のどの段落にもない文面に変わります。",
+    ),
+    msg(
+        "know.change_rejudged_cleared",
+        "{subject}を判断した文面は、記録されなくなります。",
+    ),
+    msg("know.rejudged_status", "コミュニティでの扱い"),
+    msg("know.rejudged_source", "引用している出典"),
+    msg(
+        "know.nothing_changes",
+        "この提案の主張・出典ファイルは、ウィキにすでにあるファイルと同じです。変更はありません。",
+    ),
+    // knowledge: re-judgements shown (handoff 005 corrections K5): end
 ];

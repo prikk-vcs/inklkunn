@@ -1563,6 +1563,14 @@ keys! {
     TouchReconfirmOpen => "touch.reconfirm_open",
     TouchReconfirmDone => "touch.reconfirm_done",
     // knowledge: the claims a change touches (handoff 005 K-T5): end
+    InvalidKnowledgeNotShown => "invalid.knowledge_not_shown",
+    KnowChangeRejudged => "know.change_rejudged",
+    KnowChangeRejudgedUnseen => "know.change_rejudged_unseen",
+    KnowChangeRejudgedCleared => "know.change_rejudged_cleared",
+    KnowRejudgedStatus => "know.rejudged_status",
+    KnowRejudgedSource => "know.rejudged_source",
+    KnowNothingChanges => "know.nothing_changes",
+    // knowledge: re-judgements shown (handoff 005 corrections K5): end
 }
 
 /// A typed value for a placeholder. Text is HTML-escaped; a link is an escaped label plus an `href` the

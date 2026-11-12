@@ -1295,6 +1295,13 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `touch.nothing_to_judge` | a note: every claim of the list is judged on the wording it has now | "Nothing needs judging again: each of these claims is judged on the wording it has now." | "改めて判断する必要はありません。これらの主張はどれも、いまの文面について判断されています。" |
 | `touch.reconfirm_open` | a note in place of the reconfirm step: a proposal made to judge the claims again is still open (the placeholder links to it) | "Judging these claims again is already proposed: {proposal}. That proposal is still open." | "これらの主張を改めて判断する提案はすでにあります: {proposal}。その提案はまだ開いています。" |
 | `touch.reconfirm_done` | a note in place of the reconfirm step: an accepted proposal judged every claim of the list again | "Each of these claims was judged again on the wording it has now, by a proposal that was accepted." | "これらの主張はどれも、受け入れられた提案で、いまの文面について改めて判断されています。" |
+| `invalid.knowledge_not_shown` | when a proposal's claim or source file changes something its page would not describe line by line | "A change to a claim or a source in this proposal is one this page would not describe, so nobody reviewing it could see what it does. It is not sent." | "この提案の主張または出典の変更には、このページが説明しないものがあり、確認する人が内容を見られません。送信できません。" |
+| `know.change_rejudged` | a line of a proposal: what a status or a source was judged on is now this wording; `{subject}` is the next two rows, `{words}` the wording | "What {subject} was judged on becomes this wording: “{words}”" | "{subject}を判断したときの文面が、次の文面に変わります：「{words}」" |
+| `know.change_rejudged_unseen` | the same, when no paragraph of the claim has that wording once the proposal is made | "What {subject} was judged on becomes a wording that none of the claim's paragraphs has once this proposal is made." | "{subject}を判断したときの文面が、この提案のあとには主張のどの段落にもない文面に変わります。" |
+| `know.change_rejudged_cleared` | the same, when it is no longer tied to a wording | "It is no longer recorded which wording {subject} was judged on." | "{subject}を判断した文面は、記録されなくなります。" |
+| `know.rejudged_status` | the subject of those lines: the claim's status | "its community status" | "コミュニティでの扱い" |
+| `know.rejudged_source` | the subject of those lines: a source the claim cites | "a source it cites" | "引用している出典" |
+| `know.nothing_changes` | a note on a proposal page whose claim and source files are the files the wiki already has | "The claim and source files in this proposal are the files the wiki already has: they change nothing." | "この提案の主張・出典ファイルは、ウィキにすでにあるファイルと同じです。変更はありません。" |
 
 ## 3. Words the interface does not say
 

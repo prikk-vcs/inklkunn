@@ -19,7 +19,6 @@ use axum::response::Response;
 use inklkunn_core::Action;
 use inklkunn_core::knowledge::compose::{Curation, LinkEdit, SourceEdit, curate, page_id_of};
 use inklkunn_core::knowledge::marker::words_with_id;
-use inklkunn_core::knowledge::summary::summarize;
 use inklkunn_core::knowledge::{
     AnchorState, Availability, Bearing, Claim, ClaimId, Digest, File, Link, Source, SourceId,
     Standing, anchor_state, claim_path, read_file, source_path,
@@ -29,7 +28,7 @@ use inklkunn_core::read::ReadError;
 use inklkunn_store::{Base, FileChange};
 
 use super::claims::mistake_text;
-use super::knowledge::{Line, lines};
+use super::knowledge::{Line, Place, file_lines};
 use super::labels::{
     OptionView, availability_word, bearing_option, link_word, options, standing_word,
 };
@@ -652,28 +651,23 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
             );
         }
     };
+    // The lines the proposal's page will have, re-judgements with the wording they move to included.
     let changes = {
-        let given: Vec<(String, Option<String>)> = files
+        let given: Vec<FileChange> = files
             .iter()
-            .map(|(p, text)| (p.clone(), Some(text.clone())))
+            .map(|(p, text)| FileChange {
+                path: p.clone(),
+                text: Some(text.clone()),
+            })
             .collect();
-        let mut before = HashMap::new();
-        for (path, _) in &given {
-            match ctx
-                .services
-                .read
-                .source_at(&ctx.wiki, &sub.base.block_id, path)
-            {
-                Ok(text) => {
-                    before.insert(path.clone(), text);
-                }
-                Err(e) => return read_failure(page, ctx, e),
-            }
+        let place = Place {
+            view: full_view.as_deref(),
+            base_block: &sub.base.block_id,
+        };
+        match file_lines(ctx, t, &place, &given) {
+            Ok(known) => known.lines,
+            Err(e) => return read_failure(page, ctx, e),
         }
-        lines(
-            t,
-            &summarize(&given, &|path| before.get(path).cloned().flatten()),
-        )
     };
     if sub.op == Op::Changes {
         return draw(Vec::new(), changes, StatusCode::OK);

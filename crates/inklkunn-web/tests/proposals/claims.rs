@@ -874,10 +874,9 @@ async fn a_status_beside_a_page_edit_is_said_to_be_refused_and_the_change_to_it_
     );
     let body = open(&s, &to, &s.writer).await.body();
     assert!(!body.contains("only a curation proposal may do"), "{body}");
-    assert!(
-        !body.contains("Claims and sources in this proposal"),
-        "{body}"
-    );
+    // The section is there to say so (K5), with no line under it: an empty list is said, not left out.
+    assert!(body.contains("they change nothing"), "{body}");
+    assert!(!body.contains("Changes a claim"), "{body}");
 }
 
 #[tokio::test]
@@ -978,4 +977,107 @@ async fn revising_a_proposal_that_sets_what_only_curation_sets_is_refused_in_the
     // The proposal is as it was: no second revision.
     let page = open(&s, &to, &s.writer).await.body();
     assert!(!page.contains("longer note, again"), "{page}");
+}
+
+// ---------------------------------------------------------------------------------------------- K5: trust never moves unseen
+
+/// The claim as the base has it, decided and judged on an older wording, and a curation proposal that judges it again
+/// on the wording the paragraph has now.
+fn rejudging(s: &Scene, page: &str, wording: &str) -> String {
+    use inklkunn_core::knowledge::{CommunityStatus, Standing};
+    let older = block_digest(
+        inklkunn_markup::blocks("An older wording. ^k1")
+            .first()
+            .unwrap(),
+    );
+    let mut had = s.claim.clone();
+    had.community_status = CommunityStatus {
+        status: Standing::Accepted,
+        proposal: Some("01930000-0000-7000-8000-00000000aaaa".to_owned()),
+        judged_on: Some(older.clone()),
+    };
+    had.sources.first_mut().expect("a link").judged_on = older;
+    s.w.fake.set("pages/Bridge.md", page);
+    s.w.fake.set(&claim_path(&had.id), &had.to_yaml());
+    let now = block_digest(inklkunn_markup::blocks(wording).first().unwrap());
+    let mut judged = had.clone();
+    judged.community_status.judged_on = Some(now.clone());
+    judged.sources.first_mut().expect("a link").judged_on = now;
+    held_with(s, vec![(claim_path(&judged.id), Some(judged.to_yaml()))])
+}
+
+#[tokio::test]
+async fn a_curation_that_judges_again_shows_each_re_judgement_with_the_wording_it_moves_to() {
+    let s = scene();
+    let to = rejudging(&s, BRIDGE, "It opened in 1950. ^k1");
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(body.contains("This is a curation proposal"), "{body}");
+    // Both the status's and the source's: two lines, neither of them *accepted to accepted*.
+    assert!(
+        body.contains(
+            "What its community status was judged on becomes this wording: “It opened in 1950.”"
+        ),
+        "{body}"
+    );
+    assert!(
+        body.contains(
+            "What a source it cites was judged on becomes this wording: “It opened in 1950.”"
+        ),
+        "{body}"
+    );
+    assert!(
+        !body.contains("changes from accepted to accepted"),
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn a_re_judgement_to_wording_no_paragraph_has_says_so_and_wording_is_escaped_and_bounded() {
+    let s = scene();
+    // The paragraph holds markup and is long; the claim is judged on a wording the page does not have.
+    let long = "word ".repeat(200);
+    let page = BRIDGE.replace(
+        "It opened in 1950. ^k1",
+        &format!("It opened <b>in</b> 1950 & more. {long}^k1"),
+    );
+    let to = rejudging(
+        &s,
+        &page,
+        &format!("It opened <b>in</b> 1950 & more. {long}^k1"),
+    );
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(
+        body.contains("&#60;b&#62;in&#60;/b&#62; 1950 &#38; more."),
+        "{body}"
+    );
+    assert!(!body.contains("<b>in</b>"), "{body}");
+    assert!(body.contains("…”"), "the long wording is cut: {body}");
+    assert!(!body.contains(&long), "{body}");
+    // Judged on a wording that is not on the page: said so, never shown as a wording.
+    let to = rejudging(&s, &page, "A wording the page never had. ^k1");
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(
+        body.contains("none of the claim&#39;s paragraphs has once this proposal is made"),
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn a_page_with_knowledge_files_that_change_nothing_says_so() {
+    let s = scene();
+    let to = held_with(
+        &s,
+        vec![
+            (claim_path(&s.claim.id), Some(s.claim.to_yaml())),
+            (
+                "pages/Bridge.md".to_owned(),
+                Some(BRIDGE.replace("A note.", "A longer note.")),
+            ),
+        ],
+    );
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(
+        body.contains("they change nothing"),
+        "an empty list is said, not left out: {body}"
+    );
 }

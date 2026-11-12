@@ -3,8 +3,8 @@
 //! not verdicts**: no word here says a claim or a source is good, true or settled, and a change of a community
 //! status is said as the change it is.
 
-use inklkunn_core::knowledge::Family;
-use inklkunn_core::knowledge::summary::{Cite, ClaimChange, Item, SourceChange};
+use inklkunn_core::knowledge::summary::{Cite, ClaimChange, Item, Rejudgement, SourceChange};
+use inklkunn_core::knowledge::{Digest, Expression, Family};
 
 use super::labels::{
     availability_word, bearing_word, lifecycle_word, link_word, relation_type_word, source_word,
@@ -27,7 +27,24 @@ fn cite(t: T, c: &Cite) -> String {
         .text()
 }
 
-fn claim_change(t: T, change: &ClaimChange) -> String {
+/// The most characters of the wording a re-judgement moved to that a line prints.
+const WORDING_CHARS: usize = 240;
+
+/// A wording as a line prints it: its white space made single spaces, and cut at [`WORDING_CHARS`]. Whole, not its
+/// first line: two wordings that differ after a line break must not read alike.
+fn wording_excerpt(words: &str) -> String {
+    let one_line = words.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut out: String = one_line.chars().take(WORDING_CHARS).collect();
+    if one_line.chars().count() > WORDING_CHARS {
+        out.push('…');
+    }
+    out
+}
+
+/// The wording a digest names, among the places a claim is said: `None` when no paragraph of them has that wording.
+type Wording<'a> = &'a dyn Fn(&[Expression], &Digest) -> Option<String>;
+
+fn claim_change(t: T, change: &ClaimChange, said: &[Expression], wording: Wording<'_>) -> String {
     match change {
         ClaimChange::Kind(k) => t
             .msg(Key::KnowChangeKind)
@@ -42,6 +59,29 @@ fn claim_change(t: T, change: &ClaimChange) -> String {
             .with("from", t.get(standing_word(*from)))
             .with("to", t.get(standing_word(*to)))
             .text(),
+        ClaimChange::Rejudged { on, to } => {
+            let subject = t.get(match on {
+                Rejudgement::Standing => Key::KnowRejudgedStatus,
+                Rejudgement::Source(_) => Key::KnowRejudgedSource,
+            });
+            match to {
+                None => t
+                    .msg(Key::KnowChangeRejudgedCleared)
+                    .with("subject", subject)
+                    .text(),
+                Some(digest) => match wording(said, digest) {
+                    Some(words) => t
+                        .msg(Key::KnowChangeRejudged)
+                        .with("subject", subject)
+                        .with("words", wording_excerpt(&words))
+                        .text(),
+                    None => t
+                        .msg(Key::KnowChangeRejudgedUnseen)
+                        .with("subject", subject)
+                        .text(),
+                },
+            }
+        }
         ClaimChange::Said(_) => t.get(Key::KnowChangeSaid),
         ClaimChange::Unsaid(_) => t.get(Key::KnowChangeUnsaid),
         ClaimChange::Related(r) => t
@@ -85,7 +125,7 @@ fn source_change(t: T, change: &SourceChange) -> String {
 }
 
 /// The lines of a proposal's page for these items.
-pub(crate) fn lines(t: T, items: &[Item]) -> Vec<Line> {
+pub(crate) fn lines(t: T, items: &[Item], wording: Wording<'_>) -> Vec<Line> {
     items
         .iter()
         .map(|item| match item {
@@ -99,9 +139,12 @@ pub(crate) fn lines(t: T, items: &[Item]) -> Vec<Line> {
                     .text(),
                 more: cites.iter().map(|c| cite(t, c)).collect(),
             },
-            Item::ClaimChanged { changes, .. } => Line {
+            Item::ClaimChanged { said, changes, .. } => Line {
                 text: t.get(Key::KnowClaimChanged),
-                more: changes.iter().map(|c| claim_change(t, c)).collect(),
+                more: changes
+                    .iter()
+                    .map(|c| claim_change(t, c, said, wording))
+                    .collect(),
             },
             Item::SourceRecorded { kind, title, .. } => Line {
                 text: match title {
@@ -147,12 +190,63 @@ pub(crate) struct Known {
     pub(crate) curated: Vec<inklkunn_core::knowledge::check::Refusal>,
 }
 
-/// The lines for the knowledge files (`files`: path and new text, `None` for a removal) of a proposal written on the
-/// block `base_block`: each file is compared with the text the base had.
+/// Where the wording a re-judgement moves to is found: the view the proposal is for and the block it was written on. A
+/// re-judgement is a curation proposal's, which writes no page, so the pages at the base are the pages as the proposal
+/// leaves them.
+pub(crate) struct Place<'a> {
+    /// The view the proposal is for.
+    pub(crate) view: Option<&'a str>,
+    /// The block the proposal was written on.
+    pub(crate) base_block: &'a str,
+}
+
+/// The text of the page whose `id` is `page_id`, at the proposal's base.
+fn page_text(
+    ctx: &super::Ctx,
+    place: &Place<'_>,
+    page_id: &str,
+) -> Result<Option<String>, inklkunn_core::read::ReadError> {
+    let index = ctx.services.read.knowledge_index(&ctx.wiki, place.view)?;
+    let Some(path) = index
+        .rows()
+        .anchors
+        .iter()
+        .find(|a| a.page_id == page_id)
+        .and_then(|a| a.page_path.clone())
+    else {
+        return Ok(None);
+    };
+    ctx.services
+        .read
+        .source_at(&ctx.wiki, place.base_block, &path)
+}
+
+/// The words of the paragraph, among the places a claim is said, whose wording is `digest`, in the pages as the
+/// proposal leaves them.
+fn words_for(
+    ctx: &super::Ctx,
+    place: &Place<'_>,
+    said: &[Expression],
+    digest: &Digest,
+) -> Result<Option<String>, inklkunn_core::read::ReadError> {
+    use inklkunn_core::knowledge::{AnchorState, anchor_state, marker::words_with_id};
+    for e in said {
+        let Some(text) = page_text(ctx, place, &e.page_id)? else {
+            continue;
+        };
+        if anchor_state(&text, &e.block) == AnchorState::Present(digest.clone()) {
+            return Ok(words_with_id(&text, &e.block, true));
+        }
+    }
+    Ok(None)
+}
+
+/// The lines for the knowledge files (`files`: path and new text, `None` for a removal) of a proposal written on
+/// `place`: each file is compared with the text the base had.
 pub(crate) fn file_lines(
     ctx: &super::Ctx,
     t: T,
-    base_block: &str,
+    place: &Place<'_>,
     files: &[inklkunn_store::FileChange],
 ) -> Result<Known, inklkunn_core::read::ReadError> {
     let mut before: std::collections::BTreeMap<String, Option<String>> =
@@ -166,17 +260,28 @@ pub(crate) fn file_lines(
             f.path.clone(),
             ctx.services
                 .read
-                .source_at(&ctx.wiki, base_block, &f.path)?,
+                .source_at(&ctx.wiki, place.base_block, &f.path)?,
         );
         given.push((f.path.clone(), f.text.clone()));
     }
     let was = |path: &str| before.get(path).cloned().flatten();
     let items = inklkunn_core::knowledge::summary::summarize(&given, &was);
     let curated = inklkunn_core::knowledge::check::curated_by(&given, &was);
-    Ok(Known {
-        lines: lines(t, &items),
-        curated,
-    })
+    // The wording a re-judgement moved to is looked for only when there is one; a page that cannot be read is the
+    // page that says so, never a line that claims the wording is not there.
+    let failure = std::cell::RefCell::new(None);
+    let found = |said: &[Expression], digest: &Digest| match words_for(ctx, place, said, digest) {
+        Ok(words) => words,
+        Err(e) => {
+            failure.borrow_mut().get_or_insert(e);
+            None
+        }
+    };
+    let lines = lines(t, &items, &found);
+    match failure.into_inner() {
+        Some(e) => Err(e),
+        None => Ok(Known { lines, curated }),
+    }
 }
 
 #[cfg(test)]

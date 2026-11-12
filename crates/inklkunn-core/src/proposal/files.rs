@@ -72,6 +72,26 @@ fn is_canonical(path: &str) -> bool {
         .is_some_and(|canonical| canonical == path)
 }
 
+/// What a proposal's knowledge files (`given`: path and new text, `None` for a removal) come to against the base
+/// (`was`: the text a path had there): refused when they set what only a curation proposal sets and the proposal is
+/// not one ([`Invalid::KnowledgeCurated`]), and refused when a change would have no line on the proposal's page
+/// (`describe` is the page's own, [`crate::knowledge::summary::summarize`]; [`Invalid::KnowledgeNotShown`]): trust
+/// never moves unseen, in a curation proposal least of all.
+pub(crate) fn knowledge_verdict(
+    given: &[(String, Option<String>)],
+    was: &dyn Fn(&str) -> Option<String>,
+    curation: bool,
+    describe: crate::knowledge::summary::Describer<'_>,
+) -> std::result::Result<(), Invalid> {
+    if !curation && !crate::knowledge::check::curated_by(given, was).is_empty() {
+        return Err(Invalid::KnowledgeCurated);
+    }
+    if !crate::knowledge::summary::undescribed_by(given, was, describe).is_empty() {
+        return Err(Invalid::KnowledgeNotShown);
+    }
+    Ok(())
+}
+
 impl ProposalService {
     /// Judge the files of `content` against the repository at its base: new paths (P4) and owned keys (P5). The
     /// syntactic rule (every path is a page path) is [`super::validate`]'s, which needs no repository.
@@ -104,21 +124,20 @@ impl ProposalService {
             .filter(|f| crate::knowledge::family_of(&f.path).is_some())
             .map(|f| (f.path.clone(), f.text.clone()))
             .collect();
-        if given.is_empty() || crate::knowledge::curation::is_curation(content) {
+        if given.is_empty() {
             return Ok(());
         }
         let mut before: BTreeMap<&str, Option<String>> = BTreeMap::new();
         for (path, _) in &given {
             before.insert(path, self.bases.page_text(wiki, &content.base, path)?);
         }
-        let refused = crate::knowledge::check::curated_by(&given, &|path| {
-            before.get(path).cloned().flatten()
-        });
-        if refused.is_empty() {
-            Ok(())
-        } else {
-            Err(Invalid::KnowledgeCurated.into())
-        }
+        let was = |path: &str| before.get(path).cloned().flatten();
+        Ok(knowledge_verdict(
+            &given,
+            &was,
+            crate::knowledge::curation::is_curation(content),
+            &crate::knowledge::summary::summarize,
+        )?)
     }
 
     fn judge_paths(&self, content: &RevisionContent, present: &BTreeSet<String>) -> Result<()> {

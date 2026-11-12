@@ -25,14 +25,14 @@
 {% endif %}<section aria-labelledby="changes">
 <h2 id="changes">{{ changes_heading }}</h2>
 {% if let Some(changes) = changes %}{% include "proposal_changes.html" %}{% endif %}</section>
-{% if !know.is_empty() %}<section aria-labelledby="knowledge">
+{% if !know.is_empty() || !know_notes.is_empty() %}<section aria-labelledby="knowledge">
 <h2 id="knowledge">{{ know_heading }}</h2>
 {% for n in know_notes %}<p class="note">{{ n }}</p>
-{% endfor %}<ul>
+{% endfor %}{% if !know.is_empty() %}<ul>
 {% for line in know %}<li>{{ line.text }}{% if !line.more.is_empty() %}<ul>
 {% for m in line.more %}<li>{{ m }}</li>
 {% endfor %}</ul>{% endif %}</li>
-{% endfor %}</ul>
+{% endfor %}</ul>{% endif %}
 </section>
 {% endif %}{% if !touch.is_empty() %}<section aria-labelledby="touched">
 <h2 id="touched">{{ touch_heading }}</h2>

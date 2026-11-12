@@ -610,7 +610,7 @@ fn a_version_15_database_is_migrated_and_the_review_record_works_on_what_it_held
     let w = WikiId::parse(wiki_id).unwrap();
     {
         let store = SqliteStore::open(&db).expect("a version 15 database opens");
-        assert_eq!(SCHEMA_VERSION, 16);
+        assert!(SCHEMA_VERSION >= 16, "the view-act tables came with version 16");
         assert!(store.claim_reviews(&w).unwrap().is_empty());
         let (author, maintainer) = (account(&store), account(&store));
         let p = submit(&store, &open_draft(&store, &w, &author, 10), 11);

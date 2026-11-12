@@ -225,6 +225,10 @@ pub enum Invalid {
     /// decided) and the proposal is not one: the acceptance would refuse it, so it is refused when it is sent
     /// (RFC 005 part 2 D-3; handoff 005 corrections K7).
     KnowledgeCurated,
+    /// A claim or source file changes something the proposal's page would not describe line by line, so whoever
+    /// reviews it could not see what it does (RFC 005 part 1 H-1: trust never moves silently; handoff 005
+    /// corrections K5).
+    KnowledgeNotShown,
 }
 
 /// Why a call to the service was refused. Every variant is one plain fact (RFC 004 D-6: failure is honest).
