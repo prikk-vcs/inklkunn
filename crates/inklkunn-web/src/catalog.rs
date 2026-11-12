@@ -1560,6 +1560,8 @@ keys! {
     TouchReconfirmLater => "touch.reconfirm_later",
     TouchReconfirmSummary => "touch.reconfirm_summary",
     TouchNothingToJudge => "touch.nothing_to_judge",
+    TouchReconfirmOpen => "touch.reconfirm_open",
+    TouchReconfirmDone => "touch.reconfirm_done",
     // knowledge: the claims a change touches (handoff 005 K-T5): end
 }
 

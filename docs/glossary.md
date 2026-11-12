@@ -1293,6 +1293,8 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `touch.reconfirm_later` | on a proposal that is not accepted yet, under that list | "Once this proposal is accepted, a person can propose judging these claims again here, in one step." | "この提案が受け入れられたら、ここから一度の操作で、これらの主張を改めて判断する提案ができます。" |
 | `touch.reconfirm_summary` | the summary of the proposal that judges the claims again; `{summary}` is the summary of the proposal that reworded them | "Judge the claims again after: {summary}" | "改めて判断する: {summary}" |
 | `touch.nothing_to_judge` | a note: every claim of the list is judged on the wording it has now | "Nothing needs judging again: each of these claims is judged on the wording it has now." | "改めて判断する必要はありません。これらの主張はどれも、いまの文面について判断されています。" |
+| `touch.reconfirm_open` | a note in place of the reconfirm step: a proposal made to judge the claims again is still open (the placeholder links to it) | "Judging these claims again is already proposed: {proposal}. That proposal is still open." | "これらの主張を改めて判断する提案はすでにあります: {proposal}。その提案はまだ開いています。" |
+| `touch.reconfirm_done` | a note in place of the reconfirm step: an accepted proposal judged every claim of the list again | "Each of these claims was judged again on the wording it has now, by a proposal that was accepted." | "これらの主張はどれも、受け入れられた提案で、いまの文面について改めて判断されています。" |
 
 ## 3. Words the interface does not say
 

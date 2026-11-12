@@ -2841,5 +2841,13 @@ pub const CATALOG: &[Entry] = &[
         "touch.nothing_to_judge",
         "Nothing needs judging again: each of these claims is judged on the wording it has now.",
     ),
+    msg(
+        "touch.reconfirm_open",
+        "Judging these claims again is already proposed: {proposal}. That proposal is still open.",
+    ),
+    msg(
+        "touch.reconfirm_done",
+        "Each of these claims was judged again on the wording it has now, by a proposal that was accepted.",
+    ),
     // knowledge: the claims a change touches (handoff 005 K-T5): end
 ];

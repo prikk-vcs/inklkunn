@@ -462,3 +462,4 @@ exact :: show.rs :: first :: a placeholder name of a catalog message
 exact :: show.rs :: second :: a placeholder name of a catalog message
 exact :: show.rs :: reference :: a placeholder name of a catalog message
 exact :: show.rs :: name :: a placeholder name of a catalog message
+exact :: touched.rs :: proposal :: a placeholder name of a catalog message

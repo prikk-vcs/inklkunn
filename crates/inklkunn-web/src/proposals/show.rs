@@ -108,6 +108,8 @@ struct ProposalTpl<'a> {
     touch: Vec<super::knowledge::Line>,
     reconfirm: Option<ReconfirmView>,
     reconfirm_later: Option<String>,
+    reconfirm_open: Option<Rich>,
+    reconfirm_done: Option<String>,
     thread_id: &'static str,
     thread_heading: String,
     thread: Vec<CommentView>,
@@ -606,8 +608,20 @@ pub(crate) fn draw(
         .zip(&olds)
         .map(|((path, _, new), old)| (path.clone(), old.clone(), new.clone()))
         .collect();
-    let touched = match &r.content {
-        Some(content) if !pages.is_empty() => {
+    // Once accepted, the claims are those of **the revision that was accepted**, whatever the page shows below.
+    let accepted = match record.state {
+        ProposalState::Accepted => match super::touched::accepted_change(ctx, id) {
+            Ok(found) => found,
+            Err(error) => return refused(page, ctx, &error, Vec::new()),
+        },
+        _ => None,
+    };
+    let touched = match (&accepted, &r.content) {
+        (Some(change), _) => match super::touched::of_content(ctx, &record.view, &change.content) {
+            Ok(found) => found,
+            Err(e) => return crate::proposals::new::read_failure(page, ctx, e),
+        },
+        (None, Some(content)) if !pages.is_empty() => {
             match super::touched::of_revision(ctx, &record.view, &content.base.block_id, &pages) {
                 Ok(found) => found,
                 Err(e) => return crate::proposals::new::read_failure(page, ctx, e),
@@ -616,8 +630,14 @@ pub(crate) fn draw(
         _ => Vec::new(),
     };
     let leaves = super::touched::leaves_earlier(&touched);
-    let reconfirm = (leaves
-        && record.state == ProposalState::Accepted
+    let step = match &accepted {
+        Some(change) if leaves => match super::touched::offer(ctx, &change.acceptance, &touched) {
+            Ok(found) => Some(found),
+            Err(error) => return refused(page, ctx, &error, Vec::new()),
+        },
+        _ => None,
+    };
+    let reconfirm = (matches!(step, Some(super::touched::Offer::Offered(_)))
         && ctx.account().is_some()
         && ctx.may_wiki(Action::Propose))
     .then(|| ReconfirmView {
@@ -627,6 +647,23 @@ pub(crate) fn draw(
     });
     let reconfirm_later =
         (leaves && record.state.is_open()).then(|| t.get(Key::TouchReconfirmLater));
+    let reconfirm_open = match &step {
+        Some(super::touched::Offer::Open(open)) => {
+            let label = ctx
+                .services
+                .proposals
+                .get(&ctx.principal, &ctx.wiki, open)
+                .map_or_else(|_| t.get(Key::ProposalAnother), |p| p.summary);
+            Some(
+                t.msg(Key::TouchReconfirmOpen)
+                    .link("proposal", label, paths::proposal(slug, open.as_str()))
+                    .html(),
+            )
+        }
+        _ => None,
+    };
+    let reconfirm_done =
+        matches!(step, Some(super::touched::Offer::Done)).then(|| t.get(Key::TouchReconfirmDone));
     let touch = super::touched::lines(t, &touched);
 
     // What the proposal does to claims and sources, and whether it is a curation proposal.
@@ -762,6 +799,8 @@ pub(crate) fn draw(
         touch,
         reconfirm,
         reconfirm_later,
+        reconfirm_open,
+        reconfirm_done,
         thread_id: fields::ID_THREAD,
         thread_heading: t.get(Key::ThreadHeading),
         thread: general.into_iter().flat_map(|th| th.views).collect(),

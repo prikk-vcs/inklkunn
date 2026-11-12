@@ -158,6 +158,14 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   record). Tested on both stores and, for the acceptance, against a real history (a failed acceptance writes records
   that are never read; a store that cannot keep a record stops the acceptance before the signer).
 
+- **K11 (handoff 005 corrections): the reconfirm step.** It now works from **the revision that was accepted** (the one
+  whose acceptance sealed), not the last; the curation proposal it makes is created with the note of the change it
+  re-confirms (`create_reconfirm`), which the acceptance reads to record, per claim, that the change was re-confirmed;
+  and it is **not offered again** while a proposal made for the same change is open (the page says *Judging these claims
+  again is already proposed*, linking to it, and pressing the button again makes nothing), nor for claims an accepted
+  one already judged again (the page says each was judged again). Closing the proposal without accepting it offers the
+  step again.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

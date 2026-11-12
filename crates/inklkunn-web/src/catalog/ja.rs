@@ -2905,5 +2905,13 @@ pub const CATALOG: &[Entry] = &[
         "touch.nothing_to_judge",
         "改めて判断する必要はありません。これらの主張はどれも、いまの文面について判断されています。",
     ),
+    msg(
+        "touch.reconfirm_open",
+        "これらの主張を改めて判断する提案はすでにあります: {proposal}。その提案はまだ開いています。",
+    ),
+    msg(
+        "touch.reconfirm_done",
+        "これらの主張はどれも、受け入れられた提案で、いまの文面について改めて判断されています。",
+    ),
     // knowledge: the claims a change touches (handoff 005 K-T5): end
 ];

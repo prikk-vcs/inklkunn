@@ -8,7 +8,7 @@ use inklkunn_core::knowledge::{Claim, CommunityStatus, Standing, block_digest, c
 use inklkunn_store::{AccountId, ProposalId};
 
 use super::claims::{
-    BRIDGE, NEW, Scene, claims_in, files_of, location, open, part, principal, scene, send,
+    BRIDGE, NEW, Scene, claim_id, claims_in, files_of, location, open, part, principal, scene, send,
 };
 use crate::common::{accept_by_hand, get_as, person, post_form};
 
@@ -307,4 +307,263 @@ async fn a_removed_paragraph_whose_claim_is_said_elsewhere_can_have_its_sources_
             .map(|l| l.judged_on.clone()),
         Some(now)
     );
+}
+
+// ------------------------------------------------------------------------------------ the review record (K3 b, K11)
+
+/// Accept a proposal's revision by hand the way the acceptance path leaves it: the acceptance record, the claims its
+/// change touched (and, for a curation proposal, the claims it re-confirms for an earlier change), the seal, and the
+/// state.
+fn accept_recording(
+    s: &Scene,
+    id: &ProposalId,
+    revision: u32,
+    outcomes: &[inklkunn_store::ClaimOutcome],
+    reconfirming: Option<(&inklkunn_store::AcceptanceId, &[String])>,
+) -> inklkunn_store::AcceptanceId {
+    use inklkunn_store::{
+        AcceptanceId, AcceptanceOutcome, AcceptanceRecord, AcceptanceResult, AcceptanceStore,
+        ProposalChange, ProposalOp, ProposalStore, ProposalTransition, Role,
+    };
+    let record =
+        s.w.store
+            .proposal(id, Some(&s.writer))
+            .unwrap()
+            .expect("a proposal");
+    s.w.store
+        .change_proposal(&ProposalChange {
+            transition: ProposalTransition {
+                proposal: id.clone(),
+                op: ProposalOp::Accept,
+                from: Some(inklkunn_store::ProposalState::HeldForReview),
+                to: inklkunn_store::ProposalState::Accepted,
+                actor: person(4),
+                reason: None,
+                at: 5,
+            },
+            text: None,
+            revision: None,
+            superseded_by: None,
+        })
+        .unwrap();
+    let acceptance = AcceptanceId::new();
+    s.w.store
+        .begin_acceptance(&AcceptanceRecord {
+            id: acceptance.clone(),
+            proposal: id.clone(),
+            revision,
+            wiki: s.w.wiki.id.clone(),
+            view: record.view.clone(),
+            acceptor: person(4),
+            acceptor_role: Role::Maintainer,
+            policy_version: "bootstrap".to_owned(),
+            proposer: record.author.clone(),
+            digest: "d".repeat(64),
+            bytes: 10,
+            created_at: 5,
+        })
+        .unwrap();
+    s.w.store
+        .record_claim_reviews(&acceptance, outcomes)
+        .unwrap();
+    if let Some((change, claims)) = reconfirming {
+        s.w.store
+            .record_reconfirmations(&acceptance, change, claims)
+            .unwrap();
+    }
+    s.w.store
+        .finish_acceptance(&AcceptanceResult {
+            acceptance: acceptance.clone(),
+            outcome: AcceptanceOutcome::Sealed {
+                block_id: "b".repeat(64),
+                patch_id: "c".repeat(64),
+            },
+            at: 6,
+        })
+        .unwrap();
+    acceptance
+}
+
+fn kept() -> Vec<inklkunn_store::ClaimOutcome> {
+    vec![inklkunn_store::ClaimOutcome {
+        claim: claim_id().to_string(),
+        how: inklkunn_store::ClaimHow::Kept,
+    }]
+}
+
+fn reviewer_of(s: &Scene, n: u8) -> AccountId {
+    let id = person(n);
+    crate::common::add_person(&s.w, &id, "Rin Sato", Some(inklkunn_store::Role::Reviewer));
+    id
+}
+
+#[tokio::test]
+async fn a_request_for_changes_on_a_proposal_that_touches_a_claim_is_recorded_with_it_and_no_other_is()
+ {
+    use inklkunn_store::ProposalStore;
+    let s = scene();
+    let (r1, r2) = (reviewer_of(&s, 7), reviewer_of(&s, 8));
+    let touching = rewording(&s).await;
+    let plain = location(
+        &send(
+            &s,
+            NEW,
+            &s.writer,
+            &part("pages/Bridge.md", "Bridge", 1, "It is very long.", "submit"),
+        )
+        .await,
+    );
+    let decide = |to: &str, who: &AccountId, op: &'static str| {
+        let uri = format!("{to}/decide");
+        let fields = vec![("op", op.to_owned()), ("revision", "1".to_owned())];
+        let who = who.clone();
+        let s = &s;
+        async move { send(s, &uri, &who, &fields).await }
+    };
+    assert!(
+        s.w.store
+            .touching_decisions(&s.w.wiki.id)
+            .unwrap()
+            .is_empty()
+    );
+    // An approval of a proposal that touches a claim, and a request for changes on one that touches none: neither.
+    assert!(
+        decide(&touching, &r2, "approve")
+            .await
+            .status
+            .is_redirection()
+    );
+    assert!(
+        decide(&plain, &r1, "request-changes")
+            .await
+            .status
+            .is_redirection()
+    );
+    assert!(
+        s.w.store
+            .touching_decisions(&s.w.wiki.id)
+            .unwrap()
+            .is_empty()
+    );
+    // A request for changes on the proposal that touches the claim: recorded with it, once.
+    let a = decide(&touching, &r1, "request-changes").await;
+    assert!(a.status.is_redirection(), "{}", a.body());
+    let found = s.w.store.touching_decisions(&s.w.wiki.id).unwrap();
+    let want =
+        s.w.store
+            .decisions(&id_in(&touching), Some(&r1))
+            .unwrap()
+            .into_iter()
+            .filter(|d| d.reviewer == r1)
+            .map(|d| d.id)
+            .collect::<Vec<_>>();
+    assert_eq!(found, want);
+    // A reviewer who is refused leaves nothing: the observer may not decide.
+    let refused = decide(&touching, &s.observer, "request-changes").await;
+    assert_eq!(refused.status, StatusCode::FORBIDDEN);
+    assert_eq!(s.w.store.touching_decisions(&s.w.wiki.id).unwrap(), want);
+}
+
+#[tokio::test]
+async fn the_step_works_from_the_accepted_revision_names_its_change_and_is_not_offered_again_while_its_proposal_is_open()
+ {
+    use inklkunn_core::proposal::ProposalEdit;
+    use inklkunn_store::FileChange;
+    let s = scene();
+    let to = rewording(&s).await;
+    let id = id_in(&to);
+    // A later revision of the same proposal that touches no claim: the last revision is not the accepted one.
+    let later = ProposalEdit {
+        summary: "A different change".to_owned(),
+        files: vec![FileChange {
+            path: "pages/Bridge.md".to_owned(),
+            text: Some(BRIDGE.replace("It is long.", "It is very long.")),
+        }],
+        ..ProposalEdit::default()
+    };
+    s.w.services
+        .proposals
+        .revise(&principal(&s.writer), &s.w.wiki, &id, later)
+        .expect("a second revision");
+    let change = accept_recording(&s, &id, 1, &kept(), None);
+    s.w.fake
+        .set("pages/Bridge.md", &BRIDGE.replace("1950", "1951"));
+
+    // The page offers the step for what revision 1 touched.
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(body.contains("Propose judging them again"), "{body}");
+    let reconfirm = format!("{to}/reconfirm");
+    let a = send(&s, &reconfirm, &s.writer, &[]).await;
+    let made = location(&a);
+    assert_ne!(made, to, "{}", a.body());
+    let made_id = id_in(&made);
+    // It judges the claim revision 1 touched, and it names the change: the record, not only the summary.
+    let files = files_of(&s, &made);
+    assert_eq!(claims_in(&files).len(), 1, "{files:?}");
+    assert_eq!(
+        s.w.services
+            .proposals
+            .reconfirm_of(&principal(&s.writer), &s.w.wiki, &made_id)
+            .unwrap(),
+        Some(change.clone())
+    );
+    assert_eq!(
+        s.w.services
+            .proposals
+            .reconfirmations_of(&principal(&s.writer), &s.w.wiki, &change)
+            .unwrap(),
+        vec![made_id.clone()]
+    );
+
+    // While that proposal is open the step is not offered again, and pressing it again makes nothing.
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(!body.contains("Propose judging them again"), "{body}");
+    assert!(
+        body.contains("Judging these claims again is already proposed:"),
+        "{body}"
+    );
+    assert!(body.contains(&format!("href=\"{made}\"")), "{body}");
+    let again = send(&s, &reconfirm, &s.writer, &[]).await;
+    assert_eq!(again.status, StatusCode::OK, "{}", again.body());
+    assert!(
+        again.body().contains("already proposed"),
+        "{}",
+        again.body()
+    );
+    let count = |s: &Scene| {
+        s.w.services
+            .proposals
+            .list(&principal(&s.writer), &s.w.wiki, &Default::default())
+            .expect("a list")
+            .len()
+    };
+    assert_eq!(count(&s), 2, "the proposal and the one step: no third");
+
+    // Closed without being accepted, it no longer stands in the way.
+    s.w.services
+        .proposals
+        .withdraw(&principal(&s.writer), &s.w.wiki, &made_id, "Not now.")
+        .expect("withdrawn");
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(body.contains("Propose judging them again"), "{body}");
+    let second = location(&send(&s, &reconfirm, &s.writer, &[]).await);
+    assert_ne!(second, made);
+    assert_eq!(count(&s), 3);
+
+    // Accepted, with the review record naming what it re-confirmed, it settles the matter: not offered, nothing to make.
+    let claim = [claim_id().to_string()];
+    accept_recording(&s, &id_in(&second), 1, &[], Some((&change, &claim)));
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(!body.contains("Propose judging them again"), "{body}");
+    assert!(
+        body.contains("Each of these claims was judged again on the wording it has now"),
+        "{body}"
+    );
+    let last = send(&s, &reconfirm, &s.writer, &[]).await;
+    assert!(
+        last.body().contains("Nothing needs judging again"),
+        "{}",
+        last.body()
+    );
+    assert_eq!(count(&s), 3);
 }

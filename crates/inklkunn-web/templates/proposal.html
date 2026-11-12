@@ -48,6 +48,8 @@
 <p><button type="submit">{{ f.button }}</button></p>
 </form>
 {% endif %}{% if let Some(text) = reconfirm_later %}<p class="note">{{ text }}</p>
+{% endif %}{% if let Some(html) = reconfirm_open %}<p class="note">{{ html }}</p>
+{% endif %}{% if let Some(text) = reconfirm_done %}<p class="note">{{ text }}</p>
 {% endif %}</section>
 {% endif %}<section aria-labelledby="{{ thread_id }}">
 <h2 id="{{ thread_id }}">{{ thread_heading }}</h2>
