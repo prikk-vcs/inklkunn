@@ -75,12 +75,21 @@ pub(crate) fn recovery_guard(
         .system_acts(&wiki.id)?
         .into_iter()
         .find(|e| e.end.is_none());
+    // A view's creation with no end is an unfinished act too (handoff 005 K4): the lease is ours, so no creation of
+    // this process is between its record and its end, and the repository may hold the view's ref half published.
+    let open_view = acts
+        .view_acts(&wiki.id)?
+        .into_iter()
+        .find(|e| e.end.is_none());
     // An export or a refresh that died leaves nothing in the repository to recover.
     let died = lease
         .replaced()
         .filter(|h| !crate::lease::leaves_nothing_to_recover(&h.purpose));
-    let interrupted =
-        open_acceptance.is_some() || pending.is_some() || open_act.is_some() || died.is_some();
+    let interrupted = open_acceptance.is_some()
+        || pending.is_some()
+        || open_act.is_some()
+        || open_view.is_some()
+        || died.is_some();
     if !interrupted {
         return Ok(());
     }
@@ -88,6 +97,7 @@ pub(crate) fn recovery_guard(
         .map(|i| i.intent.acceptance.to_string())
         .or_else(|| pending.map(|a| a.id.to_string()))
         .or_else(|| open_act.map(|a| a.act.id.to_string()))
+        .or_else(|| open_view.map(|e| e.act.id.to_string()))
         .or_else(|| died.and_then(|h| h.acceptance.as_ref().map(ToString::to_string)));
     flag(acts, wiki, RecoveryReason::Interrupted, act, at);
     match acts.recovery_flag(&wiki.id)? {

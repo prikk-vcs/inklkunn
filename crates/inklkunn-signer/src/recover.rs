@@ -1,9 +1,10 @@
 //! `Recover`: the signer's recovery operations, and the read-only witnesses recovery plans from (RFC 004 D-7; internal
 //! design CON-4, WR-8; handoff 004 T5; threat model C-1b, INV-7).
 //!
-//! **Recovery is bound to a recorded act, as an acceptance is.** [`Recover`] has five operations: `seal` alone (complete
+//! **Recovery is bound to a recorded act, as an acceptance is.** [`Recover`] has six operations: `seal` alone (complete
 //! a queued patch), `seal` once more to finish the cleanup of a publication a killed `seal` left (prikk's own
-//! recommendation; handoff 004, P15), `doctor --discard-damaged-commits`, `unlock --lock <path>` for the locks an
+//! recommendation; handoff 004, P15), `ref complete` to finish the publication of a view a killed `branch create` left
+//! (prikk's own recommendation for that; handoff 005 K4), `doctor --discard-damaged-commits`, `unlock --lock <path>` for the locks an
 //! acceptance leaves, and putting a worktree back to its baseline. None takes a seed, a key directory or a prikk argument. Each is given a
 //! [`RecoveryToken`], an id, and nothing else; the signer reads the record the id names itself, through its
 //! [`AcceptanceLedger`](crate::AcceptanceLedger), and refuses unless the record is the wiki's, still open, and **names
@@ -28,15 +29,16 @@ use std::ffi::OsString;
 use inklkunn_prikk::sandbox::Sandbox;
 use inklkunn_store::{RootLayout, WikiId};
 
-use crate::accept::AcceptanceToken;
+use crate::accept::{AcceptanceToken, ViewCreationAct};
 pub use crate::signer::retirement::RetirementExcuse;
 use crate::writes::{SignerError, Writes};
 
 pub mod text;
 
 pub use text::{
-    ACCEPTANCE_LOCK_KINDS, Diagnostic, Discarded, DoctorReport, HeldLock, Severity,
-    parse_doctor_output, parse_unlock_output,
+    ACCEPTANCE_LOCK_KINDS, CompletionPlan, Diagnostic, Discarded, DoctorReport, HeldLock,
+    POINTER_LEADS_LOG_CODE, Severity, parse_completion_plan, parse_doctor_output,
+    parse_unlock_output,
 };
 
 /// The id of a recorded recovery act. Holding one proves nothing by itself: the signer re-reads the record the id
@@ -73,6 +75,16 @@ pub enum RecoveryOp {
     CompletePublication {
         /// The acceptance or system act, as the token names it.
         acceptance: String,
+        /// The view (`heads/<name>`).
+        view: String,
+    },
+    /// Run `prikk ref complete <view>` once, because a `branch create` for `view`, made for the recorded view creation
+    /// `creation`, was killed after it published the ref's pointer and before it appended the ref log (`doctor`:
+    /// exactly `PRIKK-VERIFY-REF-POINTER-LEADS-LOG`, whose recommendation this is; handoff 005 K4). It appends the
+    /// one signed record the interrupted publication lacked; no block is made.
+    CompleteViewCreation {
+        /// The view-creation act, as the [`ViewCreationAct`] names it.
+        creation: String,
         /// The view (`heads/<name>`).
         view: String,
     },
@@ -221,6 +233,28 @@ pub trait Recover: Send + Sync {
         let _ = (wiki, view, act, acceptance);
         Err(RecoverError::Unavailable(
             "this signer cannot complete a publication".to_owned(),
+        ))
+    }
+
+    /// Finish an interrupted `branch create` (handoff 005 K4): the view `view` (`heads/<name>`) was being created for
+    /// the recorded view-creation act `creation`, and the process died after prikk published the ref's pointer and
+    /// before it appended the ref log, so `verify` fails and every other publication refuses (prikk RFC 165 R3).
+    /// prikk's own recommendation is `prikk ref complete <view>` (RFC 165 R4), which is **not** the step of a killed
+    /// `seal`. Refuses unless `doctor` names exactly that one lead for exactly that ref, the act is recorded and open
+    /// and names this wiki and view, prikk's own `--plan-only` says the first publication of the ref (no log tip,
+    /// sequence 1, no partial tail) targets the block the view's source ref points at, and the tip of the view is that
+    /// block; runs `ref complete` once, and refuses to call it done unless the tip is the same block and `doctor` no
+    /// longer names the lead. **The default is unable.**
+    fn complete_view_creation(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        act: &RecoveryToken,
+        creation: &ViewCreationAct,
+    ) -> Result<(), RecoverError> {
+        let _ = (wiki, view, act, creation);
+        Err(RecoverError::Unavailable(
+            "this signer cannot complete a view's creation".to_owned(),
         ))
     }
 

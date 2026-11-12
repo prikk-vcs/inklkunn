@@ -17,7 +17,7 @@ use inklkunn_signer::recover::text::{
 use inklkunn_signer::{RecoveryFacts, RecoveryOp, WorktreeState};
 use inklkunn_store::{
     AcceptanceId, AccountId, LeaseHolder, ProposalId, ProposalState, RecoveryFlag, SystemActId,
-    WikiId,
+    ViewActId, WikiId,
 };
 use serde_json::{Value, json};
 
@@ -150,6 +150,37 @@ pub struct CleanupPending {
     pub published: Option<Published>,
 }
 
+/// What prikk shows of the view an unfinished creation was making (handoff 005 K4). The listing includes closed
+/// views: a view closed since was shown.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ViewShown {
+    /// The view is not among prikk's views.
+    Absent,
+    /// The view is among them, and its newest block is `tip`.
+    Shown {
+        /// The block at the view's tip.
+        tip: String,
+    },
+    /// A view whose name differs from the creation's only by case is among them, and none of exactly that name: not
+    /// this creation's view, and not told apart from it.
+    InAnotherCase,
+    /// The view is among them and its newest block could not be read (the text is for operators).
+    Unreadable(String),
+}
+
+/// One view creation that never ended (handoff 005 K4): the act's record and what prikk shows of its view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ViewActWitness {
+    /// The act's record.
+    pub act: ViewActId,
+    /// The view it was making, `heads/<name>`.
+    pub view: String,
+    /// The block the view was forked from, as the record kept it.
+    pub from_block: String,
+    /// What prikk shows.
+    pub shown: ViewShown,
+}
+
 /// Everything recovery read before it made a plan.
 #[derive(Debug, Clone)]
 pub struct Witness {
@@ -163,6 +194,8 @@ pub struct Witness {
     pub interrupted_recoveries: usize,
     /// The unfinished acts.
     pub acts: Vec<ActWitness>,
+    /// The view creations that never ended (handoff 005 K4).
+    pub view_acts: Vec<ViewActWitness>,
     /// `prikk status`.
     pub status: RepoStatus,
     /// `prikk doctor`. When [`Witness::retirement`] is set, the publication-trust findings a retired key accounts
@@ -227,6 +260,11 @@ pub enum Stop {
     ForeignProcess,
     /// The history could not be read as far as the question needs.
     HistoryUnreadable,
+    /// A view's creation never ended, and what prikk shows of the view is neither of the two states recovery knows
+    /// (the view is there and `doctor` is clean; or it is there at the block it was forked from, with exactly its own
+    /// ref's publication unfinished; or it is not there and nothing is unfinished): the view is at another block, or
+    /// its tip cannot be read, or it is not listed while `doctor` names its publication (handoff 005 K4).
+    ViewCreationUnclear,
 }
 
 impl Stop {
@@ -246,6 +284,7 @@ impl Stop {
             Stop::UnknownLock => "unknown-lock",
             Stop::ForeignProcess => "foreign-process",
             Stop::HistoryUnreadable => "history-unreadable",
+            Stop::ViewCreationUnclear => "view-creation-unclear",
         }
     }
 
@@ -279,6 +318,9 @@ impl Stop {
                 "a prikk or bwrap of somebody else's may be working in the repository"
             }
             Stop::HistoryUnreadable => "the history could not be read as far as recovery needs",
+            Stop::ViewCreationUnclear => {
+                "the creation of a view never ended, and what prikk shows is not a state recovery can tell apart: the view is at another block than the one it was forked from, or its block cannot be read, or the view is not listed while doctor names its publication"
+            }
         }
     }
 }
@@ -323,6 +365,33 @@ pub enum Step {
         /// The block that was published.
         block_id: String,
     },
+    /// Finish the interrupted publication of `view`, the view the creation `act` was making at `block_id`:
+    /// `prikk ref complete <view>` once, as prikk's own `doctor` recommends for it (not `seal`: handoff 005 K4). It
+    /// makes no block.
+    CompleteViewCreation {
+        /// The view-creation act.
+        act: ViewActId,
+        /// The view, `heads/<name>`.
+        view: String,
+        /// The block the view points at.
+        block_id: String,
+    },
+    /// Record the view creation `act` as created: `view` is among prikk's views and nothing of its publication is
+    /// unfinished.
+    EndViewCreated {
+        /// The view-creation act.
+        act: ViewActId,
+        /// The view, `heads/<name>`.
+        view: String,
+    },
+    /// Record the view creation `act` as failed (`interrupted`): `view` is not among prikk's views and nothing is
+    /// unfinished, so nothing of the creation happened.
+    EndViewFailed {
+        /// The view-creation act.
+        act: ViewActId,
+        /// The view, `heads/<name>`.
+        view: String,
+    },
     /// `doctor --discard-damaged-commits`.
     DiscardDamaged,
     /// Put the worktree of `view` back to the tip.
@@ -359,6 +428,9 @@ impl Step {
             Step::ClearLocks { .. } => "clear-locks",
             Step::SealQueued { .. } => "seal-queued",
             Step::CompletePublication { .. } => "complete-publication",
+            Step::CompleteViewCreation { .. } => "complete-view-creation",
+            Step::EndViewCreated { .. } => "end-view-created",
+            Step::EndViewFailed { .. } => "end-view-failed",
             Step::DiscardDamaged => "discard-damaged",
             Step::RestoreWorktree { .. } => "restore-worktree",
             Step::EndFailed { .. } => "end-failed",
@@ -392,6 +464,19 @@ impl Step {
                 "run seal --allow-no-audit once, as prikk's doctor recommends, to finish the cleanup of block {block_id}, which is the change of {} {}; no block is made",
                 act.kind(),
                 act.token()
+            ),
+            Step::CompleteViewCreation {
+                act,
+                view,
+                block_id,
+            } => format!(
+                "run ref complete {view} once, as prikk's doctor recommends, to finish the publication of the view that view creation {act} was making at block {block_id}; no block is made"
+            ),
+            Step::EndViewCreated { act, view } => format!(
+                "record view creation {act} as created: {view} is among prikk's views and nothing of its publication is unfinished"
+            ),
+            Step::EndViewFailed { act, view } => format!(
+                "record view creation {act} as failed (interrupted): {view} is not among prikk's views and nothing is unfinished, so nothing of it happened"
             ),
             Step::DiscardDamaged => {
                 "run doctor --discard-damaged-commits: remove an acknowledged commit the log no longer holds soundly (prikk saves the bytes first)".to_owned()
@@ -462,6 +547,12 @@ impl Plan {
                         view: view.clone(),
                     })
                 }
+                Step::CompleteViewCreation { act, view, .. } => {
+                    Some(RecoveryOp::CompleteViewCreation {
+                        creation: act.to_string(),
+                        view: view.clone(),
+                    })
+                }
                 Step::DiscardDamaged => Some(RecoveryOp::DiscardDamaged),
                 Step::RestoreWorktree { view } => {
                     Some(RecoveryOp::RestoreWorktree { view: view.clone() })
@@ -495,6 +586,19 @@ impl Plan {
                     block_id,
                 } => json!({
                     "step": "complete-publication", "acceptance": act.token(), "view": view, "block": block_id,
+                }),
+                Step::CompleteViewCreation {
+                    act,
+                    view,
+                    block_id,
+                } => json!({
+                    "step": "complete-view-creation", "creation": act.to_string(), "view": view, "block": block_id,
+                }),
+                Step::EndViewCreated { act, view } => json!({
+                    "step": "end-view-created", "creation": act.to_string(), "view": view,
+                }),
+                Step::EndViewFailed { act, view } => json!({
+                    "step": "end-view-failed", "creation": act.to_string(), "view": view,
                 }),
                 Step::DiscardDamaged => json!({"step": "discard-damaged"}),
                 Step::RestoreWorktree { view } => json!({"step": "restore-worktree", "view": view}),
@@ -569,6 +673,10 @@ pub fn facts_of(wiki: &WikiId, plan: &str) -> Option<RecoveryFacts> {
                 acceptance: text(s, "acceptance")?,
                 view: text(s, "view")?,
             }),
+            "complete-view-creation" => ops.push(RecoveryOp::CompleteViewCreation {
+                creation: text(s, "creation")?,
+                view: text(s, "view")?,
+            }),
             "discard-damaged" => ops.push(RecoveryOp::DiscardDamaged),
             "restore-worktree" => ops.push(RecoveryOp::RestoreWorktree {
                 view: text(s, "view")?,
@@ -609,6 +717,15 @@ fn is_the_act(act: &ActWitness, published: &Published) -> bool {
         && published.message_digests.len() == 1
         && published.message_digests.first() == act.message_digest.as_ref()
         && matches!(&act.chain, Chain::Sealed { block_id, .. } if *block_id == published.block_id)
+}
+
+/// Does `doctor` name the interrupted publication of exactly the ref `view` (prikk's own wording; see
+/// [`inklkunn_signer::recover::Diagnostic::lead_ref`])?
+fn lead_of(w: &Witness, view: &str) -> bool {
+    w.doctor
+        .diagnostics
+        .iter()
+        .any(|d| d.lead_ref() == Some(view))
 }
 
 /// Make the plan.
@@ -658,6 +775,28 @@ pub fn build(w: &Witness) -> Plan {
                 Chain::TipMoved => "not sealed, the tip has moved".to_owned(),
                 Chain::Unreadable(_) => "unreadable".to_owned(),
                 Chain::NoMessage => "no message to look for".to_owned(),
+            }
+        ));
+    }
+    for v in &w.view_acts {
+        wit.push(format!(
+            "view creation {} for {} never ended (prikk shows: {}; doctor: {})",
+            v.act,
+            v.view,
+            match &v.shown {
+                ViewShown::Absent => "the view is not among its views".to_owned(),
+                ViewShown::Shown { tip } if *tip == v.from_block =>
+                    "the view, at the block it was forked from".to_owned(),
+                ViewShown::Shown { .. } => {
+                    "the view, at another block than the one it was forked from".to_owned()
+                }
+                ViewShown::InAnotherCase => "a view of that name in another case".to_owned(),
+                ViewShown::Unreadable(_) => "the view, whose block could not be read".to_owned(),
+            },
+            if lead_of(w, &v.view) {
+                "its publication is unfinished"
+            } else {
+                "its publication is not named"
             }
         ));
     }
@@ -729,6 +868,7 @@ pub fn build(w: &Witness) -> Plan {
         .acts
         .first()
         .map(|a| a.view.clone())
+        .or_else(|| w.view_acts.first().map(|v| v.view.clone()))
         .or_else(|| w.status.current_branch.clone());
     // A prikk or bwrap of somebody else's that may be working in the repository stops **every** step, not only the
     // clearing of a lock (P8): a seal, a restore or a discard beside it would be a second writer.
@@ -764,10 +904,19 @@ pub fn build(w: &Witness) -> Plan {
         return plan;
     }
     // The one error a pending cleanup stands for is that row's own business (P15); anything beside it is trouble.
+    // The one error an unfinished view creation stands for is the interrupted publication of that view's own ref (K4);
+    // a lead for any other ref, or a second one, is trouble.
     let mut cleanup_error = usize::from(w.cleanup_pending.is_some());
+    let mut view_lead = usize::from(!w.view_acts.is_empty());
     if w.doctor.others().iter().any(|d| {
         if d.is_cleanup_pending() && cleanup_error > 0 {
             cleanup_error -= 1;
+            false
+        } else if view_lead > 0
+            && d.lead_ref()
+                .is_some_and(|r| w.view_acts.iter().any(|v| v.view == r))
+        {
+            view_lead -= 1;
             false
         } else {
             true
@@ -776,7 +925,7 @@ pub fn build(w: &Witness) -> Plan {
         stop(&mut plan, Stop::DoctorTrouble);
         return plan;
     }
-    if w.acts.len() > 1 {
+    if w.acts.len() + w.view_acts.len() > 1 {
         stop(&mut plan, Stop::SeveralActs);
         return plan;
     }
@@ -817,10 +966,65 @@ pub fn build(w: &Witness) -> Plan {
     let act = w.acts.first();
 
     // --- The decision table: the queue first, then the act.
-    match (w.cleanup_pending.as_ref(), q.patches.first(), act) {
+    match (
+        w.view_acts.first(),
+        w.cleanup_pending.as_ref(),
+        q.patches.first(),
+        act,
+    ) {
+        // A view's creation never ended (handoff 005 K4). It is the one unfinished act (`SeveralActs` is behind us),
+        // and nothing may be queued, torn or half-sealed beside it. What prikk shows decides, and only these three
+        // states are known: the view is there at the block it was forked from and nothing is unfinished (the act ended
+        // *created*); the same with exactly its own ref's publication unfinished (prikk's own recommendation, `ref
+        // complete`, then the same end); or the view is not there and nothing is unfinished (nothing happened:
+        // *failed*). Anything else is a stop with its own word.
+        (Some(v), c, patch, _) => {
+            if c.is_some() || patch.is_some() || w.doctor.has_acknowledged_damage() {
+                stop(&mut plan, Stop::ViewCreationUnclear);
+                return plan;
+            }
+            let lead = lead_of(w, &v.view);
+            match (&v.shown, lead) {
+                (ViewShown::Shown { tip }, false) if *tip == v.from_block => {
+                    steps.push(Step::EndViewCreated {
+                        act: v.act.clone(),
+                        view: v.view.clone(),
+                    });
+                }
+                (ViewShown::Shown { tip }, true) if *tip == v.from_block => {
+                    steps.push(Step::CompleteViewCreation {
+                        act: v.act.clone(),
+                        view: v.view.clone(),
+                        block_id: tip.clone(),
+                    });
+                    steps.push(Step::EndViewCreated {
+                        act: v.act.clone(),
+                        view: v.view.clone(),
+                    });
+                }
+                (ViewShown::Absent, false) => {
+                    steps.push(Step::EndViewFailed {
+                        act: v.act.clone(),
+                        view: v.view.clone(),
+                    });
+                }
+                _ => {
+                    stop(&mut plan, Stop::ViewCreationUnclear);
+                    return plan;
+                }
+            }
+            // `branch create` never touches the worktree, which belongs to the current branch, not to the new view.
+            if w.worktree.is_none_or(|s| !s.clean)
+                && let Some(current) = &w.status.current_branch
+            {
+                steps.push(Step::RestoreWorktree {
+                    view: current.clone(),
+                });
+            }
+        }
         // A `seal` published its block and stopped before it drained the queue (P15): prikk's own recommendation is
         // `seal` once more, taken only when the block published is the change of the one unfinished act.
-        (Some(c), _, a) => {
+        (None, Some(c), _, a) => {
             let published = c.published.as_ref();
             match a.zip(published).filter(|(a, p)| is_the_act(a, p)) {
                 Some((a, p)) => {
@@ -844,7 +1048,7 @@ pub fn build(w: &Witness) -> Plan {
         // A patch is queued and is the act's, but a key retirement is unfinished: sealing makes a block, and nothing new
         // is sealed until the operator has finished or given up the retirement (W1). The signer would refuse the step
         // with the same words; the plan says so first.
-        (None, Some(patch), Some(a))
+        (None, None, Some(patch), Some(a))
             if w.retirement_unfinished.is_some()
                 && matches_queued(a, patch, q.target_ref.as_deref())
                 && a.chain == Chain::NotSealed
@@ -857,7 +1061,7 @@ pub fn build(w: &Witness) -> Plan {
             return plan;
         }
         // A patch is queued, and it is the change of the one unfinished act.
-        (None, Some(patch), Some(a))
+        (None, None, Some(patch), Some(a))
             if matches_queued(a, patch, q.target_ref.as_deref())
                 && a.chain == Chain::NotSealed
                 && matches!(a.ended, Ended::Not) =>
@@ -872,16 +1076,16 @@ pub fn build(w: &Witness) -> Plan {
                 block_id: None,
             });
         }
-        (None, Some(_), Some(_)) => {
+        (None, None, Some(_), Some(_)) => {
             stop(&mut plan, Stop::QueuedPatchIsNotTheAct);
             return plan;
         }
-        (None, Some(_), None) => {
+        (None, None, Some(_), None) => {
             stop(&mut plan, Stop::ForeignQueuedPatch);
             return plan;
         }
         // Nothing is queued, and prikk says an acknowledged commit is torn: discard it.
-        (None, None, a) if w.doctor.has_acknowledged_damage() => {
+        (None, None, None, a) if w.doctor.has_acknowledged_damage() => {
             steps.push(Step::DiscardDamaged);
             restore(&mut steps);
             match a {
@@ -910,7 +1114,7 @@ pub fn build(w: &Witness) -> Plan {
             }
         }
         // Nothing is queued and nothing is torn: the act, if there is one, is in the history or it is not.
-        (None, None, Some(a)) => match &a.chain {
+        (None, None, None, Some(a)) => match &a.chain {
             Chain::Sealed { block_id, .. } => steps.push(Step::EndSealed {
                 act: a.act.clone(),
                 block_id: Some(block_id.clone()),
@@ -931,7 +1135,7 @@ pub fn build(w: &Witness) -> Plan {
                 return plan;
             }
         },
-        (None, None, None) => restore(&mut steps),
+        (None, None, None, None) => restore(&mut steps),
     }
 
     // --- The tail every recovery has: the repository must verify, the records must agree, the flag goes.

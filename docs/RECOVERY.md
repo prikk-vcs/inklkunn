@@ -98,8 +98,8 @@ either rewrites the history or puts an unaccepted change into it:
 
 The other STOP words (`queued-patch-is-not-the-act`, `published-block-is-not-the-act`, `several-queued`,
 `several-acts`, `tip-moved`, `interrupted-state`, `doctor-trouble`, `unknown-lock`, `foreign-process`,
-`history-unreadable`, and the two of the next sections, `retirement-unfinished` and
-`cleanup-beside-trust-findings`) are printed with their meaning by `inklkunn wiki recover <wiki> --plan`. Each one is a state
+`history-unreadable`, and those of the sections below: `retirement-unfinished`,
+`cleanup-beside-trust-findings` and `view-creation-unclear`) are printed with their meaning by `inklkunn wiki recover <wiki> --plan`. Each one is a state
 where the witnesses disagree or recovery has no answer; the principle is the same: read, export, decide, and do not
 guess. Two states have no word, because recovery cannot even read them; they are the next two sections.
 
@@ -225,3 +225,58 @@ export if it must take writes). Do **not** delete files under `.prikk/active/`, 
 by hand to make the metadata go away, or use any `prikk doctor` repair: each acts on the repository without the
 service's record. **After.** Nothing changed: the plan stops at `doctor-trouble` again until prikk answers (this is
 one of the two states asked of prikk in the next letter, `docs/UPSTREAM.md`).
+
+## A view whose creation was killed: finished by recovery, or `view-creation-unclear`
+
+**What you see.** After the service died while a reviewer was creating a view (an alternative view of the wiki), the
+wiki is flagged and `inklkunn wiki recover <wiki> --plan` says `view creation <id> for heads/<name> never ended`,
+beside what prikk shows of the view and whether `doctor` names its publication. Nothing else is wrong with the wiki.
+**What it is.** `prikk branch create` publishes the new ref in two writes: the ref's pointer, then the ref log.
+Killed between them it leaves the view **listed** (`prikk branch list` shows it), `prikk verify` failing, and `prikk
+doctor` reporting exactly one error, `PRIKK-VERIFY-REF-POINTER-LEADS-LOG` (*authoritative pointer leads committed ref
+log by one transition*), whose recommendation is ``run `prikk ref complete heads/<name>` ``. While it stands, prikk
+refuses every other publication, a seal included, so no acceptance can run: that is why the wiki is flagged. (A kill
+before the pointer leaves nothing in the repository; a kill after both writes leaves a whole view. Recovery tells the
+three apart from what prikk shows, never from the listing alone, because the listing shows a half-published view
+as it shows a whole one.)
+
+**What recovery does by itself.** Not a stop, and nothing for you to do. Recovery reads the act's record (the name, the
+view it was forked from, and the block that view was at), `prikk branch list --all` (closed views included) and
+`prikk doctor`, and takes exactly one of these:
+
+- the view is listed at the block it was forked from and `doctor` names nothing unfinished: the act ends *created*
+  (`end-view-created`);
+- the same, with `doctor` naming exactly that one ref's publication and nothing else: the step `complete-view-creation`,
+  which is prikk's own recommendation (`prikk ref complete heads/<name>`, not `seal`), run by the signer once, and then
+  the act ends *created*. The signer does it only when the recovery act records that very step for that very creation,
+  `doctor` names exactly that lead, and prikk's own `ref complete heads/<name> --plan-only` says it will append the
+  first record of the ref (no log tip, sequence 1, nothing to remove first) onto the block the view's source ref points
+  at; afterwards `doctor` must no longer name it. It makes no block, and a key retirement that is not finished pauses
+  it as it pauses a seal;
+- the view is not listed and `doctor` names nothing unfinished: nothing happened, and the act ends *failed*
+  (`interrupted`; `end-view-failed`), which frees the name.
+
+**`STOP (view-creation-unclear)`.** Anything else is a stop, with the repository exactly as recovery found it: the
+view is listed at **another block** than the one it was forked from, or its block cannot be read, or the view is not
+listed while `doctor` names its publication, or a patch is queued, a seal's cleanup is pending or a commit is torn
+beside it. (A second error in `doctor`, or a lead for another ref, is `doctor-trouble`; two creations that never
+ended are `several-acts`.) The act stays open and the wiki stays flagged.
+
+**Look, without changing anything.** From the repository directory (as under `foreign-queued-patch`):
+
+```sh
+inklkunn wiki recover <wiki> --plan   # the act, what prikk shows, and the STOP with its meaning
+prikk branch list --all               # the view, with its closed mark; the name is never made again if it is closed
+prikk doctor                          # the error PRIKK-VERIFY-REF-POINTER-LEADS-LOG, if the publication is unfinished
+prikk ref complete heads/<name> --plan-only   # what prikk would append: the ref, the target block, the sequence; writes nothing
+prikk log --ref heads/<name> --limit 1        # the view's newest block: it must be the one the plan names
+```
+
+**What you may do.** If the output shows the lead for exactly that view at the block it was forked from, the stop is not
+this one: run `inklkunn wiki recover <wiki>` and recovery takes the step. For the stop itself, keep the output above
+and wait, as under `foreign-queued-patch`: the wiki serves every read, the history is untouched, and `inklkunn wiki
+export` writes it to somewhere safe meanwhile. Which block the view should have is a decision about the wiki's
+records, for the architect, who needs that output. **Do not** run `prikk ref complete`, `prikk branch close` or any
+`prikk doctor` repair yourself on a wiki the service runs: recovery runs the first only bound to its recorded act,
+and none is a step to take beside a service that may be writing. **After.** Nothing changed: the plan stops at
+`view-creation-unclear` again until the state is one of the three above.

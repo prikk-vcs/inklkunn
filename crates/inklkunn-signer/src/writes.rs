@@ -15,8 +15,8 @@ use serde::Deserialize;
 use crate::cost::{self, WriteVerb};
 use crate::keys::{KeyDir, Role};
 use crate::recover::text::{
-    Discarded, DoctorReport, HeldLock, parse_discard_output, parse_doctor_output,
-    parse_unlock_output,
+    CompletionPlan, Discarded, DoctorReport, HeldLock, parse_completion_plan, parse_discard_output,
+    parse_doctor_output, parse_unlock_output,
 };
 
 /// Why a write did not happen (or did not complete).
@@ -993,6 +993,37 @@ impl Writes {
             &["commit", "--ref", view, "-m", message],
         )
         .map(|_| ())
+    }
+
+    /// `prikk ref complete <name> --plan-only` under the maintainer seed (prikk names the completing key even for the
+    /// plan, so the seed is needed; the plan writes nothing): what the completion of an interrupted publication would
+    /// append, read strictly.
+    pub(crate) fn ref_complete_plan(
+        &self,
+        repo: &Path,
+        seeds: &impl SeedAccess,
+        name: &str,
+    ) -> Result<CompletionPlan, SignerError> {
+        let out = self.write_signed(
+            repo,
+            seeds,
+            Role::Maintainer,
+            0,
+            &["ref", "complete", name, "--plan-only"],
+        )?;
+        parse_completion_plan(&String::from_utf8_lossy(&out)).map_err(SignerError::Damaged)
+    }
+
+    /// `prikk ref complete <name>` under the maintainer seed: finish another publication's interrupted tail (the one
+    /// signed ref-log record it lacked). **The caller has decided** (recovery, bound to a recorded act).
+    pub(crate) fn ref_complete(
+        &self,
+        repo: &Path,
+        seeds: &impl SeedAccess,
+        name: &str,
+    ) -> Result<(), SignerError> {
+        self.write_signed(repo, seeds, Role::Maintainer, 0, &["ref", "complete", name])
+            .map(|_| ())
     }
 
     /// `prikk seal --allow-no-audit --ref <view>` under the maintainer seed.

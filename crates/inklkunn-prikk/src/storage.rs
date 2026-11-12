@@ -665,6 +665,12 @@ pub type Result<T> = std::result::Result<T, StorageError>;
 pub trait Storage: Send + Sync {
     /// The open views and their state ids.
     fn views(&self, repo: &Path) -> Result<Views>;
+    /// Every view, **closed ones included** (`branch list --all`), each with its `closed` flag. A closed view keeps
+    /// its name: prikk makes no branch of that name again (handoff 005 K12). The default is the open views, for an
+    /// implementation that has no closed ones to show; the driver answers the full listing.
+    fn all_views(&self, repo: &Path) -> Result<Views> {
+        self.views(repo)
+    }
     /// The files at a point, optionally under a path prefix (whole components).
     fn tree(&self, repo: &Path, point: &Point, prefix: Option<&str>) -> Result<Tree>;
     /// One file's metadata at a point.

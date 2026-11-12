@@ -538,6 +538,16 @@ impl Storage for PrikkCli {
         )
     }
 
+    fn all_views(&self, repo: &Path) -> Result<Views> {
+        self.run_json(
+            ReadVerb::Branch,
+            repo,
+            None,
+            &["branch", "list", "--all", "--format", "json"],
+            schema::BRANCH_LIST,
+        )
+    }
+
     fn tree(&self, repo: &Path, point: &Point, prefix: Option<&str>) -> Result<Tree> {
         check_point("tree", point)?;
         if let Some(p) = prefix {

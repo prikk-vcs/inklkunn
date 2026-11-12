@@ -115,7 +115,8 @@ pub enum Purpose {
     Refresh,
     /// Recovery (handoff 004 T5).
     Recovery,
-    /// A view's creation (handoff 005 K-T8): one ref published, nothing in the history.
+    /// A view's creation (handoff 005 K-T8): one ref published, nothing in the history; but a holder that died
+    /// in the middle of one may have left the ref half published (K4), so it is recovered.
     View,
 }
 
@@ -134,11 +135,12 @@ impl Purpose {
 }
 
 /// Does a lease held for `purpose` (the word of a holder record) leave nothing in the repository to recover when
-/// its holder dies? An export and a refresh write nothing to the history, and a view's creation publishes one ref
-/// in one call, so a holder that died in the middle of one is no reason to flag the wiki *needs recovery*. The
-/// view's own record settles itself the next time a view is made.
+/// its holder dies? An export and a refresh write nothing to the repository, so a holder that died in the middle
+/// of one is no reason to flag the wiki *needs recovery*. **A view's creation is not one of them** (handoff 005
+/// K4): prikk's `branch create` killed between its two writes leaves the ref half published, and while it is, every
+/// later publication refuses; recovery reads what prikk shows and finishes it or stops.
 pub(crate) fn leaves_nothing_to_recover(purpose: &str) -> bool {
-    [Purpose::Export, Purpose::Refresh, Purpose::View]
+    [Purpose::Export, Purpose::Refresh]
         .iter()
         .any(|p| p.as_str() == purpose)
 }

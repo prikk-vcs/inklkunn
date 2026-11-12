@@ -25,6 +25,10 @@ pub const ACTIVE_REF_METADATA_DEBRIS_CODE: &str = "PRIKK-DOCTOR-ACTIVE-REF-METAD
 /// agree but matching active publication state remains", recommending `prikk seal --allow-no-audit` for the ref
 /// (measured on prikk 0.55.0; handoff 004, P15).
 pub const ACTIVE_CLEANUP_PENDING_CODE: &str = "PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING";
+/// The error prikk gives when a ref's publication was begun and not finished: "authoritative pointer leads committed
+/// ref log by one transition", recommending ``prikk ref complete <ref>`` (prikk 0.49.0 and later, RFC 165 R4; measured on
+/// 0.55.0 for an interrupted `branch create`; handoff 005 K4). While it stands, every other publication refuses.
+pub const POINTER_LEADS_LOG_CODE: &str = "PRIKK-VERIFY-REF-POINTER-LEADS-LOG";
 
 /// The kinds of lock an acceptance leaves behind: `commit` takes the active session's lock and the object store's,
 /// and `seal` a ref's lock and the ref pointer index's and ref log's. A lock of any other kind (the trust policy's,
@@ -100,6 +104,29 @@ impl Diagnostic {
     /// The error of exactly [`ACTIVE_CLEANUP_PENDING_CODE`]: a publication whose cleanup a `seal` did not finish.
     pub fn is_cleanup_pending(&self) -> bool {
         self.severity == Severity::Error && self.code == ACTIVE_CLEANUP_PENDING_CODE
+    }
+
+    /// The ref of an error of exactly [`POINTER_LEADS_LOG_CODE`] whose recommendation is, word for word, prikk's own
+    /// ``run `prikk ref complete <ref>`; doctor does not sign or append`` (0.55.0): the interrupted publication of
+    /// that one ref. `None` for any other code, any other severity and any other wording.
+    pub fn lead_ref(&self) -> Option<&str> {
+        if self.severity != Severity::Error || self.code != POINTER_LEADS_LOG_CODE {
+            return None;
+        }
+        let ref_name = self
+            .recommendation
+            .as_deref()?
+            .strip_prefix("run `prikk ref complete ")?
+            .strip_suffix("`; doctor does not sign or append")?;
+        let named_in_message = self
+            .message
+            .ends_with(&format!("; run `prikk ref complete {ref_name}`"));
+        (named_in_message
+            && !ref_name.is_empty()
+            && ref_name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'/' | b'_' | b'-' | b'.')))
+        .then_some(ref_name)
     }
 
     /// The `--flags` this diagnostic's message and recommendation name (without `--plan-only`), in order, without
@@ -209,6 +236,20 @@ impl DoctorReport {
             .iter()
             .filter(|d| d.severity != Severity::Info && !d.is_unreached_note());
         matches!((named.next(), named.next()), (Some(d), None) if d.is_cleanup_pending())
+    }
+
+    /// `doctor` names **exactly** one thing, an interrupted publication of one ref ([`Diagnostic::lead_ref`]), and
+    /// returns that ref: beside it there is only information and unreached-object notes. Any other error or warning,
+    /// a second lead, or a lead whose wording is not prikk's, is not this.
+    pub fn only_ref_lead(&self) -> Option<&str> {
+        let mut named = self
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity != Severity::Info && !d.is_unreached_note());
+        match (named.next(), named.next()) {
+            (Some(d), None) => d.lead_ref(),
+            _ => None,
+        }
     }
 
     /// The diagnostics that stand in the way of every automatic step: errors and warnings that are not an unreached
@@ -388,6 +429,85 @@ pub fn parse_unlock_output(stdout: &str) -> Result<Vec<HeldLock>, String> {
         return Err(unreadable("empty unlock output"));
     }
     Ok(out)
+}
+
+/// What ``prikk ref complete <ref> --plan-only`` said it would write (prikk 0.55.0), read strictly: the signer binds the
+/// step to a recorded view creation by these fields, so a text of any other shape is an error and nothing is
+/// concluded from it. `kind` is kept as prikk prints it (`Branch`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompletionPlan {
+    /// The ref it would complete.
+    pub ref_name: String,
+    /// The leading RefState (64 hex characters).
+    pub leading_ref_state: String,
+    /// The target block (64 hex characters).
+    pub target: String,
+    /// The kind of the ref, as printed.
+    pub kind: String,
+    /// The ref log's tip for this ref; `None` for a first publication.
+    pub log_tip: Option<String>,
+    /// The sequence number of the record it would append.
+    pub sequence: u64,
+    /// Bytes of a partial tail its write would remove first.
+    pub partial_tail_bytes: u64,
+}
+
+fn is_id(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// Read the stdout of ``prikk ref complete <ref> --plan-only``: eight lines, in prikk's order, nothing else.
+pub fn parse_completion_plan(stdout: &str) -> Result<CompletionPlan, String> {
+    let bad = |what: &str| format!("unreadable `ref complete --plan-only` output: {what}");
+    let mut lines = stdout.lines().filter(|l| !l.trim().is_empty());
+    let mut field = |name: &str| -> Result<String, String> {
+        lines
+            .next()
+            .and_then(|l| l.strip_prefix(name))
+            .and_then(|l| l.strip_prefix(": "))
+            .map(|v| v.trim().to_owned())
+            .ok_or_else(|| bad(&format!("expected the line `{name}: …`")))
+    };
+    let ref_name = field("ref")?;
+    let leading = field("leading RefState")?;
+    let _original_signer = field("original signer")?;
+    let target_line = field("target")?;
+    let log_tip = field("log tip")?;
+    let sequence = field("sequence")?;
+    let _completing_key = field("completing key")?;
+    let tail = field("partial tail to remove")?;
+    if lines.next().is_some() {
+        return Err(bad("text after the last line"));
+    }
+    let (target, kind) = target_line
+        .split_once(" (")
+        .and_then(|(t, k)| k.strip_suffix(')').map(|k| (t, k)))
+        .ok_or_else(|| bad("the target is not `<block id> (<kind>)`"))?;
+    if !is_id(&leading) || !is_id(target) {
+        return Err(bad("an id is not 64 lower-case hex characters"));
+    }
+    let log_tip = if log_tip.starts_with("(none") {
+        None
+    } else if is_id(&log_tip) {
+        Some(log_tip)
+    } else {
+        return Err(bad("the log tip is neither `(none …)` nor an id"));
+    };
+    let partial_tail_bytes = tail
+        .strip_suffix(" byte(s)")
+        .and_then(|n| n.parse().ok())
+        .ok_or_else(|| bad("the partial tail is not `<n> byte(s)`"))?;
+    Ok(CompletionPlan {
+        ref_name,
+        leading_ref_state: leading,
+        target: target.to_owned(),
+        kind: kind.to_owned(),
+        log_tip,
+        sequence: sequence
+            .parse()
+            .map_err(|_| bad("the sequence is not a number"))?,
+        partial_tail_bytes,
+    })
 }
 
 /// What `doctor --discard-damaged-commits` said it did, as far as it could be read. Every field is a courtesy for

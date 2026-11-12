@@ -61,6 +61,7 @@ fn dir_under(base: &Path, tag: &str) -> Dir {
 struct Ledger {
     pending: Mutex<HashMap<String, ExpectedMessage>>,
     acts: Mutex<HashMap<String, RecoveryFacts>>,
+    views: Mutex<HashMap<String, ViewCreationFacts>>,
 }
 
 impl AcceptanceLedger for Ledger {
@@ -68,8 +69,11 @@ impl AcceptanceLedger for Ledger {
         Ok(self.pending.lock().unwrap().get(token.as_str()).cloned())
     }
 
-    fn view_creation(&self, _: &ViewCreationAct) -> Result<Option<ViewCreationFacts>, LedgerError> {
-        Ok(None)
+    fn view_creation(
+        &self,
+        act: &ViewCreationAct,
+    ) -> Result<Option<ViewCreationFacts>, LedgerError> {
+        Ok(self.views.lock().unwrap().get(act.as_str()).cloned())
     }
 
     fn recovery(&self, act: &RecoveryToken) -> Result<Option<RecoveryFacts>, LedgerError> {
@@ -93,6 +97,18 @@ CTL="{ctl}"
 verb="$1"
 if [ -e "$CTL/fail-$verb" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
 if [ "$1 $2 $3" = "trust maintainer remove" ] && [ -e "$CTL/fail-trust-remove" ]; then echo "error: precondition not met: injected failure of the removal" >&2; exit 1; fi
+if [ "$1 $2" = "branch create" ] && [ -e "$CTL/leads-after-branch-create" ]; then
+  # A `branch create` killed after it published the ref's pointer and before it appended the ref log, made on cue:
+  # the real verb runs to completion, and the ref log is put back as it was (the pointer then leads it by one transition).
+  mkdir -p "$CTL/kept-ref-log"
+  for f in .prikk/refs/containers/log-*.container; do cp "$f" "$CTL/kept-ref-log/"; done
+  "{real}" "$@" > /dev/null 2>&1
+  for f in "$CTL"/kept-ref-log/log-*.container; do cp "$f" .prikk/refs/containers/; done
+  echo "error: the call was stopped after branch create had published its pointer" >&2; exit 1
+fi
+if [ "$verb" = doctor ] && [ $# -eq 1 ] && [ -e "$CTL/say-doctor" ]; then cat "$CTL/say-doctor"; exit 1; fi
+if [ "$1 $2" = "ref complete" ] && [ -z "$4" ] && [ -e "$CTL/ref-complete-does-nothing" ]; then echo "$3 completed"; exit 0; fi
+if [ "$1 $2" = "ref complete" ] && [ "$4" = "--plan-only" ] && [ -e "$CTL/say-completion-plan" ]; then cat "$CTL/say-completion-plan"; exit 0; fi
 if [ "$verb" = status ] && [ $# -eq 1 ] && [ -e "$CTL/say-status-text" ]; then cat "$CTL/say-status-text"; exit 0; fi
 if [ "$verb" = verify ] && [ $# -eq 1 ] && [ -e "$CTL/say-verify-text" ]; then cat "$CTL/say-verify-text"; exit 1; fi
 if [ "$verb" = verify ] && [ $# -gt 1 ] && [ -e "$CTL/say-verify-json" ]; then cat "$CTL/say-verify-json"; exit 1; fi
@@ -1407,4 +1423,410 @@ fn a_queued_patch_is_not_sealed_while_the_key_record_cannot_be_read() {
     f.leased(|| f.signer.seal_queued(&f.wiki, MAIN, &act, &p.token))
         .expect("sealed once the record can be read");
     assert_eq!(f.blocks(), blocks + 1);
+}
+
+// ---- a view creation killed after it published the ref's pointer (handoff 005 K4) ----
+
+const DRAFT: &str = "heads/draft";
+const OTHER: &str = "heads/other";
+
+impl Fixture {
+    /// Record a view creation (the ledger answers for it) and name it to the signer.
+    fn record_view(&self, id: &str, name: &str, from: &str) -> ViewCreationAct {
+        self.ledger.views.lock().unwrap().insert(
+            id.to_owned(),
+            ViewCreationFacts {
+                wiki: self.wiki.clone(),
+                name: name.to_owned(),
+                from: from.to_owned(),
+            },
+        );
+        ViewCreationAct::new(id)
+    }
+
+    /// A `branch create` killed after it published the ref's pointer and before it appended the ref log (made on cue
+    /// by the stand-in, which runs the real verb and puts the ref log back): the view is listed, `verify` fails, and
+    /// `doctor` names exactly one thing, the interrupted publication of that ref. Returns the recorded creation.
+    fn leave_a_lead(&self, id: &str, name: &str, from: &str) -> ViewCreationAct {
+        let act = self.record_view(id, name, from);
+        self.say("leads-after-branch-create", "");
+        let made = self.signer.create_view(&self.wiki, name, from, &act);
+        self.unsay("leads-after-branch-create");
+        assert!(
+            matches!(
+                &made,
+                Err(AcceptError::Refused(_) | AcceptError::Unavailable(_))
+            ),
+            "{made:?}"
+        );
+        assert!(
+            self.listed().contains(&name.to_owned()),
+            "the view is listed"
+        );
+        assert!(!self.verify_ok(), "and the repository does not verify");
+        assert_eq!(
+            self.witnesses.doctor(&self.wiki).unwrap().only_ref_lead(),
+            Some(name)
+        );
+        act
+    }
+
+    /// The names `branch list` shows, closed ones included.
+    fn listed(&self) -> Vec<String> {
+        self.prikk_json(&["branch", "list", "--all", "--format", "json"])
+            .pointer("/branches")
+            .and_then(serde_json::Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|b| b.get("ref_name").and_then(serde_json::Value::as_str))
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn tip_of(&self, view: &str) -> Option<String> {
+        self.prikk_json(&["log", "--ref", view, "--limit", "1", "--format", "json"])
+            .pointer("/blocks/0/block_id")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+    }
+
+    fn view_op(&self, id: &str, view: &str) -> RecoveryOp {
+        RecoveryOp::CompleteViewCreation {
+            creation: id.to_owned(),
+            view: view.to_owned(),
+        }
+    }
+
+    fn complete_view(
+        &self,
+        rec: &RecoveryToken,
+        view: &str,
+        creation: &ViewCreationAct,
+    ) -> Result<(), RecoverError> {
+        self.leased(|| {
+            self.signer
+                .complete_view_creation(&self.wiki, view, rec, creation)
+        })
+    }
+}
+
+#[test]
+fn a_view_creation_killed_after_the_pointer_is_finished_with_ref_complete_and_the_wiki_publishes_again()
+ {
+    let Some(f) = fixture("view-lead") else {
+        return;
+    };
+    let creation = f.leave_a_lead("va-1", DRAFT, MAIN);
+    let blocks = f.blocks();
+    // While it stands, every other publication refuses (prikk RFC 165 R3): that is why it must be recovered.
+    let other = f.record_view("va-0", OTHER, MAIN);
+    let blocked = f.signer.create_view(&f.wiki, OTHER, MAIN, &other);
+    assert!(
+        matches!(&blocked, Err(AcceptError::Refused(m)) if m.contains("interrupted publication")),
+        "{blocked:?}"
+    );
+    assert!(!f.listed().contains(&OTHER.to_owned()));
+    // prikk's own recommendation, bound to the recorded recovery act.
+    let rec = f.act(vec![f.view_op("va-1", DRAFT)]);
+    f.complete_view(&rec, DRAFT, &creation).expect("completed");
+    // It made no block; the view is at the block it was forked from; prikk is content with the repository.
+    assert_eq!(f.blocks(), blocks, "main is as it was");
+    assert_eq!(f.tip_of(DRAFT), Some(f.first_block.clone()));
+    assert_eq!(f.tip_of(DRAFT), f.tip_of(MAIN));
+    assert!(f.verify_ok());
+    assert!(
+        f.witnesses
+            .doctor(&f.wiki)
+            .unwrap()
+            .diagnostics
+            .iter()
+            .all(|d| d.lead_ref().is_none())
+    );
+    assert!(f.worktree_clean());
+    // Once is once: with nothing unfinished, the operation refuses and appends nothing.
+    let again = f.complete_view(&rec, DRAFT, &creation);
+    assert!(
+        matches!(again, Err(RecoverError::DoesNotMatch(_))),
+        "{again:?}"
+    );
+    // And the wiki publishes again: the view that was refused a moment ago is made.
+    f.signer
+        .create_view(&f.wiki, OTHER, MAIN, &other)
+        .expect("a view is made once the interrupted one is finished");
+    assert!(f.listed().contains(&OTHER.to_owned()));
+    assert!(f.verify_ok());
+}
+
+#[test]
+fn completing_a_view_creation_is_bound_to_the_lease_the_recorded_act_and_the_recorded_creation() {
+    let Some(f) = fixture("view-lead-guards") else {
+        return;
+    };
+    let creation = f.leave_a_lead("va-1", DRAFT, MAIN);
+    let good = f.act(vec![f.view_op("va-1", DRAFT)]);
+    // No lease lent: refused, whatever the record says; and a lease that is not lent to this thread is no lease.
+    assert_eq!(
+        f.signer
+            .complete_view_creation(&f.wiki, DRAFT, &good, &creation),
+        Err(RecoverError::NoLease)
+    );
+    let lease = f.leases.try_acquire(&f.wiki).expect("free");
+    assert_eq!(
+        f.signer
+            .complete_view_creation(&f.wiki, DRAFT, &good, &creation),
+        Err(RecoverError::NoLease)
+    );
+    let scope = lease.scope();
+    let ask = |rec: &RecoveryToken, view: &str, creation: &ViewCreationAct| {
+        f.signer
+            .complete_view_creation(&f.wiki, view, rec, creation)
+    };
+    // Lent, but the recovery act is not recorded.
+    assert_eq!(
+        ask(&RecoveryToken::new("never-recorded"), DRAFT, &creation),
+        Err(RecoverError::NotRecorded)
+    );
+    // Recorded, but it names another operation, another view, or another creation.
+    for (what, ops) in [
+        ("the discard only", vec![RecoveryOp::DiscardDamaged]),
+        (
+            "the step of a killed seal, with the same words",
+            vec![RecoveryOp::CompletePublication {
+                acceptance: "va-1".to_owned(),
+                view: DRAFT.to_owned(),
+            }],
+        ),
+        ("another view", vec![f.view_op("va-1", OTHER)]),
+        ("another creation", vec![f.view_op("va-2", DRAFT)]),
+        ("nothing", vec![]),
+    ] {
+        let rec = f.act(ops);
+        assert_eq!(
+            ask(&rec, DRAFT, &creation),
+            Err(RecoverError::NotRecorded),
+            "{what}"
+        );
+    }
+    // An act of another wiki is not this wiki's.
+    let foreign = RecoveryToken::new("foreign");
+    f.ledger.acts.lock().unwrap().insert(
+        foreign.as_str().to_owned(),
+        RecoveryFacts {
+            wiki: WikiId::new(),
+            ops: vec![f.view_op("va-1", DRAFT)],
+        },
+    );
+    assert_eq!(
+        ask(&foreign, DRAFT, &creation),
+        Err(RecoverError::NotRecorded)
+    );
+    // A view is `heads/<name>`.
+    let tags = f.act(vec![f.view_op("va-1", "tags/draft")]);
+    assert!(matches!(
+        ask(&tags, "tags/draft", &creation),
+        Err(RecoverError::Refused(_))
+    ));
+    // The creation: unknown to the ledger, another wiki's, or naming another view than the one asked for.
+    assert_eq!(
+        ask(&good, DRAFT, &ViewCreationAct::new("va-unknown")),
+        Err(RecoverError::NotRecorded)
+    );
+    f.ledger.views.lock().unwrap().insert(
+        "va-foreign".to_owned(),
+        ViewCreationFacts {
+            wiki: WikiId::new(),
+            name: DRAFT.to_owned(),
+            from: MAIN.to_owned(),
+        },
+    );
+    let foreign_op = f.act(vec![f.view_op("va-foreign", DRAFT)]);
+    assert_eq!(
+        ask(&foreign_op, DRAFT, &ViewCreationAct::new("va-foreign")),
+        Err(RecoverError::NotRecorded)
+    );
+    let elsewhere = f.record_view("va-other", OTHER, MAIN);
+    let elsewhere_op = f.act(vec![f.view_op("va-other", DRAFT)]);
+    assert_eq!(
+        ask(&elsewhere_op, DRAFT, &elsewhere),
+        Err(RecoverError::NotRecorded)
+    );
+    drop(scope);
+    // Nothing of the above finished anything.
+    assert!(!f.verify_ok());
+    assert_eq!(
+        f.witnesses.doctor(&f.wiki).unwrap().only_ref_lead(),
+        Some(DRAFT)
+    );
+}
+
+#[test]
+fn a_view_creation_is_completed_only_when_prikk_names_exactly_that_one_ref() {
+    let Some(f) = fixture("view-lead-doctor") else {
+        return;
+    };
+    let creation = f.leave_a_lead("va-1", DRAFT, MAIN);
+    let rec = f.act(vec![f.view_op("va-1", DRAFT)]);
+    let lead = "error [PRIKK-VERIFY-REF-POINTER-LEADS-LOG]: authoritative pointer leads committed ref log by one transition; run `prikk ref complete heads/draft`\n  recommendation: run `prikk ref complete heads/draft`; doctor does not sign or append\n";
+    let report = |extra: &str, errors: u32| {
+        format!(
+            "doctor repository: /srv/r/.prikk\n{extra}{lead}issue summary: errors={}, warnings=0, info=0\n",
+            errors + 1
+        )
+    };
+    // Something else besides it, or a lead for another ref instead of it: nothing is done.
+    for (what, text) in [
+        (
+            "another error beside it",
+            report(
+                "error [PRIKK-DOCTOR-OBJECT-MISSING]: an object is missing\n",
+                1,
+            ),
+        ),
+        (
+            "the cleanup of a seal beside it",
+            report(
+                "error [PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING]: pointer and log agree\n  recommendation: run signer-backed `prikk seal --allow-no-audit` for the affected ref\n",
+                1,
+            ),
+        ),
+        (
+            "a lead for another ref only",
+            "doctor repository: /srv/r/.prikk\nerror [PRIKK-VERIFY-REF-POINTER-LEADS-LOG]: authoritative pointer leads committed ref log by one transition; run `prikk ref complete heads/other`\n  recommendation: run `prikk ref complete heads/other`; doctor does not sign or append\nissue summary: errors=1, warnings=0, info=0\n".to_owned(),
+        ),
+        (
+            "a clean report",
+            "doctor repository: /srv/r/.prikk\ninfo [PRIKK-DOCTOR-VERIFY-OK]: done\nissue summary: errors=0, warnings=0, info=1\n".to_owned(),
+        ),
+    ] {
+        f.say("say-doctor", &text);
+        let r = f.complete_view(&rec, DRAFT, &creation);
+        assert!(matches!(&r, Err(RecoverError::DoesNotMatch(_))), "{what}: {r:?}");
+        assert!(!f.verify_ok(), "{what}: nothing was completed");
+    }
+    f.unsay("say-doctor");
+    // The report as it is, and the step is taken.
+    f.complete_view(&rec, DRAFT, &creation).expect("completed");
+    assert!(f.verify_ok());
+}
+
+#[test]
+fn a_view_creation_is_completed_only_onto_the_block_its_source_points_at_as_a_first_publication() {
+    let Some(f) = fixture("view-lead-plan") else {
+        return;
+    };
+    // A view of an older block, then main moves on: a creation recorded as forked from that view does not own a ref
+    // that points at main's block.
+    let older = f.record_view("va-old", "heads/older", MAIN);
+    f.signer
+        .create_view(&f.wiki, "heads/older", MAIN, &older)
+        .expect("a view");
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    f.signer
+        .accept(&f.wiki, MAIN, &p.token, &p.change)
+        .expect("main moves on");
+    assert_ne!(f.tip_of("heads/older"), f.tip_of(MAIN));
+    let creation = f.leave_a_lead("va-1", DRAFT, MAIN);
+    let misrecorded = f.record_view("va-bad", DRAFT, "heads/older");
+    let rec = f.act(vec![f.view_op("va-bad", DRAFT)]);
+    let r = f.complete_view(&rec, DRAFT, &misrecorded);
+    assert!(
+        matches!(&r, Err(RecoverError::DoesNotMatch(m)) if m.contains("source points at")),
+        "{r:?}"
+    );
+    assert!(!f.verify_ok(), "nothing was completed");
+    // prikk's own plan must be the first publication of this ref onto that block, with nothing to remove first.
+    let rec = f.act(vec![f.view_op("va-1", DRAFT)]);
+    let target = f.tip_of(MAIN).unwrap();
+    let plan = |ref_name: &str, tip: &str, seq: u32, tail: u32, kind: &str, target: &str| {
+        format!(
+            "ref: {ref_name}\nleading RefState: {}\noriginal signer: ed25519-d03c81318ad222b9\ntarget: {target} ({kind})\nlog tip: {tip}\nsequence: {seq}\ncompleting key: ed25519-d03c81318ad222b9\npartial tail to remove: {tail} byte(s)\n",
+            "a".repeat(64)
+        )
+    };
+    let none = "(none -- first publication for this ref)";
+    for (what, text) in [
+        ("another ref", plan(OTHER, none, 1, 0, "Branch", &target)),
+        (
+            "a log tip",
+            plan(DRAFT, &"c".repeat(64), 1, 0, "Branch", &target),
+        ),
+        (
+            "a later sequence",
+            plan(DRAFT, none, 2, 0, "Branch", &target),
+        ),
+        (
+            "a tail to remove",
+            plan(DRAFT, none, 1, 3, "Branch", &target),
+        ),
+        ("a tag", plan(DRAFT, none, 1, 0, "Tag", &target)),
+        (
+            "another block",
+            plan(DRAFT, none, 1, 0, "Branch", &"d".repeat(64)),
+        ),
+        ("an unreadable plan", "error: something else\n".to_owned()),
+    ] {
+        f.say("say-completion-plan", &text);
+        let r = f.complete_view(&rec, DRAFT, &creation);
+        assert!(
+            matches!(
+                &r,
+                Err(RecoverError::DoesNotMatch(_) | RecoverError::Unavailable(_))
+            ),
+            "{what}: {r:?}"
+        );
+        assert!(!f.verify_ok(), "{what}: nothing was completed");
+    }
+    f.unsay("say-completion-plan");
+    // The plan as prikk prints it, and the step is taken: the ref points at main's block, not at the older one.
+    f.complete_view(&rec, DRAFT, &creation).expect("completed");
+    assert!(f.verify_ok());
+    assert_eq!(f.tip_of(DRAFT), f.tip_of(MAIN));
+}
+
+#[test]
+fn a_completion_that_left_the_publication_unfinished_is_not_called_done() {
+    let Some(f) = fixture("view-lead-nothing-done") else {
+        return;
+    };
+    let creation = f.leave_a_lead("va-1", DRAFT, MAIN);
+    let rec = f.act(vec![f.view_op("va-1", DRAFT)]);
+    // prikk answers that it completed the ref and did not: the step does not say it is done.
+    f.say("ref-complete-does-nothing", "");
+    let r = f.complete_view(&rec, DRAFT, &creation);
+    assert!(
+        matches!(&r, Err(RecoverError::DoesNotMatch(m)) if m.contains("still reports")),
+        "{r:?}"
+    );
+    assert!(!f.verify_ok());
+    f.unsay("ref-complete-does-nothing");
+    f.complete_view(&rec, DRAFT, &creation).expect("completed");
+    assert!(f.verify_ok());
+}
+
+#[test]
+fn a_view_creation_is_not_completed_while_a_retirement_is_unfinished_or_the_key_record_cannot_be_read()
+ {
+    let Some(f) = fixture("view-lead-pause") else {
+        return;
+    };
+    let creation = f.leave_a_lead("va-1", DRAFT, MAIN);
+    let rec = f.act(vec![f.view_op("va-1", DRAFT)]);
+    // The pause fails closed (X4): a key record that cannot be read refuses the step before the ledger is asked and
+    // before any seed is read, and with the record readable again the very same step is taken.
+    let path = f._tmp.0.join("keys").join(format!("{}.key.json", f.wiki));
+    let good = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, "this is not a key record").unwrap();
+    let r = f.complete_view(&rec, DRAFT, &creation);
+    assert!(
+        matches!(&r, Err(RecoverError::Unavailable(why))
+            if why.contains("cannot be told whether a change to its keys is unfinished")
+                && why.contains("nothing was written")),
+        "{r:?}"
+    );
+    assert!(!f.verify_ok(), "nothing was completed");
+    std::fs::write(&path, good).unwrap();
+    f.complete_view(&rec, DRAFT, &creation).expect("completed");
+    assert!(f.verify_ok());
 }

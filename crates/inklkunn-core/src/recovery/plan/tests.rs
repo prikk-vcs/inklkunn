@@ -10,7 +10,7 @@ use inklkunn_signer::recover::text::{
 use inklkunn_signer::{RecoveryOp, UNTRACEABLE_SENTENCE, WorktreeState};
 use inklkunn_store::{
     AcceptanceId, AccountId, LeaseHolder, ProposalId, ProposalState, RecoveryFlag, RecoveryReason,
-    SystemActId, WikiId,
+    SystemActId, ViewActId, WikiId,
 };
 
 use super::*;
@@ -107,6 +107,7 @@ fn flagged() -> Witness {
         dead_holder: None,
         interrupted_recoveries: 0,
         acts: Vec::new(),
+        view_acts: Vec::new(),
         status: status(Vec::new(), 0),
         doctor: doctor(vec![diag(Severity::Info, "PRIKK-DOCTOR-VERIFY-OK", None)]),
         retirement: None,
@@ -1074,4 +1075,306 @@ fn a_pending_cleanup_beside_publication_trust_findings_nothing_excused_is_a_stop
     // And the cleanup alone (the findings taken out because the signer excused them) is the step.
     w.doctor = doctor(vec![cleanup_error()]);
     assert_eq!(build(&w).stop, None);
+}
+
+// ---- a view creation that never ended (handoff 005 K4) ----
+
+const DRAFT: &str = "heads/draft";
+const FORKED_AT: char = 'f';
+
+/// prikk's own words for an interrupted publication of `view` (measured on 0.55.0 for a killed `branch create`).
+fn lead_error(view: &str) -> Diagnostic {
+    Diagnostic {
+        severity: Severity::Error,
+        code: "PRIKK-VERIFY-REF-POINTER-LEADS-LOG".to_owned(),
+        message: format!(
+            "authoritative pointer leads committed ref log by one transition; run `prikk ref complete {view}`"
+        ),
+        recommendation: Some(format!(
+            "run `prikk ref complete {view}`; doctor does not sign or append"
+        )),
+    }
+}
+
+fn view_act(shown: ViewShown) -> ViewActWitness {
+    ViewActWitness {
+        act: ViewActId::new(),
+        view: DRAFT.to_owned(),
+        from_block: FORKED_AT.to_string().repeat(64),
+        shown,
+    }
+}
+
+fn at_forked_block() -> ViewShown {
+    ViewShown::Shown {
+        tip: FORKED_AT.to_string().repeat(64),
+    }
+}
+
+/// A flagged wiki whose only unfinished act is a view creation, shown as given.
+fn view_creation(shown: ViewShown, lead: bool) -> Witness {
+    let mut w = flagged();
+    w.view_acts = vec![view_act(shown)];
+    if lead {
+        w.doctor = doctor(vec![lead_error(DRAFT)]);
+    }
+    w
+}
+
+#[test]
+fn a_view_creation_whose_view_is_there_and_whose_publication_is_whole_ends_created() {
+    let w = view_creation(at_forked_block(), false);
+    let act = nth(&w.view_acts, 0).act.clone();
+    let plan = build(&w);
+    assert_eq!(plan.stop, None, "{:#?}", plan.lines());
+    assert_eq!(
+        names(&plan),
+        ["end-view-created", "verify", "reconcile", "clear-flag"]
+    );
+    assert!(matches!(
+        plan.steps.first(),
+        Some(Step::EndViewCreated { act: a, view }) if *a == act && view == DRAFT
+    ));
+    // The signer is asked for nothing.
+    assert!(plan.ops().is_empty());
+    assert_eq!(plan.view.as_deref(), Some(DRAFT));
+    assert!(
+        plan.lines().iter().any(|l| l.contains(
+            "never ended (prikk shows: the view, at the block it was forked from; doctor: its publication is not named)"
+        )),
+        "{:#?}",
+        plan.lines()
+    );
+}
+
+#[test]
+fn a_view_creation_whose_publication_prikk_names_unfinished_is_completed_with_ref_complete_and_then_ends_created()
+ {
+    let w = view_creation(at_forked_block(), true);
+    let act = nth(&w.view_acts, 0).act.clone();
+    let plan = build(&w);
+    assert_eq!(plan.stop, None, "{:#?}", plan.lines());
+    assert_eq!(
+        names(&plan),
+        [
+            "complete-view-creation",
+            "end-view-created",
+            "verify",
+            "reconcile",
+            "clear-flag"
+        ]
+    );
+    assert!(matches!(
+        plan.steps.first(),
+        Some(Step::CompleteViewCreation { act: a, view, block_id })
+            if *a == act && view == DRAFT && *block_id == FORKED_AT.to_string().repeat(64)
+    ));
+    // The signer is bound to exactly that operation for exactly that view, and it is in the recorded plan, which
+    // the ledger reads back.
+    let op = RecoveryOp::CompleteViewCreation {
+        creation: act.to_string(),
+        view: DRAFT.to_owned(),
+    };
+    assert_eq!(plan.ops(), vec![op.clone()]);
+    assert!(
+        plan.to_json()
+            .contains("\"step\":\"complete-view-creation\"")
+    );
+    let facts = facts_of(&w.wiki, &plan.to_json()).expect("facts");
+    assert!(facts.allows(&op));
+    assert!(!facts.allows(&RecoveryOp::CompleteViewCreation {
+        creation: ViewActId::new().to_string(),
+        view: DRAFT.to_owned(),
+    }));
+    assert!(!facts.allows(&RecoveryOp::CompleteViewCreation {
+        creation: act.to_string(),
+        view: "heads/other".to_owned(),
+    }));
+    // It is not the step of a killed `seal`.
+    assert!(!facts.allows(&RecoveryOp::CompletePublication {
+        acceptance: act.to_string(),
+        view: DRAFT.to_owned(),
+    }));
+    assert!(
+        plan.lines().iter().any(|l| l
+            .contains("step 1: run ref complete heads/draft once, as prikk's doctor recommends")),
+        "{:#?}",
+        plan.lines()
+    );
+}
+
+#[test]
+fn a_view_creation_whose_view_is_not_there_and_nothing_is_unfinished_ends_failed() {
+    let w = view_creation(ViewShown::Absent, false);
+    let plan = build(&w);
+    assert_eq!(plan.stop, None, "{:#?}", plan.lines());
+    assert_eq!(
+        names(&plan),
+        ["end-view-failed", "verify", "reconcile", "clear-flag"]
+    );
+    assert!(plan.ops().is_empty());
+}
+
+#[test]
+fn a_view_creation_in_any_other_state_is_a_stop_with_its_own_word_and_nothing_is_done() {
+    let stop_of = |w: &Witness| {
+        let plan = build(w);
+        assert!(
+            plan.steps.is_empty() && plan.ops().is_empty(),
+            "{:?}",
+            names(&plan)
+        );
+        plan.stop
+    };
+    let other_block = ViewShown::Shown {
+        tip: "e".repeat(64),
+    };
+    let wrong: Vec<(&str, Witness)> = vec![
+        (
+            "the view is at another block",
+            view_creation(other_block.clone(), false),
+        ),
+        (
+            "the view is at another block, beside its own lead",
+            view_creation(other_block, true),
+        ),
+        (
+            "the view's block cannot be read",
+            view_creation(ViewShown::Unreadable("x".to_owned()), false),
+        ),
+        (
+            "the view's block cannot be read, beside its own lead",
+            view_creation(ViewShown::Unreadable("x".to_owned()), true),
+        ),
+        (
+            "the view is not listed while doctor names its publication",
+            view_creation(ViewShown::Absent, true),
+        ),
+        (
+            "a view of the name in another case is there",
+            view_creation(ViewShown::InAnotherCase, false),
+        ),
+        (
+            "a view of the name in another case is there, beside a lead",
+            view_creation(ViewShown::InAnotherCase, true),
+        ),
+        ("a patch is queued beside it", {
+            let mut w = view_creation(at_forked_block(), false);
+            w.status = status(vec![patch(MESSAGE)], 0);
+            w
+        }),
+        ("a pending cleanup beside it", {
+            let mut w = view_creation(at_forked_block(), false);
+            w.doctor = doctor(vec![cleanup_error()]);
+            w.cleanup_pending = Some(CleanupPending {
+                status_refused: true,
+                published: None,
+            });
+            w
+        }),
+        ("an acknowledged damage beside it", {
+            let mut w = view_creation(at_forked_block(), false);
+            w.doctor = doctor(vec![diag(Severity::Error, ACKNOWLEDGED_DAMAGE_CODE, None)]);
+            w
+        }),
+    ];
+    for (what, w) in wrong {
+        assert_eq!(stop_of(&w), Some(Stop::ViewCreationUnclear), "{what}");
+    }
+    // The stop is named in the plan's text with its meaning, and the flag stays.
+    let lines = build(&view_creation(ViewShown::Absent, true)).lines();
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.contains("STOP (view-creation-unclear)")),
+        "{lines:#?}"
+    );
+    assert_eq!(Stop::ViewCreationUnclear.as_str(), "view-creation-unclear");
+}
+
+#[test]
+fn only_the_lead_of_the_creations_own_ref_in_prikks_own_words_is_accounted_for() {
+    let stop_with = |diagnostics: Vec<Diagnostic>| {
+        let mut w = view_creation(at_forked_block(), false);
+        w.doctor = doctor(diagnostics);
+        build(&w).stop
+    };
+    // A lead for another ref is trouble, and so is a second error beside the right one.
+    assert_eq!(
+        stop_with(vec![lead_error("heads/other")]),
+        Some(Stop::DoctorTrouble)
+    );
+    assert_eq!(
+        stop_with(vec![lead_error(DRAFT), lead_error("heads/other")]),
+        Some(Stop::DoctorTrouble)
+    );
+    // One lead stands for the one creation; a second one of the same ref is something prikk says twice.
+    assert_eq!(
+        stop_with(vec![lead_error(DRAFT), lead_error(DRAFT)]),
+        Some(Stop::DoctorTrouble)
+    );
+    assert_eq!(
+        stop_with(vec![
+            lead_error(DRAFT),
+            diag(Severity::Error, "PRIKK-VERIFY-REF-DIVERGENCE", None)
+        ]),
+        Some(Stop::DoctorTrouble)
+    );
+    // The same code with another severity, another wording, or a message naming another ref, is not the lead.
+    let mut warning = lead_error(DRAFT);
+    warning.severity = Severity::Warning;
+    assert_eq!(stop_with(vec![warning]), Some(Stop::DoctorTrouble));
+    let mut reworded = lead_error(DRAFT);
+    reworded.recommendation = Some("run `prikk seal --allow-no-audit` for the ref".to_owned());
+    assert_eq!(stop_with(vec![reworded]), Some(Stop::DoctorTrouble));
+    let mut mismatched = lead_error(DRAFT);
+    mismatched.message =
+        "authoritative pointer leads committed ref log by one transition; run `prikk ref complete heads/other`"
+            .to_owned();
+    assert_eq!(stop_with(vec![mismatched]), Some(Stop::DoctorTrouble));
+    // Without a view creation, a lead is trouble as it always was.
+    let mut w = flagged();
+    w.doctor = doctor(vec![lead_error(DRAFT)]);
+    assert_eq!(build(&w).stop, Some(Stop::DoctorTrouble));
+}
+
+#[test]
+fn a_view_creation_beside_another_unfinished_act_or_a_foreign_process_stops_as_every_step_does() {
+    let mut w = view_creation(at_forked_block(), false);
+    w.view_acts.push(view_act(ViewShown::Absent));
+    assert_eq!(build(&w).stop, Some(Stop::SeveralActs));
+    let mut w = view_creation(at_forked_block(), false);
+    w.acts = vec![act(Chain::NotSealed)];
+    assert_eq!(build(&w).stop, Some(Stop::SeveralActs));
+    let mut w = view_creation(at_forked_block(), false);
+    w.foreign = vec![Foreign {
+        pid: 4_242,
+        tool: "prikk".to_owned(),
+    }];
+    assert_eq!(build(&w).stop, Some(Stop::ForeignProcess));
+}
+
+#[test]
+fn a_worktree_that_is_not_the_baseline_is_put_back_for_the_current_branch_not_the_new_view() {
+    let mut w = view_creation(at_forked_block(), false);
+    w.worktree = Some(WorktreeState {
+        clean: false,
+        changes: 1,
+        declarations: 0,
+    });
+    let plan = build(&w);
+    assert_eq!(
+        names(&plan),
+        [
+            "end-view-created",
+            "restore-worktree",
+            "verify",
+            "reconcile",
+            "clear-flag"
+        ]
+    );
+    assert!(matches!(
+        plan.steps.get(1),
+        Some(Step::RestoreWorktree { view }) if view == VIEW
+    ));
 }

@@ -56,6 +56,9 @@ pub(crate) struct Double {
     calls: Mutex<Vec<Call>>,
     hook: Mutex<Option<Hook>>,
     view_answers: Mutex<VecDeque<Result<(), AcceptError>>>,
+    /// The next `create_view` lists its view whatever it answers (a `branch create` that failed after it published the
+    /// ref's pointer).
+    view_appears_anyway: Mutex<bool>,
     view_calls: Mutex<Vec<ViewCall>>,
     /// Where a view the stand-in creates appears (the in-memory repository).
     views_in: Mutex<Option<Arc<Fake>>>,
@@ -73,6 +76,7 @@ impl Double {
             calls: Mutex::new(Vec::new()),
             hook: Mutex::new(None),
             view_answers: Mutex::new(VecDeque::new()),
+            view_appears_anyway: Mutex::new(false),
             view_calls: Mutex::new(Vec::new()),
             views_in: Mutex::new(None),
             leases_in: Mutex::new(None),
@@ -86,6 +90,16 @@ impl Double {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push_back(answer);
+    }
+
+    /// The next `create_view` answers `answer` and its view appears in the repository all the same: a `branch create`
+    /// that failed after it published the ref's pointer lists the view and leaves the ref half published.
+    pub(crate) fn then_view_listed_anyway(&self, answer: Result<(), AcceptError>) {
+        self.then_view(answer);
+        *self
+            .view_appears_anyway
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = true;
     }
 
     /// A view this stand-in creates appears in `fake`.
@@ -213,7 +227,13 @@ impl Accept for Double {
             .unwrap_or_else(PoisonError::into_inner)
             .pop_front()
             .unwrap_or(Ok(()));
-        if matches!(answer, Ok(()) | Err(AcceptError::SeedsNotRemoved { .. }))
+        let appears_anyway = std::mem::take(
+            &mut *self
+                .view_appears_anyway
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner),
+        );
+        if (appears_anyway || matches!(answer, Ok(()) | Err(AcceptError::SeedsNotRemoved { .. })))
             && let Some(fake) = self
                 .views_in
                 .lock()

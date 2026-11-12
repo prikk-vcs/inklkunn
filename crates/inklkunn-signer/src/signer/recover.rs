@@ -8,7 +8,7 @@ use inklkunn_prikk::storage::{Operation, QueuedPatch};
 use inklkunn_store::WikiId;
 
 use super::{Signer, is_view_ref};
-use crate::accept::{AcceptanceToken, ChangeDigest, PreparedChange, PreparedFile};
+use crate::accept::{AcceptanceToken, ChangeDigest, PreparedChange, PreparedFile, ViewCreationAct};
 use crate::locks::{self, WriteGuard};
 use crate::message::Message;
 use crate::recover::text::{ACCEPTANCE_LOCK_KINDS, Discarded};
@@ -398,6 +398,88 @@ impl Recover for Signer {
             .any(|d| d.is_cleanup_pending())
         {
             return mismatch("prikk still reports the cleanup as pending after the seal");
+        }
+        Ok(())
+    }
+
+    fn complete_view_creation(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        act: &RecoveryToken,
+        creation: &ViewCreationAct,
+    ) -> Result<(), RecoverError> {
+        if !is_view_ref(view) {
+            return Err(RecoverError::Refused("a view is `heads/<name>`".to_owned()));
+        }
+        let op = RecoveryOp::CompleteViewCreation {
+            creation: creation.as_str().to_owned(),
+            view: view.to_owned(),
+        };
+        let _held = self.recovering(wiki, act, &op)?;
+        // Completing appends a record signed by the maintainer key: while a key retirement is unfinished nothing new
+        // is signed (W1), as a new view is refused.
+        match self.seal_pause(wiki) {
+            Ok(None) => {}
+            Ok(Some(sentence)) => return Err(RecoverError::RetirementUnfinished(sentence)),
+            Err(why) => return Err(RecoverError::Unavailable(why)),
+        }
+        // The record the creation was made under: open, the wiki's, for this view.
+        let facts = self
+            .ledger
+            .view_creation(creation)
+            .map_err(|e| RecoverError::Unavailable(e.to_string()))?
+            .ok_or(RecoverError::NotRecorded)?;
+        if facts.wiki != *wiki || facts.name != view {
+            return Err(RecoverError::NotRecorded);
+        }
+        let repo = self.root.repo_dir(wiki);
+        let w = &self.writes;
+        // 1. prikk says exactly this: one interrupted publication, of this ref, and nothing else.
+        if w.doctor(&repo)?.only_ref_lead() != Some(view) {
+            return mismatch(
+                "prikk's doctor does not report exactly one interrupted publication, and it is not this view's",
+            );
+        }
+        // 2. The block the view's source points at now (`branch create --from` publishes a ref at exactly that block,
+        //    and nothing has been published since: every publication refuses while this one is unfinished).
+        let Some(source) = w.tip(&repo, &facts.from)? else {
+            return mismatch("the view's source has no block");
+        };
+        // 3. prikk's own plan: the first publication of this ref, onto that block, with nothing to remove first.
+        let seeds = self.seeds(wiki);
+        let plan = w.ref_complete_plan(&repo, &seeds, view);
+        if seeds.left_over() {
+            return Err(RecoverError::SeedsNotRemoved);
+        }
+        let plan = plan?;
+        if plan.ref_name != view
+            || plan.kind != "Branch"
+            || plan.target != source.block_id
+            || plan.log_tip.is_some()
+            || plan.sequence != 1
+            || plan.partial_tail_bytes != 0
+        {
+            return mismatch(
+                "prikk's plan is not the first publication of this view onto the block its source points at",
+            );
+        }
+        // 4. `ref complete`, once.
+        let seeds = self.seeds(wiki);
+        let done = w.ref_complete(&repo, &seeds, view);
+        match (done, seeds.left_over()) {
+            (Ok(()), false) => {}
+            (Ok(()), true) => return Err(RecoverError::SeedsNotRemoved),
+            (Err(e), _) => return Err(e.into()),
+        }
+        // 5. It did what was meant: `doctor` no longer names the lead (the block was checked before, and `ref complete`
+        //    appends the record of the same state).
+        if w.doctor(&repo)?
+            .diagnostics
+            .iter()
+            .any(|d| d.lead_ref().is_some())
+        {
+            return mismatch("prikk still reports an interrupted publication after the step");
         }
         Ok(())
     }

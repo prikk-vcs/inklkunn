@@ -27,6 +27,8 @@ struct State {
     /// A file change applied right after the next `branch list` answers (the view moves between two calls).
     move_after_views: Option<(String, Vec<u8>)>,
     extra_views: Vec<(String, u64)>,
+    /// Views that were closed (the full listing shows them, marked; the open one does not).
+    closed_views: Vec<String>,
     /// The files of an extra view that has its own (by the view's number); one without shares the main view's.
     view_files: BTreeMap<u64, BTreeMap<String, Vec<u8>>>,
     fail_views: Option<StorageError>,
@@ -123,6 +125,11 @@ impl Fake {
     pub(crate) fn add_view(&self, name: &str) {
         let mut s = self.state();
         s.extra_views.push((name.to_owned(), 1));
+    }
+
+    /// A view that was closed: listed by `all_views`, marked, and not by `views`.
+    pub(crate) fn add_closed_view(&self, name: &str) {
+        self.state().closed_views.push(name.to_owned());
     }
 
     /// A second view with **its own files** (and its own tip): the content of a view that was changed after it was
@@ -251,6 +258,21 @@ impl Storage for Fake {
             self.set_bytes(&path, &bytes);
         }
         Ok(answer)
+    }
+
+    fn all_views(&self, repo: &Path) -> Result<Views> {
+        let mut views = self.views(repo)?;
+        let closed: Vec<String> = self.state().closed_views.clone();
+        for name in closed {
+            views.views.push(View {
+                name,
+                state_id: state_id(2_000_000),
+                closed: true,
+                current: false,
+            });
+        }
+        views.views.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(views)
     }
 
     fn tree(&self, _: &Path, point: &Point, prefix: Option<&str>) -> Result<Tree> {

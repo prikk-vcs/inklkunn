@@ -392,3 +392,199 @@ fn a_pending_cleanup_is_read_and_only_exactly_that_one_error_is_it() {
             .is_only_cleanup_pending()
     );
 }
+
+/// The report of a `branch create` killed after it published the ref's pointer and before it appended the ref log
+/// (measured on prikk 0.55.0): one error, whose recommendation is `ref complete`, not `seal` (handoff 005 K4).
+const DOCTOR_LEAD: &str = "\
+doctor repository: /srv/r/.prikk
+verified repository: /srv/r/.prikk
+ref publication issues: 1
+trailing partial ref log bytes: 0
+error [PRIKK-VERIFY-REF-POINTER-LEADS-LOG]: authoritative pointer leads committed ref log by one transition; run `prikk ref complete heads/draft`
+  recommendation: run `prikk ref complete heads/draft`; doctor does not sign or append
+error: doctor found repository health errors
+issue summary: errors=1, warnings=0, info=0
+";
+
+#[test]
+fn an_interrupted_publication_is_read_and_only_exactly_that_one_error_of_one_ref_is_it() {
+    let r = parse_doctor_output(DOCTOR_LEAD).unwrap();
+    assert_eq!((r.errors, r.warnings, r.info), (1, 0, 0));
+    assert_eq!(nth(&r.diagnostics, 0).lead_ref(), Some("heads/draft"));
+    assert_eq!(r.only_ref_lead(), Some("heads/draft"));
+    // It is not a pending cleanup (the `seal` row), and not the discard's.
+    assert!(!r.is_only_cleanup_pending());
+    assert!(!nth(&r.diagnostics, 0).is_cleanup_pending());
+    assert!(!r.has_acknowledged_damage());
+    // Information and unreached-object notes beside it do not change what it is.
+    let notes = DOCTOR_LEAD.replace(
+        "issue summary: errors=1, warnings=0, info=0",
+        "info [PRIKK-DOCTOR-VERIFY-OK]: done\nwarning [PRIKK-DOCTOR-UNREACHED-OBJECT]: 3 objects nothing refers to\n  recommendation: the bytes stay; no command removes them yet\nissue summary: errors=1, warnings=1, info=1",
+    );
+    assert_eq!(
+        parse_doctor_output(&notes).unwrap().only_ref_lead(),
+        Some("heads/draft")
+    );
+    // Another error or warning beside it, or a second lead, is not exactly it.
+    let beside = |extra: &str, counts: &str| {
+        parse_doctor_output(&DOCTOR_LEAD.replace(
+            "issue summary: errors=1, warnings=0, info=0",
+            &format!("{extra}\nissue summary: {counts}"),
+        ))
+        .unwrap()
+    };
+    assert_eq!(
+        beside(
+            "error [PRIKK-DOCTOR-OBJECT-MISSING]: an object is missing",
+            "errors=2, warnings=0, info=0"
+        )
+        .only_ref_lead(),
+        None
+    );
+    assert_eq!(
+        beside(
+            "warning [PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS]: stale",
+            "errors=1, warnings=1, info=0"
+        )
+        .only_ref_lead(),
+        None
+    );
+    let second = "error [PRIKK-VERIFY-REF-POINTER-LEADS-LOG]: authoritative pointer leads committed ref log by one transition; run `prikk ref complete heads/other`\n  recommendation: run `prikk ref complete heads/other`; doctor does not sign or append";
+    assert_eq!(
+        beside(second, "errors=2, warnings=0, info=0").only_ref_lead(),
+        None
+    );
+    // The same code as a warning, with another recommendation, or with a message that names another ref: not it.
+    let weak = DOCTOR_LEAD
+        .replace(
+            "error [PRIKK-VERIFY-REF-POINTER",
+            "warning [PRIKK-VERIFY-REF-POINTER",
+        )
+        .replace("errors=1, warnings=0", "errors=0, warnings=1");
+    let weak = parse_doctor_output(&weak).unwrap();
+    assert_eq!(nth(&weak.diagnostics, 0).lead_ref(), None);
+    assert_eq!(weak.only_ref_lead(), None);
+    let reworded = DOCTOR_LEAD.replace(
+        "run `prikk ref complete heads/draft`; doctor does not sign or append",
+        "run signer-backed `prikk seal --allow-no-audit` for the affected ref",
+    );
+    assert_eq!(
+        parse_doctor_output(&reworded).unwrap().only_ref_lead(),
+        None
+    );
+    let elsewhere = DOCTOR_LEAD.replace(
+        "one transition; run `prikk ref complete heads/draft`",
+        "one transition; run `prikk ref complete heads/other`",
+    );
+    assert_eq!(
+        parse_doctor_output(&elsewhere).unwrap().only_ref_lead(),
+        None
+    );
+    let odd = DOCTOR_LEAD.replace("heads/draft", "heads/x y");
+    assert_eq!(parse_doctor_output(&odd).unwrap().only_ref_lead(), None);
+    let none = DOCTOR_LEAD.replace("complete heads/draft`", "complete `");
+    assert_eq!(parse_doctor_output(&none).unwrap().only_ref_lead(), None);
+    let other_code = DOCTOR_LEAD.replace(
+        "PRIKK-VERIFY-REF-POINTER-LEADS-LOG",
+        "PRIKK-VERIFY-REF-DIVERGENCE",
+    );
+    let other_code = parse_doctor_output(&other_code).unwrap();
+    assert_eq!(nth(&other_code.diagnostics, 0).lead_ref(), None);
+    assert_eq!(other_code.only_ref_lead(), None);
+    // And a clean report, or one for a pending cleanup, has none.
+    assert_eq!(
+        parse_doctor_output(DOCTOR_OK).unwrap().only_ref_lead(),
+        None
+    );
+    assert_eq!(
+        parse_doctor_output(DOCTOR_CLEANUP_PENDING)
+            .unwrap()
+            .only_ref_lead(),
+        None
+    );
+}
+
+/// What `prikk ref complete heads/draft --plan-only` printed on prikk 0.55.0 for the state above.
+const COMPLETION_PLAN: &str = "\
+ref: heads/draft
+leading RefState: a64ea6edd4260601ff2f85055bc97b9c2c02a02d7e9bf4c746ed199888428d25
+original signer: ed25519-d03c81318ad222b9
+target: 69ed41554bd1003a73f321d29df1e2c2b1ea0746c60b758cb51f590ecf337f82 (Branch)
+log tip: (none -- first publication for this ref)
+sequence: 1
+completing key: ed25519-d03c81318ad222b9
+partial tail to remove: 0 byte(s)
+";
+
+#[test]
+fn what_ref_complete_would_write_is_read_strictly() {
+    let p = parse_completion_plan(COMPLETION_PLAN).unwrap();
+    assert_eq!(p.ref_name, "heads/draft");
+    assert_eq!(
+        p.target,
+        "69ed41554bd1003a73f321d29df1e2c2b1ea0746c60b758cb51f590ecf337f82"
+    );
+    assert_eq!(p.kind, "Branch");
+    assert_eq!(p.log_tip, None);
+    assert_eq!(p.sequence, 1);
+    assert_eq!(p.partial_tail_bytes, 0);
+    // A log tip that is an id is an id; a partial tail is a number.
+    let later = COMPLETION_PLAN
+        .replace("(none -- first publication for this ref)", &"c".repeat(64))
+        .replace("sequence: 1", "sequence: 4")
+        .replace("0 byte(s)", "17 byte(s)");
+    let later = parse_completion_plan(&later).unwrap();
+    assert_eq!(later.log_tip, Some("c".repeat(64)));
+    assert_eq!((later.sequence, later.partial_tail_bytes), (4, 17));
+    // Every shape that is not exactly this is refused, and nothing is concluded from it.
+    let target_line =
+        "target: 69ed41554bd1003a73f321d29df1e2c2b1ea0746c60b758cb51f590ecf337f82 (Branch)";
+    for (what, text) in [
+        ("empty", String::new()),
+        (
+            "a line missing",
+            COMPLETION_PLAN.replace("sequence: 1\n", ""),
+        ),
+        (
+            "lines in another order",
+            COMPLETION_PLAN.replace(
+                "sequence: 1\ncompleting key: ed25519-d03c81318ad222b9\n",
+                "completing key: ed25519-d03c81318ad222b9\nsequence: 1\n",
+            ),
+        ),
+        (
+            "a line added",
+            format!("{COMPLETION_PLAN}note: something\n"),
+        ),
+        (
+            "a leading id that is short",
+            COMPLETION_PLAN.replace("a64ea6edd4260601", "a64ea6ed"),
+        ),
+        (
+            "a target in capitals",
+            COMPLETION_PLAN.replace(target_line, &target_line.to_uppercase()),
+        ),
+        (
+            "a target with no kind",
+            COMPLETION_PLAN.replace(" (Branch)", ""),
+        ),
+        (
+            "a log tip that is neither",
+            COMPLETION_PLAN.replace("(none -- first publication for this ref)", "unknown"),
+        ),
+        (
+            "a sequence that is not a number",
+            COMPLETION_PLAN.replace("sequence: 1", "sequence: first"),
+        ),
+        (
+            "a partial tail that is not a count",
+            COMPLETION_PLAN.replace("0 byte(s)", "none"),
+        ),
+        (
+            "an error",
+            "error: heads/draft has no pointer; nothing to complete\n".to_owned(),
+        ),
+    ] {
+        assert!(parse_completion_plan(&text).is_err(), "{what}");
+    }
+}

@@ -6,26 +6,31 @@
 //! 0. `authorize(_, create-view, view)` **first**, before the lease, and the name is checked (a new view's name is
 //!    [`views::new_name`], never changed or tidied).
 //! 1. The wiki's write lease ([`Purpose::View`]), then the guard against an unfinished earlier act: a wiki that
-//!    *needs recovery* refuses it.
-//! 2. The wiki's views are read **now**, from prikk, never from a held answer. A record of an earlier creation that
-//!    never ended is **settled** from what prikk says (the view is there: created; it is not: it failed), so that
-//!    a process that died between the record and its end blocks nothing. The view to fork from must be open, the
-//!    name free (compared without regard to case), and the wiki under [`views::MAX_VIEWS`].
+//!    *needs recovery* refuses it, and so does one with a view creation that never ended (a holder that died in the
+//!    middle of one may have left the ref half published: handoff 005 K4).
+//! 2. The wiki's views are read **now**, from prikk, never from a held answer. The view to fork from must be open,
+//!    the name free (compared without regard to case), and the wiki under [`views::MAX_VIEWS`].
 //! 3. **The act is recorded** (name, the view it forks from, that view's tip, the kind, who) before the signer is
 //!    asked. The signer reads it back through [`StoreLedger`](super::StoreLedger) and refuses unless it names this
 //!    wiki, view and ref: a web handler cannot hand it a fact of its own (INV-4).
 //! 4. `Accept::create_view`, inside the lease. An unfinished key retirement pauses it as it pauses a seal (W1: a
 //!    new view is a new ref in a history the retirement recorded the views of).
-//! 5. The answer is settled from prikk, not guessed: whatever the signer said, **if the view is there the act
-//!    created it**, and if not, the act failed with a fixed word. The end is recorded once, the wiki's caches are
-//!    forgotten, the lease is released.
+//! 5. The answer is settled from prikk, not guessed: **if the view is listed and prikk said its call finished, the
+//!    act created it**; if it is not listed, the act failed with a fixed word; if it is listed and prikk did not say
+//!    so, the ref may be half published, and the act stays open and the wiki is flagged. The end is recorded once,
+//!    the wiki's caches are forgotten, the lease is released.
 //!
-//! A view creation seals nothing and writes no block: nothing is left for recovery to complete, which is why a
-//! holder that dies in the middle of one does not flag the wiki ([`Purpose::View`]).
+//! **A view creation is a recoverable act** (K4). It seals nothing and writes no block, but prikk's `branch create`
+//! publishes the ref in two writes, and killed between them it leaves the pointer ahead of the ref log: the view is
+//! *listed*, `verify` fails, and every other publication refuses until `prikk ref complete` finishes it. So the act
+//! is never settled from the listing alone: [`Recovery`](crate::Recovery) reads the act, the listing and `doctor`,
+//! and ends it as created (the view is there and nothing is unfinished), completes the publication prikk itself
+//! recommends and then ends it, ends it as failed (nothing is there and nothing is unfinished), or stops.
 
 use inklkunn_signer::accept::{AcceptError, ViewCreationAct};
 use inklkunn_store::{
-    StoreError, ViewActEnd, ViewActId, ViewActOutcome, ViewActRecord, ViewKind, WikiRecord,
+    RecoveryReason, StoreError, ViewActEnd, ViewActId, ViewActOutcome, ViewActRecord, ViewKind,
+    WikiRecord,
 };
 
 use super::shared::{self, Blocked, TipError};
@@ -84,8 +89,10 @@ pub enum ViewFailure {
     },
     /// The repository, the lease or the records could not be had before anything was created. Nothing was done.
     Unavailable(String),
-    /// The signer was asked and the wiki's views could not be read afterwards, so it is not known whether the view
-    /// is there. The act stays open; the next creation settles it from the repository.
+    /// The signer was asked and it is not known whether the creation finished: the wiki's views could not be read
+    /// afterwards, or the view is listed and prikk did not say its call finished (the ref may be half published).
+    /// The act stays open, and the wiki is flagged *needs recovery* at once (the first case: at the next write);
+    /// recovery settles it from every witness (handoff 005 K4).
     Uncertain(String),
     /// A store failed (the text is for operators).
     Store(StoreError),
@@ -181,10 +188,11 @@ impl ProposalAcceptor {
             },
         )?;
 
-        // 2. The views as prikk says they are now; earlier acts settled from them; then the checks.
+        // 2. The views as prikk says they are now, then the checks. (An earlier creation that never ended is not
+        //    settled here from the listing: the guard above flagged the wiki, and recovery settles it from every
+        //    witness, a half-published ref included: handoff 005 K4.)
         let repo = p.layout.repo_dir(&wiki.id);
         let open = open_views(self, wiki)?;
-        self.settle_earlier_acts(wiki, &open)?;
         let source = format!("heads/{from}");
         let wanted = format!("heads/{name}");
         if open.iter().any(|v| v.eq_ignore_ascii_case(&wanted)) {
@@ -227,16 +235,37 @@ impl ProposalAcceptor {
             )
         };
 
-        // 5. Settled from the repository, not from the answer. If prikk cannot be asked now the act stays open and
-        //    the caller is told it could not be done now; the next creation settles it from prikk.
+        // 5. Settled from the repository, not from the answer: the view is listed or it is not. But a listed view is
+        //    created only when prikk said its call finished: a `branch create` that failed after it published the
+        //    ref's pointer lists the view and leaves the ref half published (`verify` fails, every later publication
+        //    refuses: prikk RFC 165 R3, handoff 005 K4). Then the act stays open, the wiki is flagged, and recovery
+        //    reads every witness and finishes it or stops. If prikk cannot be asked now the act stays open too, and
+        //    the caller is told it could not be done now.
         let seeds_left = matches!(answer, Err(AcceptError::SeedsNotRemoved { .. }));
+        let completed = answer.is_ok() || seeds_left;
         let word = failed_word(&answer);
         let created = match open_views(self, wiki) {
             Ok(now) => now.contains(&wanted),
             Err(ViewFailure::Unavailable(why)) => return Err(ViewFailure::Uncertain(why)),
             Err(other) => return Err(other),
         };
-        // A lost end is not lost: the act is open, the view is there or not, and the next creation settles it.
+        if created && !completed {
+            let flagged = shared::flag(
+                &*p.acts,
+                wiki,
+                RecoveryReason::Interrupted,
+                Some(act.id.to_string()),
+                (self.clock)(),
+            );
+            p.reads.forget_wiki(wiki);
+            return Err(ViewFailure::Uncertain(format!(
+                "the view is listed and prikk did not say its creation finished ({}); the act stays open and the wiki is {} for recovery",
+                answer.err().map_or_else(String::new, |e| e.to_string()),
+                if flagged { "flagged" } else { "to be flagged" }
+            )));
+        }
+        // A lost end is not lost: the act is open, the view is there or not, and the guard flags the wiki at the next
+        // write, so that recovery settles it.
         let _ = p.acts.finish_view_act(&ViewActEnd {
             act: act.id.clone(),
             outcome: if created {
@@ -277,33 +306,6 @@ impl ProposalAcceptor {
                     .to_owned(),
             },
         })
-    }
-
-    /// An earlier creation that never ended is settled from what prikk says now: the view is there, so it was
-    /// created; it is not, so it failed. Under the lease, so no creation of this process is between its record and
-    /// its end.
-    fn settle_earlier_acts(&self, wiki: &WikiRecord, open: &[String]) -> Result<(), ViewFailure> {
-        let p = &self.parts;
-        for entry in p.acts.view_acts(&wiki.id)? {
-            if entry.end.is_some() {
-                continue;
-            }
-            let there = open
-                .iter()
-                .any(|v| *v == format!("heads/{}", entry.act.name));
-            p.acts.finish_view_act(&ViewActEnd {
-                act: entry.act.id,
-                outcome: if there {
-                    ViewActOutcome::Created
-                } else {
-                    ViewActOutcome::Failed {
-                        word: words::INTERRUPTED.to_owned(),
-                    }
-                },
-                at: (self.clock)(),
-            })?;
-        }
-        Ok(())
     }
 }
 

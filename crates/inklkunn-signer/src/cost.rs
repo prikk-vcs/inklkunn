@@ -25,6 +25,11 @@
 //! (ceiling 24 MiB); a `verify` with the repository writable (the checkpoint refresh) needs 2.09, 2.02 and 2.01 × S on
 //! the wiki stores and 5.01 and 5.00 × S for one attachment, the same as the read-only `verify`, so it runs under the
 //! existing `verify` rule.
+//!
+//! **`ref complete`** (handoff 005 K4; prikk 0.55.0, by the same method on a copy per probe, of a small wiki store
+//! only): it appends one signed record to the ref log, the primitive `branch create` ends in, and ran under
+//! `RLIMIT_DATA` of 256 KiB, the smallest probe. It takes `branch create`'s flat rule and is not measured on the
+//! larger stores.
 
 use std::path::Path;
 
@@ -87,6 +92,9 @@ pub(crate) enum WriteVerb {
     Unlock,
     /// `cat`: one file's bytes at a ref (recovery restores a worktree from the tip).
     Cat,
+    /// `ref complete`: finish an interrupted ref publication, and its `--plan-only` (recovery of a killed `branch
+    /// create`; handoff 005 K4).
+    RefComplete,
     /// `show`: what one block or patch changed (recovery reads the operations of the block a killed `seal` published;
     /// handoff 004, P15).
     Show,
@@ -95,7 +103,7 @@ pub(crate) enum WriteVerb {
 impl WriteVerb {
     /// Every verb.
     #[cfg(test)]
-    pub(crate) const ALL: [WriteVerb; 19] = [
+    pub(crate) const ALL: [WriteVerb; 20] = [
         WriteVerb::Init,
         WriteVerb::Trust,
         WriteVerb::KeyGenerate,
@@ -115,6 +123,7 @@ impl WriteVerb {
         WriteVerb::Unlock,
         WriteVerb::Cat,
         WriteVerb::Show,
+        WriteVerb::RefComplete,
     ];
 
     /// The verb a prikk argument vector runs, or `None` for one the signer has no cost for (and so never runs).
@@ -136,6 +145,7 @@ impl WriteVerb {
             ["unlock", ..] => WriteVerb::Unlock,
             ["cat", ..] => WriteVerb::Cat,
             ["show", ..] => WriteVerb::Show,
+            ["ref", "complete", ..] => WriteVerb::RefComplete,
             ["mv", ..] => WriteVerb::Mv,
             ["commit", ..] => WriteVerb::Commit,
             ["seal", ..] => WriteVerb::Seal,
@@ -155,6 +165,7 @@ impl WriteVerb {
             | WriteVerb::Log
             | WriteVerb::Mv
             | WriteVerb::BranchCreate
+            | WriteVerb::RefComplete
             | WriteVerb::BranchList => (0, 0, 16 * MIB),
             // 28 MiB for 10,000 pages; 5.0 × S where one attachment is most of the store.
             WriteVerb::WorktreeStatus => (50, 0, 48 * MIB),

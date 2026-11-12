@@ -30,13 +30,13 @@ use std::sync::Arc;
 
 use inklkunn_prikk::{Point, Storage};
 use inklkunn_signer::recover::text::PUBLICATION_UNTRUSTED_CODE;
-use inklkunn_signer::{AcceptanceToken, Recover, RecoveryToken, Witnesses};
+use inklkunn_signer::{AcceptanceToken, Recover, RecoveryToken, ViewCreationAct, Witnesses};
 use inklkunn_store::{
     AcceptanceOutcome, AcceptanceResult, AcceptanceStore, ActStore, AuditEvent, AuditOutcome,
     AuditSink, IntentCompletion, IntentEnd, IntentId, LeaseHolder, ProposalChange, ProposalOp,
     ProposalState, ProposalStore, ProposalTransition, RecoveryActEnd, RecoveryActId,
     RecoveryActRecord, RecoveryEnding, RecoveryFlag, RecoveryReason, RootLayout, StoreError,
-    SystemActEnd, WikiId, WikiRecord,
+    SystemActEnd, ViewActEnd, ViewActId, ViewActOutcome, WikiId, WikiRecord,
 };
 
 use crate::acceptance::{AfterSeal, NoFollowUp, Reconciled, message_digest, shared, words};
@@ -52,7 +52,7 @@ pub mod processes;
 
 pub use plan::{
     ActRef, ActWitness, Chain, CleanupPending, Ended, LockEntry, Plan, Published, Step, Stop,
-    Witness, build, facts_of,
+    ViewActWitness, ViewShown, Witness, build, facts_of,
 };
 pub use processes::{Foreign, ProcFs, ProcessInfo, ProcessTable};
 
@@ -524,6 +524,58 @@ impl Recovery {
         Ok(out)
     }
 
+    /// The view creations that never ended, each with what prikk shows of its view (handoff 005 K4). The listing
+    /// includes closed views. A view whose name differs from the act's only by case is not this act's view and is
+    /// not read as it: the witness says the block could not be read, and the plan stops.
+    fn view_act_witnesses(&self, wiki: &WikiRecord) -> Result<Vec<ViewActWitness>, RecoveryError> {
+        let p = &self.parts;
+        let open: Vec<_> = p
+            .acts
+            .view_acts(&wiki.id)?
+            .into_iter()
+            .filter(|e| e.end.is_none())
+            .collect();
+        if open.is_empty() {
+            return Ok(Vec::new());
+        }
+        let repo = p.layout.repo_dir(&wiki.id);
+        let listed = p
+            .storage
+            .all_views(&repo)
+            .map_err(|e| witness_error("prikk branch list", e))?;
+        let mut out = Vec::with_capacity(open.len());
+        for entry in open {
+            let view = format!("heads/{}", entry.act.name);
+            let shown = if listed.views.iter().any(|v| v.name == view) {
+                match p
+                    .storage
+                    .history(&repo, &Point::View(view.clone()), Some(1))
+                {
+                    Ok(h) => match h.blocks.into_iter().next() {
+                        Some(tip) => ViewShown::Shown { tip: tip.block_id },
+                        None => ViewShown::Unreadable("the view lists no block".to_owned()),
+                    },
+                    Err(e) => ViewShown::Unreadable(e.to_string()),
+                }
+            } else if listed
+                .views
+                .iter()
+                .any(|v| v.name.eq_ignore_ascii_case(&view))
+            {
+                ViewShown::InAnotherCase
+            } else {
+                ViewShown::Absent
+            };
+            out.push(ViewActWitness {
+                act: entry.act.id,
+                view,
+                from_block: entry.act.from_block,
+                shown,
+            });
+        }
+        Ok(out)
+    }
+
     fn gather(
         &self,
         wiki: &WikiRecord,
@@ -534,6 +586,7 @@ impl Recovery {
         let repo = p.layout.repo_dir(&wiki.id);
         let dead = dead.filter(|h| !crate::lease::leaves_nothing_to_recover(&h.purpose));
         let acts = self.unfinished_acts(wiki, dead.as_ref())?;
+        let view_acts = self.view_act_witnesses(wiki)?;
         let status_read = p.storage.status(&repo);
         let table = self.processes.processes();
         let mut doctor = p
@@ -595,6 +648,7 @@ impl Recovery {
                 .filter(|e| e.end.is_none())
                 .count(),
             acts,
+            view_acts,
             status,
             doctor,
             retirement,
@@ -944,6 +998,25 @@ impl Recovery {
                     .map_err(|e| e.to_string())?;
                 Ok(format!("the cleanup of block {block_id} is finished"))
             }
+            Step::CompleteViewCreation {
+                act,
+                view,
+                block_id,
+            } => {
+                p.signer
+                    .complete_view_creation(
+                        &wiki.id,
+                        view,
+                        token,
+                        &ViewCreationAct::new(act.to_string()),
+                    )
+                    .map_err(|e| e.to_string())?;
+                Ok(format!(
+                    "the publication of {view} at block {block_id} is finished"
+                ))
+            }
+            Step::EndViewCreated { act, view } => self.end_view_act(wiki, act, view, true),
+            Step::EndViewFailed { act, view } => self.end_view_act(wiki, act, view, false),
             Step::DiscardDamaged => {
                 let d = p
                     .signer
@@ -1026,6 +1099,58 @@ impl Recovery {
                 .to_owned())
             }
         }
+    }
+
+    /// End a view creation that never ended (handoff 005 K4): `created` when prikk shows the view at the block it was
+    /// forked from and `doctor` names no unfinished publication of its ref, `failed` (`interrupted`) when prikk
+    /// does not show the view and names none. Both are read again here, at the step, not taken from the plan: a
+    /// state that changed since is refused and nothing is written.
+    fn end_view_act(
+        &self,
+        wiki: &WikiRecord,
+        act: &ViewActId,
+        view: &str,
+        created: bool,
+    ) -> Result<String, String> {
+        let p = &self.parts;
+        let witnesses = self.view_act_witnesses(wiki).map_err(|e| e.to_string())?;
+        let Some(w) = witnesses.iter().find(|w| w.act == *act) else {
+            return Ok("the creation was already ended".to_owned());
+        };
+        let doctor = p.witnesses.doctor(&wiki.id).map_err(|e| e.to_string())?;
+        if doctor
+            .diagnostics
+            .iter()
+            .any(|d| d.lead_ref() == Some(view))
+        {
+            return Err("prikk still names the view's publication as unfinished".to_owned());
+        }
+        let outcome = match (&w.shown, created) {
+            (ViewShown::Shown { tip }, true) if *tip == w.from_block => ViewActOutcome::Created,
+            (ViewShown::Absent, false) => ViewActOutcome::Failed {
+                word: words::INTERRUPTED.to_owned(),
+            },
+            _ => {
+                return Err(
+                    "what prikk shows of the view is not what the step was planned for".to_owned(),
+                );
+            }
+        };
+        p.acts
+            .finish_view_act(&ViewActEnd {
+                act: act.clone(),
+                outcome,
+                at: (self.clock)(),
+            })
+            .map_err(|e| e.to_string())?;
+        if let Some(reads) = &self.reads {
+            reads.forget_wiki(wiki);
+        }
+        Ok(if created {
+            format!("the creation of {view} is recorded as created")
+        } else {
+            format!("the creation of {view} is recorded as failed (interrupted): it is not there")
+        })
     }
 
     /// Record an act that put nothing in the history as failed (`interrupted`), and end its intent. Refused if the
@@ -1221,6 +1346,10 @@ fn reasons_of(
     }
     if acts.system_acts(wiki)?.iter().any(|e| e.end.is_none()) {
         out.push("open-system-act");
+    }
+    // A view's creation that never ended: the repository may hold the ref, half published (handoff 005 K4).
+    if acts.view_acts(wiki)?.iter().any(|e| e.end.is_none()) {
+        out.push("open-view-act");
     }
     // An export's or a refresh's record that was left leaves nothing in the repository to recover.
     if dead.is_some_and(|h| !crate::lease::leaves_nothing_to_recover(&h.purpose)) {

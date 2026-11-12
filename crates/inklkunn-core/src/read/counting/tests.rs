@@ -104,3 +104,30 @@ fn what_is_returned_is_the_wrapped_storages_answer() {
         views.views.first().map(|v| v.state_id.clone())
     );
 }
+
+#[test]
+fn the_full_listing_of_views_is_the_inner_storages_and_is_not_counted_as_the_open_listing() {
+    let repo = Path::new("/nowhere");
+    let inner = Fake::new(&[("pages/Home.md", "Hello\n")]);
+    inner.add_closed_view("heads/a_");
+    let counting = CountingStorage::new(inner);
+    let all = counting.all_views(repo).expect("all views");
+    // The closed view is there, marked: the default would have listed the open views only.
+    assert!(
+        all.views.iter().any(|v| v.name == "heads/a_" && v.closed),
+        "{all:?}"
+    );
+    assert!(
+        !counting
+            .views(repo)
+            .expect("views")
+            .views
+            .iter()
+            .any(|v| v.name == "heads/a_")
+    );
+    assert_eq!(
+        counting.calls().views,
+        1,
+        "only the open listing was counted"
+    );
+}

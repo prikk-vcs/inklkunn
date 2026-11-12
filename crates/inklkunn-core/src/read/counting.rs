@@ -139,6 +139,12 @@ impl<S: Storage> Storage for CountingStorage<S> {
         self.inner.views(repo)
     }
 
+    /// Passed through uncounted, and to the inner storage's own full listing (the default would list the open views
+    /// only): the counts are the read service's, and the read service never asks for closed views.
+    fn all_views(&self, repo: &Path) -> Result<Views> {
+        self.inner.all_views(repo)
+    }
+
     fn tree(&self, repo: &Path, point: &Point, prefix: Option<&str>) -> Result<Tree> {
         count(&self.tree);
         self.inner.tree(repo, point, prefix)
