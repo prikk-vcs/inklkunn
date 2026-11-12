@@ -135,6 +135,29 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   is enabled by K3 and K4 together**: K4 makes a killed creation recoverable). `inklkunn_store::views::is_view_name` is
   the form check. The pins move to 16.
 
+- **K3 b (handoff 005 corrections; RFC 005 part 1 D-1 d): the review record, and the overrides in `inklkunn wiki
+  metrics`.** Store schema 16 holds it in four tables written once (triggers refuse an `UPDATE`, a `DELETE` and a
+  replacing `INSERT`): `change_claims` (per accepted change and per claim it touched: *kept*, the paragraph reworded and
+  its marker continuing, the default of H-1 point 2, or *dropped*, the paragraph and the claim's expression in it
+  removed), `claim_reconfirmations` (a kept claim later *re-confirmed by* the curation acceptance that judged it again,
+  naming the sealed change it re-confirms; only a kept claim of a sealed change of the same wiki, by an acceptance still
+  pending), `proposal_reconfirms` (a curation proposal made by the reconfirm step names the change it re-confirms from
+  its creation or never) and `decision_claims` (the claims the revision of a *request changes* decision touched, written
+  in the same step as the decision). **The acceptance writes the change's record after its own record and before the
+  intent**, so a record that cannot be kept ends the acceptance as failed with nothing signed, a retry writes its own,
+  and an acceptance that signs always has its record; the store refuses to add to an acceptance that has ended, and
+  every read answers from acceptances that sealed only. `ProposalStore` gains `add_decision_touching`,
+  `touching_decisions`, `record_claim_reviews`, `record_reconfirmations`, `claim_reviews_of`, `claim_reviews`,
+  `create_reconfirm_proposal`, `reconfirm_of` and `reconfirmations_of` (defaults keep none and refuse every write);
+  `ProposalService` gains `decide_touching`, `create_reconfirm`, `reconfirm_of`, `reconfirmations_of` and
+  `claim_reviews_of`. A claim said in two places, one reworded and one removed, is told (and recorded) as removed.
+  `inklkunn wiki metrics` gains `claims`: of the proposals submitted in the period, the claims their changes **kept**,
+  **dropped** and, of the kept, **reconfirmed**, the **changes_requested** (requests for changes on a proposal that
+  touches a claim, once per decision), and **overrides** = dropped + changes_requested (the default rejected). They are
+  counts of what people did and say nothing of who was right; they begin with schema 16 (what came before left no
+  record). Tested on both stores and, for the acceptance, against a real history (a failed acceptance writes records
+  that are never read; a store that cannot keep a record stops the acceptance before the signer).
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

@@ -98,7 +98,7 @@ impl ProposalService {
             wiki,
             view,
             rollback_edit(plan),
-            Some(&plan.undoes),
+            super::Origin::Rollback(&plan.undoes),
         )
     }
 

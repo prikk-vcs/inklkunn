@@ -60,6 +60,7 @@ use crate::proposal::{ProposalError, ProposalService, QuotaLimit, QuotaRefusal, 
 use crate::read::ReadService;
 use crate::reconcile::Finding;
 
+mod claims;
 mod ledger;
 mod prepare;
 pub(crate) mod shared;
@@ -974,6 +975,11 @@ impl ProposalAcceptor {
         let comments = self.parts.proposals.comments(principal, wiki, id)?;
         let ids_attached = prepare::attach_ids(&mut files, &comments);
 
+        // RFC 005 part 1 D-1 d (K3 b): what the change does to the claims it touches, and which claims of an earlier
+        // change a reconfirm curation judges again. Read now, written with the acceptance record.
+        let outcomes = self.claim_outcomes(wiki, &proposal.view, &tip, &files)?;
+        let reconfirmed = self.reconfirmed(principal, wiki, id, curation, &files)?;
+
         // The accepted-bytes quota, on what is about to be written.
         let bytes = prepare::change_bytes(&files, &renames);
         self.parts
@@ -1044,6 +1050,16 @@ impl ProposalAcceptor {
                     }),
                 };
             }
+        }
+        // The review record, between the acceptance record and the intent: a record that cannot be kept stops the
+        // acceptance here, as failed, with nothing committed; the retry writes its own.
+        if let Err(e) = self.record_reviews(&record.id, &outcomes, reconfirmed.as_ref()) {
+            self.fail_record(&record, None, words::UNAVAILABLE);
+            return Err(AcceptFailure::Failed {
+                acceptance: record.id,
+                word: words::UNAVAILABLE,
+                detail: e.to_string(),
+            });
         }
         let intent = IntentRecord {
             id: IntentId::new(),

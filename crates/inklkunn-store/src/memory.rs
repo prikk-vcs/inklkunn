@@ -6,6 +6,7 @@ mod derived;
 mod identity;
 mod inbox;
 mod proposal;
+mod review;
 
 use std::sync::{Mutex, PoisonError};
 

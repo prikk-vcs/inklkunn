@@ -41,7 +41,7 @@ pub mod quota;
 pub mod rollback;
 
 pub use machine::{Illegal, TRANSITIONS};
-pub use metrics::{Metrics, Period, Ratio, operator_metrics};
+pub use metrics::{ClaimFigures, Metrics, Period, Ratio, operator_metrics};
 pub use quota::{QuotaConfig, QuotaLimit, QuotaRefusal, Quotas, Reset};
 
 /// The longest summary, in characters (RFC 004 D-2; the CT-03 first line).
@@ -680,18 +680,109 @@ impl ProposalService {
         view: Option<&str>,
         edit: ProposalEdit,
     ) -> Result<ProposalRecord> {
-        self.create_as(principal, wiki, view, edit, None)
+        self.create_as(principal, wiki, view, edit, Origin::Plain)
     }
 
-    /// [`ProposalService::create`], and, for a rollback (`undoes` is the block it undoes), the note that it
-    /// is one, written in the same step as the proposal.
+    /// [`ProposalService::create`] for the curation proposal of the **reconfirm step** (RFC 005 part 2 D-3; handoff 005
+    /// K11): the note of the change it re-confirms (`change`, the acceptance that put it in the history) is written in
+    /// the same step as the proposal, so that the curation proposal's acceptance can record which change it
+    /// re-confirmed, and the page can say that one is already proposed. The store refuses a change that did not seal.
+    pub fn create_reconfirm(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+        edit: ProposalEdit,
+        change: &inklkunn_store::AcceptanceId,
+    ) -> Result<ProposalRecord> {
+        self.create_as(principal, wiki, view, edit, Origin::Reconfirm(change))
+    }
+
+    /// The change a proposal re-confirms, when it is the curation proposal of a reconfirm step; `None` for any other.
+    /// For whoever may read the proposal.
+    pub fn reconfirm_of(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        id: &ProposalId,
+    ) -> Result<Option<inklkunn_store::AcceptanceId>> {
+        let viewer: Option<&AccountId> = self.readable(principal, wiki, id)?;
+        self.load(wiki, id, viewer)?;
+        Ok(self.proposals.reconfirm_of(id, viewer_of(principal))?)
+    }
+
+    /// The proposals made to re-confirm the change `change`, oldest first, as the principal may see them. Anyone who may
+    /// read the wiki's proposals may ask.
+    pub fn reconfirmations_of(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        change: &inklkunn_store::AcceptanceId,
+    ) -> Result<Vec<ProposalId>> {
+        self.allow(
+            principal,
+            Action::Read,
+            &Resource::Wiki {
+                wiki: wiki.id.clone(),
+            },
+        )?;
+        Ok(self
+            .proposals
+            .reconfirmations_of(change, viewer_of(principal))?)
+    }
+
+    /// Write what an accepted change did to the claims it touched. **Called by the acceptance** (K3 b), under the lease,
+    /// between the acceptance record and the signer; it does not authorize, because the acceptance already did.
+    pub(crate) fn record_claim_reviews(
+        &self,
+        acceptance: &inklkunn_store::AcceptanceId,
+        outcomes: &[inklkunn_store::ClaimOutcome],
+    ) -> std::result::Result<(), StoreError> {
+        self.proposals.record_claim_reviews(acceptance, outcomes)
+    }
+
+    /// Write that a curation acceptance re-confirms claims of an earlier change. Called by the acceptance only.
+    pub(crate) fn record_reconfirmations(
+        &self,
+        by: &inklkunn_store::AcceptanceId,
+        change: &inklkunn_store::AcceptanceId,
+        claims: &[String],
+    ) -> std::result::Result<(), StoreError> {
+        self.proposals.record_reconfirmations(by, change, claims)
+    }
+
+    /// What the accepted change `change` did to the claims it touched, and whether each was re-confirmed since. Called
+    /// by the acceptance and by the pages that offer the reconfirm step; the claims are the wiki's to read.
+    pub fn claim_reviews_of(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        change: &inklkunn_store::AcceptanceId,
+    ) -> Result<Vec<inklkunn_store::ClaimReview>> {
+        self.allow(
+            principal,
+            Action::Read,
+            &Resource::Wiki {
+                wiki: wiki.id.clone(),
+            },
+        )?;
+        let found = self.proposals.claim_reviews_of(change)?;
+        // Another wiki's change is not found here.
+        if let Some(first) = found.first() {
+            self.load(wiki, &first.proposal, viewer_of(principal))?;
+        }
+        Ok(found)
+    }
+
+    /// [`ProposalService::create`], and, for a rollback (the block it undoes) or a reconfirm step (the change it
+    /// re-confirms), the note that it is one, written in the same step as the proposal.
     fn create_as(
         &self,
         principal: &Principal,
         wiki: &WikiRecord,
         view: Option<&str>,
         edit: ProposalEdit,
-        undoes: Option<&str>,
+        origin: Origin<'_>,
     ) -> Result<ProposalRecord> {
         let author = account_of(principal)?;
         self.allow_pages(principal, wiki, &edit.touched())?;
@@ -732,13 +823,16 @@ impl ProposalService {
             reason: None,
             at: now,
         };
-        match undoes {
-            Some(undoes) => self
-                .proposals
-                .create_rollback_proposal(&record, &content, &created, undoes)?,
-            None => self
+        match origin {
+            Origin::Plain => self
                 .proposals
                 .create_proposal(&record, &content, &created)?,
+            Origin::Rollback(undoes) => self
+                .proposals
+                .create_rollback_proposal(&record, &content, &created, undoes)?,
+            Origin::Reconfirm(change) => self
+                .proposals
+                .create_reconfirm_proposal(&record, &content, &created, change)?,
         }
         Ok(record)
     }
@@ -956,6 +1050,24 @@ impl ProposalService {
         kind: DecisionKind,
         body: &str,
     ) -> Result<DecisionRecord> {
+        self.decide_touching(principal, wiki, id, revision, kind, body, &[])
+    }
+
+    /// [`ProposalService::decide`], and, for a *request changes* on a revision that touches claims (RFC 005 part 1 D-1
+    /// d), the claims it touches (their ids), written **in the same step as the decision**: the decision lands with its
+    /// claims or not at all, so that the participation metrics never miss an override. Only a request for changes
+    /// records any.
+    #[allow(clippy::too_many_arguments)]
+    pub fn decide_touching(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        id: &ProposalId,
+        revision: u32,
+        kind: DecisionKind,
+        body: &str,
+        claims: &[String],
+    ) -> Result<DecisionRecord> {
         let who = account_of(principal)?;
         self.allow(
             principal,
@@ -986,7 +1098,7 @@ impl ProposalService {
             body: body.to_owned(),
             created_at: (self.clock)(),
         };
-        match self.proposals.add_decision(&decision) {
+        match self.proposals.add_decision_touching(&decision, claims) {
             Ok(()) => {
                 self.notify(|n| n.reviewed(wiki, &p, who));
                 Ok(decision)
@@ -1340,8 +1452,23 @@ impl ProposalService {
             .proposals
             .proposals(&wiki.id, &ProposalFilter::default(), None)?;
         let decisions = self.proposals.wiki_decisions(&wiki.id)?;
-        Ok(metrics::compute(&wiki.id, period, &proposals, &decisions))
+        let reviews = self.proposals.claim_reviews(&wiki.id)?;
+        let touching = self.proposals.touching_decisions(&wiki.id)?;
+        Ok(metrics::compute_with_reviews(
+            &wiki.id, period, &proposals, &decisions, &reviews, &touching,
+        ))
     }
+}
+
+/// Where a proposal comes from, when it is made as more than a proposal (written with it, in the same step).
+#[derive(Clone, Copy)]
+enum Origin<'a> {
+    /// An ordinary proposal.
+    Plain,
+    /// A rollback: the block it undoes.
+    Rollback(&'a str),
+    /// The curation proposal of the reconfirm step: the change it re-confirms.
+    Reconfirm(&'a inklkunn_store::AcceptanceId),
 }
 
 #[cfg(test)]

@@ -4,11 +4,12 @@ use std::collections::HashMap;
 use std::sync::{MutexGuard, PoisonError};
 
 use crate::proposal::{
-    CommentRecord, DecisionRecord, ProposalChange, ProposalFilter, ProposalOp, ProposalRecord,
-    ProposalState, ProposalStore, ProposalTransition, RevisionContent, RevisionFlags,
-    RevisionRecord,
+    CommentRecord, DecisionKind, DecisionRecord, ProposalChange, ProposalFilter, ProposalOp,
+    ProposalRecord, ProposalState, ProposalStore, ProposalTransition, RevisionContent,
+    RevisionFlags, RevisionRecord,
 };
-use crate::record::{AccountId, ProposalId, WikiId};
+use crate::record::{AcceptanceId, AccountId, DecisionId, ProposalId, WikiId};
+use crate::review::{ClaimOutcome, ClaimReview};
 use crate::{Result, StoreError};
 
 use super::MemoryStore;
@@ -24,6 +25,10 @@ pub(super) struct Proposals {
     decisions: Vec<DecisionRecord>,
     /// The block each rollback proposal undoes.
     rollbacks: HashMap<ProposalId, String>,
+    /// The change each reconfirm proposal re-confirms.
+    pub(super) reconfirms: HashMap<ProposalId, AcceptanceId>,
+    /// The claims each request-changes decision's revision touched.
+    pub(super) decision_claims: HashMap<DecisionId, Vec<String>>,
 }
 
 impl Proposals {
@@ -52,7 +57,7 @@ fn can_see(p: &ProposalRecord, viewer: Option<&AccountId>) -> bool {
 }
 
 impl MemoryStore {
-    fn proposals_lock(&self) -> MutexGuard<'_, Proposals> {
+    pub(super) fn proposals_lock(&self) -> MutexGuard<'_, Proposals> {
         self.proposals
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -74,6 +79,7 @@ impl MemoryStore {
         draft: &RevisionContent,
         created: &ProposalTransition,
         undoes: Option<&str>,
+        reconfirms: Option<&AcceptanceId>,
     ) -> Result<()> {
         // The SQLite store's foreign keys, checked in the same order: the wiki, then the accounts.
         if !self.wiki_exists(&proposal.wiki) {
@@ -82,15 +88,65 @@ impl MemoryStore {
         if !self.has_account(&proposal.author) || !self.has_account(&created.actor) {
             return Err(StoreError::AccountNotFound);
         }
+        // A sealed change of this proposal's wiki, or nothing (the SQLite store's check, made before the lock).
+        if let Some(change) = reconfirms
+            && self.sealed_change_wiki(change).as_ref() != Some(&proposal.wiki)
+        {
+            return Err(StoreError::NotFound);
+        }
         let mut d = self.proposals_lock();
         if d.find(&proposal.id).is_some() {
             return Err(StoreError::IdTaken(proposal.id.to_string()));
+        }
+        if let Some(change) = reconfirms {
+            d.reconfirms.insert(proposal.id.clone(), change.clone());
         }
         d.proposals.push(proposal.clone());
         d.drafts.insert(proposal.id.clone(), draft.clone());
         d.transitions.push(created.clone());
         if let Some(undoes) = undoes {
             d.rollbacks.insert(proposal.id.clone(), undoes.to_owned());
+        }
+        Ok(())
+    }
+}
+
+impl MemoryStore {
+    /// Add a decision and the claims it touches, together (the SQLite store's one transaction).
+    fn add_decision_with(&self, decision: &DecisionRecord, claims: &[String]) -> Result<()> {
+        crate::review::check_claims(claims.iter().map(String::as_str))?;
+        if !claims.is_empty() && decision.kind != DecisionKind::RequestChanges {
+            return Err(StoreError::Backend(
+                "only a request for changes records the claims it touches".to_owned(),
+            ));
+        }
+        if !self.has_account(&decision.reviewer) {
+            if self.proposals_lock().find(&decision.proposal).is_none() {
+                return Err(StoreError::NotFound);
+            }
+            return Err(StoreError::AccountNotFound);
+        }
+        let mut d = self.proposals_lock();
+        let Some(p) = d.find(&decision.proposal) else {
+            return Err(StoreError::NotFound);
+        };
+        if p.state != ProposalState::HeldForReview
+            || decision.revision != d.latest_revision(&decision.proposal)
+        {
+            return Err(StoreError::StateChanged);
+        }
+        if d.decisions.iter().any(|x| {
+            x.id == decision.id
+                || (x.proposal == decision.proposal
+                    && x.revision == decision.revision
+                    && x.reviewer == decision.reviewer)
+        }) {
+            return Err(StoreError::AlreadyRecorded);
+        }
+        d.decisions.push(decision.clone());
+        if !claims.is_empty() {
+            d.decision_claims
+                .insert(decision.id.clone(), claims.to_vec());
         }
         Ok(())
     }
@@ -103,7 +159,7 @@ impl ProposalStore for MemoryStore {
         draft: &RevisionContent,
         created: &ProposalTransition,
     ) -> Result<()> {
-        self.create_with(proposal, draft, created, None)
+        self.create_with(proposal, draft, created, None, None)
     }
 
     fn create_rollback_proposal(
@@ -123,7 +179,82 @@ impl ProposalStore for MemoryStore {
                 "a rollback names the block it undoes by its 64-digit id".to_owned(),
             ));
         }
-        self.create_with(proposal, draft, created, Some(undoes))
+        self.create_with(proposal, draft, created, Some(undoes), None)
+    }
+
+    fn create_reconfirm_proposal(
+        &self,
+        proposal: &ProposalRecord,
+        draft: &RevisionContent,
+        created: &ProposalTransition,
+        change: &AcceptanceId,
+    ) -> Result<()> {
+        self.create_with(proposal, draft, created, None, Some(change))
+    }
+
+    fn reconfirm_of(
+        &self,
+        id: &ProposalId,
+        viewer: Option<&AccountId>,
+    ) -> Result<Option<AcceptanceId>> {
+        let d = self.proposals_lock();
+        Ok(d.visible(id, viewer)
+            .and_then(|p| d.reconfirms.get(&p.id).cloned()))
+    }
+
+    fn reconfirmations_of(
+        &self,
+        change: &AcceptanceId,
+        viewer: Option<&AccountId>,
+    ) -> Result<Vec<ProposalId>> {
+        let d = self.proposals_lock();
+        Ok(d.proposals
+            .iter()
+            .filter(|p| can_see(p, viewer) && d.reconfirms.get(&p.id) == Some(change))
+            .map(|p| p.id.clone())
+            .collect())
+    }
+
+    fn record_claim_reviews(
+        &self,
+        acceptance: &AcceptanceId,
+        outcomes: &[ClaimOutcome],
+    ) -> Result<()> {
+        self.claim_reviews_write(acceptance, outcomes)
+    }
+
+    fn record_reconfirmations(
+        &self,
+        by: &AcceptanceId,
+        change: &AcceptanceId,
+        claims: &[String],
+    ) -> Result<()> {
+        self.reconfirmations_write(by, change, claims)
+    }
+
+    fn claim_reviews_of(&self, change: &AcceptanceId) -> Result<Vec<ClaimReview>> {
+        Ok(self.claim_reviews_read(|a| a.id == *change))
+    }
+
+    fn claim_reviews(&self, wiki: &WikiId) -> Result<Vec<ClaimReview>> {
+        Ok(self.claim_reviews_read(|a| a.wiki == *wiki))
+    }
+
+    fn touching_decisions(&self, wiki: &WikiId) -> Result<Vec<DecisionId>> {
+        let d = self.proposals_lock();
+        Ok(d.decisions
+            .iter()
+            .filter(|x| {
+                d.decision_claims.get(&x.id).is_some_and(|c| !c.is_empty())
+                    && d.find(&x.proposal)
+                        .is_some_and(|p| p.wiki == *wiki && p.submitted_at.is_some())
+            })
+            .map(|x| x.id.clone())
+            .collect())
+    }
+
+    fn add_decision_touching(&self, decision: &DecisionRecord, claims: &[String]) -> Result<()> {
+        self.add_decision_with(decision, claims)
     }
 
     fn rollback_of(&self, id: &ProposalId, viewer: Option<&AccountId>) -> Result<Option<String>> {
@@ -345,31 +476,7 @@ impl ProposalStore for MemoryStore {
     }
 
     fn add_decision(&self, decision: &DecisionRecord) -> Result<()> {
-        if !self.has_account(&decision.reviewer) {
-            if self.proposals_lock().find(&decision.proposal).is_none() {
-                return Err(StoreError::NotFound);
-            }
-            return Err(StoreError::AccountNotFound);
-        }
-        let mut d = self.proposals_lock();
-        let Some(p) = d.find(&decision.proposal) else {
-            return Err(StoreError::NotFound);
-        };
-        if p.state != ProposalState::HeldForReview
-            || decision.revision != d.latest_revision(&decision.proposal)
-        {
-            return Err(StoreError::StateChanged);
-        }
-        if d.decisions.iter().any(|x| {
-            x.id == decision.id
-                || (x.proposal == decision.proposal
-                    && x.revision == decision.revision
-                    && x.reviewer == decision.reviewer)
-        }) {
-            return Err(StoreError::AlreadyRecorded);
-        }
-        d.decisions.push(decision.clone());
-        Ok(())
+        self.add_decision_with(decision, &[])
     }
 
     fn decisions(

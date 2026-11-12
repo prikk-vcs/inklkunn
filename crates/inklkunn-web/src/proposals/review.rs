@@ -214,13 +214,29 @@ pub(crate) async fn decide(
                 back(page, &ctx, &id),
             );
         };
-        match ctx.services.proposals.decide(
+        // A request for changes on a revision that touches claims is recorded with them, in the same step (RFC 005
+        // part 1 D-1 d): a reviewer who may not decide is refused by the decision itself, with nothing read.
+        let claims = if kind == DecisionKind::RequestChanges && ctx.may_on(Action::Review, &id) {
+            match super::touched::claims_of_revision(&ctx, &id, revision) {
+                Ok(claims) => claims,
+                Err(super::touched::Unfound::Proposal(error)) => {
+                    return refused(page, &ctx, &error, back(page, &ctx, &id));
+                }
+                Err(super::touched::Unfound::Read(error)) => {
+                    return super::new::read_failure(page, &ctx, error);
+                }
+            }
+        } else {
+            Vec::new()
+        };
+        match ctx.services.proposals.decide_touching(
             &ctx.principal,
             &ctx.wiki,
             &id,
             revision,
             kind,
             field(&fields, fields::BODY),
+            &claims,
         ) {
             Ok(_) => see(&paths::proposal_at(ctx.slug(), id.as_str(), "decisions")),
             Err(error) => refused(page, &ctx, &error, back(page, &ctx, &id)),

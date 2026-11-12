@@ -18,6 +18,7 @@ mod identity;
 mod inbox;
 mod invitation;
 mod proposal;
+mod review;
 mod view_acts;
 
 use std::path::Path;
@@ -730,6 +731,13 @@ ALTER TABLE wikis ADD COLUMN verification_explained_by TEXT
 /// checked by the database too (lower case, 1 - 64 characters of `a-z 0-9 . - _`, starting with a letter or a digit, no
 /// `..`, no trailing `.`: the form `inklkunn-core`'s `views::new_name` allows). An end names an act that is there, a
 /// created view has no word and a failed one always has.
+///
+/// The same version holds **the review record of RFC 005 part 1 D-1 (d)** (handoff 005 K3 b), four tables written once:
+/// `change_claims` (per acceptance and per claim the change touched, *kept* or *dropped*: written after the
+/// acceptance record and before the signer is asked, so a trigger refuses it once the acceptance has ended),
+/// `claim_reconfirmations` (the curation acceptance that judged a kept claim again, naming the sealed change it
+/// re-confirms), `proposal_reconfirms` (a curation proposal made by the reconfirm step names the change it re-confirms
+/// from its creation or never) and `decision_claims` (the claims a *request changes* decision's revision touched).
 const V16: &str = "
 CREATE TABLE IF NOT EXISTS view_acts (
     id          TEXT PRIMARY KEY,
@@ -775,6 +783,75 @@ BEGIN SELECT RAISE(ABORT, 'view act ends are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS view_act_ends_no_replace BEFORE INSERT ON view_act_ends
 WHEN EXISTS (SELECT 1 FROM view_act_ends WHERE act_id = NEW.act_id)
 BEGIN SELECT RAISE(ABORT, 'view act ends are append-only'); END;
+CREATE TABLE IF NOT EXISTS change_claims (
+    acceptance_id TEXT NOT NULL REFERENCES acceptances(id),
+    claim         TEXT NOT NULL CHECK (length(claim) = 36 AND claim NOT GLOB '*[^0-9a-f-]*'),
+    how           TEXT NOT NULL CHECK (how IN ('kept', 'dropped')),
+    PRIMARY KEY (acceptance_id, claim)
+);
+CREATE TRIGGER IF NOT EXISTS change_claims_no_update BEFORE UPDATE ON change_claims
+BEGIN SELECT RAISE(ABORT, 'review records are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS change_claims_no_delete BEFORE DELETE ON change_claims
+BEGIN SELECT RAISE(ABORT, 'review records are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS change_claims_no_replace BEFORE INSERT ON change_claims
+WHEN EXISTS (SELECT 1 FROM change_claims WHERE acceptance_id = NEW.acceptance_id AND claim = NEW.claim)
+BEGIN SELECT RAISE(ABORT, 'review records are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS change_claims_while_pending BEFORE INSERT ON change_claims
+WHEN EXISTS (SELECT 1 FROM acceptance_results WHERE acceptance_id = NEW.acceptance_id)
+BEGIN SELECT RAISE(ABORT, 'review records are append-only: the acceptance has ended'); END;
+CREATE TABLE IF NOT EXISTS claim_reconfirmations (
+    change_id TEXT NOT NULL,
+    claim     TEXT NOT NULL,
+    by_id     TEXT NOT NULL REFERENCES acceptances(id),
+    PRIMARY KEY (change_id, claim, by_id),
+    FOREIGN KEY (change_id, claim) REFERENCES change_claims(acceptance_id, claim),
+    CHECK (change_id <> by_id)
+);
+CREATE TRIGGER IF NOT EXISTS claim_reconfirmations_no_update BEFORE UPDATE ON claim_reconfirmations
+BEGIN SELECT RAISE(ABORT, 'review records are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS claim_reconfirmations_no_delete BEFORE DELETE ON claim_reconfirmations
+BEGIN SELECT RAISE(ABORT, 'review records are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS claim_reconfirmations_no_replace BEFORE INSERT ON claim_reconfirmations
+WHEN EXISTS (SELECT 1 FROM claim_reconfirmations
+             WHERE change_id = NEW.change_id AND claim = NEW.claim AND by_id = NEW.by_id)
+BEGIN SELECT RAISE(ABORT, 'review records are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS claim_reconfirmations_of_a_kept_claim BEFORE INSERT ON claim_reconfirmations
+WHEN NOT EXISTS (SELECT 1 FROM change_claims
+                 WHERE acceptance_id = NEW.change_id AND claim = NEW.claim AND how = 'kept')
+BEGIN SELECT RAISE(ABORT, 'review records are append-only: only a kept claim is re-confirmed'); END;
+CREATE TRIGGER IF NOT EXISTS claim_reconfirmations_of_a_sealed_change BEFORE INSERT ON claim_reconfirmations
+WHEN NOT EXISTS (SELECT 1 FROM acceptance_results WHERE acceptance_id = NEW.change_id AND outcome = 'sealed')
+BEGIN SELECT RAISE(ABORT, 'review records are append-only: only a sealed change is re-confirmed'); END;
+CREATE TRIGGER IF NOT EXISTS claim_reconfirmations_while_pending BEFORE INSERT ON claim_reconfirmations
+WHEN EXISTS (SELECT 1 FROM acceptance_results WHERE acceptance_id = NEW.by_id)
+BEGIN SELECT RAISE(ABORT, 'review records are append-only: the acceptance has ended'); END;
+CREATE TABLE IF NOT EXISTS proposal_reconfirms (
+    proposal_id TEXT PRIMARY KEY REFERENCES proposals(id),
+    change_id   TEXT NOT NULL REFERENCES acceptances(id)
+);
+CREATE INDEX IF NOT EXISTS proposal_reconfirms_change ON proposal_reconfirms(change_id);
+CREATE TRIGGER IF NOT EXISTS proposal_reconfirms_no_update BEFORE UPDATE ON proposal_reconfirms
+BEGIN SELECT RAISE(ABORT, 'proposal reconfirms are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS proposal_reconfirms_no_delete BEFORE DELETE ON proposal_reconfirms
+BEGIN SELECT RAISE(ABORT, 'proposal reconfirms are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS proposal_reconfirms_no_replace BEFORE INSERT ON proposal_reconfirms
+WHEN EXISTS (SELECT 1 FROM proposal_reconfirms WHERE proposal_id = NEW.proposal_id)
+BEGIN SELECT RAISE(ABORT, 'proposal reconfirms are append-only'); END;
+CREATE TABLE IF NOT EXISTS decision_claims (
+    decision_id TEXT NOT NULL REFERENCES proposal_decisions(id),
+    claim       TEXT NOT NULL CHECK (length(claim) = 36 AND claim NOT GLOB '*[^0-9a-f-]*'),
+    PRIMARY KEY (decision_id, claim)
+);
+CREATE TRIGGER IF NOT EXISTS decision_claims_no_update BEFORE UPDATE ON decision_claims
+BEGIN SELECT RAISE(ABORT, 'review records are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS decision_claims_no_delete BEFORE DELETE ON decision_claims
+BEGIN SELECT RAISE(ABORT, 'review records are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS decision_claims_no_replace BEFORE INSERT ON decision_claims
+WHEN EXISTS (SELECT 1 FROM decision_claims WHERE decision_id = NEW.decision_id AND claim = NEW.claim)
+BEGIN SELECT RAISE(ABORT, 'review records are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS decision_claims_of_a_request BEFORE INSERT ON decision_claims
+WHEN NOT EXISTS (SELECT 1 FROM proposal_decisions WHERE id = NEW.decision_id AND kind = 'request-changes')
+BEGIN SELECT RAISE(ABORT, 'review records are append-only: only a request for changes records its claims'); END;
 ";
 
 /// Version 17 (handoff 005 corrections, K9): a source has a name in the derived knowledge index: its title, author or

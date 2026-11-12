@@ -14,6 +14,7 @@
 //!   DM-7): keyed by prikk's ids, never authoritative, with no field for a verification result.
 //! - [`proposal`]: proposals, revisions, comments, decisions and the log of every transition (RFC 004 D-1,
 //!   D-3), with drafts visible to their author only.
+//! - [`review`]: what reviewers did with the default that a reworded claim keeps its claim (RFC 005 part 1 D-1 d).
 //! - [`acceptance`]: acceptances, intents and the lease holder (RFC 004 D-4, D-7), written once and never
 //!   updated.
 //! - [`acts`]: the recovery flag, the overlaps kept on a proposal, the records of the acts the service
@@ -35,6 +36,7 @@ pub mod invitation;
 pub mod memory;
 pub mod proposal;
 pub mod record;
+pub mod review;
 pub mod root;
 pub mod sqlite;
 pub mod views;
@@ -78,6 +80,7 @@ pub use record::{
     PrikkVersion, ProposalId, RecoveryActId, Slug, SlugError, SystemActId, TokenId, Verification,
     VerificationState, ViewActId, Visibility, WikiId, WikiRecord,
 };
+pub use review::{ClaimHow, ClaimOutcome, ClaimReview};
 pub use root::RootLayout;
 pub use sqlite::SqliteStore;
 pub use views::{ViewActEnd, ViewActEntry, ViewActOutcome, ViewActRecord, ViewKind};

@@ -98,6 +98,7 @@ struct World {
     reads: Arc<ReadService>,
     proposals: Arc<ProposalService>,
     acceptor: Arc<ProposalAcceptor>,
+    signer: Arc<Signer>,
     acts: SystemActs,
     standin: PathBuf,
     layout: inklkunn_store::RootLayout,
@@ -226,7 +227,7 @@ impl World {
             store.clone(),
             storage.clone(),
             layout.clone(),
-            signer,
+            signer.clone(),
             leases.clone(),
         )
         .with_reads(reads.clone())
@@ -269,6 +270,7 @@ impl World {
             reads,
             proposals,
             acceptor,
+            signer,
             acts,
             standin,
             layout,
@@ -1217,4 +1219,523 @@ fn a_source_is_attached_and_a_status_curated_through_the_whole_path_on_a_real_hi
     let index = w.reads.knowledge_index(&w.wiki, None).unwrap();
     assert_eq!(index.claim(&id).unwrap().standing_judgement, "earlier");
     assert!(index.links_of(&id).all(|l| l.judgement == "earlier"));
+}
+
+// ------------------------------------------------------------------------------------ the review record (K3 b, K11)
+
+/// A claim standing on the paragraph `words` of `pages/Home.md`, made and accepted the way the form makes it.
+struct Claimed {
+    claim: inklkunn_core::knowledge::ClaimId,
+    claim_file: String,
+    block: String,
+}
+
+fn claim_on(w: &World, words: &str) -> Claimed {
+    use inklkunn_core::knowledge::compose::{Attachment, SourceDraft, attach};
+    use inklkunn_core::knowledge::{Bearing, Link, SourceKind, StatementKind};
+    let page = w.page("pages/Home.md");
+    let start = page.find(words).unwrap();
+    let attached = attach(
+        &page,
+        &(start..start + words.len()),
+        None,
+        &Attachment {
+            source: SourceDraft {
+                kind: SourceKind::Secondary,
+                title: Some("A history".to_owned()),
+                author: None,
+                date: None,
+                reference: None,
+            },
+            relation: Link::Supports,
+            bearing: Bearing::Direct,
+            note: None,
+            kind: StatementKind::Observation,
+        },
+    )
+    .unwrap();
+    let [(claim_file, claim_text), (source_file, source_text)] = attached.files;
+    let p = w.propose(
+        "A source for a paragraph",
+        &[
+            ("pages/Home.md", Some(&attached.page)),
+            (claim_file.as_str(), Some(&claim_text)),
+            (source_file.as_str(), Some(&source_text)),
+        ],
+    );
+    signed(w.accept(&p).unwrap());
+    Claimed {
+        claim: attached.claim,
+        claim_file,
+        block: attached.block,
+    }
+}
+
+fn reviews(w: &World) -> Vec<(String, inklkunn_store::ClaimHow, inklkunn_store::ProposalId)> {
+    use inklkunn_store::ProposalStore;
+    let mut found: Vec<_> = w
+        .store
+        .claim_reviews(&w.wiki.id)
+        .unwrap()
+        .into_iter()
+        .map(|r| (r.claim, r.how, r.proposal))
+        .collect();
+    found.sort();
+    found
+}
+
+#[test]
+fn the_review_record_is_kept_with_each_acceptance_and_read_only_from_one_that_sealed() {
+    use inklkunn_core::knowledge::{Claim, File, read_file};
+    use inklkunn_store::ClaimHow::{Dropped, Kept};
+    use inklkunn_store::ProposalStore;
+    let Some(w) = World::new("review-record", LeaseConfig::default()) else {
+        return;
+    };
+    let one = claim_on(&w, "One.");
+    let two = claim_on(&w, "Two.");
+    assert!(
+        reviews(&w).is_empty(),
+        "making a claim touches none: it is judged on the wording it is made with"
+    );
+
+    // A change that rewords the paragraph, its marker staying: the claim is kept. A failed acceptance writes records
+    // that are never read; the retry writes its own.
+    let reworded = w
+        .page("pages/Home.md")
+        .replace("One.", "One, in other words.");
+    let p = w.propose("Reword", &[("pages/Home.md", Some(&reworded))]);
+    w.control("fail-commit", "");
+    assert!(matches!(w.accept(&p), Err(AcceptFailure::Failed { .. })));
+    assert!(reviews(&w).is_empty(), "nothing sealed, nothing read");
+    w.uncontrol("fail-commit");
+    let done = signed(w.accept(&p).unwrap());
+    assert_eq!(
+        reviews(&w),
+        vec![(one.claim.to_string(), Kept, p.id.clone())]
+    );
+    let of = w.store.claim_reviews_of(&done.acceptance).unwrap();
+    assert_eq!(of.len(), 1);
+    assert_eq!(of.first().map(|r| r.reconfirmed_by.is_none()), Some(true));
+
+    // A change that rewords one paragraph and removes another, with the claim's expression: one kept, one dropped.
+    let page = w
+        .page("pages/Home.md")
+        .replace("One, in other words.", "One, once more.")
+        .replace(&format!("Two. ^{}\n\n", two.block), "");
+    assert!(!page.contains("Two."));
+    let File::Claim(held) = read_file(&two.claim_file, w.page(&two.claim_file).as_bytes()).unwrap()
+    else {
+        panic!("a claim");
+    };
+    let mut gone: Claim = (*held).clone();
+    gone.expressions.clear();
+    let q = w.propose(
+        "Reword one, remove the other",
+        &[
+            ("pages/Home.md", Some(&page)),
+            (two.claim_file.as_str(), Some(&gone.to_yaml())),
+        ],
+    );
+    signed(w.accept(&q).unwrap());
+    let mut want = vec![
+        (one.claim.to_string(), Kept, p.id.clone()),
+        (one.claim.to_string(), Kept, q.id.clone()),
+        (two.claim.to_string(), Dropped, q.id.clone()),
+    ];
+    want.sort();
+    assert_eq!(reviews(&w), want);
+
+    // A change to a page that holds no claim leaves nothing.
+    let r = w.propose(
+        "Elsewhere",
+        &[(
+            "pages/Other.md",
+            Some(&OTHER.replace("Hello.", "Hello again.")),
+        )],
+    );
+    signed(w.accept(&r).unwrap());
+    assert_eq!(reviews(&w), want);
+    assert!(w.reconciled().is_clean());
+}
+
+#[test]
+fn a_reconfirm_proposal_is_recorded_as_re_confirming_its_change_when_its_acceptance_seals() {
+    use inklkunn_core::knowledge::compose::{Curation, LinkEdit, curate};
+    use inklkunn_core::knowledge::{AnchorState, File, Standing, anchor_state, read_file};
+    use inklkunn_store::ProposalStore;
+    let Some(w) = World::new("reconfirm-record", LeaseConfig::default()) else {
+        return;
+    };
+    let one = claim_on(&w, "One.");
+    let reworded = w
+        .page("pages/Home.md")
+        .replace("One.", "One, in other words.");
+    let p = w.propose("Reword", &[("pages/Home.md", Some(&reworded))]);
+    let change = signed(w.accept(&p).unwrap());
+
+    // The files that judge the claim again on the wording it has now.
+    let judged_again = |w: &World| -> Vec<FileChange> {
+        let File::Claim(claim) =
+            read_file(&one.claim_file, w.page(&one.claim_file).as_bytes()).unwrap()
+        else {
+            panic!("a claim");
+        };
+        let AnchorState::Present(now) = anchor_state(&w.page("pages/Home.md"), &one.block) else {
+            panic!("present");
+        };
+        let edit = Curation {
+            status: Standing::Unknown,
+            links: claim
+                .sources
+                .iter()
+                .map(|l| LinkEdit {
+                    source: l.source.clone(),
+                    relation: l.relation,
+                    bearing: l.bearing,
+                })
+                .collect(),
+            sources: Vec::new(),
+            confirm: true,
+        };
+        curate(&claim, &[], Some(&now), &edit)
+            .unwrap()
+            .into_iter()
+            .map(|(path, text)| FileChange {
+                path,
+                text: Some(text),
+            })
+            .collect()
+    };
+    let propose_curation = |w: &World, reconfirming: Option<&inklkunn_store::AcceptanceId>| {
+        let edit = ProposalEdit {
+            summary: "Judged again".to_owned(),
+            files: judged_again(w),
+            ..ProposalEdit::default()
+        };
+        let draft = match reconfirming {
+            Some(change) => {
+                w.proposals
+                    .create_reconfirm(&w.contributor, &w.wiki, None, edit, change)
+            }
+            None => w.proposals.create(&w.contributor, &w.wiki, None, edit),
+        }
+        .unwrap_or_else(|e| panic!("create: {e}"));
+        w.proposals
+            .submit(&w.contributor, &w.wiki, &draft.id)
+            .unwrap()
+    };
+    let reconfirmed = |w: &World, change: &inklkunn_store::AcceptanceId| {
+        w.store
+            .claim_reviews_of(change)
+            .unwrap()
+            .into_iter()
+            .map(|r| r.reconfirmed_by)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(reconfirmed(&w, &change.acceptance), vec![None]);
+
+    // The curation proposal names the change it re-confirms from its creation; until it is accepted nothing is.
+    let curation = propose_curation(&w, Some(&change.acceptance));
+    assert_eq!(
+        w.proposals
+            .reconfirm_of(&w.maintainer, &w.wiki, &curation.id)
+            .unwrap(),
+        Some(change.acceptance.clone())
+    );
+    assert_eq!(
+        w.proposals
+            .reconfirmations_of(&w.maintainer, &w.wiki, &change.acceptance)
+            .unwrap(),
+        vec![curation.id.clone()]
+    );
+    assert_eq!(reconfirmed(&w, &change.acceptance), vec![None]);
+    // An acceptance that fails records nothing that is read ...
+    w.control("fail-commit", "");
+    assert!(matches!(
+        w.accept(&curation),
+        Err(AcceptFailure::Failed { .. })
+    ));
+    w.uncontrol("fail-commit");
+    assert_eq!(reconfirmed(&w, &change.acceptance), vec![None]);
+    // ... and the one that seals re-confirms the claim for that change, by its own acceptance.
+    let sealed_curation = signed(w.accept(&curation).unwrap());
+    assert_eq!(
+        reconfirmed(&w, &change.acceptance),
+        vec![Some(sealed_curation.acceptance.clone())]
+    );
+
+    // A curation that was not made by the reconfirm step re-confirms nothing, whatever it judges.
+    let reworded_again = w
+        .page("pages/Home.md")
+        .replace("One, in other words.", "One, again.");
+    let again = w.propose("Reword again", &[("pages/Home.md", Some(&reworded_again))]);
+    let second = signed(w.accept(&again).unwrap());
+    let plain = propose_curation(&w, None);
+    signed(w.accept(&plain).unwrap());
+    assert_eq!(reconfirmed(&w, &second.acceptance), vec![None]);
+    assert!(w.reconciled().is_clean());
+}
+
+/// The proposal records, all of them the real store's, except that the review record cannot be kept.
+struct CannotKeepReviews(Arc<SqliteStore>);
+
+type Stored<T> = inklkunn_store::Result<T>;
+
+impl inklkunn_store::ProposalStore for CannotKeepReviews {
+    fn create_proposal(
+        &self,
+        p: &ProposalRecord,
+        d: &inklkunn_store::RevisionContent,
+        t: &inklkunn_store::ProposalTransition,
+    ) -> Stored<()> {
+        self.0.create_proposal(p, d, t)
+    }
+    fn create_rollback_proposal(
+        &self,
+        p: &ProposalRecord,
+        d: &inklkunn_store::RevisionContent,
+        t: &inklkunn_store::ProposalTransition,
+        undoes: &str,
+    ) -> Stored<()> {
+        self.0.create_rollback_proposal(p, d, t, undoes)
+    }
+    fn rollback_of(
+        &self,
+        id: &inklkunn_store::ProposalId,
+        v: Option<&AccountId>,
+    ) -> Stored<Option<String>> {
+        self.0.rollback_of(id, v)
+    }
+    fn revision_flags(
+        &self,
+        ids: &[inklkunn_store::ProposalId],
+    ) -> Stored<Vec<(inklkunn_store::ProposalId, inklkunn_store::RevisionFlags)>> {
+        self.0.revision_flags(ids)
+    }
+    fn proposal(
+        &self,
+        id: &inklkunn_store::ProposalId,
+        v: Option<&AccountId>,
+    ) -> Stored<Option<ProposalRecord>> {
+        self.0.proposal(id, v)
+    }
+    fn proposals(
+        &self,
+        w: &inklkunn_store::WikiId,
+        f: &ProposalFilter,
+        v: Option<&AccountId>,
+    ) -> Stored<Vec<ProposalRecord>> {
+        self.0.proposals(w, f, v)
+    }
+    fn draft(
+        &self,
+        id: &inklkunn_store::ProposalId,
+        v: Option<&AccountId>,
+    ) -> Stored<Option<inklkunn_store::RevisionContent>> {
+        self.0.draft(id, v)
+    }
+    fn save_draft(
+        &self,
+        id: &inklkunn_store::ProposalId,
+        summary: &str,
+        sources: &[String],
+        draft: &inklkunn_store::RevisionContent,
+        at: i64,
+    ) -> Stored<()> {
+        self.0.save_draft(id, summary, sources, draft, at)
+    }
+    fn change_proposal(&self, c: &inklkunn_store::ProposalChange) -> Stored<ProposalRecord> {
+        self.0.change_proposal(c)
+    }
+    fn revisions(
+        &self,
+        id: &inklkunn_store::ProposalId,
+        v: Option<&AccountId>,
+    ) -> Stored<Vec<inklkunn_store::RevisionRecord>> {
+        self.0.revisions(id, v)
+    }
+    fn transitions(
+        &self,
+        id: &inklkunn_store::ProposalId,
+        v: Option<&AccountId>,
+    ) -> Stored<Vec<inklkunn_store::ProposalTransition>> {
+        self.0.transitions(id, v)
+    }
+    fn add_comment(&self, c: &inklkunn_store::CommentRecord, s: &[ProposalState]) -> Stored<()> {
+        self.0.add_comment(c, s)
+    }
+    fn comments(
+        &self,
+        id: &inklkunn_store::ProposalId,
+        v: Option<&AccountId>,
+    ) -> Stored<Vec<inklkunn_store::CommentRecord>> {
+        self.0.comments(id, v)
+    }
+    fn add_decision(&self, d: &inklkunn_store::DecisionRecord) -> Stored<()> {
+        self.0.add_decision(d)
+    }
+    fn decisions(
+        &self,
+        id: &inklkunn_store::ProposalId,
+        v: Option<&AccountId>,
+    ) -> Stored<Vec<inklkunn_store::DecisionRecord>> {
+        self.0.decisions(id, v)
+    }
+    fn wiki_decisions(
+        &self,
+        w: &inklkunn_store::WikiId,
+    ) -> Stored<Vec<inklkunn_store::DecisionRecord>> {
+        self.0.wiki_decisions(w)
+    }
+    fn open_count(&self, w: &inklkunn_store::WikiId, a: &AccountId) -> Stored<u64> {
+        self.0.open_count(w, a)
+    }
+    fn opened_since(
+        &self,
+        w: &inklkunn_store::WikiId,
+        a: Option<&AccountId>,
+        since: i64,
+    ) -> Stored<Vec<i64>> {
+        self.0.opened_since(w, a, since)
+    }
+    fn submitted_since(
+        &self,
+        w: &inklkunn_store::WikiId,
+        since: i64,
+    ) -> Stored<Vec<(AccountId, i64)>> {
+        self.0.submitted_since(w, since)
+    }
+    fn comments_since(
+        &self,
+        w: &inklkunn_store::WikiId,
+        a: &AccountId,
+        since: i64,
+    ) -> Stored<Vec<i64>> {
+        self.0.comments_since(w, a, since)
+    }
+    // The review record: all the real store's, but the claims of a change.
+    fn record_claim_reviews(
+        &self,
+        _: &inklkunn_store::AcceptanceId,
+        _: &[inklkunn_store::ClaimOutcome],
+    ) -> Stored<()> {
+        Err(inklkunn_store::StoreError::Backend(
+            "the review record cannot be kept".to_owned(),
+        ))
+    }
+    fn record_reconfirmations(
+        &self,
+        by: &inklkunn_store::AcceptanceId,
+        change: &inklkunn_store::AcceptanceId,
+        claims: &[String],
+    ) -> Stored<()> {
+        self.0.record_reconfirmations(by, change, claims)
+    }
+    fn claim_reviews_of(
+        &self,
+        c: &inklkunn_store::AcceptanceId,
+    ) -> Stored<Vec<inklkunn_store::ClaimReview>> {
+        self.0.claim_reviews_of(c)
+    }
+    fn claim_reviews(
+        &self,
+        w: &inklkunn_store::WikiId,
+    ) -> Stored<Vec<inklkunn_store::ClaimReview>> {
+        self.0.claim_reviews(w)
+    }
+}
+
+#[test]
+fn a_change_whose_review_record_cannot_be_kept_is_not_signed_and_a_retry_signs_it_once() {
+    use inklkunn_store::ClaimHow::Kept;
+    let Some(w) = World::new("review-cannot", LeaseConfig::default()) else {
+        return;
+    };
+    let one = claim_on(&w, "One.");
+    // An acceptor whose proposal service cannot keep the record of a change's claims.
+    let authorizer = || {
+        Authorizer::new(
+            Arc::new(StoreAuthz::new(w.store.clone(), w.store.clone())),
+            w.store.clone(),
+        )
+    };
+    let broken = Arc::new(ProposalService::new(
+        Arc::new(CannotKeepReviews(w.store.clone())),
+        w.store.clone(),
+        w.store.clone(),
+        authorizer(),
+        w.reads.clone(),
+        QuotaConfig::default(),
+    ));
+    let leases = WikiLeases::new(
+        w.write_leases.clone(),
+        w.store.clone(),
+        "acceptance-test-broken",
+        LeaseConfig::default(),
+    );
+    let broken_acceptor = ProposalAcceptor::new(AcceptanceParts {
+        proposals: broken,
+        acceptances: w.store.clone(),
+        acts: w.store.clone(),
+        roles: w.store.clone(),
+        accounts: w.store.clone(),
+        storage: w.storage.clone(),
+        layout: w.layout.clone(),
+        signer: w.signer.clone(),
+        leases,
+        reads: w.reads.clone(),
+    });
+
+    let reworded = w
+        .page("pages/Home.md")
+        .replace("One.", "One, in other words.");
+    let p = w.propose("Reword", &[("pages/Home.md", Some(&reworded))]);
+    let (history, page) = (w.history(), w.page("pages/Home.md"));
+    let intents = w.store.intents(&w.wiki.id).unwrap().len();
+    let refused = broken_acceptor
+        .accept(&w.maintainer, &w.wiki, &p.id, 1)
+        .unwrap_err();
+    let AcceptFailure::Failed {
+        acceptance, word, ..
+    } = &refused
+    else {
+        panic!("{refused:?}")
+    };
+    assert_eq!(*word, "unavailable");
+    // Nothing was signed: the history and the page are as they were, the record says failed, the intent was never written
+    // and the proposal is still open.
+    assert_eq!(w.history(), history);
+    assert_eq!(w.page("pages/Home.md"), page);
+    let entries = w.store.acceptances_of(&p.id, 1).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(
+        entries.first().map(|e| e.acceptance.id.clone()),
+        Some(acceptance.clone())
+    );
+    assert!(matches!(
+        entries
+            .first()
+            .and_then(|e| e.result.clone())
+            .map(|r| r.outcome),
+        Some(inklkunn_store::AcceptanceOutcome::Failed { .. })
+    ));
+    assert_eq!(w.store.intents(&w.wiki.id).unwrap().len(), intents);
+    assert_eq!(w.state(&p), ProposalState::HeldForReview);
+    assert_eq!(w.store.recovery_flag(&w.wiki.id).unwrap(), None);
+    assert!(reviews(&w).is_empty());
+    assert!(!w.calls().is_empty());
+    let commits = w.calls().iter().filter(|v| *v == "commit").count();
+
+    // The real acceptor signs it once, with its record.
+    signed(w.accept(&p).unwrap());
+    assert_eq!(
+        w.calls().iter().filter(|v| *v == "commit").count(),
+        commits + 1
+    );
+    assert_eq!(
+        reviews(&w),
+        vec![(one.claim.to_string(), Kept, p.id.clone())]
+    );
+    assert!(w.reconciled().is_clean());
 }

@@ -118,18 +118,29 @@ pub fn judge(
             .filter_map(|e| digest_in(e, changes, true, rest))
             .collect(),
     );
-    // The first expression, in the claim's order, whose paragraph changes its words or goes.
-    let (e, how, change) = claim.expressions.iter().find_map(|e| {
-        let change = changes
-            .iter()
-            .find(|c| c.page_id().as_deref() == Some(e.page_id.as_str()))?;
-        let was = digest_in(e, changes, false, rest)?;
-        match digest_in(e, changes, true, rest) {
-            Some(now) if now == was => None,
-            Some(_) => Some((e, How::Reworded, change)),
-            None => Some((e, How::Removed, change)),
-        }
-    })?;
+    // The expressions, in the claim's order, whose paragraph changes its words or goes. A paragraph that **goes** is
+    // the stronger fact (the claim loses an expression, which is what a reviewer confirms and what the review record
+    // counts as a drop), so the first of those is the one told when the claim has both; else the first reworded.
+    let moved: Vec<(&Expression, How, &PageChange<'_>)> = claim
+        .expressions
+        .iter()
+        .filter_map(|e| {
+            let change = changes
+                .iter()
+                .find(|c| c.page_id().as_deref() == Some(e.page_id.as_str()))?;
+            let was = digest_in(e, changes, false, rest)?;
+            match digest_in(e, changes, true, rest) {
+                Some(now) if now == was => None,
+                Some(_) => Some((e, How::Reworded, change)),
+                None => Some((e, How::Removed, change)),
+            }
+        })
+        .collect();
+    let (e, how, change) = moved
+        .iter()
+        .find(|(_, how, _)| *how == How::Removed)
+        .or_else(|| moved.first())
+        .copied()?;
     let was_current = |d: &Digest| before.contains(d) && !after.contains(d);
     let text = match how {
         How::Reworded => change.new,

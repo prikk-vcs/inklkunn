@@ -22,7 +22,8 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::Result;
-use crate::record::{AccountId, CommentId, DecisionId, ProposalId, WikiId};
+use crate::record::{AcceptanceId, AccountId, CommentId, DecisionId, ProposalId, WikiId};
+use crate::review::{ClaimOutcome, ClaimReview};
 
 /// Where a proposal is in its life (RFC 004 D-1). *Draft*, *held for review* and *needs a revision* are the
 /// sub-states of **open**; the other four end the proposal.
@@ -528,6 +529,105 @@ pub trait ProposalStore: Send + Sync {
 
     /// Every decision on the wiki's submitted proposals, oldest first: what the participation metrics read.
     fn wiki_decisions(&self, wiki: &WikiId) -> Result<Vec<DecisionRecord>>;
+
+    // --- the review record of RFC 005 part 1 D-1 (d); handoff 005 K3 b; store schema 16 (see [`crate::review`]).
+    // Both of this crate's stores keep it. A store that keeps none answers as these defaults do: it refuses every
+    // write (so a service never signs a change whose record it could not keep) and reads nothing.
+
+    /// Add a decision as [`add_decision`](ProposalStore::add_decision) does, and, in the same step, the claims its
+    /// revision touches (`claims`, at most [`MAX_CLAIMS`](crate::review::MAX_CLAIMS), none twice, each a claim's id;
+    /// only a *request changes* decision records any: [`Backend`](crate::StoreError::Backend) otherwise). The decision
+    /// lands with its claims or not at all.
+    fn add_decision_touching(&self, _decision: &DecisionRecord, _claims: &[String]) -> Result<()> {
+        Err(crate::StoreError::Backend(
+            "this store keeps no review record".to_owned(),
+        ))
+    }
+
+    /// The decisions of the wiki's submitted proposals that were recorded with at least one claim, oldest first: the
+    /// *request changes* decisions on a proposal that touches a claim.
+    fn touching_decisions(&self, _wiki: &WikiId) -> Result<Vec<DecisionId>> {
+        Ok(Vec::new())
+    }
+
+    /// Write, for the acceptance `acceptance`, what its change did to each claim it touched. Written **while the
+    /// acceptance is pending** (after its record, before the signer is asked): the acceptance must be there
+    /// ([`NotFound`](crate::StoreError::NotFound)) and not ended ([`StateChanged`](crate::StoreError::StateChanged));
+    /// a claim twice, or already recorded for it, is [`AlreadyRecorded`](crate::StoreError::AlreadyRecorded); more than
+    /// [`MAX_CLAIMS`](crate::review::MAX_CLAIMS) claims, or a claim that is not an id, is
+    /// [`Backend`](crate::StoreError::Backend). All of them or none.
+    fn record_claim_reviews(
+        &self,
+        _acceptance: &AcceptanceId,
+        _outcomes: &[ClaimOutcome],
+    ) -> Result<()> {
+        Err(crate::StoreError::Backend(
+            "this store keeps no review record".to_owned(),
+        ))
+    }
+
+    /// Write that the curation acceptance `by`, **while it is pending**, re-confirms `claims` for the change
+    /// `change`. The change must be a sealed acceptance of the same wiki that *kept* each claim
+    /// ([`NotFound`](crate::StoreError::NotFound) otherwise); the checks of
+    /// [`record_claim_reviews`](ProposalStore::record_claim_reviews) apply. All of them or none.
+    fn record_reconfirmations(
+        &self,
+        _by: &AcceptanceId,
+        _change: &AcceptanceId,
+        _claims: &[String],
+    ) -> Result<()> {
+        Err(crate::StoreError::Backend(
+            "this store keeps no review record".to_owned(),
+        ))
+    }
+
+    /// What the change `change` did to the claims it touched, with whether each was re-confirmed since: empty unless
+    /// the acceptance sealed, and counting a re-confirmation only when its own acceptance sealed.
+    fn claim_reviews_of(&self, _change: &AcceptanceId) -> Result<Vec<ClaimReview>> {
+        Ok(Vec::new())
+    }
+
+    /// [`claim_reviews_of`](ProposalStore::claim_reviews_of) for every sealed acceptance of the wiki, oldest first: what
+    /// the participation metrics read.
+    fn claim_reviews(&self, _wiki: &WikiId) -> Result<Vec<ClaimReview>> {
+        Ok(Vec::new())
+    }
+
+    /// [`create_proposal`](ProposalStore::create_proposal) for the curation proposal of the **reconfirm step**: the
+    /// same records, and with them, in the same step, the note of the change it re-confirms (a sealed acceptance of the
+    /// proposal's wiki: [`NotFound`](crate::StoreError::NotFound) otherwise). A proposal re-confirms from its creation
+    /// or never.
+    fn create_reconfirm_proposal(
+        &self,
+        _proposal: &ProposalRecord,
+        _draft: &RevisionContent,
+        _created: &ProposalTransition,
+        _change: &AcceptanceId,
+    ) -> Result<()> {
+        Err(crate::StoreError::Backend(
+            "this store keeps no review record".to_owned(),
+        ))
+    }
+
+    /// The change a proposal re-confirms, when it is the curation proposal of a reconfirm step; `None` for every
+    /// other proposal, for one that does not exist, and for a never-submitted one the viewer may not see.
+    fn reconfirm_of(
+        &self,
+        _id: &ProposalId,
+        _viewer: Option<&AccountId>,
+    ) -> Result<Option<AcceptanceId>> {
+        Ok(None)
+    }
+
+    /// The proposals made to re-confirm the change `change`, oldest first, as `viewer` may see them (a never-submitted
+    /// one is its author's alone).
+    fn reconfirmations_of(
+        &self,
+        _change: &AcceptanceId,
+        _viewer: Option<&AccountId>,
+    ) -> Result<Vec<ProposalId>> {
+        Ok(Vec::new())
+    }
 
     /// How many open proposals (drafts included) `author` has in the wiki: a quota's current value.
     fn open_count(&self, wiki: &WikiId, author: &AccountId) -> Result<u64>;

@@ -12,7 +12,8 @@ use crate::proposal::{
     ProposalOp, ProposalRecord, ProposalState, ProposalStore, ProposalTransition, RevisionContent,
     RevisionFlags, RevisionRecord,
 };
-use crate::record::{AccountId, CommentId, DecisionId, ProposalId, WikiId};
+use crate::record::{AcceptanceId, AccountId, CommentId, DecisionId, ProposalId, WikiId};
+use crate::review::{ClaimOutcome, ClaimReview};
 use crate::{Result, StoreError};
 
 pub(super) fn invalid(what: &str) -> rusqlite::Error {
@@ -227,6 +228,7 @@ impl SqliteStore {
         draft: &RevisionContent,
         created: &ProposalTransition,
         undoes: Option<&str>,
+        reconfirms: Option<&AcceptanceId>,
     ) -> Result<()> {
         if undoes.is_some_and(|u| !is_block_id(u)) {
             return Err(StoreError::Backend(
@@ -282,7 +284,71 @@ impl SqliteStore {
                 )
                 .map_err(write_refusal)?;
             }
+            if let Some(change) = reconfirms {
+                // A sealed change of this proposal's wiki, or nothing.
+                if !probe(
+                    &tx,
+                    "SELECT 1 FROM acceptances a JOIN acceptance_results r \
+                     ON r.acceptance_id = a.id AND r.outcome = 'sealed' \
+                     WHERE a.id = ?1 AND a.wiki_id = ?2",
+                    &[change.as_str(), proposal.wiki.as_str()],
+                )? {
+                    return Err(StoreError::NotFound);
+                }
+                tx.execute(
+                    "INSERT INTO proposal_reconfirms (proposal_id, change_id) VALUES (?1, ?2)",
+                    params![proposal.id.as_str(), change.as_str()],
+                )
+                .map_err(write_refusal)?;
+            }
             insert_transition(&tx, created)?;
+            tx.commit().map_err(backend)
+        })
+    }
+
+    /// Add a decision, and the claims it touches, in one transaction.
+    fn add_decision_with(&self, decision: &DecisionRecord, claims: &[String]) -> Result<()> {
+        crate::review::check_claims(claims.iter().map(String::as_str))?;
+        if !claims.is_empty() && decision.kind != DecisionKind::RequestChanges {
+            return Err(StoreError::Backend(
+                "only a request for changes records the claims it touches".to_owned(),
+            ));
+        }
+        self.with(|conn| {
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(backend)?;
+            let state = state_of(&tx, &decision.proposal)?;
+            if !account_known(&tx, &decision.reviewer)? {
+                return Err(StoreError::AccountNotFound);
+            }
+            if state != ProposalState::HeldForReview
+                || decision.revision != latest_revision(&tx, &decision.proposal)?
+            {
+                return Err(StoreError::StateChanged);
+            }
+            tx.execute(
+                "INSERT INTO proposal_decisions (id, seq, proposal_id, revision, reviewer, kind, body, \
+                 created_at) VALUES (?1, (SELECT COALESCE(MAX(seq), 0) + 1 FROM proposal_decisions), \
+                 ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    decision.id.as_str(),
+                    decision.proposal.as_str(),
+                    decision.revision,
+                    decision.reviewer.as_str(),
+                    decision.kind.as_str(),
+                    decision.body,
+                    decision.created_at
+                ],
+            )
+            .map_err(write_refusal)?;
+            for claim in claims {
+                tx.execute(
+                    "INSERT INTO decision_claims (decision_id, claim) VALUES (?1, ?2)",
+                    params![decision.id.as_str(), claim],
+                )
+                .map_err(write_refusal)?;
+            }
             tx.commit().map_err(backend)
         })
     }
@@ -304,7 +370,7 @@ impl ProposalStore for SqliteStore {
         draft: &RevisionContent,
         created: &ProposalTransition,
     ) -> Result<()> {
-        self.create_with(proposal, draft, created, None)
+        self.create_with(proposal, draft, created, None, None)
     }
 
     fn create_rollback_proposal(
@@ -314,7 +380,66 @@ impl ProposalStore for SqliteStore {
         created: &ProposalTransition,
         undoes: &str,
     ) -> Result<()> {
-        self.create_with(proposal, draft, created, Some(undoes))
+        self.create_with(proposal, draft, created, Some(undoes), None)
+    }
+
+    fn create_reconfirm_proposal(
+        &self,
+        proposal: &ProposalRecord,
+        draft: &RevisionContent,
+        created: &ProposalTransition,
+        change: &AcceptanceId,
+    ) -> Result<()> {
+        self.create_with(proposal, draft, created, None, Some(change))
+    }
+
+    fn reconfirm_of(
+        &self,
+        id: &ProposalId,
+        viewer: Option<&AccountId>,
+    ) -> Result<Option<AcceptanceId>> {
+        self.reconfirm_of_row(id, viewer)
+    }
+
+    fn reconfirmations_of(
+        &self,
+        change: &AcceptanceId,
+        viewer: Option<&AccountId>,
+    ) -> Result<Vec<ProposalId>> {
+        self.reconfirmations_of_row(change, viewer)
+    }
+
+    fn record_claim_reviews(
+        &self,
+        acceptance: &AcceptanceId,
+        outcomes: &[ClaimOutcome],
+    ) -> Result<()> {
+        self.claim_reviews_write(acceptance, outcomes)
+    }
+
+    fn record_reconfirmations(
+        &self,
+        by: &AcceptanceId,
+        change: &AcceptanceId,
+        claims: &[String],
+    ) -> Result<()> {
+        self.reconfirmations_write(by, change, claims)
+    }
+
+    fn claim_reviews_of(&self, change: &AcceptanceId) -> Result<Vec<ClaimReview>> {
+        self.claim_reviews_of_change(change)
+    }
+
+    fn claim_reviews(&self, wiki: &WikiId) -> Result<Vec<ClaimReview>> {
+        self.claim_reviews_in_wiki(wiki)
+    }
+
+    fn touching_decisions(&self, wiki: &WikiId) -> Result<Vec<DecisionId>> {
+        self.touching_decisions_in_wiki(wiki)
+    }
+
+    fn add_decision_touching(&self, decision: &DecisionRecord, claims: &[String]) -> Result<()> {
+        self.add_decision_with(decision, claims)
     }
 
     fn rollback_of(&self, id: &ProposalId, viewer: Option<&AccountId>) -> Result<Option<String>> {
@@ -645,36 +770,7 @@ impl ProposalStore for SqliteStore {
     }
 
     fn add_decision(&self, decision: &DecisionRecord) -> Result<()> {
-        self.with(|conn| {
-            let tx = conn
-                .transaction_with_behavior(TransactionBehavior::Immediate)
-                .map_err(backend)?;
-            let state = state_of(&tx, &decision.proposal)?;
-            if !account_known(&tx, &decision.reviewer)? {
-                return Err(StoreError::AccountNotFound);
-            }
-            if state != ProposalState::HeldForReview
-                || decision.revision != latest_revision(&tx, &decision.proposal)?
-            {
-                return Err(StoreError::StateChanged);
-            }
-            tx.execute(
-                "INSERT INTO proposal_decisions (id, seq, proposal_id, revision, reviewer, kind, body, \
-                 created_at) VALUES (?1, (SELECT COALESCE(MAX(seq), 0) + 1 FROM proposal_decisions), \
-                 ?2, ?3, ?4, ?5, ?6, ?7)",
-                params![
-                    decision.id.as_str(),
-                    decision.proposal.as_str(),
-                    decision.revision,
-                    decision.reviewer.as_str(),
-                    decision.kind.as_str(),
-                    decision.body,
-                    decision.created_at
-                ],
-            )
-            .map_err(write_refusal)?;
-            tx.commit().map_err(backend)
-        })
+        self.add_decision_with(decision, &[])
     }
 
     fn decisions(

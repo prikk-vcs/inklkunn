@@ -13,10 +13,22 @@
 //! proposals that were decided (accepted plus declined). Medians are the nearest rank, the lower of the two
 //! middle values for an even count, so every figure is a whole number of seconds. A *first-time proposer* is
 //! an author whose first-ever submission, over the whole record, falls in the period.
+//!
+//! **What the review record adds** (RFC 005 part 1 D-1 d; handoff 005 K3 b), counted over the same cohort, from the
+//! records alone ([`ClaimFigures`]): of the cohort's proposals that were accepted, per claim each touched, the claims
+//! the change **kept** (its marker continued: the default of H-1 point 2) and the claims it **dropped** (a removal of
+//! the expression, confirmed); of the kept, how many were **re-confirmed** since by an accepted curation proposal; and
+//! the **requests for changes** made on a proposal that touches a claim, counted once per decision. An **override** is
+//! the default rejected: a drop, or a request for changes on a proposal that touches a claim. The figures count what
+//! people did; none says that anyone was right. They begin with store schema 16: a decision or a change before it left
+//! no record, and is in none of them.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use inklkunn_store::{AccountId, DecisionRecord, ProposalRecord, ProposalState, WikiId};
+use inklkunn_store::{
+    AccountId, ClaimHow, ClaimReview, DecisionId, DecisionRecord, ProposalRecord, ProposalState,
+    WikiId,
+};
 
 /// A half-open period of Unix seconds, `[from, to)`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,6 +52,26 @@ pub struct Ratio {
     pub num: u64,
     /// The whole; never 0 (a share of nothing is `None`, not a ratio).
     pub den: u64,
+}
+
+/// What reviewers did with the default that a reworded claim keeps its claim, for the cohort (see the module docs).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ClaimFigures {
+    /// Claims an accepted change touched and **kept**: the paragraph reworded, its marker continuing.
+    pub kept: u64,
+    /// Claims an accepted change touched and **dropped**: the paragraph and the claim's expression in it removed.
+    pub dropped: u64,
+    /// Of the kept, those since **re-confirmed** by an accepted curation proposal.
+    pub reconfirmed: u64,
+    /// **Requests for changes** made on a proposal that touches a claim (once per decision, however many claims).
+    pub changes_requested: u64,
+}
+
+impl ClaimFigures {
+    /// The default rejected: the drops and the requests for changes on a proposal that touches a claim.
+    pub const fn overrides(&self) -> u64 {
+        self.dropped + self.changes_requested
+    }
 }
 
 /// The figures for one wiki over one period.
@@ -69,6 +101,8 @@ pub struct Metrics {
     /// The reviewers a proposal had, on average: the distinct reviewers summed over the proposals, of the
     /// proposals submitted.
     pub reviewers_per_proposal: Option<Ratio>,
+    /// What the review record says of the cohort.
+    pub claims: ClaimFigures,
 }
 
 fn count<T>(items: &[T]) -> u64 {
@@ -89,6 +123,19 @@ pub fn compute(
     period: Period,
     proposals: &[ProposalRecord],
     decisions: &[DecisionRecord],
+) -> Metrics {
+    compute_with_reviews(wiki, period, proposals, decisions, &[], &[])
+}
+
+/// [`compute`], and the figures of the review record: `claim_reviews` are the wiki's [`ClaimReview`]s (of accepted changes
+/// only) and `touching` the decisions that were recorded with a claim.
+pub fn compute_with_reviews(
+    wiki: &WikiId,
+    period: Period,
+    proposals: &[ProposalRecord],
+    decisions: &[DecisionRecord],
+    claim_reviews: &[ClaimReview],
+    touching: &[DecisionId],
 ) -> Metrics {
     let submitted_in = |p: &&ProposalRecord| p.submitted_at.is_some_and(|at| period.holds(at));
     let cohort: Vec<&ProposalRecord> = proposals
@@ -161,6 +208,32 @@ pub fn compute(
         .sum();
     let submitted = count(&cohort);
 
+    let in_cohort = |p: &inklkunn_store::ProposalId| cohort.iter().any(|c| c.id == *p);
+    let of_cohort = || claim_reviews.iter().filter(|r| in_cohort(&r.proposal));
+    let claims = ClaimFigures {
+        kept: count(
+            &of_cohort()
+                .filter(|r| r.how == ClaimHow::Kept)
+                .collect::<Vec<_>>(),
+        ),
+        dropped: count(
+            &of_cohort()
+                .filter(|r| r.how == ClaimHow::Dropped)
+                .collect::<Vec<_>>(),
+        ),
+        reconfirmed: count(
+            &of_cohort()
+                .filter(|r| r.how == ClaimHow::Kept && r.reconfirmed_by.is_some())
+                .collect::<Vec<_>>(),
+        ),
+        changes_requested: count(
+            &decisions
+                .iter()
+                .filter(|d| in_cohort(&d.proposal) && touching.contains(&d.id))
+                .collect::<Vec<_>>(),
+        ),
+    };
+
     Metrics {
         wiki: wiki.clone(),
         period,
@@ -176,6 +249,7 @@ pub fn compute(
             num: reviewers,
             den: submitted,
         }),
+        claims,
     }
 }
 
@@ -208,6 +282,13 @@ impl Metrics {
             "distinct_proposers": self.distinct_proposers,
             "first_time_proposers": self.first_time_proposers,
             "reviewers_per_proposal": ratio(&self.reviewers_per_proposal),
+            "claims": {
+                "kept": self.claims.kept,
+                "dropped": self.claims.dropped,
+                "reconfirmed": self.claims.reconfirmed,
+                "changes_requested": self.claims.changes_requested,
+                "overrides": self.claims.overrides(),
+            },
         });
         line.to_string()
     }
@@ -224,5 +305,9 @@ pub fn operator_metrics(
 ) -> Result<Metrics, inklkunn_store::StoreError> {
     let all = proposals.proposals(&wiki.id, &inklkunn_store::ProposalFilter::default(), None)?;
     let decisions = proposals.wiki_decisions(&wiki.id)?;
-    Ok(compute(&wiki.id, period, &all, &decisions))
+    let reviews = proposals.claim_reviews(&wiki.id)?;
+    let touching = proposals.touching_decisions(&wiki.id)?;
+    Ok(compute_with_reviews(
+        &wiki.id, period, &all, &decisions, &reviews, &touching,
+    ))
 }

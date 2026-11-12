@@ -7,6 +7,7 @@ use crate::acceptance::{
     AcceptanceStore, IntentCompletion, IntentEntry, IntentRecord, LeaseHolder, SealedAcceptance,
 };
 use crate::record::{AcceptanceId, AccountId, ProposalId, WikiId};
+use crate::review::ClaimOutcome;
 use crate::{Result, StoreError};
 
 use super::MemoryStore;
@@ -14,11 +15,15 @@ use super::MemoryStore;
 /// Everything acceptance-shaped, behind one lock.
 #[derive(Debug, Default)]
 pub(super) struct Acceptances {
-    acceptances: Vec<AcceptanceRecord>,
-    results: Vec<AcceptanceResult>,
+    pub(super) acceptances: Vec<AcceptanceRecord>,
+    pub(super) results: Vec<AcceptanceResult>,
     intents: Vec<IntentRecord>,
     completions: Vec<IntentCompletion>,
     leases: Vec<LeaseHolder>,
+    /// What each change did to the claims it touched (the review record; see [`crate::review`]).
+    pub(super) claims: Vec<(AcceptanceId, ClaimOutcome)>,
+    /// `(change, claim, the acceptance that re-confirmed it)`.
+    pub(super) reconfirmations: Vec<(AcceptanceId, String, AcceptanceId)>,
 }
 
 impl Acceptances {
@@ -38,7 +43,7 @@ impl Acceptances {
 }
 
 impl MemoryStore {
-    fn acceptances_lock(&self) -> MutexGuard<'_, Acceptances> {
+    pub(super) fn acceptances_lock(&self) -> MutexGuard<'_, Acceptances> {
         self.acceptances
             .lock()
             .unwrap_or_else(PoisonError::into_inner)

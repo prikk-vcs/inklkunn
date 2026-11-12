@@ -18,7 +18,7 @@ use inklkunn_core::knowledge::compose::{Curation, LinkEdit, curate};
 use inklkunn_core::knowledge::onpage::touches;
 use inklkunn_core::knowledge::touched::{How, PageChange, Touch};
 use inklkunn_core::proposal::{ProposalEdit, ProposalError};
-use inklkunn_store::{FileChange, ProposalState};
+use inklkunn_store::{FileChange, ProposalId, ProposalState, RevisionContent};
 
 use super::curate::load;
 use super::knowledge::Line;
@@ -109,6 +109,76 @@ pub(crate) fn of_revision(
         base_block,
         &changes,
     )
+}
+
+/// A page a revision writes: its path, its text at the base and the text the revision gives it.
+pub(crate) type WrittenPage = (String, Option<String>, Option<String>);
+
+/// The pages a revision writes, each with its text at the base the revision was made on and the text the revision gives
+/// it (the claim and source files are left out: they are listed on their own).
+pub(crate) fn pages_of(
+    ctx: &Ctx,
+    content: &RevisionContent,
+) -> Result<Vec<WrittenPage>, inklkunn_core::read::ReadError> {
+    let mut pages = Vec::new();
+    for f in content
+        .files
+        .iter()
+        .filter(|f| inklkunn_core::knowledge::family_of(&f.path).is_none())
+    {
+        let old = ctx
+            .services
+            .read
+            .source_at(&ctx.wiki, &content.base.block_id, &f.path)?;
+        pages.push((f.path.clone(), old, f.text.clone()));
+    }
+    Ok(pages)
+}
+
+/// The claims a revision touches: [`pages_of`], then [`of_revision`].
+pub(crate) fn of_content(
+    ctx: &Ctx,
+    view: &str,
+    content: &RevisionContent,
+) -> Result<Vec<Touch>, inklkunn_core::read::ReadError> {
+    let pages = pages_of(ctx, content)?;
+    if pages.is_empty() {
+        return Ok(Vec::new());
+    }
+    of_revision(ctx, view, &content.base.block_id, &pages)
+}
+
+/// Why the claims of a revision could not be found.
+pub(crate) enum Unfound {
+    /// The records said no.
+    Proposal(ProposalError),
+    /// The repository could not be read.
+    Read(inklkunn_core::read::ReadError),
+}
+
+/// The ids of the claims that revision `revision` of the proposal touches (RFC 005 part 1 D-1 d): what a *request
+/// changes* decision on it is recorded with. Empty for a revision the proposal does not have (the decision itself
+/// says it is stale).
+pub(crate) fn claims_of_revision(
+    ctx: &Ctx,
+    id: &ProposalId,
+    revision: u32,
+) -> Result<Vec<String>, Unfound> {
+    let record = ctx
+        .services
+        .proposals
+        .get(&ctx.principal, &ctx.wiki, id)
+        .map_err(Unfound::Proposal)?;
+    let revisions = ctx
+        .services
+        .proposals
+        .revisions(&ctx.principal, &ctx.wiki, id)
+        .map_err(Unfound::Proposal)?;
+    let Some(found) = revisions.into_iter().find(|r| r.seq == revision) else {
+        return Ok(Vec::new());
+    };
+    let touched = of_content(ctx, &record.view, &found.content).map_err(Unfound::Read)?;
+    Ok(touched.into_iter().map(|t| t.claim.to_string()).collect())
 }
 
 // ------------------------------------------------------------------------------------ the one step

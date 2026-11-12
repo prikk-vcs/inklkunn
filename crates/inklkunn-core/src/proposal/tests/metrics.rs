@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use inklkunn_store::{DecisionKind, ProposalState, Role};
 
 use super::support::{Env, edit, on_both, set_now};
-use crate::proposal::{Metrics, Period, ProposalError, Ratio};
+use crate::proposal::{ClaimFigures, Metrics, Period, ProposalError, Ratio};
 
 /// Which fixture proposal is which.
 struct Fixture {
@@ -366,5 +366,240 @@ fn the_operator_gets_the_same_figures_as_one_line_of_json() {
                 && member(&v, "/acceptance_rate").is_null()
         );
         assert_eq!(member(&v, "/submitted"), 0);
+    });
+}
+
+// ------------------------------------------------------------------------------------ the review record (K3 b)
+
+const C1: &str = "019a0000-0000-7000-8000-000000000c01";
+const C2: &str = "019a0000-0000-7000-8000-000000000c02";
+const C3: &str = "019a0000-0000-7000-8000-000000000c03";
+const C4: &str = "019a0000-0000-7000-8000-000000000c04";
+const C9: &str = "019a0000-0000-7000-8000-000000000c09";
+
+fn outcome(claim: &str, how: inklkunn_store::ClaimHow) -> inklkunn_store::ClaimOutcome {
+    inklkunn_store::ClaimOutcome {
+        claim: claim.to_owned(),
+        how,
+    }
+}
+
+/// A proposal's acceptance, as the acceptance path leaves it: the record, the claims of the change, the seal (or the
+/// failure), and the proposal accepted (or still held, when the acceptance failed).
+fn accepted_with(
+    e: &Env,
+    p: &inklkunn_store::ProposalId,
+    outcomes: &[inklkunn_store::ClaimOutcome],
+    sealed: bool,
+    at_time: i64,
+) -> inklkunn_store::AcceptanceId {
+    use inklkunn_store::{AcceptanceId, AcceptanceOutcome, AcceptanceRecord, AcceptanceResult};
+    let proposal = e.service.get(&e.maintainer.principal, &e.wiki, p).unwrap();
+    let id = AcceptanceId::new();
+    e.store
+        .begin_acceptance(&AcceptanceRecord {
+            id: id.clone(),
+            proposal: p.clone(),
+            revision: 1,
+            wiki: e.wiki.id.clone(),
+            view: proposal.view.clone(),
+            acceptor: e.maintainer.id.clone(),
+            acceptor_role: Role::Maintainer,
+            policy_version: "bootstrap-1".to_owned(),
+            proposer: proposal.author.clone(),
+            digest: "d".repeat(64),
+            bytes: 10,
+            created_at: at_time,
+        })
+        .unwrap();
+    e.service.record_claim_reviews(&id, outcomes).unwrap();
+    e.store
+        .finish_acceptance(&AcceptanceResult {
+            acceptance: id.clone(),
+            outcome: if sealed {
+                AcceptanceOutcome::Sealed {
+                    block_id: "b".repeat(64),
+                    patch_id: "c".repeat(64),
+                }
+            } else {
+                AcceptanceOutcome::Failed {
+                    word: "unavailable".to_owned(),
+                }
+            },
+            at: at_time,
+        })
+        .unwrap();
+    if sealed {
+        e.service
+            .record_accepted(&e.wiki, p, &e.maintainer.id)
+            .unwrap();
+    }
+    id
+}
+
+/// The review record in the figures, counted on paper first. The cohort is the proposals submitted in `[1000, 2000)`.
+///
+/// - P1 (submitted 1000): accepted at 1500; its change kept C1 and C2 and dropped C3. A curation proposal (P5,
+///   submitted 1100) accepted at 1600 re-confirmed C1 for it. kept 2, dropped 1, re-confirmed 1.
+/// - P2 (1200): R1 asks for changes at 1300 and the decision touched C1 and C2; R2 asks for changes at 1310 with no claim
+///   touched; R1 approves nothing else. One request on a proposal that touches a claim.
+/// - P3 (1400): R1 asks for changes at 1450; the decision touched C3. A second request on a proposal that touches a claim.
+/// - P4 (1600): its acceptance failed after recording that the change kept C4; the proposal is still held. Nothing counted.
+/// - P0 (500, before the period): accepted, kept C9; R1 asked for changes touching C9 at 600. In no figure.
+///
+/// So: kept 2, dropped 1, re-confirmed 1, changes requested 2, overrides 3.
+#[test]
+fn the_figures_count_what_reviewers_did_with_the_default_from_the_review_record_alone() {
+    use inklkunn_store::ClaimHow::{Dropped, Kept};
+    on_both(|e| {
+        let a = e.person(Some(Role::Contributor));
+        let r1 = e.person(Some(Role::Reviewer));
+        let r2 = e.person(Some(Role::Reviewer));
+        let (w, s) = (&e.wiki, &e.service);
+
+        let p0 = submitted(e, &a, 500, 0);
+        at(e, 600);
+        s.decide_touching(
+            &r1.principal,
+            w,
+            &p0,
+            1,
+            DecisionKind::RequestChanges,
+            "",
+            &[C9.to_owned()],
+        )
+        .unwrap();
+        accepted_with(e, &p0, &[outcome(C9, Kept)], true, 650);
+
+        let p1 = submitted(e, &a, 1000, 1);
+        let change = accepted_with(
+            e,
+            &p1,
+            &[outcome(C1, Kept), outcome(C2, Kept), outcome(C3, Dropped)],
+            true,
+            1500,
+        );
+        let p5 = submitted(e, &a, 1100, 5);
+        {
+            use inklkunn_store::{AcceptanceId, AcceptanceRecord};
+            let proposal = s.get(&e.maintainer.principal, w, &p5).unwrap();
+            let id = AcceptanceId::new();
+            e.store
+                .begin_acceptance(&AcceptanceRecord {
+                    id: id.clone(),
+                    proposal: p5.clone(),
+                    revision: 1,
+                    wiki: w.id.clone(),
+                    view: proposal.view,
+                    acceptor: e.maintainer.id.clone(),
+                    acceptor_role: Role::Maintainer,
+                    policy_version: "bootstrap-1".to_owned(),
+                    proposer: proposal.author,
+                    digest: "d".repeat(64),
+                    bytes: 10,
+                    created_at: 1600,
+                })
+                .unwrap();
+            s.record_reconfirmations(&id, &change, &[C1.to_owned()])
+                .unwrap();
+            e.store
+                .finish_acceptance(&inklkunn_store::AcceptanceResult {
+                    acceptance: id.clone(),
+                    outcome: inklkunn_store::AcceptanceOutcome::Sealed {
+                        block_id: "b".repeat(64),
+                        patch_id: "c".repeat(64),
+                    },
+                    at: 1600,
+                })
+                .unwrap();
+        }
+
+        let p2 = submitted(e, &a, 1200, 2);
+        at(e, 1300);
+        s.decide_touching(
+            &r1.principal,
+            w,
+            &p2,
+            1,
+            DecisionKind::RequestChanges,
+            "",
+            &[C1.to_owned(), C2.to_owned()],
+        )
+        .unwrap();
+        at(e, 1310);
+        s.decide(&r2.principal, w, &p2, 1, DecisionKind::RequestChanges, "")
+            .unwrap();
+
+        let p3 = submitted(e, &a, 1400, 3);
+        at(e, 1450);
+        s.decide_touching(
+            &r1.principal,
+            w,
+            &p3,
+            1,
+            DecisionKind::RequestChanges,
+            "",
+            &[C3.to_owned()],
+        )
+        .unwrap();
+        at(e, 1460);
+        s.decide(&r2.principal, w, &p3, 1, DecisionKind::Approve, "")
+            .unwrap();
+
+        let p4 = submitted(e, &a, 1600, 4);
+        accepted_with(e, &p4, &[outcome(C4, Kept)], false, 1700);
+
+        set_now(3000);
+        let period = Period {
+            from: 1000,
+            to: 2000,
+        };
+        let m = s.metrics(&e.admin.principal, w, period).unwrap();
+        assert_eq!(
+            m.claims,
+            ClaimFigures {
+                kept: 2,
+                dropped: 1,
+                reconfirmed: 1,
+                changes_requested: 2,
+            }
+        );
+        assert_eq!(m.claims.overrides(), 3, "a drop, and two requests");
+        // The operator at the command line is told the same, in a line of numbers.
+        let by_operator = crate::proposal::operator_metrics(
+            &*e.store as &dyn inklkunn_store::ProposalStore,
+            w,
+            period,
+        )
+        .unwrap();
+        assert_eq!(by_operator, m);
+        let v: serde_json::Value = serde_json::from_str(&by_operator.json_line()).unwrap();
+        for (pointer, want) in [
+            ("/claims/kept", 2),
+            ("/claims/dropped", 1),
+            ("/claims/reconfirmed", 1),
+            ("/claims/changes_requested", 2),
+            ("/claims/overrides", 3),
+        ] {
+            assert_eq!(member(&v, pointer), want, "{pointer}");
+        }
+        // Before the period only P0 is in the cohort: its kept claim, and its request for changes.
+        let before = s
+            .metrics(&e.admin.principal, w, Period { from: 0, to: 1000 })
+            .unwrap();
+        assert_eq!(
+            before.claims,
+            ClaimFigures {
+                kept: 1,
+                dropped: 0,
+                reconfirmed: 0,
+                changes_requested: 1,
+            }
+        );
+        // A period with no proposal has none of it.
+        let none = s
+            .metrics(&e.admin.principal, w, Period { from: 10, to: 20 })
+            .unwrap();
+        assert_eq!(none.claims, ClaimFigures::default());
     });
 }

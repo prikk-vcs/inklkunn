@@ -102,6 +102,10 @@ pub fn touches(
     base_block: &str,
     changes: &[PageChange<'_>],
 ) -> Result<Vec<Touch>, ReadError> {
+    // A change that writes no page with an `id` touches no claim: the index is not even asked for.
+    if changes.iter().all(|c| c.page_id().is_none()) {
+        return Ok(Vec::new());
+    }
     let index = reads.knowledge_index(wiki, view)?;
     let mut ids: BTreeSet<String> = BTreeSet::new();
     for change in changes {

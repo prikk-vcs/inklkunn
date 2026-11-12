@@ -92,6 +92,36 @@ fn a_paragraph_that_goes_is_removed_and_says_what_it_said() {
 }
 
 #[test]
+fn a_claim_said_in_two_places_whose_first_is_reworded_and_whose_second_goes_is_told_as_removed() {
+    // The paragraph that goes is the stronger fact (the claim loses an expression), whichever comes first.
+    let reworded = ONE.replace("Said.", "Said otherwise.");
+    let two_without = TWO.replace("Said elsewhere. ^c1\n", "");
+    let changes = [
+        change(ONE, Some(&reworded)),
+        PageChange {
+            path: "pages/Two.md",
+            old: Some(TWO),
+            new: Some(&two_without),
+        },
+    ];
+    let got = judge(&claim(), &changes, &rest).expect("touched");
+    assert_eq!((got.how, got.block.as_str()), (How::Removed, "c1"));
+    assert_eq!(got.path, "pages/Two.md");
+    // With the second reworded instead, the first is the one told.
+    let two_reworded = TWO.replace("Said elsewhere.", "Said somewhere.");
+    let changes = [
+        change(ONE, Some(&reworded)),
+        PageChange {
+            path: "pages/Two.md",
+            old: Some(TWO),
+            new: Some(&two_reworded),
+        },
+    ];
+    let got = judge(&claim(), &changes, &rest).expect("touched");
+    assert_eq!((got.how, got.block.as_str()), (How::Reworded, "b1"));
+}
+
+#[test]
 fn a_change_that_leaves_the_words_alone_touches_nothing() {
     // Another paragraph changes; and the same paragraph written the same way.
     let other = ONE.replace("Plain.", "Plain, more.");
@@ -228,4 +258,35 @@ fn the_claims_a_change_touches_are_found_in_the_view_and_judged_on_the_files_at_
     });
     assert!(none.expect("touches").is_empty());
     assert_eq!(calls.total(), 0);
+}
+
+#[test]
+fn a_change_to_a_page_with_no_id_touches_no_claim_and_does_not_even_ask_for_the_index() {
+    let c = claim();
+    let files = [
+        (claim_path(&c.id), c.to_yaml()),
+        ("pages/One.md".to_owned(), ONE.to_owned()),
+    ];
+    let refs: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(p, t)| (p.as_str(), t.as_str()))
+        .collect();
+    // A fresh service: no index has been built yet.
+    let w = World::with(&refs, config());
+    let base = w.fake().block_id();
+    let (none, calls) = w.counted(|| {
+        touches(
+            &w.service,
+            &w.wiki,
+            None,
+            &base,
+            &[PageChange {
+                path: "pages/Plain.md",
+                old: Some("---\ntitle: Plain\n---\n\nWords.\n"),
+                new: Some("---\ntitle: Plain\n---\n\nOther words.\n"),
+            }],
+        )
+    });
+    assert!(none.expect("touches").is_empty());
+    assert_eq!(calls.total(), 0, "no repository call, so no index built");
 }
