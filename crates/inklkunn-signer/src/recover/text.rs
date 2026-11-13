@@ -106,6 +106,13 @@ impl Diagnostic {
         self.severity == Severity::Error && self.code == ACTIVE_CLEANUP_PENDING_CODE
     }
 
+    /// An error of exactly [`POINTER_LEADS_LOG_CODE`], whatever its wording: a publication of some ref (a view's
+    /// creation, in this service) was begun and not finished (handoff 005 K19). Where [`Diagnostic::lead_ref`] asks for
+    /// the wording recovery may *act* on, this is the wider question a key rotation asks: is there one at all?
+    pub fn is_publication_lead(&self) -> bool {
+        self.severity == Severity::Error && self.code == POINTER_LEADS_LOG_CODE
+    }
+
     /// The ref of an error of exactly [`POINTER_LEADS_LOG_CODE`] whose recommendation is, word for word, prikk's own
     /// ``run `prikk ref complete <ref>`; doctor does not sign or append`` (0.55.0): the interrupted publication of
     /// that one ref. `None` for any other code, any other severity and any other wording.

@@ -1396,6 +1396,7 @@ fn each_write_verb_sees_only_the_seed_it_signs_with_and_a_verb_that_signs_nothin
             wiki: f.wiki.clone(),
             name: "heads/draft".into(),
             from: MAIN.into(),
+            from_block: "b".repeat(64),
         },
     );
     f.signer
@@ -1797,6 +1798,7 @@ fn a_view_is_created_only_for_a_recorded_act_and_acceptances_can_target_it() {
                 wiki: f.wiki.clone(),
                 name: "heads/draft".into(),
                 from: MAIN.into(),
+                from_block: "b".repeat(64),
             },
         );
         // Not recorded; recorded for something else; malformed names.
@@ -2601,6 +2603,7 @@ fn a_wiki_written_by_another_process_is_busy_by_name_and_free_again_when_its_hol
             wiki: f.wiki.clone(),
             name: "heads/draft".into(),
             from: MAIN.into(),
+            from_block: "b".repeat(64),
         },
     );
     assert_eq!(
@@ -2844,6 +2847,7 @@ fn a_kill_at_each_point_of_a_retirement_pauses_every_acceptance_before_anything_
                 wiki: f.wiki.clone(),
                 name: "heads/draft".into(),
                 from: MAIN.into(),
+                from_block: "b".repeat(64),
             },
         );
         let view = f.signer.create_view(

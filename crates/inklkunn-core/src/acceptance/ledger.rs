@@ -163,6 +163,7 @@ impl AcceptanceLedger for StoreLedger {
             wiki: a.wiki,
             name: format!("heads/{}", a.name),
             from: format!("heads/{}", a.forked_from),
+            from_block: a.from_block,
         }))
     }
 

@@ -431,6 +431,9 @@ pub struct ViewCreationFacts {
     pub name: String,
     /// The ref it starts from.
     pub from: String,
+    /// The block that ref pointed at when the act was recorded: the block the new view's first publication targets
+    /// (handoff 005 K19). Finishing an interrupted creation is bound to this, not to where the source points later.
+    pub from_block: String,
 }
 
 /// The ledger could not answer. The text is for operators.

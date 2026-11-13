@@ -63,6 +63,8 @@ This is the choice, and prikk 0.54.1 makes it a hard one (ledger **PK-34**):
 | **default** | still trusted in the repository | keeps verifying | still seal changes that verify |
 | `--retire-old` | removed from the repository's trust | **stops verifying**: `prikk verify` fails with publication-trust issues and the wiki shows *Verification failed* | seal nothing |
 
+**A rotation of either kind is refused, and changes nothing, while `doctor` names a publication a kill left unfinished** (a seal's cleanup, or a view's creation: the record completing it appends is signed by whichever maintainer key is current, so recovery finishes it first); the error names `inklkunn wiki recover <wiki>`, and the rotation is run again after.
+
 Use the default for a routine rotation (a schedule, a change of operator): the service no longer holds the
 old seed, and nothing else is known to. Use `--retire-old` when the old seed may be in someone else's hands,
 and accept that the wiki will report *Verification failed* until prikk can keep a retired key's history

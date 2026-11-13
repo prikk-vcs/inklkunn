@@ -127,16 +127,18 @@ impl Signer {
         }
         // A rotation records the newest block of every view (C11). A publication a killed `seal` left pending is
         // finished by recovery afterwards, and the service's own block would then look like one made after the key was
-        // replaced (Z5): recovery first, whichever way the old key is to go.
-        if self
-            .writes
-            .doctor(repo)?
-            .diagnostics
-            .iter()
-            .any(|d| d.is_cleanup_pending())
-        {
+        // replaced (Z5): recovery first, whichever way the old key is to go. **So is a view's creation that a kill
+        // left unfinished** (handoff 005 K19): completing it appends a record signed by the maintainer key, which after
+        // a rotation would be the new one, under a ref the old key published.
+        let doctor = self.writes.doctor(repo)?;
+        if doctor.diagnostics.iter().any(|d| d.is_cleanup_pending()) {
             return Err(SignerError::NeedsRecovery(format!(
                 "a publication that a killed seal left is pending, and a rotation records where the old key stopped; run `inklkunn wiki recover {wiki}` first, then rotate again"
+            )));
+        }
+        if doctor.diagnostics.iter().any(|d| d.is_publication_lead()) {
+            return Err(SignerError::NeedsRecovery(format!(
+                "a view's creation that was interrupted is unfinished, and a rotation records where the old key stopped; run `inklkunn wiki recover {wiki}` first, then rotate again"
             )));
         }
         let generation = before.generation.saturating_add(1);

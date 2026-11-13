@@ -125,7 +125,7 @@ seal` yourself.
 ## A key retirement that was begun and not finished: `retirement-unfinished`
 
 **What you see.** The plan says `STOP (retirement-unfinished)` and names the key and the commands, when a patch waits to
-be sealed or when `prikk doctor` reports `PRIKK-TRUST-PUBLICATION-UNTRUSTED` errors for blocks, ref states and ref
+be sealed, when an interrupted view creation waits to be completed (both sign a record) or when `prikk doctor` reports `PRIKK-TRUST-PUBLICATION-UNTRUSTED` errors for blocks, ref states and ref
 updates a retired key sealed. Acceptances on the web or through the API are answered *a change to this wiki's keys is
 not finished* (the proposal is kept). The key record holds the state a retirement began from but not its findings
 (`rotate --retire-old` stopped half way, or was killed, and said so with a non-zero exit when it could). **What it is.**
@@ -250,8 +250,9 @@ view it was forked from, and the block that view was at), `prikk branch list --a
   which is prikk's own recommendation (`prikk ref complete heads/<name>`, not `seal`), run by the signer once, and then
   the act ends *created*. The signer does it only when the recovery act records that very step for that very creation,
   `doctor` names exactly that lead, and prikk's own `ref complete heads/<name> --plan-only` says it will append the
-  first record of the ref (no log tip, sequence 1, nothing to remove first) onto the block the view's source ref points
-  at; afterwards `doctor` must no longer name it. It makes no block, and a key retirement that is not finished pauses
+  first record of the ref (no log tip, sequence 1, nothing to remove first) onto the block the creation's record names as
+  the view's start (the block its source pointed at when the act was written, not wherever the source points later);
+  afterwards `doctor` must no longer name it. It makes no block, and a key retirement that is not finished pauses
   it as it pauses a seal;
 - the view is not listed and `doctor` names nothing unfinished: nothing happened, and the act ends *failed*
   (`interrupted`; `end-view-failed`), which frees the name.

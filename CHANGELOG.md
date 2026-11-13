@@ -277,6 +277,18 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   with an empty word is refused by both. Tests make real accounts for the views they record; the raw-connection test
   proves the foreign key and the check from the database, and both stores' suite proves the refusals.
 
+- **K19 (handoff 005 corrections, second): views and the signer.** `ViewCreationFacts` carries the recorded `from_block`
+  (the block the view's source pointed at when the act was written, under the lease), and finishing an interrupted view
+  creation (`complete_view_creation`) requires prikk's `ref complete --plan-only` to target **that** block, not wherever
+  the source ref points later; the doc now says exactly what the code checks (it chose the record over a re-read of the
+  tip: the record is what the act was bound to, and a tip read at recovery time is not). **A key rotation, kept or
+  retiring, refuses while `doctor` names a view's unfinished creation** (`PRIKK-VERIFY-REF-POINTER-LEADS-LOG`, whatever
+  its wording), with the words of the cleanup case and `inklkunn wiki recover <wiki>`: completing it appends a record
+  the then-current maintainer key signs. The recovery plan stops at `retirement-unfinished`, with the retirement's note
+  and command, for a view lead beside an unfinished retirement, as it does for a queued patch (the creations that sign
+  nothing are not held up). Tests: against a real prikk, the rotation refusal (both old-key choices, then the rotation
+  after recovery) and a creation recorded at an older block than its interrupted ref points at; plan unit tests.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

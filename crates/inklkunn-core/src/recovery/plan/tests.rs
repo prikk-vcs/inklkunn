@@ -1204,6 +1204,31 @@ fn a_view_creation_whose_publication_prikk_names_unfinished_is_completed_with_re
 }
 
 #[test]
+fn a_view_creation_that_needs_the_signer_waits_for_an_unfinished_retirement_as_a_queued_patch_does()
+{
+    // Completing the creation appends a record the maintainer key signs, and nothing new is signed while a key
+    // retirement is unfinished (W1; handoff 005 K19): the plan stops with the retirement's own word and command, plans
+    // no step and asks the signer for nothing.
+    let mut w = view_creation(at_forked_block(), true);
+    w.retirement_unfinished = Some(UNFINISHED.to_owned());
+    let plan = build(&w);
+    assert_eq!(plan.stop, Some(Stop::RetirementUnfinished));
+    assert!(plan.steps.is_empty() && plan.ops().is_empty());
+    assert!(plan.notes.iter().any(|n| n.contains("finish-retirement")));
+    // A creation that signs nothing (the publication is whole, or the view is not there) is not held up by it.
+    for (shown, first) in [
+        (at_forked_block(), "end-view-created"),
+        (ViewShown::Absent, "end-view-failed"),
+    ] {
+        let mut w = view_creation(shown, false);
+        w.retirement_unfinished = Some(UNFINISHED.to_owned());
+        let plan = build(&w);
+        assert_eq!(plan.stop, None, "{:#?}", plan.lines());
+        assert_eq!(names(&plan).first().copied(), Some(first));
+    }
+}
+
+#[test]
 fn a_view_creation_whose_view_is_not_there_and_nothing_is_unfinished_ends_failed() {
     let w = view_creation(ViewShown::Absent, false);
     let plan = build(&w);

@@ -242,9 +242,12 @@ pub trait Recover: Send + Sync {
     /// prikk's own recommendation is `prikk ref complete <view>` (RFC 165 R4), which is **not** the step of a killed
     /// `seal`. Refuses unless `doctor` names exactly that one lead for exactly that ref, the act is recorded and open
     /// and names this wiki and view, prikk's own `--plan-only` says the first publication of the ref (no log tip,
-    /// sequence 1, no partial tail) targets the block the view's source ref points at, and the tip of the view is that
-    /// block; runs `ref complete` once, and refuses to call it done unless the tip is the same block and `doctor` no
-    /// longer names the lead. **The default is unable.**
+    /// sequence 1, no partial tail) targets the block the act recorded as the view's start
+    /// ([`ViewCreationFacts::from_block`](crate::accept::ViewCreationFacts::from_block): the block the source pointed
+    /// at when the act was written, under the lease; the source's current tip is **not** read, handoff 005 K19); runs
+    /// `ref complete` once, and refuses to call it done unless `doctor` no longer names the lead (the block was checked
+    /// before, and `ref complete` appends the record of the same state).
+    /// **The default is unable.**
     fn complete_view_creation(
         &self,
         wiki: &WikiId,

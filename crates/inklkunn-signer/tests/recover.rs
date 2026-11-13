@@ -1433,12 +1433,26 @@ const OTHER: &str = "heads/other";
 impl Fixture {
     /// Record a view creation (the ledger answers for it) and name it to the signer.
     fn record_view(&self, id: &str, name: &str, from: &str) -> ViewCreationAct {
+        // The block the source points at now, as the service records it under the lease (K19).
+        let block = self.tip_of(from).expect("the source has a block");
+        self.record_view_at(id, name, from, &block)
+    }
+
+    /// Record a view creation that says it started at `from_block`.
+    fn record_view_at(
+        &self,
+        id: &str,
+        name: &str,
+        from: &str,
+        from_block: &str,
+    ) -> ViewCreationAct {
         self.ledger.views.lock().unwrap().insert(
             id.to_owned(),
             ViewCreationFacts {
                 wiki: self.wiki.clone(),
                 name: name.to_owned(),
                 from: from.to_owned(),
+                from_block: from_block.to_owned(),
             },
         );
         ViewCreationAct::new(id)
@@ -1639,6 +1653,7 @@ fn completing_a_view_creation_is_bound_to_the_lease_the_recorded_act_and_the_rec
             wiki: WikiId::new(),
             name: DRAFT.to_owned(),
             from: MAIN.to_owned(),
+            from_block: f.first_block.clone(),
         },
     );
     let foreign_op = f.act(vec![f.view_op("va-foreign", DRAFT)]);
@@ -1712,12 +1727,12 @@ fn a_view_creation_is_completed_only_when_prikk_names_exactly_that_one_ref() {
 }
 
 #[test]
-fn a_view_creation_is_completed_only_onto_the_block_its_source_points_at_as_a_first_publication() {
+fn a_view_creation_is_completed_only_onto_the_block_it_recorded_as_a_first_publication() {
     let Some(f) = fixture("view-lead-plan") else {
         return;
     };
-    // A view of an older block, then main moves on: a creation recorded as forked from that view does not own a ref
-    // that points at main's block.
+    // A view of an older block, then main moves on: a creation recorded as forked from that view (at that older
+    // block) does not own a ref that points at main's block.
     let older = f.record_view("va-old", "heads/older", MAIN);
     f.signer
         .create_view(&f.wiki, "heads/older", MAIN, &older)
@@ -1732,7 +1747,19 @@ fn a_view_creation_is_completed_only_onto_the_block_its_source_points_at_as_a_fi
     let rec = f.act(vec![f.view_op("va-bad", DRAFT)]);
     let r = f.complete_view(&rec, DRAFT, &misrecorded);
     assert!(
-        matches!(&r, Err(RecoverError::DoesNotMatch(m)) if m.contains("source points at")),
+        matches!(&r, Err(RecoverError::DoesNotMatch(m)) if m.contains("block the creation recorded")),
+        "{r:?}"
+    );
+    assert!(!f.verify_ok(), "nothing was completed");
+    // The record binds the block, not the ref: the act says it started at the older block, though its source (main)
+    // points at the newer one now and so does the interrupted ref (K19). The step is not taken.
+    let older_block = f.first_block.clone();
+    assert_ne!(Some(older_block.clone()), f.tip_of(MAIN));
+    let stale = f.record_view_at("va-stale", DRAFT, MAIN, &older_block);
+    let stale_op = f.act(vec![f.view_op("va-stale", DRAFT)]);
+    let r = f.complete_view(&stale_op, DRAFT, &stale);
+    assert!(
+        matches!(&r, Err(RecoverError::DoesNotMatch(m)) if m.contains("block the creation recorded")),
         "{r:?}"
     );
     assert!(!f.verify_ok(), "nothing was completed");
@@ -1783,6 +1810,46 @@ fn a_view_creation_is_completed_only_onto_the_block_its_source_points_at_as_a_fi
     f.complete_view(&rec, DRAFT, &creation).expect("completed");
     assert!(f.verify_ok());
     assert_eq!(f.tip_of(DRAFT), f.tip_of(MAIN));
+}
+
+#[test]
+fn a_rotation_refuses_while_a_views_creation_is_unfinished_and_names_recover() {
+    // K19 (decision 3 c; Z5's reasoning): completing an interrupted view creation appends a record the maintainer key
+    // signs, so after a rotation it would be the new key's record under a ref the old key published. Recovery first,
+    // for a kept old key and a retired one alike, and nothing changes.
+    let Some(f) = fixture("rotate-view-lead") else {
+        return;
+    };
+    let creation = f.leave_a_lead("va-1", DRAFT, MAIN);
+    let before = f.signer.key_status(&f.wiki).unwrap();
+    for old_key in [
+        inklkunn_signer::OldKey::Keep,
+        inklkunn_signer::OldKey::Retire,
+    ] {
+        let r = f.signer.rotate_keys(
+            &inklkunn_signer::KeyAuthority::for_tests(),
+            &f.repo,
+            old_key,
+        );
+        let Err(inklkunn_signer::SignerError::NeedsRecovery(why)) = &r else {
+            panic!("{old_key:?}: {r:?}");
+        };
+        assert!(
+            why.contains(&format!("inklkunn wiki recover {}", f.wiki)) && why.contains("view"),
+            "{old_key:?}: {why}"
+        );
+        assert_eq!(f.signer.key_status(&f.wiki).unwrap(), before, "{old_key:?}");
+        assert!(f.signer.superseded_keys(&f.wiki).unwrap().is_empty());
+    }
+    // Once recovery has finished the creation, the rotation goes ahead.
+    let rec = f.act(vec![f.view_op("va-1", DRAFT)]);
+    f.complete_view(&rec, DRAFT, &creation).expect("completed");
+    let r = f.signer.rotate_keys(
+        &inklkunn_signer::KeyAuthority::for_tests(),
+        &f.repo,
+        inklkunn_signer::OldKey::Keep,
+    );
+    assert!(r.is_ok(), "{r:?}");
 }
 
 #[test]

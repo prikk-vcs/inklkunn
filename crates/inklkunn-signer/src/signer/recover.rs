@@ -441,12 +441,9 @@ impl Recover for Signer {
                 "prikk's doctor does not report exactly one interrupted publication, and it is not this view's",
             );
         }
-        // 2. The block the view's source points at now (`branch create --from` publishes a ref at exactly that block,
-        //    and nothing has been published since: every publication refuses while this one is unfinished).
-        let Some(source) = w.tip(&repo, &facts.from)? else {
-            return mismatch("the view's source has no block");
-        };
-        // 3. prikk's own plan: the first publication of this ref, onto that block, with nothing to remove first.
+        // 2. prikk's own plan: the first publication of this ref, onto the block the act recorded as the view's start
+        //    (the block its source pointed at when the act was written, under the lease; the source may have moved
+        //    since, and a ref that points anywhere else is not what was recorded), with nothing to remove first.
         let seeds = self.seeds(wiki);
         let plan = w.ref_complete_plan(&repo, &seeds, view);
         if seeds.left_over() {
@@ -455,16 +452,16 @@ impl Recover for Signer {
         let plan = plan?;
         if plan.ref_name != view
             || plan.kind != "Branch"
-            || plan.target != source.block_id
+            || plan.target != facts.from_block
             || plan.log_tip.is_some()
             || plan.sequence != 1
             || plan.partial_tail_bytes != 0
         {
             return mismatch(
-                "prikk's plan is not the first publication of this view onto the block its source points at",
+                "prikk's plan is not the first publication of this view onto the block the creation recorded",
             );
         }
-        // 4. `ref complete`, once.
+        // 3. `ref complete`, once.
         let seeds = self.seeds(wiki);
         let done = w.ref_complete(&repo, &seeds, view);
         match (done, seeds.left_over()) {
@@ -472,7 +469,7 @@ impl Recover for Signer {
             (Ok(()), true) => return Err(RecoverError::SeedsNotRemoved),
             (Err(e), _) => return Err(e.into()),
         }
-        // 5. It did what was meant: `doctor` no longer names the lead (the block was checked before, and `ref complete`
+        // 4. It did what was meant: `doctor` no longer names the lead (the block was checked before, and `ref complete`
         //    appends the record of the same state).
         if w.doctor(&repo)?
             .diagnostics

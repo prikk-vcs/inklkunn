@@ -991,6 +991,17 @@ pub fn build(w: &Witness) -> Plan {
                         view: v.view.clone(),
                     });
                 }
+                // Completing the creation appends a record signed by the maintainer key, and nothing new is signed
+                // while a key retirement is unfinished (W1; K19): as for a queued patch, the plan says so first.
+                (ViewShown::Shown { tip }, true)
+                    if *tip == v.from_block && w.retirement_unfinished.is_some() =>
+                {
+                    if let Some(unfinished) = &w.retirement_unfinished {
+                        plan.notes.push(unfinished.clone());
+                    }
+                    stop(&mut plan, Stop::RetirementUnfinished);
+                    return plan;
+                }
                 (ViewShown::Shown { tip }, true) if *tip == v.from_block => {
                     steps.push(Step::CompleteViewCreation {
                         act: v.act.clone(),
