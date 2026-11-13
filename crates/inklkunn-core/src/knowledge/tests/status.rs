@@ -9,6 +9,7 @@ use super::check::{files_of, sound_claim};
 use super::*;
 use crate::knowledge::check::{Curated, PageLookup, Pages, Touched, curated_by, validate};
 use crate::knowledge::curation::is_curation;
+use crate::knowledge::summary::summarize;
 
 struct One;
 
@@ -125,14 +126,15 @@ fn a_claim_whose_status_was_decided_is_not_removed_by_any_other_proposal() {
     );
     touched.curation = true;
     assert!(validate(&BTreeMap::new(), &touched, &One, &One).is_empty());
-    // An undecided claim may go, as before.
+    // A claim that holds nothing curated (undecided, no link) may go, as before.
     let mut touched = Touched {
         removed: [path.clone()].into(),
         ..Touched::default()
     };
-    touched
-        .curated_before
-        .insert(path, Curated::of(&File::Claim(Box::new(sound_claim(1)))));
+    touched.curated_before.insert(
+        path,
+        Curated::of(&File::Claim(Box::new(with_links(vec![])))),
+    );
     assert!(validate(&BTreeMap::new(), &touched, &One, &One).is_empty());
 }
 
@@ -445,7 +447,8 @@ fn the_rule_the_page_and_the_submission_use_is_the_one_the_acceptance_uses() {
 
 #[test]
 fn a_removal_of_a_decided_claim_is_refused_at_submit_and_an_undecided_one_is_not() {
-    let plain = sound_claim(1);
+    let mut plain = with_links(vec![]);
+    plain.id = claim_id(1);
     let mut decided_claim = sound_claim(2);
     decided(&mut decided_claim, Standing::Accepted);
     let before = texts_of(&[&plain, &decided_claim], &[]);
@@ -457,10 +460,219 @@ fn a_removal_of_a_decided_claim_is_refused_at_submit_and_an_undecided_one_is_not
     );
     // A file the base never had is not a decided claim.
     assert!(refused_files(&gone(&decided_claim), &Texts::new()).is_empty());
-    // Sources are removed by anyone: a source holds no standing.
+    // A source that nobody checked holds nothing curated: anyone may remove it.
     let source = Source::new(source_id(1));
     let held = texts_of(&[], &[&source]);
     assert!(refused_files(&[(source_path(&source.id), None)], &held).is_empty());
+}
+
+// ------------------------------------------------------------------------------------ K16: removal is curation
+
+fn gone(path: String) -> Vec<(String, Option<String>)> {
+    vec![(path, None)]
+}
+
+#[test]
+fn removing_a_claim_file_is_curation_whenever_it_takes_anything_curated_with_it() {
+    let at = |c: &Claim| claim_path(&c.id);
+    let held = |c: &Claim| texts_of(&[c], &[]);
+    let nothing_curated = with_links(vec![]);
+    assert!(refused_files(&gone(at(&nothing_curated)), &held(&nothing_curated)).is_empty());
+    let refused = |c: &Claim, field: &'static str| {
+        assert_eq!(
+            refused_files(&gone(at(c)), &held(c)),
+            [(at(c), field)],
+            "{c:?}"
+        );
+        // The acceptance's rule is the same one: `validate` refuses it outside a curation proposal and not within.
+        let mut touched = Touched {
+            removed: [at(c)].into(),
+            ..Touched::default()
+        };
+        touched
+            .curated_before
+            .insert(at(c), Curated::of(&File::Claim(Box::new(c.clone()))));
+        assert_eq!(
+            validate(&BTreeMap::new(), &touched, &One, &One)
+                .iter()
+                .map(|r| (r.file.clone(), r.rule))
+                .collect::<Vec<_>>(),
+            [(at(c), Rule::Status)]
+        );
+        touched.curation = true;
+        assert!(validate(&BTreeMap::new(), &touched, &One, &One).is_empty());
+    };
+    // A source link, of either relation: the link is curation's to take away, and so is the file that holds it.
+    refused(&with_links(vec![link(1, |_| {})]), "community_status");
+    refused(
+        &with_links(vec![link(1, |l| l.relation = Link::Challenges)]),
+        "community_status",
+    );
+    // A status that was decided; and a record that un-decided it (K14: no status, the deciding proposal kept).
+    let mut decided_claim = with_links(vec![]);
+    decided(&mut decided_claim, Standing::Contested);
+    refused(&decided_claim, "community_status");
+    let mut undecided_again = with_links(vec![]);
+    undecided_again.community_status = CommunityStatus {
+        status: Standing::Unknown,
+        proposal: Some("01930000-0000-7000-8000-00000000aaaa".to_owned()),
+        judged_on: None,
+    };
+    refused(&undecided_again, "community_status");
+    // A status that was judged on a wording and no more.
+    let mut wording_only = with_links(vec![]);
+    wording_only.community_status.judged_on = Some(digest_of("w"));
+    refused(&wording_only, "community_status");
+}
+
+#[test]
+fn removing_a_source_file_is_curation_when_it_was_checked() {
+    let at = |s: &Source| source_path(&s.id);
+    let refused = |s: &Source| {
+        assert_eq!(
+            refused_files(&gone(at(s)), &texts_of(&[], &[s])),
+            [(at(s), "community_status")]
+        );
+    };
+    let plain = source_with(|_| {});
+    assert!(refused_files(&gone(at(&plain)), &texts_of(&[], &[&plain])).is_empty());
+    refused(&source_with(|s| s.availability = Availability::Unavailable));
+    refused(&source_with(|s| {
+        s.last_reviewed = Some(Reviewed {
+            date: "2026-11-04".to_owned(),
+            proposal: None,
+        });
+    }));
+    // The same through `validate`, outside and inside a curation proposal.
+    let checked = source_with(|s| s.availability = Availability::Available);
+    let mut touched = Touched {
+        removed: [at(&checked)].into(),
+        ..Touched::default()
+    };
+    touched.curated_before.insert(
+        at(&checked),
+        Curated::of(&File::Source(Box::new(checked.clone()))),
+    );
+    assert_eq!(validate(&BTreeMap::new(), &touched, &One, &One).len(), 1);
+    touched.curation = true;
+    assert!(validate(&BTreeMap::new(), &touched, &One, &One).is_empty());
+}
+
+#[test]
+fn a_challenge_is_not_laundered_out_by_removing_its_claim_and_writing_another_on_the_same_paragraph()
+ {
+    // L-b: claim C (undecided, with a *challenges* link) is removed, and C2 is recorded on the same paragraph with only a
+    // *supports* link. Each file alone looks harmless; the removal of C is what takes the challenge away.
+    let c = with_links(vec![link(1, |l| l.relation = Link::Challenges)]);
+    let mut c2 = with_links(vec![link(1, |_| {})]);
+    c2.id = claim_id(2);
+    let held = texts_of(&[&c], &[]);
+    let written = vec![
+        (claim_path(&c.id), None),
+        (claim_path(&c2.id), Some(c2.to_yaml())),
+    ];
+    assert_eq!(
+        refused_files(&written, &held),
+        [(claim_path(&c.id), "community_status")]
+    );
+    // The proposal service says so at submit: with a page beside it the proposal is not a curation proposal.
+    let was = |p: &str| held.get(p).cloned();
+    assert_eq!(
+        crate::proposal::files::knowledge_verdict(&written, &was, false, &summarize),
+        Err(crate::proposal::Invalid::KnowledgeCurated)
+    );
+    assert_eq!(
+        crate::proposal::files::knowledge_verdict(&written, &was, true, &summarize),
+        Ok(())
+    );
+}
+
+// -- a file the tip has and cannot read
+
+/// A claim file that does not read (a direction character in a text, as K14 makes invalid).
+const UNREAD: &str = "kind: observation\nsecret: words\n";
+
+#[test]
+fn a_file_the_base_has_and_cannot_read_is_not_replaced_or_removed_by_any_other_proposal() {
+    let path = claim_path(&claim_id(5));
+    let held: Texts = [(path.clone(), UNREAD.to_owned())].into();
+    // Removed: curation's.
+    assert_eq!(
+        refused_files(&gone(path.clone()), &held),
+        [(path.clone(), "unreadable")]
+    );
+    // Written over, with a claim that reads: curation's too, and not a new claim.
+    let mut now = sound_claim(5);
+    now.id = claim_id(5);
+    let over = vec![(path.clone(), Some(now.to_yaml()))];
+    assert_eq!(refused_files(&over, &held), [(path.clone(), "unreadable")]);
+    // A file the base never had is a new one, and nothing is replaced.
+    assert!(refused_files(&over, &Texts::new()).is_empty());
+    // The page's lines: its own line, and the new claim beside it, never *Removes a claim*.
+    let was = |p: &str| held.get(p).cloned();
+    let removal = summarize(&gone(path.clone()), &was);
+    assert_eq!(
+        removal,
+        [crate::knowledge::summary::Item::UnreadableReplaced {
+            family: Family::Claim,
+            id: claim_id(5).to_string()
+        }]
+    );
+    let overwritten = summarize(&over, &was);
+    assert!(matches!(
+        overwritten.as_slice(),
+        [
+            crate::knowledge::summary::Item::UnreadableReplaced { .. },
+            crate::knowledge::summary::Item::ClaimMade { .. }
+        ]
+    ));
+    // The service refuses it at submit outside a curation proposal and sends it as one.
+    use crate::proposal::{Invalid, files::knowledge_verdict};
+    assert_eq!(
+        knowledge_verdict(&over, &was, false, &summarize),
+        Err(Invalid::KnowledgeCurated)
+    );
+    assert_eq!(knowledge_verdict(&over, &was, true, &summarize), Ok(()));
+    assert_eq!(
+        knowledge_verdict(&gone(path), &was, false, &summarize),
+        Err(Invalid::KnowledgeCurated)
+    );
+}
+
+#[test]
+fn the_acceptance_refuses_the_same_outside_a_curation_proposal() {
+    let path = claim_path(&claim_id(5));
+    let mut now = sound_claim(5);
+    now.id = claim_id(5);
+    let files: BTreeMap<String, Vec<u8>> = files_of(&[
+        (path.clone(), now.to_yaml()),
+        (
+            source_path(&source_id(1)),
+            Source::new(source_id(1)).to_yaml(),
+        ),
+    ]);
+    let mut touched = Touched {
+        written: [path.clone()].into(),
+        ..Touched::default()
+    };
+    touched.unreadable_before.insert(path.clone());
+    let got = validate(&files, &touched, &One, &One);
+    assert_eq!(
+        got.iter().map(|r| (r.rule, r.field)).collect::<Vec<_>>(),
+        [(Rule::Status, "unreadable")]
+    );
+    assert_eq!(got.first().map(|r| r.file.as_str()), Some(path.as_str()));
+    touched.curation = true;
+    assert!(validate(&files, &touched, &One, &One).is_empty());
+    // A removal, likewise.
+    let mut touched = Touched {
+        removed: [path.clone()].into(),
+        ..Touched::default()
+    };
+    touched.unreadable_before.insert(path);
+    assert_eq!(validate(&BTreeMap::new(), &touched, &One, &One).len(), 1);
+    touched.curation = true;
+    assert!(validate(&BTreeMap::new(), &touched, &One, &One).is_empty());
 }
 
 #[test]
@@ -500,4 +712,51 @@ fn what_only_a_curation_proposal_sets_is_told_from_everything_else() {
     // Pages are not the layer's.
     let page = vec![("pages/One.md".to_owned(), Some("text".to_owned()))];
     assert!(refused_files(&page, &nothing).is_empty());
+}
+
+#[test]
+fn the_tree_the_acceptance_reads_names_a_tip_file_it_cannot_read_and_curation_may_replace_it() {
+    use crate::knowledge::check::judge;
+    use inklkunn_signer::PreparedFile;
+    let root = std::env::temp_dir().join(format!("inklkunn-k16-judge-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let path = claim_path(&claim_id(5));
+    let source = Source::new(source_id(1));
+    for (rel, text) in [
+        (path.clone(), UNREAD.to_owned()),
+        (source_path(&source.id), source.to_yaml()),
+        (
+            "pages/One.md".to_owned(),
+            "---\nid: p1\n---\n\nSaid. ^b1\n".to_owned(),
+        ),
+    ] {
+        let at = root.join(&rel);
+        std::fs::create_dir_all(at.parent().expect("a parent")).expect("a directory");
+        std::fs::write(at, text).expect("a file");
+    }
+    let mut now = sound_claim(5);
+    now.id = claim_id(5);
+    let remove = [PreparedFile {
+        path: path.clone().into(),
+        content: None,
+    }];
+    let write = [PreparedFile {
+        path: path.clone().into(),
+        content: Some(now.to_yaml().into_bytes()),
+    }];
+    let judged = |files: &[PreparedFile], curation: bool| {
+        judge(&root, 1000, 1 << 20, files, &[], curation)
+            .expect("judged")
+            .iter()
+            .map(|r| (r.file.clone(), r.rule, r.field))
+            .collect::<Vec<_>>()
+    };
+    let want = vec![(path.clone(), Rule::Status, "unreadable")];
+    assert_eq!(judged(&remove, false), want);
+    assert_eq!(judged(&write, false), want);
+    assert!(judged(&remove, true).is_empty());
+    assert!(judged(&write, true).is_empty());
+    // A proposal that does not touch the file leaves it to the health list.
+    assert!(judged(&[], false).is_empty());
+    let _ = std::fs::remove_dir_all(&root);
 }

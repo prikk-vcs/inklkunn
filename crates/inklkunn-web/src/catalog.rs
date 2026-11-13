@@ -1575,6 +1575,9 @@ keys! {
     // knowledge: re-judgements shown (handoff 005 corrections K5): end
     AttachDirection => "attach.direction",
     // knowledge: direction characters refused (handoff 005 corrections K14): end
+    KnowReplacedUnreadableClaim => "know.replaced_unreadable_claim",
+    KnowReplacedUnreadableSource => "know.replaced_unreadable_source",
+    // knowledge: a file that cannot be read is replaced (handoff 005 corrections, second round K16): end
 }
 
 /// A typed value for a placeholder. Text is HTML-escaped; a link is an escaped label plus an `href` the

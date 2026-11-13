@@ -237,12 +237,33 @@ impl Curated {
         }
     }
 
-    /// Is taking this away, outside a curation proposal, refused? A claim whose standing was decided is not
-    /// removed by any other proposal: its removal would take the decision with it.
+    /// What a file of this kind holds when nothing curated is in it: [`Curated::baseline`], by kind.
+    fn untouched(&self) -> Curated {
+        match self {
+            Curated::Claim { .. } => Curated::Claim {
+                status: CommunityStatus::undecided(),
+                links: BTreeMap::new(),
+            },
+            Curated::Source { .. } => Curated::Source {
+                availability: Availability::Unknown,
+                reviewed: None,
+            },
+        }
+    }
+
+    /// Is taking this away, outside a curation proposal, refused? **When it would take anything curated with it**
+    /// (handoff 005 corrections, second round, K16): a claim file whose curated content is not what a fresh claim's is
+    /// (a status that was decided, or an un-decided record, **or a source link**: the link is curation's to change
+    /// or take away, and removing the file and writing the claim again would launder it out) and a source that was
+    /// checked or marked available or not. A file that holds none of it may go with any proposal.
     pub fn removal_refused(&self) -> bool {
-        matches!(self, Curated::Claim { status, .. } if *status != CommunityStatus::undecided())
+        *self != self.untouched()
     }
 }
+
+/// The field a refusal names when a file the tip has but cannot read is removed or written over: it is not a key of
+/// the format, and what the file held is not repeated.
+pub const UNREADABLE: &str = "unreadable";
 
 /// The knowledge files a revision writes (`files`: path, and the new text or `None` for a removal) that do what only
 /// a curation proposal may, judged against `before` (the text a path had at the proposal's base). The same rule as
@@ -260,7 +281,16 @@ pub fn curated_by(
         if family_of(path).is_none() {
             continue;
         }
-        let was = before(path).and_then(|t| read_file(path, t.as_bytes()).ok());
+        let had = before(path);
+        let was = had
+            .as_ref()
+            .and_then(|t| read_file(path, t.as_bytes()).ok());
+        // A file the base has and the layer cannot read: what it held cannot be told from nothing, so taking it away
+        // or writing over it is curation's (K16), never a page proposal's.
+        if had.is_some() && was.is_none() {
+            out.push(Refusal::rule(path, Rule::Status, UNREADABLE));
+            continue;
+        }
         match text {
             None => {
                 if was
@@ -299,6 +329,9 @@ pub struct Touched {
     pub owned: BTreeSet<String>,
     /// What the tip had, of [`Curated`], for each knowledge file the change writes or removes that the tip has.
     pub curated_before: BTreeMap<String, Curated>,
+    /// The knowledge paths the change writes, removes or moves that the tip has and cannot read (K16): replacing one
+    /// is curation's, since what it held is not known.
+    pub unreadable_before: BTreeSet<String>,
     /// The change is a curation proposal (its files are knowledge files and nothing else,
     /// [`super::curation::is_curation`]); only then may it set what only curation sets. **Not by default.**
     pub curation: bool,
@@ -365,7 +398,8 @@ pub fn validate(
             }
         }
     }
-    // A claim whose standing was decided is not taken away outside a curation proposal either.
+    // Nothing curated is taken away outside a curation proposal either (K16): not a decided status, not a link, not a
+    // review or an availability, with the file that holds it.
     for path in &touched.removed {
         if !touched.curation
             && touched
@@ -374,6 +408,15 @@ pub fn validate(
                 .is_some_and(Curated::removal_refused)
         {
             out.insert(Refusal::rule(path, Rule::Status, "community_status"));
+        }
+    }
+    // A file the tip has and cannot read is not replaced or taken away by any other proposal: nobody can say what
+    // went with it.
+    if !touched.curation {
+        for path in touched.written.union(&touched.removed) {
+            if touched.unreadable_before.contains(path) {
+                out.insert(Refusal::rule(path, Rule::Status, UNREADABLE));
+            }
         }
     }
     for path in &touched.removed {
@@ -640,7 +683,7 @@ pub fn check_change(
         .map_err(CheckError::Read)?
 }
 
-fn judge(
+pub(crate) fn judge(
     root: &Path,
     max_entries: u64,
     page_max_bytes: u64,
@@ -665,10 +708,15 @@ fn judge(
         .map(|f| path_text(&f.path))
         .chain(renames.iter().map(|(from, _)| path_text(from)))
     {
-        if let Some(bytes) = knowledge.get(&path)
-            && let Ok(file) = read_file(&path, bytes)
-        {
-            touched.curated_before.insert(path, Curated::of(&file));
+        if let Some(bytes) = knowledge.get(&path) {
+            match read_file(&path, bytes) {
+                Ok(file) => {
+                    touched.curated_before.insert(path, Curated::of(&file));
+                }
+                Err(_) => {
+                    touched.unreadable_before.insert(path);
+                }
+            }
         }
     }
     for (from, to) in renames {

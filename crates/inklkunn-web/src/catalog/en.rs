@@ -2711,7 +2711,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.not_curation",
-        "This proposal sets a community status, a review date or an availability, or changes or removes a source link a claim already has, which only a curation proposal may do. It cannot be accepted as it is.",
+        "This proposal sets a community status, a review date or an availability, changes or removes a source link a claim already has, removes a claim or a source that holds any of these, or replaces a file that cannot be read, which only a curation proposal may do. It cannot be accepted as it is.",
     ),
     msg("know.kind_observation", "an observation"),
     msg("know.kind_interpretation", "an interpretation"),
@@ -2886,4 +2886,13 @@ pub const CATALOG: &[Entry] = &[
         "A text in the source holds a character that changes the direction of text or is not shown, which cannot be kept.",
     ),
     // knowledge: direction characters refused (handoff 005 corrections K14): end
+    msg(
+        "know.replaced_unreadable_claim",
+        "Replaces or removes a claim file that cannot be read ({id}). What it held is not known.",
+    ),
+    msg(
+        "know.replaced_unreadable_source",
+        "Replaces or removes a source file that cannot be read ({id}). What it held is not known.",
+    ),
+    // knowledge: a file that cannot be read is replaced (handoff 005 corrections, second round K16): end
 ];

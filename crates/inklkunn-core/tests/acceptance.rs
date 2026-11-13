@@ -1327,8 +1327,12 @@ struct Claimed {
 }
 
 fn claim_on(w: &World, words: &str) -> Claimed {
+    claim_on_with(w, words, inklkunn_core::knowledge::Link::Supports)
+}
+
+fn claim_on_with(w: &World, words: &str, relation: inklkunn_core::knowledge::Link) -> Claimed {
     use inklkunn_core::knowledge::compose::{Attachment, SourceDraft, attach};
-    use inklkunn_core::knowledge::{Bearing, Link, SourceKind, StatementKind};
+    use inklkunn_core::knowledge::{Bearing, SourceKind, StatementKind};
     let page = w.page("pages/Home.md");
     let start = page.find(words).unwrap();
     let attached = attach(
@@ -1343,7 +1347,7 @@ fn claim_on(w: &World, words: &str) -> Claimed {
                 date: None,
                 reference: None,
             },
-            relation: Link::Supports,
+            relation,
             bearing: Bearing::Direct,
             note: None,
             kind: StatementKind::Observation,
@@ -1570,6 +1574,87 @@ fn a_reconfirm_proposal_is_recorded_as_re_confirming_its_change_when_its_accepta
     let plain = propose_curation(&w, None);
     signed(w.accept(&plain).unwrap());
     assert_eq!(reconfirmed(&w, &second.acceptance), vec![None]);
+    assert!(w.reconciled().is_clean());
+}
+
+#[test]
+fn a_page_proposal_does_not_take_a_claim_and_its_links_away_and_a_curation_proposal_may() {
+    use inklkunn_core::knowledge::{Claim, ClaimId, File, Link, read_file};
+    let Some(w) = World::new("removal-curation", LeaseConfig::default()) else {
+        return;
+    };
+    // C: undecided, with a *challenges* link on "One.". C2: a claim on the same paragraph with only a *supports* link.
+    let c = claim_on_with(&w, "One.", Link::Challenges);
+    let File::Claim(held) = read_file(&c.claim_file, w.page(&c.claim_file).as_bytes()).unwrap()
+    else {
+        panic!("a claim");
+    };
+    let mut c2: Claim = (*held).clone();
+    c2.id = ClaimId::new();
+    c2.sources.first_mut().unwrap().relation = Link::Supports;
+    let c2_file = inklkunn_core::knowledge::claim_path(&c2.id);
+    let other = OTHER.replace("Hello.", "Hello again.");
+    let laundering = [
+        (c.claim_file.as_str(), None),
+        (c2_file.as_str(), Some(c2.to_yaml())),
+        ("pages/Other.md", Some(other.clone())),
+    ];
+    let borrowed: Vec<(&str, Option<&str>)> =
+        laundering.iter().map(|(p, t)| (*p, t.as_deref())).collect();
+    let blocks = w.history().len();
+
+    // Sent: refused in the page's words (the rule is the acceptance's). Reaching the records some other way: refused
+    // by the acceptance, before the signer, naming the removed claim file.
+    let draft = w
+        .proposals
+        .create(
+            &w.contributor,
+            &w.wiki,
+            None,
+            ProposalEdit {
+                summary: "Replace a claim".to_owned(),
+                files: borrowed
+                    .iter()
+                    .map(|(path, text)| FileChange {
+                        path: (*path).to_owned(),
+                        text: text.map(str::to_owned),
+                    })
+                    .collect(),
+                ..ProposalEdit::default()
+            },
+        )
+        .unwrap();
+    assert!(matches!(
+        w.proposals.submit(&w.contributor, &w.wiki, &draft.id),
+        Err(inklkunn_core::proposal::ProposalError::Invalid(
+            inklkunn_core::proposal::Invalid::KnowledgeCurated
+        ))
+    ));
+    let p = w.propose_unjudged("Replace a claim", &borrowed);
+    match w.accept(&p) {
+        Err(AcceptFailure::KnowledgeInvalid(r)) => assert_eq!(
+            r.iter()
+                .map(|r| (r.file.as_str(), r.rule))
+                .collect::<Vec<_>>(),
+            [(
+                c.claim_file.as_str(),
+                inklkunn_core::knowledge::Rule::Status
+            )]
+        ),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(w.history().len(), blocks);
+
+    // The same two knowledge files alone are a curation proposal: sent, accepted, and the history grows.
+    let curation = w.propose(
+        "Replace a claim",
+        &[
+            (c.claim_file.as_str(), None),
+            (c2_file.as_str(), Some(&c2.to_yaml())),
+        ],
+    );
+    signed(w.accept(&curation).unwrap());
+    assert_eq!(w.history().len(), blocks + 1);
     assert!(w.reconciled().is_clean());
 }
 

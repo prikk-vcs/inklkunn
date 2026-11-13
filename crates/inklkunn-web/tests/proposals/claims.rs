@@ -939,6 +939,117 @@ async fn the_page_warns_of_a_decided_claim_removed_and_of_a_source_link_changed(
 }
 
 #[tokio::test]
+async fn removing_a_claim_with_a_link_or_a_file_that_cannot_be_read_beside_a_page_edit_is_curation()
+{
+    let s = scene();
+    let note = "only a curation proposal may do";
+    let page_edit = || {
+        (
+            "pages/Bridge.md".to_owned(),
+            Some(BRIDGE.replace("A note.", "A longer note.")),
+        )
+    };
+    // The claim has a source link and nobody decided its standing: removing it takes the link with it (K16). The
+    // sentence says removals are what it is about, and the service does not let the proposal be sent.
+    let removal = vec![(claim_path(&s.claim.id), None), page_edit()];
+    let who = principal(&s.writer);
+    let draft =
+        s.w.services
+            .proposals
+            .create(
+                &who,
+                &s.w.wiki,
+                None,
+                inklkunn_core::proposal::ProposalEdit {
+                    summary: "A change".to_owned(),
+                    files: removal
+                        .iter()
+                        .cloned()
+                        .map(|(path, text)| inklkunn_store::FileChange { path, text })
+                        .collect(),
+                    ..Default::default()
+                },
+            )
+            .expect("a draft");
+    assert!(matches!(
+        s.w.services.proposals.submit(&who, &s.w.wiki, &draft.id),
+        Err(inklkunn_core::proposal::ProposalError::Invalid(
+            inklkunn_core::proposal::Invalid::KnowledgeCurated
+        ))
+    ));
+    let body = open(&s, &held_unjudged(&s, removal), &s.writer)
+        .await
+        .body();
+    assert!(body.contains(note), "{body}");
+    assert!(
+        body.contains("removes a claim or a source that holds any of these"),
+        "{body}"
+    );
+
+    // A claim that holds nothing curated goes with a page edit as before, and its page does not warn.
+    let mut bare = s.claim.clone();
+    bare.id = inklkunn_core::knowledge::ClaimId::parse("01930000-0000-7000-8000-000000000002")
+        .expect("a claim id");
+    bare.sources.clear();
+    s.w.fake.set(&claim_path(&bare.id), &bare.to_yaml());
+    let to = held_with(&s, vec![(claim_path(&bare.id), None), page_edit()]);
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(!body.contains(note), "{body}");
+
+    // A file the wiki has and cannot read: replaced or removed, it has a line of its own and is curation's.
+    let unread = inklkunn_core::knowledge::ClaimId::parse("01930000-0000-7000-8000-000000000003")
+        .expect("a claim id");
+    s.w.fake
+        .set(&claim_path(&unread), "kind: observation\nsecret: words\n");
+    let body = open(
+        &s,
+        &held_unjudged(&s, vec![(claim_path(&unread), None), page_edit()]),
+        &s.writer,
+    )
+    .await
+    .body();
+    assert!(
+        body.contains("Replaces or removes a claim file that cannot be read"),
+        "{body}"
+    );
+    assert!(body.contains(note), "{body}");
+    assert!(!body.contains("Removes a claim."), "{body}");
+    assert!(!body.contains("secret"), "{body}");
+    // Written over with a claim that reads: the same line, and the new claim beside it.
+    let mut over = s.claim.clone();
+    over.id = unread.clone();
+    let body = open(
+        &s,
+        &held_unjudged(
+            &s,
+            vec![(claim_path(&unread), Some(over.to_yaml())), page_edit()],
+        ),
+        &s.writer,
+    )
+    .await
+    .body();
+    assert!(
+        body.contains("Replaces or removes a claim file that cannot be read"),
+        "{body}"
+    );
+    assert!(body.contains("Records a claim"), "{body}");
+    // Alone it is a curation proposal: no warning, and the line stays.
+    let body = open(
+        &s,
+        &held_unjudged(&s, vec![(claim_path(&unread), None)]),
+        &s.writer,
+    )
+    .await
+    .body();
+    assert!(!body.contains(note), "{body}");
+    assert!(body.contains("This is a curation proposal"), "{body}");
+    assert!(
+        body.contains("Replaces or removes a claim file that cannot be read"),
+        "{body}"
+    );
+}
+
+#[tokio::test]
 async fn revising_a_proposal_that_sets_what_only_curation_sets_is_refused_in_the_pages_words() {
     let s = scene();
     let mut decided = s.claim.clone();

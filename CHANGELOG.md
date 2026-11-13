@@ -344,6 +344,22 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   one stale, none carried, no paragraph) and, against a real prikk, a note-only revision, a half-judged one and a whole
   one through the acceptance (one prikk-dependent test).
 
+- **K16 (handoff 005 corrections, second; review finding L-b): removal is curation when it would take anything curated
+  with it.** `Curated::removal_refused` is now *the file's curated content is not what a fresh file's is*: a claim file
+  with a decided status, an un-decided record **or a source link**, and a source file that was checked or marked
+  available or not, is not removed by a page proposal (it was only a decided status before, so a page proposal could
+  remove an undecided claim that held a *challenges* link and record another on the same paragraph with only *supports*:
+  the challenge was laundered out although taking a link away is curation's). **A knowledge file the base has and the
+  layer cannot read** (more of them since K14) **is not removed or written over by any other proposal either**: the
+  rule is the acceptance's (`Touched::unreadable_before`, filled from the tree) and the submission's
+  (`curated_by`), refused as `Rule::Status` with the field `unreadable`; the page gives it a line of its own
+  (`Item::UnreadableReplaced`: *Replaces or removes a claim file that cannot be read … What it held is not known.*,
+  never *Removes a claim*), and the sentence a refused proposal is shown names removals and replaced unreadable files.
+  Tests: each curated content in a claim and a source (status, un-decided record, wording only, either relation of a
+  link, availability, review date), the laundering shape at submit, in `validate` and through a real acceptance (one
+  prikk-dependent test), the unreadable file removed and written over at submit, in `validate`, in `judge` over a tree
+  and on the page.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

@@ -199,6 +199,32 @@ fn a_file_that_does_not_read_is_said_by_its_rule_and_never_by_what_it_held() {
 }
 
 #[test]
+fn a_file_that_cannot_be_read_and_is_replaced_has_a_line_of_its_own_in_both_languages() {
+    let items = [
+        Item::UnreadableReplaced {
+            family: Family::Claim,
+            id: claim().to_string(),
+        },
+        Item::UnreadableReplaced {
+            family: Family::Source,
+            id: source().to_string(),
+        },
+    ];
+    let got = english(&items);
+    assert_eq!(
+        got.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>(),
+        [
+            "Replaces or removes a claim file that cannot be read (01930000-0000-7000-8000-000000000001). What it held is not known.",
+            "Replaces or removes a source file that cannot be read (01931111-0000-7000-8000-000000000001). What it held is not known.",
+        ]
+    );
+    for line in lines(T::new(Lang::from_def(&JA_DEF)), &items, &|_, _| None) {
+        assert!(!line.text.contains("[know."), "{}", line.text);
+        assert!(line.text.contains("読み取れない"), "{}", line.text);
+    }
+}
+
+#[test]
 fn the_japanese_preview_has_every_one_and_none_is_a_marker_for_a_missing_message() {
     let t = T::new(Lang::from_def(&JA_DEF));
     let items = [

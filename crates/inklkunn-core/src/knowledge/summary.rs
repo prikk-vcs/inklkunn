@@ -146,6 +146,15 @@ pub enum Item {
         /// Its id, as its name spells it.
         id: String,
     },
+    /// **A file the base has and the layer cannot read is removed or written over** (handoff 005 corrections, second
+    /// round, K16): what it held is not known, so this is said as what it is, never as a removal of a claim or a
+    /// source or as a new one. Only a curation proposal may do it.
+    UnreadableReplaced {
+        /// Which kind of file it is meant to be.
+        family: Family,
+        /// Its id, as its name spells it.
+        id: String,
+    },
     /// A file the revision writes is not one the layer reads (by rule: the file's words are not repeated).
     Unreadable {
         /// Which kind of file it is meant to be.
@@ -340,12 +349,24 @@ pub fn summarize(
         let Some(family) = family_of(path) else {
             continue;
         };
-        let was = before(path).and_then(|t| read_file(path, t.as_bytes()).ok());
-        let Some(text) = text else {
-            out.push(Item::Removed {
+        let had = before(path);
+        let was = had
+            .as_ref()
+            .and_then(|t| read_file(path, t.as_bytes()).ok());
+        let replaces_unreadable = had.is_some() && was.is_none();
+        if replaces_unreadable {
+            out.push(Item::UnreadableReplaced {
                 family,
                 id: name_of(path),
             });
+        }
+        let Some(text) = text else {
+            if !replaces_unreadable {
+                out.push(Item::Removed {
+                    family,
+                    id: name_of(path),
+                });
+            }
             continue;
         };
         let now = match read_file(path, text.as_bytes()) {

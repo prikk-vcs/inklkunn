@@ -2779,7 +2779,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.not_curation",
-        "この提案はコミュニティでの扱い、確認日、入手できるかどうかを設定するか、主張がすでに持つ出典リンクを変更・削除していますが、これができるのはキュレーション提案だけです。このままでは受け入れられません。",
+        "この提案はコミュニティでの扱い、確認日、入手できるかどうかを設定するか、主張がすでに持つ出典リンクを変更・削除するか、これらを持つ主張や出典を削除するか、読み取れないファイルを置き換えていますが、これができるのはキュレーション提案だけです。このままでは受け入れられません。",
     ),
     msg("know.kind_observation", "観察"),
     msg("know.kind_interpretation", "解釈"),
@@ -2950,4 +2950,13 @@ pub const CATALOG: &[Entry] = &[
         "出典の文章に、文字の向きを変える文字や、表示されない文字が含まれていて、保存できません。",
     ),
     // knowledge: direction characters refused (handoff 005 corrections K14): end
+    msg(
+        "know.replaced_unreadable_claim",
+        "読み取れない主張ファイル（{id}）を置き換えるか削除します。その内容は分かっていません。",
+    ),
+    msg(
+        "know.replaced_unreadable_source",
+        "読み取れない出典ファイル（{id}）を置き換えるか削除します。その内容は分かっていません。",
+    ),
+    // knowledge: a file that cannot be read is replaced (handoff 005 corrections, second round K16): end
 ];

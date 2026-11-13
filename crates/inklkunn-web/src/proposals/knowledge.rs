@@ -171,6 +171,16 @@ pub(crate) fn lines(t: T, items: &[Item], wording: Wording<'_>) -> Vec<Line> {
                 }),
                 more: Vec::new(),
             },
+            Item::UnreadableReplaced { family, id } => Line {
+                text: t
+                    .msg(match family {
+                        Family::Claim => Key::KnowReplacedUnreadableClaim,
+                        Family::Source => Key::KnowReplacedUnreadableSource,
+                    })
+                    .with("id", id)
+                    .text(),
+                more: Vec::new(),
+            },
             Item::Unreadable { rule, .. } => Line {
                 text: t
                     .msg(Key::KnowUnreadable)

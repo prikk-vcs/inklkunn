@@ -1226,7 +1226,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `know.source_change_availability` | under a changed source | "Whether it can be had becomes: {availability}." | "入手できるかどうかが「{availability}」になります。" |
 | `know.source_change_superseded` | under a changed source | "It is now replaced by another source." | "別の出典に置き換えられます。" |
 | `know.is_curation` | on a proposal that changes claims and sources and no page | "This is a curation proposal: it changes claims and sources and no page." | "これはキュレーション提案です。主張と出典を変更し、ページは変更しません。" |
-| `know.not_curation` | on a proposal that sets what only a curation proposal may set | "This proposal sets a community status, a review date or an availability, or changes or removes a source link a claim already has, which only a curation proposal may do. It cannot be accepted as it is." | "この提案はコミュニティでの扱い、確認日、入手できるかどうかを設定するか、主張がすでに持つ出典リンクを変更・削除していますが、これができるのはキュレーション提案だけです。このままでは受け入れられません。" |
+| `know.not_curation` | on a proposal that sets what only a curation proposal may set | "This proposal sets a community status, a review date or an availability, changes or removes a source link a claim already has, removes a claim or a source that holds any of these, or replaces a file that cannot be read, which only a curation proposal may do. It cannot be accepted as it is." | "この提案はコミュニティでの扱い、確認日、入手できるかどうかを設定するか、主張がすでに持つ出典リンクを変更・削除するか、これらを持つ主張や出典を削除するか、読み取れないファイルを置き換えていますが、これができるのはキュレーション提案だけです。このままでは受け入れられません。" |
 | `know.kind_observation` | a kind of statement, inside a sentence | "an observation" | "観察" |
 | `know.kind_interpretation` | a kind of statement, inside a sentence | "an interpretation" | "解釈" |
 | `know.kind_hypothesis` | a kind of statement, inside a sentence | "a hypothesis" | "仮説" |
@@ -1305,6 +1305,8 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `know.rejudged_source` | the subject of those lines: a source the claim cites | "a source it cites" | "引用している出典" |
 | `know.nothing_changes` | a note on a proposal page whose claim and source files are the files the wiki already has | "The claim and source files in this proposal are the files the wiki already has: they change nothing." | "この提案の主張・出典ファイルは、ウィキにすでにあるファイルと同じです。変更はありません。" |
 | `attach.direction` | a problem: a text of the source holds a character that changes the direction of text or is not shown | "A text in the source holds a character that changes the direction of text or is not shown, which cannot be kept." | "出典の文章に、文字の向きを変える文字や、表示されない文字が含まれていて、保存できません。" |
+| `know.replaced_unreadable_claim` | a line of a proposal: a claim file the wiki has and cannot read is replaced or removed; `{id}` is its identifier | "Replaces or removes a claim file that cannot be read ({id}). What it held is not known." | "読み取れない主張ファイル（{id}）を置き換えるか削除します。その内容は分かっていません。" |
+| `know.replaced_unreadable_source` | the same, for a source file | "Replaces or removes a source file that cannot be read ({id}). What it held is not known." | "読み取れない出典ファイル（{id}）を置き換えるか削除します。その内容は分かっていません。" |
 
 ## 3. Words the interface does not say
 
