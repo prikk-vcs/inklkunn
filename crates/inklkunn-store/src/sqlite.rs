@@ -738,7 +738,8 @@ ALTER TABLE wikis ADD COLUMN verification_explained_by TEXT
 /// acceptance record and before the signer is asked, so a trigger refuses it once the acceptance has ended),
 /// `claim_reconfirmations` (the curation acceptance that judged a kept claim again, naming the sealed change it
 /// re-confirms), `proposal_reconfirms` (a curation proposal made by the reconfirm step names the change it re-confirms
-/// from its creation or never) and `decision_claims` (the claims a *request changes* decision's revision touched).
+/// from its creation or never; **at most one such proposal is open per change**, a trigger refusing a second from any
+/// connection, K22) and `decision_claims` (the claims a *request changes* decision's revision touched).
 const V16: &str = "
 CREATE TABLE IF NOT EXISTS view_acts (
     id          TEXT PRIMARY KEY,
@@ -838,6 +839,10 @@ BEGIN SELECT RAISE(ABORT, 'proposal reconfirms are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS proposal_reconfirms_no_replace BEFORE INSERT ON proposal_reconfirms
 WHEN EXISTS (SELECT 1 FROM proposal_reconfirms WHERE proposal_id = NEW.proposal_id)
 BEGIN SELECT RAISE(ABORT, 'proposal reconfirms are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS proposal_reconfirms_one_open BEFORE INSERT ON proposal_reconfirms
+WHEN EXISTS (SELECT 1 FROM proposal_reconfirms r JOIN proposals p ON p.id = r.proposal_id
+             WHERE r.change_id = NEW.change_id AND p.state IN ('draft', 'held-for-review', 'needs-revision'))
+BEGIN SELECT RAISE(ABORT, 'proposal reconfirms are append-only: a proposal that re-confirms this change is open'); END;
 CREATE TABLE IF NOT EXISTS decision_claims (
     decision_id TEXT NOT NULL REFERENCES proposal_decisions(id),
     claim       TEXT NOT NULL CHECK (length(claim) = 36 AND claim NOT GLOB '*[^0-9a-f-]*'),

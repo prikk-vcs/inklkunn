@@ -190,23 +190,29 @@ pub(crate) struct Known {
     pub(crate) curated: Vec<inklkunn_core::knowledge::check::Refusal>,
 }
 
-/// Where the wording a re-judgement moves to is found: the view the proposal is for and the block it was written on. A
+/// Where the wording a re-judgement moves to is found: the view the proposal is for and the base it was written on. A
 /// re-judgement is a curation proposal's, which writes no page, so the pages at the base are the pages as the proposal
 /// leaves them.
 pub(crate) struct Place<'a> {
     /// The view the proposal is for.
     pub(crate) view: Option<&'a str>,
-    /// The block the proposal was written on.
-    pub(crate) base_block: &'a str,
+    /// The base the proposal was written on.
+    pub(crate) base: &'a inklkunn_store::Base,
 }
 
-/// The text of the page whose `id` is `page_id`, at the proposal's base.
+/// The text of the page whose `id` is `page_id`, at the proposal's base. **Where the page is is read at the base too**:
+/// a page renamed since is at its base path there (the tip's path would name nothing, or another page).
 fn page_text(
     ctx: &super::Ctx,
     place: &Place<'_>,
     page_id: &str,
 ) -> Result<Option<String>, inklkunn_core::read::ReadError> {
-    let index = ctx.services.read.knowledge_index(&ctx.wiki, place.view)?;
+    let index = ctx.services.read.knowledge_index_at_base(
+        &ctx.wiki,
+        place.view,
+        &place.base.state_id,
+        &place.base.block_id,
+    )?;
     let Some(path) = index
         .rows()
         .anchors
@@ -218,7 +224,7 @@ fn page_text(
     };
     ctx.services
         .read
-        .source_at(&ctx.wiki, place.base_block, &path)
+        .source_at(&ctx.wiki, &place.base.block_id, &path)
 }
 
 /// The words of the paragraph, among the places a claim is said, whose wording is `digest`, in the pages as the
@@ -260,7 +266,7 @@ pub(crate) fn file_lines(
             f.path.clone(),
             ctx.services
                 .read
-                .source_at(&ctx.wiki, place.base_block, &f.path)?,
+                .source_at(&ctx.wiki, &place.base.block_id, &f.path)?,
         );
         given.push((f.path.clone(), f.text.clone()));
     }

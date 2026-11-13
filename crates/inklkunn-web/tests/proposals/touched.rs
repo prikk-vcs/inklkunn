@@ -8,7 +8,8 @@ use inklkunn_core::knowledge::{Claim, CommunityStatus, Standing, block_digest, c
 use inklkunn_store::{AccountId, ProposalId};
 
 use super::claims::{
-    BRIDGE, NEW, Scene, claim_id, claims_in, files_of, location, open, part, principal, scene, send,
+    BRIDGE, NEW, Scene, claim_id, claims_in, files_of, held_with, location, open, part, principal,
+    scene, send,
 };
 use crate::common::{accept_by_hand, get_as, person, post_form};
 
@@ -566,4 +567,191 @@ async fn the_step_works_from_the_accepted_revision_names_its_change_and_is_not_o
         last.body()
     );
     assert_eq!(count(&s), 3);
+}
+
+// ------------------------------------------------------------------------------------ K22: one open step, linked, at the tip
+
+#[tokio::test]
+async fn a_proposal_made_by_the_step_says_which_change_it_judges_again_and_links_it() {
+    let s = scene();
+    let to = rewording(&s).await;
+    let id = id_in(&to);
+    accept_recording(&s, &id, 1, &kept(), None);
+    s.w.fake
+        .set("pages/Bridge.md", &BRIDGE.replace("1950", "1951"));
+    let made = location(&send(&s, &format!("{to}/reconfirm"), &s.writer, &[]).await);
+    let body = open(&s, &made, &s.writer).await.body();
+    assert!(
+        body.contains("This proposal judges again the claims that the change made by"),
+        "{body}"
+    );
+    // The change is the accepted proposal, and the line links to it.
+    assert!(body.contains(&format!("href=\"{to}\"")), "{body}");
+    // An ordinary proposal says no such thing.
+    let plain = open(&s, &to, &s.writer).await.body();
+    assert!(!plain.contains("This proposal judges again"), "{plain}");
+}
+
+#[tokio::test]
+async fn the_store_keeps_one_open_proposal_per_change_and_the_press_that_loses_makes_nothing() {
+    use inklkunn_core::proposal::{ProposalEdit, ProposalError};
+    use inklkunn_store::{FileChange, StoreError};
+    let s = scene();
+    let to = rewording(&s).await;
+    let id = id_in(&to);
+    let change = accept_recording(&s, &id, 1, &kept(), None);
+    s.w.fake
+        .set("pages/Bridge.md", &BRIDGE.replace("1950", "1951"));
+    // Someone else's draft for the change: the writer cannot see it, so the page still offers the step.
+    let maintainer = person(4);
+    let draft = ProposalEdit {
+        summary: "Judge them again".to_owned(),
+        files: vec![FileChange {
+            path: claim_path(&claim_id()),
+            text: Some(s.claim.to_yaml()),
+        }],
+        ..ProposalEdit::default()
+    };
+    let service = &s.w.services.proposals;
+    let theirs = service
+        .create_reconfirm(
+            &principal(&maintainer),
+            &s.w.wiki,
+            None,
+            draft.clone(),
+            &change,
+        )
+        .expect("their draft");
+    let offered = open(&s, &to, &s.writer).await.body();
+    assert!(offered.contains("Propose judging them again"), "{offered}");
+    // The store refuses a second open proposal for the change, whoever makes it, and nothing is left behind.
+    let count = || {
+        service
+            .list(&principal(&maintainer), &s.w.wiki, &Default::default())
+            .expect("a list")
+            .len()
+    };
+    let before = count();
+    let refused = service.create_reconfirm(&principal(&s.writer), &s.w.wiki, None, draft, &change);
+    assert!(
+        matches!(
+            refused,
+            Err(ProposalError::Store(StoreError::AlreadyRecorded))
+        ),
+        "{refused:?}"
+    );
+    assert_eq!(count(), before);
+    // The press of the button gets the same answer, as a page: already proposed, with no proposal of anyone's named.
+    let pressed = send(&s, &format!("{to}/reconfirm"), &s.writer, &[]).await;
+    assert_eq!(pressed.status, StatusCode::OK, "{}", pressed.body());
+    assert!(
+        pressed.body().contains("already proposed"),
+        "{}",
+        pressed.body()
+    );
+    assert!(
+        !pressed.body().contains(&theirs.id.to_string()),
+        "another person's draft is theirs alone: {}",
+        pressed.body()
+    );
+    assert_eq!(count(), before, "the press made nothing");
+}
+
+#[tokio::test]
+async fn two_presses_at_once_make_one_proposal() {
+    let s = scene();
+    let to = rewording(&s).await;
+    accept_recording(&s, &id_in(&to), 1, &kept(), None);
+    s.w.fake
+        .set("pages/Bridge.md", &BRIDGE.replace("1950", "1951"));
+    let uri = format!("{to}/reconfirm");
+    let (a, b) = tokio::join!(
+        send(&s, &uri, &s.writer, &[]),
+        send(&s, &uri, &s.writer, &[])
+    );
+    let made = [&a, &b]
+        .iter()
+        .filter(|answer| answer.status.is_redirection())
+        .count();
+    assert_eq!(made, 1, "{} / {}", a.body(), b.body());
+    let told = [&a, &b]
+        .iter()
+        .filter(|answer| answer.body().contains("already proposed"))
+        .count();
+    assert_eq!(told, 1);
+    let all =
+        s.w.services
+            .proposals
+            .list(&principal(&s.writer), &s.w.wiki, &Default::default())
+            .expect("a list");
+    assert_eq!(all.len(), 2, "the accepted proposal and one step");
+}
+
+#[tokio::test]
+async fn the_offer_is_of_the_claims_as_the_tip_has_them_not_as_the_base_had_them() {
+    let s = scene();
+    let to = rewording(&s).await;
+    accept_recording(&s, &id_in(&to), 1, &kept(), None);
+    s.w.fake
+        .set("pages/Bridge.md", &BRIDGE.replace("1950", "1951"));
+    // At the base the link was judged on the wording the change replaced: the step is offered. The tip has it judged
+    // on the new wording already (a curation by hand since): there is nothing to offer.
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(body.contains("Propose judging them again"), "{body}");
+    let mut claim: Claim = s.claim.clone();
+    let now = digest_of("It opened in 1951. ^k1");
+    for link in &mut claim.sources {
+        link.judged_on = now.clone();
+    }
+    s.w.fake.set(&claim_path(&claim.id), &claim.to_yaml());
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(!body.contains("Propose judging them again"), "{body}");
+    assert!(
+        !body.contains("1 source was judged on the earlier wording."),
+        "{body}"
+    );
+    let pressed = send(&s, &format!("{to}/reconfirm"), &s.writer, &[]).await;
+    assert!(
+        pressed.body().contains("Nothing needs judging again"),
+        "{}",
+        pressed.body()
+    );
+}
+
+#[tokio::test]
+async fn a_renamed_page_is_read_at_the_base_by_its_base_path() {
+    use inklkunn_core::knowledge::{CommunityStatus, Standing};
+    let s = scene();
+    // The claim as the base has it: decided, and judged on an older wording; a curation proposal judges it again on
+    // the wording the paragraph has.
+    let older = digest_of("An older wording. ^k1");
+    let mut had: Claim = s.claim.clone();
+    had.community_status = CommunityStatus {
+        status: Standing::Accepted,
+        proposal: Some("01930000-0000-7000-8000-00000000aaaa".to_owned()),
+        judged_on: Some(older.clone()),
+    };
+    had.sources.first_mut().expect("a link").judged_on = older;
+    s.w.fake.set(&claim_path(&had.id), &had.to_yaml());
+    let now = digest_of("It opened in 1950. ^k1");
+    let mut judged = had.clone();
+    judged.community_status.judged_on = Some(now.clone());
+    judged.sources.first_mut().expect("a link").judged_on = now;
+    let to = held_with(&s, vec![(claim_path(&judged.id), Some(judged.to_yaml()))]);
+    let wording =
+        "What its community status was judged on becomes this wording: “It opened in 1950.”";
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(body.contains(wording), "{body}");
+    // The page is renamed in the history after the proposal was written (same text, same `id`): the tip knows it at
+    // another path, and the proposal's base still has it where it was.
+    s.w.fake.rename("pages/Bridge.md", "pages/Span.md");
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(
+        body.contains(wording),
+        "the base's path finds the page: {body}"
+    );
+    assert!(
+        !body.contains("none of the claim&#39;s paragraphs has once this proposal is made"),
+        "{body}"
+    );
 }

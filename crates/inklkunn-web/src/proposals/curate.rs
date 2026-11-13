@@ -662,7 +662,7 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
             .collect();
         let place = Place {
             view: full_view.as_deref(),
-            base_block: &sub.base.block_id,
+            base: &sub.base,
         };
         match file_lines(ctx, t, &place, &given) {
             Ok(known) => known.lines,

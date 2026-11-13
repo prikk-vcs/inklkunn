@@ -99,6 +99,15 @@ impl MemoryStore {
             return Err(StoreError::IdTaken(proposal.id.to_string()));
         }
         if let Some(change) = reconfirms {
+            // At most one proposal that re-confirms a change is open (the SQLite store's trigger).
+            let open = d
+                .reconfirms
+                .iter()
+                .filter(|(_, c)| *c == change)
+                .any(|(id, _)| d.find(id).is_some_and(|p| p.state.is_open()));
+            if open {
+                return Err(StoreError::AlreadyRecorded);
+            }
             d.reconfirms.insert(proposal.id.clone(), change.clone());
         }
         d.proposals.push(proposal.clone());

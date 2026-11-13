@@ -110,6 +110,16 @@ impl Fake {
         s.snapshots.insert(v, f);
     }
 
+    /// Move a file to another path in one block: the tip moves once, and the text is the same.
+    pub fn rename(&self, from: &str, to: &str) {
+        let mut s = self.state();
+        let bytes = s.files.remove(from).expect("a file to rename");
+        s.files.insert(to.to_owned(), bytes);
+        s.version += 1;
+        let (v, f) = (s.version, s.files.clone());
+        s.snapshots.insert(v, f);
+    }
+
     /// Write several files in one block: the tip moves once.
     pub fn set_files(&self, files: &[(&str, &str)]) {
         let mut s = self.state();

@@ -1563,6 +1563,7 @@ keys! {
     TouchNothingToJudge => "touch.nothing_to_judge",
     TouchReconfirmOpen => "touch.reconfirm_open",
     TouchReconfirmDone => "touch.reconfirm_done",
+    TouchReconfirmOf => "touch.reconfirm_of",
     // knowledge: the claims a change touches (handoff 005 K-T5): end
     InvalidKnowledgeNotShown => "invalid.knowledge_not_shown",
     KnowChangeRejudged => "know.change_rejudged",

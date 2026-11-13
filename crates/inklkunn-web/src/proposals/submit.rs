@@ -110,7 +110,7 @@ pub(crate) async fn edit_form(
         let saved = params.contains_key(fields::Q_SAVED);
         let place = Place {
             view: Some(&existing.record.view),
-            base_block: &existing.content.base.block_id,
+            base: &existing.content.base,
         };
         let carried = match file_lines(&ctx, page.t(), &place, &existing.content.files) {
             Ok(known) => known.lines,
@@ -558,7 +558,7 @@ fn post(
     let knowledge_files = work.files();
     let place = Place {
         view: full_view.as_deref(),
-        base_block: &base.block_id,
+        base: &base,
     };
     let carried_lines = match file_lines(ctx, t, &place, &knowledge_files) {
         Ok(found) => found.lines,

@@ -563,6 +563,24 @@ impl ReadService {
         self.knowledge_at(wiki, &tip)
     }
 
+    /// The knowledge index of exactly the state a proposal's base names (`state_id`, with the `block_id` it belongs to),
+    /// whatever the view has moved to since: where a page was, and what it said, when the proposal was written (handoff
+    /// 005 K22). The same hold as the tip's: memory, then the derived store, else built from one extract of that block.
+    pub fn knowledge_index_at_base(
+        &self,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+        state_id: &str,
+        block_id: &str,
+    ) -> Result<Arc<KnowledgeIndex>, ReadError> {
+        let tip = Tip {
+            view: view.unwrap_or(&wiki.default_view).to_owned(),
+            state_id: state_id.to_owned(),
+            block_id: block_id.to_owned(),
+        };
+        self.knowledge_at(wiki, &tip)
+    }
+
     /// [`ReadService::knowledge_index`] of a tip that was already read: the index of exactly that state, whatever the
     /// view has moved to since (a comparison keys what it derives by the tips it read, and so reads their indexes).
     pub(super) fn knowledge_at(

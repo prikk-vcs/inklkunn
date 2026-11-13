@@ -14,7 +14,7 @@ use inklkunn_store::{
     DecisionRecord, MemoryStore, ProposalId, ProposalOp, ProposalRecord, ProposalState,
     ProposalStore, Role, SqliteStore, StoreError, WikiId, WikiStore,
 };
-use support::{account, content, draft_record, open_draft, step, submit, temp, wiki};
+use support::{account, content, draft_record, mv, open_draft, step, submit, temp, wiki};
 
 const C1: &str = "019a0000-0000-7000-8000-000000000c01";
 const C2: &str = "019a0000-0000-7000-8000-000000000c02";
@@ -431,6 +431,54 @@ fn the_suite(store: &(impl ProposalStore + AcceptanceStore + WikiStore + Account
             "the proposal is not made without its note"
         );
     }
+
+    // --- At most one proposal that re-confirms a change is open (K22): the store refuses a second, whole.
+    let count = || {
+        store
+            .proposals(&w.id, &Default::default(), None)
+            .unwrap()
+            .len()
+    };
+    let before = count();
+    assert_eq!(
+        reconfirm_draft(store, &w.id, &reviewer, &a1.id, 73).map(|_| ()),
+        Err(StoreError::AlreadyRecorded),
+        "the submitted one is open"
+    );
+    assert_eq!(count(), before, "no proposal is left without its note");
+    // Another change is its own: the rule is per change.
+    reconfirm_draft(store, &w.id, &reviewer, &a2b.id, 74).expect("another change is its own");
+    // Closed, a proposal frees the change; a draft is open too, and the author may close it.
+    mv(
+        store,
+        &origin.id,
+        ProposalOp::Withdraw,
+        ProposalState::HeldForReview,
+        ProposalState::Withdrawn,
+        &reviewer,
+        75,
+    );
+    let second = reconfirm_draft(store, &w.id, &reviewer, &a1.id, 76).unwrap();
+    assert_eq!(
+        reconfirm_draft(store, &w.id, &reviewer, &a1.id, 77).map(|_| ()),
+        Err(StoreError::AlreadyRecorded),
+        "a draft is open"
+    );
+    assert_eq!(
+        store.reconfirmations_of(&a1.id, Some(&reviewer)).unwrap(),
+        vec![origin.id.clone(), second.id.clone()],
+        "the closed one stays on the record"
+    );
+    mv(
+        store,
+        &second.id,
+        ProposalOp::Withdraw,
+        ProposalState::Draft,
+        ProposalState::Withdrawn,
+        &reviewer,
+        78,
+    );
+    reconfirm_draft(store, &w.id, &reviewer, &a1.id, 79).expect("freed again");
 }
 
 #[test]
@@ -564,6 +612,28 @@ fn the_database_refuses_what_the_store_would_not_write() {
     );
     note(r.proposal.id.as_str(), a1).expect("a note");
     assert!(message(note(r.proposal.id.as_str(), a1)).contains("append-only"));
+    // At most one open proposal re-confirms a change, from any connection (K22); a closed one frees it.
+    let second = ProposalId::new();
+    r.raw
+        .execute(
+            "INSERT INTO proposals (id, seq, wiki_id, view, state, author, summary, sources, created_at, updated_at) \
+             SELECT ?1, seq + 100, wiki_id, view, 'held-for-review', author, summary, sources, created_at, updated_at \
+             FROM proposals WHERE id = ?2",
+            rusqlite::params![second.as_str(), r.proposal.id.as_str()],
+        )
+        .expect("a second proposal");
+    let held = message(note(second.as_str(), a1));
+    assert!(
+        held.contains("a proposal that re-confirms this change is open"),
+        "{held}"
+    );
+    r.raw
+        .execute(
+            "UPDATE proposals SET state = 'withdrawn' WHERE id = ?1",
+            rusqlite::params![r.proposal.id.as_str()],
+        )
+        .expect("closed");
+    note(second.as_str(), a1).expect("the change is free once the open one is closed");
 
     // Once there is a row in each, none is changed or removed.
     for sql in [

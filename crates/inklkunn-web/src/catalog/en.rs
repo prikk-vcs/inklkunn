@@ -2853,6 +2853,10 @@ pub const CATALOG: &[Entry] = &[
         "touch.reconfirm_done",
         "Each of these claims was judged again on the wording it has now, by a proposal that was accepted.",
     ),
+    msg(
+        "touch.reconfirm_of",
+        "This proposal judges again the claims that the change made by {proposal} left judged on an earlier wording.",
+    ),
     // knowledge: the claims a change touches (handoff 005 K-T5): end
     msg(
         "invalid.knowledge_not_shown",

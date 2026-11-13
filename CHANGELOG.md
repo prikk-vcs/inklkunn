@@ -303,6 +303,21 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   `ClaimFigures::overrides` is removed (`REVIEW_RECORD_NOTE` and `REVIEW_RECORD_SCHEMA` are added). Tests: the hand count
   of the review-record figures, and the command's whole line.
 
+- **K22 (handoff 005 corrections, second): the reconfirm step.** The curation proposal the step makes now **says which change
+  it re-confirms** (a line on its page linking the proposal that made the change; catalog `touch.reconfirm_of`, English and
+  Japanese preview, glossary row). **At most one open proposal per change, kept by the store:** schema 16 (edited, not
+  followed) gets a trigger on `proposal_reconfirms` that refuses a second while a proposal that re-confirms the change is a
+  draft, held for review or needing revision, from any connection, and the memory store does the same; the refusal is
+  `AlreadyRecorded` and the proposal is not made. Two presses at once make one proposal and the other press is told
+  *already proposed* (with the proposal, when the person may see it: another's draft is theirs alone). **The offer and the
+  record are of the tip:** the claims the accepted change touched are read against the view's tip as the wiki has them
+  now (a claim judged again since is not offered; one reworded again since is), the same tip the step reads the claim
+  files it writes from; the proposal page of an accepted proposal uses the same reading. A **renamed page is read at the
+  base by its base path:** a re-judgement's wording is looked for in the page at the proposal's base, found through the
+  base's index (`ReadService::knowledge_index_at_base`) and not the tip's. Tests: the line and its link, the store's
+  rule on both stores and through a raw connection, the press that loses (a draft nobody else can see), two presses at
+  once, the offer at the tip, and a page renamed after the proposal was written.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

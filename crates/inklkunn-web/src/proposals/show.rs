@@ -617,10 +617,17 @@ pub(crate) fn draw(
         _ => None,
     };
     let touched = match (&accepted, &r.content) {
-        (Some(change), _) => match super::touched::of_content(ctx, &record.view, &change.content) {
-            Ok(found) => found,
-            Err(e) => return crate::proposals::new::read_failure(page, ctx, e),
-        },
+        (Some(change), _) => {
+            match super::touched::of_accepted(ctx, &record.view, &change.content) {
+                Ok(found) => found,
+                Err(super::touched::Unfound::Proposal(error)) => {
+                    return refused(page, ctx, &error, Vec::new());
+                }
+                Err(super::touched::Unfound::Read(e)) => {
+                    return crate::proposals::new::read_failure(page, ctx, e);
+                }
+            }
+        }
         (None, Some(content)) if !pages.is_empty() => {
             match super::touched::of_revision(ctx, &record.view, &content.base.block_id, &pages) {
                 Ok(found) => found,
@@ -671,7 +678,7 @@ pub(crate) fn draw(
         Some(content) => {
             let place = Place {
                 view: Some(&record.view),
-                base_block: &content.base.block_id,
+                base: &content.base,
             };
             let known = match file_lines(ctx, t, &place, &content.files) {
                 Ok(found) => found,
@@ -772,6 +779,10 @@ pub(crate) fn draw(
     });
     let own_proposal = (can_review && is_author).then(|| t.get(Key::RefusedOwnProposal));
 
+    match super::touched::reconfirm_note(ctx, t, id) {
+        Ok(found) => notes.extend(found),
+        Err(error) => return refused(page, ctx, &error, Vec::new()),
+    }
     if let Some(rich) = superseded {
         notes.push(rich);
     }

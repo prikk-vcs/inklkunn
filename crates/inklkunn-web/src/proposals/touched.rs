@@ -13,7 +13,9 @@
 //! The step works from **the revision that was accepted**, names the change it re-confirms (the curation proposal is
 //! made with that note, and the review record of its acceptance keeps which claims it re-confirmed), and is **not
 //! offered again** while a proposal made for it is open, nor for claims an accepted one already judged again (handoff
-//! 005 K11).
+//! 005 K11). The store keeps **at most one open proposal per change** (a second press, or two at once, makes nothing and
+//! is told so), the proposal says which change it re-confirms and links it, and the offer and the claim files the step
+//! writes are of **the same tip**, the wiki as it is now (K22).
 
 use axum::extract::rejection::PathRejection;
 use axum::extract::{Path, State};
@@ -36,7 +38,7 @@ use super::{
     Ctx, fields_of, from_this_site, needs_account, notice_page, parse_id, paths, refused, see,
     serve,
 };
-use crate::catalog::{Key, T};
+use crate::catalog::{Key, Rich, T};
 use crate::csrf::Decided;
 use crate::pages::{Page, PageState};
 use crate::wiki::{Choice, generic_not_found, services_of};
@@ -153,6 +155,38 @@ pub(crate) fn of_content(
         return Ok(Vec::new());
     }
     of_revision(ctx, view, &content.base.block_id, &pages)
+}
+
+/// The claims an accepted change touched, **read against the tip of the view as the wiki has them now** (handoff 005
+/// K22): the page offers the reconfirm step for what is still judged on the wording the change replaced, and the step
+/// writes the claim files it reads from the same tip, so that the offer and the record are of one state. (A claim
+/// judged again since, by a curation or by hand, is not offered; one reworded again since is.) Before the acceptance the
+/// claims are those of the revision against its own base ([`of_content`]).
+pub(crate) fn of_accepted(
+    ctx: &Ctx,
+    view: &str,
+    content: &RevisionContent,
+) -> Result<Vec<Touch>, Unfound> {
+    let tip = ctx
+        .services
+        .proposals
+        .capture_base(&ctx.wiki, Some(view))
+        .map_err(Unfound::Proposal)?;
+    of_accepted_at(ctx, view, content, &tip.block_id).map_err(Unfound::Read)
+}
+
+/// [`of_accepted`] at a tip that was already captured.
+pub(crate) fn of_accepted_at(
+    ctx: &Ctx,
+    view: &str,
+    content: &RevisionContent,
+    tip_block: &str,
+) -> Result<Vec<Touch>, inklkunn_core::read::ReadError> {
+    let pages = pages_of(ctx, content)?;
+    if pages.is_empty() {
+        return Ok(Vec::new());
+    }
+    of_revision(ctx, view, tip_block, &pages)
 }
 
 /// Why the claims of a revision could not be found.
@@ -279,6 +313,50 @@ pub(crate) fn offer(
     })
 }
 
+/// The line a curation proposal made by the reconfirm step carries: **which change it re-confirms**, as a link to the
+/// proposal that made it (handoff 005 K22). `None` for every other proposal.
+pub(crate) fn reconfirm_note(
+    ctx: &Ctx,
+    t: T,
+    id: &ProposalId,
+) -> Result<Option<Rich>, ProposalError> {
+    let service = &ctx.services.proposals;
+    let Some(change) = service.reconfirm_of(&ctx.principal, &ctx.wiki, id)? else {
+        return Ok(None);
+    };
+    let made = ctx
+        .services
+        .acceptances
+        .acceptance_entry(&change)
+        .map_err(ProposalError::Store)?
+        .filter(|entry| entry.acceptance.wiki == ctx.wiki.id)
+        .map(|entry| entry.acceptance.proposal);
+    let known = made.and_then(|proposal| {
+        let record = service.get(&ctx.principal, &ctx.wiki, &proposal).ok()?;
+        Some((proposal, record.summary))
+    });
+    Ok(Some(match known {
+        Some((proposal, summary)) => {
+            let label = if summary.is_empty() {
+                t.get(Key::ProposalNoSummary)
+            } else {
+                excerpt(&summary)
+            };
+            t.msg(Key::TouchReconfirmOf)
+                .link(
+                    "proposal",
+                    label,
+                    paths::proposal(ctx.slug(), proposal.as_str()),
+                )
+                .html()
+        }
+        None => t
+            .msg(Key::TouchReconfirmOf)
+            .with("proposal", t.get(Key::ProposalAnother))
+            .html(),
+    }))
+}
+
 // ------------------------------------------------------------------------------------ the one step
 
 /// `POST /{slug}/-/proposals/{id}/reconfirm`: one curation proposal that judges again, on the wording each has now,
@@ -340,42 +418,24 @@ fn judge_again(page: &Page, ctx: &Ctx, id: &inklkunn_store::ProposalId) -> Respo
         Ok(None) => return refused(page, ctx, &not_accepted, Vec::new()),
         Err(error) => return refused(page, ctx, &error, Vec::new()),
     };
-    let touched = match of_content(ctx, &record.view, &accepted.content) {
+    // The wiki as it is now: the offer below and the claim files written after it are of this one tip (K22).
+    let view = Some(record.view.as_str());
+    let base = match service.capture_base(w, view) {
+        Ok(base) => base,
+        Err(e) => return refused(page, ctx, &e, Vec::new()),
+    };
+    let touched = match of_accepted_at(ctx, &record.view, &accepted.content, &base.block_id) {
         Ok(found) => found,
         Err(e) => return read_failure(page, ctx, e),
     };
     // Not again while a proposal made for it is open; and only the claims no accepted curation judged again.
     let waiting = match offer(ctx, &accepted.acceptance, &touched) {
         Ok(Offer::Offered(waiting)) => waiting,
-        Ok(Offer::Open(open)) => {
-            let label = service
-                .get(p, w, &open)
-                .map_or_else(|_| t.get(Key::ProposalAnother), |o| excerpt(&o.summary));
-            return notice_page(
-                page,
-                ctx,
-                StatusCode::OK,
-                Key::TouchHeading,
-                vec![
-                    t.msg(Key::TouchReconfirmOpen)
-                        .with("proposal", &label)
-                        .text(),
-                ],
-                vec![Choice {
-                    label,
-                    href: paths::proposal(ctx.slug(), open.as_str()),
-                }],
-            );
-        }
+        Ok(Offer::Open(open)) => return already_open(page, ctx, Some(&open)),
         Ok(Offer::Nothing | Offer::Done) => Vec::new(),
         Err(error) => return refused(page, ctx, &error, Vec::new()),
     };
     // Each claim as the wiki has it now, judged again on the wording it has now.
-    let view = Some(record.view.as_str());
-    let base = match service.capture_base(w, view) {
-        Ok(base) => base,
-        Err(e) => return refused(page, ctx, &e, Vec::new()),
-    };
     let mut files: Vec<FileChange> = Vec::new();
     for touch in &waiting {
         let loaded = match load(ctx, view, &base.block_id, &touch.claim) {
@@ -435,6 +495,42 @@ fn judge_again(page: &Page, ctx: &Ctx, id: &inklkunn_store::ProposalId) -> Respo
     let made = service.create_reconfirm(p, w, view, proposed, &accepted.acceptance);
     match made.and_then(|r| service.submit(p, w, &r.id).map(|_| r.id)) {
         Ok(new) => see(&paths::proposal(ctx.slug(), new.as_str())),
+        // Another press of the button got there first: the store keeps one open proposal per change, and nothing was
+        // made. Say which one, when it may be seen.
+        Err(ProposalError::Store(inklkunn_store::StoreError::AlreadyRecorded)) => {
+            let open = match offer(ctx, &accepted.acceptance, &touched) {
+                Ok(Offer::Open(open)) => Some(open),
+                _ => None,
+            };
+            already_open(page, ctx, open.as_ref())
+        }
         Err(error) => refused(page, ctx, &error, Vec::new()),
     }
+}
+
+/// The page that says judging these claims again is already proposed: with the proposal, when it may be seen (another
+/// person's draft is theirs alone, and is said without a link).
+fn already_open(page: &Page, ctx: &Ctx, open: Option<&ProposalId>) -> Response {
+    let t = page.t();
+    let service = &ctx.services.proposals;
+    let label = open
+        .and_then(|open| service.get(&ctx.principal, &ctx.wiki, open).ok())
+        .map_or_else(|| t.get(Key::ProposalAnother), |o| excerpt(&o.summary));
+    notice_page(
+        page,
+        ctx,
+        StatusCode::OK,
+        Key::TouchHeading,
+        vec![
+            t.msg(Key::TouchReconfirmOpen)
+                .with("proposal", &label)
+                .text(),
+        ],
+        open.map(|open| Choice {
+            label,
+            href: paths::proposal(ctx.slug(), open.as_str()),
+        })
+        .into_iter()
+        .collect(),
+    )
 }

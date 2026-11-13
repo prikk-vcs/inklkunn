@@ -2917,6 +2917,10 @@ pub const CATALOG: &[Entry] = &[
         "touch.reconfirm_done",
         "これらの主張はどれも、受け入れられた提案で、いまの文面について改めて判断されています。",
     ),
+    msg(
+        "touch.reconfirm_of",
+        "この提案は、{proposal}による変更で以前の文面について判断されたままになった主張を、改めて判断します。",
+    ),
     // knowledge: the claims a change touches (handoff 005 K-T5): end
     msg(
         "invalid.knowledge_not_shown",
