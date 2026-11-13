@@ -263,6 +263,14 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   README and `Cargo.toml` follow; the pinned compiler, 1.99.1, does not change). 0.2.0's exposure was a pair written
   into the operator's data directory by its own user; 0.3.0 ships the fixed SQLite.
 
+- **M2 (handoff 010 maintenance): the curl ceiling test no longer assumes one curl build.** The real-vector test ran
+  the real `curl` under a 1 MiB ceiling and expected it not to connect; curl 8.23.0 starts under 1 MiB. It is now
+  three tests that hold what handoff 002's F3 is for without the host's curl version: the vector's child reports
+  exactly the configured ceiling; a recording `prlimit` shows the wrapper's command is `--data=<ceiling> -- bwrap ...
+  -- <the real curl>` with the ceiling once and nowhere else; and a stand-in that holds 96 MiB is stopped by a 48 MiB
+  ceiling in the real bubblewrap while a 2 MiB one runs under the same ceiling and the 96 MiB one runs with room
+  enough (so the vector is not what failed). No prikk-dependent test is added or removed.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

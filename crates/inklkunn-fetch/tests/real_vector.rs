@@ -9,7 +9,10 @@
 //! - a closed port is a typed connect failure;
 //! - **inside the vector** the repository, the key directory, the home directory and a marker file in the
 //!   host's `/tmp` do not exist, the system is read-only, and the environment holds no `HOME` and no proxy
-//!   variable.
+//!   variable;
+//! - **the ceiling** (handoff 002's F3, handoff 010 M2) reaches the vector through the one shared `prlimit` wrapper:
+//!   the real `curl` is the command the wrapper runs, with exactly the configured ceiling, and a stand-in that
+//!   allocates past a small ceiling is stopped by it. No test assumes how much memory a build of `curl` needs.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 mod support;
@@ -176,8 +179,32 @@ printf '\n200'
     let _ = std::fs::remove_file(&marker);
 }
 
+// ---- the memory ceiling (handoff 002's F3; handoff 010 M2) ----
+//
+// What these tests hold is that the configured ceiling reaches the vector through the one shared `prlimit`
+// wrapper. None assumes how much memory any build of `curl` needs to start (that is the host's, and it changes
+// from release to release): the real `curl` is shown to be the command the wrapper runs, with exactly the
+// ceiling; a stand-in that allocates past a small ceiling is shown to be stopped by it, in the real
+// bubblewrap.
+
+/// A `prlimit` that records its arguments, one per line, in `rec`, then runs the host's real one with them.
+fn recording_prlimit(d: &Dir) -> (std::path::PathBuf, std::path::PathBuf) {
+    let real = inklkunn_prikk::sandbox::resolve_binary(std::ffi::OsStr::new("prlimit"));
+    let rec = d.path("prlimit.args");
+    let script = d.raw_script(
+        "prlimit",
+        &format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\nexec '{}' \"$@\"\n",
+            rec.display(),
+            real.display()
+        ),
+        0o755,
+    );
+    (script, rec)
+}
+
 #[test]
-fn the_real_vector_runs_under_the_ceiling_and_the_real_curl_is_stopped_by_a_small_one() {
+fn the_real_vector_runs_under_the_configured_ceiling() {
     if !available() {
         return;
     }
@@ -188,26 +215,109 @@ fn the_real_vector_runs_under_the_ceiling_and_the_real_curl_is_stopped_by_a_smal
         r#"awk '/Max data size/ {printf "%s", $4}' /proc/self/limits; printf '\n200'"#,
     );
     let ca = d.raw_script("ca.pem", "x", 0o644);
-    let fetcher = CurlFetcher::new()
-        .with_programs(BWRAP, &curl)
-        .with_ca_bundle(&ca)
-        .with_data_ceiling(300 << 20);
-    let body = fetch(&fetcher, &request("203.0.113.7", 443, "203.0.113.7", false)).expect("ran");
-    assert_eq!(String::from_utf8(body).unwrap(), (300u64 << 20).to_string());
+    for bytes in [300u64 << 20, 1 << 30] {
+        let fetcher = CurlFetcher::new()
+            .with_programs(BWRAP, &curl)
+            .with_ca_bundle(&ca)
+            .with_data_ceiling(bytes);
+        let body =
+            fetch(&fetcher, &request("203.0.113.7", 443, "203.0.113.7", false)).expect("ran");
+        assert_eq!(String::from_utf8(body).unwrap(), bytes.to_string());
+    }
+}
 
-    // The real curl, at the default ceiling, gets as far as the connection (a closed port is a typed
-    // connect failure); under a ceiling too small to start it, it does not.
-    let started = CurlFetcher::new()
-        .fetch(&request("127.0.0.1", 1, "127.0.0.1", true))
-        .unwrap_err();
-    assert!(matches!(started, CurlError::Connect(_)), "{started:?}");
-    let stopped = CurlFetcher::new()
-        .with_data_ceiling(1 << 20)
-        .fetch(&request("127.0.0.1", 1, "127.0.0.1", true))
-        .unwrap_err();
+#[test]
+fn the_real_curl_is_the_command_the_wrapper_runs_with_exactly_the_configured_ceiling() {
+    if !available() {
+        return;
+    }
+    let curl = inklkunn_prikk::sandbox::resolve_binary(std::ffi::OsStr::new("curl"));
+    let curl_arg = curl.display().to_string();
+    for bytes in [None, Some(123u64 << 20)] {
+        let d = Dir::new("real-wrapper");
+        let (prlimit, rec) = recording_prlimit(&d);
+        let mut fetcher = CurlFetcher::new().with_prlimit(&prlimit);
+        if let Some(bytes) = bytes {
+            fetcher = fetcher.with_data_ceiling(bytes);
+        }
+        let ceiling = fetcher.data_ceiling();
+        assert_eq!(
+            ceiling,
+            bytes.unwrap_or(inklkunn_fetch::DEFAULT_DATA_CEILING)
+        );
+        // The real curl, against a closed port: it is a typed connect failure, whatever this build of curl
+        // needs to start (that it connects is not what is held here).
+        let _ = fetcher.fetch(&request("127.0.0.1", 1, "127.0.0.1", true));
+        let args = d.read("prlimit.args");
+        let args: Vec<&str> = args.lines().collect();
+        assert_eq!(
+            args.first().copied(),
+            Some(format!("--data={ceiling}").as_str()),
+            "{args:?}"
+        );
+        assert_eq!(args.get(1).copied(), Some("--"), "{args:?}");
+        assert_eq!(
+            args.get(2).copied(),
+            Some(BWRAP),
+            "the wrapper runs bwrap: {args:?}"
+        );
+        assert!(rec.exists());
+        // bwrap's own command line ends with `-- <the real curl> <its flags>`; the ceiling is nowhere else.
+        let sep = args.iter().skip(2).position(|a| *a == "--").map(|i| i + 2);
+        assert_eq!(
+            sep.and_then(|i| args.get(i + 1)).copied(),
+            Some(curl_arg.as_str()),
+            "{args:?}"
+        );
+        assert_eq!(
+            args.iter().filter(|a| a.starts_with("--data=")).count(),
+            1,
+            "{args:?}"
+        );
+    }
+}
+
+#[test]
+fn a_stand_in_that_allocates_past_a_small_ceiling_is_stopped_by_it_in_the_real_vector() {
+    if !available() {
+        return;
+    }
+    let d = Dir::new("real-stopped");
+    let r = request("203.0.113.7", 443, "203.0.113.7", true);
+    // Holds `$1`-many bytes in one shell variable and says so. No `curl` is involved: the stand-in's needs are
+    // the same on every host.
+    let holds = |name: &str, bytes: u64| {
+        d.script(
+            name,
+            &format!(
+                r#"v=$(head -c {bytes} /dev/zero | tr '\0' a) || exit 70; test "${{#v}}" -eq {bytes} || exit 71; printf 'held'; printf '\n200'"#
+            ),
+        )
+    };
+    let small = holds("curl-small", 2 << 20);
+    let large = holds("curl-large", 96 << 20);
+    let ca = d.raw_script("ca.pem", "x", 0o644);
+    let fetcher = |curl: &std::path::Path, bytes: u64| {
+        CurlFetcher::new()
+            .with_programs(BWRAP, curl)
+            .with_ca_bundle(&ca)
+            .with_data_ceiling(bytes)
+    };
+    // Under a small ceiling the vector itself starts and a small allocation fits (so what follows is not a
+    // vector that cannot start) ...
+    let ok =
+        fetch(&fetcher(&small, 48 << 20), &r).expect("the vector starts under a small ceiling");
+    assert_eq!(ok, b"held");
+    // ... a large one does not, and with room enough the same stand-in holds it ...
+    let ok = fetch(&fetcher(&large, 2 << 30), &r).expect("room enough");
+    assert_eq!(ok, b"held");
+    let stopped = fetch(&fetcher(&large, 48 << 20), &r).unwrap_err();
     assert!(
-        !matches!(stopped, CurlError::Connect(_)),
-        "a 1 MiB ceiling must stop curl before it connects: {stopped:?}"
+        matches!(
+            stopped,
+            CurlError::Curl { .. } | CurlError::Killed(_) | CurlError::Spawn(_)
+        ),
+        "{stopped:?}"
     );
     assert_no_secret(&stopped);
 }
