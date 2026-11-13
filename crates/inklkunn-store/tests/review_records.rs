@@ -611,7 +611,7 @@ fn a_version_15_database_is_migrated_and_the_review_record_works_on_what_it_held
     {
         let store = SqliteStore::open(&db).expect("a version 15 database opens");
         assert!(
-            SCHEMA_VERSION >= 16,
+            MIGRATIONS.iter().any(|(v, _)| *v == 16),
             "the view-act tables came with version 16"
         );
         assert!(store.claim_reviews(&w).unwrap().is_empty());
