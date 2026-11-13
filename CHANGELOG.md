@@ -387,6 +387,15 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   and the standing, availability, review day, identity and reference are asserted by their words. (The wording a status
   or a link was judged on is not printed when no paragraph has it: two such wordings read alike, as the line says they
   are *a wording none of the claim's paragraphs has*; a new link's note is not printed.)
+- **M3 (maintenance handoff, 2026-11), prikk 0.56.0 confirmed.** The suite passes on the published 0.56.0 apart from
+  the curl test (M2): 2,618 passed, 1 failed. Every verb the driver and the signer run was compared across 0.55.0,
+  0.56.0 and 0.57.0 on one repository (`m3-measurements-2026-11.md` has the table): none of 0.56.0's output changes
+  touches what inklkunn parses. `log --ref <block id>` now exits 1 (PK-36's fix), and the driver already refused a
+  block id itself; `show`, `extract` and `worktree-status` gained fields the readers pass over; `unreached objects` now
+  counts patches and blobs, in the warning shape recovery already treats as a note; the signer in `branch list` (PK-26)
+  did **not** ship in 0.56.0 or 0.57.0. New tests (`inklkunn-prikk/tests/prikk_shapes.rs`, stand-ins that print the
+  measured shapes, so no real prikk is needed): the fields 0.56.0 and 0.57.0 added are read past, and a log prikk
+  refuses is an error with prikk's words, never an empty history.
 
 ## [0.2.0] — 2026-11-04
 

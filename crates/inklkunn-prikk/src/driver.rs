@@ -610,7 +610,8 @@ impl Storage for PrikkCli {
     fn history(&self, repo: &Path, view: &Point, limit: Option<u64>) -> Result<History> {
         check_point("log", view)?;
         if matches!(view, Point::Block(_)) {
-            // prikk's `log --ref` takes a ref; a block id there is an empty list with exit 0 (ledger PK-36).
+            // prikk's `log --ref` takes a ref; a block id there is an empty list with exit 0 up to 0.55.0 (ledger PK-36)
+            // and an exit 1 from 0.56.0. The floor is 0.54.0, so the driver refuses it itself on every version it admits.
             // An answer that looks like "no history" must never come from a call that cannot give one.
             return Err(StorageError::InvalidArgument {
                 verb: "log",
