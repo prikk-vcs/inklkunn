@@ -104,7 +104,7 @@ if [ -e "$CTL/dies-after-publishing-$verb" ]; then
   cp "$CTL/kept/ref-name" "$CTL/kept/witness" "$A/"
   if [ ! -e "$CTL/leaves-only-the-metadata" ]; then cp "$CTL/kept/queue.wal" "$A/"; fi
   if [ -e "$CTL/leaves-the-lock" ]; then
-    printf 'pid=2147483000\nkind=active\nnote=left by a seal that was killed\n' > "$A/active.lock"
+    printf 'pid=2147483000\nkind=active\nnote=PR-007 lock has no stale-lock stealing yet\n' > "$A/active.lock"
   fi
   echo "error: the call was stopped after $verb had published its block" >&2; exit 1
 fi
@@ -611,7 +611,13 @@ impl World {
 fn plant_lock(repo: &Path, relative: &str, pid: u32, kind: &str) -> String {
     let path = repo.join(".prikk").join(relative);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(&path, format!("pid={pid}\nkind={kind}\nnote=planted\n")).unwrap();
+    // The body a prikk of 0.56.0 or older writes, byte for byte (its fixed `note=` line is how 0.57.0 tells an old
+    // body from an incomplete one; any other note reads as a body cut short).
+    std::fs::write(
+        &path,
+        format!("pid={pid}\nkind={kind}\nnote=PR-007 lock has no stale-lock stealing yet\n"),
+    )
+    .unwrap();
     std::fs::canonicalize(&path).unwrap().display().to_string()
 }
 
@@ -1442,11 +1448,19 @@ fn a_planted_stale_lock_is_cleared_and_reported_even_when_prikk_thinks_its_proce
     w.flag(RecoveryReason::Interrupted);
     let witnesses = Witnesses::new("prikk", Sandbox::Unconfined, w.layout.clone());
     let listed = witnesses.locks(&w.wiki.id).unwrap();
+    // prikk 0.55.0 and 0.56.0 call the live pid of that old-style body "appears running". 0.57.0 asks for the holder's
+    // start time, which an old body records none of, and says "unknown" (measured, maintenance M3): the lock is the
+    // same, and what prikk said of it is recorded either way. The refusal 0.57.0 adds for a holder that appears
+    // running needs a body only a 0.57.0 prikk writes; it is not planted here.
+    let said = listed
+        .iter()
+        .find(|l| l.path == live)
+        .map(|l| l.liveness.clone())
+        .unwrap_or_default();
     assert!(
-        listed
-            .iter()
-            .any(|l| l.path == live && l.liveness.starts_with("appears running")),
-        "the setup: prikk thinks the planted lock's process is running ({listed:?})"
+        said.starts_with("appears running")
+            || said.starts_with("unknown: written by an older prikk"),
+        "the setup: prikk does not call the planted lock's process dead ({listed:?})"
     );
     let shown = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
     assert_eq!(nth(&step_names(&shown), 0), &"clear-locks");
@@ -1462,11 +1476,7 @@ fn a_planted_stale_lock_is_cleared_and_reported_even_when_prikk_thinks_its_proce
     assert!(!Path::new(&live).exists() && !Path::new(&dead).exists());
     // The plan recorded what prikk said and that it was not consulted.
     let record = w.store.recovery_acts(&w.wiki.id).unwrap().remove(0);
-    assert!(
-        record.act.plan.contains("appears running"),
-        "{}",
-        record.act.plan
-    );
+    assert!(record.act.plan.contains(&said), "{}", record.act.plan);
     assert!(record.act.plan.contains(&format!("\"recorded_pid\":{me}")));
     assert!(r.plan.lines().iter().any(|l| l.contains("not consulted")));
     assert!(w.verifies());

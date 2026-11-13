@@ -397,6 +397,18 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   measured shapes, so no real prikk is needed): the fields 0.56.0 and 0.57.0 added are read past, and a log prikk
   refuses is an error with prikk's words, never an empty history.
 
+- **M3, prikk 0.57.0 measured; one break found and fixed.** The whole suite on a 0.57.0 build (prikk `main` `bfd5b3c9`,
+  not a published asset) failed 13 tests: the curl test (M2), two timing tests under load, and ten that read `prikk
+  unlock`. 0.57.0 lists a lock it wrote with one more detail line, `recorded start: <time>`; the strict reader refused
+  the listing, so **recovery could not read its witnesses and a wiki stayed flagged** after a killed prikk. The line is
+  now read past (one place, with a value; anything else is still refused). Nine of the ten were fixtures that planted a
+  lock body no prikk ever wrote (`note=planted`): 0.57.0 reads such a body as cut short, so the fixtures now write
+  0.56.0's body byte for byte (0.55.0 and 0.56.0 read pid and kind only), and four assertions that named prikk's words
+  for an old-style lock also accept 0.57.0's `unknown: written by an older prikk`. `docs/RECOVERY.md` names both
+  wordings of an empty lock's `recorded pid`. **A repository created by 0.57.0 is format 8 and 0.55.0 and 0.56.0
+  refuse to open it** (measured; `m3-measurements-2026-11.md`). Tests: the 0.57.0 listing with and without the line
+  and every misplaced form, an incomplete body, and the `doctor` shapes of 0.56.0 and 0.57.0 for unreached content.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

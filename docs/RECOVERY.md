@@ -177,13 +177,13 @@ is for the architect to decide. Do not run `prikk seal` yourself.
 **What you see.** `inklkunn wiki recover <wiki>` (or `--plan`) does not make a plan. It ends with `a witness could
 not be read, so nothing is concluded: prikk unlock: … a recorded pid is not a number`, and the wiki stays
 flagged. **What it is.** A process that was killed the instant prikk created a lock file, before prikk wrote a word
-into it. `prikk unlock` lists it with an empty `kind:` and `recorded pid: (unparseable)`. Recovery does not know
+into it. `prikk unlock` lists it with `recorded pid: (unparseable)` (0.55.0, 0.56.0) or `recorded pid: (not read: the lock body is incomplete)` (0.57.0 and later). Recovery does not know
 what the lock belongs to, so it clears nothing; nothing was changed.
 
 **Before.** From the repository directory (as under `foreign-queued-patch`):
 
 ```sh
-prikk unlock                       # the lock, with `recorded pid: (unparseable)`; copy the path it prints
+prikk unlock                       # the lock, with `recorded pid: (unparseable)` or `(not read: …)`; copy the path it prints
 ls -l <that path>                  # size 0: the file was never written to
 ps ax | grep -E 'prikk|bwrap'      # no prikk or bwrap of anybody is working in this repository
 ```

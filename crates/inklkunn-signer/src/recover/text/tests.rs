@@ -588,3 +588,108 @@ fn what_ref_complete_would_write_is_read_strictly() {
         assert!(parse_completion_plan(&text).is_err(), "{what}");
     }
 }
+
+/// The `doctor` of prikk 0.56.0, measured (maintenance handoff M3): the unreached-object warning now also names a
+/// blob or a patch, with the same code and the same recommendation. Recovery reads it as the note it has always been.
+const DOCTOR_UNREACHED_BLOB_0_56: &str = "\
+doctor repository: /srv/r/.prikk
+verified repository: /srv/r/.prikk
+unreached objects: 1
+warning: blob 26b3c6e55b9ee20f35bb60eb9503c2c04f3113af9b9efe5a94c1ef00f1e62375 is reached by nothing in this repository -- its publication trust was not checked; the bytes stay, and no command removes them yet
+warning [PRIKK-DOCTOR-UNREACHED-OBJECT]: blob 26b3c6e55b9ee20f35bb60eb9503c2c04f3113af9b9efe5a94c1ef00f1e62375 is reached by nothing in this repository; its publication trust was not checked
+  recommendation: the bytes stay; no command removes them yet
+info [PRIKK-DOCTOR-VERIFY-OK]: repository structural verification scan completed
+  recommendation: review the remaining diagnostics before deciding whether action is required
+issue summary: errors=0, warnings=1, info=1
+";
+
+/// The `doctor` of prikk 0.57.0, measured: a blob or a patch that nothing reaches is one **information** line with a
+/// new code, and the per-object warning stays for a block or a ref state only.
+const DOCTOR_UNREACHED_CONTENT_0_57: &str = "\
+doctor repository: /srv/r/.prikk
+verified repository: /srv/r/.prikk
+unreached objects: 1
+unreached content: 1 object(s) (0 patch(es), 1 blob(s)) that nothing reaches -- content left behind by a commit taken back (`prikk uncommit`), a received ref removed, a rolled-back block, discarded commits, or an import that was refused or interrupted; they are harmless, and no command removes them yet
+info [PRIKK-DOCTOR-UNREACHED-CONTENT]: unreached content: 1 object(s) (0 patch(es), 1 blob(s)) that nothing reaches -- content left behind by a commit taken back (`prikk uncommit`), a received ref removed, a rolled-back block, discarded commits, or an import that was refused or interrupted; they are harmless, and no command removes them yet
+  recommendation: nothing to do; the bytes stay until a command that reclaims them exists
+info [PRIKK-DOCTOR-VERIFY-OK]: repository structural verification scan completed
+  recommendation: review the remaining diagnostics before deciding whether action is required
+issue summary: errors=0, warnings=0, info=2
+";
+
+#[test]
+fn prikk_0_56_and_0_57_report_unreached_content_in_shapes_recovery_does_not_stop_at() {
+    // 0.56.0: the warning of a blob (or a patch) is the unreached-object note, counted and not blocking.
+    let r = parse_doctor_output(DOCTOR_UNREACHED_BLOB_0_56).unwrap();
+    assert_eq!((r.errors, r.warnings, r.info), (0, 1, 1));
+    assert_eq!(r.unreached_notes(), 1);
+    assert!(r.is_clean_for_recovery());
+    assert!(r.others().is_empty());
+    // 0.57.0: information only, so nothing in the way and nothing to count as a warning.
+    let r = parse_doctor_output(DOCTOR_UNREACHED_CONTENT_0_57).unwrap();
+    assert_eq!((r.errors, r.warnings, r.info), (0, 0, 2));
+    assert_eq!(r.unreached_notes(), 0);
+    assert!(r.is_clean_for_recovery());
+    assert!(r.others().is_empty());
+}
+
+/// The listing of prikk 0.57.0 for a lock it wrote itself: one more detail line, the holder's start time, between the
+/// pid and the liveness (0.55.0 and 0.56.0 print none).
+const UNLOCK_0_57: &str = "\
+/srv/r/.prikk/active/default/active.lock
+  kind: active
+  recorded pid: 408657
+  recorded start: 98765
+  liveness: does not appear to be running: no process has the recorded pid; not proof it is safe to clear
+
+liveness is advisory only: \"does not appear to be running\" and \"unknown\" are NOT proof it is safe to clear. Clear a lock only if you have independently confirmed the process that created it is gone.
+";
+
+#[test]
+fn the_unlock_listing_of_prikk_0_57_with_the_holders_start_time_is_read_and_the_start_is_not_used()
+{
+    let locks = parse_unlock_output(UNLOCK_0_57).unwrap();
+    assert_eq!(locks.len(), 1);
+    assert_eq!(nth(&locks, 0).kind, "active");
+    assert_eq!(nth(&locks, 0).recorded_pid, 408_657);
+    assert!(
+        nth(&locks, 0)
+            .liveness
+            .starts_with("does not appear to be running")
+    );
+    // The same listing without the line (0.55.0, 0.56.0, and 0.57.0 for a lock an older prikk wrote) reads the same.
+    let without = UNLOCK_0_57.replace("  recorded start: 98765\n", "");
+    assert_eq!(parse_unlock_output(&without).unwrap(), locks);
+    // The line is accepted in one place only, and only with a value: anything else is a shape this does not know.
+    for bad in [
+        UNLOCK_0_57.replace("  recorded start: 98765\n", "  recorded start: \n"),
+        UNLOCK_0_57.replace(
+            "  recorded start: 98765\n",
+            "  recorded start: 1\n  recorded start: 2\n",
+        ),
+        UNLOCK_0_57
+            .replace("  recorded start: 98765\n", "")
+            .replace(
+                "  kind: active\n",
+                "  recorded start: 98765\n  kind: active\n",
+            ),
+    ] {
+        assert!(parse_unlock_output(&bad).is_err(), "{bad:?}");
+    }
+}
+
+#[test]
+fn a_lock_body_prikk_0_57_calls_incomplete_is_not_read_as_a_lock_with_a_pid() {
+    // An empty lock file, measured on 0.57.0 (0.55.0 and 0.56.0 print `(unparseable)`): no pid, and so no lock recovery
+    // reads. The listing is refused whole and nothing is concluded from it; the runbook's step is the person's.
+    let empty = "\
+/srv/r/.prikk/active/default/active.lock
+  kind: unknown
+  recorded pid: (not read: the lock body is incomplete)
+  liveness: unknown: the lock body is incomplete: still being written, or damaged; not proof it is safe to clear
+
+liveness is advisory only: x
+";
+    let err = parse_unlock_output(empty).unwrap_err();
+    assert!(err.contains("a recorded pid is not a number"), "{err}");
+}

@@ -409,9 +409,21 @@ pub fn parse_unlock_output(stdout: &str) -> Result<Vec<HeldLock>, String> {
             ));
         }
         let mut field = |name: &str| -> Result<String, String> {
-            let next = lines
+            let mut next = lines
                 .next()
                 .ok_or_else(|| unreadable("a lock without its detail lines"))?;
+            // prikk 0.57.0 prints the holder's start time between the pid and the liveness line, when the lock records
+            // one (0.55.0 and 0.56.0 print no such line, and a lock they wrote records none). It is read only so that
+            // it is not a line of an unknown shape; nothing is concluded from it (ledger PL-8).
+            if name == "liveness"
+                && next
+                    .strip_prefix("  recorded start: ")
+                    .is_some_and(|v| !v.trim().is_empty())
+            {
+                next = lines
+                    .next()
+                    .ok_or_else(|| unreadable("a lock without its detail lines"))?;
+            }
             next.strip_prefix("  ")
                 .and_then(|l| l.strip_prefix(name))
                 .and_then(|l| l.strip_prefix(": "))

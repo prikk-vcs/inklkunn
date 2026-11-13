@@ -1157,7 +1157,13 @@ fn plant_lock(
     let repo = w.layout().repo_dir(&w.record(slug).id);
     let path = repo.join(".prikk").join(relative);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(&path, format!("pid={pid}\nkind={kind}\nnote=planted\n")).unwrap();
+    // The body a prikk of 0.56.0 or older writes, byte for byte (its fixed `note=` line is how 0.57.0 tells an old
+    // body from an incomplete one; any other note reads as a body cut short).
+    std::fs::write(
+        &path,
+        format!("pid={pid}\nkind={kind}\nnote=PR-007 lock has no stale-lock stealing yet\n"),
+    )
+    .unwrap();
     path
 }
 

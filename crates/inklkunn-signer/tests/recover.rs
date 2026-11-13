@@ -648,7 +648,13 @@ fn a_torn_log_is_discarded_and_the_repository_verifies_again() {
 fn plant_lock(repo: &Path, relative: &str, pid: u32, kind: &str) -> String {
     let path = repo.join(".prikk").join(relative);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(&path, format!("pid={pid}\nkind={kind}\nnote=planted\n")).unwrap();
+    // The body a prikk of 0.56.0 or older writes, byte for byte (its fixed `note=` line is how 0.57.0 tells an old
+    // body from an incomplete one; any other note reads as a body cut short).
+    std::fs::write(
+        &path,
+        format!("pid={pid}\nkind={kind}\nnote=PR-007 lock has no stale-lock stealing yet\n"),
+    )
+    .unwrap();
     std::fs::canonicalize(&path).unwrap().display().to_string()
 }
 
@@ -671,12 +677,22 @@ fn a_stale_lock_is_cleared_on_the_record_and_prikks_own_liveness_check_decides_n
     assert_eq!(listed.len(), 2, "{listed:?}");
     let by = |p: &str| listed.iter().find(|l| l.path == p).unwrap();
     assert_eq!(by(&live).recorded_pid, me);
+    // prikk 0.55.0 and 0.56.0 judge an old-style body by its pid alone ("appears running" / "does not appear"); 0.57.0
+    // wants the holder's start time, which such a body records none of, and says "unknown" of both (measured,
+    // maintenance M3). Whatever it says is kept and none of it decides anything.
+    let unknown = "unknown: written by an older prikk";
     assert!(
-        by(&live).liveness.starts_with("appears running"),
+        by(&live).liveness.starts_with("appears running")
+            || by(&live).liveness.starts_with(unknown),
         "{:?}",
         by(&live)
     );
-    assert!(by(&dead).liveness.starts_with("does not appear"));
+    assert!(
+        by(&dead).liveness.starts_with("does not appear")
+            || by(&dead).liveness.starts_with(unknown),
+        "{:?}",
+        by(&dead)
+    );
     let act = f.act(vec![RecoveryOp::ClearLocks {
         paths: vec![live.clone(), dead.clone()],
     }]);
@@ -835,13 +851,19 @@ fn an_empty_lock_file_is_unreadable_to_recovery_and_the_runbooks_step_clears_exa
     for said in [
         "a recorded pid is not a number",
         "recorded pid: (unparseable)",
+        "recorded pid: (not read: the lock body is incomplete)",
         "prikk unlock --lock <that path>",
         "`no locks currently held`",
     ] {
         assert!(runbook.contains(said), "the runbook says `{said}`");
     }
     let before = listed(&f);
-    assert!(before.contains("recorded pid: (unparseable)"), "{before}");
+    // prikk 0.55.0 and 0.56.0 say `(unparseable)`; 0.57.0 says the body is incomplete (measured, maintenance M3).
+    assert!(
+        before.contains("recorded pid: (unparseable)")
+            || before.contains("recorded pid: (not read: the lock body is incomplete)"),
+        "{before}"
+    );
     assert!(before.contains(&lock.display().to_string()), "{before}");
     assert_eq!(std::fs::metadata(&lock).unwrap().len(), 0);
     // The step, as written (`--yes` is the question answered): `prikk unlock --lock <that path>`.
