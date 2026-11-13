@@ -99,8 +99,12 @@ retire the key again.
 **What it covers:** a leaked seed used against the wiki's own repository while the service's records are intact
 (a leaked backup, a leaked seed file). **What it does not:** a host that has been taken over (the records are
 the attacker's then; that is what `--retire-old` is for), a view's tip recorded before it existed (an
-empty tip: every block of that view is then "after"), and a repository that no longer verifies (after
-`--retire-old` prikk prints no list of who sealed what, ledger PK-39, so the check says it could not run).
+empty tip: every block of that view is then "after"), and, **with prikk 0.55.0 or 0.56.0**, a repository that no
+longer verifies (after `--retire-old` those versions print no list of who sealed what, ledger PK-39, so the check says it
+could not run). **With prikk 0.57.0 or later the check reads who sealed each block from `verify --format json`
+(`block_seals`, the key ids as the seals record them, trusted or not), so it also runs after a retirement and can
+name a block the retired key sealed after its replacement.** `status` says which: it prints `this check cannot see
+<key>` only when the check could not.
 
 ## If a wiki's keys may have leaked (the compromise runbook)
 

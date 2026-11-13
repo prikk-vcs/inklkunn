@@ -436,6 +436,61 @@ pub(crate) fn parse_sealed_blocks(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+/// Who sealed which block, and what the list covers (see [`Writes::sealed_block_signers`]).
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Sealers {
+    /// `(block id, maintainer key id)`, one pair per key a block's seal records.
+    pub(crate) pairs: Vec<(String, String)>,
+    /// The keys are those the seals **record**, trusted or not (prikk 0.57.0's `block_seals`). `false`: the text of
+    /// `verify`, which lists the signer of a block only while prikk still trusts that signer, so a key that was
+    /// removed from trust is not seen in it.
+    pub(crate) as_recorded: bool,
+}
+
+/// The `(block id, maintainer key id)` pairs of `verify --format json`'s `block_seals` (prikk 0.57.0, ledger PK-39):
+/// one pair per key a block's seal records (`sealed_by`, **as recorded, not as trusted**). `Ok(None)` when the report
+/// has no such field (an older prikk). The field is read strictly: a list of objects, each with a 64-character
+/// lower-case hex `block_id` and a `sealed_by` list of key ids prikk accepts, no block twice (a block listed twice
+/// is not a report to pick a winner from, as with the text); anything else is an error and nothing is concluded.
+pub(crate) fn parse_block_seals(report: &[u8]) -> Result<Option<Vec<(String, String)>>, String> {
+    let value: serde_json::Value = serde_json::from_slice(report)
+        .map_err(|e| format!("the report of `verify` is not JSON: {e}"))?;
+    let Some(seals) = value.get("block_seals") else {
+        return Ok(None);
+    };
+    let bad = |what: &str| format!("`block_seals` in the report of `verify`: {what}");
+    let list = seals.as_array().ok_or_else(|| bad("not a list"))?;
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for entry in list {
+        let block = entry
+            .get("block_id")
+            .and_then(serde_json::Value::as_str)
+            .filter(|b| b.len() == 64 && b.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f')))
+            .ok_or_else(|| bad("an entry has no 64-character lower-case hex `block_id`"))?;
+        if !seen.insert(block) {
+            return Err(bad(&format!("lists the block {block} more than once")));
+        }
+        let keys = entry
+            .get("sealed_by")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| bad("an entry has no `sealed_by` list"))?;
+        for key in keys {
+            let key = key
+                .as_str()
+                .filter(|k| {
+                    !k.is_empty()
+                        && k.len() <= 128
+                        && k.bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+                })
+                .ok_or_else(|| bad("a `sealed_by` entry is not a key id prikk accepts"))?;
+            out.push((block.to_owned(), key.to_owned()));
+        }
+    }
+    Ok(Some(out))
+}
+
 /// What `prikk status` (the plain text, not `--format json`) says about the active log and the queue (handoff 004, Q2):
 /// the three lines `active WAL records: N`, `trailing partial WAL bytes: N` and `queued patches: N [targeting REF]`.
 /// The text **reads** where the JSON refuses (the state a `seal` killed after publishing leaves: the JSON replays the
@@ -1232,11 +1287,58 @@ impl Writes {
         Ok(VerifyRun { report, text })
     }
 
-    /// Who sealed which block, as `prikk verify` lists it: one `sealed-block <block id>: <maintainer key id>`
-    /// line per sealed block of the repository (prikk 0.55.0; **the only place prikk names a block's signer**,
-    /// ledger PK-39: no JSON report does). A repository whose verification fails (a retired key's history,
-    /// ledger PK-34) still prints them.
-    pub(crate) fn sealed_block_signers(
+    /// Who sealed which block, as `(block id, maintainer key id)` pairs: **where prikk reports it**, in `verify
+    /// --format json`'s `block_seals` (prikk 0.57.0, ledger PK-39; the key ids as recorded, not as trusted); and
+    /// otherwise, on an older prikk, in `prikk verify`'s text, one `sealed-block <block id>: <maintainer key id>`
+    /// line per sealed block (0.55.0 and 0.56.0). **The two differ where it matters**: the text prints no such line
+    /// for a repository whose verification fails (a retired key's history, ledger PK-34), and the report lists
+    /// every block all the same, so only the report lets the check run after a retirement. The choice is the
+    /// report's: a report with `block_seals` is read (and refused when it is not complete, or malformed), a report
+    /// without the field is an older prikk and the text is read as before.
+    pub(crate) fn sealed_block_signers(&self, repo: &Path) -> Result<Sealers, SignerError> {
+        let (run, ceiling) = self.run_raw(
+            &Mounts::read(repo, None),
+            Sizing::repo(repo),
+            &["verify", "--format", "json"],
+        )?;
+        if run.timed_out || run.output_exceeded {
+            return Err(SignerError::Unavailable(
+                "`verify` was stopped before it listed the sealed blocks".to_owned(),
+            ));
+        }
+        if resource_failure_in(&run.stdout) {
+            return Err(SignerError::CeilingExceeded {
+                verb: "verify".to_owned(),
+                bytes: ceiling,
+            });
+        }
+        if run.stdout.first() == Some(&b'{') {
+            let report: Verification = parse_report("verify", &run.stdout, schema::VERIFY_REPORT)
+                .map_err(|e| SignerError::Damaged(e.to_string()))?;
+            if let Some(listed) = parse_block_seals(&run.stdout).map_err(SignerError::Damaged)? {
+                // A report that did not run to the end may list fewer blocks than there are.
+                if report.is_partial() {
+                    return Err(SignerError::Unavailable(
+                        "`verify` did not run to the end, so the list of who sealed what may be incomplete"
+                            .to_owned(),
+                    ));
+                }
+                return Ok(Sealers {
+                    pairs: listed,
+                    as_recorded: true,
+                });
+            }
+        }
+        self.sealed_block_signers_from_text(repo)
+            .map(|pairs| Sealers {
+                pairs,
+                as_recorded: false,
+            })
+    }
+
+    /// [`Writes::sealed_block_signers`] on a prikk whose report does not carry `block_seals` (0.55.0, 0.56.0): the
+    /// `sealed-block` lines of `prikk verify`'s text.
+    fn sealed_block_signers_from_text(
         &self,
         repo: &Path,
     ) -> Result<Vec<(String, String)>, SignerError> {

@@ -309,6 +309,12 @@ mod world {
             )
         }
 
+        /// Does this machine's prikk report who sealed each block as recorded (`verify --format json`'s `block_seals`, 0.57.0
+        /// and later, ledger PK-39)? Then the late-seal check sees a key that was removed from trust; before, it did not.
+        pub fn reports_block_seals(&self) -> bool {
+            inklkunn_prikk::parse_version(self.storage.version()).is_some_and(|v| v >= (0, 57, 0))
+        }
+
         pub fn verifies(&self) -> bool {
             let repo = RootLayout::new(self.settings.wikis_root()).repo_dir(&self.record.id);
             self.storage.verify(&repo).unwrap().verdict.ok
@@ -1342,7 +1348,16 @@ fn retire_with_a_late_block_leaves_the_retirement_unfinished_names_it_and_status
     // trust, so that check alone would have said 0.
     let (status, out, err) = w.cli("wiki keys status handbook");
     assert_eq!(status, 1, "{out}{err}");
-    assert!(err.contains("is not finished"), "{err}");
+    if w.reports_block_seals() {
+        // 0.57.0 shows the check the key it removed (ledger PK-39): the forged block is a late seal in its own right,
+        // and that is what the exit says; the retirement stays unfinished and `UNFINISHED` below says so all the same.
+        assert!(
+            err.contains("1 block(s) were sealed by a superseded maintainer key"),
+            "{err}"
+        );
+    } else {
+        assert!(err.contains("is not finished"), "{err}");
+    }
     let unfinished = out
         .lines()
         .find(|l| l.starts_with("UNFINISHED"))
@@ -1354,12 +1369,23 @@ fn retire_with_a_late_block_leaves_the_retirement_unfinished_names_it_and_status
             && !unfinished.contains("finish it with"),
         "{unfinished}"
     );
-    // ... and does not say that nothing was sealed after the rotation: the check cannot see a key that is out of trust.
-    assert!(
-        !out.contains("no block was sealed by a superseded key after its rotation")
-            && out.contains(&format!("this check cannot see {k1}")),
-        "{out}"
-    );
+    // ... and, where prikk lists who sealed a block only for the keys it trusts (0.55.0, 0.56.0), does not say that nothing
+    // was sealed after the rotation: the check cannot see a key that is out of trust. Where prikk reports the seals as
+    // recorded (0.57.0, ledger PK-39) it sees the key, and shows the very block the thief sealed.
+    if w.reports_block_seals() {
+        assert!(
+            out.contains(&format!(
+                "WARNING: block {forged} was sealed by the superseded maintainer key {k1}"
+            )) && !out.contains("this check cannot see"),
+            "{out}"
+        );
+    } else {
+        assert!(
+            !out.contains("no block was sealed by a superseded key after its rotation")
+                && out.contains(&format!("this check cannot see {k1}")),
+            "{out}"
+        );
+    }
     // `finish-retirement` refuses with the same findings and records nothing.
     let (status, out, err) = w.cli("wiki keys finish-retirement handbook");
     assert_eq!(status, 1, "{out}{err}");
@@ -1590,15 +1616,24 @@ fn status_does_not_say_that_no_block_was_sealed_after_the_rotation_of_a_key_it_c
     assert_eq!(status, 0, "{out}");
     let (status, out, err) = w.cli("wiki keys status handbook");
     assert_eq!(status, 0, "{out}{err}");
-    assert!(
-        !out.contains("no block was sealed by a superseded key after its rotation"),
-        "{out}"
-    );
-    assert!(
-        out.contains(&format!("this check cannot see {k1}"))
-            && out.contains("only for the keys it still trusts"),
-        "{out}"
-    );
+    if w.reports_block_seals() {
+        // 0.57.0 reports the seals as recorded: the check sees the retired key and finds nothing after its rotation.
+        assert!(
+            out.contains("no block was sealed by a superseded key after its rotation")
+                && !out.contains("this check cannot see"),
+            "{out}"
+        );
+    } else {
+        assert!(
+            !out.contains("no block was sealed by a superseded key after its rotation"),
+            "{out}"
+        );
+        assert!(
+            out.contains(&format!("this check cannot see {k1}"))
+                && out.contains("only for the keys it still trusts"),
+            "{out}"
+        );
+    }
     // The same when the check does run (a block signed by a key that is trusted is listed): it looked at nothing that
     // could be K1's, so it still must not say that nothing was found for it.
     let real = std::env::split_paths(&std::env::var_os("PATH").unwrap())
@@ -1609,7 +1644,7 @@ fn status_does_not_say_that_no_block_was_sealed_after_the_rotation_of_a_key_it_c
     std::fs::write(
         &standin,
         format!(
-            "#!/bin/sh\nif [ \"$1\" = verify ] && [ $# -eq 1 ]; then {real} verify; rc=$?; echo 'sealed-block {block}: a-trusted-key'; exit $rc; fi\nexec {real} \"$@\"\n",
+            "#!/bin/sh\nif [ \"$1\" = verify ] && [ $# -eq 1 ]; then {real} verify; rc=$?; echo 'sealed-block {block}: a-trusted-key'; exit $rc; fi\nif [ \"$1 $2 $3\" = 'verify --format json' ]; then out=$({real} \"$@\"); rc=$?; printf '%s\\n' \"$out\" | sed -e '/^  \"block_seals\": \\[$/,/^  \\],\\?$/d' -e '/^  \"block_seals\": \\[\\],\\?$/d'; exit $rc; fi\nexec {real} \"$@\"\n",
             real = real.display(),
             block = "a".repeat(64)
         ),

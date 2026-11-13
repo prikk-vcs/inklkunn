@@ -409,6 +409,20 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   refuse to open it** (measured; `m3-measurements-2026-11.md`). Tests: the 0.57.0 listing with and without the line
   and every misplaced form, an incomplete body, and the `doctor` shapes of 0.56.0 and 0.57.0 for unreached content.
 
+- **M3, PK-39 adopted: the late-seal check (C11) reads `sealed_by` where prikk provides it.** With prikk 0.57.0 the
+  check reads who sealed each block from `verify --format json`'s `block_seals` (the key ids as recorded, trusted or
+  not); a report without the field is an older prikk, and `prikk verify`'s `sealed-block` lines are read as before. The
+  report is the better source: the text lists nothing for a repository whose verification fails, so up to 0.56.0 the
+  check could not run after a retirement (and `keys status` said "this check cannot see <key>"); with 0.57.0 it runs
+  there too, finds a block a retired key sealed after its replacement, and does not claim blindness. The field is read
+  strictly (a list of objects with a 64-hex `block_id` and a `sealed_by` list of key ids prikk accepts, no block twice),
+  a report that did not run to the end gives no list, and a stage that ran out of memory is the ceiling. New:
+  `Signer::late_seal_check` (`LateSealCheck { late, sees_untrusted_keys }`; `seals_by_superseded_keys` is unchanged).
+  **The floor stays 0.54.0**: nothing here needs 0.57.0, it uses the field where it is. Tests: the parser against every
+  malformed form, a stand-in `prikk` for both shapes (the text is never asked when the report has the field), and four
+  real-prikk tests made to expect the right behaviour on the prikk that is on `PATH` (a retirement, the late block after
+  it, the blind-key message, the unfinished retirement).
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

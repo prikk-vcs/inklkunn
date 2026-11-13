@@ -14,7 +14,7 @@ use crate::accept::{AcceptanceLedger, AcceptanceToken, ExpectedMessage, LedgerEr
 use crate::keys::Role;
 use crate::message::{Message, Summary, SystemLabel};
 use crate::signer::retirement::{abandon_retirement_command, finish_retirement_command};
-use crate::signer::superseded::LateSeal;
+use crate::signer::superseded::{LateSeal, LateSealCheck};
 use crate::{SignerConfig, accept::ViewCreationAct, accept::ViewCreationFacts};
 
 const SECRET: &str = "an operator secret for the lifecycle tests, long enough";
@@ -139,6 +139,12 @@ impl World {
             .current_dir(&self.repo)
             .output()
             .unwrap()
+    }
+
+    /// Does this machine's prikk put `block_seals` in `verify --format json` (0.57.0 and later, ledger PK-39)?
+    fn prikk_reports_block_seals(&self) -> bool {
+        let o = self.prikk(&["verify", "--format", "json"]);
+        String::from_utf8_lossy(&o.stdout).contains("\"block_seals\"")
     }
 
     fn verify(&self) -> (bool, String) {
@@ -575,14 +581,25 @@ fn a_retirement_records_the_point_too_and_marks_the_key_retired() {
     assert_eq!(superseded.first().unwrap().views_recorded, 1);
     // The sealed block, its ref state and its ref update: what `verify` named just after the removal (P2′).
     assert_eq!(superseded.first().unwrap().findings_recorded, 3);
-    // After a retirement prikk cannot verify the old history (ledger PK-34) and prints no list of who sealed
-    // what (ledger PK-39), so the check cannot run: it says so and never answers "nothing found" from nothing.
-    // It does not need to: the retired key can seal nothing more.
-    let r = w.signer.seals_by_superseded_keys(&w.repo);
-    assert!(
-        matches!(&r, Err(SignerError::Refused(why)) if why.contains("publication-trust")),
-        "{r:?}"
-    );
+    // After a retirement prikk cannot verify the old history (ledger PK-34). Up to 0.56.0 it also printed no list of
+    // who sealed what then (ledger PK-39), so the check could not run: it said so and never answered "nothing found"
+    // from nothing. 0.57.0 reports who sealed which block as recorded, failing verification or not, so the check
+    // runs, finds nothing late (the retired key sealed only before its replacement) and sees the removed key.
+    let r = w.signer.late_seal_check(&w.repo);
+    if w.prikk_reports_block_seals() {
+        assert_eq!(
+            r,
+            Ok(LateSealCheck {
+                late: vec![],
+                sees_untrusted_keys: true
+            })
+        );
+    } else {
+        assert!(
+            matches!(&r, Err(SignerError::Refused(why)) if why.contains("publication-trust")),
+            "{r:?}"
+        );
+    }
 }
 
 #[test]

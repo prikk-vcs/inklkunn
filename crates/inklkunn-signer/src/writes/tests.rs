@@ -1,5 +1,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+use std::path::PathBuf;
+
 use super::*;
 
 #[test]
@@ -296,4 +298,240 @@ fn the_trust_list_is_read_strictly() {
             "{what}"
         );
     }
+}
+
+// ---- who sealed which block: `block_seals` where prikk has it (0.57.0, PK-39), the text where it does not
+
+const BLOCK_A: &str = "ab";
+const BLOCK_B: &str = "cd";
+
+fn id(half: &str) -> String {
+    half.repeat(32)
+}
+
+#[test]
+fn block_seals_are_read_strictly_and_a_report_without_them_is_an_older_prikk() {
+    let report =
+        |seals: &str| format!(r#"{{"schema_version":"verify-report-v1","block_seals":{seals}}}"#);
+    let one = |block: &str, keys: &str| format!(r#"{{"block_id":"{block}","sealed_by":{keys}}}"#);
+    // The field is absent: an older prikk, not an empty list.
+    assert_eq!(
+        parse_block_seals(br#"{"schema_version":"verify-report-v1"}"#),
+        Ok(None)
+    );
+    // One pair per key a block's seal records; a block with none yields none.
+    let good = report(&format!(
+        "[{},{},{}]",
+        one(&id(BLOCK_A), r#"["m1","m-2_x"]"#),
+        one(&id(BLOCK_B), r#"["m1"]"#),
+        one(&id("ef"), "[]")
+    ));
+    assert_eq!(
+        parse_block_seals(good.as_bytes()),
+        Ok(Some(vec![
+            (id(BLOCK_A), "m1".to_owned()),
+            (id(BLOCK_A), "m-2_x".to_owned()),
+            (id(BLOCK_B), "m1".to_owned()),
+        ]))
+    );
+    assert_eq!(parse_block_seals(report("[]").as_bytes()), Ok(Some(vec![])));
+    for (what, bad) in [
+        ("not a list", report(r#"{"a":1}"#)),
+        ("not JSON", "block_seals".to_owned()),
+        ("no block id", report(r#"[{"sealed_by":["m1"]}]"#)),
+        (
+            "a short block id",
+            report(&format!("[{}]", one("abcd", r#"["m1"]"#))),
+        ),
+        (
+            "an upper-case block id",
+            report(&format!("[{}]", one(&id("AB"), r#"["m1"]"#))),
+        ),
+        (
+            "no sealed_by",
+            report(&format!(r#"[{{"block_id":"{}"}}]"#, id(BLOCK_A))),
+        ),
+        (
+            "a key id with a space",
+            report(&format!("[{}]", one(&id(BLOCK_A), r#"["bad key"]"#))),
+        ),
+        (
+            "an empty key id",
+            report(&format!("[{}]", one(&id(BLOCK_A), r#"[""]"#))),
+        ),
+        (
+            "a key id that is not text",
+            report(&format!("[{}]", one(&id(BLOCK_A), "[1]"))),
+        ),
+        (
+            "a block twice",
+            report(&format!(
+                "[{},{}]",
+                one(&id(BLOCK_A), r#"["m1"]"#),
+                one(&id(BLOCK_A), r#"["m2"]"#)
+            )),
+        ),
+    ] {
+        assert!(parse_block_seals(bad.as_bytes()).is_err(), "{what}");
+    }
+}
+
+/// A repository directory and a `prikk` that is a script: `verify --format json` prints `json`, `verify` prints
+/// `text`, and every call is counted in `calls`.
+struct SealsFixture {
+    dir: PathBuf,
+}
+
+impl SealsFixture {
+    fn new(tag: &str, json: &str, text: &str, json_exit: i32) -> Self {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("inklkunn-seals-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("repo/.prikk")).unwrap();
+        std::fs::write(dir.join("report.json"), json).unwrap();
+        std::fs::write(dir.join("report.txt"), text).unwrap();
+        let script = format!(
+            "#!/bin/sh\nD='{d}'\necho \"$*\" >> \"$D/calls\"\n\
+             if [ \"$1 $2 $3\" = 'verify --format json' ]; then cat \"$D/report.json\"; exit {json_exit}; fi\n\
+             if [ \"$1\" = verify ]; then cat \"$D/report.txt\"; exit 0; fi\nexit 2\n",
+            d = dir.display()
+        );
+        let path = dir.join("prikk");
+        std::fs::write(&path, script).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        SealsFixture { dir }
+    }
+
+    fn signers(&self) -> Result<Sealers, SignerError> {
+        let writes = Writes::new(self.dir.join("prikk"), Sandbox::Unconfined);
+        // A script just written can be refused with `ETXTBSY` while a sibling test forks.
+        let mut r = writes.sealed_block_signers(&self.dir.join("repo"));
+        for _ in 0..50 {
+            if !matches!(&r, Err(SignerError::Unavailable(m)) if m.contains("Text file busy")) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            r = writes.sealed_block_signers(&self.dir.join("repo"));
+        }
+        r
+    }
+
+    fn calls(&self) -> String {
+        std::fs::read_to_string(self.dir.join("calls")).unwrap_or_default()
+    }
+}
+
+impl Drop for SealsFixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+const EVALUATED: &str = r#"[{"stage":"objects","status":"evaluated"}]"#;
+
+fn verify_json(extra: &str, ok: bool, stages: &str) -> String {
+    let verdict = if ok {
+        r#"{"ok":true,"failed_conditions":[]}"#
+    } else {
+        r#"{"ok":false,"failed_conditions":[{"id":"publication-trust","message":"x"}]}"#
+    };
+    format!(
+        r#"{{"schema_version":"verify-report-v1","verdict":{verdict},"stages":{stages}{extra}}}"#
+    )
+}
+
+#[test]
+fn a_prikk_that_reports_block_seals_is_read_there_and_its_text_is_never_asked() {
+    let seals = format!(
+        r#","block_seals":[{{"block_id":"{}","sealed_by":["old-key"],"trusted_by":null}}]"#,
+        id(BLOCK_A)
+    );
+    // The report of a **failing** verification (a retired key): the text lists no sealed block then, the report does.
+    let f = SealsFixture::new(
+        "report",
+        &verify_json(&seals, false, EVALUATED),
+        &format!("sealed-block {}: a-different-key\n", id(BLOCK_B)),
+        1,
+    );
+    assert_eq!(
+        f.signers(),
+        Ok(Sealers {
+            pairs: vec![(id(BLOCK_A), "old-key".to_owned())],
+            as_recorded: true
+        })
+    );
+    assert_eq!(
+        f.calls(),
+        "verify --format json\n",
+        "the text was not asked"
+    );
+}
+
+#[test]
+fn a_prikk_whose_report_has_no_block_seals_is_read_in_the_text() {
+    let f = SealsFixture::new(
+        "text",
+        &verify_json("", true, EVALUATED),
+        &format!(
+            "verified repository: /x\nsealed-block {}: m1\n",
+            id(BLOCK_B)
+        ),
+        0,
+    );
+    assert_eq!(
+        f.signers(),
+        Ok(Sealers {
+            pairs: vec![(id(BLOCK_B), "m1".to_owned())],
+            as_recorded: false
+        })
+    );
+    assert_eq!(f.calls(), "verify --format json\nverify\n");
+}
+
+#[test]
+fn a_report_that_is_not_complete_or_not_well_formed_gives_no_list() {
+    let seals = format!(
+        r#","block_seals":[{{"block_id":"{}","sealed_by":["old-key"]}}]"#,
+        id(BLOCK_A)
+    );
+    // A stage that halted: the list may be short, and a short list would read as "nothing sealed late".
+    let halted = SealsFixture::new(
+        "halted",
+        &verify_json(&seals, false, r#"[{"stage":"objects","status":"halted"}]"#),
+        "",
+        1,
+    );
+    assert!(
+        matches!(halted.signers(), Err(SignerError::Unavailable(why)) if why.contains("did not run to the end")),
+        "{:?}",
+        halted.signers()
+    );
+    // A list in a shape nobody knows is damage, not "no seals".
+    let malformed = SealsFixture::new(
+        "malformed",
+        &verify_json(r#","block_seals":"none""#, true, EVALUATED),
+        &format!("sealed-block {}: m1\n", id(BLOCK_A)),
+        0,
+    );
+    assert!(
+        matches!(malformed.signers(), Err(SignerError::Damaged(_))),
+        "{:?}",
+        malformed.signers()
+    );
+    // A stage that failed for want of memory is the ceiling, not a list.
+    let memory = SealsFixture::new(
+        "memory",
+        &verify_json(
+            &seals,
+            false,
+            r#"[{"stage":"objects","status":"failed","message":"i/o error: out of memory"}]"#,
+        ),
+        "",
+        1,
+    );
+    assert!(
+        matches!(memory.signers(), Err(SignerError::CeilingExceeded { .. })),
+        "{:?}",
+        memory.signers()
+    );
 }

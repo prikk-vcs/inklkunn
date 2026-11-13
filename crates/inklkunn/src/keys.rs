@@ -985,14 +985,19 @@ fn report_superseded(
     // the key first).
     let trusted = signer.trusted_maintainer_ids(repo);
     let unfinished = signer.unfinished_retirement(&record.id).ok().flatten();
-    // The keys the late-seal check cannot see: prikk lists who sealed a block only for the keys it still trusts (Z-b).
+    // What the check finds, asked once and before the keys are listed, because what it can see decides what is said of
+    // them: prikk 0.57.0 reports who sealed a block as recorded (ledger PK-39), and then no key is out of its sight.
+    let check = signer.late_seal_check(repo);
+    let sees_every_key = check.as_ref().is_ok_and(|c| c.sees_untrusted_keys);
+    // The keys the late-seal check cannot see: before 0.57.0 prikk lists who sealed a block only for the keys it still
+    // trusts (Z-b).
     let mut blind: Vec<&str> = Vec::new();
     for k in &keys {
         let is_trusted = trusted
             .as_ref()
             .ok()
             .map(|ids| ids.contains(&k.maintainer_key_id));
-        if is_trusted != Some(true) {
+        if is_trusted != Some(true) && !sees_every_key {
             blind.push(k.maintainer_key_id.as_str());
         }
         let _ = writeln!(
@@ -1050,7 +1055,7 @@ fn report_superseded(
             blind.join(", ")
         )
     };
-    match signer.seals_by_superseded_keys(repo) {
+    match check.map(|c| c.late) {
         Ok(late) if late.is_empty() => {
             if blind.is_empty() {
                 let _ = writeln!(

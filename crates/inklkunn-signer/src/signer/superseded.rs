@@ -7,8 +7,11 @@
 //! repository cannot prove a block was sealed by the old key *after* the new one was adopted, because adoption
 //! is local and recorded nowhere a copy can check. inklkunn can: it knows the moment. The key record keeps, for
 //! every superseded key, the tip block of every view at that moment; this check reads who sealed which block
-//! (`prikk verify`'s `sealed-block` lines) and reports every block a superseded key sealed that is **not** in
-//! the history up to those tips.
+//! (`verify --format json`'s `block_seals` where prikk provides it, 0.57.0 and later, ledger PK-39; otherwise
+//! `prikk verify`'s `sealed-block` lines) and reports every block a superseded key sealed that is **not** in
+//! the history up to those tips. The report is the better source: the text lists nothing for a repository whose
+//! verification fails, so on 0.55.0 and 0.56.0 the check cannot run after a retirement and says so, and on 0.57.0
+//! it runs there too (it finds what a retired key sealed after its replacement, which verification no longer can).
 //!
 //! **What it covers.** A leaked seed used against the wiki's own repository while the service's records are
 //! intact (a leaked backup, a leaked seed file). **What it does not.** A host that is taken over: the records
@@ -67,6 +70,17 @@ impl std::fmt::Display for LateSeal {
             self.block_id, self.maintainer_key_id, self.generation
         )
     }
+}
+
+/// What the late-seal check found, and what it could see.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LateSealCheck {
+    /// Every block a superseded key sealed after the rotation that replaced it.
+    pub late: Vec<LateSeal>,
+    /// The check saw the seals **as recorded**, so it also saw a key that is no longer in the trust store (prikk 0.57.0,
+    /// ledger PK-39). `false`: it read `prikk verify`'s text, which names the signer of a block only while the key is
+    /// trusted, and the check is blind to a key that was removed (0.55.0 and 0.56.0, ledger Z-b).
+    pub sees_untrusted_keys: bool,
 }
 
 /// One view and its log, newest first: each block and the id of the ref state after it.
@@ -145,13 +159,24 @@ impl Signer {
     /// `prikk verify`'s list of who sealed what; it signs nothing and decrypts no seed. Empty for a wiki that
     /// was never rotated.
     pub fn seals_by_superseded_keys(&self, repo: &Path) -> Result<Vec<LateSeal>, SignerError> {
+        self.late_seal_check(repo).map(|c| c.late)
+    }
+
+    /// [`Signer::seals_by_superseded_keys`] with what the check could see: `sees_untrusted_keys` says whether a key
+    /// that was removed from trust (a retirement) is one it can say anything about. For a wiki that was never rotated
+    /// there is nothing to look for, prikk is not asked, and nothing is claimed.
+    pub fn late_seal_check(&self, repo: &Path) -> Result<LateSealCheck, SignerError> {
         let wiki = self.wiki_of(repo)?;
         let meta = self.store.status(&wiki).map_err(ks)?;
         if meta.superseded.is_empty() {
-            return Ok(Vec::new());
+            return Ok(LateSealCheck {
+                late: Vec::new(),
+                sees_untrusted_keys: false,
+            });
         }
         // Who sealed what, now.
-        let signers = self.writes.sealed_block_signers(repo)?;
+        let sealers = self.writes.sealed_block_signers(repo)?;
+        let signers = sealers.pairs;
         // The history of every view now, newest first.
         let histories = self.view_histories(repo)?;
         let mut late = Vec::new();
@@ -168,7 +193,10 @@ impl Signer {
                 }
             }
         }
-        Ok(late)
+        Ok(LateSealCheck {
+            late,
+            sees_untrusted_keys: sealers.as_recorded,
+        })
     }
 
     /// The log of every view now, newest first, as `(view, entries)`.

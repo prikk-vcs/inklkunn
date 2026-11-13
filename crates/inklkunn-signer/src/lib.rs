@@ -64,7 +64,7 @@ pub use signer::retirement::{
     finish_retirement_command, recorded_detail, recorded_key, retire_command,
     retirement_finished_in,
 };
-pub use signer::superseded::{LateSeal, SupersededKey};
+pub use signer::superseded::{LateSeal, LateSealCheck, SupersededKey};
 pub use signer::{KeyStatus, Signer, SignerConfig};
 pub use writes::{SealedIds, SignerError, WRITE_DEADLINE};
 
