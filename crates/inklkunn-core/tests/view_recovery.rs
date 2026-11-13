@@ -94,9 +94,12 @@ if [ "$1 $2" = "branch create" ] && [ -e "$CTL/kill-branch-create" ]; then
   wait "$real_pid" 2> /dev/null
   echo "error: the call was killed" >&2; exit 1
 fi
-if [ "$1 $2" = "branch create" ] && [ -e "$CTL/closes-after-branch-create" ]; then
-  "{real}" "$@" || exit $?
-  exec "{real}" branch close "$3"
+if [ "$1 $2" = "branch create" ] && ( [ -e "$CTL/closes-after-branch-create" ] || [ -e "$CTL/creates-as" ] ); then
+  NAME="$3"
+  if [ -e "$CTL/creates-as" ]; then NAME="$(cat "$CTL/creates-as")"; fi
+  "{real}" branch create "$NAME" --from "$5" || exit $?
+  if [ -e "$CTL/closes-after-branch-create" ]; then exec "{real}" branch close "$NAME"; fi
+  exit 0
 fi
 exec "{real}" "$@"
 "#,
@@ -796,9 +799,13 @@ fn a_view_whose_name_differs_only_by_case_is_not_the_acts_view_and_recovery_stop
         return;
     };
     let base = w.tip(MAIN);
-    // `Draft` is in the repository (made some other way); the act is for `draft` and nothing of it was published.
-    let other = w.record_act("Draft", &base);
+    // `Draft` is in the repository (made some other way: an act that is lower-case, as the stores require, and a
+    // stand-in that makes the branch under the upper-case name); the act is for `draft` and nothing of it was published.
+    let other = w.record_act("aux", &base);
+    w.control("creates-as", "heads/Draft");
     w.ask_the_signer_then_die(&other);
+    w.uncontrol("creates-as");
+    assert!(w.listed().contains(&"heads/Draft".to_owned()));
     w.store
         .finish_view_act(&inklkunn_store::ViewActEnd {
             act: other.id.clone(),
@@ -1386,7 +1393,7 @@ impl World {
     /// A view of `name` that is there and **closed**, and that no act of the service stands behind: made by the
     /// signer with the stand-in closing it at once, under an act that is then ended as failed (so that the name is
     /// free as far as the service's records go, which is where a view made some other way is).
-    fn closed_outside_the_service(&self, name: &str) {
+    fn closed_outside_the_service(&self, name: &str, as_name: &str) {
         let act = ViewActRecord {
             id: ViewActId::new(),
             wiki: self.wiki.id.clone(),
@@ -1399,6 +1406,7 @@ impl World {
         };
         self.store.begin_view_act(&act).unwrap();
         self.control("closes-after-branch-create", "");
+        self.control("creates-as", &format!("heads/{as_name}"));
         let made = self.signer.create_view(
             &self.wiki.id,
             &format!("heads/{name}"),
@@ -1406,6 +1414,7 @@ impl World {
             &ViewCreationAct::new(act.id.as_str()),
         );
         self.uncontrol("closes-after-branch-create");
+        self.uncontrol("creates-as");
         made.expect("made and closed");
         self.store
             .finish_view_act(&inklkunn_store::ViewActEnd {
@@ -1422,8 +1431,8 @@ impl World {
             .unwrap()
             .views
             .into_iter()
-            .any(|v| v.name == format!("heads/{name}") && v.closed);
-        assert!(closed, "{name} is listed and closed");
+            .any(|v| v.name == format!("heads/{as_name}") && v.closed);
+        assert!(closed, "{as_name} is listed and closed");
         assert!(
             !self
                 .storage
@@ -1431,7 +1440,7 @@ impl World {
                 .unwrap()
                 .views
                 .iter()
-                .any(|v| v.name == format!("heads/{name}")),
+                .any(|v| v.name == format!("heads/{as_name}")),
             "and the open listing does not show it"
         );
     }
@@ -1442,8 +1451,9 @@ fn the_name_of_a_view_closed_outside_the_service_is_taken_in_any_case_and_no_act
     let Some(w) = World::new("closed-name") else {
         return;
     };
-    w.closed_outside_the_service("a_");
-    w.closed_outside_the_service("B_");
+    w.closed_outside_the_service("a_", "a_");
+    // An upper-case name: the acts of the service are lower-case, so prikk is made to create the branch as `B_`.
+    w.closed_outside_the_service("b_", "B_");
     let acts = w.store.view_acts(&w.wiki.id).unwrap().len();
     // Before the full listing, prikk refused these and the creation ended *Failed (refused)*, with an act recorded.
     assert_eq!(w.create("a_").unwrap_err(), ViewFailure::NameTaken);
