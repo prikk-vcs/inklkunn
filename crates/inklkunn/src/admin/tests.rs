@@ -1624,13 +1624,16 @@ fn metrics_prints_one_json_line_audits_the_act_and_refuses_an_empty_period() {
     );
     assert!(out.contains(&format!("\"wiki\":\"{id}\"")), "{out}");
     assert!(out.contains("\"submitted\":0"), "{out}");
-    // The review record of RFC 005 part 1 D-1 d: the defaults kept beside the overrides, as numbers.
+    // The review record of RFC 005 part 1 D-1 d: the defaults kept beside the drops and the requests for changes, as
+    // numbers, apart (never summed: a drop counts claims, a request counts decisions), and the sentence that the
+    // record begins with schema 16 (K21).
     assert!(
         out.contains(
-            "\"claims\":{\"changes_requested\":0,\"dropped\":0,\"kept\":0,\"overrides\":0,\"reconfirmed\":0}"
+            "\"claims\":{\"changes_requested\":0,\"dropped\":0,\"kept\":0,\"note\":\"the claim figures count only what the review record holds, which begins with store schema 16: a change accepted or a decision made before it left no record and is in none of them\",\"reconfirmed\":0,\"since_schema\":16}"
         ),
         "{out}"
     );
+    assert!(!out.contains("overrides"), "{out}");
     assert!(
         out.contains("\"acceptance_rate\":null"),
         "nothing decided is no rate: {out}"

@@ -295,6 +295,14 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   paragraph alone with its id is still followed exactly to the creation. Test: a page created with a repeated id and a
   unique one.
 
+- **K21 (handoff 005 corrections, second): the metrics do not add claims to decisions.** `inklkunn wiki metrics` no longer
+  reports `claims.overrides` (`dropped` plus `changes_requested`): a drop counts claims and a request for changes counts
+  decisions, and a sum is neither. `kept`, `dropped`, `reconfirmed` and `changes_requested` stay, each documented with what
+  it counts, and the record now carries `claims.since_schema` (16) and `claims.note`: the review record begins with
+  store schema 16, and a change accepted or a decision made before it is in none of the figures.
+  `ClaimFigures::overrides` is removed (`REVIEW_RECORD_NOTE` and `REVIEW_RECORD_SCHEMA` are added). Tests: the hand count
+  of the review-record figures, and the command's whole line.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

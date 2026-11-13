@@ -41,7 +41,10 @@ pub mod quota;
 pub mod rollback;
 
 pub use machine::{Illegal, TRANSITIONS};
-pub use metrics::{ClaimFigures, Metrics, Period, Ratio, operator_metrics};
+pub use metrics::{
+    ClaimFigures, Metrics, Period, REVIEW_RECORD_NOTE, REVIEW_RECORD_SCHEMA, Ratio,
+    operator_metrics,
+};
 pub use quota::{QuotaConfig, QuotaLimit, QuotaRefusal, Quotas, Reset};
 
 /// The longest summary, in characters (RFC 004 D-2; the CT-03 first line).
@@ -1066,7 +1069,7 @@ impl ProposalService {
 
     /// [`ProposalService::decide`], and, for a *request changes* on a revision that touches claims (RFC 005 part 1 D-1
     /// d), the claims it touches (their ids), written **in the same step as the decision**: the decision lands with its
-    /// claims or not at all, so that the participation metrics never miss an override. Only a request for changes
+    /// claims or not at all, so that the participation metrics never miss a request for changes. Only a request for changes
     /// records any.
     #[allow(clippy::too_many_arguments)]
     pub fn decide_touching(

@@ -447,7 +447,8 @@ fn accepted_with(
 /// - P4 (1600): its acceptance failed after recording that the change kept C4; the proposal is still held. Nothing counted.
 /// - P0 (500, before the period): accepted, kept C9; R1 asked for changes touching C9 at 600. In no figure.
 ///
-/// So: kept 2, dropped 1, re-confirmed 1, changes requested 2, overrides 3.
+/// So: kept 2, dropped 1, re-confirmed 1, changes requested 2 (dropped counts claims and changes requested counts
+/// decisions: they are not added).
 #[test]
 fn the_figures_count_what_reviewers_did_with_the_default_from_the_review_record_alone() {
     use inklkunn_store::ClaimHow::{Dropped, Kept};
@@ -564,7 +565,6 @@ fn the_figures_count_what_reviewers_did_with_the_default_from_the_review_record_
                 changes_requested: 2,
             }
         );
-        assert_eq!(m.claims.overrides(), 3, "a drop, and two requests");
         // The operator at the command line is told the same, in a line of numbers.
         let by_operator = crate::proposal::operator_metrics(
             &*e.store as &dyn inklkunn_store::ProposalStore,
@@ -579,10 +579,20 @@ fn the_figures_count_what_reviewers_did_with_the_default_from_the_review_record_
             ("/claims/dropped", 1),
             ("/claims/reconfirmed", 1),
             ("/claims/changes_requested", 2),
-            ("/claims/overrides", 3),
+            ("/claims/since_schema", 16),
         ] {
             assert_eq!(member(&v, pointer), want, "{pointer}");
         }
+        // Claims and decisions are never summed, and the record says where it begins (K21).
+        assert!(v.pointer("/claims/overrides").is_none(), "{v}");
+        let note = v
+            .pointer("/claims/note")
+            .and_then(serde_json::Value::as_str);
+        assert_eq!(note, Some(crate::proposal::REVIEW_RECORD_NOTE));
+        assert!(
+            note.is_some_and(|n| n.contains("before it left no record")),
+            "{note:?}"
+        );
         // Before the period only P0 is in the cohort: its kept claim, and its request for changes.
         let before = s
             .metrics(&e.admin.principal, w, Period { from: 0, to: 1000 })

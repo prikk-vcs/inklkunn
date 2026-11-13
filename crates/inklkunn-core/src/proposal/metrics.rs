@@ -18,10 +18,12 @@
 //! records alone ([`ClaimFigures`]): of the cohort's proposals that were accepted, per claim each touched, the claims
 //! the change **kept** (its marker continued: the default of H-1 point 2) and the claims it **dropped** (a removal of
 //! the expression, confirmed); of the kept, how many were **re-confirmed** since by an accepted curation proposal; and
-//! the **requests for changes** made on a proposal that touches a claim, counted once per decision. An **override** is
-//! the default rejected: a drop, or a request for changes on a proposal that touches a claim. The figures count what
-//! people did; none says that anyone was right. They begin with store schema 16: a decision or a change before it left
-//! no record, and is in none of them.
+//! the **requests for changes** made on a proposal that touches a claim, counted once per decision. **They are reported
+//! apart and never added together** (handoff 005 K21): a *drop* counts claims, one for each claim an accepted change
+//! removed, and a *request for changes* counts decisions, one for each such decision however many claims the proposal
+//! touches; a sum would mix claims with decisions into a figure that is neither. The figures count what people did;
+//! none says that anyone was right. **They begin with store schema 16:** a change accepted, or a decision made, before
+//! it left no review record and is in none of them ([`REVIEW_RECORD_NOTE`], which the output carries).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -60,19 +62,21 @@ pub struct ClaimFigures {
     /// Claims an accepted change touched and **kept**: the paragraph reworded, its marker continuing.
     pub kept: u64,
     /// Claims an accepted change touched and **dropped**: the paragraph and the claim's expression in it removed.
+    /// Counts **claims**.
     pub dropped: u64,
     /// Of the kept, those since **re-confirmed** by an accepted curation proposal.
     pub reconfirmed: u64,
     /// **Requests for changes** made on a proposal that touches a claim (once per decision, however many claims).
+    /// Counts **decisions**, not claims: it is not added to `dropped`.
     pub changes_requested: u64,
 }
 
-impl ClaimFigures {
-    /// The default rejected: the drops and the requests for changes on a proposal that touches a claim.
-    pub const fn overrides(&self) -> u64 {
-        self.dropped + self.changes_requested
-    }
-}
+/// The store schema version with which the review record begins.
+pub const REVIEW_RECORD_SCHEMA: u32 = 16;
+
+/// What the output says of the review record's beginning: a fixed sentence, carried in the JSON record beside the
+/// figures it qualifies (handoff 005 K21).
+pub const REVIEW_RECORD_NOTE: &str = "the claim figures count only what the review record holds, which begins with store schema 16: a change accepted or a decision made before it left no record and is in none of them";
 
 /// The figures for one wiki over one period.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -287,7 +291,8 @@ impl Metrics {
                 "dropped": self.claims.dropped,
                 "reconfirmed": self.claims.reconfirmed,
                 "changes_requested": self.claims.changes_requested,
-                "overrides": self.claims.overrides(),
+                "since_schema": REVIEW_RECORD_SCHEMA,
+                "note": REVIEW_RECORD_NOTE,
             },
         });
         line.to_string()

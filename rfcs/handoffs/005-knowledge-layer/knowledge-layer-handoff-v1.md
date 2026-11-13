@@ -113,8 +113,8 @@ on a real server waits for K3 and K4 together.**
   REFERENCES view_acts(id)` and `wiki_id` referencing the wiki; `CHECK ((outcome = 'created' AND word IS NULL) OR (outcome =
   'failed' AND word IS NOT NULL))`; an index on `(wiki_id, name)`; the write-once triggers. (b) **The review record of part 1
   D-1 d**, append-only: per accepted change and per claim it touches, *kept*, *dropped* (a confirmed removal), and later
-  *re-confirmed by* (the curation proposal, naming the change it re-confirms); `inklkunn wiki metrics` counts the **overrides**
-  (a confirmed drop, or *request changes* on a proposal that touches a claim) beside the defaults kept. The migration from 15 is
+  *re-confirmed by* (the curation proposal, naming the change it re-confirms); `inklkunn wiki metrics` counts the **drops**
+  (a confirmed removal) and the *request changes* on a proposal that touches a claim, apart (K21), beside the defaults kept. The migration from 15 is
   additive and tested on both stores; the pins move to 16.
 - **K4 — a view creation is a recoverable act.** `Purpose::View` leaves `leaves_nothing_to_recover`, so a holder that died
   creating a view flags the wiki. Recovery treats an open view act as a known act: prikk shows the view → the act ends

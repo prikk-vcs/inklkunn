@@ -11,9 +11,10 @@
 //! and, **later**, whether the claim was *re-confirmed*: the curation proposal that judged it again on the wording
 //! it has now, naming the change it re-confirms.
 //!
-//! An **override** is the default rejected: a confirmed drop, or a *request changes* decision on a proposal that
-//! touches a claim (the claims that decision's revision touched are kept with the decision). These are counts of
-//! what people did; no figure here says that anyone was right.
+//! The default is rejected by a confirmed drop, or by a *request changes* decision on a proposal that touches a claim
+//! (the claims that decision's revision touched are kept with the decision). The two are counted apart, a drop per claim
+//! and a request per decision, and never summed (handoff 005 K21). These are counts of what people did; no figure here
+//! says that anyone was right.
 //!
 //! **Written once, with the act.** A change's claim records are written after the acceptance record and before the
 //! signer is asked, keyed by the acceptance; a record whose acceptance never sealed (it failed, or is still pending)
