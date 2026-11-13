@@ -42,6 +42,9 @@ staying true to all three (RFC 010 D-1, D-2, D-8). The record of what each upstr
   `publication-trust`), so no retirement's record can excuse the retired key's findings beside a pending cleanup, and recovery
   stops with `cleanup-beside-trust-findings`; what does prikk recommend for a pending cleanup on a repository whose trust set
   changed.
+- **For the next bundled letter (2026-11-13):** `ref complete --plan-only` needs the maintainer seed, so completing an interrupted
+  `branch create` decrypts the seed twice (handoff 005 K4); a plan that writes nothing should not need it. And no release letter for
+  0.56.0 or 0.57.0 has reached us: the re-baseline works from prikk's CHANGELOG (maintenance handoff M3).
 - **Open asks as of 2026-10-31: none outstanding; prikk will write about 0.57.0.**
   `send/2026-10-31-block-signer-time-path-history-and-an-orphan-queued-patch.md` (sent by the owner; four asks) was
   answered the same day (`receive/2026-10-31-four-asks-where-each-lands.md`): each block's `sealed_by` in `log` and

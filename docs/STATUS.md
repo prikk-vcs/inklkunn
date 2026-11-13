@@ -306,6 +306,17 @@
   (K9). Decision 3 settled with the dev team's design (re-confirmation as one curation proposal after acceptance), recorded as a
   clarification of RFC 005 part 2 D-3. **Environment:** prikk is no longer on this machine's `PATH` (a 0.56.0 build appeared in
   `~/.pgtmp` on 2026-11-08, unannounced to us); the review ran with the owner's 0.55.0 build. Pushed.
+- **2026-11-13 — handoff 005's corrections K3 – K14 reviewed: Conditionally Approved** (`1ac27d8`, 19 commits; 2,618 tests
+  with prikk 0.55.0 and without, 289 self-skips, one environmental failure; three adversarial readings). A view creation is now
+  a recoverable act and views work on a real server; but *trust never moves silently* holds in the core and not yet on the page
+  the maintainer reads (K15: lines that name their claim and source, and a new claim's standing), and a claim file could still be
+  removed with its links outside curation (K16). **K15 – K23 before 0.3.0.** **Outside inklkunn (one maintenance handoff,
+  `rfcs/handoffs/010-upstream-and-supply-chain-maintenance/maintenance-2026-11-handoff-v1.md`):** RUSTSEC-2026-0459 (bundled
+  SQLite before 3.54.0; local, needs write access to the data directory; 0.2.0 needs no patch release) — upgrade `rusqlite`, no
+  ignore, minimum Rust rises with it (1.89, in step with planeter); the curl test assumed one curl build; **prikk 0.56.0
+  (2026-11-08) and 0.57.0 (2026-11-12) are released** — the suite passes on 0.56.0 apart from the curl test; 0.57.0 is to be
+  measured, then `sealed_by` (PK-39) and the discard verb (PK-43) adopted. CI's supply-chain job is red on `main` until M1
+  lands. Pushed.
 
 ## Pending on the owner
 
@@ -317,8 +328,8 @@
 | Upstream | What touches inklkunn | inklkunn action |
 |---|---|---|
 | prikk 0.54.1 | the M1 floor (`extract`, `diff`, `tree`, `cat`, the `show <block-id>` fix); RFC 170 (library) and RFC 154 unscheduled; **non-ASCII paths: a design round in 0.56.0, implementation ≥ 0.57.0** (letter of 2026-10-28, PK-21) | pin 0.54; re-baseline at each release (RFC 010); ship with percent-encoded paths, migrate when prikk's design lands |
-| prikk 0.55.0 (**released 2026-10-29, re-baselined the same day**) / 0.56.0 (scheduled) | 0.55.0: `extract`'s refusal ids 13 → 15, bundle reads stream, the checkpoint record documented; 0.56.0: the Unicode-path design round, a received ref that would move backwards refused by default, the signer in `branch --format json` (PK-26) | 0.55.0: **done**, nothing changes, floor stays 0.54.0; 0.56.0: re-baseline at its release (check `branch-list-v1`'s id with the signer added) |
-| prikk **0.57.0** (scheduled; reply of 2026-10-31) | each block's `sealed_by` (PK-39); a verb to discard a sound queued patch (PK-43) | at its re-baseline: C11's check reads `sealed_by`; recovery offers the discard as an operator-confirmed step |
+| prikk 0.55.0 (**released 2026-10-29, re-baselined the same day**) / **0.56.0 (released 2026-11-08; the suite passes on it apart from the curl test, measured 2026-11-13)** | 0.55.0: `extract`'s refusal ids 13 → 15, bundle reads stream, the checkpoint record documented; 0.56.0: the Unicode-path design round, a received ref that would move backwards refused by default, the signer in `branch --format json` (PK-26) | 0.55.0: **done**, nothing changes, floor stays 0.54.0; 0.56.0: re-baseline at its release (check `branch-list-v1`'s id with the signer added) |
+| prikk **0.57.0** (**released 2026-11-12**; to be measured: maintenance handoff M3) | each block's `sealed_by` (PK-39); a verb to discard a sound queued patch (PK-43) | at its re-baseline: C11's check reads `sealed_by`; recovery offers the discard as an operator-confirmed step |
 | prikk, reply of 2026-10-29 | `log --ref <block id>`'s empty success is a defect, fixed in a release prikk will name (PK-36); a rotation that keeps history verifiable is not scheduled (PK-34, RR-8); `extract --path-prefix` or a per-entry content id is a candidate (PK-37) | re-check each at every re-baseline; nothing in 0.1.0 waits on them |
 | planeter **0.5.0** (released 2026-10-31; re-baselined the same day, ledger PL-14: Rust 1.99.1 adopted, 0.1.0 unaffected by the FFI `bool` miscompilation; the pushed-image check a candidate for 0.2.0) — earlier: 0.4.0 | no module mechanism; OQ-4 unruled (re-checked 2026-10-28); RFC 012's catalog pattern, glossary, RFC 011's admission and RFC 004's recovery reused as patterns; new: the complete-verdict rule (PL-7), `unlock` in a PID namespace (PL-8), the output cap (PL-9, already bounded here), the advisories and the `aws_lc_rs` measurement (PL-10, IS-54 waits for the owner), kill-safe creation (PL-11) | joint RFC 008 after M2's design; a letter through the owner then; DR-9 ruled `aws_lc_rs` (2026-10-28), put as one ruling with planeter's IS-54 |
 | wiki-commons 0.4 | the conformance corpus is CR-markup's fixture set; identifiers may change before its 1.0 | claims versioned `@0.4` |
@@ -328,8 +339,8 @@
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and handoff 003's T1 – T3 are built and
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
-(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08).** **The dev team's order now:** handoff 005's
-corrections **K3 – K14** with K-T9 – K-T11 beside them (all before 0.3.0); and, at the next touch of `signer/retirement.rs`,
+(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **The dev team's order now:** the maintenance
+handoff's **M1** (the SQLite advisory: CI is red until it lands), then **K15 – K23**, M2, M3 and K-T9 – K-T11 (all before 0.3.0); and, at the next touch of `signer/retirement.rs`,
 `seal_pause`'s operator sentence (Z7 – Z9 review). An assistive-technology pass is arranged before 0.3.0.
 
 ## Issue register

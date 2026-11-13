@@ -150,3 +150,37 @@ on a real server waits for K3 and K4 together.**
 - **K14 — small.** Source text fields refuse bidirectional and format characters (U+202A – U+202E, U+2066 – U+2069, U+200E,
   U+200F); un-deciding a status records the deciding proposal.
 - **Recorded gap (not owed for 0.3.0):** attaching an existing source instead of a new one (D-2, KN-4).
+
+## Corrections from the review of 2026-11-13 (binding; **before 0.3.0**)
+
+K3 – K14 are **Conditionally Approved** (`.git-exclude/reviewed/005-knowledge-layer-corrections-review-result.md`). Hand back
+K15 – K23 as one request, `005-knowledge-layer-corrections-2-review-request.md`; K-T9 – K-T11 may proceed beside them. The
+environmental reds are in `rfcs/handoffs/010-upstream-and-supply-chain-maintenance/maintenance-2026-11-handoff-v1.md`, a separate request.
+
+- **K15 — the page says everything the core describes, and which.** Every rendered knowledge line names its subject: a claim by an
+  excerpt of a paragraph it is said in (escaped, in `<bdi>`), a source by its K9 name; a new claim's standing and a new source's
+  availability and review date are on its line; a changed source's identity and reference show their new values. No renderer arm
+  drops a field with `..`. `KnowledgeNotShown`'s property tests move to the rendered layer: every single-field change from every
+  starting point gives a different rendered page.
+- **K16 — removal is curation when it would take anything curated with it.** `removal_refused` is `Curated::of(file) !=
+  Curated::baseline(file)` (a status, a link, an un-decided record); removing or overwriting a knowledge file the tip has but cannot
+  read is a curation change with its own line (*a file that cannot be read is replaced*); the refusal sentence names removals.
+- **K17.** *Re-confirmed* is recorded for a claim only when every `judged_on` it carries names the wording its paragraph has in the
+  accepted change.
+- **K18 — schema 16 before it ships.** `view_acts.created_by REFERENCES accounts(id)` (the tests make real accounts);
+  `view_act_ends.word` `CHECK (length(word) >= 1)` where it is not null. Schema 16 is unreleased, so the migration is edited, not
+  followed by another.
+- **K19 — views and the signer.** `ViewCreationFacts` carries the recorded `from_block`, and `complete_view_creation` requires prikk's
+  plan target to equal it; the doc says what the code checks (or the code re-reads the tip, as the doc says); a rotation (Keep or
+  Retire) refuses while `doctor` names a view lead, in Z5's words; the plan names `retirement-unfinished` for a view lead as it does
+  for a queued patch.
+- **K20.** *Why is this here?*: a paragraph whose `^id` is repeated at the page's creation is not *followed through its anchor*.
+- **K21 — metrics.** `dropped` and `changes_requested` are reported separately (not summed across units), and the metrics say that
+  changes accepted before schema 16 have no review records.
+- **K22 — reconfirm.** Its proposal links the change it re-confirms; at most one open reconfirm proposal per change (the store
+  enforces it); the offer and the record are computed against the same side (the tip); a renamed page is read at the base by its
+  base path.
+- **K23 — small.** U+061C joins K14's set; the work meter charges a comparison by the length compared (or the docs state the
+  factor); a source's name is shown with a visible boundary (`<cite>`); `Storage::all_views` is a required method;
+  `complete_view_creation` keeps the *seeds not removed* note; *Other views* reads the view at the tip the page's index was read at;
+  the stale comments in `sqlite.rs:7` and `invariants.rs:507-509`.
