@@ -3,7 +3,8 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use inklkunn_store::{
-    AccountId, ActStore, ViewActEnd, ViewActId, ViewActOutcome, ViewActRecord, ViewKind,
+    AccountId, AccountStore, ActStore, ViewActEnd, ViewActId, ViewActOutcome, ViewActRecord,
+    ViewKind,
 };
 
 use super::*;
@@ -106,6 +107,21 @@ fn the_short_name_drops_the_repositorys_prefix_and_nothing_else() {
     assert_eq!(short_name("heads/a/b"), "a/b");
 }
 
+/// A real account: the store refuses a creator that is not one (handoff 005 K18).
+fn creator(w: &World) -> AccountId {
+    let id = AccountId::new();
+    w.store
+        .add_account(&inklkunn_store::Account {
+            id: id.clone(),
+            display_name: inklkunn_store::DisplayName::new("Rae Reviewer").unwrap(),
+            local: None,
+            created_at: 1,
+            disabled: false,
+        })
+        .unwrap();
+    id
+}
+
 fn act(w: &World, name: &str, kind: ViewKind, from: &str) -> ViewActRecord {
     ViewActRecord {
         id: ViewActId::new(),
@@ -114,7 +130,7 @@ fn act(w: &World, name: &str, kind: ViewKind, from: &str) -> ViewActRecord {
         forked_from: from.to_owned(),
         from_block: "e".repeat(64),
         kind,
-        created_by: AccountId::new(),
+        created_by: creator(w),
         created_at: 1,
     }
 }

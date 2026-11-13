@@ -215,6 +215,9 @@ impl ActStore for MemoryStore {
         if !self.wiki_exists(&act.wiki) {
             return Err(StoreError::NotFound);
         }
+        if !self.has_account(&act.created_by) {
+            return Err(StoreError::AccountNotFound);
+        }
         let mut d = self.acts_lock();
         if d.view_acts.iter().any(|a| a.id == act.id) {
             return Err(StoreError::AlreadyRecorded);
@@ -241,6 +244,11 @@ impl ActStore for MemoryStore {
     }
 
     fn finish_view_act(&self, end: &ViewActEnd) -> Result<()> {
+        if matches!(&end.outcome, ViewActOutcome::Failed { word } if word.is_empty()) {
+            return Err(StoreError::Backend(
+                "a failed view act carries the word of its failure".to_owned(),
+            ));
+        }
         let mut d = self.acts_lock();
         if !d.view_acts.iter().any(|a| a.id == end.act) {
             return Err(StoreError::NotFound);

@@ -270,6 +270,12 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   -- <the real curl>` with the ceiling once and nowhere else; and a stand-in that holds 96 MiB is stopped by a 48 MiB
   ceiling in the real bubblewrap while a 2 MiB one runs under the same ceiling and the 96 MiB one runs with room
   enough (so the vector is not what failed). No prikk-dependent test is added or removed.
+- **K18 (handoff 005 corrections, second): schema 16 before it ships.** Version 16 is edited in place (it is
+  unreleased): `view_acts.created_by` now `REFERENCES accounts(id)`, as every other actor column does, and
+  `view_act_ends.word` refuses `''` where it is not null (the outcome and word check stays). Both stores follow: recording
+  a view act for an account that is not there is `AccountNotFound` (the memory store as the database), and a failed end
+  with an empty word is refused by both. Tests make real accounts for the views they record; the raw-connection test
+  proves the foreign key and the check from the database, and both stores' suite proves the refusals.
 
 ## [0.2.0] — 2026-11-04
 

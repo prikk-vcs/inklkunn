@@ -80,6 +80,13 @@ impl SqliteStore {
             )? {
                 return Err(StoreError::NotFound);
             }
+            if !probe(
+                &tx,
+                "SELECT 1 FROM accounts WHERE id = ?1",
+                &[act.created_by.as_str()],
+            )? {
+                return Err(StoreError::AccountNotFound);
+            }
             if probe(
                 &tx,
                 "SELECT 1 FROM view_acts WHERE id = ?1",

@@ -48,6 +48,19 @@ fn the_suite(store: &(impl ActStore + WikiStore + AccountStore)) {
     assert_eq!(ViewKind::parse("canonical"), None);
     assert_eq!(ViewKind::parse(""), None);
 
+    // --- A creator is an account that is there, as every actor is (K18): nothing is recorded for a stranger.
+    let stranger = act(
+        &w.id,
+        &AccountId::new(),
+        "stranger",
+        ViewKind::Experimental,
+        9,
+    );
+    assert_eq!(
+        store.begin_view_act(&stranger),
+        Err(StoreError::AccountNotFound)
+    );
+    assert!(store.view_acts(&w.id).unwrap().is_empty());
     // --- A creation is written before the signer is asked; it is open until it ends.
     let draft = act(&w.id, &by, "draft", ViewKind::Experimental, 10);
     let reading = act(&w.id, &by, "reading", ViewKind::Interpretation, 11);
@@ -147,6 +160,17 @@ fn the_suite(store: &(impl ActStore + WikiStore + AccountStore)) {
         Err(StoreError::AlreadyRecorded),
         "a created view keeps its name"
     );
+
+    // --- A failure carries a word: an empty one is no word (K18), and the act stays open.
+    let empty = store.finish_view_act(&ended(
+        &reading,
+        ViewActOutcome::Failed {
+            word: String::new(),
+        },
+        22,
+    ));
+    assert!(matches!(empty, Err(StoreError::Backend(_))), "{empty:?}");
+    assert!(store.open_view_act(&reading.id).unwrap().is_some());
 
     // --- One that failed took nothing in: the name is free, and the failed act no longer stands.
     let failed = ended(
@@ -331,8 +355,12 @@ fn the_database_refuses_what_the_store_would_not_write() {
         let refused = raw_act(&raw, &w, &by, fresh, bad).unwrap_err().to_string();
         assert!(refused.contains("CHECK constraint"), "{bad:?}: {refused}");
     }
-    // The wiki is a reference.
+    // The wiki is a reference, and so is the creator (K18): every actor column of the database is.
     assert!(raw_act(&raw, &WikiId::new(), &by, fresh, "x").is_err());
+    let stranger = raw_act(&raw, &w, &AccountId::new(), fresh, "x")
+        .unwrap_err()
+        .to_string();
+    assert!(stranger.contains("FOREIGN KEY"), "{stranger}");
     // An id is used once, and an act is never changed or removed.
     let existing: String = raw
         .query_row("SELECT id FROM view_acts", [], |r| r.get(0))
@@ -356,6 +384,11 @@ fn the_database_refuses_what_the_store_would_not_write() {
     assert!(end(fresh, "created", None).is_err(), "no such act");
     assert!(end(&existing, "created", Some("refused")).is_err());
     assert!(end(&existing, "failed", None).is_err());
+    let empty = end(&existing, "failed", Some("")).unwrap_err().to_string();
+    assert!(
+        empty.contains("CHECK constraint"),
+        "a failed view has a word: {empty}"
+    );
     assert!(end(&existing, "sealed", None).is_err());
     end(&existing, "failed", Some("refused")).unwrap();
     assert!(

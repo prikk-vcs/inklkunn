@@ -595,7 +595,7 @@ fn open_act(rig: &Rig, name: &str) -> ViewActRecord {
         forked_from: "main".to_owned(),
         from_block: "e".repeat(64),
         kind: ViewKind::Experimental,
-        created_by: AccountId::new(),
+        created_by: rig.person("Quinn Creator", None).0,
         created_at: 1,
     };
     rig.store.begin_view_act(&act).unwrap();

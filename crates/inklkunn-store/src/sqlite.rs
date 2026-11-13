@@ -729,8 +729,9 @@ ALTER TABLE wikis ADD COLUMN verification_explained_by TEXT
 /// stands** (open or created) in a wiki: the store checks it inside the `IMMEDIATE` transaction and a `BEFORE INSERT`
 /// trigger refuses it from any connection; an act that failed took nothing in and frees the name. The name's form is
 /// checked by the database too (lower case, 1 - 64 characters of `a-z 0-9 . - _`, starting with a letter or a digit, no
-/// `..`, no trailing `.`: the form `inklkunn-core`'s `views::new_name` allows). An end names an act that is there, a
-/// created view has no word and a failed one always has.
+/// `..`, no trailing `.`: the form `inklkunn-core`'s `views::new_name` allows). The creator is an account that is there
+/// (as every actor column is). An end names an act that is there, a created view has no word and a failed one always
+/// has one that is not empty.
 ///
 /// The same version holds **the review record of RFC 005 part 1 D-1 (d)** (handoff 005 K3 b), four tables written once:
 /// `change_claims` (per acceptance and per claim the change touched, *kept* or *dropped*: written after the
@@ -752,7 +753,7 @@ CREATE TABLE IF NOT EXISTS view_acts (
     forked_from TEXT NOT NULL CHECK (length(forked_from) >= 1),
     from_block  TEXT NOT NULL CHECK (length(from_block) >= 1),
     kind        TEXT NOT NULL CHECK (kind IN ('experimental', 'interpretation')),
-    created_by  TEXT NOT NULL CHECK (length(created_by) >= 1),
+    created_by  TEXT NOT NULL REFERENCES accounts(id),
     created_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS view_acts_wiki ON view_acts(wiki_id, seq);
@@ -772,7 +773,7 @@ BEGIN SELECT RAISE(ABORT, 'view acts are append-only: the name is held by an act
 CREATE TABLE IF NOT EXISTS view_act_ends (
     act_id  TEXT PRIMARY KEY REFERENCES view_acts(id),
     outcome TEXT NOT NULL CHECK (outcome IN ('created', 'failed')),
-    word    TEXT,
+    word    TEXT CHECK (word IS NULL OR length(word) >= 1),
     at      INTEGER NOT NULL,
     CHECK ((outcome = 'created' AND word IS NULL) OR (outcome = 'failed' AND word IS NOT NULL))
 );
