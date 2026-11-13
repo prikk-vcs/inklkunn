@@ -1041,6 +1041,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `views_new.problem_name_start` | a problem: the name does not start with a lower-case letter or a digit | "A name starts with a lower-case letter or a digit." | "名前の先頭は、半角の小文字か数字にしてください。" |
 | `views_new.problem_name_chars` | a problem: the name has a character a name may not have | "A name has only lower-case letters, digits, dots, hyphens and underscores, and neither two dots in a row nor a dot at the end." | "名前に使えるのは、半角の小文字、数字、ドット、ハイフン、アンダースコアだけです（ドットの連続や末尾のドットは使えません）。" |
 | `views_new.problem_name_long` | a problem: the name is longer than 64 characters | "A name has at most 64 characters." | "名前は 64 文字までです。" |
+| `views_new.problem_name_retired` | a problem: the name is one that would call a view better or more settled than another | "That name cannot be given to a view: it would say that this view is better or more settled than the others. Choose a name for what the view is about." | "その名前はビューに付けられません。このビューがほかより優れている、または確定していると読めてしまうためです。ビューの内容を表す名前を選んでください。" |
 | `views_new.problem_kind` | a problem: no kind was chosen | "Choose what the view is for." | "このビューの目的を選んでください。" |
 | `views_new.problem_from` | a problem: the view to fork from is not one of the wiki's views | "Choose a view that is there to fork it from." | "分岐元には、すでにあるビューを選んでください。" |
 | `views_new.problem_taken` | a problem: a view of that name is already there | "A view with that name is already there. Choose another name." | "その名前のビューはすでにあります。ほかの名前を選んでください。" |

@@ -94,6 +94,10 @@ if [ "$1 $2" = "branch create" ] && [ -e "$CTL/kill-branch-create" ]; then
   wait "$real_pid" 2> /dev/null
   echo "error: the call was killed" >&2; exit 1
 fi
+if [ "$1 $2" = "branch create" ] && [ -e "$CTL/closes-after-branch-create" ]; then
+  "{real}" "$@" || exit $?
+  exec "{real}" branch close "$3"
+fi
 exec "{real}" "$@"
 "#,
         ctl = ctl.display(),
@@ -1374,4 +1378,83 @@ fn what_the_runbook_says_of_a_killed_view_creation_is_what_prikk_and_recovery_sa
     assert!(
         doc.contains("the view is listed at **another block** than the one it was forked from")
     );
+}
+
+// ---- a closed view keeps its name (handoff 005 K12; review finding K-i) ----
+
+impl World {
+    /// A view of `name` that is there and **closed**, and that no act of the service stands behind: made by the
+    /// signer with the stand-in closing it at once, under an act that is then ended as failed (so that the name is
+    /// free as far as the service's records go, which is where a view made some other way is).
+    fn closed_outside_the_service(&self, name: &str) {
+        let act = ViewActRecord {
+            id: ViewActId::new(),
+            wiki: self.wiki.id.clone(),
+            name: name.to_owned(),
+            forked_from: "main".to_owned(),
+            from_block: self.tip(MAIN),
+            kind: ViewKind::Experimental,
+            created_by: self.reviewer_id.clone(),
+            created_at: 1,
+        };
+        self.store.begin_view_act(&act).unwrap();
+        self.control("closes-after-branch-create", "");
+        let made = self.signer.create_view(
+            &self.wiki.id,
+            &format!("heads/{name}"),
+            MAIN,
+            &ViewCreationAct::new(act.id.as_str()),
+        );
+        self.uncontrol("closes-after-branch-create");
+        made.expect("made and closed");
+        self.store
+            .finish_view_act(&inklkunn_store::ViewActEnd {
+                act: act.id,
+                outcome: ViewActOutcome::Failed {
+                    word: "interrupted".to_owned(),
+                },
+                at: 2,
+            })
+            .unwrap();
+        let closed = self
+            .storage
+            .all_views(&self.repo)
+            .unwrap()
+            .views
+            .into_iter()
+            .any(|v| v.name == format!("heads/{name}") && v.closed);
+        assert!(closed, "{name} is listed and closed");
+        assert!(
+            !self
+                .storage
+                .views(&self.repo)
+                .unwrap()
+                .views
+                .iter()
+                .any(|v| v.name == format!("heads/{name}")),
+            "and the open listing does not show it"
+        );
+    }
+}
+
+#[test]
+fn the_name_of_a_view_closed_outside_the_service_is_taken_in_any_case_and_no_act_is_made() {
+    let Some(w) = World::new("closed-name") else {
+        return;
+    };
+    w.closed_outside_the_service("a_");
+    w.closed_outside_the_service("B_");
+    let acts = w.store.view_acts(&w.wiki.id).unwrap().len();
+    // Before the full listing, prikk refused these and the creation ended *Failed (refused)*, with an act recorded.
+    assert_eq!(w.create("a_").unwrap_err(), ViewFailure::NameTaken);
+    assert_eq!(w.create("b_").unwrap_err(), ViewFailure::NameTaken);
+    assert_eq!(
+        w.store.view_acts(&w.wiki.id).unwrap().len(),
+        acts,
+        "nothing was recorded, and prikk was not asked"
+    );
+    assert_eq!(w.store.recovery_flag(&w.wiki.id).unwrap(), None);
+    // A name nobody has is made, beside the closed ones; and the closed ones are not among the open views.
+    w.create("c_").expect("a free name");
+    assert!(w.verifies());
 }

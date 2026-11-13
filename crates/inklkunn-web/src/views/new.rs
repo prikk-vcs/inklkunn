@@ -405,6 +405,7 @@ fn name_problem(t: T, why: NameFault) -> String {
         NameFault::Start => Key::ViewsNewProblemNameStart,
         NameFault::Characters => Key::ViewsNewProblemNameChars,
         NameFault::TooLong => Key::ViewsNewProblemNameLong,
+        NameFault::Retired => Key::ViewsNewProblemNameRetired,
     })
 }
 

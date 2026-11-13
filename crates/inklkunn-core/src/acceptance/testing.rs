@@ -59,6 +59,8 @@ pub(crate) struct Double {
     /// The next `create_view` lists its view whatever it answers (a `branch create` that failed after it published the
     /// ref's pointer).
     view_appears_anyway: Mutex<bool>,
+    /// A view this stand-in creates is closed at once (someone closed it before the creation looked).
+    closes_what_it_creates: std::sync::atomic::AtomicBool,
     view_calls: Mutex<Vec<ViewCall>>,
     /// Where a view the stand-in creates appears (the in-memory repository).
     views_in: Mutex<Option<Arc<Fake>>>,
@@ -77,6 +79,7 @@ impl Double {
             hook: Mutex::new(None),
             view_answers: Mutex::new(VecDeque::new()),
             view_appears_anyway: Mutex::new(false),
+            closes_what_it_creates: std::sync::atomic::AtomicBool::new(false),
             view_calls: Mutex::new(Vec::new()),
             views_in: Mutex::new(None),
             leases_in: Mutex::new(None),
@@ -100,6 +103,12 @@ impl Double {
             .view_appears_anyway
             .lock()
             .unwrap_or_else(PoisonError::into_inner) = true;
+    }
+
+    /// The views this stand-in creates are closed at once, as if somebody closed them before the creation looked.
+    pub(crate) fn then_views_it_creates_are_closed(&self) {
+        self.closes_what_it_creates
+            .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
     /// A view this stand-in creates appears in `fake`.
@@ -240,7 +249,14 @@ impl Accept for Double {
                 .unwrap_or_else(PoisonError::into_inner)
                 .as_ref()
         {
-            fake.add_view(name);
+            if self
+                .closes_what_it_creates
+                .load(std::sync::atomic::Ordering::SeqCst)
+            {
+                fake.add_closed_view(name);
+            } else {
+                fake.add_view(name);
+            }
         }
         if *self
             .views_break_after

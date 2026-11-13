@@ -163,7 +163,7 @@ fn load(
                 .get(&services.identity.principal(headers), &wiki, &p)
                 .is_ok()
         });
-    let others = others::gather(services, &wiki, view.as_deref(), &index, id);
+    let others = others::gather(services, &wiki, view.as_deref(), id);
     Loaded::Claim(Box::new(Found {
         wiki,
         view,

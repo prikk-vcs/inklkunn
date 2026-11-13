@@ -57,6 +57,49 @@ fn a_new_name_is_lower_case_letters_digits_and_a_few_marks_and_is_never_changed(
 }
 
 #[test]
+fn a_name_that_is_a_retired_word_whole_is_refused_in_any_case_and_a_name_that_holds_one_is_not() {
+    // K12: no view calls itself official, canonical, adopted, true, false, verified or proven.
+    assert_eq!(
+        RETIRED_NAMES,
+        [
+            "official",
+            "canonical",
+            "adopted",
+            "true",
+            "false",
+            "verified",
+            "proven"
+        ]
+    );
+    for word in RETIRED_NAMES {
+        assert_eq!(new_name(word), Err(NameFault::Retired), "{word}");
+        // In any case: the reason is the word, not the capital that would also have been refused.
+        let upper = word.to_uppercase();
+        assert_eq!(new_name(&upper), Err(NameFault::Retired), "{upper}");
+        let mut chars = word.chars();
+        let titled: String = chars
+            .next()
+            .map(|c| c.to_ascii_uppercase())
+            .into_iter()
+            .chain(chars)
+            .collect();
+        assert_eq!(new_name(&titled), Err(NameFault::Retired), "{titled}");
+        // Whole only: a name that holds the word, before or after, is a name.
+        for ok in [
+            format!("{word}-draft"),
+            format!("my-{word}"),
+            format!("{word}2"),
+            format!("{word}.x"),
+        ] {
+            assert_eq!(new_name(&ok), Ok(ok.as_str()), "{ok}");
+        }
+    }
+    // The ordinary names stay names.
+    assert_eq!(new_name("trueish"), Ok("trueish"));
+    assert_eq!(new_name("untrue"), Ok("untrue"));
+}
+
+#[test]
 fn the_short_name_drops_the_repositorys_prefix_and_nothing_else() {
     assert_eq!(short_name("heads/draft"), "draft");
     assert_eq!(short_name("draft"), "draft");

@@ -18,9 +18,11 @@
 //! name that was never a view), and the surface decides whether the visitor may read the wiki before it asks.
 //! Nothing here names a view better than the other: the two are `a` and `b`, in the order the caller gave.
 
+use std::sync::{Arc, Mutex, PoisonError};
+
 use inklkunn_markup::path::{path_to_title, title_to_path};
 use inklkunn_prikk::Point;
-use inklkunn_store::WikiRecord;
+use inklkunn_store::{WikiId, WikiRecord};
 
 use super::history::{DiffShape, DiffStatus, shape_diff, status_of};
 use super::linediff::Hunk;
@@ -143,9 +145,112 @@ fn said_in(id: &str, indexes: [&KnowledgeIndex; 2]) -> Option<String> {
     })
 }
 
+/// How many comparisons of two tips are held, of each kind (handoff 005 K12). A bound on memory, not on correctness:
+/// an entry that is gone is computed again.
+pub const CACHED_COMPARISONS: usize = 32;
+
+/// What a comparison is keyed by: the wiki and the two blocks the tips point at, in the order asked. Both blocks are
+/// immutable, so what is derived from the pair never changes and nothing has to be forgotten when a view moves: a view
+/// that moved is another block, and another key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Pair {
+    wiki: WikiId,
+    a: String,
+    b: String,
+}
+
+impl Pair {
+    /// The pair of these tips; `None` when a tip's block is not known (a stale page is read from the cache, and a
+    /// comparison of what is not pinned is not held).
+    fn of(wiki: &WikiRecord, a: &Tip, b: &Tip) -> Option<Pair> {
+        (!a.block_id.is_empty() && !b.block_id.is_empty()).then(|| Pair {
+            wiki: wiki.id.clone(),
+            a: a.block_id.clone(),
+            b: b.block_id.clone(),
+        })
+    }
+}
+
+/// The comparisons held: the claims two tips differ in (what *Compare views* and a claim page's *Other views* both
+/// need, and which costs two indexes and no `diff`), and the whole comparison (which costs a whole-tree `diff` of the
+/// two tips, parsed). Newest last, the oldest dropped past [`CACHED_COMPARISONS`].
+#[derive(Default)]
+pub(super) struct Comparisons {
+    claims: Mutex<Vec<(Pair, Arc<Vec<ClaimDifference>>)>>,
+    whole: Mutex<Vec<(Pair, Arc<ViewComparison>)>>,
+}
+
+fn held<T: Clone>(list: &Mutex<Vec<(Pair, T)>>, pair: &Pair) -> Option<T> {
+    list.lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .find(|(p, _)| p == pair)
+        .map(|(_, v)| v.clone())
+}
+
+fn hold<T>(list: &Mutex<Vec<(Pair, T)>>, pair: Pair, value: T) {
+    let mut list = list.lock().unwrap_or_else(PoisonError::into_inner);
+    list.retain(|(p, _)| *p != pair);
+    list.push((pair, value));
+    let excess = list.len().saturating_sub(CACHED_COMPARISONS);
+    list.drain(..excess);
+}
+
 impl ReadService {
+    /// The knowledge indexes of these two tips, **pinned to them**: a view that moves while a comparison is made
+    /// cannot put another block's claims under these blocks' key.
+    fn indexes_of(
+        &self,
+        wiki: &WikiRecord,
+        tips: (&Tip, &Tip),
+    ) -> Result<(Arc<KnowledgeIndex>, Arc<KnowledgeIndex>), ReadError> {
+        Ok((
+            self.knowledge_at(wiki, tips.0)?,
+            self.knowledge_at(wiki, tips.1)?,
+        ))
+    }
+
+    /// The claims the views `a` and `b` (the wiki's default view when `None`) differ in, in claim order, **held by the
+    /// two tips' blocks**: a claim page's *Other views* asks this once for each other view, and *Compare views* holds
+    /// the same list under the same key, so that neither builds it again for a pair of tips it has seen. The list is
+    /// not cut: the caller bounds what it shows.
+    pub fn claim_differences(
+        &self,
+        wiki: &WikiRecord,
+        a: Option<&str>,
+        b: Option<&str>,
+    ) -> Result<Arc<Vec<ClaimDifference>>, ReadError> {
+        let (tip_a, tip_b) = (self.tip(wiki, a)?, self.tip(wiki, b)?);
+        let pair = Pair::of(wiki, &tip_a, &tip_b);
+        if let Some(found) = pair
+            .as_ref()
+            .and_then(|pair| held(&self.comparisons.claims, pair))
+        {
+            return Ok(found);
+        }
+        let (index_a, index_b) = self.indexes_of(wiki, (&tip_a, &tip_b))?;
+        Ok(self.differences_of(pair, &index_a, &index_b))
+    }
+
+    /// [`compare`] of two indexes, held under the pair of tips they are the indexes of.
+    fn differences_of(
+        &self,
+        pair: Option<Pair>,
+        index_a: &KnowledgeIndex,
+        index_b: &KnowledgeIndex,
+    ) -> Arc<Vec<ClaimDifference>> {
+        let found = Arc::new(compare(index_a, index_b));
+        if let Some(pair) = pair {
+            hold(&self.comparisons.claims, pair, Arc::clone(&found));
+        }
+        found
+    }
+
     /// Where the views `a` and `b` (the wiki's default view when `None`) differ: the claims, and the pages. One
     /// `diff` of the two tips, whole tree, and the two knowledge indexes; none of it when the tips are one change.
+    /// **Held by the two tips' blocks** (both immutable): a pair of tips seen again is answered without the `diff`,
+    /// which is parsed up to the driver's output bound, so that a reader who asks again, or many who ask once, cost
+    /// one comparison. The tips in the answer are always the ones read now.
     pub fn compare_views(
         &self,
         wiki: &WikiRecord,
@@ -164,10 +269,18 @@ impl ReadService {
                 claims_omitted: 0,
             });
         }
-        let (index_a, index_b) = (
-            self.knowledge_index(wiki, a)?,
-            self.knowledge_index(wiki, b)?,
-        );
+        let pair = Pair::of(wiki, &tip_a, &tip_b);
+        if let Some(found) = pair
+            .as_ref()
+            .and_then(|pair| held(&self.comparisons.whole, pair))
+        {
+            return Ok(ViewComparison {
+                a: tip_a,
+                b: tip_b,
+                ..(*found).clone()
+            });
+        }
+        let (index_a, index_b) = self.indexes_of(wiki, (&tip_a, &tip_b))?;
         let diff = self
             .storage
             .diff(
@@ -203,17 +316,21 @@ impl ReadService {
             });
         }
 
-        let mut differing = compare(&index_a, &index_b);
+        // The claims a claim page's *Other views* already built for these two blocks are these claims.
+        let differing = pair
+            .as_ref()
+            .and_then(|pair| held(&self.comparisons.claims, pair))
+            .unwrap_or_else(|| self.differences_of(pair.clone(), &index_a, &index_b));
         let claims_omitted = differing.len().saturating_sub(MAX_COMPARED_CLAIMS);
-        differing.truncate(MAX_COMPARED_CLAIMS);
         let claims = differing
-            .into_iter()
+            .iter()
+            .take(MAX_COMPARED_CLAIMS)
             .map(|difference| ComparedClaim {
                 said_in: said_in(&difference.id, [&index_a, &index_b]),
-                difference,
+                difference: difference.clone(),
             })
             .collect();
-        Ok(ViewComparison {
+        let comparison = ViewComparison {
             a: tip_a,
             b: tip_b,
             same: false,
@@ -221,7 +338,11 @@ impl ReadService {
             pages_omitted,
             claims,
             claims_omitted,
-        })
+        };
+        if let Some(pair) = pair {
+            hold(&self.comparisons.whole, pair, Arc::new(comparison.clone()));
+        }
+        Ok(comparison)
     }
 
     /// How the page titled `title` differs between the tips of the views `a` and `b`: **one `diff` with the page's
@@ -258,3 +379,6 @@ impl ReadService {
         })))
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -36,14 +36,33 @@ pub enum NameFault {
     /// It holds a character other than a lower-case ASCII letter, a digit, `.`, `-` or `_`, or has `..` in it,
     /// or ends with `.`.
     Characters,
+    /// It is one of the [`RETIRED_NAMES`], whole: a name that would call a view better, more settled or more
+    /// authoritative than another (handoff 005 K12).
+    Retired,
     /// It starts with something other than a lower-case ASCII letter or a digit.
     Start,
 }
+
+/// The words no view is named, whole and in any case: the words the knowledge layer retires (RFC 005 part 2 D-7:
+/// nothing in the wiki says that a claim is true, or that a view is the official, canonical or adopted one). A name
+/// that only contains one (`official-draft`) is a name; a name that is one says what no view may say of itself.
+pub const RETIRED_NAMES: [&str; 7] = [
+    "official",
+    "canonical",
+    "adopted",
+    "true",
+    "false",
+    "verified",
+    "proven",
+];
 
 /// A new view's name, if it is one. The name is never trimmed or changed: what was typed is what is checked.
 pub fn new_name(raw: &str) -> Result<&str, NameFault> {
     if raw.is_empty() {
         return Err(NameFault::Empty);
+    }
+    if RETIRED_NAMES.iter().any(|w| w.eq_ignore_ascii_case(raw)) {
+        return Err(NameFault::Retired);
     }
     if raw.chars().count() > MAX_NAME_CHARS {
         return Err(NameFault::TooLong);

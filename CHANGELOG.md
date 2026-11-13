@@ -236,6 +236,26 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   `SIGKILL`s whose landing is counted, and the state made on cue), the three plan rows and each stop, the signer's
   binding and every refusal, the runbook's statements against prikk's and recovery's words.
 
+- **K12 (handoff 005 corrections; review finding K-i): views.** **The name check sees every view, closed ones
+  included, ignoring case:** the creation reads `Storage::all_views` (`branch list --all`), so a closed `heads/a_` made
+  outside the service (prikk keeps a closed branch's name, in any case) ends *a view of that name is there*, with no act
+  recorded and prikk not asked, and not *Failed (refused)*; closed views do not count toward the bound on open ones, and a
+  view created and closed before the creation looked is still created. **The name is validated before it enters any
+  resource or audit name** (`create_view` checks `views::new_name` first, a pure check of what was typed). **Names that
+  are retired words are refused, whole and in any case:** *official*, *canonical*, *adopted*, *true*, *false*,
+  *verified*, *proven* (`NameFault::Retired`, `views::RETIRED_NAMES`; `official-draft` is a name), with a catalogued
+  message (`views_new.problem_name_retired`, English and Japanese, glossary row). ***Compare views* is held by its two
+  tips** (the wiki and the two block ids, in the order asked; both blocks are immutable, so nothing is forgotten when a
+  view moves: a moved view is another block and another key): a pair seen again is answered without the whole-tree
+  `diff`, the tips in the answer are the ones read now, an answer that could not be made is not held, and at most 32
+  comparisons of each kind are held (`CACHED_COMPARISONS`, oldest first). A claim page's ***Other views* uses the same
+  hold** (`ReadService::claim_differences`, the claims two tips differ in, held under the same key and used by the
+  comparison too) instead of reading two indexes and comparing them for every other view on every request; the indexes
+  of a comparison are read for the tips it read (`knowledge_at`), so that a view that moves meanwhile cannot put another
+  block's claims under a block's key. Tests: the closed name against a real prikk (the signer makes a view and the
+  stand-in closes it) and a fake listing, every retired word in three forms, the order of the checks, the hold and its
+  bound, its key, its pinning, and the claim page through the same list.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

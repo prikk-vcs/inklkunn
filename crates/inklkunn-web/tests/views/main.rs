@@ -422,6 +422,15 @@ async fn a_name_a_kind_or_a_source_that_is_wrong_shows_the_form_again_with_what_
             form(&long, "experimental", "main"),
             "A name has at most 64 characters.",
         ),
+        // K12: the words no view is named, whole and in any case.
+        (
+            form("official", "experimental", "main"),
+            "That name cannot be given to a view",
+        ),
+        (
+            form("Canonical", "interpretation", "main"),
+            "That name cannot be given to a view",
+        ),
         (form("fine", "", "main"), "Choose what the view is for."),
         (
             form("fine", "canonical", "main"),

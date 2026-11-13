@@ -756,3 +756,94 @@ fn the_signer_is_bound_to_the_record_a_creation_it_was_not_recorded_for_is_not_p
         Err(AcceptError::NotPending)
     ));
 }
+
+#[test]
+fn a_name_that_a_closed_view_has_is_taken_in_any_case_and_nothing_is_recorded() {
+    // K12 (review finding K-i): prikk makes no branch of a closed one's name again, in any case, so the name check
+    // sees every view. Without it a closed `heads/a_` made outside the service ended *Failed (refused)*.
+    let rig = Rig::new("v6b");
+    let (_, who) = reviewer(&rig);
+    rig.fake.add_closed_view("heads/a_");
+    rig.fake.add_closed_view("heads/Older");
+    assert_eq!(made(&rig, &who, "a_"), Err(ViewFailure::NameTaken));
+    assert_eq!(made(&rig, &who, "older"), Err(ViewFailure::NameTaken));
+    // A name no view has is free, closed ones or not.
+    assert!(made(&rig, &who, "a_b").is_ok());
+    assert!(entries(&rig).len() == 1);
+    assert_eq!(rig.double.view_calls().len(), 1);
+}
+
+#[test]
+fn closed_views_do_not_count_toward_the_bound_on_open_ones() {
+    let rig = Rig::new("v7b");
+    let (_, who) = reviewer(&rig);
+    for n in 0..(MAX_VIEWS - 2) {
+        rig.fake.add_view(&format!("heads/v{n:03}"));
+    }
+    for n in 0..5 {
+        rig.fake.add_closed_view(&format!("heads/old{n}"));
+    }
+    // 99 views are open with main; the 5 closed ones are not among them, so one more is allowed.
+    assert!(made(&rig, &who, "the-hundredth").is_ok());
+    assert_eq!(
+        made(&rig, &who, "one-too-many"),
+        Err(ViewFailure::TooMany { bound: MAX_VIEWS })
+    );
+}
+
+#[test]
+fn a_name_that_is_not_a_views_is_checked_before_it_is_built_into_the_resource_authorization_is_asked_about()
+ {
+    // K12: the name is validated before it enters any resource or audit name. The check is a pure function of what
+    // was typed, so it comes first: even a visitor who could not create a view is told the name is not one (the rules
+    // are on the form), and the authorization is never asked about a name that is not a view's.
+    let rig = Rig::new("v5b");
+    let (_, observer) = rig.person("Olga Observer", Some(Role::Observer));
+    let nuisance = "bad name\nwith\u{202e}controls and a very very long tail ".repeat(8);
+    for name in [nuisance.as_str(), "dra ft", "Draft", "", "official"] {
+        assert!(
+            matches!(
+                made(&rig, &observer, name),
+                Err(ViewFailure::InvalidName(_))
+            ),
+            "{name:?}"
+        );
+    }
+    // A name that is one is asked about as it always was, and the observer may not.
+    assert_eq!(made(&rig, &observer, "fine"), Err(ViewFailure::NotAllowed));
+    assert!(entries(&rig).is_empty());
+}
+
+#[test]
+fn a_retired_word_is_refused_as_a_name_before_anything_is_recorded() {
+    let rig = Rig::new("v5c");
+    let (_, who) = reviewer(&rig);
+    for word in views::RETIRED_NAMES {
+        assert_eq!(
+            made(&rig, &who, word),
+            Err(ViewFailure::InvalidName(NameFault::Retired)),
+            "{word}"
+        );
+    }
+    assert!(entries(&rig).is_empty());
+    assert!(rig.double.view_calls().is_empty());
+    assert!(made(&rig, &who, "official-draft").is_ok());
+}
+
+#[test]
+fn a_view_that_was_made_and_closed_before_the_creation_looked_is_still_a_view_that_was_made() {
+    // The creation settles from the full listing: a created view that is already closed is created, not failed.
+    let rig = Rig::new("v11e");
+    let (_, who) = reviewer(&rig);
+    rig.double.then_views_it_creates_are_closed();
+    let created = made(&rig, &who, "brief").unwrap();
+    assert_eq!(created.name, "brief");
+    assert_eq!(
+        entries(&rig)
+            .first()
+            .and_then(|e| e.end.as_ref().map(|e| e.outcome.clone())),
+        Some(ViewActOutcome::Created)
+    );
+    // And its name stays taken.
+    assert_eq!(made(&rig, &who, "brief"), Err(ViewFailure::NameTaken));
+}

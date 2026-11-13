@@ -2,6 +2,7 @@
 //! knowledge indexes, ONE whole-tree `diff` of the two tips (pages only listed, their changed lines counted), the
 //! page's own diff with its path, the bounds with what they leave out counted, and a view that is not one.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use inklkunn_prikk::storage::DiffSide;
@@ -11,7 +12,8 @@ use super::*;
 use crate::knowledge::compare::Presence;
 use crate::read::testing::World;
 use crate::read::{
-    DiffStatus, MAX_COMPARED_CLAIMS, MAX_COMPARED_PAGES, ReadConfig, ReadError, ViewPageOutcome,
+    CACHED_COMPARISONS, DiffStatus, MAX_COMPARED_CLAIMS, MAX_COMPARED_PAGES, ReadConfig, ReadError,
+    ViewPageOutcome,
 };
 
 const HOME: &str =
@@ -64,6 +66,11 @@ fn primary(n: u8) -> Source {
 /// A wiki whose default view holds one claim, and a view `alt` that words it differently, decides it otherwise, cites
 /// another source and has a claim of its own.
 fn world() -> World {
+    world_with(config())
+}
+
+/// [`world`] under this configuration.
+fn world_with(config: ReadConfig) -> World {
     let base = files_of(
         &[claim_in_home(
             1,
@@ -76,7 +83,7 @@ fn world() -> World {
     let mut main: Vec<(String, String)> = vec![("pages/Home.md".to_owned(), HOME.to_owned())];
     main.extend(base);
     let refs: Vec<(&str, &str)> = main.iter().map(|(p, t)| (p.as_str(), t.as_str())).collect();
-    let w = World::with(&refs, config());
+    let w = World::with(&refs, config);
     let alt = files_of(
         &[
             claim_in_home(1, Standing::Contested, "The bridge opened in 1951. ^b1", 2),
@@ -355,4 +362,218 @@ fn a_page_only_one_view_has_is_found_and_says_so() {
         found,
         ViewPageOutcome::Found(f) if f.shape.status == DiffStatus::Added
     ));
+}
+
+// ---- what is held, and by what (handoff 005 K12; review finding K-i) ----
+
+#[test]
+fn a_pair_of_tips_seen_again_is_answered_without_asking_prikk_for_the_diff_again() {
+    let w = world();
+    w.counting.inner().diff_says(Ok(report(vec![entry(
+        "pages/Home.md",
+        "modified",
+        &[HUNK],
+    )])));
+    let first = w
+        .service
+        .compare_views(&w.wiki, None, Some("heads/alt"))
+        .unwrap();
+    let again = w
+        .service
+        .compare_views(&w.wiki, None, Some("heads/alt"))
+        .unwrap();
+    assert_eq!(first, again);
+    assert_eq!(first.pages.len(), 1);
+    assert_eq!(
+        w.counting.inner().diffs_asked().len(),
+        1,
+        "the second comparison of the same two blocks asked for no diff"
+    );
+    // The same two blocks in another wiki are another comparison: the wiki is part of what a comparison is held by.
+    let mut elsewhere = w.wiki.clone();
+    elsewhere.id = inklkunn_store::WikiId::new();
+    w.service
+        .compare_views(&elsewhere, None, Some("heads/alt"))
+        .unwrap();
+    assert_eq!(w.counting.inner().diffs_asked().len(), 2);
+    // The other order is another comparison (its sides are the other way round), and is held in its turn.
+    let reversed = w
+        .service
+        .compare_views(&w.wiki, Some("heads/alt"), None)
+        .unwrap();
+    assert_eq!(w.counting.inner().diffs_asked().len(), 3);
+    assert_eq!(reversed.a.view, "heads/alt");
+    w.service
+        .compare_views(&w.wiki, Some("heads/alt"), None)
+        .unwrap();
+    assert_eq!(w.counting.inner().diffs_asked().len(), 3);
+}
+
+#[test]
+fn a_view_that_moved_is_another_block_and_another_comparison() {
+    let w = world();
+    w.counting.inner().diff_says(Ok(report(vec![])));
+    let before = w
+        .service
+        .compare_views(&w.wiki, None, Some("heads/alt"))
+        .unwrap();
+    assert_eq!(w.counting.inner().diffs_asked().len(), 1);
+    // The default view takes a change: its tip is a new block (the tip is read again once the wiki is forgotten).
+    w.counting.inner().set("pages/Other.md", "Another page.\n");
+    w.service.forget_wiki(&w.wiki);
+    let after = w
+        .service
+        .compare_views(&w.wiki, None, Some("heads/alt"))
+        .unwrap();
+    assert_ne!(before.a.block_id, after.a.block_id);
+    assert_eq!(
+        w.counting.inner().diffs_asked().len(),
+        2,
+        "a block that was not seen is compared"
+    );
+    // The tips in an answer from the hold are the ones read now, not the ones the comparison was first made at.
+    let held = w
+        .service
+        .compare_views(&w.wiki, None, Some("heads/alt"))
+        .unwrap();
+    assert_eq!(held.a, after.a);
+    assert_eq!(w.counting.inner().diffs_asked().len(), 2);
+}
+
+#[test]
+fn what_is_held_is_bounded_and_the_oldest_goes_first() {
+    let w = world();
+    w.counting.inner().diff_says(Ok(report(vec![])));
+    let extra = CACHED_COMPARISONS + 1;
+    for n in 0..extra {
+        w.counting.inner().add_view_with(
+            &format!("heads/v{n:02}"),
+            &[(
+                "pages/Home.md".to_owned(),
+                format!("---\ntitle: Home\nid: p-home\n---\n\nVersion {n}.\n"),
+            )],
+        );
+    }
+    for n in 0..extra {
+        w.service
+            .compare_views(&w.wiki, None, Some(&format!("heads/v{n:02}")))
+            .unwrap();
+    }
+    assert_eq!(w.counting.inner().diffs_asked().len(), extra);
+    // The newest is held; the oldest was dropped to make room, and is compared again.
+    w.service
+        .compare_views(&w.wiki, None, Some(&format!("heads/v{:02}", extra - 1)))
+        .unwrap();
+    assert_eq!(w.counting.inner().diffs_asked().len(), extra);
+    w.service
+        .compare_views(&w.wiki, None, Some("heads/v00"))
+        .unwrap();
+    assert_eq!(w.counting.inner().diffs_asked().len(), extra + 1);
+}
+
+#[test]
+fn an_answer_that_could_not_be_made_is_not_held() {
+    let w = world();
+    w.counting.inner().diff_says(Err(StorageError::Driver {
+        verb: "diff",
+        detail: "gone".to_owned(),
+    }));
+    assert!(
+        w.service
+            .compare_views(&w.wiki, None, Some("heads/alt"))
+            .is_err()
+    );
+    w.counting.inner().diff_says(Ok(report(vec![entry(
+        "pages/Home.md",
+        "modified",
+        &[HUNK],
+    )])));
+    let got = w
+        .service
+        .compare_views(&w.wiki, None, Some("heads/alt"))
+        .unwrap();
+    assert_eq!(got.pages.len(), 1, "the failure was not kept as the answer");
+}
+
+#[test]
+fn the_claims_two_tips_differ_in_are_held_and_are_the_ones_the_comparison_lists() {
+    let w = world();
+    w.counting.inner().diff_says(Ok(report(vec![])));
+    let first = w
+        .service
+        .claim_differences(&w.wiki, None, Some("heads/alt"))
+        .unwrap();
+    let again = w
+        .service
+        .claim_differences(&w.wiki, None, Some("heads/alt"))
+        .unwrap();
+    assert!(
+        Arc::ptr_eq(&first, &again),
+        "the second ask is the first's list, not a new one"
+    );
+    // The same claims the comparison lists, in the same order, side by side.
+    let compared = w
+        .service
+        .compare_views(&w.wiki, None, Some("heads/alt"))
+        .unwrap();
+    let listed: Vec<_> = compared.claims.iter().map(|c| &c.difference).collect();
+    assert_eq!(listed, first.iter().collect::<Vec<_>>());
+    assert_eq!(first.len(), 2);
+    // The comparison used the list the claim page had built, and did not replace it with another.
+    let after = w
+        .service
+        .claim_differences(&w.wiki, None, Some("heads/alt"))
+        .unwrap();
+    assert!(Arc::ptr_eq(&first, &after));
+    // The other order is another list (presence is read from the other side), and views that are not views are errors.
+    let reversed = w
+        .service
+        .claim_differences(&w.wiki, Some("heads/alt"), None)
+        .unwrap();
+    assert!(!Arc::ptr_eq(&first, &reversed));
+    assert_eq!(first.first().map(|d| d.presence), Some(Presence::Both));
+    assert!(matches!(
+        w.service
+            .claim_differences(&w.wiki, None, Some("heads/nope")),
+        Err(ReadError::NoSuchView(_))
+    ));
+    // A view that moved is another pair: a new list.
+    w.counting.inner().set("pages/Other.md", "Another page.\n");
+    w.service.forget_wiki(&w.wiki);
+    let moved = w
+        .service
+        .claim_differences(&w.wiki, None, Some("heads/alt"))
+        .unwrap();
+    assert!(!Arc::ptr_eq(&first, &moved));
+}
+
+#[test]
+fn what_is_held_under_a_pair_of_blocks_is_derived_from_those_blocks_even_if_a_view_moves_meanwhile()
+{
+    // Tips are read again at every ask here. The default view moves right after the first tip is read, so that the
+    // tip read is the old block and the view is the new one by the time the indexes are read: the list held under the
+    // old block must be the old block's, not the moved view's.
+    let w = world_with(ReadConfig {
+        tip_ttl: Duration::ZERO,
+        ..ReadConfig::default()
+    });
+    w.counting.inner().diff_says(Ok(report(vec![])));
+    w.service.tip(&w.wiki, None).unwrap();
+    // The default view takes alt's wording: after the move the two no longer differ in wording.
+    w.counting
+        .inner()
+        .move_after_next_views("pages/Home.md", HOME_ALT);
+    let old = w
+        .service
+        .claim_differences(&w.wiki, None, Some("heads/alt"))
+        .unwrap();
+    let claim = claim_id(1).to_string();
+    let wording = |list: &[crate::knowledge::compare::ClaimDifference]| {
+        list.iter().find(|d| d.id == claim).map(|d| d.wording)
+    };
+    assert_eq!(
+        wording(&old),
+        Some(true),
+        "derived from the block the tip named, which worded the claim 1950"
+    );
 }

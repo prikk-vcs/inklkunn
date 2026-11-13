@@ -1299,6 +1299,7 @@ keys! {
     ViewsNewProblemNameStart => "views_new.problem_name_start",
     ViewsNewProblemNameChars => "views_new.problem_name_chars",
     ViewsNewProblemNameLong => "views_new.problem_name_long",
+    ViewsNewProblemNameRetired => "views_new.problem_name_retired",
     ViewsNewProblemKind => "views_new.problem_kind",
     ViewsNewProblemFrom => "views_new.problem_from",
     ViewsNewProblemTaken => "views_new.problem_taken",

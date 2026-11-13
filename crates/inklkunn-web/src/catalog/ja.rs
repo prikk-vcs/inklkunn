@@ -2318,6 +2318,10 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg("views_new.problem_name_long", "名前は 64 文字までです。"),
     msg(
+        "views_new.problem_name_retired",
+        "その名前はビューに付けられません。このビューがほかより優れている、または確定していると読めてしまうためです。ビューの内容を表す名前を選んでください。",
+    ),
+    msg(
         "views_new.problem_kind",
         "このビューの目的を選んでください。",
     ),

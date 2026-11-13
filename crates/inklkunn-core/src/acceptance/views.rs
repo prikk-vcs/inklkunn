@@ -152,7 +152,10 @@ impl ProposalAcceptor {
         kind: ViewKind,
     ) -> Result<ViewCreated, ViewFailure> {
         let p = &self.parts;
-        // 0. Authorization, first: before the lease, before anything is read.
+        // 0. The name, first of all: a pure check of what was typed (nothing is read, nothing is recorded), so that a name
+        //    that is not one never enters a resource or the audit trail (handoff 005 K12). Then authorization: before the
+        //    lease, before anything is read.
+        let name = views::new_name(name).map_err(ViewFailure::InvalidName)?;
         let resource = Resource::View {
             wiki: wiki.id.clone(),
             name: format!("heads/{name}"),
@@ -169,7 +172,6 @@ impl ProposalAcceptor {
         if !p.acts.keeps_view_acts() {
             return Err(ViewFailure::NotKept);
         }
-        let name = views::new_name(name).map_err(ViewFailure::InvalidName)?;
         let from = from.map_or_else(|| views::short_name(&wiki.default_view), |f| f);
 
         // 1. The lease, and the guard against an unfinished earlier act.
@@ -192,13 +194,15 @@ impl ProposalAcceptor {
         //    settled here from the listing: the guard above flagged the wiki, and recovery settles it from every
         //    witness, a half-published ref included: handoff 005 K4.)
         let repo = p.layout.repo_dir(&wiki.id);
-        let open = open_views(self, wiki)?;
+        let listed = listed_views(self, wiki)?;
         let source = format!("heads/{from}");
         let wanted = format!("heads/{name}");
-        if open.iter().any(|v| v.eq_ignore_ascii_case(&wanted)) {
+        // A name that any view has is taken, **a closed view's too**: prikk makes no branch of a closed one's name
+        // again, and compares names without regard to case (K12).
+        if listed.iter().any(|v| v.name.eq_ignore_ascii_case(&wanted)) {
             return Err(ViewFailure::NameTaken);
         }
-        if open.len() >= MAX_VIEWS {
+        if listed.iter().filter(|v| !v.closed).count() >= MAX_VIEWS {
             return Err(ViewFailure::TooMany { bound: MAX_VIEWS });
         }
         let from_block = shared::tip_block(&*p.storage, &repo, &source).map_err(|e| match e {
@@ -244,8 +248,8 @@ impl ProposalAcceptor {
         let seeds_left = matches!(answer, Err(AcceptError::SeedsNotRemoved { .. }));
         let completed = answer.is_ok() || seeds_left;
         let word = failed_word(&answer);
-        let created = match open_views(self, wiki) {
-            Ok(now) => now.contains(&wanted),
+        let created = match listed_views(self, wiki) {
+            Ok(now) => now.iter().any(|v| v.name == wanted),
             Err(ViewFailure::Unavailable(why)) => return Err(ViewFailure::Uncertain(why)),
             Err(other) => return Err(other),
         };
@@ -309,20 +313,18 @@ impl ProposalAcceptor {
     }
 }
 
-/// The wiki's open views by full name, from prikk, now.
-fn open_views(acceptor: &ProposalAcceptor, wiki: &WikiRecord) -> Result<Vec<String>, ViewFailure> {
+/// Every view of the wiki, from prikk, now: **closed ones included**, each with its mark (handoff 005 K12).
+fn listed_views(
+    acceptor: &ProposalAcceptor,
+    wiki: &WikiRecord,
+) -> Result<Vec<inklkunn_prikk::View>, ViewFailure> {
     let repo = acceptor.parts.layout.repo_dir(&wiki.id);
-    let views = acceptor
+    acceptor
         .parts
         .storage
-        .views(&repo)
-        .map_err(|e| ViewFailure::Unavailable(e.to_string()))?;
-    Ok(views
-        .views
-        .into_iter()
-        .filter(|v| !v.closed)
-        .map(|v| v.name)
-        .collect())
+        .all_views(&repo)
+        .map(|views| views.views)
+        .map_err(|e| ViewFailure::Unavailable(e.to_string()))
 }
 
 /// The fixed word of a refusal that created nothing.

@@ -98,8 +98,8 @@ pub use changes::{
     StalePage, Tri,
 };
 pub use compare::{
-    ComparedClaim, MAX_COMPARED_CLAIMS, MAX_COMPARED_PAGES, PageDifference, ViewComparison,
-    ViewPageDiff, ViewPageOutcome, ViewPageShape,
+    CACHED_COMPARISONS, ComparedClaim, MAX_COMPARED_CLAIMS, MAX_COMPARED_PAGES, PageDifference,
+    ViewComparison, ViewPageDiff, ViewPageOutcome, ViewPageShape,
 };
 pub use counting::{Calls, CountingStorage};
 pub use graph::{
@@ -386,6 +386,8 @@ pub struct ReadService {
     knowledge: Mutex<Vec<(WikiId, Arc<KnowledgeIndex>)>>,
     /// The pages each block touched (`show` is immutable: a block's change never changes), by wiki and block.
     block_pages: Mutex<HashMap<(WikiId, String), Vec<String>>>,
+    /// What two views' tips differ in, held by the two blocks (handoff 005 K12).
+    comparisons: compare::Comparisons,
     scratch_names: AtomicU64,
     store_failures: AtomicU64,
     /// The proposal records, asked for the flags of the accepted revisions that recent changes filter on
@@ -422,6 +424,7 @@ impl ReadService {
             graphs: Mutex::new(Vec::new()),
             knowledge: Mutex::new(Vec::new()),
             block_pages: Mutex::new(HashMap::new()),
+            comparisons: compare::Comparisons::default(),
             scratch_names: AtomicU64::new(0),
             store_failures: AtomicU64::new(0),
             flags: None,
@@ -557,11 +560,21 @@ impl ReadService {
         view: Option<&str>,
     ) -> Result<Arc<KnowledgeIndex>, ReadError> {
         let tip = self.tip(wiki, view)?;
-        let titles = self.index_at(wiki, &tip)?;
+        self.knowledge_at(wiki, &tip)
+    }
+
+    /// [`ReadService::knowledge_index`] of a tip that was already read: the index of exactly that state, whatever the
+    /// view has moved to since (a comparison keys what it derives by the tips it read, and so reads their indexes).
+    pub(super) fn knowledge_at(
+        &self,
+        wiki: &WikiRecord,
+        tip: &Tip,
+    ) -> Result<Arc<KnowledgeIndex>, ReadError> {
+        let titles = self.index_at(wiki, tip)?;
         if let Some(k) = self.remembered_knowledge(&wiki.id, &tip.state_id) {
             return Ok(k);
         }
-        if let Some(k) = self.stored_knowledge(wiki, &tip) {
+        if let Some(k) = self.stored_knowledge(wiki, tip) {
             return Ok(k);
         }
         let lock = self.build_lock(&wiki.id);
@@ -569,10 +582,10 @@ impl ReadService {
         if let Some(k) = self.remembered_knowledge(&wiki.id, &tip.state_id) {
             return Ok(k);
         }
-        if let Some(k) = self.stored_knowledge(wiki, &tip) {
+        if let Some(k) = self.stored_knowledge(wiki, tip) {
             return Ok(k);
         }
-        let rows = self.with_tree(wiki, &tip, |root| {
+        let rows = self.with_tree(wiki, tip, |root| {
             knowledge_index::build(
                 root,
                 titles.entries(),
@@ -586,7 +599,7 @@ impl ReadService {
                 bound => ReadError::CouldNotBeReadNow(Cause::IndexBounds(bound.to_string())),
             })
         })?;
-        Ok(self.keep_knowledge(wiki, &tip, rows))
+        Ok(self.keep_knowledge(wiki, tip, rows))
     }
 
     /// Store a built knowledge index and hold it in memory.

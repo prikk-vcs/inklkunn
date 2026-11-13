@@ -11,8 +11,6 @@
 //! section. No view is named better than another; the default view is first because the list of views puts it
 //! first, and the rest follow by name.
 
-use inklkunn_core::knowledge::compare::compare;
-use inklkunn_core::knowledge::index::KnowledgeIndex;
 use inklkunn_core::read::ComparedClaim;
 use inklkunn_core::views::short_name;
 use inklkunn_store::WikiRecord;
@@ -38,17 +36,20 @@ pub(crate) struct Others {
     unreadable: bool,
 }
 
-/// Look at the other open views for the claim `id`, as read in the view `this` (`None`: the default view), whose
-/// index is `index`. `None` when the wiki has no other open view or its views cannot be listed now (the page then
-/// says nothing, as it did before views could be compared).
+/// Look at the other open views for the claim `id`, as read in the view `this` (`None`: the default view). `None` when
+/// the wiki has no other open view or its views cannot be listed now (the page then says nothing, as it did before
+/// views could be compared).
+///
+/// **The comparison is the one *Compare views* makes**, held by the two tips' blocks (handoff 005 K12): a claim page
+/// that is read again, or by many, does not build the claims two views differ in again for a pair of tips it has seen.
 pub(crate) fn gather(
     services: &Services,
     wiki: &WikiRecord,
     this: Option<&str>,
-    index: &KnowledgeIndex,
     id: &str,
 ) -> Option<Others> {
     let open = services.read.open_views(wiki).ok()?;
+    let this_full = this.and_then(crate::url::view_ref);
     let this = this
         .map_or_else(|| short_name(&wiki.default_view), |v| v)
         .to_owned();
@@ -67,18 +68,19 @@ pub(crate) fn gather(
         unreadable: false,
     };
     for other in others.into_iter().take(CHECKED) {
-        let Ok(there) = services
-            .read
-            .knowledge_index(wiki, Some(&format!("heads/{other}")))
-        else {
+        let Ok(differences) = services.read.claim_differences(
+            wiki,
+            this_full.as_deref(),
+            Some(&format!("heads/{other}")),
+        ) else {
             found.unreadable = true;
             continue;
         };
-        if let Some(difference) = compare(index, &there).into_iter().find(|d| d.id == id) {
+        if let Some(difference) = differences.iter().find(|d| d.id == id) {
             found.differing.push((
                 other.to_owned(),
                 ComparedClaim {
-                    difference,
+                    difference: difference.clone(),
                     said_in: None,
                 },
             ));

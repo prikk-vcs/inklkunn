@@ -2239,6 +2239,10 @@ pub const CATALOG: &[Entry] = &[
         "views_new.problem_name_long",
         "A name has at most 64 characters.",
     ),
+    msg(
+        "views_new.problem_name_retired",
+        "That name cannot be given to a view: it would say that this view is better or more settled than the others. Choose a name for what the view is about.",
+    ),
     msg("views_new.problem_kind", "Choose what the view is for."),
     msg(
         "views_new.problem_from",
