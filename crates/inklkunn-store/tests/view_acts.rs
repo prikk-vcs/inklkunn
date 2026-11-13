@@ -419,7 +419,10 @@ fn a_version_15_database_is_migrated_to_16_keeping_every_wiki_and_only_once() {
     {
         let store = SqliteStore::open(&db).expect("a version 15 database opens");
         assert_eq!(version(), SCHEMA_VERSION.to_string());
-        assert!(SCHEMA_VERSION >= 16, "the view-act tables came with version 16");
+        assert!(
+            SCHEMA_VERSION >= 16,
+            "the view-act tables came with version 16"
+        );
         // The wiki is there, with nothing recorded of any view; the new tables work on it.
         assert_eq!(store.get(&w).unwrap().slug.as_str(), "old");
         assert!(store.keeps_view_acts());
