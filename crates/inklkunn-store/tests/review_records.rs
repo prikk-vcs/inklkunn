@@ -582,7 +582,7 @@ fn the_database_refuses_what_the_store_would_not_write() {
 
 #[test]
 fn a_version_15_database_is_migrated_and_the_review_record_works_on_what_it_held() {
-    use inklkunn_store::sqlite::{MIGRATIONS, SCHEMA_VERSION};
+    use inklkunn_store::sqlite::MIGRATIONS;
     let tmp = temp("v15");
     let db = tmp.0.join("store.sqlite");
     let wiki_id = "019a0000-0000-7000-8000-0000000000f2";
