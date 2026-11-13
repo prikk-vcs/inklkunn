@@ -15,14 +15,41 @@ use super::{AcceptFailure, ProposalAcceptor};
 use crate::authorize::Principal;
 use crate::knowledge::onpage::touches;
 use crate::knowledge::touched::{How, PageChange};
-use crate::knowledge::{ClaimId, Family, KNOWLEDGE_DIR, claim_path, family_of};
+use crate::knowledge::{
+    Claim, ClaimId, Digest, Family, File, KNOWLEDGE_DIR, claim_path, family_of, read_file,
+};
+
+/// Does this claim file say it was judged again on the wording its paragraph has now? Only when it carries at least
+/// one judgement (its status's wording, a source link's) and **every** one of them names the wording of one of the
+/// places the claim is said in at the tip (`now`: the digests of its paragraphs there, a curation proposal writing no
+/// page). A revision that changes a note, or judges only some of what the claim holds, judges nothing again: the
+/// record of *re-confirmed* is a statement the page repeats (*judged again on the wording it has now*), so it is made
+/// for what is true of every judgement and for nothing less (handoff 005 corrections, second round, K17).
+pub(super) fn judged_on_now(claim: &Claim, now: &[Digest]) -> bool {
+    let Claim {
+        id: _,
+        kind: _,
+        expressions: _,
+        relations: _,
+        lifecycle: _,
+        community_status,
+        sources,
+    } = claim;
+    let judgements: Vec<&Digest> = community_status
+        .judged_on
+        .iter()
+        .chain(sources.iter().map(|l| &l.judged_on))
+        .collect();
+    !judgements.is_empty() && judgements.into_iter().all(|on| now.contains(on))
+}
 
 /// The change a curation proposal re-confirms and the claims of it that this acceptance judges again.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Reconfirmed {
     /// The acceptance that put the change in the history.
     pub(super) change: AcceptanceId,
-    /// The claims (ids) the change kept and that the curation's files judge again, and that no earlier curation did.
+    /// The claims (ids) the change kept and that the curation's files judge again **on the wording their paragraph has
+    /// now** ([`judged_on_now`]), and that no earlier curation did.
     pub(super) claims: Vec<String>,
 }
 
@@ -120,11 +147,14 @@ impl ProposalAcceptor {
     }
 
     /// When the proposal is the curation proposal of a reconfirm step: the change it re-confirms and which of that
-    /// change's kept claims its files judge again and no earlier curation has.
+    /// change's kept claims its files judge again, **on the wording the paragraph has now** ([`judged_on_now`]), and no
+    /// earlier curation has. The wording is the one of the tip's index: a curation proposal writes no page, so the
+    /// pages it is accepted on are the pages of the change it re-confirms.
     pub(super) fn reconfirmed(
         &self,
         principal: &Principal,
         wiki: &WikiRecord,
+        view: &str,
         proposal: &ProposalId,
         curation: bool,
         files: &[PreparedFile],
@@ -139,23 +169,55 @@ impl ProposalAcceptor {
         else {
             return Ok(None);
         };
-        let written: Vec<String> = files
+        let written: Vec<(String, Vec<u8>)> = files
             .iter()
-            .filter_map(|f| f.path.to_str())
-            .filter(|p| family_of(p) == Some(Family::Claim))
-            .map(str::to_owned)
+            .filter_map(|f| Some((f.path.to_str()?, f.content.as_ref()?)))
+            .filter(|(p, _)| family_of(p) == Some(Family::Claim))
+            .map(|(p, bytes)| (p.to_owned(), bytes.clone()))
             .collect();
-        let claims = self
+        let kept: Vec<String> = self
             .parts
             .proposals
             .claim_reviews_of(principal, wiki, &change)?
             .into_iter()
             .filter(|r| r.how == ClaimHow::Kept && r.reconfirmed_by.is_none())
-            .filter(|r| {
-                ClaimId::parse(&r.claim).is_some_and(|id| written.contains(&claim_path(&id)))
-            })
             .map(|r| r.claim)
+            .collect();
+        let index = if kept.is_empty() {
+            None
+        } else {
+            Some(
+                self.parts
+                    .reads
+                    .knowledge_index(wiki, Some(view))
+                    .map_err(|e| AcceptFailure::Unavailable(e.to_string()))?,
+            )
+        };
+        let claims = kept
+            .into_iter()
+            .filter(|claim| {
+                let Some(id) = ClaimId::parse(claim) else {
+                    return false;
+                };
+                let path = claim_path(&id);
+                let Some((_, bytes)) = written.iter().find(|(p, _)| *p == path) else {
+                    return false;
+                };
+                let Ok(File::Claim(file)) = read_file(&path, bytes) else {
+                    return false;
+                };
+                let now: Vec<Digest> = index
+                    .iter()
+                    .flat_map(|i| i.anchors_of(claim))
+                    .filter(|a| a.state == crate::knowledge::index::PRESENT)
+                    .filter_map(|a| Digest::parse(a.digest.as_deref()?))
+                    .collect();
+                judged_on_now(&file, &now)
+            })
             .collect();
         Ok(Some(Reconfirmed { change, claims }))
     }
 }
+
+#[cfg(test)]
+mod tests;

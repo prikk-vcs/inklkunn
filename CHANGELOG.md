@@ -334,6 +334,15 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   test (no version is reserved now) are corrected. Tests: the direction set on the files and on the form, the
   declaration of `all_views`, the pinned tip of the other views, and (against a real prikk) both failures with a seed
   directory left.
+- **K17 (handoff 005 corrections, second): *re-confirmed* is recorded only for what was judged again.** The review
+  record written at the acceptance of a reconfirm's curation proposal (`acceptance/claims.rs`) now marks a claim
+  *re-confirmed* only when the claim file it writes carries at least one judgement (its status's wording, a source link's)
+  and **every** one of them names the wording one of the claim's paragraphs has in the accepted change
+  (`judged_on_now`, against the tip's index: a curation proposal writes no page). A revision that changes only a note, or
+  judges the status again and leaves a link on the older wording, records nothing for the claim, so the page no longer
+  says *judged again on the wording it has now* of a claim it did not judge again. Tests: the predicate (every judgement,
+  one stale, none carried, no paragraph) and, against a real prikk, a note-only revision, a half-judged one and a whole
+  one through the acceptance (one prikk-dependent test).
 
 ## [0.2.0] — 2026-11-04
 

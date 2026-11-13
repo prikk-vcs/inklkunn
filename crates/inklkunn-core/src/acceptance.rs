@@ -978,7 +978,8 @@ impl ProposalAcceptor {
         // RFC 005 part 1 D-1 d (K3 b): what the change does to the claims it touches, and which claims of an earlier
         // change a reconfirm curation judges again. Read now, written with the acceptance record.
         let outcomes = self.claim_outcomes(wiki, &proposal.view, &tip, &files)?;
-        let reconfirmed = self.reconfirmed(principal, wiki, id, curation, &files)?;
+        let reconfirmed =
+            self.reconfirmed(principal, wiki, &proposal.view, id, curation, &files)?;
 
         // The accepted-bytes quota, on what is about to be written.
         let bytes = prepare::change_bytes(&files, &renames);

@@ -1573,6 +1573,95 @@ fn a_reconfirm_proposal_is_recorded_as_re_confirming_its_change_when_its_accepta
     assert!(w.reconciled().is_clean());
 }
 
+#[test]
+fn a_reconfirm_that_does_not_judge_every_wording_again_re_confirms_nothing() {
+    use inklkunn_core::knowledge::{
+        AnchorState, CommunityStatus, File, Standing, anchor_state, read_file,
+    };
+    use inklkunn_store::ProposalStore;
+    let Some(w) = World::new("reconfirm-wording", LeaseConfig::default()) else {
+        return;
+    };
+    let one = claim_on(&w, "One.");
+    let reworded = w
+        .page("pages/Home.md")
+        .replace("One.", "One, in other words.");
+    let p = w.propose("Reword", &[("pages/Home.md", Some(&reworded))]);
+    let change = signed(w.accept(&p).unwrap());
+    let reconfirmed = |w: &World| {
+        w.store
+            .claim_reviews_of(&change.acceptance)
+            .unwrap()
+            .into_iter()
+            .map(|r| r.reconfirmed_by)
+            .collect::<Vec<_>>()
+    };
+    let claim_now =
+        |w: &World| match read_file(&one.claim_file, w.page(&one.claim_file).as_bytes()).unwrap() {
+            File::Claim(claim) => *claim,
+            File::Source(_) => panic!("a claim"),
+        };
+    let wording_now = |w: &World| match anchor_state(&w.page("pages/Home.md"), &one.block) {
+        AnchorState::Present(now) => now,
+        other => panic!("{other:?}"),
+    };
+    let reconfirm = |w: &World, claim: &inklkunn_core::knowledge::Claim| {
+        let edit = ProposalEdit {
+            summary: "Curation".to_owned(),
+            files: vec![FileChange {
+                path: one.claim_file.clone(),
+                text: Some(claim.to_yaml()),
+            }],
+            ..ProposalEdit::default()
+        };
+        let draft = w
+            .proposals
+            .create_reconfirm(&w.contributor, &w.wiki, None, edit, &change.acceptance)
+            .unwrap_or_else(|e| panic!("create: {e}"));
+        let sent = w
+            .proposals
+            .submit(&w.contributor, &w.wiki, &draft.id)
+            .unwrap();
+        signed(w.accept(&sent).unwrap());
+    };
+    assert_eq!(reconfirmed(&w), vec![None]);
+
+    // A revision that changes only a note: the link is still judged on the wording before the rewording.
+    let mut noted = claim_now(&w);
+    noted.sources.first_mut().unwrap().note = Some("page 4".to_owned());
+    reconfirm(&w, &noted);
+    assert_eq!(
+        reconfirmed(&w),
+        vec![None],
+        "a note judges no wording again"
+    );
+
+    // A status judged on the wording it has now, with a link still judged on the old one: not every judgement.
+    let mut half = claim_now(&w);
+    half.community_status = CommunityStatus {
+        status: Standing::Contested,
+        proposal: None,
+        judged_on: Some(wording_now(&w)),
+    };
+    reconfirm(&w, &half);
+    assert_eq!(
+        reconfirmed(&w),
+        vec![None],
+        "one judgement on the current wording, one on the old: nothing is judged again"
+    );
+
+    // Every judgement the claim holds on the wording it has now: re-confirmed, by the acceptance that says so.
+    let mut every = claim_now(&w);
+    let now = wording_now(&w);
+    every.community_status.judged_on = Some(now.clone());
+    every.sources.first_mut().unwrap().judged_on = now;
+    reconfirm(&w, &every);
+    let done = reconfirmed(&w);
+    assert_eq!(done.len(), 1);
+    assert!(done.first().unwrap().is_some(), "{done:?}");
+    assert!(w.reconciled().is_clean());
+}
+
 /// The proposal records, all of them the real store's, except that the review record cannot be kept.
 struct CannotKeepReviews(Arc<SqliteStore>);
 
