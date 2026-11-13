@@ -75,8 +75,8 @@ jobs:
       - name: Rust toolchain (the declared minimum)
         run: |
           set -euo pipefail
-          rustup toolchain install 1.88.0 --profile minimal --no-self-update
-          rustup default 1.88.0
+          rustup toolchain install 1.89.0 --profile minimal --no-self-update
+          rustup default 1.89.0
           rustc --version
       - name: Check the workspace at the declared minimum
         run: cargo check --workspace --all-targets --locked

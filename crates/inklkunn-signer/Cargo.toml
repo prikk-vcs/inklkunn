@@ -27,8 +27,9 @@ zeroize = "1"
 # SHA-256 of a prepared change (the acceptance guard binds the files, not only the message); already in the lock
 # for inklkunn-auth.
 sha2 = "0.10"
-# flock(2) for the key store and the per-wiki lock: std offers File::lock only from Rust 1.89, above the
-# declared minimum (1.88). Already in the lock (via tempfile, dev-only); `fs` only, no libc backend needed.
+# flock(2) for the key store and the per-wiki lock: chosen when std's File::lock (Rust 1.89) was above the
+# declared minimum (1.88; it is the minimum since M1, replacing this is a separate decision). Already in the lock
+# (via tempfile, dev-only); `fs` only, no libc backend needed.
 rustix = { version = "1", default-features = false, features = ["fs", "std"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

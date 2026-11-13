@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/prikk-vcs/inklkunn/actions/workflows/ci.yml/badge.svg)](https://github.com/prikk-vcs/inklkunn/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Rust 1.88+](https://img.shields.io/badge/rust-1.88%2B-orange.svg)](Cargo.toml)
+[![Rust 1.89+](https://img.shields.io/badge/rust-1.89%2B-orange.svg)](Cargo.toml)
 
 **A wiki whose every page has a signed, verifiable history — built for inclusion and shared knowledge.**
 
@@ -38,7 +38,7 @@ To build and test (running a server also needs a key store and the operator's se
 [`SECURITY.md`](SECURITY.md) and [`docs/KEYS.md`](docs/KEYS.md)):
 
 ```sh
-# prerequisites: Rust 1.88+, prikk ≥ 0.54.0 on PATH, bubblewrap (bwrap), prlimit (util-linux)
+# prerequisites: Rust 1.89+, prikk ≥ 0.54.0 on PATH, bubblewrap (bwrap), prlimit (util-linux)
 cargo build --workspace --locked
 cargo test --workspace --locked          # prikk-dependent tests self-skip with a visible line without prikk
 ```

@@ -256,6 +256,13 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   stand-in closes it) and a fake listing, every retired word in three forms, the order of the checks, the hold and its
   bound, its key, its pinning, and the claim page through the same list.
 
+- **M1 (handoff 010 maintenance): RUSTSEC-2026-0459 fixed by upgrading, no ignore.** `rusqlite` 0.40 → 0.42
+  (`libsqlite3-sys` 0.38 → 0.40) carries SQLite **3.54.1** in place of 3.53.2 (a crafted database and `-wal` pair with
+  different page sizes could return uninitialized page-cache memory); the lock keeps its 210 entries and no source
+  line changed. **The minimum compiler rises from 1.88.0 to 1.89.0** (`rusqlite` 0.42 declares it; the `msrv` job, the
+  README and `Cargo.toml` follow; the pinned compiler, 1.99.1, does not change). 0.2.0's exposure was a pair written
+  into the operator's data directory by its own user; 0.3.0 ships the fixed SQLite.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the
