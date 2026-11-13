@@ -2873,4 +2873,9 @@ pub const CATALOG: &[Entry] = &[
         "The claim and source files in this proposal are the files the wiki already has: they change nothing.",
     ),
     // knowledge: re-judgements shown (handoff 005 corrections K5): end
+    msg(
+        "attach.direction",
+        "A text in the source holds a character that changes the direction of text or is not shown, which cannot be kept.",
+    ),
+    // knowledge: direction characters refused (handoff 005 corrections K14): end
 ];

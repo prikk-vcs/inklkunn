@@ -1188,3 +1188,32 @@ async fn deleting_a_claim_paragraph_among_equal_words_is_asked_about_and_never_m
     assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
     assert!(a.body().contains("name=\"drop_k1\""), "{}", a.body());
 }
+
+#[tokio::test]
+async fn a_source_text_with_a_direction_character_is_refused_on_the_form_with_a_message_of_its_own()
+{
+    let s = scene();
+    for c in ['\u{202e}', '\u{2066}', '\u{200f}'] {
+        let fields = with(
+            part(
+                "pages/Bridge.md",
+                "Bridge",
+                1,
+                "It is long, really.",
+                "submit",
+            ),
+            source_fields("supports", &format!("A title {c}reversed")),
+        );
+        let a = send(&s, NEW, &s.writer, &fields).await;
+        assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY, "{c:?}");
+        let body = a.body();
+        assert!(
+            body.contains("changes the direction of text or is not shown"),
+            "{c:?}: {body}"
+        );
+        assert!(
+            body.contains("It is long, really."),
+            "the person's text stays: {body}"
+        );
+    }
+}

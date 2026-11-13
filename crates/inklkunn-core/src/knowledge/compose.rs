@@ -41,6 +41,8 @@ pub enum Mistake {
     TooLong(&'static str),
     /// A text holds a control character (the name of the field).
     ControlCharacter(&'static str),
+    /// A text holds a bidirectional control or an invisible format character (the name of the field).
+    Direction(&'static str),
     /// A web address that is not `http` or `https`.
     NotAWebAddress,
     /// A date that is not written `YYYY-MM-DD`.
@@ -79,6 +81,9 @@ pub fn clean_text(text: &str, field: &'static str) -> Result<Option<String>, Mis
     }
     if text.chars().any(char::is_control) {
         return Err(Mistake::ControlCharacter(field));
+    }
+    if text.chars().any(super::yaml::is_bidi_or_format) {
+        return Err(Mistake::Direction(field));
     }
     Ok(Some(text.to_owned()))
 }

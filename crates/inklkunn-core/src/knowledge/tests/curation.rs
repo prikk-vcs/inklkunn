@@ -497,3 +497,68 @@ fn a_curation_proposal_is_sent_and_a_draft_is_saved_whatever_it_holds() {
             .is_ok()
     );
 }
+
+// ------------------------------------------------------------------------------------ K14: un-deciding is a decision
+
+#[test]
+fn setting_a_status_back_to_not_decided_records_the_proposal_that_did_it() {
+    let s = scene("k14-undecide");
+    let mut decided = s.claim.clone();
+    decided.community_status = CommunityStatus {
+        status: Standing::Contested,
+        proposal: Some("01930000-0000-7000-8000-00000000aaaa".to_owned()),
+        judged_on: Some(digest_of_block("Said. ^b1")),
+    };
+    s.rig.fake.set(&claim_path(&decided.id), &decided.to_yaml());
+    // A curation that un-decides it; the file names no proposal (or a forged one): the acceptance names its own.
+    let mut undecided = decided.clone();
+    undecided.community_status = CommunityStatus {
+        status: Standing::Unknown,
+        proposal: Some("01930000-0000-7000-8000-00000000bbbb".to_owned()),
+        judged_on: None,
+    };
+    let p = s.rig.propose(
+        &s.author,
+        "Not decided after all",
+        &[(&claim_path(&undecided.id), Some(&undecided.to_yaml()))],
+    );
+    let outcome = s
+        .rig
+        .acceptor()
+        .accept(&s.maintainer, &s.rig.wiki, &p.id, 1);
+    assert!(matches!(outcome, Ok(Accepted::Signed(_))), "{outcome:?}");
+    let files = handed(&s);
+    let (_, text) = files.first().expect("the claim file");
+    let Ok(File::Claim(written)) = read_file(&claim_path(&s.claim.id), text.as_bytes()) else {
+        panic!("a claim");
+    };
+    assert_eq!(written.community_status.status, Standing::Unknown);
+    assert_eq!(
+        written.community_status.proposal.as_deref(),
+        Some(p.id.as_str())
+    );
+}
+
+#[test]
+fn a_claim_nobody_decided_stays_without_a_deciding_proposal_when_a_curation_leaves_it_so() {
+    let s = scene("k14-still-undecided");
+    // The tip: not decided. A curation that changes only the kind and says not decided.
+    let mut same = s.claim.clone();
+    same.kind = StatementKind::Opinion;
+    let p = s.rig.propose(
+        &s.author,
+        "Another kind",
+        &[(&claim_path(&same.id), Some(&same.to_yaml()))],
+    );
+    let outcome = s
+        .rig
+        .acceptor()
+        .accept(&s.maintainer, &s.rig.wiki, &p.id, 1);
+    assert!(matches!(outcome, Ok(Accepted::Signed(_))), "{outcome:?}");
+    let files = handed(&s);
+    let (_, text) = files.first().expect("the claim file");
+    let Ok(File::Claim(written)) = read_file(&claim_path(&s.claim.id), text.as_bytes()) else {
+        panic!("a claim");
+    };
+    assert_eq!(written.community_status.proposal, None);
+}

@@ -95,8 +95,11 @@ pub fn stamp(
                 };
                 let status = &mut claim.community_status;
                 let decided_now = status.status != was_status || status.judged_on != was_judged;
+                // A standing that changes is decided by this proposal **whichever way it changes**: setting it back to
+                // *not decided* is a decision too, and the record says which proposal made it (handoff 005
+                // corrections K14).
                 status.proposal = if decided_now {
-                    (status.status != super::Standing::Unknown).then(|| proposal.to_owned())
+                    Some(proposal.to_owned())
                 } else {
                     was_proposal
                 };

@@ -1302,6 +1302,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `know.rejudged_status` | the subject of those lines: the claim's status | "its community status" | "コミュニティでの扱い" |
 | `know.rejudged_source` | the subject of those lines: a source the claim cites | "a source it cites" | "引用している出典" |
 | `know.nothing_changes` | a note on a proposal page whose claim and source files are the files the wiki already has | "The claim and source files in this proposal are the files the wiki already has: they change nothing." | "この提案の主張・出典ファイルは、ウィキにすでにあるファイルと同じです。変更はありません。" |
+| `attach.direction` | a problem: a text of the source holds a character that changes the direction of text or is not shown | "A text in the source holds a character that changes the direction of text or is not shown, which cannot be kept." | "出典の文章に、文字の向きを変える文字や、表示されない文字が含まれていて、保存できません。" |
 
 ## 3. Words the interface does not say
 

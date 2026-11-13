@@ -2937,4 +2937,9 @@ pub const CATALOG: &[Entry] = &[
         "この提案の主張・出典ファイルは、ウィキにすでにあるファイルと同じです。変更はありません。",
     ),
     // knowledge: re-judgements shown (handoff 005 corrections K5): end
+    msg(
+        "attach.direction",
+        "出典の文章に、文字の向きを変える文字や、表示されない文字が含まれていて、保存できません。",
+    ),
+    // knowledge: direction characters refused (handoff 005 corrections K14): end
 ];

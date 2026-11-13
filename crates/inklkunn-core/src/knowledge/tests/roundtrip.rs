@@ -1,6 +1,7 @@
 //! Every field of both files round-trips: write the canonical text, read it back, get the same value; and the
 //! text is stable.
 
+use super::check::sound_claim;
 use super::*;
 
 /// Words that exercise the writer's quoting: quotes, `#`, `:`, a backslash, a line break, a tab, an apostrophe,
@@ -336,4 +337,83 @@ fn files_are_read_from_their_path_and_bytes() {
     );
     // A claim's text under a source's name is refused: the schemas differ.
     assert!(read_file(&source_path(&source_id(11)), c.to_yaml().as_bytes()).is_err());
+}
+
+// ------------------------------------------------------------------------------------ K14: direction characters
+
+/// Every bidirectional control and format character the files refuse: U+202A - U+202E, U+2066 - U+2069, U+200E, U+200F.
+const DIRECTION: [char; 11] = [
+    '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}', '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}',
+    '\u{2069}', '\u{200e}', '\u{200f}',
+];
+
+/// Their neighbours in the code space, which are text.
+const NOT_DIRECTION: [char; 6] = [
+    '\u{200b}', '\u{200c}', '\u{200d}', '\u{2029}', '\u{2065}', '\u{206a}',
+];
+
+#[test]
+fn a_text_of_a_claim_or_source_file_with_a_direction_character_does_not_read() {
+    for c in DIRECTION {
+        let text = format!("fine {c} not fine");
+        // A claim's note (the writer keeps what it is given; the reader is the gate).
+        let mut claim = sound_claim(1);
+        claim.sources.first_mut().expect("a link").note = Some(text.clone());
+        let got = Claim::parse(claim.id.clone(), &claim.to_yaml());
+        assert_eq!(
+            got.map(|_| ()).map_err(|f| (f.rule, f.field)),
+            Err((Rule::Value, "note")),
+            "{c:?} in a note"
+        );
+        // Each text of a source.
+        for field in ["title", "author", "date", "value"] {
+            let mut source = Source::new(source_id(1));
+            match field {
+                "title" => source.identity.title = Some(text.clone()),
+                "author" => source.identity.author = Some(text.clone()),
+                "date" => source.identity.date = Some(text.clone()),
+                _ => {
+                    source.reference = Some(Reference {
+                        form: ReferenceForm::Citation,
+                        value: text.clone(),
+                    });
+                }
+            }
+            let got = Source::parse(source.id.clone(), &source.to_yaml());
+            assert_eq!(
+                got.map(|_| ()).map_err(|f| (f.rule, f.field)),
+                Err((Rule::Value, field)),
+                "{c:?} in {field}"
+            );
+        }
+    }
+    for c in NOT_DIRECTION {
+        let mut source = Source::new(source_id(1));
+        source.identity.title = Some(format!("a{c}b"));
+        assert!(
+            Source::parse(source.id.clone(), &source.to_yaml()).is_ok(),
+            "{c:?}"
+        );
+    }
+}
+
+#[test]
+fn a_form_refuses_a_direction_character_in_every_text_it_takes() {
+    use crate::knowledge::compose::{Mistake, clean_reference, clean_text};
+    for c in DIRECTION {
+        let text = format!("a{c}b");
+        assert_eq!(
+            clean_text(&text, "title"),
+            Err(Mistake::Direction("title")),
+            "{c:?}"
+        );
+        assert_eq!(
+            clean_reference(ReferenceForm::Citation, &text),
+            Err(Mistake::Direction("reference")),
+            "{c:?}"
+        );
+    }
+    for c in NOT_DIRECTION {
+        assert!(clean_text(&format!("a{c}b"), "title").is_ok(), "{c:?}");
+    }
 }

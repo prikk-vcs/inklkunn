@@ -1571,6 +1571,8 @@ keys! {
     KnowRejudgedSource => "know.rejudged_source",
     KnowNothingChanges => "know.nothing_changes",
     // knowledge: re-judgements shown (handoff 005 corrections K5): end
+    AttachDirection => "attach.direction",
+    // knowledge: direction characters refused (handoff 005 corrections K14): end
 }
 
 /// A typed value for a placeholder. Text is HTML-escaped; a link is an escaped label plus an `href` the

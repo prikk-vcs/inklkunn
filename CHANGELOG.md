@@ -202,6 +202,14 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   removed, now ask about both.) The one-paragraph form puts the marker back after the whitespace it had (a line break
   when it stood on a line of its own, two spaces when it had two), so a text nobody touched is not a whitespace-only
   edit: `marker::reattach_part` now takes the block the form was opened on (**public API: a new first argument**).
+- **K14 (handoff 005 corrections): direction characters, and un-deciding.** No text of a claim or source file may hold a
+  bidirectional control or format character (U+202A – U+202E, U+2066 – U+2069, U+200E, U+200F): the reader refuses it
+  (rule *bad value*, the key of the text), so the acceptance and the derived index refuse it too (a file already in a
+  wiki that has one now reads as invalid and is listed on the health page); the source and curation forms refuse it
+  before anything is written, with a message of its own (`attach.direction`, English and Japanese, with its glossary
+  row; `compose::Mistake::Direction`). A curation that sets a status back to *not decided* is a decision like any other:
+  the acceptance writes its own proposal id into the claim's `community_status.proposal`, as it does for every other
+  change of a standing, and a claim that nobody decided and a curation leaves so keeps none.
 
 ## [0.2.0] — 2026-11-04
 

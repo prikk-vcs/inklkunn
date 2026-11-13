@@ -143,6 +143,7 @@ pub(super) fn mistake_text(t: T, m: Mistake) -> String {
             .with("limit", inklkunn_core::knowledge::MAX_TEXT_CHARS)
             .text(),
         Mistake::ControlCharacter(_) => t.get(Key::AttachControl),
+        Mistake::Direction(_) => t.get(Key::AttachDirection),
         Mistake::NotAWebAddress => t.get(Key::AttachNotWeb),
         Mistake::NotADay => t.get(Key::CurateNotADay),
         Mistake::UnknownSource => t.get(Key::CurateUnknownSource),
