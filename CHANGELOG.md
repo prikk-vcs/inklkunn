@@ -289,6 +289,12 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   nothing are not held up). Tests: against a real prikk, the rotation refusal (both old-key choices, then the rotation
   after recovery) and a creation recorded at an older block than its interrupted ref points at; plan unit tests.
 
+- **K20 (handoff 005 corrections, second): *Why is this here?* and a repeated `^id` at the creation.** A paragraph whose
+  `^id` more than one block of the page carries is followed by its text, not through its anchor, also when the page's
+  only change is its creation (there was no step comparing two versions' ids, so the page alone was believed). A
+  paragraph alone with its id is still followed exactly to the creation. Test: a page created with a repeated id and a
+  unique one.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

@@ -133,15 +133,18 @@ impl Tracer {
                 excerpt: excerpt(b),
             })
             .collect();
-        // Only a paragraph that has an `^id` can be followed by it.
-        let tracks = paragraphs
+        // Only a paragraph whose `^id` names it alone can be followed by it: an id that more than one block of the page
+        // carries names no paragraph, at the page's creation as in any later version (handoff 005 K20).
+        let repeated = repeated_ids(&blocks);
+        let tracks = blocks
             .iter()
+            .take(cap)
             .enumerate()
-            .map(|(at, p)| Track {
+            .map(|(at, b)| Track {
                 at: Some(at),
                 last_changed: None,
                 first_written: None,
-                anchored: p.id.is_some(),
+                anchored: b.id.is_some_and(|id| repeated.get(id) == Some(&false)),
             })
             .collect();
         Tracer {

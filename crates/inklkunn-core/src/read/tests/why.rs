@@ -221,6 +221,19 @@ fn an_anchor_that_two_blocks_carry_names_neither() {
 }
 
 #[test]
+fn an_anchor_that_two_blocks_carry_at_the_creation_of_the_page_names_neither_there_either() {
+    // K20: a page whose only change is its creation has no step that compares the ids of two versions, so the
+    // anchor was believed from the page alone. An id the page repeats names no paragraph, at the creation as anywhere.
+    let w = story(&["One. ^b1\n\nTwo. ^b1\n\nThree. ^b3\n"]);
+    let page = why(&w, "Home");
+    assert_eq!(first(&page, "One."), Some(1));
+    assert_eq!(basis(&page, "One."), Basis::Text, "{page:?}");
+    assert_eq!(basis(&page, "Two."), Basis::Text);
+    // The one that is alone with its id is followed exactly to the creation, as before.
+    assert_eq!(basis(&page, "Three."), Basis::Anchor);
+}
+
+#[test]
 fn an_anchor_that_changed_between_two_wordings_does_not_carry_the_chain() {
     let w = story(&["Said once. ^b1\n", "Said once. ^b2\n"]);
     let page = why(&w, "Home");
