@@ -965,6 +965,17 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   extension on (a dev-dependency of the core crate; already in the lock and the workspace manifest, no new crate), apart from
   inklkunn's renderer: the reviewer's cases and the old thirteen, a body full of backticks and fence-like lines, and every text of up
   to five characters from an awkward alphabet round-trip through the fence.
+- **K54, V-e to V-g (handoff 005 corrections, fifth round): the small points of the K-T11 review.** (V-e) A drop of a removed paragraph
+  **names its page as well as its block**: `drops` in the write API is a list of `{path, marker}` (it was bare `^id`s, so one name
+  approved the removal on every page of a multi-page proposal); both refusals (`claim-paragraph-removed`, `drop-not-removed`) name the
+  page; `api.claim_lost` says *claims are said there* (it said *has sources attached*); the doc comment says the tip's index;
+  `drop-not-removed` is mutation-checked; OpenAPI gains `ProposalDrop`. (V-f) The provenance reply reads the knowledge index **at the
+  tip the page was read at**, so its `claims` and its `tip` cannot come from two tips. (V-g) (1) The curation endpoint's doc says
+  `POST …/proposals/curation`. (2, 3) The import lists a top-level `extensions/` as the data of the extensions the exporting service
+  used, in the directory its manifest names, none of it read (it said *the service's own records* for any bundle), and the import's
+  documentation says the manifest's `directory:` is not read. (4) A float, an empty or a missing version of the extension in a
+  manifest is shown as written (`1.5`, `(empty)`, `(none)`), not as `(none)`. (5) `compare_views` lists pages **in path order**, as
+  documented (decision 5), before the bound cuts. Tests: each of these; the two-page proposal for V-e.
 
 - **M20, M24 (handoff 010 corrections, third round): every damaged marker is a marker error; `failed_objects` is read leniently.**
   prikk calls a marker it cannot read as a number an *integrity error*, not `unsupported format version`: measured on 0.55.0 and

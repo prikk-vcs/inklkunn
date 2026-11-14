@@ -3064,11 +3064,11 @@ pub const CATALOG: &[Entry] = &[
     msg("claim_thread.back", "Back to the claim"),
     msg(
         "api.claim_lost",
-        "The paragraph marked ^{block}, which begins “{excerpt}”, has sources attached, and this change leaves it out. To remove it, name ^{block} in `drops`. To keep it, put it back.",
+        "The paragraph marked ^{block} on {path}, which begins “{excerpt}”, is where claims are said, and this change leaves it out. To remove it, name it in `drops` with the `path` {path} and the `marker` {block}. To keep it, put it back.",
     ),
     msg(
         "api.drop_unused",
-        "`drops` names the paragraph marked ^{block}, but this change does not leave it out, or no claim is said in it. Name only the paragraphs this change removes.",
+        "`drops` names the paragraph marked ^{block} on {path}, but this change does not leave it out of that page, or no claim is said in it. Name only the paragraphs this change removes.",
     ),
     msg("claim_thread.in_reply_to_link", "In reply to {comment}."),
     msg("claim_thread.comment_label", "comment {number}"),

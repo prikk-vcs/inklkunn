@@ -305,9 +305,12 @@ impl ReadService {
             )
             .map_err(|e| self.storage_error(wiki, e))?;
 
+        // In path order (the order the answer promises and the bound cuts), whatever order the driver listed them in.
+        let mut entries: Vec<&inklkunn_prikk::DiffEntry> = diff.entries.iter().collect();
+        entries.sort_by(|a, b| a.path.cmp(&b.path));
         let mut pages = Vec::new();
         let mut pages_omitted = 0;
-        for entry in &diff.entries {
+        for entry in entries {
             let Some(title) = path_to_title(&entry.path) else {
                 continue;
             };

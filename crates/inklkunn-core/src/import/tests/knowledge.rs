@@ -88,6 +88,12 @@ fn a_bundle_that_declares_the_extension_has_its_claim_and_source_files_planned_a
         .unwrap()
         .1;
     assert!(why.contains("claim threads"), "{why}");
+    // Not "the exporting service's own": any extension's data may be there, and none of it is read, the manifest's
+    // `directory:` included.
+    assert!(
+        why.contains("extensions the exporting service used") && why.contains("none of it is read"),
+        "{why}"
+    );
     assert!(
         plan.report()
             .contains("1 page(s), 0 attachment(s), 2 claim or source file(s)"),
@@ -114,6 +120,27 @@ fn knowledge_is_read_only_when_the_manifest_declares_the_extension_this_build_re
             "v2",
             Some("extensions_used:\n  - name: inklkunn-knowledge\n    version: \"2\"\n"),
             "version 2",
+        ),
+        // The version is shown as the manifest wrote it, never as if it had written none.
+        (
+            "float",
+            Some("extensions_used:\n  - name: inklkunn-knowledge\n    version: 1.5\n"),
+            "version 1.5",
+        ),
+        (
+            "float-one",
+            Some("extensions_used:\n  - name: inklkunn-knowledge\n    version: 1.0\n"),
+            "version 1.0",
+        ),
+        (
+            "empty",
+            Some("extensions_used:\n  - name: inklkunn-knowledge\n    version: \"\"\n"),
+            "version (empty)",
+        ),
+        (
+            "no-version",
+            Some("extensions_used:\n  - name: inklkunn-knowledge\n"),
+            "version (none)",
         ),
         (
             "unreadable",

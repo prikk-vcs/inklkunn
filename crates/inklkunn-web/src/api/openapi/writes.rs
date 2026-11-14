@@ -60,6 +60,14 @@ pub(super) fn schemas() -> Map<String, Value> {
         }),
         &[],
     );
+    let drop = object(
+        "A paragraph removed on purpose.",
+        json!({
+            "path": {"type": "string", "description": "The repository path of the page, as in `files`."},
+            "marker": {"type": "string", "description": "The `^id` marker of the paragraph on that page, without the caret."},
+        }),
+        &[],
+    );
     let edit_members = json!({
         "summary": {"type": "string", "description": "What and why: one line of at most 120 characters. Required to send for review."},
         "sources": {"type": "array", "maxItems": 20, "items": {"type": "string"}},
@@ -67,7 +75,7 @@ pub(super) fn schemas() -> Map<String, Value> {
         "renames": {"type": "array", "maxItems": 20, "items": schema_ref("ProposalRename")},
         "minor": {"type": "boolean", "description": "A minor change. Default `false`."},
         "automated": {"type": "boolean", "description": "Machine-assisted content. Default `false`."},
-        "drops": {"type": "array", "maxItems": 50, "items": {"type": "string"}, "description": "The `^id` markers (without the caret) of paragraphs that claims are said in and that these files leave out, named: the explicit act of removing them. A paragraph that is left out and not named is `unacceptable` (`claim-paragraph-removed`); a name that is not such a paragraph is `unacceptable` (`drop-not-removed`). The claims said there stop being said there, in the same proposal, and the reviewer sees it; the claim stays, said nowhere. Default: none."},
+        "drops": {"type": "array", "maxItems": 50, "items": schema_ref("ProposalDrop"), "description": "The paragraphs that claims are said in and that these files leave out, each named with its page: the explicit act of removing them. A paragraph that is left out and not named is `unacceptable` (`claim-paragraph-removed`, naming the page and the marker); a drop that is not such a paragraph of that page is `unacceptable` (`drop-not-removed`, likewise). The claims said there stop being said there, in the same proposal, and the reviewer sees it; the claim stays, said nowhere. Default: none."},
     });
     let mut new_members = edit_members.clone();
     if let Some(map) = new_members.as_object_mut() {
@@ -150,6 +158,7 @@ pub(super) fn schemas() -> Map<String, Value> {
         ("Proposal", proposal),
         ("ProposalFile", file),
         ("ProposalRename", rename),
+        ("ProposalDrop", drop),
         ("NewProposal", new_proposal),
         ("ProposalEdit", proposal_edit),
         ("Reason", reason),

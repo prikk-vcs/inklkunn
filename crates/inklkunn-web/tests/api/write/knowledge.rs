@@ -418,6 +418,11 @@ async fn a_curation_sets_a_judgement_only_on_the_wording_the_base_has_and_confir
 
 // ------------------------------------------------------------------------------------ the explicit drop
 
+/// A paragraph named as removed, with its page.
+fn drop(path: &str, block: &str) -> Value {
+    json!({"path": path, "marker": block})
+}
+
 fn without_the_paragraph() -> String {
     format!("---\ntitle: Home\nid: {HOME_ID}\n---\n\nPlain words, no claim.\n")
 }
@@ -453,7 +458,12 @@ async fn removing_a_paragraph_that_claims_are_said_in_is_an_act_the_body_names()
     );
     assert!(words.contains("`drops`"), "{words}");
     // Named: the proposal carries the page and the claim, said nowhere now; the claim stays.
-    let named = page_proposal(&c, json!(without_the_paragraph()), json!(["b1"])).await;
+    let named = page_proposal(
+        &c,
+        json!(without_the_paragraph()),
+        json!([drop("pages/Home.md", "b1")]),
+    )
+    .await;
     assert_eq!(named.status, 201, "{}", named.text());
     let files = stored(&c, &named);
     let paths: Vec<&str> = files.iter().map(|(p, _)| p.as_str()).collect();
@@ -480,7 +490,7 @@ async fn a_name_in_drops_that_is_not_a_removed_paragraph_with_a_claim_is_refused
     let c = cast();
     // The paragraph is kept (reworded, marker kept): nothing is removed, so naming it is refused.
     let reworded = home_with("The bridge opened in the year 1950.");
-    let kept = page_proposal(&c, json!(reworded), json!(["b1"])).await;
+    let kept = page_proposal(&c, json!(reworded), json!([drop("pages/Home.md", "b1")])).await;
     assert_eq!(kept.status, 422, "{}", kept.text());
     assert_eq!(kept.json().at("/reason"), "drop-not-removed");
     // A paragraph no claim is said in is removed freely, and naming it is refused.
@@ -488,7 +498,7 @@ async fn a_name_in_drops_that_is_not_a_removed_paragraph_with_a_claim_is_refused
     let free = page_proposal(&c, json!(plain.clone()), json!([])).await;
     assert_eq!(free.status, 201, "{}", free.text());
     assert_eq!(stored(&c, &free).len(), 1, "the claim is not touched");
-    let odd = page_proposal(&c, json!(plain), json!(["nowhere"])).await;
+    let odd = page_proposal(&c, json!(plain), json!([drop("pages/Home.md", "nowhere")])).await;
     assert_eq!(odd.json().at("/reason"), "drop-not-removed");
     // Kept as it is and no drops: the ordinary edit, with no claim file in it.
     let ordinary = page_proposal(
@@ -499,10 +509,27 @@ async fn a_name_in_drops_that_is_not_a_removed_paragraph_with_a_claim_is_refused
     .await;
     assert_eq!(ordinary.status, 201, "{}", ordinary.text());
     assert_eq!(stored(&c, &ordinary).len(), 1);
-    // `drops` is a list of texts like every list of the body.
-    let bad = page_proposal(&c, json!(without_the_paragraph()), json!([1])).await;
+    // `drops` is a list of objects like `files` and `renames`: a bare text, or a member missing, is `invalid-body`.
+    let bad = page_proposal(&c, json!(without_the_paragraph()), json!(["b1"])).await;
     assert_eq!(bad.status, 400);
     assert_eq!(bad.json().at("/member"), "drops[0]");
+    let lacking = page_proposal(
+        &c,
+        json!(without_the_paragraph()),
+        json!([{"path": "pages/Home.md"}]),
+    )
+    .await;
+    assert_eq!(lacking.status, 400);
+    assert_eq!(lacking.json().at("/member"), "drops[0].marker");
+    // The page is named as well as the paragraph: the right marker on another page removes nothing here.
+    let elsewhere = page_proposal(
+        &c,
+        json!(without_the_paragraph()),
+        json!([drop("pages/Other.md", "b1")]),
+    )
+    .await;
+    assert_eq!(elsewhere.status, 422, "{}", elsewhere.text());
+    assert_eq!(elsewhere.json().at("/reason"), "claim-paragraph-removed");
 }
 
 #[tokio::test]
@@ -511,7 +538,7 @@ async fn removing_a_whole_page_that_claims_are_said_in_is_named_too() {
     let silent = page_proposal(&c, Value::Null, json!([])).await;
     assert_eq!(silent.status, 422, "{}", silent.text());
     assert_eq!(silent.json().at("/reason"), "claim-paragraph-removed");
-    let named = page_proposal(&c, Value::Null, json!(["b1"])).await;
+    let named = page_proposal(&c, Value::Null, json!([drop("pages/Home.md", "b1")])).await;
     assert_eq!(named.status, 201, "{}", named.text());
     let files = stored(&c, &named);
     assert!(
@@ -520,4 +547,108 @@ async fn removing_a_whole_page_that_claims_are_said_in_is_named_too() {
             .any(|(p, t)| p == "pages/Home.md" && t.is_none())
     );
     assert!(files.iter().any(|(p, _)| *p == claim_path(&claim_id(1))));
+}
+
+/// A wiki whose `Home` and `Annex` each say a claim in a paragraph marked `^b1` (the same marker on two pages).
+fn two_pages() -> Cast {
+    use inklkunn_core::knowledge::Expression;
+    let annex_id = "page-annex";
+    let mut second = claim(2, Standing::Unknown, None, SAID);
+    second.expressions = vec![Expression::new(annex_id, "b1").unwrap()];
+    let mut all = files(&[claim(1, Standing::Unknown, None, SAID), second], &[]);
+    all.push(("pages/Home.md".to_owned(), home_with(SAID)));
+    all.push((
+        "pages/Annex.md".to_owned(),
+        super::super::common::page(
+            &["title: Annex", &format!("id: {annex_id}")],
+            &format!("{SAID} ^b1\n\nPlain words, no claim.\n"),
+        ),
+    ));
+    let borrowed: Vec<(&str, &str)> = all.iter().map(|(p, t)| (p.as_str(), t.as_str())).collect();
+    let cast = Cast {
+        contributor: person(1),
+        observer: person(6),
+        w: with_accounts(World::new("handbook", "The Handbook", &borrowed)),
+    };
+    add_person(
+        &cast.w,
+        &cast.contributor,
+        "Aiko Tanaka",
+        Some(Role::Contributor),
+    );
+    cast
+}
+
+async fn two_page_proposal(c: &Cast, drops: Value) -> super::super::Answer {
+    let bare = |title: &str, id: &str| {
+        super::super::common::page(
+            &[&format!("title: {title}"), &format!("id: {id}")],
+            "Plain words, no claim.\n",
+        )
+    };
+    post(
+        &c.w,
+        &format!("{API}/proposals"),
+        &[session(&c.contributor), tip()],
+        json!({
+            "summary": "Take the first paragraph out of both pages",
+            "submit": true,
+            "files": [
+                {"path": "pages/Home.md", "text": bare("Home", HOME_ID)},
+                {"path": "pages/Annex.md", "text": bare("Annex", "page-annex")},
+            ],
+            "drops": drops,
+        })
+        .to_string(),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn a_drop_names_its_page_so_a_marker_on_two_pages_is_two_acts_and_the_refusal_names_the_page()
+{
+    let c = two_pages();
+    // Home's paragraph named, Annex's not: Annex is refused, by its path and the marker.
+    let one = two_page_proposal(&c, json!([drop("pages/Home.md", "b1")])).await;
+    assert_eq!(one.status, 422, "{}", one.text());
+    assert_eq!(one.json().at("/reason"), "claim-paragraph-removed");
+    let words = one.json().at("/detail").as_str().unwrap().to_owned();
+    assert!(
+        words.contains("^b1")
+            && words.contains("pages/Annex.md")
+            && !words.contains("pages/Home.md"),
+        "{words}"
+    );
+    // A drop of a page that is not in the proposal is refused by its page.
+    let other = two_page_proposal(
+        &c,
+        json!([
+            drop("pages/Home.md", "b1"),
+            drop("pages/Annex.md", "b1"),
+            drop("pages/Elsewhere.md", "b1"),
+        ]),
+    )
+    .await;
+    assert_eq!(other.status, 422, "{}", other.text());
+    assert_eq!(other.json().at("/reason"), "drop-not-removed");
+    let words = other.json().at("/detail").as_str().unwrap().to_owned();
+    assert!(
+        words.contains("pages/Elsewhere.md") && words.contains("^b1"),
+        "{words}"
+    );
+    // Both named: both claims lose their expression, in the same proposal.
+    let both = two_page_proposal(
+        &c,
+        json!([drop("pages/Home.md", "b1"), drop("pages/Annex.md", "b1")]),
+    )
+    .await;
+    assert_eq!(both.status, 201, "{}", both.text());
+    let files = stored(&c, &both);
+    for n in [1, 2] {
+        let text = text_at(&files, &claim_path(&claim_id(n)));
+        let Ok(File::Claim(written)) = read_file(&claim_path(&claim_id(n)), text.as_bytes()) else {
+            panic!("{text}");
+        };
+        assert!(written.expressions.is_empty(), "{text}");
+    }
 }

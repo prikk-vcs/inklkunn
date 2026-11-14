@@ -158,7 +158,7 @@ fn two_views_that_differ_are_compared_in_claims_and_in_pages() {
         (got.a.view.as_str(), got.b.view.as_str()),
         ("heads/main", "heads/alt")
     );
-    // The pages: the three, in the order prikk gave them, lines counted, nothing else.
+    // The pages: the three, in path order (not the order prikk gave them), lines counted, nothing else.
     let pages: Vec<(&str, DiffStatus, u64, u64)> = got
         .pages
         .iter()
@@ -167,9 +167,9 @@ fn two_views_that_differ_are_compared_in_claims_and_in_pages() {
     assert_eq!(
         pages,
         [
+            ("Gone", DiffStatus::Removed, 0, 1),
             ("Home", DiffStatus::Modified, 1, 1),
             ("New", DiffStatus::Added, 2, 0),
-            ("Gone", DiffStatus::Removed, 0, 1),
         ]
     );
     assert_eq!(got.pages_omitted, 0);
@@ -275,6 +275,31 @@ fn the_pages_listed_are_bounded_and_the_rest_are_counted() {
     assert_eq!(got.pages.len(), MAX_COMPARED_PAGES);
     assert_eq!(got.pages_omitted, 7);
     assert_eq!(got.pages.first().map(|p| p.title.as_str()), Some("P0000"));
+}
+
+#[test]
+fn the_pages_listed_are_in_path_order_whatever_order_the_diff_came_in() {
+    let w = world();
+    // Listed out of order, and more of them than the bound: the first in path order are the ones kept.
+    let mut many: Vec<DiffEntry> = (0..MAX_COMPARED_PAGES + 3)
+        .rev()
+        .map(|n| entry(&format!("pages/P{n:04}.md"), "modified", &[HUNK]))
+        .collect();
+    many.insert(2, entry("pages/Alpha.md", "added", &[HUNK]));
+    w.counting.inner().diff_says(Ok(report(many)));
+    let got = w
+        .service
+        .compare_views(&w.wiki, None, Some("heads/alt"))
+        .unwrap();
+    let paths: Vec<&str> = got.pages.iter().map(|p| p.path.as_str()).collect();
+    let mut sorted = paths.clone();
+    sorted.sort_unstable();
+    assert_eq!(paths, sorted, "path order");
+    assert_eq!(paths.first(), Some(&"pages/Alpha.md"));
+    assert_eq!(got.pages.len(), MAX_COMPARED_PAGES);
+    assert_eq!(got.pages_omitted, 4);
+    let last = format!("pages/P{:04}.md", MAX_COMPARED_PAGES + 2);
+    assert!(!paths.contains(&last.as_str()));
 }
 
 #[test]

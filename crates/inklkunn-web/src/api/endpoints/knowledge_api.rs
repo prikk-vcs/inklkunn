@@ -198,12 +198,13 @@ pub(super) async fn provenance(
                 Ok(WhyOutcome::Ambiguous { candidates }) => return Err(ambiguous(&candidates)),
                 Err(e) => return Err(from_read(services, wiki, e)),
             };
-            // The claims said in the page's paragraphs, from the knowledge index of the same view; a page that cannot be
-            // asked about its claims is served without them, as the page is.
+            // The claims said in the page's paragraphs, from the knowledge index of the very tip the page was read at (a
+            // view that moves between the two reads cannot give the reply two tips); a page that cannot be asked about its
+            // claims is served without them, as the page is.
             let index = page.page_id.as_deref().and_then(|_| {
                 services
                     .read
-                    .knowledge_index(wiki, view.full.as_deref())
+                    .knowledge_at(wiki, &page.tip)
                     .map_err(|e| {
                         (services.log)(&format!(
                             "the claims of a page of wiki `{}` could not be read now: {e}",

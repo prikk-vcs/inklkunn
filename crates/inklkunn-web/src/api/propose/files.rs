@@ -40,6 +40,14 @@ struct File {
     text: Option<String>,
 }
 
+/// A paragraph the caller names as removed: the page (its path, as in `files`) and the `^id` of the paragraph on it. A
+/// bare `^id` would stand for the paragraphs of that name on every page of the proposal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Dropped {
+    path: String,
+    block: String,
+}
+
 /// What the body says about a proposal's text, before it is held to a base.
 #[derive(Debug)]
 pub(super) struct Sent {
@@ -49,9 +57,9 @@ pub(super) struct Sent {
     renames: Vec<Rename>,
     minor: bool,
     automated: bool,
-    /// The markers of the paragraphs that others rely on and that the text leaves out, named by the caller: the explicit
+    /// The paragraphs that others rely on and that the text leaves out, each named with its page by the caller: the explicit
     /// act of removing them (RFC 005 part 1 D-1 b; the form's confirmation box).
-    drops: Vec<String>,
+    drops: Vec<Dropped>,
 }
 
 /// The members a proposal's text is made of; the caller takes its own (`view`, `submit`) first.
@@ -86,6 +94,13 @@ pub(super) fn read(fields: &mut Fields) -> Result<Sent, Problem> {
         rename.end()?;
         renames.push(Rename { from, to });
     }
+    let mut drops = Vec::new();
+    for mut drop in fields.objects("drops", MAX_DROPS)? {
+        let path = drop.text("path")?;
+        let block = drop.text("marker")?;
+        drop.end()?;
+        drops.push(Dropped { path, block });
+    }
     Ok(Sent {
         summary,
         sources,
@@ -93,7 +108,7 @@ pub(super) fn read(fields: &mut Fields) -> Result<Sent, Problem> {
         renames,
         minor: fields.opt_flag("minor")?,
         automated: fields.opt_flag("automated")?,
-        drops: fields.texts("drops", MAX_DROPS)?,
+        drops,
     })
 }
 
@@ -255,23 +270,24 @@ pub(super) fn prepare(
 
 /// The claim files a proposal comes to when it removes paragraphs that claims are said in.
 ///
-/// **A removal is explicit.** For each page that exists at the base and has claims said in it (the base's derived
-/// index), a paragraph whose `^id` the page's new text no longer has (or a page the proposal removes) must be named in
-/// `drops`, or the proposal is refused naming the marker; a name in `drops` that is not such a paragraph is refused too,
-/// so that the flag never stands for something else. A named paragraph's claims are written without that expression, as
+/// **A removal is explicit.** For each page that exists at the base and has claims said in it (the tip's derived index
+/// of the view), a paragraph whose `^id` the page's new text no longer has (or a page the proposal removes) must be named
+/// in `drops` with its page, or the proposal is refused naming the page and the marker; a drop that is not such a
+/// paragraph of that page is refused too, so that the flag never stands for something else, and a name on one page never
+/// stands for the paragraph of that name on another. A named paragraph's claims are written without that expression, as
 /// the form writes them; the claim stays, said nowhere, for a reviewer to decide about.
 fn drop_changes(
     req: &Request,
     view: Option<&str>,
     base: &Base,
-    drops: &[String],
+    drops: &[Dropped],
     whole: &[Whole],
 ) -> Result<Vec<FileChange>, Problem> {
     let t = req.t;
     let read = &req.services.read;
     let failed = |e| read_failure(req, e);
     let mut claims: BTreeMap<String, Claim> = BTreeMap::new();
-    let mut removed: BTreeSet<String> = BTreeSet::new();
+    let mut removed: BTreeSet<(String, String)> = BTreeSet::new();
     for page in whole {
         let Some(old) = &page.old else { continue };
         let Some(page_id) = page_id_of(old) else {
@@ -285,11 +301,16 @@ fn drop_changes(
             if !gone {
                 continue;
             }
-            if !drops.contains(&block) {
+            let named = Dropped {
+                path: page.path.clone(),
+                block: block.clone(),
+            };
+            if !drops.contains(&named) {
                 let words = words_with_id(old, &block, true).unwrap_or_default();
                 return Err(req.unacceptable_with(
                     "claim-paragraph-removed",
                     t.msg(Key::ApiClaimLost)
+                        .with("path", &page.path)
                         .with("block", &block)
                         .with("excerpt", excerpt(&words))
                         .text(),
@@ -308,13 +329,19 @@ fn drop_changes(
                     without_expressions(&current, &page_id, &gone_blocks),
                 );
             }
-            removed.insert(block);
+            removed.insert((named.path, named.block));
         }
     }
-    if let Some(unused) = drops.iter().find(|d| !removed.contains(*d)) {
+    if let Some(unused) = drops
+        .iter()
+        .find(|d| !removed.contains(&(d.path.clone(), d.block.clone())))
+    {
         return Err(req.unacceptable_with(
             "drop-not-removed",
-            t.msg(Key::ApiDropUnused).with("block", unused).text(),
+            t.msg(Key::ApiDropUnused)
+                .with("path", &unused.path)
+                .with("block", &unused.block)
+                .text(),
         ));
     }
     Ok(claims

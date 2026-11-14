@@ -33,7 +33,7 @@ use crate::url::view_ref;
 /// The most links or sources one body edits (the form's bound).
 const MAX_EDITS: usize = 256;
 
-/// `POST /{slug}/-/api/v1/curations`.
+/// `POST /{slug}/-/api/v1/proposals/curation`.
 pub(crate) async fn create(
     State(state): State<PageState>,
     headers: HeaderMap,

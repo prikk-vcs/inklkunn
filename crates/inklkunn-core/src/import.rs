@@ -47,7 +47,8 @@
 //! source with a review day or an availability, or a link that names wording the claim does not have, is refused, and the
 //! import with it: **no path sets what only a curation proposal sets**, and an import is no exception. The claim threads
 //! and the records of the views that a bundle carries under `extensions/` are the exporting service's own; they are not
-//! imported.
+//! imported. The manifest's `directory:` for the extension says where the exporting service kept that data; the import
+//! reads `knowledge/` and nothing under `extensions/`, whatever the manifest names.
 
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::{OsStr, OsString};
@@ -98,7 +99,7 @@ const NOT_IMPORTED: &[(&str, &str)] = &[
     ),
     (
         "extensions",
-        "the exporting service's own records (claim threads, how views were made); bundle import is RFC 007's",
+        "the data of the extensions the exporting service used, in the directory its manifest names (for an inklkunn bundle: claim threads, how views were made); none of it is read, and bundle import is RFC 007's",
     ),
     ("governance", "reserved for a later release"),
     (".prikkignore", "service-local"),
@@ -708,9 +709,14 @@ fn declared_extension(root: &OwnedFd, top: &[(OsString, Result<FileType, Errno>)
                 Extension::Known
             }
             Some(Value::Int(1)) => Extension::Known,
-            Some(Value::Str(v)) => Extension::Other(v.clone()),
+            // What the manifest wrote, as it wrote it, so that the operator sees which version it declared.
+            Some(Value::Str(v)) if v.is_empty() => Extension::Other("(empty)".to_owned()),
+            Some(Value::Str(v) | Value::Date(v)) => Extension::Other(v.clone()),
             Some(Value::Int(n)) => Extension::Other(n.to_string()),
-            _ => Extension::Other("(none)".to_owned()),
+            Some(Value::Float(f)) => Extension::Other(format!("{f:?}")),
+            Some(Value::Bool(b)) => Extension::Other(b.to_string()),
+            Some(Value::Seq(_) | Value::Map(_)) => Extension::Other("(not a version)".to_owned()),
+            Some(Value::Null) | None => Extension::Other("(none)".to_owned()),
         };
     }
     Extension::Absent
