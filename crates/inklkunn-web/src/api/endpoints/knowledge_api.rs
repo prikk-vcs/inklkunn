@@ -233,7 +233,7 @@ pub(super) async fn provenance(
                         "ordinal": p.paragraph.ordinal,
                         "id": p.paragraph.id,
                         "excerpt": p.paragraph.excerpt,
-                        "claims": p.paragraph.id.as_deref().map(&said_in).unwrap_or_default(),
+                        "claims": p.paragraph.id.as_deref().map(said_in).unwrap_or_default(),
                         "basis": match p.chain.basis {
                             Basis::Anchor => "anchor",
                             Basis::Text => "text",
