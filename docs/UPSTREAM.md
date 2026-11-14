@@ -28,26 +28,25 @@ staying true to all three (RFC 010 D-1, D-2, D-8). The record of what each upstr
   upstream ledger (status, evidence, the letter named in the version line), ROADMAP's dependency notes and
   milestone table when a schedule or ruling moved, and a hold note in the affected handoff. The letters are
   the source; the ledger is what a reader relies on.
-- **Candidates for the next bundled letter:** the block id in `branch list` (saves one call per new tip; held back as
-  not worth a letter of its own); two states the kill matrix found after a `seal` killed inside prikk, which recovery
-  cannot answer and leaves fail-closed (handoff 004 P15): an **empty lock file** (`unlock` lists it with an unparseable
-  pid) and a **lone `ACTIVE-REF-METADATA-DEBRIS` warning** — what is the right handling of each? And one machine-readable `verify` report that names the failing subjects and their signers (the
-  JSON and the text cannot come from one run in 0.55.0; handoff 004 P14), and a read of the queue in the cleanup-pending state
-  (handoff 004 Q2; measured on 0.55.0: `status --format json`, `worktree-status` and every JSON read refuse with an integrity
-  error there, `doctor` and `verify` print no queue, and the **plain-text** `prikk status` reads and prints `queued patches: N
-  targeting REF` and `active WAL records: N` but **no patch id**; inklkunn refuses to finish the publication unless that text
-  shows exactly one patch on the view in a log of one record, which is a check of the queue's size and not of its content: what
-  it asks is a read that lists the queued patch ids in this state, as `status --format json` does elsewhere). And, from the
-  same state with a retired key (Q6): `verify` fails there by two conditions (`blocking-ref-publication` and
-  `publication-trust`), so no retirement's record can excuse the retired key's findings beside a pending cleanup, and recovery
-  stops with `cleanup-beside-trust-findings`; what does prikk recommend for a pending cleanup on a repository whose trust set
-  changed.
-- **Letter of 2026-11-14 received** (`receive/2026-11-14-0-56-0-and-0-57-0-are-out.md`; 0.56.0 and 0.57.0 as shipped) and folded
-  into the ledger (v1.6). **Reply drafted the same day for the owner** (`send/draft/2026-11-14-two-answers-and-five-small-asks.md`):
-  the orphan is always the newest (no option M needed); ZWNJ and ZWJ matter before any move to native paths; five asks
-  (`ref complete --plan-only` needs the seed; `uncommit --plan-only` takes the lock; is `block_seals` whole when `verify` fails
-  early; the queue's patch ids in the cleanup-pending state; the empty lock file and the lone metadata debris); the signer field
-  in `branch --format json` no longer needed. This bundles every candidate below.
+- **Candidates for the next bundled letter:**
+  - the block id in `branch list` (it saves one call per new tip; held back as not worth a letter of its own);
+  - one machine-readable `verify` report that names the failing subjects and their signers (handoff 004 P14);
+  - from the cleanup-pending state with a retired key (handoff 004 Q6): what prikk recommends for a pending cleanup on a repository whose trust set changed (recovery stops with `cleanup-beside-trust-findings`).
+- **prikk's letter of 2026-11-14 received** (`receive/2026-11-14-0-56-0-and-0-57-0-are-out.md`; 0.56.0 and 0.57.0 as shipped)
+  and folded into the ledger (v1.6). Our reply, below, answered its two questions: the orphan is always the newest, so no
+  option M is needed; ZWNJ and ZWJ matter before any move to native paths. It bundled every earlier candidate except those
+  above.
+- **Letter of 2026-11-14, sent by the owner and answered the same day** (`send/2026-11-14-two-answers-and-five-small-asks.md` → `receive/2026-11-14-reply-five-asks-measured-on-0-57-0.md`). Folded into ledger v1.7:
+  - option M is closed;
+  - ZWNJ and ZWJ stay open on prikk's roadmap until our letter;
+  - the signer in `branch --format json` is dropped;
+  - `ref complete --plan-only`'s seed and `uncommit --plan-only`'s lock are on prikk's roadmap, unscheduled (PK-47);
+  - `block_seals` is whole when `objects` is evaluated and `failed_objects` is empty, and prikk proposes to state this in 0.58.0's reference (PK-39);
+  - the cleanup-pending queue is the tip block's patches (PK-44), and the JSON `status` refusal there is to be fixed in 0.58.0;
+  - an empty lock is cleared only with `--force` on the lease's word (PK-45);
+  - a lone metadata-debris warning is harmless and is to become `info` (PK-46).
+
+  What prikk proposes for 0.58.0 is prikk's owner's to decide. inklkunn's changes are maintenance M13 – M16. **No ask is outstanding.**
 - **Open asks as of 2026-10-31: none outstanding; prikk will write about 0.57.0.**
   `send/2026-10-31-block-signer-time-path-history-and-an-orphan-queued-patch.md` (sent by the owner; four asks) was
   answered the same day (`receive/2026-10-31-four-asks-where-each-lands.md`): each block's `sealed_by` in `log` and

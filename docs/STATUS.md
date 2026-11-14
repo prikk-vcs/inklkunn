@@ -332,11 +332,33 @@
   `log --path` still a candidate, the key-rotation design round proposed for 0.59.0, and an adopting import's cost until 0.58.0
   (a hold note in K-T11). **A reply is drafted for the owner** (`.git-exclude/upstream/prikk/send/draft/2026-11-14-two-answers-and-five-small-asks.md`):
   our orphan is always the newest, ZWNJ / ZWJ will matter before native paths, and five small asks bundled. Pushed.
+- **2026-11-14 — the owner sent the reply to prikk; prikk answered the same day** (ledger v1.7):
+  - `block_seals` is whole when `objects` is evaluated and `failed_objects` is empty;
+  - the cleanup-pending queue is the tip block's patches;
+  - an empty lock is cleared only with `--force` on the lease's word;
+  - a lone metadata-debris warning is harmless;
+  - the two plans that are not read-only are on prikk's roadmap.
+
+  No ask is outstanding. Pushed.
+- **2026-11-14 — K24 – K31, K-T9, K-T10 and the maintenance M4 – M11 reviewed** (`1608089`).
+  - **Gates and readings:** 2,790 tests passed with prikk 0.55.0, without prikk (304 self-skips), on the host's 0.57.0 and on the 0.57.0 release asset's own binary (checksum verified). Three adversarial readings.
+  - **M4 – M11 Conditionally Approved** (M12 – M19). Three standing decisions change with prikk's answers:
+    - the empty lock's operator step uses `--force`;
+    - a lone debris warning no longer stops recovery;
+    - the late-seal list also needs `failed_objects` empty.
+
+    Also: a format error never claims *nothing is damaged* unless the running prikk is known older, and the audit's end event says what the run did.
+  - **K24 – K31, K-T9 and K-T10 Conditionally Approved** (K32 – K42):
+    - the whole identifier, since a shortened one can be copied;
+    - every `judged_on` is checked, not only a new link's;
+    - the curation form, unreachable since K-T5, is linked;
+    - the freshness list is bounded and paged;
+    - a claim's thread leaves `discussions/` (wiki-commons' page discussions) for the knowledge extension, with escaped bodies.
+  - **RFC 005 part 2:** four clarifications.
+  - Pushed.
 
 ## Pending on the owner
 
-- **Send the reply to prikk** (drafted 2026-11-14, `.git-exclude/upstream/prikk/send/draft/2026-11-14-two-answers-and-five-small-asks.md`):
-  it answers prikk's two questions and bundles five small asks; nothing in it is urgent.
 - **Review the Japanese catalog** (DR-7; the owner is the reviewer): 842 messages, every one listed with where it appears in
   `docs/glossary.md`; until your sign-off Japanese stays a preview that only a reader's own choice turns on.
 
@@ -346,7 +368,7 @@
 |---|---|---|
 | prikk 0.54.1 | the M1 floor (`extract`, `diff`, `tree`, `cat`, the `show <block-id>` fix); RFC 170 (library) and RFC 154 unscheduled; **non-ASCII paths: a design round in 0.56.0, implementation ≥ 0.57.0** (letter of 2026-10-28, PK-21) | pin 0.54; re-baseline at each release (RFC 010); ship with percent-encoded paths, migrate when prikk's design lands |
 | prikk 0.55.0 (**released 2026-10-29, re-baselined the same day**) / **0.56.0 (released 2026-11-08; the suite passes on it apart from the curl test, measured 2026-11-13)** | 0.55.0: `extract`'s refusal ids 13 → 15, bundle reads stream, the checkpoint record documented; 0.56.0: the Unicode-path design round, a received ref that would move backwards refused by default, the signer in `branch --format json` (PK-26) | 0.55.0: **done**, nothing changes, floor stays 0.54.0; 0.56.0: re-baseline at its release (check `branch-list-v1`'s id with the signer added) |
-| prikk **0.57.0** (**published 2026-11-14**, tag `149a9e3d`; installed on the host; M3 measured a pre-release build, M10 repeats it on the release) | each block's `sealed_by` (PK-39); a verb to discard a sound queued patch (PK-43) | at its re-baseline: C11's check reads `sealed_by`; recovery offers the discard as an operator-confirmed step |
+| prikk **0.57.0** (**published 2026-11-14**, tag `149a9e3d`; installed on the host; M3 measured a pre-release build, M10 repeats it on the release) | each block's `sealed_by` (PK-39); a verb to discard a sound queued patch (PK-43) | **re-baselined** (M3, M8 – M11; the suite passes on the release asset's binary): C11's check reads `block_seals` where it is whole; recovery offers `uncommit` as an operator-confirmed step. **0.58.0** (prikk proposes, its owner decides): the `block_seals` rule stated in the reference, `status --format json` readable when a cleanup is pending, the debris warning as `info`, `--yes` refused for an empty lock — re-baseline then |
 | prikk, reply of 2026-10-29 | `log --ref <block id>`'s empty success is a defect, fixed in a release prikk will name (PK-36); a rotation that keeps history verifiable is not scheduled (PK-34, RR-8); `extract --path-prefix` or a per-entry content id is a candidate (PK-37) | re-check each at every re-baseline; nothing in 0.1.0 waits on them |
 | planeter **0.5.0** (released 2026-10-31; re-baselined the same day, ledger PL-14: Rust 1.99.1 adopted, 0.1.0 unaffected by the FFI `bool` miscompilation; the pushed-image check a candidate for 0.2.0) — earlier: 0.4.0 | no module mechanism; OQ-4 unruled (re-checked 2026-10-28); RFC 012's catalog pattern, glossary, RFC 011's admission and RFC 004's recovery reused as patterns; new: the complete-verdict rule (PL-7), `unlock` in a PID namespace (PL-8), the output cap (PL-9, already bounded here), the advisories and the `aws_lc_rs` measurement (PL-10, IS-54 waits for the owner), kill-safe creation (PL-11) | joint RFC 008 after M2's design; a letter through the owner then; DR-9 ruled `aws_lc_rs` (2026-10-28), put as one ruling with planeter's IS-54 |
 | wiki-commons 0.4 | the conformance corpus is CR-markup's fixture set; identifiers may change before its 1.0 | claims versioned `@0.4` |
@@ -356,8 +378,8 @@
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and handoff 003's T1 – T3 are built and
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
-(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **The dev team's order now:** **K24 – K31** and **M4 – M11**,
-with K-T9 – K-T11 beside them (all before 0.3.0); and, at the next touch of `signer/retirement.rs`,
+(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **The dev team's order now:** **K32 – K42** and **M12 – M19**,
+with K-T11 beside them (all before 0.3.0); and, at the next touch of `signer/retirement.rs`,
 `seal_pause`'s operator sentence (Z7 – Z9 review). An assistive-technology pass is arranged before 0.3.0.
 
 ## Issue register

@@ -81,3 +81,45 @@ architect applied the lock bump of `ammonia` 4.2.5 and `rustix` 1.1.6. Hand back
 - **M11 — format 8.** The operator notes say a wiki created under prikk 0.57.0 is format 8 and an older prikk refuses it; the driver
   turns prikk's `unsupported format version: N` into a typed error that names the version and does not flag the wiki;
   `prikk_format_version` is filled at creation for information.
+
+## Corrections from the review of 2026-11-14, second round (binding; **before 0.3.0**)
+
+M4 – M11 are **Conditionally Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-corrections-review-result.md`).
+**prikk's reply of 2026-11-14** (ledger v1.7, PK-44 – PK-47) is the basis of M13 – M16. Hand back M12 – M19 as one
+request, `010-maintenance-2026-11-corrections-2-review-request.md`.
+
+- **M12 — M6 only where it helps.**
+  - The stale lock beside an orphan patch is cleared only when prikk has `uncommit`. On 0.55.0 and 0.56.0 the stop clears nothing.
+  - No other stop clears a lock.
+  - A plan promises *the command that does it* only when a run would offer it: the queue targets the worktree's branch.
+  - One real-prikk test on 0.57.0: a held stale lock makes `uncommit --plan-only` refuse (PK-47), and the run that clears it then reads the preview.
+- **M13 — `block_seals` is whole by prikk's rule as well as ours.**
+  - `block_seals_are_whole` also requires that the `objects` stage is `evaluated` and that `failed_objects` is empty (PK-39). The existing conditions stay until prikk's reference states the rule.
+  - `docs/KEYS.md` says what prikk says: a damaged Block is missing from the list and named in `failed_objects`; a later failure does not shorten it.
+  - A stand-in shape where every stage is evaluated but `failed_objects` is not empty.
+- **M14 — the cleanup-pending step says what it checks.** The comment, the step's note in the plan, and `docs/RECOVERY.md` say this: the queue holds exactly the tip block's patches whenever `verify` reports the code (PK-44), and the step requires a tip block of exactly the one published patch. So the queue's **content** is checked, not only its size. Keep the size check from the plain text as well.
+- **M15 — an empty lock: the operator's step that keeps working.** Recovery stays fail-closed (PK-45: an empty lock names no process, so no lease record proves it ours). `docs/RECOVERY.md`'s step:
+  - becomes `prikk unlock --lock <that path> --force`, after the checks it already lists (size 0, no prikk or bwrap working in the repository);
+  - says that `--force` also overrides a holder that appears running, so it is for this file only, and only after those checks;
+  - drops the sentence *`--force` is not needed*.
+
+  The runbook test runs exactly that form. On 0.55.0 it does what the help says. inklkunn's own stale-lock step keeps `--yes`.
+- **M16 — a lone metadata-debris warning is not in the way.** `DoctorReport::others` never counts `PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS` (PK-46: harmless, and the next commit clears it). The plan notes it in one line: *prikk's stale ref metadata; the next accepted change clears it*.
+  - The `doctor-trouble` section of `docs/RECOVERY.md` for it is replaced by that sentence.
+  - Kill-matrix rows that ended at `doctor-trouble` for it now recover. One test through the real state on 0.57.0 shows the next acceptance's commit clearing it.
+  - Never `seal` with nothing queued as a way out.
+- **M17 — a format error is classified, never assumed** (R-a, R-h). It is an operator mismatch, not flagged, only when the running prikk's version is known not to read format N. The rule is one table in `inklkunn-prikk`: format 8 is read from 0.57.0 on. Any other case is a **damaged or unknown format marker**:
+  - the wiki is flagged, so the verdict does not stay *Verified*;
+  - recovery stops with a named stop (`format-marker`), and its runbook section says to compare `.prikk/FORMAT` with a backup;
+  - nothing claims *nothing is damaged*.
+
+  The sentence names the version prikk gave, never a fixed *8*. The signer and the driver use one classifier with the same conditions (exit 1, no `refusal-v1` report). Leading zeros are refused. RECOVERY.md covers a wiki that was created in format 8. Tests: the marker without its newline on 0.57.0, `9` on 0.57.0, `8` on 0.55.0.
+- **M18 — the word's fate says what the run did** (R-b, R-c). The end event's sentence is derived from the steps that **finished**, never from the plan's intent:
+  - *taken back* whenever `discard-queued` finished, whatever failed after it;
+  - *the lock was not cleared: <why>* when `clear-locks` failed;
+  - *recovery ended in an error before it took the patch back* only when it did end before that.
+
+  A recovery error therefore carries the steps done, or the trail is written per step. Tests for both orders.
+- **M19 — the preview's line separators.** The preview's replacement set gains U+2028 and U+2029, as `message.rs` and `audit.rs` treat them. Make it one shared definition if they are the same set; otherwise name why they differ. The test that keeps U+2029 changes with it.
+
+Process: the dates of records are the day's real date (the request said 2026-11-15 on 2026-11-14).

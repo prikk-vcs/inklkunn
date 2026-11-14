@@ -211,3 +211,63 @@ K24 – K31 as one request, `005-knowledge-layer-corrections-3-review-request.md
 - **K31 — small.** `Resolver::index()` reads the base as its doc says (`knowledge_index_at_base`); the rendered property test starts
   from a link judged on the paragraph's real wording too; `<cite>` and `<bdi>` get a visible boundary in `site.css` that a title
   cannot imitate (the stylesheet test holds it neutral: no colour that ranks).
+
+## Corrections from the review of 2026-11-14, fourth round (binding; **before 0.3.0**)
+
+K24 – K31, K-T9 and K-T10 are **Conditionally Approved** (`.git-exclude/reviewed/005-knowledge-layer-corrections-3-review-result.md`).
+Four RFC clarifications were added on 2026-11-14: every judgement, naming a subject, whose setting, a thread in the bundle. Hand back
+K32 – K42 as one request, `005-knowledge-layer-corrections-4-review-request.md`. K-T11 proceeds beside them.
+
+- **K32 — the whole identifier.**
+  - Every claim and source a line names carries its whole identifier in `<code>`, linked to the subject's page (the claim page; a source's place on the claim page), and wrapping where the line is narrow.
+  - The abbreviation (`names.rs`) and the two-pass render go.
+  - Tests:
+    - a twin source with the same name and an id that shares the first and last 8 characters reads differently on a page that names only one of them;
+    - the same for a claim;
+    - both languages.
+- **K33 — every judgement names a wording the result has.**
+  - The K25 rule is widened from new links to every `judged_on` a proposal **sets or changes**: a link's and a community status's, in a page edit or a curation proposal.
+  - One function, at submit, at every revision and at acceptance.
+  - Its refusal names the field.
+  - The compose path's digests stay as they are.
+  - Tests through the API and through a raw file.
+- **K34 — the proposal page judges against the service's pages.** The web `Resolver` reads the proposal's pages through the core's `ProposedPages`: removals, renames, and a rewritten `id:`. The page then never says *judged on the wording …* where submit would refuse. Test: the removed page and the changed `id:`, each through the real page and the submit.
+- **K35 — the reconfirm reads the acceptance's tip.** `reconfirmed` takes the tip the acceptance prepared on, as `claim_outcomes` does, and reads the title index at that block. Nothing it uses comes through the TTL cache. A test where the cache holds an older tip.
+- **K36 — the sentences say the rule, the same in both languages:**
+  - `know.not_curation` says *replaces or removes* (ja too).
+  - K30's protected fields are named the same way in en and ja: title, author, date and reference. `kind` is not among them.
+  - `superseded_by` set or changed on a **checked** source is a curation change, as identity and reference are.
+  - `know.cite` frames the wording as *the wording it has in this proposal's result*.
+  - The freshness list says *Claims that cite it* (with the relation already shown).
+  - The API and its OpenAPI text call the setting the operator's, for every wiki.
+  - The glossary follows each.
+- **K37 — a paragraph line names its page.** `know.change_said` and `know.change_unsaid` name the page as well as the paragraph's opening words (and the block's id when two paragraphs of one page begin alike). Test: the move between two paragraphs that begin alike.
+- **K38 — the create paths:**
+  - **The reconfirm** answers *already proposed* (with the link) before any quota. The read happens under the admission lock, so the order cannot be raced.
+  - **The curation form's** create and submit become one step with the same shape as K26: the proposal is created held for review in one transaction, or refused with nothing left.
+  - A test for each.
+- **K39 — the curation form is reachable** (decision 3).
+  - These offer *Propose a change to its status or sources*, linking `…/proposals/curate?claim=<id>&view=<view>`, to those who may propose (nothing for others):
+    - the claim page;
+    - every refusal that says a change needs a curation proposal;
+    - each claim in a *Sources to review* row.
+  - A route-enumeration test that the form is linked.
+- **K40 — the freshness list's cost and a future day.**
+  - The index builds the source→links and claim→anchors maps once.
+  - The list is computed once per (tip, day, setting) and kept with the index.
+  - The web list pages like the API (50 rows, a cursor).
+  - A `last_reviewed` after today is listed with its own reason: *recorded as reviewed on a day that has not come* (en, ja, glossary, OpenAPI enum).
+  - A test with 2,000 sources, bounded in work.
+- **K41 — a claim's thread in the bundle** (decision 5; RFC clarification D-11).
+  - Claim threads are written where K-T11 declares the `inklkunn-knowledge@1` extension, never under `discussions/`.
+  - Bodies are escaped so that portable Markdown shows exactly the plain text inklkunn showed (a round-trip test with link, image and HTML syntax).
+  - The manifest's `discussions` is not set by claim threads.
+  - inklkunn's own import names the extension's directory as what it is.
+  - Until K-T11 lands, the export carries no claim threads, and says so in the manifest's dropped list.
+- **K42 — K-T10's small points:**
+  - the last page comes from one count or `seq` query;
+  - `ClaimDiscussion.claim` is a `ClaimId`, so the path is built only from a checked id;
+  - *In reply to comment N* links to that comment (on its page);
+  - V18's doc comment says one index.
+
+Process: never kill processes by pattern (`pkill`, `killall`); a record carries the day it was written.

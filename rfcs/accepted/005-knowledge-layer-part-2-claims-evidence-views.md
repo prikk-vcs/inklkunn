@@ -171,3 +171,19 @@ index (D-1 … D-6) may start earlier if the dev team has room, as they touch no
   existed (store schema 16) have no records, and the metrics say so.
 - **D-3, a new link (2026-11-14).** A link attached in any proposal is judged on a wording the claim's paragraph has in the result of
   that proposal: a digest never names wording that is not in the history.
+- **D-3, every judgement (2026-11-14).** The rule of *a new link* holds for **every** `judged_on` a proposal sets or changes:
+  a link's or a community status's, in a page edit or a curation proposal, through the form, the API or a raw edit. Each one
+  names a wording that the claim's paragraphs have in the result of that proposal.
+- **D-3 and D-7, naming a subject (2026-11-14).** A line that names a claim or a source carries its **whole** identifier,
+  linked to the subject's page. Identifiers are written by whoever writes the file, so a shortened form can be copied, and a
+  page that names one subject could then read like a page that names its twin.
+- **D-10, whose setting (2026-11-14).** Wikis have no settings of their own until RFC 006's policy as data. Until then
+  `knowledge.review_after` is **the operator's, one value for every wiki on the instance**
+  (`INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS`, default 1096 days). Every surface that names it says so.
+- **D-11, a thread in the bundle (2026-11-14).** wiki-commons' `discussions/` holds one file per **page**, with bodies in Markdown
+  (XFER-10). A claim's thread is neither, so it is the knowledge extension's data:
+  - it is exported where K-T11's extension (`inklkunn-knowledge@1`) declares;
+  - its bodies are escaped so that Markdown shows them as the plain text inklkunn showed;
+  - the manifest's `discussions` stays a statement about page discussions.
+
+  Proposal comments are interchange of RFC 004's records, so they go to RFC 007 (M5), not to 0.3.0.
