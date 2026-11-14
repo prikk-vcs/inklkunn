@@ -33,9 +33,9 @@ use inklkunn_store::WikiRecord;
 
 use super::tree::{TreeError, read_tree};
 use super::{
-    AnchorState, Availability, Bearing, CommunityStatus, Digest, Expression, Fault, File,
-    KNOWLEDGE_DIR, Link, Reviewed, Rule, SourceId, anchor_state, claim_path, family_of, is_keep,
-    is_knowledge_path, read_file, source_path,
+    AnchorState, Availability, Bearing, CommunityStatus, Digest, Expression, Fault, File, Identity,
+    KNOWLEDGE_DIR, Link, Reference, Reviewed, Rule, SourceId, anchor_state, claim_path, family_of,
+    is_keep, is_knowledge_path, read_file, source_path,
 };
 use crate::import::shown;
 use crate::read::{ReadError, ReadService, entries_from_tree};
@@ -122,7 +122,9 @@ pub struct Judged {
 /// What only a curation proposal sets (part 2 D-3, D-10, and the clarification of 2026-11-08): a claim's community
 /// status and **every change to a source link it already has** (its relation, its bearing, the wording it was judged
 /// on, or its removal; attaching a new link stays with the page edit it belongs to); a source's `last_reviewed` and
-/// `availability`. A file the tip does not have has the baseline: nothing decided, no link, nothing checked.
+/// `availability`; and, **for a source that was checked** (it has a review day or an availability), who and what it is
+/// and where it is found (K30: the check vouches for that work, so a page edit may not make it another). A file the
+/// tip does not have has the baseline: nothing decided, no link, nothing checked.
 ///
 /// **One rule for every surface**: acceptance ([`validate`]), the proposal service at submit and at every revision,
 /// and the proposal page's warning all ask [`Curated::departure`] and [`Curated::removal_refused`] (through
@@ -137,12 +139,16 @@ pub enum Curated {
         /// Its source links' judgements, by source.
         links: BTreeMap<SourceId, Judged>,
     },
-    /// A source's freshness.
+    /// A source's freshness, and the work it names.
     Source {
         /// Whether it can be had, as a person who checked says.
         availability: Availability,
         /// When a person last checked it.
         reviewed: Option<Reviewed>,
+        /// Who and what it is: curation's to change once the source was checked.
+        identity: Identity,
+        /// Where it is found: curation's to change once the source was checked.
+        reference: Option<Reference>,
     },
 }
 
@@ -170,6 +176,8 @@ impl Curated {
             File::Source(s) => Curated::Source {
                 availability: s.availability,
                 reviewed: s.last_reviewed.clone(),
+                identity: s.identity.clone(),
+                reference: s.reference.clone(),
             },
         }
     }
@@ -181,9 +189,12 @@ impl Curated {
                 status: CommunityStatus::undecided(),
                 links: BTreeMap::new(),
             },
-            File::Source(_) => Curated::Source {
+            File::Source(s) => Curated::Source {
                 availability: Availability::Unknown,
                 reviewed: None,
+                // Nothing was checked, so the work it names is the page edit's whatever it is.
+                identity: s.identity.clone(),
+                reference: s.reference.clone(),
             },
         }
     }
@@ -218,16 +229,27 @@ impl Curated {
                 Curated::Source {
                     availability: a,
                     reviewed: ra,
+                    identity: ia,
+                    reference: fa,
                 },
                 Curated::Source {
                     availability: b,
                     reviewed: rb,
+                    identity: ib,
+                    reference: fb,
                 },
             ) => {
                 if a != b {
                     Some("availability")
                 } else if ra != rb {
                     Some("last_reviewed")
+                } else if *a == Availability::Unknown && ra.is_none() {
+                    // Not checked: who and what it is, and where, are the page edit's.
+                    None
+                } else if ia != ib {
+                    Some("identity")
+                } else if fa != fb {
+                    Some("reference")
                 } else {
                     None
                 }
@@ -263,6 +285,7 @@ impl Curated {
             Curated::Source {
                 availability,
                 reviewed,
+                ..
             } => {
                 if *availability != Availability::Unknown {
                     Some("availability")

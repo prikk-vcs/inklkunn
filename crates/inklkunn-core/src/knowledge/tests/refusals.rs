@@ -342,6 +342,7 @@ fn the_status_rule_names_what_it_refuses_removals_and_unreadable_files_included(
         "review date",
         "availability",
         "source link",
+        "a source that was checked",
         "removes a claim or a source",
         "cannot be read",
         "outside a curation proposal",

@@ -240,6 +240,151 @@ fn a_refusal_names_the_field_it_is_about_for_a_source_on_both_surfaces() {
     );
 }
 
+fn reference(value: &str) -> Reference {
+    Reference {
+        form: ReferenceForm::Url,
+        value: value.to_owned(),
+    }
+}
+
+#[test]
+fn what_a_checked_source_is_and_where_it_is_found_is_curation_and_before_the_check_it_is_not() {
+    // K30: once a person checked a source (a review day or an availability), a page edit may not make it another work.
+    let named = |f: &dyn Fn(&mut Source)| {
+        source_with(|s| {
+            s.identity = Identity {
+                title: Some("A history".to_owned()),
+                author: Some("An author".to_owned()),
+                date: Some("1950".to_owned()),
+            };
+            s.reference = Some(reference("https://example.org/a"));
+            f(s);
+        })
+    };
+    let reviewed = Reviewed {
+        date: "2026-11-04".to_owned(),
+        proposal: None,
+    };
+    let path = source_path(&source_id(1));
+    let both_surfaces = |after: &Source, before: &Source, want: Option<&'static str>, why: &str| {
+        let held = texts_of(&[], &[before]);
+        let given = vec![(path.clone(), Some(after.to_yaml()))];
+        let by_submission: Vec<_> = refused_files(&given, &held);
+        let files = files_of(&[(path.clone(), after.to_yaml())]);
+        let mut touched = Touched {
+            written: [path.clone()].into(),
+            ..Touched::default()
+        };
+        touched.curated_before.insert(
+            path.clone(),
+            Curated::of(&File::Source(Box::new(before.clone()))),
+        );
+        let by_acceptance: Vec<_> = validate(&files, &touched, &One, &One)
+            .iter()
+            .map(|r| (r.file.clone(), r.field))
+            .collect();
+        let expected: Vec<(String, &str)> = want.map(|f| (path.clone(), f)).into_iter().collect();
+        assert_eq!(by_submission, expected, "submission: {why}");
+        assert_eq!(by_acceptance, expected, "acceptance: {why}");
+        // A curation proposal may.
+        touched.curation = true;
+        assert!(validate(&files, &touched, &One, &One).is_empty(), "{why}");
+    };
+    // A source checked by its review day or by its availability.
+    for (checked, how) in [
+        (
+            named(&|s| s.last_reviewed = Some(reviewed.clone())),
+            "reviewed",
+        ),
+        (
+            named(&|s| s.availability = Availability::Available),
+            "available",
+        ),
+        (
+            named(&|s| s.availability = Availability::Unavailable),
+            "unavailable",
+        ),
+    ] {
+        let keep = |after: &mut Source| {
+            after.last_reviewed = checked.last_reviewed.clone();
+            after.availability = checked.availability;
+        };
+        let changed = |f: &dyn Fn(&mut Source)| {
+            let mut s = checked.clone();
+            f(&mut s);
+            keep(&mut s);
+            s
+        };
+        both_surfaces(&checked, &checked, None, how);
+        both_surfaces(
+            &changed(&|s| s.identity.title = Some("Another".to_owned())),
+            &checked,
+            Some("identity"),
+            how,
+        );
+        both_surfaces(
+            &changed(&|s| s.identity.author = None),
+            &checked,
+            Some("identity"),
+            how,
+        );
+        both_surfaces(
+            &changed(&|s| s.identity.date = Some("1951".to_owned())),
+            &checked,
+            Some("identity"),
+            how,
+        );
+        both_surfaces(
+            &changed(&|s| s.reference = Some(reference("https://example.org/b"))),
+            &checked,
+            Some("reference"),
+            how,
+        );
+        both_surfaces(
+            &changed(&|s| s.reference = None),
+            &checked,
+            Some("reference"),
+            how,
+        );
+        // What the check does not vouch for stays a page edit's: the kind of source.
+        both_surfaces(
+            &changed(&|s| s.kind = SourceKind::Primary),
+            &checked,
+            None,
+            how,
+        );
+    }
+    // An unchecked source's identity and reference are the page edit's, and so is a new source's.
+    let unchecked = named(&|_| {});
+    let mut retitled = unchecked.clone();
+    retitled.identity.title = Some("Another".to_owned());
+    retitled.reference = Some(reference("https://example.org/b"));
+    both_surfaces(&retitled, &unchecked, None, "unchecked");
+    assert!(
+        refused_files(&[(path.clone(), Some(retitled.to_yaml()))], &Texts::new()).is_empty(),
+        "a new source"
+    );
+    // Changed together with the check itself, the check is named first (it is what moves).
+    let mut moved = retitled.clone();
+    moved.availability = Availability::Available;
+    both_surfaces(&moved, &unchecked, Some("availability"), "checked now");
+    // And at submit the proposal is the page's rule: refused unless it is a curation proposal.
+    let checked = named(&|s| s.availability = Availability::Available);
+    let mut other = checked.clone();
+    other.identity.title = Some("Another".to_owned());
+    let held = texts_of(&[], &[&checked]);
+    let was = |p: &str| held.get(p).cloned();
+    let given = vec![(path, Some(other.to_yaml()))];
+    assert_eq!(
+        crate::proposal::files::knowledge_verdict(&given, &was, false, &summarize),
+        Err(crate::proposal::Invalid::KnowledgeCurated)
+    );
+    assert_eq!(
+        crate::proposal::files::knowledge_verdict(&given, &was, true, &summarize),
+        Ok(())
+    );
+}
+
 fn content(files: Vec<FileChange>, renames: Vec<inklkunn_store::Rename>) -> RevisionContent {
     RevisionContent {
         base: inklkunn_store::Base::new(&"a".repeat(64), &"b".repeat(64)).expect("a base"),

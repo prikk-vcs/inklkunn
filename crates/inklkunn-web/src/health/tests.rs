@@ -34,12 +34,18 @@ fn the_status_rule_is_worded_with_the_removals_and_the_unreadable_files_it_refus
         "removes a claim or a source",
         "cannot be read",
         "source link",
+        "a source that was checked",
         "outside a curation proposal",
     ] {
         assert!(en.contains(part), "{part}: {en}");
     }
     let ja = crate::catalog::T::new(ja).get(rule_key(Rule::Status));
-    for part in ["主張や出典の削除", "読み取れないファイル", "出典リンク"] {
+    for part in [
+        "主張や出典の削除",
+        "読み取れないファイル",
+        "出典リンク",
+        "確認済みの出典",
+    ] {
         assert!(ja.contains(part), "{part}: {ja}");
     }
 }

@@ -561,6 +561,14 @@ Dependency updates (the architect, 2026-11-14).
   function (`Curated::removal_field`; `removal_refused` is its yes-or-no). The core's sentence for the *status* rule and
   the health list's `health.rule_status` (English, Japanese, glossary) now name the removal of a claim or a source that
   holds any of these and the replacing or removing of a file that cannot be read, as `know.not_curation` already did.
+- **K30 (handoff 005 corrections, third): a checked source is no other work after a page edit.** A source that has a review
+  day or an availability has been checked by a person, and the check vouches for the work the source names. Changing its
+  `identity` (title, author, date) or its `reference` is now curation's, like the check itself: refused in any other
+  proposal at submit, at every revision and at acceptance (one function, `Curated::departure`, which `Curated::Source`
+  now carries the two for), under the field `identity` or `reference`; a curation proposal may. Adding a source, and
+  changing an unchecked source's identity or reference, stay a page edit's; so do a checked source's kind, snapshot and
+  `superseded_by`. `know.not_curation` and the status rule's sentences (core, `health.rule_status`; English, Japanese,
+  glossary) say it.
 
 ## [0.2.0] — 2026-11-04
 

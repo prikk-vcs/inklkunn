@@ -124,7 +124,7 @@ impl Rule {
             Rule::InUse => "the file is removed while another file still names it",
             Rule::Owned => "the change also changes a page key that only the service writes",
             Rule::Status => {
-                "the change sets a community status, a review date or an availability, changes or removes a source link a claim already has, removes a claim or a source that holds any of these, or replaces or removes a file that cannot be read, outside a curation proposal"
+                "the change sets a community status, a review date or an availability, changes or removes a source link a claim already has, changes who or what a source that was checked is, or where it is found, removes a claim or a source that holds any of these, or replaces or removes a file that cannot be read, outside a curation proposal"
             }
         }
     }
