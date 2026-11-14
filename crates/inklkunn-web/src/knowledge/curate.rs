@@ -123,6 +123,24 @@ pub(crate) fn beyond_the_form(refused: &[Refusal]) -> bool {
     refused.iter().any(|r| !r.curation_form_can_make())
 }
 
+#[cfg(test)]
+mod tests;
+
+/// The sentences that say why a refused change is refused, **each case said once** (K67): what only a curation proposal
+/// may do (`know.not_curation`) when a refusal is one the form makes, and that a removal, or the replacement of a file
+/// that cannot be read, is not offered in this version (`know.not_by_form`) when a refusal is one it does not. A change
+/// that is only a removal is never told to be something only a curation proposal may do. Never empty.
+pub(crate) fn sentences(t: T, refused: &[Refusal]) -> Vec<String> {
+    let mut out = Vec::new();
+    if refused.is_empty() || refused.iter().any(Refusal::curation_form_can_make) {
+        out.push(t.get(Key::KnowNotCuration));
+    }
+    if beyond_the_form(refused) {
+        out.push(t.get(Key::KnowNotByForm));
+    }
+    out
+}
+
 /// The claims whose curation form a refusal leads to: the claim a refused file is, and the claims that cite a source a
 /// refused file is. Only claims the index of the view holds (the form opens on one that is there), in the order the
 /// files were refused, each once. All of them: [`offers`] offers the first [`MOST_OFFERED`] and counts the rest.

@@ -745,13 +745,13 @@ fn post(
             match outcome {
                 Ok(to) => see(&to),
                 Err(Failure::Plain(ProposalError::Invalid(why))) => {
-                    let mut problems = vec![words::invalid_text(t, why)];
-                    // What no form makes is said to be not offered in this version (K44, K62), with no reviewer or form named.
-                    if matches!(why, Invalid::KnowledgeCurated)
-                        && crate::knowledge::curate::beyond_the_form(&carried_curated)
-                    {
-                        problems.push(t.get(Key::KnowNotByForm));
-                    }
+                    // What only a curation proposal may do, and what no form makes (not offered in this version, with no
+                    // reviewer or form named: K44, K62), each said once (K67).
+                    let problems = if matches!(why, Invalid::KnowledgeCurated) {
+                        crate::knowledge::curate::sentences(t, &carried_curated)
+                    } else {
+                        vec![words::invalid_text(t, why)]
+                    };
                     let mut shown = state(problems);
                     // A change that needs a curation proposal leads to where one is made (K39).
                     if matches!(why, Invalid::KnowledgeCurated) {
@@ -777,15 +777,9 @@ fn post(
                             Err(e) => return read_failure(page, ctx, e),
                         }
                     }
-                    let noting =
-                        if matches!(error, ProposalError::Invalid(Invalid::KnowledgeCurated))
-                            && crate::knowledge::curate::beyond_the_form(&carried_curated)
-                        {
-                            vec![t.get(Key::KnowNotByForm)]
-                        } else {
-                            Vec::new()
-                        };
-                    refused_offering(page, ctx, &error, choices, offers, noting)
+                    let said = matches!(error, ProposalError::Invalid(Invalid::KnowledgeCurated))
+                        .then(|| crate::knowledge::curate::sentences(t, &carried_curated));
+                    refused_offering(page, ctx, &error, choices, offers, said)
                 }
             }
         }

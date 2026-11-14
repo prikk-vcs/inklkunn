@@ -681,6 +681,46 @@ fn the_rule_the_page_and_the_submission_use_is_the_one_the_acceptance_uses() {
 }
 
 #[test]
+fn a_removal_and_a_replaced_unreadable_file_are_refused_as_not_offered_and_a_departure_as_curation()
+{
+    // K67: the sentence that comes with each refusal (what operators and logs read) is chosen by the refusal.
+    let mut decided_claim = sound_claim(2);
+    decided(&mut decided_claim, Standing::Accepted);
+    let unreadable = claim_id(3);
+    let mut before = texts_of(&[&decided_claim], &[]);
+    before.insert(
+        claim_path(&unreadable),
+        "kind: observation\nsecret: words\n".to_owned(),
+    );
+    let files = [
+        // The decided claim removed, the unreadable file written over, and a decided claim set on another.
+        (claim_path(&decided_claim.id), None),
+        (claim_path(&unreadable), Some(sound_claim(3).to_yaml())),
+        (claim_path(&claim_id(4)), Some(decided_claim.to_yaml())),
+    ];
+    let refused = curated_by(&files, &|p| before.get(p).cloned());
+    assert_eq!(refused.len(), 3, "{refused:?}");
+    let said: Vec<(bool, String)> = refused
+        .iter()
+        .map(|r| (r.curation_form_can_make(), r.to_string()))
+        .collect();
+    for (made_by_the_form, text) in &said {
+        if *made_by_the_form {
+            assert!(text.contains(Rule::Status.sentence()), "{text}");
+            assert!(!text.contains("not offered"), "{text}");
+        } else {
+            assert!(text.contains("is not offered in this version"), "{text}");
+            assert!(!text.contains("curation proposal"), "{text}");
+        }
+    }
+    assert_eq!(
+        said.iter().filter(|(made, _)| !made).count(),
+        2,
+        "the removal and the unreadable file: {said:?}"
+    );
+}
+
+#[test]
 fn a_removal_of_a_decided_claim_is_refused_at_submit_and_an_undecided_one_is_not() {
     let mut plain = with_links(vec![]);
     plain.id = claim_id(1);

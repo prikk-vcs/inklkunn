@@ -1437,6 +1437,19 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   walking each alone in 200 steps; one read per source across the checks; the form of two sources names the right one, English and
   Japanese; the line-break change through the API.
 
+- **K67 (handoff 005 corrections, seventh round): the removal clause, said once.** A removal of a claim or a source file read *… which
+  only a curation proposal may do* beside *not offered in this version*, and the first was untrue: no curation proposal removes a file.
+  `know.not_curation`, `health.rule_status` and the core's `Rule::Status` sentence (English, Japanese, glossary) lose the clauses for
+  removing a claim or a source that holds a judgement and for replacing or removing a file that cannot be read; they say what a
+  curation proposal can do. A refusal that is about a removal (`Refusal::removes`) or an unreadable file (`UNREADABLE`) says it is not
+  offered: `check::Refusal::sentence` (and its `Display`, the operators' log) chooses `check::NOT_OFFERED` for those, and the proposal
+  page, the refused send and the refused revision choose `know.not_by_form` through one function (`knowledge::curate::sentences`):
+  a change that is only a removal or an unreadable file carries `know.not_by_form` alone; a change that is both carries each
+  sentence once. The write API's `knowledge-curated` explanation is the rule's sentence without the clauses (the API can
+  change a claim or a source through a curation or a dropped paragraph, but removes no file, so it never meets the other sentence). Tests: the sentences in both languages (the clauses are in
+  `know.not_by_form` and in no other), the refusal's own words, the choice for every mix of refusals, the proposal page, the refused
+  send and the Japanese page for a removal and for an unreadable file.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

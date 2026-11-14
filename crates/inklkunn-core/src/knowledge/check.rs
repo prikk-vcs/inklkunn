@@ -93,11 +93,26 @@ impl Refusal {
     pub fn curation_form_can_make(&self) -> bool {
         !self.removes && self.field != UNREADABLE
     }
+
+    /// The refusal as an English sentence, for operators and logs. A removal, or the replacement of a file that cannot
+    /// be read, is **not offered in this version** and says so (K67): the rule's sentence ([`Rule::sentence`]) is for
+    /// what a curation proposal can do.
+    pub fn sentence(&self) -> &'static str {
+        if self.curation_form_can_make() {
+            self.rule.sentence()
+        } else {
+            NOT_OFFERED
+        }
+    }
 }
+
+/// What is said of the removal of a claim or a source file, and of the replacement of a file that cannot be read
+/// (K67): the web's `know.not_by_form` in English, without its capital and its full stop.
+pub const NOT_OFFERED: &str = "removing a claim or a source file, or replacing a file that cannot be read, is not offered in this version";
 
 impl std::fmt::Display for Refusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.file, self.rule.sentence())?;
+        write!(f, "{}: {}", self.file, self.sentence())?;
         if !self.field.is_empty() {
             write!(f, " (`{}`)", self.field)?;
         }

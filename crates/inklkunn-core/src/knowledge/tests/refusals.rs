@@ -334,8 +334,9 @@ fn every_rule_has_a_code_that_reads_back_and_a_sentence() {
 }
 
 #[test]
-fn the_status_rule_names_what_it_refuses_removals_and_unreadable_files_included() {
-    // K29: the sentence a refusal of this rule carries names every case that is refused under it.
+fn the_status_rule_names_what_a_curation_proposal_does_and_leaves_removals_to_their_own_sentence() {
+    // K29, K67: the sentence of this rule names what a curation proposal can do; a removal, and a file that cannot be
+    // read, are not offered in this version and are said so by the refusal itself, once.
     let sentence = Rule::Status.sentence();
     for part in [
         "community status",
@@ -343,10 +344,40 @@ fn the_status_rule_names_what_it_refuses_removals_and_unreadable_files_included(
         "availability",
         "source link",
         "a source that was checked in its title, author, date, reference or the source that replaces it",
-        "removes a claim or a source",
-        "cannot be read",
         "outside a curation proposal",
     ] {
         assert!(sentence.contains(part), "{part}: {sentence}");
+    }
+    for part in [
+        "removes a claim or a source",
+        "cannot be read",
+        "replaces or removes",
+    ] {
+        assert!(!sentence.contains(part), "{part}: {sentence}");
+    }
+}
+
+#[test]
+fn a_refusal_of_a_removal_or_an_unreadable_file_says_it_is_not_offered_and_not_what_curation_may_do()
+ {
+    use crate::knowledge::check::{NOT_OFFERED, Refusal, UNREADABLE};
+    let said = |removes: bool, field: &'static str| Refusal {
+        file: "knowledge/claims/x.yaml".to_owned(),
+        rule: Rule::Status,
+        field,
+        line: None,
+        removes,
+    };
+    // What a curation proposal can make keeps the rule's sentence.
+    let made = said(false, "community_status");
+    assert_eq!(made.sentence(), Rule::Status.sentence());
+    assert!(made.to_string().contains(Rule::Status.sentence()));
+    // A removal, and a file that cannot be read, say they are not offered: never the rule's sentence beside it.
+    for refusal in [said(true, "community_status"), said(false, UNREADABLE)] {
+        assert_eq!(refusal.sentence(), NOT_OFFERED);
+        let text = refusal.to_string();
+        assert!(text.contains("is not offered in this version"), "{text}");
+        assert!(!text.contains(Rule::Status.sentence()), "{text}");
+        assert!(!text.contains("curation proposal"), "{text}");
     }
 }

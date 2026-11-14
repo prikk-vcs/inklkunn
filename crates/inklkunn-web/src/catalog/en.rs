@@ -833,7 +833,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "health.rule_status",
-        "The change sets a community status, a review date or an availability, changes or removes a source link a claim already has, changes a source that was checked in its title, author, date, reference or the source that replaces it, removes a claim or a source that holds any of these, or replaces or removes a file that cannot be read, outside a curation proposal.",
+        "The change sets a community status, a review date or an availability, changes or removes a source link a claim already has, or changes a source that was checked in its title, author, date, reference or the source that replaces it, outside a curation proposal.",
     ),
     msg(
         "health.rule_judged",
@@ -2735,7 +2735,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.not_curation",
-        "This proposal sets a community status, a review date or an availability, changes or removes a source link a claim already has, changes a source that was checked in its title, author, date, reference or the source that replaces it, removes a claim or a source that holds any of these, or replaces or removes a file that cannot be read, which only a curation proposal may do. It cannot be accepted as it is.",
+        "This proposal sets a community status, a review date or an availability, changes or removes a source link a claim already has, or changes a source that was checked in its title, author, date, reference or the source that replaces it, which only a curation proposal may do. It cannot be accepted as it is.",
     ),
     msg(
         "know.not_judged",

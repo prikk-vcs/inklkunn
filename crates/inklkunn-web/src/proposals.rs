@@ -186,18 +186,19 @@ pub(crate) fn refused(
     error: &inklkunn_core::proposal::ProposalError,
     choices: Vec<Choice>,
 ) -> Response {
-    refused_offering(page, ctx, error, choices, Default::default(), Vec::new())
+    refused_offering(page, ctx, error, choices, Default::default(), None)
 }
 
-/// [`refused`] with the ways to a curation form the refusal offers (K39), under its words, and with more sentences
-/// after the refusal's own (K44: what can be done instead, when no form makes the change).
+/// [`refused`] with the ways to a curation form the refusal offers (K39), under its words, and with the sentences that
+/// say it instead of its own when the caller knows more of the change than the error does (`said`; K67: which of what
+/// only a curation proposal may do, and what is not offered in this version, the change is).
 pub(crate) fn refused_offering(
     page: &Page,
     ctx: &Ctx,
     error: &inklkunn_core::proposal::ProposalError,
     choices: Vec<Choice>,
     offers: crate::knowledge::curate::Offers,
-    noting: Vec<String>,
+    said: Option<Vec<String>>,
 ) -> Response {
     use inklkunn_core::proposal::ProposalError;
     if let ProposalError::BaseUnavailable(cause) = error {
@@ -210,7 +211,9 @@ pub(crate) fn refused_offering(
         None => crate::wiki::generic_not_found(page),
         Some(r) => {
             let mut paragraphs = r.paragraphs;
-            paragraphs.extend(noting);
+            if let Some(said) = said {
+                paragraphs = said;
+            }
             let response = crate::wiki::notice_offering(
                 page, &ctx.wiki, r.status, r.heading, paragraphs, choices, offers, None,
             );

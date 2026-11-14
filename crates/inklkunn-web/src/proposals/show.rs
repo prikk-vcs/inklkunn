@@ -704,12 +704,10 @@ pub(crate) fn draw(
             } else if inklkunn_core::knowledge::curation::is_curation(content) {
                 notes.push(t.get(Key::KnowIsCuration));
             } else if !known.curated.is_empty() {
-                // The acceptance's own rule (K7): the same sentence the submission is refused with.
-                notes.push(t.get(Key::KnowNotCuration));
-                // What no form makes is said to be not offered in this version (K44, K62), with no reviewer or form named.
-                if crate::knowledge::curate::beyond_the_form(&known.curated) {
-                    notes.push(t.get(Key::KnowNotByForm));
-                }
+                // The acceptance's own rule (K7): the same sentences the submission is refused with. What a form makes
+                // is said to be for a curation proposal; what no form makes, to be not offered in this version (K44,
+                // K62), with no reviewer or form named: each said once (K67).
+                notes.extend(crate::knowledge::curate::sentences(t, &known.curated));
                 // The way to where the change is proposed (K39): the curation form of each claim it touches.
                 offered =
                     match crate::knowledge::curate::offers(ctx, t, &record.view, &known.curated) {

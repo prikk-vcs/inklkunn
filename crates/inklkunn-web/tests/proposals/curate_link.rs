@@ -221,11 +221,9 @@ async fn more_claims_than_are_offered_a_form_are_counted_and_not_cut_in_silence(
 
 // ---------------------------------------------------------------------------------------------- every change (K44)
 
-use super::claims::{file, files_of, location};
+use super::claims::{NOT_OFFERED, file, files_of, location};
 use super::curate::{FORM, checked_scene, checked_source, checked_unchanged, later_id, with};
 use inklkunn_core::knowledge::{Reference, ReferenceForm, source_path};
-
-const NOT_OFFERED: &str = "is not offered in this version";
 
 /// The checked source with `change` made to it: its path and the text the wiki would write.
 fn source_changed(change: impl Fn(&mut inklkunn_core::knowledge::Source)) -> (String, String) {
@@ -375,9 +373,31 @@ async fn what_no_form_makes_is_not_offered_and_the_page_says_so_without_a_link_i
     let body = open(&s, &held_unjudged(&s, removal.clone()), &s.writer)
         .await
         .body();
-    assert!(body.contains("only a curation proposal may do"), "{body}");
+    // Said once (K67): not also *which only a curation proposal may do*, which no curation proposal can.
     assert!(body.contains(NOT_OFFERED), "{body}");
+    assert!(!body.contains("only a curation proposal may do"), "{body}");
+    assert!(!body.contains("removes a claim or a source"), "{body}");
     assert!(!body.contains("proposals/curate"), "{body}");
+    // In Japanese, the same.
+    let to = held_unjudged(&s, removal.clone());
+    let ja = crate::common::request(
+        &s.w,
+        crate::common::APP,
+        "GET",
+        &to,
+        &[
+            ("x-test-account", s.writer.as_str()),
+            ("cookie", "inklkunn_lang=ja"),
+        ],
+    )
+    .await
+    .body();
+    assert!(ja.contains("このバージョンでは提供されていません"), "{ja}");
+    assert!(
+        !ja.contains("これができるのはキュレーション提案だけです"),
+        "{ja}"
+    );
+    assert!(!ja.contains("主張や出典を削除する"), "{ja}");
 
     // A file the wiki cannot read, written over: the same.
     let unread = ClaimId::parse("01930000-0000-7000-8000-000000000003").expect("a claim id");
@@ -391,10 +411,12 @@ async fn what_no_form_makes_is_not_offered_and_the_page_says_so_without_a_link_i
     .await
     .body();
     assert!(body.contains(NOT_OFFERED), "{body}");
+    assert!(!body.contains("only a curation proposal may do"), "{body}");
     assert!(!body.contains("proposals/curate"), "{body}");
 
     // A change a form makes beside one it does not: the form is offered for the first, the second is said not to be
-    // offered.
+    // offered. Both are said (the first is something only a curation proposal may do, the second is not that), each
+    // once, and the first says nothing of removals.
     let other = second_claim_with_a_link(&s);
     let mut decided = s.claim.clone();
     decided.community_status.status = Standing::Accepted;
@@ -413,6 +435,12 @@ async fn what_no_form_makes_is_not_offered_and_the_page_says_so_without_a_link_i
     .await
     .body();
     assert!(body.contains(NOT_OFFERED), "{body}");
+    assert_eq!(
+        body.matches("only a curation proposal may do").count(),
+        1,
+        "{body}"
+    );
+    assert!(!body.contains("removes a claim or a source"), "{body}");
     assert!(body.contains(&link_to_form(&s.claim.id)), "{body}");
     assert!(
         !body.contains(&form_of(&other.id)),
@@ -473,8 +501,8 @@ async fn what_no_form_makes_is_not_offered_and_the_page_says_so_without_a_link_i
     .await;
     assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", a.body());
     let body = a.body();
-    assert!(body.contains("only a curation proposal may do"), "{body}");
     assert!(body.contains(NOT_OFFERED), "{body}");
+    assert!(!body.contains("only a curation proposal may do"), "{body}");
     assert!(!body.contains("proposals/curate"), "{body}");
 }
 

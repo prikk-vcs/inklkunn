@@ -1054,8 +1054,12 @@ async fn the_page_warns_of_a_decided_claim_removed_and_of_a_source_link_changed(
         ],
     );
     let body = as_text(open(&s, &to, &s.writer).await.body());
-    assert!(body.contains(note), "{body}");
+    assert!(body.contains(NOT_OFFERED), "{body}");
+    assert!(!body.contains(note), "{body}");
 }
+
+/// What the page says of a change no form makes (K62, K67).
+pub(super) const NOT_OFFERED: &str = "is not offered in this version";
 
 #[tokio::test]
 async fn removing_a_claim_with_a_link_or_a_file_that_cannot_be_read_beside_a_page_edit_is_curation()
@@ -1099,11 +1103,10 @@ async fn removing_a_claim_with_a_link_or_a_file_that_cannot_be_read_beside_a_pag
     let body = open(&s, &held_unjudged(&s, removal), &s.writer)
         .await
         .body();
-    assert!(body.contains(note), "{body}");
-    assert!(
-        body.contains("removes a claim or a source that holds any of these"),
-        "{body}"
-    );
+    // K67: a removal is not offered in this version, said once: not also something only curation may do.
+    assert!(body.contains(NOT_OFFERED), "{body}");
+    assert!(!body.contains(note), "{body}");
+    assert!(!body.contains("removes a claim or a source"), "{body}");
 
     // A claim that holds nothing curated goes with a page edit as before, and its page does not warn.
     let mut bare = s.claim.clone();
@@ -1131,7 +1134,8 @@ async fn removing_a_claim_with_a_link_or_a_file_that_cannot_be_read_beside_a_pag
         body.contains("Replaces or removes a claim file that cannot be read"),
         "{body}"
     );
-    assert!(body.contains(note), "{body}");
+    assert!(body.contains(NOT_OFFERED), "{body}");
+    assert!(!body.contains(note), "{body}");
     assert!(!body.contains("Removes the claim"), "{body}");
     assert!(!body.contains("secret"), "{body}");
     // Written over with a claim that reads: the same line, and the new claim beside it.
@@ -1152,6 +1156,8 @@ async fn removing_a_claim_with_a_link_or_a_file_that_cannot_be_read_beside_a_pag
         "{body}"
     );
     assert!(body.contains("Records the claim"), "{body}");
+    assert!(body.contains(NOT_OFFERED), "{body}");
+    assert!(!body.contains(note), "{body}");
     // Alone it is a curation proposal: no warning, and the line stays.
     let body = open(
         &s,
