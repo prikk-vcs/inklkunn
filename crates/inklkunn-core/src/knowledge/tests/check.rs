@@ -249,6 +249,54 @@ fn the_chain_walk_reads_each_source_once_and_stops_at_the_end_or_the_return() {
 }
 
 #[test]
+fn a_walk_over_many_chains_costs_a_step_for_each_source_and_agrees_with_walking_each_chain_alone() {
+    use crate::knowledge::check::{SuccessorWalk, successor_returns};
+    // K69: sources 1 ... 200, each replaced by the next. `end` says what the last one is replaced by.
+    let next_of = |end: Option<u8>| {
+        move |id: &SourceId| -> Result<Option<SourceId>, ()> {
+            Ok((1..200)
+                .find(|n| source_id(*n) == *id)
+                .map(|n| source_id(n + 1))
+                .or_else(|| {
+                    (*id == source_id(200))
+                        .then(|| end.map(source_id))
+                        .flatten()
+                }))
+        }
+    };
+    for end in [None, Some(1), Some(100), Some(200)] {
+        let (mut walk, mut steps) = (SuccessorWalk::default(), 0);
+        for start in (1..=200).rev().chain(1..=200) {
+            let alone = successor_returns(&source_id(start), next_of(end));
+            let ask = next_of(end);
+            let got = walk.returns(&source_id(start), |id| {
+                steps += 1;
+                ask(id)
+            });
+            assert_eq!(got, alone, "from {start}, ending in {end:?}");
+        }
+        assert_eq!(
+            steps, 200,
+            "each source is asked about once, ending in {end:?}"
+        );
+    }
+    // A source that cannot be read ends the walk with the reason, and what was learned before it still holds.
+    let mut walk = SuccessorWalk::default();
+    let broken = walk.returns(&source_id(1), |id| {
+        if *id == source_id(1) {
+            Ok(Some(source_id(2)))
+        } else {
+            Err("unreadable")
+        }
+    });
+    assert_eq!(broken, Err("unreadable"));
+    assert_eq!(
+        walk.returns(&source_id(2), |_| Ok::<_, &str>(None)),
+        Ok(false)
+    );
+}
+
+#[test]
 fn an_anchor_must_name_a_page_and_a_block_the_result_has_once() {
     let source = source_file(&Source::new(source_id(1)));
     let check = |page_id: &str, block: &str, on: &Mem| {

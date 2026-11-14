@@ -47,9 +47,15 @@ struct Fake {
     pages: Vec<ClaimId>,
     /// The titles of the pages, by page id (K37); a page not listed has none that can be found.
     titles: Vec<(String, String)>,
+    /// The claims that cite a source, which the proposal does not write (K66).
+    cited_by: Vec<(SourceId, ClaimId)>,
 }
 
 impl Fake {
+    fn with_cited_by(mut self, source: SourceId, claim: ClaimId) -> Fake {
+        self.cited_by.push((source, claim));
+        self
+    }
     fn with_title(mut self, page_id: &str, title: &str) -> Fake {
         self.titles.push((page_id.to_owned(), title.to_owned()));
         self
@@ -137,6 +143,13 @@ impl Subjects for Fake {
     fn cited_href(&self, claim: &ClaimId, source: &SourceId) -> Option<String> {
         self.claim_href(claim)
             .map(|href| format!("{href}#source-{source}"))
+    }
+    fn citing(&self, source: &SourceId) -> Vec<ClaimId> {
+        self.cited_by
+            .iter()
+            .filter(|(s, _)| s == source)
+            .map(|(_, c)| c.clone())
+            .collect()
     }
 }
 
@@ -1407,6 +1420,129 @@ fn a_claim_moving_between_two_paragraphs_that_begin_alike_reads_as_a_move() {
             .ends_with("” (the paragraph marked <code>b1</code>) on the page <bdi>Bridge</bdi>."),
         "{more:?}"
     );
+}
+
+fn changed(changes: Vec<SourceChange>) -> Item {
+    Item::SourceChanged {
+        source: source_n(1),
+        named: Identity {
+            title: Some("A history".to_owned()),
+            author: None,
+            date: None,
+        },
+        changes,
+    }
+}
+
+#[test]
+fn the_review_that_stays_says_so_and_names_the_claims_that_rely_on_the_source_in_both_languages() {
+    let stays = || changed(vec![SourceChange::ReviewStays("2026-11-01".to_owned())]);
+    let know = Fake::default()
+        .with_paragraph(here("b0"), "It opened in 1950.")
+        .with_cited_by(source_n(1), claim_n(2))
+        .with_cited_by(source_n(1), claim_n(3))
+        .with_cited_by(source_n(9), claim_n(4));
+    let more = lines(T::new(EN), &[stays()], &know).remove(0).more;
+    let said: Vec<&str> = more.iter().map(|m| m.as_str()).collect();
+    assert_eq!(said.len(), 3, "{said:?}");
+    assert_eq!(
+        said.first().copied(),
+        Some("The review of 2026-11-01 stays: accept only if this is still the same work.")
+    );
+    for (line, n) in said.iter().skip(1).zip([2, 3]) {
+        assert!(
+            line.starts_with(
+                "Another claim that cites it, and that this proposal does not change: "
+            ),
+            "{line}"
+        );
+        assert!(
+            line.contains(&format!("<code>{}</code>", claim_n(n))),
+            "{line}"
+        );
+    }
+    assert!(
+        !said.iter().any(|l| l.contains(claim_n(4).as_str())),
+        "{said:?}"
+    );
+    let ja = lines(japanese(), &[stays()], &know).remove(0).more;
+    assert_eq!(
+        ja.first().map(|m| m.as_str()),
+        Some(
+            "2026-11-01 の確認はそのまま残ります。同じ資料のままである場合にだけ受け入れてください。"
+        )
+    );
+    assert!(
+        ja.get(1).is_some_and(|m| m
+            .as_str()
+            .starts_with("この出典を引用していて、この提案では変更されない別の主張: ")),
+        "{ja:?}"
+    );
+    // Beyond five, the rest are counted.
+    let mut crowd = Fake::default();
+    for n in 10..18 {
+        crowd = crowd.with_cited_by(source_n(1), claim_n(n));
+    }
+    let more = lines(T::new(EN), &[stays()], &crowd).remove(0).more;
+    assert_eq!(more.len(), 1 + CITING_LINES + 1);
+    assert_eq!(
+        more.last().map(|m| m.as_str()),
+        Some("3 more claims that cite it are not listed.")
+    );
+    // Nothing relies on it: the sentence alone.
+    let alone = lines(T::new(EN), &[stays()], &Fake::default())
+        .remove(0)
+        .more;
+    assert_eq!(alone.len(), 1);
+}
+
+#[test]
+fn a_change_of_white_space_alone_is_told_with_both_spellings_and_every_space_tab_and_line_break_marked()
+ {
+    let item = changed(vec![SourceChange::WhiteSpace {
+        part: Spelled::Title,
+        was: "A history".to_owned(),
+        now: " A\u{a0}history\t\r\n".to_owned(),
+    }]);
+    let know = Fake::default();
+    let more = lines(T::new(EN), std::slice::from_ref(&item), &know)
+        .remove(0)
+        .more;
+    assert_eq!(
+        more.first().map(|m| m.as_str()),
+        Some(
+            "Only the white space in its title changes (␣ is a space, ⇥ a tab, ↵ a line break): <bdi>A␣history</bdi> becomes <bdi>␣A[U+00A0]history⇥[U+000D]↵</bdi>."
+        )
+    );
+    let ja = lines(japanese(), std::slice::from_ref(&item), &know)
+        .remove(0)
+        .more;
+    assert!(
+        ja.first()
+            .is_some_and(|m| m.as_str().starts_with("タイトルの空白だけが変わります")
+                && m.as_str().contains("<bdi>A␣history</bdi>")),
+        "{ja:?}"
+    );
+    // The same words with no white space to show read as one spelling.
+    assert_eq!(visible("A history"), "A␣history");
+    assert_ne!(visible("A history"), visible("A  history"));
+    // Each part of a name, and where it is found, has its own sentence.
+    for (part, words) in [
+        (Spelled::Author, "its author or publisher"),
+        (Spelled::Date, "its date"),
+        (Spelled::Reference, "where it is found"),
+    ] {
+        let item = changed(vec![SourceChange::WhiteSpace {
+            part,
+            was: "a".to_owned(),
+            now: "a ".to_owned(),
+        }]);
+        let line = lines(T::new(EN), &[item], &know).remove(0).more;
+        assert!(
+            line.first().is_some_and(|m| m.as_str().contains(words)),
+            "{line:?}"
+        );
+    }
 }
 
 #[test]

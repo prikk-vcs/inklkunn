@@ -1412,6 +1412,31 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   file's place. Test: the parse table of `inklkunn/src/admin/tests.rs` (two files, a second `--config` with no file, an option in
   its place, `--config --config FILE`, `--config --replace-existing`); each of the two checks, removed, fails it.
 
+- **K66 (handoff 005 corrections, seventh round): a changed reference clears the check.** A curation could turn a checked source into
+  another work and keep *checked on …, available*. `compose::curate` now clears a source's `last_reviewed` and `availability` when its
+  reference (the form or the value) changes, unless the same edit records a new review day (the availability beside it is then that
+  check's) or another availability (recorded without a day: the old day, which was for the old reference, goes). The form's day and
+  availability sent back as they are, and the API's omitted members, are not a new record. A correction of the title, the author or the
+  date, or of what replaces the source, keeps both. The proposal's page says it: a source whose title, author, date or reference
+  changes under the same review day gets `SourceChange::ReviewStays` (*The review of … stays: accept only if this is still the same
+  work.*) with a line for each other claim that cites it and that the proposal does not write (five, then a count); a part that
+  differs by white space alone is `SourceChange::WhiteSpace` (title, author, date or the reference's value), shown as *Only the white
+  space in its title changes … X becomes Y* with every space, tab and line break marked (`␣ ⇥ ↵`, any other white space by its code
+  point), and no longer as *X … is now X*. New catalog entries `know.source_spacing_title|author|date|reference`,
+  `know.source_review_stays`, `know.source_cited_by`, `know.source_cited_by_more`; the form's `curate.work_hint` says that a new place
+  clears the check. The API's operation text says it too. Public: `summary::Spelled`, `SourceChange::{WhiteSpace, ReviewStays}`.
+  Tests through the core (the clearing table, the summary's two cases), the form, the proposal's page and the API, English and
+  Japanese.
+- **K69 (handoff 005 corrections, seventh round): the cycle refusal and its cost.** The form's cycle refusal names the source whose
+  chain returns (`curate.successor_cycle_at`: *Source: …*, as the field's legend names it) instead of saying *this one* at the top of a
+  form of several. The form and the API read each source once for a request (`curate::SourceReads`, seeded with the sources the claim
+  cites), and `check::SuccessorWalk` remembers which sources are known to lead into a circle and which are not, so the acceptance's
+  `validate` and the surfaces walk a source once however many chains pass through it: a chain of N sources costs N steps, not N²
+  (`successor_returns` stays, as one walk). The form's hint says that a change of line breaks alone cannot be made there (a browser
+  takes the breaks out of a field) and is made through the API. Tests: 200 sources walked from every start in four shapes agree with
+  walking each alone in 200 steps; one read per source across the checks; the form of two sources names the right one, English and
+  Japanese; the line-break change through the API.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

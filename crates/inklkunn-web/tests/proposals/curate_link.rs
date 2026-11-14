@@ -280,11 +280,14 @@ async fn each_change_only_curation_makes_leads_from_its_refusal_to_a_form_that_m
         Case {
             name: "a checked source's reference",
             refused: Box::new(|_| {
+                // Another reference, and so no check of it (K66): the file the form writes.
                 let (path, text) = source_changed(|x| {
                     x.reference = Some(Reference {
                         form: ReferenceForm::Doi,
                         value: "10.1000/182".to_owned(),
                     });
+                    x.last_reviewed = None;
+                    x.availability = inklkunn_core::knowledge::Availability::Unknown;
                 });
                 (path, Some(text))
             }),

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use super::check::sound_claim;
 use super::*;
 use crate::knowledge::summary::{
-    Cite, ClaimChange, Item, Leaves, Rejudgement, SourceChange, summarize, undescribed,
+    Cite, ClaimChange, Item, Leaves, Rejudgement, SourceChange, Spelled, summarize, undescribed,
     undescribed_by,
 };
 
@@ -197,6 +197,155 @@ fn what_changes_in_a_source_is_said_with_what_it_changed_to() {
             SourceChange::Superseded(Some(source_id(2))),
         ]
     );
+}
+
+/// What a source's change comes to.
+fn source_changes_of(before: &Source, after: &Source) -> Vec<SourceChange> {
+    let path = source_path(&before.id);
+    let old: BTreeMap<String, String> = [(path.clone(), before.to_yaml())].into();
+    match summarize(&[(path, Some(after.to_yaml()))], &had(old)).as_slice() {
+        [Item::SourceChanged { changes, .. }] => changes.clone(),
+        [] => Vec::new(),
+        other => panic!("{other:?}"),
+    }
+}
+
+/// A source that was checked on 2026-11-01.
+fn reviewed_source() -> Source {
+    let mut source = Source::new(source_id(1));
+    source.availability = Availability::Available;
+    source.identity.title = Some("A history".to_owned());
+    source.reference = Some(Reference {
+        form: ReferenceForm::Url,
+        value: "https://example.org/history".to_owned(),
+    });
+    source.last_reviewed = Some(Reviewed {
+        date: "2026-11-01".to_owned(),
+        proposal: None,
+    });
+    source
+}
+
+fn stays(changes: &[SourceChange]) -> bool {
+    changes
+        .iter()
+        .any(|c| matches!(c, SourceChange::ReviewStays(_)))
+}
+
+#[test]
+fn a_new_identity_or_reference_under_the_same_review_says_that_the_review_stays() {
+    // K66: another title, author or date, or another place to find it, with the same day: the reviewer is told.
+    let before = reviewed_source();
+    let said = SourceChange::ReviewStays("2026-11-01".to_owned());
+    let mut retitled = before.clone();
+    retitled.identity.title = Some("A history, second edition".to_owned());
+    assert_eq!(source_changes_of(&before, &retitled).last(), Some(&said));
+    let mut dated = before.clone();
+    dated.identity.date = Some("1999".to_owned());
+    assert_eq!(source_changes_of(&before, &dated).last(), Some(&said));
+    let mut moved = before.clone();
+    moved.reference = Some(Reference {
+        form: ReferenceForm::Doi,
+        value: "10.1000/182".to_owned(),
+    });
+    assert_eq!(source_changes_of(&before, &moved).last(), Some(&said));
+    // Not when the check goes with it, is set again, or was never there; and not for a change of something else.
+    let mut cleared = moved.clone();
+    cleared.last_reviewed = None;
+    cleared.availability = Availability::Unknown;
+    let changes = source_changes_of(&before, &cleared);
+    assert!(
+        changes.contains(&SourceChange::Reviewed(None)),
+        "{changes:?}"
+    );
+    assert!(!stays(&changes));
+    let mut again = moved.clone();
+    again.last_reviewed = Some(Reviewed {
+        date: "2026-11-10".to_owned(),
+        proposal: None,
+    });
+    assert!(!stays(&source_changes_of(&before, &again)));
+    let unchecked = Source::new(source_id(1));
+    let mut renamed = unchecked.clone();
+    renamed.identity.title = Some("Another".to_owned());
+    assert!(!stays(&source_changes_of(&unchecked, &renamed)));
+    let mut successor = before.clone();
+    successor.superseded_by = Some(source_id(2));
+    assert!(!stays(&source_changes_of(&before, &successor)));
+    let mut available = before.clone();
+    available.availability = Availability::Unavailable;
+    assert!(!stays(&source_changes_of(&before, &available)));
+}
+
+#[test]
+fn a_change_of_white_space_alone_is_told_with_both_spellings_and_leaves_the_review_alone() {
+    // K66: *X is now X* is a line no one can act on.
+    let before = reviewed_source();
+    let mut spaced = before.clone();
+    spaced.identity.title = Some("A  history ".to_owned());
+    assert_eq!(
+        source_changes_of(&before, &spaced),
+        [SourceChange::WhiteSpace {
+            part: Spelled::Title,
+            was: "A history".to_owned(),
+            now: "A  history ".to_owned(),
+        }]
+    );
+    // The reference's value, too, and a part that had nothing.
+    let mut places = before.clone();
+    places.reference = Some(Reference {
+        form: ReferenceForm::Url,
+        value: "https://example.org/ history".to_owned(),
+    });
+    let mut base = before.clone();
+    base.reference = Some(Reference {
+        form: ReferenceForm::Url,
+        value: "https://example.org/  history".to_owned(),
+    });
+    assert_eq!(
+        source_changes_of(&base, &places),
+        [SourceChange::WhiteSpace {
+            part: Spelled::Reference,
+            was: "https://example.org/  history".to_owned(),
+            now: "https://example.org/ history".to_owned(),
+        }]
+    );
+    let mut blank = before.clone();
+    blank.identity.author = Some("  ".to_owned());
+    assert_eq!(
+        source_changes_of(&before, &blank),
+        [SourceChange::WhiteSpace {
+            part: Spelled::Author,
+            was: String::new(),
+            now: "  ".to_owned(),
+        }]
+    );
+    // A part that says something else is the new name, told whole; a part that only respells is still told as that.
+    let mut both = before.clone();
+    both.identity.title = Some("Another".to_owned());
+    both.identity.date = Some("  ".to_owned());
+    let changes = source_changes_of(&before, &both);
+    assert!(
+        matches!(changes.first(), Some(SourceChange::Identity(_))),
+        "{changes:?}"
+    );
+    assert!(changes.iter().any(|c| matches!(
+        c,
+        SourceChange::WhiteSpace {
+            part: Spelled::Date,
+            ..
+        }
+    )));
+    // A reference of another form is another reference even when the value reads alike.
+    let mut form = before.clone();
+    form.reference = before.reference.as_ref().map(|r| Reference {
+        form: ReferenceForm::Citation,
+        value: r.value.clone(),
+    });
+    assert!(matches!(
+        source_changes_of(&before, &form).first(),
+        Some(SourceChange::Reference(Some(_)))
+    ));
 }
 
 #[test]

@@ -76,16 +76,43 @@ pub enum ClaimChange {
     Noted(SourceId),
 }
 
+/// A part of a source that a change can respell without changing what it says (K66).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Spelled {
+    /// The title.
+    Title,
+    /// The author or publisher.
+    Author,
+    /// The date, as written.
+    Date,
+    /// The reference's value.
+    Reference,
+}
+
 /// One change to a source that exists.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SourceChange {
     /// What kind of source.
     Kind(SourceKind),
     /// Who and what it is, as written: **what it is now** (K15: a line that says only that it changed cannot be
-    /// told from another).
+    /// told from another). Only when a part of it says something else: a part that differs by white space alone is
+    /// [`SourceChange::WhiteSpace`], which can show what a name reads the same as.
     Identity(Identity),
-    /// Where it is found: what it is now (`None`: it says nowhere).
+    /// Where it is found: what it is now (`None`: it says nowhere). Not a change of white space alone.
     Reference(Option<Reference>),
+    /// **A part that differs only in its white space** (K66): its two spellings as they are, so that a surface can make
+    /// the white space visible. A line that said *X is now X* would be one a reader cannot act on.
+    WhiteSpace {
+        /// Which part.
+        part: Spelled,
+        /// As the base had it (empty: it had none).
+        was: String,
+        /// As the proposal writes it (empty: none).
+        now: String,
+    },
+    /// **The check stays** (K66): the identity or the reference of the source is something else now and the day a person
+    /// last checked it is the same day. The reviewer who accepts vouches that it is still the same work.
+    ReviewStays(String),
     /// The copy kept.
     Snapshot,
     /// The day a person last checked it (`None`: cleared).
@@ -356,6 +383,14 @@ fn claim_changes(before: &Claim, after: &Claim) -> Vec<ClaimChange> {
     out
 }
 
+/// A text with its white space made single spaces (and none at its ends); `None` is the empty text.
+fn squashed(text: Option<&str>) -> String {
+    text.unwrap_or("")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn source_changes(before: &Source, after: &Source) -> Vec<SourceChange> {
     let Source {
         id: _,
@@ -371,11 +406,49 @@ fn source_changes(before: &Source, after: &Source) -> Vec<SourceChange> {
     if *kind != after.kind {
         out.push(SourceChange::Kind(after.kind));
     }
-    if *identity != after.identity {
+    // A part that differs by white space alone is told as that (K66); the name is told whole when a part says something else.
+    let mut respelled = Vec::new();
+    let mut renamed = false;
+    for (part, was, now) in [
+        (Spelled::Title, &identity.title, &after.identity.title),
+        (Spelled::Author, &identity.author, &after.identity.author),
+        (Spelled::Date, &identity.date, &after.identity.date),
+    ] {
+        if was == now {
+            continue;
+        }
+        if squashed(was.as_deref()) == squashed(now.as_deref()) {
+            respelled.push(SourceChange::WhiteSpace {
+                part,
+                was: was.clone().unwrap_or_default(),
+                now: now.clone().unwrap_or_default(),
+            });
+        } else {
+            renamed = true;
+        }
+    }
+    if renamed {
         out.push(SourceChange::Identity(after.identity.clone()));
     }
+    out.extend(respelled);
+    let mut moved = false;
     if *reference != after.reference {
-        out.push(SourceChange::Reference(after.reference.clone()));
+        match (reference, &after.reference) {
+            (Some(was), Some(now))
+                if was.form == now.form
+                    && squashed(Some(&was.value)) == squashed(Some(&now.value)) =>
+            {
+                out.push(SourceChange::WhiteSpace {
+                    part: Spelled::Reference,
+                    was: was.value.clone(),
+                    now: now.value.clone(),
+                });
+            }
+            _ => {
+                moved = true;
+                out.push(SourceChange::Reference(after.reference.clone()));
+            }
+        }
     }
     if *snapshot != after.snapshot {
         out.push(SourceChange::Snapshot);
@@ -390,6 +463,13 @@ fn source_changes(before: &Source, after: &Source) -> Vec<SourceChange> {
     }
     if *superseded_by != after.superseded_by {
         out.push(SourceChange::Superseded(after.superseded_by.clone()));
+    }
+    // Another work under the same check: said last, as what the reviewer is asked to vouch for.
+    if (renamed || moved)
+        && let Some(kept) =
+            day(last_reviewed).filter(|d| Some(d) == day(&after.last_reviewed).as_ref())
+    {
+        out.push(SourceChange::ReviewStays(kept));
     }
     out
 }

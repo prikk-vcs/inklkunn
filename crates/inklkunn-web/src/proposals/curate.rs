@@ -9,6 +9,7 @@
 //! was changes nothing; a proposal that changes nothing is not sent. The proposal is an ordinary one: created and
 //! sent for review through the service, accepted by someone who may, and the status it sets names it.
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 
 use askama::Template;
@@ -17,7 +18,7 @@ use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use inklkunn_core::Action;
-use inklkunn_core::knowledge::check::successor_returns;
+use inklkunn_core::knowledge::check::SuccessorWalk;
 use inklkunn_core::knowledge::compose::{
     Curation, LinkEdit, Mistake, SourceEdit, Work, curate, page_id_of,
 };
@@ -103,6 +104,23 @@ impl Loaded {
                 })
             })
             .collect()
+    }
+}
+
+impl Loaded {
+    /// The refusal for the source whose chain of replacing sources returns, in the person's words: the source (as the form's
+    /// own legend names it), so that the person finds the field (K69).
+    pub(crate) fn successor_cycle_text(&self, t: crate::catalog::T, source: &SourceId) -> String {
+        let title = self
+            .cited
+            .iter()
+            .flatten()
+            .find(|s| s.id == *source)
+            .and_then(|s| s.identity.title.clone())
+            .unwrap_or_else(|| t.get(Key::CurateSourceUntitled));
+        t.msg(Key::CurateSuccessorCycleAt)
+            .with("title", title)
+            .text()
     }
 }
 
@@ -197,13 +215,74 @@ pub(crate) fn load_with(
     }))
 }
 
+/// How a source is read from storage: its id in, the source out (`None`: there is none to read).
+type Fetch<'a> = Box<dyn Fn(&SourceId) -> Result<Option<Source>, ReadError> + 'a>;
+
+/// The sources of a base, **each read once for a request** (K69): the sources the claim cites, which [`load_with`] has read
+/// already, and every other source the checks of a curation look at (the one a source is to be replaced by, the ones a chain
+/// of replacing sources passes). A source whose file is not there or cannot be read is a source the base does not have.
+pub(crate) struct SourceReads<'a> {
+    fetch: Fetch<'a>,
+    seen: RefCell<BTreeMap<SourceId, Option<Source>>>,
+}
+
+impl<'a> SourceReads<'a> {
+    /// The sources of the base `base_block`, with those `subject` cites as it has read them.
+    pub(crate) fn of(
+        read: &'a inklkunn_core::read::ReadService,
+        wiki: &'a inklkunn_store::WikiRecord,
+        base_block: &'a str,
+        subject: &Loaded,
+    ) -> SourceReads<'a> {
+        SourceReads::with(
+            move |id| {
+                let path = source_path(id);
+                Ok(read.source_at(wiki, base_block, &path)?.and_then(|text| {
+                    match read_file(&path, text.as_bytes()) {
+                        Ok(File::Source(source)) => Some(*source),
+                        _ => None,
+                    }
+                }))
+            },
+            subject,
+        )
+    }
+
+    /// Sources read by `fetch`, with those `subject` cites as it has read them.
+    fn with(
+        fetch: impl Fn(&SourceId) -> Result<Option<Source>, ReadError> + 'a,
+        subject: &Loaded,
+    ) -> SourceReads<'a> {
+        let seen = subject
+            .claim
+            .sources
+            .iter()
+            .zip(&subject.cited)
+            .map(|(link, source)| (link.source.clone(), source.clone()))
+            .collect();
+        SourceReads {
+            fetch: Box::new(fetch),
+            seen: RefCell::new(seen),
+        }
+    }
+
+    /// The source `id`, or `None` when the base has no readable file for it. Read from storage the first time it is asked
+    /// for.
+    pub(crate) fn get(&self, id: &SourceId) -> Result<Option<Source>, ReadError> {
+        if let Some(found) = self.seen.borrow().get(id) {
+            return Ok(found.clone());
+        }
+        let found = (self.fetch)(id)?;
+        self.seen.borrow_mut().insert(id.clone(), found.clone());
+        Ok(found)
+    }
+}
+
 /// Does `edit` name, as the source that replaces another, one the base does not have or cannot read (K44)? Only a
 /// successor the base does not already name is looked for: the acceptance refuses a reference to a source that is not
 /// there, so the proposal is never one that cannot be accepted. Shared with the write API's curation.
 pub(crate) fn unknown_successor_with(
-    read: &inklkunn_core::read::ReadService,
-    wiki: &inklkunn_store::WikiRecord,
-    base_block: &str,
+    sources: &SourceReads<'_>,
     subject: &Loaded,
     edit: &Curation,
 ) -> Result<bool, ReadError> {
@@ -220,11 +299,7 @@ pub(crate) fn unknown_successor_with(
         if named == Some(later) {
             continue;
         }
-        let path = source_path(later);
-        let found = read
-            .source_at(wiki, base_block, &path)?
-            .is_some_and(|text| matches!(read_file(&path, text.as_bytes()), Ok(File::Source(_))));
-        if !found {
+        if sources.get(later)?.is_none() {
             return Ok(true);
         }
     }
@@ -233,13 +308,12 @@ pub(crate) fn unknown_successor_with(
 
 /// The first source, in id order, among the source files a curation writes (`files`: path and text, as `curate` made
 /// them) whose chain of replacing sources returns to a source it passed (K61). **The acceptance's rule on the acceptance's
-/// files** ([`inklkunn_core::knowledge::check::successor_returns`] over what the result holds), read from the files the
+/// files** ([`inklkunn_core::knowledge::check::SuccessorWalk`] over what the result holds), read from the files the
 /// curation writes and, for the rest, from the base, so a curation the acceptance would refuse for it is never one that can
-/// be submitted. Shared with the write API's curation.
+/// be submitted. A source is walked once, however many chains lead through it, and read once (K69). Shared with the write
+/// API's curation.
 pub(crate) fn successor_cycle_with(
-    read: &inklkunn_core::read::ReadService,
-    wiki: &inklkunn_store::WikiRecord,
-    base_block: &str,
+    sources: &SourceReads<'_>,
     files: &[(String, String)],
 ) -> Result<Option<SourceId>, ReadError> {
     let written: BTreeMap<SourceId, Option<SourceId>> = files
@@ -249,36 +323,20 @@ pub(crate) fn successor_cycle_with(
             _ => None,
         })
         .collect();
+    let mut walk = SuccessorWalk::default();
     for (id, later) in &written {
         if later.is_none() {
             continue;
         }
-        let returns = successor_returns(id, |at| match written.get(at) {
+        let returns = walk.returns(id, |at| match written.get(at) {
             Some(later) => Ok(later.clone()),
-            None => {
-                let path = source_path(at);
-                Ok(read.source_at(wiki, base_block, &path)?.and_then(|text| {
-                    match read_file(&path, text.as_bytes()) {
-                        Ok(File::Source(source)) => source.superseded_by,
-                        _ => None,
-                    }
-                }))
-            }
+            None => Ok(sources.get(at)?.and_then(|source| source.superseded_by)),
         })?;
         if returns {
             return Ok(Some(id.clone()));
         }
     }
     Ok(None)
-}
-
-fn unknown_successor(
-    ctx: &Ctx,
-    base_block: &str,
-    subject: &Loaded,
-    edit: &Curation,
-) -> Result<bool, ReadError> {
-    unknown_successor_with(&ctx.services.read, &ctx.wiki, base_block, subject, edit)
 }
 
 // ------------------------------------------------------------------------------------ what the form says
@@ -1003,9 +1061,10 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
         );
     }
     // A source that replaces another is a source the wiki has, as the base has it.
+    let reads = SourceReads::of(&ctx.services.read, &ctx.wiki, &sub.base.block_id, &subject);
     let missing = match mistake {
         Some(m) => Some(m),
-        None => match unknown_successor(ctx, &sub.base.block_id, &subject, &edit) {
+        None => match unknown_successor_with(&reads, &subject, &edit) {
             Ok(missing) => missing.then_some(Mistake::UnknownSuccessor),
             Err(e) => return read_failure(page, ctx, e),
         },
@@ -1021,11 +1080,11 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
         }
     };
     // The sources that replace one another do not come back to one they passed, as the acceptance judges the result (K61).
-    match successor_cycle_with(&ctx.services.read, &ctx.wiki, &sub.base.block_id, &files) {
+    match successor_cycle_with(&reads, &files) {
         Ok(None) => {}
-        Ok(Some(_)) => {
+        Ok(Some(returning)) => {
             return draw(
-                vec![mistake_text(t, Mistake::SuccessorCycle)],
+                vec![subject.successor_cycle_text(t, &returning)],
                 Vec::new(),
                 StatusCode::UNPROCESSABLE_ENTITY,
             );
@@ -1088,3 +1147,6 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
         Err(error) => refused(page, ctx, &error, Vec::new()),
     }
 }
+
+#[cfg(test)]
+mod tests;

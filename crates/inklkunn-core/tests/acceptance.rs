@@ -1562,8 +1562,12 @@ fn a_curation_removes_a_link_and_corrects_a_checked_source_through_the_whole_pat
         Some((ReferenceForm::Doi, "10.1000/182"))
     );
     assert_eq!(corrected.superseded_by.as_ref(), Some(&two.id));
-    // The review day was not set again: it keeps the proposal that said so; and the second source's file is still there.
-    assert!(corrected.last_reviewed.and_then(|r| r.proposal).is_some());
+    // The reference is another one, so the review day and the availability the body repeated are not a check of it (K66);
+    // and the second source's file is still there.
+    assert_eq!(
+        (corrected.availability, corrected.last_reviewed),
+        (Availability::Unknown, None)
+    );
     assert_eq!(
         read_source(&second_file).identity.title.as_deref(),
         Some("A later history, corrected")

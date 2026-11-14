@@ -438,6 +438,10 @@ pub struct Curation {
 /// digest of the wording the claim has now (`now`, `None` when it is said nowhere). Only a file that differs is
 /// returned. The standing's `proposal`, and a source's `last_reviewed` proposal, are left for the acceptance to
 /// name (it is the proposal that decides; [`super::curation`]).
+///
+/// **A changed reference clears the check** (K66): a source whose reference changes loses its `last_reviewed` and its
+/// `availability` unless the edit records a new day or another availability. A correction of title, author or date keeps
+/// them (the proposal's page says so, and the reviewer who accepts it vouches that it is still the same work).
 pub fn curate(
     claim: &Claim,
     cited: &[Source],
@@ -510,6 +514,7 @@ pub fn curate(
         }
         let day = e.reviewed.trim();
         let before = old.last_reviewed.as_ref().map(|r| r.date.as_str());
+        let mut new_day = false;
         if day.is_empty() {
             source.last_reviewed = None;
         } else if before != Some(day) {
@@ -520,6 +525,19 @@ pub fn curate(
                 date: day.to_owned(),
                 proposal: None,
             });
+            new_day = true;
+        }
+        // A source found elsewhere is another work than the one a person checked (K66): the check does not go with a
+        // changed reference, unless the same proposal records one. A new day is a new check, and the availability it
+        // posts is that check's; an availability posted without a day is recorded and the old day, which was for the old
+        // reference, is not kept.
+        if source.reference != old.reference {
+            if !new_day {
+                source.last_reviewed = None;
+            }
+            if !new_day && e.availability == old.availability {
+                source.availability = Availability::Unknown;
+            }
         }
         if source != *old {
             let text = source.to_yaml();

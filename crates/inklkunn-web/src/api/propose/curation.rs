@@ -31,7 +31,9 @@ use crate::catalog::Key;
 use crate::csrf::Decided;
 use crate::pages::PageState;
 use crate::proposals::claims::mistake_text;
-use crate::proposals::curate::{load_with, successor_cycle_with, unknown_successor_with};
+use crate::proposals::curate::{
+    SourceReads, load_with, successor_cycle_with, unknown_successor_with,
+};
 use crate::url::view_ref;
 
 /// The most links or sources one body edits (the form's bound).
@@ -229,15 +231,11 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
             .named("member", format!("sources[{}].reviewed", day.at))
             .member("source", serde_json::json!(day.source.to_string())));
     }
-    // A source that replaces another is a source the wiki has, as the base has it.
-    if unknown_successor_with(
-        &req.services.read,
-        &req.wiki,
-        &tip.block_id,
-        &subject,
-        &edit,
-    )
-    .map_err(|e| from_read(&req.services, &req.wiki, e))?
+    // A source that replaces another is a source the wiki has, as the base has it. Each source is read once (K69).
+    let base_block = tip.block_id.clone();
+    let reads = SourceReads::of(&req.services.read, &req.wiki, &base_block, &subject);
+    if unknown_successor_with(&reads, &subject, &edit)
+        .map_err(|e| from_read(&req.services, &req.wiki, e))?
     {
         return Err(mistake(req, Mistake::UnknownSuccessor));
     }
@@ -246,8 +244,7 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
     // The sources that replace one another do not come back to one they passed, as the acceptance judges the result (K61):
     // the member is the source whose successor does.
     if let Some(returning) =
-        successor_cycle_with(&req.services.read, &req.wiki, &tip.block_id, &files)
-            .map_err(|e| from_read(&req.services, &req.wiki, e))?
+        successor_cycle_with(&reads, &files).map_err(|e| from_read(&req.services, &req.wiki, e))?
     {
         let at = edit.sources.iter().position(|e| e.source == returning);
         let problem = mistake(req, Mistake::SuccessorCycle);

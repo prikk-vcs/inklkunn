@@ -1657,6 +1657,15 @@ keys! {
     CurateUnknownSuccessor => "curate.unknown_successor",
     CurateSuccessorCycle => "curate.successor_cycle",
     KnowNotByForm => "know.not_by_form",
+    KnowSourceSpacingTitle => "know.source_spacing_title",
+    KnowSourceSpacingAuthor => "know.source_spacing_author",
+    KnowSourceSpacingDate => "know.source_spacing_date",
+    KnowSourceSpacingReference => "know.source_spacing_reference",
+    KnowSourceReviewStays => "know.source_review_stays",
+    KnowSourceCitedBy => "know.source_cited_by",
+    KnowSourceCitedByMore => "know.source_cited_by_more",
+    CurateSuccessorCycleAt => "curate.successor_cycle_at",
+    // knowledge: a changed reference clears the check; the cycle names its source (handoff 005 corrections, seventh round K66, K69): end
 }
 
 /// A typed value for a placeholder. Text is HTML-escaped; a link is an escaped label plus an `href` the

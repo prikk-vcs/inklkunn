@@ -3092,7 +3092,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "curate.work_hint",
-        "Who and what this source is, where it is found and which source replaces it are corrected here.",
+        "Who and what this source is, where it is found and which source replaces it are corrected here. A new place to find it clears the day it was last checked and whether it can be had, unless you set them again above. A field shows a text without its line breaks, so a change of line breaks alone cannot be made here: make it through the API.",
     ),
     msg("curate.label_superseded", "The source that replaces it"),
     msg(
@@ -3118,5 +3118,38 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "know.not_by_form",
         "Removing a claim or a source file, or replacing a file that cannot be read, is not offered in this version.",
+    ),
+    msg(
+        "know.source_spacing_title",
+        "Only the white space in its title changes (␣ is a space, ⇥ a tab, ↵ a line break): {was} becomes {now}.",
+    ),
+    msg(
+        "know.source_spacing_author",
+        "Only the white space in its author or publisher changes (␣ is a space, ⇥ a tab, ↵ a line break): {was} becomes {now}.",
+    ),
+    msg(
+        "know.source_spacing_date",
+        "Only the white space in its date changes (␣ is a space, ⇥ a tab, ↵ a line break): {was} becomes {now}.",
+    ),
+    msg(
+        "know.source_spacing_reference",
+        "Only the white space in where it is found changes (␣ is a space, ⇥ a tab, ↵ a line break): {was} becomes {now}.",
+    ),
+    msg(
+        "know.source_review_stays",
+        "The review of {day} stays: accept only if this is still the same work.",
+    ),
+    msg(
+        "know.source_cited_by",
+        "Another claim that cites it, and that this proposal does not change: {claim}",
+    ),
+    plural_msg(
+        "know.source_cited_by_more",
+        "{count} more claim that cites it is not listed.",
+        "{count} more claims that cite it are not listed.",
+    ),
+    msg(
+        "curate.successor_cycle_at",
+        "Source: {title}. The sources that replace one another must not come back to one already named. Name a source for \"The source that replaces it\" that does not lead back to this one.",
     ),
 ];

@@ -9,6 +9,7 @@ mod claims;
 #[path = "../common/mod.rs"]
 mod common;
 mod curate;
+mod curate_check;
 mod curate_link;
 mod flows;
 mod rendered;

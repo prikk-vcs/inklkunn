@@ -22,7 +22,7 @@ use std::collections::BTreeMap;
 use inklkunn_core::knowledge::check::{PageLookup, Pages};
 use inklkunn_core::knowledge::index::kept;
 use inklkunn_core::knowledge::summary::{
-    Cite, ClaimChange, Item, Leaves, Rejudgement, SourceChange,
+    Cite, ClaimChange, Item, Leaves, Rejudgement, SourceChange, Spelled,
 };
 use inklkunn_core::knowledge::{
     ClaimId, Digest, Expression, Family, File, Identity, Reference, Relation, SourceId, read_file,
@@ -71,6 +71,9 @@ pub(crate) trait Subjects {
     fn claim_href(&self, claim: &ClaimId) -> Option<String>;
     /// The address of the line of `source` on the page of `claim`: a source has no page of its own.
     fn cited_href(&self, claim: &ClaimId, source: &SourceId) -> Option<String>;
+    /// The claims that cite `source` at the proposal's base and that the proposal does not write, in id order (K66): those
+    /// whose standing rests on a source the proposal changes without their page showing it.
+    fn citing(&self, source: &SourceId) -> Vec<ClaimId>;
 }
 
 /// The most characters of the wording a re-judgement moved to that a line prints.
@@ -358,8 +361,61 @@ fn relation_line(t: T, know: &dyn Subjects, key: Key, relation: &Relation) -> Ri
         .html()
 }
 
+/// The most claims a *cited by* line names; the rest are counted.
+const CITING_LINES: usize = 5;
+
+/// A text with its white space made visible (K66): a space, a tab and a line break each a mark, any other white space its
+/// code point. The two spellings of a name that differ in nothing else then read differently.
+fn visible(text: &str) -> String {
+    text.chars()
+        .map(|c| match c {
+            ' ' => "\u{2423}".to_owned(),
+            '\t' => "\u{21e5}".to_owned(),
+            '\n' => "\u{21b5}".to_owned(),
+            c if c.is_whitespace() => format!("[U+{:04X}]", u32::from(c)),
+            c => c.to_string(),
+        })
+        .collect()
+}
+
+/// The lines for one change to a source: one, except for the check that stays, which also names the other claims that rely
+/// on the source.
+fn source_change_lines(
+    t: T,
+    know: &dyn Subjects,
+    source: &SourceId,
+    change: &SourceChange,
+) -> Vec<Rich> {
+    let SourceChange::ReviewStays(day) = change else {
+        return vec![source_change(t, know, change)];
+    };
+    let mut lines = vec![t.msg(Key::KnowSourceReviewStays).with("day", day).html()];
+    let citing = know.citing(source);
+    lines.extend(citing.iter().take(CITING_LINES).map(|claim| {
+        t.msg(Key::KnowSourceCitedBy)
+            .rich("claim", claim_subject(t, know, claim, &[]))
+            .html()
+    }));
+    if let Some(more) = citing.len().checked_sub(CITING_LINES).filter(|n| *n > 0) {
+        lines.push(t.msg(Key::KnowSourceCitedByMore).n(more as u64).html());
+    }
+    lines
+}
+
 fn source_change(t: T, know: &dyn Subjects, change: &SourceChange) -> Rich {
     match change {
+        SourceChange::WhiteSpace { part, was, now } => t
+            .msg(match part {
+                Spelled::Title => Key::KnowSourceSpacingTitle,
+                Spelled::Author => Key::KnowSourceSpacingAuthor,
+                Spelled::Date => Key::KnowSourceSpacingDate,
+                Spelled::Reference => Key::KnowSourceSpacingReference,
+            })
+            .rich("was", bdi(&visible(was)))
+            .rich("now", bdi(&visible(now)))
+            .html(),
+        // Said by `source_change_lines`, which also names the claims.
+        SourceChange::ReviewStays(day) => t.msg(Key::KnowSourceReviewStays).with("day", day).html(),
         SourceChange::Kind(k) => t
             .msg(Key::KnowSourceChangeKind)
             .with("kind", t.get(source_word(*k)))
@@ -554,7 +610,10 @@ fn line(t: T, know: &dyn Subjects, item: &Item) -> Line {
                 .msg(Key::KnowSourceChanged)
                 .rich("source", source_subject(t, know, source, Some(named), None))
                 .html(),
-            more: changes.iter().map(|c| source_change(t, know, c)).collect(),
+            more: changes
+                .iter()
+                .flat_map(|c| source_change_lines(t, know, source, c))
+                .collect(),
         },
         Item::Removed { family, id, leaves } => Line {
             text: match family {
@@ -925,6 +984,20 @@ impl Subjects for Resolver<'_> {
             source.as_str(),
             self.view_name().as_deref(),
         ))
+    }
+
+    fn citing(&self, source: &SourceId) -> Vec<ClaimId> {
+        let Some(index) = self.index() else {
+            return Vec::new();
+        };
+        let mut claims: Vec<ClaimId> = index
+            .claims_citing(source.as_str())
+            .filter_map(|link| ClaimId::parse(&link.claim))
+            .filter(|claim| !self.claims.contains_key(claim.as_str()))
+            .collect();
+        claims.sort();
+        claims.dedup();
+        claims
     }
 }
 

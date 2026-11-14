@@ -772,9 +772,13 @@ async fn a_curation_lets_a_link_go_and_corrects_a_checked_source_in_one_proposal
         Some(("doi", "10.1000/182"))
     );
     assert_eq!(corrected.superseded_by, Some(source_id(2)));
+    // The reference is another one, and the day and the availability the body repeated are not a new check (K66).
     assert_eq!(
-        corrected.last_reviewed.as_ref().map(|r| r.date.as_str()),
-        Some("2026-11-01")
+        (
+            corrected.last_reviewed.as_ref().map(|r| r.date.as_str()),
+            corrected.availability
+        ),
+        (None, inklkunn_core::knowledge::Availability::Unknown)
     );
     // A member of the source left out is left as the base has it: here the title alone, with the check repeated.
     let c = cast_checked();
@@ -1096,5 +1100,93 @@ async fn a_curation_changes_only_the_members_it_names_and_an_empty_day_or_unknow
             Some("2026-11-01"),
             inklkunn_core::knowledge::Availability::Unknown
         )
+    );
+}
+
+#[tokio::test]
+async fn a_changed_reference_clears_the_check_unless_the_body_records_a_new_one_and_a_correction_keeps_it()
+ {
+    use inklkunn_core::knowledge::Availability;
+    // K66. The source of `cast_checked` was checked on 2026-11-01 and is available.
+    let one = source_id(1).to_string();
+    let doi = json!({"type": "doi", "value": "10.1000/182"});
+    let cases = [
+        (
+            "the reference alone",
+            json!({"source": one, "reference": doi}),
+            (None, Availability::Unknown),
+        ),
+        (
+            "the check repeated beside it",
+            json!({"source": one, "reference": doi, "reviewed": "2026-11-01", "availability": "available"}),
+            (None, Availability::Unknown),
+        ),
+        (
+            "a new day",
+            json!({"source": one, "reference": doi, "reviewed": "2023-11-10"}),
+            (Some("2023-11-10"), Availability::Available),
+        ),
+        (
+            "a new availability",
+            json!({"source": one, "reference": doi, "availability": "unavailable"}),
+            (None, Availability::Unavailable),
+        ),
+        (
+            "the day cleared",
+            json!({"source": one, "reference": doi, "reviewed": ""}),
+            (None, Availability::Unknown),
+        ),
+        (
+            "a title, an author and a date only",
+            json!({"source": one, "title": "The bridge, revised", "author": "Noor Aziz", "date": "2024"}),
+            (Some("2026-11-01"), Availability::Available),
+        ),
+        (
+            "what replaces it only",
+            json!({"source": one, "superseded_by": source_id(2).to_string()}),
+            (Some("2026-11-01"), Availability::Available),
+        ),
+    ];
+    for (what, edit, (day, availability)) in cases {
+        let c = cast_checked();
+        let a = propose(&c, json!({"sources": [edit]})).await;
+        assert_eq!(a.status, 201, "{what}: {}", a.text());
+        let written = source_in(&stored(&c, &a), 1);
+        assert_eq!(
+            (
+                written.last_reviewed.as_ref().map(|r| r.date.as_str()),
+                written.availability
+            ),
+            (day, availability),
+            "{what}"
+        );
+    }
+    // A day that is no day is refused as before, beside a changed reference.
+    let c = cast_checked();
+    let a = propose(
+        &c,
+        json!({"sources": [{"source": one, "reference": doi, "reviewed": "yesterday"}]}),
+    )
+    .await;
+    assert_eq!(a.status, 422, "{}", a.text());
+    assert_eq!(a.json().at("/reason"), "not-a-day", "{}", a.text());
+}
+
+#[tokio::test]
+async fn a_change_of_line_breaks_alone_is_made_through_the_api() {
+    // K69: the form takes the line breaks out of a field and cannot say it; a body can.
+    let c = cast_checked_titled("Two\nlines");
+    let a = propose(
+        &c,
+        json!({"sources": [{"source": source_id(1).to_string(), "title": "Twolines"}]}),
+    )
+    .await;
+    assert_eq!(a.status, 201, "{}", a.text());
+    let written = source_in(&stored(&c, &a), 1);
+    assert_eq!(written.identity.title.as_deref(), Some("Twolines"));
+    assert_eq!(
+        written.last_reviewed.as_ref().map(|r| r.date.as_str()),
+        Some("2026-11-01"),
+        "the title is not the reference: the check stays"
     );
 }

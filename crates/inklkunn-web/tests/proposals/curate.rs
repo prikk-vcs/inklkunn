@@ -15,7 +15,7 @@ use crate::common::{block_id, state_id};
 
 pub(crate) const FORM: &str = "/handbook/-/proposals/curate";
 
-fn claim_uri(s: &Scene) -> String {
+pub(crate) fn claim_uri(s: &Scene) -> String {
     format!("{FORM}?claim={}", s.claim.id)
 }
 
@@ -615,7 +615,7 @@ pub(crate) fn checked_unchanged(s: &Scene) -> Vec<(&'static str, String)> {
     )
 }
 
-fn source_of(files: &Files) -> inklkunn_core::knowledge::Source {
+pub(crate) fn source_of(files: &Files) -> inklkunn_core::knowledge::Source {
     sources_in(files)
         .into_iter()
         .find(|s| s.id == super::claims::source_id())
@@ -772,12 +772,9 @@ async fn a_checked_source_is_corrected_in_its_identity_reference_and_successor_a
         Some(("doi", "10.1000/182"))
     );
     assert_eq!(source.superseded_by, Some(later_id()));
-    assert_eq!(source.availability, Availability::Available);
-    assert_eq!(
-        source.last_reviewed.as_ref().map(|r| r.date.as_str()),
-        Some("2026-11-01"),
-        "the review day is not set again"
-    );
+    // The reference is another one, so the day and the answer the form carried back are not a check of it (K66).
+    assert_eq!(source.availability, Availability::Unknown);
+    assert_eq!(source.last_reviewed, None);
     // What the fields held is what the wiki has: nothing differs.
     let a = send(&s, FORM, &s.writer, &checked_unchanged(&s)).await;
     assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);

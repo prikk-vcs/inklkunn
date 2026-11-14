@@ -538,6 +538,8 @@ pub fn validate(
         .collect();
     let readable = |path: String| matches!(read.get(path.as_str()), Some(Ok(_)));
     let mut out: BTreeSet<Refusal> = BTreeSet::new();
+    // The chains of replacing sources already walked: a source is looked at once, however many chains lead through it (K69).
+    let mut walked = SuccessorWalk::default();
 
     // The files the change writes: all of it.
     for path in &touched.written {
@@ -555,7 +557,7 @@ pub fn validate(
                                 _ => None,
                             })
                         };
-                    if successor_returns(&source.id, replaced_by) == Ok(true) {
+                    if walked.returns(&source.id, replaced_by) == Ok(true) {
                         out.insert(Refusal::rule(path, Rule::Reference, "superseded_by"));
                     }
                 }
@@ -664,23 +666,55 @@ pub fn validate(
     out.into_iter().collect()
 }
 
-/// Does the chain of sources that replace one another, starting at `start`, return to a source it passed (K61)? `next`
-/// says which source replaces the one it is asked about, if any (or why that could not be read). A source replaced by
-/// itself, and a chain that joins a circle, return. **The one rule** of the acceptance ([`validate`]) and of the form and
-/// the API before a proposal exists, which differ only in where they read the sources from.
+/// The memory of a walk along chains of sources that replace one another (K61, K69): which sources are known to lead to a
+/// circle and which are known not to. A source is walked once, so any number of chains over the same sources costs one
+/// step for each source and not one for each step of each chain.
+#[derive(Debug, Default)]
+pub struct SuccessorWalk {
+    known: BTreeMap<SourceId, bool>,
+}
+
+impl SuccessorWalk {
+    /// Does the chain of sources that replace one another, starting at `start`, return to a source it passed (K61)?
+    /// `next` says which source replaces the one it is asked about, if any (or why that could not be read); it is asked at
+    /// most once for a source over the life of this walk. A source replaced by itself, and a chain that joins a circle,
+    /// return.
+    pub fn returns<E>(
+        &mut self,
+        start: &SourceId,
+        mut next: impl FnMut(&SourceId) -> Result<Option<SourceId>, E>,
+    ) -> Result<bool, E> {
+        let mut path = Vec::new();
+        let mut on_path = BTreeSet::new();
+        let mut at = start.clone();
+        let verdict = loop {
+            if let Some(known) = self.known.get(&at) {
+                break *known;
+            }
+            if !on_path.insert(at.clone()) {
+                break true;
+            }
+            path.push(at.clone());
+            match next(&at)? {
+                Some(later) => at = later,
+                None => break false,
+            }
+        };
+        // Every source passed has the verdict of the chain: one that leads into a circle returns, as the circle does.
+        for passed in path {
+            self.known.insert(passed, verdict);
+        }
+        Ok(verdict)
+    }
+}
+
+/// [`SuccessorWalk::returns`] for one chain. **The one rule** of the acceptance ([`validate`]) and of the form and the API
+/// before a proposal exists, which differ only in where they read the sources from.
 pub fn successor_returns<E>(
     start: &SourceId,
-    mut next: impl FnMut(&SourceId) -> Result<Option<SourceId>, E>,
+    next: impl FnMut(&SourceId) -> Result<Option<SourceId>, E>,
 ) -> Result<bool, E> {
-    let mut passed = BTreeSet::from([start.clone()]);
-    let mut at = start.clone();
-    while let Some(later) = next(&at)? {
-        if !passed.insert(later.clone()) {
-            return Ok(true);
-        }
-        at = later;
-    }
-    Ok(false)
+    SuccessorWalk::default().returns(start, next)
 }
 
 /// A written file's references to other files: each must be present and readable in the view.
