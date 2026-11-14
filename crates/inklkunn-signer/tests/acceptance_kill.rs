@@ -1759,6 +1759,27 @@ fn the_runbooks_way_out_of_an_orphan_queued_patch_is_true_of_the_state_a_commit_
         "{refused:?}"
     );
 
+    // From prikk 0.57.0 `uncommit` discards a sound queued patch, and the runbook says how a person confirms it: the
+    // flag recovery takes, by the patch's id, in the words the plan prints (maintenance M3, ledger PK-43).
+    assert!(
+        section.contains("--discard-queued-patch <patch id>") && section.contains("prikk uncommit"),
+        "the runbook names the confirmation"
+    );
+    let help = Command::new(&real).arg("--help").output().unwrap();
+    let help = String::from_utf8_lossy(&help.stdout).into_owned();
+    let has_uncommit = help.contains("uncommit");
+    let offered = recovery
+        .recover(&f.wiki, RecoveryMode::PlanOnly)
+        .unwrap()
+        .plan
+        .notes
+        .join("\n");
+    assert_eq!(
+        offered.contains("--discard-queued-patch"),
+        has_uncommit,
+        "the plan offers the take-back exactly when this prikk has the verb: {offered}"
+    );
+
     // "A recovery that stops leaves the wiki flagged and the repository exactly as it found it; it records the plan
     // and that it stopped, so the trail shows what was seen."
     let run = recovery.recover(&f.wiki, RecoveryMode::Run).unwrap();

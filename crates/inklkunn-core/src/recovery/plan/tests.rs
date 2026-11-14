@@ -1403,3 +1403,220 @@ fn a_worktree_that_is_not_the_baseline_is_put_back_for_the_current_branch_not_th
         Some(Step::RestoreWorktree { view }) if view == VIEW
     ));
 }
+
+// ---- taking an orphan queued patch back, on a person's word (maintenance M3; prikk 0.57.0; ledger PK-43)
+
+fn uncommit_plan_for(patch_id: &str, target: &str) -> inklkunn_signer::recover::text::UncommitPlan {
+    inklkunn_signer::recover::text::UncommitPlan {
+        patch_id: patch_id.to_owned(),
+        target: target.to_owned(),
+        lines: vec![
+            "message: m".to_owned(),
+            "  edit-text pages/Home.md".to_owned(),
+        ],
+    }
+}
+
+/// The state: one sound patch queued, no act describes it.
+fn orphan() -> (Witness, String) {
+    let mut w = flagged();
+    let p = patch(MESSAGE);
+    let id = p.patch_id.clone();
+    w.status = status(vec![p], 0);
+    (w, id)
+}
+
+fn offered(id: &str) -> DiscardInput {
+    DiscardInput {
+        offer: DiscardOffer::Offered(uncommit_plan_for(id, VIEW)),
+        confirmed: None,
+    }
+}
+
+#[test]
+fn an_orphan_queued_patch_is_offered_and_never_taken_back_without_the_persons_word() {
+    let (w, id) = orphan();
+    // The offer alone: still the stop, no step, no operation for the signer; the note carries prikk's own words and
+    // the command that is the confirmation.
+    let plan = build_with(&w, &offered(&id));
+    assert_eq!(plan.stop, Some(Stop::ForeignQueuedPatch));
+    assert!(plan.steps.is_empty() && plan.ops().is_empty());
+    let note = plan
+        .notes
+        .iter()
+        .find(|n| n.contains("prikk can take the queued patch"))
+        .expect("the offer is a note");
+    assert!(
+        note.contains(&format!("--discard-queued-patch {id}")) && note.contains("message: m | "),
+        "{note}"
+    );
+    // The same state with no offer at all (every plan before 0.57.0): exactly the stop it always was.
+    let plain = build(&w);
+    assert_eq!(plain.stop, Some(Stop::ForeignQueuedPatch));
+    assert!(plain.steps.is_empty() && plain.notes.iter().all(|n| !n.contains("uncommit")));
+    assert_eq!(plain.witnesses, plan.witnesses);
+}
+
+#[test]
+fn the_persons_word_is_the_patchs_id_and_it_takes_that_patch_back_and_puts_the_worktree_right() {
+    let (w, id) = orphan();
+    let mut d = offered(&id);
+    d.confirmed = Some(id.clone());
+    let plan = build_with(&w, &d);
+    assert_eq!(plan.stop, None);
+    assert_eq!(
+        names(&plan),
+        [
+            "discard-queued",
+            "restore-worktree",
+            "verify",
+            "reconcile",
+            "clear-flag"
+        ]
+    );
+    assert!(matches!(
+        plan.steps.first(),
+        Some(Step::DiscardQueued { patch_id }) if *patch_id == id
+    ));
+    // The signer is bound to that patch and to putting the worktree back; nothing more.
+    assert_eq!(
+        plan.ops(),
+        vec![
+            RecoveryOp::DiscardQueued { patch: id.clone() },
+            RecoveryOp::RestoreWorktree {
+                view: VIEW.to_owned()
+            }
+        ]
+    );
+    // What the record keeps names the patch, and reads back as exactly that permission.
+    let json = plan.to_json();
+    assert!(
+        json.contains("discard-queued") && json.contains(&id),
+        "{json}"
+    );
+    let facts = facts_of(&w.wiki, &json).expect("a plan of this version");
+    assert_eq!(facts.ops, plan.ops());
+    assert!(facts.allows(&RecoveryOp::DiscardQueued { patch: id.clone() }));
+    assert!(!facts.allows(&RecoveryOp::DiscardQueued {
+        patch: "b".repeat(64)
+    }));
+    assert!(!facts.allows(&RecoveryOp::DiscardDamaged));
+    // The plan says so for the person: the step and the note.
+    let lines = plan.lines().join("\n");
+    assert!(
+        lines.contains("a person confirmed taking the queued patch")
+            && lines.contains("prikk uncommit"),
+        "{lines}"
+    );
+}
+
+#[test]
+fn a_word_that_is_not_the_queued_patchs_id_or_has_no_offer_behind_it_takes_nothing_back() {
+    let (w, id) = orphan();
+    // Another id, a prefix, upper case: none is the patch.
+    for given in [
+        "b".repeat(64),
+        id[..8].to_owned(),
+        id.to_uppercase(),
+        String::new(),
+    ] {
+        let mut d = offered(&id);
+        d.confirmed = Some(given.clone());
+        let plan = build_with(&w, &d);
+        assert_eq!(plan.stop, Some(Stop::ForeignQueuedPatch), "{given}");
+        assert!(plan.steps.is_empty() && plan.ops().is_empty(), "{given}");
+        assert!(
+            plan.notes
+                .iter()
+                .any(|n| n.contains("names a patch that is not the queued one")),
+            "{given}: {:?}",
+            plan.notes
+        );
+    }
+    // The right id with no offer behind it (a prikk before 0.57.0, or a plan that could not be read): ignored, and said.
+    for offer in [
+        DiscardOffer::NoVerb,
+        DiscardOffer::Unreadable("prikk's output could not be read".to_owned()),
+        DiscardOffer::NotAsked,
+    ] {
+        let plan = build_with(
+            &w,
+            &DiscardInput {
+                offer: offer.clone(),
+                confirmed: Some(id.clone()),
+            },
+        );
+        assert_eq!(plan.stop, Some(Stop::ForeignQueuedPatch), "{offer:?}");
+        assert!(plan.steps.is_empty() && plan.ops().is_empty(), "{offer:?}");
+        if offer != DiscardOffer::NotAsked {
+            assert!(
+                plan.notes.iter().any(|n| n.contains("was ignored")),
+                "{offer:?}: {:?}",
+                plan.notes
+            );
+        }
+    }
+    // An offer for another patch than the queued one is not an offer for this one.
+    let mut d = offered(&"c".repeat(64));
+    d.confirmed = Some(id.clone());
+    assert_eq!(build_with(&w, &d).stop, Some(Stop::ForeignQueuedPatch));
+    // A queue that targets another branch than the worktree's is not taken back.
+    let mut elsewhere = w.clone();
+    elsewhere.status.queue.target_ref = Some("heads/other".to_owned());
+    let mut d = offered(&id);
+    d.confirmed = Some(id.clone());
+    let plan = build_with(&elsewhere, &d);
+    assert_eq!(plan.stop, Some(Stop::ForeignQueuedPatch));
+    assert!(plan.steps.is_empty());
+}
+
+#[test]
+fn the_persons_word_turns_no_other_state_into_a_take_back() {
+    // The permission is for one state: a sound patch queued with no act describing it, alone. In every other state the
+    // plan is what it was; the id typed is not looked at.
+    let confirm = |w: &Witness, id: &str| {
+        build_with(
+            w,
+            &DiscardInput {
+                offer: DiscardOffer::Offered(uncommit_plan_for(id, VIEW)),
+                confirmed: Some(id.to_owned()),
+            },
+        )
+    };
+    let (mut w, id) = orphan();
+    // The patch is the change of the unfinished act: it is sealed, not discarded.
+    w.acts = vec![act(Chain::NotSealed)];
+    let p = confirm(&w, &id);
+    assert_eq!(nth(&names(&p), 0), &"seal-queued");
+    assert!(
+        p.steps
+            .iter()
+            .all(|s| !matches!(s, Step::DiscardQueued { .. }))
+    );
+    // It is queued beside an act it is not the change of.
+    w.status = status(vec![patch("Something else\n\nKind: proposal\n")], 0);
+    let p = confirm(&w, &"a".repeat(64));
+    assert_eq!(p.stop, Some(Stop::QueuedPatchIsNotTheAct));
+    // Two patches are queued: `uncommit` takes the newest only, and a person has not named which.
+    let (mut w, id) = orphan();
+    w.status = status(vec![patch(MESSAGE), patch(MESSAGE)], 0);
+    assert_eq!(confirm(&w, &id).stop, Some(Stop::SeveralQueued));
+    // A torn log, an interrupted checkout, a publication a killed seal left: other rows.
+    let (mut w, id) = orphan();
+    w.status.provisional_worktree = Some(serde_json::json!({"ref": "heads/main"}));
+    assert_eq!(confirm(&w, &id).stop, Some(Stop::InterruptedState));
+    let (mut w, id) = orphan();
+    w.foreign = vec![Foreign {
+        pid: 7,
+        tool: "prikk".to_owned(),
+    }];
+    assert_eq!(confirm(&w, &id).stop, Some(Stop::ForeignProcess));
+    // Nothing is queued: nothing to take back, and no step invented for the id.
+    let w = flagged();
+    let p = confirm(&w, &"a".repeat(64));
+    assert!(
+        p.steps
+            .iter()
+            .all(|s| !matches!(s, Step::DiscardQueued { .. }))
+    );
+}

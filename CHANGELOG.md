@@ -423,6 +423,25 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   real-prikk tests made to expect the right behaviour on the prikk that is on `PATH` (a retirement, the late block after
   it, the blind-key message, the unfinished retirement).
 
+- **M3, PK-43 adopted: recovery offers to take an orphan queued patch back, and does it only on a person's word.** A
+  sound patch queued with no recorded act describing it is still the `foreign-queued-patch` stop, and recovery still
+  never discards on its own judgement. With prikk 0.57.0 the plan also shows prikk's own preview (`prikk uncommit <patch>
+  --plan-only`: the commit's message and the paths it changes, control characters replaced and lines cut) and the
+  command that confirms it: `inklkunn wiki recover <wiki> --discard-queued-patch <patch id>`, the id typed in full. Then
+  recovery takes that one patch back (`prikk uncommit`, kept in prikk's recovery log and undoable with `prikk doctor
+  --recovery-restore <run>`, which the step prints), puts the worktree back to the tip, verifies, reconciles and clears
+  the flag. The word is audited when the act begins, recorded in the plan the act keeps, and bound to that one patch in
+  the signer (`RecoveryOp::DiscardQueued`, `Recover::discard_queued`); the signer also refuses unless the queue holds
+  exactly that patch on the branch prikk's own plan names. It is never taken for a patch that is a recorded act's
+  change, beside several queued patches, with a foreign process, a torn log or an interrupted state, or for a queue that
+  targets another branch than the worktree's. `--plan` with the word is a usage error. **It degrades honestly**: on
+  0.54.0 to 0.56.0 `uncommit` is `unknown command`, the plan says so, the word is ignored and the stop is all there is
+  (`DiscardOffer::NoVerb`). The floor stays 0.54.0 (the feature is absent below 0.57.0, and a 0.57.0 floor needs the
+  published asset's checksum). New: `Recovery::recover_with` and `RecoverOptions` (`recover` is unchanged),
+  `plan::build_with`, `Step::DiscardQueued`, `Witnesses::uncommit_plan`, a cost rule for `uncommit` measured on 0.57.0
+  (5.0 x the store, floor 16 MiB). Tests: the plan's rules against every other state, the signer's guards with a real
+  prikk (and the undo), prikk's text read strictly, the verb absent, and the CLI's flag; one new prikk-dependent test.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

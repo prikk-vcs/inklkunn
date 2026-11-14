@@ -535,3 +535,156 @@ fn a_report_that_is_not_complete_or_not_well_formed_gives_no_list() {
         memory.signers()
     );
 }
+
+// ---- `prikk uncommit` (0.57.0, PK-43): a stand-in prikk for the three things it can answer
+
+struct UncommitFixture {
+    dir: PathBuf,
+}
+
+const PATCH: &str = "3aa5ec44bf476bc227a0ea4f8d55a4dc6d507819dd9c23d625cb555b83fe8156";
+
+impl UncommitFixture {
+    /// A `prikk` whose `uncommit <patch> --plan-only` prints `plan` to stdout and `plan_err` to stderr and exits with
+    /// `plan_exit`, and whose `uncommit <patch>` prints `done`; every call is appended to `calls`.
+    fn new(tag: &str, plan: &str, plan_err: &str, plan_exit: i32, done: &str) -> Self {
+        use std::os::unix::fs::PermissionsExt;
+        let dir =
+            std::env::temp_dir().join(format!("inklkunn-uncommit-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("repo/.prikk")).unwrap();
+        std::fs::write(dir.join("plan.txt"), plan).unwrap();
+        std::fs::write(dir.join("plan.err"), plan_err).unwrap();
+        std::fs::write(dir.join("done.txt"), done).unwrap();
+        let script = format!(
+            "#!/bin/sh\nD='{d}'\necho \"$*\" >> \"$D/calls\"\n\
+             if [ \"$1\" = uncommit ] && [ \"$3\" = --plan-only ]; then cat \"$D/plan.txt\"; cat \"$D/plan.err\" >&2; exit {plan_exit}; fi\n\
+             if [ \"$1\" = uncommit ]; then cat \"$D/done.txt\"; exit 0; fi\nexit 2\n",
+            d = dir.display()
+        );
+        let path = dir.join("prikk");
+        std::fs::write(&path, script).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        UncommitFixture { dir }
+    }
+
+    fn writes(&self) -> Writes {
+        Writes::new(self.dir.join("prikk"), Sandbox::Unconfined)
+    }
+
+    fn repo(&self) -> PathBuf {
+        self.dir.join("repo")
+    }
+
+    fn calls(&self) -> String {
+        std::fs::read_to_string(self.dir.join("calls")).unwrap_or_default()
+    }
+
+    /// Run `f` again while a script just written is refused with `ETXTBSY` (a sibling test forks).
+    fn retry<T>(&self, mut f: impl FnMut() -> Result<T, SignerError>) -> Result<T, SignerError> {
+        let mut r = f();
+        for _ in 0..50 {
+            if !matches!(&r, Err(SignerError::Unavailable(m)) if m.contains("Text file busy")) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            r = f();
+        }
+        r
+    }
+}
+
+impl Drop for UncommitFixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+const PLAN_TEXT: &str = "commit 3aa5ec44bf476bc227a0ea4f8d55a4dc6d507819dd9c23d625cb555b83fe8156 (sequence 1 on heads/main)\nmessage: m\n  edit-text pages/Home.md\nplan only -- nothing written\n";
+
+#[test]
+fn a_prikk_that_has_no_uncommit_is_an_answer_and_one_that_refuses_is_a_refusal() {
+    // Before 0.57.0: exit 2, exactly this text. Not an error: the signer asks, and the answer is "no such verb".
+    let none = UncommitFixture::new("none", "", "error: unknown command: uncommit\n", 2, "");
+    assert_eq!(
+        none.retry(|| none.writes().uncommit_plan(&none.repo(), PATCH)),
+        Ok(None)
+    );
+    // 0.57.0 refusing for a reason of its own (the patch is not the newest, say) is a refusal with prikk's words.
+    let refused = UncommitFixture::new(
+        "refused",
+        "",
+        "error: precondition not met: patch X has others queued after it\n",
+        1,
+        "",
+    );
+    let r = refused.retry(|| refused.writes().uncommit_plan(&refused.repo(), PATCH));
+    assert!(
+        matches!(&r, Err(SignerError::Refused(why)) if why.contains("others queued after it")),
+        "{r:?}"
+    );
+    // The same exit 2 with other words is not "no such verb": a usage error is not a missing capability.
+    let usage = UncommitFixture::new(
+        "usage",
+        "",
+        "error: uncommit: \"x\" is not a patch id\n",
+        2,
+        "",
+    );
+    let r = usage.retry(|| usage.writes().uncommit_plan(&usage.repo(), PATCH));
+    assert!(!matches!(r, Ok(None)), "{r:?}");
+}
+
+#[test]
+fn the_plan_of_uncommit_is_for_the_patch_asked_about_and_only_a_patch_id_is_ever_passed() {
+    let ok = UncommitFixture::new("plan", PLAN_TEXT, "", 0, "");
+    let plan = ok
+        .retry(|| ok.writes().uncommit_plan(&ok.repo(), PATCH))
+        .unwrap()
+        .expect("a plan");
+    assert_eq!(
+        (plan.patch_id.as_str(), plan.target.as_str()),
+        (PATCH, "heads/main")
+    );
+    assert_eq!(ok.calls(), format!("uncommit {PATCH} --plan-only\n"));
+    // A plan for another patch is damage, not an offer.
+    let other = "ab".repeat(32);
+    let r = ok.writes().uncommit_plan(&ok.repo(), &other);
+    assert!(matches!(r, Err(SignerError::Damaged(_))), "{r:?}");
+    // Anything that is not a patch id never reaches an argument vector.
+    let calls = ok.calls();
+    for bad in ["", "abc", "--help", &PATCH.to_uppercase(), "x; rm -rf /"] {
+        assert!(
+            matches!(
+                ok.writes().uncommit_plan(&ok.repo(), bad),
+                Err(SignerError::Refused(_))
+            ),
+            "{bad}"
+        );
+        assert!(
+            matches!(
+                ok.writes().uncommit(&ok.repo(), bad),
+                Err(SignerError::Refused(_))
+            ),
+            "{bad}"
+        );
+    }
+    assert!(!ok.calls().contains("rm -rf"), "{}", ok.calls());
+    assert_eq!(
+        ok.calls().lines().count(),
+        calls.lines().count(),
+        "none of those ran prikk"
+    );
+}
+
+#[test]
+fn a_take_back_is_done_only_when_prikk_says_where_to_undo_it() {
+    let said = "the queue is empty\ncommit taken back; undo with `prikk doctor --recovery-restore 4422e5ef2a44a122` (it refuses once anything has changed since)\n";
+    let ok = UncommitFixture::new("done", PLAN_TEXT, "", 0, said);
+    let run = ok.retry(|| ok.writes().uncommit(&ok.repo(), PATCH));
+    assert_eq!(run, Ok("4422e5ef2a44a122".to_owned()));
+    // Exit 0 with anything else is not "taken back".
+    let silent = UncommitFixture::new("silent", PLAN_TEXT, "", 0, "all done\n");
+    let r = silent.retry(|| silent.writes().uncommit(&silent.repo(), PATCH));
+    assert!(matches!(r, Err(SignerError::Damaged(_))), "{r:?}");
+}

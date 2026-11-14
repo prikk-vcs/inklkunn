@@ -30,10 +30,10 @@ use inklkunn_core::recovery::{Step, Stop};
 use inklkunn_core::{
     AcceptFailure, AcceptanceLedger, AcceptanceParts, AcceptanceToken, Authorizer, ExpectedMessage,
     IdentityAuthority, KeyAuthority, LeaseConfig, LedgerError, OldKey, PreparedChange,
-    PreparedFile, Principal, ProposalAcceptor, Purpose, ReadConfig, ReadService, Recover, Recovery,
-    RecoveryError, RecoveryMode, RecoveryOutcome, RecoveryParts, Signer, SignerConfig, StoreActs,
-    StoreAuthz, StoreLedger, SystemActFailure, SystemActs, ViewCreationAct, ViewCreationFacts,
-    WikiLeases, Witnesses, WriteLeases, create_wiki,
+    PreparedFile, Principal, ProposalAcceptor, Purpose, ReadConfig, ReadService, Recover,
+    RecoverOptions, Recovery, RecoveryError, RecoveryMode, RecoveryOutcome, RecoveryParts, Signer,
+    SignerConfig, StoreActs, StoreAuthz, StoreLedger, SystemActFailure, SystemActs,
+    ViewCreationAct, ViewCreationFacts, WikiLeases, Witnesses, WriteLeases, create_wiki,
 };
 use inklkunn_prikk::{Admission, Point, PrikkCli, Sandbox, Storage};
 use inklkunn_store::{
@@ -490,6 +490,19 @@ impl World {
 
     fn recovery_witnesses(&self) -> Witnesses {
         Witnesses::new(&self.standin, Sandbox::Unconfined, self.layout.clone())
+    }
+
+    /// The id of the first queued patch.
+    fn queued_patch_id(&self) -> String {
+        self.storage
+            .status(&self.repo)
+            .unwrap()
+            .queue
+            .patches
+            .first()
+            .expect("a patch is queued")
+            .patch_id
+            .clone()
     }
 
     fn queue_count(&self) -> u64 {
@@ -1308,6 +1321,189 @@ fn a_planted_queued_patch_that_matches_no_intent_is_reported_and_never_sealed_or
             .iter()
             .any(|l| l.contains("STOP (foreign-queued-patch)"))
     );
+}
+
+#[test]
+fn a_queued_patch_nobody_describes_is_taken_back_only_when_a_person_types_its_id_and_this_prikk_has_the_verb()
+ {
+    // Maintenance M3, prikk 0.57.0, ledger PK-43. The state is the previous test's. `uncommit` came with 0.57.0: with
+    // an older prikk the same questions have the answer "no verb", and nothing is ever taken back.
+    let Some(w) = World::new("take-back", LeaseConfig::default()) else {
+        return;
+    };
+    let planted = "---\ntitle: Home\nid: p-home\n---\n\nPlanted.\n";
+    w.plant_queued_patch("pages/Home.md", planted);
+    w.flag(RecoveryReason::Interrupted);
+    let before = w.history();
+    let id = w.queued_patch_id();
+    let confirm = |given: &str| RecoverOptions {
+        discard_queued_patch: Some(given.to_owned()),
+    };
+
+    // Without a word from a person, the plan is the stop it always was; with the verb it also says what prikk would do
+    // and the command that confirms it. Nothing is written by looking.
+    let shown = w
+        .recovery
+        .recover_with(&w.wiki, RecoveryMode::PlanOnly, &RecoverOptions::default())
+        .unwrap();
+    assert_eq!(shown.plan.stop, Some(Stop::ForeignQueuedPatch));
+    assert!(shown.plan.steps.is_empty() && shown.plan.ops().is_empty());
+    let has_verb = shown
+        .plan
+        .notes
+        .iter()
+        .any(|n| n.contains("prikk can take the queued patch"));
+    // Whether this machine's prikk has the verb is not for the code under test to say: `uncommit` is 0.57.0's.
+    assert_eq!(
+        has_verb,
+        inklkunn_prikk::parse_version(w.storage.version()).is_some_and(|v| v >= (0, 57, 0)),
+        "{:?}",
+        shown.plan.notes
+    );
+    if !has_verb {
+        assert!(
+            shown
+                .plan
+                .notes
+                .iter()
+                .any(|n| n.contains("has no `uncommit`")),
+            "{:?}",
+            shown.plan.notes
+        );
+        // An older prikk: the person's word changes nothing, and says so.
+        let r = w
+            .recovery
+            .recover_with(&w.wiki, RecoveryMode::Run, &confirm(&id))
+            .unwrap();
+        assert_eq!(r.plan.stop, Some(Stop::ForeignQueuedPatch));
+        assert!(r.done.is_empty());
+        assert!(
+            r.plan.notes.iter().any(|n| n.contains("was ignored")),
+            "{:?}",
+            r.plan.notes
+        );
+        assert_eq!(w.queue_count(), 1, "the patch is still queued");
+        return;
+    }
+    assert!(
+        shown
+            .plan
+            .notes
+            .iter()
+            .any(|n| n.contains(&format!("--discard-queued-patch {id}"))),
+        "{:?}",
+        shown.plan.notes
+    );
+    assert_eq!(w.queue_count(), 1);
+
+    // Another id, a short one, the right id in the wrong case: none of them is the confirmation.
+    for wrong in ["0".repeat(64), id[..10].to_owned(), id.to_uppercase()] {
+        let r = w
+            .recovery
+            .recover_with(&w.wiki, RecoveryMode::Run, &confirm(&wrong))
+            .unwrap();
+        assert_eq!(r.plan.stop, Some(Stop::ForeignQueuedPatch), "{wrong}");
+        assert!(r.done.is_empty() && r.plan.ops().is_empty(), "{wrong}");
+        assert_eq!(w.queue_count(), 1, "{wrong}");
+    }
+    assert_eq!(w.history(), before);
+
+    // The right id: the patch leaves the queue, the worktree goes back to the tip, the repository verifies, the flag
+    // goes, the history is untouched, and the plan the act recorded names the patch the person confirmed.
+    let r = w
+        .recovery
+        .recover_with(&w.wiki, RecoveryMode::Run, &confirm(&id))
+        .unwrap();
+    assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());
+    let steps: Vec<&str> = r.done.iter().map(|d| d.step).collect();
+    assert_eq!(
+        steps,
+        [
+            "discard-queued",
+            "restore-worktree",
+            "verify",
+            "reconcile",
+            "clear-flag"
+        ]
+    );
+    assert!(
+        nth(&r.done, 0).detail.contains(&id)
+            && nth(&r.done, 0).detail.contains("--recovery-restore"),
+        "{:?}",
+        r.done
+    );
+    assert_eq!(w.queue_count(), 0, "the patch left the queue");
+    assert_eq!(
+        w.history(),
+        before,
+        "no block was made, none was taken away"
+    );
+    assert!(w.verifies());
+    let home = std::fs::read_to_string(w.repo.join("pages/Home.md")).unwrap();
+    assert_ne!(
+        home, planted,
+        "the worktree is the tip's again, not the patch's result"
+    );
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_none());
+    let acts = w.store.recovery_acts(&w.wiki.id).unwrap();
+    let recorded = acts
+        .iter()
+        .map(|a| a.act.plan.clone())
+        .find(|p| p.contains("discard-queued"))
+        .expect("the plan that was acted on is recorded");
+    assert!(recorded.contains(&id), "{recorded}");
+    assert!(
+        w.audit()
+            .iter()
+            .any(|(a, o, d)| a == "recovery-step" && o == "allowed" && d == "discard-queued")
+    );
+    // Taking back a patch is not something a second run does again: nothing is queued, so nothing is offered.
+    let again = w
+        .recovery
+        .recover_with(&w.wiki, RecoveryMode::Run, &confirm(&id))
+        .unwrap();
+    assert_eq!(again.outcome, RecoveryOutcome::NothingToDo);
+}
+
+#[test]
+fn showing_the_plan_with_a_persons_word_takes_nothing_back() {
+    // `--plan` changes nothing: the command line refuses it beside the confirmation, and the library, shown the same
+    // pair, plans what it would do and does not do it.
+    let Some(w) = World::new("take-back-plan", LeaseConfig::default()) else {
+        return;
+    };
+    w.plant_queued_patch(
+        "pages/Home.md",
+        "---\ntitle: Home\nid: p-home\n---\n\nPlanted.\n",
+    );
+    w.flag(RecoveryReason::Interrupted);
+    let id = w.queued_patch_id();
+    let shown = w
+        .recovery
+        .recover_with(
+            &w.wiki,
+            RecoveryMode::PlanOnly,
+            &RecoverOptions {
+                discard_queued_patch: Some(id.clone()),
+            },
+        )
+        .unwrap();
+    assert_eq!(shown.outcome, RecoveryOutcome::Planned);
+    assert!(shown.done.is_empty());
+    let names: Vec<&str> = shown.plan.steps.iter().map(Step::name).collect();
+    if shown.plan.stop.is_none() {
+        // A prikk with the verb: the first step is the take-back, and the signer is bound to this patch alone.
+        assert_eq!(nth(&names, 0), &"discard-queued");
+        assert!(
+            shown
+                .plan
+                .ops()
+                .contains(&inklkunn_core::RecoveryOp::DiscardQueued { patch: id })
+        );
+    } else {
+        assert_eq!(shown.plan.stop, Some(Stop::ForeignQueuedPatch));
+    }
+    assert_eq!(w.queue_count(), 1, "looking took nothing back");
 }
 
 #[test]

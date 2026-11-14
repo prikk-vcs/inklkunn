@@ -574,5 +574,97 @@ pub fn parse_discard_output(stdout: &str) -> Option<Discarded> {
     Some(out)
 }
 
+/// What ``prikk uncommit <patch> --plan-only`` said it would do (prikk 0.57.0, ledger PK-43), read strictly: it is shown
+/// to the person who decides, and the step is bound to the patch it names. The first line is `commit <patch id>
+/// (sequence <n> on <ref>)` and the last, `plan only -- nothing written`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UncommitPlan {
+    /// The patch (64 lower-case hex characters).
+    pub patch_id: String,
+    /// The ref the queue targets.
+    pub target: String,
+    /// The lines between the first and the last, as prikk printed them: control characters replaced, each cut at
+    /// [`PLAN_LINE_CHARS`], at most [`PLAN_LINES`] of them. **Operator text**: they hold the commit's message and the
+    /// paths it changes.
+    pub lines: Vec<String>,
+}
+
+/// The longest line of an [`UncommitPlan`] kept, in characters.
+pub const PLAN_LINE_CHARS: usize = 200;
+/// The most lines of an [`UncommitPlan`] kept.
+pub const PLAN_LINES: usize = 40;
+
+/// `error: unknown command: uncommit` on exit 2: a prikk before 0.57.0, which has no such verb.
+pub fn uncommit_is_unknown(exit_code: Option<i32>, stderr: &str) -> bool {
+    exit_code == Some(2) && stderr.trim() == "error: unknown command: uncommit"
+}
+
+/// Read the stdout of ``prikk uncommit <patch_id> --plan-only``.
+pub fn parse_uncommit_plan(stdout: &str, patch_id: &str) -> Result<UncommitPlan, String> {
+    let bad = |what: &str| format!("unreadable `uncommit --plan-only` output: {what}");
+    let mut lines = stdout.lines().filter(|l| !l.trim().is_empty());
+    let first = lines.next().ok_or_else(|| bad("empty"))?;
+    let (id, rest) = first
+        .strip_prefix("commit ")
+        .and_then(|l| l.split_once(" (sequence "))
+        .ok_or_else(|| bad("the first line is not `commit <id> (sequence <n> on <ref>)`"))?;
+    let (sequence, target) = rest
+        .strip_suffix(')')
+        .and_then(|r| r.split_once(" on "))
+        .ok_or_else(|| bad("the first line is not `commit <id> (sequence <n> on <ref>)`"))?;
+    if !is_id(id) || id != patch_id {
+        return Err(bad("the plan is not for the patch that was asked about"));
+    }
+    if sequence.is_empty() || !sequence.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(bad("the sequence is not a number"));
+    }
+    if target.is_empty() || target.len() > 255 || target.bytes().any(|b| b < 0x20 || b == 0x7f) {
+        return Err(bad("the ref is not a ref name"));
+    }
+    let mut kept: Vec<String> = Vec::new();
+    let mut last = None;
+    for line in lines {
+        if let Some(prev) = last.replace(line)
+            && kept.len() < PLAN_LINES
+        {
+            kept.push(clean_line(prev));
+        }
+    }
+    if last != Some("plan only -- nothing written") {
+        return Err(bad("the last line is not `plan only -- nothing written`"));
+    }
+    Ok(UncommitPlan {
+        patch_id: id.to_owned(),
+        target: target.to_owned(),
+        lines: kept,
+    })
+}
+
+/// A line of prikk's text for a person: control characters become `?`, and it is cut at [`PLAN_LINE_CHARS`].
+fn clean_line(line: &str) -> String {
+    let mut out: String = line
+        .chars()
+        .map(|c| if c.is_control() { '?' } else { c })
+        .take(PLAN_LINE_CHARS)
+        .collect();
+    if line.chars().count() > PLAN_LINE_CHARS {
+        out.push('…');
+    }
+    out
+}
+
+/// The recovery run that ``prikk uncommit <patch>`` saved the commit under, from its closing line ``commit taken back;
+/// undo with `prikk doctor --recovery-restore <run>` (...)``, when that line is there exactly once.
+pub fn parse_uncommit_done(stdout: &str) -> Option<String> {
+    const HEAD: &str = "commit taken back; undo with `prikk doctor --recovery-restore ";
+    let mut runs = stdout.lines().filter_map(|l| l.strip_prefix(HEAD));
+    let run = runs.next()?.split('`').next()?;
+    if runs.next().is_some() {
+        return None;
+    }
+    (!run.is_empty() && run.len() <= 64 && run.bytes().all(|b| b.is_ascii_hexdigit()))
+        .then(|| run.to_owned())
+}
+
 #[cfg(test)]
 mod tests;

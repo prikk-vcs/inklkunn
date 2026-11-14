@@ -693,3 +693,138 @@ liveness is advisory only: x
     let err = parse_unlock_output(empty).unwrap_err();
     assert!(err.contains("a recorded pid is not a number"), "{err}");
 }
+
+/// ``prikk uncommit <patch> --plan-only`` of a 0.57.0 build, measured (the message and the paths are invented).
+const UNCOMMIT_PLAN: &str = "\
+commit 3aa5ec44bf476bc227a0ea4f8d55a4dc6d507819dd9c23d625cb555b83fe8156 (sequence 1 on heads/main)
+message: A change
+  edit-text pages/Home.md -- the worktree still has it; the next `prikk commit` authors it again
+it leaves the queue and is kept in the recovery log (491 bytes); 0 queued commits remain
+your files in the worktree are not changed
+the worktree's record is brought up to date with the queue
+the queue is empty: its owner is cleared, as `seal` clears it
+plan only -- nothing written
+";
+
+const UNCOMMIT_ID: &str = "3aa5ec44bf476bc227a0ea4f8d55a4dc6d507819dd9c23d625cb555b83fe8156";
+
+#[test]
+fn the_plan_of_uncommit_is_read_strictly_and_kept_for_the_person_who_decides() {
+    let plan = parse_uncommit_plan(UNCOMMIT_PLAN, UNCOMMIT_ID).unwrap();
+    assert_eq!(plan.patch_id, UNCOMMIT_ID);
+    assert_eq!(plan.target, "heads/main");
+    // Everything between the first line and the last, as prikk printed it.
+    assert_eq!(plan.lines.len(), 6);
+    assert_eq!(nth(&plan.lines, 0), "message: A change");
+    assert!(nth(&plan.lines, 5).starts_with("the queue is empty"));
+    // For a patch other than the one asked about, a plan that does not end as a plan, and every shape it is not.
+    let other = "ab".repeat(32);
+    for (what, text, id) in [
+        ("another patch", UNCOMMIT_PLAN.to_owned(), other.as_str()),
+        ("empty", String::new(), UNCOMMIT_ID),
+        (
+            "not a plan: it did it",
+            UNCOMMIT_PLAN.replace("plan only -- nothing written", "commit taken back"),
+            UNCOMMIT_ID,
+        ),
+        (
+            "no first line",
+            UNCOMMIT_PLAN.replacen("commit 3aa5", "patch 3aa5", 1),
+            UNCOMMIT_ID,
+        ),
+        (
+            "no sequence",
+            UNCOMMIT_PLAN.replace("(sequence 1 on heads/main)", "(on heads/main)"),
+            UNCOMMIT_ID,
+        ),
+        (
+            "a sequence that is not a number",
+            UNCOMMIT_PLAN.replace("sequence 1 on", "sequence x on"),
+            UNCOMMIT_ID,
+        ),
+        (
+            "an empty ref",
+            UNCOMMIT_PLAN.replace("on heads/main)", "on )"),
+            UNCOMMIT_ID,
+        ),
+        (
+            "text after the last line",
+            format!("{UNCOMMIT_PLAN}and then more\n"),
+            UNCOMMIT_ID,
+        ),
+        (
+            "an id that is not hex",
+            UNCOMMIT_PLAN.replacen("3aa5", "zzzz", 1),
+            "zzzz".repeat(16).as_str(),
+        ),
+    ] {
+        assert!(parse_uncommit_plan(&text, id).is_err(), "{what}");
+    }
+}
+
+#[test]
+fn what_prikk_prints_of_a_commit_is_kept_short_and_without_control_characters() {
+    // The commit's message is anybody's text: it is shown to a person in a terminal, so control characters (an escape
+    // sequence, say) are replaced, a long line is cut, and a long plan is cut, whatever the message holds.
+    let long = "x".repeat(PLAN_LINE_CHARS + 50);
+    let many: String = (0..PLAN_LINES + 10)
+        .map(|n| format!("  edit-text pages/P{n}.md\n"))
+        .collect();
+    let text = format!(
+        "commit {UNCOMMIT_ID} (sequence 1 on heads/main)\nmessage: \u{1b}[31mred\u{7}\n{long}\n{many}plan only -- nothing written\n"
+    );
+    let plan = parse_uncommit_plan(&text, UNCOMMIT_ID).unwrap();
+    assert!(plan.lines.len() <= PLAN_LINES);
+    assert_eq!(nth(&plan.lines, 0), "message: ?[31mred?");
+    assert!(plan.lines.iter().all(|l| !l.chars().any(char::is_control)));
+    assert!(
+        plan.lines
+            .iter()
+            .all(|l| l.chars().count() <= PLAN_LINE_CHARS + 1)
+    );
+    assert!(
+        nth(&plan.lines, 1).ends_with('…'),
+        "{}",
+        nth(&plan.lines, 1)
+    );
+}
+
+#[test]
+fn a_prikk_without_uncommit_is_told_by_its_exact_refusal_and_by_nothing_else() {
+    let said = "error: unknown command: uncommit\n";
+    assert!(uncommit_is_unknown(Some(2), said));
+    // Not by the exit code alone, not by the text alone, not by another command's words.
+    assert!(!uncommit_is_unknown(Some(1), said));
+    assert!(!uncommit_is_unknown(
+        Some(2),
+        "error: unknown command: uncommitx\n"
+    ));
+    assert!(!uncommit_is_unknown(
+        Some(2),
+        "error: usage: prikk uncommit <patch-id>\n"
+    ));
+    assert!(!uncommit_is_unknown(None, said));
+    assert!(!uncommit_is_unknown(Some(0), ""));
+}
+
+#[test]
+fn the_end_of_a_take_back_names_the_run_it_can_be_undone_from_exactly_once() {
+    let done = "\
+the queue is empty: its owner is cleared, as `seal` clears it
+commit taken back; undo with `prikk doctor --recovery-restore 4422e5ef2a44a122` (it refuses once anything has changed since)
+";
+    assert_eq!(
+        parse_uncommit_done(done).as_deref(),
+        Some("4422e5ef2a44a122")
+    );
+    for bad in [
+        "".to_owned(),
+        "commit taken back\n".to_owned(),
+        done.replace("4422e5ef2a44a122", "not hex!").to_string(),
+        done.replace("4422e5ef2a44a122", "").to_string(),
+        format!("{done}{done}"),
+        done.replace("commit taken back", "plan only").to_string(),
+    ] {
+        assert_eq!(parse_uncommit_done(&bad), None, "{bad:?}");
+    }
+}

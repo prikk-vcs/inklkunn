@@ -98,12 +98,14 @@ pub(crate) enum WriteVerb {
     /// `show`: what one block or patch changed (recovery reads the operations of the block a killed `seal` published;
     /// handoff 004, P15).
     Show,
+    /// `uncommit`: take back the newest queued commit, and its `--plan-only` (recovery; maintenance M3, prikk 0.57.0).
+    Uncommit,
 }
 
 impl WriteVerb {
     /// Every verb.
     #[cfg(test)]
-    pub(crate) const ALL: [WriteVerb; 20] = [
+    pub(crate) const ALL: [WriteVerb; 21] = [
         WriteVerb::Init,
         WriteVerb::Trust,
         WriteVerb::KeyGenerate,
@@ -124,6 +126,7 @@ impl WriteVerb {
         WriteVerb::Cat,
         WriteVerb::Show,
         WriteVerb::RefComplete,
+        WriteVerb::Uncommit,
     ];
 
     /// The verb a prikk argument vector runs, or `None` for one the signer has no cost for (and so never runs).
@@ -146,6 +149,7 @@ impl WriteVerb {
             ["cat", ..] => WriteVerb::Cat,
             ["show", ..] => WriteVerb::Show,
             ["ref", "complete", ..] => WriteVerb::RefComplete,
+            ["uncommit", ..] => WriteVerb::Uncommit,
             ["mv", ..] => WriteVerb::Mv,
             ["commit", ..] => WriteVerb::Commit,
             ["seal", ..] => WriteVerb::Seal,
@@ -193,6 +197,12 @@ impl WriteVerb {
             // The read driver's measured rule for `show` (flat for a small patch; up to 3.6 × S for large text), at
             // its floor.
             WriteVerb::Show => (36, 0, 32 * MIB),
+            // Measured on a 0.57.0 build (maintenance M3), the smallest `RLIMIT_DATA` that still works, bisected to
+            // 256 KiB over a fresh copy per probe, `--plan-only` and the real take-back alike (they need the same):
+            // 5.3 MiB on 3,000 pages (a 2.4 MiB store), 35 MiB on 20,000 pages (a 55 MiB store), 320 MiB (5.0 × S)
+            // where a 64 MiB attachment sits in an earlier block and a few bytes are queued, and 128 MiB (2.0 × S)
+            // where the queued patch adds the 64 MiB file. It follows S like `verify`: 5.0 × S, at the floor.
+            WriteVerb::Uncommit => (50, 0, 16 * MIB),
         };
         WriteRule {
             store_tenths,

@@ -24,6 +24,8 @@ const MAX_FILE_BYTES: u64 = worktree::MAX_TOTAL_BYTES;
 /// proven, so the patch is not sealed by recovery.
 const MAX_RENAMES_TRIED: usize = 7;
 
+mod discard;
+
 fn mismatch<T>(why: &str) -> Result<T, RecoverError> {
     Err(RecoverError::DoesNotMatch(why.to_owned()))
 }
@@ -490,6 +492,15 @@ impl Recover for Signer {
     ) -> Result<Discarded, RecoverError> {
         let _held = self.recovering(wiki, act, &RecoveryOp::DiscardDamaged)?;
         Ok(self.writes.discard_damaged(&self.root.repo_dir(wiki))?)
+    }
+
+    fn discard_queued(
+        &self,
+        wiki: &WikiId,
+        act: &RecoveryToken,
+        patch_id: &str,
+    ) -> Result<Discarded, RecoverError> {
+        self.discard_queued_op(wiki, act, patch_id)
     }
 
     fn clear_locks(

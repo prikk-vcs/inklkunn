@@ -41,7 +41,7 @@ fn the_table_is_bound_to_the_floor() {
 #[test]
 fn every_verb_the_signer_runs_has_a_rule_and_is_found_by_its_arguments() {
     // The argument vectors the runner is given, one per verb: each is found, none is found twice.
-    let vectors: [(&[&str], WriteVerb); 24] = [
+    let vectors: [(&[&str], WriteVerb); 26] = [
         (&["init"], WriteVerb::Init),
         (
             &["trust", "maintainer", "add", "--key-id", "k"],
@@ -86,6 +86,9 @@ fn every_verb_the_signer_runs_has_a_rule_and_is_found_by_its_arguments() {
             &["ref", "complete", "heads/x", "--plan-only"],
             WriteVerb::RefComplete,
         ),
+        // Taking back a queued patch (maintenance M3, prikk 0.57.0).
+        (&["uncommit", "abc"], WriteVerb::Uncommit),
+        (&["uncommit", "abc", "--plan-only"], WriteVerb::Uncommit),
     ];
     for (args, verb) in vectors {
         assert_eq!(WriteVerb::of(args), Some(verb), "{args:?}");
@@ -144,4 +147,30 @@ fn a_ceiling_follows_the_store_and_never_goes_below_the_floor() {
     assert!(WriteVerb::Commit.cost(big, 0) >= big * 5);
     assert!(WriteVerb::Seal.cost(0, big) >= big * 2);
     assert!(WriteVerb::Seal.cost(big, 0) >= big * 2);
+}
+
+#[test]
+fn taking_back_a_queued_patch_follows_the_store_like_verify_and_is_bound_by_its_measurements() {
+    // Measured on a 0.57.0 build by bisecting `RLIMIT_DATA` (the smallest limit under which it still works): 5.3 MiB on
+    // a 2.4 MiB store, 35 MiB on 55 MiB (20,000 pages), 320.5 MiB where a 64 MiB attachment sits in an earlier block
+    // (a 64.1 MiB store), 128.3 MiB where the queued patch adds it. The ceiling (1.5 times the cost) holds each with room.
+    for (store_kib, need_mib_tenths) in
+        [(2_428, 53), (56_040, 350), (65_612, 3_205), (65_612, 1_283)]
+    {
+        let need = u64::try_from(need_mib_tenths).unwrap() * MIB / 10;
+        let ceiling = WriteVerb::Uncommit.ceiling(store_kib * 1024, 0);
+        assert!(
+            ceiling >= need + need / 4,
+            "{store_kib} KiB store: the ceiling {ceiling} does not hold {need} with room"
+        );
+    }
+    assert_eq!(WriteVerb::Uncommit.cost(0, 0), 16 * MIB, "the floor");
+    assert_eq!(
+        WriteVerb::Uncommit.rule(),
+        WriteRule {
+            store_tenths: 50,
+            change_tenths: 0,
+            floor: 16 * MIB
+        }
+    );
 }

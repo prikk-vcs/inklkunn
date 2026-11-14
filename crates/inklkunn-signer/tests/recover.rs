@@ -311,6 +311,15 @@ impl Fixture {
             .unwrap_or(u64::MAX)
     }
 
+    /// The id of the one queued patch, as `status --format json` lists it.
+    fn queued_patch_id(&self) -> String {
+        self.prikk_json(&["status", "--format", "json"])
+            .pointer("/queue/patches/0/patch_id")
+            .and_then(serde_json::Value::as_str)
+            .expect("one patch is queued")
+            .to_owned()
+    }
+
     fn worktree_clean(&self) -> bool {
         self.prikk_json(&["worktree-status", "--format", "json"])
             .get("clean")
@@ -542,6 +551,7 @@ fn every_operation_refuses_without_the_lease_without_a_record_and_without_the_ac
     };
     let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
     f.queue(&p);
+    let id = f.queued_patch_id();
     let all = vec![
         f.seal_op(&p),
         f.publish_op(&p),
@@ -552,6 +562,7 @@ fn every_operation_refuses_without_the_lease_without_a_record_and_without_the_ac
         RecoveryOp::RestoreWorktree {
             view: MAIN.to_owned(),
         },
+        RecoveryOp::DiscardQueued { patch: id.clone() },
     ];
     let act = f.act(all);
     let gone = RecoveryToken::new("never-recorded");
@@ -565,6 +576,7 @@ fn every_operation_refuses_without_the_lease_without_a_record_and_without_the_ac
                 .clear_locks(&f.wiki, a, &["/x".to_owned()])
                 .map(|_| ()),
             f.signer.restore_worktree(&f.wiki, MAIN, a).map(|_| ()),
+            f.signer.discard_queued(&f.wiki, a, &id).map(|_| ()),
         ]
     };
     // No lease lent: every one refuses, whatever the record says, and nothing is taken or waited for.
@@ -591,6 +603,11 @@ fn every_operation_refuses_without_the_lease_without_a_record_and_without_the_ac
         "the discard is named"
     );
     assert_eq!(nth(&rs, 3), &Err(RecoverError::NotRecorded));
+    assert_eq!(
+        nth(&rs, 5),
+        &Err(RecoverError::NotRecorded),
+        "taking a patch back is named by its own op"
+    );
     assert_eq!(nth(&rs, 4), &Err(RecoverError::NotRecorded));
     // An act of another wiki is not this wiki's.
     let foreign = RecoveryToken::new("foreign");
@@ -642,6 +659,122 @@ fn a_torn_log_is_discarded_and_the_repository_verifies_again() {
             .doctor(&f.wiki)
             .unwrap()
             .has_acknowledged_damage()
+    );
+}
+
+#[test]
+fn a_queued_patch_is_taken_back_only_under_an_act_that_names_its_id_and_the_worktree_is_put_back_after()
+ {
+    // Maintenance M3, prikk 0.57.0, ledger PK-43. The state is a sound queued patch nobody accepted.
+    let Some(f) = fixture("take-back") else {
+        return;
+    };
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    f.queue(&p);
+    let id = f.queued_patch_id();
+    let other = "ab".repeat(32);
+    let blocks = f.blocks();
+    // An act that names another patch does not allow this one, and nothing is changed.
+    let wrong = f.act(vec![RecoveryOp::DiscardQueued {
+        patch: other.clone(),
+    }]);
+    assert_eq!(
+        f.leased(|| f.signer.discard_queued(&f.wiki, &wrong, &id)),
+        Err(RecoverError::NotRecorded)
+    );
+    // An act that names a patch the queue does not hold: the record and the repository disagree, nothing is changed.
+    assert!(matches!(
+        f.leased(|| f.signer.discard_queued(&f.wiki, &wrong, &other)),
+        Err(RecoverError::DoesNotMatch(why)) if why.contains("not the one that was confirmed")
+    ));
+    assert_eq!(f.queue_count(), 1);
+
+    let right = f.act(vec![RecoveryOp::DiscardQueued { patch: id.clone() }]);
+    let Ok(Some(_)) = f.witnesses.uncommit_plan(&f.wiki, &id) else {
+        // A prikk before 0.57.0: the act names it and the signer cannot, and says so; the patch stays queued.
+        let r = f.leased(|| f.signer.discard_queued(&f.wiki, &right, &id));
+        assert!(
+            matches!(&r, Err(RecoverError::Unavailable(why)) if why.contains("no `uncommit`")),
+            "{r:?}"
+        );
+        assert_eq!(f.queue_count(), 1);
+        return;
+    };
+    // Reading prikk's plan changed nothing.
+    assert_eq!(f.queue_count(), 1);
+    let done = f
+        .leased(|| f.signer.discard_queued(&f.wiki, &right, &id))
+        .expect("taken back");
+    assert_eq!(done.patch_id.as_deref(), Some(id.as_str()));
+    let run = done
+        .recovery_run
+        .clone()
+        .expect("prikk names the run it saved the commit under");
+    assert_eq!(f.queue_count(), 0, "the patch left the queue");
+    assert_eq!(f.blocks(), blocks, "no block was made or taken away");
+    // The files in the worktree are the patch's result, not the tip's: prikk leaves them, and the plan puts them back.
+    assert!(!f.worktree_clean());
+    let restore = f.act(vec![RecoveryOp::RestoreWorktree {
+        view: MAIN.to_owned(),
+    }]);
+    f.leased(|| f.signer.restore_worktree(&f.wiki, MAIN, &restore))
+        .expect("restored");
+    assert!(f.worktree_clean());
+    assert!(f.verify_ok());
+    // The step is undoable, as prikk promised: `doctor --recovery-restore <run>` queues the commit again.
+    let undone = Command::new(&f.prikk)
+        .args(["doctor", "--recovery-restore", &run])
+        .current_dir(&f.repo)
+        .output()
+        .expect("prikk runs");
+    assert!(undone.status.success(), "{undone:?}");
+    assert_eq!(f.queue_count(), 1, "the commit is queued again");
+    assert_eq!(f.queued_patch_id(), id);
+    // A second take-back by the same act finds nothing to take back for another patch: the act binds the one id.
+    assert!(matches!(
+        f.leased(|| f.signer.discard_queued(&f.wiki, &wrong, &other)),
+        Err(RecoverError::DoesNotMatch(_))
+    ));
+}
+
+#[test]
+fn nothing_is_taken_back_from_a_queue_that_is_empty_or_beside_a_torn_log() {
+    let Some(f) = fixture("take-back-states") else {
+        return;
+    };
+    let id = "cd".repeat(32);
+    let act = f.act(vec![RecoveryOp::DiscardQueued { patch: id.clone() }]);
+    // Nothing queued: there is nothing the person can have meant.
+    assert!(matches!(
+        f.leased(|| f.signer.discard_queued(&f.wiki, &act, &id)),
+        Err(RecoverError::DoesNotMatch(why)) if why.contains("exactly one patch")
+    ));
+    // A torn log (the commit was cut short) is the other row's business (`--discard-damaged-commits`), not this one's.
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    f.queue(&p);
+    let patch = f.queued_patch_id();
+    let wal = f.repo.join(".prikk/active/default/queue.wal");
+    let len = std::fs::metadata(&wal).unwrap().len();
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(&wal)
+        .unwrap()
+        .set_len(len - 30)
+        .unwrap();
+    let torn = f.act(vec![RecoveryOp::DiscardQueued {
+        patch: patch.clone(),
+    }]);
+    let r = f.leased(|| f.signer.discard_queued(&f.wiki, &torn, &patch));
+    assert!(
+        matches!(
+            &r,
+            Err(RecoverError::DoesNotMatch(_) | RecoverError::Refused(_))
+        ),
+        "{r:?}"
+    );
+    assert!(
+        !f.verify_ok(),
+        "the torn log is still there for the other row"
     );
 }
 

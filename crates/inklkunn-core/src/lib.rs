@@ -105,8 +105,8 @@ pub use read::{
     ReadError, ReadService, SafeHtml, Sanitizer, Tip, TitleIndex,
 };
 pub use recovery::{
-    Mode as RecoveryMode, Outcome as RecoveryOutcome, Recovery, RecoveryError, RecoveryParts,
-    RecoveryReport,
+    Mode as RecoveryMode, Outcome as RecoveryOutcome, RecoverOptions, Recovery, RecoveryError,
+    RecoveryParts, RecoveryReport,
 };
 pub use routes::{Guard, RouteEntry, RouteError, RouteTable};
 pub use wiki::{

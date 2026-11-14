@@ -57,4 +57,41 @@ Other 0.57.0 changes measured, none of which broke anything:
 * `doctor` / `verify`: an unreached blob or patch is one `info [PRIKK-DOCTOR-UNREACHED-CONTENT]` line and `unreached content: N object(s) ...` (no longer a warning each); a block or ref state that nothing reaches keeps its warning.
 * New verb `prikk uncommit <patch-id> [--plan-only]` (PK-43). Text only.
 * **New repositories are format 8** (`.prikk/FORMAT` is `8`; 0.55.0 and 0.56.0 wrote `7`). **0.55.0 and 0.56.0 refuse a format-8 repository on every command** (`error: unsupported format version: 8`), measured. An existing repository is never upgraded as a side effect. So a wiki created under 0.57.0 cannot be opened by an older prikk, and an operator who rolls prikk back loses those wikis until they return to 0.57.0; the archive of a format-8 repository cannot be imported by 0.55.0 or 0.56.0.
-* `unlock --lock <path> --yes` exits 1, leaving the lock, when the holder appears running (`--force` clears it as before). inklkunn's `unlock` step keeps `--yes`: a holder that prikk 0.57.0 can prove is running is a holder recovery must not clear, and the plan already stops on a prikk of somebody else's (`foreign-process`). The refusal is not exercised by a test, because it needs a lock body only a 0.57.0 prikk writes for a live holder in the same pid and time namespace; recovery runs prikk in a sandbox where 0.57.0 would answer `unknown`.
+* `unlock --lock <path> --yes` exits 1, leaving the lock, when the holder appears running (`--force` clears it as before). inklkunn's `unlock` step keeps `--yes`: a holder that prikk 0.57.0 can prove is running is a holder recovery must not clear, and the plan already stops on a prikk of somebody else's (`foreign-process`). The refusal is not exercised by a test, because it needs a lock body only a 0.57.0 prikk writes for a live holder in the same pid and time namespace; the planted old-style bodies read `unknown` on 0.57.0.
+* `uncommit --plan-only` takes prikk's active lock, so it needs the repository writable (a read-only mount refuses it: `Read-only file system`), although it writes nothing.
+
+## 4. What was adopted, and what the floor does
+
+| | Adopted | How it behaves on 0.54.0 to 0.56.0 | On the 0.57.0 build | Needs a floor of 0.57.0? |
+|---|---|---|---|---|
+| C11's late-seal check reads `sealed_by` (PK-39) | yes: `verify --format json`'s `block_seals`, read strictly, where the report has the field | the report has no field, and `verify`'s text is read exactly as before (stand-in test for both shapes; the real-prikk tests expect each prikk's behaviour) | the check also runs **after a retirement** (the text printed no `sealed-block` line for a repository that does not verify) and finds a late seal by a removed key; `keys status` stops saying "this check cannot see <key>" | no |
+| Recovery takes an orphan queued patch back on a person's word (PK-43) | yes: `inklkunn wiki recover <wiki> --discard-queued-patch <patch id>` | `uncommit` is `unknown command` (exit 2), which the signer reads as "no such verb": the plan says so, the word is ignored, the stop is unchanged | the plan shows prikk's preview and the command; with the id the patch leaves the queue (kept in prikk's recovery log, undoable), the worktree goes back to the tip, the flag clears | no |
+
+**The floor does not move.** It moves only with a feature that needs it, and both features are absent below 0.57.0 rather than broken; neither needs a floor of 0.57.0. A floor of 0.57.0 would also need, and cannot have yet: the published release asset and its SHA-256 (CI downloads the asset and checks it against a checksum recorded in `ci.yml`; the tool `floor-check` makes `MIN_PRIKK_VERSION`, `PRIKK_VERSION` in `ci.yml` and `release.yml`, `ARG PRIKK_VERSION` in the `Dockerfile` and the recorded checksums one value), the signer's cost table re-measured (`BOUND_TO` is the floor and a test fails when they differ), `FLOOR` in `driver.rs`, and the documents that name 0.54.0. **When the floor does move to 0.57.0 it should move for a reason a person can state**, such as "the late-seal check must run after a retirement on every supported prikk" or "recovery must be able to take a patch back", and **it carries format 8**: an operator on the floor would create repositories no earlier prikk opens. Until then CI's floor stays 0.54.0 and the with-prikk gate runs of this change name their prikk (below).
+
+## 5. Gates of this change (tree after the last M3 commit)
+
+| Run | prikk | passed | failed |
+|---|---|---|---|
+| `cargo test --workspace --locked --no-fail-fast` | 0.55.0 | 2,644 | 1 (the curl test, M2) |
+| the same | 0.56.0 | 2,644 | 1 (the same) |
+| the same | the 0.57.0 build of section 1 | 2,644 | 1 (the same) |
+| the same, prikk shimmed off `PATH` (as CI) | none | 2,644 | 1 (the same), **294 self-skips** |
+
+The skip count was 289 (`EXPECTED_SKIPS`); this change adds **5** prikk-dependent tests: two in `inklkunn-core/tests/recovery.rs` (the take-back, and showing the plan with the word), two in `inklkunn-signer/tests/recover.rs` (the signer's guards and the undo; the empty queue and torn log), one in `inklkunn/src/admin/tests.rs` (the operator's word in the audit trail) -- so `EXPECTED_SKIPS` becomes 294. The new stand-in tests (`prikk_shapes.rs`, the `Writes` stand-ins, the plan's pure rules, the text readers) need no prikk and add none.
+
+## 6. For the ledger rows (the architect's)
+
+* **PK-36**: fixed in 0.56.0 as promised (`log --ref <block id>` and `log --ref <junk>` exit 1 with a reason; an existing ref that does not exist already exited 1). inklkunn needs nothing: the driver refuses a block id itself. Reproduced on 0.55.0, closed on 0.56.0.
+* **PK-26**: 0.56.0 delivered the received-ref rollback refusal, the Unicode-path design round, `extract --claim` over a chain. **The signer in `branch --format json` did not ship in 0.56.0 or 0.57.0** (measured; `branch-list-v1` is identical on 0.55.0, 0.56.0 and the 0.57.0 build, and neither changelog names it). inklkunn reads no signer from `branch list`.
+* **PK-39**: delivered by the 0.57.0 build (`log --format json` `sealed_by`, `verify --format json` `block_seals`, both "as recorded, not as trusted"); adopted by `block_seals` (section 4); the check now runs after a retirement.
+* **PK-43**: delivered by the 0.57.0 build as `prikk uncommit <patch-id> [--plan-only]`: **the newest queued commit only**, healthy queue only, text only (no `--format json`), the undo `prikk doctor --recovery-restore <run>`; adopted as an operator-confirmed step (section 4). It needs the repository writable even for `--plan-only`.
+* **PK-21**: 0.57.0 admits non-ASCII paths in format 8 (NFC, authored at `commit`). inklkunn still percent-encodes (`title_to_path`); the migration to native paths is a separate decision and is untouched.
+* **New (0.57.0)**: new repositories are format 8 and 0.55.0/0.56.0 refuse them; `unlock --yes` no longer clears a holder that appears running; the `unlock` listing gained `recorded start`; `unreached content` replaces the per-patch and per-blob warnings.
+
+## 7. Decision requests
+
+1. **Is 0.57.0 published, and where is the asset?** prikk's checkout has no `0.57.0` tag and `crates.io` has no such crate (404); the commit named "Release 0.57.0" is followed by four preparation commits, two of which change behaviour (P3b the test harness, P3c plain `doctor` writes nothing again). Every 0.57.0 statement here is about a build of `bfd5b3c9`. Once the asset exists, repeat section 3 and the gate run on it; the floor is not touched before that.
+2. **Format 8.** A wiki created under 0.57.0 cannot be opened by 0.55.0 or 0.56.0, and an operator who rolls prikk back loses those wikis until they return to 0.57.0. `prikk init` has no option to choose the format. Should the operator notes say that a wiki created under 0.57.0 needs 0.57.0 from then on (this change does not touch the notes), and should inklkunn record the repository format it created (`prikk_format_version` exists in the store) and refuse to open a wiki whose format its prikk cannot read with a message that says so?
+3. **The floor.** Not moved (section 4). If the owner wants the floor at 0.57.0 for the late-seal check or the take-back, say which and when; the list of what changes is in section 4.
+4. **`EXPECTED_SKIPS` 289 to 294** in `ci.yml` and `release.yml` (the coordinator's; section 5).

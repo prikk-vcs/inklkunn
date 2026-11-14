@@ -34,8 +34,9 @@ stopped, so the trail shows what was seen.
 
 **What it is.** prikk holds one patch that was committed and not yet sealed (it is *queued*), and no recorded act
 of the service describes it. Recovery will not seal it: sealing would put a change into the history, signed in
-the wiki's name, that nobody accepted. prikk 0.55 has no verb that discards a sound queued patch (a patch that is
-not damaged), so recovery cannot remove it either. It stops and tells you. **A queued patch is not in the
+the wiki's name, that nobody accepted. prikk 0.55 and 0.56 have no verb that discards a sound queued patch (a
+patch that is not damaged), so recovery cannot remove it either; prikk 0.57.0 has `prikk uncommit`, which recovery
+uses **only when you type the patch's id** (step 3 below). It stops and tells you. **A queued patch is not in the
 history and does no harm while it waits**, which is why stopping is the safe thing to do.
 
 **Where it comes from.** Usually one of these; recovery cannot tell which:
@@ -74,12 +75,20 @@ and that it stopped.
 2. **Keep the evidence and wait.** This is the right choice when nothing is urgent. The wiki serves every read;
    only acceptances wait. `inklkunn wiki export <wiki> --bundle <dir> --archive <file>` writes the whole wiki
    (the sealed history, never the queued patch) to somewhere safe meanwhile.
-3. **Remove the patch when prikk can.** prikk will have a verb that discards a sound queued patch on purpose,
-   named exactly, with a preview, and with a record so the discard can be undone, in **prikk 0.57.0** (ledger
-   PK-43). When inklkunn moves to that version, recovery offers the discard as a step **you confirm**, never one
-   it takes by itself, and this page gains the command. Until then there is no way to remove the patch, and the
-   wiki is meant to wait.
-4. **If the wiki must take writes before that**, make a new wiki from the old one's pages: export it as above,
+3. **Take the patch back (prikk 0.57.0 and later).** `prikk uncommit` takes the newest queued commit out of the
+   queue and keeps it in prikk's own recovery log, so that `prikk doctor --recovery-restore <run>` puts it back. With
+   0.57.0 `inklkunn wiki recover <wiki> --plan` adds a note that says what prikk would do (prikk's own preview, the
+   commit's message and the paths it changes) and the command that is your confirmation:
+   `inklkunn wiki recover <wiki> --discard-queued-patch <patch id>`. **You confirm by typing the patch's id** (64
+   characters, as `prikk status --format json` prints it and the note repeats it); recovery never takes a patch
+   back on its own, and not for a patch that is the change of a recorded act (that one is sealed, or stopped on),
+   not when more than one patch is queued, and not for a queue that targets another branch than the worktree's.
+   The step is audited with the id you typed, recorded in the plan the act keeps, and bound to that one patch in the
+   signer. It leaves the queue empty, puts the worktree back to what the tip says (the patch's files in it go: copy out
+   any page you want first, as in step 1), checks the repository, clears the flag, and prints the recovery run that
+   undoes it. Before 0.57.0 there is no such verb: the plan says so, `--discard-queued-patch` is ignored, and the wiki
+   is meant to wait.
+4. **If the wiki must take writes and the patch cannot be taken back** (prikk before 0.57.0, or you would rather keep it), make a new wiki from the old one's pages: export it as above,
    create a wiki (`inklkunn wiki create`), and `inklkunn wiki import-folder` the exported `pages/` and
    `attachments/` into it. This does not touch the old wiki, which stays flagged, readable and exportable as the
    record of its history; the new wiki's history begins with the import, so it has a new slug and new keys, and
@@ -91,6 +100,8 @@ either rewrites the history or puts an unaccepted change into it:
 - `prikk seal` (it publishes the queued patch, signed by whatever key is at hand);
 - `prikk rollback-draft`, `prikk rollback-preview` and the rest of the rollback family (they add to what is
   queued; an undo in this wiki is a proposal, RFC 004 D-8);
+- `prikk uncommit` run by hand, which does what step 3 does without its checks (that the queue holds exactly this patch, on the
+  branch the worktree is on) and without the audit, and leaves the worktree as the patch left it;
 - `prikk doctor --discard-damaged-commits` or any other repair, which prikk refuses over a patch that is sound,
   and which would be the wrong tool if it did not;
 - deleting files under `.prikk/` or in the worktree, and `prikk unlock --force` on a lock a running process

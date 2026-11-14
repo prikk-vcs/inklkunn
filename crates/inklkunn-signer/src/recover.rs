@@ -90,6 +90,12 @@ pub enum RecoveryOp {
     },
     /// `doctor --discard-damaged-commits`: remove an acknowledged commit the active WAL no longer holds soundly.
     DiscardDamaged,
+    /// `prikk uncommit <patch>` (prikk 0.57.0, ledger PK-43): take the one queued patch `patch` back, on purpose. It is
+    /// sound and matches no recorded act, and **a person confirmed this patch by its id**; the plan records which.
+    DiscardQueued {
+        /// The patch, 64 lower-case hex characters.
+        patch: String,
+    },
     /// Clear these locks (absolute paths as `unlock` lists them), each of a kind an acceptance leaves.
     ClearLocks {
         /// The lock files.
@@ -269,6 +275,22 @@ pub trait Recover: Send + Sync {
         act: &RecoveryToken,
     ) -> Result<Discarded, RecoverError>;
 
+    /// ``prikk uncommit <patch>``: take the one queued patch back (prikk 0.57.0, ledger PK-43). **Only for a patch an
+    /// operator confirmed by its id**, which the recorded act names; refuses unless the queue holds exactly that
+    /// patch and prikk's own plan for it reads. The files in the worktree are not changed: the plan puts them back
+    /// with [`Recover::restore_worktree`]. The default is unable.
+    fn discard_queued(
+        &self,
+        wiki: &WikiId,
+        act: &RecoveryToken,
+        patch_id: &str,
+    ) -> Result<Discarded, RecoverError> {
+        let _ = (wiki, act, patch_id);
+        Err(RecoverError::Unavailable(
+            "this signer cannot take a queued patch back".to_owned(),
+        ))
+    }
+
     /// Clear the locks `locks` names (as `unlock` lists them). Each must still be held, of a kind an acceptance
     /// leaves ([`ACCEPTANCE_LOCK_KINDS`]), and inside the wiki's own `.prikk`. Returns those it cleared; a lock that
     /// is no longer held is not an error and is not listed.
@@ -369,6 +391,18 @@ impl Witnesses {
     /// `prikk unlock` with no argument: the locks that are held, with their recorded process ids.
     pub fn locks(&self, wiki: &WikiId) -> Result<Vec<HeldLock>, SignerError> {
         self.writes.locks(&self.root.repo_dir(wiki))
+    }
+
+    /// ``prikk uncommit <patch> --plan-only`` (prikk 0.57.0, ledger PK-43): what taking the queued patch back would do,
+    /// in prikk's own words. `Ok(None)`: this prikk has no such verb. Nothing is written (prikk takes its active lock
+    /// for the length of the call).
+    pub fn uncommit_plan(
+        &self,
+        wiki: &WikiId,
+        patch_id: &str,
+    ) -> Result<Option<text::UncommitPlan>, SignerError> {
+        self.writes
+            .uncommit_plan(&self.root.repo_dir(wiki), patch_id)
     }
 
     /// `prikk worktree-status`: whether the worktree is the baseline, and how far it is from it.

@@ -362,6 +362,17 @@ exec "$REAL" "$@"
                 .len()
         }
 
+        /// `(action, detail)` of every audit event of the operator's command line.
+        pub fn operator_details(&self) -> Vec<(String, String)> {
+            self.store
+                .read(0, 500)
+                .unwrap()
+                .into_iter()
+                .filter(|r| r.event.principal == "system:operator-cli")
+                .map(|r| (r.event.action.clone(), r.event.detail.clone()))
+                .collect()
+        }
+
         pub fn audit(&self) -> Vec<(String, String, String, String)> {
             self.store
                 .read(0, 500)
@@ -1190,16 +1201,43 @@ fn recover_parses_and_a_usage_error_shows_the_usage() {
         parse(&args(&["recover", "docs"])).unwrap(),
         Command::Recover {
             wiki: "docs".into(),
-            plan_only: false
+            plan_only: false,
+            discard_queued_patch: None
         }
     );
     assert_eq!(
         parse(&args(&["recover", "docs", "--plan"])).unwrap(),
         Command::Recover {
             wiki: "docs".into(),
-            plan_only: true
+            plan_only: true,
+            discard_queued_patch: None
         }
     );
+    // The confirmation is the patch's id, typed in full and alone (maintenance M3, prikk 0.57.0, ledger PK-43).
+    let id = "ab".repeat(32);
+    assert_eq!(
+        parse(&args(&["recover", "docs", "--discard-queued-patch", &id])).unwrap(),
+        Command::Recover {
+            wiki: "docs".into(),
+            plan_only: false,
+            discard_queued_patch: Some(id.clone())
+        }
+    );
+    for bad in [
+        vec!["recover", "docs", "--discard-queued-patch"],
+        vec!["recover", "docs", "--discard-queued-patch", "abcd"],
+        vec![
+            "recover",
+            "docs",
+            "--discard-queued-patch",
+            &"AB".repeat(32),
+        ],
+        vec!["recover", "docs", "--discard-queued-patch", "yes"],
+        vec!["recover", "docs", "--plan", "--discard-queued-patch", &id],
+    ] {
+        let e = parse(&args(&bad)).unwrap_err();
+        assert!(e.0.contains("usage:"), "{bad:?}: {}", e.0);
+    }
     for bad in [
         vec!["recover"],
         vec!["recover", "--plan"],
@@ -1318,6 +1356,41 @@ fn recover_stops_on_what_no_verb_answers_exit_one_and_the_wiki_stays_flagged() {
     let (status, _, err) = w.cli(&["wiki", "recover", "nowhere"]);
     assert_eq!(status, 1);
     assert!(err.contains("no wiki `nowhere`"), "{err}");
+}
+
+#[test]
+fn the_persons_word_to_take_a_queued_patch_back_is_in_the_audit_trail_before_anything_is_done() {
+    // Maintenance M3, prikk 0.57.0, ledger PK-43. Nothing is queued here, so nothing is taken back and no step is
+    // invented for the id; what is checked is the operator's act: the id they typed is recorded when the act begins.
+    let Some(w) = world("recover-confirm") else {
+        return;
+    };
+    let (status, _, err) = w.cli(&["wiki", "create", "notes", "--name", "Notes"]);
+    assert_eq!(status, 0, "{err}");
+    flag(&w, "notes");
+    let id = "ab".repeat(32);
+    let (status, out, err) = w.cli(&["wiki", "recover", "notes", "--discard-queued-patch", &id]);
+    assert_eq!(status, 0, "{out}{err}");
+    assert!(!out.contains("discard-queued"), "{out}");
+    assert!(!flagged(&w, "notes"));
+    let begun = w
+        .operator_details()
+        .into_iter()
+        .find(|(a, d)| a == "wiki-recover" && d.contains("a person confirmed"));
+    assert!(
+        begun.as_ref().is_some_and(|(_, d)| d.contains(&id)),
+        "{begun:?}"
+    );
+    // Without the word the begun event says nothing of the kind.
+    flag(&w, "notes");
+    let (status, out, err) = w.cli(&["wiki", "recover", "notes"]);
+    assert_eq!(status, 0, "{out}{err}");
+    let plain: Vec<_> = w
+        .operator_details()
+        .into_iter()
+        .filter(|(a, d)| a == "wiki-recover" && d == "begun")
+        .collect();
+    assert_eq!(plain.len(), 1, "{plain:?}");
 }
 
 #[test]

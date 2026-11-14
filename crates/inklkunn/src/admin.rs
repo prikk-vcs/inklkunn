@@ -38,10 +38,10 @@ use inklkunn_core::import::{ImportError, plan_folder, run_import, wiki_state};
 use inklkunn_core::proposal::{Period, operator_metrics};
 use inklkunn_core::recovery::needs_recovery;
 use inklkunn_core::{
-    Authorizer, LeaseConfig, Leased, Maintenance, NoLedger, Recover, Recovery, RecoveryError,
-    RecoveryMode, RecoveryOutcome, RecoveryParts, Signer, SignerConfig, StoreAuthz, StoreLedger,
-    SweepAudit, SystemActFailure, SystemActs, WikiLeases, Witnesses, WriteLeases, create_wiki,
-    sweep_unfinished_creations,
+    Authorizer, LeaseConfig, Leased, Maintenance, NoLedger, Recover, RecoverOptions, Recovery,
+    RecoveryError, RecoveryMode, RecoveryOutcome, RecoveryParts, Signer, SignerConfig, StoreAuthz,
+    StoreLedger, SweepAudit, SystemActFailure, SystemActs, WikiLeases, Witnesses, WriteLeases,
+    create_wiki, sweep_unfinished_creations,
 };
 use inklkunn_prikk::sandbox::Sandbox;
 use inklkunn_prikk::{Admission, PrikkCli, Storage};
@@ -87,6 +87,9 @@ pub(crate) enum Command {
     Recover {
         wiki: String,
         plan_only: bool,
+        /// `--discard-queued-patch <patch id>`: the person's confirmation that this queued patch is taken back
+        /// (prikk 0.57.0, ledger PK-43).
+        discard_queued_patch: Option<String>,
     },
 }
 
@@ -97,9 +100,9 @@ pub(crate) struct Usage(pub String);
 pub(crate) const USAGE: &str = "usage: inklkunn [--dev-unconfined] wiki create <slug> --name <name> [--license <spdx>] [--lang <tag>]... [--visibility public|private]\n       \
 inklkunn [--dev-unconfined] wiki import-folder <wiki> <dir> [--dry-run] [--replace-existing]\n       \
 inklkunn [--dev-unconfined] wiki export <wiki> [--bundle <dir>] [--archive <file>]\n       \
-inklkunn [--dev-unconfined] wiki recover <wiki> [--plan]\n       \
+inklkunn [--dev-unconfined] wiki recover <wiki> [--plan] [--discard-queued-patch <patch id>]\n       \
 inklkunn [--dev-unconfined] wiki metrics <wiki> [--days <n> | --from <unix> --to <unix>]\n\
-<wiki> is the wiki's slug or id. An export's destination must not exist. `recover --plan` shows what recovery would do and changes nothing.";
+<wiki> is the wiki's slug or id. An export's destination must not exist. `recover --plan` shows what recovery would do and changes nothing. `--discard-queued-patch <patch id>` takes the one queued patch back (prikk 0.57.0 and later) when no recorded act describes it; the id is the confirmation, and recovery names it in the plan.";
 
 /// Parse what follows `wiki` for `create`, `import-folder` and `export`.
 pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
@@ -223,17 +226,37 @@ pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
         }
         "recover" => {
             let mut plan_only = false;
-            for flag in flags {
+            let mut discard_queued_patch = None;
+            let mut it = flags.iter();
+            while let Some(flag) = it.next() {
                 match flag.as_str() {
                     "--plan" => plan_only = true,
+                    "--discard-queued-patch" => {
+                        let id = value("--discard-queued-patch", &mut it)?;
+                        // A patch id is 64 lower-case hex characters: the confirmation is typed in full.
+                        if id.len() != 64
+                            || !id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+                        {
+                            return Err(usage(
+                                "--discard-queued-patch needs the patch's id: 64 lower-case hex characters, as `prikk status --format json` or `recover --plan` prints it",
+                            ));
+                        }
+                        discard_queued_patch = Some(id);
+                    }
                     other => {
                         return Err(usage(&format!("`{other}` is not an option of `recover`")));
                     }
                 }
             }
+            if plan_only && discard_queued_patch.is_some() {
+                return Err(usage(
+                    "--plan changes nothing, so it cannot take a patch back: give --discard-queued-patch without --plan",
+                ));
+            }
             Ok(Command::Recover {
                 wiki: first,
                 plan_only,
+                discard_queued_patch,
             })
         }
         other => Err(usage(&format!("`{other}` is not a command"))),
@@ -413,7 +436,19 @@ fn run(
             out,
             err,
         ),
-        Command::Recover { wiki, plan_only } => recover(settings, now, wiki, *plan_only, out, err),
+        Command::Recover {
+            wiki,
+            plan_only,
+            discard_queued_patch,
+        } => recover(
+            settings,
+            now,
+            wiki,
+            *plan_only,
+            discard_queued_patch.as_deref(),
+            out,
+            err,
+        ),
         Command::Metrics {
             wiki,
             from,
@@ -984,6 +1019,7 @@ fn recover(
     now: i64,
     wiki: &str,
     plan_only: bool,
+    discard_queued_patch: Option<&str>,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> Result<(), String> {
@@ -1002,14 +1038,25 @@ fn recover(
     // A plan shown changes nothing, so it is not an act to audit; a recovery is, before and after.
     let trail = Trail { sink: &*store, now };
     if !plan_only {
-        trail.begin("wiki-recover", &resource, "begun")?;
+        // The person's word is part of the act: what they confirmed is in the trail before anything is done.
+        trail.begin(
+            "wiki-recover",
+            &resource,
+            &match discard_queued_patch {
+                Some(id) => format!("begun; a person confirmed taking queued patch {id} back"),
+                None => "begun".to_owned(),
+            },
+        )?;
     }
     let mode = if plan_only {
         RecoveryMode::PlanOnly
     } else {
         RecoveryMode::Run
     };
-    let result = recovery.recover(&record, mode);
+    let options = RecoverOptions {
+        discard_queued_patch: discard_queued_patch.map(str::to_owned),
+    };
+    let result = recovery.recover_with(&record, mode, &options);
     let (outcome, detail, message) = match &result {
         Ok(report) => {
             for line in report.lines() {

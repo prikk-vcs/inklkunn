@@ -12,7 +12,7 @@
 
 use inklkunn_prikk::{RepoStatus, storage::QueuedPatch};
 use inklkunn_signer::recover::text::{
-    ACCEPTANCE_LOCK_KINDS, DoctorReport, HeldLock, PUBLICATION_UNTRUSTED_CODE,
+    ACCEPTANCE_LOCK_KINDS, DoctorReport, HeldLock, PUBLICATION_UNTRUSTED_CODE, UncommitPlan,
 };
 use inklkunn_signer::{RecoveryFacts, RecoveryOp, WorktreeState};
 use inklkunn_store::{
@@ -292,7 +292,7 @@ impl Stop {
     pub const fn meaning(self) -> &'static str {
         match self {
             Stop::ForeignQueuedPatch => {
-                "a patch is queued that no recorded act describes; prikk has no verb that removes a sound queued patch, and sealing it would put an unaccepted change in the history"
+                "a patch is queued that no recorded act describes; sealing it would put an unaccepted change in the history, and recovery does not discard a patch on its own judgement (prikk has no verb that removes a sound queued patch before 0.57.0; from 0.57.0 `prikk uncommit` does, and a person confirms it by the patch's id: see the note)"
             }
             Stop::QueuedPatchIsNotTheAct => {
                 "a patch is queued that is not the change of the recorded act (its message, its base or its files differ)"
@@ -394,6 +394,12 @@ pub enum Step {
     },
     /// `doctor --discard-damaged-commits`.
     DiscardDamaged,
+    /// `prikk uncommit <patch>` (prikk 0.57.0, ledger PK-43): take the one queued patch back. **Only when a person
+    /// confirmed that patch by its id** (`--discard-queued-patch`); never on recovery's own judgement.
+    DiscardQueued {
+        /// The patch.
+        patch_id: String,
+    },
     /// Put the worktree of `view` back to the tip.
     RestoreWorktree {
         /// The view.
@@ -432,6 +438,7 @@ impl Step {
             Step::EndViewCreated { .. } => "end-view-created",
             Step::EndViewFailed { .. } => "end-view-failed",
             Step::DiscardDamaged => "discard-damaged",
+            Step::DiscardQueued { .. } => "discard-queued",
             Step::RestoreWorktree { .. } => "restore-worktree",
             Step::EndFailed { .. } => "end-failed",
             Step::EndSealed { .. } => "end-sealed",
@@ -481,6 +488,9 @@ impl Step {
             Step::DiscardDamaged => {
                 "run doctor --discard-damaged-commits: remove an acknowledged commit the log no longer holds soundly (prikk saves the bytes first)".to_owned()
             }
+            Step::DiscardQueued { patch_id } => format!(
+                "take the queued patch {patch_id} back with `prikk uncommit` because a person confirmed it by its id: it leaves the queue and stays in prikk's recovery log, where `prikk doctor --recovery-restore <run>` returns it"
+            ),
             Step::RestoreWorktree { view } => {
                 format!("put the worktree of {view} back to what its tip says")
             }
@@ -554,6 +564,9 @@ impl Plan {
                     })
                 }
                 Step::DiscardDamaged => Some(RecoveryOp::DiscardDamaged),
+                Step::DiscardQueued { patch_id } => Some(RecoveryOp::DiscardQueued {
+                    patch: patch_id.clone(),
+                }),
                 Step::RestoreWorktree { view } => {
                     Some(RecoveryOp::RestoreWorktree { view: view.clone() })
                 }
@@ -601,6 +614,9 @@ impl Plan {
                     "step": "end-view-failed", "creation": act.to_string(), "view": view,
                 }),
                 Step::DiscardDamaged => json!({"step": "discard-damaged"}),
+                Step::DiscardQueued { patch_id } => {
+                    json!({"step": "discard-queued", "patch": patch_id})
+                }
                 Step::RestoreWorktree { view } => json!({"step": "restore-worktree", "view": view}),
                 Step::EndFailed { act, discarded } => json!({
                     "step": "end-failed", "act": act.token(), "kind": act.kind(), "discarded": discarded,
@@ -678,6 +694,9 @@ pub fn facts_of(wiki: &WikiId, plan: &str) -> Option<RecoveryFacts> {
                 view: text(s, "view")?,
             }),
             "discard-damaged" => ops.push(RecoveryOp::DiscardDamaged),
+            "discard-queued" => ops.push(RecoveryOp::DiscardQueued {
+                patch: text(s, "patch")?,
+            }),
             "restore-worktree" => ops.push(RecoveryOp::RestoreWorktree {
                 view: text(s, "view")?,
             }),
@@ -699,6 +718,46 @@ pub fn facts_of(wiki: &WikiId, plan: &str) -> Option<RecoveryFacts> {
 }
 
 // ---- the decision table ----
+
+/// What the plan says about taking an orphan queued patch back, when it stops on it.
+fn discard_notes(
+    plan: &mut Plan,
+    patch_id: &str,
+    target: Option<&str>,
+    w: &Witness,
+    discard: &DiscardInput,
+) {
+    match (&discard.offer, discard.confirmed.as_deref()) {
+        (DiscardOffer::Offered(offer), None) => {
+            plan.notes.push(format!(
+                "prikk can take the queued patch {patch_id} back (`prikk uncommit`; it stays in prikk's recovery log and the worktree's files are put back to the tip). prikk says: {}. To do it, run `inklkunn wiki recover <wiki> --discard-queued-patch {patch_id}`: typing the patch id is the confirmation, and nothing is taken back without it",
+                offer.lines.join(" | ")
+            ));
+            if target.is_none() || target != w.status.current_branch.as_deref() {
+                plan.notes.push(
+                    "the queue targets a branch other than the one the worktree is on, so recovery will not take it back"
+                        .to_owned(),
+                );
+            }
+        }
+        (DiscardOffer::Offered(_), Some(given)) if given != patch_id => plan.notes.push(format!(
+            "`--discard-queued-patch {given}` names a patch that is not the queued one ({patch_id}); nothing was taken back"
+        )),
+        (DiscardOffer::Offered(_), Some(_)) => plan.notes.push(
+            "the queue targets a branch other than the one the worktree is on, so recovery will not take the patch back"
+                .to_owned(),
+        ),
+        (DiscardOffer::NoVerb, given) => plan.notes.push(format!(
+            "this prikk has no `uncommit` (0.57.0 and later have), so the queued patch cannot be taken back{}",
+            if given.is_some() { "; `--discard-queued-patch` was ignored" } else { "" }
+        )),
+        (DiscardOffer::Unreadable(why), given) => plan.notes.push(format!(
+            "prikk's plan for taking the queued patch back could not be read ({why}); nothing is taken back{}",
+            if given.is_some() { " and `--discard-queued-patch` was ignored" } else { "" }
+        )),
+        (DiscardOffer::NotAsked, _) => {}
+    }
+}
 
 fn matches_queued(act: &ActWitness, patch: &QueuedPatch, target: Option<&str>) -> bool {
     let digest = crate::acceptance::message_digest(&patch.message);
@@ -728,8 +787,38 @@ fn lead_of(w: &Witness, view: &str) -> bool {
         .any(|d| d.lead_ref() == Some(view))
 }
 
+/// What prikk offers for a queued patch that no recorded act describes (maintenance M3, prikk 0.57.0, ledger PK-43).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum DiscardOffer {
+    /// Not asked: this is not the state it is for (an act is unfinished, or not exactly one patch is queued).
+    #[default]
+    NotAsked,
+    /// Asked, and prikk has no `uncommit` (before 0.57.0).
+    NoVerb,
+    /// Asked, and the answer could not be read; the text is for operators.
+    Unreadable(String),
+    /// prikk's own plan for taking the patch back (``prikk uncommit <patch> --plan-only``).
+    Offered(UncommitPlan),
+}
+
+/// The two inputs of the discard that are not witnesses of the repository: what prikk offers, and which patch a person
+/// confirmed by its id (`--discard-queued-patch <patch id>`). The default is no offer and no confirmation, which is
+/// every plan before 0.57.0 had.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct DiscardInput {
+    /// What prikk offers.
+    pub offer: DiscardOffer,
+    /// The patch id a person typed to confirm taking it back, when they did.
+    pub confirmed: Option<String>,
+}
+
 /// Make the plan.
 pub fn build(w: &Witness) -> Plan {
+    build_with(w, &DiscardInput::default())
+}
+
+/// Make the plan, with what prikk offers for an orphan queued patch and what a person confirmed (see [`DiscardInput`]).
+pub fn build_with(w: &Witness, discard: &DiscardInput) -> Plan {
     let mut plan = Plan {
         wiki: w.wiki.clone(),
         view: None,
@@ -1091,9 +1180,40 @@ pub fn build(w: &Witness) -> Plan {
             stop(&mut plan, Stop::QueuedPatchIsNotTheAct);
             return plan;
         }
-        (None, None, Some(_), None) => {
-            stop(&mut plan, Stop::ForeignQueuedPatch);
-            return plan;
+        (None, None, Some(patch), None) => {
+            // The one state a person may take a patch back from, and only by typing its id (PK-43): the offer is
+            // prikk's own plan for exactly this patch, on the branch the worktree belongs to.
+            let confirmed = match (&discard.offer, discard.confirmed.as_deref()) {
+                (DiscardOffer::Offered(offer), Some(id))
+                    if id == patch.patch_id
+                        && offer.patch_id == patch.patch_id
+                        && q.target_ref.is_some()
+                        && q.target_ref == w.status.current_branch
+                        && w.status.current_branch.as_deref() == Some(offer.target.as_str()) =>
+                {
+                    Some(id.to_owned())
+                }
+                _ => None,
+            };
+            let Some(patch_id) = confirmed else {
+                discard_notes(
+                    &mut plan,
+                    &patch.patch_id,
+                    q.target_ref.as_deref(),
+                    w,
+                    discard,
+                );
+                stop(&mut plan, Stop::ForeignQueuedPatch);
+                return plan;
+            };
+            plan.notes.push(format!(
+                "a person confirmed taking the queued patch {patch_id} back; prikk keeps it in its recovery log, and `prikk doctor --recovery-restore <run>` returns it (the run is printed when it is done)"
+            ));
+            steps.push(Step::DiscardQueued { patch_id });
+            // `uncommit` leaves the files in the worktree as they are (the patch's result): put them back to the tip.
+            if let Some(view) = &view {
+                steps.push(Step::RestoreWorktree { view: view.clone() });
+            }
         }
         // Nothing is queued, and prikk says an acknowledged commit is torn: discard it.
         (None, None, None, a) if w.doctor.has_acknowledged_damage() => {

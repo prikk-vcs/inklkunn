@@ -18,9 +18,13 @@
 //!    **discarded** with `doctor --discard-damaged-commits`; a worktree that is not the baseline is put back; the act's
 //!    records are ended as what happened; `verify`; the reconciliation (RFC 002 D-7); the flag is cleared.
 //!
-//! A queued patch that no recorded act describes is **not** discarded: prikk has no verb that removes a sound queued
-//! patch, and sealing it would put an unaccepted change in the history. It is a stop, and a person decides. Nothing
-//! is rewritten; the history only grows by the one patch the act meant to seal.
+//! A queued patch that no recorded act describes is **not** discarded on recovery's own judgement, and sealing it
+//! would put an unaccepted change in the history. It is a stop, and a person decides. Nothing is rewritten; the
+//! history only grows by the one patch the act meant to seal. **From prikk 0.57.0** (ledger PK-43) the person can have
+//! the patch taken back: the plan shows prikk's own preview (`prikk uncommit <patch> --plan-only`), and the patch leaves
+//! the queue (`prikk uncommit`, kept in prikk's recovery log, undoable) only when the person ran recovery with
+//! `--discard-queued-patch <that patch's id>` ([`RecoverOptions`]): typing the id is the confirmation. Before 0.57.0
+//! the stop is all there is.
 //!
 //! `doctor`'s unreached-object warnings are recorded and do not block (ledger PL-12).
 
@@ -51,8 +55,8 @@ pub mod plan;
 pub mod processes;
 
 pub use plan::{
-    ActRef, ActWitness, Chain, CleanupPending, Ended, LockEntry, Plan, Published, Step, Stop,
-    ViewActWitness, ViewShown, Witness, build, facts_of,
+    ActRef, ActWitness, Chain, CleanupPending, DiscardInput, DiscardOffer, Ended, LockEntry, Plan,
+    Published, Step, Stop, ViewActWitness, ViewShown, Witness, build, build_with, facts_of,
 };
 pub use processes::{Foreign, ProcFs, ProcessInfo, ProcessTable};
 
@@ -70,6 +74,15 @@ pub enum Mode {
     PlanOnly,
     /// Take the lease, record the plan, take the steps.
     Run,
+}
+
+/// What a person decided beyond what recovery reads (maintenance M3, prikk 0.57.0, ledger PK-43). The default decides
+/// nothing, which is what every call before 0.57.0 was.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RecoverOptions {
+    /// The id of the queued patch to take back with `prikk uncommit`, typed by the person (`--discard-queued-patch`).
+    /// Used only when it is exactly the one patch queued and no recorded act describes it; recorded in the plan.
+    pub discard_queued_patch: Option<String>,
 }
 
 /// Why recovery could not even begin or be recorded. (A recovery that began and stopped is a [`Outcome::Stopped`],
@@ -702,6 +715,50 @@ impl Recovery {
 
     /// Recover `wiki`, or show how it would be recovered (see [`Mode`]).
     pub fn recover(&self, wiki: &WikiRecord, mode: Mode) -> Result<RecoveryReport, RecoveryError> {
+        self.recover_with(wiki, mode, &RecoverOptions::default())
+    }
+
+    /// What prikk offers for the one queued patch of a wiki no recorded act describes (ledger PK-43): asked only in
+    /// that state, with prikk's own `uncommit --plan-only`, which writes nothing. Whatever is not that state is
+    /// `NotAsked`; a prikk without the verb is `NoVerb`; an answer that cannot be read is said, and offers nothing.
+    fn read_discard(
+        &self,
+        wiki: &WikiRecord,
+        w: &Witness,
+        options: &RecoverOptions,
+    ) -> DiscardInput {
+        let confirmed = options.discard_queued_patch.clone();
+        let q = &w.status.queue;
+        let offer = match q.patches.as_slice() {
+            [patch]
+                if w.acts.is_empty()
+                    && w.view_acts.is_empty()
+                    && w.cleanup_pending.is_none()
+                    && w.foreign.is_empty()
+                    && w.status.trailing_partial_wal_bytes == 0 =>
+            {
+                match self
+                    .parts
+                    .witnesses
+                    .uncommit_plan(&wiki.id, &patch.patch_id)
+                {
+                    Ok(Some(plan)) => DiscardOffer::Offered(plan),
+                    Ok(None) => DiscardOffer::NoVerb,
+                    Err(e) => DiscardOffer::Unreadable(e.to_string()),
+                }
+            }
+            _ => DiscardOffer::NotAsked,
+        };
+        DiscardInput { offer, confirmed }
+    }
+
+    /// [`Recovery::recover`] with what a person decided ([`RecoverOptions`]).
+    pub fn recover_with(
+        &self,
+        wiki: &WikiRecord,
+        mode: Mode,
+        options: &RecoverOptions,
+    ) -> Result<RecoveryReport, RecoveryError> {
         let p = &self.parts;
         if mode == Mode::PlanOnly {
             let dead = p
@@ -709,7 +766,7 @@ impl Recovery {
                 .lease_holder(&wiki.id)?
                 .filter(|h| h.holder != p.leases.holder_name());
             let witness = self.gather(wiki, dead, false)?;
-            let plan = build(&witness);
+            let plan = build_with(&witness, &self.read_discard(wiki, &witness, options));
             return Ok(RecoveryReport {
                 wiki: wiki.id.clone(),
                 plan,
@@ -776,7 +833,8 @@ impl Recovery {
                 return Err(e);
             }
         };
-        let plan = build(&witness);
+        let discard = self.read_discard(wiki, &witness, options);
+        let plan = build_with(&witness, &discard);
 
         // 3. The plan, recorded before any of it is done; an earlier recovery that was itself interrupted is ended.
         let act = RecoveryActId::new();
@@ -1026,6 +1084,17 @@ impl Recovery {
                     "damaged commit discarded (patch {}, prikk's recovery run {})",
                     d.patch_id.as_deref().unwrap_or("not named"),
                     d.recovery_run.as_deref().unwrap_or("not named")
+                ))
+            }
+            Step::DiscardQueued { patch_id } => {
+                let d = p
+                    .signer
+                    .discard_queued(&wiki.id, token, patch_id)
+                    .map_err(|e| e.to_string())?;
+                Ok(format!(
+                    "queued patch {patch_id} taken back at a person's word (prikk's recovery run {}; `prikk doctor --recovery-restore {}` in the wiki's repository puts it back)",
+                    d.recovery_run.as_deref().unwrap_or("not named"),
+                    d.recovery_run.as_deref().unwrap_or("<run>")
                 ))
             }
             Step::RestoreWorktree { view } => {

@@ -15,8 +15,9 @@ use serde::Deserialize;
 use crate::cost::{self, WriteVerb};
 use crate::keys::{KeyDir, Role};
 use crate::recover::text::{
-    CompletionPlan, Discarded, DoctorReport, HeldLock, parse_completion_plan, parse_discard_output,
-    parse_doctor_output, parse_unlock_output,
+    CompletionPlan, Discarded, DoctorReport, HeldLock, UncommitPlan, parse_completion_plan,
+    parse_discard_output, parse_doctor_output, parse_uncommit_done, parse_uncommit_plan,
+    parse_unlock_output, uncommit_is_unknown,
 };
 
 /// Why a write did not happen (or did not complete).
@@ -374,6 +375,17 @@ fn outcome(verb: &str, run: Run, ceiling: u64) -> Result<Vec<u8>, SignerError> {
         }));
     }
     Ok(run.stdout)
+}
+
+/// A patch id is 64 lower-case hex characters: nothing else is put in an argument vector.
+fn check_patch_id(id: &str) -> Result<(), SignerError> {
+    if id.len() == 64 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+        Ok(())
+    } else {
+        Err(SignerError::Refused(
+            "a patch id is 64 lower-case hex characters".to_owned(),
+        ))
+    }
 }
 
 /// Does a `verify` report say a stage failed for want of memory? The message after the exact prefix `i/o error:`
@@ -983,6 +995,45 @@ impl Writes {
         parse_discard_output(&String::from_utf8_lossy(&out)).ok_or_else(|| {
             SignerError::Damaged(
                 "`doctor` did not say that the damaged commit was discarded".to_owned(),
+            )
+        })
+    }
+
+    /// ``prikk uncommit <patch> --plan-only`` (prikk 0.57.0, ledger PK-43): what taking back the newest queued commit
+    /// would do. **`Ok(None)` is a prikk that has no such verb** (before 0.57.0: `unknown command`, exit 2), which is
+    /// an answer and not a failure. Signs nothing; the repository is writable all the same, because prikk takes the
+    /// active lock even for a plan (measured on 0.57.0: a read-only repository refuses it), and it writes nothing.
+    pub(crate) fn uncommit_plan(
+        &self,
+        repo: &Path,
+        patch_id: &str,
+    ) -> Result<Option<UncommitPlan>, SignerError> {
+        check_patch_id(patch_id)?;
+        let (run, ceiling) = self.run_raw(
+            &Mounts::write(repo, None, Vec::new()),
+            Sizing::repo(repo),
+            &["uncommit", patch_id, "--plan-only"],
+        )?;
+        if uncommit_is_unknown(run.status.code(), &String::from_utf8_lossy(&run.stderr)) {
+            return Ok(None);
+        }
+        let out = outcome("uncommit", run, ceiling)?;
+        parse_uncommit_plan(&String::from_utf8_lossy(&out), patch_id)
+            .map(Some)
+            .map_err(SignerError::Damaged)
+    }
+
+    /// ``prikk uncommit <patch>``: the newest queued commit leaves the queue and is kept in prikk's recovery log; the
+    /// files in the worktree are **not** changed. Returns the recovery run it was saved under (``prikk doctor
+    /// --recovery-restore <run>`` undoes it). Signs nothing. **The caller has decided** (recovery, from a plan the
+    /// operator confirmed).
+    pub(crate) fn uncommit(&self, repo: &Path, patch_id: &str) -> Result<String, SignerError> {
+        check_patch_id(patch_id)?;
+        let out = self.write_keyless(repo, &["uncommit", patch_id])?;
+        parse_uncommit_done(&String::from_utf8_lossy(&out)).ok_or_else(|| {
+            SignerError::Damaged(
+                "`uncommit` did not say that the commit was taken back, or not where to find it"
+                    .to_owned(),
             )
         })
     }
