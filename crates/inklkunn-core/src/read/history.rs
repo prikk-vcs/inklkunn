@@ -446,7 +446,7 @@ fn one_line(text: &str) -> String {
     let cleaned: String = first
         .chars()
         .map(|c| {
-            if c.is_control() || matches!(c, '\u{2028}' | '\u{2029}') {
+            if inklkunn_store::record::is_line_or_control(c) {
                 ' '
             } else {
                 c

@@ -654,13 +654,14 @@ pub fn is_direction_or_format(c: char) -> bool {
     )
 }
 
-/// A line of prikk's text for a person: control characters and direction characters become `?` (the commit's message
-/// and paths are somebody's text), and it is cut at [`PLAN_LINE_CHARS`].
+/// A line of prikk's text for a person: control characters, the line separators U+2028 and U+2029 (as every other text
+/// shown as one line treats them, [`inklkunn_store::record::is_line_or_control`]) and direction characters become `?`
+/// (the commit's message and paths are somebody's text), and it is cut at [`PLAN_LINE_CHARS`].
 fn clean_line(line: &str) -> String {
     let mut out: String = line
         .chars()
         .map(|c| {
-            if c.is_control() || is_direction_or_format(c) {
+            if inklkunn_store::record::is_line_or_control(c) || is_direction_or_format(c) {
                 '?'
             } else {
                 c

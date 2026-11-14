@@ -367,6 +367,14 @@ impl fmt::Display for DisplayNameError {
 
 impl std::error::Error for DisplayNameError {}
 
+/// Is `c` a control character, or a character some line-oriented reader splits a line on (U+2028, U+2029)? **The one
+/// definition** of what text shown or kept as one line must not hold: a display name, a trail field, a token label, a
+/// message field, a history summary and a line of prikk's text shown to a person are all cleaned by it (maintenance
+/// M19), so one line of text can never show as two.
+pub fn is_line_or_control(c: char) -> bool {
+    c.is_control() || matches!(c, '\u{2028}' | '\u{2029}')
+}
+
 /// A display name (a wiki's, and a person's in a signed message): one free-text field in any script
 /// (RFC 002 D-1), 1–120 characters, no control characters or line breaks (U+2028 and U+2029 included),
 /// trimmed. It enters the signed creation message's first line and the bundle manifest, so
@@ -385,9 +393,7 @@ impl DisplayName {
         // A line break is more than LF: U+2028 and U+2029 end a line for readers that split on them (and a
         // name reaches a signed message that anyone may read with any tool), so they are refused with the
         // control characters.
-        if s.chars()
-            .any(|c| c.is_control() || matches!(c, '\u{2028}' | '\u{2029}'))
-        {
+        if s.chars().any(is_line_or_control) {
             return Err(DisplayNameError::Control);
         }
         if s.trim() != s {

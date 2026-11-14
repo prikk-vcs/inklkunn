@@ -31,6 +31,7 @@
 
 use std::fmt;
 
+use inklkunn_store::record::is_line_or_control;
 use inklkunn_store::{AccountId, DisplayName, ProposalId};
 
 /// The longest summary line CT-03 allows (RFC 002 D-5), in characters.
@@ -59,11 +60,6 @@ const ACCEPTED_BY: usize = 2;
 const BASE: usize = 3;
 const KIND: usize = 4;
 const IMPORTED_FROM: usize = 5;
-
-/// A control character, or a character some line-oriented reader splits on (U+2028, U+2029).
-fn is_line_or_control(c: char) -> bool {
-    c.is_control() || matches!(c, '\u{2028}' | '\u{2029}')
-}
 
 /// Why a message could not be composed or read. No variant carries the offending text.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -338,7 +338,7 @@ impl fmt::Debug for TokenRecord {
 pub fn clean_label(s: &str) -> String {
     s.chars()
         .map(|c| {
-            if c.is_control() || matches!(c, '\u{2028}' | '\u{2029}') {
+            if crate::record::is_line_or_control(c) {
                 '?'
             } else {
                 c

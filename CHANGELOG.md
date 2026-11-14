@@ -723,6 +723,13 @@ Tests: the rule against five more report shapes (a damaged Block named beside a 
 holds, no field, a field that is not a list, no `objects` stage) and the signer's stand-in shape with every stage evaluated and
 `failed_objects` not empty; the stand-ins now carry `failed_objects`, as 0.57.0's report does. No new prikk-dependent test.
 
+M19 (handoff 010 corrections, second round): the preview's line separators. A line of prikk's text shown to a person (the
+`uncommit --plan-only` preview) now has U+2028 and U+2029 replaced by `?` as well as the control characters, as a message, a trail field,
+a token label, a history summary and a display name already treat them, so one line of prikk's output cannot show as two. The set is the
+same everywhere, so it is one definition now, `inklkunn_store::record::is_line_or_control`, used by all of them (the signer's
+`message.rs`, the trail's `clean_field`, the token label, `DisplayName`, the history summary and the preview). New: that function.
+Tests: the preview with each separator; the test that kept U+2029 no longer lists it among the characters kept. No new prikk-dependent test.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

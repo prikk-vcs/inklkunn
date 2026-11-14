@@ -813,8 +813,7 @@ fn what_prikk_prints_of_a_commit_has_its_direction_characters_replaced_too() {
         '\u{2068}', '\u{2069}', '\u{200e}', '\u{200f}', '\u{061c}',
     ];
     let text_neighbours = [
-        '\u{200b}', '\u{200c}', '\u{200d}', '\u{2029}', '\u{2065}', '\u{206a}', '\u{061b}',
-        '\u{061d}',
+        '\u{200b}', '\u{200c}', '\u{200d}', '\u{2065}', '\u{206a}', '\u{061b}', '\u{061d}',
     ];
     for c in direction {
         assert!(is_direction_or_format(c), "{c:?}");
@@ -831,6 +830,21 @@ fn what_prikk_prints_of_a_commit_has_its_direction_characters_replaced_too() {
         );
         let plan = parse_uncommit_plan(&text, UNCOMMIT_ID).unwrap();
         assert_eq!(nth(&plan.lines, 0), &format!("message: a{c}b"), "{c:?}");
+    }
+}
+
+#[test]
+fn the_line_separators_are_replaced_as_everywhere_else_text_is_shown_as_one_line() {
+    // Maintenance M19 (finding R-g): U+2028 and U+2029 end a line for readers that split on them, so one line of prikk's
+    // output could show as two. They are replaced like the control characters, by the one definition the message, the
+    // trail, the labels and the display names share.
+    for c in ['\u{2028}', '\u{2029}'] {
+        assert!(inklkunn_store::record::is_line_or_control(c), "{c:?}");
+        let text = format!(
+            "commit {UNCOMMIT_ID} (sequence 1 on heads/main)\nmessage: a{c}b\nplan only -- nothing written\n"
+        );
+        let plan = parse_uncommit_plan(&text, UNCOMMIT_ID).unwrap();
+        assert_eq!(nth(&plan.lines, 0), "message: a?b", "{c:?}");
     }
 }
 
