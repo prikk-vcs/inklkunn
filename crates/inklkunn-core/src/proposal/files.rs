@@ -109,18 +109,21 @@ pub(crate) fn knowledge_verdict(
 
 /// The pages of a proposal's result, as the service can know them without a tree: the pages it writes, a rename moving
 /// a page, a removal taking one out, and every other page as the base had it (read lazily, once). A read the base could
-/// not answer is kept in `failure`, never taken for a missing page.
-pub(crate) struct ProposedPages<'a> {
+/// not answer is kept in `failure`, never taken for a missing page. **The one reading of a proposal's pages** (handoff
+/// 005 corrections, fourth round, K34): the service's checks at submit, at every revision and at acceptance, and the
+/// proposal page's lines, all ask these, so the page cannot say what the submission refuses.
+pub struct ProposedPages<'a> {
     bases: &'a dyn BaseSource,
     wiki: &'a WikiRecord,
     content: &'a RevisionContent,
     memo: RefCell<BTreeMap<String, Option<String>>>,
     /// The first read the base could not answer.
-    pub(crate) failure: RefCell<Option<BaseError>>,
+    pub failure: RefCell<Option<BaseError>>,
 }
 
 impl<'a> ProposedPages<'a> {
-    pub(crate) fn new(
+    /// The pages of `content`'s result on `wiki`, the base read through `bases`.
+    pub fn new(
         bases: &'a dyn BaseSource,
         wiki: &'a WikiRecord,
         content: &'a RevisionContent,

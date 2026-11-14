@@ -831,6 +831,18 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   name or paragraph and an identifier that shares both ends, read differently on a page that names only one of them, in both languages;
   the links on the real page (and the claim page's `id`); a claim only the proposal makes is not linked. No prikk-dependent test.
 
+- **K34 (handoff 005 corrections, fourth round): the proposal page judges against the service's pages.** The web `Resolver`, which
+  says whether a link is *judged on the wording it has now*, looked a page id up in the base and ignored what the proposal removes,
+  moves or gives another `id:`, where the service (`ProposedPages`) does not: a draft that removed the page, or rewrote its `id:`,
+  and added a link judged on its paragraph was shown as sound and was then refused at submit with `knowledge_unjudged`. The resolver
+  now reads the proposal's pages through **the core's `ProposedPages`** (removals, renames, a rewritten `id:`; the same reading the
+  checks at submit, at every revision and at acceptance use), so the page cannot say what the submission refuses; the new-proposal
+  form's lines read the pages of the same proposal (not only its claim and source files). Public: `proposal::files::ProposedPages`
+  (`new`, `failure`) is now `pub`; the page's `Place` carries the proposal's renames. Tests: the page and the submission agree on a
+  proposal that removes the page and on one that rewrites its `id:` (the page says the link is judged on a wording the result does not
+  have; submit answers `KnowledgeUnjudged`), and on the sound control; the old behaviour (the base's pages only) fails it. No
+  prikk-dependent test.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

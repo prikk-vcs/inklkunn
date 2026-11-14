@@ -682,6 +682,7 @@ pub(crate) fn draw(
             let place = Place {
                 view: Some(&record.view),
                 base: &content.base,
+                renames: &content.renames,
             };
             let known = match file_lines(ctx, t, &place, &content.files) {
                 Ok(found) => found,

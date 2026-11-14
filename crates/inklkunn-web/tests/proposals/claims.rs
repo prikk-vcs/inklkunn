@@ -1477,3 +1477,85 @@ pub(crate) fn as_text(html: String) -> String {
     out.push_str(rest);
     out
 }
+
+/// A claim file that gives the claim a second source, judged on the paragraph's present wording, and that source's file.
+fn second_link_judged_on_the_paragraph(s: &Scene) -> Vec<(String, Option<String>)> {
+    let second = SourceId::parse("01931111-0000-7000-8000-000000000002").expect("a source id");
+    let mut source = Source::new(second.clone());
+    source.identity.title = Some("A second history".to_owned());
+    let mut more = s.claim.clone();
+    more.sources.push(SourceLink {
+        source: second.clone(),
+        relation: Link::Challenges,
+        bearing: Bearing::Partial,
+        note: None,
+        judged_on: block_digest(
+            inklkunn_markup::blocks("It opened in 1950. ^k1")
+                .first()
+                .expect("a block"),
+        ),
+    });
+    more.normalize();
+    vec![
+        (claim_path(&more.id), Some(more.to_yaml())),
+        (source_path(&second), Some(source.to_yaml())),
+    ]
+}
+
+#[tokio::test]
+async fn the_page_judges_against_the_pages_the_service_reads_a_removed_page_and_a_changed_id() {
+    let s = scene();
+    let now = "judged on the wording it has now.";
+    let unjudged = "judged on a wording the claim does not have in this proposal&#39;s result.";
+    let removed = ("pages/Bridge.md".to_owned(), None);
+    let reid = (
+        "pages/Bridge.md".to_owned(),
+        Some(BRIDGE.replace("id: bridge-page", "id: another-page")),
+    );
+    // Control: the page stays as it is, the wording is there, and the page and the service agree that it is sound.
+    let sound = second_link_judged_on_the_paragraph(&s);
+    let to = held_unjudged(&s, sound.clone());
+    let body = as_text(open(&s, &to, &s.writer).await.body());
+    assert!(body.contains(now) && !body.contains(unjudged), "{body}");
+    let who = principal(&s.writer);
+    let send = |files: Vec<(String, Option<String>)>| {
+        let draft =
+            s.w.services
+                .proposals
+                .create(
+                    &who,
+                    &s.w.wiki,
+                    None,
+                    inklkunn_core::proposal::ProposalEdit {
+                        summary: "A change".to_owned(),
+                        files: files
+                            .into_iter()
+                            .map(|(path, text)| inklkunn_store::FileChange { path, text })
+                            .collect(),
+                        ..Default::default()
+                    },
+                )
+                .expect("a draft");
+        s.w.services.proposals.submit(&who, &s.w.wiki, &draft.id)
+    };
+    assert!(send(sound).is_ok());
+    // The page the paragraph is in is taken out, or is given another `id:`: the claim's paragraph is nowhere in the result.
+    for (how, page) in [("removed", removed), ("another id", reid)] {
+        let mut files = second_link_judged_on_the_paragraph(&s);
+        files.push(page);
+        let to = held_unjudged(&s, files.clone());
+        let body = as_text(open(&s, &to, &s.writer).await.body());
+        assert!(!body.contains(now), "{how}: {body}");
+        assert!(body.contains(unjudged), "{how}: {body}");
+        // The page and the submission say the same.
+        assert!(
+            matches!(
+                send(files),
+                Err(inklkunn_core::proposal::ProposalError::Invalid(
+                    inklkunn_core::proposal::Invalid::KnowledgeUnjudged
+                ))
+            ),
+            "{how}"
+        );
+    }
+}

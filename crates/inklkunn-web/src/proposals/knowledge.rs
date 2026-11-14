@@ -19,6 +19,7 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
+use inklkunn_core::knowledge::check::{PageLookup, Pages};
 use inklkunn_core::knowledge::index::kept;
 use inklkunn_core::knowledge::summary::{
     Cite, ClaimChange, Item, Leaves, Rejudgement, SourceChange,
@@ -26,6 +27,10 @@ use inklkunn_core::knowledge::summary::{
 use inklkunn_core::knowledge::{
     ClaimId, Digest, Expression, Family, File, Identity, Reference, Relation, SourceId, read_file,
 };
+use inklkunn_core::proposal::BaseError;
+use inklkunn_core::proposal::files::ProposedPages;
+use inklkunn_core::read::{Cause, ReadError};
+use inklkunn_store::RevisionContent;
 
 use super::labels::{
     availability_word, bearing_word, lifecycle_word, link_word, reference_option,
@@ -593,14 +598,16 @@ pub(crate) struct Known {
     pub(crate) unjudged: bool,
 }
 
-/// Where the wording a re-judgement moves to is found: the view the proposal is for and the base it was written on. A
-/// re-judgement is a curation proposal's, which writes no page, so the pages at the base are the pages as the proposal
-/// leaves them.
+/// Where the wording a link or a status was judged on is found: the view the proposal is for, the base it was written
+/// on and the renames it declares. The pages it writes, removes and moves, with the pages of the base, are the pages
+/// as the proposal leaves them (K34: read as the service reads them, [`ProposedPages`]).
 pub(crate) struct Place<'a> {
     /// The view the proposal is for.
     pub(crate) view: Option<&'a str>,
     /// The base the proposal was written on.
     pub(crate) base: &'a inklkunn_store::Base,
+    /// The renames the proposal declares.
+    pub(crate) renames: &'a [inklkunn_store::Rename],
 }
 
 /// What names the subjects of a proposal's lines: the proposal's own files first (the pages it writes, the claims and
@@ -609,8 +616,8 @@ pub(crate) struct Place<'a> {
 struct Resolver<'a> {
     ctx: &'a super::Ctx,
     place: &'a Place<'a>,
-    /// The pages the proposal writes, by page id.
-    pages: Vec<(String, String)>,
+    /// The pages of the proposal's result: the one reading the service has ([`ProposedPages`], K34).
+    pages: ProposedPages<'a>,
     /// The claims the proposal writes: where each is said.
     claims: BTreeMap<String, Vec<Expression>>,
     /// The sources the proposal writes: what each calls itself.
@@ -627,12 +634,11 @@ impl<'a> Resolver<'a> {
     fn new(
         ctx: &'a super::Ctx,
         place: &'a Place<'a>,
-        files: &[inklkunn_store::FileChange],
+        content: &'a RevisionContent,
     ) -> Resolver<'a> {
-        let mut pages = Vec::new();
         let mut claims = BTreeMap::new();
         let mut sources = BTreeMap::new();
-        for f in files {
+        for f in &content.files {
             let Some(text) = &f.text else { continue };
             if inklkunn_core::knowledge::family_of(&f.path).is_some() {
                 match read_file(&f.path, text.as_bytes()) {
@@ -644,18 +650,12 @@ impl<'a> Resolver<'a> {
                     }
                     Err(_) => {}
                 }
-            } else if let Some(id) = inklkunn_markup::parse_metadata(text)
-                .ok()
-                .and_then(|m| m.id)
-                .filter(|id| !id.is_empty())
-            {
-                pages.push((id, text.clone()));
             }
         }
         Resolver {
             ctx,
             place,
-            pages,
+            pages: ProposedPages::new(&*ctx.services.read, &ctx.wiki, content),
             claims,
             sources,
             unjudged: Vec::new(),
@@ -717,13 +717,13 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    /// The text of the page whose `id` is `page_id` as the proposal leaves it: what it writes, else what the base has.
+    /// The text of the page whose `id` is `page_id` as the proposal leaves it (K34): the pages it writes, moves and
+    /// removes, else the base's; a page id that no page, or two pages, have there is no page.
     fn result_text(&self, page_id: &str) -> Option<String> {
-        self.pages
-            .iter()
-            .find(|(id, _)| id == page_id)
-            .map(|(_, text)| text.clone())
-            .or_else(|| self.base_text(page_id))
+        match self.pages.with_id(page_id) {
+            PageLookup::One(path) => self.pages.text(&path),
+            PageLookup::None | PageLookup::Several => None,
+        }
     }
 
     /// The knowledge index **at the proposal's base** (K31), as the pages are read: the claims and sources the wiki had
@@ -820,19 +820,14 @@ impl Subjects for Resolver<'_> {
     }
 }
 
-/// The pages as the proposal leaves them, named by their page id (which is all a claim's place says): the pages it
-/// writes, else the pages of the base. A page id the base gives to no one page, or to two, is no page.
-impl inklkunn_core::knowledge::check::Pages for Resolver<'_> {
-    fn with_id(&self, id: &str) -> inklkunn_core::knowledge::check::PageLookup {
-        use inklkunn_core::knowledge::check::PageLookup;
-        match self.result_text(id) {
-            Some(_) => PageLookup::One(id.to_owned()),
-            None => PageLookup::None,
-        }
+/// The pages as the proposal leaves them: the service's own reading ([`ProposedPages`]).
+impl Pages for Resolver<'_> {
+    fn with_id(&self, id: &str) -> PageLookup {
+        self.pages.with_id(id)
     }
 
     fn text(&self, path: &str) -> Option<String> {
-        self.result_text(path)
+        self.pages.text(path)
     }
 }
 
@@ -883,12 +878,26 @@ pub(crate) fn file_lines(
     let curated = inklkunn_core::knowledge::check::curated_by(&given, &was);
     // The subjects and the wording a re-judgement moved to are looked for only when there is a line to name them; a
     // page that cannot be read is the page that says so, never a line that claims the paragraph is not there.
-    let mut resolver = Resolver::new(ctx, place, files);
+    let content = RevisionContent {
+        base: place.base.clone(),
+        files: files.to_vec(),
+        renames: place.renames.to_vec(),
+        minor: false,
+        automated: false,
+    };
+    let mut resolver = Resolver::new(ctx, place, &content);
     resolver.judge(&given, &was);
     let unjudged = !resolver.unjudged.is_empty();
     let lines = lines(t, &items, &resolver);
-    match resolver.failure.into_inner() {
-        Some(e) => Err(e),
+    if let Some(e) = resolver.failure.take() {
+        return Err(e);
+    }
+    // A base that could not answer the service's reading of the pages is a read that failed, as any other.
+    match resolver.pages.failure.take() {
+        Some(BaseError::NoSuchView(view)) => Err(ReadError::NoSuchView(view)),
+        Some(BaseError::Unavailable(why)) => Err(ReadError::CouldNotBeReadNow(Cause::Scratch(
+            format!("the pages of a proposal at its base: {why}"),
+        ))),
         None => Ok(Known {
             lines,
             curated,

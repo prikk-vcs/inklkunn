@@ -111,6 +111,7 @@ pub(crate) async fn edit_form(
         let place = Place {
             view: Some(&existing.record.view),
             base: &existing.content.base,
+            renames: &existing.content.renames,
         };
         let carried = match file_lines(&ctx, page.t(), &place, &existing.content.files) {
             Ok(known) => known.lines,
@@ -556,14 +557,6 @@ fn post(
         }
     }
     let knowledge_files = work.files();
-    let place = Place {
-        view: full_view.as_deref(),
-        base: &base,
-    };
-    let (carried_lines, carried_curated) = match file_lines(ctx, t, &place, &knowledge_files) {
-        Ok(found) => (found.lines, found.curated),
-        Err(e) => return read_failure(page, ctx, e),
-    };
     let prepared = prepared;
     let changed: Vec<&Whole> = prepared.pages.iter().filter(|w| w.new != w.old).collect();
     // A draft keeps every page it was given; a submission sends what changes. The claim and source files go with
@@ -579,6 +572,16 @@ fn post(
             })
             .chain(knowledge_files.iter().cloned())
             .collect()
+    };
+    // The lines read the pages as this proposal leaves them (K34), so the files are all of it, not the claims' alone.
+    let place = Place {
+        view: full_view.as_deref(),
+        base: &base,
+        renames: &[],
+    };
+    let (carried_lines, carried_curated) = match file_lines(ctx, t, &place, &files(true)) {
+        Ok(found) => (found.lines, found.curated),
+        Err(e) => return read_failure(page, ctx, e),
     };
     let view_name = short(full_view.as_deref())
         .filter(|_| full_view.as_deref() != Some(ctx.wiki.default_view.as_str()));
