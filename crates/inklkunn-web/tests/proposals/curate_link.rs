@@ -225,7 +225,7 @@ use super::claims::{file, files_of, location};
 use super::curate::{FORM, checked_scene, checked_source, checked_unchanged, later_id, with};
 use inklkunn_core::knowledge::{Reference, ReferenceForm, source_path};
 
-const BY_REVIEWER: &str = "is decided by a reviewer: the curation form does not offer it";
+const NOT_OFFERED: &str = "is not offered in this version";
 
 /// The checked source with `change` made to it: its path and the text the wiki would write.
 fn source_changed(change: impl Fn(&mut inklkunn_core::knowledge::Source)) -> (String, String) {
@@ -321,8 +321,8 @@ async fn each_change_only_curation_makes_leads_from_its_refusal_to_a_form_that_m
             case.name
         );
         assert!(
-            !body.contains(BY_REVIEWER),
-            "{}: nothing here is a reviewer's: {body}",
+            !body.contains(NOT_OFFERED),
+            "{}: nothing here is not offered: {body}",
             case.name
         );
         let link = link_to_form(&s.claim.id);
@@ -365,7 +365,7 @@ fn second_claim_with_a_link(s: &Scene) -> Claim {
 }
 
 #[tokio::test]
-async fn what_no_form_makes_is_a_reviewers_and_the_page_says_so_without_a_link_it_cannot_use() {
+async fn what_no_form_makes_is_not_offered_and_the_page_says_so_without_a_link_it_cannot_use() {
     let s = scene();
     // A claim taken away with its link, beside a page edit: no form removes a file.
     let removal = vec![(claim_path(&s.claim.id), None), page_edit()];
@@ -373,7 +373,7 @@ async fn what_no_form_makes_is_a_reviewers_and_the_page_says_so_without_a_link_i
         .await
         .body();
     assert!(body.contains("only a curation proposal may do"), "{body}");
-    assert!(body.contains(BY_REVIEWER), "{body}");
+    assert!(body.contains(NOT_OFFERED), "{body}");
     assert!(!body.contains("proposals/curate"), "{body}");
 
     // A file the wiki cannot read, written over: the same.
@@ -387,11 +387,11 @@ async fn what_no_form_makes_is_a_reviewers_and_the_page_says_so_without_a_link_i
     )
     .await
     .body();
-    assert!(body.contains(BY_REVIEWER), "{body}");
+    assert!(body.contains(NOT_OFFERED), "{body}");
     assert!(!body.contains("proposals/curate"), "{body}");
 
-    // A change a form makes beside one it does not: the form is offered for the first, the second is said to be a
-    // reviewer's.
+    // A change a form makes beside one it does not: the form is offered for the first, the second is said not to be
+    // offered.
     let other = second_claim_with_a_link(&s);
     let mut decided = s.claim.clone();
     decided.community_status.status = Standing::Accepted;
@@ -409,7 +409,7 @@ async fn what_no_form_makes_is_a_reviewers_and_the_page_says_so_without_a_link_i
     )
     .await
     .body();
-    assert!(body.contains(BY_REVIEWER), "{body}");
+    assert!(body.contains(NOT_OFFERED), "{body}");
     assert!(body.contains(&link_to_form(&s.claim.id)), "{body}");
     assert!(
         !body.contains(&form_of(&other.id)),
@@ -471,7 +471,7 @@ async fn what_no_form_makes_is_a_reviewers_and_the_page_says_so_without_a_link_i
     assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", a.body());
     let body = a.body();
     assert!(body.contains("only a curation proposal may do"), "{body}");
-    assert!(body.contains(BY_REVIEWER), "{body}");
+    assert!(body.contains(NOT_OFFERED), "{body}");
     assert!(!body.contains("proposals/curate"), "{body}");
 }
 

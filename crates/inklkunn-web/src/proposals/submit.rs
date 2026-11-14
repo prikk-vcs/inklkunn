@@ -746,7 +746,7 @@ fn post(
                 Ok(to) => see(&to),
                 Err(Failure::Plain(ProposalError::Invalid(why))) => {
                     let mut problems = vec![words::invalid_text(t, why)];
-                    // What no form makes is said, and is a reviewer's (K44).
+                    // What no form makes is said to be not offered in this version (K44, K62), with no reviewer or form named.
                     if matches!(why, Invalid::KnowledgeCurated)
                         && crate::knowledge::curate::beyond_the_form(&carried_curated)
                     {

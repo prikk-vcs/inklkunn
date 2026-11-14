@@ -52,6 +52,23 @@ fn the_status_rule_is_worded_with_the_removals_and_the_unreadable_files_it_refus
 }
 
 #[test]
+fn what_is_not_offered_says_so_and_names_no_reviewer_or_form_in_both_languages() {
+    // K62: a removal of a claim or a source file, or the replacement of a file that cannot be read, is not offered in
+    // this version (RFC 005 part 2). No reviewer and no form is named: none can do it.
+    use crate::catalog::{EN, JA_DEF, Key, Lang, T};
+    let en = T::new(EN).get(Key::KnowNotByForm);
+    assert!(en.ends_with("is not offered in this version."), "{en}");
+    for word in ["reviewer", "form", "curation", "proposal"] {
+        assert!(!en.to_lowercase().contains(word), "{word}: {en}");
+    }
+    let ja = T::new(Lang::from_def(&JA_DEF)).get(Key::KnowNotByForm);
+    assert!(ja.contains("このバージョンでは提供されていません"), "{ja}");
+    for word in ["レビュアー", "フォーム", "キュレーション", "提案"] {
+        assert!(!ja.contains(word), "{word}: {ja}");
+    }
+}
+
+#[test]
 fn the_sentences_that_say_what_only_curation_does_say_it_alike_in_both_languages() {
     // K36: the page's reason, the proposal page's note and the core's sentence name the same fields (title, author, date,
     // reference, and the source that replaces it; not the kind) and the same actions on an unreadable file (replaces or

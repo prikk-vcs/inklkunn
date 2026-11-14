@@ -1216,6 +1216,14 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   Test: a contributor's redirect page (new, and an existing page turned into one) plus a claim and a source, through submit and
   acceptance; an owned key beside the redirect refused at submit, and for an administrator at acceptance.
 
+- **K62 (handoff 005 corrections, sixth round): say what is not offered.** `know.not_by_form` (under the refusal of a send, of a late
+  send, and on a proposal's page) no longer sends anyone to "a reviewer" who cannot act, and names no form: *Removing a claim or a
+  source file, or replacing a file that cannot be read, is not offered in this version.* (ja: このバージョンでは提供されていません.) The
+  glossary row, the comments that said a reviewer's, and the operator notes (`docs/KEYS.md`, a bundle's knowledge) say the same,
+  following RFC 005 part 2, *what is not offered in 0.3.0*. The sentences that describe the validator's rule (`know.not_curation`,
+  `health.rule_status`, `Rule::Status`) are unchanged. Test: both languages' sentence ends as said and holds none of the words
+  reviewer, form, curation, proposal; the proposal page and the refused send assert the new sentence.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

@@ -3113,6 +3113,6 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.not_by_form",
-        "Removing a claim or a source file, or replacing a file that cannot be read, is decided by a reviewer: the curation form does not offer it.",
+        "Removing a claim or a source file, or replacing a file that cannot be read, is not offered in this version.",
     ),
 ];

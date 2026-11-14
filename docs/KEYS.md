@@ -253,8 +253,8 @@ in every file of a deployment).
 `knowledge/sources/` files, and judges them as an acceptance judges a change that is not a curation proposal: a claim that
 arrives with a community status, a source with a review day or an availability, or a file that names a source, a page or a
 wording the wiki will not have, is refused by file and rule, and the whole import with it (`--dry-run` says so first). No
-import sets what only a curation proposal sets. The claim threads and the records of how views were made, which an export
-carries under `extensions/inklkunn-knowledge/`, belong to the exporting service and are not imported.
+import sets what only a curation proposal sets. Removing a claim or a source file, and replacing a file that cannot be read,
+are not offered in this version. The claim threads and the records of how views were made, which an export carries under `extensions/inklkunn-knowledge/`, belong to the exporting service and are not imported.
 
 **Hold note: an import that adopts history.** An import that receives a history (`bundle import --adopt` or
 `archive import --adopt` of prikk, the bundle import of RFC 007) on prikk **0.57.0 or earlier** must be followed by one

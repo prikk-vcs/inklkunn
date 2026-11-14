@@ -59,7 +59,7 @@ pub struct Refusal {
     pub field: &'static str,
     /// The YAML line, when the parser gave one.
     pub line: Option<usize>,
-    /// The change takes the file away (K44): a removal is a reviewer's decision, and no curation form makes it.
+    /// The change takes the file away (K44): no curation form makes a removal, and none is offered in this version.
     pub removes: bool,
 }
 
@@ -89,7 +89,7 @@ impl Refusal {
 
     /// Can a curation proposal made with the curation form do what this refusal says only curation may (K44)? It
     /// changes what a claim or a source file holds, and takes a link away; it never takes a file away, nor replaces a
-    /// file that cannot be read (what it held is not known). For those the change is a reviewer's.
+    /// file that cannot be read (what it held is not known). Those are not offered in this version (K62).
     pub fn curation_form_can_make(&self) -> bool {
         !self.removes && self.field != UNREADABLE
     }
