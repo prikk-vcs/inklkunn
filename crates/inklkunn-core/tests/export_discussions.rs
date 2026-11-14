@@ -1,21 +1,25 @@
-//! The bundle's discussions: a claim's thread is exported with the bundle (RFC 005 part 2 D-11; XFER-10; handoff 005
-//! K-T10), one JSON Lines file per thread under `discussions/claims/`, listed in the checksums, the authors in
-//! `users.yaml`, the manifest saying `discussions: true` with its representation, and valid against wiki-commons'
-//! schema; a wiki with no thread has a bundle without a trace of discussions. The repository is a stand-in that holds
-//! files in memory and a history of one block, so these run in both test runs (no prikk).
+//! The bundle's knowledge extension (RFC 005 part 2 D-11, D-12; XFER-1, XFER-10; handoff 005 K-T10, K-T11, K41): a claim's
+//! thread is exported with the bundle, one JSON Lines file per thread under `extensions/inklkunn-knowledge/threads/` (never
+//! under `discussions/`: that is wiki-commons' one file per page), its bodies escaped to portable Markdown that shows the
+//! plain text, the views' creation records beside it, all listed in the checksums, the authors in `users.yaml`, the
+//! manifest declaring `inklkunn-knowledge` in `extensions_used` and valid against wiki-commons' schema. The repository is a
+//! stand-in that holds files in memory and a history of one block, so these run in both test runs (no prikk).
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use inklkunn_core::export::{claim_discussions, export_bundle, export_bundle_with};
+use inklkunn_core::export::{
+    KnowledgeRecords, claim_discussions, export_bundle, export_bundle_with, knowledge_records,
+};
 use inklkunn_prikk::storage::{
     Change, Diff, FileMeta, History, HistoryBlock, Materialized, Tree, Verification, Views,
 };
 use inklkunn_prikk::{ExtractBounds, Point, Storage, StorageError};
 use inklkunn_store::{
-    Account, AccountId, AccountStore, ClaimCommentRecord, ClaimThreadStore, CommentId, DisplayName,
-    MemoryStore, NewWiki, RootLayout, Slug, WikiRecord, WikiStore,
+    Account, AccountId, AccountStore, ActStore, ClaimCommentRecord, ClaimThreadStore, CommentId,
+    DisplayName, MemoryStore, NewWiki, RootLayout, Slug, ViewActEnd, ViewActId, ViewActOutcome,
+    ViewActRecord, ViewKind, WikiRecord, WikiStore,
 };
 use sha2::{Digest, Sha256};
 
@@ -258,8 +262,38 @@ fn sha(bytes: &[u8]) -> String {
         .collect()
 }
 
+fn view_made(r: &Rig, name: &str, kind: ViewKind, by: &AccountId, at: i64, ended: Option<bool>) {
+    let act = ViewActRecord {
+        id: ViewActId::new(),
+        wiki: r.wiki.id.clone(),
+        name: name.to_owned(),
+        forked_from: "main".to_owned(),
+        from_block: "ab".repeat(32),
+        kind,
+        created_by: by.clone(),
+        created_at: at,
+    };
+    r.store.begin_view_act(&act).unwrap();
+    if let Some(created) = ended {
+        r.store
+            .finish_view_act(&ViewActEnd {
+                act: act.id.clone(),
+                outcome: if created {
+                    ViewActOutcome::Created
+                } else {
+                    ViewActOutcome::Failed {
+                        word: "refused".to_owned(),
+                    }
+                },
+                at: at + 1,
+            })
+            .unwrap();
+    }
+}
+
 #[test]
-fn a_claims_thread_is_exported_with_the_bundle_beside_the_claim_and_changes_nothing_of_it() {
+fn a_claims_thread_is_exported_in_the_knowledge_extension_beside_the_claim_and_changes_nothing_of_it()
+ {
     let r = rig("threads");
     let (ann, ben) = (person(&r.store, "Ann"), person(&r.store, "Ben"));
     let first = say(
@@ -287,17 +321,60 @@ fn a_claims_thread_is_exported_with_the_bundle_beside_the_claim_and_changes_noth
         1_700_000_120,
     );
     say(&r, C2, &ben, None, "A different claim.", 1_700_000_200);
+    // Two views were made (one has people, one failed and took nothing in, one is not known to have ended).
+    view_made(
+        &r,
+        "draft",
+        ViewKind::Experimental,
+        &ben,
+        1_700_000_300,
+        Some(true),
+    );
+    view_made(
+        &r,
+        "rival",
+        ViewKind::Interpretation,
+        &ann,
+        1_700_000_400,
+        Some(true),
+    );
+    view_made(
+        &r,
+        "lost",
+        ViewKind::Experimental,
+        &ann,
+        1_700_000_500,
+        Some(false),
+    );
+    view_made(
+        &r,
+        "open",
+        ViewKind::Experimental,
+        &ann,
+        1_700_000_600,
+        None,
+    );
 
-    let discussions = claim_discussions(&r.store, &r.store, &r.wiki.id).unwrap();
+    let records = knowledge_records(&r.store, &r.store, &r.store, &r.wiki.id).unwrap();
     assert_eq!(
-        discussions
+        records
+            .threads
             .iter()
             .map(|d| d.claim.as_str())
             .collect::<Vec<_>>(),
         [C1, C2],
         "by claim id"
     );
-    assert_eq!(discussions.first().unwrap().comments.len(), 3);
+    assert_eq!(records.threads.first().unwrap().comments.len(), 3);
+    assert_eq!(
+        records
+            .views
+            .iter()
+            .map(|v| v.name.as_str())
+            .collect::<Vec<_>>(),
+        ["draft", "rival"],
+        "only the views that were created"
+    );
 
     let stand = repository();
     let done = export_bundle_with(
@@ -307,14 +384,24 @@ fn a_claims_thread_is_exported_with_the_bundle_beside_the_claim_and_changes_noth
         &r.out,
         "0.0.0",
         1_700_001_000,
-        &discussions,
+        &records,
     )
     .unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(done.discussions, 2);
+    assert_eq!((done.threads, done.views, done.knowledge_files), (2, 2, 2));
     let files = files_of(&r.out);
 
+    // Nothing of a claim's thread is where wiki-commons puts a page's discussion.
+    assert!(
+        !files.keys().any(|k| k.starts_with("discussions")),
+        "{:?}",
+        files.keys().collect::<Vec<_>>()
+    );
+
     // One file per thread, one line per comment in the order written, in wiki-commons' record shape.
-    let thread = text(&files, &format!("discussions/claims/{C1}.jsonl"));
+    let thread = text(
+        &files,
+        &format!("extensions/inklkunn-knowledge/threads/{C1}.jsonl"),
+    );
     let lines: Vec<serde_json::Value> = thread
         .lines()
         .map(|l| serde_json::from_str(l).unwrap())
@@ -330,23 +417,40 @@ fn a_claims_thread_is_exported_with_the_bundle_beside_the_claim_and_changes_noth
     assert_eq!(at(lines.first().unwrap(), "/at"), "2023-11-14T22:13:20Z");
     assert_eq!(at(lines.first().unwrap(), "/author/id"), ann.as_str());
     assert_eq!(at(lines.first().unwrap(), "/author/name"), "Ann");
+    // The body is portable Markdown that shows the plain text: the `?` is not markup, so it is as written.
     assert_eq!(
         at(lines.first().unwrap(), "/body"),
         "Where was this measured?"
     );
     assert_eq!(at(lines.get(1).unwrap(), "/parent"), first.as_str());
     assert_eq!(at(lines.get(1).unwrap(), "/author/name"), "Ben");
-    // A text is data: it is written as it was, markup and all, escaped by JSON and by nothing else.
+    // Markup in a text is escaped: the HTML in it is letters in the bundle.
     assert_eq!(
         at(lines.get(2).unwrap(), "/body"),
-        "Thank you — <b>noted</b>."
+        "Thank you — \\<b\\>noted\\</b\\>."
     );
     assert_eq!(
-        text(&files, &format!("discussions/claims/{C2}.jsonl"))
-            .lines()
-            .count(),
+        text(
+            &files,
+            &format!("extensions/inklkunn-knowledge/threads/{C2}.jsonl")
+        )
+        .lines()
+        .count(),
         1
     );
+
+    // The views' creation records, in the order the views were made.
+    let views: Vec<serde_json::Value> = text(&files, "extensions/inklkunn-knowledge/views.jsonl")
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(views.len(), 2);
+    assert_eq!(at(views.first().unwrap(), "/name"), "draft");
+    assert_eq!(at(views.first().unwrap(), "/kind"), "experimental");
+    assert_eq!(at(views.first().unwrap(), "/forked_from"), "main");
+    assert_eq!(at(views.first().unwrap(), "/from_block"), "ab".repeat(32));
+    assert_eq!(at(views.first().unwrap(), "/created_by/name"), "Ben");
+    assert_eq!(at(views.get(1).unwrap(), "/kind"), "interpretation");
 
     // The claim files are the repository's, byte for byte: the discussion is beside them, not in them.
     for id in [C1, C2] {
@@ -354,7 +458,7 @@ fn a_claims_thread_is_exported_with_the_bundle_beside_the_claim_and_changes_noth
         assert_eq!(text(&files, &path), original);
     }
 
-    // The people who wrote are in users.yaml with the names they have.
+    // The people who wrote or made a view are in users.yaml with the names they have.
     let users = text(&files, "users.yaml");
     for (id, name) in [(&ann, "Ann"), (&ben, "Ben")] {
         assert!(users.contains(&format!("id: {id}\n")), "{users}");
@@ -371,8 +475,9 @@ fn a_claims_thread_is_exported_with_the_bundle_beside_the_claim_and_changes_noth
         })
         .collect();
     for path in [
-        format!("discussions/claims/{C1}.jsonl"),
-        format!("discussions/claims/{C2}.jsonl"),
+        format!("extensions/inklkunn-knowledge/threads/{C1}.jsonl"),
+        format!("extensions/inklkunn-knowledge/threads/{C2}.jsonl"),
+        "extensions/inklkunn-knowledge/views.jsonl".to_owned(),
     ] {
         assert_eq!(
             sums.get(&path),
@@ -382,22 +487,30 @@ fn a_claims_thread_is_exported_with_the_bundle_beside_the_claim_and_changes_noth
     }
     assert_eq!(sums.len(), files.len() - 2);
 
-    // The manifest says what the bundle carries, and is valid against wiki-commons' schema.
+    // The manifest declares the extension, says nothing of page discussions, and is valid against wiki-commons' schema.
     let manifest = text(&files, "wiki-bundle.yaml");
     assert!(
-        manifest.contains("\n  discussions: true\n  discussions_representation: jsonl\n"),
+        manifest.contains(
+            "\nextensions_used:\n  - name: inklkunn-knowledge\n    version: \"1\"\n    directory: extensions/inklkunn-knowledge\n"
+        ),
         "{manifest}"
     );
-    assert!(!manifest.contains("discussions: false"), "{manifest}");
+    assert!(manifest.contains("\n  discussions: false\n"), "{manifest}");
+    assert!(
+        !manifest.contains("discussions_representation"),
+        "{manifest}"
+    );
+    assert!(manifest.contains("  dropped: []\n"), "{manifest}");
     let problems = bundle_manifest::violations(&manifest);
     assert!(problems.is_empty(), "{problems:#?}\n{manifest}");
 }
 
 #[test]
-fn a_bundle_of_a_wiki_with_no_thread_has_no_trace_of_discussions() {
+fn a_wiki_with_no_thread_and_no_view_carries_the_extension_only_for_its_knowledge_files() {
     let r = rig("none");
-    let discussions = claim_discussions(&r.store, &r.store, &r.wiki.id).unwrap();
-    assert!(discussions.is_empty());
+    let records = knowledge_records(&r.store, &r.store, &r.store, &r.wiki.id).unwrap();
+    assert_eq!(records, KnowledgeRecords::default());
+    // With claim files: `knowledge/` is exported as it is stored, and the manifest declares what gives it meaning.
     let stand = repository();
     let done = export_bundle_with(
         &stand,
@@ -406,28 +519,72 @@ fn a_bundle_of_a_wiki_with_no_thread_has_no_trace_of_discussions() {
         &r.out,
         "0.0.0",
         1_700_001_000,
-        &discussions,
+        &records,
     )
     .unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(done.discussions, 0);
+    assert_eq!((done.threads, done.views, done.knowledge_files), (0, 0, 2));
     let files = files_of(&r.out);
     assert!(
-        !files.keys().any(|k| k.contains("discussions")),
+        !files
+            .keys()
+            .any(|k| k.contains("discussions") || k.starts_with("extensions")),
+        "{files:?}"
+    );
+    for id in [C1, C2] {
+        let (path, original) = claim_file(id);
+        assert_eq!(text(&files, &path), original, "knowledge/ as it is stored");
+    }
+    let manifest = text(&files, "wiki-bundle.yaml");
+    assert!(manifest.contains("\nextensions_used:\n"), "{manifest}");
+    assert!(manifest.contains("\n  discussions: false\n"), "{manifest}");
+    assert!(bundle_manifest::violations(&manifest).is_empty());
+
+    // Without a single knowledge file there is nothing the extension would give meaning to: no declaration.
+    let bare = Stand {
+        files: BTreeMap::from([(
+            "pages/One.md".to_owned(),
+            "---\ntitle: One\nid: p1\n---\n\nSaid.\n".to_owned(),
+        )]),
+    };
+    let again = dir("again");
+    let plain = again.0.join("out");
+    export_bundle_with(
+        &bare,
+        &r.layout,
+        &r.wiki,
+        &plain,
+        "0.0.0",
+        1_700_001_000,
+        &records,
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    let bare_manifest = text(&files_of(&plain), "wiki-bundle.yaml");
+    assert!(
+        !bare_manifest.contains("extensions_used"),
+        "{bare_manifest}"
+    );
+    assert!(bundle_manifest::violations(&bare_manifest).is_empty());
+}
+
+#[test]
+fn an_export_that_was_not_given_the_services_records_says_so_in_the_manifest() {
+    let r = rig("unread");
+    let ann = person(&r.store, "Ann");
+    say(&r, C1, &ann, None, "A thread the export was not given.", 5);
+    let stand = repository();
+    export_bundle(&stand, &r.layout, &r.wiki, &r.out, "0.0.0", 1_700_001_000)
+        .unwrap_or_else(|e| panic!("{e}"));
+    let files = files_of(&r.out);
+    assert!(
+        !files.keys().any(|k| k.starts_with("extensions")),
         "{files:?}"
     );
     let manifest = text(&files, "wiki-bundle.yaml");
-    assert!(manifest.contains("\n  discussions: false\n"), "{manifest}");
     assert!(
-        !manifest.contains("discussions_representation"),
-        "{manifest}"
+        manifest.contains("claim threads and view-creation records"),
+        "the manifest does not look complete when it is not\n{manifest}"
     );
     assert!(bundle_manifest::violations(&manifest).is_empty());
-    // And the export that is asked for no discussions at all is that same bundle.
-    let again = dir("again");
-    let plain = again.0.join("out");
-    export_bundle(&stand, &r.layout, &r.wiki, &plain, "0.0.0", 1_700_001_000)
-        .unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(files_of(&plain), files);
 }
 
 #[test]

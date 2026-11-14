@@ -651,14 +651,28 @@ fn a_wiki_is_created_filled_exported_and_archived_through_the_commands_and_no_se
     );
     assert!(bundle.join("wiki-bundle.yaml").is_file() && bundle.join("users.yaml").is_file());
     assert!(bundle.join("history/home-1.jsonl").is_file());
-    assert!(out.contains("discussions: 1 claim thread(s)"), "{out}");
-    let thread =
-        std::fs::read_to_string(bundle.join(format!("discussions/claims/{thread_claim}.jsonl")))
-            .unwrap();
+    assert!(
+        out.contains(
+            "knowledge (extension inklkunn-knowledge@1): 0 claim and source file(s), 1 claim thread(s), 0 view(s)"
+        ),
+        "{out}"
+    );
+    // The thread is the knowledge extension's, not a page's discussion (RFC 005 part 2 D-11).
+    assert!(!bundle.join("discussions").exists());
+    let thread = std::fs::read_to_string(bundle.join(format!(
+        "extensions/inklkunn-knowledge/threads/{thread_claim}.jsonl"
+    )))
+    .unwrap();
     assert!(
         thread.contains("Where was this measured?") && thread.contains("\"name\":\"Ann\""),
         "{thread}"
     );
+    let manifest = std::fs::read_to_string(bundle.join("wiki-bundle.yaml")).unwrap();
+    assert!(
+        manifest.contains("extensions_used:\n  - name: inklkunn-knowledge\n"),
+        "{manifest}"
+    );
+    assert!(manifest.contains("\n  discussions: false\n"), "{manifest}");
     let mode = std::fs::metadata(&archive).unwrap().permissions().mode();
     assert_eq!(mode & 0o777, 0o600);
     assert!(std::fs::metadata(&archive).unwrap().len() > 0);

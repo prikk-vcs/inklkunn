@@ -248,6 +248,20 @@ is prikk's own (`prikk archive verify <file>` checks it without inklkunn). Every
 commands. A seed never appears in any of their output, in a bundle or in an archive (a test looks for the real seeds
 in every file of a deployment).
 
+**A bundle's knowledge, and the claim threads.** When a bundle's manifest declares the knowledge extension
+(`extensions_used: inklkunn-knowledge`, version 1), `import-folder` also reads its `knowledge/claims/` and
+`knowledge/sources/` files, and judges them as an acceptance judges a change that is not a curation proposal: a claim that
+arrives with a community status, a source with a review day or an availability, or a file that names a source, a page or a
+wording the wiki will not have, is refused by file and rule, and the whole import with it (`--dry-run` says so first). No
+import sets what only a curation proposal sets. The claim threads and the records of how views were made, which an export
+carries under `extensions/inklkunn-knowledge/`, belong to the exporting service and are not imported.
+
+**Hold note: an import that adopts history.** An import that receives a history (`bundle import --adopt` or
+`archive import --adopt` of prikk, the bundle import of RFC 007) on prikk **0.57.0 or earlier** must be followed by one
+`prikk verify` of the wiki's repository. Without it every later commit reads about twice the whole history (42 MB per commit
+at 20 MiB of content, measured by prikk; with it, 0.1 MB). Fixed in prikk 0.58.0. `import-folder` makes one change and
+adopts no history, so it needs no `verify`.
+
 ## When the key store is lost
 
 Restore it from a backup of the key directory (keep that backup **apart from** the operator's secret). **Back up the key

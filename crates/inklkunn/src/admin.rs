@@ -33,9 +33,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use inklkunn_core::export::is_checkpoint_not_recorded;
-use inklkunn_core::export::{ExportError, claim_discussions, export_bundle_with};
-use inklkunn_core::import::{ImportError, plan_folder, run_import, wiki_state};
+use inklkunn_core::export::{ExportError, export_bundle_with, knowledge_records};
+use inklkunn_core::import::{ImportError, judge_knowledge, plan_folder, run_import, wiki_state};
 use inklkunn_core::proposal::{Period, operator_metrics};
+use inklkunn_core::read::{ReadConfig, ReadService};
 use inklkunn_core::recovery::needs_recovery;
 use inklkunn_core::{
     Authorizer, LeaseConfig, Leased, Maintenance, NoLedger, Recover, RecoverOptions, Recovery,
@@ -721,7 +722,19 @@ fn import_folder(
         have = wiki_state(&env.storage, &env.layout, &record);
     }
     let have = have.map_err(|e| e.to_string())?;
-    let plan = plan_folder(&folder, &have, replace_existing).map_err(|e| e.to_string())?;
+    let mut plan = plan_folder(&folder, &have, replace_existing).map_err(|e| e.to_string())?;
+    // The knowledge files of a bundle that declares the extension are judged as an acceptance judges them (RFC 005 part 2
+    // D-12), so a dry run says what the run would refuse. The service's own path judges them again before the signer.
+    let reads = Arc::new(ReadService::new(
+        Arc::new(env.storage.clone()),
+        store.clone(),
+        store.clone(),
+        env.layout.clone(),
+        ReadConfig::default(),
+        None,
+    ));
+    judge_knowledge(&mut plan, &reads, &env.storage, &env.layout, &record)
+        .map_err(|e| e.to_string())?;
     let _ = write!(out, "{}", plan.report());
     if plan.is_unchanged() {
         // Nothing to write and nothing wrong: said by name, in a dry run and in the run, and no act is begun.
@@ -783,7 +796,8 @@ fn import_folder(
         env.layout.clone(),
         signer,
         leases,
-    );
+    )
+    .with_reads(reads);
     let resource = wiki_resource(&record);
     let trail = Trail { sink: &*store, now };
     trail.begin("wiki-import", &resource, "begun")?;
@@ -841,12 +855,12 @@ fn export(
         format!("inklkunn-cli-{}", std::process::id()),
     );
     let mut failure: Option<String> = None;
-    // The claim threads are the service's records (RFC 005 part 2 D-11): the bundle's discussions. Read before the
-    // export is begun in the trail, so a failure to read them leaves nothing begun.
-    let discussions = if bundle.is_some() {
-        claim_discussions(&*store, &*store, &record.id).map_err(|e| e.to_string())?
+    // The claim threads and the views' creation records are the service's (RFC 005 part 2 D-11, D-12): the bundle's
+    // knowledge extension. Read before the export is begun in the trail, so a failure to read them leaves nothing begun.
+    let records = if bundle.is_some() {
+        knowledge_records(&*store, &*store, &*store, &record.id).map_err(|e| e.to_string())?
     } else {
-        Vec::new()
+        inklkunn_core::export::KnowledgeRecords::default()
     };
     if let Some(dest) = &bundle {
         trail.begin("wiki-export-bundle", &resource, "begun")?;
@@ -857,7 +871,7 @@ fn export(
             dest,
             env!("CARGO_PKG_VERSION"),
             now,
-            &discussions,
+            &records,
         );
         if matches!(result, Err(ExportError::CheckpointNotRecorded)) {
             // The record `extract` anchors on is missing (a prikk upgrade, a restore): bring it back, once.
@@ -874,7 +888,7 @@ fn export(
                         dest,
                         env!("CARGO_PKG_VERSION"),
                         now,
-                        &discussions,
+                        &records,
                     );
                 }
                 Err(why) => failure = Some(why),
@@ -913,8 +927,12 @@ fn export(
                     },
                     done.users
                 );
-                if done.discussions > 0 {
-                    let _ = writeln!(out, "  discussions: {} claim thread(s)", done.discussions);
+                if done.knowledge_files > 0 || done.threads > 0 || done.views > 0 {
+                    let _ = writeln!(
+                        out,
+                        "  knowledge (extension inklkunn-knowledge@1): {} claim and source file(s), {} claim thread(s), {} view(s)",
+                        done.knowledge_files, done.threads, done.views
+                    );
                 }
                 trail.finish(
                     "wiki-export-bundle",

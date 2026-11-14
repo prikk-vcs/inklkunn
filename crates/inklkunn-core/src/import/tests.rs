@@ -1026,3 +1026,5 @@ fn a_folder_the_wiki_already_has_is_nothing_changed_and_a_mixed_one_writes_only_
     let change = accept.seen.lock().unwrap().clone().unwrap();
     assert_eq!(change.files.len(), 1);
 }
+
+mod knowledge;

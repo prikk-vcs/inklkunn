@@ -870,6 +870,43 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   `page_title` and `begins_alike`. Tests: the move between two paragraphs that begin alike names a different paragraph on each line,
   in both languages, on the unit level and through the real page, and two paragraphs that do not begin alike carry no marker.
   No prikk-dependent test.
+- **K-T11, interchange (handoff 005; RFC 005 part 2 D-12, XFER-1) and K41 (handoff 005 corrections, fourth round; RFC 005 part 2 D-11,
+  *a thread in the bundle*): the bundle declares the knowledge extension, carries a claim's thread where it belongs and says what it
+  carries; an inklkunn bundle's `knowledge/` is imported, judged as an acceptance judges it.** *Export.* `knowledge/` is exported as it
+  is stored (byte for byte, with the rest of the tip), and the manifest declares the extension that gives it meaning:
+  `extensions_used: [{name: inklkunn-knowledge, version: "1", directory: extensions/inklkunn-knowledge}]`, valid against wiki-commons'
+  schema (a test with a name-less entry shows the check catches it), written exactly when the bundle carries anything of the knowledge
+  layer. **A claim's thread is the extension's data, not a page's discussion** (the review's S-d): XFER-10's `discussions/` is one file per
+  *page* with Markdown bodies, so `discussions/claims/<id>.jsonl` and `discussions: true` are gone; the threads are
+  `extensions/inklkunn-knowledge/threads/<claim id>.jsonl` (one file per claim, one line per comment in the order written) and the
+  manifest's `discussions` stays `false`. **A body is escaped to portable Markdown** (`bundle::markdown_text`): every character that could
+  begin a link, an image, HTML, an entity, a list, a quotation, a heading, a table or a directive is escaped, white space at the edges of a
+  line is a character reference, and a line break is a hard break, so a reader of the bundle sees the plain text inklkunn showed and
+  `[x](https://…)`, `![pixel](https://…)` and `<b>` stay letters (a round trip through the real renderer for thirteen kinds of text, and the
+  scanner finds no link, tag, block id, directive or callout in an escaped text). `extensions/inklkunn-knowledge/views.jsonl` is the
+  record of each alternative view that was created (name, kind, the view and block it was forked from, who, when); an act that failed or
+  was interrupted is not listed. The people who wrote or made a view are in `users.yaml`, everything is in `SHA256SUMS`. An export that
+  was not given the service's records (`export_bundle`, used by tests) says so in `fidelity.dropped` rather than look complete; the
+  command's export (`wiki export --bundle`) reads them. *Import.* `wiki import-folder` reads `knowledge/claims/` and `knowledge/sources/`
+  **only when the folder's manifest declares `inklkunn-knowledge` at the version it reads** (another version, or none, is said by name in
+  the report), reads each file with the format's own reader (a file that does not read is refused by rule and field, never by its words;
+  a file that is neither a claim nor a source is refused; the keep-file is skipped), takes what the wiki already has into account like a
+  page (`--replace-existing`, *unchanged*), and judges the whole set against the wiki's tip as an acceptance judges **a change that is
+  not a curation proposal** (the dry run says what the run would refuse). **`SystemActs::run` no longer refuses `knowledge/` for an
+  import, deliberately and only for one**: it judges the files under the lease before the signer is asked, so an import sets nothing that
+  only a curation proposal sets: a claim that arrives with a community status, a source with a review day or an availability, a link
+  judged on wording the claim does not have, a reference or an anchor the result does not have, each refuses the import by file and rule.
+  A system change of the other kind still may not write the knowledge layer, and a service that cannot read the wiki does not wave the
+  files through. The threads and the views' records under `extensions/` are the exporting service's own and are listed as not imported.
+  The summary of the change names the knowledge files it carries. The hold note for an import that adopts history is in `docs/KEYS.md`.
+  New: `export::{KnowledgeRecords, ViewCreation, knowledge_records, view_creations}`, `ClaimDiscussion.claim` is a `ClaimId`,
+  `Exported::{threads, views, knowledge_files}` (replacing `discussions`), `export_bundle_with` takes the records, `bundle::{markdown_text,
+  KNOWLEDGE_EXTENSION, KNOWLEDGE_EXTENSION_VERSION, KNOWLEDGE_EXTENSION_DIR, KNOWLEDGE_THREADS_DIR, KNOWLEDGE_VIEWS_FILE}`,
+  `ExportFacts::{knowledge_extension, records_read}`, `import::judge_knowledge`, `ImportPlan::knowledge_count`; removed:
+  `bundle::with_discussions`. Not owed for 0.3.0 and recorded: an import that sets a status or a review day from the bundle (it is
+  refused; a curation proposal sets them), the threads and the views' records on import, and attaching an existing source. Tests: the
+  export through a stand-in repository and the import through the service's own path over the in-memory repository, both in both test
+  runs; the command's export in the existing prikk test (updated, not added); no new prikk-dependent test.
 
 ## [0.2.0] — 2026-11-04
 

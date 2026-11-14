@@ -75,3 +75,73 @@ fn the_help_page_parses_scans_and_keeps_a_name_as_text() {
 fn the_ignore_file_reserves_the_service_prefix() {
     assert_eq!(prikkignore(), ".inklkunn/\n");
 }
+
+/// The text a rendered page shows: the tags taken out, the entities put back. Only `<p>` and `<br />` may be among
+/// them (an escaped body is paragraphs and line breaks and nothing that links, embeds or styles).
+fn shown(html: &str) -> String {
+    let mut out = String::new();
+    let mut rest = html;
+    while let Some(open) = rest.find('<') {
+        out.push_str(rest.get(..open).unwrap_or_default());
+        let after = rest.get(open..).unwrap_or_default();
+        let close = after.find('>').unwrap_or(after.len() - 1);
+        let tag = after.get(1..close).unwrap_or_default();
+        assert!(
+            matches!(tag, "p" | "/p" | "br /" | "br"),
+            "the escaped body rendered `<{tag}>`: {html}"
+        );
+        out.push(' ');
+        rest = after.get(close + 1..).unwrap_or_default();
+    }
+    out.push_str(rest);
+    out.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
+}
+
+fn words(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[test]
+fn a_text_escaped_to_markdown_shows_exactly_the_words_it_was_with_no_link_image_or_html() {
+    let cases = [
+        "Where was this measured?",
+        "See [the survey](https://evil.example/x) and [[Some Page]].",
+        "![tracking pixel](https://evil.example/pixel.png) ![[a.png]]",
+        "<script>alert(1)</script> <img src=x onerror=y> <b>bold</b> &amp; &lt;i&gt; &#60;",
+        "line one\nline two\n\nafter a gap\n\n\n\nand another",
+        "# not a heading\n> not a quote\n- not a list\n+ nor this\n* nor this\n1. not numbered\n2) nor this",
+        "    four spaces, not code\n\ttabbed\ntrailing spaces   \n   ",
+        "`code` **strong** _em_ ~~gone~~ | a | table |\n---|---\n===",
+        "autolink <https://evil.example/> and https://evil.example/path and www.evil.example and a@b.example",
+        "tags #later and a block id ^b1 and a directive :note[text]{k=v} and ::: warn\nbody\n:::",
+        "> [!NOTE] a callout\n[^1]: a footnote\n\\ a backslash at the end \\",
+        "ends with a hard break \\\nand a name: value",
+        "日本語の文章。全角の＊や［ ］や「」もそのまま。",
+    ];
+    for case in cases {
+        let md = markdown_text(case);
+        let html = inklkunn_markup::render_html(&md, &inklkunn_markup::NoLinks).unsanitized_html;
+        assert_eq!(
+            words(&shown(&html)),
+            words(case),
+            "the text must read as it was\n--- text\n{case}\n--- markdown\n{md}\n--- html\n{html}"
+        );
+    }
+}
+
+#[test]
+fn an_escaped_text_has_no_construct_the_scanner_finds() {
+    let md = markdown_text(
+        "[[Link]] and ![[image.png]] and #tag and ^id\n:name[x]{k=v}\n> [!NOTE] x\n[a](https://x.example)",
+    );
+    let page = inklkunn_markup::scan(&md);
+    assert!(page.links.is_empty(), "{md}\n{:?}", page.links);
+    assert!(page.tags.inline.is_empty(), "{md}");
+    assert!(page.block_ids.is_empty(), "{md}");
+    assert!(page.directives.is_empty(), "{md}");
+    assert!(page.callouts.is_empty(), "{md}");
+}

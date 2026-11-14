@@ -137,6 +137,8 @@ fn a_manifest_carries_the_fidelity_the_counts_the_block_the_interwiki_map_and_th
                 interwiki: vec![("wp".to_owned(), "https://en.wikipedia.org/wiki/".to_owned())],
                 unattributed_changes: 4,
                 histories_not_written: 2,
+                knowledge_extension: false,
+                records_read: true,
             }),
         },
     );

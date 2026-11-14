@@ -295,18 +295,20 @@ impl SystemActs {
         request: SystemRequest,
     ) -> Result<SystemSigned, SystemActFailure> {
         // The knowledge layer is changed by proposals only (RFC 005 part 2 D-3): a community status is set by an
-        // accepted curation proposal and by nothing the service does for itself.
+        // accepted curation proposal and by nothing the service does for itself. **One exception, deliberate: an
+        // import** (RFC 005 part 2 D-12), whose knowledge files are judged below exactly as an acceptance judges a change
+        // that is not a curation proposal, so that an import sets nothing that only a curation proposal sets.
         let knowledge = |p: &std::path::Path| {
             p.to_str().is_some_and(|p| {
                 crate::knowledge::is_knowledge_path(p) && !crate::knowledge::is_keep(p)
             })
         };
-        if request.files.iter().any(|f| knowledge(&f.path))
+        let writes_knowledge = request.files.iter().any(|f| knowledge(&f.path))
             || request
                 .renames
                 .iter()
-                .any(|(from, to)| knowledge(from) || knowledge(to))
-        {
+                .any(|(from, to)| knowledge(from) || knowledge(to));
+        if writes_knowledge && request.kind != SystemActKind::Import {
             return Err(SystemActFailure::Invalid(
                 "a system change does not write the knowledge layer: its files are changed by proposals"
                     .to_owned(),
@@ -383,6 +385,39 @@ impl SystemActs {
                 TipError::Unavailable(why) => SystemActFailure::Unavailable(why),
             })?;
         let pinned = request.planned_against.clone().unwrap_or(tip);
+
+        // 3. An import's knowledge files, judged on the tip the change is written on, before anything is recorded.
+        if writes_knowledge {
+            let Some(reads) = &self.reads else {
+                return Err(SystemActFailure::Unavailable(
+                    "this service cannot read the wiki, so it cannot judge the knowledge files of an import"
+                        .to_owned(),
+                ));
+            };
+            let refusals = crate::knowledge::check::check_change(
+                reads,
+                &*self.storage,
+                &repo,
+                wiki,
+                &pinned,
+                &crate::knowledge::check::Written {
+                    files: &request.files,
+                    renames: &request.renames,
+                    curation: false,
+                },
+            )
+            .map_err(|e| SystemActFailure::Unavailable(e.to_string()))?;
+            if !refusals.is_empty() {
+                return Err(SystemActFailure::Invalid(format!(
+                    "the knowledge files of the import are refused: {}",
+                    refusals
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                )));
+            }
+        }
 
         // 4. The record of the act, before the signer is asked.
         let change = PreparedChange {

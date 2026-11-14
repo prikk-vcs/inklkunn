@@ -36,6 +36,8 @@ fn facts() -> ManifestFacts {
             interwiki: vec![("wp".to_owned(), "https://en.wikipedia.org/wiki/".to_owned())],
             unattributed_changes: 4,
             histories_not_written: 1,
+            knowledge_extension: true,
+            records_read: true,
         }),
     }
 }
@@ -77,6 +79,29 @@ fn the_manifest_an_export_writes_is_valid_and_names_the_checksums_file() {
         "a history that was not written is counted in the manifest\n{text}"
     );
     assert!(text.contains("  history_changes_without_a_page: 4"));
+}
+
+#[test]
+fn the_knowledge_extension_is_declared_in_extensions_used_as_the_schema_wants_it() {
+    let text = manifest_with(&record(), "1.2.3", &facts());
+    assert!(
+        text.contains("\nextensions_used:\n  - name: inklkunn-knowledge\n    version: \"1\"\n"),
+        "{text}"
+    );
+    assert!(bundle_manifest::violations(&text).is_empty(), "{text}");
+    // An extension without a name is what the schema check catches (`name` is required).
+    let nameless = text.replace("  - name: inklkunn-knowledge\n    version", "  - version");
+    assert_ne!(nameless, text);
+    assert!(
+        !bundle_manifest::violations(&nameless).is_empty(),
+        "{nameless}"
+    );
+    // A bundle with nothing for the extension to give meaning to does not declare it.
+    let mut none = facts();
+    if let Some(e) = none.exported.as_mut() {
+        e.knowledge_extension = false;
+    }
+    assert!(!manifest_with(&record(), "1.2.3", &none).contains("extensions_used"));
 }
 
 #[test]

@@ -34,9 +34,20 @@
 //! handle. Bytes from anywhere but the planned inodes never reach the signer. The identities are the second line;
 //! the handles are the first.
 //!
-//! **What a folder is.** The layout an export writes: `pages/**/*.md` and `attachments/**`. Everything else at the
-//! top (the manifest, `SHA256SUMS`, `users.yaml`, `history/`, `knowledge/`, `governance/`) is *not imported* and is listed as
-//! such: a Portable Wiki Bundle's import with its history is RFC 007's.
+//! **What a folder is.** The layout an export writes: `pages/**/*.md` and `attachments/**`, and, **when the manifest
+//! declares the knowledge extension** (`extensions_used: inklkunn-knowledge`, version 1; RFC 005 part 2 D-12), the claim and
+//! source files of `knowledge/`. Everything else at the top (the manifest, `SHA256SUMS`, `users.yaml`, `history/`,
+//! `extensions/`, `governance/`, and `knowledge/` when no extension the import knows gives it meaning) is *not imported*
+//! and is listed as such: a Portable Wiki Bundle's import with its history is RFC 007's.
+//!
+//! **Knowledge files are judged as an acceptance judges them** (RFC 005 part 2 D-5, D-3): each is read with the format's own
+//! reader at the plan (a file that does not read is refused by name and rule, never by what it said), and the whole set is
+//! judged against the wiki's tip, as a change that is not a curation proposal ([`crate::knowledge::check`]) at the
+//! service's own path ([`SystemActs`]) before the signer is asked. So a claim that arrives with a community status, a
+//! source with a review day or an availability, or a link that names wording the claim does not have, is refused, and the
+//! import with it: **no path sets what only a curation proposal sets**, and an import is no exception. The claim threads
+//! and the records of the views that a bundle carries under `extensions/` are the exporting service's own; they are not
+//! imported.
 
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::{OsStr, OsString};
@@ -61,7 +72,8 @@ use rustix::io::Errno;
 use sha2::{Digest as _, Sha256};
 
 use crate::acceptance::{SystemActFailure, SystemActs, SystemRequest};
-use crate::read::ReadConfig;
+use crate::bundle::{KNOWLEDGE_EXTENSION, KNOWLEDGE_EXTENSION_VERSION};
+use crate::read::{ReadConfig, ReadService};
 
 /// Folders nested deeper than this are refused (a path cap would refuse them anyway; this bounds the walk).
 const MAX_DEPTH: usize = 48;
@@ -70,7 +82,7 @@ const MAX_DEPTH: usize = 48;
 const NOT_IMPORTED: &[(&str, &str)] = &[
     (
         "wiki-bundle.yaml",
-        "the manifest describes the export; the wiki keeps its own",
+        "the manifest describes the export, and is read only for the extensions it declares; the wiki keeps its own",
     ),
     (
         "SHA256SUMS",
@@ -84,7 +96,10 @@ const NOT_IMPORTED: &[(&str, &str)] = &[
         "history",
         "the history of the source is not replayed; the import is one change (bundle import is RFC 007's)",
     ),
-    ("knowledge", "reserved for a later release"),
+    (
+        "extensions",
+        "the exporting service's own records (claim threads, how views were made); bundle import is RFC 007's",
+    ),
     ("governance", "reserved for a later release"),
     (".prikkignore", "service-local"),
 ];
@@ -141,6 +156,10 @@ pub struct PlannedFile {
 impl PlannedFile {
     fn is_page(&self) -> bool {
         self.path.starts_with("pages/")
+    }
+
+    fn is_knowledge(&self) -> bool {
+        self.path.starts_with("knowledge/")
     }
 }
 
@@ -203,19 +222,28 @@ impl ImportPlan {
         self.files.is_empty() && self.refused.is_empty() && !self.unchanged.is_empty()
     }
 
-    /// The pages and the attachments in the plan.
+    /// The pages and the attachments in the plan (the knowledge files are counted by [`ImportPlan::knowledge_count`]).
     pub fn counts(&self) -> (usize, usize) {
         let pages = self.files.iter().filter(|f| f.is_page()).count();
-        (pages, self.files.len() - pages)
+        (pages, self.files.len() - pages - self.knowledge_count())
+    }
+
+    /// The claim and source files in the plan.
+    pub fn knowledge_count(&self) -> usize {
+        self.files.iter().filter(|f| f.is_knowledge()).count()
     }
 
     /// The report an operator reads: what would be written, what is refused and why, what is not imported.
     /// Operator text in English; the same for a dry run and for the run.
     pub fn report(&self) -> String {
         let (pages, attachments) = self.counts();
+        let knowledge = match self.knowledge_count() {
+            0 => String::new(),
+            n => format!(", {n} claim or source file(s)"),
+        };
         let mut out = String::new();
         out.push_str(&format!(
-            "{} file(s) to write ({pages} page(s), {attachments} attachment(s), {}):\n",
+            "{} file(s) to write ({pages} page(s), {attachments} attachment(s){knowledge}, {}):\n",
             self.files.len(),
             unit(self.total_bytes())
         ));
@@ -626,6 +654,68 @@ fn inspect_page(bytes: &[u8]) -> Result<Option<String>, String> {
     Ok(meta.id)
 }
 
+/// What a folder's manifest says about the knowledge extension (RFC 005 part 2 D-12).
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Extension {
+    /// No manifest the import can read, or one that does not declare it.
+    Absent,
+    /// Declared, at the version this build reads.
+    Known,
+    /// Declared at another version (as the manifest wrote it).
+    Other(String),
+}
+
+/// The most bytes of a manifest the import reads.
+const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
+
+/// Read the folder's `wiki-bundle.yaml`, if it has one, through the folder's handle, for `extensions_used`. Anything
+/// that cannot be read as a manifest declares nothing.
+fn declared_extension(root: &OwnedFd, top: &[(OsString, Result<FileType, Errno>)]) -> Extension {
+    use inklkunn_markup::Value;
+    let manifest = OsStr::new(crate::bundle::MANIFEST);
+    if !top
+        .iter()
+        .any(|(name, kind)| name == manifest && matches!(kind, Ok(FileType::RegularFile)))
+    {
+        return Extension::Absent;
+    }
+    let Ok(opened) = open_regular(root, manifest) else {
+        return Extension::Absent;
+    };
+    let Ok(bytes) = read_all(opened.file, MAX_MANIFEST_BYTES) else {
+        return Extension::Absent;
+    };
+    let Ok(text) = String::from_utf8(bytes) else {
+        return Extension::Absent;
+    };
+    let Ok(Value::Map(pairs)) = inklkunn_markup::frontmatter::parse_yaml(&text) else {
+        return Extension::Absent;
+    };
+    let Some((_, Value::Seq(declared))) = pairs.iter().find(|(k, _)| k == "extensions_used") else {
+        return Extension::Absent;
+    };
+    for entry in declared {
+        let Value::Map(fields) = entry else {
+            continue;
+        };
+        let field = |key: &str| fields.iter().find(|(k, _)| k == key).map(|(_, v)| v);
+        if !matches!(field("name"), Some(Value::Str(n)) if n == crate::bundle::KNOWLEDGE_EXTENSION)
+        {
+            continue;
+        }
+        return match field("version") {
+            Some(Value::Str(v)) if v == crate::bundle::KNOWLEDGE_EXTENSION_VERSION => {
+                Extension::Known
+            }
+            Some(Value::Int(1)) => Extension::Known,
+            Some(Value::Str(v)) => Extension::Other(v.clone()),
+            Some(Value::Int(n)) => Extension::Other(n.to_string()),
+            _ => Extension::Other("(none)".to_owned()),
+        };
+    }
+    Extension::Absent
+}
+
 struct Walk<'a> {
     existing: &'a Existing,
     replace_existing: bool,
@@ -751,6 +841,18 @@ impl Walk<'_> {
             return;
         }
         let is_page = rel.starts_with("pages/");
+        let is_knowledge = rel.starts_with("knowledge/");
+        if is_knowledge && crate::knowledge::is_keep(rel) {
+            // The keep-file only makes the empty directory exist; every wiki has one and it is no knowledge file.
+            return;
+        }
+        if is_knowledge && crate::knowledge::family_of(rel).is_none() {
+            self.refuse(
+                rel,
+                "is not a claim or a source file (`knowledge/claims/<id>.yaml`, `knowledge/sources/<id>.yaml`)",
+            );
+            return;
+        }
         if is_page && !rel.ends_with(".md") {
             self.refuse(rel, "a page is a `.md` file");
             return;
@@ -815,6 +917,8 @@ impl Walk<'_> {
         self.keys.insert(key, rel.to_owned());
         let cap = if is_page {
             self.page_cap
+        } else if is_knowledge {
+            crate::knowledge::MAX_FILE_BYTES as u64
         } else {
             MAX_CHANGE_BYTES
         };
@@ -824,7 +928,13 @@ impl Walk<'_> {
                 format!(
                     "is larger than the {} cap of {}",
                     unit(cap),
-                    if is_page { "a page" } else { "one acceptance" }
+                    if is_page {
+                        "a page"
+                    } else if is_knowledge {
+                        "a claim or a source file"
+                    } else {
+                        "one acceptance"
+                    }
                 ),
             );
             return;
@@ -857,6 +967,23 @@ impl Walk<'_> {
                 }
             }
             self.pages.push(rel.to_owned());
+        } else if is_knowledge {
+            // Read with the format's own reader: a file that does not read is refused by the rule, never by its words.
+            match read_all(opened.file, cap) {
+                Err(why) => {
+                    self.refuse(rel, why);
+                    return;
+                }
+                Ok(bytes) => {
+                    if let Err(fault) = crate::knowledge::read_file(rel, &bytes) {
+                        self.refuse(rel, fault.to_string());
+                        return;
+                    }
+                    if want_digest {
+                        digest = Some(sha256(&bytes));
+                    }
+                }
+            }
         } else if want_digest {
             match hash_all(opened.file, cap) {
                 Ok(d) => digest = Some(d),
@@ -954,10 +1081,14 @@ pub fn plan_folder(
     }
     let mut top = listing.entries;
     top.sort_by(|a, b| a.0.cmp(&b.0));
+    let extension = declared_extension(&root, &top);
     for (name, kind) in top {
         let shown_name = lossy(&name);
         match (name.to_str(), kind.ok()) {
-            (Some(n @ ("pages" | "attachments")), Some(t)) => {
+            (Some(n @ ("pages" | "attachments")), Some(t))
+            | (Some(n @ "knowledge"), Some(t))
+                if n != "knowledge" || extension == Extension::Known =>
+            {
                 let path = folder.join(n);
                 match t {
                     FileType::Symlink => {
@@ -967,6 +1098,18 @@ pub fn plan_folder(
                     _ => walk.refuse(n, "is not a directory"),
                 }
             }
+            (Some("knowledge"), _) => walk.plan.not_imported.push((
+                shown_name,
+                match &extension {
+                    Extension::Other(version) => format!(
+                        "the manifest declares `{KNOWLEDGE_EXTENSION}` version {}; this build reads version {KNOWLEDGE_EXTENSION_VERSION}, so nothing in it is read",
+                        shown_reason(version)
+                    ),
+                    _ => format!(
+                        "the manifest does not declare `{KNOWLEDGE_EXTENSION}` (version {KNOWLEDGE_EXTENSION_VERSION}), so nothing in it is read"
+                    ),
+                },
+            )),
             (Some(n), _) => {
                 let why = NOT_IMPORTED
                     .iter()
@@ -1048,7 +1191,7 @@ pub fn wiki_state(
             .map_err(ImportError::Storage)?;
         let mut state = Existing::at(&tip);
         let extracted = scratch.join(&extraction);
-        for top in ["pages", "attachments"] {
+        for top in ["pages", "attachments", "knowledge"] {
             collect(&extracted, top, &mut state)?;
         }
         Ok(state)
@@ -1115,6 +1258,8 @@ fn read_files(plan: &ImportPlan) -> Result<Vec<PreparedFile>, ImportError> {
             open_chain(&plan.root, &plan.dirs, &f.source).map_err(|why| changed(f, why))?;
         let cap = if f.is_page() {
             page_cap
+        } else if f.is_knowledge() {
+            crate::knowledge::MAX_FILE_BYTES as u64
         } else {
             MAX_CHANGE_BYTES
         };
@@ -1125,12 +1270,60 @@ fn read_files(plan: &ImportPlan) -> Result<Vec<PreparedFile>, ImportError> {
         if f.is_page() {
             inspect_page(&bytes).map_err(|why| changed(f, why))?;
         }
+        if f.is_knowledge() {
+            crate::knowledge::read_file(&f.path, &bytes)
+                .map_err(|fault| changed(f, fault.to_string()))?;
+        }
         files.push(PreparedFile {
             path: PathBuf::from(&f.path),
             content: Some(bytes),
         });
     }
     Ok(files)
+}
+
+/// Judge the knowledge files of `plan` against the wiki's tip as an acceptance judges a change that is not a curation
+/// proposal (RFC 005 part 2 D-5, D-3): the references between the files and the pages the import leaves, the anchors, and
+/// the rule that no path but a curation proposal sets a status, a review day, an availability or a source link's
+/// judgement. What is refused is added to [`ImportPlan::refused`], by file and rule, and the whole import is then refused.
+/// A plan with no knowledge file asks nothing of the repository. [`SystemActs::run`] judges the same set again, under
+/// the lease, before the signer is asked: this is the dry run's answer, and the operator's early one.
+pub fn judge_knowledge(
+    plan: &mut ImportPlan,
+    reads: &ReadService,
+    storage: &dyn Storage,
+    layout: &RootLayout,
+    wiki: &WikiRecord,
+) -> Result<(), ImportError> {
+    if plan.knowledge_count() == 0 || !plan.refused.is_empty() {
+        return Ok(());
+    }
+    let files = read_files(plan)?;
+    let refusals = crate::knowledge::check::check_change(
+        reads,
+        storage,
+        &layout.repo_dir(&wiki.id),
+        wiki,
+        &plan.base,
+        &crate::knowledge::check::Written {
+            files: &files,
+            renames: &[],
+            curation: false,
+        },
+    )
+    .map_err(|e| ImportError::Wiki(format!("the knowledge files could not be judged: {e}")))?;
+    for r in refusals {
+        let fault = crate::knowledge::Fault {
+            rule: r.rule,
+            field: r.field,
+            line: r.line,
+        };
+        plan.refused.push(Refusal {
+            name: r.file,
+            reason: fault.to_string(),
+        });
+    }
+    Ok(())
 }
 
 /// What a finished import left.
@@ -1169,6 +1362,10 @@ pub fn run_import(
     }
     let files = read_files(plan)?;
     let (pages, attachments) = plan.counts();
+    let knowledge = match plan.knowledge_count() {
+        0 => String::new(),
+        n => format!(" and {n} claim or source file(s)"),
+    };
     let describe = |e: inklkunn_signer::message::MessageError| ImportError::Message(e.to_string());
     // The tip the plan was made against must be one the message grammar can name (a plan without one is not run).
     BlockId::new(&plan.base).map_err(describe)?;
@@ -1181,7 +1378,9 @@ pub fn run_import(
     let source = ImportSource::new(&format!("folder sha256:{digest}")).map_err(describe)?;
     let request = SystemRequest {
         kind: SystemActKind::Import,
-        summary: format!("Import {pages} page(s) and {attachments} attachment(s) from a folder"),
+        summary: format!(
+            "Import {pages} page(s) and {attachments} attachment(s){knowledge} from a folder"
+        ),
         files,
         renames: Vec::new(),
         imported_from: Some(source),

@@ -9,11 +9,16 @@
 //!   and the service for an import or a system change) as the authors. A change to a path that is not a page of
 //!   the tip (a page since removed or renamed) has no file to belong to and is counted in the manifest's report,
 //!   not dropped silently.
-//! - **`discussions/claims/<claim id>.jsonl`** (RFC 005 part 2 D-11; XFER-10): one file per claim whose thread has
-//!   comments, one line per comment in the order written (`id`, `parent`, `at`, `author`, `body`), from the service's
-//!   records. A thread is the *discussion of a claim*: nothing in it changes a claim, and the bundle carries it beside
-//!   the claim's file, not instead of it. They are listed in `SHA256SUMS` like every other file, and the manifest then
-//!   says `discussions: true` with the representation `jsonl`. (Comments on proposals are not exported here yet.)
+//! - **`extensions/inklkunn-knowledge/`** (RFC 005 part 2 D-11, D-12; the knowledge extension, declared in the manifest's
+//!   `extensions_used` as `inklkunn-knowledge`, version 1): what the knowledge layer keeps in the service's records and
+//!   not in the repository. `threads/<claim id>.jsonl` is one file per claim whose thread has comments, one line per
+//!   comment in the order written (`id`, `parent`, `at`, `author`, `body`), the body **escaped to portable Markdown** so
+//!   that a reader of the bundle sees the plain text inklkunn showed ([`crate::bundle::markdown_text`]); `views.jsonl`
+//!   is one line per alternative view that was created (its name, kind, the view and block it was forked from, who
+//!   created it and when). A claim's thread is not a page's discussion (XFER-10 is one file per page), so nothing of it
+//!   is under `discussions/` and the manifest's `discussions` stays a statement about page discussions. A thread never
+//!   changes a claim: the bundle carries it beside the claim's file, not instead of it. All are listed in `SHA256SUMS`
+//!   like every other file. (Comments on proposals are not exported here.)
 //! - **`users.yaml`**: the accounts that appear in those messages and in those threads, with the names they had.
 //! - **`wiki-bundle.yaml`**: the manifest, with the fidelity, the real counts, the block it is as of, the
 //!   interwiki map and, in `checksums`, the name of the file below (wiki-commons' shape).
@@ -32,11 +37,13 @@ use std::path::{Path, PathBuf};
 use inklkunn_prikk::{ExtractBounds, Point, Storage, StorageError};
 use inklkunn_signer::message::{Actor, Message};
 use inklkunn_store::{
-    AccountStore, ClaimCommentRow, ClaimThreadStore, RootLayout, WikiId, WikiRecord,
+    AccountStore, ActStore, ClaimCommentRow, ClaimThreadStore, RootLayout, ViewActOutcome, WikiId,
+    WikiRecord,
 };
 use sha2::{Digest, Sha256};
 
-use crate::bundle::{self, ExportFacts, ManifestFacts, yaml_quote};
+use crate::bundle::{self, ExportFacts, ManifestFacts, markdown_text, yaml_quote};
+use crate::knowledge::ClaimId;
 
 /// How many blocks of history an export reads (`log --limit`). A history longer than this is refused rather than
 /// cut short: an export that silently lacks its oldest changes would be a lie about the wiki.
@@ -89,7 +96,7 @@ pub fn is_checkpoint_not_recorded(e: &StorageError) -> bool {
     )
 }
 
-/// One comment of a claim's thread, as the bundle's discussions carry it.
+/// One comment of a claim's thread, as the bundle's knowledge extension carries it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiscussionComment {
     /// The comment's id.
@@ -102,21 +109,76 @@ pub struct DiscussionComment {
     pub author_id: String,
     /// The author's name as the account has it now.
     pub author_name: String,
-    /// The text.
+    /// The text, as it was written (the bundle escapes it to Markdown).
     pub body: String,
 }
 
 /// One claim's thread, whole, for the bundle.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClaimDiscussion {
-    /// The claim's id.
-    pub claim: String,
+    /// The claim's id: a checked one, so that the file it names is built from nothing else.
+    pub claim: ClaimId,
     /// Its comments, in the order written.
     pub comments: Vec<DiscussionComment>,
 }
 
+/// How an alternative view came to be, as the bundle's knowledge extension carries it (RFC 005 part 2 D-9, D-12): the
+/// service's record of the act. The view's files are not in the bundle (a bundle is the default view's tip); this is the
+/// fact that the view exists and where it was forked from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ViewCreation {
+    /// The record's id.
+    pub id: String,
+    /// The view's short name.
+    pub name: String,
+    /// `experimental` or `interpretation`.
+    pub kind: String,
+    /// The short name of the view it was forked from.
+    pub forked_from: String,
+    /// The block that view's tip was when the fork was made.
+    pub from_block: String,
+    /// The account that created it.
+    pub author_id: String,
+    /// That account's name as it has it now.
+    pub author_name: String,
+    /// Unix seconds.
+    pub at: i64,
+}
+
+/// What the knowledge extension of a bundle is made of: the service's records that are not files of the repository.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct KnowledgeRecords {
+    /// Every claim thread, by claim id.
+    pub threads: Vec<ClaimDiscussion>,
+    /// Every alternative view that was created, oldest first.
+    pub views: Vec<ViewCreation>,
+}
+
+/// The names accounts have, remembered for the people of one export.
+struct Names<'a> {
+    accounts: &'a dyn AccountStore,
+    seen: HashMap<String, String>,
+}
+
+impl Names<'_> {
+    fn of(&mut self, id: &inklkunn_store::AccountId) -> Result<String, ExportError> {
+        let key = id.to_string();
+        if let Some(name) = self.seen.get(&key) {
+            return Ok(name.clone());
+        }
+        let name = self
+            .accounts
+            .account(id)
+            .map_err(|_| ExportError::Io("an account could not be read".to_owned()))?
+            .map_or_else(String::new, |a| a.display_name.as_str().to_owned());
+        self.seen.insert(key, name.clone());
+        Ok(name)
+    }
+}
+
 /// Every claim thread of the wiki, whole and in order, with the names of the people who wrote: what an export carries as
-/// the bundle's discussions. Read from the service's records; nothing is read from a repository.
+/// the knowledge extension's threads. Read from the service's records; nothing is read from a repository. A record whose
+/// claim id is not the spelling of one is an error, never a path.
 pub fn claim_discussions(
     threads: &dyn ClaimThreadStore,
     accounts: &dyn AccountStore,
@@ -125,34 +187,84 @@ pub fn claim_discussions(
     let rows = threads
         .claim_comments_in_wiki(wiki)
         .map_err(|_| ExportError::Io("the claim threads could not be read".to_owned()))?;
-    let mut names: HashMap<String, String> = HashMap::new();
+    let mut names = Names {
+        accounts,
+        seen: HashMap::new(),
+    };
     let mut out: Vec<ClaimDiscussion> = Vec::new();
     for ClaimCommentRow { comment, .. } in rows {
-        let author = comment.author.to_string();
-        if !names.contains_key(&author) {
-            let name = accounts
-                .account(&comment.author)
-                .map_err(|_| ExportError::Io("an account could not be read".to_owned()))?
-                .map_or_else(String::new, |a| a.display_name.as_str().to_owned());
-            names.insert(author.clone(), name);
-        }
+        let claim = ClaimId::parse(&comment.claim).ok_or_else(|| {
+            ExportError::Io(
+                "a claim thread is recorded under an id that is not a claim's".to_owned(),
+            )
+        })?;
         let line = DiscussionComment {
             id: comment.id.to_string(),
             parent: comment.parent.as_ref().map(ToString::to_string),
             at: comment.created_at,
-            author_name: names.get(&author).cloned().unwrap_or_default(),
-            author_id: author,
+            author_name: names.of(&comment.author)?,
+            author_id: comment.author.to_string(),
             body: comment.body,
         };
         match out.last_mut() {
-            Some(d) if d.claim == comment.claim => d.comments.push(line),
+            Some(d) if d.claim == claim => d.comments.push(line),
             _ => out.push(ClaimDiscussion {
-                claim: comment.claim,
+                claim,
                 comments: vec![line],
             }),
         }
     }
     Ok(out)
+}
+
+/// Every alternative view of the wiki that was created, oldest first: the service's record of each (an act that failed
+/// took nothing in, and one that was interrupted is not known to have made a view, so neither is listed).
+pub fn view_creations(
+    acts: &dyn ActStore,
+    accounts: &dyn AccountStore,
+    wiki: &WikiId,
+) -> Result<Vec<ViewCreation>, ExportError> {
+    let entries = acts
+        .view_acts(wiki)
+        .map_err(|_| ExportError::Io("the records of the views could not be read".to_owned()))?;
+    let mut names = Names {
+        accounts,
+        seen: HashMap::new(),
+    };
+    let mut out = Vec::new();
+    for entry in entries {
+        if !matches!(
+            entry.end.as_ref().map(|e| &e.outcome),
+            Some(ViewActOutcome::Created)
+        ) {
+            continue;
+        }
+        let act = entry.act;
+        out.push(ViewCreation {
+            id: act.id.to_string(),
+            name: act.name,
+            kind: act.kind.as_str().to_owned(),
+            forked_from: act.forked_from,
+            from_block: act.from_block,
+            author_name: names.of(&act.created_by)?,
+            author_id: act.created_by.to_string(),
+            at: act.created_at,
+        });
+    }
+    Ok(out)
+}
+
+/// The service's records an export carries in the knowledge extension: the claim threads and the views' creation records.
+pub fn knowledge_records(
+    threads: &dyn ClaimThreadStore,
+    acts: &dyn ActStore,
+    accounts: &dyn AccountStore,
+    wiki: &WikiId,
+) -> Result<KnowledgeRecords, ExportError> {
+    Ok(KnowledgeRecords {
+        threads: claim_discussions(threads, accounts, wiki)?,
+        views: view_creations(acts, accounts, wiki)?,
+    })
 }
 
 /// What an export made.
@@ -174,8 +286,12 @@ pub struct Exported {
     pub unattributed_changes: usize,
     /// Accounts in `users.yaml`.
     pub users: usize,
-    /// Claim threads written as `discussions/claims/<claim id>.jsonl`.
-    pub discussions: usize,
+    /// Claim threads written as `extensions/inklkunn-knowledge/threads/<claim id>.jsonl`.
+    pub threads: usize,
+    /// Views whose creation was written to `extensions/inklkunn-knowledge/views.jsonl`.
+    pub views: usize,
+    /// Claim and source files of `knowledge/`, carried as they are stored.
+    pub knowledge_files: usize,
     /// Pages whose history file was not written because the page id in its frontmatter cannot name a file
     /// (unsafe) or belongs to more than one page (shared): the manifest says how many.
     pub histories_not_written: usize,
@@ -461,7 +577,8 @@ fn histories(
 
 /// Export the wiki as a bundle directory `dest` (absolute; must not exist; its directory must). `now` is the
 /// time written in the manifest. The wiki's scratch directory is where the tip is extracted (and removed from). The
-/// bundle carries no discussions: see [`export_bundle_with`].
+/// bundle carries none of the service's records (claim threads, views), and its manifest says so in `fidelity.dropped`:
+/// see [`export_bundle_with`].
 pub fn export_bundle(
     storage: &dyn Storage,
     layout: &RootLayout,
@@ -470,10 +587,10 @@ pub fn export_bundle(
     inklkunn_version: &str,
     now: i64,
 ) -> Result<Exported, ExportError> {
-    export_bundle_with(storage, layout, record, dest, inklkunn_version, now, &[])
+    export_bundle_inner(storage, layout, record, dest, inklkunn_version, now, None)
 }
 
-/// [`export_bundle`], carrying these claim threads as the bundle's discussions ([`claim_discussions`] reads them).
+/// [`export_bundle`], carrying these records in the bundle's knowledge extension ([`knowledge_records`] reads them).
 pub fn export_bundle_with(
     storage: &dyn Storage,
     layout: &RootLayout,
@@ -481,7 +598,27 @@ pub fn export_bundle_with(
     dest: &Path,
     inklkunn_version: &str,
     now: i64,
-    discussions: &[ClaimDiscussion],
+    records: &KnowledgeRecords,
+) -> Result<Exported, ExportError> {
+    export_bundle_inner(
+        storage,
+        layout,
+        record,
+        dest,
+        inklkunn_version,
+        now,
+        Some(records),
+    )
+}
+
+fn export_bundle_inner(
+    storage: &dyn Storage,
+    layout: &RootLayout,
+    record: &WikiRecord,
+    dest: &Path,
+    inklkunn_version: &str,
+    now: i64,
+    records: Option<&KnowledgeRecords>,
 ) -> Result<Exported, ExportError> {
     if !dest.is_absolute() {
         return Err(ExportError::Destination(
@@ -548,7 +685,7 @@ pub fn export_bundle_with(
             &partial,
             inklkunn_version,
             now,
-            discussions,
+            records,
         );
         match built {
             Ok(mut done) => {
@@ -625,14 +762,14 @@ fn build(
     partial: &Path,
     inklkunn_version: &str,
     now: i64,
-    discussions: &[ClaimDiscussion],
+    records: Option<&KnowledgeRecords>,
 ) -> Result<Exported, ExportError> {
     std::fs::DirBuilder::new()
         .mode(0o700)
         .create(partial)
         .map_err(|e| io("the bundle directory could not be made", &e))?;
     let mut checksums: Vec<(String, String)> = Vec::new();
-    let (mut pages, mut attachments) = (0, 0);
+    let (mut pages, mut attachments, mut knowledge_files) = (0, 0, 0);
     let mut page_ids: HashMap<String, String> = HashMap::new();
     for rel in files_under(extracted)? {
         // The manifest is rewritten; everything else is the file as stored.
@@ -655,6 +792,9 @@ fn build(
             && !rel.ends_with(".meta.yaml")
         {
             attachments += 1;
+        } else if crate::knowledge::is_knowledge_path(&rel) && !crate::knowledge::is_keep(&rel) {
+            // `knowledge/` is carried as it is stored (RFC 005 part 2 D-12): readable YAML beside readable pages.
+            knowledge_files += 1;
         }
     }
     let h = histories(storage, repo, view, tip, &page_ids)?;
@@ -679,32 +819,60 @@ fn build(
         checksums.push((rel, hash));
         history_entries += lines.len();
     }
-    // The claim threads, one file each (XFER-10), and the people who wrote in them join the accounts of users.yaml.
+    // The knowledge extension's records (RFC 005 part 2 D-11, D-12), not under `discussions/`: a claim's thread is not a
+    // page's discussion. The people who wrote or created join the accounts of users.yaml.
     let mut accounts = h.accounts;
-    let mut discussions_written = 0;
-    for thread in discussions {
+    let mut remember = |id: &str, name: &str| {
+        let names = accounts.entry(id.to_owned()).or_default();
+        if !name.is_empty() && !names.iter().any(|n| n == name) {
+            names.push(name.to_owned());
+        }
+    };
+    let (mut threads_written, mut views_written) = (0, 0);
+    for thread in records.map_or(&[][..], |r| r.threads.as_slice()) {
         let mut text = String::new();
         for c in &thread.comments {
-            let names = accounts.entry(c.author_id.clone()).or_default();
-            if !c.author_name.is_empty() && !names.contains(&c.author_name) {
-                names.push(c.author_name.clone());
-            }
+            remember(&c.author_id, &c.author_name);
             text.push_str(
                 &serde_json::json!({
                     "id": c.id,
                     "parent": c.parent,
                     "at": inklkunn_store::record::rfc3339(c.at),
                     "author": {"id": c.author_id, "name": c.author_name},
-                    "body": c.body,
+                    // Markdown that shows the plain text it was written as.
+                    "body": markdown_text(&c.body),
                 })
                 .to_string(),
             );
             text.push('\n');
         }
-        let rel = format!("discussions/claims/{}.jsonl", thread.claim);
+        let rel = format!("{}/{}.jsonl", bundle::KNOWLEDGE_THREADS_DIR, thread.claim);
         let hash = write_new(&partial.join(&rel), text.as_bytes())?;
         checksums.push((rel, hash));
-        discussions_written += 1;
+        threads_written += 1;
+    }
+    let views = records.map_or(&[][..], |r| r.views.as_slice());
+    if !views.is_empty() {
+        let mut text = String::new();
+        for v in views {
+            remember(&v.author_id, &v.author_name);
+            text.push_str(
+                &serde_json::json!({
+                    "id": v.id,
+                    "name": v.name,
+                    "kind": v.kind,
+                    "forked_from": v.forked_from,
+                    "from_block": v.from_block,
+                    "at": inklkunn_store::record::rfc3339(v.at),
+                    "created_by": {"id": v.author_id, "name": v.author_name},
+                })
+                .to_string(),
+            );
+            text.push('\n');
+            views_written += 1;
+        }
+        let hash = write_new(&partial.join(bundle::KNOWLEDGE_VIEWS_FILE), text.as_bytes())?;
+        checksums.push((bundle::KNOWLEDGE_VIEWS_FILE.to_owned(), hash));
     }
     let histories_written = checksums
         .iter()
@@ -736,7 +904,7 @@ fn build(
     })?;
     write_new(&partial.join(bundle::CHECKSUMS), sums.as_bytes())?;
     let accounts = accounts.len();
-    let mut manifest = bundle::manifest_with(
+    let manifest = bundle::manifest_with(
         record,
         inklkunn_version,
         &ManifestFacts {
@@ -748,12 +916,13 @@ fn build(
                 interwiki: Vec::new(),
                 unattributed_changes: h.unattributed,
                 histories_not_written,
+                knowledge_extension: knowledge_files > 0
+                    || threads_written > 0
+                    || views_written > 0,
+                records_read: records.is_some(),
             }),
         },
     );
-    if discussions_written > 0 {
-        manifest = bundle::with_discussions(&manifest);
-    }
     write_new(&partial.join(bundle::MANIFEST), manifest.as_bytes())?;
     Ok(Exported {
         dir: partial.to_path_buf(),
@@ -764,7 +933,9 @@ fn build(
         history_entries,
         unattributed_changes: h.unattributed,
         users: accounts,
-        discussions: discussions_written,
+        threads: threads_written,
+        views: views_written,
+        knowledge_files,
         histories_not_written,
     })
 }

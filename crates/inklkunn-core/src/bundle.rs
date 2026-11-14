@@ -21,6 +21,19 @@ pub const PRIKKIGNORE: &str = ".prikkignore";
 pub const CHECKSUMS: &str = "SHA256SUMS";
 /// The first page of every wiki.
 pub const HELP_PAGE: &str = "pages/Help.md";
+/// The name of the extension that gives `knowledge/` its meaning (RFC 005 part 2 D-12), as the manifest's
+/// `extensions_used` declares it.
+pub const KNOWLEDGE_EXTENSION: &str = "inklkunn-knowledge";
+/// The version of [`KNOWLEDGE_EXTENSION`] this build writes and reads.
+pub const KNOWLEDGE_EXTENSION_VERSION: &str = "1";
+/// Where the extension's own data lives in a bundle, beside `knowledge/` and never under `discussions/`: wiki-commons'
+/// `discussions/` is one file per **page** with portable Markdown bodies (XFER-10), and a claim's thread is neither
+/// (RFC 005 part 2 D-11, the clarification of 2026-11-14).
+pub const KNOWLEDGE_EXTENSION_DIR: &str = "extensions/inklkunn-knowledge";
+/// The directory of the extension's claim threads, one JSON Lines file per claim: `<claim id>.jsonl`.
+pub const KNOWLEDGE_THREADS_DIR: &str = "extensions/inklkunn-knowledge/threads";
+/// The extension's record of how the alternative views came to be, one JSON line per view.
+pub const KNOWLEDGE_VIEWS_FILE: &str = "extensions/inklkunn-knowledge/views.jsonl";
 /// The worktree prefix reserved for files the service may keep beside the content and that must never
 /// enter history. Nothing lives there yet (the scratch directory is a sibling of the repository, not
 /// inside it); the reservation is made now so no page can ever take the name.
@@ -52,17 +65,89 @@ pub struct ExportFacts {
     pub unattributed_changes: usize,
     /// Pages whose history file was not written (the page id cannot name a file, or two pages share it).
     pub histories_not_written: usize,
+    /// The bundle carries the knowledge layer's data (a claim or source file, a claim's thread or a view's record), so the
+    /// manifest declares [`KNOWLEDGE_EXTENSION`] in `extensions_used`.
+    pub knowledge_extension: bool,
+    /// The export was given the service's records (claim threads and view-creation records, possibly none). `false`: it
+    /// was not, and the manifest says in `fidelity.dropped` that they are not in it.
+    pub records_read: bool,
 }
 
-/// The manifest of an export that carries discussions: `contents.discussions` true, and the representation declared
-/// (`jsonl`, one file per thread under `discussions/`, XFER-10). The manifest of an export without any says
-/// `discussions: false`, as it did; this changes that one line and nothing else.
-pub fn with_discussions(manifest: &str) -> String {
-    manifest.replacen(
-        "\n  discussions: false\n",
-        "\n  discussions: true\n  discussions_representation: jsonl\n",
-        1,
-    )
+/// `text` as portable Markdown that shows exactly that text and nothing else (RFC 005 part 2 D-11): every character
+/// that could begin a link, an image, HTML, a list, a quotation, a heading, a table, a code span or an entity is
+/// escaped, the white space at either end of a line is written as character references, and a line break inside is a
+/// hard break. The text is what inklkunn shows as it is typed (`white-space: pre-wrap`), so the bundle's reader sees the
+/// same words; a link in it stays letters, and an image in it is no request for a remote picture.
+pub fn markdown_text(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let blank = |l: &str| l.trim().is_empty();
+    // A white-space character at the edge of a line is written as a character reference: Markdown would drop it, or
+    // read four of them as code.
+    let reference = |c: char| format!("&#{};", u32::from(c));
+    let mut out = String::with_capacity(text.len() + text.len() / 4);
+    for (i, line) in lines.iter().enumerate() {
+        if blank(line) {
+            // A paragraph break; a run of them is one.
+            if !out.is_empty() && !out.ends_with("\n\n") {
+                out.push_str("\n\n");
+            }
+            continue;
+        }
+        for c in line.chars().take_while(|c| c.is_whitespace()) {
+            out.push_str(&reference(c));
+        }
+        let mut only_digits = true;
+        for c in line.trim().chars() {
+            if c == '.' && only_digits {
+                // `1.` begins a list (`1)` is escaped with the parentheses).
+                out.push('\\');
+            }
+            only_digits &= c.is_ascii_digit();
+            if matches!(
+                c,
+                '\\' | '`'
+                    | '*'
+                    | '_'
+                    | '{'
+                    | '}'
+                    | '['
+                    | ']'
+                    | '<'
+                    | '>'
+                    | '('
+                    | ')'
+                    | '#'
+                    | '+'
+                    | '-'
+                    | '!'
+                    | '|'
+                    | '~'
+                    | ':'
+                    | '^'
+                    | '='
+                    | '&'
+            ) {
+                out.push('\\');
+            }
+            out.push(c);
+        }
+        let trailing: Vec<char> = line
+            .chars()
+            .rev()
+            .take_while(|c| c.is_whitespace())
+            .collect();
+        for c in trailing.into_iter().rev() {
+            out.push_str(&reference(c));
+        }
+        // The next line is of the same paragraph: a hard break keeps the line break the text had.
+        if lines.get(i + 1).is_some_and(|next| !blank(next)) {
+            out.push_str("\\\n");
+        }
+    }
+    while out.ends_with('\n') {
+        out.pop();
+    }
+    out
 }
 
 /// The bundle manifest for a new wiki (wiki-commons chapter 10). `pages_prefix` is `pages`; fidelity is
@@ -124,13 +209,39 @@ pub fn manifest_with(record: &WikiRecord, inklkunn_version: &str, facts: &Manife
             lines.push("  structured: false".to_owned());
         }
     }
+    let unread = facts.exported.as_ref().is_some_and(|e| !e.records_read);
     lines.extend([
         "fidelity:".to_owned(),
         "  level: 3".to_owned(),
         "  degraded: []".to_owned(),
-        "  dropped: []".to_owned(),
+        if unread {
+            // An export that was not given the service's records says so, rather than look complete.
+            format!(
+                "  dropped: [{{construct: {}, how: {}}}]",
+                yaml_str("claim threads and view-creation records"),
+                yaml_str(
+                    "this export was not given the service's records, so they are not in the bundle"
+                ),
+            )
+        } else {
+            "  dropped: []".to_owned()
+        },
         "  note: native; nothing was converted".to_owned(),
     ]);
+    if facts
+        .exported
+        .as_ref()
+        .is_some_and(|e| e.knowledge_extension)
+    {
+        // wiki-commons XFER-1: the extensions the bundle uses. `knowledge/` is readable YAML beside readable pages
+        // without it; the extension's own directory holds what is not a file of the repository.
+        lines.extend([
+            "extensions_used:".to_owned(),
+            format!("  - name: {KNOWLEDGE_EXTENSION}"),
+            format!("    version: {}", yaml_str(KNOWLEDGE_EXTENSION_VERSION)),
+            format!("    directory: {KNOWLEDGE_EXTENSION_DIR}"),
+        ]);
+    }
     if let Some(e) = &facts.exported {
         // wiki-commons' own key, an RFC 3339 date-time (S3).
         lines.push(format!(
