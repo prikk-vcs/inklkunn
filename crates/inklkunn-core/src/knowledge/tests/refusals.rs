@@ -332,3 +332,20 @@ fn every_rule_has_a_code_that_reads_back_and_a_sentence() {
     assert_eq!(codes.len(), Rule::ALL.len(), "the codes are distinct");
     assert_eq!(Rule::from_code("nonsense"), None);
 }
+
+#[test]
+fn the_status_rule_names_what_it_refuses_removals_and_unreadable_files_included() {
+    // K29: the sentence a refusal of this rule carries names every case that is refused under it.
+    let sentence = Rule::Status.sentence();
+    for part in [
+        "community status",
+        "review date",
+        "availability",
+        "source link",
+        "removes a claim or a source",
+        "cannot be read",
+        "outside a curation proposal",
+    ] {
+        assert!(sentence.contains(part), "{part}: {sentence}");
+    }
+}

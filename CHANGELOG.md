@@ -554,6 +554,13 @@ Dependency updates (the architect, 2026-11-14).
   claim's places records nothing. A decided community status that names no wording is a judgement that fails. Tests: the
   rule on its own, and a real history in which a reconfirm drops its place and one whose decided status names no wording
   re-confirm nothing while the complete one does. No new prikk-dependent test file; one new prikk-dependent test.
+- **K29 (handoff 005 corrections, third): a refusal names the field it is about, and its sentence says what it refuses.**
+  Taking a claim or a source away is refused under the field that makes it curation's, not always `community_status`: a
+  claim's `community_status`, else its `sources`; a source's `availability`, else its `last_reviewed` (the order the
+  changes are read in); a file that cannot be read stays `unreadable`. The submission and the acceptance share the one
+  function (`Curated::removal_field`; `removal_refused` is its yes-or-no). The core's sentence for the *status* rule and
+  the health list's `health.rule_status` (English, Japanese, glossary) now name the removal of a claim or a source that
+  holds any of these and the replacing or removing of a file that cannot be read, as `know.not_curation` already did.
 
 ## [0.2.0] — 2026-11-04
 

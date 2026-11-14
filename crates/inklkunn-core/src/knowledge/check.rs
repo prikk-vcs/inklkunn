@@ -237,27 +237,42 @@ impl Curated {
         }
     }
 
-    /// What a file of this kind holds when nothing curated is in it: [`Curated::baseline`], by kind.
-    fn untouched(&self) -> Curated {
-        match self {
-            Curated::Claim { .. } => Curated::Claim {
-                status: CommunityStatus::undecided(),
-                links: BTreeMap::new(),
-            },
-            Curated::Source { .. } => Curated::Source {
-                availability: Availability::Unknown,
-                reviewed: None,
-            },
-        }
-    }
-
     /// Is taking this away, outside a curation proposal, refused? **When it would take anything curated with it**
     /// (handoff 005 corrections, second round, K16): a claim file whose curated content is not what a fresh claim's is
     /// (a status that was decided, or an un-decided record, **or a source link**: the link is curation's to change
     /// or take away, and removing the file and writing the claim again would launder it out) and a source that was
     /// checked or marked available or not. A file that holds none of it may go with any proposal.
     pub fn removal_refused(&self) -> bool {
-        *self != self.untouched()
+        self.removal_field().is_some()
+    }
+
+    /// The key of the format that makes taking this away curation's, or `None` when it holds nothing curated (K29: the
+    /// refusal names the field it is about, not always the community status). The first that applies, in the order
+    /// [`Curated::departure`] reads them: a claim's status, then its links; a source's availability, then its review.
+    pub fn removal_field(&self) -> Option<&'static str> {
+        match self {
+            Curated::Claim { status, links } => {
+                if *status != CommunityStatus::undecided() {
+                    Some("community_status")
+                } else if !links.is_empty() {
+                    Some("sources")
+                } else {
+                    None
+                }
+            }
+            Curated::Source {
+                availability,
+                reviewed,
+            } => {
+                if *availability != Availability::Unknown {
+                    Some("availability")
+                } else if reviewed.is_some() {
+                    Some("last_reviewed")
+                } else {
+                    None
+                }
+            }
+        }
     }
 }
 
@@ -293,11 +308,11 @@ pub fn curated_by(
         }
         match text {
             None => {
-                if was
+                if let Some(field) = was
                     .as_ref()
-                    .is_some_and(|file| Curated::of(file).removal_refused())
+                    .and_then(|file| Curated::of(file).removal_field())
                 {
-                    out.push(Refusal::rule(path, Rule::Status, "community_status"));
+                    out.push(Refusal::rule(path, Rule::Status, field));
                 }
             }
             Some(text) => {
@@ -402,12 +417,12 @@ pub fn validate(
     // review or an availability, with the file that holds it.
     for path in &touched.removed {
         if !touched.curation
-            && touched
+            && let Some(field) = touched
                 .curated_before
                 .get(path)
-                .is_some_and(Curated::removal_refused)
+                .and_then(Curated::removal_field)
         {
-            out.insert(Refusal::rule(path, Rule::Status, "community_status"));
+            out.insert(Refusal::rule(path, Rule::Status, field));
         }
     }
     // A file the tip has and cannot read is not replaced or taken away by any other proposal: nobody can say what

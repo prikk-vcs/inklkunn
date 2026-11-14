@@ -189,6 +189,57 @@ fn a_sources_review_and_availability_are_set_by_a_curation_proposal_only() {
     assert!(run_source(&retitled, Some(&plain), false).is_empty());
 }
 
+#[test]
+fn a_refusal_names_the_field_it_is_about_for_a_source_on_both_surfaces() {
+    // K29: `availability` and `last_reviewed`, never `community_status`; the submission and the acceptance say the same.
+    let plain = source_with(|_| {});
+    let path = source_path(&plain.id);
+    let held = texts_of(&[], &[&plain]);
+    let available = source_with(|s| s.availability = Availability::Available);
+    let reviewed = source_with(|s| {
+        s.last_reviewed = Some(Reviewed {
+            date: "2026-11-04".to_owned(),
+            proposal: None,
+        });
+    });
+    for (after, field) in [(&available, "availability"), (&reviewed, "last_reviewed")] {
+        let given = vec![(path.clone(), Some(after.to_yaml()))];
+        assert_eq!(
+            refused_files(&given, &held),
+            [(path.clone(), field)],
+            "{field}"
+        );
+        let files = files_of(&[(path.clone(), after.to_yaml())]);
+        let mut touched = Touched {
+            written: [path.clone()].into(),
+            ..Touched::default()
+        };
+        touched.curated_before.insert(
+            path.clone(),
+            Curated::of(&File::Source(Box::new(plain.clone()))),
+        );
+        assert_eq!(
+            validate(&files, &touched, &One, &One)
+                .iter()
+                .map(|r| (r.rule, r.field))
+                .collect::<Vec<_>>(),
+            [(Rule::Status, field)]
+        );
+    }
+    // Both changed at once: the availability is named first.
+    let both = source_with(|s| {
+        s.availability = Availability::Available;
+        s.last_reviewed = Some(Reviewed {
+            date: "2026-11-04".to_owned(),
+            proposal: None,
+        });
+    });
+    assert_eq!(
+        refused_files(&[(path.clone(), Some(both.to_yaml()))], &held),
+        [(path, "availability")]
+    );
+}
+
 fn content(files: Vec<FileChange>, renames: Vec<inklkunn_store::Rename>) -> RevisionContent {
     RevisionContent {
         base: inklkunn_store::Base::new(&"a".repeat(64), &"b".repeat(64)).expect("a base"),
@@ -495,18 +546,19 @@ fn removing_a_claim_file_is_curation_whenever_it_takes_anything_curated_with_it(
         assert_eq!(
             validate(&BTreeMap::new(), &touched, &One, &One)
                 .iter()
-                .map(|r| (r.file.clone(), r.rule))
+                .map(|r| (r.file.clone(), r.rule, r.field))
                 .collect::<Vec<_>>(),
-            [(at(c), Rule::Status)]
+            [(at(c), Rule::Status, field)],
+            "the acceptance names the same field"
         );
         touched.curation = true;
         assert!(validate(&BTreeMap::new(), &touched, &One, &One).is_empty());
     };
     // A source link, of either relation: the link is curation's to take away, and so is the file that holds it.
-    refused(&with_links(vec![link(1, |_| {})]), "community_status");
+    refused(&with_links(vec![link(1, |_| {})]), "sources");
     refused(
         &with_links(vec![link(1, |l| l.relation = Link::Challenges)]),
-        "community_status",
+        "sources",
     );
     // A status that was decided; and a record that un-decided it (K14: no status, the deciding proposal kept).
     let mut decided_claim = with_links(vec![]);
@@ -528,21 +580,53 @@ fn removing_a_claim_file_is_curation_whenever_it_takes_anything_curated_with_it(
 #[test]
 fn removing_a_source_file_is_curation_when_it_was_checked() {
     let at = |s: &Source| source_path(&s.id);
-    let refused = |s: &Source| {
+    let refused = |s: &Source, field: &'static str| {
         assert_eq!(
             refused_files(&gone(at(s)), &texts_of(&[], &[s])),
-            [(at(s), "community_status")]
+            [(at(s), field)]
+        );
+        // The acceptance names the same field.
+        let mut touched = Touched {
+            removed: [at(s)].into(),
+            ..Touched::default()
+        };
+        touched
+            .curated_before
+            .insert(at(s), Curated::of(&File::Source(Box::new(s.clone()))));
+        assert_eq!(
+            validate(&BTreeMap::new(), &touched, &One, &One)
+                .iter()
+                .map(|r| (r.rule, r.field))
+                .collect::<Vec<_>>(),
+            [(Rule::Status, field)]
         );
     };
     let plain = source_with(|_| {});
     assert!(refused_files(&gone(at(&plain)), &texts_of(&[], &[&plain])).is_empty());
-    refused(&source_with(|s| s.availability = Availability::Unavailable));
-    refused(&source_with(|s| {
-        s.last_reviewed = Some(Reviewed {
-            date: "2026-11-04".to_owned(),
-            proposal: None,
-        });
-    }));
+    refused(
+        &source_with(|s| s.availability = Availability::Unavailable),
+        "availability",
+    );
+    refused(
+        &source_with(|s| {
+            s.last_reviewed = Some(Reviewed {
+                date: "2026-11-04".to_owned(),
+                proposal: None,
+            });
+        }),
+        "last_reviewed",
+    );
+    // Both set: the availability is named (the order `departure` reads them in).
+    refused(
+        &source_with(|s| {
+            s.availability = Availability::Available;
+            s.last_reviewed = Some(Reviewed {
+                date: "2026-11-04".to_owned(),
+                proposal: None,
+            });
+        }),
+        "availability",
+    );
     // The same through `validate`, outside and inside a curation proposal.
     let checked = source_with(|s| s.availability = Availability::Available);
     let mut touched = Touched {
@@ -573,7 +657,7 @@ fn a_challenge_is_not_laundered_out_by_removing_its_claim_and_writing_another_on
     ];
     assert_eq!(
         refused_files(&written, &held),
-        [(claim_path(&c.id), "community_status")]
+        [(claim_path(&c.id), "sources")]
     );
     // The proposal service says so at submit: with a page beside it the proposal is not a curation proposal.
     let was = |p: &str| held.get(p).cloned();

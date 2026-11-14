@@ -26,6 +26,25 @@ fn every_list_has_its_address_and_the_address_leads_back_to_it() {
 }
 
 #[test]
+fn the_status_rule_is_worded_with_the_removals_and_the_unreadable_files_it_refuses() {
+    // K29: the page's sentence says as much as the core's, in both languages.
+    let ja = crate::catalog::Lang::from_tag("ja").unwrap();
+    let en = crate::catalog::T::new(crate::catalog::EN).get(rule_key(Rule::Status));
+    for part in [
+        "removes a claim or a source",
+        "cannot be read",
+        "source link",
+        "outside a curation proposal",
+    ] {
+        assert!(en.contains(part), "{part}: {en}");
+    }
+    let ja = crate::catalog::T::new(ja).get(rule_key(Rule::Status));
+    for part in ["主張や出典の削除", "読み取れないファイル", "出典リンク"] {
+        assert!(ja.contains(part), "{part}: {ja}");
+    }
+}
+
+#[test]
 fn the_pages_and_the_api_name_the_same_lists() {
     use inklkunn_core::read::HealthList;
     let api: Vec<&str> = HealthList::ALL.iter().map(|l| l.slug()).collect();

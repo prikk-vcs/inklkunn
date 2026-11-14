@@ -442,7 +442,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `health.rule_anchor` | a reason in that list | "An expression names a page, or a paragraph of a page, that the wiki does not have." | "表現が、ウィキにないページまたはページ内の段落を指しています。" |
 | `health.rule_in_use` | a reason in that list | "The file is removed while another file still names it." | "別のファイルから指定されているファイルが削除されています。" |
 | `health.rule_owned` | a reason in that list | "The change also changes a page key that only the service writes." | "サービスだけが書くページのキーも変更されています。" |
-| `health.rule_status` | a reason in that list | "The change sets a community status, a review date or an availability, or changes or removes a source link a claim already has, outside a curation proposal." | "コミュニティの状態、確認日、入手できるかどうかの設定、または主張がすでに持つ出典リンクの変更・削除が、キュレーション提案ではない変更で行われています。" |
+| `health.rule_status` | a reason in that list | "The change sets a community status, a review date or an availability, changes or removes a source link a claim already has, removes a claim or a source that holds any of these, or replaces or removes a file that cannot be read, outside a curation proposal." | "コミュニティの状態、確認日、入手できるかどうかの設定、主張がすでに持つ出典リンクの変更・削除、これらを持つ主張や出典の削除、読み取れないファイルの置き換え・削除が、キュレーション提案ではない変更で行われています。" |
 | `title.links` | the title of the page that lists the pages linking to a page; `{page}` is its title | "Links to {page} · {wiki} · {product}" | "{page} へのリンク · {wiki} · {product}" |
 | `links.heading` | its heading | "Pages that link to {page}" | "{page} へのリンク元のページ" |
 | `links.missing` | under that heading when no page has the title | "No page has this title yet. These pages link to it." | "このタイトルのページはまだありません。次のページがリンクしています。" |
