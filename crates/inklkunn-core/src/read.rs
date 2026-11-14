@@ -64,6 +64,7 @@ mod preview;
 mod raw;
 mod rollback;
 mod sanitize;
+mod scratch;
 mod search;
 mod tip;
 mod why;
@@ -90,6 +91,7 @@ use inklkunn_store::{
 };
 
 use links::PageLinks;
+use scratch::{extract_name, remove_tree, sweep_leftovers};
 
 use crate::knowledge::index::{self as knowledge_index, KnowledgeIndex};
 
@@ -388,7 +390,6 @@ pub struct ReadService {
     block_pages: Mutex<HashMap<(WikiId, String), Vec<String>>>,
     /// What two views' tips differ in, held by the two blocks (handoff 005 K12).
     comparisons: compare::Comparisons,
-    scratch_names: AtomicU64,
     store_failures: AtomicU64,
     /// The proposal records, asked for the flags of the accepted revisions that recent changes filter on
     /// (RFC 004 D-10); `None` until [`ReadService::with_revision_flags`] gives them.
@@ -429,7 +430,6 @@ impl ReadService {
             knowledge: Mutex::new(Vec::new()),
             block_pages: Mutex::new(HashMap::new()),
             comparisons: compare::Comparisons::default(),
-            scratch_names: AtomicU64::new(0),
             store_failures: AtomicU64::new(0),
             flags: None,
             history: history::State::default(),
@@ -1148,8 +1148,13 @@ impl ReadService {
     }
 
     /// Run `work` over **one extract of the tip** in the wiki's scratch directory, and remove the directory
-    /// whatever came of it (the caller holds the wiki's build lock, so only one extract of a wiki runs at a
-    /// time).
+    /// whatever came of it (the caller holds the wiki's build lock, which orders the extracts of this service; other
+    /// services, in this process or in others, extract into the same directory under names of their own, and the
+    /// sweep removes only what a process that is gone left: see `scratch`).
+    ///
+    /// The extract must still be there when `work` is done: a root that has vanished means `work` read a tree that
+    /// something removed, and what it found (a `pages/` that is not there reads as no pages) is no answer. It is
+    /// **could not be read now**, never an empty tree (K51).
     fn with_tree<R>(
         &self,
         wiki: &WikiRecord,
@@ -1163,14 +1168,10 @@ impl ReadService {
         let scratch = self.layout.scratch_dir(&wiki.id);
         std::fs::create_dir_all(&scratch)
             .map_err(|e| scratch_error("creating the scratch directory", e))?;
-        // Only one build runs per wiki (the caller holds its lock), so anything of an earlier build still
-        // here was left by a process that died.
+        // What is left here by a process that is gone goes; a live process's extract, in this process or another,
+        // is not ours to remove.
         sweep_leftovers(&scratch);
-        let name = format!(
-            "index-{}-{}",
-            std::process::id(),
-            self.scratch_names.fetch_add(1, Ordering::Relaxed)
-        );
+        let name = extract_name();
         let bounds = ExtractBounds {
             max_bytes: Some(self.config.index_max_bytes),
             max_files: Some(self.config.index_max_files),
@@ -1185,13 +1186,24 @@ impl ReadService {
                 bounds,
             )
             .map_err(|e| self.storage_error(wiki, e));
+        let root = scratch.join(&name);
         let result = match extracted {
-            Ok(_) => work(&scratch.join(&name)),
+            Ok(_) => work(&root).and_then(|done| {
+                // Nothing but this call removes the root while it runs; if it is gone, `work` read what was left.
+                if std::fs::symlink_metadata(&root).is_ok_and(|m| m.is_dir()) {
+                    Ok(done)
+                } else {
+                    Err(scratch_error(
+                        "the extracted tree was removed while it was read",
+                        std::io::Error::from(std::io::ErrorKind::NotFound),
+                    ))
+                }
+            }),
             Err(e) => Err(e),
         };
-        // The directory goes whatever came of the build. A directory that will not go is swept by the next
-        // build; what was read is good.
-        remove_tree(&scratch.join(&name));
+        // The directory goes whatever came of the build. A directory that will not go stays until its process is
+        // gone and another build sweeps it; what was read is good.
+        remove_tree(&root);
         result
     }
 
@@ -1276,22 +1288,6 @@ impl ReadService {
         }
         ReadError::CouldNotBeReadNow(Cause::Storage(e))
     }
-}
-
-/// Remove directories an earlier, dead build left in the scratch directory.
-fn sweep_leftovers(scratch: &Path) {
-    let Ok(listing) = std::fs::read_dir(scratch) else {
-        return;
-    };
-    for item in listing.flatten() {
-        if item.file_name().to_string_lossy().starts_with("index-") {
-            remove_tree(&item.path());
-        }
-    }
-}
-
-fn remove_tree(dir: &Path) {
-    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[cfg(test)]

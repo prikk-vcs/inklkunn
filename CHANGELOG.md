@@ -1092,6 +1092,25 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   and the same bundle with a decided status still refused by the claim's file; mutation-checked (the rule applied again fails the
   first). No prikk-dependent test is added.
 
+- **K51 (handoff 005 corrections, fifth round): one extract cannot remove another's, and a vanished extract is an error.** The read
+  path's extract (`ReadService::with_tree`, which every index build, every acceptance's `check_change` and now `wiki import-folder`
+  go through) was named `index-<pid>-<n>` and swept **every** `index-*` directory in the wiki's scratch directory first, on the
+  assumption that the build lock made one build per wiki; that lock is in the process, and the command line builds a read service of
+  its own, so a second process (an import beside a running server, a dry run, which takes no lease) removed the other's tree in the
+  middle of its work, and a missing `pages/` or `knowledge/` read as an empty wiki (so an import could be judged against an empty
+  tip and overwrite an accepted status with *undecided*). Now each extract is named for the process that made it, `index-<pid>-<start
+  time>-<n>` (the pid and start time as the lease records name a holder; the count is the process's, so two services in one process
+  choose different names), and the sweep (`read/scratch.rs`) removes only the directories of processes that are **gone**: no
+  `/proc/<pid>`, or another start time than the name records (a pid given to another process since); never on a guess (no `/proc`,
+  a name of another shape) and never a live process's, this one's included. The earlier build's `index-<pid>-<n>` leftovers are swept
+  by their pid alone. `with_tree` checks that the extract's root is still there after the work: a root that has gone is
+  `could not be read now` (`Cause::Scratch`), never an empty tree. `lease::start_time_of(pid)` is the one reader of a process's start
+  time (the lease's own `start_time` uses it). Tests: the sweep on a gone pid, the earlier name, this process's, a name that is no
+  extract's; another live process's extract (the init process's) stays, a reused pid keeps nothing; two read services on one
+  layout, each extracting while the other builds in the middle of its work (neither is judged on an empty tree, each removes its own);
+  a root that vanished under the work. Mutation-checked: a sweep that removes every `index-*` fails the first three, a `with_tree`
+  without the check fails the last. No prikk-dependent test is added.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

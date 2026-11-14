@@ -38,10 +38,11 @@ use inklkunn_signer::{
 };
 use inklkunn_store::{AcceptanceId, AcceptanceStore, LeaseHolder, StoreError, WikiId};
 
-/// This process's start time, in clock ticks since the boot (`/proc/self/stat`, field 22): with its pid, it names
-/// one process and not the next one that is given the same number. `0` when `/proc` cannot say.
-fn start_time() -> u64 {
-    std::fs::read_to_string("/proc/self/stat")
+/// A process's start time, in clock ticks since the boot (`/proc/<pid>/stat`, field 22; `pid` is a number or
+/// `self`): with its pid, it names one process and not the next one that is given the same number. `None` when
+/// `/proc` cannot say (no such process, no `/proc`, a line of another shape).
+pub(crate) fn start_time_of(pid: &str) -> Option<u64> {
+    std::fs::read_to_string(format!("/proc/{pid}/stat"))
         .ok()
         .and_then(|stat| {
             // `pid (comm) state ...`: the command may hold spaces and parentheses, so read after the last `)`.
@@ -49,7 +50,11 @@ fn start_time() -> u64 {
             // `state` is field 3, so field 22 is the 20th word after the command.
             after.split_whitespace().nth(19)?.parse().ok()
         })
-        .unwrap_or(0)
+}
+
+/// This process's start time ([`start_time_of`]); `0` when `/proc` cannot say.
+pub(crate) fn start_time() -> u64 {
+    start_time_of("self").unwrap_or(0)
 }
 
 /// A name for this process in the lease-holder record: the caller's name for it (its pid, say), the process's start

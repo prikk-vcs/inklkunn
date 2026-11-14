@@ -351,9 +351,9 @@ fn a_restart_finds_the_index_in_the_derived_store_and_does_not_extract_again() {
 fn the_scratch_directory_is_empty_after_a_build_and_leftovers_are_swept() {
     let w = World::pages(&[("Home", &[], "x\n")]);
     let scratch = w.layout.scratch_dir(&w.wiki.id);
-    // A build that died left a directory behind.
-    std::fs::create_dir_all(scratch.join("index-1-0/pages")).expect("leftover");
-    std::fs::write(scratch.join("index-1-0/pages/Junk.md"), "x").expect("junk");
+    // A build of a process that is gone (no process has this pid) left a directory behind.
+    std::fs::create_dir_all(scratch.join("index-4294967295-1-0/pages")).expect("leftover");
+    std::fs::write(scratch.join("index-4294967295-1-0/pages/Junk.md"), "x").expect("junk");
     std::fs::write(scratch.join("keep-me"), "not ours").expect("other file");
     read_page(&w, "Home");
     let left: Vec<String> = std::fs::read_dir(&scratch)
