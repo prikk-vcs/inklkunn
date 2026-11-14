@@ -79,9 +79,15 @@ pub struct ExportFacts {
 /// `\r` is a line ending to CommonMark); nothing else is changed. Every CommonMark and GFM reader then shows the text as
 /// it was typed (`white-space: pre-wrap`) and renders no construct inside it: a link, an image, HTML, an autolink, a
 /// list, a table, a math span or an entity stays letters, whatever the reader's extensions. The text is the block's
-/// content less the one line feed that ends its last line.
+/// content less the one line feed that ends its last line, so a text that ends in a line feed shows a blank line more
+/// (the service stores a comment trimmed, and never writes such a text). **One character is carried as another:** U+0000
+/// is written as U+FFFD, which is what every CommonMark reader makes of it (K64); the service refuses a comment that
+/// holds one, so a thread of this wiki has none.
 pub fn markdown_text(text: &str) -> String {
-    let body = text.replace("\r\n", "\n").replace('\r', "\n");
+    let body = text
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .replace('\0', "\u{FFFD}");
     let (mut longest, mut run) = (0, 0);
     for c in body.chars() {
         run = if c == '`' { run + 1 } else { 0 };

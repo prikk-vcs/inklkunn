@@ -103,6 +103,7 @@ fn every_reason_a_proposal_can_be_unacceptable_has_a_distinct_stable_word() {
         ReasonTooLong,
         CommentEmpty,
         CommentTooLong,
+        CommentNul,
         BadAnchor,
         SupersedeSelf,
     ];

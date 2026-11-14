@@ -41,6 +41,7 @@ pub(crate) const fn invalid_word(why: Invalid) -> &'static str {
         Invalid::ReasonTooLong => "reason-too-long",
         Invalid::CommentEmpty => "comment-empty",
         Invalid::CommentTooLong => "comment-too-long",
+        Invalid::CommentNul => "comment-nul",
         Invalid::BadAnchor => "bad-anchor",
         Invalid::SupersedeSelf => "supersede-self",
         Invalid::KnowledgeCurated => "knowledge-curated",

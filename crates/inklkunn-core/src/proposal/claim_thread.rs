@@ -110,6 +110,12 @@ impl ProposalService {
             &Self::thread_resource(wiki, claim),
         )?;
         let threads = self.threads()?;
+        // A NUL is read as U+FFFD by every Markdown reader, so a bundle could not carry it as it was written (K64).
+        if new.body.contains('\0') {
+            return Err(Invalid::CommentNul.into());
+        }
+        // Stored trimmed (K64): a body never begins or ends in white space, so never in a line feed, and the text block
+        // a bundle writes it as gains no blank line.
         let body = new.body.trim();
         if body.is_empty() {
             return Err(Invalid::CommentEmpty.into());

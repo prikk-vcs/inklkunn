@@ -682,6 +682,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `invalid.reason_too_long` | when a reason is too long; `{limit}` is the size | "The reason is longer than {limit}." | "理由が {limit} を超えています。" |
 | `invalid.comment_empty` | when a comment says nothing | "A comment needs some words." | "コメントには文章が必要です。" |
 | `invalid.comment_too_long` | when a comment is too long; `{limit}` is the size | "The comment is longer than {limit}." | "コメントが {limit} を超えています。" |
+| `invalid.comment_nul` | when a comment on a claim holds the character U+0000 (a bundle could not carry it as it was written) | "A comment cannot hold the character U+0000. Take it out and send the comment again." | "コメントには文字 U+0000 を含められません。取り除いて、もう一度送ってください。" |
 | `title.proposals` | the title of the list of proposals | "Proposals · {wiki} · {product}" | "提案 · {wiki} · {product}" |
 | `proposals.heading` | its heading | "Proposals" | "提案" |
 | `proposals.intro` | under it; `{wiki}` is the wiki's name | "Changes to {wiki} are proposed here, read by others, and taken into the history by someone who is allowed to." | "{wiki} への変更はここで提案され、ほかの人に読まれ、権限のある人によって履歴に取り込まれます。" |

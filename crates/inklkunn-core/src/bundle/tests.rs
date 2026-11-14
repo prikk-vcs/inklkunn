@@ -111,9 +111,11 @@ fn text_block_of(markdown: &str) -> String {
         .to_owned()
 }
 
-/// The text with its line endings as LF, the one change the bundle makes.
+/// The text with its line endings as LF and a NUL as U+FFFD, the two changes the bundle makes.
 fn lf(text: &str) -> String {
-    text.replace("\r\n", "\n").replace('\r', "\n")
+    text.replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .replace('\0', "\u{FFFD}")
 }
 
 #[test]
@@ -192,12 +194,17 @@ fn a_texts_line_endings_are_lf_and_nothing_else_about_it_changes() {
         "```text\n  é &amp; \u{a0}  \n\ttab\n```"
     );
     assert_eq!(markdown_text(""), "```text\n\n```");
+    // The one character carried as another: U+0000 as U+FFFD, as every CommonMark reader reads it.
+    assert_eq!(markdown_text("a\0b"), "```text\na\u{FFFD}b\n```");
 }
 
 #[test]
 fn every_short_text_of_awkward_characters_round_trips_through_its_fence() {
-    // Every text up to five characters from an alphabet of what ends a line, opens a construct or is a fence.
-    let alphabet = ['`', '\n', '\r', ' ', '~', '#', '>', '-', '\u{a0}'];
+    // Every text up to five characters from an alphabet of what ends a line, opens a construct or is a fence, a tab and a
+    // NUL among it (K64).
+    let alphabet = [
+        '`', '\n', '\r', ' ', '\t', '\0', '~', '#', '>', '-', '\u{a0}',
+    ];
     let mut level = vec![String::new()];
     let mut all = level.clone();
     for _ in 0..5 {
@@ -213,7 +220,7 @@ fn every_short_text_of_awkward_characters_round_trips_through_its_fence() {
             .collect();
         all.extend(level.iter().cloned());
     }
-    assert!(all.len() > 60_000, "{}", all.len());
+    assert!(all.len() > 170_000, "{}", all.len());
     for text in all {
         let md = markdown_text(&text);
         assert_eq!(text_block_of(&md), lf(&text), "--- markdown\n{md:?}");

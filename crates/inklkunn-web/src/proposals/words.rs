@@ -158,6 +158,7 @@ pub(crate) fn invalid_text(t: T, why: Invalid) -> String {
             .msg(Key::InvalidCommentTooLong)
             .with("limit", size_label(t, MAX_COMMENT_BYTES as u64))
             .text(),
+        Invalid::CommentNul => t.get(Key::InvalidCommentNul),
     }
 }
 

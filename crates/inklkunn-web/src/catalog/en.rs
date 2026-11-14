@@ -1486,6 +1486,10 @@ pub const CATALOG: &[Entry] = &[
         "invalid.comment_too_long",
         "The comment is longer than {limit}.",
     ),
+    msg(
+        "invalid.comment_nul",
+        "A comment cannot hold the character U+0000. Take it out and send the comment again.",
+    ),
     msg("title.proposals", "Proposals · {wiki} · {product}"),
     msg("proposals.heading", "Proposals"),
     msg(

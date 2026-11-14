@@ -1232,6 +1232,14 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   page title is found. Tests: the numbering of a list with one claim cited twice and the numbering kept (one `Arc` for every page of a
   walk, a new one on the next day); a claim cited on a later page is named as the list numbers it.
 
+- **K64 (handoff 005 corrections, sixth round): small points.** A comment on a claim is stored trimmed, so a body never ends in a line
+  feed (the bundle's fenced text block would show a blank line more); a test sends bodies ending in `\n`, `\r\n`, tabs and other white
+  space and asserts none is stored with it. A comment that holds U+0000 is refused (`Invalid::CommentNul`, the API's reason
+  `comment-nul`, `invalid.comment_nul` in both languages with its glossary row): every Markdown reader reads it as U+FFFD, so a bundle
+  could not carry it as written; `bundle::markdown_text` writes it as U+FFFD explicitly and says so, for a body from any other
+  source. The exhaustive alphabet of the fence test gains `\t` and `\0` (177,156 texts). `docs/dependency-policy.md` gets the ledger
+  row of `pulldown-cmark` as a dev-dependency of `inklkunn-core` (the owner's decision 4: 210 → 210, deny and audit ok, test-only).
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

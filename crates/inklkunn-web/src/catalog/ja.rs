@@ -1555,6 +1555,10 @@ pub const CATALOG: &[Entry] = &[
         "invalid.comment_too_long",
         "コメントが {limit} を超えています。",
     ),
+    msg(
+        "invalid.comment_nul",
+        "コメントには文字 U+0000 を含められません。取り除いて、もう一度送ってください。",
+    ),
     msg("title.proposals", "提案 · {wiki} · {product}"),
     msg("proposals.heading", "提案"),
     msg(

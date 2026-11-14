@@ -258,6 +258,9 @@ pub enum Invalid {
     CommentEmpty,
     /// The text is over [`MAX_COMMENT_BYTES`].
     CommentTooLong,
+    /// A comment on a claim holds the character U+0000, which a Markdown reader reads as U+FFFD: it is refused rather than
+    /// kept as one thing and shown as another (K64).
+    CommentNul,
     /// The anchor names no block and quotes nothing, or one of its parts is out of bounds.
     BadAnchor,
     /// A proposal cannot supersede itself.

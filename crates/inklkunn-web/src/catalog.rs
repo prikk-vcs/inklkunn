@@ -932,6 +932,7 @@ keys! {
     InvalidReasonTooLong => "invalid.reason_too_long",
     InvalidCommentEmpty => "invalid.comment_empty",
     InvalidCommentTooLong => "invalid.comment_too_long",
+    InvalidCommentNul => "invalid.comment_nul",
     TitleProposals => "title.proposals",
     ProposalsHeading => "proposals.heading",
     ProposalsIntro => "proposals.intro",

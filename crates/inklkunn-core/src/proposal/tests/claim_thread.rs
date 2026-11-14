@@ -335,6 +335,39 @@ fn who_may_comment_is_who_may_comment_on_a_proposal() {
 }
 
 #[test]
+fn a_comment_is_stored_trimmed_so_a_body_never_ends_in_a_line_feed() {
+    // K64: the bundle writes a body as a fenced text block, which shows a text that ends in a line feed with a blank line
+    // more. The service never stores one: a body has no white space at either end, whatever it was sent with.
+    on_both(|e| {
+        let w = repository();
+        let s = threaded(e, &w, QuotaConfig::default());
+        for sent in [
+            "Where?\n",
+            "Where?\n\n\n",
+            "\n\nWhere?\r\n",
+            " \t Where? \t\n",
+            "Where?\n\u{a0}\n",
+            "Where?\u{2028}",
+            "Two\nlines\n",
+        ] {
+            let stored = s
+                .comment_on_claim(&e.author.principal, &e.wiki, None, &claim_id(1), say(sent))
+                .unwrap();
+            assert!(
+                !stored.body.ends_with(['\n', '\r']),
+                "{sent:?}: {:?}",
+                stored.body
+            );
+            assert!(!stored.body.starts_with(char::is_whitespace), "{sent:?}");
+            assert!(!stored.body.ends_with(char::is_whitespace), "{sent:?}");
+        }
+        for body in thread_bodies(&s, e, &e.author, &claim_id(1)).unwrap() {
+            assert!(!body.ends_with('\n'), "{body:?}");
+        }
+    });
+}
+
+#[test]
 fn what_is_not_a_comment_or_not_a_thread_is_refused_and_nothing_is_written() {
     on_both(|e| {
         let w = repository();
@@ -358,6 +391,14 @@ fn what_is_not_a_comment_or_not_a_thread_is_refused_and_nothing_is_written() {
             comment(&claim_id(1), say(&"x".repeat(MAX_COMMENT_BYTES + 1))),
             Err(Invalid::CommentTooLong.into())
         );
+        // U+0000 is read as U+FFFD by every Markdown reader, so a bundle could not carry it as written: refused (K64).
+        for nul in ["a\0b", "\0", "fine\n\0\n"] {
+            assert_eq!(
+                comment(&claim_id(1), say(nul)),
+                Err(Invalid::CommentNul.into()),
+                "{nul:?}"
+            );
+        }
         comment(&claim_id(1), say(&"x".repeat(MAX_COMMENT_BYTES))).expect("the longest comment");
         // A claim the wiki does not hold has no thread to join.
         assert_eq!(
