@@ -14,9 +14,9 @@
 //! | `INKLKUNN_ADMISSION_BUDGET_MIB` | (`serve`) the memory the prikk calls share | `1024` |
 //! | `INKLKUNN_ADMISSION_WAIT_MS` | (`serve`) how long a read waits for budget before it is told the service is busy | `2000` |
 //! | `INKLKUNN_TIP_TTL_SECS` | (`serve`) how long a view's newest state is held before prikk is asked again; a change made a moment ago may take this long to show on a page | `5` |
-//! | `INKLKUNN_INDEX_MAX_MIB` | (`serve`) the largest wiki, in MiB of everything it holds (attachments too), the title index is built from; a larger one is "could not be read now" until this is raised. **The build extracts the whole wiki into `<data dir>/wikis/…/scratch` for a moment, so the data directory needs that much free disk.** | `4096` |
-//! | `INKLKUNN_INDEX_MAX_FILES` | (`serve`) the most files the title index is built from | `200000` |
-//! | `INKLKUNN_PAGE_MAX_KIB` | (`serve`) the largest page source read, in KiB | `1024` |
+//! | `INKLKUNN_INDEX_MAX_MIB` | (`serve`, and `wiki import-folder` from the environment) the largest wiki, in MiB of everything it holds (attachments too), the title index is built from; a larger one is "could not be read now" until this is raised. **The build extracts the whole wiki into `<data dir>/wikis/…/scratch` for a moment, so the data directory needs that much free disk.** | `4096` |
+//! | `INKLKUNN_INDEX_MAX_FILES` | (`serve`, and `wiki import-folder` from the environment) the most files the title index is built from | `200000` |
+//! | `INKLKUNN_PAGE_MAX_KIB` | (`serve`, and `wiki import-folder` from the environment) the largest page source read, in KiB | `1024` |
 //! | `INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS` | (`serve`) `knowledge.review_after` (RFC 005 part 2 D-10): how many days after a person last reviewed a source it is listed on the health list *Sources to review*; a source marked unavailable, or never reviewed, is listed whatever this says. The wiki fetches nothing: a person looks at a source and says so in a proposal | `1096` (three years) |
 //! | `INKLKUNN_JOIN` | (`serve`) who may make an account without an invitation: `off` (accounts come only from invitations), `provider` (a first sign-in through the configured OpenID Connect provider makes one; **a public provider makes this open registration**) or `anyone` (also a local account with a password) | `off` |
 //! | `INKLKUNN_OIDC_ISSUER` | (`serve`) the OpenID Connect provider's issuer, an `https` address exactly as the provider publishes it (its discovery document is at `<issuer>/.well-known/openid-configuration`); switches provider sign-in on. Needs `curl`, the system CA bundle, `prlimit` and bubblewrap on the host | none (no provider) |
@@ -36,8 +36,10 @@ use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use inklkunn_auth::JoinPolicy;
+use inklkunn_core::read::ReadConfig;
 use inklkunn_prikk::sandbox::{BwrapConfig, Sandbox, probe_bwrap};
 
 /// A setting that cannot be used, and why.
@@ -296,33 +298,82 @@ impl Default for ReadSettings {
     }
 }
 
+/// A setting that is UTF-8 text, when it is set.
+fn text_setting(
+    get: &dyn Fn(&str) -> Option<OsString>,
+    name: &str,
+) -> Result<Option<String>, ConfigError> {
+    get(name)
+        .map(|v| {
+            v.into_string()
+                .map_err(|_| ConfigError(format!("{name} must be UTF-8 text")))
+        })
+        .transpose()
+}
+
+/// A setting that is a whole number from `min` to `max`, `default` when it is not set.
+fn number_setting(
+    get: &dyn Fn(&str) -> Option<OsString>,
+    name: &str,
+    default: u64,
+    min: u64,
+    max: u64,
+) -> Result<u64, ConfigError> {
+    match text_setting(get, name)? {
+        None => Ok(default),
+        Some(t) => t
+            .parse::<u64>()
+            .ok()
+            .filter(|n| (min..=max).contains(n))
+            .ok_or_else(|| {
+                ConfigError(format!(
+                    "{name} must be a whole number from {min} to {max} (it is `{t}`)"
+                ))
+            }),
+    }
+}
+
+impl ReadSettings {
+    /// Read the read service's settings through `get`: the one reading of them, for `serve` and for the commands that
+    /// build a read service of their own (`wiki import-folder` judges with the operator's limits, not the defaults).
+    pub fn load(get: &dyn Fn(&str) -> Option<OsString>) -> Result<Self, ConfigError> {
+        let number = |name: &str, default: u64, min: u64, max: u64| {
+            number_setting(get, name, default, min, max)
+        };
+        Ok(ReadSettings {
+            tip_ttl_secs: number("INKLKUNN_TIP_TTL_SECS", 5, 0, 3600)?,
+            index_max_mib: number("INKLKUNN_INDEX_MAX_MIB", 4096, 1, 1_048_576)?,
+            index_max_files: number("INKLKUNN_INDEX_MAX_FILES", 200_000, 1, 100_000_000)?,
+            page_max_kib: number("INKLKUNN_PAGE_MAX_KIB", 1024, 1, 1_048_576)?,
+            knowledge_review_after_days: number(
+                "INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS",
+                1096,
+                1,
+                36_500,
+            )?,
+        })
+    }
+
+    /// The limits a read service holds and reads under.
+    pub fn read_config(&self) -> ReadConfig {
+        ReadConfig {
+            tip_ttl: Duration::from_secs(self.tip_ttl_secs),
+            page_max_bytes: self.page_max_kib << 10,
+            index_max_bytes: self.index_max_mib << 20,
+            index_max_files: self.index_max_files,
+        }
+    }
+}
+
 impl WebSettings {
     /// Read the web settings through `get`.
     pub fn load(get: &dyn Fn(&str) -> Option<OsString>) -> Result<Self, ConfigError> {
-        let text = |name: &str| -> Result<Option<String>, ConfigError> {
-            get(name)
-                .map(|v| {
-                    v.into_string()
-                        .map_err(|_| ConfigError(format!("{name} must be UTF-8 text")))
-                })
-                .transpose()
-        };
+        let text = |name: &str| text_setting(get, name);
         let required = |name: &str| {
             text(name)?.ok_or_else(|| ConfigError(format!("{name} is not set; it is required")))
         };
-        let number = |name: &str, default: u64, min: u64, max: u64| -> Result<u64, ConfigError> {
-            match text(name)? {
-                None => Ok(default),
-                Some(t) => t
-                    .parse::<u64>()
-                    .ok()
-                    .filter(|n| (min..=max).contains(n))
-                    .ok_or_else(|| {
-                        ConfigError(format!(
-                            "{name} must be a whole number from {min} to {max} (it is `{t}`)"
-                        ))
-                    }),
-            }
+        let number = |name: &str, default: u64, min: u64, max: u64| {
+            number_setting(get, name, default, min, max)
         };
         Ok(WebSettings {
             bind: text("INKLKUNN_BIND")?.unwrap_or_else(|| "127.0.0.1:8080".to_owned()),
@@ -330,18 +381,7 @@ impl WebSettings {
             content_origin: required("INKLKUNN_CONTENT_ORIGIN")?,
             admission_budget_mib: number("INKLKUNN_ADMISSION_BUDGET_MIB", 1024, 256, 1_048_576)?,
             admission_wait_ms: number("INKLKUNN_ADMISSION_WAIT_MS", 2000, 10, 600_000)?,
-            read: ReadSettings {
-                tip_ttl_secs: number("INKLKUNN_TIP_TTL_SECS", 5, 0, 3600)?,
-                index_max_mib: number("INKLKUNN_INDEX_MAX_MIB", 4096, 1, 1_048_576)?,
-                index_max_files: number("INKLKUNN_INDEX_MAX_FILES", 200_000, 1, 100_000_000)?,
-                page_max_kib: number("INKLKUNN_PAGE_MAX_KIB", 1024, 1, 1_048_576)?,
-                knowledge_review_after_days: number(
-                    "INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS",
-                    1096,
-                    1,
-                    36_500,
-                )?,
-            },
+            read: ReadSettings::load(get)?,
             join: match text("INKLKUNN_JOIN")? {
                 None => JoinPolicy::Off,
                 Some(t) => JoinPolicy::parse(&t).ok_or_else(|| {

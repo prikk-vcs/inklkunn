@@ -100,7 +100,7 @@ pub(crate) fn run(
                     return 1;
                 }
             };
-            admin::execute(&command, &settings, now, out, err)
+            admin::execute(&command, &settings, get_env, now, out, err)
         }
         other => {
             let _ = writeln!(

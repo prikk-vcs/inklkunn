@@ -313,8 +313,13 @@ exec "$REAL" "$@"
     impl World {
         /// Run `inklkunn --dev-unconfined <args>` in this process; (status, stdout, stderr).
         pub fn cli(&self, args: &[&str]) -> (i32, String, String) {
+            self.cli_with(&[], args)
+        }
+
+        /// [`World::cli`] with more of the environment set.
+        pub fn cli_with(&self, more: &[(&str, &str)], args: &[&str]) -> (i32, String, String) {
             let s = &self.settings;
-            let env: HashMap<&str, OsString> = HashMap::from([
+            let mut env: HashMap<&str, OsString> = HashMap::from([
                 ("INKLKUNN_DATA_DIR", s.data_dir.clone().into_os_string()),
                 (
                     "INKLKUNN_SECRET_FILE",
@@ -324,6 +329,9 @@ exec "$REAL" "$@"
                 ("INKLKUNN_SEED_DIR", s.seed_dir.clone().into_os_string()),
                 ("INKLKUNN_PRIKK", s.prikk.clone()),
             ]);
+            for (name, value) in more {
+                env.insert(name, OsString::from(value));
+            }
             let mut argv = vec!["--dev-unconfined".to_owned()];
             argv.extend(args.iter().map(|a| (*a).to_owned()));
             let (mut out, mut err) = (Vec::new(), Vec::new());
@@ -2021,4 +2029,42 @@ fn metrics_prints_one_json_line_audits_the_act_and_refuses_an_empty_period() {
     let (status, _, err) = w.cli(&["wiki", "metrics", "nowhere"]);
     assert_eq!(status, 1);
     assert!(err.contains("no wiki `nowhere`"), "{err}");
+}
+
+/// The limits the operator sets for the server (`INKLKUNN_INDEX_MAX_FILES` and the others) are the limits an import is
+/// judged under (handoff 005 K54, V-d): under the defaults a bundle's knowledge files are judged and the dry run is clean;
+/// with the operator's cap at one file, the tip does not fit and the judgement says it could not be made, instead of
+/// passing under limits the server does not hold.
+#[test]
+fn an_import_is_judged_under_the_operators_read_limits_and_not_the_defaults() {
+    use inklkunn_core::knowledge::{Source, SourceId, source_path};
+    let Some(w) = world("limits") else { return };
+    let (status, _, err) = w.cli(&["wiki", "create", "notes", "--name", "Notes"]);
+    assert_eq!(status, 0, "{err}");
+    let f = dir(&w.tmp.0, "limits");
+    let id = SourceId::parse("019a1111-0000-7000-8000-000000000501").unwrap();
+    let mut source = Source::new(id.clone());
+    source.identity.title = Some("The Bridge Survey".to_owned());
+    put(
+        &f.0,
+        "wiki-bundle.yaml",
+        b"format: portable-wiki-bundle\nversion: '0.4'\nextensions_used:\n  - name: inklkunn-knowledge\n    version: \"1\"\n    directory: extensions/inklkunn-knowledge\n",
+    );
+    put(&f.0, "pages/Home.md", HOME.as_bytes());
+    put(&f.0, &source_path(&id), source.to_yaml().as_bytes());
+    let arg = f.0.to_str().unwrap();
+    let dry = ["wiki", "import-folder", "notes", arg, "--dry-run"];
+    let (status, out, err) = w.cli(&dry);
+    assert_eq!(status, 0, "under the defaults: {out}{err}");
+    assert!(out.contains("dry run: nothing was written"), "{out}");
+    let (status, out, err) = w.cli_with(&[("INKLKUNN_INDEX_MAX_FILES", "1")], &dry);
+    assert_eq!(status, 1, "{out}{err}");
+    assert!(
+        err.contains("the knowledge files could not be judged"),
+        "{out}{err}"
+    );
+    // A setting that is not a number stops the import before anything is opened.
+    let (status, _, err) = w.cli_with(&[("INKLKUNN_INDEX_MAX_FILES", "many")], &dry);
+    assert_eq!(status, 1);
+    assert!(err.contains("INKLKUNN_INDEX_MAX_FILES"), "{err}");
 }

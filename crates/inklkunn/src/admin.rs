@@ -27,6 +27,7 @@
 //! The M0 bootstrap signer is not here and cannot be: this crate does not enable the `bootstrap` feature of the
 //! signer, and a test reads the manifest to say so.
 
+use std::ffi::OsString;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -36,7 +37,7 @@ use inklkunn_core::export::is_checkpoint_not_recorded;
 use inklkunn_core::export::{ExportError, export_bundle_with, knowledge_records};
 use inklkunn_core::import::{ImportError, judge_knowledge, plan_folder, run_import, wiki_state};
 use inklkunn_core::proposal::{Period, operator_metrics};
-use inklkunn_core::read::{ReadConfig, ReadService};
+use inklkunn_core::read::ReadService;
 use inklkunn_core::recovery::needs_recovery;
 use inklkunn_core::{
     Authorizer, LeaseConfig, Leased, Maintenance, NoLedger, Recover, RecoverOptions, Recovery,
@@ -51,7 +52,7 @@ use inklkunn_store::{
     RootLayout, Slug, SqliteStore, Visibility, WikiId, WikiRecord, WikiStore,
 };
 
-use crate::config::{Settings, UNCONFINED_BANNER};
+use crate::config::{ReadSettings, Settings, UNCONFINED_BANNER};
 use crate::keys::{find_wiki, key_authority, make_private_directory};
 
 /// The operator at the host, in the audit trail.
@@ -379,11 +380,12 @@ fn absolute(p: &str) -> Result<PathBuf, String> {
 pub(crate) fn execute(
     command: &Command,
     settings: &Settings,
+    get_env: &dyn Fn(&str) -> Option<OsString>,
     now: i64,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> i32 {
-    match run(command, settings, now, out, err) {
+    match run(command, settings, get_env, now, out, err) {
         Ok(()) => 0,
         Err(why) => {
             let _ = writeln!(err, "inklkunn: {why}");
@@ -395,6 +397,7 @@ pub(crate) fn execute(
 fn run(
     command: &Command,
     settings: &Settings,
+    get_env: &dyn Fn(&str) -> Option<OsString>,
     now: i64,
     out: &mut dyn Write,
     err: &mut dyn Write,
@@ -416,6 +419,7 @@ fn run(
             replace_existing,
         } => import_folder(
             settings,
+            get_env,
             now,
             wiki,
             dir,
@@ -688,6 +692,7 @@ fn create(
 #[allow(clippy::too_many_arguments)]
 fn import_folder(
     settings: &Settings,
+    get_env: &dyn Fn(&str) -> Option<OsString>,
     now: i64,
     wiki: &str,
     dir: &str,
@@ -697,6 +702,10 @@ fn import_folder(
     err: &mut dyn Write,
 ) -> Result<(), String> {
     let folder = absolute(dir)?;
+    // The limits the server reads under (V-d): an import is judged under the same ones, not under the defaults.
+    let read_config = ReadSettings::load(get_env)
+        .map_err(|e| e.to_string())?
+        .read_config();
     let store = Arc::new(existing_store(settings)?);
     let record = find_wiki(&store, wiki)?;
     let env = environment(settings, err)?;
@@ -730,7 +739,7 @@ fn import_folder(
         store.clone(),
         store.clone(),
         env.layout.clone(),
-        ReadConfig::default(),
+        read_config,
         None,
     ));
     judge_knowledge(&mut plan, &reads, &env.storage, &env.layout, &record)

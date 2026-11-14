@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use inklkunn_auth::{AuthConfig, Authenticator, ProxyPolicy};
 use inklkunn_core::proposal::{ProposalService, QuotaConfig};
-use inklkunn_core::read::{ReadConfig, ReadService};
+use inklkunn_core::read::ReadService;
 use inklkunn_core::{Authorizer, IdentityAuthority, Inbox, Notifier, StoreAuthz, Verifier};
 use inklkunn_prikk::sandbox::Sandbox;
 use inklkunn_prikk::{Admission, PrikkCli, SizeHints, Storage};
@@ -131,12 +131,7 @@ fn prepare_with(
             store.clone(),
             store.clone(),
             layout.clone(),
-            ReadConfig {
-                tip_ttl: Duration::from_secs(web.read.tip_ttl_secs),
-                page_max_bytes: web.read.page_max_kib << 10,
-                index_max_bytes: web.read.index_max_mib << 20,
-                index_max_files: web.read.index_max_files,
-            },
+            web.read.read_config(),
             Some(hints),
         )
         // The flags of accepted changes (minor, machine-assisted) are the proposal records' (RFC 004 D-10).

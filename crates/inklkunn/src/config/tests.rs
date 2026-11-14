@@ -232,6 +232,52 @@ fn the_read_settings_have_the_defaults_the_design_names_and_named_refusals() {
 }
 
 #[test]
+fn the_read_limits_are_read_without_the_servers_origins_and_become_the_read_services_config() {
+    // `wiki import-folder` sets no origin: it reads only these (handoff 005 K54, V-d).
+    let none = ReadSettings::load(&env(&[])).unwrap();
+    assert_eq!(none, ReadSettings::default());
+    let defaults = ReadConfig::default();
+    let config = none.read_config();
+    assert_eq!(
+        (
+            config.tip_ttl,
+            config.page_max_bytes,
+            config.index_max_bytes,
+            config.index_max_files
+        ),
+        (
+            defaults.tip_ttl,
+            defaults.page_max_bytes,
+            defaults.index_max_bytes,
+            defaults.index_max_files
+        ),
+        "the defaults of the settings are the read service's own"
+    );
+    let set = ReadSettings::load(&env(&[
+        ("INKLKUNN_TIP_TTL_SECS", "0"),
+        ("INKLKUNN_INDEX_MAX_MIB", "512"),
+        ("INKLKUNN_INDEX_MAX_FILES", "1000"),
+        ("INKLKUNN_PAGE_MAX_KIB", "256"),
+    ]))
+    .unwrap();
+    let config = set.read_config();
+    assert_eq!(config.tip_ttl, Duration::ZERO);
+    assert_eq!(config.index_max_bytes, 512 << 20);
+    assert_eq!(config.index_max_files, 1000);
+    assert_eq!(config.page_max_bytes, 256 << 10);
+    // The server's reading of them is the same one.
+    let web = WebSettings::load(&env(&[
+        ("INKLKUNN_APP_ORIGIN", "https://a.example"),
+        ("INKLKUNN_CONTENT_ORIGIN", "https://b.example"),
+        ("INKLKUNN_INDEX_MAX_FILES", "1000"),
+    ]))
+    .unwrap();
+    assert_eq!(web.read.read_config().index_max_files, 1000);
+    let e = ReadSettings::load(&env(&[("INKLKUNN_PAGE_MAX_KIB", "0")])).unwrap_err();
+    assert!(e.0.contains("INKLKUNN_PAGE_MAX_KIB"), "{}", e.0);
+}
+
+#[test]
 fn joining_is_off_unless_the_operator_opens_it_and_only_three_words_open_it() {
     let base = [
         ("INKLKUNN_APP_ORIGIN", "https://a.example"),

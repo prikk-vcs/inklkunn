@@ -1111,6 +1111,18 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   a root that vanished under the work. Mutation-checked: a sweep that removes every `index-*` fails the first three, a `with_tree`
   without the check fails the last. No prikk-dependent test is added.
 
+- **K54, V-d (handoff 005 corrections, fifth round): the import judges with the operator's read limits.** `wiki import-folder` built
+  its read service (the one that extracts the tip to judge an import's knowledge files, dry run and run alike) with
+  `ReadConfig::default()`, so an import could pass or fail where the server, under the operator's `INKLKUNN_INDEX_MAX_MIB`,
+  `INKLKUNN_INDEX_MAX_FILES` and `INKLKUNN_PAGE_MAX_KIB`, would not. The read settings now have one reading, `ReadSettings::load`
+  (which needs no origin, as `serve`'s `WebSettings::load` calls it too), and one translation, `ReadSettings::read_config`, which
+  `serve` and the import both use; the command reads them from the environment before anything is opened (a value that is not a
+  number stops it by name; `--config FILE` is `serve`'s, as for the other settings of the administrative commands). `admin::execute`
+  takes the environment for it. Tests: the settings without origins and their translation (`config/tests.rs`), and the command
+  itself against a wiki on prikk: a dry run of a bundle with a source is clean under the defaults and "the knowledge files could not
+  be judged" with `INKLKUNN_INDEX_MAX_FILES=1` (mutation-checked: the default config back in the import fails it). One prikk-dependent
+  test is added.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the
