@@ -305,6 +305,21 @@ impl WorkText {
     }
 }
 
+/// A browser takes the line breaks out of the value of a one-line field, so a text that has one in the base comes back
+/// without it. Where the text sent is the base's with its breaks taken out, the person changed nothing: it is the
+/// base's (K59).
+fn unbroken(sent: &mut Work, was: &Work) {
+    let keep = |sent: &mut String, was: &str| {
+        if sent != was && *sent == was.replace(['\n', '\r'], "") {
+            was.clone_into(sent);
+        }
+    };
+    keep(&mut sent.title, &was.title);
+    keep(&mut sent.author, &was.author);
+    keep(&mut sent.date, &was.date);
+    keep(&mut sent.reference, &was.reference);
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Op {
     Changes,
@@ -339,13 +354,15 @@ fn read(fields: &HashMap<String, String>) -> Option<Submitted> {
                 work: None,
             });
         }
-        // What a checked source is: offered only for a source that was checked, so a form without it says nothing.
+        // What a source is: offered for a source whose file could be read, so a form without it says nothing. The texts
+        // are kept **as sent** (K59): the core compares each with what the source has and cleans only one that differs,
+        // so a title the form carried back with a space at its end is not a change.
         if let Some(title) = one(fields::C_TITLE) {
-            let text = |what: &str| one(what).unwrap_or("").trim().to_owned();
+            let text = |what: &str| one(what).unwrap_or("").to_owned();
             works.push((
                 source,
                 WorkText {
-                    title: title.trim().to_owned(),
+                    title: title.to_owned(),
                     author: text(fields::C_AUTHOR),
                     date: text(fields::C_DATE),
                     reference_form: ReferenceForm::from_word(one(fields::C_REF_FORM)?)?,
@@ -898,7 +915,10 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
     let mut mistake = None;
     for (id, text) in &sub.works {
         match text.work() {
-            Ok(work) => {
+            Ok(mut work) => {
+                if let Some(old) = cited.iter().find(|s| s.id == *id) {
+                    unbroken(&mut work, &Work::of(old));
+                }
                 if let Some(edit) = sources.iter_mut().find(|e| e.source == *id) {
                     edit.work = Some(work);
                 }

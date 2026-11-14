@@ -1328,6 +1328,15 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   command line end to end against a real wiki (the file's cap refuses a 3 KiB page at 1 KiB and takes it at 8 KiB, the environment
   wins over the file, a missing file and a misspelt name are refused). The existing test of the operator's index limits now sees the
   refusal at the extract of the wiki's current files (K55 bounds it), before the plan.
+- **K59 (handoff 005 corrections, sixth round): a curation changes only the fields it names.** Each part of what a source is (title,
+  author, date, reference, `superseded_by`) is compared with what the source has and replaced **on its own**; a part that is as it
+  was is never cleaned, judged again or rewritten, so a title with a space at its end or a line break in it (an import, older data)
+  stays byte for byte when only the status is curated, and an API call that names only `author` is not refused for a control
+  character in a `title` it never sent. The form keeps its texts as sent (no trimming before the comparison) and takes a browser's
+  removal of a line break from a one-line field for no change. In the write API every source member but `source` is optional and
+  left out means unchanged: `reviewed: ""` and `availability: unknown` clear, and the OpenAPI document says so. Tests: the core for
+  each field, the form for the trailing space and the line break as a browser sends them, the API for `author` alone, `title`
+  alone (the review day stays) and the two ways to clear.
 
 ## [0.2.0] — 2026-11-04
 

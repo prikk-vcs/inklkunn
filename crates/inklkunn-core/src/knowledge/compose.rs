@@ -18,9 +18,9 @@ use inklkunn_markup::{BlockKind, blocks, frontmatter, parse_metadata};
 
 use super::yaml::{MAX_LINKS, MAX_TEXT_CHARS, is_day};
 use super::{
-    AnchorState, Availability, Bearing, Claim, ClaimId, Expression, Identity, Lifecycle, Link,
-    Reference, ReferenceForm, Source, SourceId, SourceKind, SourceLink, Standing, StatementKind,
-    anchor_state, claim_path, source_path,
+    AnchorState, Availability, Bearing, Claim, ClaimId, Expression, Lifecycle, Link, Reference,
+    ReferenceForm, Source, SourceId, SourceKind, SourceLink, Standing, StatementKind, anchor_state,
+    claim_path, source_path,
 };
 
 /// Why a claim or a source could not be written from what a person gave. Each is one plain fact the surface words;
@@ -511,14 +511,14 @@ pub fn curate(
             .ok_or(Mistake::UnknownSource)?;
         let mut source = old.clone();
         source.availability = e.availability;
-        if let Some(work) = e.work.as_ref().filter(|w| **w != Work::of(old)) {
+        if let Some(work) = &e.work {
+            // Who and what an unchecked source is stays the page edit's.
             let mut changed = old.clone();
             set_work(&mut changed, work)?;
             if changed.identity != old.identity
                 || changed.reference != old.reference
                 || changed.superseded_by != old.superseded_by
             {
-                // Who and what an unchecked source is stays the page edit's.
                 if !is_checked(old) {
                     return Err(Mistake::NotChecked);
                 }
@@ -549,21 +549,35 @@ pub fn curate(
     Ok(out)
 }
 
-/// `source` with who and what it is, where it is found and what replaces it as `work` says, each text cleaned as a new
-/// source's are. It still names a work (a title or a reference), and is not replaced by itself.
+/// `source` with each part of who and what it is, where it is found and what replaces it that `work` says differently
+/// from what the source has now (K59), **each on its own**: a part that is as the source has it is not cleaned, judged
+/// again or rewritten, so a title with a space at its end, or a line break in it (from an import or older data), stays
+/// byte for byte when only something else is curated. A part that does change is cleaned as a new source's texts are. The
+/// source still names a work (a title or a reference), and is not replaced by itself.
 fn set_work(source: &mut Source, work: &Work) -> Result<(), Mistake> {
-    source.identity = Identity {
-        title: clean_text(&work.title, "title")?,
-        author: clean_text(&work.author, "author")?,
-        date: clean_text(&work.date, "date")?,
-    };
-    source.reference = clean_reference(work.reference_form, &work.reference)?;
-    if work.superseded_by.as_ref() == Some(&source.id) {
-        return Err(Mistake::ReplacedByItself);
+    let was = Work::of(source);
+    let identity = work.title != was.title || work.author != was.author || work.date != was.date;
+    let reference = work.reference_form != was.reference_form || work.reference != was.reference;
+    if work.title != was.title {
+        source.identity.title = clean_text(&work.title, "title")?;
     }
-    if source.identity.title.is_none() && source.reference.is_none() {
+    if work.author != was.author {
+        source.identity.author = clean_text(&work.author, "author")?;
+    }
+    if work.date != was.date {
+        source.identity.date = clean_text(&work.date, "date")?;
+    }
+    if reference {
+        source.reference = clean_reference(work.reference_form, &work.reference)?;
+    }
+    if work.superseded_by != was.superseded_by {
+        if work.superseded_by.as_ref() == Some(&source.id) {
+            return Err(Mistake::ReplacedByItself);
+        }
+        source.superseded_by.clone_from(&work.superseded_by);
+    }
+    if (identity || reference) && source.identity.title.is_none() && source.reference.is_none() {
         return Err(Mistake::SourceSaysNothing);
     }
-    source.superseded_by.clone_from(&work.superseded_by);
     Ok(())
 }

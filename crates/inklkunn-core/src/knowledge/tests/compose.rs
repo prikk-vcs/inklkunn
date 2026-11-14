@@ -751,3 +751,77 @@ fn what_an_unchecked_source_is_stays_the_page_edits_and_the_texts_are_those_of_a
     line.title = "two\nlines".to_owned();
     assert_eq!(refused(line), Err(Mistake::ControlCharacter("title")));
 }
+
+/// A checked source whose title has a space at its end and a line break in it, as an import or older data may leave it.
+fn untidy() -> Source {
+    let mut source = checked();
+    source.identity.title = Some("Foo \nbar ".to_owned());
+    source.identity.author = Some("Noor Aziz ".to_owned());
+    source
+}
+
+fn written(files: &[(String, String)], source: &Source) -> Source {
+    let path = source_path(&source.id);
+    let (_, text) = files
+        .iter()
+        .find(|(p, _)| *p == path)
+        .expect("a source file");
+    match read_file(&path, text.as_bytes()).expect("a file") {
+        File::Source(s) => *s,
+        File::Claim(_) => panic!("a claim"),
+    }
+}
+
+#[test]
+fn a_curation_compares_and_replaces_each_identity_field_on_its_own_and_cleans_only_what_changed() {
+    let (claim, _) = cited_claim();
+    let now = digest_of("new");
+    let source = untidy();
+    let cited = std::slice::from_ref(&source);
+
+    // Status only: the source is not written, whatever is in its title.
+    let mut edit = worked(&claim, &source, Work::of(&source));
+    edit.status = Standing::Contested;
+    let files = curate(&claim, cited, Some(&now), &edit).expect("curated");
+    assert_eq!(files.len(), 1, "only the claim is written");
+    assert_eq!(
+        files.first().map(|(p, _)| p.as_str()),
+        Some(claim_path(&claim.id).as_str())
+    );
+
+    // Only the author named: the title (a space and a line break in it) is not cleaned, refused or rewritten.
+    let mut work = Work::of(&source);
+    work.author = "Noor Aziz-Bell".to_owned();
+    let files = curate(&claim, cited, Some(&now), &worked(&claim, &source, work)).expect("curated");
+    let after = written(&files, &source);
+    assert_eq!(after.identity.title, source.identity.title);
+    assert_eq!(after.identity.author.as_deref(), Some("Noor Aziz-Bell"));
+    assert_eq!(after.reference, source.reference);
+
+    // A title that is named is cleaned as a new one is, and the author, left as it is, keeps its space.
+    let mut work = Work::of(&source);
+    work.title = "  Foo bar ".to_owned();
+    let files = curate(&claim, cited, Some(&now), &worked(&claim, &source, work)).expect("curated");
+    let after = written(&files, &source);
+    assert_eq!(after.identity.title.as_deref(), Some("Foo bar"));
+    assert_eq!(after.identity.author, source.identity.author);
+
+    // A title with a line break that is named is still refused: it is a change, and a change is cleaned.
+    let mut work = Work::of(&source);
+    work.title = "two\nlines".to_owned();
+    assert_eq!(
+        curate(&claim, cited, Some(&now), &worked(&claim, &source, work)),
+        Err(Mistake::ControlCharacter("title"))
+    );
+
+    // The reference and the successor are compared on their own too.
+    let mut work = Work::of(&source);
+    work.superseded_by = Some(source_id(2));
+    let files = curate(&claim, cited, Some(&now), &worked(&claim, &source, work)).expect("curated");
+    let after = written(&files, &source);
+    assert_eq!(after.superseded_by, Some(source_id(2)));
+    assert_eq!(
+        (after.identity.clone(), after.reference.clone()),
+        (source.identity.clone(), source.reference.clone())
+    );
+}

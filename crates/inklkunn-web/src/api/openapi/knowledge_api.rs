@@ -247,21 +247,21 @@ pub(super) fn schemas() -> Map<String, Value> {
     out.insert(
         "CurationSource".to_owned(),
         object(
-            "What a person checked about a source the claim cites and, once it was checked, who and what it is. A member left out is left as the base has it; an empty text is nothing.",
+            "What a person checked about a source the claim cites and who and what it is. Every member but `source` may be left out, and a member left out is left as the base has it; an empty text is nothing.",
             json!({
                 "source": {"type": "string", "description": "A source the claim cites."},
-                "reviewed": {"type": "string", "description": "The day a person last checked it, `YYYY-MM-DD`; the empty text for none."},
-                "availability": {"type": "string", "enum": words(Availability::ALL, Availability::word), "description": "Whether it can be had, as the person who checked says."},
-                "title": {"type": "string", "description": "Its title. Only for a source that was checked (`not-checked`); until then a page edit changes it."},
-                "author": {"type": "string", "description": "Its author or publisher. Only for a source that was checked."},
-                "date": {"type": "string", "description": "Its date, as written. Only for a source that was checked."},
-                "reference": {"type": "object", "description": "Where it is found. Only for a source that was checked. A source needs a title or a reference.", "properties": {
+                "reviewed": {"type": "string", "description": "The day a person last checked it, `YYYY-MM-DD`. Left out: the base's day stays. The empty text clears it."},
+                "availability": {"type": "string", "enum": words(Availability::ALL, Availability::word), "description": "Whether it can be had, as the person who checked says. Left out: the base's stays. `unknown` clears it."},
+                "title": {"type": "string", "description": "Its title. Only for a source that was checked (`not-checked`); until then a page edit changes it. Left out, or the same as the base's: unchanged (it is not cleaned or compared again). The empty text for none."},
+                "author": {"type": "string", "description": "Its author or publisher. Only for a source that was checked. Left out: unchanged. The empty text for none."},
+                "date": {"type": "string", "description": "Its date, as written. Only for a source that was checked. Left out: unchanged. The empty text for none."},
+                "reference": {"type": "object", "description": "Where it is found. Only for a source that was checked. Left out: unchanged. A source needs a title or a reference.", "properties": {
                     "type": {"type": "string", "enum": words(ReferenceForm::ALL, ReferenceForm::word)},
                     "value": {"type": "string", "description": "The reference; the empty text for none."},
                 }, "required": ["type", "value"], "additionalProperties": false},
-                "superseded_by": {"type": "string", "description": "The id of the source that replaces it, a source of this wiki (`unknown-successor`); the empty text for none. Only for a source that was checked."},
+                "superseded_by": {"type": "string", "description": "The id of the source that replaces it, a source of this wiki (`unknown-successor`). Only for a source that was checked. Left out: unchanged. The empty text for none."},
             }),
-            &[],
+            &["reviewed", "availability", "title", "author", "date", "reference", "superseded_by"],
         ),
     );
     out.insert(

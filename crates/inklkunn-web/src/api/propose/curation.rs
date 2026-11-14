@@ -126,13 +126,16 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
             SourceId::parse,
             &format!("{at}.source"),
         )?;
-        let reviewed = source.text("reviewed")?.trim().to_owned();
-        let availability = word(
-            &mut source,
-            "availability",
-            Availability::from_word,
-            &format!("{at}.availability"),
-        )?;
+        // Both are left as the base has them when they are left out (K59); `""` and `unknown` clear.
+        let reviewed = source
+            .opt_text("reviewed")?
+            .map(|day| day.trim().to_owned());
+        let availability = source
+            .opt_text("availability")?
+            .map(|w| {
+                Availability::from_word(&w).ok_or_else(|| invalid(&format!("{at}.availability")))
+            })
+            .transpose()?;
         let work = WorkSent {
             title: source.opt_text("title")?,
             author: source.opt_text("author")?,
@@ -198,8 +201,13 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
     for (id, reviewed, availability, work) in named {
         let old = cited.iter().find(|s| s.id == id);
         sources.push(SourceEdit {
-            reviewed,
-            availability,
+            reviewed: reviewed.unwrap_or_else(|| {
+                old.and_then(|s| s.last_reviewed.as_ref())
+                    .map(|r| r.date.clone())
+                    .unwrap_or_default()
+            }),
+            availability: availability
+                .unwrap_or_else(|| old.map_or(Availability::Unknown, |s| s.availability)),
             work: old.and_then(|old| work.over(Work::of(old))),
             source: id,
         });

@@ -312,7 +312,7 @@ async fn a_curation_is_judged_as_a_write_is_the_claim_the_words_the_base_the_rol
             "links[0].bearing",
         ),
         (
-            json!({"claim": claim_id(1).to_string(), "summary": "x", "submit": true, "sources": [{"source": source_id(1).to_string(), "availability": "available"}]}),
+            json!({"claim": claim_id(1).to_string(), "summary": "x", "submit": true, "sources": [{"source": source_id(1).to_string(), "reviewed": 20231101}]}),
             "sources[0].reviewed",
         ),
         (
@@ -584,13 +584,19 @@ fn two_pages() -> Cast {
 /// [`cast`], with the first source **checked** (a review day and an availability): from then on who and what it is
 /// belongs to curation.
 fn cast_checked() -> Cast {
+    cast_checked_titled("The bridge survey")
+}
+
+/// [`cast_checked`], the first source titled exactly `title` (a space at its end or a line break in it, as an import or
+/// older data may leave it).
+fn cast_checked_titled(title: &str) -> Cast {
     let mut c = claim(1, Standing::Unknown, None, SAID);
     c.sources = vec![
         link(1, Link::Supports, Bearing::Direct, SAID),
         link(2, Link::Challenges, Bearing::Partial, SAID),
     ];
     let mut first = source(1, SourceKind::Primary);
-    first.identity.title = Some("The bridge survey".to_owned());
+    first.identity.title = Some(title.to_owned());
     first.availability = inklkunn_core::knowledge::Availability::Available;
     first.last_reviewed = Some(inklkunn_core::knowledge::Reviewed {
         date: "2026-11-01".to_owned(),
@@ -934,5 +940,81 @@ async fn a_curation_that_cannot_be_sent_leaves_no_draft_behind() {
         inklkunn_store::ProposalStore::open_count(&*c.w.store, &c.w.wiki.id, &c.contributor)
             .unwrap(),
         1
+    );
+}
+
+#[tokio::test]
+async fn a_curation_changes_only_the_members_it_names_and_an_empty_day_or_unknown_clears() {
+    // K59: a title with a space at its end and a line break in it is never cleaned, judged or rewritten by a body that
+    // does not name it, and the review day stays unless the body says otherwise.
+    let untidy = "The bridge \nsurvey ";
+    let one = source_id(1).to_string();
+    let c = cast_checked_titled(untidy);
+    let a = propose(
+        &c,
+        json!({"sources": [{"source": one, "author": "Noor Aziz"}]}),
+    )
+    .await;
+    assert_eq!(a.status, 201, "{}", a.text());
+    let files = stored(&c, &a);
+    assert_eq!(files.len(), 1, "only the source: {files:?}");
+    let only = source_in(&files, 1);
+    assert_eq!(only.identity.title.as_deref(), Some(untidy));
+    assert_eq!(only.identity.author.as_deref(), Some("Noor Aziz"));
+    assert_eq!(
+        only.last_reviewed.as_ref().map(|r| r.date.as_str()),
+        Some("2026-11-01")
+    );
+    assert_eq!(
+        only.availability,
+        inklkunn_core::knowledge::Availability::Available
+    );
+
+    // Only a title: the review day and the answer stay.
+    let c = cast_checked();
+    let a = propose(
+        &c,
+        json!({"sources": [{"source": one, "title": "The bridge, revised"}]}),
+    )
+    .await;
+    assert_eq!(a.status, 201, "{}", a.text());
+    let revised = source_in(&stored(&c, &a), 1);
+    assert_eq!(
+        revised.identity.title.as_deref(),
+        Some("The bridge, revised")
+    );
+    assert_eq!(
+        revised.last_reviewed.as_ref().map(|r| r.date.as_str()),
+        Some("2026-11-01")
+    );
+    assert_eq!(
+        revised.availability,
+        inklkunn_core::knowledge::Availability::Available
+    );
+
+    // `reviewed: ""` and `availability: unknown` clear, and each on its own.
+    let a = propose(&c, json!({"sources": [{"source": one, "reviewed": ""}]})).await;
+    assert_eq!(a.status, 201, "{}", a.text());
+    let cleared = source_in(&stored(&c, &a), 1);
+    assert_eq!(
+        (cleared.last_reviewed.clone(), cleared.availability),
+        (None, inklkunn_core::knowledge::Availability::Available)
+    );
+    let a = propose(
+        &c,
+        json!({"sources": [{"source": one, "availability": "unknown"}]}),
+    )
+    .await;
+    assert_eq!(a.status, 201, "{}", a.text());
+    let cleared = source_in(&stored(&c, &a), 1);
+    assert_eq!(
+        (
+            cleared.last_reviewed.as_ref().map(|r| r.date.as_str()),
+            cleared.availability
+        ),
+        (
+            Some("2026-11-01"),
+            inklkunn_core::knowledge::Availability::Unknown
+        )
     );
 }

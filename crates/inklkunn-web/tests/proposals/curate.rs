@@ -876,3 +876,50 @@ async fn what_an_unchecked_source_is_is_not_changed_here_and_what_replaces_a_sou
 
     assert!(all.is_empty(), "nothing was sent");
 }
+
+#[tokio::test]
+async fn a_status_alone_is_curated_without_touching_a_title_the_form_carried_back_as_the_browser_sends_it()
+ {
+    // K59: a checked source whose title has a space at its end and a line break in it (an import, older data). A browser
+    // keeps the space and takes the line break out of the field's value; neither is a change a person made.
+    let s = scene();
+    let mut source = checked_source();
+    source.identity.title = Some("An old \ntitle ".to_owned());
+    s.w.fake
+        .set_files(&[(source_path(&source.id).as_str(), source.to_yaml().as_str())]);
+    let base = with(
+        unchanged(&s, 2),
+        &[
+            ("c0_reviewed", "2026-11-01"),
+            ("c0_availability", "available"),
+            ("c0_author", ""),
+            ("c0_date", ""),
+            ("c0_ref_form", "url"),
+            ("c0_ref", ""),
+            ("c0_superseded_by", ""),
+            ("status", "contested"),
+        ],
+    );
+    for sent in ["An old \ntitle ", "An old title "] {
+        let fields = with(base.clone(), &[("c0_title", sent)]);
+        let made = send(&s, FORM, &s.writer, &fields).await;
+        let files = files_of(&s, &location(&made));
+        assert_eq!(
+            paths(&files),
+            [claim_path(&s.claim.id).as_str()],
+            "{sent:?}: the status alone is proposed, and the source is not written"
+        );
+    }
+    // A title the person did change is a change, and is cleaned like a new source's.
+    let fields = with(
+        base,
+        &[("c0_title", "  A new title "), ("status", "unknown")],
+    );
+    let made = send(&s, FORM, &s.writer, &fields).await;
+    let files = files_of(&s, &location(&made));
+    assert_eq!(paths(&files), [source_path(&source.id).as_str()]);
+    assert_eq!(
+        source_of(&files).identity.title.as_deref(),
+        Some("A new title")
+    );
+}
