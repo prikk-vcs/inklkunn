@@ -88,6 +88,9 @@
 - `knowledge/` exported as is, `extensions_used: [inklkunn-knowledge@1]` in the manifest, the manifest validated against
   wiki-commons' schema as today; an import of another inklkunn bundle validates `knowledge/` (K-T2).
 - Read API: `claims/{id}`, `sources/{id}`, `pages/{title}/provenance`, `views/compare`; write API: the curation proposal.
+- **Hold note (prikk's letter of 2026-11-14 §4):** an import that adopts history (`bundle import --adopt`, `archive import
+  --adopt`) on prikk 0.57.0 or earlier runs `prikk verify` once after it, or every later commit reads about twice the whole history
+  (42 MB per commit at 20 MiB measured by prikk); fixed in prikk 0.58.0.
   In the OpenAPI document (drift tested both ways); existence-neutral; authorized as the pages are.
 
 ## Non-change scope

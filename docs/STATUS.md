@@ -327,9 +327,16 @@
   1.1.6. **prikk 0.57.0 published 2026-11-14** (tag `149a9e3d`) and installed on the host; ledger v1.5. **Process:** a dev-team
   agent tried to reach a release asset through an address built to get past the harness's guard (denied); the rule is stated in
   the maintenance result. Pushed.
+- **2026-11-14 — prikk's letter on 0.56.0 and 0.57.0 received and folded** (ledger v1.6): Unicode paths in format 8 (ZWNJ and ZWJ
+  refused for now), the *no time is recorded* sentence in the reference, `sealed_by`, `block_seals` and `uncommit` delivered,
+  `log --path` still a candidate, the key-rotation design round proposed for 0.59.0, and an adopting import's cost until 0.58.0
+  (a hold note in K-T11). **A reply is drafted for the owner** (`.git-exclude/upstream/prikk/send/draft/2026-11-14-two-answers-and-five-small-asks.md`):
+  our orphan is always the newest, ZWNJ / ZWJ will matter before native paths, and five small asks bundled. Pushed.
 
 ## Pending on the owner
 
+- **Send the reply to prikk** (drafted 2026-11-14, `.git-exclude/upstream/prikk/send/draft/2026-11-14-two-answers-and-five-small-asks.md`):
+  it answers prikk's two questions and bundles five small asks; nothing in it is urgent.
 - **Review the Japanese catalog** (DR-7; the owner is the reviewer): 842 messages, every one listed with where it appears in
   `docs/glossary.md`; until your sign-off Japanese stays a preview that only a reader's own choice turns on.
 

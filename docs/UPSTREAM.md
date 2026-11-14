@@ -42,9 +42,12 @@ staying true to all three (RFC 010 D-1, D-2, D-8). The record of what each upstr
   `publication-trust`), so no retirement's record can excuse the retired key's findings beside a pending cleanup, and recovery
   stops with `cleanup-beside-trust-findings`; what does prikk recommend for a pending cleanup on a repository whose trust set
   changed.
-- **For the next bundled letter (2026-11-13):** `ref complete --plan-only` needs the maintainer seed, so completing an interrupted
-  `branch create` decrypts the seed twice (handoff 005 K4); a plan that writes nothing should not need it. And no release letter for
-  0.56.0 or 0.57.0 has reached us: the re-baseline works from prikk's CHANGELOG (maintenance handoff M3).
+- **Letter of 2026-11-14 received** (`receive/2026-11-14-0-56-0-and-0-57-0-are-out.md`; 0.56.0 and 0.57.0 as shipped) and folded
+  into the ledger (v1.6). **Reply drafted the same day for the owner** (`send/draft/2026-11-14-two-answers-and-five-small-asks.md`):
+  the orphan is always the newest (no option M needed); ZWNJ and ZWJ matter before any move to native paths; five asks
+  (`ref complete --plan-only` needs the seed; `uncommit --plan-only` takes the lock; is `block_seals` whole when `verify` fails
+  early; the queue's patch ids in the cleanup-pending state; the empty lock file and the lone metadata debris); the signer field
+  in `branch --format json` no longer needed. This bundles every candidate below.
 - **Open asks as of 2026-10-31: none outstanding; prikk will write about 0.57.0.**
   `send/2026-10-31-block-signer-time-path-history-and-an-orphan-queued-patch.md` (sent by the owner; four asks) was
   answered the same day (`receive/2026-10-31-four-asks-where-each-lands.md`): each block's `sealed_by` in `log` and
