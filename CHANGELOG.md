@@ -547,6 +547,13 @@ Dependency updates (the architect, 2026-11-14).
   `content`, no picture, no number. The stylesheet test reads rules for `cite` and `bdi` as it reads those for a claim
   (no colour that singles out), and a new check holds that both have a border (it fails on a missing, `none` or `0`
   border). No other test was loosened. No prikk-dependent test is added.
+- **K28 (handoff 005 corrections, third): a reconfirm is judged on the claim as the acceptance leaves it.** The record of
+  *re-confirmed* compares every judgement a written claim file carries with the wording of the places **the written file
+  names**, read in the pages of the accepted result (a curation proposal writes none, so the tip's), and not with the
+  places the tip's own file for the claim named: a reconfirm that judges on a paragraph and takes that paragraph out of the
+  claim's places records nothing. A decided community status that names no wording is a judgement that fails. Tests: the
+  rule on its own, and a real history in which a reconfirm drops its place and one whose decided status names no wording
+  re-confirm nothing while the complete one does. No new prikk-dependent test file; one new prikk-dependent test.
 
 ## [0.2.0] — 2026-11-04
 

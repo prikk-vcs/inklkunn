@@ -16,15 +16,20 @@ use crate::authorize::Principal;
 use crate::knowledge::onpage::touches;
 use crate::knowledge::touched::{How, PageChange};
 use crate::knowledge::{
-    Claim, ClaimId, Digest, Family, File, KNOWLEDGE_DIR, claim_path, family_of, read_file,
+    AnchorState, Claim, ClaimId, Digest, Expression, Family, File, KNOWLEDGE_DIR, Standing,
+    anchor_state, claim_path, family_of, read_file,
 };
 
 /// Does this claim file say it was judged again on the wording its paragraph has now? Only when it carries at least
 /// one judgement (its status's wording, a source link's) and **every** one of them names the wording of one of the
-/// places the claim is said in at the tip (`now`: the digests of its paragraphs there, a curation proposal writing no
-/// page). A revision that changes a note, or judges only some of what the claim holds, judges nothing again: the
-/// record of *re-confirmed* is a statement the page repeats (*judged again on the wording it has now*), so it is made
-/// for what is true of every judgement and for nothing less (handoff 005 corrections, second round, K17).
+/// places the claim is said in **after the acceptance** (`now`: the digests the file's own expressions have in the
+/// accepted result; a curation proposal writes no page, so the result's pages are the tip's). A revision that changes
+/// a note, or judges only some of what the claim holds, judges nothing again: the record of *re-confirmed* is a
+/// statement the page repeats (*judged again on the wording it has now*), so it is made for what is true of every
+/// judgement and for nothing less (handoff 005 corrections, second round, K17).
+///
+/// **A decided status that names no wording is a judgement that fails** (third round, K28): it stands on nothing the
+/// reconfirm can say it judged again.
 pub(super) fn judged_on_now(claim: &Claim, now: &[Digest]) -> bool {
     let Claim {
         id: _,
@@ -35,6 +40,9 @@ pub(super) fn judged_on_now(claim: &Claim, now: &[Digest]) -> bool {
         community_status,
         sources,
     } = claim;
+    if community_status.status != Standing::Unknown && community_status.judged_on.is_none() {
+        return false;
+    }
     let judgements: Vec<&Digest> = community_status
         .judged_on
         .iter()
@@ -148,8 +156,9 @@ impl ProposalAcceptor {
 
     /// When the proposal is the curation proposal of a reconfirm step: the change it re-confirms and which of that
     /// change's kept claims its files judge again, **on the wording the paragraph has now** ([`judged_on_now`]), and no
-    /// earlier curation has. The wording is the one of the tip's index: a curation proposal writes no page, so the
-    /// pages it is accepted on are the pages of the change it re-confirms.
+    /// earlier curation has. *Now* is the wording the claim's paragraphs have **after the acceptance**: the places the
+    /// written file names (K28), read in the pages of the tip (a curation proposal writes no page, so those are the
+    /// pages it is accepted on), and not the places the tip's own file for the claim names.
     pub(super) fn reconfirmed(
         &self,
         principal: &Principal,
@@ -183,40 +192,92 @@ impl ProposalAcceptor {
             .filter(|r| r.how == ClaimHow::Kept && r.reconfirmed_by.is_none())
             .map(|r| r.claim)
             .collect();
-        let index = if kept.is_empty() {
-            None
-        } else {
-            Some(
-                self.parts
-                    .reads
-                    .knowledge_index(wiki, Some(view))
-                    .map_err(|e| AcceptFailure::Unavailable(e.to_string()))?,
-            )
-        };
-        let claims = kept
-            .into_iter()
-            .filter(|claim| {
-                let Some(id) = ClaimId::parse(claim) else {
-                    return false;
-                };
-                let path = claim_path(&id);
-                let Some((_, bytes)) = written.iter().find(|(p, _)| *p == path) else {
-                    return false;
-                };
-                let Ok(File::Claim(file)) = read_file(&path, bytes) else {
-                    return false;
-                };
-                let now: Vec<Digest> = index
-                    .iter()
-                    .flat_map(|i| i.anchors_of(claim))
-                    .filter(|a| a.state == crate::knowledge::index::PRESENT)
-                    .filter_map(|a| Digest::parse(a.digest.as_deref()?))
-                    .collect();
-                judged_on_now(&file, &now)
-            })
-            .collect();
+        let mut claims = Vec::new();
+        let mut pages: Option<Pages> = None;
+        for claim in kept {
+            let Some(id) = ClaimId::parse(&claim) else {
+                continue;
+            };
+            let path = claim_path(&id);
+            let Some((_, bytes)) = written.iter().find(|(p, _)| *p == path) else {
+                continue;
+            };
+            let Ok(File::Claim(file)) = read_file(&path, bytes) else {
+                continue;
+            };
+            // The pages are read once, and only when there is a claim to judge.
+            if pages.is_none() {
+                pages = Some(self.pages_of(wiki, view)?);
+            }
+            let mut now: Vec<Digest> = Vec::new();
+            for e in &file.expressions {
+                if let Some(digest) = self.wording_of(wiki, pages.as_ref(), e)? {
+                    now.push(digest);
+                }
+            }
+            if judged_on_now(&file, &now) {
+                claims.push(claim);
+            }
+        }
         Ok(Some(Reconfirmed { change, claims }))
     }
+
+    /// The pages of the view's tip: where each page id is, at which block.
+    fn pages_of(&self, wiki: &WikiRecord, view: &str) -> Result<Pages, AcceptFailure> {
+        let unavailable = |e: crate::read::ReadError| AcceptFailure::Unavailable(e.to_string());
+        let tip = self
+            .parts
+            .reads
+            .tip(wiki, Some(view))
+            .map_err(unavailable)?;
+        let titles = self
+            .parts
+            .reads
+            .title_index_at_base(wiki, Some(view), &tip.state_id, &tip.block_id)
+            .map_err(unavailable)?;
+        Ok(Pages {
+            block: tip.block_id,
+            titles,
+        })
+    }
+
+    /// The wording (the digest of the paragraph, marker and all) the place `at` has in the tip's pages: `None` when the
+    /// page is not there once, or has not the block once.
+    fn wording_of(
+        &self,
+        wiki: &WikiRecord,
+        pages: Option<&Pages>,
+        at: &Expression,
+    ) -> Result<Option<Digest>, AcceptFailure> {
+        let Some(pages) = pages else {
+            return Ok(None);
+        };
+        let mut found = pages
+            .titles
+            .entries()
+            .iter()
+            .filter(|e| e.page_id.as_deref() == Some(at.page_id.as_str()));
+        let (Some(entry), None) = (found.next(), found.next()) else {
+            return Ok(None);
+        };
+        let text = self
+            .parts
+            .reads
+            .source_at(wiki, &pages.block, &entry.path)
+            .map_err(|e| AcceptFailure::Unavailable(e.to_string()))?;
+        Ok(
+            match text.as_deref().map(|text| anchor_state(text, &at.block)) {
+                Some(AnchorState::Present(digest)) => Some(digest),
+                _ => None,
+            },
+        )
+    }
+}
+
+/// The pages of one tip: the block they are read at and the index that says where each page id is.
+struct Pages {
+    block: String,
+    titles: std::sync::Arc<crate::read::TitleIndex>,
 }
 
 #[cfg(test)]

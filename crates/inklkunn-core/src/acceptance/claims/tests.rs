@@ -77,3 +77,18 @@ fn a_claim_that_carries_no_judgement_judges_nothing_again() {
     // A claim whose paragraph is nowhere (no wording now) is judged on none.
     assert!(!judged_on_now(&claim(Some("new"), &[(1, "new")]), &[]));
 }
+
+#[test]
+fn a_decided_status_that_names_no_wording_is_a_judgement_that_fails() {
+    let now = [digest_of("new")];
+    let mut decided = claim(None, &[(1, "new")]);
+    decided.community_status = CommunityStatus {
+        status: Standing::Contested,
+        proposal: None,
+        judged_on: None,
+    };
+    assert!(!judged_on_now(&decided, &now));
+    // The same claim with the status undecided is judged on its link alone.
+    decided.community_status = CommunityStatus::undecided();
+    assert!(judged_on_now(&decided, &now));
+}

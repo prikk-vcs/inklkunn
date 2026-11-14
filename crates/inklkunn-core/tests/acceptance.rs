@@ -1748,6 +1748,104 @@ fn a_reconfirm_that_does_not_judge_every_wording_again_re_confirms_nothing() {
     assert!(w.reconciled().is_clean());
 }
 
+#[test]
+fn a_reconfirm_judges_on_the_places_the_written_file_has_not_those_the_tip_had() {
+    use inklkunn_core::knowledge::{
+        AnchorState, CommunityStatus, Expression, File, Standing, anchor_state, read_file,
+    };
+    use inklkunn_store::ProposalStore;
+    let Some(w) = World::new("reconfirm-after", LeaseConfig::default()) else {
+        return;
+    };
+    let one = claim_on(&w, "One.");
+    let reworded = w
+        .page("pages/Home.md")
+        .replace("One.", "One, in other words.");
+    let p = w.propose("Reword", &[("pages/Home.md", Some(&reworded))]);
+    let change = signed(w.accept(&p).unwrap());
+    let reconfirmed = |w: &World| {
+        w.store
+            .claim_reviews_of(&change.acceptance)
+            .unwrap()
+            .into_iter()
+            .map(|r| r.reconfirmed_by)
+            .collect::<Vec<_>>()
+    };
+    let claim_now =
+        |w: &World| match read_file(&one.claim_file, w.page(&one.claim_file).as_bytes()).unwrap() {
+            File::Claim(claim) => *claim,
+            File::Source(_) => panic!("a claim"),
+        };
+    let wording_now = |w: &World| match anchor_state(&w.page("pages/Home.md"), &one.block) {
+        AnchorState::Present(now) => now,
+        other => panic!("{other:?}"),
+    };
+    let reconfirm = |w: &World, claim: &inklkunn_core::knowledge::Claim| {
+        let edit = ProposalEdit {
+            summary: "Curation".to_owned(),
+            files: vec![FileChange {
+                path: one.claim_file.clone(),
+                text: Some(claim.to_yaml()),
+            }],
+            ..ProposalEdit::default()
+        };
+        let draft = w
+            .proposals
+            .create_reconfirm(&w.contributor, &w.wiki, None, edit, &change.acceptance)
+            .unwrap_or_else(|e| panic!("create: {e}"));
+        let sent = w
+            .proposals
+            .submit(&w.contributor, &w.wiki, &draft.id)
+            .unwrap();
+        signed(w.accept(&sent).unwrap());
+    };
+
+    // P-e: the file judges its link on the wording the paragraph has now and takes the paragraph out of the places the
+    // claim is said in. The tip's file still names the paragraph, but after the acceptance the claim is said nowhere:
+    // nothing is judged again.
+    let mut dropped = claim_now(&w);
+    dropped.sources.first_mut().unwrap().judged_on = wording_now(&w);
+    dropped.expressions.clear();
+    reconfirm(&w, &dropped);
+    assert_eq!(
+        reconfirmed(&w),
+        vec![None],
+        "a claim said nowhere after the acceptance judges nothing again"
+    );
+
+    // A decided status that names no wording is a judgement that fails, whatever the links say.
+    let mut said = claim_now(&w);
+    said.expressions = vec![
+        Expression::new(
+            &inklkunn_core::knowledge::compose::page_id_of(&w.page("pages/Home.md")).unwrap(),
+            &one.block,
+        )
+        .unwrap(),
+    ];
+    said.sources.first_mut().unwrap().judged_on = wording_now(&w);
+    said.community_status = CommunityStatus {
+        status: Standing::Contested,
+        proposal: None,
+        judged_on: None,
+    };
+    reconfirm(&w, &said);
+    assert_eq!(
+        reconfirmed(&w),
+        vec![None],
+        "a decided status with no wording is not judged again"
+    );
+
+    // Every judgement on the wording the written file's place has now: re-confirmed.
+    let mut every = claim_now(&w);
+    every.community_status.judged_on = Some(wording_now(&w));
+    every.sources.first_mut().unwrap().judged_on = wording_now(&w);
+    reconfirm(&w, &every);
+    let done = reconfirmed(&w);
+    assert_eq!(done.len(), 1);
+    assert!(done.first().unwrap().is_some(), "{done:?}");
+    assert!(w.reconciled().is_clean());
+}
+
 /// The proposal records, all of them the real store's, except that the review record cannot be kept.
 struct CannotKeepReviews(Arc<SqliteStore>);
 
