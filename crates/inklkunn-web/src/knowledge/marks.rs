@@ -191,10 +191,15 @@ pub(crate) fn parts(
 pub(crate) fn distinct(used: &mut HashMap<String, usize>, name: String) -> String {
     let seen = used.entry(name.clone()).or_insert(0);
     *seen += 1;
-    if *seen == 1 {
+    counted(name, *seen)
+}
+
+/// `name` as the `n`-th of its kind: the bare name for the first, the name and its count for a later one.
+pub(crate) fn counted(name: String, n: usize) -> String {
+    if n <= 1 {
         name
     } else {
-        format!("{name} ({seen})")
+        format!("{name} ({n})")
     }
 }
 

@@ -575,10 +575,7 @@ fn claim_said(
         .entry(claim.to_owned())
         .or_insert_with(|| match claim_title(index, claim) {
             Some(title) => {
-                let title = match numbers.of(claim) {
-                    1 => title,
-                    n => format!("{title} ({n})"),
-                };
+                let title = crate::knowledge::marks::counted(title, numbers.of(claim));
                 let rich = t
                     .msg(Key::HealthSourcesClaimId)
                     .with("where", &title)

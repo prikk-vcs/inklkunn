@@ -372,7 +372,7 @@ exact :: marks.rs :: the claims of a page of wiki `{}` could not be read now: {e
 exact :: marks.rs :: text :: a placeholder name of a catalog message
 exact :: marks.rs :: paragraph :: a placeholder name of a catalog message
 exact :: marks.rs :: total :: a placeholder name of a catalog message
-exact :: marks.rs :: {name} ({seen}) :: the count that tells the second of two alike link names from the first (a number and brackets, no word)
+exact :: marks.rs :: {name} ({n}) :: the count that tells the second of two alike link names from the first (a number and brackets, no word)
 exact :: marks.rs :: <{tag} id="{HEADING_ID_PREFIX}^ :: the opening of a block's element in the sanitized body, as the renderer writes it: markup looked for, never written
 exact :: marks.rs :: <{tag} :: the opening of an element in the sanitized body, looked for to count nested items; never written
 exact :: marks.rs :: </{tag}> :: the closing of an element in the sanitized body, looked for; never written
