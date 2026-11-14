@@ -8,6 +8,14 @@ const MAX_EXCERPT: usize = 200;
 /// A secret's fragment shorter than this is not hunted for (it would blank ordinary words).
 const MIN_FRAGMENT: usize = 4;
 
+/// Is `c` a control character, or one that some line-oriented reader splits a line on (U+2028, U+2029)? The excerpt
+/// is shown as one line, so neither may stay in it. This is `inklkunn_store::record::is_line_or_control`, the one
+/// definition of the rule everywhere else; this crate depends on the driver alone (the boundary gate), so it cannot
+/// call it and holds the same two-part test, which the tests below hold to the same characters.
+fn is_line_or_control(c: char) -> bool {
+    c.is_control() || matches!(c, '\u{2028}' | '\u{2029}')
+}
+
 /// The first line of `raw` that says anything, with every secret in `secrets` — whole, and in pieces split at
 /// whitespace, `&`, `=`, `:` and `,` — replaced by `[redacted]`, control characters removed and the length
 /// bounded. `raw` is lossily read as UTF-8.
@@ -39,7 +47,7 @@ pub(crate) fn scrub(raw: &[u8], secrets: &[&str]) -> String {
         line = line.replace(needle, "[redacted]");
     }
     line.chars()
-        .filter(|c| !c.is_control())
+        .filter(|c| !is_line_or_control(*c))
         .take(MAX_EXCERPT)
         .collect()
 }

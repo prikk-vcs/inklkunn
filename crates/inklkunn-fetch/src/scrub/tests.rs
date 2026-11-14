@@ -22,6 +22,24 @@ fn only_the_first_line_survives_and_controls_are_dropped() {
 }
 
 #[test]
+fn a_line_separator_is_dropped_like_a_control_character() {
+    // U+2028 and U+2029 end a line for readers that split on them, and `str::lines` does not: the excerpt is one
+    // line, so they go too, with the controls (the C0 and C1 ranges) and not with the printable characters.
+    let out = scrub(
+        "one\u{2028}line\u{2029}only\u{85}here\u{1b}[0m \u{3042}\n".as_bytes(),
+        &[],
+    );
+    assert_eq!(out, "onelineonlyhere[0m \u{3042}");
+    assert!(is_line_or_control('\u{2028}') && is_line_or_control('\u{2029}'));
+    assert!(is_line_or_control('\0') && is_line_or_control('\u{9f}'));
+    assert!(
+        !is_line_or_control(' ')
+            && !is_line_or_control('\u{3042}')
+            && !is_line_or_control('\u{2027}')
+    );
+}
+
+#[test]
 fn the_length_is_bounded_after_redaction() {
     let long = "x".repeat(1000);
     assert_eq!(scrub(long.as_bytes(), &[]).chars().count(), MAX_EXCERPT);

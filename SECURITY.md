@@ -169,8 +169,10 @@ or any prikk naming a number it is not known to refuse, or prikk's own *integrit
 number at all, such as `8` with a carriage return, a leading space, a word or an empty file) **is a damaged or unknown
 format marker**: the check records a failed verdict, the wiki is flagged, recovery stops at `format-marker`, and nothing
 says the repository is intact (`docs/RECOVERY.md`). **Only a check flags the wiki**: one runs when somebody presses the
-wiki's verify button (at most once a minute), after an accepted change is sealed, and after a key retirement ends; until
-then readers see *could not be read now* and the badge shows the last verdict. The format prikk wrote is kept in the wiki's store record when the wiki is created
+wiki's verify button, and after an accepted change is sealed (each of these is throttled together, at most one check
+a minute for a wiki, so a seal within a minute of the last check runs none), and after a key retirement ends or is
+given up (never throttled: the operator at the host asks); until then readers see *could not be read now* and the
+badge shows the last verdict. The format prikk wrote is kept in the wiki's store record when the wiki is created
 (`prikk_format_version`, for information: nothing reads it to decide anything, prikk is always the one asked).
 
 The **bootstrap signer** over a plain-text key directory exists only behind the `bootstrap` cargo feature, for

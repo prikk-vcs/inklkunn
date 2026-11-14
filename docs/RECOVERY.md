@@ -45,8 +45,9 @@ after it, a leading space, a word, an empty file: prikk 0.55.0 and 0.57.0 both c
 can read nothing else, so it concludes nothing and changes nothing; do not take the rest of the repository to be intact.
 
 **When the wiki is flagged.** Only a **check** flags it, and a check runs when somebody presses the wiki's verify button
-(not more than once a minute), after a change has been accepted and sealed, and after a key retirement ends or is given
-up (`inklkunn wiki keys …`). Until the next of these, readers are shown *could not be read now* (every prikk call fails)
+and after a change has been accepted and sealed (each of these is throttled together, at most one check a minute for a
+wiki, so a seal within a minute of the last check runs none), and after a key retirement ends or is given up
+(`inklkunn wiki keys …`; never throttled). Until the next of these, readers are shown *could not be read now* (every prikk call fails)
 while the wiki's badge still shows its last verdict, *Verified*: the damage is not noticed by itself. A host that
 suspects a damaged marker presses the verify button, or runs `prikk verify` in the repository, to find out; the check
 then flags the wiki and this section applies.

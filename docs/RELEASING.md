@@ -10,12 +10,21 @@ released from M0; this document exists so that the first release is a rehearsed 
 ## Before the tag (the release-candidate commit)
 
 1. **The gates are green on `main`** for the exact commit: `ci.yml` (build, MSRV, supply chain) and the
-   gates as tests (`cargo test --workspace --locked`), with prikk on `PATH` and shimmed off.
+   gates as tests (`cargo test --workspace --locked`), run twice: with prikk on `PATH` (the floor first, the
+   test-only prikk second; see below) and with prikk shimmed off. The first run fails if a test that needs the
+   test-only prikk printed its skip line (`skipping: prikk 0.57.0 or newer not found`, or `skipping: no prikk
+   older than 0.57.0 (and at the floor) found`); the second fails unless exactly `EXPECTED_SKIPS` tests printed
+   `skipping: prikk not on PATH`. A prikk-dependent test added or removed moves that number in `ci.yml` and
+   `release.yml` together.
 2. **A fresh advisory database on the exact commit**: `cargo audit` and `cargo deny check` locally after
    `cargo audit fetch`; the result goes into the release notes' supply-chain line.
 3. **The pins reviewed**: `pin-check` passes (actions by SHA, images by digest, runners named, the
-   toolchain and the supply-chain tools pinned, the MSRV job equal to `rust-version`, the rehearsal guard
-   exact); `floor-check` passes (one prikk floor and one set of asset checksums; the corpus digest).
+   toolchain and the supply-chain tools pinned, every install of the pinned compiler naming the components
+   `rust-toolchain.toml` names, `rust-toolchain.toml` equal to the compiler the workflows install, the MSRV job
+   equal to `rust-version` and naming it on every command, every job with a `timeout-minutes`, the rehearsal
+   guard exact); `floor-check` passes (one prikk floor and one set of asset checksums; the test-only prikk
+   recorded once, with its own checksum, installed first so that it comes after the floor on `PATH`, and in no
+   floor or image; the corpus digest).
 4. **`CHANGELOG.md`**: the release's entries move under `## [X.Y.Z] — YYYY-MM-DD`, after a lead a reader needs and the line
    `The entries below are in the order the work landed.`; an empty `## [Unreleased]` stays above it. The GitHub release's
    body is that lead and a link to the whole section at the tag (`.github/release-notes.sh`; a release body holds at most
@@ -53,10 +62,34 @@ are never published. A published crate cannot be deleted, only yanked.
 glibc 2.35 or newer; a step refuses a binary that needs a newer glibc. The container package on `ghcr.io` must be
 **public** for readers to pull it (a new organization package is private; the owner sets it once).
 
+## The two prikks and the one compiler
+
+**The floor and the test-only prikk.** The floor (`PRIKK_VERSION`, today 0.54.0) is the oldest prikk inklkunn
+runs against: it is the driver's `MIN_PRIKK_VERSION`, the prikk in the image, and the first prikk on `PATH` in the
+test runs, so every test that takes "the prikk" takes it. CI and the release gates also install **one test-only
+prikk** (`PRIKK_TEST_VERSION`, today 0.57.0; RFC 010 D-3, amended by maintenance M25): a newer release, with its own
+checksum recorded in the workflow (`PRIKK_TEST_SHA256_X86_64`, the checksum of the release asset inklkunn measured,
+not one fetched beside it), whose only use is to run the tests of what the floor cannot (the take-back, the
+stale-lock preview, the format-marker classifier). It is never a floor, never in the driver's constant or the image,
+and it is the second prikk on `PATH`. Each such test finds it itself, runs its subject on it, and prints
+`skipping: prikk 0.57.0 or newer not found` (or `skipping: no prikk older than 0.57.0 (and at the floor) found`
+for the test of the floor's *no verb* answer) when it is not there; the with-prikk run fails if either line
+appears, so in CI no such test passes by skipping. Moving the test-only prikk is a one-value change in `ci.yml`
+and `release.yml` (version and checksum), checked by `floor-check`; moving the floor is a decision (RFC 010 D-3).
+
+**The compiler.** `rust-toolchain.toml` pins the compiler (`channel = "X.Y.Z"`, today 1.99.1, with `rustfmt` and
+`clippy`), so a plain `cargo` in a checkout is the compiler CI and the release build with. `pin-check` holds the
+file equal to the compiler `ci.yml`, `supply-chain.yml` and `release.yml` install and to `RUST_TOOLCHAIN`, and
+holds every install of it to `--component rustfmt --component clippy` (without them the first plain `cargo` of a job
+would download them, a step the job did not plan for). Moving the compiler is one change to the file and to every
+install, in one commit. The declared minimum (`rust-version` in `Cargo.toml`, the `msrv` job) is the one exception
+and is named explicitly on every command (`cargo +1.89.0 check ...`), because a toolchain file beats
+`rustup default`.
+
 ## What the workflow does
 
-`release.yml` on a tag: the gates job (fmt, clippy, the tests **with prikk at the floor on PATH and shimmed
-off**, deny, audit, pin-check, floor-check) → the binaries (Linux x86_64 and aarch64, `--locked`, the pinned
+`release.yml` on a tag: the gates job (fmt, clippy, the tests **with prikk at the floor on PATH (and the test-only
+prikk beside it) and shimmed off**, deny, audit, pin-check, floor-check) → the binaries (Linux x86_64 and aarch64, `--locked`, the pinned
 toolchain) with a build-info file naming the commit, the toolchain and the prikk floor → the container image
 per architecture (`…:X.Y.Z-amd64`, `…:X.Y.Z-arm64`, from a digest-pinned base, carrying prikk at the floor
 checked against the recorded checksum, bubblewrap and prlimit) → provenance attestations for the tarballs and

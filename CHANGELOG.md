@@ -1261,6 +1261,36 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
 - **M33 (handoff 010 corrections, fourth round): `Witness.format_marker` is an enum.** `Option<Option<u64>>` becomes
   `Option<MarkerError>` with `MarkerError::Numbered(u64)` (prikk named a format) and `MarkerError::NotANumber` (prikk's integrity
   error about a marker that is no number); `recovery::MarkerError` is public.
+- **M29 (handoff 010 corrections, fourth round): every install of the pinned compiler names its components.** `ci.yml`'s
+  supply-chain job, `supply-chain.yml` and `release.yml`'s binaries and crates jobs installed 1.99.1 without
+  `--component rustfmt --component clippy`, so `rust-toolchain.toml` made the first plain `cargo` of the job download
+  them (a step the job did not plan for, and one more way for it to fail); all four now name both, as the other three
+  installs did. `pin-check` holds every install of the pin (a command continued over lines read whole) to the file's
+  components: the old rule compared the union of what the workflows install with the file and could not see a single
+  install that left them out. No job downloads anything it did not already download: the same two components came with
+  the first `cargo`, and now come with the install. Tests: the rule on the real workflows and on three planted
+  installs (none, one of two, a continuation line), one good install beside a bad one.
+
+- **M30 (handoff 010 corrections, fourth round): tests that fail rather than pass or hang.** (1) K40's counters count work, not
+  calls: the index's rows sit behind `index/counted.rs`, whose methods count every link and anchor read (a lookup by a
+  position, a pass over the anchors, or a whole-rows handout that counts all of them), and whose rows are a private field,
+  so a `claims_citing` rewritten as a scan of the links cannot avoid the count. The two-thousand-source list now asserts
+  200,000 links read (each listed once), no anchor and no whole read, and each lookup reads what it returns. A scan of
+  every link for each source fails it with `(400000000, 400000000, 2000)`. (2) The follow-up flood test runs its asks on
+  a thread and waits for them with a `recv_timeout` of 30 seconds, so an ask that waits for the held job fails the test
+  (with `try_send` made a blocking `send`: after 30 seconds) and does not hang it; the second test does the same.
+  (3) Every CI job has a `timeout-minutes`: twice its slowest successful run of the last runs (`gh run view`), rounded up
+  and never under 5 minutes: build 28, msrv 8, supply-chain 12, release gates 36, binaries 5, image 5, manifest 5, release
+  5, checkpoint 11; the crates job 60, since no run of it has published (a stop in the middle of nine publishes would leave a
+  half-published release). `pin-check` fails a job without one (planted failures).
+
+- **M32 (handoff 010 corrections, fourth round): the documents.** `docs/RELEASING.md` and `docs/dependency-policy.md` describe
+  the test-only prikk (its own checksum, second on `PATH`, never a floor or in the image), the skip guard (the lines the
+  with-prikk run fails on) and `rust-toolchain.toml` with its components; `SECURITY.md` and `docs/RECOVERY.md` say
+  that the check after a seal shares the verify button's throttle (at most one a minute for a wiki, so a seal within a
+  minute of the last check runs none) and that the check after a key retirement is not throttled, and both say a retirement
+  *ends or is given up*. `inklkunn-fetch`'s scrubbed excerpt drops U+2028 and U+2029 with the control characters (it kept
+  them; the crate may depend on the driver alone, so it holds its own copy of the store's `is_line_or_control`, with a test).
 
 ## [0.2.0] — 2026-11-04
 
