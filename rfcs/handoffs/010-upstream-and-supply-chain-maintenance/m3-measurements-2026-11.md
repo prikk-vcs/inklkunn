@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | What maintenance handoff M3 measured, so that the architect's ledger rows (PK-21, PK-26, PK-36, PK-39, PK-43) come from a table and not from prose. |
-| Tree | `770f0be` plus M3's commits (named at the end). |
+| Tree | `770f0be` plus M3's commits (named in the report that handed this back). |
 | Method | One repository built the way the signer builds one (`init`, `trust maintainer add`, `commit`, `seal --allow-no-audit`, a second commit and seal, a view with `branch create`, a third commit left queued), and every verb the driver and the signer run, recorded on each version and compared after the ids, paths and times were normalised. The whole suite on 0.56.0 and on 0.57.0. |
 
 ## 1. The builds, and what each is

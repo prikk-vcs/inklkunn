@@ -440,7 +440,7 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   published asset's checksum). New: `Recovery::recover_with` and `RecoverOptions` (`recover` is unchanged),
   `plan::build_with`, `Step::DiscardQueued`, `Witnesses::uncommit_plan`, a cost rule for `uncommit` measured on 0.57.0
   (5.0 x the store, floor 16 MiB). Tests: the plan's rules against every other state, the signer's guards with a real
-  prikk (and the undo), prikk's text read strictly, the verb absent, and the CLI's flag; one new prikk-dependent test.
+  prikk (and the undo), prikk's text read strictly, the verb absent, and the CLI's flag. Five new prikk-dependent tests in all across M3 (the shimmed run's self-skips: 289 to 294); the stand-in tests need no prikk.
 
 ## [0.2.0] — 2026-11-04
 
