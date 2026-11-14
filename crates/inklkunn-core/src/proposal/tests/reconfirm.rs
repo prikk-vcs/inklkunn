@@ -295,3 +295,48 @@ fn a_press_is_judged_as_a_submission_is_of_its_pages_and_its_text() {
         assert_eq!(left(e, &who, &change), before);
     });
 }
+
+#[test]
+fn a_press_right_after_another_is_told_it_is_already_proposed_before_any_limit() {
+    // K38 (S-j): the winner of a race used up the wiki's hourly limit (and, in the second round, the loser's room as
+    // well), so a loser told *the limit is reached* is told something that is not the truth: it is already proposed.
+    for (hour, open) in [(1, 100), (100, 1)] {
+        let config = QuotaConfig {
+            proposals_per_hour_per_wiki: hour,
+            open_proposals: open,
+            ..QuotaConfig::default()
+        };
+        on_both_with(&config, |e| {
+            set_now(T0);
+            let (first, second) = (
+                e.person(Some(Role::Contributor)),
+                e.person(Some(Role::Contributor)),
+            );
+            // The second person's own room is used up too, so every quota would refuse them.
+            if open == 1 {
+                e.held(&second, "Their own", "pages/their-own.md");
+            }
+            let change = sealed_change(e, 0);
+            set_now(T0 + 5);
+            let made = press(e, &first, "Judge them again", &change).unwrap();
+            let before = (all(e, &second).len(), left(e, &second, &change));
+            let refused = press(e, &second, "Judge them again", &change);
+            assert!(
+                matches!(
+                    refused,
+                    Err(ProposalError::Store(
+                        inklkunn_store::StoreError::AlreadyRecorded
+                    ))
+                ),
+                "{refused:?}"
+            );
+            assert_eq!(before, (all(e, &second).len(), left(e, &second, &change)));
+            assert_eq!(
+                e.service
+                    .reconfirmations_of(&second.principal, &e.wiki, &change)
+                    .unwrap(),
+                vec![made.id.clone()]
+            );
+        });
+    }
+}

@@ -163,7 +163,7 @@ impl ProposalAcceptor {
         &self,
         principal: &Principal,
         wiki: &WikiRecord,
-        view: &str,
+        tip: &str,
         proposal: &ProposalId,
         curation: bool,
         files: &[PreparedFile],
@@ -207,7 +207,7 @@ impl ProposalAcceptor {
             };
             // The pages are read once, and only when there is a claim to judge.
             if pages.is_none() {
-                pages = Some(self.pages_of(wiki, view)?);
+                pages = Some(self.pages_of(wiki, tip)?);
             }
             let mut now: Vec<Digest> = Vec::new();
             for e in &file.expressions {
@@ -222,22 +222,19 @@ impl ProposalAcceptor {
         Ok(Some(Reconfirmed { change, claims }))
     }
 
-    /// The pages of the view's tip: where each page id is, at which block.
-    fn pages_of(&self, wiki: &WikiRecord, view: &str) -> Result<Pages, AcceptFailure> {
-        let unavailable = |e: crate::read::ReadError| AcceptFailure::Unavailable(e.to_string());
-        let tip = self
+    /// The pages of `tip`, **the block the acceptance prepared on**: where each page id is, at that block. Read from
+    /// an extract of the block itself and never through the read service's held tip (K35): a write that did not go
+    /// through this process, inside the hold, must not make the reconfirm judge an older wording than the one the
+    /// result has.
+    fn pages_of(&self, wiki: &WikiRecord, tip: &str) -> Result<Pages, AcceptFailure> {
+        let entries = self
             .parts
             .reads
-            .tip(wiki, Some(view))
-            .map_err(unavailable)?;
-        let titles = self
-            .parts
-            .reads
-            .title_index_at_base(wiki, Some(view), &tip.state_id, &tip.block_id)
-            .map_err(unavailable)?;
+            .page_entries_at_block(wiki, tip)
+            .map_err(|e| AcceptFailure::Unavailable(e.to_string()))?;
         Ok(Pages {
-            block: tip.block_id,
-            titles,
+            block: tip.to_owned(),
+            entries,
         })
     }
 
@@ -253,8 +250,7 @@ impl ProposalAcceptor {
             return Ok(None);
         };
         let mut found = pages
-            .titles
-            .entries()
+            .entries
             .iter()
             .filter(|e| e.page_id.as_deref() == Some(at.page_id.as_str()));
         let (Some(entry), None) = (found.next(), found.next()) else {
@@ -274,10 +270,10 @@ impl ProposalAcceptor {
     }
 }
 
-/// The pages of one tip: the block they are read at and the index that says where each page id is.
+/// The pages of one block: the block they are read at and the entries that say where each page id is.
 struct Pages {
     block: String,
-    titles: std::sync::Arc<crate::read::TitleIndex>,
+    entries: Vec<inklkunn_store::IndexEntry>,
 }
 
 #[cfg(test)]

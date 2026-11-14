@@ -559,37 +559,33 @@ fn the_proposal_service_sends_no_change_its_page_would_not_describe() {
     use crate::proposal::Invalid;
     use crate::proposal::files::knowledge_verdict;
     let blind = |_: &[(String, Option<String>)], _: &dyn Fn(&str) -> Option<String>| Vec::new();
-    let before = sound_claim(1);
+    // Said in both paragraphs of the page, so the link may be judged on either wording (K33).
+    let mut before = sound_claim(1);
+    before
+        .expressions
+        .push(Expression::new("p1", "b2").expect("an expression"));
     let mut after = before.clone();
-    after.sources.first_mut().expect("a link").judged_on = digest_of("elsewhere");
+    after.sources.first_mut().expect("a link").judged_on = digest_of_block("Other. ^b2");
+    let pages = super::check::Mem(vec![(
+        "pages/One.md".to_owned(),
+        super::check::page("p1", "Said. ^b1\n\nOther. ^b2"),
+    )]);
     let path = claim_path(&before.id);
     let old: BTreeMap<String, String> = [(path.clone(), before.to_yaml())].into();
     let files = [(path, Some(after.to_yaml()))];
     let was = had(old);
     // A curation proposal is sent when the page describes it, and not when it would not.
     assert_eq!(
-        knowledge_verdict(
-            &files,
-            &was,
-            true,
-            &summarize,
-            &super::check::Mem(Vec::new())
-        ),
+        knowledge_verdict(&files, &was, true, &summarize, &pages),
         Ok(())
     );
     assert_eq!(
-        knowledge_verdict(&files, &was, true, &blind, &super::check::Mem(Vec::new())),
+        knowledge_verdict(&files, &was, true, &blind, &pages),
         Err(Invalid::KnowledgeNotShown)
     );
     // Outside a curation proposal the same change is curation's, and that is said first.
     assert_eq!(
-        knowledge_verdict(
-            &files,
-            &was,
-            false,
-            &summarize,
-            &super::check::Mem(Vec::new())
-        ),
+        knowledge_verdict(&files, &was, false, &summarize, &pages),
         Err(Invalid::KnowledgeCurated)
     );
 }

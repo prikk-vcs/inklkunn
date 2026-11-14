@@ -837,7 +837,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "health.rule_judged",
-        "A source link the change adds is judged on a wording that no paragraph of its claim has in the result.",
+        "A judgement the change sets (a source link's or the community status's) is judged on a wording that no paragraph of its claim has in the result.",
     ),
     msg("title.links", "Links to {page} · {wiki} · {product}"),
     msg("links.heading", "Pages that link to {page}"),
@@ -2731,7 +2731,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.not_judged",
-        "This proposal adds a source to a claim, judged on a wording that no paragraph of that claim has once the proposal is made. It cannot be accepted as it is.",
+        "This proposal sets or changes a judgement on a claim (a source link's or the community status), judged on a wording that no paragraph of that claim has once the proposal is made. It cannot be accepted as it is.",
     ),
     msg("know.kind_observation", "an observation"),
     msg("know.kind_interpretation", "an interpretation"),
@@ -2884,7 +2884,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "invalid.knowledge_unjudged",
-        "A source this proposal adds to a claim is judged on a wording that no paragraph of that claim has once the proposal is made. It is not sent.",
+        "A source link this proposal adds to a claim or changes is judged on a wording that no paragraph of that claim has once the proposal is made. It is not sent.",
+    ),
+    msg(
+        "invalid.knowledge_status_unjudged",
+        "The community status this proposal sets on a claim is judged on a wording that no paragraph of that claim has once the proposal is made. It is not sent.",
     ),
     msg(
         "know.change_rejudged",

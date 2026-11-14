@@ -1186,6 +1186,27 @@ impl ReadService {
         result
     }
 
+    /// The pages (path and page id) of exactly the block `block_id`, read from **one extract of that block** under the
+    /// wiki's build lock: never from a held tip, a remembered index or the derived store, so what a caller judges is
+    /// the block it names even when an operator's write moved the view inside the tip's hold (handoff 005 corrections,
+    /// fourth round, K35). The acceptance asks it for the tip it prepared on.
+    pub(crate) fn page_entries_at_block(
+        &self,
+        wiki: &WikiRecord,
+        block_id: &str,
+    ) -> Result<Vec<IndexEntry>, ReadError> {
+        self.with_block_tree(wiki, block_id, |root, config| {
+            entries_from_tree(root, config.index_max_files).map_err(|e| match e {
+                TreeError::TooManyEntries(n) => ReadError::CouldNotBeReadNow(Cause::IndexBounds(
+                    format!("more than {n} entries under `pages/`"),
+                )),
+                TreeError::Io(e) => ReadError::CouldNotBeReadNow(Cause::Scratch(format!(
+                    "reading the extracted tree: {e}"
+                ))),
+            })
+        })?
+    }
+
     /// Run `work` over one extract of the block `block_id` of the wiki (not necessarily the tip this service holds:
     /// the acceptance judges the tip it has just read), under the wiki's build lock so that it never meets another
     /// extract of the wiki in the scratch directory.

@@ -651,6 +651,21 @@ pub trait ProposalStore: Send + Sync {
         ))
     }
 
+    /// [`ProposalStore::create_held_reconfirm_proposal`] without the note: a proposal made **already sent**, for a form
+    /// that creates and submits in one step (handoff 005 corrections, fourth round, K38). The draft step and the
+    /// submission are written with the working copy as revision 1 in one transaction, there is **no draft row**, and a
+    /// refusal leaves nothing. A proposal that does not fit that shape is [`Backend`](crate::StoreError::Backend).
+    fn create_held_proposal(
+        &self,
+        _proposal: &ProposalRecord,
+        _created: &ProposalTransition,
+        _sent: &ProposalChange,
+    ) -> Result<()> {
+        Err(crate::StoreError::Backend(
+            "this store cannot make a proposal already sent".to_owned(),
+        ))
+    }
+
     /// The change a proposal re-confirms, when it is the curation proposal of a reconfirm step; `None` for every
     /// other proposal, for one that does not exist, and for a never-submitted one the viewer may not see.
     fn reconfirm_of(

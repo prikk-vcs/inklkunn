@@ -5,9 +5,7 @@ use std::collections::BTreeMap;
 
 use super::check::{Mem, files_of, page, sound_claim};
 use super::*;
-use crate::knowledge::check::{
-    Curated, Touched, Unjudged, new_links_unjudged, unjudged_by, validate,
-};
+use crate::knowledge::check::{Curated, Touched, Unjudged, unjudged_by, unjudged_in, validate};
 use crate::knowledge::compose::{Attachment, SourceDraft, attach};
 
 /// A wording a paragraph of `p1` can have, as the page has it (the `^b1` marker included).
@@ -48,11 +46,16 @@ fn nothing(_: &str) -> Option<String> {
 fn unjudged(claim: &Claim, pages: &Mem) -> Vec<(u8, ())> {
     unjudged_by(&written(claim), &nothing, pages)
         .into_iter()
-        .map(|Unjudged { claim: c, source }| {
-            assert_eq!(c, claim.id);
-            let n = (1..=9).find(|n| source_id(*n) == source).expect("a source");
-            (n, ())
-        })
+        .map(
+            |Unjudged {
+                 claim: c, source, ..
+             }| {
+                assert_eq!(c, claim.id);
+                let source = source.expect("a link");
+                let n = (1..=9).find(|n| source_id(*n) == source).expect("a source");
+                (n, ())
+            },
+        )
         .collect()
 }
 
@@ -224,14 +227,14 @@ fn a_link_the_claim_already_has_is_not_judged_again_here_and_a_new_one_beside_it
     let got = unjudged_by(&written(&stale), &before, &pages);
     assert_eq!(
         got.iter().map(|u| u.source.clone()).collect::<Vec<_>>(),
-        [source_id(2)]
+        [Some(source_id(2))]
     );
     assert_eq!(
         accepted(&stale, &pages, Some(&tip), false),
         [(Rule::Judged, "sources")]
     );
     // The function itself, for a claim the tip does not have.
-    assert_eq!(new_links_unjudged(&stale, None, &pages).len(), 2);
+    assert_eq!(unjudged_in(&stale, None, &pages).len(), 2);
 }
 
 #[test]
@@ -271,4 +274,64 @@ fn both_with_said() -> Mem {
         "pages/One.md".to_owned(),
         page("p1", "Said. ^b1\n\nOther. ^b2"),
     )])
+}
+
+#[test]
+fn every_judgement_a_proposal_sets_or_changes_is_judged_and_one_it_leaves_is_not() {
+    // K33 (RFC 005 part 2 D-3, *every judgement*): a link the tip has whose `judged_on` the change moves, and the
+    // community status's, are asked like a new link; what the change leaves as the tip had it is left alone.
+    let pages = page_with("It opened in 1950.");
+    let earlier = wording("It opened in 1949.");
+    let tip = {
+        let mut c = claim_judged_on(&[(1, earlier.clone())]);
+        c.community_status.status = Standing::Contested;
+        c.community_status.judged_on = Some(earlier.clone());
+        c
+    };
+    let was = Curated::of(&File::Claim(Box::new(tip.clone())));
+    let ask = |c: &Claim| {
+        unjudged_in(c, Some(&was), &pages)
+            .into_iter()
+            .map(|u| (u.field, u.source.map(|s| s.to_string())))
+            .collect::<Vec<_>>()
+    };
+    // Left as it is, however old: nothing is asked.
+    assert!(ask(&tip).is_empty());
+    // A link moved to a wording the claim does not have, or the status: each is named by its field.
+    let nobody = wording("It opened in 1948.");
+    let mut moved = tip.clone();
+    moved.sources.first_mut().expect("a link").judged_on = nobody.clone();
+    assert_eq!(ask(&moved), [("sources", Some(source_id(1).to_string()))]);
+    let mut moved = tip.clone();
+    moved.community_status.judged_on = Some(nobody.clone());
+    assert_eq!(ask(&moved), [("community_status", None)]);
+    let mut both = tip.clone();
+    both.sources.first_mut().expect("a link").judged_on = nobody.clone();
+    both.community_status.judged_on = Some(nobody);
+    assert_eq!(
+        ask(&both),
+        [
+            ("sources", Some(source_id(1).to_string())),
+            ("community_status", None)
+        ]
+    );
+    // Moved to the wording the claim has: sound. A status with no `judged_on` asks nothing.
+    let now = wording("It opened in 1950.");
+    let mut fine = tip.clone();
+    fine.sources.first_mut().expect("a link").judged_on = now.clone();
+    fine.community_status.judged_on = Some(now);
+    assert!(ask(&fine).is_empty());
+    let mut cleared = tip.clone();
+    cleared.community_status.judged_on = None;
+    assert!(ask(&cleared).is_empty());
+    // A claim the tip did not have: its status is new too.
+    let mut fresh = tip.clone();
+    fresh.community_status.judged_on = Some(earlier);
+    assert_eq!(
+        unjudged_in(&fresh, None, &pages)
+            .iter()
+            .map(|u| u.field)
+            .collect::<Vec<_>>(),
+        ["sources", "community_status"]
+    );
 }

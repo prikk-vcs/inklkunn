@@ -757,6 +757,33 @@ zeros), the signer's `outcome` with stand-in `--version` binaries, the check (fl
 the plan, recovery through the real state (a stand-in `format-marker` control: check, stop, a run that changes nothing, then recovered), and
 two real-prikk tests that find their binaries themselves (`8` without its newline and `9` on 0.57.0, format 8 on a prikk older than
 0.57.0). One new prikk-dependent test counted by `EXPECTED_SKIPS` (recovery), two more that print their own skip line.
+- K33 (handoff 005 corrections, fourth round): **every judgement names a wording the result has** (RFC 005 part 2 D-3, *every
+  judgement*). K25's rule held for a new link only; it now holds for every `judged_on` a proposal **sets or changes** in a claim file: a
+  source link's (new, or an existing link whose `judged_on` moves) and the community status's, in a page edit or in a curation proposal,
+  through the form, the API or a raw edit. One function (`check::unjudged_in`, replacing `new_links_unjudged`) is asked at submit, at
+  every revision and at acceptance; what a change leaves as the tip had it is left alone (a link judged on an earlier wording says so and
+  stays), and the compose path's digests are as they were. **The refusal names the field**: at acceptance `Rule::Judged` with `sources` or
+  `community_status` (`Unjudged` now carries `field`, and `source` is `None` for the status); at submit `Invalid::KnowledgeUnjudged` for a
+  link and the new `Invalid::KnowledgeStatusUnjudged` (API reason `knowledge-status-unjudged`, catalog `invalid.knowledge_status_unjudged`,
+  both languages and the glossary row) for the status; the sentences of `invalid.knowledge_unjudged`, `know.not_judged` and
+  `health.rule_judged` say *sets or changes* and name the status. Tests: the rule's cases in the unit suite (left alone, link moved, status
+  moved, both, cleared, a claim the tip did not have), the service and the raw file through the acceptance for a changed link and a status
+  (both fields named, nothing sealed), the proposal page's note for a status; fixtures of the status and link tests that used a digest of no
+  wording now name a wording the claim has. One new prikk-dependent test (the acceptance).
+- K35 (handoff 005 corrections, fourth round): **the reconfirm reads the acceptance's tip**. `reconfirmed` takes the tip block the
+  acceptance prepared on, as `claim_outcomes` does, and reads the pages of exactly that block from one extract of it
+  (`ReadService::page_entries_at_block`, crate-private, under the wiki's build lock): nothing it uses comes through the TTL cache, so a
+  write that did not go through this process no longer makes it judge an older wording and record *re-confirmed* (or not) for a wording
+  the result does not have. Test: an operator's write behind an acceptor whose read service still holds the older tip, then a reconfirm
+  judged on the wording the tip has is recorded as re-confirming. One new prikk-dependent test.
+- K38 (handoff 005 corrections, fourth round): **the create paths**. A reconfirm answers *already proposed* (with the link) **before any
+  quota**: `create_reconfirm` reads the change's open proposal under the admission lock, so a contributor who presses it right after
+  someone else is no longer told the hourly limit is reached. **The curation form's create and submit are one step**, the shape of K26:
+  `ProposalService::create_and_submit` checks the proposal as a submission is, then writes it held for review with its submission in one
+  store transaction (`ProposalStore::create_held_proposal`, a provided method with the memory and SQLite implementations beside
+  `create_held_reconfirm_proposal`); a refusal leaves no draft behind. Tests: on both stores, a press right after another under each
+  limit, a sent proposal's records and a refused send; through the form, a send the wiki's hourly limit refuses leaves no draft; no new
+  prikk-dependent test.
 
 ## [0.2.0] — 2026-11-04
 

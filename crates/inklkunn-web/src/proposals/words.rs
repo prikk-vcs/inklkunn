@@ -147,6 +147,7 @@ pub(crate) fn invalid_text(t: T, why: Invalid) -> String {
         Invalid::KnowledgeCurated => t.get(Key::KnowNotCuration),
         Invalid::KnowledgeNotShown => t.get(Key::InvalidKnowledgeNotShown),
         Invalid::KnowledgeUnjudged => t.get(Key::InvalidKnowledgeUnjudged),
+        Invalid::KnowledgeStatusUnjudged => t.get(Key::InvalidKnowledgeStatusUnjudged),
         Invalid::ReasonMissing => t.get(Key::InvalidReasonMissing),
         Invalid::ReasonTooLong => t
             .msg(Key::InvalidReasonTooLong)

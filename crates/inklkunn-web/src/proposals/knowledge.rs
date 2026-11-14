@@ -848,7 +848,13 @@ impl Resolver<'_> {
         let found = inklkunn_core::knowledge::check::unjudged_by(given, was, &*self);
         self.unjudged = found
             .into_iter()
-            .map(|u| (u.claim.to_string(), u.source.to_string()))
+            // The community status names no source: no link line matches it, the page's note still says so.
+            .map(|u| {
+                (
+                    u.claim.to_string(),
+                    u.source.map_or_else(String::new, |s| s.to_string()),
+                )
+            })
             .collect();
     }
 }

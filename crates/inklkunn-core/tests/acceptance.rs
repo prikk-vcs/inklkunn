@@ -1861,6 +1861,93 @@ fn a_new_link_judged_on_a_wording_nobody_has_written_is_refused_at_submit_and_at
     assert!(w.reconciled().is_clean());
 }
 
+/// K33 (RFC 005 part 2 D-3, *every judgement*): a `judged_on` a proposal sets or changes, a link's already held or the
+/// community status's, names a wording the claim has in the result, in a curation proposal too and through a raw file.
+#[test]
+fn a_judgement_set_or_changed_on_a_wording_nobody_has_written_is_refused_at_submit_and_at_acceptance()
+ {
+    use inklkunn_core::knowledge::{
+        AnchorState, File, Rule, Standing, anchor_state, block_digest, read_file,
+    };
+    use inklkunn_core::proposal::{Invalid, ProposalError};
+    let Some(w) = World::new("every-judgement", LeaseConfig::default()) else {
+        return;
+    };
+    let one = claim_on(&w, "One.");
+    let File::Claim(held) = read_file(&one.claim_file, w.page(&one.claim_file).as_bytes()).unwrap()
+    else {
+        panic!("a claim");
+    };
+    let AnchorState::Present(now) = anchor_state(&w.page("pages/Home.md"), &one.block) else {
+        panic!("present");
+    };
+    let elsewhere = inklkunn_markup::blocks("Reworded in the future. ^x");
+    let nobody = block_digest(elsewhere.first().unwrap());
+    let blocks = w.history().len();
+
+    // The refusal at submit and, were the record to reach the acceptance some other way, there: both name the field.
+    let refused = |claim: &inklkunn_core::knowledge::Claim, why: Invalid, field: &str| {
+        let text = claim.to_yaml();
+        let draft = w
+            .proposals
+            .create(
+                &w.contributor,
+                &w.wiki,
+                None,
+                ProposalEdit {
+                    summary: "A judgement".to_owned(),
+                    files: vec![FileChange {
+                        path: one.claim_file.clone(),
+                        text: Some(text.clone()),
+                    }],
+                    ..ProposalEdit::default()
+                },
+            )
+            .unwrap();
+        match w.proposals.submit(&w.contributor, &w.wiki, &draft.id) {
+            Err(ProposalError::Invalid(got)) => assert_eq!(got, why),
+            other => panic!("{other:?}"),
+        }
+        let p = w.propose_unjudged("A judgement", &[(one.claim_file.as_str(), Some(&text))]);
+        match w.accept(&p) {
+            Err(AcceptFailure::KnowledgeInvalid(r)) => assert_eq!(
+                r.iter()
+                    .map(|r| (r.file.as_str(), r.rule, r.field))
+                    .collect::<Vec<_>>(),
+                [(one.claim_file.as_str(), Rule::Judged, field)]
+            ),
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(w.history().len(), blocks);
+    };
+
+    // 1. A link the tip already has, its `judged_on` changed to words nobody wrote.
+    let mut link = (*held).clone();
+    link.sources.first_mut().unwrap().judged_on = nobody.clone();
+    refused(&link, Invalid::KnowledgeUnjudged, "sources");
+    // 2. The community status, set with a `judged_on` nobody wrote.
+    let mut status = (*held).clone();
+    status.community_status.status = Standing::Contested;
+    status.community_status.judged_on = Some(nobody);
+    refused(
+        &status,
+        Invalid::KnowledgeStatusUnjudged,
+        "community_status",
+    );
+
+    // 3. The same, on the wording the paragraph has: sent and sealed (as a curation proposal it is).
+    let mut sound = (*held).clone();
+    sound.community_status.status = Standing::Contested;
+    sound.community_status.judged_on = Some(now);
+    let p = w.propose(
+        "A status",
+        &[(one.claim_file.as_str(), Some(&sound.to_yaml()))],
+    );
+    signed(w.accept(&p).unwrap());
+    assert_eq!(w.history().len(), blocks + 1);
+    assert!(w.reconciled().is_clean());
+}
+
 #[test]
 fn a_reconfirm_judges_on_the_places_the_written_file_has_not_those_the_tip_had() {
     use inklkunn_core::knowledge::{
@@ -1912,11 +1999,35 @@ fn a_reconfirm_judges_on_the_places_the_written_file_has_not_those_the_tip_had()
 
     // P-e: the file judges its link on the wording the paragraph has now and takes the paragraph out of the places the
     // claim is said in. The tip's file still names the paragraph, but after the acceptance the claim is said nowhere:
-    // nothing is judged again.
+    // nothing is judged again. Since K33 every judgement a proposal changes names a wording the claim has in the
+    // result, so a claim said nowhere cannot be sent with a changed judgement at all: the reconfirm is refused when it
+    // is made, and nothing is recorded.
     let mut dropped = claim_now(&w);
     dropped.sources.first_mut().unwrap().judged_on = wording_now(&w);
     dropped.expressions.clear();
-    reconfirm(&w, &dropped);
+    let refused = w.proposals.create_reconfirm(
+        &w.contributor,
+        &w.wiki,
+        None,
+        ProposalEdit {
+            summary: "Curation".to_owned(),
+            files: vec![FileChange {
+                path: one.claim_file.clone(),
+                text: Some(dropped.to_yaml()),
+            }],
+            ..ProposalEdit::default()
+        },
+        &change.acceptance,
+    );
+    assert!(
+        matches!(
+            refused,
+            Err(inklkunn_core::proposal::ProposalError::Invalid(
+                inklkunn_core::proposal::Invalid::KnowledgeUnjudged
+            ))
+        ),
+        "{refused:?}"
+    );
     assert_eq!(
         reconfirmed(&w),
         vec![None],
@@ -1953,6 +2064,124 @@ fn a_reconfirm_judges_on_the_places_the_written_file_has_not_those_the_tip_had()
     let done = reconfirmed(&w);
     assert_eq!(done.len(), 1);
     assert!(done.first().unwrap().is_some(), "{done:?}");
+    assert!(w.reconciled().is_clean());
+}
+
+/// K35 (handoff 005 corrections, fourth round): the reconfirm reads the pages of the tip the acceptance prepared on, not
+/// the read service's held answer, which a write that did not go through this process leaves older for a while.
+#[test]
+fn a_reconfirm_reads_the_pages_of_the_tip_the_acceptance_prepared_on() {
+    use inklkunn_core::knowledge::{
+        AnchorState, CommunityStatus, File, Standing, anchor_state, read_file,
+    };
+    use inklkunn_store::ProposalStore;
+    let Some(w) = World::new("reconfirm-tip", LeaseConfig::default()) else {
+        return;
+    };
+    let one = claim_on(&w, "One.");
+    let reworded = w
+        .page("pages/Home.md")
+        .replace("One.", "One, in other words.");
+    let p = w.propose("Reword", &[("pages/Home.md", Some(&reworded))]);
+    let change = signed(w.accept(&p).unwrap());
+
+    // The acceptor's read service holds the tip as it is now.
+    let held_tip = w.reads.tip(&w.wiki, None).unwrap().block_id;
+    assert_eq!(held_tip, w.tip());
+    // An operator's write that no part of this process saw: the paragraph is reworded once more.
+    let once_more = w
+        .page("pages/Home.md")
+        .replace("One, in other words.", "One, once more.");
+    let folder = dir_in(&std::env::temp_dir(), "unseen-write");
+    let page = folder.0.join("pages/Home.md");
+    std::fs::create_dir_all(page.parent().unwrap()).unwrap();
+    std::fs::write(&page, &once_more).unwrap();
+    let authorizer = Authorizer::new(
+        Arc::new(StoreAuthz::new(w.store.clone(), w.store.clone())),
+        w.store.clone(),
+    );
+    let unseen = SystemActs::new(
+        authorizer,
+        w.store.clone(),
+        w.store.clone(),
+        w.storage.clone(),
+        w.layout.clone(),
+        w.signer.clone(),
+        w.leases.clone(),
+    );
+    let have = wiki_state(&*w.storage, &w.layout, &w.wiki).unwrap();
+    let plan = plan_folder(&folder.0, &have, true).unwrap();
+    run_import(&unseen, &w.wiki, &plan).unwrap_or_else(|e| panic!("{e}"));
+    assert_ne!(w.tip(), held_tip);
+    assert_eq!(
+        w.reads.tip(&w.wiki, None).unwrap().block_id,
+        held_tip,
+        "the acceptor's read service still answers the older tip"
+    );
+
+    // A reconfirm judged on the wording the paragraph has at the tip, made through a service that sees it.
+    let AnchorState::Present(now) = anchor_state(&w.page("pages/Home.md"), &one.block) else {
+        panic!("present");
+    };
+    let File::Claim(mut every) =
+        read_file(&one.claim_file, w.page(&one.claim_file).as_bytes()).unwrap()
+    else {
+        panic!("a claim");
+    };
+    every.community_status = CommunityStatus {
+        status: Standing::Contested,
+        proposal: None,
+        judged_on: Some(now.clone()),
+    };
+    every.sources.first_mut().unwrap().judged_on = now;
+    let fresh_reads = Arc::new(ReadService::new(
+        w.storage.clone(),
+        w.store.clone(),
+        w.store.clone(),
+        w.layout.clone(),
+        ReadConfig::default(),
+        None,
+    ));
+    let sees = ProposalService::new(
+        w.store.clone(),
+        w.store.clone(),
+        w.store.clone(),
+        Authorizer::new(
+            Arc::new(StoreAuthz::new(w.store.clone(), w.store.clone())),
+            w.store.clone(),
+        ),
+        fresh_reads,
+        QuotaConfig::default(),
+    );
+    let held = sees
+        .create_reconfirm(
+            &w.contributor,
+            &w.wiki,
+            None,
+            ProposalEdit {
+                summary: "Curation".to_owned(),
+                files: vec![FileChange {
+                    path: one.claim_file.clone(),
+                    text: Some(every.to_yaml()),
+                }],
+                ..ProposalEdit::default()
+            },
+            &change.acceptance,
+        )
+        .unwrap_or_else(|e| panic!("create: {e}"));
+    signed(w.accept(&held).unwrap());
+    let done: Vec<_> = w
+        .store
+        .claim_reviews_of(&change.acceptance)
+        .unwrap()
+        .into_iter()
+        .map(|r| r.reconfirmed_by)
+        .collect();
+    assert_eq!(done.len(), 1);
+    assert!(
+        done.first().unwrap().is_some(),
+        "judged on the wording the accepted result has: {done:?}"
+    );
     assert!(w.reconciled().is_clean());
 }
 

@@ -82,7 +82,8 @@ fn is_canonical(path: &str) -> bool {
 /// not one ([`Invalid::KnowledgeCurated`]), refused when a change would have no line on the proposal's page
 /// (`describe` is the page's own, [`crate::knowledge::summary::summarize`]; [`Invalid::KnowledgeNotShown`]): trust
 /// never moves unseen, in a curation proposal least of all; and refused when a source link it adds is judged on a
-/// wording no paragraph of its claim has in the proposal's result (`pages`, [`Invalid::KnowledgeUnjudged`]).
+/// wording no paragraph of its claim has in the proposal's result (`pages`, [`Invalid::KnowledgeUnjudged`]), or a
+/// claim's status is (K33, [`Invalid::KnowledgeStatusUnjudged`]): a link first.
 pub(crate) fn knowledge_verdict(
     given: &[(String, Option<String>)],
     was: &dyn Fn(&str) -> Option<String>,
@@ -96,8 +97,12 @@ pub(crate) fn knowledge_verdict(
     if !crate::knowledge::summary::undescribed_by(given, was, describe).is_empty() {
         return Err(Invalid::KnowledgeNotShown);
     }
-    if !crate::knowledge::check::unjudged_by(given, was, pages).is_empty() {
+    let unjudged = crate::knowledge::check::unjudged_by(given, was, pages);
+    if unjudged.iter().any(|u| u.source.is_some()) {
         return Err(Invalid::KnowledgeUnjudged);
+    }
+    if !unjudged.is_empty() {
+        return Err(Invalid::KnowledgeStatusUnjudged);
     }
     Ok(())
 }

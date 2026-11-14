@@ -271,10 +271,13 @@ pub enum Invalid {
     /// reviews it could not see what it does (RFC 005 part 1 H-1: trust never moves silently; handoff 005
     /// corrections K5).
     KnowledgeNotShown,
-    /// A claim file adds a source link judged on a wording that no paragraph of the claim has once the proposal is made:
-    /// the acceptance would refuse it, and a digest must never name wording that is not in the history (RFC 005 part 2
-    /// D-3, *a new link*; handoff 005 corrections, third round, K25).
+    /// A claim file adds or changes a source link judged on a wording that no paragraph of the claim has once the
+    /// proposal is made: the acceptance would refuse it, and a digest must never name wording that is not in the
+    /// history (RFC 005 part 2 D-3, *every judgement*; handoff 005 corrections, third round, K25; fourth round, K33).
     KnowledgeUnjudged,
+    /// A claim file sets or changes its community status's `judged_on` to a wording that no paragraph of the claim has
+    /// once the proposal is made: the same rule, named by the field (K33).
+    KnowledgeStatusUnjudged,
 }
 
 /// Why a call to the service was refused. Every variant is one plain fact (RFC 004 D-6: failure is honest).
@@ -782,6 +785,22 @@ impl ProposalService {
         self.create_as(principal, wiki, view, edit, Origin::Plain)
     }
 
+    /// [`ProposalService::create`] followed by [`ProposalService::submit`] **as one step** (handoff 005 corrections,
+    /// fourth round, K38; the shape of the reconfirm step's, K26): the proposal is checked as a submission is (the
+    /// finished text, the files, the knowledge files, the quotas, the wiki's hourly limit) *before* anything is written,
+    /// and then written with its submission in one store transaction. A refusal leaves nothing behind, never an unsent
+    /// draft that would count against its author; the record returned is the proposal as it is held. For a form that
+    /// sends what it makes at once (the curation form).
+    pub fn create_and_submit(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+        edit: ProposalEdit,
+    ) -> Result<ProposalRecord> {
+        self.create_as(principal, wiki, view, edit, Origin::Sent)
+    }
+
     /// [`ProposalService::create`] for the curation proposal of the **reconfirm step** (RFC 005 part 2 D-3; handoff 005
     /// K11): the note of the change it re-confirms (`change`, the acceptance that put it in the history) is written in
     /// the same step as the proposal, so that the curation proposal's acceptance can record which change it
@@ -896,7 +915,7 @@ impl ProposalService {
         let base = Self::base_of(&edit, || Ok(self.bases.base(wiki, &view)?))?;
         let content = self.content_of(&edit, base);
         let id = ProposalId::new();
-        let held = matches!(origin, Origin::Reconfirm(_));
+        let held = matches!(origin, Origin::Reconfirm(_) | Origin::Sent);
         if held {
             self.allow(
                 principal,
@@ -914,6 +933,20 @@ impl ProposalService {
             .admission
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
+        // A change has one open proposal to judge its claims again, and *already proposed* is the true answer to whoever
+        // presses the step right after another did: said before any quota, so a limit that the winner used up is never
+        // what the loser is told (K38). Read here, under the lock every creation takes, so the order cannot be raced.
+        if let Origin::Reconfirm(change) = origin {
+            for open in self.proposals.reconfirmations_of(change, Some(author))? {
+                if self
+                    .proposals
+                    .proposal(&open, Some(author))?
+                    .is_some_and(|p| p.state.is_open())
+                {
+                    return Err(ProposalError::Store(StoreError::AlreadyRecorded));
+                }
+            }
+        }
         self.quotas.check_open(&wiki.id, author)?;
         self.quotas.check_opening_rate(&wiki.id, author)?;
         if held {
@@ -950,14 +983,20 @@ impl ProposalService {
             Origin::Rollback(undoes) => self
                 .proposals
                 .create_rollback_proposal(&record, &content, &created, undoes)?,
-            Origin::Reconfirm(change) => {
+            Origin::Reconfirm(_) | Origin::Sent => {
                 let to = next(Some(state), ProposalOp::Submit)?;
                 let sent = submission(&record.id, state, to, author, content, now);
                 // The proposal as it is held: what a submission leaves of the record.
                 record.state = to;
                 record.submitted_at = Some(now);
-                self.proposals
-                    .create_held_reconfirm_proposal(&record, &created, &sent, change)?;
+                match origin {
+                    Origin::Reconfirm(change) => self
+                        .proposals
+                        .create_held_reconfirm_proposal(&record, &created, &sent, change)?,
+                    _ => self
+                        .proposals
+                        .create_held_proposal(&record, &created, &sent)?,
+                }
             }
         }
         Ok(record)
@@ -1589,6 +1628,8 @@ enum Origin<'a> {
     Rollback(&'a str),
     /// The curation proposal of the reconfirm step: the change it re-confirms.
     Reconfirm(&'a inklkunn_store::AcceptanceId),
+    /// A proposal made and sent in one step (K38): held for review from its creation, with no note beside it.
+    Sent,
 }
 
 #[cfg(test)]

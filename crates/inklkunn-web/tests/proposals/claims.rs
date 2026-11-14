@@ -953,6 +953,58 @@ async fn a_new_link_is_said_to_be_judged_on_the_wording_it_has_now_only_when_it_
 }
 
 #[tokio::test]
+async fn a_status_judged_on_a_wording_nobody_has_written_is_said_to_be_so_and_the_service_refuses_it()
+ {
+    // K33 (RFC 005 part 2 D-3, *every judgement*): the community status's `judged_on` is held to the rule of a new
+    // link's, in a curation proposal too.
+    let s = scene();
+    let note = "judged on a wording that no paragraph of that claim has once the proposal is made";
+    let status = |on: &str| {
+        let mut decided = s.claim.clone();
+        decided.community_status = inklkunn_core::knowledge::CommunityStatus {
+            status: inklkunn_core::knowledge::Standing::Contested,
+            proposal: None,
+            judged_on: Some(block_digest(
+                inklkunn_markup::blocks(on).first().expect("a block"),
+            )),
+        };
+        vec![(claim_path(&decided.id), Some(decided.to_yaml()))]
+    };
+    // The service does not let it be sent, and says it is the status.
+    let who = principal(&s.writer);
+    let made = s.w.services.proposals.create_and_submit(
+        &who,
+        &s.w.wiki,
+        None,
+        inklkunn_core::proposal::ProposalEdit {
+            summary: "A status".to_owned(),
+            files: status("It opened in 1951. ^k1")
+                .into_iter()
+                .map(|(path, text)| inklkunn_store::FileChange { path, text })
+                .collect(),
+            ..Default::default()
+        },
+    );
+    assert!(
+        matches!(
+            made,
+            Err(inklkunn_core::proposal::ProposalError::Invalid(
+                inklkunn_core::proposal::Invalid::KnowledgeStatusUnjudged
+            ))
+        ),
+        "{made:?}"
+    );
+    // A record that is there anyway says so on its page; on the wording the paragraph has, it says nothing.
+    let to = held_unjudged(&s, status("It opened in 1951. ^k1"));
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(body.contains(note), "{body}");
+    assert!(body.contains("It cannot be accepted as it is."), "{body}");
+    let to = held_unjudged(&s, status("It opened in 1950. ^k1"));
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(!body.contains(note), "{body}");
+}
+
+#[tokio::test]
 async fn the_page_warns_of_a_decided_claim_removed_and_of_a_source_link_changed() {
     let s = scene();
     let note = "only a curation proposal may do";
@@ -1187,7 +1239,9 @@ fn rejudging(s: &Scene, page: &str, wording: &str) -> String {
     let mut judged = had.clone();
     judged.community_status.judged_on = Some(now.clone());
     judged.sources.first_mut().expect("a link").judged_on = now;
-    held_with(s, vec![(claim_path(&judged.id), Some(judged.to_yaml()))])
+    // Since K33 the service refuses a judgement on a wording the claim does not have; a record an older release made
+    // can hold one, and the page says what it shows then.
+    held_unjudged(s, vec![(claim_path(&judged.id), Some(judged.to_yaml()))])
 }
 
 #[tokio::test]

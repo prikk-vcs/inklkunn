@@ -354,13 +354,16 @@ pub fn curated_by(
     out
 }
 
-/// A new source link whose `judged_on` names no wording any paragraph of its claim has in the result of the change.
+/// A judgement a claim file sets or changes whose `judged_on` names no wording any paragraph of its claim has in the
+/// result of the change: a source link's, or the community status's.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Unjudged {
     /// The claim.
     pub claim: ClaimId,
-    /// The source the link cites.
-    pub source: SourceId,
+    /// The key of the format the judgement is in: `sources` for a link, `community_status` for the status.
+    pub field: &'static str,
+    /// The source the link cites; `None` for the community status.
+    pub source: Option<SourceId>,
 }
 
 /// The wordings (digests of the paragraph, marker and all) the places `claim` is said in have in `pages`: one for each
@@ -381,38 +384,61 @@ fn wordings_of(claim: &Claim, pages: &dyn Pages) -> Vec<Digest> {
         .collect()
 }
 
-/// The sources of the links `now` has that `was` (what the tip had of the claim; `None` for a claim it did not have)
-/// does not, **whose `judged_on` is not a wording one of the claim's paragraphs has in the result** (`pages`; handoff
-/// 005 corrections, third round, K25 and RFC 005 part 2, D-3, *a new link*). A digest must never name wording that is
-/// not in the history: a link judged on words nobody has written would read *current* the day a page edit happened to
-/// write them. What `compose` writes for a link is exactly such a wording (the paragraph as the page will have it).
+/// The judgements `now` sets or changes against `was` (what the tip had of the claim; `None` for a claim it did not
+/// have) **whose `judged_on` is not a wording one of the claim's paragraphs has in the result** (`pages`; handoff 005
+/// corrections, fourth round, K33 and RFC 005 part 2, D-3, *every judgement*). A digest must never name wording that
+/// is not in the history: a judgement made on words nobody has written would read *current* the day a page edit
+/// happened to write them. The judgements are every source link's and the community status's: one that is new, or
+/// whose `judged_on` is not what the tip had, is asked; one the change leaves as the tip had it is not (it may be
+/// judged on an earlier wording, and says so). What `compose` writes for a link or a status is exactly such a wording
+/// (the paragraph as the page will have it).
 ///
 /// **One rule for every surface**, like [`Curated::departure`]: the acceptance ([`validate`]) asks it of the files it
-/// writes, and the proposal service at submit and at every revision asks it through [`unjudged_by`].
-pub fn new_links_unjudged(now: &Claim, was: Option<&Curated>, pages: &dyn Pages) -> Vec<SourceId> {
-    let had = match was {
-        Some(Curated::Claim { links, .. }) => Some(links),
-        _ => None,
+/// writes, and the proposal service at submit and at every revision asks it through [`unjudged_by`]. Links come first,
+/// in source order, then the status.
+pub fn unjudged_in(now: &Claim, was: Option<&Curated>, pages: &dyn Pages) -> Vec<Unjudged> {
+    let (had, had_status) = match was {
+        Some(Curated::Claim { links, status }) => (Some(links), status.judged_on.as_ref()),
+        _ => (None, None),
     };
-    let fresh: Vec<_> = now
+    let links: Vec<_> = now
         .sources
         .iter()
-        .filter(|l| !had.is_some_and(|links| links.contains_key(&l.source)))
+        .filter(|l| {
+            had.and_then(|links| links.get(&l.source))
+                .map(|j| &j.judged_on)
+                != Some(&l.judged_on)
+        })
         .collect();
-    if fresh.is_empty() {
+    let status = now
+        .community_status
+        .judged_on
+        .as_ref()
+        .filter(|on| had_status != Some(*on));
+    if links.is_empty() && status.is_none() {
         return Vec::new();
     }
     let wordings = wordings_of(now, pages);
-    fresh
+    let unjudged = |field, source| Unjudged {
+        claim: now.id.clone(),
+        field,
+        source,
+    };
+    links
         .into_iter()
         .filter(|l| !wordings.contains(&l.judged_on))
-        .map(|l| l.source.clone())
+        .map(|l| unjudged("sources", Some(l.source.clone())))
+        .chain(
+            status
+                .filter(|on| !wordings.contains(on))
+                .map(|_| unjudged("community_status", None)),
+        )
         .collect()
 }
 
-/// The new links of the claim files a revision writes (`files`: path, and the new text or `None` for a removal) that
-/// are judged on no wording the claim has in the result (`pages`), against `before` (the text a path had at the
-/// proposal's base): [`new_links_unjudged`] **without a tree**, what the proposal service asks at submit and at every
+/// The judgements of the claim files a revision writes (`files`: path, and the new text or `None` for a removal) that
+/// are set or changed on no wording the claim has in the result (`pages`), against `before` (the text a path had at the
+/// proposal's base): [`unjudged_in`] **without a tree**, what the proposal service asks at submit and at every
 /// revision and what the proposal page says. A file that does not read is not judged here (the acceptance refuses it by
 /// its own rule). In path order.
 pub fn unjudged_by(
@@ -434,14 +460,7 @@ pub fn unjudged_by(
         let was = before(path)
             .and_then(|t| read_file(path, t.as_bytes()).ok())
             .map(|file| Curated::of(&file));
-        out.extend(
-            new_links_unjudged(&now, was.as_ref(), pages)
-                .into_iter()
-                .map(|source| Unjudged {
-                    claim: now.id.clone(),
-                    source,
-                }),
-        );
+        out.extend(unjudged_in(&now, was.as_ref(), pages));
     }
     out
 }
@@ -503,12 +522,12 @@ pub fn validate(
                 {
                     out.insert(Refusal::rule(path, Rule::Status, field));
                 }
-                // A link the change adds is judged on a wording the claim has in the result (K25), in any proposal.
-                if let File::Claim(claim) = file
-                    && !new_links_unjudged(claim, touched.curated_before.get(path), pages)
-                        .is_empty()
-                {
-                    out.insert(Refusal::rule(path, Rule::Judged, "sources"));
+                // Every judgement the change sets or changes names a wording the claim has in the result (K25, K33), in
+                // any proposal: a link's, and the status's.
+                if let File::Claim(claim) = file {
+                    for u in unjudged_in(claim, touched.curated_before.get(path), pages) {
+                        out.insert(Refusal::rule(path, Rule::Judged, u.field));
+                    }
                 }
             }
             Some(Err(fault)) => {

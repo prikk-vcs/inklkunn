@@ -22,15 +22,28 @@ impl Pages for One {
         }
     }
     fn text(&self, _: &str) -> Option<String> {
-        Some("---\nid: p1\n---\n\nSaid. ^b1\n".to_owned())
+        Some("---\nid: p1\n---\n\nSaid. ^b1\n\nOther. ^b2\n".to_owned())
     }
+}
+
+/// The other wording a claim said in both paragraphs has (K33: a changed `judged_on` still names a wording it has).
+fn other() -> Digest {
+    digest_of_block("Other. ^b2")
+}
+
+/// A sound claim said in both paragraphs of [`One`].
+fn said_twice(n: u8) -> Claim {
+    let mut c = sound_claim(n);
+    c.expressions
+        .push(Expression::new("p1", "b2").expect("an expression"));
+    c
 }
 
 fn decided(c: &mut Claim, status: Standing) {
     c.community_status = CommunityStatus {
         status,
         proposal: Some("01930000-0000-7000-8000-00000000aaaa".to_owned()),
-        judged_on: Some(digest_of("w")),
+        judged_on: Some(said()),
     };
 }
 
@@ -82,11 +95,11 @@ fn a_change_of_status_in_a_claim_that_exists_is_refused_unless_the_proposal_is_a
 
 #[test]
 fn the_wording_a_status_was_judged_on_and_the_proposal_that_decided_it_are_part_of_it() {
-    let mut before = sound_claim(1);
+    let mut before = said_twice(1);
     decided(&mut before, Standing::Accepted);
     let path = claim_path(&before.id);
     let mut judged = before.clone();
-    judged.community_status.judged_on = Some(digest_of("another wording"));
+    judged.community_status.judged_on = Some(other());
     assert_eq!(
         run(&judged, Some(&before), false),
         [(path.clone(), Rule::Status)]
@@ -476,7 +489,7 @@ fn link(source: u8, f: impl FnOnce(&mut SourceLink)) -> SourceLink {
 }
 
 fn with_links(links: Vec<SourceLink>) -> Claim {
-    let mut c = sound_claim(1);
+    let mut c = said_twice(1);
     c.sources = links;
     c
 }
@@ -496,9 +509,7 @@ fn every_field_of_an_existing_source_link_is_curation_but_the_note() {
         ),
         (
             "judged_on",
-            with_links(vec![link(1, |l| {
-                l.judged_on = digest_of("another wording")
-            })]),
+            with_links(vec![link(1, |l| l.judged_on = other())]),
         ),
     ];
     for (what, after) in &changed {
@@ -603,11 +614,11 @@ fn the_rule_the_page_and_the_submission_use_is_the_one_the_acceptance_uses() {
     let mut other_status = decided_claim.clone();
     other_status.community_status.status = Standing::Contested;
     let mut other_wording = decided_claim.clone();
-    other_wording.community_status.judged_on = Some(digest_of("another"));
+    other_wording.community_status.judged_on = Some(other());
     let mut kinded = decided_claim.clone();
     kinded.kind = StatementKind::Opinion;
     let relinked = with_links(vec![link(1, |l| l.relation = Link::Challenges)]);
-    let rebound = with_links(vec![link(1, |l| l.judged_on = digest_of("elsewhere"))]);
+    let rebound = with_links(vec![link(1, |l| l.judged_on = other())]);
     let rebearing = with_links(vec![link(1, |l| l.bearing = Bearing::Partial)]);
     let unlinked = with_links(vec![]);
     let added = with_links(vec![link(1, |_| {}), link(2, |_| {})]);

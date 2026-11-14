@@ -695,13 +695,9 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
         ..ProposalEdit::default()
     };
     let service = &ctx.services.proposals;
-    let made = service.create(&ctx.principal, &ctx.wiki, full_view.as_deref(), proposed);
-    match made.and_then(|p| {
-        service
-            .submit(&ctx.principal, &ctx.wiki, &p.id)
-            .map(|_| p.id)
-    }) {
-        Ok(id) => see(&paths::proposal(ctx.slug(), id.as_str())),
+    // Made and sent in one step (K38): a refusal leaves nothing, never an unsent draft that counts against its author.
+    match service.create_and_submit(&ctx.principal, &ctx.wiki, full_view.as_deref(), proposed) {
+        Ok(made) => see(&paths::proposal(ctx.slug(), made.id.as_str())),
         Err(ProposalError::Invalid(why)) => draw(
             vec![words::invalid_text(t, why)],
             changes,

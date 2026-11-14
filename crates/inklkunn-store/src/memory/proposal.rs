@@ -220,6 +220,23 @@ impl ProposalStore for MemoryStore {
         )
     }
 
+    fn create_held_proposal(
+        &self,
+        proposal: &ProposalRecord,
+        created: &ProposalTransition,
+        sent: &ProposalChange,
+    ) -> Result<()> {
+        let revision = held_shape(proposal, created, sent)?;
+        self.create_with(
+            proposal,
+            &revision.content,
+            created,
+            None,
+            None,
+            Some((revision, &sent.transition)),
+        )
+    }
+
     fn reconfirm_of(
         &self,
         id: &ProposalId,

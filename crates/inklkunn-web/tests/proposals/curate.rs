@@ -484,3 +484,52 @@ async fn a_form_with_fewer_sources_than_the_claim_cites_is_not_the_form_that_was
             .expect("a list");
     assert!(all.is_empty());
 }
+
+#[tokio::test]
+async fn a_refused_curation_leaves_no_draft_behind() {
+    // K38: the form makes and sends in one step, so a send the wiki's hourly limit refuses leaves nothing: not an unsent
+    // draft that counts against its author and has nothing to lead to.
+    let mut s = scene();
+    let services = &s.w.services;
+    let proposals = std::sync::Arc::new(
+        inklkunn_core::proposal::ProposalService::new(
+            s.w.store.clone(),
+            s.w.store.clone(),
+            s.w.store.clone(),
+            (*services.authorizer).clone(),
+            services.read.clone(),
+            inklkunn_core::proposal::QuotaConfig {
+                proposals_per_hour_per_wiki: 1,
+                ..inklkunn_core::proposal::QuotaConfig::default()
+            },
+        )
+        .with_clock(|| crate::common::NOW),
+    );
+    s.w.services = std::sync::Arc::new(inklkunn_web::Services {
+        proposals,
+        ..(*s.w.services).clone()
+    });
+    let first = with(unchanged(&s, 1), &[("status", "accepted")]);
+    location(&send(&s, FORM, &s.writer, &first).await);
+    let second = with(unchanged(&s, 1), &[("status", "contested")]);
+    let refused = send(&s, FORM, &s.writer, &second).await;
+    assert_eq!(refused.status, StatusCode::TOO_MANY_REQUESTS);
+    // The author's own, drafts included: only the one that was sent.
+    let mine = inklkunn_store::ProposalStore::proposals(
+        &*s.w.store,
+        &s.w.wiki.id,
+        &Default::default(),
+        Some(&s.writer),
+    )
+    .expect("the author's own, drafts included");
+    assert_eq!(mine.len(), 1, "{mine:?}");
+    assert!(
+        mine.iter()
+            .all(|p| p.state == inklkunn_store::ProposalState::HeldForReview),
+        "{mine:?}"
+    );
+    assert_eq!(
+        inklkunn_store::ProposalStore::open_count(&*s.w.store, &s.w.wiki.id, &s.writer).unwrap(),
+        1
+    );
+}

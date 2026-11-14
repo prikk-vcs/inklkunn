@@ -1569,6 +1569,7 @@ keys! {
     // knowledge: the claims a change touches (handoff 005 K-T5): end
     InvalidKnowledgeNotShown => "invalid.knowledge_not_shown",
     InvalidKnowledgeUnjudged => "invalid.knowledge_unjudged",
+    InvalidKnowledgeStatusUnjudged => "invalid.knowledge_status_unjudged",
     KnowChangeRejudged => "know.change_rejudged",
     KnowChangeRejudgedUnseen => "know.change_rejudged_unseen",
     KnowChangeRejudgedCleared => "know.change_rejudged_cleared",
