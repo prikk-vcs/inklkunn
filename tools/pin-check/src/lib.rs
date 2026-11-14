@@ -100,26 +100,131 @@ pub fn default_toolchains(yaml: &str) -> Vec<String> {
         .collect()
 }
 
-/// Every `--component <name>` of a `rustup toolchain install` line, with that install's version, in order.
-pub fn installed_components(yaml: &str) -> Vec<(String, String)> {
+/// One `rustup toolchain install <version> ...` command of a workflow.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolchainInstall {
+    /// The line the command starts on (1-based).
+    pub line: usize,
+    /// The version it installs.
+    pub version: String,
+    /// Every `--component <name>` it names, in order.
+    pub components: Vec<String>,
+}
+
+/// Every `rustup toolchain install` command of a workflow, in order. A command continued over lines with a
+/// trailing backslash is read whole, so a `--component` on a continuation line is not missed.
+pub fn toolchain_installs(yaml: &str) -> Vec<ToolchainInstall> {
     let mut out = Vec::new();
-    for l in yaml.lines() {
-        let Some(rest) = l.trim().strip_prefix("rustup toolchain install ") else {
+    let mut lines = yaml.lines().enumerate();
+    while let Some((i, l)) = lines.next() {
+        let mut text = l.trim().to_owned();
+        if !text.starts_with("rustup toolchain install ") {
             continue;
-        };
-        let mut words = rest.split_whitespace();
+        }
+        while text.ends_with('\\') {
+            text.pop();
+            let Some((_, next)) = lines.next() else {
+                break;
+            };
+            text.push(' ');
+            text.push_str(next.trim());
+        }
+        let mut words = text
+            .strip_prefix("rustup toolchain install ")
+            .unwrap_or("")
+            .split_whitespace();
         let Some(version) = words.next() else {
             continue;
         };
+        let mut components = Vec::new();
         while let Some(w) = words.next() {
             if w == "--component"
                 && let Some(c) = words.next()
             {
-                out.push((version.to_owned(), c.to_owned()));
+                components.push(c.to_owned());
             }
         }
+        out.push(ToolchainInstall {
+            line: i + 1,
+            version: version.to_owned(),
+            components,
+        });
     }
     out
+}
+
+/// Every `--component <name>` of a `rustup toolchain install` command, with that install's version, in order.
+pub fn installed_components(yaml: &str) -> Vec<(String, String)> {
+    toolchain_installs(yaml)
+        .into_iter()
+        .flat_map(|i| {
+            let version = i.version;
+            i.components.into_iter().map(move |c| (version.clone(), c))
+        })
+        .collect()
+}
+
+/// Installs of `channel` (the pin `rust-toolchain.toml` names) that leave out a component the file names,
+/// with the components missing. The file makes the first plain `cargo` of a job install what the install
+/// step left out: a download the job did not plan for and a new way for it to fail (maintenance M29). So
+/// every install of the pin names all of them.
+pub fn installs_missing_components(
+    yaml: &str,
+    channel: &str,
+    components: &[String],
+) -> Vec<(usize, Vec<String>)> {
+    toolchain_installs(yaml)
+        .into_iter()
+        .filter(|i| i.version == channel)
+        .filter_map(|i| {
+            let missing: Vec<String> = components
+                .iter()
+                .filter(|c| !i.components.contains(c))
+                .cloned()
+                .collect();
+            (!missing.is_empty()).then_some((i.line, missing))
+        })
+        .collect()
+}
+
+/// Jobs under `jobs:` with no `timeout-minutes:` of their own (a positive number of minutes). A job without
+/// one runs for up to six hours when a test hangs (maintenance M30).
+pub fn jobs_without_timeout(yaml: &str) -> Vec<(usize, String)> {
+    let mut jobs: Vec<(usize, String, bool)> = Vec::new();
+    let mut in_jobs = false;
+    for (i, line) in yaml.lines().enumerate() {
+        let t = line.trim_start();
+        if t.is_empty() || t.starts_with('#') {
+            continue;
+        }
+        let indent = indent_of(line);
+        if indent == 0 {
+            in_jobs = t == "jobs:";
+            continue;
+        }
+        if !in_jobs {
+            continue;
+        }
+        if indent == 2 && t.ends_with(':') && !t.starts_with('-') {
+            jobs.push((i + 1, t.trim_end_matches(':').to_owned(), false));
+        } else if indent == 4
+            && let Some(rest) = t.strip_prefix("timeout-minutes:")
+            && let Some(job) = jobs.last_mut()
+            && rest
+                .split('#')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .parse::<u32>()
+                .is_ok_and(|n| n > 0)
+        {
+            job.2 = true;
+        }
+    }
+    jobs.into_iter()
+        .filter(|(_, _, has)| !has)
+        .map(|(n, name, _)| (n, name))
+        .collect()
 }
 
 /// `RUST_TOOLCHAIN: "X.Y.Z"` in a workflow's `env:` (the release records the compiler it built with).

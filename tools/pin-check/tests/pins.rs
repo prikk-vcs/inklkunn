@@ -144,6 +144,93 @@ fn the_toolchain_file_names_the_compiler_ci_installs_and_the_components_it_insta
         named, installed,
         "rust-toolchain.toml's components differ from what the workflows install"
     );
+    // And on EVERY install of the pin, not only somewhere: the file makes the first plain `cargo` of a job
+    // fetch what its install step left out (M29).
+    let mut installs_of_the_pin = 0;
+    for (name, yaml) in workflows() {
+        installs_of_the_pin += toolchain_installs(&yaml)
+            .iter()
+            .filter(|i| i.version == channel)
+            .count();
+        let missing = installs_missing_components(&yaml, &channel, &named);
+        assert!(
+            missing.is_empty(),
+            "{name}: an install of {channel} leaves out components rust-toolchain.toml names: {missing:?}"
+        );
+    }
+    assert!(
+        installs_of_the_pin >= 5,
+        "the rule is not vacuous: ci.yml (2), release.yml (3) and supply-chain.yml (1) install the pin, saw {installs_of_the_pin}"
+    );
+}
+
+#[test]
+fn an_install_of_the_pin_without_the_files_components_is_caught() {
+    let want = vec!["rustfmt".to_owned(), "clippy".to_owned()];
+    // The three shapes of the bug: no component, one of two, and a component on a continuation line.
+    let none = "        run: |\n          rustup toolchain install 1.99.1 --profile minimal --no-self-update\n";
+    assert_eq!(
+        installs_missing_components(none, "1.99.1", &want),
+        vec![(2, vec!["rustfmt".to_owned(), "clippy".to_owned()])]
+    );
+    let one = "          rustup toolchain install 1.99.1 --profile minimal --component rustfmt --no-self-update\n";
+    assert_eq!(
+        installs_missing_components(one, "1.99.1", &want),
+        vec![(1, vec!["clippy".to_owned()])]
+    );
+    let both = "          rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy --no-self-update\n";
+    assert!(installs_missing_components(both, "1.99.1", &want).is_empty());
+    let continued = "          rustup toolchain install 1.99.1 --profile minimal \\\n            --component rustfmt --component clippy --no-self-update\n";
+    assert!(
+        installs_missing_components(continued, "1.99.1", &want).is_empty(),
+        "a continuation line is part of the command"
+    );
+    assert_eq!(
+        installed_components(continued).len(),
+        2,
+        "installed_components reads the continued command whole too"
+    );
+    // The minimum compiler is not the pin: its install names no components and is not asked to.
+    let msrv = "          rustup toolchain install 1.89.0 --profile minimal --no-self-update\n";
+    assert!(installs_missing_components(msrv, "1.99.1", &want).is_empty());
+    // One good install does not excuse a bad one beside it.
+    let mixed = format!("{both}{none}");
+    assert_eq!(
+        installs_missing_components(&mixed, "1.99.1", &want).len(),
+        1
+    );
+}
+
+#[test]
+fn every_job_has_a_timeout() {
+    for (name, yaml) in workflows() {
+        let bare = jobs_without_timeout(&yaml);
+        assert!(
+            bare.is_empty(),
+            "{name}: jobs without `timeout-minutes` (a hung test holds one for six hours): {bare:?}"
+        );
+    }
+    let set: usize = workflows()
+        .iter()
+        .map(|(_, y)| y.matches("    timeout-minutes:").count())
+        .sum();
+    assert!(set >= 10, "the rule is not vacuous: saw {set} timeouts");
+}
+
+#[test]
+fn a_job_without_a_timeout_is_caught() {
+    let bare = "name: x\njobs:\n  build:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: true\n  test:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 10\n    steps:\n      - run: true\n";
+    assert_eq!(jobs_without_timeout(bare), vec![(3, "build".to_owned())]);
+    // A timeout that is not a number of minutes, or is zero, is none; one set on a step does not count.
+    let weird = "jobs:\n  a:\n    timeout-minutes: ${{ inputs.t }}\n    steps:\n      - run: true\n  b:\n    timeout-minutes: 0\n    steps:\n      - run: true\n  c:\n    steps:\n      - run: true\n        timeout-minutes: 5\n";
+    let names: Vec<String> = jobs_without_timeout(weird)
+        .into_iter()
+        .map(|(_, n)| n)
+        .collect();
+    assert_eq!(names, vec!["a", "b", "c"]);
+    // A job that has one, with a trailing comment, is fine; the keys of other top-level blocks are not jobs.
+    let ok = "on:\n  push:\n    branches: [main]\njobs:\n  only:\n    timeout-minutes: 7 # twice the slowest\n    steps:\n      - run: true\n";
+    assert!(jobs_without_timeout(ok).is_empty());
 }
 
 #[test]

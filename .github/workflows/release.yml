@@ -46,6 +46,7 @@ env:
 jobs:
   gates:
     runs-on: ubuntu-24.04
+    timeout-minutes: 36
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Rust toolchain (pinned, one compiler for CI and release)
@@ -133,6 +134,7 @@ jobs:
           - os: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
     permissions:
       contents: read
       id-token: write
@@ -142,7 +144,7 @@ jobs:
       - name: Rust toolchain (pinned, one compiler for CI and release)
         run: |
           set -euo pipefail
-          rustup toolchain install 1.99.1 --profile minimal --no-self-update
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy --no-self-update
           rustup default 1.99.1
       - name: Build
         env:
@@ -196,6 +198,7 @@ jobs:
             arch: arm64
             target: aarch64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
     permissions:
       contents: read
       packages: write
@@ -253,6 +256,7 @@ jobs:
     # release notes say.
     needs: image
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     permissions:
       contents: read
       packages: write
@@ -282,6 +286,7 @@ jobs:
     needs: manifest
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     permissions:
       contents: write
     steps:
@@ -307,12 +312,13 @@ jobs:
     needs: release
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Rust toolchain (pinned, one compiler for CI and release)
         run: |
           set -euo pipefail
-          rustup toolchain install 1.99.1 --profile minimal --no-self-update
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy --no-self-update
           rustup default 1.99.1
       - name: Publish the crates in dependency order (tag push; the token is the owner's, supplied as a secret)
         if: github.event_name == 'push'

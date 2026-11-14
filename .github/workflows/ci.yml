@@ -35,6 +35,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 28
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Rust toolchain (pinned, one compiler for CI and release)
@@ -102,6 +103,7 @@ jobs:
     # RFC 001 D-1 / RFC 010 D-9: the declared minimum compiler is built with. This job's toolchain must
     # equal `rust-version` in Cargo.toml (pin-check enforces it); it is the one exception to "one compiler".
     runs-on: ubuntu-24.04
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Rust toolchain (the declared minimum)
@@ -116,12 +118,13 @@ jobs:
 
   supply-chain:
     runs-on: ubuntu-24.04
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Rust toolchain (pinned, one compiler for CI and release)
         run: |
           set -euo pipefail
-          rustup toolchain install 1.99.1 --profile minimal --no-self-update
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy --no-self-update
           rustup default 1.99.1
       - name: Install cargo-deny and cargo-audit (pinned)
         run: cargo install cargo-deny@0.20.2 cargo-audit@0.22.2 --locked
