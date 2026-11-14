@@ -12,6 +12,15 @@ use crate::common::{block_id, state_id};
 
 const WORDS: &str = "Propose a change to its status or sources";
 
+/// The link to a claim's curation form as a refusal on a proposal's page words it: it names its claim by its whole
+/// identifier in `<code>`, one claim too (K54 U-i).
+fn link_to_form(claim: &ClaimId) -> String {
+    format!(
+        "<a href=\"{}\">Propose a change to the status or sources of the claim <code>{claim}</code></a>",
+        form_of(claim)
+    )
+}
+
 /// The link's words on a page that is not the claim's: they name the claim, by its whole identifier in `<code>` (U-i).
 fn words_of(claim: &ClaimId) -> String {
     format!("Propose a change to the status or sources of the claim <code>{claim}</code>")
@@ -316,7 +325,7 @@ async fn each_change_only_curation_makes_leads_from_its_refusal_to_a_form_that_m
             "{}: nothing here is a reviewer's: {body}",
             case.name
         );
-        let link = format!("<a href=\"{}\">{WORDS}</a>", form_of(&s.claim.id));
+        let link = link_to_form(&s.claim.id);
         assert!(body.contains(&link), "{}: {body}", case.name);
         // The link opens the form, and the form makes the same change.
         let form = open(&s, &form_of(&s.claim.id), &s.writer).await;
@@ -401,10 +410,7 @@ async fn what_no_form_makes_is_a_reviewers_and_the_page_says_so_without_a_link_i
     .await
     .body();
     assert!(body.contains(BY_REVIEWER), "{body}");
-    assert!(
-        body.contains(&format!("<a href=\"{}\">{WORDS}</a>", form_of(&s.claim.id))),
-        "{body}"
-    );
+    assert!(body.contains(&link_to_form(&s.claim.id)), "{body}");
     assert!(
         !body.contains(&form_of(&other.id)),
         "the claim whose file is removed is not offered a form: {body}"

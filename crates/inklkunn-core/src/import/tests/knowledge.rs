@@ -430,12 +430,14 @@ fn an_import_is_judged_as_the_service_so_a_redirect_page_and_claims_import_toget
     );
     let mut plan = plan_folder(&d.0, &Existing::at(&rig.fake.block_id()), false).unwrap();
     judge_knowledge(&mut plan, &rig.reads, &*rig.fake, &rig.layout, &rig.wiki).unwrap();
-    assert_eq!(plan.refused.len(), 1, "{}", plan.report());
+    // Two knowledge rules refuse the one file: a status only curation sets (K30) and, since K45, a decided status that
+    // names no wording it was judged on. Both name the claim file, and nothing else is refused.
+    assert_eq!(plan.refused.len(), 2, "{}", plan.report());
     assert!(
         plan.refused
-            .first()
-            .unwrap()
-            .name
-            .contains("knowledge/claims/")
+            .iter()
+            .all(|r| r.name.contains("knowledge/claims/")),
+        "{}",
+        plan.report()
     );
 }
