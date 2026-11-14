@@ -1902,15 +1902,12 @@ fn a_reconfirm_judges_on_the_places_the_written_file_has_not_those_the_tip_had()
             }],
             ..ProposalEdit::default()
         };
-        let draft = w
+        // A reconfirm proposal is created already held for review (K26): there is no draft to submit.
+        let held = w
             .proposals
             .create_reconfirm(&w.contributor, &w.wiki, None, edit, &change.acceptance)
             .unwrap_or_else(|e| panic!("create: {e}"));
-        let sent = w
-            .proposals
-            .submit(&w.contributor, &w.wiki, &draft.id)
-            .unwrap();
-        signed(w.accept(&sent).unwrap());
+        signed(w.accept(&held).unwrap());
     };
 
     // P-e: the file judges its link on the wording the paragraph has now and takes the paragraph out of the places the
