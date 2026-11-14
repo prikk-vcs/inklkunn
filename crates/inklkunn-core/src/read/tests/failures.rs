@@ -406,3 +406,45 @@ fn the_stores_size_is_walked_once_per_tip_and_the_driver_is_hinted() {
     assert_eq!(service.measured_store_bytes(&wiki), None);
     assert_eq!(hints.get(&repo), None);
 }
+
+#[test]
+fn a_repository_of_a_format_prikk_does_not_read_is_could_not_be_read_now_names_the_version_to_the_operator_and_flags_nothing()
+ {
+    use inklkunn_store::ActStore;
+    let w = World::pages(&[("Home", &[], "x\n")]);
+    w.fake().fail_views(Some(StorageError::UnsupportedFormat {
+        verb: "branch",
+        version: 8,
+    }));
+    for _ in 0..2 {
+        let e = w
+            .service
+            .page(&w.wiki, None, "Home", &Env::EN)
+            .expect_err("a repository this prikk does not read");
+        assert!(
+            matches!(
+                &e,
+                ReadError::CouldNotBeReadNow(Cause::Storage(StorageError::UnsupportedFormat {
+                    version: 8,
+                    ..
+                }))
+            ),
+            "{e:?}"
+        );
+        // The operator's text names the version and says nothing is damaged; a surface shows a reader neither.
+        let text = e.to_string();
+        assert!(
+            text.contains("format 8") && text.contains("nothing in the repository is damaged"),
+            "{text}"
+        );
+    }
+    // Not remembered as a lasting refusal: an operator who installs the right prikk is served by the next request.
+    assert_eq!(w.calls().views, 2, "asked again");
+    // The wiki is not flagged (that is for recovery), no checkpoint refresh is asked for, and no verdict changes.
+    assert_eq!(w.store.recovery_flag(&w.wiki.id).unwrap(), None);
+    let record = w.store.get(&w.wiki.id).unwrap();
+    assert_eq!(record.checkpoint.refresh_requested_at, None);
+    assert_eq!(record.verification, w.wiki.verification);
+    w.fake().fail_views(None);
+    assert!(w.service.page(&w.wiki, None, "Home", &Env::EN).is_ok());
+}

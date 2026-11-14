@@ -803,3 +803,34 @@ async fn a_check_now_that_found_a_retirements_failure_says_it_once_and_the_next_
     assert!(b.body.contains(">Verification failed</a>"));
     assert_eq!(count(&b.body, sentence), 1, "{}", b.body);
 }
+
+#[tokio::test]
+async fn a_repository_of_a_format_prikk_does_not_read_is_could_not_be_read_now_and_the_version_is_the_operators()
+ {
+    // M11: a wiki made under prikk 0.57.0 (format 8) and a prikk that refuses it. A reader is told the page could not
+    // be read now, as for any prikk that cannot be asked, and nothing of the cause; the operator's log names the
+    // version and says nothing is damaged.
+    let w = handbook();
+    w.fake
+        .fail_views(Some(inklkunn_prikk::StorageError::UnsupportedFormat {
+            verb: "branch",
+            version: 8,
+        }));
+    let a = get(&w, "/handbook/Home").await;
+    assert_eq!(a.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(a.body.contains("This page could not be read now"));
+    for operator_word in ["format 8", "unsupported", "damaged", "backup", "0.57"] {
+        assert!(
+            !a.body.to_lowercase().contains(operator_word),
+            "a reader is told nothing of the cause ({operator_word}): {}",
+            a.body
+        );
+    }
+    assert!(
+        w.logged()
+            .iter()
+            .any(|l| l.contains("format 8") && l.contains("nothing in the repository is damaged")),
+        "the operator is told: {:?}",
+        w.logged()
+    );
+}

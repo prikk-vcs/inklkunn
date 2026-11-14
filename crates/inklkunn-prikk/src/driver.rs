@@ -18,7 +18,7 @@ use crate::sandbox::{
 };
 use crate::storage::{
     Change, Diff, ExtractBounds, FileMeta, History, Materialized, Point, RepoStatus, Result,
-    Storage, StorageError, Tree, Unavailable, Verification, Views,
+    Storage, StorageError, Tree, Unavailable, Verification, Views, unsupported_format_version,
 };
 
 /// The pinned report schemas (RFC 001 D-3): one name per verb. A report naming anything else is refused.
@@ -340,6 +340,17 @@ impl PrikkCli {
         };
         match run.status.code() {
             Some(1) => {
+                // A repository of a format this prikk does not read: prikk's own words, whole, on stderr and with no
+                // report (0.55.0, 0.56.0 on a format-8 repository). An operator's mismatch, not a refusal about the
+                // thing asked and not damage.
+                if refusal.is_none()
+                    && let Some(version) = unsupported_format_version(&message)
+                {
+                    return StorageError::UnsupportedFormat {
+                        verb: name,
+                        version,
+                    };
+                }
                 let (kind, reason) = match refusal {
                     Some(r) => (r.refusal, r.reason),
                     None => (None, None),

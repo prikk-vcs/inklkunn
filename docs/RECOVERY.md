@@ -14,6 +14,16 @@ touch prikk's files by hand.
 - The flag is cleared only by recovery finishing, never by time and never by a restart alone. Each start of the
   service runs recovery for every flagged wiki, and says in its log which ones it could not finish.
 
+## Not a case for recovery: a wiki that this prikk does not read (format 8)
+
+A wiki created under prikk 0.57.0 is **format 8**, and prikk 0.55.0 and 0.56.0 refuse it on every command with
+`error: unsupported format version: 8` (the version in the sentence is the repository's). If the service or a command
+says `prikk … cannot open this repository: it is format 8, which this prikk does not read`, an older prikk was put back
+beside wikis made by a newer one. The repository is **not damaged**, the wiki is **not flagged**, `wiki recover` has
+nothing to do, and readers are told only that the page *could not be read now*. Install the prikk that made the wiki
+(0.57.0 or later), or restore the wiki from a backup made before it was made in format 8. Nothing else is needed, and
+nothing here should be done by editing prikk's files.
+
 ## The commands
 
 Run on the host that runs the service, as the user that owns its data directory, with the same settings as the

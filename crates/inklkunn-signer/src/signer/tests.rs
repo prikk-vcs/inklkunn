@@ -207,3 +207,22 @@ fn the_key_authority_is_claimed_once_per_process_and_whoever_asks_second_gets_no
     // Tests make their own, as many as they like.
     let _ = (KeyAuthority::for_tests(), KeyAuthority::for_tests());
 }
+
+#[test]
+fn a_format_mismatch_is_an_acceptance_that_could_not_run_and_never_one_that_needs_recovery() {
+    // Before anything is committed (the mismatch is the same on every call, so it is met at the first), the
+    // acceptance is told it could not run: not `Refused` (nothing about the change is wrong), not `Queued`, not
+    // `Unclean` and not `WorktreeDirty`, which are what flag a wiki for recovery.
+    let e = accept_error(SignerError::UnsupportedFormat { version: 8 });
+    assert!(
+        matches!(&e, AcceptError::Unavailable(why) if why.contains("format 8")),
+        "{e:?}"
+    );
+    // And in a recovery operation: could not be done, which ends nothing and flags nothing by itself.
+    let from_recover =
+        crate::recover::RecoverError::from(SignerError::UnsupportedFormat { version: 8 });
+    assert!(
+        matches!(&from_recover, crate::recover::RecoverError::Unavailable(why) if why.contains("format 8")),
+        "{from_recover:?}"
+    );
+}

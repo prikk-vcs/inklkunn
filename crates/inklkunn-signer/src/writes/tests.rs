@@ -782,3 +782,35 @@ fn a_take_back_is_done_only_when_prikk_says_where_to_undo_it() {
     let r = silent.retry(|| silent.writes().uncommit(&silent.repo(), PATCH));
     assert!(matches!(r, Err(SignerError::Damaged(_))), "{r:?}");
 }
+
+#[test]
+fn a_repository_of_a_format_prikk_does_not_read_is_the_operators_mismatch_and_never_a_refusal_or_a_recovery()
+ {
+    // Measured: prikk 0.55.0 and 0.56.0 on a repository made by 0.57.0 (format 8), for every command:
+    // `error: unsupported format version: 8`, exit 1.
+    let e = outcome(
+        "commit",
+        run_of(1 << 8, "error: unsupported format version: 8\n"),
+        1 << 30,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(e, SignerError::UnsupportedFormat { version: 8 }),
+        "{e:?}"
+    );
+    let shown = e.to_string();
+    assert!(
+        shown.contains("format 8") && shown.contains("nothing was done"),
+        "{shown}"
+    );
+    assert!(!shown.contains("recover"), "no case for recovery: {shown}");
+    // Any other sentence is a refusal as before, whatever it names.
+    for other in [
+        "error: page \"unsupported format version: 8\" is not there\n",
+        "error: unsupported format version: 8 (and more)\n",
+        "error: unsupported format version: x\n",
+    ] {
+        let e = outcome("commit", run_of(1 << 8, other), 1 << 30).unwrap_err();
+        assert!(matches!(e, SignerError::Refused(_)), "{other}: {e:?}");
+    }
+}

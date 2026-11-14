@@ -398,3 +398,77 @@ fn the_list_of_block_seals_is_whole_only_where_the_report_shows_nothing_left_out
     // The verdict's own reading is not changed: the blocked stage behind a finding is not partial.
     assert!(!report_with(false, &["stage-failure"], &format!("{DAMAGED},{NOT_RUN}")).is_partial());
 }
+
+#[test]
+fn prikks_unsupported_format_sentence_is_a_typed_mismatch_read_whole_and_never_a_substring() {
+    // Measured: `error: unsupported format version: 8` on stderr, exit 1, no report, from prikk 0.55.0 and 0.56.0 on a
+    // repository made by 0.57.0 (format 8), for every command that opens the repository.
+    let run = failed_run(1, "", "error: unsupported format version: 8\n");
+    let e = PrikkCli::failure(ReadVerb::Tree, &run, None, Duration::from_secs(120));
+    assert!(
+        matches!(
+            e,
+            StorageError::UnsupportedFormat {
+                verb: "tree",
+                version: 8
+            }
+        ),
+        "{e:?}"
+    );
+    let said = e.to_string();
+    assert!(said.contains("format 8"), "{said}");
+    assert!(
+        said.contains("nothing in the repository is damaged"),
+        "{said}"
+    );
+    // Whatever else it says is a refusal or damage as before: a name the repository's contributors chose, a longer
+    // sentence, a number that is not one, the usage exit, a report that names a refusal.
+    let others = [
+        (
+            1,
+            "",
+            "error: page \"unsupported format version: 8\" not found",
+        ),
+        (1, "", "error: unsupported format version: 8 and more"),
+        (1, "", "error: not an unsupported format version: 8"),
+        (1, "", "error: unsupported format version: eight"),
+        (1, "", "error: unsupported format version: "),
+        (
+            1,
+            "",
+            "error: unsupported format version: 99999999999999999999",
+        ),
+        (1, "", "error: unsupported format version: -1"),
+        (2, "", "error: unsupported format version: 8"),
+        (
+            1,
+            r#"{"schema_version":"refusal-v1","refusal":"precondition-not-met","reason":null,"message":"unsupported format version: 8"}"#,
+            "error: unsupported format version: 8",
+        ),
+    ];
+    for (code, stdout, stderr) in others {
+        let e = PrikkCli::failure(
+            ReadVerb::Tree,
+            &failed_run(code, stdout, stderr),
+            None,
+            Duration::from_secs(120),
+        );
+        assert!(
+            !matches!(e, StorageError::UnsupportedFormat { .. }),
+            "{stderr}: {e:?}"
+        );
+    }
+    // And the parser itself: with and without the prefix, padded, 9 digits at most.
+    assert_eq!(
+        crate::unsupported_format_version("unsupported format version: 9"),
+        Some(9)
+    );
+    assert_eq!(
+        crate::unsupported_format_version("  error:   unsupported format version: 123456789\n"),
+        Some(123_456_789)
+    );
+    assert_eq!(
+        crate::unsupported_format_version("unsupported format version: 1234567890"),
+        None
+    );
+}

@@ -39,6 +39,7 @@ To build and test (running a server also needs a key store and the operator's se
 
 ```sh
 # prerequisites: Rust 1.89+, prikk ≥ 0.54.0 on PATH, bubblewrap (bwrap), prlimit (util-linux)
+# (a wiki created under prikk 0.57.0 is format 8 and prikk 0.55.0/0.56.0 refuse it: SECURITY.md)
 cargo build --workspace --locked
 cargo test --workspace --locked          # prikk-dependent tests self-skip with a visible line without prikk
 ```

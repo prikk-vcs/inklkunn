@@ -155,6 +155,17 @@ ask for the secret and does not try again on its own: fix the cause and restart.
 and the command line (`wiki import-folder`, `wiki recover`, `wiki export`, key rotation) take the same per-wiki
 write lock, so a command beside a running server is told the wiki is busy, naming the process that holds it.
 
+**A wiki made under prikk 0.57.0 is format 8, and an older prikk refuses it.** The floor stays prikk 0.54.0, but prikk
+0.57.0 makes new repositories in format 8 (`.prikk/FORMAT` holds `8`; 0.55.0 and 0.56.0 wrote 7), never upgrades an
+existing one by itself, and prikk 0.55.0 and 0.56.0 refuse a format-8 repository on every command
+(`error: unsupported format version: 8`). So an operator who creates wikis under 0.57.0 and later puts an older prikk
+back loses those wikis until prikk 0.57.0 (or a later one) returns: pages are served only from what is cached, nothing is accepted, and the
+log of each call says `prikk … cannot open this repository: it is format 8 …`. **It is not damage and not a case for
+recovery**: the wiki is not flagged, its verification record keeps its last verdict, readers are shown *could not be read
+now* (never the version), and the repository is exactly as it was. Put the prikk that made the wiki back, or restore the
+wiki from a backup made before. The format prikk wrote is kept in the wiki's store record when the wiki is created
+(`prikk_format_version`, for information: nothing reads it to decide anything, prikk is always the one asked).
+
 The **bootstrap signer** over a plain-text key directory exists only behind the `bootstrap` cargo feature, for
 tests; the gate fails if a product crate enables it.
 

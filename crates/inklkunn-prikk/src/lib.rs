@@ -28,6 +28,7 @@ pub use storage::{
     Change, Diff, DiffEntry, Entry, ExtractBounds, FileMeta, History, HistoryBlock, Materialized,
     Operation, Patch, PatchMessage, Point, Queue, QueuedPatch, RepoStatus, Result, Stage,
     StageOutcome, Storage, StorageError, Tree, Unavailable, Verdict, Verification, View, Views,
+    unsupported_format_sentence, unsupported_format_version,
 };
 
 /// The prikk floor (RFC 001 D-3 / RFC 010 D-3): the oldest prikk the driver accepts. One value with the

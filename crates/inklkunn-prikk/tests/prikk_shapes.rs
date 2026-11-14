@@ -246,3 +246,41 @@ esac"#,
         other => panic!("a refusal is an error with prikk's words, got {other:?}"),
     }
 }
+
+#[test]
+fn a_repository_of_a_format_prikk_does_not_read_is_the_same_typed_mismatch_for_every_verb() {
+    // Measured: prikk 0.55.0 and 0.56.0 answer every command that opens a format-8 repository (made by 0.57.0) with
+    // `error: unsupported format version: 8` on stderr, exit 1, nothing on stdout. Whichever verb is asked, the
+    // driver gives the one typed outcome with the version, and never a refusal about the thing asked or a verdict
+    // about the repository (a failed verification would be damage; this is a mismatch of installations).
+    let tmp = TempDir::new("format-8");
+    let repo = repo(&tmp);
+    let fake = shim(
+        &tmp.0,
+        "prikk",
+        r#"case "$1" in
+  --version) echo 'prikk 0.56.0' ;;
+  *) echo "error: unsupported format version: 8" >&2; exit 1 ;;
+esac"#,
+    );
+    let d = open_shim(&fake);
+    let view = Point::View("heads/main".into());
+    let outcomes = [
+        ("branch", retry(|| d.views(&repo)).map(|_| ())),
+        ("branch", retry(|| d.all_views(&repo)).map(|_| ())),
+        ("tree", retry(|| d.tree(&repo, &view, None)).map(|_| ())),
+        ("log", retry(|| d.history(&repo, &view, None)).map(|_| ())),
+        ("extract", retry(|| d.plan(&repo, &view)).map(|_| ())),
+        ("verify", retry(|| d.verify(&repo)).map(|_| ())),
+        ("status", retry(|| d.status(&repo)).map(|_| ())),
+    ];
+    for (verb, outcome) in outcomes {
+        match outcome {
+            Err(StorageError::UnsupportedFormat { verb: v, version }) => {
+                assert_eq!(v, verb);
+                assert_eq!(version, 8);
+            }
+            other => panic!("{verb}: expected the typed format mismatch, got {other:?}"),
+        }
+    }
+}

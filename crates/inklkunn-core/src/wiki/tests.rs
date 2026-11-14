@@ -30,6 +30,8 @@ fn id(n: usize) -> String {
 struct Repo {
     sealed: Mutex<Option<String>>,
     fail_history: bool,
+    /// What `prikk init` leaves in `.prikk/FORMAT`, when it leaves anything.
+    format_marker: Option<Vec<u8>>,
 }
 
 impl Repo {
@@ -37,6 +39,15 @@ impl Repo {
         Repo {
             sealed: Mutex::new(None),
             fail_history: false,
+            format_marker: None,
+        }
+    }
+
+    /// A repository whose `.prikk/FORMAT` holds `marker`.
+    fn marked(marker: &[u8]) -> Repo {
+        Repo {
+            format_marker: Some(marker.to_vec()),
+            ..Repo::new()
         }
     }
 
@@ -49,7 +60,11 @@ impl Repo {
 }
 
 impl RepositoryBootstrap for Repo {
-    fn create_repository(&self, _: &Path, _: &KeyAuthority) -> Result<KeyIds, SignerError> {
+    fn create_repository(&self, repo: &Path, _: &KeyAuthority) -> Result<KeyIds, SignerError> {
+        if let Some(marker) = &self.format_marker {
+            std::fs::create_dir_all(repo.join(".prikk")).unwrap();
+            std::fs::write(repo.join(".prikk").join("FORMAT"), marker).unwrap();
+        }
         Ok(KeyIds {
             author: "ed25519-aaaaaaaaaaaaaaaa".to_owned(),
             maintainer: "ed25519-bbbbbbbbbbbbbbbb".to_owned(),
@@ -491,4 +506,44 @@ fn the_sweep_writes_no_act_it_cannot_tie_to_a_system_first_change_and_keeps_the_
         );
         assert_eq!(rig.layout.creation_marks().unwrap().len(), 1, "{tag}");
     }
+}
+
+#[test]
+fn the_format_prikk_wrote_is_recorded_at_creation_for_information_and_only_when_it_is_a_number() {
+    // A wiki made under prikk 0.57.0 is format 8 (`.prikk/FORMAT` holds `8`), one made under 0.55.0 or 0.56.0 is 7. The
+    // column is information for the operator; creation does not depend on it.
+    for (marker, recorded) in [
+        (&b"8\n"[..], Some("8")),
+        (b"7\n", Some("7")),
+        (b"8", Some("8")),
+        (b"", None),
+        (b"eight\n", None),
+        (b"8 and more\n", None),
+        (b"-8\n", None),
+        (b"1234567890\n", None),
+        (&[b'9'; 4096][..], None),
+    ] {
+        let rig = rig("format-marker");
+        let created = rig
+            .create(&Repo::marked(marker), &*rig.store, &|_| {})
+            .unwrap();
+        assert_eq!(
+            created.record.prikk_format_version.as_deref(),
+            recorded,
+            "{marker:?}"
+        );
+        assert_eq!(
+            rig.store
+                .get(&created.record.id)
+                .unwrap()
+                .prikk_format_version
+                .as_deref(),
+            recorded,
+            "stored: {marker:?}"
+        );
+    }
+    // No marker at all (a double that makes no repository): not known, and creation goes on.
+    let rig = rig("format-marker-none");
+    let created = rig.create(&Repo::new(), &*rig.store, &|_| {}).unwrap();
+    assert_eq!(created.record.prikk_format_version, None);
 }

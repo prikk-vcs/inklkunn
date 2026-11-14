@@ -606,6 +606,23 @@ needs no more than a new file). The rule's 5.0 x S did not hold the last (ceilin
 build before the release had been measured at 5.0 x S for what was taken to be that shape and the published one was not
 reproduced there. `BOUND_TO` is the floor and does not move.
 
+M11 (maintenance corrections, format 8): prikk 0.57.0 makes new repositories in format 8 and prikk 0.55.0 and 0.56.0 refuse them on
+every command with `error: unsupported format version: 8` (stderr, exit 1, no report; measured, and the same words for any version
+number). The driver turns exactly that sentence into a typed outcome, `StorageError::UnsupportedFormat { verb, version }` (read
+whole and only after the prefix, a number of at most nine digits: never a substring, so a page named like it is not a mismatch),
+and the signer into `SignerError::UnsupportedFormat { version }`. It is an operator's mismatch, **not damage and not a case for
+recovery**: an acceptance meets it before anything is committed and ends as *could not run* (never refused, queued or dirty), a
+recovery operation as *unavailable*, a verification as *could not be checked* with the last verdict kept, and no wiki is flagged.
+A reader is told *could not be read now* and nothing of the cause; the operator's log carries the sentence naming the version
+(`unsupported_format_sentence`, one text for the driver and the signer). New: `StorageError::UnsupportedFormat`,
+`SignerError::UnsupportedFormat` (public enums gain a variant), `inklkunn_prikk::{unsupported_format_version,
+unsupported_format_sentence}`. `prikk_format_version` (the wiki record's column, always empty until now) is filled when the wiki
+is created from prikk's own `.prikk/FORMAT` (a short run of digits, else nothing), for information and never read to decide
+anything. `SECURITY.md` (operator notes), `docs/RECOVERY.md` (a section on what is not a case for recovery) and the README say that a
+wiki made under 0.57.0 is format 8 and an older prikk refuses it. Tests: the sentence against nine near-misses, every read verb
+through a stand-in prikk, the signer's classification and the acceptance and recovery mapping, a read, a check and a page (the
+reader sees nothing of the version, the log does), and the creation's record against nine markers. No prikk-dependent test.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

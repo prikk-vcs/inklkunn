@@ -25,6 +25,14 @@ use crate::recover::text::{
 pub enum SignerError {
     /// prikk refused and said why; nothing changed. The text is prikk's (operator text).
     Refused(String),
+    /// The repository's format is one this prikk does not read (`error: unsupported format version: N`, whole, exit 1:
+    /// prikk 0.55.0 and 0.56.0 on a wiki made under 0.57.0, format 8). **An operator's mismatch**: nothing was done,
+    /// nothing is damaged, and it is no case for recovery (it is never a refusal about what was asked, and never
+    /// `Incomplete` or `NeedsRecovery`); the answer is the prikk that made the wiki, or a restore.
+    UnsupportedFormat {
+        /// The format version prikk named.
+        version: u64,
+    },
     /// The call could not run (spawn, a missing tool), or was stopped at its bound. **After a stopped
     /// `commit` the repository's state is not known**: read `log` and `status` before retrying.
     Unavailable(String),
@@ -70,6 +78,11 @@ impl std::fmt::Display for SignerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SignerError::Refused(m) => write!(f, "prikk refused the write: {m}"),
+            SignerError::UnsupportedFormat { version } => write!(
+                f,
+                "prikk cannot open this wiki's repository, and nothing was done: {}",
+                inklkunn_prikk::unsupported_format_sentence(*version)
+            ),
             SignerError::Unavailable(m) => write!(f, "the write could not run to completion: {m}"),
             SignerError::Damaged(m) => write!(f, "prikk's output could not be read: {m}"),
             SignerError::Busy { wiki, holder } => match holder {
@@ -368,6 +381,9 @@ fn outcome(verb: &str, run: Run, ceiling: u64) -> Result<Vec<u8>, SignerError> {
             .strip_prefix("error:")
             .map_or(stderr.as_str(), str::trim)
             .to_owned();
+        if let Some(version) = inklkunn_prikk::unsupported_format_version(&text) {
+            return Err(SignerError::UnsupportedFormat { version });
+        }
         return Err(SignerError::Refused(if text.is_empty() {
             format!("`{verb}` exited {} without a reason", run.status)
         } else {

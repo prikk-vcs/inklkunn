@@ -331,6 +331,11 @@ pub fn create_wiki_observed(
     observe(CreationStep::RepositoryCreated);
     record.author_key_id = Some(keys.author);
     record.maintainer_key_id = Some(keys.maintainer);
+    // The format prikk made the repository in, for information (`wiki show`, the operator's notes): a wiki made under
+    // prikk 0.57.0 is format 8 and an older prikk refuses it. **Never the source of truth and never read to decide
+    // anything**: prikk is asked, and answers with its own words when it cannot open the repository
+    // ([`inklkunn_prikk::StorageError::UnsupportedFormat`]). Not knowing it is not an error.
+    record.prikk_format_version = created_format(&repo);
     // 6. The bundle files.
     if let Err(error) = bundle::write_layout(&repo, &record, inklkunn_version) {
         return Err(CreateWikiError::Files {
@@ -556,6 +561,21 @@ fn refuse_removal(
             "its repository could not be examined for a sealed block ({e}); nothing was removed"
         )),
     }
+}
+
+/// The format prikk wrote in a repository it just created: the decimal number in `.prikk/FORMAT` (prikk's own marker),
+/// read whole and bounded, or nothing when it is not a short run of digits. Information only; see where it is used.
+fn created_format(repo: &Path) -> Option<String> {
+    use std::io::Read;
+    let mut text = String::new();
+    std::fs::File::open(repo.join(".prikk").join("FORMAT"))
+        .ok()?
+        .take(16)
+        .read_to_string(&mut text)
+        .ok()?;
+    let digits = text.trim();
+    (!digits.is_empty() && digits.len() <= 9 && digits.bytes().all(|b| b.is_ascii_digit()))
+        .then(|| digits.to_owned())
 }
 
 /// Does the repository at `repo` hold a sealed block in any view? A directory that is not (yet) a prikk

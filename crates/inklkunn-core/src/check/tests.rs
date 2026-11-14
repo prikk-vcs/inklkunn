@@ -647,3 +647,48 @@ fn an_explanation_the_store_will_not_keep_never_costs_the_verdict() {
     assert_eq!(now.verification.state, VerificationState::Failed);
     assert!(now.verification_explained_by.is_empty());
 }
+
+/// M11: a repository of a format this prikk does not read is not a *failed* verification (that would call it
+/// damaged) and not a case for recovery: the check could not be made, the last verdict stays, the wiki is not flagged,
+/// and the operator's text names the version.
+#[test]
+fn a_repository_of_a_format_prikk_does_not_read_is_a_check_that_could_not_be_made_and_changes_no_verdict()
+ {
+    use inklkunn_store::ActStore;
+    let store = Arc::new(MemoryStore::new());
+    let wiki = new_wiki(&store, "format-eight");
+    let verified = Verification {
+        state: VerificationState::Verified,
+        at: Some(NOW - 10_000),
+    };
+    store.set_verification(&wiki.id, verified).unwrap();
+    let wiki = store.get(&wiki.id).unwrap();
+    let c = verifier(
+        &store,
+        Arc::new(Canned::of(vec![Err(
+            inklkunn_prikk::StorageError::UnsupportedFormat {
+                verb: "verify",
+                version: 8,
+            },
+        )])),
+    )
+    .check(&wiki);
+    assert!(
+        matches!(
+            c.outcome,
+            CheckOutcome::CouldNotBeChecked(NotChecked::Unavailable)
+        ),
+        "{:?}",
+        c.outcome
+    );
+    assert!(
+        c.operator
+            .as_deref()
+            .is_some_and(|d| d.contains("format 8")),
+        "{:?}",
+        c.operator
+    );
+    let after = store.get(&wiki.id).unwrap();
+    assert_eq!(after.verification, verified, "the verdict is not replaced");
+    assert_eq!(store.recovery_flag(&wiki.id).unwrap(), None);
+}
