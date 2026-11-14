@@ -439,7 +439,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `health.rule_id` | a reason in that list | "An identifier is not well formed." | "識別子の形式が正しくありません。" |
 | `health.rule_duplicate` | a reason in that list | "The same entry appears twice." | "同じ項目が 2 回現れています。" |
 | `health.rule_bounds` | a reason in that list | "A list or a text is longer than the format allows." | "リストまたはテキストが、形式で許される長さを超えています。" |
-| `health.rule_reference` | a reason in that list | "The file names a source or a claim the wiki does not have." | "ウィキにない出典または主張が指定されています。" |
+| `health.rule_reference` | a reason in that list | "The file names a source or a claim the wiki does not have, or sources that replace one another in a circle." | "ウィキにない出典または主張が指定されているか、置き換えの連なりが輪になっています。" |
 | `health.rule_anchor` | a reason in that list | "An expression names a page, or a paragraph of a page, that the wiki does not have." | "表現が、ウィキにないページまたはページ内の段落を指しています。" |
 | `health.rule_in_use` | a reason in that list | "The file is removed while another file still names it." | "別のファイルから指定されているファイルが削除されています。" |
 | `health.rule_owned` | a reason in that list | "The change also changes a page key that only the service writes." | "サービスだけが書くページのキーも変更されています。" |
@@ -1383,6 +1383,8 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `curate.replaced_by_itself` | a problem: a source is named as replacing itself | "A source cannot be replaced by itself." | "出典を、その出典自身に置き換えることはできません。" |
 | `curate.unknown_successor` | a problem: the source that replaces another is not a source of the wiki, or is not written as an identifier | "The source that replaces this one has to be a source in this wiki, written as its identifier." | "置き換える出典は、このウィキにある出典で、識別子の形で書く必要があります。" |
 | `know.not_by_form` | under the sentence that says a change needs a curation proposal, when the change also removes a claim or a source file, or replaces a file that cannot be read; it names no reviewer and no form, because none can do it in this version | "Removing a claim or a source file, or replacing a file that cannot be read, is not offered in this version." | "主張や出典のファイルの削除と、読み取れないファイルの置き換えは、このバージョンでは提供されていません。" |
+| `curate.successor_cycle` | a problem: the sources named as replacing one another come back to a source already named | "The sources that replace one another must not come back to one already named. Name a source that does not lead back to this one." | "置き換えの連なりが、すでに挙げた出典に戻ってはいけません。この出典に戻らない出典を指定してください。" |
+| `know.not_by_form` | under the sentence that says a change needs a curation proposal, when the change also removes a claim or a source file, or replaces a file that cannot be read | "Removing a claim or a source file, or replacing a file that cannot be read, is decided by a reviewer: the curation form does not offer it." | "主張や出典のファイルを削除すること、読み取れないファイルを置き換えることは、レビュアーが決めます。キュレーションのフォームでは行えません。" |
 
 ## 3. Words the interface does not say
 

@@ -151,6 +151,7 @@ pub(crate) fn mistake_text(t: T, m: Mistake) -> String {
         Mistake::RemovedAndChanged => t.get(Key::CurateRemovedAndChanged),
         Mistake::ReplacedByItself => t.get(Key::CurateReplacedByItself),
         Mistake::UnknownSuccessor => t.get(Key::CurateUnknownSuccessor),
+        Mistake::SuccessorCycle => t.get(Key::CurateSuccessorCycle),
         Mistake::Unwritable => t.get(Key::AttachUnwritable),
     }
 }

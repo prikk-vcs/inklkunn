@@ -31,7 +31,7 @@ use crate::catalog::Key;
 use crate::csrf::Decided;
 use crate::pages::PageState;
 use crate::proposals::claims::mistake_text;
-use crate::proposals::curate::{load_with, unknown_successor_with};
+use crate::proposals::curate::{load_with, successor_cycle_with, unknown_successor_with};
 use crate::url::view_ref;
 
 /// The most links or sources one body edits (the form's bound).
@@ -243,6 +243,19 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
     }
     let files =
         curate(subject.claim(), &cited, subject.digest(), &edit).map_err(|m| mistake(req, m))?;
+    // The sources that replace one another do not come back to one they passed, as the acceptance judges the result (K61):
+    // the member is the source whose successor does.
+    if let Some(returning) =
+        successor_cycle_with(&req.services.read, &req.wiki, &tip.block_id, &files)
+            .map_err(|e| from_read(&req.services, &req.wiki, e))?
+    {
+        let at = edit.sources.iter().position(|e| e.source == returning);
+        let problem = mistake(req, Mistake::SuccessorCycle);
+        return Err(match at {
+            Some(at) => problem.named("member", format!("sources[{at}].superseded_by")),
+            None => problem,
+        });
+    }
     if files.is_empty() {
         return Err(req.unacceptable_with("nothing-to-curate", req.t.get(Key::CurateNothing)));
     }
@@ -286,6 +299,7 @@ fn mistake(req: &Request, m: Mistake) -> Problem {
         Mistake::RemovedAndChanged => "removed-and-changed",
         Mistake::ReplacedByItself => "replaced-by-itself",
         Mistake::UnknownSuccessor => "unknown-successor",
+        Mistake::SuccessorCycle => "successor-cycle",
         Mistake::Unwritable => return Problem::new(Code::Failed),
         _ => "not-curatable",
     };

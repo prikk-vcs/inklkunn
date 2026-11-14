@@ -123,7 +123,9 @@ impl Rule {
             Rule::Id => "an identifier is not well formed",
             Rule::Duplicate => "the same entry appears twice",
             Rule::Bounds => "a list or a text is longer than the format allows",
-            Rule::Reference => "the file names a source or a claim the view does not have",
+            Rule::Reference => {
+                "the file names a source or a claim the view does not have, or a source that replaces another in a chain that returns to a source it passed"
+            }
             Rule::Anchor => {
                 "an expression names a page the view does not have, or a block the page does not have once"
             }

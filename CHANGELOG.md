@@ -1359,6 +1359,18 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   which now also knows `const`, `format: uuid`, `maxLength` and `additionalProperties: false`) and the handler, and fails where they
   disagree. No JSON-schema crate was added.
 
+- **K61 (handoff 005 corrections, sixth round): no `superseded_by` cycle.** One curation could write A replaced by B and B replaced by
+  A, and two could do it between them. The acceptance's reference rule (`Rule::Reference`, field `superseded_by`) now refuses a written
+  source whose chain of replacing sources returns to a source it passed (`check::successor_returns`, a source replaced by itself and a
+  chain that joins a circle included), reading the result's own files. The form and the API apply the same function to the files the
+  curation writes, with the base for the rest, before a proposal exists: the form lists the new sentence `curate.successor_cycle`
+  (English, Japanese, glossary), the API answers `unacceptable` with the reason `successor-cycle` and the member
+  `sources[i].superseded_by`. The sentences of the reference rule (`health.rule_reference`, `Rule::Reference`) say a circle too.
+  Tests: the validator for a chain, itself, two in one change, two across changes, a longer circle, a chain joining one and a circle
+  opened; the walk's own reads; the whole path on a real history (two curations on one base, the second refused at its acceptance and
+  nothing signed); the form (a circle through the base, then the same body let through once the base has none); the API (one body, two
+  across the base, the member named).
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

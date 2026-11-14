@@ -9,7 +9,7 @@
 //! was changes nothing; a proposal that changes nothing is not sent. The proposal is an ordinary one: created and
 //! sent for review through the service, accepted by someone who may, and the status it sets names it.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use askama::Template;
 use axum::extract::rejection::QueryRejection;
@@ -17,6 +17,7 @@ use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use inklkunn_core::Action;
+use inklkunn_core::knowledge::check::successor_returns;
 use inklkunn_core::knowledge::compose::{
     Curation, LinkEdit, Mistake, SourceEdit, Work, curate, page_id_of,
 };
@@ -228,6 +229,47 @@ pub(crate) fn unknown_successor_with(
         }
     }
     Ok(false)
+}
+
+/// The first source, in id order, among the source files a curation writes (`files`: path and text, as `curate` made
+/// them) whose chain of replacing sources returns to a source it passed (K61). **The acceptance's rule on the acceptance's
+/// files** ([`inklkunn_core::knowledge::check::successor_returns`] over what the result holds), read from the files the
+/// curation writes and, for the rest, from the base, so a curation the acceptance would refuse for it is never one that can
+/// be submitted. Shared with the write API's curation.
+pub(crate) fn successor_cycle_with(
+    read: &inklkunn_core::read::ReadService,
+    wiki: &inklkunn_store::WikiRecord,
+    base_block: &str,
+    files: &[(String, String)],
+) -> Result<Option<SourceId>, ReadError> {
+    let written: BTreeMap<SourceId, Option<SourceId>> = files
+        .iter()
+        .filter_map(|(path, text)| match read_file(path, text.as_bytes()) {
+            Ok(File::Source(source)) => Some((source.id, source.superseded_by)),
+            _ => None,
+        })
+        .collect();
+    for (id, later) in &written {
+        if later.is_none() {
+            continue;
+        }
+        let returns = successor_returns(id, |at| match written.get(at) {
+            Some(later) => Ok(later.clone()),
+            None => {
+                let path = source_path(at);
+                Ok(read.source_at(wiki, base_block, &path)?.and_then(|text| {
+                    match read_file(&path, text.as_bytes()) {
+                        Ok(File::Source(source)) => source.superseded_by,
+                        _ => None,
+                    }
+                }))
+            }
+        })?;
+        if returns {
+            return Ok(Some(id.clone()));
+        }
+    }
+    Ok(None)
 }
 
 fn unknown_successor(
@@ -978,6 +1020,18 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
             );
         }
     };
+    // The sources that replace one another do not come back to one they passed, as the acceptance judges the result (K61).
+    match successor_cycle_with(&ctx.services.read, &ctx.wiki, &sub.base.block_id, &files) {
+        Ok(None) => {}
+        Ok(Some(_)) => {
+            return draw(
+                vec![mistake_text(t, Mistake::SuccessorCycle)],
+                Vec::new(),
+                StatusCode::UNPROCESSABLE_ENTITY,
+            );
+        }
+        Err(e) => return read_failure(page, ctx, e),
+    }
     // The lines the proposal's page will have, re-judgements with the wording they move to included.
     let changes = {
         let given: Vec<FileChange> = files

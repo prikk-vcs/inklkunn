@@ -544,6 +544,21 @@ pub fn validate(
         match read.get(path.as_str()) {
             Some(Ok(file)) => {
                 out.extend(references(path, file, &readable));
+                // No chain of replacing sources returns to a source it passed (K61), whichever files the result holds.
+                if let File::Source(source) = file
+                    && source.superseded_by.is_some()
+                {
+                    let replaced_by =
+                        |id: &SourceId| -> Result<Option<SourceId>, std::convert::Infallible> {
+                            Ok(match read.get(source_path(id).as_str()) {
+                                Some(Ok(File::Source(s))) => s.superseded_by.clone(),
+                                _ => None,
+                            })
+                        };
+                    if successor_returns(&source.id, replaced_by) == Ok(true) {
+                        out.insert(Refusal::rule(path, Rule::Reference, "superseded_by"));
+                    }
+                }
                 if !broken(file, pages, None).is_empty() {
                     out.insert(Refusal::rule(path, Rule::Anchor, "expressions"));
                 }
@@ -647,6 +662,25 @@ pub fn validate(
         }
     }
     out.into_iter().collect()
+}
+
+/// Does the chain of sources that replace one another, starting at `start`, return to a source it passed (K61)? `next`
+/// says which source replaces the one it is asked about, if any (or why that could not be read). A source replaced by
+/// itself, and a chain that joins a circle, return. **The one rule** of the acceptance ([`validate`]) and of the form and
+/// the API before a proposal exists, which differ only in where they read the sources from.
+pub fn successor_returns<E>(
+    start: &SourceId,
+    mut next: impl FnMut(&SourceId) -> Result<Option<SourceId>, E>,
+) -> Result<bool, E> {
+    let mut passed = BTreeSet::from([start.clone()]);
+    let mut at = start.clone();
+    while let Some(later) = next(&at)? {
+        if !passed.insert(later.clone()) {
+            return Ok(true);
+        }
+        at = later;
+    }
+    Ok(false)
 }
 
 /// A written file's references to other files: each must be present and readable in the view.

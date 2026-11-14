@@ -817,7 +817,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "health.rule_reference",
-        "The file names a source or a claim the wiki does not have.",
+        "The file names a source or a claim the wiki does not have, or sources that replace one another in a circle.",
     ),
     msg(
         "health.rule_anchor",
@@ -3110,6 +3110,10 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "curate.unknown_successor",
         "The source that replaces this one has to be a source in this wiki, written as its identifier.",
+    ),
+    msg(
+        "curate.successor_cycle",
+        "The sources that replace one another must not come back to one already named. Name a source that does not lead back to this one.",
     ),
     msg(
         "know.not_by_form",

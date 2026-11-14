@@ -1655,6 +1655,7 @@ keys! {
     CurateRemovedAndChanged => "curate.removed_and_changed",
     CurateReplacedByItself => "curate.replaced_by_itself",
     CurateUnknownSuccessor => "curate.unknown_successor",
+    CurateSuccessorCycle => "curate.successor_cycle",
     KnowNotByForm => "know.not_by_form",
 }
 

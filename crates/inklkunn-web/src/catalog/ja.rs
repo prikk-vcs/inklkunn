@@ -880,7 +880,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "health.rule_reference",
-        "ウィキにない出典または主張が指定されています。",
+        "ウィキにない出典または主張が指定されているか、置き換えの連なりが輪になっています。",
     ),
     msg(
         "health.rule_anchor",
@@ -3175,6 +3175,10 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "curate.unknown_successor",
         "置き換える出典は、このウィキにある出典で、識別子の形で書く必要があります。",
+    ),
+    msg(
+        "curate.successor_cycle",
+        "置き換えの連なりが、すでに挙げた出典に戻ってはいけません。この出典に戻らない出典を指定してください。",
     ),
     msg(
         "know.not_by_form",

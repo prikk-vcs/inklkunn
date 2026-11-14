@@ -965,6 +965,65 @@ async fn a_curation_that_cannot_be_sent_leaves_no_draft_behind() {
 }
 
 #[tokio::test]
+async fn sources_that_replace_one_another_do_not_come_back_to_one_they_passed_and_the_member_is_named()
+ {
+    // K61. In one body: A replaced by B and B by A.
+    let (one, two) = (source_id(1).to_string(), source_id(2).to_string());
+    let c = cast();
+    let a = propose(
+        &c,
+        json!({"sources": [
+            {"source": one, "superseded_by": two},
+            {"source": two, "superseded_by": one},
+        ]}),
+    )
+    .await;
+    assert_eq!(a.status, 422, "{}", a.text());
+    assert_eq!(problem_type(&a), urn("unacceptable"));
+    assert_eq!(a.json().at("/reason"), "successor-cycle", "{}", a.text());
+    assert_eq!(a.json().at("/member"), "sources[0].superseded_by");
+    // A source replaced by itself is the older refusal, by name.
+    let a = propose(
+        &c,
+        json!({"sources": [{"source": one, "superseded_by": one}]}),
+    )
+    .await;
+    assert_eq!(a.json().at("/reason"), "replaced-by-itself", "{}", a.text());
+    // Across two: the base already has A replaced by B (an earlier proposal's doing), and B replaced by A closes it.
+    let mut first = source(1, SourceKind::Primary);
+    first.superseded_by = Some(source_id(2));
+    let c = cast_of(&[first, source(2, SourceKind::Secondary)]);
+    let a = propose(
+        &c,
+        json!({"sources": [{"source": two, "superseded_by": one}]}),
+    )
+    .await;
+    assert_eq!(a.status, 422, "{}", a.text());
+    assert_eq!(a.json().at("/reason"), "successor-cycle", "{}", a.text());
+    assert_eq!(a.json().at("/member"), "sources[0].superseded_by");
+    // Not a circle: B replaced by nothing, or A's own replacement left as it is, is taken.
+    let a = propose(
+        &c,
+        json!({"sources": [{"source": two, "title": "A title"}]}),
+    )
+    .await;
+    assert_eq!(a.status, 201, "{}", a.text());
+    // Nothing was made by the refused ones.
+    assert_eq!(
+        c.w.services
+            .proposals
+            .list(
+                &principal(&c.contributor),
+                &c.w.wiki,
+                &inklkunn_store::ProposalFilter::default(),
+            )
+            .map(|l| l.len())
+            .unwrap_or(99),
+        1
+    );
+}
+
+#[tokio::test]
 async fn a_curation_changes_only_the_members_it_names_and_an_empty_day_or_unknown_clears() {
     // K59: a title with a space at its end and a line break in it is never cleaned, judged or rewritten by a body that
     // does not name it, and the review day stays unless the body says otherwise.

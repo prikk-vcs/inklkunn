@@ -881,6 +881,62 @@ async fn what_a_source_that_was_not_checked_is_is_corrected_here_and_what_replac
 }
 
 #[tokio::test]
+async fn a_source_is_not_replaced_by_one_that_comes_back_to_it_and_the_form_says_so_and_sends_nothing()
+ {
+    // K61: the base has the later source replaced by this one (an earlier proposal's doing); naming the later as what
+    // replaces this one would close a circle.
+    let s = scene();
+    let source = checked_source();
+    let mut later = inklkunn_core::knowledge::Source::new(later_id());
+    later.identity.title = Some("A later history".to_owned());
+    later.superseded_by = Some(source.id.clone());
+    s.w.fake.set_files(&[
+        (source_path(&source.id).as_str(), source.to_yaml().as_str()),
+        (source_path(&later.id).as_str(), later.to_yaml().as_str()),
+    ]);
+    let fields = with(
+        checked_unchanged(&s),
+        &[("c0_superseded_by", &later_id().to_string())],
+    );
+    let a = send(&s, FORM, &s.writer, &fields).await;
+    assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let body = a.body();
+    assert!(
+        body.contains("must not come back to one already named"),
+        "{body}"
+    );
+    // The text is still in the field, and nothing was made.
+    assert!(
+        body.contains(&format!("value=\"{}\"", later_id())),
+        "{body}"
+    );
+    let all =
+        s.w.services
+            .proposals
+            .list(
+                &super::claims::principal(&s.writer),
+                &s.w.wiki,
+                &Default::default(),
+            )
+            .expect("a list");
+    assert!(all.is_empty());
+    // Clearing what replaces the later one lets the same body through.
+    later.superseded_by = None;
+    s.w.fake
+        .set_files(&[(source_path(&later.id).as_str(), later.to_yaml().as_str())]);
+    let fields = with(
+        checked_unchanged(&s),
+        &[
+            ("base_state", &state_id(3)),
+            ("base_block", &block_id(3)),
+            ("c0_superseded_by", &later_id().to_string()),
+        ],
+    );
+    let made = send(&s, FORM, &s.writer, &fields).await;
+    let _ = location(&made);
+}
+
+#[tokio::test]
 async fn a_status_alone_is_curated_without_touching_a_title_the_form_carried_back_as_the_browser_sends_it()
  {
     // K59: a checked source whose title has a space at its end and a line break in it (an import, older data). A browser

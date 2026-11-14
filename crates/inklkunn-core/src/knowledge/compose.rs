@@ -57,6 +57,8 @@ pub enum Mistake {
     ReplacedByItself,
     /// The source that replaces another is not a source of the wiki.
     UnknownSuccessor,
+    /// The sources that replace one another return to a source they passed (K61).
+    SuccessorCycle,
     /// What was made does not read back (a defect, not the person's doing).
     Unwritable,
 }

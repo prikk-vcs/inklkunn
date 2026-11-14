@@ -158,6 +158,96 @@ fn a_source_that_is_replaced_by_a_source_the_view_lacks_is_refused() {
     assert!(validate(&files, &touched(&[&path]), &pages(), &pages()).is_empty());
 }
 
+/// A source replaced by `later` (none: replaced by nothing).
+fn replaced_by(n: u8, later: Option<u8>) -> Source {
+    let mut s = Source::new(source_id(n));
+    s.superseded_by = later.map(source_id);
+    s
+}
+
+#[test]
+fn sources_that_replace_one_another_never_return_to_a_source_they_passed() {
+    let cycle_refusals = |list: &[Source], written: &[u8]| {
+        let files = files_of(&list.iter().map(source_file).collect::<Vec<_>>());
+        let paths: Vec<String> = written
+            .iter()
+            .map(|n| source_path(&source_id(*n)))
+            .collect();
+        let t = touched(&paths.iter().map(String::as_str).collect::<Vec<_>>());
+        validate(&files, &t, &pages(), &pages())
+            .iter()
+            .map(|r| (r.file.clone(), r.rule, r.field))
+            .collect::<Vec<_>>()
+    };
+    let at = |n: u8| source_path(&source_id(n));
+    // A chain that ends is sound, however long.
+    let chain = [
+        replaced_by(1, Some(2)),
+        replaced_by(2, Some(3)),
+        replaced_by(3, None),
+    ];
+    assert!(cycle_refusals(&chain, &[1, 2, 3]).is_empty());
+    // A source replaced by itself is refused by the format before a chain is walked.
+    assert_eq!(
+        cycle_refusals(&[replaced_by(1, Some(1))], &[1]),
+        [(at(1), Rule::Value, "superseded_by")]
+    );
+    // Two written in one change: A to B and B to A, each refused by its own file.
+    let two = [replaced_by(1, Some(2)), replaced_by(2, Some(1))];
+    assert_eq!(
+        cycle_refusals(&two, &[1, 2]),
+        [
+            (at(1), Rule::Reference, "superseded_by"),
+            (at(2), Rule::Reference, "superseded_by")
+        ]
+    );
+    // Across two changes: the tip has A to B, and this change writes B to A, the only file it writes.
+    assert_eq!(
+        cycle_refusals(&two, &[2]),
+        [(at(2), Rule::Reference, "superseded_by")]
+    );
+    // A longer circle, and a chain that joins one that was already there.
+    let three = [
+        replaced_by(1, Some(2)),
+        replaced_by(2, Some(3)),
+        replaced_by(3, Some(1)),
+    ];
+    assert_eq!(cycle_refusals(&three, &[3]).len(), 1);
+    let joins = [
+        replaced_by(4, Some(1)),
+        replaced_by(1, Some(2)),
+        replaced_by(2, Some(1)),
+    ];
+    assert_eq!(
+        cycle_refusals(&joins, &[4]),
+        [(at(4), Rule::Reference, "superseded_by")]
+    );
+    // Clearing the successor that closed the circle, or pointing it elsewhere, is sound.
+    let opened = [replaced_by(1, Some(2)), replaced_by(2, None)];
+    assert!(cycle_refusals(&opened, &[2]).is_empty());
+}
+
+#[test]
+fn the_chain_walk_reads_each_source_once_and_stops_at_the_end_or_the_return() {
+    use crate::knowledge::check::successor_returns;
+    let mut asked = Vec::new();
+    let got = successor_returns(&source_id(1), |id| -> Result<_, ()> {
+        asked.push(id.clone());
+        Ok(match id {
+            i if *i == source_id(1) => Some(source_id(2)),
+            i if *i == source_id(2) => Some(source_id(3)),
+            _ => None,
+        })
+    });
+    assert_eq!(
+        (got, asked),
+        (Ok(false), vec![source_id(1), source_id(2), source_id(3)])
+    );
+    // A source that cannot be read ends the walk with the reason.
+    let unreadable = successor_returns(&source_id(1), |_| Err::<Option<_>, _>("unreadable"));
+    assert_eq!(unreadable, Err("unreadable"));
+}
+
 #[test]
 fn an_anchor_must_name_a_page_and_a_block_the_result_has_once() {
     let source = source_file(&Source::new(source_id(1)));

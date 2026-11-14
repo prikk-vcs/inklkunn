@@ -1574,6 +1574,144 @@ fn a_curation_removes_a_link_and_corrects_a_checked_source_through_the_whole_pat
     assert!(w.reconciled().is_clean());
 }
 
+/// K61 (handoff 005 corrections, sixth round): no chain of replacing sources returns to a source it passed. Two curation
+/// proposals made on one base, A replaced by B and B replaced by A, are each sound alone; the second to be accepted is
+/// refused by the acceptance's reference rule, naming the field, and the history keeps the first.
+#[test]
+fn two_curations_that_would_make_two_sources_replace_each_other_are_refused_at_the_second_acceptance()
+ {
+    use inklkunn_core::knowledge::compose::{
+        Attachment, Curation, LinkEdit, SourceDraft, SourceEdit, Work, attach, curate,
+    };
+    use inklkunn_core::knowledge::{
+        AnchorState, Availability, Bearing, Claim, File, Link, Rule, Source, SourceKind, Standing,
+        StatementKind, anchor_state, read_file,
+    };
+    let Some(w) = World::new("knowledge-successor-cycle", LeaseConfig::default()) else {
+        return;
+    };
+    let draft = |title: &str| Attachment {
+        source: SourceDraft {
+            kind: SourceKind::Secondary,
+            title: Some(title.to_owned()),
+            author: None,
+            date: None,
+            reference: None,
+        },
+        relation: Link::Supports,
+        bearing: Bearing::Direct,
+        note: None,
+        kind: StatementKind::Observation,
+    };
+    let read_claim = |path: &str| -> Claim {
+        let File::Claim(claim) = read_file(path, w.page(path).as_bytes()).unwrap() else {
+            panic!("a claim");
+        };
+        *claim
+    };
+    let read_source = |path: &str| -> Source {
+        let File::Source(source) = read_file(path, w.page(path).as_bytes()).unwrap() else {
+            panic!("a source");
+        };
+        *source
+    };
+
+    // One claim citing two sources.
+    let start = HOME.find("One.").unwrap();
+    let first = attach(HOME, &(start..start + 4), None, &draft("A history")).unwrap();
+    let [(claim_file, claim_text), (first_file, first_text)] = first.files.clone();
+    let p = w.propose(
+        "A source",
+        &[
+            ("pages/Home.md", Some(&first.page)),
+            (claim_file.as_str(), Some(&claim_text)),
+            (first_file.as_str(), Some(&first_text)),
+        ],
+    );
+    signed(w.accept(&p).unwrap());
+    let page = w.page("pages/Home.md");
+    let start = page.find("One.").unwrap();
+    let existing = read_claim(&claim_file);
+    let second = attach(
+        &page,
+        &(start..start + 4),
+        Some(&existing),
+        &draft("A later history"),
+    )
+    .unwrap();
+    let [(_, claim_text), (second_file, second_text)] = second.files.clone();
+    let p = w.propose(
+        "Another source",
+        &[
+            (claim_file.as_str(), Some(&claim_text)),
+            (second_file.as_str(), Some(&second_text)),
+        ],
+    );
+    signed(w.accept(&p).unwrap());
+
+    let AnchorState::Present(now) = anchor_state(&w.page("pages/Home.md"), &first.block) else {
+        panic!("present");
+    };
+    let claim = read_claim(&claim_file);
+    let (one, two) = (read_source(&first_file), read_source(&second_file));
+    let replaced_by = |source: &Source, later: &Source| {
+        let edit = Curation {
+            status: Standing::Unknown,
+            links: claim
+                .sources
+                .iter()
+                .map(|l| LinkEdit {
+                    source: l.source.clone(),
+                    relation: l.relation,
+                    bearing: l.bearing,
+                })
+                .collect(),
+            removed: Vec::new(),
+            sources: vec![SourceEdit {
+                source: source.id.clone(),
+                reviewed: String::new(),
+                availability: Availability::Unknown,
+                work: Some(Work {
+                    superseded_by: Some(later.id.clone()),
+                    ..Work::of(source)
+                }),
+            }],
+            confirm: false,
+        };
+        curate(&claim, &[one.clone(), two.clone()], Some(&now), &edit).unwrap()
+    };
+    let make = |label: &str, files: Vec<(String, String)>| {
+        let refs: Vec<(&str, Option<&str>)> = files
+            .iter()
+            .map(|(p, t)| (p.as_str(), Some(t.as_str())))
+            .collect();
+        assert_eq!(refs.len(), 1, "the one source: {refs:?}");
+        w.propose(label, &refs)
+    };
+    let (a_to_b, b_to_a) = (
+        make("A is replaced by B", replaced_by(&one, &two)),
+        make("B is replaced by A", replaced_by(&two, &one)),
+    );
+
+    signed(w.accept(&a_to_b).unwrap());
+    assert_eq!(
+        read_source(&first_file).superseded_by.as_ref(),
+        Some(&two.id)
+    );
+    let blocks = w.history().len();
+    match w.accept(&b_to_a) {
+        Err(AcceptFailure::KnowledgeInvalid(r)) => assert_eq!(
+            r.iter()
+                .map(|r| (r.file.as_str(), r.rule, r.field))
+                .collect::<Vec<_>>(),
+            [(second_file.as_str(), Rule::Reference, "superseded_by")]
+        ),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(w.history().len(), blocks, "nothing was signed");
+    assert_eq!(read_source(&second_file).superseded_by, None);
+}
+
 // ------------------------------------------------------------------------------------ the review record (K3 b, K11)
 
 /// A claim standing on the paragraph `words` of `pages/Home.md`, made and accepted the way the form makes it.
