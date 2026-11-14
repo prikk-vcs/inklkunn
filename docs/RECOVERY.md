@@ -77,17 +77,20 @@ and that it stopped.
    (the sealed history, never the queued patch) to somewhere safe meanwhile.
 3. **Take the patch back (prikk 0.57.0 and later).** `prikk uncommit` takes the newest queued commit out of the
    queue and keeps it in prikk's own recovery log, so that `prikk doctor --recovery-restore <run>` puts it back. With
-   0.57.0 `inklkunn wiki recover <wiki> --plan` adds a note that says what prikk would do (prikk's own preview, the
-   commit's message and the paths it changes) and the command that is your confirmation:
-   `inklkunn wiki recover <wiki> --discard-queued-patch <patch id>`. **You confirm by typing the patch's id** (64
+   0.57.0 a run of `inklkunn wiki recover <wiki>` (without `--plan`) adds a note that says what prikk would do (prikk's
+   own preview, the commit's message and the paths it changes) and the command that is your confirmation, with the wiki's
+   id in it: `inklkunn wiki recover <wiki id> --discard-queued-patch <patch id>`. `--plan` does not show the preview,
+   because prikk takes its own lock to make it and a plan shown writes nothing: it says the preview is shown in a run
+   (that run takes nothing back without your word). A stale lock left beside the patch is cleared by that run first, and
+   the run then stops with the preview. **You confirm by typing the patch's id** (64
    characters, as `prikk status --format json` prints it and the note repeats it); recovery never takes a patch
    back on its own, and not for a patch that is the change of a recorded act (that one is sealed, or stopped on),
    not when more than one patch is queued, and not for a queue that targets another branch than the worktree's.
    The step is audited with the id you typed, recorded in the plan the act keeps, and bound to that one patch in the
    signer. It leaves the queue empty, puts the worktree back to what the tip says (the patch's files in it go: copy out
    any page you want first, as in step 1), checks the repository, clears the flag, and prints the recovery run that
-   undoes it. Before 0.57.0 there is no such verb: the plan says so, `--discard-queued-patch` is ignored, and the wiki
-   is meant to wait.
+   undoes it. Before 0.57.0 there is no such verb: the plan says so, `--discard-queued-patch` is not used (the plan and the
+   audit trail say that, and why: it is never recorded as a take-back that did not happen), and the wiki is meant to wait.
 4. **If the wiki must take writes and the patch cannot be taken back** (prikk before 0.57.0, or you would rather keep it), make a new wiki from the old one's pages: export it as above,
    create a wiki (`inklkunn wiki create`), and `inklkunn wiki import-folder` the exported `pages/` and
    `attachments/` into it. This does not touch the old wiki, which stays flagged, readable and exportable as the

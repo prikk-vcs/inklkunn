@@ -1371,7 +1371,7 @@ fn the_persons_word_to_take_a_queued_patch_back_is_in_the_audit_trail_before_any
     let id = "ab".repeat(32);
     let (status, out, err) = w.cli(&["wiki", "recover", "notes", "--discard-queued-patch", &id]);
     assert_eq!(status, 0, "{out}{err}");
-    assert!(!out.contains("discard-queued"), "{out}");
+    assert!(!out.contains("done: discard-queued"), "{out}");
     assert!(!flagged(&w, "notes"));
     let begun = w
         .operator_details()

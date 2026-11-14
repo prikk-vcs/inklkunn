@@ -1548,13 +1548,15 @@ fn a_word_that_is_not_the_queued_patchs_id_or_has_no_offer_behind_it_takes_nothi
         );
         assert_eq!(plan.stop, Some(Stop::ForeignQueuedPatch), "{offer:?}");
         assert!(plan.steps.is_empty() && plan.ops().is_empty(), "{offer:?}");
-        if offer != DiscardOffer::NotAsked {
-            assert!(
-                plan.notes.iter().any(|n| n.contains("was ignored")),
-                "{offer:?}: {:?}",
-                plan.notes
-            );
-        }
+        // M4: the word typed is never left unaccounted for, whatever the reason it was not used.
+        assert!(
+            plan.notes
+                .iter()
+                .any(|n| n.starts_with(&format!("`--discard-queued-patch {id}` was not used: "))),
+            "{offer:?}: {:?}",
+            plan.notes
+        );
+        assert!(plan.discard_unused.is_some(), "{offer:?}");
     }
     // An offer for another patch than the queued one is not an offer for this one.
     let mut d = offered(&"c".repeat(64));
@@ -1619,4 +1621,237 @@ fn the_persons_word_turns_no_other_state_into_a_take_back() {
             .iter()
             .all(|s| !matches!(s, Step::DiscardQueued { .. }))
     );
+}
+
+// ---- the audit trail says what happened; a plan shown writes nothing; a stale lock is not a dead end (M4 - M7)
+
+fn typed(w: &Witness, offer: DiscardOffer, given: &str) -> Plan {
+    build_with(
+        w,
+        &DiscardInput {
+            offer,
+            confirmed: Some(given.to_owned()),
+        },
+    )
+}
+
+#[test]
+fn a_word_that_no_step_uses_is_said_to_be_unused_with_its_reason_and_one_that_is_used_is_not() {
+    // M4. The id typed is the person's request; whether a patch is taken back is what the plan then finds. Every plan
+    // in which no `discard-queued` step results says so, with the reason, in the notes and in `discard_unused`.
+    let (w, id) = orphan();
+    let reasons = |plan: &Plan| {
+        plan.notes
+            .iter()
+            .filter(|n| n.starts_with("`--discard-queued-patch"))
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    // Used: the take-back is a step, and nothing says it was not used.
+    let used = typed(&w, DiscardOffer::Offered(uncommit_plan_for(&id, VIEW)), &id);
+    assert!(
+        used.steps
+            .iter()
+            .any(|s| matches!(s, Step::DiscardQueued { .. }))
+    );
+    assert!(reasons(&used).is_empty() && used.discard_unused.is_none());
+    // No word: nothing to say.
+    assert!(build_with(&w, &offered(&id)).discard_unused.is_none());
+
+    // The patch is the unfinished act's own, and is sealed: the word is not used.
+    let mut sealed = orphan().0;
+    sealed.acts = vec![act(Chain::NotSealed)];
+    let plan = typed(&sealed, DiscardOffer::NotAsked, &id);
+    assert_eq!(nth(&names(&plan), 0), &"seal-queued");
+    assert_eq!(reasons(&plan).len(), 1, "{:?}", plan.notes);
+    assert!(
+        nth(&reasons(&plan), 0).contains("an act is unfinished")
+            && nth(&reasons(&plan), 0).contains(&id),
+        "{:?}",
+        plan.notes
+    );
+    // Nothing is queued.
+    let none = typed(&flagged(), DiscardOffer::NotAsked, &id);
+    assert!(
+        nth(&reasons(&none), 0).contains("nothing is queued"),
+        "{:?}",
+        none.notes
+    );
+    // Several patches.
+    let mut several = orphan().0;
+    several.status = status(vec![patch(MESSAGE), patch(MESSAGE)], 0);
+    let plan = typed(&several, DiscardOffer::NotAsked, &id);
+    assert!(nth(&reasons(&plan), 0).contains("more than one patch"));
+    // The offer was not honoured: another branch; a name that is not the queued patch's; no verb.
+    let mut elsewhere = orphan().0;
+    elsewhere.status.queue.target_ref = Some("heads/other".to_owned());
+    let plan = typed(
+        &elsewhere,
+        DiscardOffer::Offered(uncommit_plan_for(&id, VIEW)),
+        &id,
+    );
+    assert!(nth(&reasons(&plan), 0).contains("targets a branch other than"));
+    let plan = typed(
+        &w,
+        DiscardOffer::Offered(uncommit_plan_for(&id, VIEW)),
+        &"b".repeat(64),
+    );
+    assert!(nth(&reasons(&plan), 0).contains("not the queued one"));
+    let plan = typed(&w, DiscardOffer::NoVerb, &id);
+    assert!(nth(&reasons(&plan), 0).contains("no `uncommit`"));
+    // A plan that is only shown does not take a patch back, and says it is why.
+    let shown = typed(&w, DiscardOffer::InARun, &id);
+    assert!(
+        nth(&reasons(&shown), 0).contains("only shows"),
+        "{:?}",
+        shown.notes
+    );
+    // Every reason is kept for the end event, and exactly one note carries it.
+    for p in [&none, &shown] {
+        assert_eq!(reasons(p).len(), 1);
+        assert!(p.discard_unused.is_some());
+    }
+}
+
+#[test]
+fn a_plan_that_is_only_shown_asks_nothing_of_prikk_and_says_the_preview_is_shown_in_a_run() {
+    // M5 (the library half): the plan built for `--plan` carries no preview of prikk's, the stop it always was, and
+    // tells the person where to see it, with the wiki's id in the command.
+    let (w, id) = orphan();
+    let plan = build_with(
+        &w,
+        &DiscardInput {
+            offer: DiscardOffer::InARun,
+            confirmed: None,
+        },
+    );
+    assert_eq!(plan.stop, Some(Stop::ForeignQueuedPatch));
+    assert!(plan.steps.is_empty() && plan.ops().is_empty());
+    let note = plan
+        .notes
+        .iter()
+        .find(|n| n.contains("`recover --plan` does not ask prikk"))
+        .expect("the note says where the preview is shown");
+    assert!(
+        note.contains(&format!("inklkunn wiki recover {}`", w.wiki)) && note.contains(&id),
+        "{note}"
+    );
+    assert!(plan.notes.iter().all(|n| !n.contains("prikk says")));
+}
+
+#[test]
+fn a_stale_lock_beside_an_orphan_patch_is_cleared_and_the_stop_stays() {
+    // M6. The stop used to clear every step, the clearing of the lock included, and the lock stood in the way of the
+    // preview for good. Now the clearing is the plan's one step and the stop follows it.
+    let (mut w, id) = orphan();
+    w.locks = vec![lock(
+        "active",
+        2_147_483_000,
+        "unknown (not proof it is safe to clear)",
+    )];
+    let plan = build_with(
+        &w,
+        &DiscardInput {
+            offer: DiscardOffer::AfterLocks,
+            confirmed: None,
+        },
+    );
+    assert_eq!(plan.stop, Some(Stop::ForeignQueuedPatch));
+    assert_eq!(names(&plan), ["clear-locks"]);
+    assert!(matches!(nth(&plan.ops(), 0), RecoveryOp::ClearLocks { paths } if paths.len() == 1));
+    let lines = plan.lines().join("\n");
+    assert!(
+        lines.contains("step 1:") && lines.contains("STOP (foreign-queued-patch)"),
+        "{lines}"
+    );
+    assert!(
+        plan.notes
+            .iter()
+            .any(|n| n.contains("the run clears it first")),
+        "{:?}",
+        plan.notes
+    );
+    // The same plan with the preview in hand (what the run shows once the lock is gone) still has the stop, and the
+    // command, and no step is a take-back without the word.
+    w.locks.clear();
+    let after = build_with(&w, &offered(&id));
+    assert_eq!(after.stop, Some(Stop::ForeignQueuedPatch));
+    assert!(after.steps.is_empty());
+    // Only the clearing survives a stop: a lock of a kind an acceptance does not leave is still the stop it was.
+    let (mut w, _) = orphan();
+    w.locks = vec![lock("container:trust-policy", 1, "x")];
+    let plan = build(&w);
+    assert_eq!(plan.stop, Some(Stop::UnknownLock));
+    assert!(plan.steps.is_empty());
+    // And a foreign process stops it all, the lock too.
+    let (mut w, _) = orphan();
+    w.locks = vec![lock("active", 1, "x")];
+    w.foreign = vec![Foreign {
+        pid: 9,
+        tool: "prikk".to_owned(),
+    }];
+    let plan = build(&w);
+    assert_eq!(plan.stop, Some(Stop::ForeignProcess));
+    assert!(plan.steps.is_empty());
+    // Other stops with a lock held are not changed by this: several queued patches clear nothing.
+    let (mut w, _) = orphan();
+    w.status = status(vec![patch(MESSAGE), patch(MESSAGE)], 0);
+    w.locks = vec![lock("active", 1, "x")];
+    let plan = build(&w);
+    assert_eq!(plan.stop, Some(Stop::SeveralQueued));
+    assert!(plan.steps.is_empty());
+}
+
+#[test]
+fn the_command_is_offered_only_when_it_would_be_honoured_and_names_the_wiki() {
+    // M7. The note is the offer; the confirmation is judged by the same test. A queue that targets another branch, or
+    // a plan of prikk's that names another ref, gets the preview and the reason, and no command to type.
+    let (w, id) = orphan();
+    let plan = build_with(&w, &offered(&id));
+    let offer = plan
+        .notes
+        .iter()
+        .find(|n| n.contains("--discard-queued-patch"))
+        .expect("the command is offered");
+    assert!(
+        offer.contains(&format!(
+            "inklkunn wiki recover {} --discard-queued-patch {id}",
+            w.wiki
+        )) && !offer.contains("<wiki>"),
+        "{offer}"
+    );
+    let not_offered = |plan: &Plan| {
+        plan.notes
+            .iter()
+            .all(|n| !n.contains("--discard-queued-patch"))
+            && plan
+                .notes
+                .iter()
+                .any(|n| n.contains("Recovery will not take it back"))
+            && plan.notes.iter().any(|n| n.contains("message: m | "))
+    };
+    // The queue targets another branch than the worktree's.
+    let mut elsewhere = w.clone();
+    elsewhere.status.queue.target_ref = Some("heads/other".to_owned());
+    let plan = build_with(&elsewhere, &offered(&id));
+    assert!(not_offered(&plan), "{:?}", plan.notes);
+    // The queue has no target at all.
+    let mut untargeted = w.clone();
+    untargeted.status.queue.target_ref = None;
+    let plan = build_with(&untargeted, &offered(&id));
+    assert!(not_offered(&plan), "{:?}", plan.notes);
+    // prikk's own plan names another ref than the one the worktree is on.
+    let plan = build_with(
+        &w,
+        &DiscardInput {
+            offer: DiscardOffer::Offered(uncommit_plan_for(&id, "heads/other")),
+            confirmed: None,
+        },
+    );
+    assert!(not_offered(&plan), "{:?}", plan.notes);
+    assert_eq!(plan.stop, Some(Stop::ForeignQueuedPatch));
+    // The offer and the confirmation agree: wherever the command is offered, the word takes the patch back.
+    let mut d = offered(&id);
+    d.confirmed = Some(id.clone());
+    assert!(!build_with(&w, &d).steps.is_empty());
 }

@@ -531,6 +531,9 @@ pub struct Plan {
     pub stop: Option<Stop>,
     /// Things recorded that do not block: unreached objects, a held-open stale lease record.
     pub notes: Vec<String>,
+    /// Why the patch id a person typed with `--discard-queued-patch` was **not used**, when one was typed and no
+    /// `discard-queued` step results (maintenance M4): the audit trail says what happened, not what was asked.
+    pub discard_unused: Option<String>,
 }
 
 impl Plan {
@@ -652,9 +655,20 @@ impl Plan {
         out.extend(self.witnesses.iter().map(|w| format!("  saw: {w}")));
         out.extend(self.notes.iter().map(|n| format!("  note: {n}")));
         match (&self.stop, self.steps.is_empty()) {
-            (Some(stop), _) => {
+            (Some(stop), true) => {
                 out.push(format!(
                     "  STOP ({}): {}; recovery changes nothing and the wiki stays flagged for a person to decide",
+                    stop.as_str(),
+                    stop.meaning()
+                ));
+            }
+            // Steps that come before a stop (a stale lock cleared beside an orphan patch, M6).
+            (Some(stop), false) => {
+                for (i, s) in self.steps.iter().enumerate() {
+                    out.push(format!("  step {}: {}", i + 1, s.line()));
+                }
+                out.push(format!(
+                    "  STOP ({}): {}; after the step(s) above recovery changes nothing more and the wiki stays flagged for a person to decide",
                     stop.as_str(),
                     stop.meaning()
                 ));
@@ -719,44 +733,106 @@ pub fn facts_of(wiki: &WikiId, plan: &str) -> Option<RecoveryFacts> {
 
 // ---- the decision table ----
 
-/// What the plan says about taking an orphan queued patch back, when it stops on it.
+/// Would recovery take the orphan patch back if a person typed its id: the queue targets the branch the worktree is
+/// on, and prikk's own plan names that same ref (maintenance M7: the same test decides the offer and the confirmation).
+fn discard_honoured(w: &Witness, target: Option<&str>, offer: &UncommitPlan) -> bool {
+    let current = w.status.current_branch.as_deref();
+    target.is_some() && target == current && current == Some(offer.target.as_str())
+}
+
+/// What the plan says about taking an orphan queued patch back, when it stops on it. The answer is why a patch id the
+/// person typed was not used, when one was typed and it is already clear it will not be (maintenance M4).
 fn discard_notes(
     plan: &mut Plan,
     patch_id: &str,
     target: Option<&str>,
     w: &Witness,
     discard: &DiscardInput,
-) {
-    match (&discard.offer, discard.confirmed.as_deref()) {
-        (DiscardOffer::Offered(offer), None) => {
-            plan.notes.push(format!(
-                "prikk can take the queued patch {patch_id} back (`prikk uncommit`; it stays in prikk's recovery log and the worktree's files are put back to the tip). prikk says: {}. To do it, run `inklkunn wiki recover <wiki> --discard-queued-patch {patch_id}`: typing the patch id is the confirmation, and nothing is taken back without it",
-                offer.lines.join(" | ")
-            ));
-            if target.is_none() || target != w.status.current_branch.as_deref() {
-                plan.notes.push(
-                    "the queue targets a branch other than the one the worktree is on, so recovery will not take it back"
+) -> Option<String> {
+    let given = discard.confirmed.as_deref();
+    match &discard.offer {
+        DiscardOffer::Offered(offer) => {
+            let honoured = discard_honoured(w, target, offer);
+            let lines = offer.lines.join(" | ");
+            if honoured {
+                plan.notes.push(format!(
+                    "prikk can take the queued patch {patch_id} back (`prikk uncommit`; it stays in prikk's recovery log and the worktree's files are put back to the tip). prikk says: {lines}. To do it, run `inklkunn wiki recover {} --discard-queued-patch {patch_id}`: typing the patch id is the confirmation, and nothing is taken back without it",
+                    w.wiki
+                ));
+            } else {
+                plan.notes.push(format!(
+                    "prikk's own preview of taking the queued patch {patch_id} back (`prikk uncommit`): {lines}. Recovery will not take it back: the queue targets a branch other than the one the worktree is on (or prikk's plan names another), so no command is offered"
+                ));
+            }
+            match given {
+                Some(given) if given != patch_id => Some(format!(
+                    "it names a patch that is not the queued one ({patch_id}); nothing was taken back"
+                )),
+                Some(_) if !honoured => Some(
+                    "the queue targets a branch other than the one the worktree is on, so recovery will not take the patch back"
                         .to_owned(),
-                );
+                ),
+                _ => None,
             }
         }
-        (DiscardOffer::Offered(_), Some(given)) if given != patch_id => plan.notes.push(format!(
-            "`--discard-queued-patch {given}` names a patch that is not the queued one ({patch_id}); nothing was taken back"
-        )),
-        (DiscardOffer::Offered(_), Some(_)) => plan.notes.push(
-            "the queue targets a branch other than the one the worktree is on, so recovery will not take the patch back"
-                .to_owned(),
-        ),
-        (DiscardOffer::NoVerb, given) => plan.notes.push(format!(
-            "this prikk has no `uncommit` (0.57.0 and later have), so the queued patch cannot be taken back{}",
-            if given.is_some() { "; `--discard-queued-patch` was ignored" } else { "" }
-        )),
-        (DiscardOffer::Unreadable(why), given) => plan.notes.push(format!(
-            "prikk's plan for taking the queued patch back could not be read ({why}); nothing is taken back{}",
-            if given.is_some() { " and `--discard-queued-patch` was ignored" } else { "" }
-        )),
-        (DiscardOffer::NotAsked, _) => {}
+        DiscardOffer::NoVerb => {
+            plan.notes.push(
+                "this prikk has no `uncommit` (0.57.0 and later have), so the queued patch cannot be taken back"
+                    .to_owned(),
+            );
+            given.map(|_| "this prikk has no `uncommit` (0.57.0 and later have)".to_owned())
+        }
+        DiscardOffer::Unreadable(why) => {
+            plan.notes.push(format!(
+                "prikk's plan for taking the queued patch back could not be read ({why}); nothing is taken back"
+            ));
+            given.map(|_| {
+                format!("prikk's plan for taking the queued patch back could not be read ({why})")
+            })
+        }
+        DiscardOffer::InARun => {
+            plan.notes.push(format!(
+                "with prikk 0.57.0 or later, a run of `inklkunn wiki recover {}` shows prikk's own preview of taking the queued patch {patch_id} back and the command that does it; `recover --plan` does not ask prikk for it, because prikk takes its lock to make the preview and a plan shown writes nothing",
+                w.wiki
+            ));
+            given.map(|_| "`recover --plan` only shows; a run takes the patch back".to_owned())
+        }
+        DiscardOffer::AfterLocks => {
+            plan.notes.push(format!(
+                "prikk's preview of taking the queued patch {patch_id} back needs prikk's lock, which a stale lock holds: the run clears it first (step 1) and then reads the preview, and stops here with the preview and the command"
+            ));
+            given.map(|_| {
+                "a stale lock stood in the way: this run clears it and stops with the preview, and the next run takes the patch back"
+                    .to_owned()
+            })
+        }
+        DiscardOffer::NotAsked => None,
     }
+}
+
+/// Why a patch id typed with `--discard-queued-patch` cannot be used in this state, when the plan did not say already.
+fn unused_reason(w: &Witness, plan: &Plan) -> String {
+    let q = &w.status.queue;
+    if q.patches.is_empty() {
+        "nothing is queued, so there is nothing to take back".to_owned()
+    } else if q.patches.len() > 1 {
+        "more than one patch is queued; `uncommit` takes the newest only, and a person has not named which".to_owned()
+    } else if !w.acts.is_empty() || !w.view_acts.is_empty() {
+        "an act is unfinished, and a patch queued beside one is sealed when it is that act's and otherwise stops the plan: it is never taken back".to_owned()
+    } else if let Some(stop) = plan.stop {
+        format!("the plan stops first ({})", stop.as_str())
+    } else {
+        "the repository is not in the state this is for (one queued patch that no recorded act describes)"
+            .to_owned()
+    }
+}
+
+/// Say that the patch id a person typed was not used, and why: a note, and the reason kept for the audit trail.
+pub fn word_unused(plan: &mut Plan, given: &str, why: &str) {
+    plan.notes.push(format!(
+        "`--discard-queued-patch {given}` was not used: {why}"
+    ));
+    plan.discard_unused = Some(why.to_owned());
 }
 
 fn matches_queued(act: &ActWitness, patch: &QueuedPatch, target: Option<&str>) -> bool {
@@ -793,6 +869,11 @@ pub enum DiscardOffer {
     /// Not asked: this is not the state it is for (an act is unfinished, or not exactly one patch is queued).
     #[default]
     NotAsked,
+    /// Not asked, because the plan is only shown and prikk's preview takes prikk's lock (maintenance M5): a run asks.
+    InARun,
+    /// Not asked yet, because a stale lock is held and the preview needs prikk's lock: the run clears the lock, then
+    /// asks (maintenance M6).
+    AfterLocks,
     /// Asked, and prikk has no `uncommit` (before 0.57.0).
     NoVerb,
     /// Asked, and the answer could not be read; the text is for operators.
@@ -818,7 +899,23 @@ pub fn build(w: &Witness) -> Plan {
 }
 
 /// Make the plan, with what prikk offers for an orphan queued patch and what a person confirmed (see [`DiscardInput`]).
+/// Whenever a patch id was typed and no `discard-queued` step results, the plan says it was not used, and why (M4).
 pub fn build_with(w: &Witness, discard: &DiscardInput) -> Plan {
+    let mut why = None;
+    let mut plan = build_plan(w, discard, &mut why);
+    if let Some(given) = discard.confirmed.as_deref()
+        && !plan
+            .steps
+            .iter()
+            .any(|s| matches!(s, Step::DiscardQueued { .. }))
+    {
+        let why = why.unwrap_or_else(|| unused_reason(w, &plan));
+        word_unused(&mut plan, given, &why);
+    }
+    plan
+}
+
+fn build_plan(w: &Witness, discard: &DiscardInput, unused: &mut Option<String>) -> Plan {
     let mut plan = Plan {
         wiki: w.wiki.clone(),
         view: None,
@@ -826,6 +923,7 @@ pub fn build_with(w: &Witness, discard: &DiscardInput) -> Plan {
         steps: Vec::new(),
         stop: None,
         notes: Vec::new(),
+        discard_unused: None,
     };
     // --- What was read.
     let wit = &mut plan.witnesses;
@@ -1187,23 +1285,28 @@ pub fn build_with(w: &Witness, discard: &DiscardInput) -> Plan {
                 (DiscardOffer::Offered(offer), Some(id))
                     if id == patch.patch_id
                         && offer.patch_id == patch.patch_id
-                        && q.target_ref.is_some()
-                        && q.target_ref == w.status.current_branch
-                        && w.status.current_branch.as_deref() == Some(offer.target.as_str()) =>
+                        && discard_honoured(w, q.target_ref.as_deref(), offer) =>
                 {
                     Some(id.to_owned())
                 }
                 _ => None,
             };
             let Some(patch_id) = confirmed else {
-                discard_notes(
+                *unused = discard_notes(
                     &mut plan,
                     &patch.patch_id,
                     q.target_ref.as_deref(),
                     w,
                     discard,
                 );
+                // A stale lock beside the orphan patch is cleared all the same (M6): it is the one thing in the way
+                // of reading prikk's preview, and clearing it is what recovery does for any lock it finds.
+                let clearing: Vec<Step> = std::mem::take(&mut steps)
+                    .into_iter()
+                    .filter(|s| matches!(s, Step::ClearLocks { .. }))
+                    .collect();
                 stop(&mut plan, Stop::ForeignQueuedPatch);
+                plan.steps = clearing;
                 return plan;
             };
             plan.notes.push(format!(

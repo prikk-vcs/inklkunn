@@ -470,6 +470,34 @@ Dependency updates (the architect, 2026-11-14).
   (`yaml::is_bidi_or_format`) calls it, so the two cannot drift. Test: every character of the set is replaced and its neighbours
   in the code space are kept.
 
+- **M5 (maintenance corrections, review finding N-b): `recover --plan` writes nothing again.** prikk's `uncommit --plan-only`
+  takes prikk's active lock, so asking it is writing, and a plan shown has no lease: a killed plan could leave a stale lock and
+  a plan could meet a live seal. The preview is now asked only in a run, under the wiki's lease (`Mode::Run`); the plan shown
+  (`Mode::PlanOnly`, `recover --plan`) never calls `uncommit`, and its note says the preview is shown in a run and that the run
+  takes nothing back without the word (`DiscardOffer::InARun`). A run without the word stops with the preview and the command,
+  as before. Tests (real prikk, which self-skips without it): a stand-in that logs every verb shows no `uncommit` call for a
+  plan, with the verb made to fail and without; a run asks exactly once, and the stand-in holds the call open while the test
+  sees the wiki's lease taken.
+- **M6 (maintenance corrections, review finding N-d): a stale lock beside an orphan patch is not a dead end.** The
+  `foreign-queued-patch` stop used to clear every step, the clearing of the stale lock included, and the lock (which holds
+  prikk's own lock) kept the preview unreadable on every run. The plan now keeps the one `clear-locks` step before that stop
+  (the existing rule: the lease record's word, locks of the kinds an acceptance leaves; any other stop is unchanged), the run
+  takes it, asks for the preview with the lock gone, and stops with the preview and the command (`DiscardOffer::AfterLocks`
+  for the plan recorded first). The offer works on the next run. Test: a stale lock and an orphan patch with a real prikk: the
+  plan shows the step, the run clears the lock, shows the preview, stops, asks prikk once, and the next run with the word
+  takes the patch back (on a prikk without the verb the plan says so).
+- **M4 (maintenance corrections, review finding N-a; the plan's half): the plan says when the word typed was not used.**
+  Whenever `--discard-queued-patch X` was given and no `discard-queued` step results (the patch is an act's own and is
+  sealed, nothing is queued or several are, the offer was not honoured, the verb is absent, the plan was only shown, nothing
+  needed recovering, a stale lock stood in the way), the plan carries the note *`--discard-queued-patch X` was not used:
+  <why>* and `Plan::discard_unused`, which the operator command records (the next entry). The old "was ignored" sentences
+  are folded into it.
+- **M7 (maintenance corrections, review finding N-e; the note): the command is offered only when it would be honoured, and
+  names the wiki.** The note's `recover <wiki> --discard-queued-patch X` is shown only when the queue targets the branch the
+  worktree is on and prikk's own plan names that ref (the one test that also decides the confirmation); otherwise the note is
+  the preview and the reason, and no command. The wiki's id replaces the literal `<wiki>`. `docs/RECOVERY.md` says where the
+  preview is shown and that the word is "not used", not "ignored".
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

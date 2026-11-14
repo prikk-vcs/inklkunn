@@ -85,6 +85,11 @@ fn write_standin(ctl: &Path, real: &Path) -> PathBuf {
 CTL="{ctl}"
 verb="$1"
 echo "$verb" >> "$CTL/calls.log"
+if [ "$verb" = uncommit ] && [ -e "$CTL/hold-uncommit" ]; then
+  : > "$CTL/uncommit-started"
+  n=0
+  while [ ! -e "$CTL/release" ] && [ "$n" -lt 400 ]; do sleep 0.05; n=$((n + 1)); done
+fi
 if [ -e "$CTL/fail-$verb" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
 if [ -e "$CTL/failafter-$verb" ]; then
   n="$(cat "$CTL/failafter-$verb")"; c="$(cat "$CTL/count-$verb" 2>/dev/null || echo 0)"
@@ -523,6 +528,15 @@ impl World {
                 )
             })
             .collect()
+    }
+
+    /// How many times prikk was asked for the `uncommit` verb (the preview and the take-back both are).
+    fn uncommit_calls(&self) -> usize {
+        std::fs::read_to_string(self.ctl.join("calls.log"))
+            .unwrap_or_default()
+            .lines()
+            .filter(|l| *l == "uncommit")
+            .count()
     }
 
     fn recover(&self) -> inklkunn_core::RecoveryReport {
@@ -1340,11 +1354,11 @@ fn a_queued_patch_nobody_describes_is_taken_back_only_when_a_person_types_its_id
         discard_queued_patch: Some(given.to_owned()),
     };
 
-    // Without a word from a person, the plan is the stop it always was; with the verb it also says what prikk would do
-    // and the command that confirms it. Nothing is written by looking.
+    // Without a word from a person, a run stops as it always did; with the verb it also says what prikk would do and
+    // the command that confirms it (M5: only a run asks prikk for the preview, under the lease). Nothing is taken back.
     let shown = w
         .recovery
-        .recover_with(&w.wiki, RecoveryMode::PlanOnly, &RecoverOptions::default())
+        .recover_with(&w.wiki, RecoveryMode::Run, &RecoverOptions::default())
         .unwrap();
     assert_eq!(shown.plan.stop, Some(Stop::ForeignQueuedPatch));
     assert!(shown.plan.steps.is_empty() && shown.plan.ops().is_empty());
@@ -1378,7 +1392,7 @@ fn a_queued_patch_nobody_describes_is_taken_back_only_when_a_person_types_its_id
         assert_eq!(r.plan.stop, Some(Stop::ForeignQueuedPatch));
         assert!(r.done.is_empty());
         assert!(
-            r.plan.notes.iter().any(|n| n.contains("was ignored")),
+            r.plan.notes.iter().any(|n| n.contains("was not used")),
             "{:?}",
             r.plan.notes
         );
@@ -1466,9 +1480,9 @@ fn a_queued_patch_nobody_describes_is_taken_back_only_when_a_person_types_its_id
 }
 
 #[test]
-fn showing_the_plan_with_a_persons_word_takes_nothing_back() {
+fn showing_the_plan_with_a_persons_word_takes_nothing_back_and_does_not_ask_prikk_either() {
     // `--plan` changes nothing: the command line refuses it beside the confirmation, and the library, shown the same
-    // pair, plans what it would do and does not do it.
+    // pair, plans the stop, says the word was not used, and asks prikk for nothing (M5: the preview takes prikk's lock).
     let Some(w) = World::new("take-back-plan", LeaseConfig::default()) else {
         return;
     };
@@ -1490,20 +1504,261 @@ fn showing_the_plan_with_a_persons_word_takes_nothing_back() {
         .unwrap();
     assert_eq!(shown.outcome, RecoveryOutcome::Planned);
     assert!(shown.done.is_empty());
-    let names: Vec<&str> = shown.plan.steps.iter().map(Step::name).collect();
-    if shown.plan.stop.is_none() {
-        // A prikk with the verb: the first step is the take-back, and the signer is bound to this patch alone.
-        assert_eq!(nth(&names, 0), &"discard-queued");
+    assert_eq!(shown.plan.stop, Some(Stop::ForeignQueuedPatch));
+    assert!(shown.plan.steps.is_empty() && shown.plan.ops().is_empty());
+    assert!(
+        shown
+            .plan
+            .notes
+            .iter()
+            .any(|n| n.starts_with(&format!("`--discard-queued-patch {id}` was not used: "))),
+        "{:?}",
+        shown.plan.notes
+    );
+    assert_eq!(
+        w.uncommit_calls(),
+        0,
+        "a plan shown never asks for uncommit"
+    );
+    assert_eq!(w.queue_count(), 1, "looking took nothing back");
+}
+
+#[test]
+fn a_plan_shown_never_asks_prikk_for_the_preview_and_a_run_asks_it_under_the_lease() {
+    // Maintenance M5. `uncommit --plan-only` takes prikk's active lock, so asking is writing: `recover --plan` (the
+    // library's `PlanOnly`) must never ask, with or without the verb, and a run asks once, holding the wiki's lease.
+    let Some(w) = World::new("preview-lease", quick(300)) else {
+        return;
+    };
+    w.plant_queued_patch(
+        "pages/Home.md",
+        "---\ntitle: Home\nid: p-home\n---\n\nPlanted.\n",
+    );
+    w.flag(RecoveryReason::Interrupted);
+    let id = w.queued_patch_id();
+    // Were prikk asked, it would fail visibly; it is not asked.
+    w.control("fail-uncommit", "");
+    for _ in 0..2 {
+        let shown = w
+            .recovery
+            .recover_with(&w.wiki, RecoveryMode::PlanOnly, &RecoverOptions::default())
+            .unwrap();
+        assert_eq!(shown.plan.stop, Some(Stop::ForeignQueuedPatch));
         assert!(
             shown
                 .plan
-                .ops()
-                .contains(&inklkunn_core::RecoveryOp::DiscardQueued { patch: id })
+                .notes
+                .iter()
+                .any(|n| n.contains("`recover --plan` does not ask prikk")
+                    && n.contains(&w.wiki.id.to_string())),
+            "{:?}",
+            shown.plan.notes
+        );
+        assert!(
+            shown
+                .plan
+                .notes
+                .iter()
+                .all(|n| !n.contains("could not be read") && !n.contains("prikk says")),
+            "{:?}",
+            shown.plan.notes
+        );
+    }
+    assert_eq!(
+        w.uncommit_calls(),
+        0,
+        "a plan shown never asks for uncommit"
+    );
+    assert!(w.store.recovery_acts(&w.wiki.id).unwrap().is_empty());
+    w.uncontrol("fail-uncommit");
+
+    // A run asks, and while prikk is being asked the wiki's lease is held (the stand-in waits inside `uncommit`).
+    w.control("hold-uncommit", "");
+    let report = std::thread::scope(|s| {
+        let run = s.spawn(|| {
+            w.recovery
+                .recover_with(&w.wiki, RecoveryMode::Run, &RecoverOptions::default())
+        });
+        let started = w.ctl.join("uncommit-started");
+        for _ in 0..400 {
+            if started.exists() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let held = started.exists()
+            && matches!(
+                w.leases.acquire(&w.wiki.id, Purpose::Recovery, None),
+                Err(inklkunn_core::LeaseError::Busy(_))
+            );
+        w.control("release", "");
+        let report = run.join().expect("the run").expect("a run");
+        assert!(held, "prikk was asked while the lease was not held");
+        report
+    });
+    assert!(report.under_lease);
+    assert_eq!(report.plan.stop, Some(Stop::ForeignQueuedPatch));
+    assert_eq!(w.uncommit_calls(), 1, "a run asks exactly once");
+    assert_eq!(w.queue_count(), 1);
+    assert!(report.done.is_empty());
+    let _ = id;
+}
+
+#[test]
+fn a_stale_lock_beside_an_orphan_patch_is_cleared_then_the_stop_comes_with_the_preview_and_the_offer_works_next_run()
+ {
+    // Maintenance M6. The lock a killed process left holds prikk's lock, so the preview cannot be read; the plan used
+    // to stop with every step gone, the clearing included, and the next run met the same lock. Now the run clears
+    // it, asks for the preview, and stops with it; the person's word is used by the run after.
+    let Some(w) = World::new("lock-and-orphan", LeaseConfig::default()) else {
+        return;
+    };
+    w.plant_queued_patch(
+        "pages/Home.md",
+        "---\ntitle: Home\nid: p-home\n---\n\nPlanted.\n",
+    );
+    let lock = plant_lock(
+        &w.repo,
+        "active/default/active.lock",
+        2_147_483_000,
+        "active",
+    );
+    w.flag(RecoveryReason::Interrupted);
+    let id = w.queued_patch_id();
+    let before = w.history();
+    let verb = inklkunn_prikk::parse_version(w.storage.version()).is_some_and(|v| v >= (0, 57, 0));
+
+    // A plan shown: the clearing is the one step, the stop follows, nothing is asked and nothing is done.
+    let shown = w
+        .recovery
+        .recover_with(&w.wiki, RecoveryMode::PlanOnly, &RecoverOptions::default())
+        .unwrap();
+    assert_eq!(shown.plan.stop, Some(Stop::ForeignQueuedPatch));
+    assert_eq!(
+        shown.plan.steps.iter().map(Step::name).collect::<Vec<_>>(),
+        ["clear-locks"]
+    );
+    assert!(Path::new(&lock).exists());
+    assert_eq!(w.uncommit_calls(), 0);
+
+    // The run with the word typed: the lock is cleared, the preview is shown, the stop stays, the word is not used yet.
+    let first = w
+        .recovery
+        .recover_with(
+            &w.wiki,
+            RecoveryMode::Run,
+            &RecoverOptions {
+                discard_queued_patch: Some(id.clone()),
+            },
+        )
+        .unwrap();
+    assert!(
+        matches!(&first.outcome, RecoveryOutcome::Stopped { at: None, .. }),
+        "{:#?}",
+        first.lines()
+    );
+    assert_eq!(first.plan.stop, Some(Stop::ForeignQueuedPatch));
+    assert_eq!(
+        first.done.iter().map(|d| d.step).collect::<Vec<_>>(),
+        ["clear-locks"]
+    );
+    assert!(!Path::new(&lock).exists(), "the stale lock is cleared");
+    assert_eq!(w.queue_count(), 1);
+    assert_eq!(w.history(), before);
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
+    assert_eq!(w.uncommit_calls(), 1, "asked once, after the lock was gone");
+    if verb {
+        let notes = first.plan.notes.join("\n");
+        assert!(
+            notes.contains(&format!("prikk can take the queued patch {id} back"))
+                && notes.contains("prikk says: ")
+                && !notes.contains("could not be read"),
+            "{notes}"
+        );
+        assert!(
+            notes.contains(&format!(
+                "inklkunn wiki recover {} --discard-queued-patch {id}",
+                w.wiki.id
+            )),
+            "{notes}"
+        );
+        assert!(
+            first
+                .plan
+                .discard_unused
+                .as_deref()
+                .is_some_and(|why| why.contains("stale lock")),
+            "{:?}",
+            first.plan.discard_unused
         );
     } else {
-        assert_eq!(shown.plan.stop, Some(Stop::ForeignQueuedPatch));
+        assert!(
+            first
+                .plan
+                .notes
+                .iter()
+                .any(|n| n.contains("has no `uncommit`")),
+            "{:?}",
+            first.plan.notes
+        );
     }
-    assert_eq!(w.queue_count(), 1, "looking took nothing back");
+
+    // The next run, with the word: the offer works (on a prikk that has the verb).
+    let second = w
+        .recovery
+        .recover_with(
+            &w.wiki,
+            RecoveryMode::Run,
+            &RecoverOptions {
+                discard_queued_patch: Some(id.clone()),
+            },
+        )
+        .unwrap();
+    if verb {
+        assert_eq!(
+            second.outcome,
+            RecoveryOutcome::Recovered,
+            "{:#?}",
+            second.lines()
+        );
+        assert_eq!(w.queue_count(), 0);
+        assert!(w.verifies());
+        assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_none());
+        assert!(second.plan.discard_unused.is_none());
+    } else {
+        assert_eq!(second.plan.stop, Some(Stop::ForeignQueuedPatch));
+        assert_eq!(w.queue_count(), 1);
+    }
+}
+
+#[test]
+fn a_run_with_nothing_to_recover_says_the_word_was_not_used() {
+    // Maintenance M4: a person's word on a wiki that needs nothing is not left in the record as an act.
+    let Some(w) = World::new("nothing-to-recover", LeaseConfig::default()) else {
+        return;
+    };
+    let given = "ab".repeat(32);
+    let r = w
+        .recovery
+        .recover_with(
+            &w.wiki,
+            RecoveryMode::Run,
+            &RecoverOptions {
+                discard_queued_patch: Some(given.clone()),
+            },
+        )
+        .unwrap();
+    assert_eq!(r.outcome, RecoveryOutcome::NothingToDo);
+    assert!(
+        r.plan
+            .notes
+            .iter()
+            .any(|n| n.starts_with(&format!("`--discard-queued-patch {given}` was not used: "))),
+        "{:?}",
+        r.plan.notes
+    );
+    assert!(r.plan.discard_unused.is_some());
+    assert_eq!(w.uncommit_calls(), 0);
 }
 
 #[test]

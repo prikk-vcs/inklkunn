@@ -57,6 +57,7 @@ pub mod processes;
 pub use plan::{
     ActRef, ActWitness, Chain, CleanupPending, DiscardInput, DiscardOffer, Ended, LockEntry, Plan,
     Published, Step, Stop, ViewActWitness, ViewShown, Witness, build, build_with, facts_of,
+    word_unused,
 };
 pub use processes::{Foreign, ProcFs, ProcessInfo, ProcessTable};
 
@@ -719,12 +720,15 @@ impl Recovery {
     }
 
     /// What prikk offers for the one queued patch of a wiki no recorded act describes (ledger PK-43): asked only in
-    /// that state, with prikk's own `uncommit --plan-only`, which writes nothing. Whatever is not that state is
-    /// `NotAsked`; a prikk without the verb is `NoVerb`; an answer that cannot be read is said, and offers nothing.
+    /// that state, with prikk's own `uncommit --plan-only`. **That verb takes prikk's active lock, so it writes**
+    /// (maintenance M5): it is asked only in a run, under the lease, and never while a lock is held (M6: the run
+    /// clears the stale lock first and asks again). Whatever is not that state is `NotAsked`; a plan only shown is
+    /// `InARun`; a prikk without the verb is `NoVerb`; an answer that cannot be read is said, and offers nothing.
     fn read_discard(
         &self,
         wiki: &WikiRecord,
         w: &Witness,
+        mode: Mode,
         options: &RecoverOptions,
     ) -> DiscardInput {
         let confirmed = options.discard_queued_patch.clone();
@@ -737,14 +741,20 @@ impl Recovery {
                     && w.foreign.is_empty()
                     && w.status.trailing_partial_wal_bytes == 0 =>
             {
-                match self
-                    .parts
-                    .witnesses
-                    .uncommit_plan(&wiki.id, &patch.patch_id)
-                {
-                    Ok(Some(plan)) => DiscardOffer::Offered(plan),
-                    Ok(None) => DiscardOffer::NoVerb,
-                    Err(e) => DiscardOffer::Unreadable(e.to_string()),
+                if mode == Mode::PlanOnly {
+                    DiscardOffer::InARun
+                } else if !w.locks.is_empty() {
+                    DiscardOffer::AfterLocks
+                } else {
+                    match self
+                        .parts
+                        .witnesses
+                        .uncommit_plan(&wiki.id, &patch.patch_id)
+                    {
+                        Ok(Some(plan)) => DiscardOffer::Offered(plan),
+                        Ok(None) => DiscardOffer::NoVerb,
+                        Err(e) => DiscardOffer::Unreadable(e.to_string()),
+                    }
                 }
             }
             _ => DiscardOffer::NotAsked,
@@ -766,7 +776,10 @@ impl Recovery {
                 .lease_holder(&wiki.id)?
                 .filter(|h| h.holder != p.leases.holder_name());
             let witness = self.gather(wiki, dead, false)?;
-            let plan = build_with(&witness, &self.read_discard(wiki, &witness, options));
+            let plan = build_with(
+                &witness,
+                &self.read_discard(wiki, &witness, Mode::PlanOnly, options),
+            );
             return Ok(RecoveryReport {
                 wiki: wiki.id.clone(),
                 plan,
@@ -790,9 +803,17 @@ impl Recovery {
         let dead = lease.replaced().cloned();
         let reasons = self.reasons(&wiki.id, dead.as_ref())?;
         if reasons.is_empty() {
+            let mut plan = build_empty(&wiki.id);
+            if let Some(given) = &options.discard_queued_patch {
+                word_unused(
+                    &mut plan,
+                    given,
+                    "nothing needs recovery, so nothing was looked at",
+                );
+            }
             return Ok(RecoveryReport {
                 wiki: wiki.id.clone(),
-                plan: build_empty(&wiki.id),
+                plan,
                 act: None,
                 outcome: Outcome::NothingToDo,
                 done: Vec::new(),
@@ -833,7 +854,7 @@ impl Recovery {
                 return Err(e);
             }
         };
-        let discard = self.read_discard(wiki, &witness, options);
+        let discard = self.read_discard(wiki, &witness, Mode::Run, options);
         let plan = build_with(&witness, &discard);
 
         // 3. The plan, recorded before any of it is done; an earlier recovery that was itself interrupted is ended.
@@ -890,21 +911,6 @@ impl Recovery {
             })?;
             Ok(())
         };
-        if let Some(stop) = plan.stop {
-            report.outcome = Outcome::Stopped {
-                at: None,
-                why: stop.meaning().to_owned(),
-            };
-            self.trail(
-                "recovery",
-                &resource,
-                AuditOutcome::Failed,
-                &format!("stopped: {}", stop.as_str()),
-            )?;
-            finish(RecoveryEnding::Stopped)?;
-            return Ok(report);
-        }
-
         // 4. The steps, each one recorded before it is taken.
         let token = RecoveryToken::new(act.to_string());
         let bases: Vec<ActBase> = witness.acts.iter().map(ActBase::of).collect();
@@ -940,6 +946,48 @@ impl Recovery {
                     return Ok(report);
                 }
             }
+        }
+        // A plan that stops: the steps before the stop were taken above (a stale lock beside an orphan patch is
+        // cleared, M6); then the stop.
+        if let Some(stop) = plan.stop {
+            if stop == Stop::ForeignQueuedPatch && !plan.steps.is_empty() {
+                // The lock that held prikk's own lock is gone: ask now for the preview the plan could not give.
+                let mut after = witness.clone();
+                after.locks.clear();
+                let mut discard = self.read_discard(wiki, &after, Mode::Run, options);
+                let mut again = build_with(&after, &discard);
+                if again
+                    .steps
+                    .iter()
+                    .any(|s| matches!(s, Step::DiscardQueued { .. }))
+                {
+                    // The word would take the patch back; this run only cleared the lock and shows the preview.
+                    // The take-back is the next run's, and the plan and the trail say so.
+                    let given = discard.confirmed.take();
+                    again = build_with(&after, &discard);
+                    if let Some(given) = given {
+                        word_unused(
+                            &mut again,
+                            &given,
+                            "a stale lock stood in the way: this run cleared it and stops with the preview, and the next run takes the patch back",
+                        );
+                    }
+                }
+                report.plan.notes = again.notes;
+                report.plan.discard_unused = again.discard_unused;
+            }
+            report.outcome = Outcome::Stopped {
+                at: None,
+                why: stop.meaning().to_owned(),
+            };
+            self.trail(
+                "recovery",
+                &resource,
+                AuditOutcome::Failed,
+                &format!("stopped: {}", stop.as_str()),
+            )?;
+            finish(RecoveryEnding::Stopped)?;
+            return Ok(report);
         }
         self.trail("recovery", &resource, AuditOutcome::Allowed, "recovered")?;
         finish(RecoveryEnding::Recovered)?;
@@ -1441,5 +1489,6 @@ fn build_empty(wiki: &WikiId) -> Plan {
         steps: Vec::new(),
         stop: None,
         notes: Vec::new(),
+        discard_unused: None,
     }
 }
