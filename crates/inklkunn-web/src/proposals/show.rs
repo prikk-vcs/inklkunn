@@ -706,6 +706,10 @@ pub(crate) fn draw(
             } else if !known.curated.is_empty() {
                 // The acceptance's own rule (K7): the same sentence the submission is refused with.
                 notes.push(t.get(Key::KnowNotCuration));
+                // What no form makes is said, and is a reviewer's (K44).
+                if crate::knowledge::curate::beyond_the_form(&known.curated) {
+                    notes.push(t.get(Key::KnowNotByForm));
+                }
                 // The way to where the change is proposed (K39): the curation form of each claim it touches.
                 offered =
                     match crate::knowledge::curate::offers(ctx, t, &record.view, &known.curated) {

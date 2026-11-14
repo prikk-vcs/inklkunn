@@ -1646,6 +1646,16 @@ keys! {
     ApiDropUnused => "api.drop_unused",
     ClaimThreadInReplyToLink => "claim_thread.in_reply_to_link",
     ClaimThreadCommentLabel => "claim_thread.comment_label",
+    CurateLabelRemove => "curate.label_remove",
+    CurateRemoveHint => "curate.remove_hint",
+    CurateWorkHint => "curate.work_hint",
+    CurateLabelSuperseded => "curate.label_superseded",
+    CurateSupersededHint => "curate.superseded_hint",
+    CurateRemovedAndChanged => "curate.removed_and_changed",
+    CurateNotChecked => "curate.not_checked",
+    CurateReplacedByItself => "curate.replaced_by_itself",
+    CurateUnknownSuccessor => "curate.unknown_successor",
+    KnowNotByForm => "know.not_by_form",
 }
 
 /// A typed value for a placeholder. Text is HTML-escaped; a link is an escaped label plus an `href` the

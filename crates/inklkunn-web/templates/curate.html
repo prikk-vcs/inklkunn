@@ -37,6 +37,10 @@
 {% for o in s.bearings %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
 {% endfor %}</select>
 </div>
+<div class="field">
+<label><input type="checkbox" id="{{ s.remove_name }}" name="{{ s.remove_name }}" value="1"{% if s.removed %} checked{% endif %} aria-describedby="{{ s.remove_name }}-hint"> {{ s.remove_label }}</label>
+<p id="{{ s.remove_name }}-hint" class="note">{{ s.remove_hint }}</p>
+</div>
 {% if s.checkable %}<div class="field">
 <label for="{{ s.reviewed_name }}">{{ s.reviewed_label }}</label>
 <input id="{{ s.reviewed_name }}" name="{{ s.reviewed_name }}" type="text" value="{{ s.reviewed }}" aria-describedby="{{ s.reviewed_name }}-hint">
@@ -48,6 +52,36 @@
 {% for o in s.availabilities %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
 {% endfor %}</select>
 <p id="{{ s.availability_name }}-hint" class="note">{{ s.availability_hint }}</p>
+</div>
+{% endif %}{% if let Some(w) = s.work %}<p class="note">{{ w.hint }}</p>
+<div class="field">
+<label for="{{ w.title_name }}">{{ w.title_label }}</label>
+<input id="{{ w.title_name }}" name="{{ w.title_name }}" type="text" value="{{ w.title }}">
+</div>
+<div class="field">
+<label for="{{ w.author_name }}">{{ w.author_label }}</label>
+<input id="{{ w.author_name }}" name="{{ w.author_name }}" type="text" value="{{ w.author }}">
+</div>
+<div class="field">
+<label for="{{ w.date_name }}">{{ w.date_label }}</label>
+<input id="{{ w.date_name }}" name="{{ w.date_name }}" type="text" value="{{ w.date }}" aria-describedby="{{ w.date_name }}-hint">
+<p id="{{ w.date_name }}-hint" class="note">{{ w.date_hint }}</p>
+</div>
+<div class="field">
+<label for="{{ w.ref_form_name }}">{{ w.ref_form_label }}</label>
+<select id="{{ w.ref_form_name }}" name="{{ w.ref_form_name }}">
+{% for o in w.ref_forms %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
+{% endfor %}</select>
+</div>
+<div class="field">
+<label for="{{ w.ref_name }}">{{ w.ref_label }}</label>
+<input id="{{ w.ref_name }}" name="{{ w.ref_name }}" type="text" value="{{ w.reference }}" aria-describedby="{{ w.ref_name }}-hint">
+<p id="{{ w.ref_name }}-hint" class="note">{{ w.ref_hint }}</p>
+</div>
+<div class="field">
+<label for="{{ w.superseded_name }}">{{ w.superseded_label }}</label>
+<input id="{{ w.superseded_name }}" name="{{ w.superseded_name }}" type="text" value="{{ w.superseded }}" aria-describedby="{{ w.superseded_name }}-hint">
+<p id="{{ w.superseded_name }}-hint" class="note">{{ w.superseded_hint }}</p>
 </div>
 {% endif %}</fieldset>
 {% endfor %}<div class="field">

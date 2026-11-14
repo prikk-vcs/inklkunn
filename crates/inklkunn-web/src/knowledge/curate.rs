@@ -1,9 +1,11 @@
 //! The way to the curation form (RFC 005 part 2 D-3; handoff 005 K39).
 //!
-//! The curation form (`…/proposals/curate?claim=<id>`) is the only place a community status, a review day or an
-//! availability can be proposed, so every page that tells a reader about a claim, or that tells them a change needs
-//! a curation proposal, leads to it, **for those who may propose** (an account the authorizer lets propose to the
-//! wiki) and for nobody else: a link a reader cannot use is not offered.
+//! The curation form (`…/proposals/curate?claim=<id>`) is the only place a community status, a review day, an
+//! availability, a link's relation, bearing or removal, and what a checked source is can be proposed, so every page that
+//! tells a reader about a claim, or that tells them a change needs a curation proposal, leads to it, **for those who may
+//! propose** (an account the authorizer lets propose to the wiki) and for nobody else: a link a reader cannot use is not
+//! offered. And it is offered **only for a refusal the form can then make** (K44): the form never removes a file, so for
+//! a removal, or a file that cannot be read, the page says what can be done instead ([`beyond_the_form`]).
 
 use inklkunn_core::knowledge::check::Refusal;
 use inklkunn_core::knowledge::index::KnowledgeIndex;
@@ -82,6 +84,12 @@ pub(crate) fn offers(
     full_view: &str,
     refused: &[Refusal],
 ) -> Result<Offers, ReadError> {
+    // Only what the form can then make (K44).
+    let refused: Vec<Refusal> = refused
+        .iter()
+        .filter(|r| r.curation_form_can_make())
+        .cloned()
+        .collect();
     if refused.is_empty() || !may_propose(&ctx.services, &ctx.principal, &ctx.wiki) {
         return Ok(Offers::default());
     }
@@ -92,7 +100,7 @@ pub(crate) fn offers(
     let view = full_view
         .strip_prefix("heads/")
         .filter(|_| full_view != ctx.wiki.default_view);
-    let claims = claims_of(&index, refused);
+    let claims = claims_of(&index, &refused);
     let slug = ctx.slug();
     let more = claims.len().saturating_sub(MOST_OFFERED);
     Ok(Offers {
@@ -107,6 +115,12 @@ pub(crate) fn offers(
                 .text()
         }),
     })
+}
+
+/// Does a refusal ask for what no curation form makes (K44): the removal of a claim or of a source file, or the
+/// replacement of a file that cannot be read? Then the page says so, in words, beside the sentence that names the rule.
+pub(crate) fn beyond_the_form(refused: &[Refusal]) -> bool {
+    refused.iter().any(|r| !r.curation_form_can_make())
 }
 
 /// The claims whose curation form a refusal leads to: the claim a refused file is, and the claims that cite a source a

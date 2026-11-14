@@ -4,8 +4,8 @@ use std::collections::BTreeSet;
 
 use super::*;
 use crate::knowledge::compose::{
-    Attachment, Curation, LinkEdit, Mistake, SourceDraft, SourceEdit, attach, clean_reference,
-    clean_text, curate, page_id_of, paragraph_id, without_expressions,
+    Attachment, Curation, LinkEdit, Mistake, SourceDraft, SourceEdit, Work, attach,
+    clean_reference, clean_text, curate, is_checked, page_id_of, paragraph_id, without_expressions,
 };
 
 const PAGE: &str = "---\ntitle: Bridge\n---\n\nIt opened in 1950.\n\nIt is long.\n";
@@ -322,10 +322,12 @@ fn unchanged(claim: &Claim, source: &Source) -> Curation {
             relation: Link::Supports,
             bearing: Bearing::Direct,
         }],
+        removed: Vec::new(),
         sources: vec![SourceEdit {
             source: source.id.clone(),
             reviewed: String::new(),
             availability: source.availability,
+            work: None,
         }],
         confirm: false,
     }
@@ -489,4 +491,263 @@ fn a_source_the_claim_does_not_cite_is_refused_and_a_review_date_is_a_day() {
             proposal: None
         })
     );
+}
+
+// ---------------------------------------------------------------------------------------------- curation, every change (K44)
+
+fn with_second_link() -> (Claim, Source, Source) {
+    let (mut claim, first) = cited_claim();
+    claim.sources.push(SourceLink {
+        source: source_id(2),
+        relation: Link::Challenges,
+        bearing: Bearing::Indirect,
+        note: Some("kept".to_owned()),
+        judged_on: digest_of("old"),
+    });
+    (claim, first, Source::new(source_id(2)))
+}
+
+#[test]
+fn a_link_goes_when_the_edit_removes_it_and_nothing_else_of_the_claim_changes() {
+    let (claim, first, second) = with_second_link();
+    let now = digest_of("new");
+    let mut edit = unchanged(&claim, &first);
+    edit.removed = vec![source_id(2)];
+    let files =
+        curate(&claim, &[first.clone(), second.clone()], Some(&now), &edit).expect("curated");
+    assert_eq!(
+        files.len(),
+        1,
+        "the claim only: the source's own file stays"
+    );
+    let after = read_claim(&files);
+    assert_eq!(
+        after
+            .sources
+            .iter()
+            .map(|l| l.source.clone())
+            .collect::<Vec<_>>(),
+        [source_id(1)]
+    );
+    let kept = after.sources.first().expect("a link");
+    assert_eq!(
+        kept.judged_on,
+        digest_of("old"),
+        "the link that stays is not judged again"
+    );
+    // The last link may go too: a claim with no source is a claim with none.
+    let mut all = unchanged(&claim, &first);
+    all.removed = vec![source_id(1), source_id(2)];
+    let files =
+        curate(&claim, &[first.clone(), second.clone()], Some(&now), &all).expect("curated");
+    assert!(read_claim(&files).sources.is_empty());
+    // A claim said nowhere has no wording to judge, and a removal asks for none.
+    let files = curate(&claim, &[first, second], None, &edit).expect("curated");
+    assert_eq!(read_claim(&files).sources.len(), 1);
+}
+
+#[test]
+fn a_link_is_changed_or_removed_not_both_and_only_a_link_the_claim_has_can_go() {
+    let (claim, first, second) = with_second_link();
+    let now = digest_of("new");
+    let cited = [first.clone(), second];
+    // Changed and removed: said so, and nothing is written.
+    let mut both = unchanged(&claim, &first);
+    both.links = vec![
+        LinkEdit {
+            source: source_id(1),
+            relation: Link::Supports,
+            bearing: Bearing::Direct,
+        },
+        LinkEdit {
+            source: source_id(2),
+            relation: Link::Supports,
+            bearing: Bearing::Indirect,
+        },
+    ];
+    both.removed = vec![source_id(2)];
+    assert_eq!(
+        curate(&claim, &cited, Some(&now), &both),
+        Err(Mistake::RemovedAndChanged)
+    );
+    // Listed unchanged and removed is the form's own habit (every link is in the form): it goes.
+    both.links = vec![
+        LinkEdit {
+            source: source_id(1),
+            relation: Link::Supports,
+            bearing: Bearing::Direct,
+        },
+        LinkEdit {
+            source: source_id(2),
+            relation: Link::Challenges,
+            bearing: Bearing::Indirect,
+        },
+    ];
+    let files = curate(&claim, &cited, Some(&now), &both).expect("curated");
+    assert_eq!(read_claim(&files).sources.len(), 1);
+    // A source the claim does not cite cannot be let go.
+    let mut stranger = unchanged(&claim, &first);
+    stranger.removed = vec![source_id(9)];
+    assert_eq!(
+        curate(&claim, &cited, Some(&now), &stranger),
+        Err(Mistake::UnknownSource)
+    );
+}
+
+fn checked() -> Source {
+    let mut source = Source::new(source_id(1));
+    source.availability = Availability::Available;
+    source.identity.title = Some("A history".to_owned());
+    source.reference = Some(Reference {
+        form: ReferenceForm::Url,
+        value: "https://example.org/history".to_owned(),
+    });
+    source
+}
+
+fn corrected(source: &Source) -> Work {
+    Work {
+        title: "A history, second edition".to_owned(),
+        author: "Noor Aziz".to_owned(),
+        date: "2024".to_owned(),
+        reference_form: ReferenceForm::Doi,
+        reference: "10.1000/182".to_owned(),
+        ..Work::of(source)
+    }
+}
+
+fn worked(claim: &Claim, source: &Source, work: Work) -> Curation {
+    let mut edit = unchanged(claim, source);
+    edit.sources.first_mut().expect("a source").work = Some(work);
+    edit
+}
+
+#[test]
+fn a_checked_source_has_its_identity_reference_and_successor_set_by_curation() {
+    let (claim, _) = cited_claim();
+    let source = checked();
+    let now = digest_of("new");
+    let mut work = corrected(&source);
+    work.superseded_by = Some(source_id(2));
+    let files = curate(
+        &claim,
+        std::slice::from_ref(&source),
+        Some(&now),
+        &worked(&claim, &source, work),
+    )
+    .expect("curated");
+    let (path, text) = files.first().expect("a source file");
+    assert_eq!((files.len(), path), (1, &source_path(&source.id)));
+    let File::Source(after) = read_file(path, text.as_bytes()).expect("a file") else {
+        panic!("a source");
+    };
+    assert_eq!(
+        (
+            after.identity.title.as_deref(),
+            after.identity.author.as_deref(),
+            after.identity.date.as_deref()
+        ),
+        (
+            Some("A history, second edition"),
+            Some("Noor Aziz"),
+            Some("2024")
+        )
+    );
+    assert_eq!(
+        after.reference,
+        Some(Reference {
+            form: ReferenceForm::Doi,
+            value: "10.1000/182".to_owned()
+        })
+    );
+    assert_eq!(after.superseded_by, Some(source_id(2)));
+    // What was not asked is as it was: the kind, the availability, the review.
+    assert_eq!(
+        (after.kind, after.availability, after.last_reviewed.clone()),
+        (
+            source.kind,
+            source.availability,
+            source.last_reviewed.clone()
+        )
+    );
+    // And it goes the other way: nothing replaces it, it names no reference, an empty author is none.
+    let mut again = Work::of(&after);
+    again.superseded_by = None;
+    again.reference.clear();
+    again.author.clear();
+    let files = curate(
+        &claim,
+        std::slice::from_ref(&after),
+        Some(&now),
+        &worked(&claim, &after, again),
+    )
+    .expect("curated");
+    let (path, text) = files.first().expect("a source file");
+    let File::Source(back) = read_file(path, text.as_bytes()).expect("a file") else {
+        panic!("a source");
+    };
+    assert_eq!(
+        (back.superseded_by, back.reference, back.identity.author),
+        (None, None, None)
+    );
+}
+
+#[test]
+fn what_an_unchecked_source_is_stays_the_page_edits_and_the_texts_are_those_of_a_new_source() {
+    let (claim, _) = cited_claim();
+    let now = digest_of("new");
+    // Not checked: the same words change nothing; other words are the page edit's.
+    let unchecked = Source::new(source_id(1));
+    assert!(!is_checked(&unchecked));
+    let same = worked(&claim, &unchecked, Work::of(&unchecked));
+    assert_eq!(
+        curate(&claim, std::slice::from_ref(&unchecked), Some(&now), &same),
+        Ok(vec![])
+    );
+    let other = worked(&claim, &unchecked, corrected(&unchecked));
+    assert_eq!(
+        curate(&claim, std::slice::from_ref(&unchecked), Some(&now), &other),
+        Err(Mistake::NotChecked)
+    );
+    // A review day counts as checking, as it does at the acceptance.
+    let mut reviewed = Source::new(source_id(1));
+    reviewed.last_reviewed = Some(Reviewed {
+        date: "2026-11-01".to_owned(),
+        proposal: None,
+    });
+    assert!(is_checked(&reviewed));
+    let edit = worked(&claim, &reviewed, corrected(&reviewed));
+    assert_eq!(
+        curate(&claim, std::slice::from_ref(&reviewed), Some(&now), &edit)
+            .expect("curated")
+            .len(),
+        1
+    );
+
+    // A checked source: it still names a work, is not replaced by itself, and keeps the format's bounds.
+    let source = checked();
+    let refused = |work: Work| {
+        curate(
+            &claim,
+            std::slice::from_ref(&source),
+            Some(&now),
+            &worked(&claim, &source, work),
+        )
+    };
+    let mut bare = Work::of(&source);
+    bare.title.clear();
+    bare.reference.clear();
+    assert_eq!(refused(bare), Err(Mistake::SourceSaysNothing));
+    let mut itself = Work::of(&source);
+    itself.superseded_by = Some(source_id(1));
+    assert_eq!(refused(itself), Err(Mistake::ReplacedByItself));
+    let mut web = Work::of(&source);
+    web.reference = "ftp://example.org/history".to_owned();
+    assert_eq!(refused(web), Err(Mistake::NotAWebAddress));
+    let mut long = Work::of(&source);
+    long.author = "x".repeat(10_000);
+    assert_eq!(refused(long), Err(Mistake::TooLong("author")));
+    let mut line = Work::of(&source);
+    line.title = "two\nlines".to_owned();
+    assert_eq!(refused(line), Err(Mistake::ControlCharacter("title")));
 }

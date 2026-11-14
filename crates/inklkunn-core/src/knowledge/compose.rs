@@ -18,9 +18,9 @@ use inklkunn_markup::{BlockKind, blocks, frontmatter, parse_metadata};
 
 use super::yaml::{MAX_LINKS, MAX_TEXT_CHARS, is_day};
 use super::{
-    AnchorState, Availability, Bearing, Claim, ClaimId, Expression, Lifecycle, Link, Reference,
-    ReferenceForm, Source, SourceId, SourceKind, SourceLink, Standing, StatementKind, anchor_state,
-    claim_path, source_path,
+    AnchorState, Availability, Bearing, Claim, ClaimId, Expression, Identity, Lifecycle, Link,
+    Reference, ReferenceForm, Source, SourceId, SourceKind, SourceLink, Standing, StatementKind,
+    anchor_state, claim_path, source_path,
 };
 
 /// Why a claim or a source could not be written from what a person gave. Each is one plain fact the surface words;
@@ -51,6 +51,15 @@ pub enum Mistake {
     UnknownSource,
     /// The claim is said nowhere now, so there is no wording to judge a source or a standing on.
     NoWording,
+    /// The same link is both changed and removed.
+    RemovedAndChanged,
+    /// Who and what a source is, where it is found, or what replaces it is curation's to change **once the source was
+    /// checked**; this source was not, so that is the page edit's.
+    NotChecked,
+    /// A source is not replaced by itself.
+    ReplacedByItself,
+    /// The source that replaces another is not a source of the wiki.
+    UnknownSuccessor,
     /// What was made does not read back (a defect, not the person's doing).
     Unwritable,
 }
@@ -354,6 +363,52 @@ pub struct LinkEdit {
     pub bearing: Bearing,
 }
 
+/// Who and what a source is, where it is found and which source replaces it, **as it should be** (K44): what only
+/// curation changes once a source was checked (K30, K36). The texts are as a person wrote them; an empty one is
+/// nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Work {
+    /// A title.
+    pub title: String,
+    /// An author or a publisher.
+    pub author: String,
+    /// A date, as written (a year, a season, a day).
+    pub date: String,
+    /// How the reference is written.
+    pub reference_form: ReferenceForm,
+    /// The reference; empty for none.
+    pub reference: String,
+    /// The source that replaces it.
+    pub superseded_by: Option<SourceId>,
+}
+
+impl Work {
+    /// What `source` has now, in the words of a form.
+    pub fn of(source: &Source) -> Work {
+        Work {
+            title: source.identity.title.clone().unwrap_or_default(),
+            author: source.identity.author.clone().unwrap_or_default(),
+            date: source.identity.date.clone().unwrap_or_default(),
+            reference_form: source
+                .reference
+                .as_ref()
+                .map_or(ReferenceForm::Url, |r| r.form),
+            reference: source
+                .reference
+                .as_ref()
+                .map(|r| r.value.clone())
+                .unwrap_or_default(),
+            superseded_by: source.superseded_by.clone(),
+        }
+    }
+}
+
+/// Was this source checked by a person (it has a review day or an availability)? Only then is who and what it is, where
+/// it is found and which source replaces it curation's (`check::Curated::departure`).
+pub fn is_checked(source: &Source) -> bool {
+    source.availability != Availability::Unknown || source.last_reviewed.is_some()
+}
+
 /// What a person changed about a source.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceEdit {
@@ -363,6 +418,9 @@ pub struct SourceEdit {
     pub reviewed: String,
     /// Whether it can be had, as the person who checked says.
     pub availability: Availability,
+    /// Who and what it is, where it is found and what replaces it, as it should be; `None` leaves them as they are.
+    /// Only for a source that was checked ([`Mistake::NotChecked`]).
+    pub work: Option<Work>,
 }
 
 /// The curation proposal's form, read: **no page text**.
@@ -372,6 +430,9 @@ pub struct Curation {
     pub status: Standing,
     /// Each link, as it should be.
     pub links: Vec<LinkEdit>,
+    /// The links the claim lets go (K44): the sources it no longer cites. A link is changed or removed, not both
+    /// ([`Mistake::RemovedAndChanged`]).
+    pub removed: Vec<SourceId>,
     /// Each source, as it should be.
     pub sources: Vec<SourceEdit>,
     /// Judge the sources and the standing again on the wording the claim has now (the re-confirmation, as a
@@ -405,6 +466,13 @@ pub fn curate(
         status.judged_on = Some(judged(Mistake::NoWording)?.clone());
     }
     for e in &edit.links {
+        if edit.removed.contains(&e.source) {
+            let at_base = claim.sources.iter().find(|l| l.source == e.source);
+            if at_base.is_none_or(|l| l.relation != e.relation || l.bearing != e.bearing) {
+                return Err(Mistake::RemovedAndChanged);
+            }
+            continue;
+        }
         let link = next
             .sources
             .iter_mut()
@@ -414,6 +482,13 @@ pub fn curate(
             link.relation = e.relation;
             link.bearing = e.bearing;
             link.judged_on = judged(Mistake::NoWording)?.clone();
+        }
+    }
+    for gone in &edit.removed {
+        let before = next.sources.len();
+        next.sources.retain(|l| l.source != *gone);
+        if next.sources.len() == before {
+            return Err(Mistake::UnknownSource);
         }
     }
     if edit.confirm {
@@ -436,6 +511,22 @@ pub fn curate(
             .ok_or(Mistake::UnknownSource)?;
         let mut source = old.clone();
         source.availability = e.availability;
+        if let Some(work) = e.work.as_ref().filter(|w| **w != Work::of(old)) {
+            let mut changed = old.clone();
+            set_work(&mut changed, work)?;
+            if changed.identity != old.identity
+                || changed.reference != old.reference
+                || changed.superseded_by != old.superseded_by
+            {
+                // Who and what an unchecked source is stays the page edit's.
+                if !is_checked(old) {
+                    return Err(Mistake::NotChecked);
+                }
+                source.identity = changed.identity;
+                source.reference = changed.reference;
+                source.superseded_by = changed.superseded_by;
+            }
+        }
         let day = e.reviewed.trim();
         let before = old.last_reviewed.as_ref().map(|r| r.date.as_str());
         if day.is_empty() {
@@ -456,4 +547,23 @@ pub fn curate(
         }
     }
     Ok(out)
+}
+
+/// `source` with who and what it is, where it is found and what replaces it as `work` says, each text cleaned as a new
+/// source's are. It still names a work (a title or a reference), and is not replaced by itself.
+fn set_work(source: &mut Source, work: &Work) -> Result<(), Mistake> {
+    source.identity = Identity {
+        title: clean_text(&work.title, "title")?,
+        author: clean_text(&work.author, "author")?,
+        date: clean_text(&work.date, "date")?,
+    };
+    source.reference = clean_reference(work.reference_form, &work.reference)?;
+    if work.superseded_by.as_ref() == Some(&source.id) {
+        return Err(Mistake::ReplacedByItself);
+    }
+    if source.identity.title.is_none() && source.reference.is_none() {
+        return Err(Mistake::SourceSaysNothing);
+    }
+    source.superseded_by.clone_from(&work.superseded_by);
+    Ok(())
 }

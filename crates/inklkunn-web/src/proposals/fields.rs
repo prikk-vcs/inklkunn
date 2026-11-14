@@ -73,6 +73,15 @@ pub(crate) const C_RELATION: &str = "relation";
 pub(crate) const C_BEARING: &str = "bearing";
 pub(crate) const C_REVIEWED: &str = "reviewed";
 pub(crate) const C_AVAILABILITY: &str = "availability";
+/// The box that lets a link go (K44): the claim no longer cites the source.
+pub(crate) const C_REMOVE: &str = "remove";
+// What a checked source is, where it is found and what replaces it (K44): offered for a source that was checked.
+pub(crate) const C_TITLE: &str = "title";
+pub(crate) const C_AUTHOR: &str = "author";
+pub(crate) const C_DATE: &str = "date";
+pub(crate) const C_REF_FORM: &str = "ref_form";
+pub(crate) const C_REF: &str = "ref";
+pub(crate) const C_SUPERSEDED: &str = "superseded_by";
 
 // --- query parameters of the entry points
 pub(crate) const Q_PAGE: &str = "page";

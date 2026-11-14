@@ -212,10 +212,12 @@ fn a_review_date_is_named_by_the_proposal_that_set_it_and_only_a_curation_may_se
             relation: Link::Supports,
             bearing: Bearing::Direct,
         }],
+        removed: Vec::new(),
         sources: vec![SourceEdit {
             source: s.source.id.clone(),
             reviewed: "2026-11-04".to_owned(),
             availability: Availability::Available,
+            work: None,
         }],
         confirm: false,
     };

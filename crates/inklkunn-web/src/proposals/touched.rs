@@ -461,6 +461,7 @@ fn judge_again(page: &Page, ctx: &Ctx, id: &inklkunn_store::ProposalId) -> Respo
                     bearing: l.bearing,
                 })
                 .collect(),
+            removed: Vec::new(),
             sources: Vec::new(),
             confirm: true,
         };

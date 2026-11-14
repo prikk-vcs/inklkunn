@@ -1205,10 +1205,12 @@ fn a_source_is_attached_and_a_status_curated_through_the_whole_path_on_a_real_hi
             relation: Link::Supports,
             bearing: Bearing::Direct,
         }],
+        removed: Vec::new(),
         sources: vec![SourceEdit {
             source: source.id.clone(),
             reviewed: "2026-11-04".to_owned(),
             availability: Availability::Available,
+            work: None,
         }],
         confirm: false,
     };
@@ -1311,6 +1313,216 @@ fn a_source_is_attached_and_a_status_curated_through_the_whole_path_on_a_real_hi
     let index = w.reads.knowledge_index(&w.wiki, None).unwrap();
     assert_eq!(index.claim(&id).unwrap().standing_judgement, "earlier");
     assert!(index.links_of(&id).all(|l| l.judgement == "earlier"));
+}
+
+/// K44 (handoff 005 corrections, fifth round): a curation proposal lets a link go and corrects a checked source's identity,
+/// reference and `superseded_by`, and is accepted on a real history; no other proposal does either (K30, K36, K16).
+#[test]
+fn a_curation_removes_a_link_and_corrects_a_checked_source_through_the_whole_path_on_a_real_history()
+ {
+    use inklkunn_core::knowledge::compose::{
+        Attachment, Curation, LinkEdit, SourceDraft, SourceEdit, Work, attach, curate,
+    };
+    use inklkunn_core::knowledge::{
+        AnchorState, Availability, Bearing, Claim, File, Link, ReferenceForm, Rule, Source,
+        SourceKind, Standing, StatementKind, anchor_state, read_file,
+    };
+    let Some(w) = World::new("knowledge-curate-all", LeaseConfig::default()) else {
+        return;
+    };
+    let draft = |title: &str| Attachment {
+        source: SourceDraft {
+            kind: SourceKind::Secondary,
+            title: Some(title.to_owned()),
+            author: None,
+            date: None,
+            reference: None,
+        },
+        relation: Link::Supports,
+        bearing: Bearing::Direct,
+        note: None,
+        kind: StatementKind::Observation,
+    };
+    let read_claim = |path: &str| -> Claim {
+        let File::Claim(claim) = read_file(path, w.page(path).as_bytes()).unwrap() else {
+            panic!("a claim");
+        };
+        *claim
+    };
+    let read_source = |path: &str| -> Source {
+        let File::Source(source) = read_file(path, w.page(path).as_bytes()).unwrap() else {
+            panic!("a source");
+        };
+        *source
+    };
+
+    // Two sources for one claim, the second attached to the claim the first made.
+    let start = HOME.find("One.").unwrap();
+    let first = attach(HOME, &(start..start + 4), None, &draft("A history")).unwrap();
+    let [(claim_file, claim_text), (first_file, first_text)] = first.files.clone();
+    let p = w.propose(
+        "A source",
+        &[
+            ("pages/Home.md", Some(&first.page)),
+            (claim_file.as_str(), Some(&claim_text)),
+            (first_file.as_str(), Some(&first_text)),
+        ],
+    );
+    signed(w.accept(&p).unwrap());
+    let page = w.page("pages/Home.md");
+    let start = page.find("One.").unwrap();
+    let existing = read_claim(&claim_file);
+    let second = attach(
+        &page,
+        &(start..start + 4),
+        Some(&existing),
+        &draft("A later history"),
+    )
+    .unwrap();
+    let [(_, claim_text), (second_file, second_text)] = second.files.clone();
+    let p = w.propose(
+        "Another source",
+        &[
+            (claim_file.as_str(), Some(&claim_text)),
+            (second_file.as_str(), Some(&second_text)),
+        ],
+    );
+    signed(w.accept(&p).unwrap());
+
+    // The first source is checked: from then on who and what it is belongs to curation.
+    let AnchorState::Present(now) = anchor_state(&w.page("pages/Home.md"), &first.block) else {
+        panic!("present");
+    };
+    let claim = read_claim(&claim_file);
+    assert_eq!(claim.sources.len(), 2);
+    let link_edits = |claim: &Claim| -> Vec<LinkEdit> {
+        claim
+            .sources
+            .iter()
+            .map(|l| LinkEdit {
+                source: l.source.clone(),
+                relation: l.relation,
+                bearing: l.bearing,
+            })
+            .collect()
+    };
+    let one = read_source(&first_file);
+    let two = read_source(&second_file);
+    let checking = Curation {
+        status: Standing::Unknown,
+        links: link_edits(&claim),
+        removed: Vec::new(),
+        sources: vec![SourceEdit {
+            source: one.id.clone(),
+            reviewed: "2026-11-04".to_owned(),
+            availability: Availability::Available,
+            work: None,
+        }],
+        confirm: false,
+    };
+    let files = curate(&claim, &[one.clone(), two.clone()], Some(&now), &checking).unwrap();
+    let refs: Vec<(&str, Option<&str>)> = files
+        .iter()
+        .map(|(p, t)| (p.as_str(), Some(t.as_str())))
+        .collect();
+    signed(w.accept(&w.propose("Checked", &refs)).unwrap());
+
+    // 1. Neither is a page proposal's: the link going, and a checked source made another.
+    let claim = read_claim(&claim_file);
+    let one = read_source(&first_file);
+    let mut without = claim.clone();
+    without.sources.retain(|l| l.source != two.id);
+    let mut corrected = one.clone();
+    corrected.identity.title = Some("A history, corrected".to_owned());
+    for (path, text) in [
+        (claim_file.as_str(), without.to_yaml()),
+        (first_file.as_str(), corrected.to_yaml()),
+    ] {
+        let p = w.propose_unjudged(
+            "Beside a page edit",
+            &[
+                (path, Some(text.as_str())),
+                (
+                    "pages/Other.md",
+                    Some(&OTHER.replace("Hello.", "Hello again.")),
+                ),
+            ],
+        );
+        match w.accept(&p) {
+            Err(AcceptFailure::KnowledgeInvalid(r)) => {
+                assert_eq!(
+                    r.iter()
+                        .map(|r| (r.file.as_str(), r.rule))
+                        .collect::<Vec<_>>(),
+                    [(path, Rule::Status)]
+                );
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    // 2. A curation proposal does both at once: the claim lets the second source go, the first is given its
+    //    corrected title and reference and is marked as replaced by the second (whose file stays).
+    let blocks = w.history().len();
+    let edit = Curation {
+        status: Standing::Unknown,
+        links: link_edits(&claim),
+        removed: vec![two.id.clone()],
+        sources: vec![SourceEdit {
+            source: one.id.clone(),
+            reviewed: "2026-11-04".to_owned(),
+            availability: Availability::Available,
+            work: Some(Work {
+                title: "A history, corrected".to_owned(),
+                author: "Noor Aziz".to_owned(),
+                date: "2024".to_owned(),
+                reference_form: ReferenceForm::Doi,
+                reference: "10.1000/182".to_owned(),
+                superseded_by: Some(two.id.clone()),
+            }),
+        }],
+        confirm: false,
+    };
+    let files = curate(&claim, &[one.clone(), two.clone()], Some(&now), &edit).unwrap();
+    let refs: Vec<(&str, Option<&str>)> = files
+        .iter()
+        .map(|(p, t)| (p.as_str(), Some(t.as_str())))
+        .collect();
+    assert_eq!(refs.len(), 2, "the claim and the first source: {refs:?}");
+    let curation = w.propose("Let the second go; correct the first", &refs);
+    let done = signed(w.accept(&curation).unwrap());
+    assert_eq!(done.reconciliation, Reconciled::Clean);
+    assert_eq!(w.history().len(), blocks + 1);
+    let after = read_claim(&claim_file);
+    assert_eq!(
+        after.sources.iter().map(|l| &l.source).collect::<Vec<_>>(),
+        [&one.id]
+    );
+    let corrected = read_source(&first_file);
+    assert_eq!(
+        corrected.identity.title.as_deref(),
+        Some("A history, corrected")
+    );
+    assert_eq!(corrected.identity.author.as_deref(), Some("Noor Aziz"));
+    assert_eq!(corrected.identity.date.as_deref(), Some("2024"));
+    assert_eq!(
+        corrected
+            .reference
+            .as_ref()
+            .map(|r| (r.form, r.value.as_str())),
+        Some((ReferenceForm::Doi, "10.1000/182"))
+    );
+    assert_eq!(corrected.superseded_by.as_ref(), Some(&two.id));
+    // The review day was not set again: it keeps the proposal that said so; and the second source's file is still there.
+    assert!(corrected.last_reviewed.and_then(|r| r.proposal).is_some());
+    assert_eq!(
+        read_source(&second_file).identity.title.as_deref(),
+        Some("A later history")
+    );
+    w.reads.forget_wiki(&w.wiki);
+    let index = w.reads.knowledge_index(&w.wiki, None).unwrap();
+    assert!(index.invalid().is_empty(), "{:?}", index.invalid());
+    assert!(w.reconciled().is_clean());
 }
 
 // ------------------------------------------------------------------------------------ the review record (K3 b, K11)
@@ -1491,6 +1703,7 @@ fn a_reconfirm_proposal_is_recorded_as_re_confirming_its_change_when_its_accepta
                     bearing: l.bearing,
                 })
                 .collect(),
+            removed: Vec::new(),
             sources: Vec::new(),
             confirm: true,
         };

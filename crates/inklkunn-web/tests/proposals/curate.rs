@@ -13,14 +13,14 @@ use super::claims::{
 };
 use crate::common::{block_id, state_id};
 
-const FORM: &str = "/handbook/-/proposals/curate";
+pub(crate) const FORM: &str = "/handbook/-/proposals/curate";
 
 fn claim_uri(s: &Scene) -> String {
     format!("{FORM}?claim={}", s.claim.id)
 }
 
 /// What the form sends when nothing is changed: the values the wiki has, at the tip of version `version`.
-fn unchanged(s: &Scene, version: u64) -> Vec<(&'static str, String)> {
+pub(crate) fn unchanged(s: &Scene, version: u64) -> Vec<(&'static str, String)> {
     let link = s.claim.sources.first().expect("a link");
     vec![
         ("op", "submit".to_owned()),
@@ -38,7 +38,7 @@ fn unchanged(s: &Scene, version: u64) -> Vec<(&'static str, String)> {
     ]
 }
 
-fn with(
+pub(crate) fn with(
     mut fields: Vec<(&'static str, String)>,
     more: &[(&'static str, &str)],
 ) -> Vec<(&'static str, String)> {
@@ -564,6 +564,294 @@ async fn a_day_that_has_not_come_in_any_timezone_is_refused_on_the_form_and_noth
     );
     let a = send(&s, FORM, &s.writer, &preview).await;
     assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+// ---------------------------------------------------------------------------------------------- every change (K44)
+
+pub(crate) fn later_id() -> inklkunn_core::knowledge::SourceId {
+    inklkunn_core::knowledge::SourceId::parse("01931111-0000-7000-8000-000000000002")
+        .expect("a source id")
+}
+
+/// The source of the scene as it is once **checked** (a review day and an availability).
+pub(crate) fn checked_source() -> inklkunn_core::knowledge::Source {
+    let mut source = inklkunn_core::knowledge::Source::new(super::claims::source_id());
+    source.identity.title = Some("A history of the bridge".to_owned());
+    source.availability = Availability::Available;
+    source.last_reviewed = Some(inklkunn_core::knowledge::Reviewed {
+        date: "2026-11-01".to_owned(),
+        proposal: None,
+    });
+    source
+}
+
+/// The scene with its source **checked** and a second source the first can be replaced by, both in version 2.
+pub(crate) fn checked_scene() -> Scene {
+    let s = scene();
+    let source = checked_source();
+    let mut later = inklkunn_core::knowledge::Source::new(later_id());
+    later.identity.title = Some("A later history".to_owned());
+    s.w.fake.set_files(&[
+        (source_path(&source.id).as_str(), source.to_yaml().as_str()),
+        (source_path(&later.id).as_str(), later.to_yaml().as_str()),
+    ]);
+    s
+}
+
+/// What the form of the checked scene sends when nothing is changed (version 2).
+pub(crate) fn checked_unchanged(s: &Scene) -> Vec<(&'static str, String)> {
+    with(
+        unchanged(s, 2),
+        &[
+            ("c0_reviewed", "2026-11-01"),
+            ("c0_availability", "available"),
+            ("c0_title", "A history of the bridge"),
+            ("c0_author", ""),
+            ("c0_date", ""),
+            ("c0_ref_form", "url"),
+            ("c0_ref", ""),
+            ("c0_superseded_by", ""),
+        ],
+    )
+}
+
+fn source_of(files: &Files) -> inklkunn_core::knowledge::Source {
+    sources_in(files)
+        .into_iter()
+        .find(|s| s.id == super::claims::source_id())
+        .expect("the source in the proposal")
+}
+
+#[tokio::test]
+async fn the_form_offers_to_let_a_link_go_and_what_a_checked_source_is_only_for_a_checked_source() {
+    let s = scene();
+    let body = open(&s, &claim_uri(&s), &s.writer).await.body();
+    assert!(body.contains("name=\"c0_remove\""), "{body}");
+    assert!(
+        body.contains("The claim no longer cites this source"),
+        "{body}"
+    );
+    for name in [
+        "c0_title",
+        "c0_author",
+        "c0_date",
+        "c0_ref_form",
+        "c0_ref",
+        "c0_superseded_by",
+    ] {
+        assert!(
+            !body.contains(&format!("name=\"{name}\"")),
+            "a source that was not checked is the page edit's: {name}"
+        );
+    }
+    // Checked, the source's own words are in the fields, and the way to name what replaces it is said.
+    let s = checked_scene();
+    let body = open(&s, &claim_uri(&s), &s.writer).await.body();
+    for name in [
+        "c0_title",
+        "c0_author",
+        "c0_date",
+        "c0_ref_form",
+        "c0_ref",
+        "c0_superseded_by",
+    ] {
+        assert!(body.contains(&format!("name=\"{name}\"")), "{name}: {body}");
+    }
+    assert!(
+        body.contains("name=\"c0_title\" type=\"text\" value=\"A history of the bridge\""),
+        "{body}"
+    );
+    assert!(body.contains("The source that replaces it"), "{body}");
+    assert!(
+        body.contains("are changed here, and not in a page edit"),
+        "{body}"
+    );
+    assert!(!body.contains("<script"));
+}
+
+#[tokio::test]
+async fn a_link_the_claim_lets_go_is_proposed_as_a_change_to_the_claim_alone() {
+    let s = scene();
+    let fields = with(unchanged(&s, 1), &[("c0_remove", "1")]);
+    let shown = with(fields.clone(), &[("op", "changes"), ("summary", "")]);
+    let body = send(&s, FORM, &s.writer, &shown).await.body();
+    assert!(body.contains("It no longer cites the source"), "{body}");
+    assert!(
+        body.contains("name=\"c0_remove\" value=\"1\" checked"),
+        "{body}"
+    );
+    let files = files_of(&s, &location(&send(&s, FORM, &s.writer, &fields).await));
+    assert_eq!(
+        paths(&files),
+        [claim_path(&s.claim.id).as_str()],
+        "the source's own file is not touched"
+    );
+    let claims = claims_in(&files);
+    assert!(claims.first().expect("a claim").sources.is_empty());
+    // The page of that proposal is a curation proposal: nothing warns, and it says what it does.
+    let page = open(
+        &s,
+        &location(&send(&s, FORM, &s.writer, &fields).await),
+        &s.writer,
+    )
+    .await;
+    assert!(
+        page.body().contains("This is a curation proposal"),
+        "{}",
+        page.body()
+    );
+    assert!(
+        !page.body().contains("It cannot be accepted as it is."),
+        "{}",
+        page.body()
+    );
+}
+
+#[tokio::test]
+async fn a_link_is_changed_or_removed_not_both_and_the_form_keeps_what_was_chosen() {
+    let s = scene();
+    let fields = with(
+        unchanged(&s, 1),
+        &[("c0_remove", "1"), ("c0_bearing", "indirect")],
+    );
+    let a = send(&s, FORM, &s.writer, &fields).await;
+    assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let body = a.body();
+    assert!(
+        body.contains("A link is either changed or removed, not both."),
+        "{body}"
+    );
+    assert!(
+        body.contains("name=\"c0_remove\" value=\"1\" checked"),
+        "{body}"
+    );
+    assert!(
+        body.contains("<option value=\"indirect\" selected>"),
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn a_checked_source_is_corrected_in_its_identity_reference_and_successor_and_each_has_its_line()
+ {
+    let s = checked_scene();
+    let fields = with(
+        checked_unchanged(&s),
+        &[
+            ("c0_title", "A history of the bridge, second edition"),
+            ("c0_author", "Noor Aziz"),
+            ("c0_date", "2024"),
+            ("c0_ref_form", "doi"),
+            ("c0_ref", "10.1000/182"),
+            ("c0_superseded_by", &later_id().to_string()),
+        ],
+    );
+    // Shown line by line before it is sent.
+    let shown = with(fields.clone(), &[("op", "changes"), ("summary", "")]);
+    let body = send(&s, FORM, &s.writer, &shown).await.body();
+    assert!(body.contains("Changes the source"), "{body}");
+    assert!(body.contains("second edition"), "{body}");
+    assert!(body.contains("10.1000/182"), "{body}");
+    assert!(body.contains("It is now replaced by the source"), "{body}");
+    // Sent: the source's file alone, with what the form said and nothing else changed.
+    let files = files_of(&s, &location(&send(&s, FORM, &s.writer, &fields).await));
+    assert_eq!(
+        paths(&files),
+        [source_path(&super::claims::source_id()).as_str()]
+    );
+    let source = source_of(&files);
+    assert_eq!(
+        (
+            source.identity.title.as_deref(),
+            source.identity.author.as_deref(),
+            source.identity.date.as_deref()
+        ),
+        (
+            Some("A history of the bridge, second edition"),
+            Some("Noor Aziz"),
+            Some("2024")
+        )
+    );
+    assert_eq!(
+        source
+            .reference
+            .as_ref()
+            .map(|r| (r.form.word(), r.value.as_str())),
+        Some(("doi", "10.1000/182"))
+    );
+    assert_eq!(source.superseded_by, Some(later_id()));
+    assert_eq!(source.availability, Availability::Available);
+    assert_eq!(
+        source.last_reviewed.as_ref().map(|r| r.date.as_str()),
+        Some("2026-11-01"),
+        "the review day is not set again"
+    );
+    // What the fields held is what the wiki has: nothing differs.
+    let a = send(&s, FORM, &s.writer, &checked_unchanged(&s)).await;
+    assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn what_an_unchecked_source_is_is_not_changed_here_and_what_replaces_a_source_is_a_source_of_the_wiki()
+ {
+    // A hand-made post that names a title for a source that was not checked: said so, nothing is sent.
+    let s = scene();
+    let fields = with(
+        unchanged(&s, 1),
+        &[
+            ("c0_title", "Another title"),
+            ("c0_author", ""),
+            ("c0_date", ""),
+            ("c0_ref_form", "url"),
+            ("c0_ref", ""),
+            ("c0_superseded_by", ""),
+        ],
+    );
+    let a = send(&s, FORM, &s.writer, &fields).await;
+    assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(a.body().contains("has not been checked"), "{}", a.body());
+
+    // A checked source: what replaces it is a source the wiki has, named by its identifier, and not itself.
+    let s = checked_scene();
+    let stranger = "01931111-0000-7000-8000-0000000000ff";
+    for (value, sentence) in [
+        (stranger, "has to be a source in this wiki"),
+        ("the later one", "has to be a source in this wiki"),
+        (
+            "01931111-0000-7000-8000-000000000001",
+            "cannot be replaced by itself",
+        ),
+    ] {
+        let fields = with(checked_unchanged(&s), &[("c0_superseded_by", value)]);
+        let a = send(&s, FORM, &s.writer, &fields).await;
+        assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY, "{value}");
+        let body = a.body();
+        assert!(body.contains(sentence), "{value}: {body}");
+        // The text is still in the field.
+        assert!(
+            body.contains(&format!("value=\"{value}\"")),
+            "{value}: {body}"
+        );
+    }
+    // The texts are those of a new source: a source names a work, a web address is one.
+    for (more, sentence) in [
+        (
+            vec![("c0_title", ""), ("c0_ref", "")],
+            "A source needs a title or a reference.",
+        ),
+        (
+            vec![("c0_ref", "ftp://example.org/history")],
+            "A web address has to start with https or http",
+        ),
+        (
+            vec![("c0_author", "two\nlines")],
+            "holds a character that cannot be kept",
+        ),
+    ] {
+        let a = send(&s, FORM, &s.writer, &with(checked_unchanged(&s), &more)).await;
+        assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY, "{more:?}");
+        assert!(a.body().contains(sentence), "{more:?}: {}", a.body());
+    }
     let all =
         s.w.services
             .proposals
@@ -585,4 +873,6 @@ async fn a_day_that_has_not_come_in_any_timezone_is_refused_on_the_form_and_noth
             .map(|r| r.date.as_str()),
         Some("2023-11-15")
     );
+
+    assert!(all.is_empty(), "nothing was sent");
 }

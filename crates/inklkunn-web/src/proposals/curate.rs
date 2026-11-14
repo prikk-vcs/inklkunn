@@ -17,11 +17,13 @@ use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use inklkunn_core::Action;
-use inklkunn_core::knowledge::compose::{Curation, LinkEdit, SourceEdit, curate, page_id_of};
+use inklkunn_core::knowledge::compose::{
+    Curation, LinkEdit, Mistake, SourceEdit, Work, curate, is_checked, page_id_of,
+};
 use inklkunn_core::knowledge::marker::words_with_id;
 use inklkunn_core::knowledge::{
-    AnchorState, Availability, Bearing, Claim, ClaimId, Digest, File, Link, Source, SourceId,
-    Standing, anchor_state, claim_path, read_file, source_path,
+    AnchorState, Availability, Bearing, Claim, ClaimId, Digest, File, Link, ReferenceForm, Source,
+    SourceId, Standing, anchor_state, claim_path, read_file, source_path,
 };
 use inklkunn_core::proposal::{Invalid, ProposalEdit, ProposalError};
 use inklkunn_core::read::ReadError;
@@ -30,7 +32,8 @@ use inklkunn_store::{Base, FileChange};
 use super::claims::mistake_text;
 use super::knowledge::{Line, Place, file_lines};
 use super::labels::{
-    OptionView, availability_word, bearing_option, link_word, options, standing_word,
+    OptionView, availability_word, bearing_option, link_word, options, reference_option,
+    standing_word,
 };
 use super::new::{Button, Hidden, read_failure, short, view_of};
 use super::render::LinkView;
@@ -193,6 +196,49 @@ pub(crate) fn load_with(
     }))
 }
 
+/// Does `edit` name, as the source that replaces another, one the base does not have or cannot read (K44)? Only a
+/// successor the base does not already name is looked for: the acceptance refuses a reference to a source that is not
+/// there, so the proposal is never one that cannot be accepted. Shared with the write API's curation.
+pub(crate) fn unknown_successor_with(
+    read: &inklkunn_core::read::ReadService,
+    wiki: &inklkunn_store::WikiRecord,
+    base_block: &str,
+    subject: &Loaded,
+    edit: &Curation,
+) -> Result<bool, ReadError> {
+    for e in &edit.sources {
+        let Some(later) = e.work.as_ref().and_then(|w| w.superseded_by.as_ref()) else {
+            continue;
+        };
+        let named = subject
+            .cited
+            .iter()
+            .flatten()
+            .find(|s| s.id == e.source)
+            .and_then(|s| s.superseded_by.as_ref());
+        if named == Some(later) {
+            continue;
+        }
+        let path = source_path(later);
+        let found = read
+            .source_at(wiki, base_block, &path)?
+            .is_some_and(|text| matches!(read_file(&path, text.as_bytes()), Ok(File::Source(_))));
+        if !found {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn unknown_successor(
+    ctx: &Ctx,
+    base_block: &str,
+    subject: &Loaded,
+    edit: &Curation,
+) -> Result<bool, ReadError> {
+    unknown_successor_with(&ctx.services.read, &ctx.wiki, base_block, subject, edit)
+}
+
 // ------------------------------------------------------------------------------------ what the form says
 
 /// What a post of the form says.
@@ -202,10 +248,61 @@ struct Submitted {
     claim: ClaimId,
     status: Standing,
     links: Vec<LinkEdit>,
+    /// The links whose box says the claim lets them go.
+    removed: Vec<SourceId>,
     sources: Vec<SourceEdit>,
+    /// What a checked source is, as the form sent it, by source.
+    works: Vec<(SourceId, WorkText)>,
     confirm: bool,
     summary: String,
     op: Op,
+}
+
+/// What a checked source is, where it is found and what replaces it, as the form carries it: texts, with the successor
+/// as typed (a text that is no identifier is said so on the form, not taken for an incomplete post).
+#[derive(Clone, PartialEq, Eq)]
+struct WorkText {
+    title: String,
+    author: String,
+    date: String,
+    reference_form: ReferenceForm,
+    reference: String,
+    superseded: String,
+}
+
+impl WorkText {
+    /// As the source has them.
+    fn of(source: &Source) -> WorkText {
+        let work = Work::of(source);
+        WorkText {
+            title: work.title,
+            author: work.author,
+            date: work.date,
+            reference_form: work.reference_form,
+            reference: work.reference,
+            superseded: work
+                .superseded_by
+                .map(|s| s.to_string())
+                .unwrap_or_default(),
+        }
+    }
+
+    /// The core's words for it: the successor, if typed, must be an identifier.
+    fn work(&self) -> Result<Work, Mistake> {
+        let superseded = self.superseded.trim();
+        Ok(Work {
+            title: self.title.clone(),
+            author: self.author.clone(),
+            date: self.date.clone(),
+            reference_form: self.reference_form,
+            reference: self.reference.clone(),
+            superseded_by: if superseded.is_empty() {
+                None
+            } else {
+                Some(SourceId::parse(superseded).ok_or(Mistake::UnknownSuccessor)?)
+            },
+        })
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -219,7 +316,9 @@ fn read(fields: &HashMap<String, String>) -> Option<Submitted> {
     let get = |name: &str| fields.get(name).map(String::as_str);
     let count = get(fields::LINKS)?.parse::<usize>().ok()?.min(256);
     let mut links = Vec::new();
+    let mut removed = Vec::new();
     let mut sources = Vec::new();
+    let mut works = Vec::new();
     for i in 0..count {
         let one = |what: &str| get(&fields::curated_field(i, what));
         let source = SourceId::parse(one(fields::C_SOURCE)?)?;
@@ -228,13 +327,32 @@ fn read(fields: &HashMap<String, String>) -> Option<Submitted> {
             relation: Link::from_word(one(fields::C_RELATION)?)?,
             bearing: Bearing::from_word(one(fields::C_BEARING)?)?,
         });
+        if one(fields::C_REMOVE) == Some("1") {
+            removed.push(source.clone());
+        }
         // A source whose file the form could not show is not asked about.
         if let Some(availability) = one(fields::C_AVAILABILITY) {
             sources.push(SourceEdit {
-                source,
+                source: source.clone(),
                 reviewed: one(fields::C_REVIEWED).unwrap_or("").trim().to_owned(),
                 availability: Availability::from_word(availability)?,
+                work: None,
             });
+        }
+        // What a checked source is: offered only for a source that was checked, so a form without it says nothing.
+        if let Some(title) = one(fields::C_TITLE) {
+            let text = |what: &str| one(what).unwrap_or("").trim().to_owned();
+            works.push((
+                source,
+                WorkText {
+                    title: title.trim().to_owned(),
+                    author: text(fields::C_AUTHOR),
+                    date: text(fields::C_DATE),
+                    reference_form: ReferenceForm::from_word(one(fields::C_REF_FORM)?)?,
+                    reference: text(fields::C_REF),
+                    superseded: text(fields::C_SUPERSEDED),
+                },
+            ));
         }
     }
     Some(Submitted {
@@ -245,7 +363,9 @@ fn read(fields: &HashMap<String, String>) -> Option<Submitted> {
         claim: ClaimId::parse(get(fields::CLAIM)?)?,
         status: Standing::from_word(get(fields::STATUS)?)?,
         links,
+        removed,
         sources,
+        works,
         confirm: get(fields::CONFIRM) == Some("1"),
         summary: get(fields::SUMMARY).unwrap_or("").trim().to_owned(),
         op: match get(fields::OP)? {
@@ -267,7 +387,12 @@ struct SourceView {
     bearing_name: String,
     bearing_label: String,
     bearings: Vec<OptionView>,
+    remove_name: String,
+    remove_label: String,
+    remove_hint: String,
+    removed: bool,
     checkable: bool,
+    work: Option<WorkView>,
     reviewed_name: String,
     reviewed_label: String,
     reviewed_hint: String,
@@ -276,6 +401,32 @@ struct SourceView {
     availability_label: String,
     availability_hint: String,
     availabilities: Vec<OptionView>,
+}
+
+/// The fields of what a checked source is (K44).
+struct WorkView {
+    hint: String,
+    title_name: String,
+    title_label: String,
+    title: String,
+    author_name: String,
+    author_label: String,
+    author: String,
+    date_name: String,
+    date_label: String,
+    date_hint: String,
+    date: String,
+    ref_form_name: String,
+    ref_form_label: String,
+    ref_forms: Vec<OptionView>,
+    ref_name: String,
+    ref_label: String,
+    ref_hint: String,
+    reference: String,
+    superseded_name: String,
+    superseded_label: String,
+    superseded_hint: String,
+    superseded: String,
 }
 
 #[derive(Template)]
@@ -317,6 +468,10 @@ struct Shown {
     links: Vec<(Link, Bearing)>,
     reviewed: Vec<String>,
     availability: Vec<Availability>,
+    /// Which links are to go, by link.
+    removed: Vec<bool>,
+    /// What each checked source is, by link; `None` for one that was not checked (the form does not offer it).
+    works: Vec<Option<WorkText>>,
     confirm: bool,
     summary: String,
 }
@@ -347,6 +502,12 @@ impl Shown {
                 .iter()
                 .map(|s| s.as_ref().map_or(Availability::Unknown, |s| s.availability))
                 .collect(),
+            removed: vec![false; subject.claim.sources.len()],
+            works: subject
+                .cited
+                .iter()
+                .map(|s| s.as_ref().filter(|s| is_checked(s)).map(WorkText::of))
+                .collect(),
             confirm: false,
             summary: String::new(),
         }
@@ -374,6 +535,16 @@ impl Shown {
                 if let Some(slot) = shown.availability.get_mut(i) {
                     *slot = e.availability;
                 }
+            }
+        }
+        for (i, link) in subject.claim.sources.iter().enumerate() {
+            if let Some(slot) = shown.removed.get_mut(i) {
+                *slot = sub.removed.contains(&link.source);
+            }
+            if let Some((_, sent)) = sub.works.iter().find(|(s, _)| *s == link.source)
+                && let Some(slot) = shown.works.get_mut(i)
+            {
+                *slot = Some(sent.clone());
             }
         }
         shown.confirm = sub.confirm;
@@ -462,7 +633,45 @@ fn render(
             bearing_name: name(fields::C_BEARING),
             bearing_label: t.get(Key::CurateLabelBearing),
             bearings: options(Bearing::ALL, Bearing::word, bearing_option, bearing, label),
+            remove_name: name(fields::C_REMOVE),
+            remove_label: t.get(Key::CurateLabelRemove),
+            remove_hint: t.get(Key::CurateRemoveHint),
+            removed: shown.removed.get(i).copied().unwrap_or(false),
             checkable: source.is_some(),
+            work: shown
+                .works
+                .get(i)
+                .and_then(Option::as_ref)
+                .map(|w| WorkView {
+                    hint: t.get(Key::CurateWorkHint),
+                    title_name: name(fields::C_TITLE),
+                    title_label: t.get(Key::AttachLabelTitle),
+                    title: w.title.clone(),
+                    author_name: name(fields::C_AUTHOR),
+                    author_label: t.get(Key::AttachLabelAuthor),
+                    author: w.author.clone(),
+                    date_name: name(fields::C_DATE),
+                    date_label: t.get(Key::AttachLabelDate),
+                    date_hint: t.get(Key::AttachHintDate),
+                    date: w.date.clone(),
+                    ref_form_name: name(fields::C_REF_FORM),
+                    ref_form_label: t.get(Key::AttachLabelRefForm),
+                    ref_forms: options(
+                        ReferenceForm::ALL,
+                        ReferenceForm::word,
+                        reference_option,
+                        w.reference_form,
+                        label,
+                    ),
+                    ref_name: name(fields::C_REF),
+                    ref_label: t.get(Key::AttachLabelRef),
+                    ref_hint: t.get(Key::AttachHintRef),
+                    reference: w.reference.clone(),
+                    superseded_name: name(fields::C_SUPERSEDED),
+                    superseded_label: t.get(Key::CurateLabelSuperseded),
+                    superseded_hint: t.get(Key::CurateSupersededHint),
+                    superseded: w.superseded.clone(),
+                }),
             reviewed_name: name(fields::C_REVIEWED),
             reviewed_label: t.get(Key::CurateLabelReviewed),
             reviewed_hint: t.get(Key::CurateReviewedHint),
@@ -683,16 +892,30 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
         );
     }
     let cited: Vec<Source> = subject.cited.iter().flatten().cloned().collect();
+    let shown = Shown::sent(&subject, &sub);
+    // What a checked source is, in the core's words (a successor that is no identifier is said so, on the form).
+    let mut sources = sub.sources.clone();
+    let mut mistake = None;
+    for (id, text) in &sub.works {
+        match text.work() {
+            Ok(work) => {
+                if let Some(edit) = sources.iter_mut().find(|e| e.source == *id) {
+                    edit.work = Some(work);
+                }
+            }
+            Err(m) => mistake = Some(m),
+        }
+    }
     let edit = Curation {
         status: sub.status,
         links: sub.links.clone(),
-        sources: sub.sources.clone(),
+        removed: sub.removed.clone(),
+        sources,
         confirm: sub.confirm,
     };
     let now = subject.wording.as_ref().map(|(_, d)| d);
     let view_name = short(full_view.as_deref())
         .filter(|_| full_view.as_deref() != Some(ctx.wiki.default_view.as_str()));
-    let shown = Shown::sent(&subject, &sub);
     let draw = |problems: Vec<String>, changes: Vec<Line>, status: StatusCode| {
         render(
             page,
@@ -717,7 +940,15 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
             StatusCode::UNPROCESSABLE_ENTITY,
         );
     }
-    let files = match curate(&subject.claim, &cited, now, &edit) {
+    // A source that replaces another is a source the wiki has, as the base has it.
+    let missing = match mistake {
+        Some(m) => Some(m),
+        None => match unknown_successor(ctx, &sub.base.block_id, &subject, &edit) {
+            Ok(missing) => missing.then_some(Mistake::UnknownSuccessor),
+            Err(e) => return read_failure(page, ctx, e),
+        },
+    };
+    let files = match missing.map_or_else(|| curate(&subject.claim, &cited, now, &edit), Err) {
         Ok(files) => files,
         Err(m) => {
             return draw(

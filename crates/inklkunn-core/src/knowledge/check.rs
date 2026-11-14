@@ -58,6 +58,8 @@ pub struct Refusal {
     pub field: &'static str,
     /// The YAML line, when the parser gave one.
     pub line: Option<usize>,
+    /// The change takes the file away (K44): a removal is a reviewer's decision, and no curation form makes it.
+    pub removes: bool,
 }
 
 impl Refusal {
@@ -68,11 +70,27 @@ impl Refusal {
             rule: fault.rule,
             field: fault.field,
             line: fault.line,
+            removes: false,
         }
     }
 
     fn rule(path: &str, rule: Rule, field: &'static str) -> Refusal {
         Refusal::of(path, Fault::at(rule, field))
+    }
+
+    /// A refusal of the removal of `path`.
+    fn removal(path: &str, field: &'static str) -> Refusal {
+        Refusal {
+            removes: true,
+            ..Refusal::rule(path, Rule::Status, field)
+        }
+    }
+
+    /// Can a curation proposal made with the curation form do what this refusal says only curation may (K44)? It
+    /// changes what a claim or a source file holds, and takes a link away; it never takes a file away, nor replaces a
+    /// file that cannot be read (what it held is not known). For those the change is a reviewer's.
+    pub fn curation_form_can_make(&self) -> bool {
+        !self.removes && self.field != UNREADABLE
     }
 }
 
@@ -346,7 +364,7 @@ pub fn curated_by(
                     .as_ref()
                     .and_then(|file| Curated::of(file).removal_field())
                 {
-                    out.push(Refusal::rule(path, Rule::Status, field));
+                    out.push(Refusal::removal(path, field));
                 }
             }
             Some(text) => {
@@ -439,6 +457,12 @@ pub fn unjudged_in(now: &Claim, was: Option<&Curated>, pages: &dyn Pages) -> Vec
         field,
         source,
     };
+    // A decided status names its wording; a status that names one names one that exists.
+    let status_unjudged = status_set
+        && match &status.judged_on {
+            Some(on) => !wordings.contains(on),
+            None => status.status != Standing::Unknown,
+        };
     links
         .into_iter()
         .filter(|l| !wordings.contains(&l.judged_on))
@@ -453,12 +477,6 @@ pub fn unjudged_in(now: &Claim, was: Option<&Curated>, pages: &dyn Pages) -> Vec
 /// revision and what the proposal page says. A file that does not read is not judged here (the acceptance refuses it by
 /// its own rule). In path order.
 pub fn unjudged_by(
-    // A decided status names its wording; a status that names one names one that exists.
-    let status_unjudged = status_set
-        && match &status.judged_on {
-            Some(on) => !wordings.contains(on),
-            None => status.status != Standing::Unknown,
-        };
     files: &[(String, Option<String>)],
     before: &dyn Fn(&str) -> Option<String>,
     pages: &dyn Pages,
@@ -580,7 +598,7 @@ pub fn validate(
                 .get(path)
                 .and_then(Curated::removal_field)
         {
-            out.insert(Refusal::rule(path, Rule::Status, field));
+            out.insert(Refusal::removal(path, field));
         }
     }
     // A file the tip has and cannot read is not replaced or taken away by any other proposal: nobody can say what

@@ -3078,4 +3078,41 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg("claim_thread.in_reply_to_link", "In reply to {comment}."),
     msg("claim_thread.comment_label", "comment {number}"),
+    msg(
+        "curate.label_remove",
+        "The claim no longer cites this source",
+    ),
+    msg(
+        "curate.remove_hint",
+        "Ticking this removes the link between the claim and the source. The source's own record stays, and other claims keep their links to it.",
+    ),
+    msg(
+        "curate.work_hint",
+        "This source was checked, so who and what it is, where it is found and which source replaces it are changed here, and not in a page edit.",
+    ),
+    msg("curate.label_superseded", "The source that replaces it"),
+    msg(
+        "curate.superseded_hint",
+        "The identifier of another source in this wiki. Leave it empty if no source replaces it.",
+    ),
+    msg(
+        "curate.removed_and_changed",
+        "A link is either changed or removed, not both. Untick the box, or leave the link as it was.",
+    ),
+    msg(
+        "curate.not_checked",
+        "This source has not been checked, so who and what it is, where it is found and which source replaces it are changed in a page edit. Record when it was checked, or whether it can be had, and they can be changed here.",
+    ),
+    msg(
+        "curate.replaced_by_itself",
+        "A source cannot be replaced by itself.",
+    ),
+    msg(
+        "curate.unknown_successor",
+        "The source that replaces this one has to be a source in this wiki, written as its identifier.",
+    ),
+    msg(
+        "know.not_by_form",
+        "Removing a claim or a source file, or replacing a file that cannot be read, is decided by a reviewer: the curation form does not offer it.",
+    ),
 ];

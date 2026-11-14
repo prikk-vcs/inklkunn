@@ -3146,4 +3146,38 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg("claim_thread.in_reply_to_link", "{comment} への返信です。"),
     msg("claim_thread.comment_label", "コメント {number}"),
+    msg("curate.label_remove", "この主張はこの出典を引用しなくなる"),
+    msg(
+        "curate.remove_hint",
+        "この欄にチェックを入れると、主張と出典のリンクが外れます。出典自体の記録は残り、他の主張のリンクもそのままです。",
+    ),
+    msg(
+        "curate.work_hint",
+        "この出典は確認済みなので、何であるか、どこで見つかるか、どの出典に置き換えられるかは、ページの編集ではなくここで変更します。",
+    ),
+    msg("curate.label_superseded", "これを置き換える出典"),
+    msg(
+        "curate.superseded_hint",
+        "このウィキにある別の出典の識別子です。置き換える出典がなければ空のままにしてください。",
+    ),
+    msg(
+        "curate.removed_and_changed",
+        "リンクは変更するか外すかのどちらかです。両方はできません。チェックを外すか、リンクを元のままにしてください。",
+    ),
+    msg(
+        "curate.not_checked",
+        "この出典はまだ確認されていないため、何であるか、どこで見つかるか、どの出典に置き換えられるかはページの編集で変更します。確認した日か入手できるかどうかを記録すると、ここで変更できます。",
+    ),
+    msg(
+        "curate.replaced_by_itself",
+        "出典を、その出典自身に置き換えることはできません。",
+    ),
+    msg(
+        "curate.unknown_successor",
+        "置き換える出典は、このウィキにある出典で、識別子の形で書く必要があります。",
+    ),
+    msg(
+        "know.not_by_form",
+        "主張や出典のファイルを削除すること、読み取れないファイルを置き換えることは、レビュアーが決めます。キュレーションのフォームでは行えません。",
+    ),
 ];

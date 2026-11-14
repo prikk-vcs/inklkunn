@@ -745,7 +745,14 @@ fn post(
             match outcome {
                 Ok(to) => see(&to),
                 Err(Failure::Plain(ProposalError::Invalid(why))) => {
-                    let mut shown = state(vec![words::invalid_text(t, why)]);
+                    let mut problems = vec![words::invalid_text(t, why)];
+                    // What no form makes is said, and is a reviewer's (K44).
+                    if matches!(why, Invalid::KnowledgeCurated)
+                        && crate::knowledge::curate::beyond_the_form(&carried_curated)
+                    {
+                        problems.push(t.get(Key::KnowNotByForm));
+                    }
+                    let mut shown = state(problems);
                     // A change that needs a curation proposal leads to where one is made (K39).
                     if matches!(why, Invalid::KnowledgeCurated) {
                         match curate_offers(ctx, t, full_view.as_deref(), &carried_curated) {
@@ -770,7 +777,15 @@ fn post(
                             Err(e) => return read_failure(page, ctx, e),
                         }
                     }
-                    refused_offering(page, ctx, &error, choices, offers)
+                    let noting =
+                        if matches!(error, ProposalError::Invalid(Invalid::KnowledgeCurated))
+                            && crate::knowledge::curate::beyond_the_form(&carried_curated)
+                        {
+                            vec![t.get(Key::KnowNotByForm)]
+                        } else {
+                            Vec::new()
+                        };
+                    refused_offering(page, ctx, &error, choices, offers, noting)
                 }
             }
         }

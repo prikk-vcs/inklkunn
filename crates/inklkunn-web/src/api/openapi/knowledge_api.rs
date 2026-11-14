@@ -4,7 +4,8 @@
 //! each endpoint's real answer to its schema's members (`tests/api/knowledge.rs`).
 
 use inklkunn_core::knowledge::{
-    Availability, Bearing, Lifecycle, Link, RelationType, SourceKind, Standing, StatementKind,
+    Availability, Bearing, Lifecycle, Link, ReferenceForm, RelationType, SourceKind, Standing,
+    StatementKind,
 };
 use serde_json::{Map, Value, json};
 
@@ -233,11 +234,12 @@ pub(super) fn schemas() -> Map<String, Value> {
     out.insert(
         "CurationLink".to_owned(),
         object(
-            "How a source the claim cites should bear on it.",
+            "How a source the claim cites should bear on it, or that the claim no longer cites it. A link is changed (`relation` and `bearing`) or removed (`remove: true`, and nothing else), not both.",
             json!({
                 "source": {"type": "string", "description": "A source the claim cites."},
-                "relation": {"type": "string", "enum": words(Link::ALL, Link::word)},
-                "bearing": {"type": "string", "enum": words(Bearing::ALL, Bearing::word)},
+                "relation": {"type": "string", "enum": words(Link::ALL, Link::word), "description": "Required unless the link is removed."},
+                "bearing": {"type": "string", "enum": words(Bearing::ALL, Bearing::word), "description": "Required unless the link is removed."},
+                "remove": {"type": "boolean", "description": "`true`: the claim no longer cites the source. The source's own file stays, and other claims keep their links to it. Default `false`."},
             }),
             &[],
         ),
@@ -245,11 +247,19 @@ pub(super) fn schemas() -> Map<String, Value> {
     out.insert(
         "CurationSource".to_owned(),
         object(
-            "What a person checked about a source the claim cites.",
+            "What a person checked about a source the claim cites and, once it was checked, who and what it is. A member left out is left as the base has it; an empty text is nothing.",
             json!({
                 "source": {"type": "string", "description": "A source the claim cites."},
                 "reviewed": {"type": "string", "description": "The day a person last checked it, `YYYY-MM-DD`; the empty text for none."},
                 "availability": {"type": "string", "enum": words(Availability::ALL, Availability::word), "description": "Whether it can be had, as the person who checked says."},
+                "title": {"type": "string", "description": "Its title. Only for a source that was checked (`not-checked`); until then a page edit changes it."},
+                "author": {"type": "string", "description": "Its author or publisher. Only for a source that was checked."},
+                "date": {"type": "string", "description": "Its date, as written. Only for a source that was checked."},
+                "reference": {"type": "object", "description": "Where it is found. Only for a source that was checked. A source needs a title or a reference.", "properties": {
+                    "type": {"type": "string", "enum": words(ReferenceForm::ALL, ReferenceForm::word)},
+                    "value": {"type": "string", "description": "The reference; the empty text for none."},
+                }, "required": ["type", "value"], "additionalProperties": false},
+                "superseded_by": {"type": "string", "description": "The id of the source that replaces it, a source of this wiki (`unknown-successor`); the empty text for none. Only for a source that was checked."},
             }),
             &[],
         ),
@@ -264,8 +274,8 @@ pub(super) fn schemas() -> Map<String, Value> {
                 "view": {"type": "string", "description": "The view to propose to. Default: the wiki's default view."},
                 "submit": {"type": "boolean", "description": "`true` sends the proposal for review at once; `false` keeps a draft only the proposer sees."},
                 "status": {"type": "string", "enum": words(Standing::ALL, Standing::word), "description": "The community status to propose."},
-                "links": {"type": "array", "maxItems": 256, "items": schema_ref("CurationLink"), "description": "Links to change, each naming a source the claim cites."},
-                "sources": {"type": "array", "maxItems": 256, "items": schema_ref("CurationSource"), "description": "Sources to record a check of, each naming a source the claim cites."},
+                "links": {"type": "array", "maxItems": 256, "items": schema_ref("CurationLink"), "description": "Links to change or remove, each naming a source the claim cites."},
+                "sources": {"type": "array", "maxItems": 256, "items": schema_ref("CurationSource"), "description": "Sources to record a check of, or (once checked) to correct, each naming a source the claim cites."},
                 "confirm": {"type": "boolean", "description": "Judge the sources and the status again on the wording the claim has in the base. Default `false`."},
             }),
             &["view", "status", "links", "sources", "confirm"],

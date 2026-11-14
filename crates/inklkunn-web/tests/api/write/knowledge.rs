@@ -579,6 +579,41 @@ fn two_pages() -> Cast {
     cast
 }
 
+// ------------------------------------------------------------------------------------ every change (K44), one step (K47)
+
+/// [`cast`], with the first source **checked** (a review day and an availability): from then on who and what it is
+/// belongs to curation.
+fn cast_checked() -> Cast {
+    let mut c = claim(1, Standing::Unknown, None, SAID);
+    c.sources = vec![
+        link(1, Link::Supports, Bearing::Direct, SAID),
+        link(2, Link::Challenges, Bearing::Partial, SAID),
+    ];
+    let mut first = source(1, SourceKind::Primary);
+    first.identity.title = Some("The bridge survey".to_owned());
+    first.availability = inklkunn_core::knowledge::Availability::Available;
+    first.last_reviewed = Some(inklkunn_core::knowledge::Reviewed {
+        date: "2026-11-01".to_owned(),
+        proposal: None,
+    });
+    let mut all = files(&[c], &[first, source(2, SourceKind::Secondary)]);
+    all.push(("pages/Home.md".to_owned(), home_with(SAID)));
+    let borrowed: Vec<(&str, &str)> = all.iter().map(|(p, t)| (p.as_str(), t.as_str())).collect();
+    let w = with_accounts(World::new("handbook", "The Handbook", &borrowed));
+    let cast = Cast {
+        contributor: person(1),
+        observer: person(6),
+        w,
+    };
+    add_person(
+        &cast.w,
+        &cast.contributor,
+        "Aiko Tanaka",
+        Some(Role::Contributor),
+    );
+    cast
+}
+
 async fn two_page_proposal(c: &Cast, drops: Value) -> super::super::Answer {
     let bare = |title: &str, id: &str| {
         super::super::common::page(
@@ -651,4 +686,253 @@ async fn a_drop_names_its_page_so_a_marker_on_two_pages_is_two_acts_and_the_refu
         };
         assert!(written.expressions.is_empty(), "{text}");
     }
+}
+
+fn source_in(files: &[(String, Option<String>)], n: u8) -> inklkunn_core::knowledge::Source {
+    let text = text_at(files, &source_path(&source_id(n)));
+    match read_file(&source_path(&source_id(n)), text.as_bytes()) {
+        Ok(File::Source(source)) => *source,
+        other => panic!("{other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_curation_lets_a_link_go_and_corrects_a_checked_source_in_one_proposal() {
+    let c = cast_checked();
+    let a = propose(
+        &c,
+        json!({
+            "links": [{"source": source_id(2).to_string(), "remove": true}],
+            "sources": [{
+                "source": source_id(1).to_string(),
+                "reviewed": "2026-11-01",
+                "availability": "available",
+                "title": "The bridge, second edition",
+                "author": "Noor Aziz",
+                "date": "2024",
+                "reference": {"type": "doi", "value": "10.1000/182"},
+                "superseded_by": source_id(2).to_string(),
+            }],
+        }),
+    )
+    .await;
+    assert_eq!(a.status, 201, "{}", a.text());
+    assert_eq!(a.json().at("/state"), "held-for-review");
+    let files = stored(&c, &a);
+    let paths: Vec<&str> = files.iter().map(|(p, _)| p.as_str()).collect();
+    assert_eq!(paths.len(), 2, "the claim and the one source: {paths:?}");
+    let text = text_at(&files, &claim_path(&claim_id(1)));
+    let Ok(File::Claim(written)) = read_file(&claim_path(&claim_id(1)), text.as_bytes()) else {
+        panic!("{text}");
+    };
+    assert_eq!(
+        written
+            .sources
+            .iter()
+            .map(|l| l.source.clone())
+            .collect::<Vec<_>>(),
+        [source_id(1)]
+    );
+    let corrected = source_in(&files, 1);
+    assert_eq!(
+        (
+            corrected.identity.title.as_deref(),
+            corrected.identity.author.as_deref(),
+            corrected.identity.date.as_deref()
+        ),
+        (
+            Some("The bridge, second edition"),
+            Some("Noor Aziz"),
+            Some("2024")
+        )
+    );
+    assert_eq!(
+        corrected
+            .reference
+            .as_ref()
+            .map(|r| (r.form.word(), r.value.as_str())),
+        Some(("doi", "10.1000/182"))
+    );
+    assert_eq!(corrected.superseded_by, Some(source_id(2)));
+    assert_eq!(
+        corrected.last_reviewed.as_ref().map(|r| r.date.as_str()),
+        Some("2026-11-01")
+    );
+    // A member of the source left out is left as the base has it: here the title alone, with the check repeated.
+    let c = cast_checked();
+    let a = propose(
+        &c,
+        json!({"sources": [{"source": source_id(1).to_string(), "reviewed": "2026-11-01", "availability": "available", "title": "Only the title"}]}),
+    )
+    .await;
+    assert_eq!(a.status, 201, "{}", a.text());
+    let files = stored(&c, &a);
+    assert_eq!(files.len(), 1);
+    let only = source_in(&files, 1);
+    assert_eq!(only.identity.title.as_deref(), Some("Only the title"));
+    assert_eq!(only.reference, None);
+}
+
+#[tokio::test]
+async fn what_a_curation_may_not_say_about_a_link_or_a_source_is_refused_in_words() {
+    let c = cast_checked();
+    let unacceptable = |a: &super::super::Answer, reason: &str| {
+        assert_eq!(a.status, 422, "{}", a.text());
+        assert_eq!(problem_type(a), urn("unacceptable"));
+        assert_eq!(a.json().at("/reason"), reason, "{}", a.text());
+        assert!(
+            a.json()
+                .at("/detail")
+                .as_str()
+                .is_some_and(|e| !e.is_empty()),
+            "{}",
+            a.text()
+        );
+    };
+    let one = source_id(1).to_string();
+    let two = source_id(2).to_string();
+    // A source that was not checked: who and what it is is a page edit's.
+    let a = propose(
+        &c,
+        json!({"sources": [{"source": two, "reviewed": "", "availability": "unknown", "title": "Another"}]}),
+    )
+    .await;
+    unacceptable(&a, "not-checked");
+    // A link changed and let go.
+    let a = propose(
+        &c,
+        json!({"links": [
+            {"source": two, "relation": "supports", "bearing": "direct"},
+            {"source": two, "remove": true},
+        ]}),
+    )
+    .await;
+    unacceptable(&a, "removed-and-changed");
+    // A link the claim does not have.
+    let a = propose(
+        &c,
+        json!({"links": [{"source": source_id(9).to_string(), "remove": true}]}),
+    )
+    .await;
+    unacceptable(&a, "unknown-source");
+    // A source that replaces another is a source the wiki has, and not itself.
+    let checked = |more: Value| {
+        let mut body =
+            json!({"source": one, "reviewed": "2026-11-01", "availability": "available"});
+        if let (Some(into), Value::Object(from)) = (body.as_object_mut(), more) {
+            into.extend(from);
+        }
+        json!({"sources": [body]})
+    };
+    let a = propose(
+        &c,
+        checked(json!({"superseded_by": source_id(9).to_string()})),
+    )
+    .await;
+    unacceptable(&a, "unknown-successor");
+    let a = propose(&c, checked(json!({"superseded_by": one.clone()}))).await;
+    unacceptable(&a, "replaced-by-itself");
+    // A source needs a title or a reference.
+    let a = propose(
+        &c,
+        checked(json!({"title": "", "reference": {"type": "url", "value": ""}})),
+    )
+    .await;
+    unacceptable(&a, "not-curatable");
+
+    // A body that is not the shape: a removed link says nothing else, a successor is an identifier, a reference has
+    // both members and a known type.
+    for (body, member) in [
+        (
+            json!({"links": [{"source": two, "remove": true, "relation": "supports"}]}),
+            "links[0].relation",
+        ),
+        (
+            json!({"links": [{"source": two, "remove": "yes"}]}),
+            "links[0].remove",
+        ),
+        (
+            checked(json!({"superseded_by": "the later one"})),
+            "sources[0].superseded_by",
+        ),
+        (
+            checked(json!({"reference": {"type": "doi"}})),
+            "sources[0].reference.value",
+        ),
+        (
+            checked(json!({"reference": {"type": "fax", "value": "1"}})),
+            "sources[0].reference.type",
+        ),
+        (checked(json!({"title": 5})), "sources[0].title"),
+    ] {
+        let a = propose(&c, body).await;
+        assert_eq!(a.status, 400, "{member}: {}", a.text());
+        assert_eq!(problem_type(&a), urn("invalid-body"), "{member}");
+        assert_eq!(a.json().at("/member"), member);
+    }
+    // Nothing was made by any of them.
+    assert!(
+        c.w.services
+            .proposals
+            .list(
+                &principal(&c.contributor),
+                &c.w.wiki,
+                &inklkunn_store::ProposalFilter::default(),
+            )
+            .map(|l| l.is_empty())
+            .unwrap_or(false)
+    );
+}
+
+#[tokio::test]
+async fn a_curation_that_cannot_be_sent_leaves_no_draft_behind() {
+    // K47: made and sent in one step, so a send the wiki's hourly limit refuses leaves nothing: not an unsent draft that
+    // counts against its author and that the caller would have to find.
+    let mut c = cast();
+    let services = &c.w.services;
+    let proposals = std::sync::Arc::new(
+        inklkunn_core::proposal::ProposalService::new(
+            c.w.store.clone(),
+            c.w.store.clone(),
+            c.w.store.clone(),
+            (*services.authorizer).clone(),
+            services.read.clone(),
+            inklkunn_core::proposal::QuotaConfig {
+                proposals_per_hour_per_wiki: 1,
+                ..inklkunn_core::proposal::QuotaConfig::default()
+            },
+        )
+        .with_clock(|| 1_700_000_000),
+    );
+    c.w.services = std::sync::Arc::new(inklkunn_web::Services {
+        proposals,
+        ..(*c.w.services).clone()
+    });
+    let first = propose(&c, json!({"status": "accepted"})).await;
+    assert_eq!(first.status, 201, "{}", first.text());
+    let second = propose(&c, json!({"status": "contested"})).await;
+    assert_eq!(second.status, 429, "{}", second.text());
+    assert!(
+        second.json().get("draft").is_none(),
+        "no draft is named: there is none: {}",
+        second.text()
+    );
+    let mine = inklkunn_store::ProposalStore::proposals(
+        &*c.w.store,
+        &c.w.wiki.id,
+        &Default::default(),
+        Some(&c.contributor),
+    )
+    .expect("the author's own, drafts included");
+    assert_eq!(mine.len(), 1, "{mine:?}");
+    assert!(
+        mine.iter()
+            .all(|p| p.state == inklkunn_store::ProposalState::HeldForReview),
+        "{mine:?}"
+    );
+    assert_eq!(
+        inklkunn_store::ProposalStore::open_count(&*c.w.store, &c.w.wiki.id, &c.contributor)
+            .unwrap(),
+        1
+    );
 }

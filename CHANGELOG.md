@@ -1165,6 +1165,50 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   with a planted failure. The Dockerfile names no toolchain (its builder compiles nothing: the release binaries are prebuilt); the
   measurement tool and `tools/spikes/lock-inventory.py` use a plain `cargo` and now get the pin.
 
+- **K44 (handoff 005 corrections, fifth round): curation can make every change only curation may.** The one `Curation` in `compose`
+  gains **removing a link** (`removed`: the sources a claim no longer cites; the source's own file stays and other claims keep their
+  links) and, **on a checked source** (it has a review day or an availability), **who and what it is** (title, author, date), **where it
+  is found** (reference) and **which source replaces it** (`SourceEdit::work`, a `Work`; `None` leaves them). A link is changed or
+  removed, not both (`Mistake::RemovedAndChanged`); the texts are cleaned and bounded as a new source's are (a source still names a
+  work, a web address is one); the source that replaces another is a source the wiki has, as the base has it, and not itself
+  (`UnknownSuccessor`, `ReplacedByItself`); what an unchecked source is stays the page edit's (`NotChecked`). The form shows each
+  link's box (*The claim no longer cites this source*) and, for a checked source, its fields, line by line before it is sent like the
+  rest; the write API takes `{"source", "remove": true}` in `links` and `title`, `author`, `date`, `reference` (`{type, value}`),
+  `superseded_by` in `sources` (a member left out is left as the base has it; `reviewed` and `availability` are still required), with
+  the stable reasons `removed-and-changed`, `not-checked`, `replaced-by-itself` and `unknown-successor`; the OpenAPI schemas say so.
+  Acceptance judges them as it judged every curation (no new rule: a curation proposal may change what only curation may, and the
+  service's submit and the proposal page ask the same functions). **K39's link is offered only for a refusal the form can then make**
+  (`Refusal::curation_form_can_make`; `Refusal.removes` is new): the removal of a claim or a source file, and the replacement of a file
+  that cannot be read, are a reviewer's, so for those the page and the refused send add *Removing a claim or a source file, or
+  replacing a file that cannot be read, is decided by a reviewer: the curation form does not offer it.* (`know.not_by_form`) and
+  lead nowhere. New: `compose::{Work, is_checked}`, `Curation::removed`, `SourceEdit::work`, four `Mistake` variants, nine catalog
+  entries with glossary rows (both languages), `proposals::refused_noting`. Tests: the core's `curate` for every case, the whole path on
+  a real history (a link let go and a checked source corrected in one proposal; no page proposal does either), the form (its boxes
+  and fields, the lines, every refusal on the form with the text still in the fields), the write API, and, for each newly reachable
+  change, the refusal's link followed to the form and the form's file equal to the file the refused proposal carried.
+
+- **K45 (handoff 005 corrections, fifth round): every judgement, every way.** One function (`check::unjudged_in`, asked at acceptance,
+  at submit and at every revision, and by the proposal page) now asks, of every judgement a proposal **sets or changes**: a link is
+  *changed* when it is new or its relation, its bearing or its `judged_on` differs from the tip's, the community status when its value
+  or its `judged_on` does. A judgement changed names a wording the claim has in the result **even when its digest is the one the tip
+  had** (the wording may be gone), and **a decided status must name one**: a status set to anything but *not decided* with no
+  `judged_on` is refused like one that names words nobody wrote (a raw or API curation that keeps `contested` and drops `judged_on`,
+  or sets `accepted` with none). What a change leaves as the tip had it is still not asked. The `cleared` test is turned around.
+  Tests: the function for each way (relation, bearing, value, cleared, bare, new), the acceptance on a real history, the reconfirm
+  with a decided status that names no wording; fixtures that decided a status with no `judged_on` now give one.
+
+- **K47 (handoff 005 corrections, fifth round): the API's curation is one step.** `POST …/proposals/curation` with `submit: true` makes
+  and sends in one step (`create_and_submit`, as the form does since K38): a refused send leaves nothing, not a draft that counts
+  against the caller, so the `draft` member a refusal used to carry is gone. Test: the wiki's hourly limit refuses the second, and the
+  author's own proposals, drafts included, are only the one that was sent.
+
+- **K54 U-l (handoff 005 corrections, fifth round): the reconfirm reads the pages from the index.** The acceptance of a reconfirm
+  curation proposal asks the title index of exactly the state it prepared on (`title_index_at_base`, with the block's own state from
+  the same read of the log, `shared::tip_pair`) instead of extracting the whole tree under the wiki's build lock; the index is kept
+  in memory and in the derived store and built from one extract only when absent. The block is still the one named, never the read
+  service's held tip (K35's test passes unchanged). `ReadService::page_entries_at_block` goes. Test: with the index held, the
+  acceptance asks for one extract (the knowledge check's) and not two.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

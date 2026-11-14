@@ -186,16 +186,18 @@ pub(crate) fn refused(
     error: &inklkunn_core::proposal::ProposalError,
     choices: Vec<Choice>,
 ) -> Response {
-    refused_offering(page, ctx, error, choices, Default::default())
+    refused_offering(page, ctx, error, choices, Default::default(), Vec::new())
 }
 
-/// [`refused`] with the ways to a curation form the refusal offers (K39), under its words.
+/// [`refused`] with the ways to a curation form the refusal offers (K39), under its words, and with more sentences
+/// after the refusal's own (K44: what can be done instead, when no form makes the change).
 pub(crate) fn refused_offering(
     page: &Page,
     ctx: &Ctx,
     error: &inklkunn_core::proposal::ProposalError,
     choices: Vec<Choice>,
     offers: crate::knowledge::curate::Offers,
+    noting: Vec<String>,
 ) -> Response {
     use inklkunn_core::proposal::ProposalError;
     if let ProposalError::BaseUnavailable(cause) = error {
@@ -207,15 +209,10 @@ pub(crate) fn refused_offering(
     match words::refusal(page.t(), error) {
         None => crate::wiki::generic_not_found(page),
         Some(r) => {
+            let mut paragraphs = r.paragraphs;
+            paragraphs.extend(noting);
             let response = crate::wiki::notice_offering(
-                page,
-                &ctx.wiki,
-                r.status,
-                r.heading,
-                r.paragraphs,
-                choices,
-                offers,
-                None,
+                page, &ctx.wiki, r.status, r.heading, paragraphs, choices, offers, None,
             );
             if r.retry {
                 crate::wiki::with_retry_after(response)
