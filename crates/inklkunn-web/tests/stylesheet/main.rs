@@ -18,8 +18,8 @@ mod checks;
 mod css;
 
 use checks::{
-    direction_findings, focus_findings, loads_findings, motion_findings, ranking_findings,
-    scheme_findings, shortcut_findings, target_findings,
+    boundary_findings, direction_findings, focus_findings, loads_findings, motion_findings,
+    ranking_findings, scheme_findings, shortcut_findings, target_findings,
 };
 use css::{Theme, contrast_findings, contrast_rows, hex, token_findings};
 
@@ -114,6 +114,15 @@ fn nothing_the_stylesheet_draws_for_a_claim_ranks_and_no_rule_is_named_for_a_ver
     assert!(f.is_empty(), "{f:#?}");
     // The rules about a claim are really there (the check is not passing on an absent subject).
     assert!(CSS.contains(".claim-link"));
+}
+
+#[test]
+fn a_source_name_and_a_paragraphs_words_are_set_apart_by_the_style_and_neutrally() {
+    let f = boundary_findings(CSS);
+    assert!(f.is_empty(), "{f:#?}");
+    // The rules are there, and the ranking check reads them as it reads those about a claim (a colour that singles out,
+    // a picture or a number on them would fail the test above).
+    assert!(CSS.contains("\ncite {") && CSS.contains("\nbdi {"));
 }
 
 #[test]
@@ -543,4 +552,55 @@ fn ranking_fails_on_a_colour_a_picture_or_a_number_drawn_for_a_claim() {
         )),
         Vec::<String>::new()
     );
+}
+
+#[test]
+fn the_boundary_fails_when_a_name_or_a_paragraphs_words_are_not_set_apart() {
+    let set_apart = format!(
+        "{GOOD}\ncite{{border:1px solid var(--control);padding-inline:.25em}}bdi{{border-block-end:1px dotted var(--control)}}"
+    );
+    assert_eq!(boundary_findings(&set_apart), Vec::<String>::new());
+    assert_eq!(ranking_findings(&set_apart), Vec::<String>::new());
+    // Neither is there.
+    assert_eq!(boundary_findings(GOOD).len(), 2);
+    // Only one is.
+    let only_cite = format!("{GOOD}\ncite{{border:1px solid var(--control)}}");
+    assert!(
+        boundary_findings(&only_cite)
+            .iter()
+            .any(|x| x.contains("`bdi`"))
+    );
+    // A rule that draws nothing is not a boundary.
+    for rule in [
+        "cite{border:none}bdi{border-block-end:1px dotted var(--control)}",
+        "cite{border:0}bdi{border-block-end:1px dotted var(--control)}",
+        "cite{border-radius:.25em}bdi{border-block-end:1px dotted var(--control)}",
+        "cite{font-style:italic}bdi{border-block-end:1px dotted var(--control)}",
+        "cite{border:1px solid var(--control)}bdi{padding-inline:.1em}",
+    ] {
+        assert!(
+            !boundary_findings(&format!("{GOOD}\n{rule}")).is_empty(),
+            "{rule}"
+        );
+    }
+    // The boundary stays neutral: a colour that singles out, a picture or a number on the name or the words is what the
+    // ranking check refuses on a claim.
+    for rule in [
+        "cite{border:1px solid var(--accent)}",
+        "cite{color:var(--accent)}",
+        "cite{background:#fe0}",
+        "cite{border-color:rgb(0,128,0)}",
+        "cite::before{content:'\\201c'}",
+        "cite::after{content:counter(n)}",
+        "bdi{border-block-end:1px dotted var(--nope)}",
+        "bdi::before{content:'x'}",
+        "bdi{background-image:linear-gradient(red,blue)}",
+        "bdi{filter:grayscale(1)}",
+        "cite bdi{text-decoration-color:hsl(0 80% 40%)}",
+    ] {
+        assert!(
+            !ranking_findings(&format!("{set_apart}\n{rule}")).is_empty(),
+            "{rule}"
+        );
+    }
 }

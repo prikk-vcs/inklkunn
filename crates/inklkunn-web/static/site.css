@@ -356,3 +356,12 @@ nav.account form { display: inline; margin: 0; }
 .why-excerpt, .why-chain li, .why-review li, .why-sources li, .why-people li { overflow-wrap: anywhere; }
 .why-chain, .why-people, .why-review, .why-sources, .why-links { margin-block: 0 0.5rem; padding-inline-start: 1.25rem; }
 .why-note, .why-basis { color: var(--muted); }
+
+/* What a line of a proposal prints of someone else's words is set apart where it begins and ends (handoff 005 K31): a
+   source's name (<cite>) has a box drawn round it and the words of a paragraph (<bdi>) a dotted line under them. The
+   style draws it and the text cannot: a title written to read like the rest of the line (a closing quotation mark, a
+   "by" and a date) is still seen to be one name. Neutral: the page's own line colour, no colour that singles out, no
+   picture, no number. tests/stylesheet holds both. */
+cite { padding-inline: 0.25em; border: 1px solid var(--control); border-radius: 0.25em; }
+bdi { border-block-end: 1px dotted var(--control); }
+cite bdi { border-block-end: 0; }

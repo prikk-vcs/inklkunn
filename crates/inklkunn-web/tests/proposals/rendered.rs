@@ -53,6 +53,27 @@ fn digest_of(text: &str) -> Digest {
 
 const PROPOSAL: &str = "01930000-0000-7000-8000-00000000aaaa";
 
+/// The wording of the paragraph `k1` of `Bridge`, the one the claim of the scene is said in: a link or a status judged on
+/// it is judged on the wording the paragraph really has (K31).
+const REAL: &str = "It opened in 1950.";
+
+/// The digest of a wording of the generators: the real one is the digest of the paragraph as `Bridge` has it (its marker
+/// is part of what is digested), the others are of paragraphs nobody has.
+fn wording(text: &str) -> Digest {
+    if text == REAL {
+        block_digest(
+            inklkunn_markup::blocks("It opened in 1950. ^k1")
+                .first()
+                .expect("a block"),
+        )
+    } else {
+        digest_of(text)
+    }
+}
+
+/// Wordings a link or a status is judged on in the generators: three nobody has, and the paragraph's real one.
+const WORDINGS: [&str; 4] = ["w1", "w2", "w3", REAL];
+
 /// The claim of the scene (it is said in `Bridge`'s paragraph `k1`), every list filled from small pools so that two
 /// draws often agree on a field.
 fn random_claim(dice: &mut Dice) -> Claim {
@@ -62,9 +83,7 @@ fn random_claim(dice: &mut Dice) -> Claim {
     c.community_status = CommunityStatus {
         status: dice.pick(Standing::ALL),
         proposal: dice.chance().then(|| PROPOSAL.to_owned()),
-        judged_on: dice
-            .chance()
-            .then(|| digest_of(dice.pick(&["w1", "w2", "w3"]))),
+        judged_on: dice.chance().then(|| wording(dice.pick(&WORDINGS))),
     };
     c.expressions
         .push(Expression::new("bridge-page", "k1").expect("an expression"));
@@ -83,7 +102,7 @@ fn random_claim(dice: &mut Dice) -> Claim {
                 relation: dice.pick(Link::ALL),
                 bearing: dice.pick(Bearing::ALL),
                 note: dice.chance().then(|| dice.pick(&["n1", "n2"]).to_owned()),
-                judged_on: digest_of(dice.pick(&["w1", "w2", "w3"])),
+                judged_on: wording(dice.pick(&WORDINGS)),
             });
         }
     }
@@ -155,6 +174,11 @@ fn claim_mutations() -> Vec<(ClaimMutation, bool)> {
         "status wording",
         false,
         Box::new(|c| c.community_status.judged_on = Some(digest_of("a wording nobody had"))),
+    );
+    add(
+        "status wording moved to the real one",
+        false,
+        Box::new(|c| c.community_status.judged_on = Some(wording(REAL))),
     );
     add(
         "status wording cleared",
@@ -270,6 +294,15 @@ fn claim_mutations() -> Vec<(ClaimMutation, bool)> {
         Box::new(|c| {
             if let Some(l) = c.sources.first_mut() {
                 l.judged_on = digest_of("a wording nobody had");
+            }
+        }),
+    );
+    add(
+        "link wording moved to the real one",
+        false,
+        Box::new(|c| {
+            if let Some(l) = c.sources.first_mut() {
+                l.judged_on = wording(REAL);
             }
         }),
     );
@@ -444,6 +477,13 @@ async fn each_single_field_change_of_a_claim_has_its_own_rendered_line_and_names
                 !changed.contains("they change nothing"),
                 "{name}: {changed}"
             );
+            // Moved to the wording the paragraph really has, the page says that wording (and not "none has it").
+            if name.ends_with("moved to the real one") {
+                assert!(
+                    changed.contains("becomes this wording: “<bdi>It opened in 1950.</bdi>”"),
+                    "`{name}` does not say the wording the paragraph has: {changed}"
+                );
+            }
             assert!(
                 !changed.contains('{'),
                 "`{name}` leaves a placeholder: {changed}"
@@ -1027,4 +1067,44 @@ async fn a_removed_source_names_its_review_day_and_availability_and_each_of_them
             "`{name}` does not change the removal's page"
         );
     }
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// K31: the subjects are named as the proposal's base had them
+
+#[tokio::test]
+async fn a_subject_is_named_as_the_proposals_base_had_it_and_what_the_proposal_makes_is_named_by_its_own_files()
+ {
+    let s = scene();
+    put_sources(&s);
+    let claim = claim_citing(1, "bridge-page", "k1", &[2]);
+    s.w.fake.set(&claim_path(&claim.id), &claim.to_yaml());
+    // The proposal also records a source and a claim of its own: the wiki has neither, at its base or at its tip.
+    let mut own_source = Source::new(source_id(71));
+    own_source.identity.title = Some("A source the proposal records".to_owned());
+    let own_claim = claim_citing(72, "bridge-page", "k1", &[71]);
+    let mut files = flipped(&claim, 2);
+    files.push((source_path(&own_source.id), Some(own_source.to_yaml())));
+    files.push((claim_path(&own_claim.id), Some(own_claim.to_yaml())));
+    let to = held_unjudged(&s, files);
+    // The wiki moves on: the source the proposal changes is retitled, and the claim is said in another paragraph.
+    let mut retitled = Source::new(source_id(2));
+    retitled.identity.title = Some("A title it was given since".to_owned());
+    s.w.fake
+        .set(&source_path(&retitled.id), &retitled.to_yaml());
+    let moved = claim_citing(1, "bridge-page", "k9", &[2]);
+    s.w.fake.set(&claim_path(&moved.id), &moved.to_yaml());
+    let section = knowledge_section(&open(&s, &to, &s.writer).await.body());
+    // What the base had.
+    assert!(section.contains("“Source number 2”"), "{section}");
+    assert!(!section.contains("A title it was given since"), "{section}");
+    // What the proposal makes itself.
+    assert!(
+        section.contains("“A source the proposal records”"),
+        "{section}"
+    );
+    assert!(
+        section.contains("Records the claim “<bdi>It opened in 1950.</bdi>”"),
+        "{section}"
+    );
 }

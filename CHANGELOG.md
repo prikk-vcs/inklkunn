@@ -534,6 +534,20 @@ Dependency updates (the architect, 2026-11-14).
   source, a link more or fewer, the review day, no review, availability. Each field was mutated away in the core and in
   the renderer and a test failed. No prikk-dependent test is added.
 
+- **K31 (handoff 005 corrections, third): the proposal page reads the base it says it reads; its tests start from the real wording; a name and a paragraph's words are set apart by the style.** `Resolver::index()` of the proposal page read the
+  knowledge index at the view's tip while its documentation, and the rest of the resolver (the pages, K22), say the
+  proposal's base: a source retitled since, or a claim moved to another paragraph, was named as it has become and not
+  as the proposal's author saw it. It now reads `knowledge_index_at_base`. What the proposal makes itself (a claim or a
+  source it records, which have no row at the base) is named by its own files, which are asked first, as before. The
+  rendered property test (`tests/proposals/rendered.rs`) now starts from a link and a status judged on the wording the
+  paragraph really has as well as on wordings nobody has, and moves each to it (the page says that wording); its
+  first run showed why the real digest has to be the paragraph's with its marker. `<cite>` (a source's name) and `<bdi>`
+  (a paragraph's words) have a visible boundary in `site.css`, a box and a dotted line that the style draws and a text
+  inside cannot (a title written to read like the end of the line is still one name): the page's own line colour, no
+  `content`, no picture, no number. The stylesheet test reads rules for `cite` and `bdi` as it reads those for a claim
+  (no colour that singles out), and a new check holds that both have a border (it fails on a missing, `none` or `0`
+  border). No other test was loosened. No prikk-dependent test is added.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

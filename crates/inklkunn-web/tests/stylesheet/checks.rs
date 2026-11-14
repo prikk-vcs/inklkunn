@@ -366,6 +366,38 @@ fn tokens_in(v: &str) -> Vec<&str> {
         .collect()
 }
 
+/// A selector for something drawn for a claim, or for the name of a source (`cite`) or the words of a paragraph (`bdi`)
+/// that a line prints.
+fn is_about_a_subject(selector: &str) -> bool {
+    selector.contains("claim")
+        || selector
+            .to_lowercase()
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .any(|part| part == "cite" || part == "bdi")
+}
+
+/// The names and words a line prints are set apart by the style (K31): `cite` and `bdi` each have a rule that draws a
+/// border, which a text inside them cannot imitate (a character in a title is not a line drawn by the sheet).
+pub(crate) fn boundary_findings(css: &str) -> Vec<String> {
+    let rules = parse(css);
+    let mut out = Vec::new();
+    for element in ["cite", "bdi"] {
+        let drawn = rules
+            .iter()
+            .filter(|r| r.selectors.iter().any(|s| s == element))
+            .flat_map(|r| r.decls.iter())
+            .any(|(p, v)| {
+                p.starts_with("border")
+                    && !p.starts_with("border-radius")
+                    && !matches!(v.as_str(), "none" | "0" | "0px" | "hidden")
+            });
+        if !drawn {
+            out.push(format!("`{element}` has no border: nothing sets it apart"));
+        }
+    }
+    out
+}
+
 /// What in the stylesheet could rank a claim, a source or a view by how it looks.
 pub(crate) fn ranking_findings(css: &str) -> Vec<String> {
     let mut out = Vec::new();
@@ -381,8 +413,9 @@ pub(crate) fn ranking_findings(css: &str) -> Vec<String> {
                 }
             }
         }
-        // Everything drawn for a claim is quiet: one muted text colour and nothing that is drawn or counted.
-        if !r.selectors.iter().any(|s| s.contains("claim")) {
+        // Everything drawn for a claim, and for the names and words a line prints (`cite`, `bdi`), is quiet: one muted
+        // text colour and nothing that is drawn or counted.
+        if !r.selectors.iter().any(|s| is_about_a_subject(s)) {
             continue;
         }
         let who = r.selectors.join(", ");

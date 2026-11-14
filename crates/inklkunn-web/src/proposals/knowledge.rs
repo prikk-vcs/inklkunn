@@ -726,13 +726,16 @@ impl<'a> Resolver<'a> {
             .or_else(|| self.base_text(page_id))
     }
 
+    /// The knowledge index **at the proposal's base** (K31), as the pages are read: the claims and sources the wiki had
+    /// when the proposal was written, not what it has become. What the proposal makes itself is in `claims` and
+    /// `sources`, which come first, so a claim or a source it creates (no anchor, no row at the base) is still named.
     fn index(&self) -> Option<std::sync::Arc<inklkunn_core::knowledge::index::KnowledgeIndex>> {
-        match self
-            .ctx
-            .services
-            .read
-            .knowledge_index(&self.ctx.wiki, self.place.view)
-        {
+        match self.ctx.services.read.knowledge_index_at_base(
+            &self.ctx.wiki,
+            self.place.view,
+            &self.place.base.state_id,
+            &self.place.base.block_id,
+        ) {
             Ok(index) => Some(index),
             Err(e) => {
                 self.failed(e);
