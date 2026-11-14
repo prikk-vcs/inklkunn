@@ -271,6 +271,10 @@ fn unsupported<T>(verb: &'static str) -> Result<T> {
 }
 
 impl Storage for Fake {
+    /// The double has no closed views: every view it has is open.
+    fn all_views(&self, repo: &Path) -> Result<Views> {
+        self.views(repo)
+    }
     fn views(&self, _: &Path) -> Result<Views> {
         let s = self.state();
         if let Some(e) = &s.fail_views {

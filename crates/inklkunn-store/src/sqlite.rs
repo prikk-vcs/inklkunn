@@ -4,10 +4,12 @@
 //! knows, or one whose version cannot be read, is refused before anything is written. An older one is
 //! brought forward by [`MIGRATIONS`], in order, inside one immediate transaction that re-reads the version
 //! first (a second process may have migrated already); a fresh database gets every migration and the
-//! version row in one transaction. Every migration but version 6 only **adds**; version 6 rebuilds the role
+//! version row in one transaction. Every migration but versions 6 and 17 only **adds**; version 6 rebuilds the role
 //! grants with their foreign keys to accounts, copies every row, checks the result with SQLite's own
 //! `foreign_key_check`, and **refuses** (naming the version, rolling everything back) if a grant refers to
-//! an account that does not exist. A build one step behind refuses a newer database cleanly in either case. Every change to a record runs in an immediate transaction, so
+//! an account that does not exist; version 17 removes **derived data only** (the knowledge index of every tip, rebuilt
+//! from the tips' files when next asked for) and nothing a person or the service recorded. A build one step behind
+//! refuses a newer database cleanly in either case. Every change to a record runs in an immediate transaction, so
 //! a second process (a command-line run beside the service) cannot slip between a check and a write; a
 //! slug or id already taken is reported as exactly that.
 

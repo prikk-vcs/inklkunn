@@ -55,10 +55,10 @@ pub(super) fn required<'a>(pairs: &'a Pairs, key: &'static str) -> Result<&'a Va
 }
 
 /// Is `c` a bidirectional control or a format character that changes how text reads without being seen
-/// (U+202A – U+202E, U+2066 – U+2069, U+200E, U+200F)? A source's title, author or note that holds one can make a line
+/// (U+202A – U+202E, U+2066 – U+2069, U+200E, U+200F and the Arabic letter mark U+061C)? A source's title, author or note that holds one can make a line
 /// read as another (handoff 005 corrections K14), so no text of a knowledge file may.
 pub(super) fn is_bidi_or_format(c: char) -> bool {
-    matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{200e}' | '\u{200f}')
+    matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{200e}' | '\u{200f}' | '\u{061c}')
 }
 
 /// A text value: a string, or a date as the parser reads an unquoted one. A number is refused as a number: nothing

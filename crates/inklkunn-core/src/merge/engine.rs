@@ -33,6 +33,15 @@ pub(super) const MAX_CELLS: usize = 250_000;
 /// A count of the work alignments do and the most they may do between them, for the callers that must bound it
 /// (*Why is this here?* aligns up to twenty versions of a page in one request). One unit of work is a unit of a
 /// sequence looked at or a cell of a table filled; the merge does not count and is never stopped.
+///
+/// **A cell is one unit however long its texts are** (handoff 005 K23; this is the factor the count leaves out). Filling
+/// a cell compares two units' texts, which reads at most the shorter one's bytes (the lengths are compared first), so
+/// the count is of comparisons, not of bytes. The bytes one table compares are still bounded: for a table of `n` by
+/// `m` units, at most `min(m` × the bytes of the base's stretch`, n` × the bytes of the other's`)`, and `n * m` is at
+/// most [`MAX_CELLS`], so the smaller of `n` and `m` is at most 500: a table costs at most 500 times the bytes of its
+/// stretch, which a page's size bound ([`ReadConfig::page_max_bytes`](crate::read::ReadConfig), 1 MiB) caps. Charging
+/// by length was not chosen: it would multiply every charge by a block's size, and the limits that callers set
+/// ([`MAX_WHY_WORK`](crate::read::MAX_WHY_WORK)) would have to be set again with it.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Meter {
     spent: usize,

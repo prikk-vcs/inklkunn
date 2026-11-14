@@ -11,7 +11,7 @@
 //! section. No view is named better than another; the default view is first because the list of views puts it
 //! first, and the rest follow by name.
 
-use inklkunn_core::read::ComparedClaim;
+use inklkunn_core::read::{ComparedClaim, Tip};
 use inklkunn_core::views::short_name;
 use inklkunn_store::WikiRecord;
 
@@ -36,7 +36,9 @@ pub(crate) struct Others {
     unreadable: bool,
 }
 
-/// Look at the other open views for the claim `id`, as read in the view `this` (`None`: the default view). `None` when
+/// Look at the other open views for the claim `id`, as read in the view `this` (`None`: the default view) **at `tip`, the
+/// tip the page's index was read at** (handoff 005 K23: the tip is not read a second time, so the page cannot compare
+/// one state with the claims of another). `None` when
 /// the wiki has no other open view or its views cannot be listed now (the page then says nothing, as it did before
 /// views could be compared).
 ///
@@ -46,10 +48,10 @@ pub(crate) fn gather(
     services: &Services,
     wiki: &WikiRecord,
     this: Option<&str>,
+    tip: &Tip,
     id: &str,
 ) -> Option<Others> {
     let open = services.read.open_views(wiki).ok()?;
-    let this_full = this.and_then(crate::url::view_ref);
     let this = this
         .map_or_else(|| short_name(&wiki.default_view), |v| v)
         .to_owned();
@@ -68,11 +70,11 @@ pub(crate) fn gather(
         unreadable: false,
     };
     for other in others.into_iter().take(CHECKED) {
-        let Ok(differences) = services.read.claim_differences(
-            wiki,
-            this_full.as_deref(),
-            Some(&format!("heads/{other}")),
-        ) else {
+        let Ok(differences) =
+            services
+                .read
+                .claim_differences_from(wiki, tip, Some(&format!("heads/{other}")))
+        else {
             found.unreadable = true;
             continue;
         };

@@ -1193,7 +1193,7 @@ async fn deleting_a_claim_paragraph_among_equal_words_is_asked_about_and_never_m
 async fn a_source_text_with_a_direction_character_is_refused_on_the_form_with_a_message_of_its_own()
 {
     let s = scene();
-    for c in ['\u{202e}', '\u{2066}', '\u{200f}'] {
+    for c in ['\u{202e}', '\u{2066}', '\u{200f}', '\u{061c}'] {
         let fields = with(
             part(
                 "pages/Bridge.md",

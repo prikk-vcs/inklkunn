@@ -341,15 +341,16 @@ fn files_are_read_from_their_path_and_bytes() {
 
 // ------------------------------------------------------------------------------------ K14: direction characters
 
-/// Every bidirectional control and format character the files refuse: U+202A - U+202E, U+2066 - U+2069, U+200E, U+200F.
-const DIRECTION: [char; 11] = [
+/// Every bidirectional control and format character the files refuse: U+202A - U+202E, U+2066 - U+2069, U+200E, U+200F
+/// and the Arabic letter mark U+061C (K23).
+const DIRECTION: [char; 12] = [
     '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}', '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}',
-    '\u{2069}', '\u{200e}', '\u{200f}',
+    '\u{2069}', '\u{200e}', '\u{200f}', '\u{061c}',
 ];
 
 /// Their neighbours in the code space, which are text.
-const NOT_DIRECTION: [char; 6] = [
-    '\u{200b}', '\u{200c}', '\u{200d}', '\u{2029}', '\u{2065}', '\u{206a}',
+const NOT_DIRECTION: [char; 8] = [
+    '\u{200b}', '\u{200c}', '\u{200d}', '\u{2029}', '\u{2065}', '\u{206a}', '\u{061b}', '\u{061d}',
 ];
 
 #[test]

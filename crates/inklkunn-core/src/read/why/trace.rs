@@ -177,8 +177,9 @@ impl Tracer {
     ///
     /// **Bounded in work.** A step with an earlier version costs the two texts' bytes (each is read twice: cut
     /// into blocks for the alignment and again for the comparison of the paired blocks), their blocks and the cells
-    /// of the alignment's tables; the steps fed share the budget given to [`Tracer::begin`]. A step that would pass
-    /// it is not made at all ([`Fed::OutOfWork`]).
+    /// of the alignment's tables (**a cell counts as one however long the two blocks it compares are**; the bytes a
+    /// table compares are bounded by its size limit, see the meter in `merge`); the steps fed share the budget given
+    /// to [`Tracer::begin`]. A step that would pass it is not made at all ([`Fed::OutOfWork`]).
     pub fn feed(&mut self, step: usize, older: Option<&str>) -> Fed {
         let Some(older_text) = older else {
             for track in &mut self.tracks {

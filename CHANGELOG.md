@@ -318,6 +318,23 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   rule on both stores and through a raw connection, the press that loses (a draft nobody else can see), two presses at
   once, the offer at the tip, and a page renamed after the proposal was written.
 
+- **K23 (handoff 005 corrections, second): small corrections.** **U+061C (the Arabic letter mark)** joins the direction
+  characters that no text of a knowledge file may hold (the reader and the form check one set). **The work meter's factor is
+  stated:** a cell of an alignment's table is one unit of work however long the two blocks it compares are (charging by
+  length would multiply every charge by a block's size and the limits set for the callers would have to be set again);
+  the bytes one table compares are bounded by its size limit, and the documentation of the meter, of the request's work
+  budget and of the tracer say so. **`Storage::all_views` is a required method:** it no longer falls back to the open views
+  (which would let a closed view's name be taken again unnoticed); every implementation, test doubles included, says what
+  it has (`inklkunn-prikk` has a test that keeps a default body out of the declaration). **A claim page's *Other views*
+  compare from the tip its own index was read at** (`ReadService::claim_differences_from`, with `knowledge_at` public):
+  the tip is read once, so a view that moves meanwhile cannot put one state's index beside another's differences.
+  **`complete_view_creation` keeps the *seeds not removed* note** when prikk's plan or `ref complete` fails and the
+  temporary directory of decrypted seeds could not be removed, as an acceptance does: the failure is the news and the
+  directory is told beside it. The stale comments of `sqlite.rs` (what the migrations remove) and of the migration-list
+  test (no version is reserved now) are corrected. Tests: the direction set on the files and on the form, the
+  declaration of `all_views`, the pinned tip of the other views, and (against a real prikk) both failures with a seed
+  directory left.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

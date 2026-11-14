@@ -582,8 +582,9 @@ impl ReadService {
     }
 
     /// [`ReadService::knowledge_index`] of a tip that was already read: the index of exactly that state, whatever the
-    /// view has moved to since (a comparison keys what it derives by the tips it read, and so reads their indexes).
-    pub(super) fn knowledge_at(
+    /// view has moved to since (a comparison keys what it derives by the tips it read, and so reads their indexes; a
+    /// claim page reads its view's tip once and everything it shows is of that tip, handoff 005 K23).
+    pub fn knowledge_at(
         &self,
         wiki: &WikiRecord,
         tip: &Tip,

@@ -220,15 +220,29 @@ impl ReadService {
         a: Option<&str>,
         b: Option<&str>,
     ) -> Result<Arc<Vec<ClaimDifference>>, ReadError> {
-        let (tip_a, tip_b) = (self.tip(wiki, a)?, self.tip(wiki, b)?);
-        let pair = Pair::of(wiki, &tip_a, &tip_b);
+        let tip_a = self.tip(wiki, a)?;
+        self.claim_differences_from(wiki, &tip_a, b)
+    }
+
+    /// [`ReadService::claim_differences`] with the first side **a tip that was already read** (handoff 005 K23): a claim
+    /// page reads its view's tip once, shows that tip's index, and asks how the claim differs from the other views *from
+    /// that same tip*, so that a view that moves meanwhile cannot make the page compare one state with the claims of
+    /// another.
+    pub fn claim_differences_from(
+        &self,
+        wiki: &WikiRecord,
+        tip_a: &Tip,
+        b: Option<&str>,
+    ) -> Result<Arc<Vec<ClaimDifference>>, ReadError> {
+        let tip_b = self.tip(wiki, b)?;
+        let pair = Pair::of(wiki, tip_a, &tip_b);
         if let Some(found) = pair
             .as_ref()
             .and_then(|pair| held(&self.comparisons.claims, pair))
         {
             return Ok(found);
         }
-        let (index_a, index_b) = self.indexes_of(wiki, (&tip_a, &tip_b))?;
+        let (index_a, index_b) = self.indexes_of(wiki, (tip_a, &tip_b))?;
         Ok(self.differences_of(pair, &index_a, &index_b))
     }
 

@@ -562,6 +562,9 @@ impl Storage for NoCheckpoint<'_> {
     fn views(&self, r: &Path) -> inklkunn_prikk::Result<Views> {
         self.0.views(r)
     }
+    fn all_views(&self, r: &Path) -> inklkunn_prikk::Result<Views> {
+        self.0.all_views(r)
+    }
     fn tree(&self, r: &Path, p: &Point, x: Option<&str>) -> inklkunn_prikk::Result<Tree> {
         self.0.tree(r, p, x)
     }
@@ -830,6 +833,9 @@ fn an_empty_directory_made_at_the_destination_meanwhile_is_not_replaced() {
     impl Storage for Racer<'_> {
         fn views(&self, r: &Path) -> inklkunn_prikk::Result<Views> {
             self.0.views(r)
+        }
+        fn all_views(&self, r: &Path) -> inklkunn_prikk::Result<Views> {
+            self.0.all_views(r)
         }
         fn tree(&self, r: &Path, p: &Point, x: Option<&str>) -> inklkunn_prikk::Result<Tree> {
             self.0.tree(r, p, x)

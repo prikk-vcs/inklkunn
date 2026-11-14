@@ -95,6 +95,11 @@ fn write_standin(ctl: &Path, real: &Path) -> PathBuf {
         r#"#!/bin/sh
 CTL="{ctl}"
 verb="$1"
+# A seed directory that cannot be removed afterwards (the signer cannot remove what is not writable), for `ref` as a
+# whole or for the completing call alone (not `--plan-only`).
+if [ "$verb" = ref ] && [ -e "$CTL/lockseeds-ref" ]; then chmod 0500 "$(dirname "${{PRIKK_AUTHOR_SEED_FILE:-$PRIKK_MAINTAINER_SEED_FILE}}")"; fi
+if [ "$1 $2" = "ref complete" ] && [ -z "$4" ] && [ -e "$CTL/lockseeds-ref-complete" ]; then chmod 0500 "$(dirname "${{PRIKK_AUTHOR_SEED_FILE:-$PRIKK_MAINTAINER_SEED_FILE}}")"; fi
+if [ "$1 $2" = "ref complete" ] && [ -z "$4" ] && [ -e "$CTL/fail-ref-complete" ]; then echo "error: precondition not met: injected failure of the completion" >&2; exit 1; fi
 if [ -e "$CTL/fail-$verb" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
 if [ "$1 $2 $3" = "trust maintainer remove" ] && [ -e "$CTL/fail-trust-remove" ]; then echo "error: precondition not met: injected failure of the removal" >&2; exit 1; fi
 if [ "$1 $2" = "branch create" ] && [ -e "$CTL/leads-after-branch-create" ]; then
@@ -1850,6 +1855,63 @@ fn a_rotation_refuses_while_a_views_creation_is_unfinished_and_names_recover() {
         inklkunn_signer::OldKey::Keep,
     );
     assert!(r.is_ok(), "{r:?}");
+}
+
+impl Fixture {
+    /// Make every seed directory the signer left removable again, so that the test directory can be cleaned up.
+    fn unlock_seed_dirs(&self) {
+        for entry in std::fs::read_dir(&self._shm.0).unwrap().flatten() {
+            if entry.path().is_dir() {
+                std::fs::set_permissions(entry.path(), std::fs::Permissions::from_mode(0o700))
+                    .unwrap();
+            }
+        }
+    }
+}
+
+#[test]
+fn a_view_completion_that_fails_while_a_seed_directory_stays_says_both() {
+    // K23: the failure of prikk's plan or of `ref complete` is the news, and the temporary directory of decrypted seeds
+    // that could not be removed is told beside it, as an acceptance tells it; the bare "seeds not removed" would hide
+    // what prikk said.
+    let Some(f) = fixture("view-lead-seeds") else {
+        return;
+    };
+    let creation = f.leave_a_lead("va-1", DRAFT, MAIN);
+    let rec = f.act(vec![f.view_op("va-1", DRAFT)]);
+    // The plan fails and its seed directory stays.
+    f.say("lockseeds-ref", "");
+    f.say("fail-ref", "");
+    let r = f.complete_view(&rec, DRAFT, &creation);
+    f.unsay("fail-ref");
+    f.unsay("lockseeds-ref");
+    f.unlock_seed_dirs();
+    let text = format!("{r:?}");
+    assert!(
+        matches!(&r, Err(RecoverError::Refused(m)) if m.contains("injected failure") && m.contains("decrypted seeds could not be removed")),
+        "{text}"
+    );
+    assert!(!f.verify_ok(), "nothing was completed");
+    // The completion itself fails and its seed directory stays.
+    f.say("lockseeds-ref-complete", "");
+    f.say("fail-ref-complete", "");
+    let r = f.complete_view(&rec, DRAFT, &creation);
+    f.unsay("fail-ref-complete");
+    f.unsay("lockseeds-ref-complete");
+    f.unlock_seed_dirs();
+    let text = format!("{r:?}");
+    assert!(
+        matches!(&r, Err(RecoverError::Refused(m)) if m.contains("injected failure of the completion") && m.contains("decrypted seeds could not be removed")),
+        "{text}"
+    );
+    assert!(!f.verify_ok(), "nothing was completed");
+    // A completion that works and leaves its directory is told as it was: the call completed, the directory stays.
+    f.say("lockseeds-ref-complete", "");
+    let r = f.complete_view(&rec, DRAFT, &creation);
+    f.unsay("lockseeds-ref-complete");
+    f.unlock_seed_dirs();
+    assert_eq!(r, Err(RecoverError::SeedsNotRemoved));
+    assert!(f.verify_ok(), "and the completion was done");
 }
 
 #[test]

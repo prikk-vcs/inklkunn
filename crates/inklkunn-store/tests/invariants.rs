@@ -504,10 +504,10 @@ fn the_migration_list_is_ordered_and_ends_at_the_schema_version() {
     use inklkunn_store::sqlite::{MIGRATIONS, SCHEMA_VERSION};
     let versions: Vec<i64> = MIGRATIONS.iter().map(|(v, _)| *v).collect();
     assert_eq!(versions.first(), Some(&1), "version 1 is M0's schema");
-    // Strictly increasing, and no version is skipped except one reserved for another branch of work (the
-    // sign-in handoff's invitations are 14; the knowledge tables are 13; the view-creation records of the
-    // knowledge-layer corrections are 16, which the source names (17) are written to follow).
-    const RESERVED: &[i64] = &[13];
+    // Strictly increasing, and no version is skipped except one reserved for another branch of work that has not
+    // landed yet. None is reserved now: 13 (the knowledge tables), 14 (invitations), 16 (the view-creation and review
+    // records) and 17 (the source names) are all here.
+    const RESERVED: &[i64] = &[];
     assert!(
         versions.windows(2).all(|w| matches!(
             w,

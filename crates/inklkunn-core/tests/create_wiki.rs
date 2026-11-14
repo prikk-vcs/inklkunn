@@ -416,6 +416,9 @@ fn an_invalid_request_is_refused_before_anything_is_made() {
         fn views(&self, _: &Path) -> inklkunn_prikk::Result<inklkunn_prikk::Views> {
             unreachable!()
         }
+        fn all_views(&self, _: &Path) -> inklkunn_prikk::Result<inklkunn_prikk::Views> {
+            unreachable!()
+        }
         fn tree(
             &self,
             _: &Path,

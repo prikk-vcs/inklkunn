@@ -49,7 +49,8 @@ pub const MAX_WHY_PARAGRAPHS: usize = MAX_INSPECTED_PER_REQUEST;
 /// The most work one request spends aligning the page's versions: one unit is a byte read, a block looked at or a
 /// cell of an alignment's table. Twenty alignments of a page of 1 MiB would, without it, do whatever the page
 /// makes them do; with it a request is bounded in time as it is in reads. The reading ends at the step that would
-/// pass it ([`Reach::Spent`]).
+/// pass it ([`Reach::Spent`]). **A cell is one unit whatever the length of the two blocks it compares**: the bytes
+/// compared are bounded by the alignment's own table limit, not by this figure (see the meter's documentation).
 pub const MAX_WHY_WORK: usize = 32_000_000;
 
 /// How far back the paragraphs could be followed.

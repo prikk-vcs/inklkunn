@@ -445,11 +445,12 @@ impl Recover for Signer {
         //    (the block its source pointed at when the act was written, under the lease; the source may have moved
         //    since, and a ref that points anywhere else is not what was recorded), with nothing to remove first.
         let seeds = self.seeds(wiki);
-        let plan = w.ref_complete_plan(&repo, &seeds, view);
-        if seeds.left_over() {
-            return Err(RecoverError::SeedsNotRemoved);
-        }
-        let plan = plan?;
+        let plan = match (w.ref_complete_plan(&repo, &seeds, view), seeds.left_over()) {
+            (Ok(plan), false) => plan,
+            (Ok(_), true) => return Err(RecoverError::SeedsNotRemoved),
+            (Err(e), false) => return Err(e.into()),
+            (Err(e), true) => return Err(note_leftover(e.into())),
+        };
         if plan.ref_name != view
             || plan.kind != "Branch"
             || plan.target != facts.from_block
@@ -467,7 +468,8 @@ impl Recover for Signer {
         match (done, seeds.left_over()) {
             (Ok(()), false) => {}
             (Ok(()), true) => return Err(RecoverError::SeedsNotRemoved),
-            (Err(e), _) => return Err(e.into()),
+            (Err(e), false) => return Err(e.into()),
+            (Err(e), true) => return Err(note_leftover(e.into())),
         }
         // 4. It did what was meant: `doctor` no longer names the lead (the block was checked before, and `ref complete`
         //    appends the record of the same state).
@@ -604,6 +606,19 @@ impl Recover for Signer {
             return mismatch("the worktree is still not the baseline after it was put back");
         }
         Ok(restored)
+    }
+}
+
+/// Add to a recovery failure that the seeds' temporary directory is also still there (as an acceptance's failure says it,
+/// handoff 005 K23): the failure is the news, and the directory is told beside it, not instead of it. An error that
+/// carries no sentence (a lease, a ceiling) is returned as it is.
+fn note_leftover(e: RecoverError) -> RecoverError {
+    const NOTE: &str = "; also, a temporary directory of decrypted seeds could not be removed (the next start removes it)";
+    match e {
+        RecoverError::DoesNotMatch(m) => RecoverError::DoesNotMatch(format!("{m}{NOTE}")),
+        RecoverError::Refused(m) => RecoverError::Refused(format!("{m}{NOTE}")),
+        RecoverError::Unavailable(m) => RecoverError::Unavailable(format!("{m}{NOTE}")),
+        other => other,
     }
 }
 

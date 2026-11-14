@@ -86,6 +86,9 @@ impl Storage for Repo {
             }],
         })
     }
+    fn all_views(&self, repo: &Path) -> StorageResult<Views> {
+        self.views(repo)
+    }
     fn tree(&self, _: &Path, _: &Point, _: Option<&str>) -> StorageResult<Tree> {
         nope("tree")
     }

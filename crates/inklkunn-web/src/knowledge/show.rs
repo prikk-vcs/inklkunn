@@ -132,8 +132,15 @@ fn load(
             }
         },
     };
-    let index = match services.read.knowledge_index(&wiki, full.as_deref()) {
-        Ok(index) => index,
+    // The tip is read once: the page's index and everything compared with it are of this one state.
+    let read = services.read.tip(&wiki, full.as_deref()).and_then(|tip| {
+        services
+            .read
+            .knowledge_at(&wiki, &tip)
+            .map(|index| (tip, index))
+    });
+    let (tip, index) = match read {
+        Ok(found) => found,
         Err(ReadError::NoSuchView(v)) => {
             return Loaded::Shown(Shown::NoSuchView {
                 wiki: Box::new(wiki),
@@ -163,7 +170,7 @@ fn load(
                 .get(&services.identity.principal(headers), &wiki, &p)
                 .is_ok()
         });
-    let others = others::gather(services, &wiki, view.as_deref(), id);
+    let others = others::gather(services, &wiki, view.as_deref(), &tip, id);
     Loaded::Claim(Box::new(Found {
         wiki,
         view,

@@ -24,6 +24,9 @@ impl Storage for Unreachable {
     fn views(&self, _: &Path) -> inklkunn_prikk::Result<Views> {
         nope()
     }
+    fn all_views(&self, _: &Path) -> inklkunn_prikk::Result<Views> {
+        nope()
+    }
     fn tree(&self, _: &Path, _: &Point, _: Option<&str>) -> inklkunn_prikk::Result<Tree> {
         nope()
     }

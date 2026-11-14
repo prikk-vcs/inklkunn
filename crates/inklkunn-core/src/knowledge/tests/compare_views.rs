@@ -577,3 +577,39 @@ fn what_is_held_under_a_pair_of_blocks_is_derived_from_those_blocks_even_if_a_vi
         "derived from the block the tip named, which worded the claim 1950"
     );
 }
+
+#[test]
+fn the_claims_a_tip_that_was_already_read_differs_in_are_those_of_that_tip_not_of_where_the_view_is_now()
+ {
+    // K23: a claim page reads its view's tip once and compares from that tip, so the view moving meanwhile cannot make
+    // the page show one state's index and another state's differences.
+    let w = world();
+    let read = w.service.tip(&w.wiki, None).unwrap();
+    // The default view takes alt's wording and is read again from scratch: it is another tip now.
+    w.counting.inner().set("pages/Home.md", HOME_ALT);
+    w.service.forget_wiki(&w.wiki);
+    let now = w.service.tip(&w.wiki, None).unwrap();
+    assert_ne!(read.block_id, now.block_id, "the view moved");
+    let claim = claim_id(1).to_string();
+    let wording = |list: &[crate::knowledge::compare::ClaimDifference]| {
+        list.iter().find(|d| d.id == claim).map(|d| d.wording)
+    };
+    let from_the_tip_read = w
+        .service
+        .claim_differences_from(&w.wiki, &read, Some("heads/alt"))
+        .unwrap();
+    assert_eq!(
+        wording(&from_the_tip_read),
+        Some(true),
+        "the tip read worded the claim 1950, alt 1951"
+    );
+    let from_now = w
+        .service
+        .claim_differences(&w.wiki, None, Some("heads/alt"))
+        .unwrap();
+    assert_eq!(
+        wording(&from_now),
+        Some(false),
+        "the moved view words it as alt does: they no longer differ in wording"
+    );
+}

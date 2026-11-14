@@ -48,6 +48,9 @@ impl Storage for Canned {
     fn views(&self, _: &Path) -> PrikkResult<Views> {
         nope("branch")
     }
+    fn all_views(&self, _: &Path) -> PrikkResult<Views> {
+        nope("branch")
+    }
     fn tree(&self, _: &Path, _: &Point, _: Option<&str>) -> PrikkResult<Tree> {
         nope("tree")
     }
