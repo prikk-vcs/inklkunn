@@ -219,6 +219,7 @@ impl Fake {
 pub fn clean() -> Verification {
     Verification {
         schema_version: "verify-report-v1".to_owned(),
+        failed_objects: None,
         verdict: Verdict {
             ok: true,
             failed_conditions: Vec::new(),
@@ -235,6 +236,7 @@ pub fn clean() -> Verification {
 pub fn damaged() -> Verification {
     Verification {
         schema_version: "verify-report-v1".to_owned(),
+        failed_objects: None,
         verdict: Verdict {
             ok: false,
             failed_conditions: Vec::new(),

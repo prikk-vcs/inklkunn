@@ -164,6 +164,7 @@ impl Storage for Repo {
     fn verify(&self, _: &Path) -> StorageResult<Verification> {
         Ok(Verification {
             schema_version: "verify-report-v1".to_owned(),
+            failed_objects: None,
             verdict: Verdict {
                 ok: true,
                 failed_conditions: Vec::new(),

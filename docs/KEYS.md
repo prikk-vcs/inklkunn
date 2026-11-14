@@ -104,10 +104,12 @@ longer verifies (after `--retire-old` those versions print no list of who sealed
 could not run). **With prikk 0.57.0 or later the check reads who sealed each block from `verify --format json`
 (`block_seals`, the key ids as the seals record them, trusted or not), so it also runs after a retirement and can
 name a block the retired key sealed after its replacement.** The list is used only where it is whole: when
-verification holds, or fails on publication trust alone (the retired key). When `verify` fails on anything else (a
-block or a ref that cannot be read, a stage that failed or did not run) prikk 0.57.0 leaves blocks out of that list
-while saying nothing of it, so the check says it could not run (it never answers "no late seals" from a list that may be
-short) until the repository is repaired. `status` says which: it prints `this check cannot see <key>` only when the
+every stage is evaluated, `failed_objects` is empty (prikk's own rule: a damaged Block is missing from the list and named
+in `failed_objects`; a failure found after the objects stage does not shorten the list), and verification holds or fails
+on publication trust alone (the retired key). When `verify` fails on anything else (a block or a ref that cannot be
+read, a stage that failed or did not run) the list may leave blocks out without saying so, so the check says it could not
+run (it never answers "no late seals" from a list that may be short) until the repository is repaired. inklkunn's rule is
+stricter than prikk's until prikk's reference states its own. `status` says which: it prints `this check cannot see <key>` only when the
 check could not.
 
 ## If a wiki's keys may have leaked (the compromise runbook)

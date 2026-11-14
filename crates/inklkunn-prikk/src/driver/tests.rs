@@ -325,12 +325,24 @@ fn a_stage_is_modelled_as_prikk_reports_it_and_an_unknown_status_is_never_a_good
 
 /// A `verify-report-v1` with the given verdict (`ok` and the ids of its failed conditions) over the given stages.
 fn report_with(ok: bool, conditions: &[&str], stages: &str) -> Verification {
+    report_with_failed_objects(ok, conditions, stages, Some("[]"))
+}
+
+/// [`report_with`] with the report's `failed_objects` as given (`None`: the field is not in the report).
+fn report_with_failed_objects(
+    ok: bool,
+    conditions: &[&str],
+    stages: &str,
+    failed_objects: Option<&str>,
+) -> Verification {
+    let failed_objects =
+        failed_objects.map_or(String::new(), |f| format!(r#","failed_objects":{f}"#));
     let conditions: Vec<String> = conditions
         .iter()
         .map(|id| format!(r#"{{"id":"{id}","message":"x"}}"#))
         .collect();
     let text = format!(
-        r#"{{"schema_version":"verify-report-v1","verdict":{{"ok":{ok},"failed_conditions":[{}]}},"stages":[{stages}]}}"#,
+        r#"{{"schema_version":"verify-report-v1","verdict":{{"ok":{ok},"failed_conditions":[{}]}},"stages":[{stages}]{failed_objects}}}"#,
         conditions.join(",")
     );
     parse_report("verify", text.as_bytes(), "verify-report-v1").expect("a report")
@@ -342,12 +354,15 @@ fn the_list_of_block_seals_is_whole_only_where_the_report_shows_nothing_left_out
     // publication trust alone (a retired key) lists every block; one with a block or ref container that cannot be
     // read lists fewer, or none, while every stage is `evaluated`; a failed stage and the stages behind it also
     // leave it short. The stricter reading is asked of the list only: the verdict's `is_partial` is not it.
+    // Every stage evaluated, the `objects` stage among them.
+    const ALL: &str =
+        r#"{"stage":"objects","status":"evaluated"},{"stage":"refs","status":"evaluated"}"#;
     const NOT_RUN: &str = r#"{"stage":"b","status":"not_evaluated","blocked_by":"refs"}"#;
     let whole = [
-        ("a repository that verifies", report_with(true, &[], DONE)),
+        ("a repository that verifies", report_with(true, &[], ALL)),
         (
             "a retired key (publication trust alone)",
-            report_with(false, &["publication-trust"], DONE),
+            report_with(false, &["publication-trust"], ALL),
         ),
     ];
     for (what, report) in &whole {
@@ -356,15 +371,15 @@ fn the_list_of_block_seals_is_whole_only_where_the_report_shows_nothing_left_out
     let short = [
         (
             "a container that cannot be read, every stage evaluated",
-            report_with(false, &["item-failure"], DONE),
+            report_with(false, &["item-failure"], ALL),
         ),
         (
             "publication trust beside an unreadable container",
-            report_with(false, &["publication-trust", "item-failure"], DONE),
+            report_with(false, &["publication-trust", "item-failure"], ALL),
         ),
         (
             "a blocked ref publication",
-            report_with(false, &["blocking-ref-publication"], DONE),
+            report_with(false, &["blocking-ref-publication"], ALL),
         ),
         (
             "a failed stage",
@@ -380,17 +395,48 @@ fn the_list_of_block_seals_is_whole_only_where_the_report_shows_nothing_left_out
         ),
         (
             "a stage not evaluated beside a retired key",
-            report_with(false, &["publication-trust"], &format!("{DONE},{NOT_RUN}")),
+            report_with(false, &["publication-trust"], &format!("{ALL},{NOT_RUN}")),
         ),
         (
             "a condition nobody knows",
-            report_with(false, &["a-newer-condition"], DONE),
+            report_with(false, &["a-newer-condition"], ALL),
         ),
         (
             "a failing verdict that names no condition",
-            report_with(false, &[], DONE),
+            report_with(false, &[], ALL),
         ),
         ("no stages", report_with(true, &[], "")),
+        // PK-39 (prikk's reply of 2026-11-14): a damaged Block is missing from the list and named in `failed_objects`.
+        (
+            "a damaged Block named in failed_objects, every stage evaluated, the verdict failing on publication trust alone",
+            report_with_failed_objects(
+                false,
+                &["publication-trust"],
+                ALL,
+                Some(r#"[{"object_type":"block","class":"corrupt"}]"#),
+            ),
+        ),
+        (
+            "a damaged Block named in failed_objects beside a verdict that holds (a report that contradicts itself)",
+            report_with_failed_objects(
+                true,
+                &[],
+                ALL,
+                Some(r#"[{"object_type":"block","class":"corrupt"}]"#),
+            ),
+        ),
+        (
+            "a report without failed_objects",
+            report_with_failed_objects(true, &[], ALL, None),
+        ),
+        (
+            "failed_objects that is not a list",
+            report_with_failed_objects(true, &[], ALL, Some("null")),
+        ),
+        (
+            "every stage evaluated but no objects stage among them",
+            report_with(true, &[], r#"{"stage":"refs","status":"evaluated"}"#),
+        ),
     ];
     for (what, report) in &short {
         assert!(!report.block_seals_are_whole(), "{what}");

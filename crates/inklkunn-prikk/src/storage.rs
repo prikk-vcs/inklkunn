@@ -369,6 +369,10 @@ pub struct Verification {
     /// The stages run.
     #[serde(default)]
     pub stages: Vec<Stage>,
+    /// The objects `verify` could not read (`verify-report-v1`, prikk 0.57.0), kept as sent. `None` when the report
+    /// has no such field: nothing then shows the list is empty (see [`Verification::block_seals_are_whole`]).
+    #[serde(default)]
+    pub failed_objects: Option<Vec<serde_json::Value>>,
 }
 
 impl Verification {
@@ -404,8 +408,11 @@ impl Verification {
     /// only of the list.
     ///
     /// It is whole when every stage is `evaluated` (a stage that failed, or was not evaluated behind one that failed,
-    /// is not: the verdict may be right about it and the list still short) **and** the verdict either holds or fails on
-    /// publication trust alone, which is the retired-key case the list exists for. Any other condition
+    /// is not: the verdict may be right about it and the list still short), **prikk's own rule holds** (the `objects`
+    /// stage is `evaluated` and `failed_objects` is present and empty: a damaged Block is missing from the list and
+    /// named there, prikk's reply of 2026-11-14, ledger PK-39) **and** the verdict either holds or fails on
+    /// publication trust alone, which is the retired-key case the list exists for. Prikk's reference does not state
+    /// its rule yet; ours stays stricter until it does. Any other condition
     /// (`item-failure`, `stage-failure`, `blocking-ref-publication`, an unknown id, a failing verdict that names none)
     /// is not whole. Measured on the published 0.57.0 (`m3-measurements-2026-11.md`, section 8): the list is **not**
     /// filled independently of the other stages, it was empty or short for a block or ref container that could not be
@@ -418,11 +425,18 @@ impl Verification {
                 && conditions.iter().all(|c| {
                     c.get("id").and_then(serde_json::Value::as_str) == Some(PUBLICATION_TRUST)
                 }));
+        let objects_evaluated = self
+            .stages
+            .iter()
+            .any(|s| s.stage == "objects" && matches!(s.outcome(), StageOutcome::Evaluated));
+        let none_failed = self.failed_objects.as_ref().is_some_and(Vec::is_empty);
         !self.stages.is_empty()
             && self
                 .stages
                 .iter()
                 .all(|s| matches!(s.outcome(), StageOutcome::Evaluated))
+            && objects_evaluated
+            && none_failed
             && verdict_allows
     }
 

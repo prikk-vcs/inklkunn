@@ -436,7 +436,7 @@ fn verify_json(extra: &str, ok: bool, stages: &str) -> String {
         r#"{"ok":false,"failed_conditions":[{"id":"publication-trust","message":"x"}]}"#
     };
     format!(
-        r#"{{"schema_version":"verify-report-v1","verdict":{verdict},"stages":{stages}{extra}}}"#
+        r#"{{"schema_version":"verify-report-v1","verdict":{verdict},"stages":{stages},"failed_objects":[]{extra}}}"#
     )
 }
 
@@ -543,7 +543,7 @@ fn verify_json_failing(extra: &str, conditions: &[&str], stages: &str) -> String
         .map(|id| format!(r#"{{"id":"{id}","message":"x"}}"#))
         .collect();
     format!(
-        r#"{{"schema_version":"verify-report-v1","verdict":{{"ok":false,"failed_conditions":[{}]}},"stages":{stages}{extra}}}"#,
+        r#"{{"schema_version":"verify-report-v1","verdict":{{"ok":false,"failed_conditions":[{}]}},"stages":{stages},"failed_objects":[]{extra}}}"#,
         conditions.join(",")
     )
 }
@@ -559,7 +559,14 @@ fn a_list_that_prikk_may_have_left_short_is_never_read_as_no_late_seals() {
         id(BLOCK_A)
     );
     const BLOCKED: &str = r#"[{"stage":"refs","status":"failed","message":"integrity error: x"},{"stage":"later","status":"not_evaluated","blocked_by":"refs"}]"#;
-    let shapes: [(&str, String); 5] = [
+    // prikk's own rule (reply of 2026-11-14, PK-39): a damaged Block is missing from the list and named in
+    // `failed_objects`, whatever the verdict says of it.
+    let named = verify_json_failing(&seals, &["publication-trust"], EVALUATED).replace(
+        r#""failed_objects":[]"#,
+        r#""failed_objects":[{"object_type":"block","class":"corrupt"}]"#,
+    );
+    let shapes: [(&str, String); 6] = [
+        ("damaged-block-named", named),
         (
             "unreadable-container",
             verify_json_failing(&seals, &["item-failure"], EVALUATED),

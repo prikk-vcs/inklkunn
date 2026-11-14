@@ -713,6 +713,15 @@ file now says which tree and which binary every figure is about.
   take-back (the error carries `discard-queued`, the queue is empty) and one that refuses before any step; a `clear-locks` that
   fails (no step done, the plan still carries its intent, the sentence does not); the derivation for every outcome. Two new
   prikk-dependent tests, both on 0.57.0.
+M13 (handoff 010 corrections, second round): `block_seals` is whole by prikk's rule as well as ours. prikk's reply of 2026-11-14
+(PK-39, measured on 0.57.0): the list is whole when the `objects` stage is `evaluated` and `failed_objects` is empty; a damaged Block
+is missing from it and named there, and a failure found after the objects stage does not shorten it. `Verification` now reads
+`failed_objects`, and `block_seals_are_whole` also requires an `objects` stage that is `evaluated` and a `failed_objects` that is
+present and empty (a report without the field is not whole); the existing conditions stay until prikk's reference states the rule.
+`docs/KEYS.md` says what prikk says and no longer says that a later failure leaves blocks out. New: `Verification::failed_objects`.
+Tests: the rule against five more report shapes (a damaged Block named beside a verdict that fails on publication trust alone or
+holds, no field, a field that is not a list, no `objects` stage) and the signer's stand-in shape with every stage evaluated and
+`failed_objects` not empty; the stand-ins now carry `failed_objects`, as 0.57.0's report does. No new prikk-dependent test.
 
 ## [0.2.0] — 2026-11-04
 

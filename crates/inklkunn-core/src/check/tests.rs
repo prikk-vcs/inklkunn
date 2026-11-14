@@ -99,6 +99,7 @@ impl Storage for Canned {
 fn report(ok: bool, stages: &[(&str, &str)]) -> Report {
     Report {
         schema_version: "verify-report-v1".to_owned(),
+        failed_objects: None,
         verdict: Verdict {
             ok,
             failed_conditions: Vec::new(),
