@@ -56,3 +56,28 @@ not have to move for them; the operator notes say an operator who imports by han
 
 No `deny.toml` or `.cargo/audit.toml` ignore. No other dependency update unless the new `rusqlite` forces it (list it). No schema,
 file layout or WAL change. No tag, no release, no version change.
+
+## Corrections from the review of 2026-11-14 (binding; **before 0.3.0**)
+
+M1 and M2 are **Approved**; M3 is **Conditionally Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-review-result.md`). The
+architect applied the lock bump of `ammonia` 4.2.5 and `rustix` 1.1.6. Hand back M4 – M11 as one request,
+`010-maintenance-2026-11-corrections-review-request.md`.
+
+- **M4 — the audit trail says what happened.** The begin event records *asked to take back queued patch X*, not *confirmed*; whenever
+  no `discard-queued` step results, the plan says *`--discard-queued-patch X` was not used: <why>* and the end event records it.
+- **M5 — `recover --plan` writes nothing.** prikk's `uncommit --plan-only` preview is asked only in a run, under the lease; a run
+  without the operator's word stops with the preview and the command, as now.
+- **M6 — a stale lock beside an orphan patch is not a dead end:** recovery clears the stale lock (`ClearLocks`) and then stops at
+  `foreign-queued-patch` with the preview; a test.
+- **M7.** The discard command is offered only when it would be honoured, with the wiki's id in place of `<wiki>`; the preview's lines
+  replace K23's direction characters as well as control characters.
+- **M8 — *no late seals* only when the list is whole.** PK-39's list is used only when no stage of the report went unevaluated, or
+  when the published 0.57.0 is shown to fill `block_seals` independently of the other stages (say which, with the evidence).
+- **M9.** The `Uncommit` cost rule is re-measured on the published 0.57.0.
+- **M10 — 0.57.0 measured on the published release** (tag `149a9e3d`; the host's `prikk` is now 0.57.0, installed by the owner): the
+  suite, PK-39 and PK-43's behaviours and every statement of `m3-measurements-2026-11.md` that was made on the `bfd5b3c9` build. A binary
+  the work needs is the owner's installation, or `gh release download` with its `.sha256` checked; **never an address built to get
+  past a guard**.
+- **M11 — format 8.** The operator notes say a wiki created under prikk 0.57.0 is format 8 and an older prikk refuses it; the driver
+  turns prikk's `unsupported format version: N` into a typed error that names the version and does not flag the wiki;
+  `prikk_format_version` is filled at creation for information.

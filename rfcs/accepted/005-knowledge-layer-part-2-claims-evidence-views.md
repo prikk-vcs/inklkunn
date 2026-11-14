@@ -166,3 +166,8 @@ index (D-1 … D-6) may start earlier if the dev team has room, as they touch no
   *dropped* (a confirmed removal of the expression), and later *re-confirmed by* (the curation proposal that re-judged it). An
   **override** is the default rejected: a confirmed drop, or *request changes* on a proposal that touches a claim. The
   participation metrics report the overrides beside the defaults kept.
+- **Part 1 D-1 d, how it is reported (2026-11-14).** An override stays the concept; it is reported as **two counts — drops (claims)
+  and change requests (decisions) — never summed**, since they count different things. Changes accepted before the review record
+  existed (store schema 16) have no records, and the metrics say so.
+- **D-3, a new link (2026-11-14).** A link attached in any proposal is judged on a wording the claim's paragraph has in the result of
+  that proposal: a digest never names wording that is not in the history.

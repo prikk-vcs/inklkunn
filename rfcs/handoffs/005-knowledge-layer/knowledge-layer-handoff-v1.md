@@ -184,3 +184,27 @@ environmental reds are in `rfcs/handoffs/010-upstream-and-supply-chain-maintenan
   factor); a source's name is shown with a visible boundary (`<cite>`); `Storage::all_views` is a required method;
   `complete_view_creation` keeps the *seeds not removed* note; *Other views* reads the view at the tip the page's index was read at;
   the stale comments in `sqlite.rs:7` and `invariants.rs:507-509`.
+
+## Corrections from the review of 2026-11-14 (binding; **before 0.3.0**)
+
+K15 – K23 are **Conditionally Approved** (`.git-exclude/reviewed/005-knowledge-layer-corrections-2-review-result.md`). Hand back
+K24 – K31 as one request, `005-knowledge-layer-corrections-3-review-request.md`; K-T9 – K-T11 may proceed beside them.
+
+- **K24 — no two subjects read alike.** A claim's and a source's line carries its identifier as secondary text whenever its excerpt
+  or name is not unique among the subjects the page names (or always — the dev team's choice, said in the request); a test with two
+  claims said in one paragraph, one with two paragraphs that share their first 80 characters, and one with two sources of one name.
+- **K25 — a new link is judged on a wording the history has.** At submit, at every revision and at acceptance, a new link's
+  `judged_on` must name a wording one of the claim's paragraphs has in the result (what `compose` writes); otherwise the proposal is
+  refused in words. The cite line then says *on the wording it has now*.
+- **K26 — a reconfirm never leaves a draft.** The step creates its curation proposal **already held for review**, in one store
+  transaction, after the submit checks have passed (a refusal leaves nothing behind); a test pins the trigger's list of open states
+  to `ProposalState::is_open`.
+- **K27.** A removal's line names what leaves with it: a claim's status and each link; a source's review day and availability.
+- **K28.** K17 judges *current* against the paragraphs the claim has **after** acceptance (the written file's expressions); a decided
+  status with no `judged_on` is a judgement that fails.
+- **K29.** The core's `Rule::Status` sentence and the web's `health.rule_status` name removals and unreadable files; a source's or a
+  link's refusal names its own field, not `community_status`.
+- **K30.** On a source whose review day or availability is set, changing its identity or reference is a curation change.
+- **K31 — small.** `Resolver::index()` reads the base as its doc says (`knowledge_index_at_base`); the rendered property test starts
+  from a link judged on the paragraph's real wording too; `<cite>` and `<bdi>` get a visible boundary in `site.css` that a title
+  cannot imitate (the stylesheet test holds it neutral: no colour that ranks).
