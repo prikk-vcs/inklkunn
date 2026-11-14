@@ -167,7 +167,20 @@ pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
                 match flag.as_str() {
                     "--dry-run" => dry_run = true,
                     "--replace-existing" => replace_existing = true,
-                    "--config" => config = Some(value("--config", &mut it)?),
+                    "--config" => {
+                        // Once, and a file: the last of two would be used without a word, and an option in its
+                        // place would be read as the file's name.
+                        if config.is_some() {
+                            return Err(usage("--config is given once"));
+                        }
+                        let file = value("--config", &mut it)?;
+                        if file.starts_with("--") {
+                            return Err(usage(&format!(
+                                "--config needs a file, and `{file}` is an option"
+                            )));
+                        }
+                        config = Some(file);
+                    }
                     other => {
                         return Err(usage(&format!(
                             "`{other}` is not an option of `import-folder`"

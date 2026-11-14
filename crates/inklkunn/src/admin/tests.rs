@@ -82,6 +82,35 @@ fn the_commands_parse() {
         }
     );
     assert!(parse(&args(&["import-folder", "docs", "/in", "--config"])).is_err());
+    // K70: `--config` once, and a file. Two would keep the last in silence; an option in the file's place (`--config
+    // --dry-run`) would be read as the file's name and the dry run lost.
+    for argv in [
+        &[
+            "import-folder",
+            "docs",
+            "/in",
+            "--config",
+            "/a",
+            "--config",
+            "/b",
+        ][..],
+        &["import-folder", "docs", "/in", "--config", "/a", "--config"],
+        &["import-folder", "docs", "/in", "--config", "--dry-run"],
+        &["import-folder", "docs", "/in", "--config", "--config", "/a"],
+        &[
+            "import-folder",
+            "docs",
+            "/in",
+            "--dry-run",
+            "--config",
+            "--replace-existing",
+        ],
+    ] {
+        let Err(Usage(why)) = parse(&args(argv)) else {
+            panic!("{argv:?} was understood");
+        };
+        assert!(why.contains("--config"), "{argv:?}: {why}");
+    }
     // Only an import judges a folder under the server's limits: no other command takes the file.
     assert!(
         parse(&args(&[

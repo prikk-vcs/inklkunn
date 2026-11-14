@@ -1406,6 +1406,12 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   reviewer's two-second stress of `FileLock::is_at` (four claimers and four sweepers, every claimer reads a whole tree), which fails
   every time with the check forced true.
 
+- **K70 (handoff 005 corrections, seventh round): `--config` once (review A-e).** `wiki import-folder … --config FILE` given twice
+  kept the last without a word, and `--config --dry-run` read `--dry-run` as the file's name (and dropped the dry run). Both are
+  now a usage error (exit status 2) that names `--config`: a second `--config`, or an option (a word that starts with `--`) in the
+  file's place. Test: the parse table of `inklkunn/src/admin/tests.rs` (two files, a second `--config` with no file, an option in
+  its place, `--config --config FILE`, `--config --replace-existing`); each of the two checks, removed, fails it.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the
