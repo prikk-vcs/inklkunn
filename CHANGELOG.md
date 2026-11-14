@@ -1224,6 +1224,14 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   `health.rule_status`, `Rule::Status`) are unchanged. Test: both languages' sentence ends as said and holds none of the words
   reviewer, form, curation, proposal; the proposal page and the refused send assert the new sentence.
 
+- **K63 (handoff 005 corrections, sixth round): the numbering costs nothing per page.** The count that tells claims said on one page
+  title apart (`Home`, `Home (2)`, …) is made once for the list and kept in its memo, with the list, for a tip, a day and a setting
+  (`freshness::ClaimNumbers`, `sources_to_review_numbered`; `SourcesToReviewPage::numbers` replaces `whole`): a page reads a claim's
+  number from it and no longer re-walks every row before its offset (`health.rs` `claim_said`), so a page costs what it shows, and a
+  claim has the number of the list it belongs to wherever the walk meets it. `freshness::claim_title` is the one place a claim's
+  page title is found. Tests: the numbering of a list with one claim cited twice and the numbering kept (one `Arc` for every page of a
+  walk, a new one on the next day); a claim cited on a later page is named as the list numbers it.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

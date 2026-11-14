@@ -680,11 +680,72 @@ fn an_edit_elsewhere_does_not_restart_the_walk() {
     );
     // The page says where it stands in the list as it is now: source 2 is its first row.
     assert_eq!((second.offset, second.total), (1, 5));
-    // The pages before it are in hand, so what a page numbers is numbered as the earlier pages did.
-    assert_eq!(second.whole.len(), 5);
+}
+
+#[test]
+fn claims_said_on_one_title_are_numbered_once_for_the_list_and_every_page_reads_that_number() {
+    // K63: the count that tells claims said on one page title apart belongs to the list (kept with its memo for the tip,
+    // the day and the setting): a page reads it, and no page walks the rows before it.
+    let sources: Vec<Source> = (1..=4u8)
+        .map(|n| source(n, Availability::Unavailable, Some(TODAY)))
+        .collect();
+    let claims = [
+        // Cited by sources 1 and 2: counted once, where it first appears.
+        claim_citing(
+            1,
+            &[
+                (1, Link::Supports, Bearing::Direct),
+                (2, Link::Supports, Bearing::Direct),
+            ],
+        ),
+        claim_citing(2, &[(2, Link::Supports, Bearing::Direct)]),
+        claim_citing(3, &[(3, Link::Supports, Bearing::Direct)]),
+        claim_citing(4, &[(4, Link::Challenges, Bearing::Partial)]),
+    ];
+    let w = world(&claims, &sources);
+    let service = clocked(&w, DEFAULT_REVIEW_AFTER_DAYS);
+    let one_page = service
+        .sources_to_review_page(&w.wiki, None, None, 10)
+        .expect("a page");
+    let number =
+        |page: &crate::read::SourcesToReviewPage, n: u8| page.numbers.of(claim_id(n).as_str());
+    let whole: Vec<usize> = (1..=4u8).map(|n| number(&one_page, n)).collect();
+    assert_eq!(whole, [1, 2, 3, 4], "in the order the list names them");
+    // A claim the list does not name is the first of its title.
+    assert_eq!(one_page.numbers.of("not-a-claim"), 1);
+    // One source a page: every page reads the same numbers, from the same kept numbering.
+    let mut after = None;
+    let mut seen = Vec::new();
+    loop {
+        let page = service
+            .sources_to_review_page(&w.wiki, None, after.as_ref(), 1)
+            .expect("a page");
+        assert!(
+            Arc::ptr_eq(&page.numbers, &one_page.numbers),
+            "the numbering is kept with the list"
+        );
+        for row in &page.rows {
+            for c in &row.claims {
+                seen.push(page.numbers.of(&c.claim));
+            }
+        }
+        match page.next {
+            Some(next) => after = Some(next),
+            None => break,
+        }
+    }
+    // Source 1: claim 1 (1); source 2: claim 1 again (1), claim 2 (2); source 3: claim 3 (3); source 4: claim 4 (4).
+    assert_eq!(seen, [1, 1, 2, 3, 4]);
+    // Another day is another list, with its own numbering.
+    let tomorrow =
+        World::service_over(&w.counting, &w.store, &w.layout, config()).with_clock(|| NOW + 86_400);
+    let later = tomorrow
+        .sources_to_review_page(&w.wiki, None, None, 10)
+        .expect("a page");
+    assert!(!Arc::ptr_eq(&later.numbers, &one_page.numbers));
     assert_eq!(
-        ids(second.whole.get(..second.offset).unwrap_or_default()),
-        [source_id(2).as_str()]
+        (1..=4u8).map(|n| number(&later, n)).collect::<Vec<_>>(),
+        whole
     );
 }
 

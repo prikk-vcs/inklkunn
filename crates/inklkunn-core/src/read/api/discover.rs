@@ -13,7 +13,7 @@ use inklkunn_store::{IndexEntry, WikiRecord};
 
 use super::{ApiError, Cursor, MAX_PAGE_SIZE, Position, change_key, list_stamp};
 use crate::knowledge::Rule;
-use crate::knowledge::freshness::{self, SourceToReview};
+use crate::knowledge::freshness::{self, ClaimNumbers, SourceToReview};
 use crate::knowledge::index::KnowledgeIndex;
 use crate::read::graph::MAX_BACKLINKS;
 use crate::read::{
@@ -187,9 +187,9 @@ pub struct SourcesToReviewPage {
     pub offset: usize,
     /// `knowledge.review_after`, in days, as the list was read under.
     pub review_after_days: u32,
-    /// The whole list, of which `rows` is the slice from `offset`: a page that numbers what it names (two claims said
-    /// on one title) numbers them as the pages before it did.
-    pub whole: Arc<Vec<SourceToReview>>,
+    /// The numbering of the claims the whole list names (two claims said on one title), kept with the list (K63): a
+    /// page reads a number from it and numbers what it names as every other page of the list does.
+    pub numbers: Arc<ClaimNumbers>,
 }
 
 /// How far the stale list looked.
@@ -253,7 +253,8 @@ impl ReadService {
     ) -> Result<SourcesToReviewPage, ApiError> {
         let now = (self.clock)();
         let index = self.knowledge_index(wiki, view)?;
-        let all = freshness::sources_to_review_kept(&index, now, self.review_after_days);
+        let (all, numbers) =
+            freshness::sources_to_review_numbered(&index, now, self.review_after_days);
         // The page begins after the last source id the reader was shown, wherever that id now stands in the list:
         // an edit elsewhere, a new day or a changed setting does not send the walk back to the first page (K50).
         let start = match after.map(Cursor::position) {
@@ -278,7 +279,7 @@ impl ReadService {
             next,
             offset: start,
             review_after_days: self.review_after_days,
-            whole: all,
+            numbers,
         })
     }
 

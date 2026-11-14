@@ -26,8 +26,11 @@
 //! **Bounded.** The rows are the index's sources (bounded as the index is, by the file count); the claims named
 //! beside a source are cut at [`MAX_RELYING`] with their whole count kept. The index finds the links of a source by
 //! a map built once, and the list is computed **once for a tip, a day and a setting** and kept with the index
-//! ([`sources_to_review_kept`]): a reader who asks again, or asks for the next page, costs a slice of it (K40).
+//! ([`sources_to_review_kept`]): a reader who asks again, or asks for the next page, costs a slice of it (K40). The
+//! numbering that tells two claims said on one page title apart is kept with it ([`ClaimNumbers`], K63): a page reads
+//! a claim's number from the list, and no page walks the rows before it.
 
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, PoisonError};
 
 use inklkunn_store::{KnowledgeLinkRow, KnowledgeSourceRow};
@@ -196,6 +199,8 @@ pub(super) struct Memo {
     days: (i64, i64),
     review_after_days: u32,
     list: Arc<Vec<SourceToReview>>,
+    /// The numbering of the claims the list names, made when a page first asks for it.
+    numbers: Option<Arc<ClaimNumbers>>,
 }
 
 /// [`sources_to_review`], computed **once** for the index, the day of `now` and the setting, and kept with the index
@@ -206,24 +211,94 @@ pub fn sources_to_review_kept(
     now: i64,
     review_after_days: u32,
 ) -> Arc<Vec<SourceToReview>> {
+    kept(index, now, review_after_days, false).0
+}
+
+/// [`sources_to_review_kept`] and the numbering of the claims it names ([`ClaimNumbers`]), kept in the same memo: one
+/// walk of the whole list for a tip, a day and a setting, whatever page is asked for (K63).
+pub fn sources_to_review_numbered(
+    index: &KnowledgeIndex,
+    now: i64,
+    review_after_days: u32,
+) -> (Arc<Vec<SourceToReview>>, Arc<ClaimNumbers>) {
+    let (list, numbers) = kept(index, now, review_after_days, true);
+    (list, numbers.unwrap_or_default())
+}
+
+fn kept(
+    index: &KnowledgeIndex,
+    now: i64,
+    review_after_days: u32,
+    numbered: bool,
+) -> (Arc<Vec<SourceToReview>>, Option<Arc<ClaimNumbers>>) {
     let day = (now.div_euclid(86_400), latest_date(now));
     let mut memo = index
         .freshness_memo()
         .lock()
         .unwrap_or_else(PoisonError::into_inner);
-    if let Some(kept) = memo
-        .as_ref()
-        .filter(|m| m.days == day && m.review_after_days == review_after_days)
-    {
-        return Arc::clone(&kept.list);
+    let mut kept = match memo.take() {
+        Some(m) if m.days == day && m.review_after_days == review_after_days => m,
+        _ => Memo {
+            days: day,
+            review_after_days,
+            list: Arc::new(sources_to_review(index, now, review_after_days)),
+            numbers: None,
+        },
+    };
+    if numbered && kept.numbers.is_none() {
+        kept.numbers = Some(Arc::new(number_claims(index, &kept.list)));
     }
-    let list = Arc::new(sources_to_review(index, now, review_after_days));
-    *memo = Some(Memo {
-        days: day,
-        review_after_days,
-        list: Arc::clone(&list),
-    });
-    list
+    let out = (Arc::clone(&kept.list), kept.numbers.clone());
+    *memo = Some(kept);
+    out
+}
+
+/// How a claim is named in the list: by the page it is said on, the title of the first page it is present on. `None`
+/// for a claim that is said on no page.
+pub fn claim_title(index: &KnowledgeIndex, claim: &str) -> Option<String> {
+    index
+        .anchors_of(claim)
+        .filter(|a| a.state == super::index::PRESENT)
+        .find_map(|a| inklkunn_markup::path::path_to_title(a.page_path.as_deref()?))
+}
+
+/// The count that tells claims said on one page title apart (K63): a claim's place among the claims of the list with
+/// the same title, in the order the list names them (a claim once, where it first appears). It belongs to the list,
+/// not to the page: a page reads a claim's number here, in constant time, and gets the one every other page gets.
+#[derive(Debug, Default)]
+pub struct ClaimNumbers {
+    /// The claims numbered above one. A claim not here is the first of its title, or is said on no page.
+    later: HashMap<String, usize>,
+}
+
+impl ClaimNumbers {
+    /// The place of `claim` among the claims with its title: `1` for the first (and for a claim the list does not
+    /// name).
+    pub fn of(&self, claim: &str) -> usize {
+        self.later.get(claim).copied().unwrap_or(1)
+    }
+}
+
+/// The numbering of the claims `list` names, walked once.
+fn number_claims(index: &KnowledgeIndex, list: &[SourceToReview]) -> ClaimNumbers {
+    let mut seen: HashSet<&str> = HashSet::new();
+    let mut per_title: HashMap<String, usize> = HashMap::new();
+    let mut later = HashMap::new();
+    for row in list {
+        for c in &row.claims {
+            if !seen.insert(c.claim.as_str()) {
+                continue;
+            }
+            if let Some(title) = claim_title(index, &c.claim) {
+                let n = per_title.entry(title).or_insert(0);
+                *n += 1;
+                if *n > 1 {
+                    later.insert(c.claim.clone(), *n);
+                }
+            }
+        }
+    }
+    ClaimNumbers { later }
 }
 
 /// The number of days from 1970-01-01 to the day `YYYY-MM-DD`; `None` when the text is not a day in that form.

@@ -20,7 +20,7 @@ use axum::response::Response;
 use std::sync::Arc;
 
 use inklkunn_core::knowledge::Rule;
-use inklkunn_core::knowledge::freshness::{LastReview, MAX_RELYING};
+use inklkunn_core::knowledge::freshness::{ClaimNumbers, LastReview, MAX_RELYING, claim_title};
 use inklkunn_core::knowledge::index::KnowledgeIndex;
 use inklkunn_core::read::{
     ApiError, Backlink, BacklinkKind, Cursor, LinkGraph, Lookup, ReadError, RedirectIssueKind,
@@ -561,44 +561,42 @@ struct SourcesDraw<'a> {
     nav: &'a mut Vec<(String, String)>,
 }
 
-/// How a claim is named in *Sources to review*: by the page it is said on, with a count when an earlier claim has the
-/// same page title; a claim keeps the name it was given wherever else the list names it.
+/// How a claim is named in *Sources to review*: by the page it is said on, with the count the list gives it (K63) when
+/// an earlier claim of the list has the same page title; a claim keeps the name it was given wherever else the list
+/// names it. The count is read from `numbers`, which the list keeps: no row before the page is walked.
 fn claim_said(
     t: T,
     index: &KnowledgeIndex,
+    numbers: &ClaimNumbers,
     named: &mut HashMap<String, (String, Rich)>,
-    used: &mut HashMap<String, usize>,
     claim: &str,
 ) -> (String, Rich) {
     named
         .entry(claim.to_owned())
-        .or_insert_with(|| {
-            let title = index
-                .anchors_of(claim)
-                .filter(|a| a.state == inklkunn_core::knowledge::index::PRESENT)
-                .find_map(|a| inklkunn_markup::path::path_to_title(a.page_path.as_deref()?));
-            match title {
-                Some(title) => {
-                    let title = crate::knowledge::marks::distinct(used, title);
-                    let rich = t
-                        .msg(Key::HealthSourcesClaimId)
-                        .with("where", &title)
-                        .rich("id", code(claim))
-                        .html();
-                    (title, rich)
-                }
-                None => {
-                    let rich = t
-                        .msg(Key::HealthSourcesClaimNowhere)
-                        .rich("id", code(claim))
-                        .html();
-                    (
-                        t.msg(Key::HealthSourcesClaimNowhere)
-                            .with("id", claim)
-                            .text(),
-                        rich,
-                    )
-                }
+        .or_insert_with(|| match claim_title(index, claim) {
+            Some(title) => {
+                let title = match numbers.of(claim) {
+                    1 => title,
+                    n => format!("{title} ({n})"),
+                };
+                let rich = t
+                    .msg(Key::HealthSourcesClaimId)
+                    .with("where", &title)
+                    .rich("id", code(claim))
+                    .html();
+                (title, rich)
+            }
+            None => {
+                let rich = t
+                    .msg(Key::HealthSourcesClaimNowhere)
+                    .rich("id", code(claim))
+                    .html();
+                (
+                    t.msg(Key::HealthSourcesClaimNowhere)
+                        .with("id", claim)
+                        .text(),
+                    rich,
+                )
             }
         })
         .clone()
@@ -618,18 +616,10 @@ fn source_rows(
     draw: SourcesDraw<'_>,
 ) -> (Vec<String>, Vec<Vec<Cell>>) {
     let SourcesDraw { curate, notes, nav } = draw;
-    // A claim is named by the page it is said on; two claims on one title are told apart by a count, and a claim
-    // keeps the name it was given wherever else the page names it.
+    // A claim is named by the page it is said on; two claims on one title are told apart by the count the list gives
+    // them (K63), the same on every page; a claim keeps the name it was given wherever else the page names it.
     let mut named: std::collections::HashMap<String, (String, Rich)> =
         std::collections::HashMap::new();
-    let mut used = std::collections::HashMap::new();
-    // The numbering continues across pages: what the pages before this one named is named first, so a claim that
-    // shares its page title with an earlier one is told from it by the same count on every page (U-i).
-    for earlier in list.whole.get(..list.offset).unwrap_or_default() {
-        for c in &earlier.claims {
-            claim_said(t, &list.index, &mut named, &mut used, &c.claim);
-        }
-    }
     let rows = list
         .rows
         .iter()
@@ -663,7 +653,7 @@ fn source_rows(
                 .map(|c| {
                     // The page it is said on (or that it is said on none) and **its whole identifier** (K43).
                     let (said, named_by) =
-                        claim_said(t, &list.index, &mut named, &mut used, &c.claim);
+                        claim_said(t, &list.index, &list.numbers, &mut named, &c.claim);
                     let (label, rich) = match words::how(&c.relation, &c.bearing) {
                         Some(how) => (
                             t.msg(Key::HealthSourcesClaim)

@@ -522,3 +522,29 @@ async fn two_claims_said_on_one_page_are_told_apart_by_a_count_that_goes_on_acro
     // None of the five begins again at the page's bare name.
     assert!(!second.contains("Home [claim <code>"), "{second}");
 }
+
+#[tokio::test]
+async fn a_claim_cited_on_a_later_page_keeps_the_number_the_list_gave_it() {
+    // K63: the count belongs to the list, not to the page that reads it. Claim 1 is cited by the first source and by the
+    // last, which is on the second page; it is `Home` there as on the first page, and the claim only the last source
+    // cites is `Home (55)`.
+    let w = crowd(55);
+    let claims: Vec<_> = (1..=55u8)
+        .map(|n| {
+            let mut c = claim(n, Standing::Unknown, None, SAID);
+            c.sources = vec![link(n, Link::Supports, Bearing::Direct, SAID)];
+            if n == 1 {
+                c.sources
+                    .push(link(55, Link::Supports, Bearing::Partial, SAID));
+            }
+            c
+        })
+        .collect();
+    put(&w, &home_with(SAID), &claims, &sources_between(1, 55));
+    let first = get(&w, LIST).await.body();
+    let more = link_to(&first, "Show the next sources").expect("a link to the next rows");
+    let second = get(&w, &more).await.body();
+    assert!(second.contains("Home [claim <code>"), "{second}");
+    assert!(second.contains("Home (55) [claim <code>"), "{second}");
+    assert!(!second.contains("Home (2) [claim <code>"), "{second}");
+}
