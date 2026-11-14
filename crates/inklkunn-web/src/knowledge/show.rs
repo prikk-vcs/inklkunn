@@ -54,6 +54,8 @@ struct Said {
 
 /// One source of the claim, in a sentence.
 struct SourceLine {
+    /// The id of the line: the place a link to this source on this claim leads to.
+    anchor: String,
     line: String,
     /// What else the source says of itself, each as a sentence of its own (where it is found; the one way to
     /// tell a source that names itself in no way).
@@ -315,6 +317,7 @@ fn source_lines(t: T, found: &Found) -> Vec<SourceLine> {
                 Some(source) => {
                     let (name, details) = source_name(t, source);
                     SourceLine {
+                        anchor: paths::source_fragment(&link.source),
                         line: t
                             .msg(Key::ClaimSourceLineNamed)
                             .with("name", name)
@@ -327,6 +330,7 @@ fn source_lines(t: T, found: &Found) -> Vec<SourceLine> {
                 }
                 // Its file cannot be read, so there is nothing it says of itself: the identifier is all there is.
                 None => SourceLine {
+                    anchor: paths::source_fragment(&link.source),
                     line: t
                         .msg(Key::ClaimSourceLine)
                         .with("id", &link.source)

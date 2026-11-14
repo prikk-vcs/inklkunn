@@ -431,8 +431,12 @@ async fn a_source_is_named_by_what_it_says_of_itself_and_the_identifier_is_not_i
         "{main}"
     );
     // Not one of them is known by its identifier: it is told only of a source that gives nothing else.
+    // (A line's `id` attribute is the place a proposal's page links to; it is not text.)
     for n in 1..=3 {
-        assert!(!main.contains(&source_id(n).to_string()), "{main}");
+        let id = source_id(n).to_string();
+        let shown = main.replace(&format!("id=\"source-{id}\""), "");
+        assert!(!shown.contains(&id), "{main}");
+        assert!(main.contains(&format!("id=\"source-{id}\"")), "{main}");
     }
     assert!(!main.contains("Source 0"), "{main}");
     // A reference is words, never a link the wiki sends a reader to.

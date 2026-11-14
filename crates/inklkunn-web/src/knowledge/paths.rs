@@ -22,6 +22,21 @@ pub(crate) fn claim(slug: &str, id: &str, view: Option<&str>) -> String {
     format!("/{slug}/{}", claim_tail(id, view))
 }
 
+/// The id of a source's line on a claim's page (a source has no page of its own; its place is on the claims that cite
+/// it).
+pub(crate) fn source_fragment(source: &str) -> String {
+    format!("source-{source}")
+}
+
+/// `/<slug>/-/claim/<id>#source-<source>`: a source's line on a claim's page.
+pub(crate) fn claim_source(slug: &str, claim: &str, source: &str, view: Option<&str>) -> String {
+    format!(
+        "{}#{}",
+        claim_page(slug, claim, view, None, None),
+        source_fragment(source)
+    )
+}
+
 /// The query parameter that names the comment a page of a claim's thread begins after.
 pub(crate) const Q_AFTER: &str = "after";
 

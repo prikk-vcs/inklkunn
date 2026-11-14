@@ -426,7 +426,7 @@ async fn emptying_a_claim_paragraph_is_an_explicit_act_and_the_claim_loses_the_e
     assert!(claims.iter().all(|c| c.expressions.is_empty()));
     assert_eq!(claims.len(), 1);
     // The reviewer is shown it.
-    let page = open(&s, &to, &s.writer).await.body();
+    let page = as_text(open(&s, &to, &s.writer).await.body());
     assert!(
         page.contains("It is no longer said in the paragraph “<bdi>It opened in 1950.</bdi>”"),
         "{page}"
@@ -522,7 +522,7 @@ async fn attaching_a_source_to_a_paragraph_makes_the_claim_and_the_source_in_the
         Some("A survey of bridges")
     );
     // The proposal page tells the reviewer, in words and without a verdict.
-    let body = open(&s, &to, &s.writer).await.body();
+    let body = as_text(open(&s, &to, &s.writer).await.body());
     assert!(
         body.contains("Claims and sources in this proposal"),
         "{body}"
@@ -553,15 +553,9 @@ async fn attaching_a_source_to_a_paragraph_makes_the_claim_and_the_source_in_the
     );
 }
 
-/// How the page tells a lone subject by its identifier (K24): the first four characters, `…`, the last four.
+/// How the page tells a subject by its identifier (K24, K32): the whole of it, in `<code>`.
 fn tag(kind: &str, id: &impl std::fmt::Display) -> String {
-    let id = id.to_string();
-    let head: String = id.chars().take(4).collect();
-    let tail: String = id
-        .chars()
-        .skip(id.chars().count().saturating_sub(4))
-        .collect();
-    format!("[{kind} <code>{head}…{tail}</code>]")
+    format!("[{kind} <code>{id}</code>]")
 }
 
 #[tokio::test]
@@ -579,7 +573,7 @@ async fn challenging_a_paragraph_attaches_a_source_that_challenges() {
         .and_then(|c| c.sources.first())
         .expect("a link");
     assert_eq!(link.relation, Link::Challenges);
-    let body = open(&s, &to, &s.writer).await.body();
+    let body = as_text(open(&s, &to, &s.writer).await.body());
     let source_tag = tag("source", &link.source);
     assert!(
         body.contains(&format!(
@@ -736,7 +730,7 @@ async fn a_draft_keeps_the_claim_and_a_revision_carries_it_forward() {
     let files = files_of(&s, &to);
     assert_eq!(files.len(), 3);
     // The form that resumes it lists the claim and the source, and has the page to edit.
-    let body = open(&s, &to, &s.writer).await.body();
+    let body = as_text(open(&s, &to, &s.writer).await.body());
     assert!(
         body.contains("Claims and sources in this proposal"),
         "{body}"
@@ -875,7 +869,7 @@ async fn a_status_beside_a_page_edit_is_said_to_be_refused_and_the_change_to_it_
     ));
     // ... and a record that is there anyway says so on its page.
     let to = held_unjudged(&s, files);
-    let body = open(&s, &to, &s.writer).await.body();
+    let body = as_text(open(&s, &to, &s.writer).await.body());
     assert!(
         body.contains("Its community status changes from not decided to accepted."),
         "{body}"
@@ -893,7 +887,7 @@ async fn a_status_beside_a_page_edit_is_said_to_be_refused_and_the_change_to_it_
             ),
         ],
     );
-    let body = open(&s, &to, &s.writer).await.body();
+    let body = as_text(open(&s, &to, &s.writer).await.body());
     assert!(!body.contains("only a curation proposal may do"), "{body}");
     // The section is there to say so (K5), with no line under it: an empty list is said, not left out.
     assert!(body.contains("they change nothing"), "{body}");
@@ -930,12 +924,12 @@ async fn a_new_link_is_said_to_be_judged_on_the_wording_it_has_now_only_when_it_
     let note = "judged on a wording that no paragraph of that claim has once the proposal is made";
     // The wording the paragraph has: said so, with no warning.
     let to = held_unjudged(&s, with_link("It opened in 1950. ^k1"));
-    let body = open(&s, &to, &s.writer).await.body();
+    let body = as_text(open(&s, &to, &s.writer).await.body());
     assert!(body.contains(now), "{body}");
     assert!(!body.contains(unjudged) && !body.contains(note), "{body}");
     // A wording nobody has written: the line does not say it, and the page says it cannot be accepted as it is.
     let to = held_unjudged(&s, with_link("It opened in 1951. ^k1"));
-    let body = open(&s, &to, &s.writer).await.body();
+    let body = as_text(open(&s, &to, &s.writer).await.body());
     assert!(!body.contains(now), "{body}");
     assert!(body.contains(unjudged), "{body}");
     assert!(body.contains(note), "{body}");
@@ -947,7 +941,7 @@ async fn a_new_link_is_said_to_be_judged_on_the_wording_it_has_now_only_when_it_
         Some(BRIDGE.replace("It opened in 1950.", "It opened in 1951.")),
     ));
     let to = held_unjudged(&s, files);
-    let body = open(&s, &to, &s.writer).await.body();
+    let body = as_text(open(&s, &to, &s.writer).await.body());
     assert!(body.contains(now), "{body}");
     assert!(!body.contains(note), "{body}");
 }
@@ -1015,7 +1009,7 @@ async fn the_page_warns_of_a_decided_claim_removed_and_of_a_source_link_changed(
         &s,
         vec![(claim_path(&rebeared.id), Some(rebeared.to_yaml()))],
     );
-    let body = open(&s, &to, &s.writer).await.body();
+    let body = as_text(open(&s, &to, &s.writer).await.body());
     // A proposal of knowledge files alone is a curation proposal: no warning there.
     assert!(!body.contains(note), "{body}");
     let to = held_unjudged(
@@ -1028,7 +1022,7 @@ async fn the_page_warns_of_a_decided_claim_removed_and_of_a_source_link_changed(
             ),
         ],
     );
-    let body = open(&s, &to, &s.writer).await.body();
+    let body = as_text(open(&s, &to, &s.writer).await.body());
     assert!(body.contains(note), "{body}");
     // The link taken away.
     let mut unlinked = s.claim.clone();
@@ -1043,7 +1037,7 @@ async fn the_page_warns_of_a_decided_claim_removed_and_of_a_source_link_changed(
             ),
         ],
     );
-    let body = open(&s, &to, &s.writer).await.body();
+    let body = as_text(open(&s, &to, &s.writer).await.body());
     assert!(body.contains(note), "{body}");
     // A claim whose standing was decided, removed beside a page edit; one nobody decided is not warned about.
     let mut decided = s.claim.clone();
@@ -1059,7 +1053,7 @@ async fn the_page_warns_of_a_decided_claim_removed_and_of_a_source_link_changed(
             ),
         ],
     );
-    let body = open(&s, &to, &s.writer).await.body();
+    let body = as_text(open(&s, &to, &s.writer).await.body());
     assert!(body.contains(note), "{body}");
 }
 
@@ -1118,7 +1112,7 @@ async fn removing_a_claim_with_a_link_or_a_file_that_cannot_be_read_beside_a_pag
     bare.sources.clear();
     s.w.fake.set(&claim_path(&bare.id), &bare.to_yaml());
     let to = held_with(&s, vec![(claim_path(&bare.id), None), page_edit()]);
-    let body = open(&s, &to, &s.writer).await.body();
+    let body = as_text(open(&s, &to, &s.writer).await.body());
     assert!(!body.contains(note), "{body}");
 
     // A file the wiki has and cannot read: replaced or removed, it has a line of its own and is curation's.
@@ -1211,7 +1205,7 @@ async fn revising_a_proposal_that_sets_what_only_curation_sets_is_refused_in_the
     // The sentence the proposal page's warning has: one rule, one set of words.
     assert!(body.contains("only a curation proposal may do"), "{body}");
     // The proposal is as it was: no second revision.
-    let page = open(&s, &to, &s.writer).await.body();
+    let page = as_text(open(&s, &to, &s.writer).await.body());
     assert!(!page.contains("longer note, again"), "{page}");
 }
 
@@ -1248,7 +1242,7 @@ fn rejudging(s: &Scene, page: &str, wording: &str) -> String {
 async fn a_curation_that_judges_again_shows_each_re_judgement_with_the_wording_it_moves_to() {
     let s = scene();
     let to = rejudging(&s, BRIDGE, "It opened in 1950. ^k1");
-    let body = open(&s, &to, &s.writer).await.body();
+    let body = as_text(open(&s, &to, &s.writer).await.body());
     assert!(body.contains("This is a curation proposal"), "{body}");
     // Both the status's and the source's: two lines, neither of them *accepted to accepted*.
     assert!(
@@ -1259,7 +1253,7 @@ async fn a_curation_that_judges_again_shows_each_re_judgement_with_the_wording_i
     );
     assert!(
         body.contains(
-            "What the source <cite><bdi>“A history of the bridge”</bdi></cite> [source <code>0193…0001</code>] that it cites was judged on becomes this wording: “<bdi>It opened in 1950.</bdi>”"
+            "What the source <cite><bdi>“A history of the bridge”</bdi></cite> [source <code>01931111-0000-7000-8000-000000000001</code>] that it cites was judged on becomes this wording: “<bdi>It opened in 1950.</bdi>”"
         ),
         "{body}"
     );
@@ -1283,7 +1277,7 @@ async fn a_re_judgement_to_wording_no_paragraph_has_says_so_and_wording_is_escap
         &page,
         &format!("It opened <b>in</b> 1950 & more. {long}^k1"),
     );
-    let body = open(&s, &to, &s.writer).await.body();
+    let body = as_text(open(&s, &to, &s.writer).await.body());
     assert!(
         body.contains("&lt;b&gt;in&lt;/b&gt; 1950 &amp; more."),
         "{body}"
@@ -1293,7 +1287,7 @@ async fn a_re_judgement_to_wording_no_paragraph_has_says_so_and_wording_is_escap
     assert!(!body.contains(&long), "{body}");
     // Judged on a wording that is not on the page: said so, never shown as a wording.
     let to = rejudging(&s, &page, "A wording the page never had. ^k1");
-    let body = open(&s, &to, &s.writer).await.body();
+    let body = as_text(open(&s, &to, &s.writer).await.body());
     assert!(
         body.contains("none of the claim&#39;s paragraphs has once this proposal is made"),
         "{body}"
@@ -1313,7 +1307,7 @@ async fn a_page_with_knowledge_files_that_change_nothing_says_so() {
             ),
         ],
     );
-    let body = open(&s, &to, &s.writer).await.body();
+    let body = as_text(open(&s, &to, &s.writer).await.body());
     assert!(
         body.contains("they change nothing"),
         "an empty list is said, not left out: {body}"
@@ -1454,4 +1448,32 @@ async fn a_source_text_with_a_direction_character_is_refused_on_the_form_with_a_
             "the person's text stays: {body}"
         );
     }
+}
+
+/// The page as text: an identifier that leads to its subject's page (K32) is shown as the `<code>` it is, so that a
+/// test of a sentence need not spell out the address. (The links have tests of their own.)
+pub(crate) fn as_text(html: String) -> String {
+    let mut out = String::new();
+    let mut rest = html.as_str();
+    while let Some((before, after)) = rest.split_once("<a href=\"") {
+        out.push_str(before);
+        let linked = after
+            .split_once("\"><code>")
+            .filter(|(href, _)| !href.contains(['"', '<', '>']))
+            .and_then(|(_, tail)| tail.split_once("</code></a>"));
+        match linked {
+            Some((id, more)) => {
+                out.push_str("<code>");
+                out.push_str(id);
+                out.push_str("</code>");
+                rest = more;
+            }
+            None => {
+                out.push_str("<a href=\"");
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }

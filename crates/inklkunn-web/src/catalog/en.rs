@@ -2949,10 +2949,10 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.source_nameless",
-        "A source without a title (identifier {id})",
+        "A source without a title, author or date",
     ),
     // knowledge: a file that cannot be read is replaced (handoff 005 corrections, second round K16): end
-    msg("know.subject_claim", "“{excerpt}”"),
+    msg("know.subject_claim", "{id}"),
     msg("know.subject_claim_id", "“{excerpt}” [claim {id}]"),
     msg("know.subject_source_id", "{name} [source {id}]"),
     // knowledge: subjects told apart (handoff 005 corrections, third round K24): end

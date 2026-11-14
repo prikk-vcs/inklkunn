@@ -43,9 +43,15 @@ struct Fake {
     wording: Option<Wording>,
     /// The sources whose new link is judged on a wording the claim does not have (K25).
     unjudged: Vec<SourceId>,
+    /// The claims the wiki has a page for (K32).
+    pages: Vec<ClaimId>,
 }
 
 impl Fake {
+    fn with_page(mut self, claim: ClaimId) -> Fake {
+        self.pages.push(claim);
+        self
+    }
     fn with_unjudged(mut self, source: SourceId) -> Fake {
         self.unjudged.push(source);
         self
@@ -102,6 +108,15 @@ impl Subjects for Fake {
     }
     fn judged_now(&self, _: &ClaimId, source: &SourceId) -> bool {
         !self.unjudged.contains(source)
+    }
+    fn claim_href(&self, claim: &ClaimId) -> Option<String> {
+        self.pages
+            .contains(claim)
+            .then(|| format!("/w/-/claim/{claim}"))
+    }
+    fn cited_href(&self, claim: &ClaimId, source: &SourceId) -> Option<String> {
+        self.claim_href(claim)
+            .map(|href| format!("{href}#source-{source}"))
     }
 }
 
@@ -169,17 +184,17 @@ fn a_claim_that_is_made_is_named_by_a_paragraph_and_says_its_kind_standing_life_
     assert_eq!(
         texts(&know, &[item]),
         [(
-            "Records the claim “<bdi>It opened in 1950.</bdi>” [claim <code>0193…0001</code>] (a hypothesis), said in 2 places. Its community status: contested."
+            "Records the claim “<bdi>It opened in 1950.</bdi>” [claim <code>01930000-0000-7000-8000-000000000001</code>] (a hypothesis), said in 2 places. Its community status: contested."
                 .to_owned(),
             vec![
                 "Where it stands in its life: taken up.".to_owned(),
                 format!(
-                    "It has a relation to the claim “<bdi>{}</bdi>”: is at odds with.",
+                    "It has a relation to the claim <code>{}</code>: is at odds with.",
                     other_claim().as_str()
                 ),
-                "Cites the source <cite><bdi>“A history of the bridge”</bdi></cite> [source <code>0193…0001</code>]: it supports the claim directly, judged on the wording it has now."
+                "Cites the source <cite><bdi>“A history of the bridge”</bdi></cite> [source <code>01931111-0000-7000-8000-000000000001</code>]: it supports the claim directly, judged on the wording it has now."
                     .to_owned(),
-                "Cites the source <cite><bdi>“A history of the bridge”</bdi></cite> [source <code>0193…0001</code>]: it challenges the claim by implication, judged on the wording it has now."
+                "Cites the source <cite><bdi>“A history of the bridge”</bdi></cite> [source <code>01931111-0000-7000-8000-000000000001</code>]: it challenges the claim by implication, judged on the wording it has now."
                     .to_owned(),
             ]
         )]
@@ -260,7 +275,7 @@ fn a_claim_said_nowhere_that_can_be_found_is_named_by_its_identifier() {
     let got = english(&[made(1)]);
     assert!(
         got.first().is_some_and(|(t, _)| t
-            .starts_with("Records the claim “<bdi>01930000-0000-7000-8000-000000000001</bdi>”")),
+            .starts_with("Records the claim <code>01930000-0000-7000-8000-000000000001</code> (")),
         "{got:?}"
     );
 }
@@ -342,9 +357,9 @@ fn every_change_to_a_claim_that_exists_names_the_claim_and_what_it_is_about() {
     // The other claim is said in the same paragraph: the two are told apart by their identifiers (K24).
     assert_eq!(
         text,
-        "Changes the claim “<bdi>It opened in 1950.</bdi>” [claim <code>0193…0001</code>]:"
+        "Changes the claim “<bdi>It opened in 1950.</bdi>” [claim <code>01930000-0000-7000-8000-000000000001</code>]:"
     );
-    let named = "<cite><bdi>“A history”</bdi></cite> [source <code>0193…0001</code>]";
+    let named = "<cite><bdi>“A history”</bdi></cite> [source <code>01931111-0000-7000-8000-000000000001</code>]";
     assert_eq!(
         more,
         &[
@@ -354,9 +369,9 @@ fn every_change_to_a_claim_that_exists_names_the_claim_and_what_it_is_about() {
             "It is said in one more paragraph: “<bdi>A paragraph it gained.</bdi>”.".to_owned(),
             "It is no longer said in the paragraph “<bdi>A paragraph it let go.</bdi>”: the paragraph is removed, or the claim lets it go."
                 .to_owned(),
-            "A relation to the claim “<bdi>It opened in 1950.</bdi>” [claim <code>0193…0002</code>] is added: is at odds with."
+            "A relation to the claim “<bdi>It opened in 1950.</bdi>” [claim <code>01930000-0000-7000-8000-000000000002</code>] is added: is at odds with."
                 .to_owned(),
-            "A relation to the claim “<bdi>It opened in 1950.</bdi>” [claim <code>0193…0002</code>] is removed: came out of."
+            "A relation to the claim “<bdi>It opened in 1950.</bdi>” [claim <code>01930000-0000-7000-8000-000000000002</code>] is removed: came out of."
                 .to_owned(),
             format!("Cites the source {named}: it supports the claim in part, judged on the wording it has now."),
             format!("It no longer cites the source {named}."),
@@ -379,7 +394,7 @@ fn a_claim_that_lets_go_of_its_last_paragraph_is_still_named_by_the_one_it_had()
     assert_eq!(
         got.first().map(|(t, _)| t.as_str()),
         Some(
-            "Changes the claim “<bdi>The paragraph it had.</bdi>” [claim <code>0193…0001</code>]:"
+            "Changes the claim “<bdi>The paragraph it had.</bdi>” [claim <code>01930000-0000-7000-8000-000000000001</code>]:"
         )
     );
 }
@@ -429,7 +444,7 @@ fn a_source_that_is_recorded_has_its_name_where_it_is_found_whether_it_can_be_ha
     let (text, more) = got.first().unwrap();
     assert_eq!(
         text,
-        "Records the source <cite><bdi>“A title”, by A. Writer, dated 1962</bdi></cite> [source <code>0193…0001</code>] (first-hand)."
+        "Records the source <cite><bdi>“A title”, by A. Writer, dated 1962</bdi></cite> [source <code>01931111-0000-7000-8000-000000000001</code>] (first-hand)."
     );
     assert_eq!(more.len(), 5, "{more:?}");
     assert!(
@@ -442,7 +457,7 @@ fn a_source_that_is_recorded_has_its_name_where_it_is_found_whether_it_can_be_ha
     assert_eq!(at(more, 3), "A copy of it is kept.");
     assert_eq!(
         at(more, 4),
-        "It is now replaced by the source <cite><bdi>“The later source”</bdi></cite> [source <code>0193…0002</code>]."
+        "It is now replaced by the source <cite><bdi>“The later source”</bdi></cite> [source <code>01931111-0000-7000-8000-000000000002</code>]."
     );
 }
 
@@ -467,7 +482,7 @@ fn a_source_with_no_name_is_told_by_its_identifier_and_a_bare_one_says_it_is_not
     let (text, more) = got.first().unwrap();
     assert_eq!(
         text,
-        "Records the source <cite><bdi>A source without a title (identifier 01931111-0000-7000-8000-000000000001)</bdi></cite> (of another kind)."
+        "Records the source <cite><bdi>A source without a title, author or date</bdi></cite> [source <code>01931111-0000-7000-8000-000000000001</code>] (of another kind)."
     );
     assert_eq!(more, &["Whether it can be had: not known."]);
     // An author alone is a name too.
@@ -516,7 +531,7 @@ fn a_changed_source_is_named_as_the_base_has_it_and_says_what_it_becomes() {
     let (text, more) = got.first().unwrap();
     assert_eq!(
         text,
-        "Changes the source <cite><bdi>“The old title”, by A. Writer, dated 1962</bdi></cite> [source <code>0193…0001</code>]:"
+        "Changes the source <cite><bdi>“The old title”, by A. Writer, dated 1962</bdi></cite> [source <code>01931111-0000-7000-8000-000000000001</code>]:"
     );
     assert_eq!(more.len(), 10, "{more:?}");
     assert_eq!(at(more, 0), "Its kind becomes the result of a computation.");
@@ -542,7 +557,7 @@ fn a_changed_source_is_named_as_the_base_has_it_and_says_what_it_becomes() {
     );
     assert_eq!(
         at(more, 8),
-        "It is now replaced by the source <cite><bdi>“The later source”</bdi></cite> [source <code>0193…0002</code>]."
+        "It is now replaced by the source <cite><bdi>“The later source”</bdi></cite> [source <code>01931111-0000-7000-8000-000000000002</code>]."
     );
     assert_eq!(at(more, 9), "It is no longer marked as replaced.");
 }
@@ -588,9 +603,9 @@ fn removals_and_unreadable_files_are_named_by_what_they_were_and_never_by_what_t
     assert_eq!(
         got,
         [
-            "Removes the claim “<bdi>The claim that goes.</bdi>” [claim <code>0193…0001</code>].",
-            "Removes the source <cite><bdi>“The source that goes”</bdi></cite> [source <code>0193…0001</code>].",
-            "Removes the claim “<bdi>not-an-id</bdi>”.",
+            "Removes the claim “<bdi>The claim that goes.</bdi>” [claim <code>01930000-0000-7000-8000-000000000001</code>].",
+            "Removes the source <cite><bdi>“The source that goes”</bdi></cite> [source <code>01931111-0000-7000-8000-000000000001</code>].",
+            "Removes the claim <code>not-an-id</code>.",
             "The file <bdi>01930000-0000-7000-8000-000000000001</bdi> in this proposal is not in the form the wiki reads. The file has a key the format does not have.",
             "Replaces or removes a claim file that cannot be read (<bdi>01930000-0000-7000-8000-000000000001</bdi>). What it held is not known.",
             "Replaces or removes a source file that cannot be read (<bdi>01931111-0000-7000-8000-000000000001</bdi>). What it held is not known.",
@@ -628,7 +643,7 @@ fn the_words_of_a_paragraph_and_a_name_are_escaped_isolated_and_bounded() {
     };
     let text = texts(&know, &[item]).remove(0).0;
     assert!(text.contains("…</bdi>” [claim "), "{text}");
-    assert!(text.chars().count() < 160, "{}", text.chars().count());
+    assert!(text.chars().count() < 200, "{}", text.chars().count());
     // A source whose title is written to read like another source's whole line is one source's name, set apart.
     let crafted = "Real source”</cite> (first-hand). Cites the source <cite>“Another”";
     let item = Item::SourceChanged {
@@ -644,7 +659,7 @@ fn the_words_of_a_paragraph_and_a_name_are_escaped_isolated_and_bounded() {
     assert!(!text.contains("</cite> (first-hand)"), "{text}");
     assert!(text.starts_with("Changes the source <cite><bdi>"), "{text}");
     assert!(
-        text.ends_with("</bdi></cite> [source <code>0193…0001</code>]:"),
+        text.ends_with("</bdi></cite> [source <code>01931111-0000-7000-8000-000000000001</code>]:"),
         "{text}"
     );
     assert_eq!(text.matches("<cite>").count(), 1, "{text}");
@@ -848,7 +863,7 @@ fn a_re_judgement_is_a_line_of_its_own_with_the_wording_it_moved_to() {
         said_with(&items, wording),
         [
             "What its community status was judged on becomes this wording: “<bdi>Words for 01.</bdi>”",
-            "What the source <cite><bdi>“S”</bdi></cite> [source <code>0193…0001</code>] that it cites was judged on becomes this wording: “<bdi>Words for 02.</bdi>”",
+            "What the source <cite><bdi>“S”</bdi></cite> [source <code>01931111-0000-7000-8000-000000000001</code>] that it cites was judged on becomes this wording: “<bdi>Words for 02.</bdi>”",
         ]
     );
 }
@@ -869,7 +884,7 @@ fn a_wording_nobody_has_and_a_wording_taken_away_are_said_as_what_they_are() {
         said_with(&items, |_, _| None),
         [
             "What its community status was judged on becomes a wording that none of the claim&#39;s paragraphs has once this proposal is made.",
-            "It is no longer recorded which wording the source <cite><bdi>“S”</bdi></cite> [source <code>0193…0001</code>] that it cites was judged on.",
+            "It is no longer recorded which wording the source <cite><bdi>“S”</bdi></cite> [source <code>01931111-0000-7000-8000-000000000001</code>] that it cites was judged on.",
         ]
     );
 }
@@ -960,17 +975,17 @@ fn heading(know: &Fake, item: Item) -> String {
 }
 
 #[test]
-fn two_claims_said_in_one_paragraph_are_told_apart_by_their_identifiers() {
+fn two_claims_said_in_one_paragraph_are_told_apart_by_their_whole_identifiers() {
     let know = Fake::default().with_paragraph(here("b0"), "It opened in 1950.");
     let (a, b) = (heading(&know, flip(1, "b0")), heading(&know, flip(2, "b0")));
     assert_ne!(a, b);
     assert_eq!(
         a,
-        "Changes the claim “<bdi>It opened in 1950.</bdi>” [claim <code>0193…0001</code>]:"
+        "Changes the claim “<bdi>It opened in 1950.</bdi>” [claim <code>01930000-0000-7000-8000-000000000001</code>]:"
     );
     assert_eq!(
         b,
-        "Changes the claim “<bdi>It opened in 1950.</bdi>” [claim <code>0193…0002</code>]:"
+        "Changes the claim “<bdi>It opened in 1950.</bdi>” [claim <code>01930000-0000-7000-8000-000000000002</code>]:"
     );
 }
 
@@ -985,10 +1000,88 @@ fn two_paragraphs_that_share_their_first_eighty_characters_are_told_apart_by_the
         .with_paragraph(here("b1"), &format!("{common}by the guild."));
     let (a, b) = (heading(&know, flip(1, "b0")), heading(&know, flip(2, "b1")));
     assert_ne!(a, b);
-    assert!(a.contains("[claim <code>0193…0001</code>]"), "{a}");
-    assert!(b.contains("[claim <code>0193…0002</code>]"), "{b}");
+    assert!(
+        a.contains("[claim <code>01930000-0000-7000-8000-000000000001</code>]"),
+        "{a}"
+    );
+    assert!(
+        b.contains("[claim <code>01930000-0000-7000-8000-000000000002</code>]"),
+        "{b}"
+    );
     // The same excerpt on both: the words alone do not tell.
     assert_eq!(a.split(" [claim ").next(), b.split(" [claim ").next());
+}
+
+/// An identifier that shares the first and the last eight characters of `id` (whoever writes a file chooses its
+/// identifier): any shortening to the two ends would read alike.
+fn twin_of(id: &str) -> String {
+    format!("{}ffff{}", id.get(..9).unwrap(), id.get(13..).unwrap())
+}
+
+fn japanese() -> T {
+    T::new(Lang::from_def(&JA_DEF))
+}
+
+#[test]
+fn a_twin_claim_whose_identifier_shares_its_first_and_last_characters_reads_differently() {
+    let real = claim_n(1);
+    let twin = ClaimId::parse(&twin_of(real.as_str())).unwrap();
+    assert_ne!(real, twin);
+    assert_eq!(real.as_str().get(..8), twin.as_str().get(..8));
+    assert_eq!(real.as_str().get(28..), twin.as_str().get(28..));
+    // Two claims said in one paragraph, a page that names only one of them each time.
+    let know = Fake::default().with_paragraph(here("b0"), "It opened in 1950.");
+    let item = |claim: &ClaimId| Item::ClaimChanged {
+        claim: claim.clone(),
+        said: vec![here("b0")],
+        was_said: Vec::new(),
+        changes: Vec::new(),
+    };
+    for t in [T::new(EN), japanese()] {
+        let line = |claim: &ClaimId| lines(t, &[item(claim)], &know).remove(0).text.to_string();
+        let (a, b) = (line(&real), line(&twin));
+        assert_ne!(a, b);
+        assert!(a.contains(&format!("<code>{real}</code>")), "{a}");
+        assert!(b.contains(&format!("<code>{twin}</code>")), "{b}");
+    }
+}
+
+#[test]
+fn a_twin_source_of_the_same_name_reads_differently_in_both_languages() {
+    let real = source_n(1);
+    let twin = SourceId::parse(&twin_of(real.as_str())).unwrap();
+    assert_ne!(real, twin);
+    let mut know = Fake::default();
+    for id in [&real, &twin] {
+        know.identities.push((
+            id.clone(),
+            Identity {
+                title: Some("A history".to_owned()),
+                author: Some("A. Writer".to_owned()),
+                date: Some("1962".to_owned()),
+            },
+        ));
+    }
+    let uncite = |source: &SourceId| Item::ClaimChanged {
+        claim: claim_n(9),
+        said: Vec::new(),
+        was_said: Vec::new(),
+        changes: vec![ClaimChange::Uncited(source.clone())],
+    };
+    for t in [T::new(EN), japanese()] {
+        let line = |source: &SourceId| {
+            lines(t, &[uncite(source)], &know)
+                .remove(0)
+                .more
+                .remove(0)
+                .to_string()
+        };
+        let (a, b) = (line(&real), line(&twin));
+        assert_ne!(a, b);
+        assert!(a.contains("A history"), "{a}");
+        assert!(a.contains(&format!("<code>{real}</code>")), "{a}");
+        assert!(b.contains(&format!("<code>{twin}</code>")), "{b}");
+    }
 }
 
 #[test]
@@ -1015,24 +1108,24 @@ fn two_sources_of_one_name_are_told_apart_by_their_identifiers() {
     let line = |got: &[(String, Vec<String>)]| got.first().unwrap().1.first().unwrap().clone();
     assert_eq!(
         line(&a),
-        "It no longer cites the source <cite><bdi>“A history”, by A. Writer, dated 1962</bdi></cite> [source <code>0193…0001</code>]."
+        "It no longer cites the source <cite><bdi>“A history”, by A. Writer, dated 1962</bdi></cite> [source <code>01931111-0000-7000-8000-000000000001</code>]."
     );
     assert!(
-        line(&b).contains("[source <code>0193…0002</code>]"),
+        line(&b).contains("[source <code>01931111-0000-7000-8000-000000000002</code>]"),
         "{}",
         line(&b)
     );
 }
 
 #[test]
-fn a_subject_told_by_its_identifier_already_is_not_told_twice() {
+fn a_claim_said_nowhere_and_a_source_without_a_name_carry_their_identifiers_once() {
     // A claim said nowhere that can be found, and a source that names itself in no way.
     let know = Fake::default();
     let got = texts(&know, &[flip(1, "nowhere")]);
     let text = &got.first().unwrap().0;
     assert_eq!(
         text,
-        "Changes the claim “<bdi>01930000-0000-7000-8000-000000000001</bdi>”:"
+        "Changes the claim <code>01930000-0000-7000-8000-000000000001</code>:"
     );
     let got = texts(
         &know,
@@ -1042,49 +1135,56 @@ fn a_subject_told_by_its_identifier_already_is_not_told_twice() {
             leaves: None,
         }],
     );
-    assert!(
-        !got.first().unwrap().0.contains("[source"),
-        "{:?}",
-        got.first()
+    assert_eq!(
+        got.first().unwrap().0,
+        "Removes the source <cite><bdi>A source without a title, author or date</bdi></cite> [source <code>01931111-0000-7000-8000-000000000001</code>]."
     );
 }
 
 #[test]
-fn identifiers_on_one_page_never_abbreviate_alike() {
-    use super::names::abbreviations;
-    use std::collections::BTreeSet;
-    // Identifiers that agree in their first four and their last four characters: the abbreviation grows until they
-    // differ, and is the whole identifier when that is what it takes.
-    let mut ids = BTreeSet::new();
-    for middle in ["a", "b", "c", "0", "1"] {
-        for deep in ["7", "8"] {
-            ids.insert(format!("01930000-0000-7000-{deep}000-0000000{middle}0001"));
-        }
-    }
-    let forms = abbreviations(&ids);
-    assert_eq!(forms.len(), ids.len());
-    let distinct: BTreeSet<&String> = forms.values().collect();
-    assert_eq!(distinct.len(), ids.len(), "{forms:?}");
-    for (id, form) in &forms {
-        assert!(form.chars().count() <= id.chars().count(), "{form}");
-        assert!(form == id || form.starts_with("0193…"), "{form}");
-    }
-    // Where four characters of the end tell them apart, four are kept.
-    let two: BTreeSet<String> = (1..=2u8).map(|n| claim_n(n).to_string()).collect();
-    assert_eq!(
-        abbreviations(&two).values().cloned().collect::<Vec<_>>(),
-        ["0193…0001", "0193…0002"]
+fn an_identifier_leads_to_the_subjects_page_when_there_is_one() {
+    let know = Fake::default()
+        .with_paragraph(here("b0"), "It opened in 1950.")
+        .with_identity(source_n(1), "A history")
+        .with_page(claim_n(1));
+    // A claim the wiki has: the claim's page. A claim it has not (the proposal makes it): the identifier alone.
+    let got = heading(&know, flip(1, "b0"));
+    assert!(
+        got.contains(
+            "<a href=\"/w/-/claim/01930000-0000-7000-8000-000000000001\"><code>01930000-0000-7000-8000-000000000001</code></a>"
+        ),
+        "{got}"
     );
-    // Identifiers that differ only in their head cannot be told by a shortening of the end: they are told anyway.
-    let heads: BTreeSet<String> = [
-        "01930000-0000-7000-8000-000000000001",
-        "01930001-0000-7000-8000-000000000001",
-    ]
-    .map(str::to_owned)
-    .into();
-    let forms = abbreviations(&heads);
-    let distinct: BTreeSet<&String> = forms.values().collect();
-    assert_eq!(distinct.len(), 2, "{forms:?}");
+    let got = heading(&know, flip(2, "b0"));
+    assert!(!got.contains("<a "), "{got}");
+    // A source named for a claim the wiki has: its line on that claim's page. Named for none, or for a claim with no
+    // page: no link, it has no page of its own.
+    let cites = |claim: u8| Item::ClaimChanged {
+        claim: claim_n(claim),
+        said: Vec::new(),
+        was_said: Vec::new(),
+        changes: vec![ClaimChange::Uncited(source_n(1))],
+    };
+    let line = texts(&know, &[cites(1)]).remove(0).1.remove(0);
+    assert!(
+        line.contains(
+            "<a href=\"/w/-/claim/01930000-0000-7000-8000-000000000001#source-01931111-0000-7000-8000-000000000001\"><code>01931111-0000-7000-8000-000000000001</code></a>"
+        ),
+        "{line}"
+    );
+    let line = texts(&know, &[cites(2)]).remove(0).1.remove(0);
+    assert!(!line.contains("<a "), "{line}");
+    let line = texts(
+        &know,
+        &[Item::Removed {
+            family: Family::Source,
+            id: source_n(1).to_string(),
+            leaves: None,
+        }],
+    )
+    .remove(0)
+    .0;
+    assert!(!line.contains("<a "), "{line}");
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -1120,14 +1220,14 @@ fn a_removed_claim_names_its_status_and_each_link_by_the_sources_name() {
     let (text, more) = texts(&know, &[item]).remove(0);
     assert_eq!(
         text,
-        "Removes the claim “<bdi>The claim that goes.</bdi>” [claim <code>0193…0001</code>]."
+        "Removes the claim “<bdi>The claim that goes.</bdi>” [claim <code>01930000-0000-7000-8000-000000000001</code>]."
     );
     assert_eq!(
         more,
         [
             "Its community status goes with it: contested.",
-            "Its link to the source <cite><bdi>“A history”</bdi></cite> [source <code>0193…0001</code>] goes with it: it supports the claim directly.",
-            "Its link to the source <cite><bdi>“A correction”</bdi></cite> [source <code>0193…0002</code>] goes with it: it challenges the claim in part.",
+            "Its link to the source <cite><bdi>“A history”</bdi></cite> [source <code>01931111-0000-7000-8000-000000000001</code>] goes with it: it supports the claim directly.",
+            "Its link to the source <cite><bdi>“A correction”</bdi></cite> [source <code>01931111-0000-7000-8000-000000000002</code>] goes with it: it challenges the claim in part.",
         ]
     );
 }

@@ -156,7 +156,7 @@ button[aria-current] {
 .badge { font-weight: 600; }
 button:disabled { color: var(--muted); cursor: not-allowed; }
 .stages { padding-inline-start: 1.25rem; }
-code { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 0.95em; }
+code { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 0.95em; overflow-wrap: anywhere; }
 
 /* One focus ring for everything focusable, standing off the control. Never removed. */
 :focus-visible {

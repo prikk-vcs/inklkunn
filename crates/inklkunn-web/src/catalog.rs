@@ -1775,11 +1775,25 @@ pub fn cite(text: &str) -> Rich {
     Rich(out)
 }
 
-/// `text` as a token to be read exactly (`<code>`, escaped): an identifier, or the short form of one.
+/// `text` as a token to be read exactly (`<code>`, escaped): an identifier.
 pub fn code(text: &str) -> Rich {
     let mut out = String::from("<code>");
     escape_into(&mut out, text);
     out.push_str("</code>");
+    Rich(out)
+}
+
+/// [`code`] linked to `href` (a link only to an address of this site or an absolute one, as [`Msg::link`] is): the
+/// whole identifier of a subject, which leads to the subject's page.
+pub fn code_link(text: &str, href: &str) -> Rich {
+    if !href_ok(href) {
+        return code(text);
+    }
+    let mut out = String::from("<a href=\"");
+    escape_into(&mut out, href);
+    out.push_str("\">");
+    out.push_str(code(text).as_str());
+    out.push_str("</a>");
     Rich(out)
 }
 

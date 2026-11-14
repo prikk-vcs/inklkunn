@@ -10,8 +10,11 @@
 //! review date, and a changed source's new identity and reference are on their lines. **No arm drops a field with
 //! `..`**: a field added to an [`Item`] does not compile until this says what the page does with it.
 //!
-//! **No two subjects read alike** (K24): a name is not unique (two claims can be said in one paragraph, two sources can
-//! be called the same), so a claim's and a source's name is followed by its identifier, shortened ([`names`]).
+//! **No two subjects read alike** (K24, K32): a name is not unique (two claims can be said in one paragraph, two
+//! sources can be called the same), and an identifier is written by whoever writes the file, so a shortened form could
+//! be copied. A claim's and a source's name is therefore followed by its **whole** identifier, in `<code>`, linked to the
+//! subject's page (a claim's page; a source's line on the page of a claim it is named for), and wrapping where the line
+//! is narrow.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -28,7 +31,7 @@ use super::labels::{
     availability_word, bearing_word, lifecycle_word, link_word, reference_option,
     relation_type_word, source_word, standing_word, statement_word,
 };
-use crate::catalog::{Key, Rich, T, bdi, cite, code};
+use crate::catalog::{Key, Rich, T, bdi, cite, code, code_link};
 use crate::health::rule_key;
 
 /// One thing the proposal does to claims and sources, with the particulars under it. **Markup the catalog built from
@@ -38,10 +41,6 @@ pub(crate) struct Line {
     pub(crate) text: Rich,
     pub(crate) more: Vec<Rich>,
 }
-
-mod names;
-
-use names::{Kind, Names};
 
 /// What the lines need to name what they are about and to show the wording they speak of. The proposal's own files
 /// come first, then the wiki.
@@ -58,30 +57,10 @@ pub(crate) trait Subjects {
     /// Is the link of `claim` to `source` that the proposal adds judged on a wording one of the claim's paragraphs has
     /// in the proposal's result (K25)? A proposal that is sent always is; a draft may not be, and then its line says so.
     fn judged_now(&self, claim: &ClaimId, source: &SourceId) -> bool;
-}
-
-/// What one page of lines is written with: what names the subjects, and what the lines have named so far (K24).
-struct Page<'a> {
-    subjects: &'a dyn Subjects,
-    names: Names,
-}
-
-impl Page<'_> {
-    fn wording(&self, said: &[Expression], digest: &Digest) -> Option<String> {
-        self.subjects.wording(said, digest)
-    }
-    fn paragraph(&self, at: &Expression) -> Option<String> {
-        self.subjects.paragraph(at)
-    }
-    fn places(&self, claim: &ClaimId) -> Vec<Expression> {
-        self.subjects.places(claim)
-    }
-    fn identity(&self, source: &SourceId) -> Option<Identity> {
-        self.subjects.identity(source)
-    }
-    fn judged_now(&self, claim: &ClaimId, source: &SourceId) -> bool {
-        self.subjects.judged_now(claim, source)
-    }
+    /// The address of the page of `claim`, when the wiki has that claim (a claim the proposal makes has no page yet).
+    fn claim_href(&self, claim: &ClaimId) -> Option<String>;
+    /// The address of the line of `source` on the page of `claim`: a source has no page of its own.
+    fn cited_href(&self, claim: &ClaimId, source: &SourceId) -> Option<String>;
 }
 
 /// The most characters of the wording a re-judgement moved to that a line prints.
@@ -102,10 +81,10 @@ fn excerpt(words: &str, limit: usize) -> String {
 }
 
 /// A claim, by an excerpt of a paragraph it is said in: the first of `own` (the places the item itself names) and then
-/// the places the proposal or the wiki give, that has words. A claim said in no paragraph that can be found is named
-/// by its identifier, which is what is known of it. **A claim whose name is another claim's on the page also carries
-/// its identifier** (K24).
-fn claim_subject(t: T, know: &Page, claim: &ClaimId, own: &[&[Expression]]) -> Rich {
+/// the places the proposal or the wiki give, that has words. **Followed by its whole identifier** (K32), linked to its
+/// page when the wiki has one. A claim said in no paragraph that can be found is named by its identifier alone, which
+/// is what is known of it.
+fn claim_subject(t: T, know: &dyn Subjects, claim: &ClaimId, own: &[&[Expression]]) -> Rich {
     let others;
     let places: Vec<&Expression> = if own.iter().any(|places| !places.is_empty()) {
         own.iter().flat_map(|places| places.iter()).collect()
@@ -113,37 +92,33 @@ fn claim_subject(t: T, know: &Page, claim: &ClaimId, own: &[&[Expression]]) -> R
         others = know.places(claim);
         others.iter().collect()
     };
-    let mut name = claim.to_string();
+    let mut excerpt = None;
     for at in places {
         if let Some(words) = know.paragraph(at) {
-            let words = excerpt(&words, SUBJECT_CHARS);
+            let words = self::excerpt(&words, SUBJECT_CHARS);
             if !words.is_empty() {
-                name = words;
+                excerpt = Some(words);
                 break;
             }
         }
     }
-    know.names.note(Kind::Claim, claim.as_str());
-    // A claim named by its identifier is told by it already.
-    let told = know
-        .names
-        .short(Kind::Claim, claim.as_str())
-        .filter(|_| name != claim.as_str());
-    match told {
-        Some(id) => t
+    let id = match know.claim_href(claim) {
+        Some(href) => code_link(claim.as_str(), &href),
+        None => code(claim.as_str()),
+    };
+    match excerpt {
+        Some(words) => t
             .msg(Key::KnowSubjectClaimId)
-            .rich("excerpt", bdi(&name))
-            .rich("id", code(&id))
+            .rich("excerpt", bdi(&words))
+            .rich("id", id)
             .html(),
-        None => t
-            .msg(Key::KnowSubjectClaim)
-            .rich("excerpt", bdi(&name))
-            .html(),
+        // Named by its identifier already.
+        None => t.msg(Key::KnowSubjectClaim).rich("id", id).html(),
     }
 }
 
 /// A paragraph, by an excerpt of its words; by its marker when it cannot be found.
-fn paragraph_subject(know: &Page, at: &Expression) -> Rich {
+fn paragraph_subject(know: &dyn Subjects, at: &Expression) -> Rich {
     match know
         .paragraph(at)
         .map(|words| excerpt(&words, SUBJECT_CHARS))
@@ -160,9 +135,9 @@ fn one_line(text: Option<&str>) -> Option<String> {
 }
 
 /// What a source is called: its title (else *a source without a title*), then its author or publisher and its date,
-/// each as it was written, joined as the claim page joins them; a source that names itself in no way is told by its
-/// identifier, since nothing else would tell it from another.
-fn source_name(t: T, identity: Option<&Identity>, id: &SourceId) -> String {
+/// each as it was written, joined as the claim page joins them; a source that names itself in no way says so (its
+/// identifier follows every name a line prints, K32).
+fn source_name(t: T, identity: Option<&Identity>) -> String {
     let (title, author, date) = match identity {
         Some(Identity {
             title,
@@ -176,7 +151,7 @@ fn source_name(t: T, identity: Option<&Identity>, id: &SourceId) -> String {
         None => (None, None, None),
     };
     if title.is_none() && author.is_none() && date.is_none() {
-        return t.msg(Key::KnowSourceNameless).with("id", id).text();
+        return t.get(Key::KnowSourceNameless);
     }
     let first = match &title {
         Some(title) => t.msg(Key::ClaimSourceTitled).with("title", title).text(),
@@ -194,9 +169,16 @@ fn source_name(t: T, identity: Option<&Identity>, id: &SourceId) -> String {
     })
 }
 
-/// A source, by its name, set apart (`<cite>`). `own` is what the item itself says of it; otherwise the proposal's
-/// file or the wiki says. **A source whose name is another source's on the page also carries its identifier** (K24).
-fn source_subject(t: T, know: &Page, id: &SourceId, own: Option<&Identity>) -> Rich {
+/// A source, by its name, set apart (`<cite>`), **followed by its whole identifier** (K32). `own` is what the item
+/// itself says of it; otherwise the proposal's file or the wiki says. `of` is the claim the line is about, when there is
+/// one: a source has no page of its own, so its identifier leads to its line on that claim's page.
+fn source_subject(
+    t: T,
+    know: &dyn Subjects,
+    id: &SourceId,
+    own: Option<&Identity>,
+    of: Option<&ClaimId>,
+) -> Rich {
     let known;
     let identity = match own {
         Some(identity) => Some(identity),
@@ -205,29 +187,18 @@ fn source_subject(t: T, know: &Page, id: &SourceId, own: Option<&Identity>) -> R
             known.as_ref()
         }
     };
-    let name = source_name(t, identity, id);
-    know.names.note(Kind::Source, id.as_str());
-    // A source with no name at all is told by its identifier already.
-    let nameless = identity.is_none_or(|i| {
-        [&i.title, &i.author, &i.date]
-            .iter()
-            .all(|part| one_line(part.as_deref()).is_none())
-    });
-    let told = know
-        .names
-        .short(Kind::Source, id.as_str())
-        .filter(|_| !nameless);
-    match told {
-        Some(short) => t
-            .msg(Key::KnowSubjectSourceId)
-            .rich("name", cite(&name))
-            .rich("id", code(&short))
-            .html(),
-        None => cite(&name),
-    }
+    let name = source_name(t, identity);
+    let shown = match of.and_then(|claim| know.cited_href(claim, id)) {
+        Some(href) => code_link(id.as_str(), &href),
+        None => code(id.as_str()),
+    };
+    t.msg(Key::KnowSubjectSourceId)
+        .rich("name", cite(&name))
+        .rich("id", shown)
+        .html()
 }
 
-fn cite_line(t: T, know: &Page, claim: &ClaimId, c: &Cite) -> Rich {
+fn cite_line(t: T, know: &dyn Subjects, claim: &ClaimId, c: &Cite) -> Rich {
     let Cite {
         source,
         relation,
@@ -240,7 +211,7 @@ fn cite_line(t: T, know: &Page, claim: &ClaimId, c: &Cite) -> Rich {
         Key::KnowCiteUnjudged
     };
     t.msg(key)
-        .rich("source", source_subject(t, know, source, None))
+        .rich("source", source_subject(t, know, source, None, Some(claim)))
         .with("relation", t.get(link_word(*relation)))
         .with("bearing", t.get(bearing_word(*bearing)))
         .html()
@@ -255,12 +226,19 @@ fn reference_text(t: T, reference: &Reference) -> (String, Rich) {
 }
 
 /// A re-judgement: what a status, or the link to a source, was judged on is now this wording.
-fn rejudged(t: T, know: &Page, said: &[Expression], on: &Rejudgement, to: Option<&Digest>) -> Rich {
+fn rejudged(
+    t: T,
+    know: &dyn Subjects,
+    claim: &ClaimId,
+    said: &[Expression],
+    on: &Rejudgement,
+    to: Option<&Digest>,
+) -> Rich {
     let subject = match on {
         Rejudgement::Standing => t.msg(Key::KnowRejudgedStatus).html(),
         Rejudgement::Source(source) => t
             .msg(Key::KnowRejudgedSource)
-            .rich("source", source_subject(t, know, source, None))
+            .rich("source", source_subject(t, know, source, None, Some(claim)))
             .html(),
     };
     match to {
@@ -284,7 +262,7 @@ fn rejudged(t: T, know: &Page, said: &[Expression], on: &Rejudgement, to: Option
 
 fn claim_change(
     t: T,
-    know: &Page,
+    know: &dyn Subjects,
     claim: &ClaimId,
     change: &ClaimChange,
     said: &[Expression],
@@ -303,7 +281,7 @@ fn claim_change(
             .with("from", t.get(standing_word(*from)))
             .with("to", t.get(standing_word(*to)))
             .html(),
-        ClaimChange::Rejudged { on, to } => rejudged(t, know, said, on, to.as_ref()),
+        ClaimChange::Rejudged { on, to } => rejudged(t, know, claim, said, on, to.as_ref()),
         ClaimChange::Said(at) => t
             .msg(Key::KnowChangeSaid)
             .rich("paragraph", paragraph_subject(know, at))
@@ -317,7 +295,7 @@ fn claim_change(
         ClaimChange::Cited(c) => cite_line(t, know, claim, c),
         ClaimChange::Uncited(source) => t
             .msg(Key::KnowChangeUncited)
-            .rich("source", source_subject(t, know, source, None))
+            .rich("source", source_subject(t, know, source, None, Some(claim)))
             .html(),
         ClaimChange::Recited(c) => {
             let Cite {
@@ -326,20 +304,20 @@ fn claim_change(
                 bearing,
             } = c;
             t.msg(Key::KnowChangeRecited)
-                .rich("source", source_subject(t, know, source, None))
+                .rich("source", source_subject(t, know, source, None, Some(claim)))
                 .with("relation", t.get(link_word(*relation)))
                 .with("bearing", t.get(bearing_word(*bearing)))
                 .html()
         }
         ClaimChange::Noted(source) => t
             .msg(Key::KnowChangeNoted)
-            .rich("source", source_subject(t, know, source, None))
+            .rich("source", source_subject(t, know, source, None, Some(claim)))
             .html(),
     }
 }
 
 /// A line about a relation to another claim, which it names.
-fn relation_line(t: T, know: &Page, key: Key, relation: &Relation) -> Rich {
+fn relation_line(t: T, know: &dyn Subjects, key: Key, relation: &Relation) -> Rich {
     let Relation { kind, claim } = relation;
     t.msg(key)
         .rich("other", claim_subject(t, know, claim, &[]))
@@ -347,7 +325,7 @@ fn relation_line(t: T, know: &Page, key: Key, relation: &Relation) -> Rich {
         .html()
 }
 
-fn source_change(t: T, know: &Page, of: &SourceId, change: &SourceChange) -> Rich {
+fn source_change(t: T, know: &dyn Subjects, change: &SourceChange) -> Rich {
     match change {
         SourceChange::Kind(k) => t
             .msg(Key::KnowSourceChangeKind)
@@ -355,7 +333,7 @@ fn source_change(t: T, know: &Page, of: &SourceId, change: &SourceChange) -> Ric
             .html(),
         SourceChange::Identity(identity) => t
             .msg(Key::KnowSourceChangeIdentity)
-            .rich("identity", cite(&source_name(t, Some(identity), of)))
+            .rich("identity", cite(&source_name(t, Some(identity))))
             .html(),
         SourceChange::Reference(Some(reference)) => {
             let (form, value) = reference_text(t, reference);
@@ -376,14 +354,14 @@ fn source_change(t: T, know: &Page, of: &SourceId, change: &SourceChange) -> Ric
             .html(),
         SourceChange::Superseded(Some(source)) => t
             .msg(Key::KnowSourceChangeSuperseded)
-            .rich("source", source_subject(t, know, source, None))
+            .rich("source", source_subject(t, know, source, None, None))
             .html(),
         SourceChange::Superseded(None) => t.msg(Key::KnowSourceChangeUnsuperseded).html(),
     }
 }
 
 /// What goes with a removed file: the facts of it that a person decided or checked (K27), one line for each.
-fn leaving(t: T, know: &Page, leaves: &Leaves) -> Vec<Rich> {
+fn leaving(t: T, know: &dyn Subjects, claim: Option<&ClaimId>, leaves: &Leaves) -> Vec<Rich> {
     match leaves {
         Leaves::Claim { standing, cites } => {
             let mut more = vec![
@@ -398,7 +376,7 @@ fn leaving(t: T, know: &Page, leaves: &Leaves) -> Vec<Rich> {
                     bearing,
                 } = c;
                 t.msg(Key::KnowRemovedHadLink)
-                    .rich("source", source_subject(t, know, source, None))
+                    .rich("source", source_subject(t, know, source, None, claim))
                     .with("relation", t.get(link_word(*relation)))
                     .with("bearing", t.get(bearing_word(*bearing)))
                     .html()
@@ -423,7 +401,7 @@ fn leaving(t: T, know: &Page, leaves: &Leaves) -> Vec<Rich> {
     }
 }
 
-fn line(t: T, know: &Page, item: &Item) -> Line {
+fn line(t: T, know: &dyn Subjects, item: &Item) -> Line {
     match item {
         Item::ClaimMade {
             claim,
@@ -444,6 +422,7 @@ fn line(t: T, know: &Page, item: &Item) -> Line {
                 more.push(rejudged(
                     t,
                     know,
+                    claim,
                     said,
                     &Rejudgement::Standing,
                     Some(digest),
@@ -517,14 +496,17 @@ fn line(t: T, know: &Page, item: &Item) -> Line {
             if let Some(later) = superseded_by {
                 more.push(
                     t.msg(Key::KnowSourceChangeSuperseded)
-                        .rich("source", source_subject(t, know, later, None))
+                        .rich("source", source_subject(t, know, later, None, None))
                         .html(),
                 );
             }
             Line {
                 text: t
                     .msg(Key::KnowSourceRecorded)
-                    .rich("source", source_subject(t, know, source, Some(identity)))
+                    .rich(
+                        "source",
+                        source_subject(t, know, source, Some(identity), None),
+                    )
                     .with("kind", t.get(source_word(*kind)))
                     .html(),
                 more,
@@ -537,12 +519,9 @@ fn line(t: T, know: &Page, item: &Item) -> Line {
         } => Line {
             text: t
                 .msg(Key::KnowSourceChanged)
-                .rich("source", source_subject(t, know, source, Some(named)))
+                .rich("source", source_subject(t, know, source, Some(named), None))
                 .html(),
-            more: changes
-                .iter()
-                .map(|c| source_change(t, know, source, c))
-                .collect(),
+            more: changes.iter().map(|c| source_change(t, know, c)).collect(),
         },
         Item::Removed { family, id, leaves } => Line {
             text: match family {
@@ -552,7 +531,7 @@ fn line(t: T, know: &Page, item: &Item) -> Line {
                         "claim",
                         match ClaimId::parse(id) {
                             Some(claim) => claim_subject(t, know, &claim, &[]),
-                            None => t.msg(Key::KnowSubjectClaim).rich("excerpt", bdi(id)).html(),
+                            None => t.msg(Key::KnowSubjectClaim).rich("id", code(id)).html(),
                         },
                     )
                     .html(),
@@ -561,15 +540,15 @@ fn line(t: T, know: &Page, item: &Item) -> Line {
                     .rich(
                         "source",
                         match SourceId::parse(id) {
-                            Some(source) => source_subject(t, know, &source, None),
-                            None => cite(id),
+                            Some(source) => source_subject(t, know, &source, None, None),
+                            None => code(id),
                         },
                     )
                     .html(),
             },
             more: leaves
                 .as_ref()
-                .map(|leaves| leaving(t, know, leaves))
+                .map(|leaves| leaving(t, know, ClaimId::parse(id).as_ref(), leaves))
                 .unwrap_or_default(),
         },
         Item::UnreadableReplaced { family, id } => Line {
@@ -598,18 +577,9 @@ fn line(t: T, know: &Page, item: &Item) -> Line {
     }
 }
 
-/// The lines of a proposal's page for these items. **Read twice**: the first pass learns every name the lines use, so
-/// that the second can tell the subjects whose names are alike apart (K24).
+/// The lines of a proposal's page for these items.
 pub(crate) fn lines(t: T, items: &[Item], know: &dyn Subjects) -> Vec<Line> {
-    let page = Page {
-        subjects: know,
-        names: Names::default(),
-    };
-    for item in items {
-        line(t, &page, item);
-    }
-    page.names.settle();
-    items.iter().map(|item| line(t, &page, item)).collect()
+    items.iter().map(|item| line(t, know, item)).collect()
 }
 
 /// What a proposal's knowledge files come to against the base they were written on.
@@ -692,6 +662,11 @@ impl<'a> Resolver<'a> {
             base: RefCell::new(BTreeMap::new()),
             failure: RefCell::new(None),
         }
+    }
+
+    /// The view a link to a page of the knowledge layer names: the proposal's, unless it is the wiki's default.
+    fn view_name(&self) -> Option<String> {
+        super::new::short(self.place.view.filter(|v| *v != self.ctx.wiki.default_view))
     }
 
     fn failed(&self, e: inklkunn_core::read::ReadError) {
@@ -822,6 +797,26 @@ impl Subjects for Resolver<'_> {
             .unjudged
             .iter()
             .any(|(c, s)| c == claim.as_str() && s == source.as_str())
+    }
+
+    fn claim_href(&self, claim: &ClaimId) -> Option<String> {
+        // A claim only the proposal makes has no page until it is accepted: a link would lead to *no such claim*.
+        self.index()?.claim(claim.as_str())?;
+        Some(crate::knowledge::paths::claim(
+            self.ctx.wiki.slug.as_str(),
+            claim.as_str(),
+            self.view_name().as_deref(),
+        ))
+    }
+
+    fn cited_href(&self, claim: &ClaimId, source: &SourceId) -> Option<String> {
+        self.claim_href(claim)?;
+        Some(crate::knowledge::paths::claim_source(
+            self.ctx.wiki.slug.as_str(),
+            claim.as_str(),
+            source.as_str(),
+            self.view_name().as_deref(),
+        ))
     }
 }
 

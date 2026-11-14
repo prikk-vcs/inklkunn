@@ -3005,9 +3005,9 @@ pub const CATALOG: &[Entry] = &[
         "know.source_change_reference_cleared",
         "参照先が書かれなくなります。",
     ),
-    msg("know.source_nameless", "題名のない出典（識別子 {id}）"),
+    msg("know.source_nameless", "題名も著者も日付もない出典"),
     // knowledge: a file that cannot be read is replaced (handoff 005 corrections, second round K16): end
-    msg("know.subject_claim", "「{excerpt}」"),
+    msg("know.subject_claim", "{id}"),
     msg("know.subject_claim_id", "「{excerpt}」［主張 {id}］"),
     msg("know.subject_source_id", "{name}［出典 {id}］"),
     // knowledge: subjects told apart (handoff 005 corrections, third round K24): end

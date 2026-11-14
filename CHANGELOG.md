@@ -816,6 +816,20 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   bounded in work (killed by putting the filters back), the web list in fifty-row pages with the way on and back and a lost cursor, Japanese,
   and the API item with the new reason, checked against the OpenAPI document by the existing shape test. No store change; no
   prikk-dependent test.
+- **K32 (handoff 005 corrections, fourth round): a line names every claim and source by its whole identifier, linked to its page.**
+  An identifier is written by whoever writes the file, so the shortened form K24 printed (the first four characters, `…`, the last
+  four or more) could be copied: a twin source with the same name and an identifier that shares its first and last eight characters
+  read on another proposal's page exactly as the real one did. The abbreviation (`proposals/knowledge/names.rs`) and the two-pass render
+  that settled it are gone; every claim and source a line names carries its **whole** identifier in `<code>`, which wraps where the line
+  is narrow (`overflow-wrap` on `code`). A claim's identifier leads to the claim's page when the wiki has the claim (a claim only the
+  proposal makes has no page yet, so no link that would end in *no such claim*); a source has no page of its own, so its identifier
+  leads to **its line on the page of the claim the line is about** (`/{slug}/-/claim/{id}#source-{source id}`; the claim page now gives
+  each source's line that `id`), and a source named with no claim (recorded, changed, removed, or the one a source is replaced by) is
+  the identifier alone. A source that names itself in no way is *A source without a title, author or date*, its identifier following
+  like every other (`know.source_nameless` no longer holds the identifier; `know.subject_claim` is now just the identifier). New helper
+  `catalog::code_link`; `Subjects` gains `claim_href` and `cited_href`. Tests: a twin source and a twin claim, each with the same
+  name or paragraph and an identifier that shares both ends, read differently on a page that names only one of them, in both languages;
+  the links on the real page (and the claim page's `id`); a claim only the proposal makes is not linked. No prikk-dependent test.
 
 ## [0.2.0] — 2026-11-04
 
