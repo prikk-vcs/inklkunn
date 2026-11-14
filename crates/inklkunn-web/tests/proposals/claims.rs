@@ -1610,3 +1610,111 @@ async fn a_claim_moving_between_two_paragraphs_that_begin_alike_names_the_page_a
     );
     assert!(!body.contains("the paragraph marked"), "{body}");
 }
+
+#[tokio::test]
+async fn revising_a_proposal_that_renames_and_edits_a_page_reads_the_page_where_the_proposal_leaves_it()
+ {
+    // K46 (decision 4 of the review of 2026-11-14): the revise form passes the edit's renames to the reading of the
+    // pages, so its lines agree with the page and with the submission.
+    let s = scene();
+    let now = "judged on the wording it has in this proposal&#39;s result.";
+    let unjudged = "judged on a wording the claim does not have in this proposal&#39;s result.";
+    let moved = BRIDGE
+        .replace("title: Bridge", "title: Span")
+        .replace("A note.", "A longer note.");
+    let mut files = second_link_judged_on_the_paragraph(&s);
+    files.push(("pages/Span.md".to_owned(), Some(moved.clone())));
+    let who = principal(&s.writer);
+    let draft =
+        s.w.services
+            .proposals
+            .create(
+                &who,
+                &s.w.wiki,
+                None,
+                inklkunn_core::proposal::ProposalEdit {
+                    summary: "Move the bridge".to_owned(),
+                    files: files
+                        .into_iter()
+                        .map(|(path, text)| inklkunn_store::FileChange { path, text })
+                        .collect(),
+                    renames: vec![inklkunn_store::Rename {
+                        from: "pages/Bridge.md".to_owned(),
+                        to: "pages/Span.md".to_owned(),
+                    }],
+                    ..Default::default()
+                },
+            )
+            .expect("a draft");
+    s.w.services
+        .proposals
+        .submit(&who, &s.w.wiki, &draft.id)
+        .expect("the service accepts the move: the page is where the rename leaves it");
+    let to = format!("/handbook/-/proposals/{}", draft.id);
+    // The proposal's own page reads the rename.
+    let body = as_text(open(&s, &to, &s.writer).await.body());
+    assert!(body.contains(now) && !body.contains(unjudged), "{body}");
+    // The form posted to revise it, with the rename it holds, says the same.
+    let revise = vec![
+        ("op", "changes".to_owned()),
+        ("pages", "1".to_owned()),
+        ("renames", "1".to_owned()),
+        ("rn0_from", "pages/Bridge.md".to_owned()),
+        ("rn0_to", "pages/Span.md".to_owned()),
+        ("part", "whole".to_owned()),
+        ("base_state", state_id(1)),
+        ("base_block", block_id(1)),
+        ("p0_path", "pages/Span.md".to_owned()),
+        ("p0_title", "Span".to_owned()),
+        (
+            "p0_text",
+            moved.replace("A longer note.", "A longer note, again."),
+        ),
+        ("summary", "Move the bridge".to_owned()),
+        ("sources", String::new()),
+    ];
+    let a = send(&s, &format!("{to}/edit"), &s.writer, &revise).await;
+    assert_eq!(a.status, StatusCode::OK, "{}", a.body());
+    let form = as_text(a.body());
+    assert!(form.contains(now) && !form.contains(unjudged), "{form}");
+}
+
+#[tokio::test]
+async fn a_paragraph_retyped_under_a_new_marker_with_the_same_opening_is_told_apart_from_the_one_it_replaces()
+ {
+    // U-j: each of the two lines was compared with the paragraphs of its own version of the page, and neither version
+    // has another paragraph that begins alike; the two lines read alike, and the claim seemed not to move. The
+    // paragraph is compared with those of the base and of the result together.
+    let s = scene();
+    let common =
+        "It opened to traffic in the spring of that year, after a long delay and a hard winter, ";
+    let page = |ending: &str| {
+        format!("---\ntitle: Bridge\nid: bridge-page\n---\n\n{common}{ending}\n\nA note.\n")
+    };
+    s.w.fake
+        .set("pages/Bridge.md", &page("by the council. ^k1"));
+    let mut moved = s.claim.clone();
+    moved.expressions = vec![Expression::new("bridge-page", "k2").expect("an expression")];
+    let to = held_unjudged(
+        &s,
+        vec![
+            (claim_path(&moved.id), Some(moved.to_yaml())),
+            (
+                "pages/Bridge.md".to_owned(),
+                Some(page("by the guild. ^k2")),
+            ),
+        ],
+    );
+    let body = as_text(open(&s, &to, &s.writer).await.body());
+    assert!(
+        body.contains("(the paragraph marked <code>k2</code>)")
+            && body.contains("(the paragraph marked <code>k1</code>)"),
+        "{body}"
+    );
+    // A paragraph that stays where it is, among paragraphs that do not begin as it does, still has no marker.
+    s.w.fake
+        .set("pages/Bridge.md", &page("by the council. ^k1"));
+    let to = held_unjudged(&s, vec![(claim_path(&s.claim.id), Some(s.claim.to_yaml()))]);
+    let body = as_text(open(&s, &to, &s.writer).await.body());
+    assert!(!body.contains("the paragraph marked"), "{body}");
+}

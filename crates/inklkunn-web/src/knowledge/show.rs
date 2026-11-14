@@ -33,7 +33,7 @@ use super::marks::distinct;
 use super::others::{self, Others, Section};
 use super::thread;
 use super::{paths, words};
-use crate::catalog::{Key, Rich, T};
+use crate::catalog::{Key, Rich, T, code};
 use crate::discover::Subject;
 use crate::pages::{Page, PageState, answer};
 use crate::present::WikiLinks;
@@ -56,10 +56,10 @@ struct Said {
 struct SourceLine {
     /// The id of the line: the place a link to this source on this claim leads to.
     anchor: String,
-    line: String,
-    /// What else the source says of itself, each as a sentence of its own (where it is found; the one way to
-    /// tell a source that names itself in no way).
-    details: Vec<String>,
+    line: Rich,
+    /// What else the source says of itself, each as a sentence of its own: where it is found, and its whole
+    /// identifier in `<code>` (K43), which tells apart two sources that say the same of themselves.
+    details: Vec<Rich>,
     earlier: Option<String>,
 }
 
@@ -258,19 +258,16 @@ fn one_line(text: Option<&str>) -> Option<String> {
 }
 
 /// What a readable source is called on the claim's page: its title (else *a source without a title*), then its
-/// author or publisher and its date, each as it was written; and the sentences that go after its line. The
-/// identifier is told only of a source that names itself in no way, since nothing else would tell it from
-/// another. Never a score; every text is printed escaped.
-pub(crate) fn source_name(t: T, source: &KnowledgeSourceRow) -> (String, Vec<String>) {
+/// author or publisher and its date, each as it was written; and the sentences that go after its line: where it is
+/// found, and **its whole identifier** (K43) in `<code>`, always, since two sources can say the same of themselves
+/// and only the identifier tells them apart. Never a score; every text is printed escaped.
+pub(crate) fn source_name(t: T, source: &KnowledgeSourceRow) -> (String, Vec<Rich>) {
     let (title, author, date, reference) = (
         one_line(source.title.as_deref()),
         one_line(source.author.as_deref()),
         one_line(source.date.as_deref()),
         one_line(source.reference.as_deref()),
     );
-    let nameless = [&title, &author, &date, &reference]
-        .iter()
-        .all(|part| part.is_none());
     let first = match &title {
         Some(title) => t.msg(Key::ClaimSourceTitled).with("title", title).text(),
         None => t.get(Key::ClaimSourceUntitled),
@@ -290,16 +287,14 @@ pub(crate) fn source_name(t: T, source: &KnowledgeSourceRow) -> (String, Vec<Str
         details.push(
             t.msg(Key::ClaimSourceFoundAt)
                 .with("reference", reference)
-                .text(),
+                .html(),
         );
     }
-    if nameless {
-        details.push(
-            t.msg(Key::ClaimSourceIdentifier)
-                .with("id", &source.id)
-                .text(),
-        );
-    }
+    details.push(
+        t.msg(Key::ClaimSourceIdentifier)
+            .rich("id", code(&source.id))
+            .html(),
+    );
     (name, details)
 }
 
@@ -323,7 +318,7 @@ fn source_lines(t: T, found: &Found) -> Vec<SourceLine> {
                             .with("name", name)
                             .with("kind", t.get(words::source_kind(&source.kind)))
                             .with("how", t.get(how))
-                            .text(),
+                            .html(),
                         details,
                         earlier,
                     }
@@ -333,10 +328,10 @@ fn source_lines(t: T, found: &Found) -> Vec<SourceLine> {
                     anchor: paths::source_fragment(&link.source),
                     line: t
                         .msg(Key::ClaimSourceLine)
-                        .with("id", &link.source)
+                        .rich("id", code(&link.source))
                         .with("kind", t.get(Key::ClaimSourceUnreadable))
                         .with("how", t.get(how))
-                        .text(),
+                        .html(),
                     details: Vec::new(),
                     earlier,
                 },

@@ -12,7 +12,7 @@ use inklkunn_core::read::ReadError;
 use inklkunn_core::{Action, Principal, Resource};
 use inklkunn_store::WikiRecord;
 
-use crate::catalog::{Key, T};
+use crate::catalog::{Key, Rich, T, code};
 use crate::services::Services;
 
 /// The most claims one refusal offers a form for: a proposal that touches more says so in its lines, and each claim's
@@ -44,27 +44,46 @@ pub(crate) fn link(t: T, slug: &str, claim: &str, view: Option<&str>) -> (String
     )
 }
 
-/// The link to a claim's curation form where several claims are offered one: it names the claim, by its whole
-/// identifier, so that the links are told apart.
-pub(crate) fn link_of(t: T, slug: &str, claim: &str, view: Option<&str>) -> (String, String) {
+/// The link to a claim's curation form where a page that is not the claim's offers it: it names the claim, by its whole
+/// identifier in `<code>` (U-i), so that the links are told apart, and so that a single one has an antecedent.
+pub(crate) fn link_of(t: T, slug: &str, claim: &str, view: Option<&str>) -> (Rich, String) {
     (
-        t.msg(Key::KnowCurateLinkOf).with("claim", claim).text(),
+        t.msg(Key::KnowCurateLinkOf)
+            .rich("claim", code(claim))
+            .html(),
         crate::proposals::paths::curate(slug, claim, view),
     )
 }
 
+/// What a refusal offers: a link to the curation form of each claim it touches (at most [`MOST_OFFERED`]), and, when
+/// there are more, a sentence that says how many (U-i): a list is never cut without saying so.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Offers {
+    /// Each link: its words and its address.
+    pub(crate) links: Vec<(Rich, String)>,
+    /// How many claims more the change touches than the links offered.
+    pub(crate) more: Option<String>,
+}
+
+impl Offers {
+    /// Whether nothing is offered.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.links.is_empty() && self.more.is_none()
+    }
+}
+
 /// What a refusal that says *this change needs a curation proposal* offers: the curation form of each claim the
 /// refused files touch (see [`claims_of`]), for those who may propose, and nothing for others. `full_view` is the view
-/// the proposal is for, as the service names it (`heads/<name>`). One claim is offered the link that says *its*; several
-/// are offered links that name the claim.
+/// the proposal is for, as the service names it (`heads/<name>`). **Each link names its claim** (U-i), one claim too:
+/// the proposal's page is not the claim's, so *its* would have nothing to refer to.
 pub(crate) fn offers(
     ctx: &crate::proposals::Ctx,
     t: T,
     full_view: &str,
     refused: &[Refusal],
-) -> Result<Vec<(String, String)>, ReadError> {
+) -> Result<Offers, ReadError> {
     if refused.is_empty() || !may_propose(&ctx.services, &ctx.principal, &ctx.wiki) {
-        return Ok(Vec::new());
+        return Ok(Offers::default());
     }
     let index = ctx
         .services
@@ -75,18 +94,24 @@ pub(crate) fn offers(
         .filter(|_| full_view != ctx.wiki.default_view);
     let claims = claims_of(&index, refused);
     let slug = ctx.slug();
-    Ok(match claims.as_slice() {
-        [one] => vec![link(t, slug, one, view)],
-        many => many
+    let more = claims.len().saturating_sub(MOST_OFFERED);
+    Ok(Offers {
+        links: claims
             .iter()
+            .take(MOST_OFFERED)
             .map(|claim| link_of(t, slug, claim, view))
             .collect(),
+        more: (more > 0).then(|| {
+            t.msg(Key::KnowCurateMore)
+                .n(u64::try_from(more).unwrap_or(u64::MAX))
+                .text()
+        }),
     })
 }
 
 /// The claims whose curation form a refusal leads to: the claim a refused file is, and the claims that cite a source a
 /// refused file is. Only claims the index of the view holds (the form opens on one that is there), in the order the
-/// files were refused, each once, at most [`MOST_OFFERED`].
+/// files were refused, each once. All of them: [`offers`] offers the first [`MOST_OFFERED`] and counts the rest.
 pub(crate) fn claims_of(index: &KnowledgeIndex, refused: &[Refusal]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for r in refused {
@@ -107,9 +132,6 @@ pub(crate) fn claims_of(index: &KnowledgeIndex, refused: &[Refusal]) -> Vec<Stri
         for claim in found {
             if !out.contains(&claim) {
                 out.push(claim);
-            }
-            if out.len() >= MOST_OFFERED {
-                return out;
             }
         }
     }

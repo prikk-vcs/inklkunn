@@ -104,7 +104,7 @@ struct ProposalTpl<'a> {
     know_notes: Vec<String>,
     /// Where a change that needs a curation proposal is made: the curation form of each claim it touches, for those
     /// who may propose (K39).
-    know_curate: Vec<(String, String)>,
+    know_curate: crate::knowledge::curate::Offers,
     know: Vec<super::knowledge::Line>,
     touch_heading: String,
     touch_intro: String,
@@ -691,7 +691,7 @@ pub(crate) fn draw(
                 Err(e) => return crate::proposals::new::read_failure(page, ctx, e),
             };
             let mut notes = Vec::new();
-            let mut offered = Vec::new();
+            let mut offered = crate::knowledge::curate::Offers::default();
             let has_knowledge_files = content
                 .files
                 .iter()
@@ -719,7 +719,7 @@ pub(crate) fn draw(
             }
             (known.lines, notes, offered)
         }
-        None => (Vec::new(), Vec::new(), Vec::new()),
+        None => (Vec::new(), Vec::new(), Default::default()),
     };
 
     // The comment form: about a part, or a reply, or neither.

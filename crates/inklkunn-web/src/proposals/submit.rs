@@ -38,7 +38,7 @@ use super::parts::{self, Selection};
 use super::render::{self, Alone, PageInput};
 use super::{
     Ctx, Stop, fields, fields_of, from_this_site, needs_account, notice_page, parse_id, paths,
-    refused, see, serve, words,
+    refused, refused_offering, see, serve, words,
 };
 use crate::catalog::{Key, T};
 use crate::csrf::Decided;
@@ -577,7 +577,7 @@ fn post(
     let place = Place {
         view: full_view.as_deref(),
         base: &base,
-        renames: &[],
+        renames: &sub.renames,
     };
     let (carried_lines, carried_curated) = match file_lines(ctx, t, &place, &files(true)) {
         Ok(found) => (found.lines, found.curated),
@@ -638,7 +638,7 @@ fn post(
                 drops: dropping.clone(),
                 confirmed: sub.drops.clone(),
                 carried: carried_lines.clone(),
-                curate: Vec::new(),
+                curate: Default::default(),
             },
         }
     };
@@ -759,21 +759,18 @@ fn post(
                 // The draft was made and could not be sent: say why, and leave the person on the draft.
                 Err(Failure::Late { id, error }) => {
                     let to = paths::act(slug, id.as_str(), paths::ACT_EDIT);
-                    let mut choices = vec![Choice {
+                    let choices = vec![Choice {
                         label: t.get(Key::ProposeContinueDraft),
                         href: to,
                     }];
+                    let mut offers = Default::default();
                     if matches!(error, ProposalError::Invalid(Invalid::KnowledgeCurated)) {
                         match curate_offers(ctx, t, full_view.as_deref(), &carried_curated) {
-                            Ok(offered) => choices.extend(
-                                offered
-                                    .into_iter()
-                                    .map(|(label, href)| Choice { label, href }),
-                            ),
+                            Ok(offered) => offers = offered,
                             Err(e) => return read_failure(page, ctx, e),
                         }
                     }
-                    refused(page, ctx, &error, choices)
+                    refused_offering(page, ctx, &error, choices, offers)
                 }
             }
         }
@@ -787,7 +784,7 @@ fn curate_offers(
     t: crate::catalog::T,
     full_view: Option<&str>,
     curated: &[inklkunn_core::knowledge::check::Refusal],
-) -> Result<Vec<(String, String)>, inklkunn_core::read::ReadError> {
+) -> Result<crate::knowledge::curate::Offers, inklkunn_core::read::ReadError> {
     let view = full_view.unwrap_or(ctx.wiki.default_view.as_str());
     crate::knowledge::curate::offers(ctx, t, view, curated)
 }

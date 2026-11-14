@@ -28,7 +28,7 @@ use inklkunn_core::read::{
 };
 use inklkunn_store::WikiRecord;
 
-use crate::catalog::{Key, T};
+use crate::catalog::{Key, Rich, T, code};
 use crate::discover::{Subject, resolve};
 use crate::knowledge::{
     curate as knowledge_curate, paths as knowledge_paths, show::source_name, words,
@@ -296,6 +296,8 @@ pub(crate) async fn health_index(
 /// way to its curation form).
 struct CellLink {
     label: String,
+    /// The label with markup in it (a claim's whole identifier in `<code>`, K43); it is printed instead of `label`.
+    rich: Option<Rich>,
     href: String,
     also: Option<(String, String)>,
 }
@@ -304,6 +306,7 @@ impl CellLink {
     fn to(label: String, href: String) -> CellLink {
         CellLink {
             label,
+            rich: None,
             href,
             also: None,
         }
@@ -312,6 +315,8 @@ impl CellLink {
 
 struct Cell {
     text: String,
+    /// What follows the text, each as a sentence of its own (a source's whole identifier in `<code>`, K43).
+    tail: Vec<Rich>,
     /// Links beside the text, one under another.
     links: Vec<CellLink>,
     href: Option<String>,
@@ -321,6 +326,7 @@ impl Cell {
     fn text(text: impl Into<String>) -> Cell {
         Cell {
             text: text.into(),
+            tail: Vec::new(),
             links: Vec::new(),
             href: None,
         }
@@ -329,6 +335,7 @@ impl Cell {
     fn page(text: impl Into<String>, href: String) -> Cell {
         Cell {
             text: text.into(),
+            tail: Vec::new(),
             links: Vec::new(),
             href: Some(href),
         }
@@ -559,10 +566,10 @@ struct SourcesDraw<'a> {
 fn claim_said(
     t: T,
     index: &KnowledgeIndex,
-    named: &mut HashMap<String, String>,
+    named: &mut HashMap<String, (String, Rich)>,
     used: &mut HashMap<String, usize>,
     claim: &str,
-) -> String {
+) -> (String, Rich) {
     named
         .entry(claim.to_owned())
         .or_insert_with(|| {
@@ -571,11 +578,27 @@ fn claim_said(
                 .filter(|a| a.state == inklkunn_core::knowledge::index::PRESENT)
                 .find_map(|a| inklkunn_markup::path::path_to_title(a.page_path.as_deref()?));
             match title {
-                Some(title) => crate::knowledge::marks::distinct(used, title),
-                None => t
-                    .msg(Key::HealthSourcesClaimNowhere)
-                    .with("id", claim)
-                    .text(),
+                Some(title) => {
+                    let title = crate::knowledge::marks::distinct(used, title);
+                    let rich = t
+                        .msg(Key::HealthSourcesClaimId)
+                        .with("where", &title)
+                        .rich("id", code(claim))
+                        .html();
+                    (title, rich)
+                }
+                None => {
+                    let rich = t
+                        .msg(Key::HealthSourcesClaimNowhere)
+                        .rich("id", code(claim))
+                        .html();
+                    (
+                        t.msg(Key::HealthSourcesClaimNowhere)
+                            .with("id", claim)
+                            .text(),
+                        rich,
+                    )
+                }
             }
         })
         .clone()
@@ -597,7 +620,8 @@ fn source_rows(
     let SourcesDraw { curate, notes, nav } = draw;
     // A claim is named by the page it is said on; two claims on one title are told apart by a count, and a claim
     // keeps the name it was given wherever else the page names it.
-    let mut named: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut named: std::collections::HashMap<String, (String, Rich)> =
+        std::collections::HashMap::new();
     let mut used = std::collections::HashMap::new();
     // The numbering continues across pages: what the pages before this one named is named first, so a claim that
     // shares its page title with an earlier one is told from it by the same count on every page (U-i).
@@ -611,10 +635,6 @@ fn source_rows(
         .iter()
         .map(|row| {
             let (name, details) = source_name(t, &row.source);
-            let name = std::iter::once(name)
-                .chain(details)
-                .collect::<Vec<_>>()
-                .join(" ");
             let mut why = Vec::new();
             if row.unavailable {
                 why.push(page.get(Key::HealthSourcesUnavailable));
@@ -641,18 +661,26 @@ fn source_rows(
                 .claims
                 .iter()
                 .map(|c| {
-                    let said = claim_said(t, &list.index, &mut named, &mut used, &c.claim);
-                    let label = match words::how(&c.relation, &c.bearing) {
-                        Some(how) => t
-                            .msg(Key::HealthSourcesClaim)
-                            .with("where", said)
-                            .with("how", t.get(how))
-                            .text(),
+                    // The page it is said on (or that it is said on none) and **its whole identifier** (K43).
+                    let (said, named_by) =
+                        claim_said(t, &list.index, &mut named, &mut used, &c.claim);
+                    let (label, rich) = match words::how(&c.relation, &c.bearing) {
+                        Some(how) => (
+                            t.msg(Key::HealthSourcesClaim)
+                                .with("where", &said)
+                                .with("how", t.get(how))
+                                .text(),
+                            t.msg(Key::HealthSourcesClaim)
+                                .rich("where", named_by)
+                                .with("how", t.get(how))
+                                .html(),
+                        ),
                         // A phrase for a relation or a bearing this build does not know is not made up.
-                        None => said,
+                        None => (said, named_by),
                     };
                     CellLink {
                         label,
+                        rich: Some(rich),
                         href: knowledge_paths::claim(wiki.slug.as_str(), &c.claim, None),
                         also: curate
                             .then(|| knowledge_curate::link(t, wiki.slug.as_str(), &c.claim, None)),
@@ -677,8 +705,10 @@ fn source_rows(
                 Cell::text(text)
             };
             claims.links = links;
+            let mut source = Cell::text(name);
+            source.tail = details;
             vec![
-                Cell::text(name),
+                source,
                 Cell::text(why.join(" ")),
                 claims,
                 Cell::text(page.get(Resolve::SourceCheck.key())),

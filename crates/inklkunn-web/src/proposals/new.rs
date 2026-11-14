@@ -99,7 +99,7 @@ struct FormTpl<'a> {
     choose: Option<LinkView>,
     saved: Option<String>,
     problems: Vec<String>,
-    problem_links: Vec<(String, String)>,
+    problem_links: crate::knowledge::curate::Offers,
     action: String,
     hidden: Vec<Hidden>,
     fields: Vec<FieldView>,
@@ -207,7 +207,7 @@ pub(super) struct KnowledgeState {
     pub(super) carried: Vec<super::knowledge::Line>,
     /// Under a refusal that says the change needs a curation proposal: the way to the curation form of each claim it
     /// touches (K39), for those who may propose.
-    pub(super) curate: Vec<(String, String)>,
+    pub(super) curate: crate::knowledge::curate::Offers,
 }
 
 /// What the form is for, for its heading.

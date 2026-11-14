@@ -9,8 +9,9 @@
 <ul>
 {% for p in problems %}<li>{{ p }}</li>
 {% endfor %}</ul>
-{% for l in problem_links %}<p><a href="{{ l.1 }}">{{ l.0 }}</a></p>
-{% endfor %}</div>
+{% for l in problem_links.links %}<p><a href="{{ l.1 }}">{{ l.0 }}</a></p>
+{% endfor %}{% if let Some(more) = problem_links.more %}<p class="note">{{ more }}</p>
+{% endif %}</div>
 {% endif %}<p>{{ intro }}</p>
 {% if let Some(text) = scope %}<p>{{ text }}</p>
 {% endif %}{% if let Some(link) = choose %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>

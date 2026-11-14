@@ -221,6 +221,8 @@ struct NoticeTpl<'a> {
     heading: String,
     paragraphs: Vec<String>,
     choices: Vec<Choice>,
+    /// The ways to a curation form a refusal offers (K39): their words carry markup, which a [`Choice`]'s do not.
+    offers: crate::knowledge::curate::Offers,
     propose: Option<Choice>,
 }
 
@@ -284,6 +286,30 @@ pub(crate) fn notice(
     choices: Vec<Choice>,
     propose: Option<Choice>,
 ) -> Response {
+    notice_offering(
+        page,
+        wiki,
+        status,
+        heading,
+        paragraphs,
+        choices,
+        Default::default(),
+        propose,
+    )
+}
+
+/// [`notice`] with the ways to a curation form a refusal offers, after the choices.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn notice_offering(
+    page: &Page,
+    wiki: &WikiRecord,
+    status: StatusCode,
+    heading: Key,
+    paragraphs: Vec<String>,
+    choices: Vec<Choice>,
+    offers: crate::knowledge::curate::Offers,
+    propose: Option<Choice>,
+) -> Response {
     let shell = Shell::of(wiki);
     let page = &page.wiki_head(wiki, Subject::Wiki);
     let rendered = NoticeTpl {
@@ -299,6 +325,7 @@ pub(crate) fn notice(
         heading: page.get(heading),
         paragraphs,
         choices,
+        offers,
         propose,
     }
     .render();

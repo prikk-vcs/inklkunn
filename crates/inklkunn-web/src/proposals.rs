@@ -186,6 +186,17 @@ pub(crate) fn refused(
     error: &inklkunn_core::proposal::ProposalError,
     choices: Vec<Choice>,
 ) -> Response {
+    refused_offering(page, ctx, error, choices, Default::default())
+}
+
+/// [`refused`] with the ways to a curation form the refusal offers (K39), under its words.
+pub(crate) fn refused_offering(
+    page: &Page,
+    ctx: &Ctx,
+    error: &inklkunn_core::proposal::ProposalError,
+    choices: Vec<Choice>,
+    offers: crate::knowledge::curate::Offers,
+) -> Response {
     use inklkunn_core::proposal::ProposalError;
     if let ProposalError::BaseUnavailable(cause) = error {
         ctx.log(&format!("a proposal's base could not be read now: {cause}"));
@@ -196,7 +207,16 @@ pub(crate) fn refused(
     match words::refusal(page.t(), error) {
         None => crate::wiki::generic_not_found(page),
         Some(r) => {
-            let response = notice_page(page, ctx, r.status, r.heading, r.paragraphs, choices);
+            let response = crate::wiki::notice_offering(
+                page,
+                &ctx.wiki,
+                r.status,
+                r.heading,
+                r.paragraphs,
+                choices,
+                offers,
+                None,
+            );
             if r.retry {
                 crate::wiki::with_retry_after(response)
             } else {

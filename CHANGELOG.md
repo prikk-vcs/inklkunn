@@ -1026,6 +1026,27 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   tips and days, a cursor past the end and exactly at the end, forged cursors, the page through the router in both languages, and
   the numbering on the second page. No new prikk-dependent test.
 
+- **K43, K46, K48 and K54's U-i and U-j (handoff 005 corrections, fifth round): the proposal page and the claim page's lines.**
+  (K43) The claim page's source lines and *Sources to review* carry each source's **whole identifier in `<code>`**, always (it was told
+  only of a source that named itself in no way), as the proposal page's lines do; *Sources to review* names each claim by its page and
+  its whole identifier (`health.sources_claim_id`, `[claim <code>…</code>]`). A twin source (the same title, author, date and
+  reference) now gives two lines that differ, on both surfaces, in both languages; the test that said the claim page shows no
+  identifier is turned around. `source_name` returns the sentences as `Rich`; the claim page's line is `Rich` (so a source's text is
+  escaped by the catalog's escaper: `&lt;`, not `&#60;`). (K46) The page-edit and revise form passes the edit's renames to the
+  reading of the pages (`Place { renames: &sub.renames }`), so a proposal that renames and edits a page has the lines its page and the
+  submission give. (K48) A claim is linked from a proposal's page only when **the view's tip** has it, and a source's `#source-…`
+  fragment only when that claim's page at the tip lists the source (a link the proposal is only adding links the claim, without the
+  fragment); the tip's index is read once per page (`Resolver::tip_index`). (U-i) The curation link on a proposal's page or a refusal
+  **names its claim, one claim too** (*Propose a change to the status or sources of the claim `<code>id</code>`*), because the page is
+  not the claim's; `link_of` returns markup; beyond five claims the page says **how many more** (`know.curate_more`, singular and
+  plural, both languages) instead of cutting in silence: `knowledge::curate::Offers { links, more }` replaces the list of links on
+  the proposal's page, the form's problem list and the refusal notice (`wiki::notice_offering`, `proposals::refused_offering`). (U-j)
+  `begins_alike` compares a paragraph with the others of **the base's page and the result's together**, so a paragraph removed and
+  retyped under a new marker with the same opening reads as two lines with their markers. Not here: the numbering of claims across
+  pages (K3). Tests: `tests/knowledge_pages/main.rs` and `freshness.rs` (the twins, both surfaces, en and ja), `tests/proposals/claims.rs`
+  (the rename revise, the retyped paragraph), `rendered.rs` (the links), `curate_link.rs` (the named link, the count of more); all
+  without prikk; no new prikk-dependent test.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

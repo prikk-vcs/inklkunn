@@ -7,5 +7,7 @@
 {% endfor %}{% if !choices.is_empty() %}<ul class="choices">
 {% for c in choices %}<li><a href="{{ c.href }}">{{ c.label }}</a></li>
 {% endfor %}</ul>
+{% endif %}{% for o in offers.links %}<p class="know-curate"><a href="{{ o.1 }}">{{ o.0 }}</a></p>
+{% endfor %}{% if let Some(more) = offers.more %}<p class="note know-curate-more">{{ more }}</p>
 {% endif %}{% if let Some(p) = propose %}<p><a href="{{ p.href }}">{{ p.label }}</a></p>
 {% endif %}{% endblock %}

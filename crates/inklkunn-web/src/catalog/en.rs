@@ -3014,6 +3014,7 @@ pub const CATALOG: &[Entry] = &[
     msg("health.sources_cut", "The first {limit} are named."),
     msg("health.sources_no_claims", "No claim cites it."),
     msg("health.sources_claim", "{where} ({how})"),
+    msg("health.sources_claim_id", "{where} [claim {id}]"),
     msg(
         "health.sources_claim_nowhere",
         "A claim said on no page now, identifier {id}",
@@ -3040,6 +3041,11 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "know.curate_link_of",
         "Propose a change to the status or sources of the claim {claim}",
+    ),
+    plural_msg(
+        "know.curate_more",
+        "{count} more claim is touched: its own page leads to its curation form.",
+        "{count} more claims are touched: each claim's own page leads to its curation form.",
     ),
     msg("claim_thread.heading", "Discussion of this claim"),
     msg(

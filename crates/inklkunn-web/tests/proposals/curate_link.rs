@@ -12,6 +12,11 @@ use crate::common::{block_id, state_id};
 
 const WORDS: &str = "Propose a change to its status or sources";
 
+/// The link's words on a page that is not the claim's: they name the claim, by its whole identifier in `<code>` (U-i).
+fn words_of(claim: &ClaimId) -> String {
+    format!("Propose a change to the status or sources of the claim <code>{claim}</code>")
+}
+
 fn form_of(claim: &ClaimId) -> String {
     format!("/handbook/-/proposals/curate?claim={claim}")
 }
@@ -33,7 +38,13 @@ fn page_edit() -> (String, Option<String>) {
 
 /// A second claim, said in the same paragraph, written into the wiki.
 fn second_claim(s: &Scene) -> Claim {
-    let id = ClaimId::parse("01930000-0000-7000-8000-000000000002").expect("a claim id");
+    numbered_claim(s, 2)
+}
+
+/// Claim number `n`, said in the same paragraph, written into the wiki.
+fn numbered_claim(s: &Scene, n: u8) -> Claim {
+    let id =
+        ClaimId::parse(&format!("01930000-0000-7000-8000-00000000000{n}")).expect("a claim id");
     let mut claim = Claim::new(id);
     claim.kind = StatementKind::Observation;
     claim.lifecycle = Lifecycle::Proposed;
@@ -49,10 +60,16 @@ async fn a_proposal_that_needs_curation_leads_to_the_form_of_the_claim_for_who_m
     let to = held_unjudged(&s, vec![decided(&s.claim), page_edit()]);
     let body = open(&s, &to, &s.writer).await.body();
     assert!(body.contains("only a curation proposal may do"), "{body}");
+    // One claim too is named: the proposal's page is not the claim's, so *its* would have nothing to refer to (U-i).
     assert!(
-        body.contains(&format!("<a href=\"{}\">{WORDS}</a>", form_of(&s.claim.id))),
+        body.contains(&format!(
+            "<a href=\"{}\">{}</a>",
+            form_of(&s.claim.id),
+            words_of(&s.claim.id)
+        )),
         "{body}"
     );
+    assert!(!body.contains(WORDS), "{body}");
     // Someone who may not propose is told the same and is not offered a form they cannot use.
     let body = open(&s, &to, &s.observer).await.body();
     assert!(body.contains("only a curation proposal may do"), "{body}");
@@ -81,8 +98,9 @@ async fn several_claims_are_each_offered_a_link_that_names_the_claim() {
     for claim in [&s.claim.id, &second.id] {
         assert!(
             body.contains(&format!(
-                "<a href=\"{}\">Propose a change to the status or sources of the claim {claim}</a>",
-                form_of(claim)
+                "<a href=\"{}\">{}</a>",
+                form_of(claim),
+                words_of(claim)
             )),
             "{body}"
         );
@@ -138,7 +156,56 @@ async fn a_refused_submission_of_a_change_that_needs_curation_leads_to_the_form(
     let body = a.body();
     assert!(body.contains("only a curation proposal may do"), "{body}");
     assert!(
-        body.contains(&format!("<a href=\"{}\">{WORDS}</a>", form_of(&s.claim.id))),
+        body.contains(&format!(
+            "<a href=\"{}\">{}</a>",
+            form_of(&s.claim.id),
+            words_of(&s.claim.id)
+        )),
         "{body}"
     );
+}
+
+#[tokio::test]
+async fn more_claims_than_are_offered_a_form_are_counted_and_not_cut_in_silence() {
+    // U-i: at most five links; the rest are said, with how many, in the singular and the plural, in both languages.
+    let s = scene();
+    let claims: Vec<Claim> = (2..=7).map(|n| numbered_claim(&s, n)).collect();
+    let mut files = vec![decided(&s.claim), page_edit()];
+    files.extend(claims.iter().map(decided));
+    let to = held_unjudged(&s, files);
+    let body = open(&s, &to, &s.writer).await.body();
+    assert_eq!(body.matches("proposals/curate?claim=").count(), 5, "{body}");
+    assert!(
+        body.contains(
+            "2 more claims are touched: each claim&#39;s own page leads to its curation form."
+        ),
+        "{body}"
+    );
+    // Six claims: one more, in the singular. Five: nothing is cut, nothing is said.
+    let mut files = vec![decided(&s.claim), page_edit()];
+    files.extend(claims.iter().take(5).map(decided));
+    let body = open(&s, &held_unjudged(&s, files), &s.writer).await.body();
+    assert!(
+        body.contains("1 more claim is touched: its own page leads to its curation form."),
+        "{body}"
+    );
+    let mut files = vec![decided(&s.claim), page_edit()];
+    files.extend(claims.iter().take(4).map(decided));
+    let body = open(&s, &held_unjudged(&s, files), &s.writer).await.body();
+    assert_eq!(body.matches("proposals/curate?claim=").count(), 5, "{body}");
+    assert!(!body.contains(" more claim"), "{body}");
+    // In Japanese.
+    let ja = crate::common::request(
+        &s.w,
+        crate::common::APP,
+        "GET",
+        &to,
+        &[
+            ("x-test-account", s.writer.as_str()),
+            ("cookie", "inklkunn_lang=ja"),
+        ],
+    )
+    .await
+    .body();
+    assert!(ja.contains("ほかに 2 件の主張にも関わります。"), "{ja}");
 }

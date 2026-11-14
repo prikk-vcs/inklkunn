@@ -3078,6 +3078,7 @@ pub const CATALOG: &[Entry] = &[
         "これを引用する主張はありません。",
     ),
     msg("health.sources_claim", "{where}（{how}）"),
+    msg("health.sources_claim_id", "{where}［主張 {id}］"),
     msg(
         "health.sources_claim_nowhere",
         "いまどのページにも書かれていない主張、識別子 {id}",
@@ -3101,6 +3102,11 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "know.curate_link_of",
         "主張 {claim} の扱いや出典の変更を提案する",
+    ),
+    plural_msg(
+        "know.curate_more",
+        "ほかに {count} 件の主張にも関わります。それぞれの主張のページから、扱いや出典の変更を提案できます。",
+        "ほかに {count} 件の主張にも関わります。それぞれの主張のページから、扱いや出典の変更を提案できます。",
     ),
     msg("claim_thread.heading", "この主張についての議論"),
     msg(

@@ -355,18 +355,17 @@ async fn a_claim_page_says_its_kind_its_sources_and_its_status_in_words() {
         main.contains("<a href=\"/handbook/Home#h-^b1\">Home</a>"),
         "{main}"
     );
-    // Each source with its relation and how directly it speaks, and nothing else about it. These two say nothing
-    // of themselves, so the identifier is the one way left to tell them apart.
+    // Each source with its relation and how directly it speaks, and its whole identifier in `<code>` (K43).
     assert!(
         main.contains(&format!(
-            "A source without a title (primary): supports, directly. Its identifier is {}.",
+            "A source without a title (primary): supports, directly. Its identifier is <code>{}</code>.",
             source_id(1)
         )),
         "{main}"
     );
     assert!(
         main.contains(&format!(
-            "A source without a title (secondary): challenges, in part. Its identifier is {}.",
+            "A source without a title (secondary): challenges, in part. Its identifier is <code>{}</code>.",
             source_id(2)
         )),
         "{main}"
@@ -413,7 +412,7 @@ fn with_named_sources(w: &World, title: &str, author: &str) {
 }
 
 #[tokio::test]
-async fn a_source_is_named_by_what_it_says_of_itself_and_the_identifier_is_not_its_name() {
+async fn a_source_is_named_by_what_it_says_of_itself_and_its_whole_identifier_follows_in_code() {
     let w = handbook();
     with_named_sources(&w, "The Bridge Survey", "The Harbour Authority");
     let main = main_of(&get(&w, &claim_uri(1)).await);
@@ -430,12 +429,16 @@ async fn a_source_is_named_by_what_it_says_of_itself_and_the_identifier_is_not_i
         main.contains("A source without a title (observational): supports, indirectly. Where it is found: Harbour Notes 12, p. 4."),
         "{main}"
     );
-    // Not one of them is known by its identifier: it is told only of a source that gives nothing else.
+    // Each is named by what it says of itself, and its whole identifier follows in `<code>` (K43), once: it is not its
+    // name, and it is the one thing that tells two sources that say the same of themselves apart.
     // (A line's `id` attribute is the place a proposal's page links to; it is not text.)
     for n in 1..=3 {
         let id = source_id(n).to_string();
-        let shown = main.replace(&format!("id=\"source-{id}\""), "");
-        assert!(!shown.contains(&id), "{main}");
+        assert!(
+            main.contains(&format!("Its identifier is <code>{id}</code>.")),
+            "{main}"
+        );
+        assert_eq!(count(&main, &format!("<code>{id}</code>")), 1, "{main}");
         assert!(main.contains(&format!("id=\"source-{id}\"")), "{main}");
     }
     assert!(!main.contains("Source 0"), "{main}");
@@ -455,11 +458,11 @@ async fn what_a_source_says_of_itself_is_escaped_and_on_one_line() {
     assert!(!main.contains("<script>alert"), "{main}");
     assert!(!main.contains("<b>Ltd"), "{main}");
     assert!(
-        main.contains("“A &#60;script&#62;alert(1)&#60;/script&#62; title in two lines”"),
+        main.contains("“A &lt;script&gt;alert(1)&lt;/script&gt; title in two lines”"),
         "{main}"
     );
     assert!(
-        main.contains("by Tom &#38; &#34;Jerry&#34; &#60;b&#62;Ltd&#60;/b&#62;"),
+        main.contains("by Tom &amp; &quot;Jerry&quot; &lt;b&gt;Ltd&lt;/b&gt;"),
         "{main}"
     );
 }
@@ -474,6 +477,53 @@ async fn a_source_is_named_in_japanese_with_the_japanese_words_around_its_own() 
         "{main}"
     );
     assert!(main.contains("題名のない出典"), "{main}");
+}
+
+/// A claim that cites two sources which say exactly the same of themselves (title, author, date and reference).
+fn with_twin_sources(w: &World) {
+    let said = "The bridge opened in 1950.";
+    let mut c = claim(1, Standing::Contested, None, said);
+    c.sources = vec![
+        link(1, Link::Supports, Bearing::Direct, said),
+        link(2, Link::Supports, Bearing::Direct, said),
+    ];
+    let twin = |n: u8| {
+        let mut s = source(n, SourceKind::Primary);
+        s.identity = Identity {
+            title: Some("The Bridge Survey".to_owned()),
+            author: Some("The Harbour Authority".to_owned()),
+            date: Some("Spring 1950".to_owned()),
+        };
+        s.reference = Some(Reference {
+            form: ReferenceForm::Citation,
+            value: "Harbour Notes 12, p. 4".to_owned(),
+        });
+        s
+    };
+    put(w, &home_with(said), &[c], &[twin(1), twin(2)]);
+}
+
+#[tokio::test]
+async fn two_sources_that_say_the_same_of_themselves_give_two_lines_that_differ_in_both_languages()
+{
+    // K43 (D-3 and D-7, *naming a subject*): the whole identifier is the one thing that tells twins apart.
+    let w = handbook();
+    with_twin_sources(&w);
+    for (a, words) in [
+        (get(&w, &claim_uri(1)).await, "Its identifier is"),
+        (request(&w, APP, "GET", &claim_uri(1), JA).await, "識別子:"),
+    ] {
+        let main = main_of(&a);
+        let line = |n: u8| format!("{words} <code>{}</code>", source_id(n));
+        assert!(main.contains(&line(1)) && main.contains(&line(2)), "{main}");
+        let lines: Vec<&str> = main
+            .split("<li id=\"source-")
+            .skip(1)
+            .map(|l| l.split("</li>").next().unwrap_or(""))
+            .collect();
+        assert_eq!(lines.len(), 2, "{main}");
+        assert_ne!(lines.first(), lines.get(1), "{main}");
+    }
 }
 
 #[tokio::test]
@@ -532,7 +582,7 @@ async fn a_relation_judged_on_a_wording_the_paragraph_no_longer_has_says_so_unti
     assert_eq!(count(&main, "Judged on an earlier wording."), 1, "{main}");
     assert!(
         main.contains(&format!(
-            "challenges, in part. Its identifier is {}. <span class=\"claim-note\">Judged on an earlier wording.</span>",
+            "challenges, in part. Its identifier is <code>{}</code>. <span class=\"claim-note\">Judged on an earlier wording.</span>",
             source_id(2)
         )),
         "{main}"
@@ -637,7 +687,7 @@ async fn a_claim_with_no_source_and_a_source_whose_file_cannot_be_read_are_said_
     let main = main_of(&get(&w, &claim_uri(1)).await);
     assert!(
         main.contains(&format!(
-            "Source {} (its file cannot be read): supports, indirectly.",
+            "Source <code>{}</code> (its file cannot be read): supports, indirectly.",
             source_id(7)
         )),
         "{main}"

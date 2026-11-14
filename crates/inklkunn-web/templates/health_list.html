@@ -11,7 +11,7 @@
 <tr>{% for h in headers %}<th scope="col">{{ h }}</th>{% endfor %}</tr>
 </thead>
 <tbody>
-{% for row in rows %}<tr>{% for cell in row %}{% if loop.first %}<th scope="row">{% if let Some(href) = cell.href %}<a href="{{ href }}">{{ cell.text }}</a>{% else %}{{ cell.text }}{% endif %}</th>{% else %}<td>{{ cell.text }}{% for link in cell.links %}<br><a href="{{ link.href }}">{{ link.label }}</a>{% if let Some(also) = link.also %} · <a href="{{ also.1 }}">{{ also.0 }}</a>{% endif %}{% endfor %}</td>{% endif %}{% endfor %}</tr>
+{% for row in rows %}<tr>{% for cell in row %}{% if loop.first %}<th scope="row">{% if let Some(href) = cell.href %}<a href="{{ href }}">{{ cell.text }}</a>{% else %}{{ cell.text }}{% endif %}{% for d in cell.tail %} {{ d }}{% endfor %}</th>{% else %}<td>{{ cell.text }}{% for d in cell.tail %} {{ d }}{% endfor %}{% for link in cell.links %}<br><a href="{{ link.href }}">{% if let Some(r) = link.rich %}{{ r }}{% else %}{{ link.label }}{% endif %}</a>{% if let Some(also) = link.also %} · <a href="{{ also.1 }}">{{ also.0 }}</a>{% endif %}{% endfor %}</td>{% endif %}{% endfor %}</tr>
 {% endfor %}</tbody>
 </table>
 {% endif %}{% for note in notes %}<p class="list-note" role="note">{{ note }}</p>

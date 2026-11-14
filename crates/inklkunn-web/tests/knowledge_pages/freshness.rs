@@ -6,7 +6,9 @@
 
 use axum::http::{StatusCode, header};
 
-use super::common::{APP, World, claim, get, home_with, link, put, request, source};
+use super::common::{
+    APP, World, claim, claim_id, get, home_with, link, put, request, source, source_id,
+};
 use super::{JA, RANKING_WORDS, claim_uri};
 use inklkunn_core::knowledge::{
     Availability, Bearing, Identity, Link, Reviewed, SourceKind, Standing,
@@ -131,9 +133,15 @@ async fn the_list_names_each_source_a_person_should_look_at_and_why() {
     );
     // Both claims that cite it, each named by the page it is said on or, when no page says it, by its id.
     assert!(third.contains("2 claims cite it:"), "{body}");
-    assert!(third.contains("Home (challenges, in part)"), "{body}");
+    // Each claim is named by its page **and its whole identifier** (K43).
     assert!(
-        third.contains("A claim said on no page now, identifier 01930000-0000-7000-8000-000000000002 (supports, indirectly)"),
+        third.contains(
+            "Home [claim <code>01930000-0000-7000-8000-000000000001</code>] (challenges, in part)"
+        ),
+        "{body}"
+    );
+    assert!(
+        third.contains("A claim said on no page now, identifier <code>01930000-0000-7000-8000-000000000002</code> (supports, indirectly)"),
         "{body}"
     );
     assert!(
@@ -211,6 +219,47 @@ async fn the_list_is_said_in_japanese_too() {
         assert!(body.contains(says), "{says}: {body}");
     }
     assert_eq!(rows(&body).len(), 3);
+}
+
+#[tokio::test]
+async fn two_sources_that_say_the_same_of_themselves_are_two_rows_that_differ_in_both_languages() {
+    // K43: the list names a source as the claim's page does, whole identifier included, and each claim by its page and
+    // its whole identifier.
+    let w = handbook(&[("pages/Home.md", &home_with(SAID))]);
+    let twin = |n: u8| {
+        let mut s = source(n, SourceKind::Primary);
+        s.identity = Identity {
+            title: Some("The Bridge Survey".to_owned()),
+            author: Some("The Harbour Authority".to_owned()),
+            date: Some("Spring 1950".to_owned()),
+        };
+        s
+    };
+    let mut c = claim(1, Standing::Contested, None, SAID);
+    c.sources = vec![
+        link(1, Link::Supports, Bearing::Direct, SAID),
+        link(2, Link::Supports, Bearing::Direct, SAID),
+    ];
+    put(&w, &home_with(SAID), &[c], &[twin(1), twin(2)]);
+    for (a, words, claimed) in [
+        (get(&w, LIST).await, "Its identifier is", "[claim"),
+        (request(&w, APP, "GET", LIST, JA).await, "識別子:", "［主張"),
+    ] {
+        let body = a.body();
+        let r = rows(&body);
+        assert_eq!(r.len(), 2, "{body}");
+        for (n, row) in (1..=2).zip(&r) {
+            assert!(
+                row.contains(&format!("{words} <code>{}</code>", source_id(n))),
+                "{body}"
+            );
+            assert!(
+                row.contains(&format!("{claimed} <code>{}</code>", claim_id(1))),
+                "{body}"
+            );
+        }
+        assert_ne!(r.first(), r.get(1), "{body}");
+    }
 }
 
 #[tokio::test]
@@ -464,18 +513,12 @@ async fn two_claims_said_on_one_page_are_told_apart_by_a_count_that_goes_on_acro
         .collect();
     put(&w, &home_with(SAID), &claims, &sources_between(1, 55));
     let first = get(&w, LIST).await.body();
-    assert!(first.contains("Home (supports, directly)"), "{first}");
-    assert!(first.contains("Home (50) (supports, directly)"), "{first}");
+    assert!(first.contains("Home [claim <code>"), "{first}");
+    assert!(first.contains("Home (50) [claim <code>"), "{first}");
     let more = link_to(&first, "Show the next sources").expect("a link to the next rows");
     let second = get(&w, &more).await.body();
-    assert!(
-        second.contains("Home (51) (supports, directly)"),
-        "{second}"
-    );
-    assert!(
-        second.contains("Home (55) (supports, directly)"),
-        "{second}"
-    );
+    assert!(second.contains("Home (51) [claim <code>"), "{second}");
+    assert!(second.contains("Home (55) [claim <code>"), "{second}");
     // None of the five begins again at the page's bare name.
-    assert!(!second.contains("Home (supports, directly)"), "{second}");
+    assert!(!second.contains("Home [claim <code>"), "{second}");
 }

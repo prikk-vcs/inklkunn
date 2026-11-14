@@ -1159,3 +1159,51 @@ async fn an_identifier_leads_to_the_claim_page_and_a_sources_line_on_it_and_a_cl
         "{page}"
     );
 }
+
+#[tokio::test]
+async fn a_link_leads_to_what_the_tip_has_a_claim_it_lost_or_a_line_it_has_not_yet() {
+    // K48 (U-f): the link opens the claim's page at the view's tip, so it is offered by the tip's index, not the base's.
+    let s = scene();
+    put_sources(&s);
+    let claim = claim_citing(1, "bridge-page", "k1", &[2]);
+    s.w.fake.set(&claim_path(&claim.id), &claim.to_yaml());
+    let (claim_id, flipped_source, added_source) = (
+        claim.id.to_string(),
+        source_id(2).to_string(),
+        source_id(3).to_string(),
+    );
+    let claim_page = format!("/handbook/-/claim/{claim_id}");
+    // The proposal adds a link to a third source: the line it makes is not on the claim's page yet, so the identifier
+    // leads to the claim, never to a fragment that is not there; the line that is there keeps its fragment.
+    let more = claim_citing(1, "bridge-page", "k1", &[2, 3]);
+    let to = held_unjudged(&s, vec![(claim_path(&more.id), Some(more.to_yaml()))]);
+    let page = open(&s, &to, &s.writer).await.body();
+    assert!(
+        page.contains(&format!(
+            "[source <a href=\"{claim_page}\"><code>{added_source}</code></a>]"
+        )),
+        "{page}"
+    );
+    assert!(!page.contains(&format!("#source-{added_source}")), "{page}");
+    let mut turned = more.clone();
+    for link in &mut turned.sources {
+        if link.source == source_id(2) {
+            link.relation = Link::Challenges;
+        }
+    }
+    let to = held_unjudged(&s, vec![(claim_path(&turned.id), Some(turned.to_yaml()))]);
+    let page = open(&s, &to, &s.writer).await.body();
+    assert!(
+        page.contains(&format!(
+            "[source <a href=\"{claim_page}#source-{flipped_source}\"><code>{flipped_source}</code></a>]"
+        )),
+        "{page}"
+    );
+    // The claim is gone from the view by the time the page is read (its file no longer reads): the base had it, the tip
+    // does not, and a link would lead to *no such claim*.
+    let to = held_unjudged(&s, flipped(&claim, 2));
+    s.w.fake.set(&claim_path(&claim.id), "not a claim");
+    let page = open(&s, &to, &s.writer).await.body();
+    assert!(page.contains(&format!("<code>{claim_id}</code>")), "{page}");
+    assert!(!page.contains(&format!("href=\"{claim_page}")), "{page}");
+}

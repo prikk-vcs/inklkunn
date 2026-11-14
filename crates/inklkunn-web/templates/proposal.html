@@ -28,8 +28,9 @@
 {% if !know.is_empty() || !know_notes.is_empty() || !know_curate.is_empty() %}<section aria-labelledby="knowledge">
 <h2 id="knowledge">{{ know_heading }}</h2>
 {% for n in know_notes %}<p class="note">{{ n }}</p>
-{% endfor %}{% for c in know_curate %}<p class="know-curate"><a href="{{ c.1 }}">{{ c.0 }}</a></p>
-{% endfor %}{% if !know.is_empty() %}<ul>
+{% endfor %}{% for c in know_curate.links %}<p class="know-curate"><a href="{{ c.1 }}">{{ c.0 }}</a></p>
+{% endfor %}{% if let Some(more) = know_curate.more %}<p class="note know-curate-more">{{ more }}</p>
+{% endif %}{% if !know.is_empty() %}<ul>
 {% for line in know %}<li>{{ line.text }}{% if !line.more.is_empty() %}<ul>
 {% for m in line.more %}<li>{{ m }}</li>
 {% endfor %}</ul>{% endif %}</li>

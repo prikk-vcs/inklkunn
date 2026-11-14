@@ -655,6 +655,10 @@ struct Resolver<'a> {
     unjudged: Vec<(String, String)>,
     /// The pages of the wiki at the base, by page id: the path and the text (`None`: no one page has it).
     base: RefCell<BTreeMap<String, Option<(String, String)>>>,
+    /// The knowledge index of the view's tip, read once: what a link opens (K48).
+    tip: std::cell::OnceCell<
+        Option<std::sync::Arc<inklkunn_core::knowledge::index::KnowledgeIndex>>,
+    >,
     failure: RefCell<Option<inklkunn_core::read::ReadError>>,
 }
 
@@ -688,6 +692,7 @@ impl<'a> Resolver<'a> {
             sources,
             unjudged: Vec::new(),
             base: RefCell::new(BTreeMap::new()),
+            tip: std::cell::OnceCell::new(),
             failure: RefCell::new(None),
         }
     }
@@ -788,6 +793,29 @@ impl<'a> Resolver<'a> {
     }
 }
 
+impl Resolver<'_> {
+    /// The knowledge index **of the view's tip** (K48): a link opens a page at the tip, so it is offered only for what the
+    /// tip has, whatever the base had.
+    fn tip_index(&self) -> Option<std::sync::Arc<inklkunn_core::knowledge::index::KnowledgeIndex>> {
+        self.tip
+            .get_or_init(|| {
+                match self
+                    .ctx
+                    .services
+                    .read
+                    .knowledge_index(&self.ctx.wiki, self.place.view)
+                {
+                    Ok(index) => Some(index),
+                    Err(e) => {
+                        self.failed(e);
+                        None
+                    }
+                }
+            })
+            .clone()
+    }
+}
+
 impl Subjects for Resolver<'_> {
     fn wording(&self, said: &[Expression], digest: &Digest) -> Option<String> {
         use inklkunn_core::knowledge::{AnchorState, anchor_state, marker::words_with_id};
@@ -813,20 +841,27 @@ impl Subjects for Resolver<'_> {
 
     fn begins_alike(&self, at: &Expression, begin: &dyn Fn(&str) -> String) -> bool {
         use inklkunn_markup::{BlockKind, blocks, frontmatter};
-        let Some((text, words)) = self.paragraph_in(at) else {
+        let Some((_, words)) = self.paragraph_in(at) else {
             return false;
         };
         let own = begin(&words);
-        let (_, body, _) = frontmatter::split(&text);
-        blocks(body).iter().any(|b| {
-            if b.kind != BlockKind::Paragraph || b.id == Some(at.block.as_str()) {
-                return false;
-            }
-            let words =
-                b.id.and_then(|id| b.text.strip_suffix(&format!("^{id}")))
-                    .unwrap_or(b.text);
-            begin(words.trim_end()) == own
-        })
+        // Against the page as the proposal leaves it **and** as the base had it (U-j): a paragraph taken out and retyped
+        // under a new marker is two lines, each of them in one page, and both must read as two.
+        [self.result_text(&at.page_id), self.base_text(&at.page_id)]
+            .iter()
+            .flatten()
+            .any(|text| {
+                let (_, body, _) = frontmatter::split(text);
+                blocks(body).iter().any(|b| {
+                    if b.kind != BlockKind::Paragraph || b.id == Some(at.block.as_str()) {
+                        return false;
+                    }
+                    let words =
+                        b.id.and_then(|id| b.text.strip_suffix(&format!("^{id}")))
+                            .unwrap_or(b.text);
+                    begin(words.trim_end()) == own
+                })
+            })
     }
 
     fn places(&self, claim: &ClaimId) -> Vec<Expression> {
@@ -862,8 +897,10 @@ impl Subjects for Resolver<'_> {
     }
 
     fn claim_href(&self, claim: &ClaimId) -> Option<String> {
-        // A claim only the proposal makes has no page until it is accepted: a link would lead to *no such claim*.
-        self.index()?.claim(claim.as_str())?;
+        // A link opens the claim's page at the view's tip (K48): it is offered only for a claim the tip has. A claim only
+        // the proposal makes has no page until it is accepted, and one removed since the base has none: a link would
+        // lead to *no such claim*.
+        self.tip_index()?.claim(claim.as_str())?;
         Some(crate::knowledge::paths::claim(
             self.ctx.wiki.slug.as_str(),
             claim.as_str(),
@@ -872,7 +909,16 @@ impl Subjects for Resolver<'_> {
     }
 
     fn cited_href(&self, claim: &ClaimId, source: &SourceId) -> Option<String> {
-        self.claim_href(claim)?;
+        let href = self.claim_href(claim)?;
+        // The line of the source on the claim's page is there only when the page at the tip lists the source: a link the
+        // proposal is only adding has no line yet, and the claim is linked without the fragment (K48).
+        let listed = self
+            .tip_index()?
+            .links_of(claim.as_str())
+            .any(|l| l.source == source.as_str());
+        if !listed {
+            return Some(href);
+        }
         Some(crate::knowledge::paths::claim_source(
             self.ctx.wiki.slug.as_str(),
             claim.as_str(),
