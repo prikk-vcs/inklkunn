@@ -586,6 +586,8 @@ fn an_overlap_in_a_knowledge_file_stops_the_acceptance_with_both_texts_recorded(
     claim.expressions = vec![Expression::new("p1", "b1").expect("e")];
     claim.relations.clear();
     claim.sources = vec![link(1, Link::Supports, Bearing::Direct, None, "w1")];
+    // Judged on the wording the page has: a link whose bearing a proposal changes is judged again (K45).
+    sm(&mut claim, 0).judged_on = digest_of_block("Said. ^b1");
     let path = claim_path(&claim.id);
     rig.fake.set(&path, &claim.to_yaml());
     rig.fake.set(

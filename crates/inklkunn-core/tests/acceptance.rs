@@ -2030,7 +2030,8 @@ fn a_reconfirm_judges_on_the_places_the_written_file_has_not_those_the_tip_had()
         "a claim said nowhere after the acceptance judges nothing again"
     );
 
-    // A decided status that names no wording is a judgement that fails, whatever the links say.
+    // A decided status that names no wording is a judgement that fails, whatever the links say (K45): it is refused when
+    // it is made, as the acceptance would refuse it, and nothing is recorded.
     let mut said = claim_now(&w);
     said.expressions = vec![
         Expression::new(
@@ -2045,7 +2046,29 @@ fn a_reconfirm_judges_on_the_places_the_written_file_has_not_those_the_tip_had()
         proposal: None,
         judged_on: None,
     };
-    reconfirm(&w, &said);
+    let refused = w.proposals.create_reconfirm(
+        &w.contributor,
+        &w.wiki,
+        None,
+        ProposalEdit {
+            summary: "Curation".to_owned(),
+            files: vec![FileChange {
+                path: one.claim_file.clone(),
+                text: Some(said.to_yaml()),
+            }],
+            ..ProposalEdit::default()
+        },
+        &change.acceptance,
+    );
+    assert!(
+        matches!(
+            refused,
+            Err(inklkunn_core::proposal::ProposalError::Invalid(
+                inklkunn_core::proposal::Invalid::KnowledgeStatusUnjudged
+            ))
+        ),
+        "{refused:?}"
+    );
     assert_eq!(
         reconfirmed(&w),
         vec![None],

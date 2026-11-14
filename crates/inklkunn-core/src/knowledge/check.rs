@@ -35,8 +35,8 @@ use inklkunn_store::WikiRecord;
 use super::tree::{TreeError, read_tree};
 use super::{
     AnchorState, Availability, Bearing, Claim, ClaimId, CommunityStatus, Digest, Expression, Fault,
-    File, Identity, KNOWLEDGE_DIR, Link, Reference, Reviewed, Rule, SourceId, anchor_state,
-    claim_path, family_of, is_keep, is_knowledge_path, read_file, source_path,
+    File, Identity, KNOWLEDGE_DIR, Link, Reference, Reviewed, Rule, SourceId, Standing,
+    anchor_state, claim_path, family_of, is_keep, is_knowledge_path, read_file, source_path,
 };
 use crate::import::shown;
 use crate::read::{ReadError, ReadService, entries_from_tree};
@@ -397,10 +397,14 @@ fn wordings_of(claim: &Claim, pages: &dyn Pages) -> Vec<Digest> {
 
 /// The judgements `now` sets or changes against `was` (what the tip had of the claim; `None` for a claim it did not
 /// have) **whose `judged_on` is not a wording one of the claim's paragraphs has in the result** (`pages`; handoff 005
-/// corrections, fourth round, K33 and RFC 005 part 2, D-3, *every judgement*). A digest must never name wording that
-/// is not in the history: a judgement made on words nobody has written would read *current* the day a page edit
-/// happened to write them. The judgements are every source link's and the community status's: one that is new, or
-/// whose `judged_on` is not what the tip had, is asked; one the change leaves as the tip had it is not (it may be
+/// corrections, fourth and fifth rounds, K33 and K45, and RFC 005 part 2, D-3, *every judgement*). A digest must never
+/// name wording that is not in the history: a judgement made on words nobody has written would read *current* the day a
+/// page edit happened to write them. The judgements are every source link's and the community status's. One is *set or
+/// changed* when it is new, or when anything it holds that is judged differs from the tip's: for a link its relation, its
+/// bearing or its `judged_on`, for the status its value or its `judged_on`. A judgement set or changed is a new
+/// judgement, **whatever its digest is**: it must name a wording the result has, even when the digest is the one the tip
+/// had (the wording may be gone), and **a decided status must name one** (a status set to a value other than *not
+/// decided* with no `judged_on` stands on nothing). One the change leaves as the tip had it is not asked (it may be
 /// judged on an earlier wording, and says so). What `compose` writes for a link or a status is exactly such a wording
 /// (the paragraph as the page will have it).
 ///
@@ -409,24 +413,24 @@ fn wordings_of(claim: &Claim, pages: &dyn Pages) -> Vec<Digest> {
 /// in source order, then the status.
 pub fn unjudged_in(now: &Claim, was: Option<&Curated>, pages: &dyn Pages) -> Vec<Unjudged> {
     let (had, had_status) = match was {
-        Some(Curated::Claim { links, status }) => (Some(links), status.judged_on.as_ref()),
+        Some(Curated::Claim { links, status }) => (Some(links), Some(status)),
         _ => (None, None),
     };
     let links: Vec<_> = now
         .sources
         .iter()
         .filter(|l| {
-            had.and_then(|links| links.get(&l.source))
-                .map(|j| &j.judged_on)
-                != Some(&l.judged_on)
+            had.and_then(|links| links.get(&l.source)).is_none_or(|j| {
+                j.relation != l.relation || j.bearing != l.bearing || j.judged_on != l.judged_on
+            })
         })
         .collect();
-    let status = now
-        .community_status
-        .judged_on
-        .as_ref()
-        .filter(|on| had_status != Some(*on));
-    if links.is_empty() && status.is_none() {
+    let status = &now.community_status;
+    // A status that is set or changed and says nothing of a wording while undecided is asked nothing.
+    let status_set = had_status
+        .is_none_or(|was| was.status != status.status || was.judged_on != status.judged_on)
+        && (status.judged_on.is_some() || status.status != Standing::Unknown);
+    if links.is_empty() && !status_set {
         return Vec::new();
     }
     let wordings = wordings_of(now, pages);
@@ -439,11 +443,7 @@ pub fn unjudged_in(now: &Claim, was: Option<&Curated>, pages: &dyn Pages) -> Vec
         .into_iter()
         .filter(|l| !wordings.contains(&l.judged_on))
         .map(|l| unjudged("sources", Some(l.source.clone())))
-        .chain(
-            status
-                .filter(|on| !wordings.contains(on))
-                .map(|_| unjudged("community_status", None)),
-        )
+        .chain(status_unjudged.then(|| unjudged("community_status", None)))
         .collect()
 }
 
@@ -453,6 +453,12 @@ pub fn unjudged_in(now: &Claim, was: Option<&Curated>, pages: &dyn Pages) -> Vec
 /// revision and what the proposal page says. A file that does not read is not judged here (the acceptance refuses it by
 /// its own rule). In path order.
 pub fn unjudged_by(
+    // A decided status names its wording; a status that names one names one that exists.
+    let status_unjudged = status_set
+        && match &status.judged_on {
+            Some(on) => !wordings.contains(on),
+            None => status.status != Standing::Unknown,
+        };
     files: &[(String, Option<String>)],
     before: &dyn Fn(&str) -> Option<String>,
     pages: &dyn Pages,

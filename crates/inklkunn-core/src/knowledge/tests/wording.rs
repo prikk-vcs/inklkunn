@@ -321,9 +321,58 @@ fn every_judgement_a_proposal_sets_or_changes_is_judged_and_one_it_leaves_is_not
     fine.sources.first_mut().expect("a link").judged_on = now.clone();
     fine.community_status.judged_on = Some(now);
     assert!(ask(&fine).is_empty());
+    // A decided status that loses its judgement stands on nothing (K45): it is asked, as a new judgement.
     let mut cleared = tip.clone();
     cleared.community_status.judged_on = None;
+    assert_eq!(ask(&cleared), [("community_status", None)]);
+    // A status not decided names no wording, and none is asked of it.
+    cleared.community_status = crate::knowledge::CommunityStatus::undecided();
     assert!(ask(&cleared).is_empty());
+    // A decided status set with no judgement at all, on a claim the tip had undecided or did not have.
+    let mut bare = tip.clone();
+    bare.community_status.judged_on = None;
+    let untouched = Curated::of(&File::Claim(Box::new(claim_judged_on(&[(
+        1,
+        earlier.clone(),
+    )]))));
+    assert_eq!(
+        unjudged_in(&bare, Some(&untouched), &pages)
+            .iter()
+            .map(|u| u.field)
+            .collect::<Vec<_>>(),
+        ["community_status"]
+    );
+    assert_eq!(
+        unjudged_in(&bare, None, &pages)
+            .iter()
+            .map(|u| u.field)
+            .collect::<Vec<_>>(),
+        ["sources", "community_status"]
+    );
+    // A link whose relation or bearing changes, and a status whose value changes, are new judgements even when the
+    // digest is the one the tip had: the wording must be one the result has, and the earlier one is gone.
+    let mut moved_bearing = tip.clone();
+    moved_bearing.sources.first_mut().expect("a link").bearing = Bearing::Partial;
+    assert_eq!(
+        ask(&moved_bearing),
+        [("sources", Some(source_id(1).to_string()))]
+    );
+    let mut moved_relation = tip.clone();
+    moved_relation.sources.first_mut().expect("a link").relation = Link::Challenges;
+    assert_eq!(
+        ask(&moved_relation),
+        [("sources", Some(source_id(1).to_string()))]
+    );
+    let mut moved_value = tip.clone();
+    moved_value.community_status.status = Standing::Accepted;
+    assert_eq!(ask(&moved_value), [("community_status", None)]);
+    // The same changes on the wording the claim has now are sound.
+    let now = wording("It opened in 1950.");
+    for changed in [&mut moved_bearing, &mut moved_relation, &mut moved_value] {
+        changed.sources.first_mut().expect("a link").judged_on = now.clone();
+        changed.community_status.judged_on = Some(now.clone());
+        assert!(ask(changed).is_empty());
+    }
     // A claim the tip did not have: its status is new too.
     let mut fresh = tip.clone();
     fresh.community_status.judged_on = Some(earlier);

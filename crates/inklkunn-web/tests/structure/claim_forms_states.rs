@@ -147,6 +147,11 @@ impl Env {
         claim.kind = StatementKind::Observation;
         claim.expressions = vec![Expression::new("bridge-page", "k1").unwrap()];
         claim.community_status.status = inklkunn_core::knowledge::Standing::Contested;
+        // A decided status names the wording it was decided on (K45).
+        let block = inklkunn_markup::blocks("It opened in 1950. ^k1");
+        claim.community_status.judged_on = Some(inklkunn_core::knowledge::block_digest(
+            block.first().unwrap(),
+        ));
         let edit = ProposalEdit {
             summary: "Contested".to_owned(),
             files: vec![FileChange {

@@ -373,6 +373,7 @@ fn the_dry_run_says_what_the_run_would_refuse() {
     let (rig, _accept, _acts) = world_with_reads("k-dry");
     let mut decided = claim();
     decided.community_status.status = Standing::Accepted;
+    decided.community_status.judged_on = Some(said());
     let (_d, mut plan) = planned("k-dry", &rig, &decided, &source());
     assert!(plan.refused.is_empty());
     judge_knowledge(&mut plan, &rig.reads, &*rig.fake, &rig.layout, &rig.wiki).unwrap();
