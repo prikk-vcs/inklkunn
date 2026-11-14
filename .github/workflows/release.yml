@@ -40,7 +40,7 @@ env:
   # answer on the first prikk on PATH), and print a guarded skip line when there is none; the gates fail on it.
   PRIKK_TEST_VERSION: "0.57.0"
   PRIKK_TEST_SHA256_X86_64: "4e621147c3064c1f456803c67f120df9ea35d93e40554e920c9ea55e69d3f9a8"
-  EXPECTED_SKIPS: "313"
+  EXPECTED_SKIPS: "315"
   RUST_TOOLCHAIN: "1.99.1"
 
 jobs:

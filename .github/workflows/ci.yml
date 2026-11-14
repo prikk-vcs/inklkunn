@@ -30,7 +30,7 @@ env:
   PRIKK_TEST_SHA256_X86_64: "4e621147c3064c1f456803c67f120df9ea35d93e40554e920c9ea55e69d3f9a8"
   # The number of prikk-dependent tests: each prints `skipping: prikk not on PATH` when prikk is shimmed
   # off, and the shimmed run fails unless exactly this many do (a new such test updates this number).
-  EXPECTED_SKIPS: "313"
+  EXPECTED_SKIPS: "315"
 
 jobs:
   build:
