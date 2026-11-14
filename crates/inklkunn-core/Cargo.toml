@@ -39,6 +39,9 @@ unicode-normalization = { workspace = true }
 # The tests create wikis with the bootstrap signer and open the real signer with the cheapest key derivation;
 # the product build never enables either feature.
 inklkunn-signer = { path = "../inklkunn-signer", version = "0.2.0", features = ["bootstrap", "test-knobs"] }
+# A CommonMark and GFM reader other than inklkunn's renderer, to read an exported thread body as a bundle's reader does
+# (K53). Already in the lock and in the workspace manifest (the markup crate's parser): one workspace edge, no new crate.
+pulldown-cmark = { workspace = true }
 
 [lints]
 workspace = true

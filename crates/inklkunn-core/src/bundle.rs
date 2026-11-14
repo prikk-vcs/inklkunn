@@ -73,81 +73,22 @@ pub struct ExportFacts {
     pub records_read: bool,
 }
 
-/// `text` as portable Markdown that shows exactly that text and nothing else (RFC 005 part 2 D-11): every character
-/// that could begin a link, an image, HTML, a list, a quotation, a heading, a table, a code span or an entity is
-/// escaped, the white space at either end of a line is written as character references, and a line break inside is a
-/// hard break. The text is what inklkunn shows as it is typed (`white-space: pre-wrap`), so the bundle's reader sees the
-/// same words; a link in it stays letters, and an image in it is no request for a remote picture.
+/// `text` as portable Markdown that shows exactly that text and nothing else (RFC 005 part 2 D-11, amended): a fenced
+/// code block with the info string `text`, fenced with one more backtick than the longest run of backticks in the text
+/// (and never fewer than three), so no line of the text can close it. Line endings are normalised to LF first (a lone
+/// `\r` is a line ending to CommonMark); nothing else is changed. Every CommonMark and GFM reader then shows the text as
+/// it was typed (`white-space: pre-wrap`) and renders no construct inside it: a link, an image, HTML, an autolink, a
+/// list, a table, a math span or an entity stays letters, whatever the reader's extensions. The text is the block's
+/// content less the one line feed that ends its last line.
 pub fn markdown_text(text: &str) -> String {
-    let lines: Vec<&str> = text.lines().collect();
-    let blank = |l: &str| l.trim().is_empty();
-    // A white-space character at the edge of a line is written as a character reference: Markdown would drop it, or
-    // read four of them as code.
-    let reference = |c: char| format!("&#{};", u32::from(c));
-    let mut out = String::with_capacity(text.len() + text.len() / 4);
-    for (i, line) in lines.iter().enumerate() {
-        if blank(line) {
-            // A paragraph break; a run of them is one.
-            if !out.is_empty() && !out.ends_with("\n\n") {
-                out.push_str("\n\n");
-            }
-            continue;
-        }
-        for c in line.chars().take_while(|c| c.is_whitespace()) {
-            out.push_str(&reference(c));
-        }
-        let mut only_digits = true;
-        for c in line.trim().chars() {
-            if c == '.' && only_digits {
-                // `1.` begins a list (`1)` is escaped with the parentheses).
-                out.push('\\');
-            }
-            only_digits &= c.is_ascii_digit();
-            if matches!(
-                c,
-                '\\' | '`'
-                    | '*'
-                    | '_'
-                    | '{'
-                    | '}'
-                    | '['
-                    | ']'
-                    | '<'
-                    | '>'
-                    | '('
-                    | ')'
-                    | '#'
-                    | '+'
-                    | '-'
-                    | '!'
-                    | '|'
-                    | '~'
-                    | ':'
-                    | '^'
-                    | '='
-                    | '&'
-            ) {
-                out.push('\\');
-            }
-            out.push(c);
-        }
-        let trailing: Vec<char> = line
-            .chars()
-            .rev()
-            .take_while(|c| c.is_whitespace())
-            .collect();
-        for c in trailing.into_iter().rev() {
-            out.push_str(&reference(c));
-        }
-        // The next line is of the same paragraph: a hard break keeps the line break the text had.
-        if lines.get(i + 1).is_some_and(|next| !blank(next)) {
-            out.push_str("\\\n");
-        }
+    let body = text.replace("\r\n", "\n").replace('\r', "\n");
+    let (mut longest, mut run) = (0, 0);
+    for c in body.chars() {
+        run = if c == '`' { run + 1 } else { 0 };
+        longest = longest.max(run);
     }
-    while out.ends_with('\n') {
-        out.pop();
-    }
-    out
+    let fence = "`".repeat((longest + 1).max(3));
+    format!("{fence}text\n{body}\n{fence}")
 }
 
 /// The bundle manifest for a new wiki (wiki-commons chapter 10). `pages_prefix` is `pages`; fidelity is

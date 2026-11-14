@@ -955,6 +955,16 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   place on every length of thread and page size (both stores through the service), the store's suite for the new lookup on both
   stores, the claim page through the router for a thread of two pages in both languages (a reply on the first page, a reply on the
   second to the first page's comment).
+- **K53 (handoff 005 corrections, fifth round; RFC 005 part 2 D-11 amended): a thread's body in the bundle is a fenced text block.** The
+  reviewer's probe showed that escaping Markdown construct by construct cannot be shown complete against every reader (an extended
+  autolink, a mail address, a lone carriage return, a line of only no-break spaces, `$…$`, `%%`). `bundle::markdown_text` now carries
+  each body as a fenced code block with the info string `text`, fenced with **one more backtick than the longest run of backticks
+  in the body** (never fewer than three), line endings normalised to LF first and **nothing else changed**; every CommonMark and GFM
+  reader shows exactly the text and renders no construct inside it. The construct-by-construct escaping is gone. A bundle exported
+  before this change carries the escaped form and is not rewritten. Tests read the output through `pulldown-cmark` itself with every
+  extension on (a dev-dependency of the core crate; already in the lock and the workspace manifest, no new crate), apart from
+  inklkunn's renderer: the reviewer's cases and the old thirteen, a body full of backticks and fence-like lines, and every text of up
+  to five characters from an awkward alphabet round-trip through the fence.
 
 - **M20, M24 (handoff 010 corrections, third round): every damaged marker is a marker error; `failed_objects` is read leniently.**
   prikk calls a marker it cannot read as a number an *integrity error*, not `unsupported format version`: measured on 0.55.0 and

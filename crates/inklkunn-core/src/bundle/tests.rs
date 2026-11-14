@@ -76,37 +76,48 @@ fn the_ignore_file_reserves_the_service_prefix() {
     assert_eq!(prikkignore(), ".inklkunn/\n");
 }
 
-/// The text a rendered page shows: the tags taken out, the entities put back. Only `<p>` and `<br />` may be among
-/// them (an escaped body is paragraphs and line breaks and nothing that links, embeds or styles).
-fn shown(html: &str) -> String {
-    let mut out = String::new();
-    let mut rest = html;
-    while let Some(open) = rest.find('<') {
-        out.push_str(rest.get(..open).unwrap_or_default());
-        let after = rest.get(open..).unwrap_or_default();
-        let close = after.find('>').unwrap_or(after.len() - 1);
-        let tag = after.get(1..close).unwrap_or_default();
-        assert!(
-            matches!(tag, "p" | "/p" | "br /" | "br"),
-            "the escaped body rendered `<{tag}>`: {html}"
-        );
-        out.push(' ');
-        rest = after.get(close + 1..).unwrap_or_default();
+use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
+
+/// What a CommonMark and GFM reader other than inklkunn's renderer (`pulldown-cmark` itself, every extension on) makes of
+/// `markdown`: the one thing a text must be, a fenced block with the info string `text`, and the text of that block.
+/// Anything else (a paragraph, a link, a second block) fails the test.
+fn text_block_of(markdown: &str) -> String {
+    let events: Vec<Event> = Parser::new_ext(markdown, Options::all()).collect();
+    let (first, rest) = events
+        .split_first()
+        .unwrap_or_else(|| panic!("no events\n{markdown}"));
+    assert!(
+        matches!(first, Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info))) if &**info == "text"),
+        "not one fenced text block: {events:?}\n{markdown}"
+    );
+    let (last, middle) = rest
+        .split_last()
+        .unwrap_or_else(|| panic!("no end\n{markdown}"));
+    assert!(
+        matches!(last, Event::End(TagEnd::CodeBlock)),
+        "the block does not end the document: {events:?}\n{markdown}"
+    );
+    let mut shown = String::new();
+    for event in middle {
+        match event {
+            Event::Text(t) => shown.push_str(t),
+            other => panic!("{other:?} inside the block: {events:?}\n{markdown}"),
+        }
     }
-    out.push_str(rest);
-    out.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-        .replace("&amp;", "&")
+    // The block's content is lines, each ended by a line feed; the text is the content less the last one.
+    shown
+        .strip_suffix('\n')
+        .unwrap_or_else(|| panic!("content not ended by a line feed: {shown:?}"))
+        .to_owned()
 }
 
-fn words(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
+/// The text with its line endings as LF, the one change the bundle makes.
+fn lf(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
 #[test]
-fn a_text_escaped_to_markdown_shows_exactly_the_words_it_was_with_no_link_image_or_html() {
+fn a_text_in_the_bundle_is_a_fenced_text_block_that_a_commonmark_reader_shows_as_it_is() {
     let cases = [
         "Where was this measured?",
         "See [the survey](https://evil.example/x) and [[Some Page]].",
@@ -121,22 +132,99 @@ fn a_text_escaped_to_markdown_shows_exactly_the_words_it_was_with_no_link_image_
         "> [!NOTE] a callout\n[^1]: a footnote\n\\ a backslash at the end \\",
         "ends with a hard break \\\nand a name: value",
         "日本語の文章。全角の＊や［ ］や「」もそのまま。",
+        // The reviewer's cases (V-c): an extended autolink, a mail address, a linkifier after unescaping, a lone carriage
+        // return, a line of only no-break spaces, math and a comment marker.
+        "www.evil.example/x and mail@evil.example and https://evil.example and https\\://evil.example",
+        "x\r1. item\r2. item",
+        "x\r\ny\r\n\r\nz",
+        "\u{a0}\n\u{a0}\u{a0}\nafter",
+        "$x^2$ and $$y$$ and %% a comment %% and ==marked== and ^sup^ and ~sub~ and ::: fenced div",
+        "---\ntitle: front matter\n---\nbody\n***\n___\n[ref]: https://evil.example/x \"t\"\n\n[ref]",
+        "term\n: a definition\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n- [ ] a task\n- [x] done",
+        "<!-- comment --> <details><summary>x</summary></details>\n\n<div>block</div>",
+        "~~~\ntilde fence\n~~~\n\n    indented",
+        "",
+        "\n",
+        "\n\nleading and trailing blank lines\n\n",
+        " leading space",
     ];
     for case in cases {
         let md = markdown_text(case);
-        let html = inklkunn_markup::render_html(&md, &inklkunn_markup::NoLinks).unsanitized_html;
-        assert_eq!(
-            words(&shown(&html)),
-            words(case),
-            "the text must read as it was\n--- text\n{case}\n--- markdown\n{md}\n--- html\n{html}"
+        assert_eq!(text_block_of(&md), lf(case), "--- markdown\n{md}");
+        // Nothing else was changed: the text stands in the block as it is.
+        assert!(
+            md.contains(&lf(case)),
+            "the text was altered\n--- text\n{case}\n--- markdown\n{md}"
         );
     }
 }
 
 #[test]
-fn an_escaped_text_has_no_construct_the_scanner_finds() {
+fn the_fence_is_one_more_backtick_than_the_longest_run_in_the_text_and_never_fewer_than_three() {
+    assert!(markdown_text("plain").starts_with("```text\n"));
+    assert!(markdown_text("a ` b `` c").starts_with("```text\n"));
+    assert!(markdown_text("a ``` b").starts_with("````text\n"));
+    assert!(markdown_text("```\nnot a closing fence\n```").starts_with("````text\n"));
+    assert!(markdown_text("``````").starts_with("```````text\n"));
+    // A run is of backticks next to each other: two lines of two are not a run of four.
+    assert!(markdown_text("``\n``").starts_with("```text\n"));
+    assert!(markdown_text("``\r``").starts_with("```text\n"));
+    assert!(markdown_text("``\r\n``").starts_with("```text\n"));
+    for text in [
+        "```",
+        "````",
+        "```\n<script>\n```\n",
+        "````\n```\n`````\n``````",
+        "``` text\n```text\n ```\n  ````\n~~~",
+        "a ``` b ```` c ````` d",
+        "`````````````````````",
+    ] {
+        let md = markdown_text(text);
+        assert_eq!(text_block_of(&md), lf(text), "--- markdown\n{md}");
+    }
+}
+
+#[test]
+fn a_texts_line_endings_are_lf_and_nothing_else_about_it_changes() {
+    assert_eq!(markdown_text("a\r\nb\rc\nd"), "```text\na\nb\nc\nd\n```");
+    assert_eq!(
+        markdown_text("  é &amp; \u{a0}  \n\ttab"),
+        "```text\n  é &amp; \u{a0}  \n\ttab\n```"
+    );
+    assert_eq!(markdown_text(""), "```text\n\n```");
+}
+
+#[test]
+fn every_short_text_of_awkward_characters_round_trips_through_its_fence() {
+    // Every text up to five characters from an alphabet of what ends a line, opens a construct or is a fence.
+    let alphabet = ['`', '\n', '\r', ' ', '~', '#', '>', '-', '\u{a0}'];
+    let mut level = vec![String::new()];
+    let mut all = level.clone();
+    for _ in 0..5 {
+        level = level
+            .iter()
+            .flat_map(|t| {
+                alphabet.iter().map(move |c| {
+                    let mut next = t.clone();
+                    next.push(*c);
+                    next
+                })
+            })
+            .collect();
+        all.extend(level.iter().cloned());
+    }
+    assert!(all.len() > 60_000, "{}", all.len());
+    for text in all {
+        let md = markdown_text(&text);
+        assert_eq!(text_block_of(&md), lf(&text), "--- markdown\n{md:?}");
+    }
+}
+
+#[test]
+fn a_text_in_the_bundle_has_no_construct_inklkunns_scanner_finds_and_renders_as_code() {
     let md = markdown_text(
-        "[[Link]] and ![[image.png]] and #tag and ^id\n:name[x]{k=v}\n> [!NOTE] x\n[a](https://x.example)",
+        "[[Link]] and ![[image.png]] and #tag and ^id\n:name[x]{k=v}\n> [!NOTE] x\n[a](https://x.example)\n\
+         ::: warn\nbody\n:::\n```\nnot a closing fence",
     );
     let page = inklkunn_markup::scan(&md);
     assert!(page.links.is_empty(), "{md}\n{:?}", page.links);
@@ -144,4 +232,13 @@ fn an_escaped_text_has_no_construct_the_scanner_finds() {
     assert!(page.block_ids.is_empty(), "{md}");
     assert!(page.directives.is_empty(), "{md}");
     assert!(page.callouts.is_empty(), "{md}");
+    let html = inklkunn_markup::render_html(&md, &inklkunn_markup::NoLinks).unsanitized_html;
+    assert!(
+        html.starts_with("<pre><code class=\"language-text\">"),
+        "{html}"
+    );
+    assert!(
+        !html.contains("<a ") && !html.contains("<img") && !html.contains("<p>"),
+        "{html}"
+    );
 }

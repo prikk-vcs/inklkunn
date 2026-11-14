@@ -417,17 +417,17 @@ fn a_claims_thread_is_exported_in_the_knowledge_extension_beside_the_claim_and_c
     assert_eq!(at(lines.first().unwrap(), "/at"), "2023-11-14T22:13:20Z");
     assert_eq!(at(lines.first().unwrap(), "/author/id"), ann.as_str());
     assert_eq!(at(lines.first().unwrap(), "/author/name"), "Ann");
-    // The body is portable Markdown that shows the plain text: the `?` is not markup, so it is as written.
+    // The body is a fenced text block that shows the plain text.
     assert_eq!(
         at(lines.first().unwrap(), "/body"),
-        "Where was this measured?"
+        "```text\nWhere was this measured?\n```"
     );
     assert_eq!(at(lines.get(1).unwrap(), "/parent"), first.as_str());
     assert_eq!(at(lines.get(1).unwrap(), "/author/name"), "Ben");
-    // Markup in a text is escaped: the HTML in it is letters in the bundle.
+    // Markup in a text is letters in the bundle: the body is a fenced text block, whatever is in it.
     assert_eq!(
         at(lines.get(2).unwrap(), "/body"),
-        "Thank you — \\<b\\>noted\\</b\\>."
+        "```text\nThank you — <b>noted</b>.\n```"
     );
     assert_eq!(
         text(

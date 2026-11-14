@@ -12,8 +12,9 @@
 //! - **`extensions/inklkunn-knowledge/`** (RFC 005 part 2 D-11, D-12; the knowledge extension, declared in the manifest's
 //!   `extensions_used` as `inklkunn-knowledge`, version 1): what the knowledge layer keeps in the service's records and
 //!   not in the repository. `threads/<claim id>.jsonl` is one file per claim whose thread has comments, one line per
-//!   comment in the order written (`id`, `parent`, `at`, `author`, `body`), the body **escaped to portable Markdown** so
-//!   that a reader of the bundle sees the plain text inklkunn showed ([`crate::bundle::markdown_text`]); `views.jsonl`
+//!   comment in the order written (`id`, `parent`, `at`, `author`, `body`), the body **a fenced text block** (the info
+//!   string `text`, line endings LF) so that every Markdown reader of the bundle sees exactly the plain text inklkunn
+//!   showed and no construct inside it ([`crate::bundle::markdown_text`]); `views.jsonl`
 //!   is one line per alternative view that was created (its name, kind, the view and block it was forked from, who
 //!   created it and when). A claim's thread is not a page's discussion (XFER-10 is one file per page), so nothing of it
 //!   is under `discussions/` and the manifest's `discussions` stays a statement about page discussions. A thread never
@@ -109,7 +110,7 @@ pub struct DiscussionComment {
     pub author_id: String,
     /// The author's name as the account has it now.
     pub author_name: String,
-    /// The text, as it was written (the bundle escapes it to Markdown).
+    /// The text, as it was written (the bundle carries it as a fenced text block).
     pub body: String,
 }
 
@@ -839,7 +840,7 @@ fn build(
                     "parent": c.parent,
                     "at": inklkunn_store::record::rfc3339(c.at),
                     "author": {"id": c.author_id, "name": c.author_name},
-                    // Markdown that shows the plain text it was written as.
+                    // A fenced text block that shows the plain text it was written as.
                     "body": markdown_text(&c.body),
                 })
                 .to_string(),
