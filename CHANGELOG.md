@@ -597,6 +597,15 @@ text as before. `docs/KEYS.md` says so. Tests: the rule against eleven report sh
 refusals and the retired key and an older prikk), and one real-prikk test (a block container made unreadable). One new
 prikk-dependent test.
 
+M9 (maintenance corrections, the signer's cost table): the `uncommit` rule re-measured on the published 0.57.0 (tag 149a9e3d) by
+the same method (the smallest `RLIMIT_DATA` that works, bisected to 256 KiB over a fresh copy per probe with new mtimes, the
+plan and the real take-back alike): 5.5 MiB on 3,000 pages (a 3.2 MiB store), 35 MiB on 20,000 pages (51 MiB), under 256 KiB
+for a sealed 64 MiB attachment with a few unrelated bytes queued, 128 MiB (2.0 x S) for a queued 64 MiB file, and **577 MiB (9.0
+x S) for a queued edit of a sealed 64 MiB text file** (the same for 8 million short lines as for long ones; an edit of a page
+needs no more than a new file). The rule's 5.0 x S did not hold the last (ceiling 480 MiB), so it is **9.0 x S, floor 16 MiB**; the
+build before the release had been measured at 5.0 x S for what was taken to be that shape and the published one was not
+reproduced there. `BOUND_TO` is the floor and does not move.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

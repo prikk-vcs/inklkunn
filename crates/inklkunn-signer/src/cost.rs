@@ -197,12 +197,15 @@ impl WriteVerb {
             // The read driver's measured rule for `show` (flat for a small patch; up to 3.6 × S for large text), at
             // its floor.
             WriteVerb::Show => (36, 0, 32 * MIB),
-            // Measured on a 0.57.0 build (maintenance M3), the smallest `RLIMIT_DATA` that still works, bisected to
-            // 256 KiB over a fresh copy per probe, `--plan-only` and the real take-back alike (they need the same):
-            // 5.3 MiB on 3,000 pages (a 2.4 MiB store), 35 MiB on 20,000 pages (a 55 MiB store), 320 MiB (5.0 × S)
-            // where a 64 MiB attachment sits in an earlier block and a few bytes are queued, and 128 MiB (2.0 × S)
-            // where the queued patch adds the 64 MiB file. It follows S like `verify`: 5.0 × S, at the floor.
-            WriteVerb::Uncommit => (50, 0, 16 * MIB),
+            // Measured on the published 0.57.0 (maintenance M9, tag 149a9e3d), the smallest `RLIMIT_DATA` that still works,
+            // bisected to 256 KiB over a fresh copy per probe (new mtimes), `--plan-only` and the real take-back alike
+            // (they need the same): 5.5 MiB on 3,000 pages (a 3.2 MiB store), 35 MiB on 20,000 pages (a 51 MiB store),
+            // under 256 KiB where a sealed 64 MiB attachment sits in the store and a few unrelated bytes are queued,
+            // 128 MiB (2.0 × S) where the queued patch adds the 64 MiB file, and **577 MiB (9.0 × S) where the queued
+            // patch is an edit of a sealed 64 MiB text file** (any line structure; an edit of a page needs no more than
+            // a new file does). The build of prikk's checkout measured before the release was taken to need 5.0 × S
+            // for the last shape; the published one needs 9.0 × S, so the rule is 9.0 × S, at the floor.
+            WriteVerb::Uncommit => (90, 0, 16 * MIB),
         };
         WriteRule {
             store_tenths,

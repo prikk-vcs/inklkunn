@@ -151,12 +151,18 @@ fn a_ceiling_follows_the_store_and_never_goes_below_the_floor() {
 
 #[test]
 fn taking_back_a_queued_patch_follows_the_store_like_verify_and_is_bound_by_its_measurements() {
-    // Measured on a 0.57.0 build by bisecting `RLIMIT_DATA` (the smallest limit under which it still works): 5.3 MiB on
-    // a 2.4 MiB store, 35 MiB on 55 MiB (20,000 pages), 320.5 MiB where a 64 MiB attachment sits in an earlier block
-    // (a 64.1 MiB store), 128.3 MiB where the queued patch adds it. The ceiling (1.5 times the cost) holds each with room.
-    for (store_kib, need_mib_tenths) in
-        [(2_428, 53), (56_040, 350), (65_612, 3_205), (65_612, 1_283)]
-    {
+    // Measured on the published 0.57.0 (maintenance M9) by bisecting `RLIMIT_DATA` (the smallest limit under which it
+    // still works): 5.5 MiB on a 3.2 MiB store, 35 MiB on 51 MiB (20,000 pages), under 0.25 MiB where a sealed 64 MiB
+    // attachment sits in the store and a few unrelated bytes are queued, 128.2 MiB where the queued patch adds the
+    // attachment, and 577 MiB where it is an edit of a sealed 64 MiB text file (a 64.1 MiB store, 9.0 × S). The ceiling
+    // (1.5 times the cost) holds each with room.
+    for (store_kib, need_mib_tenths) in [
+        (3_314, 55),
+        (52_327, 350),
+        (65_540, 3),
+        (65_553, 1_282),
+        (65_603, 5_770),
+    ] {
         let need = u64::try_from(need_mib_tenths).unwrap() * MIB / 10;
         let ceiling = WriteVerb::Uncommit.ceiling(store_kib * 1024, 0);
         assert!(
@@ -168,7 +174,7 @@ fn taking_back_a_queued_patch_follows_the_store_like_verify_and_is_bound_by_its_
     assert_eq!(
         WriteVerb::Uncommit.rule(),
         WriteRule {
-            store_tenths: 50,
+            store_tenths: 90,
             change_tenths: 0,
             floor: 16 * MIB
         }
