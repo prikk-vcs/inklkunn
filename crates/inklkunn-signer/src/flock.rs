@@ -1,6 +1,7 @@
 //! Advisory file locks (`flock(2)`), the one way this crate makes two *processes* take turns: the key store's
 //! creation (a lock file in the key directory), the per-wiki write lock (a lock file in inklkunn's data
-//! directory, never inside `.prikk/`, INT-10), and the per-call seed directories' liveness.
+//! directory, never inside `.prikk/`, INT-10), and the per-call seed directories' liveness. The core's scratch
+//! extracts hold a lock of this kind too (K55): the module is public for that, and for nothing about keys.
 //!
 //! A lock belongs to an open file description and the kernel drops it when the last descriptor closes, which
 //! includes the death of the process that held it: a killed holder never leaves a stale lock, and nothing here
@@ -20,20 +21,33 @@ use rustix::io::Errno;
 
 /// A held exclusive lock. Dropping it (or the process dying) releases it.
 #[derive(Debug)]
-pub(crate) struct FileLock {
+pub struct FileLock {
     file: File,
 }
 
 impl FileLock {
     /// Make the locked file durable (its existence, for a mark that must survive a crash of the machine).
-    pub(crate) fn sync(&self) -> std::io::Result<()> {
+    pub fn sync(&self) -> std::io::Result<()> {
         self.file.sync_all()
+    }
+
+    /// Is the file at `path` the very file this lock is on? A holder that removes its lock file while it holds the
+    /// lock (a sweep) leaves a file that a later opener of the same path creates anew: the lock this holder won then
+    /// protects nothing, and it asks this before it relies on it. `false` when the path is gone.
+    pub fn is_at(&self, path: &Path) -> std::io::Result<bool> {
+        use std::os::unix::fs::MetadataExt;
+        let held = self.file.metadata()?;
+        match std::fs::symlink_metadata(path) {
+            Ok(there) => Ok(there.dev() == held.dev() && there.ino() == held.ino()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e),
+        }
     }
 }
 
 /// The outcome of asking for a lock without waiting.
 #[derive(Debug)]
-pub(crate) enum Acquired {
+pub enum Acquired {
     /// The lock is held.
     Held(FileLock),
     /// Another open file description holds it; `holder` is the process id it recorded, when it could be read.
@@ -56,7 +70,7 @@ fn open(path: &Path) -> std::io::Result<File> {
 }
 
 /// Take the exclusive lock on `path` (made if absent) **without waiting**.
-pub(crate) fn try_exclusive(path: &Path) -> std::io::Result<Acquired> {
+pub fn try_exclusive(path: &Path) -> std::io::Result<Acquired> {
     let file = open(path)?;
     match flock(&file, FlockOperation::NonBlockingLockExclusive) {
         Ok(()) => {
@@ -83,7 +97,7 @@ pub(crate) fn try_exclusive(path: &Path) -> std::io::Result<Acquired> {
 /// file names) if it stayed busy. A short grace and not a wait: it rides out the moment a sibling thread's
 /// `fork` holds a copy of a descriptor just released (the child closes it at `exec`), and a store's creation
 /// is a few file operations. Nothing here waits for another process's work.
-pub(crate) fn exclusive_within(path: &Path, wait: Duration) -> std::io::Result<Acquired> {
+pub fn exclusive_within(path: &Path, wait: Duration) -> std::io::Result<Acquired> {
     let started = Instant::now();
     loop {
         match try_exclusive(path)? {

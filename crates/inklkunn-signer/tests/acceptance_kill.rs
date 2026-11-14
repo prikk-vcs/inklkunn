@@ -841,7 +841,9 @@ fn fixture_over(tag: &str, real: PathBuf) -> Option<Fixture> {
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(p, text).unwrap();
     }
-    let have = inklkunn_core::import::wiki_state(&*s.storage, &s.layout, &wiki).unwrap();
+    let have =
+        inklkunn_core::import::wiki_state(&*s.storage, &s.layout, &wiki, &ReadConfig::default())
+            .unwrap();
     let plan = inklkunn_core::import::plan_folder(&folder.0, &have, false).unwrap();
     inklkunn_core::import::run_import(&acts, &wiki, &plan).unwrap_or_else(|e| panic!("{e}"));
     let propose = |summary: &str, path: &str, text: String| -> ProposalRecord {

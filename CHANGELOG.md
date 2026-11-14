@@ -1291,6 +1291,28 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   minute of the last check runs none) and that the check after a key retirement is not throttled, and both say a retirement
   *ends or is given up*. `inklkunn-fetch`'s scrubbed excerpt drops U+2028 and U+2029 with the control characters (it kept
   them; the crate may depend on the driver alone, so it holds its own copy of the store's `is_line_or_control`, with a test).
+- **K55 (handoff 005 corrections, sixth round): an extract is live while its lock is held (K51 redone).** K51 decided from `/proc`
+  whether the process that made an extract was gone, which means nothing across PID namespaces: the image runs the server as PID 1,
+  and so does a `docker run … wiki import-folder` beside it, so each swept the other's live extract; and a sweep that overlapped a
+  read still left a root with children missing, which read as a smaller wiki (review X-a, X-b). Now each extract has a lock file
+  beside it (`index-<pid>-<start>-<n>.lock`, made before `materialize`), held with an exclusive `flock` for the extract's whole life
+  and let go only after the directory and then the lock file are removed (`read::scratch::Extract`; a directory that will not go
+  keeps its lock file). The sweep takes the lock **without waiting**, removes the directory and then the lock file, and leaves what
+  it cannot lock: a live extract is never half removed, so a read never meets a partial tree (the root check stays). A lock holds
+  across PID namespaces, containers and users, and the kernel drops it when its holder dies; `/proc` is no longer read for this.
+  `wiki_state`'s extract (`wiki import-folder`) goes through the same module, so it is swept when its process crashed (it used to
+  leak a whole copy of the wiki per crash as `import-<pid>-<nanos>`) and bounded by the operator's `INKLKUNN_INDEX_MAX_MIB` and
+  `INKLKUNN_INDEX_MAX_FILES` (it takes the `ReadConfig`). The signer's `flock` module is shared as `inklkunn_signer::flock` (the
+  core already depends on the signer and on `rustix`'s `fs`, so there is no new edge and no copy; `FileLock::is_at` is new).
+  **Operators:** the data directory must be on a filesystem where `flock` works between the processes that share it (a local
+  filesystem or a bind mount of one), as the key store already needs (`SECURITY.md`, the configuration table). Tests: the sweep
+  removes a directory with a free lock, a lock file alone, a directory alone and the earlier build's name, and nothing else; held
+  extracts (this process's and another's) stay whole at 200 files while builds sweep around them; the lock file exists before the
+  directory and is gone after it; a directory that will not go keeps its lock file and the next sweep finishes it; a link under an
+  extract's name is not followed; the two-`ReadService` test; an import's extract beside a server's (and a sweep running all the
+  while never takes it); the import's bounds; and a sweep as PID 1 of a fresh PID namespace (`unshare -Urpf --mount-proc`, in
+  `inklkunn-signer/tests/extract_pid_namespace.rs`, the one crate whose tests may start a process) leaves a held extract and
+  removes a dead one.
 
 ## [0.2.0] — 2026-11-04
 

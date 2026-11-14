@@ -310,7 +310,13 @@ impl World {
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
             std::fs::write(p, text).unwrap();
         }
-        let have = wiki_state(&*self.storage, &self.layout, &self.wiki).unwrap();
+        let have = wiki_state(
+            &*self.storage,
+            &self.layout,
+            &self.wiki,
+            &ReadConfig::default(),
+        )
+        .unwrap();
         let plan = plan_folder(&folder.0, &have, false).unwrap();
         assert!(plan.is_importable(), "{}", plan.report());
         run_import(&self.acts, &self.wiki, &plan).unwrap_or_else(|e| panic!("{e}"));

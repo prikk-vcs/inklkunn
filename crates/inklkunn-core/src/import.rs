@@ -74,6 +74,7 @@ use sha2::{Digest as _, Sha256};
 
 use crate::acceptance::{SystemActFailure, SystemActs, SystemRequest};
 use crate::bundle::{KNOWLEDGE_EXTENSION, KNOWLEDGE_EXTENSION_VERSION};
+use crate::read::scratch::Extract;
 use crate::read::{ReadConfig, ReadService};
 
 /// Folders nested deeper than this are refused (a path cap would refuse them anyway; this bounds the walk).
@@ -1165,6 +1166,7 @@ pub fn wiki_state(
     storage: &dyn Storage,
     layout: &RootLayout,
     record: &WikiRecord,
+    config: &ReadConfig,
 ) -> Result<Existing, ImportError> {
     let repo = layout.repo_dir(&record.id);
     let tree = storage
@@ -1172,42 +1174,43 @@ pub fn wiki_state(
         .map_err(ImportError::Storage)?;
     let tip = tree.target_block_id;
     let scratch = layout.scratch_dir(&record.id);
-    std::fs::create_dir_all(&scratch).map_err(|e| {
+    let scratch_error = |what: &str, e: &std::io::Error| {
         ImportError::Wiki(format!(
-            "the wiki's scratch directory could not be made ({})",
+            "the wiki's scratch directory {what} ({})",
             e.kind()
         ))
-    })?;
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_nanos());
-    let extraction = format!("import-{}-{nanos}", std::process::id());
-    let result = (|| {
-        storage
-            .materialize(
-                &repo,
-                &Point::Block(tip.clone()),
-                &scratch,
-                &extraction,
-                ExtractBounds {
-                    max_bytes: None,
-                    max_files: None,
-                },
-            )
-            .map_err(ImportError::Storage)?;
-        let mut state = Existing::at(&tip);
-        let extracted = scratch.join(&extraction);
-        for top in ["pages", "attachments", "knowledge"] {
-            collect(&extracted, top, &mut state)?;
-        }
-        Ok(state)
-    })();
-    let _ = std::fs::remove_dir_all(scratch.join(&extraction));
-    result
+    };
+    std::fs::create_dir_all(&scratch).map_err(|e| scratch_error("could not be made", &e))?;
+    // The server's own scratch module: the extract is claimed with a lock (a running server sweeps around it), a crashed
+    // import's is swept by the next build, and the operator's bounds apply, as they do to a read.
+    let extract = Extract::begin(&scratch).map_err(|e| scratch_error("could not be used", &e))?;
+    storage
+        .materialize(
+            &repo,
+            &Point::Block(tip.clone()),
+            &scratch,
+            extract.name(),
+            ExtractBounds {
+                max_bytes: Some(config.index_max_bytes),
+                max_files: Some(config.index_max_files),
+            },
+        )
+        .map_err(ImportError::Storage)?;
+    let mut state = Existing::at(&tip);
+    let extracted = extract.root();
+    for top in ["pages", "attachments", "knowledge"] {
+        collect(&extracted, top, &mut state, config)?;
+    }
+    Ok(state)
 }
 
 /// Add the regular files under `<extracted>/<rel>` (a missing directory has none).
-fn collect(extracted: &Path, rel: &str, state: &mut Existing) -> Result<(), ImportError> {
+fn collect(
+    extracted: &Path,
+    rel: &str,
+    state: &mut Existing,
+    config: &ReadConfig,
+) -> Result<(), ImportError> {
     let wiki_error =
         |what: &str, e: &std::io::Error| ImportError::Wiki(format!("{what} ({})", e.kind()));
     let dir = extracted.join(rel);
@@ -1231,21 +1234,20 @@ fn collect(extracted: &Path, rel: &str, state: &mut Existing) -> Result<(), Impo
             .file_type()
             .map_err(|e| wiki_error("the extraction could not be examined", &e))?;
         if kind.is_dir() {
-            collect(extracted, &child, state)?;
+            collect(extracted, &child, state, config)?;
         } else if kind.is_file() {
             let path = item.path();
             let io = |e: std::io::Error| wiki_error("an extracted file could not be read", &e);
             let is_page = child.starts_with("pages/") && child.ends_with(".md");
-            let (digest, id) = if is_page
-                && item.metadata().map_err(io)?.len() <= ReadConfig::default().page_max_bytes
-            {
-                let bytes = std::fs::read(&path).map_err(io)?;
-                (sha256(&bytes), page_id_of(&child, &bytes))
-            } else {
-                let file = File::open(&path).map_err(io)?;
-                let digest = hash_all(file, u64::MAX).map_err(ImportError::Wiki)?;
-                (digest, None)
-            };
+            let (digest, id) =
+                if is_page && item.metadata().map_err(io)?.len() <= config.page_max_bytes {
+                    let bytes = std::fs::read(&path).map_err(io)?;
+                    (sha256(&bytes), page_id_of(&child, &bytes))
+                } else {
+                    let file = File::open(&path).map_err(io)?;
+                    let digest = hash_all(file, u64::MAX).map_err(ImportError::Wiki)?;
+                    (digest, None)
+                };
             state.add(&child, digest, id);
         }
     }

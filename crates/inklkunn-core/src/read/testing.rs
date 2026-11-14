@@ -33,6 +33,8 @@ struct State {
     view_files: BTreeMap<u64, BTreeMap<String, Vec<u8>>>,
     fail_views: Option<StorageError>,
     fail_materialize: Option<StorageError>,
+    /// `tree` answers for a view too (off: a view's listing is not needed by any read).
+    view_trees: bool,
     /// How many times `materialize` was asked, whether it answered or not.
     materialized: u64,
     fail_read: Option<StorageError>,
@@ -149,6 +151,11 @@ impl Fake {
 
     pub(crate) fn fail_views(&self, e: Option<StorageError>) {
         self.state().fail_views = e;
+    }
+
+    /// Let `tree` answer for a view, with the files of the current state (the import asks for its tip).
+    pub(crate) fn list_views(&self) {
+        self.state().view_trees = true;
     }
 
     pub(crate) fn fail_materialize(&self, e: Option<StorageError>) {
@@ -283,11 +290,17 @@ impl Storage for Fake {
     }
 
     fn tree(&self, _: &Path, point: &Point, prefix: Option<&str>) -> Result<Tree> {
-        // Only a block's files are listed (the acceptance's merge asks); a view's are not needed by any read.
-        if matches!(point, Point::View(_)) {
+        let s = self.state();
+        // Only a block's files are listed (the acceptance's merge asks) unless `list_views` was called: a view's are
+        // not needed by any read. Then a view's listing is the current files, at the block the fake is at (the import
+        // asks for the default view's tip, to pin its plan to it).
+        if matches!(point, Point::View(_)) && !s.view_trees {
             return Err(unsupported("tree"));
         }
-        let s = self.state();
+        let target = match point {
+            Point::View(_) => block_id(s.version),
+            Point::Block(id) => id.clone(),
+        };
         let files = files_at(&s, point).ok_or_else(|| StorageError::Refused {
             verb: "tree",
             message: format!("no such block: {point}"),
@@ -297,7 +310,7 @@ impl Storage for Fake {
         Ok(Tree {
             schema_version: "tree-listing-v1".to_owned(),
             point: point.to_string(),
-            target_block_id: point.to_string(),
+            target_block_id: target,
             prefix: prefix.map(str::to_owned),
             entries: files
                 .iter()

@@ -3,7 +3,7 @@
 //!
 //! | Variable | Meaning | Default |
 //! |---|---|---|
-//! | `INKLKUNN_DATA_DIR` | holds `store.sqlite` and `wikis/` (absolute) | **required** |
+//! | `INKLKUNN_DATA_DIR` | holds `store.sqlite` and `wikis/` (absolute). **It must be on a filesystem where `flock` works between the processes that share it** (a local filesystem, or a bind mount of one): the key store, the per-wiki write lock and the read path's scratch extracts are all held by it | **required** |
 //! | `INKLKUNN_SECRET_FILE` | the file with the operator's secret that opens every wiki's keys (absolute, 16 to 1024 bytes) | **required** |
 //! | `INKLKUNN_KEY_DIR` | the sealed key records (mode 0700) | `<data dir>/keys` |
 //! | `INKLKUNN_SEED_DIR` | a directory on a tmpfs where a signing call's keys live for that call | `/dev/shm/inklkunn` |

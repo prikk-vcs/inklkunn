@@ -469,7 +469,13 @@ impl World {
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
             std::fs::write(p, text).unwrap();
         }
-        let have = wiki_state(&*self.storage, &self.layout, &self.wiki).unwrap();
+        let have = wiki_state(
+            &*self.storage,
+            &self.layout,
+            &self.wiki,
+            &ReadConfig::default(),
+        )
+        .unwrap();
         let plan = plan_folder(&folder.0, &have, false).unwrap();
         assert!(plan.is_importable(), "{}", plan.report());
         run_import(&self.acts, &self.wiki, &plan).unwrap_or_else(|e| panic!("{e}"))
@@ -1464,7 +1470,7 @@ fn a_wiki_under_recovery_serves_reads_and_refuses_writes_with_the_word_until_rec
         "---\ntitle: New\nid: pnew\n---\n\nn\n",
     )
     .unwrap();
-    let have = wiki_state(&*w.storage, &w.layout, &w.wiki).unwrap();
+    let have = wiki_state(&*w.storage, &w.layout, &w.wiki, &ReadConfig::default()).unwrap();
     let plan = plan_folder(&folder.0, &have, false).unwrap();
     let err = run_import(&w.acts, &w.wiki, &plan).unwrap_err();
     assert!(
@@ -1492,7 +1498,7 @@ fn an_import_that_ended_after_commit_is_completed_the_same_way() {
         "---\ntitle: New\nid: pnew\n---\n\nnew\n",
     )
     .unwrap();
-    let have = wiki_state(&*w.storage, &w.layout, &w.wiki).unwrap();
+    let have = wiki_state(&*w.storage, &w.layout, &w.wiki, &ReadConfig::default()).unwrap();
     let plan = plan_folder(&folder.0, &have, false).unwrap();
     w.control("fail-seal", "");
     let err = run_import(&w.acts, &w.wiki, &plan).unwrap_err();

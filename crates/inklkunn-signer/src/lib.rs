@@ -21,7 +21,6 @@
 
 // The modules stay private: the key-reachability gate keeps every other crate from naming them.
 mod cost;
-mod flock;
 mod key_store;
 mod keys;
 mod lease;
@@ -33,6 +32,9 @@ mod worktree;
 
 pub mod accept;
 pub mod creation;
+// Public for the one reader that is not the signer: the core's scratch extracts hold a lock of the same kind
+// (nothing in it names a key or a seed).
+pub mod flock;
 pub mod message;
 
 mod maintenance;

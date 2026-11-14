@@ -64,7 +64,7 @@ mod preview;
 mod raw;
 mod rollback;
 mod sanitize;
-mod scratch;
+pub mod scratch;
 mod search;
 mod tip;
 mod why;
@@ -91,7 +91,7 @@ use inklkunn_store::{
 };
 
 use links::PageLinks;
-use scratch::{extract_name, remove_tree, sweep_leftovers};
+use scratch::Extract;
 
 use crate::knowledge::index::{self as knowledge_index, KnowledgeIndex};
 
@@ -1150,7 +1150,7 @@ impl ReadService {
     /// Run `work` over **one extract of the tip** in the wiki's scratch directory, and remove the directory
     /// whatever came of it (the caller holds the wiki's build lock, which orders the extracts of this service; other
     /// services, in this process or in others, extract into the same directory under names of their own, and the
-    /// sweep removes only what a process that is gone left: see `scratch`).
+    /// sweep removes only an extract whose lock no one holds: see `scratch`).
     ///
     /// The extract must still be there when `work` is done: a root that has vanished means `work` read a tree that
     /// something removed, and what it found (a `pages/` that is not there reads as no pages) is no answer. It is
@@ -1168,10 +1168,10 @@ impl ReadService {
         let scratch = self.layout.scratch_dir(&wiki.id);
         std::fs::create_dir_all(&scratch)
             .map_err(|e| scratch_error("creating the scratch directory", e))?;
-        // What is left here by a process that is gone goes; a live process's extract, in this process or another,
-        // is not ours to remove.
-        sweep_leftovers(&scratch);
-        let name = extract_name();
+        // What no process holds goes (a live extract's lock is held, in this process or another); this extract's name
+        // is claimed with its lock before anything is made.
+        let extract = Extract::begin(&scratch)
+            .map_err(|e| scratch_error("claiming an extract in the scratch directory", e))?;
         let bounds = ExtractBounds {
             max_bytes: Some(self.config.index_max_bytes),
             max_files: Some(self.config.index_max_files),
@@ -1182,14 +1182,14 @@ impl ReadService {
                 &repo,
                 &Point::Block(tip.block_id.clone()),
                 &scratch,
-                &name,
+                extract.name(),
                 bounds,
             )
             .map_err(|e| self.storage_error(wiki, e));
-        let root = scratch.join(&name);
-        let result = match extracted {
+        let root = extract.root();
+        match extracted {
             Ok(_) => work(&root).and_then(|done| {
-                // Nothing but this call removes the root while it runs; if it is gone, `work` read what was left.
+                // A held lock keeps every sweep off the extract; if the root is gone anyway, `work` read what was left.
                 if std::fs::symlink_metadata(&root).is_ok_and(|m| m.is_dir()) {
                     Ok(done)
                 } else {
@@ -1200,11 +1200,9 @@ impl ReadService {
                 }
             }),
             Err(e) => Err(e),
-        };
-        // The directory goes whatever came of the build. A directory that will not go stays until its process is
-        // gone and another build sweeps it; what was read is good.
-        remove_tree(&root);
-        result
+        }
+        // `extract` goes here: the directory, then the lock file, then the lock. A directory that will not go stays,
+        // its lock free, until another build sweeps it; what was read is good.
     }
 
     /// Run `work` over one extract of the block `block_id` of the wiki (not necessarily the tip this service holds:

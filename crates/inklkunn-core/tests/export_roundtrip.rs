@@ -13,6 +13,7 @@ use std::time::Duration;
 use inklkunn_core::export::{ExportError, export_bundle};
 use inklkunn_core::import::{ImportError, plan_folder, run_import, wiki_state};
 use inklkunn_core::message::{Actor, BlockId, Message, Summary};
+use inklkunn_core::read::ReadConfig;
 use inklkunn_core::{
     AcceptanceLedger, AcceptanceToken, Authorizer, CreatedWiki, ExpectedMessage, KeyAuthority,
     LeaseConfig, LedgerError, PreparedChange, PreparedFile, Signer, SignerConfig, StoreAuthz,
@@ -205,7 +206,7 @@ fn do_import(
     folder: &Path,
     replace: bool,
 ) -> inklkunn_core::import::Imported {
-    let have = wiki_state(&w.storage, &w.layout, &wiki.record).unwrap();
+    let have = wiki_state(&w.storage, &w.layout, &wiki.record, &ReadConfig::default()).unwrap();
     let plan = plan_folder(folder, &have, replace).unwrap();
     assert!(plan.is_importable(), "{}", plan.report());
     run_import(&w.acts, &wiki.record, &plan).unwrap_or_else(|e| panic!("{e}"))
@@ -450,7 +451,7 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
 
         // Wiki B: fresh, filled from A's bundle (its own Help page is replaced by A's).
         let b = create(&w, "beta");
-        let have = wiki_state(&w.storage, &w.layout, &b.record).unwrap();
+        let have = wiki_state(&w.storage, &w.layout, &b.record, &ReadConfig::default()).unwrap();
         let plan = plan_folder(&dir1, &have, true).unwrap();
         assert!(plan.is_importable(), "{}", plan.report());
         let skipped: Vec<&str> = plan.not_imported.iter().map(|(n, _)| n.as_str()).collect();
@@ -678,7 +679,7 @@ fn a_dry_run_writes_nothing_to_the_wiki_the_folder_or_anywhere() {
         .storage
         .history(&a.repo, &Point::View(a.record.default_view.clone()), None)
         .unwrap();
-    let have = wiki_state(&w.storage, &w.layout, &a.record).unwrap();
+    let have = wiki_state(&w.storage, &w.layout, &a.record, &ReadConfig::default()).unwrap();
     let plan = plan_folder(&folder.0, &have, false).unwrap();
     assert!(plan.is_importable());
     let report = plan.report();
@@ -916,7 +917,7 @@ fn an_import_is_held_to_the_tip_it_was_planned_against_and_an_unchanged_reimport
             .len()
     };
     let before = blocks(&w);
-    let have = wiki_state(&w.storage, &w.layout, &a.record).unwrap();
+    let have = wiki_state(&w.storage, &w.layout, &a.record, &ReadConfig::default()).unwrap();
     assert_eq!(have.tip, done.sealed.block_id, "the state is as of the tip");
     let again = plan_folder(&folder.0, &have, true).unwrap();
     assert!(again.is_unchanged(), "{}", again.report());
@@ -950,7 +951,7 @@ fn an_import_is_held_to_the_tip_it_was_planned_against_and_an_unchanged_reimport
     assert!(w.storage.verify(&a.repo).unwrap().verdict.ok);
 
     // Planned again against the new tip, it goes through, and only the page that differs changes.
-    let have = wiki_state(&w.storage, &w.layout, &a.record).unwrap();
+    let have = wiki_state(&w.storage, &w.layout, &a.record, &ReadConfig::default()).unwrap();
     let replan = plan_folder(&folder.0, &have, true).unwrap();
     assert_eq!(replan.files.len(), 1);
     run_import(&w.acts, &a.record, &replan).unwrap();

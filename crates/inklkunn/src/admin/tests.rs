@@ -2060,7 +2060,8 @@ fn metrics_prints_one_json_line_audits_the_act_and_refuses_an_empty_period() {
 
 /// The limits the operator sets for the server (`INKLKUNN_INDEX_MAX_FILES` and the others) are the limits an import is
 /// judged under (handoff 005 K54, V-d): under the defaults a bundle's knowledge files are judged and the dry run is clean;
-/// with the operator's cap at one file, the tip does not fit and the judgement says it could not be made, instead of
+/// with the operator's cap at one file, the tip does not fit and the import says so (K55: the extract of the wiki's
+/// current files is bounded as a read of it is, so the refusal comes before the plan and the judgement), instead of
 /// passing under limits the server does not hold.
 #[test]
 fn an_import_is_judged_under_the_operators_read_limits_and_not_the_defaults() {
@@ -2087,7 +2088,8 @@ fn an_import_is_judged_under_the_operators_read_limits_and_not_the_defaults() {
     let (status, out, err) = w.cli_with(&[("INKLKUNN_INDEX_MAX_FILES", "1")], &dry);
     assert_eq!(status, 1, "{out}{err}");
     assert!(
-        err.contains("the knowledge files could not be judged"),
+        err.contains("the wiki's current files could not be listed")
+            && err.contains("--max-files 1"),
         "{out}{err}"
     );
     // A setting that is not a number stops the import before anything is opened.

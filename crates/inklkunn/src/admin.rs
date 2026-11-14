@@ -711,7 +711,7 @@ fn import_folder(
     let env = environment(settings, err)?;
     // What the wiki has now, at one tip: to tell a new path from an existing one, a file that would not change
     // from one that would, and the page ids and names that are taken. The plan is pinned to that tip.
-    let mut have = wiki_state(&env.storage, &env.layout, &record);
+    let mut have = wiki_state(&env.storage, &env.layout, &record, &read_config);
     if let Err(ImportError::Storage(e)) = &have
         && is_checkpoint_not_recorded(e)
     {
@@ -728,7 +728,7 @@ fn import_folder(
             format!("inklkunn-cli-{}", std::process::id()),
         );
         refresh_checkpoint(&store, &maintained, &env.storage, &record, now)?;
-        have = wiki_state(&env.storage, &env.layout, &record);
+        have = wiki_state(&env.storage, &env.layout, &record, &read_config);
     }
     let have = have.map_err(|e| e.to_string())?;
     let mut plan = plan_folder(&folder, &have, replace_existing).map_err(|e| e.to_string())?;

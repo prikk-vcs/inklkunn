@@ -294,7 +294,13 @@ impl World {
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
             std::fs::write(p, text).unwrap();
         }
-        let have = wiki_state(&*self.storage, &self.layout, &self.wiki).unwrap();
+        let have = wiki_state(
+            &*self.storage,
+            &self.layout,
+            &self.wiki,
+            &ReadConfig::default(),
+        )
+        .unwrap();
         let plan = plan_folder(&folder.0, &have, false).unwrap();
         assert!(plan.is_importable(), "{}", plan.report());
         run_import(&self.acts, &self.wiki, &plan).unwrap_or_else(|e| panic!("{e}"))
@@ -852,7 +858,7 @@ fn a_failure_injected_after_commit_flags_the_wiki_and_reads_still_serve() {
         "---\ntitle: New\nid: pnew\n---\n\nn\n",
     )
     .unwrap();
-    let have = wiki_state(&*w.storage, &w.layout, &w.wiki).unwrap();
+    let have = wiki_state(&*w.storage, &w.layout, &w.wiki, &ReadConfig::default()).unwrap();
     let plan = plan_folder(&folder.0, &have, false).unwrap();
     let err = run_import(&w.acts, &w.wiki, &plan).unwrap_err();
     assert!(
@@ -2341,7 +2347,7 @@ fn a_reconfirm_reads_the_pages_of_the_tip_the_acceptance_prepared_on() {
         w.signer.clone(),
         w.leases.clone(),
     );
-    let have = wiki_state(&*w.storage, &w.layout, &w.wiki).unwrap();
+    let have = wiki_state(&*w.storage, &w.layout, &w.wiki, &ReadConfig::default()).unwrap();
     let plan = plan_folder(&folder.0, &have, true).unwrap();
     run_import(&unseen, &w.wiki, &plan).unwrap_or_else(|e| panic!("{e}"));
     assert_ne!(w.tip(), held_tip);
