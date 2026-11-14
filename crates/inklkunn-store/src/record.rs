@@ -369,8 +369,9 @@ impl std::error::Error for DisplayNameError {}
 
 /// Is `c` a control character, or a character some line-oriented reader splits a line on (U+2028, U+2029)? **The one
 /// definition** of what text shown or kept as one line must not hold: a display name, a trail field, a token label, a
-/// message field, a history summary and a line of prikk's text shown to a person are all cleaned by it (maintenance
-/// M19), so one line of text can never show as two.
+/// message field, a history summary, the summary of a block somebody else made, a rollback's summary and a line of
+/// prikk's text shown to a person are all cleaned by it (maintenance M19, M22), so one line of text can never show
+/// as two.
 pub fn is_line_or_control(c: char) -> bool {
     c.is_control() || matches!(c, '\u{2028}' | '\u{2029}')
 }

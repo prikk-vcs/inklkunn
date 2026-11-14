@@ -328,6 +328,14 @@ fn a_change_that_touched_too_many_pages_is_left_to_a_person() {
 }
 
 #[test]
+fn a_summary_is_one_line_by_the_one_definition_of_a_line() {
+    // M22 (T-h): U+2028 and U+2029 split a line for some readers, as a control character does.
+    let line = super::super::rollback::fit("Undo: one\u{2028}two\u{2029}three\u{7}four");
+    assert_eq!(line, "Undo: one two three four");
+    assert!(crate::message::Summary::new(&line).is_ok());
+}
+
+#[test]
 fn a_long_summary_is_cut_to_a_line_the_message_allows() {
     let w = world();
     let long = "A".repeat(300);

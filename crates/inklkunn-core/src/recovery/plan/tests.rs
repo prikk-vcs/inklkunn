@@ -763,16 +763,7 @@ fn a_pending_cleanup_is_a_stop_unless_doctor_names_exactly_that_code_and_the_blo
         diag(Severity::Error, "PRIKK-DOCTOR-OBJECT-MISSING", None),
     ]);
     assert_eq!(stop_of(&w), Some(Stop::DoctorTrouble));
-    let mut w = cleanup_pending();
-    w.doctor = doctor(vec![
-        cleanup_error(),
-        diag(
-            Severity::Warning,
-            "PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS",
-            None,
-        ),
-    ]);
-    assert_eq!(stop_of(&w), Some(Stop::DoctorTrouble));
+    // (The metadata debris warning beside it is not trouble: M23, `a_lone_metadata_debris_warning_is_noted_...`.)
     let mut w = cleanup_pending();
     w.doctor = doctor(vec![diag(
         Severity::Error,
@@ -1989,6 +1980,38 @@ fn a_plan_promises_the_command_only_when_a_run_would_offer_it() {
 }
 
 #[test]
+fn a_plan_with_a_stale_lock_held_never_promises_the_take_back_whatever_it_was_given() {
+    // M21 (T-b): with a lock held a run clears it and stops with the preview, so `InARun` (which promises the
+    // take-back) is said as what the run does.
+    let (w, id) = orphan_with_lock();
+    let said = typed(&w, DiscardOffer::InARun, &id);
+    assert_eq!(
+        said.discard_unused.as_deref(),
+        Some(
+            "a stale lock stands in the way: a run clears it and stops with the preview, and the next run takes the patch back"
+        )
+    );
+    assert_eq!(
+        said.discard_unused,
+        typed(&w, DiscardOffer::AfterLocks, &id).discard_unused
+    );
+    let notes = said.notes.join("\n");
+    assert!(
+        notes.contains("the run clears it first")
+            && !notes.contains("`recover --plan` does not ask"),
+        "{notes}"
+    );
+    // Without a lock the same offer is the promise it was.
+    let (w, id) = orphan();
+    assert_eq!(
+        typed(&w, DiscardOffer::InARun, &id)
+            .discard_unused
+            .as_deref(),
+        Some("`recover --plan` only shows; a run takes the patch back")
+    );
+}
+
+#[test]
 fn a_lone_metadata_debris_warning_is_noted_and_in_nobodys_way() {
     // M16 (PK-46): harmless, and the next commit clears it; the plan used to stop at `doctor-trouble` for it.
     let debris = || {
@@ -2025,9 +2048,27 @@ fn a_lone_metadata_debris_warning_is_noted_and_in_nobodys_way() {
         w.doctor = doctor(vec![debris(), other]);
         assert_eq!(build(&w).stop, Some(Stop::DoctorTrouble));
     }
-    // Beside a pending cleanup the signer's step asks for exactly one finding, so the plan does not offer it.
+    // Nor is it in the way beside a pending cleanup or an unfinished view creation: the signer's two steps that ask
+    // for exactly one finding read it through the same rule (M23), so the plan offers them as it does without it.
     let mut w = cleanup_pending();
     w.doctor = doctor(vec![cleanup_error(), debris()]);
+    let plan = build(&w);
+    assert_eq!(plan.stop, None, "{:#?}", plan.lines());
+    assert_eq!(names(&plan), names(&build(&cleanup_pending())));
+    let mut w = view_creation(at_forked_block(), true);
+    let without = names(&build(&w));
+    assert_eq!(nth(&without, 0), &"complete-view-creation");
+    w.doctor = doctor(vec![lead_error(DRAFT), debris()]);
+    let plan = build(&w);
+    assert_eq!(plan.stop, None, "{:#?}", plan.lines());
+    assert_eq!(names(&plan), without);
+    // An error beside the debris is still trouble, for both.
+    let mut w = cleanup_pending();
+    w.doctor = doctor(vec![
+        cleanup_error(),
+        debris(),
+        diag(Severity::Error, "PRIKK-DOCTOR-OBJECT-MISSING", None),
+    ]);
     assert_eq!(build(&w).stop, Some(Stop::DoctorTrouble));
 }
 

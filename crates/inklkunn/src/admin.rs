@@ -1152,7 +1152,8 @@ fn discard_word_fate(result: &Result<RecoveryReport, RecoveryError>) -> Option<S
     } = &report.outcome
     {
         return Some(match *step {
-            "clear-locks" => format!("the lock was not cleared: {why}"),
+            // The step's reason is a whole sentence of what the clear and the check after it did (M22).
+            "clear-locks" => why.clone(),
             TAKEN_BACK => format!("taking the patch back failed: {why}"),
             other => format!("recovery stopped at {other} before it took the patch back"),
         });

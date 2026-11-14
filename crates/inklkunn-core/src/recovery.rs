@@ -156,7 +156,14 @@ impl std::fmt::Display for RecoveryError {
             ),
             RecoveryError::Store(e) => write!(f, "{e}"),
             RecoveryError::AfterSteps { done, cause } => {
-                write!(f, "{cause}; steps already done: {}", done.join(", "))
+                // "nothing was done" is true of an audit failure before any step, and false after one (M22).
+                match &**cause {
+                    RecoveryError::Audit(why) => {
+                        write!(f, "the audit trail could not be written ({why})")?;
+                    }
+                    other => write!(f, "{other}")?,
+                }
+                write!(f, "; steps already done: {}", done.join(", "))
             }
         }
     }
@@ -801,10 +808,12 @@ impl Recovery {
     /// What prikk offers for the one queued patch of a wiki no recorded act describes (ledger PK-43): asked only in
     /// that state, with prikk's own `uncommit --plan-only`. **That verb takes prikk's active lock, so it writes**
     /// (maintenance M5): it is asked only in a run, under the lease, and never while a lock is held (M6: the run
-    /// clears the stale lock first and asks again). Whatever is not that state is `NotAsked`; a plan only shown is
-    /// `InARun`; a prikk without the verb is `NoVerb`; an answer that cannot be read is said, and offers nothing. While a
-    /// lock is held the preview is not asked at all; whether the verb exists is (M12), and the answer decides whether the
-    /// plan clears the lock (`InARun` and `AfterLocks`: a preview will follow) or clears nothing (`NoVerb`, `Unreadable`).
+    /// clears the stale lock first and asks again). Whatever is not that state is `NotAsked`; a prikk without the verb
+    /// is `NoVerb`; an answer that cannot be read is said, and offers nothing. A plan only shown does not ask for the
+    /// preview (`InARun`, and only when the verb exists and no lock is held: M21). While a lock is held the preview is
+    /// not asked at all; whether the verb exists is (M12), in a plan as in a run, and the answer decides whether the
+    /// plan clears the lock (`AfterLocks`: the run clears it and stops with the preview) or clears nothing (`NoVerb`,
+    /// `Unreadable`).
     fn read_discard(
         &self,
         wiki: &WikiRecord,
@@ -822,18 +831,18 @@ impl Recovery {
                     && w.foreign.is_empty()
                     && w.status.trailing_partial_wal_bytes == 0 =>
             {
-                if !w.locks.is_empty() {
+                if !w.locks.is_empty() || mode == Mode::PlanOnly {
                     // A stale lock holds prikk's lock, so the preview cannot be read; the run clears it only when
                     // there is a preview to read afterwards, that is, when this prikk has the verb (M12). The question
-                    // is asked without a patch id, so it takes no lock, and a plan shown may ask it too.
+                    // is asked without a patch id, so it takes no lock, and a plan shown asks it too: a plan promises
+                    // what a run does (M21), and a run on a prikk without the verb takes nothing back, and with a
+                    // lock held clears it and stops with the preview.
                     match self.parts.witnesses.has_uncommit(&wiki.id) {
-                        Ok(true) if mode == Mode::PlanOnly => DiscardOffer::InARun,
+                        Ok(true) if w.locks.is_empty() => DiscardOffer::InARun,
                         Ok(true) => DiscardOffer::AfterLocks,
                         Ok(false) => DiscardOffer::NoVerb,
                         Err(e) => DiscardOffer::Unreadable(e.to_string()),
                     }
-                } else if mode == Mode::PlanOnly {
-                    DiscardOffer::InARun
                 } else {
                     match self
                         .parts
@@ -1167,14 +1176,32 @@ impl Recovery {
         let repo = p.layout.repo_dir(&wiki.id);
         match step {
             Step::ClearLocks { locks } => {
+                // Each reason is a whole sentence of what happened (M22): a surface prints it as it stands, and the
+                // clear and the check after it are not told apart by a prefix someone else adds.
                 let paths: Vec<String> = locks.iter().map(|l| l.path.clone()).collect();
                 let cleared = p
                     .signer
                     .clear_locks(&wiki.id, token, &paths)
-                    .map_err(|e| e.to_string())?;
-                let left = p.witnesses.locks(&wiki.id).map_err(|e| e.to_string())?;
-                if left.iter().any(|l| paths.contains(&l.path)) {
-                    return Err("a lock is still held after it was cleared".to_owned());
+                    .map_err(|e| format!("the lock was not cleared: {e}"))?;
+                let left = p.witnesses.locks(&wiki.id).map_err(|e| {
+                    format!(
+                        "{} lock(s) cleared, but the locks could not be listed again to check: {e}",
+                        cleared.len()
+                    )
+                })?;
+                // The locks that are still there, named as the plan names them (their kind and recorded process, not a
+                // path of the repository).
+                let held: Vec<String> = locks
+                    .iter()
+                    .filter(|l| left.iter().any(|h| h.path == l.path))
+                    .map(|l| format!("{} (recorded pid {})", l.kind, l.recorded_pid))
+                    .collect();
+                if !held.is_empty() {
+                    return Err(format!(
+                        "{} lock(s) cleared, but still held: {}",
+                        cleared.len(),
+                        held.join(", ")
+                    ));
                 }
                 Ok(format!("{} lock(s) cleared", cleared.len()))
             }

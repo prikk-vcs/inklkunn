@@ -245,7 +245,7 @@ fn describe(block: &HistoryBlock) -> Described {
         .unwrap_or("");
     let mut summary: String = first_line
         .chars()
-        .filter(|c| !c.is_control())
+        .filter(|c| !inklkunn_store::record::is_line_or_control(*c))
         .take(FOREIGN_SUMMARY_CHARS)
         .collect();
     if first_line.chars().count() > FOREIGN_SUMMARY_CHARS {

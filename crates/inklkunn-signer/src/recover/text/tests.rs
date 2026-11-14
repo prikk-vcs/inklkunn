@@ -379,8 +379,9 @@ fn a_pending_cleanup_is_read_and_only_exactly_that_one_error_is_it() {
         )
         .is_only_cleanup_pending()
     );
+    // The metadata debris warning is never in the way (M23, decision 1): the pending cleanup is still exactly one thing.
     assert!(
-        !beside(
+        beside(
             "warning [PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS]: stale",
             "errors=1, warnings=1, info=0"
         )
@@ -456,10 +457,20 @@ fn an_interrupted_publication_is_read_and_only_exactly_that_one_error_of_one_ref
         .only_ref_lead(),
         None
     );
+    // The metadata debris warning is never in the way (M23, decision 1).
     assert_eq!(
         beside(
             "warning [PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS]: stale",
             "errors=1, warnings=1, info=0"
+        )
+        .only_ref_lead(),
+        Some("heads/draft")
+    );
+    // An error of that code is not the debris, and still counts.
+    assert_eq!(
+        beside(
+            "error [PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS]: stale",
+            "errors=2, warnings=0, info=0"
         )
         .only_ref_lead(),
         None

@@ -235,25 +235,29 @@ impl DoctorReport {
             .any(Diagnostic::is_acknowledged_damage)
     }
 
+    /// The errors and warnings a step that asks for "exactly this one finding" counts: not information, not an
+    /// unreached-object note and **not the metadata debris**, which is nobody's business (ledger PK-46; maintenance
+    /// M16, M23). The same rule as [`DoctorReport::others`], which also leaves out an acknowledged damage; here that
+    /// damage stays, since a step must not go on over it.
+    fn named(&self) -> impl Iterator<Item = &Diagnostic> {
+        self.diagnostics.iter().filter(|d| {
+            d.severity != Severity::Info && !d.is_unreached_note() && !d.is_metadata_debris()
+        })
+    }
+
     /// `doctor` names **exactly** one thing, the error [`ACTIVE_CLEANUP_PENDING_CODE`]: beside it there is only
-    /// information and unreached-object notes (which do not block). Any other error or warning, a second one of this
-    /// code, or a warning of the same code, is not this.
+    /// information, unreached-object notes (which do not block) and the metadata debris warning (which is never in
+    /// the way). Any other error or warning, a second one of this code, or a warning of the same code, is not this.
     pub fn is_only_cleanup_pending(&self) -> bool {
-        let mut named = self
-            .diagnostics
-            .iter()
-            .filter(|d| d.severity != Severity::Info && !d.is_unreached_note());
+        let mut named = self.named();
         matches!((named.next(), named.next()), (Some(d), None) if d.is_cleanup_pending())
     }
 
     /// `doctor` names **exactly** one thing, an interrupted publication of one ref ([`Diagnostic::lead_ref`]), and
-    /// returns that ref: beside it there is only information and unreached-object notes. Any other error or warning,
-    /// a second lead, or a lead whose wording is not prikk's, is not this.
+    /// returns that ref: beside it there is only information, unreached-object notes and the metadata debris warning.
+    /// Any other error or warning, a second lead, or a lead whose wording is not prikk's, is not this.
     pub fn only_ref_lead(&self) -> Option<&str> {
-        let mut named = self
-            .diagnostics
-            .iter()
-            .filter(|d| d.severity != Severity::Info && !d.is_unreached_note());
+        let mut named = self.named();
         match (named.next(), named.next()) {
             (Some(d), None) => d.lead_ref(),
             _ => None,

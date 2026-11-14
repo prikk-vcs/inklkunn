@@ -1047,6 +1047,40 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   (the rename revise, the retyped paragraph), `rendered.rs` (the links), `curate_link.rs` (the named link, the count of more); all
   without prikk; no new prikk-dependent test.
 
+- **M21 (handoff 010 corrections, third round): the plan promises only what the run will do.** `recover --plan` now asks prikk
+  whether it has `uncommit` (the question with no patch id, which takes no lock and is safe in a plan, M12), in a plan as in a run. On
+  a prikk without the verb the plan says so and the word is *not used*, where it used to promise a take-back the run then refused
+  (0.55.0). `InARun`, the offer that promises the take-back, is now said only for a prikk that has the verb and a wiki with no lock
+  held; with a stale lock held the plan says what a run does, *a run clears it and stops with the preview, and the next run takes the
+  patch back* (the library says it whatever offer it is given: `build_with` turns `InARun` with a lock held into `AfterLocks`). No
+  new public name. Tests, each comparing the plan's sentence with what the run did: the floor with and without a lock and 0.57.0
+  without one (`a_plan_promises_what_the_run_does_...`, the plan's `discard_unused` equals the run's on the floor, the take-back
+  happens when promised), and 0.57.0 with a stale lock (clear-locks done, the patch still queued, the lock gone); the plan's unit
+  rows. Two new prikk-dependent tests: one counted by `skipping: prikk not on PATH`, one by `skipping: prikk 0.57.0 or newer not
+  found`.
+
+- **M22 (handoff 010 corrections, third round): the sentences are true.** (1) A `RecoveryError::AfterSteps` over an audit failure no
+  longer says *nothing was done* beside *steps already done: …*; the bare audit error still says it. (2) The `clear-locks` step's
+  reason is a whole sentence of what happened: *the lock was not cleared: <why>* only when the clear itself failed; *<n> lock(s)
+  cleared, but the locks could not be listed again to check: <why>* when the re-listing failed; *<n> lock(s) cleared, but still held:
+  <kind> (recorded pid <pid>), …* naming the locks that are (their kind and recorded process, as the plan names them, never a path of
+  the repository); the word's end event prints it as it stands. (3) `is_line_or_control` is the definition of one line also for the
+  summary of a block somebody else made and for a rollback's `fit` (U+2028 and U+2029 no longer pass); its doc names them. Tests assert
+  the whole sentences: the error text both ways, the three reasons against the real `unlock` (a stand-in that fails the listing after a
+  clear, and one that puts the lock back), the end event for each, and U+2028/U+2029 in both summaries. One new prikk-dependent test
+  (0.57.0).
+
+- **M23 (handoff 010 corrections, third round): debris is never in the way, in the signer too.** The signer's two steps that ask for
+  *exactly this one finding* (`DoctorReport::is_only_cleanup_pending` for the cleanup-pending step, `only_ref_lead` for the
+  view-creation step) read the report through the same rule as `others()` for the metadata-debris warning (an acknowledged damage still
+  counts there: a step does not go on over it). The plan's stop at `doctor-trouble` for a debris warning beside a pending cleanup or an
+  unfinished view creation is gone, so `docs/RECOVERY.md`'s *it is never a stop* is true. Tests: the doctor reader and the plan's rows;
+  on the real state, a `seal` killed after it published (the debris, recovered and left) followed by a view's creation killed between
+  its two writes (both findings in the real `doctor`; the plan and the signer's step go on and the view is *created*); a real pending
+  cleanup with the debris warning as prikk prints it (the two cannot be made in one repository: the debris needs an empty queue and the
+  cleanup a queue equal to the tip's patches), whose step finishes. Two new prikk-dependent tests (counted by `skipping: prikk not on
+  PATH`).
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

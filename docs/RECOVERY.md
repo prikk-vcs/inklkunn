@@ -132,7 +132,9 @@ and that it stopped.
    own preview, the commit's message and the paths it changes) and the command that is your confirmation, with the wiki's
    id in it: `inklkunn wiki recover <wiki id> --discard-queued-patch <patch id>`. `--plan` does not show the preview,
    because prikk takes its own lock to make it and a plan shown writes nothing: it says the preview is shown in a run
-   (that run takes nothing back without your word). A stale lock left beside the patch holds prikk's own lock, so the
+   (that run takes nothing back without your word). It does ask prikk whether it has the verb, which takes no lock, and
+   it says what the run will do: on a prikk without the verb, that nothing is taken back; with a stale lock held, that
+   the run clears it and stops with the preview. A stale lock left beside the patch holds prikk's own lock, so the
    preview cannot be read while it stands: with 0.57.0 that run clears the lock first and then stops with the preview;
    with an older prikk (no `uncommit`, so no preview can follow) it clears nothing, and neither does any other stop.
    The command is offered only when the queue targets the branch the worktree is on; the plan says so before a run.
@@ -277,7 +279,8 @@ touched at any point.
 prikk's stale ref metadata; the next accepted change clears it. `prikk doctor` reports one warning,
 `PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS` (*active WAL is empty but stale ref metadata remains*), after a `seal` was
 killed just after it published its block; prikk says it is harmless (`verify` and `doctor` exit 0 with it). Recovery
-notes it in the plan and goes on: it is never a stop. Do **not** run `prikk seal` with nothing queued to make it go
+notes it in the plan and goes on: it is never a stop, beside a pending cleanup or an unfinished view creation too (the
+signer's step for either reads only that one finding, apart from this warning). Do **not** run `prikk seal` with nothing queued to make it go
 away (it clears the metadata and then exits 1), and do not delete files under `.prikk/active/`.
 
 ## A view whose creation was killed: finished by recovery, or `view-creation-unclear`

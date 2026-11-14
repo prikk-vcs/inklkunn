@@ -119,10 +119,16 @@ fn touched(change: &PrikkChange) -> Result<BTreeSet<String>, NoRollback> {
 }
 
 /// One line for a summary: at most 120 characters, a cut one ending in an ellipsis.
-fn fit(text: &str) -> String {
+pub(super) fn fit(text: &str) -> String {
     let flat: String = text
         .chars()
-        .map(|c| if c.is_control() { ' ' } else { c })
+        .map(|c| {
+            if inklkunn_store::record::is_line_or_control(c) {
+                ' '
+            } else {
+                c
+            }
+        })
         .collect();
     let flat = flat.trim();
     if flat.chars().count() <= SUMMARY_MAX_CHARS {

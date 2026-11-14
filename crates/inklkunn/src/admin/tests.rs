@@ -1576,13 +1576,16 @@ fn the_end_event_is_derived_from_the_steps_that_finished_never_from_the_plans_in
         cause: Box::new(RecoveryError::Audit("the trail is full".to_owned())),
     });
     assert_eq!(discard_word_fate(&errored), None);
-    assert!(
-        errored
-            .as_ref()
-            .err()
-            .is_some_and(|e| e.to_string().contains("steps already done: discard-queued")),
-        "{:?}",
-        errored.as_ref().err().map(ToString::to_string)
+    // The whole sentence (M22): it never says nothing was done when steps were, and it still says so when none were.
+    assert_eq!(
+        errored.as_ref().err().map(ToString::to_string).as_deref(),
+        Some(
+            "the audit trail could not be written (the trail is full); steps already done: discard-queued, restore-worktree"
+        )
+    );
+    assert_eq!(
+        RecoveryError::Audit("the trail is full".to_owned()).to_string(),
+        "the audit trail could not be written (the trail is full); nothing was done"
     );
 
     // Before: an error with no step finished, or with steps that are not the take-back, says so, and says nothing
@@ -1615,7 +1618,7 @@ fn the_end_event_is_derived_from_the_steps_that_finished_never_from_the_plans_in
         plan(vec![lock_step], Some(intent)),
         RecoveryOutcome::Stopped {
             at: Some("clear-locks"),
-            why: "prikk refused to clear the lock".to_owned(),
+            why: "the lock was not cleared: prikk refused to clear the lock".to_owned(),
         },
         Vec::new(),
     );
@@ -1625,6 +1628,25 @@ fn the_end_event_is_derived_from_the_steps_that_finished_never_from_the_plans_in
         "the lock was not cleared: prikk refused to clear the lock"
     );
     assert!(!fate.contains("this run clears it"), "{fate}");
+
+    // The clear worked and what came after it did not: the step's own sentence is what is said, and it never claims
+    // the lock was not cleared (M22).
+    for why in [
+        "1 lock(s) cleared, but the locks could not be listed again to check: prikk unlock: gone",
+        "1 lock(s) cleared, but still held: active (recorded pid 7)",
+    ] {
+        let after_clear = report(
+            plan(Vec::new(), Some(intent)),
+            RecoveryOutcome::Stopped {
+                at: Some("clear-locks"),
+                why: why.to_owned(),
+            },
+            Vec::new(),
+        );
+        let fate = discard_word_fate(&Ok(after_clear)).expect("the word was not used");
+        assert_eq!(fate, why);
+        assert!(!fate.contains("was not cleared"), "{fate}");
+    }
 
     // A lock that was cleared and a preview shown: the plan's reason (written after the clearing) is the sentence.
     let cleared = report(

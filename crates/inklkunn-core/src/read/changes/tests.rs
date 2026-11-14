@@ -56,6 +56,9 @@ fn a_message_someone_else_sealed_is_listed_by_its_first_line_with_no_people() {
     // Control characters do not reach a page.
     let d = describe(&block(&["Tab\there\u{7}bell"]));
     assert!(!d.summary.chars().any(char::is_control));
+    // Nor does a character a line-oriented reader splits a line on: the one definition (M22).
+    let d = describe(&block(&["Line\u{2028}two\u{2029}three"]));
+    assert_eq!(d.summary, "Linetwothree");
     // No message at all.
     assert_eq!(describe(&block(&[])).summary, "");
 }

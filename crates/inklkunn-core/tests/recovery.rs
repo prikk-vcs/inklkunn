@@ -6,14 +6,19 @@
 //!
 //! A stand-in `prikk` passes every call to the real one unless a control file names the verb: `fail-<verb>` makes it
 //! fail, `failafter-<verb>` (holding a number) lets that many calls of the verb through and fails the rest,
-//! `say-<verb>` makes it print a canned answer, `runfail-<verb>` makes the real verb do its work and the call
+//! `say-<verb>` makes it print a canned answer (`say-until-seal` ends every canned answer once a `seal` has run),
+//! `runfail-<verb>` makes the real verb do its work and the call
 //! then report a failure (what a call stopped at its bound after its effect was durable looks like),
 //! `dies-after-publishing-<verb>` makes the real `seal` publish its block and then puts back the three files of the
 //! active session that it emptied, as they were, and fails (a `seal` killed between publishing and draining the queue,
 //! made on cue: handoff 004, P15; `leaves-the-lock` adds the stale `active.lock` the killed process would have left,
 //! and `leaves-only-the-metadata` puts back the ref's metadata but not the queue: the other state a kill just after
 //! the publication leaves, a lone `ACTIVE-REF-METADATA-DEBRIS` warning); `fail-unlock-clear` fails `unlock` only when
-//! it is asked to clear a lock (`unlock --lock <path> ...`), so the listing still works; `format-marker` (holding a number) makes
+//! it is asked to clear a lock (`unlock --lock <path> ...`), so the listing still works; `leads-after-branch-create`
+//! runs the real `branch create` and puts the ref log back as it was (a view's creation killed between the pointer and
+//! the log, as in `view_recovery.rs`); `list-fails-after-clear` fails
+//! the listing of locks once a clear has been asked for, and `relock-after-clear` (holding a path) lets the real clear
+//! work and then writes the lock back, which is a clear that did not hold; `format-marker` (holding a number) makes
 //! every verb but `--version` answer `error: unsupported format version: <number>`, exit 1 (a damaged or unknown marker).
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -23,6 +28,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use inklkunn_core::Accept;
 use inklkunn_core::import::{plan_folder, run_import, wiki_state};
 use inklkunn_core::message::{Actor, BlockId, Message, Summary};
 use inklkunn_core::proposal::{ProposalEdit, ProposalService, QuotaConfig};
@@ -107,20 +113,37 @@ fn write_standin(ctl: &Path, real: &Path) -> PathBuf {
 CTL="{ctl}"
 verb="$1"
 if [ "$verb" = uncommit ] && [ "$#" -eq 1 ]; then echo uncommit-probe >> "$CTL/calls.log"; else echo "$verb" >> "$CTL/calls.log"; fi
+if [ "$1 $2" = "branch create" ] && [ -e "$CTL/leads-after-branch-create" ]; then
+  mkdir -p "$CTL/kept-ref-log"
+  for f in .prikk/refs/containers/log-*.container; do cp "$f" "$CTL/kept-ref-log/"; done
+  "{real}" "$@" > /dev/null 2>&1
+  for f in "$CTL"/kept-ref-log/log-*.container; do cp "$f" .prikk/refs/containers/; done
+  echo "error: the call was stopped after branch create had published its pointer" >&2; exit 1
+fi
 if [ "$verb" = uncommit ] && [ -e "$CTL/hold-uncommit" ]; then
   : > "$CTL/uncommit-started"
   n=0
   while [ ! -e "$CTL/release" ] && [ "$n" -lt 400 ]; do sleep 0.05; n=$((n + 1)); done
 fi
 if [ "$verb" = unlock ] && [ "$#" -gt 1 ] && [ -e "$CTL/fail-unlock-clear" ]; then echo "error: precondition not met: injected failure of unlock --lock" >&2; exit 1; fi
-if [ -e "$CTL/fail-$verb" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
+if [ "$verb" = unlock ] && [ "$#" -eq 1 ] && [ -e "$CTL/list-fails-after-clear" ] && [ -e "$CTL/unlock-cleared" ]; then echo "error: precondition not met: injected failure of unlock (listing)" >&2; exit 1; fi
+if [ "$verb" = unlock ] && [ "$#" -gt 1 ]; then
+  : > "$CTL/unlock-cleared"
+  if [ -e "$CTL/relock-after-clear" ]; then
+    "{real}" "$@"; rc=$?
+    printf 'pid=2147483000\nkind=active\nnote=PR-007 lock has no stale-lock stealing yet\n' > "$(cat "$CTL/relock-after-clear")"
+    exit $rc
+  fi
+fi
+if [ -e "$CTL/fail-$verb" ] && ! ( [ "$verb" = uncommit ] && [ "$#" -eq 1 ] ); then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
 if [ -e "$CTL/format-marker" ] && [ "$verb" != --version ]; then echo "error: unsupported format version: $(cat "$CTL/format-marker")" >&2; exit 1; fi
 if [ -e "$CTL/failafter-$verb" ]; then
   n="$(cat "$CTL/failafter-$verb")"; c="$(cat "$CTL/count-$verb" 2>/dev/null || echo 0)"
   echo "$((c + 1))" > "$CTL/count-$verb"
   if [ "$c" -ge "$n" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
 fi
-if [ -e "$CTL/say-$verb" ]; then cat "$CTL/say-$verb"; exit 0; fi
+if [ "$verb" = seal ] && [ -e "$CTL/say-until-seal" ]; then : > "$CTL/sealed"; fi
+if [ -e "$CTL/say-$verb" ] && ! ( [ -e "$CTL/say-until-seal" ] && [ -e "$CTL/sealed" ] ); then cat "$CTL/say-$verb"; exit 0; fi
 if [ -e "$CTL/runfail-$verb" ]; then
   "{real}" "$@" > /dev/null 2>&1
   echo "error: the call was stopped after $verb had done its work" >&2; exit 1
@@ -1192,6 +1215,126 @@ fn on_0_57_0_the_next_acceptances_commit_clears_the_metadata_debris_recovery_lef
 }
 
 #[test]
+fn a_debris_warning_beside_a_pending_cleanup_is_in_the_way_of_neither_the_plan_nor_the_step() {
+    // Maintenance M23 (decision 1, T-d): "debris is never a stop" is true beside a pending cleanup too. The two cannot
+    // be made together in one repository (the debris needs an empty queue, the cleanup a queue equal to the tip's
+    // patches), so the cleanup is real and `doctor` is the stand-in's canned report of both, as prikk would print them.
+    let Some(w) = World::new("cleanup-debris", LeaseConfig::default()) else {
+        return;
+    };
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    w.killed_seal(&p, &[]);
+    let blocks = w.history();
+    w.control(
+        "say-doctor",
+        "doctor repository: /x\nerror [PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING]: pointer and log agree but matching active publication state remains\n  recommendation: run signer-backed `prikk seal --allow-no-audit` for the affected ref; doctor does not sign or append\nwarning [PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS]: active WAL is empty but stale ref metadata remains\n  recommendation: no repair is required; the next guarded active-WAL append will replace stale metadata\nissue summary: errors=1, warnings=1, info=0\n",
+    );
+    // The canned report holds until a `seal` has run (the cleanup's step); after it prikk's own answer is the real one.
+    w.control("say-until-seal", "");
+    let doctor = w.recovery_witnesses().doctor(&w.wiki.id).unwrap();
+    assert!(doctor.is_only_cleanup_pending(), "{doctor:?}");
+    assert!(doctor.diagnostics.iter().any(|d| d.is_metadata_debris()));
+    let shown = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
+    assert_eq!(shown.plan.stop, None, "{:#?}", shown.lines());
+    assert_eq!(nth(&step_names(&shown), 0), &"complete-publication");
+    let r = w.recover();
+    assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());
+    assert_eq!(
+        r.done.first().map(|d| d.step),
+        Some("complete-publication"),
+        "{:#?}",
+        r.lines()
+    );
+    assert_eq!(w.history(), blocks);
+    assert_eq!(w.state(&p), ProposalState::Accepted);
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_none());
+    w.uncontrol("say-doctor");
+    w.uncontrol("say-until-seal");
+    assert!(w.verifies());
+}
+
+#[test]
+fn a_debris_warning_beside_an_unfinished_view_creation_is_in_the_way_of_neither_the_plan_nor_the_step()
+ {
+    // Maintenance M23 (decision 1, T-d), on the real state: a `seal` killed after it published leaves the debris
+    // (recovery finishes that and leaves the warning, which only a commit clears); then a view's creation is killed
+    // between its two writes. `doctor` names both, and the plan and the signer's step see the one lead.
+    let Some(w) = World::new("view-debris", LeaseConfig::default()) else {
+        return;
+    };
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    w.killed_seal(&p, &["leaves-only-the-metadata"]);
+    let first = w.recover();
+    assert_eq!(
+        first.outcome,
+        RecoveryOutcome::Recovered,
+        "{:#?}",
+        first.lines()
+    );
+    let base = w.tip();
+    let act = inklkunn_store::ViewActRecord {
+        id: inklkunn_store::ViewActId::new(),
+        wiki: w.wiki.id.clone(),
+        name: "draft".to_owned(),
+        forked_from: "main".to_owned(),
+        from_block: base.clone(),
+        kind: inklkunn_core::views::ViewKind::Experimental,
+        created_by: w.maintainer_id.clone(),
+        created_at: 1,
+    };
+    w.store.begin_view_act(&act).unwrap();
+    w.store
+        .record_lease_holder(&inklkunn_store::LeaseHolder {
+            wiki: w.wiki.id.clone(),
+            holder: "a-process-that-is-gone".to_owned(),
+            purpose: "view".to_owned(),
+            acceptance: None,
+            since: 1,
+        })
+        .unwrap();
+    w.control("leads-after-branch-create", "");
+    let answered = w.signer.create_view(
+        &w.wiki.id,
+        "heads/draft",
+        MAIN,
+        &ViewCreationAct::new(act.id.as_str()),
+    );
+    w.uncontrol("leads-after-branch-create");
+    println!("the signer answered {answered:?}");
+    let doctor = w.recovery_witnesses().doctor(&w.wiki.id).unwrap();
+    assert!(
+        doctor.diagnostics.iter().any(|d| d.is_metadata_debris()),
+        "{doctor:?}"
+    );
+    assert_eq!(doctor.only_ref_lead(), Some("heads/draft"), "{doctor:?}");
+    assert!(!w.verifies(), "the half-published view stops every verify");
+    let shown = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
+    assert_eq!(shown.plan.stop, None, "{:#?}", shown.lines());
+    assert_eq!(nth(&step_names(&shown), 0), &"complete-view-creation");
+    let r = w.recover();
+    assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());
+    assert_eq!(
+        r.done.first().map(|d| d.step),
+        Some("complete-view-creation")
+    );
+    assert!(w.verifies());
+    let ended = w
+        .store
+        .view_acts(&w.wiki.id)
+        .unwrap()
+        .into_iter()
+        .find(|e| e.act.id == act.id)
+        .and_then(|e| e.end.map(|e| e.outcome));
+    assert_eq!(ended, Some(inklkunn_store::ViewActOutcome::Created));
+}
+
+#[test]
 fn an_empty_lock_file_fails_closed_and_the_runbooks_one_step_lets_recovery_go_on() {
     // Handoff 004, P15 / ruling 1. A kill the instant prikk created a lock file leaves it empty: `unlock` lists it with
     // `recorded pid: (unparseable)`, the strict reader refuses it, and recovery changes nothing.
@@ -1604,7 +1747,9 @@ fn a_plan_shown_never_asks_prikk_for_the_preview_and_a_run_asks_it_under_the_lea
     );
     w.flag(RecoveryReason::Interrupted);
     let id = w.queued_patch_id();
-    // Were prikk asked, it would fail visibly; it is not asked.
+    // Were prikk asked for the preview, it would fail visibly; it is not. (Whether it has the verb is asked, with no
+    // patch id, which takes no lock and is not the preview: M21. The stand-in lets that question through.)
+    let verb = inklkunn_prikk::parse_version(w.storage.version()).is_some_and(|v| v >= (0, 57, 0));
     w.control("fail-uncommit", "");
     for _ in 0..2 {
         let shown = w
@@ -1613,12 +1758,12 @@ fn a_plan_shown_never_asks_prikk_for_the_preview_and_a_run_asks_it_under_the_lea
             .unwrap();
         assert_eq!(shown.plan.stop, Some(Stop::ForeignQueuedPatch));
         assert!(
-            shown
-                .plan
-                .notes
-                .iter()
-                .any(|n| n.contains("`recover --plan` does not ask prikk")
-                    && n.contains(&w.wiki.id.to_string())),
+            shown.plan.notes.iter().any(|n| if verb {
+                n.contains("`recover --plan` does not ask prikk")
+                    && n.contains(&w.wiki.id.to_string())
+            } else {
+                n.contains("this prikk has no `uncommit`")
+            }),
             "{:?}",
             shown.plan.notes
         );
@@ -1871,6 +2016,186 @@ fn on_0_57_0_a_held_stale_lock_makes_the_preview_refuse_and_the_run_that_clears_
     );
     assert!(witnesses.uncommit_plan(&w.wiki.id, &id).unwrap().is_some());
     assert_eq!(w.queue_count(), 1, "nothing was taken back");
+}
+
+/// One orphan patch queued under the word: the plan shown first, then the run, on the same state, with the lock
+/// planted or not. What the plan says is compared with what the run did (maintenance M21).
+fn plan_then_run(w: &World, lock: bool, verb: bool) {
+    w.plant_queued_patch(
+        "pages/Home.md",
+        "---\ntitle: Home\nid: p-home\n---\n\nPlanted.\n",
+    );
+    let lock_path = lock.then(|| {
+        plant_lock(
+            &w.repo,
+            "active/default/active.lock",
+            2_147_483_000,
+            "active",
+        )
+    });
+    w.flag(RecoveryReason::Interrupted);
+    let id = w.queued_patch_id();
+    let word = RecoverOptions {
+        discard_queued_patch: Some(id.clone()),
+    };
+    let planned = w
+        .recovery
+        .recover_with(&w.wiki, RecoveryMode::PlanOnly, &word)
+        .unwrap();
+    let promise = planned
+        .plan
+        .discard_unused
+        .clone()
+        .expect("a plan says what a run does with the word");
+    let notes = planned.plan.notes.join("\n");
+    assert_eq!(w.uncommit_calls(), 0, "a plan asks for no preview");
+    assert_eq!(w.queue_count(), 1, "a plan takes nothing back");
+    let run = w
+        .recovery
+        .recover_with(&w.wiki, RecoveryMode::Run, &word)
+        .unwrap();
+    let held = lock_path.as_deref().is_some_and(|l| Path::new(l).exists());
+    match (verb, lock) {
+        (false, _) => {
+            // No `uncommit`: the plan says so, the run takes nothing back, clears nothing, and says the same.
+            assert!(
+                promise.contains("this prikk has no `uncommit`"),
+                "{promise}"
+            );
+            assert!(!promise.contains("a run takes the patch back"), "{promise}");
+            assert!(!notes.contains("shows prikk's own preview"), "{notes}");
+            assert!(run.done.is_empty() && run.plan.steps.is_empty());
+            assert_eq!(w.queue_count(), 1);
+            assert_eq!(held, lock, "the lock is as it was");
+            assert_eq!(run.plan.discard_unused.as_ref(), Some(&promise));
+        }
+        (true, true) => {
+            // A stale lock stands in the way: the plan says the run clears it and stops with the preview.
+            assert_eq!(
+                promise,
+                "a stale lock stands in the way: a run clears it and stops with the preview, and the next run takes the patch back"
+            );
+            assert_eq!(step_names(&planned), ["clear-locks"]);
+            assert!(!promise.contains("only shows"), "{promise}");
+            assert_eq!(
+                run.done.iter().map(|d| d.step).collect::<Vec<_>>(),
+                ["clear-locks"]
+            );
+            assert_eq!(w.queue_count(), 1, "the patch was not taken back");
+            assert!(!held, "the lock was cleared");
+            assert_eq!(w.uncommit_calls(), 1);
+            assert!(
+                run.plan.discard_unused.as_deref().is_some_and(
+                    |why| why.contains("this run cleared it and stops with the preview")
+                ),
+                "{:?}",
+                run.plan.discard_unused
+            );
+        }
+        (true, false) => {
+            // Nothing in the way: the plan says a run takes the patch back, and it does.
+            assert_eq!(
+                promise,
+                "`recover --plan` only shows; a run takes the patch back"
+            );
+            assert!(
+                run.done.iter().any(|d| d.step == "discard-queued"),
+                "{:#?}",
+                run.lines()
+            );
+            assert_eq!(w.queue_count(), 0, "the patch was taken back");
+        }
+    }
+}
+
+#[test]
+fn a_plan_promises_what_the_run_does_with_the_queued_patch_on_the_prikk_that_runs() {
+    // Maintenance M21 (T-b). The plan used to promise the take-back without asking prikk whether it has the verb (0.55.0
+    // has not: the run said so), and with a stale lock held (0.57.0: the run clears it and stops with the preview).
+    // Run with 0.55.0 first on `PATH` it compares the plan with a prikk that has no `uncommit`; with 0.57.0, without a
+    // lock. The stale lock on 0.57.0 is the next test.
+    for lock in [false, true] {
+        let Some(w) = World::new(
+            if lock {
+                "promise-lock"
+            } else {
+                "promise-clear"
+            },
+            LeaseConfig::default(),
+        ) else {
+            return;
+        };
+        let verb =
+            inklkunn_prikk::parse_version(w.storage.version()).is_some_and(|v| v >= (0, 57, 0));
+        // Only the cases the next test does not cover: the floor with and without a lock, 0.57.0 without one.
+        if verb && lock {
+            continue;
+        }
+        plan_then_run(&w, lock, verb);
+    }
+}
+
+#[test]
+fn on_0_57_0_a_plan_with_a_stale_lock_says_the_run_clears_it_and_stops_with_the_preview() {
+    // Maintenance M21 (T-b), the stale lock on 0.57.0: the plan's sentence, then the run's deed.
+    let Some(w) = World::new_057("promise-lock-057", LeaseConfig::default()) else {
+        return;
+    };
+    plan_then_run(&w, true, true);
+}
+
+#[test]
+fn a_clear_that_worked_is_not_reported_as_not_cleared_when_what_comes_after_it_fails() {
+    // Maintenance M22 (T-g): the lock is cleared, and then either the listing that checks it fails or the lock is
+    // there again. The step's reason is a whole sentence and says which. Needs the preview to follow (0.57.0).
+    for (case, relock) in [
+        ("list-fails-after-clear", false),
+        ("relock-after-clear", true),
+    ] {
+        let Some(w) = World::new_057(&format!("clear-then-{case}"), LeaseConfig::default()) else {
+            return;
+        };
+        w.plant_queued_patch(
+            "pages/Home.md",
+            "---\ntitle: Home\nid: p-home\n---\n\nPlanted.\n",
+        );
+        let lock = plant_lock(
+            &w.repo,
+            "active/default/active.lock",
+            2_147_483_000,
+            "active",
+        );
+        w.flag(RecoveryReason::Interrupted);
+        w.control(case, &lock);
+        let r = w
+            .recovery
+            .recover_with(&w.wiki, RecoveryMode::Run, &RecoverOptions::default())
+            .unwrap();
+        w.uncontrol(case);
+        let RecoveryOutcome::Stopped {
+            at: Some("clear-locks"),
+            why,
+        } = &r.outcome
+        else {
+            panic!("{:#?}", r.lines());
+        };
+        assert!(r.done.is_empty(), "the step did not finish");
+        assert!(!why.contains("was not cleared"), "{why}");
+        if !relock {
+            assert!(
+                why.starts_with(
+                    "1 lock(s) cleared, but the locks could not be listed again to check: "
+                ) && why.contains("injected failure of unlock (listing)"),
+                "{why}"
+            );
+        } else {
+            assert_eq!(
+                why,
+                "1 lock(s) cleared, but still held: active (recorded pid 2147483000)"
+            );
+        }
+        assert_eq!(w.queue_count(), 1);
+    }
 }
 
 #[test]
@@ -3685,9 +4010,17 @@ fn a_lock_that_could_not_be_cleared_is_a_stop_at_that_step_with_nothing_done() {
         r.plan
             .discard_unused
             .as_deref()
-            .is_some_and(|why| why.contains("this run clears it")),
+            .is_some_and(|why| why.contains("a run clears it")),
         "the plan's field is its intent: {:?}",
         r.plan.discard_unused
+    );
+    // The reason is a whole sentence of what happened: the clear itself failed (M22).
+    assert!(
+        matches!(&r.outcome, RecoveryOutcome::Stopped { why, .. }
+            if why.starts_with("the lock was not cleared: ")
+                && why.contains("injected failure of unlock")),
+        "{:?}",
+        r.outcome
     );
 }
 

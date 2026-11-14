@@ -1769,18 +1769,29 @@ fn the_runbooks_way_out_of_an_orphan_queued_patch_is_true_of_the_state_a_commit_
     let help = Command::new(&real).arg("--help").output().unwrap();
     let help = String::from_utf8_lossy(&help.stdout).into_owned();
     let has_uncommit = help.contains("uncommit");
-    // A plan that is only shown offers nothing and asks prikk for nothing, whatever the prikk (M5: the preview takes
-    // prikk's lock): it says that a run shows the preview and the command.
+    // A plan that is only shown offers nothing and asks prikk for no preview (M5: the preview takes prikk's lock): with
+    // the verb it says that a run shows the preview and the command, without it that nothing can be taken back (M21:
+    // whether the verb exists is asked, and takes no lock).
     let offered = recovery
         .recover(&f.wiki, RecoveryMode::PlanOnly)
         .unwrap()
         .plan
         .notes
         .join("\n");
-    assert!(
-        offered.contains("`recover --plan` does not ask prikk") && !offered.contains("prikk says"),
-        "{offered}"
-    );
+    if has_uncommit {
+        assert!(
+            offered.contains("`recover --plan` does not ask prikk")
+                && !offered.contains("prikk says"),
+            "{offered}"
+        );
+    } else {
+        assert!(
+            offered.contains("this prikk has no `uncommit`")
+                && !offered.contains("`recover --plan` does not ask prikk")
+                && !offered.contains("prikk says"),
+            "{offered}"
+        );
+    }
 
     // "A recovery that stops leaves the wiki flagged and the repository exactly as it found it; it records the plan
     // and that it stopped, so the trail shows what was seen."

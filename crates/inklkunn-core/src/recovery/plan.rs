@@ -767,7 +767,12 @@ fn discard_notes(
     discard: &DiscardInput,
 ) -> Option<String> {
     let given = discard.confirmed.as_deref();
-    match &discard.offer {
+    // A run with a lock held does not take the patch back: it clears the lock and stops with the preview (M21).
+    let offer = match (&discard.offer, w.locks.is_empty()) {
+        (DiscardOffer::InARun, false) => &DiscardOffer::AfterLocks,
+        (offer, _) => offer,
+    };
+    match offer {
         DiscardOffer::Offered(offer) => {
             let honoured = discard_honoured(w, target, offer);
             let lines = offer.lines.join(" | ");
@@ -815,7 +820,7 @@ fn discard_notes(
                 "(the queue targets a branch other than the one the worktree is on, so it offers no command)"
             };
             plan.notes.push(format!(
-                "with prikk 0.57.0 or later, a run of `inklkunn wiki recover {}` shows prikk's own preview of taking the queued patch {patch_id} back {command}; `recover --plan` does not ask prikk for it, because prikk takes its lock to make the preview and a plan shown writes nothing",
+                "this prikk has `uncommit`: a run of `inklkunn wiki recover {}` shows prikk's own preview of taking the queued patch {patch_id} back {command}; `recover --plan` does not ask prikk for it, because prikk takes its lock to make the preview and a plan shown writes nothing",
                 w.wiki
             ));
             given.map(|_| {
@@ -830,12 +835,12 @@ fn discard_notes(
             let (then, word) = if on_the_worktrees_branch(w, target) {
                 (
                     "stops here with the preview and the command",
-                    "a stale lock stood in the way: this run clears it and stops with the preview, and the next run takes the patch back",
+                    "a stale lock stands in the way: a run clears it and stops with the preview, and the next run takes the patch back",
                 )
             } else {
                 (
                     "stops here with the preview (the queue targets a branch other than the one the worktree is on, so it offers no command)",
-                    "a stale lock stood in the way, and the queue targets a branch other than the one the worktree is on, so recovery will not take the patch back",
+                    "a stale lock stands in the way, and the queue targets a branch other than the one the worktree is on, so recovery will not take the patch back",
                 )
             };
             plan.notes.push(format!(
@@ -907,9 +912,12 @@ pub enum DiscardOffer {
     #[default]
     NotAsked,
     /// Not asked, because the plan is only shown and prikk's preview takes prikk's lock (maintenance M5): a run asks.
+    /// It is the offer only for a prikk that has the verb and a wiki with no lock held; with a lock held the plan
+    /// says [`DiscardOffer::AfterLocks`] (a run clears the lock and stops with the preview), whatever it was given
+    /// (maintenance M21).
     InARun,
     /// Not asked yet, because a stale lock is held and the preview needs prikk's lock: the run clears the lock, then
-    /// asks (maintenance M6).
+    /// asks (maintenance M6), and stops with the preview.
     AfterLocks,
     /// Asked, and prikk has no `uncommit` (before 0.57.0).
     NoVerb,
@@ -1146,16 +1154,9 @@ fn build_plan(w: &Witness, discard: &DiscardInput, unused: &mut Option<String>) 
         stop(&mut plan, Stop::CleanupBesideTrustFindings);
         return plan;
     }
-    // The debris warning is nobody's business (M16, PK-46), except beside the two states whose signer step asks for
-    // "exactly this one finding" (a pending cleanup, an unfinished view creation): the step would refuse, so the plan
-    // does not offer it.
-    if (w.cleanup_pending.is_some() || !w.view_acts.is_empty())
-        && !w.doctor.has_acknowledged_damage()
-        && w.doctor.diagnostics.iter().any(|d| d.is_metadata_debris())
-    {
-        stop(&mut plan, Stop::DoctorTrouble);
-        return plan;
-    }
+    // The debris warning is nobody's business (M16, PK-46), and the signer's two steps that ask for "exactly this one
+    // finding" (a pending cleanup, an unfinished view creation) read it through the same rule as `others()`, so it is
+    // never in their way either (M23): no stop for it here.
     // The one error a pending cleanup stands for is that row's own business (P15); anything beside it is trouble.
     // The one error an unfinished view creation stands for is the interrupted publication of that view's own ref (K4);
     // a lead for any other ref, or a second one, is trouble.
