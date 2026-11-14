@@ -121,9 +121,13 @@ pub fn test_prikk_shape_violations(yaml: &str) -> Vec<String> {
             && l.contains("with-prikk.log")
             && l.contains("prikk 0\\.57\\.0 or newer not found")
             && l.contains("no prikk older than 0\\.57\\.0")
+            && l.contains("PID namespaces unavailable")
     });
     match guard {
-        None => out.push("no grep of with-prikk.log for both 0.57.0 skip lines".to_owned()),
+        None => out.push(
+            "no grep of with-prikk.log for both 0.57.0 skip lines and the PID-namespace one"
+                .to_owned(),
+        ),
         Some(i) => {
             let fails = lines
                 .iter()
@@ -145,6 +149,28 @@ pub fn test_prikk_shape_violations(yaml: &str) -> Vec<String> {
         out.push("the shimmed run does not remove both prikk directories from PATH".to_owned());
     }
     out
+}
+
+/// The line that lifts the runner's restriction on unprivileged user namespaces (Ubuntu 24.04's AppArmor).
+const LIFT_USERNS: &str = "sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0";
+
+/// What is wrong with how a workflow makes user namespaces available to its tests (maintenance M37): the
+/// PID-namespace test of the extract locks and the bubblewrap tests need them, and the runner forbids them
+/// until the restriction is lifted. Empty when a `run:` line lifts it before the first `cargo test`.
+pub fn user_namespace_violations(yaml: &str) -> Vec<String> {
+    let lines: Vec<&str> = yaml.lines().map(str::trim).collect();
+    let lifts = lines
+        .iter()
+        .position(|l| l.strip_prefix("run:").unwrap_or(l).trim() == LIFT_USERNS);
+    let first_test = lines.iter().position(|l| l.contains("cargo test"));
+    match (lifts, first_test) {
+        (None, _) => vec![format!("no line `{LIFT_USERNS}`")],
+        (Some(_), None) => vec!["the workflow runs no `cargo test`".to_owned()],
+        (Some(lift), Some(test)) if lift < test => Vec::new(),
+        (Some(_), Some(_)) => vec![
+            "the restriction on user namespaces is lifted after the first `cargo test`".to_owned(),
+        ],
+    }
 }
 
 /// The recorded release-asset checksums, by target architecture word (`X86_64`, `AARCH64`), from

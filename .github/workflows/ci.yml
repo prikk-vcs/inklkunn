@@ -63,6 +63,8 @@ jobs:
           mkdir -p "$HOME/.local/bin" && tar -xzf "prikk-${T}.tar.gz" -C "$HOME/.local/bin" prikk
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/prikk" --version
+      - name: Allow unprivileged user namespaces (the runner's AppArmor forbids them; bubblewrap and the PID-namespace test need them)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: The floor is the first prikk on PATH and the test-only one is the second
         run: |
           set -euo pipefail
@@ -78,8 +80,8 @@ jobs:
         run: |
           set -euo pipefail
           cargo test --workspace --locked -- --nocapture 2>&1 | tee with-prikk.log
-          if grep -n -E 'skipping: (prikk 0\.57\.0 or newer not found|no prikk older than 0\.57\.0)' with-prikk.log; then
-            echo "a test that needs the test-only prikk ${PRIKK_TEST_VERSION} (or the floor beside it) skipped: it is installed above, so it must run" >&2
+          if grep -n -E 'skipping: (prikk 0\.57\.0 or newer not found|no prikk older than 0\.57\.0|PID namespaces unavailable)' with-prikk.log; then
+            echo "a test that needs the test-only prikk ${PRIKK_TEST_VERSION} (or the floor beside it) or the PID-namespace test skipped: all are installed or lifted above, so they must run" >&2
             exit 1
           fi
       - name: Test with prikk shimmed off PATH (every self-skip must be visible, and counted)

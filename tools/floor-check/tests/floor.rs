@@ -100,7 +100,7 @@ fn the_test_only_prikk_is_one_value_in_both_workflows_and_is_never_a_floor() {
 
 #[test]
 fn the_test_only_prikk_shape_rules_catch_planted_failures() {
-    let ok = "env:\n  PRIKK_TEST_VERSION: \"0.57.0\"\n  PRIKK_TEST_SHA256_X86_64: \"4e621147c3064c1f456803c67f120df9ea35d93e40554e920c9ea55e69d3f9a8\"\nsteps:\n  curl \"releases/download/${PRIKK_TEST_VERSION}/prikk\"\n  echo \"${PRIKK_TEST_SHA256_X86_64}  x\" | sha256sum -c -\n  curl \"releases/download/${PRIKK_VERSION}/prikk\"\n  cargo test --workspace --locked -- --nocapture 2>&1 | tee with-prikk.log\n  if grep -n -E 'skipping: (prikk 0\\.57\\.0 or newer not found|no prikk older than 0\\.57\\.0)' with-prikk.log; then\n    echo \"skipped\" >&2\n    exit 1\n  fi\n  SYSTEM_PATH=\"$(echo \"$PATH\" | grep -v -x -e \"$HOME/.local/bin\" -e \"$HOME/.local/prikk-test/bin\")\"\n";
+    let ok = "env:\n  PRIKK_TEST_VERSION: \"0.57.0\"\n  PRIKK_TEST_SHA256_X86_64: \"4e621147c3064c1f456803c67f120df9ea35d93e40554e920c9ea55e69d3f9a8\"\nsteps:\n  curl \"releases/download/${PRIKK_TEST_VERSION}/prikk\"\n  echo \"${PRIKK_TEST_SHA256_X86_64}  x\" | sha256sum -c -\n  curl \"releases/download/${PRIKK_VERSION}/prikk\"\n  cargo test --workspace --locked -- --nocapture 2>&1 | tee with-prikk.log\n  if grep -n -E 'skipping: (prikk 0\\.57\\.0 or newer not found|no prikk older than 0\\.57\\.0|PID namespaces unavailable)' with-prikk.log; then\n    echo \"skipped\" >&2\n    exit 1\n  fi\n  SYSTEM_PATH=\"$(echo \"$PATH\" | grep -v -x -e \"$HOME/.local/bin\" -e \"$HOME/.local/prikk-test/bin\")\"\n";
     assert!(test_prikk_shape_violations(ok).is_empty());
     assert_eq!(
         test_prikk(ok),
@@ -143,6 +143,10 @@ fn the_test_only_prikk_shape_rules_catch_planted_failures() {
             "only one skip line looked for",
             broken("|no prikk older than 0\\.57\\.0", ""),
         ),
+        (
+            "the PID-namespace skip line is not looked for",
+            broken("|PID namespaces unavailable", ""),
+        ),
         ("a skip does not fail", broken("exit 1", "true")),
         (
             "the shim keeps the test-only directory",
@@ -151,6 +155,40 @@ fn the_test_only_prikk_shape_rules_catch_planted_failures() {
     ] {
         assert!(
             !test_prikk_shape_violations(&yaml).is_empty(),
+            "{what}: no violation reported"
+        );
+    }
+}
+
+#[test]
+fn both_workflows_lift_the_user_namespace_restriction_before_their_tests() {
+    let root = workspace_root();
+    for wf in [".github/workflows/ci.yml", ".github/workflows/release.yml"] {
+        let yaml = fs::read_to_string(root.join(wf)).unwrap_or_default();
+        let v = user_namespace_violations(&yaml);
+        assert!(v.is_empty(), "{wf}: {v:#?}");
+    }
+}
+
+#[test]
+fn the_user_namespace_rule_catches_planted_failures() {
+    let lift = "sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0";
+    let ok = format!("      - name: x\n        run: {lift}\n      - run: cargo test --workspace\n");
+    assert!(user_namespace_violations(&ok).is_empty());
+    for (what, yaml) in [
+        ("no lift", ok.replace(lift, "true")),
+        (
+            "lifted too late",
+            format!("      - run: cargo test --workspace\n      - run: {lift}\n"),
+        ),
+        (
+            "the restriction set instead of lifted",
+            ok.replace("userns=0", "userns=1"),
+        ),
+        ("no test at all", format!("      - run: {lift}\n")),
+    ] {
+        assert!(
+            !user_namespace_violations(&yaml).is_empty(),
             "{what}: no violation reported"
         );
     }

@@ -1370,6 +1370,13 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   opened; the walk's own reads; the whole path on a real history (two curations on one base, the second refused at its acceptance and
   nothing signed); the form (a circle through the base, then the same body let through once the base has none); the API (one body, two
   across the base, the member named).
+- **M37 (handoff 010 corrections, fifth round): CI parts.** The release's `binaries` job has `timeout-minutes: 10`. Both
+  workflows lift the runner's restriction on unprivileged user namespaces
+  (`sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`, Ubuntu 24.04) before their tests, so the PID-namespace test of
+  the extract locks (K55) runs, and the bubblewrap probe (`probe_bwrap`, which needs a user namespace) succeeds, so the confined
+  policies of the sandbox tests run there too. The with-prikk run's guard fails on `skipping: PID namespaces unavailable` as on the
+  0.57.0 lines. `floor-check` holds both: the guard names all three lines, and the lift comes before the first `cargo test`
+  (planted failures: no lift, a lift after the tests, the restriction set instead, no test).
 
 ## [0.2.0] — 2026-11-04
 
