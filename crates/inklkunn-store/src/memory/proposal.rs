@@ -6,7 +6,7 @@ use std::sync::{MutexGuard, PoisonError};
 use crate::proposal::{
     CommentRecord, DecisionKind, DecisionRecord, ProposalChange, ProposalFilter, ProposalOp,
     ProposalRecord, ProposalState, ProposalStore, ProposalTransition, RevisionContent,
-    RevisionFlags, RevisionRecord,
+    RevisionFlags, RevisionRecord, held_shape,
 };
 use crate::record::{AcceptanceId, AccountId, DecisionId, ProposalId, WikiId};
 use crate::review::{ClaimOutcome, ClaimReview};
@@ -80,6 +80,7 @@ impl MemoryStore {
         created: &ProposalTransition,
         undoes: Option<&str>,
         reconfirms: Option<&AcceptanceId>,
+        sent: Option<(&RevisionRecord, &ProposalTransition)>,
     ) -> Result<()> {
         // The SQLite store's foreign keys, checked in the same order: the wiki, then the accounts.
         if !self.wiki_exists(&proposal.wiki) {
@@ -111,8 +112,18 @@ impl MemoryStore {
             d.reconfirms.insert(proposal.id.clone(), change.clone());
         }
         d.proposals.push(proposal.clone());
-        d.drafts.insert(proposal.id.clone(), draft.clone());
         d.transitions.push(created.clone());
+        match sent {
+            // Made held for review: the working copy is revision 1 and there is no draft (the SQLite store's one
+            // transaction), the submission its second step.
+            Some((revision, step)) => {
+                d.revisions.push(revision.clone());
+                d.transitions.push(step.clone());
+            }
+            None => {
+                d.drafts.insert(proposal.id.clone(), draft.clone());
+            }
+        }
         if let Some(undoes) = undoes {
             d.rollbacks.insert(proposal.id.clone(), undoes.to_owned());
         }
@@ -168,7 +179,7 @@ impl ProposalStore for MemoryStore {
         draft: &RevisionContent,
         created: &ProposalTransition,
     ) -> Result<()> {
-        self.create_with(proposal, draft, created, None, None)
+        self.create_with(proposal, draft, created, None, None, None)
     }
 
     fn create_rollback_proposal(
@@ -188,17 +199,25 @@ impl ProposalStore for MemoryStore {
                 "a rollback names the block it undoes by its 64-digit id".to_owned(),
             ));
         }
-        self.create_with(proposal, draft, created, Some(undoes), None)
+        self.create_with(proposal, draft, created, Some(undoes), None, None)
     }
 
-    fn create_reconfirm_proposal(
+    fn create_held_reconfirm_proposal(
         &self,
         proposal: &ProposalRecord,
-        draft: &RevisionContent,
         created: &ProposalTransition,
+        sent: &ProposalChange,
         change: &AcceptanceId,
     ) -> Result<()> {
-        self.create_with(proposal, draft, created, None, Some(change))
+        let revision = held_shape(proposal, created, sent)?;
+        self.create_with(
+            proposal,
+            &revision.content,
+            created,
+            None,
+            Some(change),
+            Some((revision, &sent.transition)),
+        )
     }
 
     fn reconfirm_of(

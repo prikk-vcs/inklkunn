@@ -1513,17 +1513,22 @@ fn a_reconfirm_proposal_is_recorded_as_re_confirming_its_change_when_its_accepta
             files: judged_again(w),
             ..ProposalEdit::default()
         };
-        let draft = match reconfirming {
-            Some(change) => {
+        match reconfirming {
+            // The reconfirm step's proposal is made already held for review (K26).
+            Some(change) => w
+                .proposals
+                .create_reconfirm(&w.contributor, &w.wiki, None, edit, change)
+                .unwrap_or_else(|e| panic!("create: {e}")),
+            None => {
+                let draft = w
+                    .proposals
+                    .create(&w.contributor, &w.wiki, None, edit)
+                    .unwrap_or_else(|e| panic!("create: {e}"));
                 w.proposals
-                    .create_reconfirm(&w.contributor, &w.wiki, None, edit, change)
+                    .submit(&w.contributor, &w.wiki, &draft.id)
+                    .unwrap()
             }
-            None => w.proposals.create(&w.contributor, &w.wiki, None, edit),
         }
-        .unwrap_or_else(|e| panic!("create: {e}"));
-        w.proposals
-            .submit(&w.contributor, &w.wiki, &draft.id)
-            .unwrap()
     };
     let reconfirmed = |w: &World, change: &inklkunn_store::AcceptanceId| {
         w.store
@@ -1699,14 +1704,10 @@ fn a_reconfirm_that_does_not_judge_every_wording_again_re_confirms_nothing() {
             }],
             ..ProposalEdit::default()
         };
-        let draft = w
+        let sent = w
             .proposals
             .create_reconfirm(&w.contributor, &w.wiki, None, edit, &change.acceptance)
             .unwrap_or_else(|e| panic!("create: {e}"));
-        let sent = w
-            .proposals
-            .submit(&w.contributor, &w.wiki, &draft.id)
-            .unwrap();
         signed(w.accept(&sent).unwrap());
     };
     assert_eq!(reconfirmed(&w), vec![None]);

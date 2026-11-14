@@ -449,6 +449,20 @@ Dependency updates (the architect, 2026-11-14).
   them with their contents, and Markdown's raw HTML is escaped before it, so **0.2.0 is not affected**; `rustix`'s `xattr` functions
   are not called. The gates match by version, so the lock moves to the fixed releases.
 
+- **K26 (handoff 005 corrections, third): a reconfirm never leaves a draft.** The reconfirm step created its curation
+  proposal and submitted it in a second call; a submit that failed (the wiki's hourly limit, a check) or a crash between
+  the two left a draft only its author could see, and the store's *one open proposal per change* counted a draft as open,
+  so every later press (a curator's too) was told *already proposed* with no link. Now `ProposalService::create_reconfirm`
+  runs the submission's own checks first (the finished text, the files, the knowledge files, the wiki's hourly limit,
+  shared with `submit` in `judge_submission`, `check_submission_rate` and `submission`) and only then writes the proposal
+  **already held for review**, with its creation, its submission (revision 1) and the note of the change, in one store
+  transaction (`ProposalStore::create_held_reconfirm_proposal`, on both stores; it replaces `create_reconfirm_proposal`,
+  which could only make a draft, and refuses a record that is not whole). A refusal leaves nothing behind: no proposal, no
+  draft, no note, nothing counted. The press that loses a race gets the winner's link when it may read it, which a held
+  proposal always allows. Schema stays 17; migration V16's trigger already names the open states and is unchanged, and a
+  test now pins its list to `ProposalState::is_open` for every state, from a raw connection (a draft included) and on both
+  stores. The returned record is the held proposal: callers no longer submit it. No prikk-dependent test is added or removed.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

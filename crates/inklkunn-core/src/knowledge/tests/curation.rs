@@ -562,3 +562,75 @@ fn a_claim_nobody_decided_stays_without_a_deciding_proposal_when_a_curation_leav
     };
     assert_eq!(written.community_status.proposal, None);
 }
+
+// ------------------------------------------------------------------------------------ K26: the reconfirm step's proposal
+
+#[test]
+fn the_reconfirm_steps_proposal_is_judged_on_its_knowledge_files_as_a_submission_is_and_leaves_nothing_when_refused()
+ {
+    use crate::proposal::ProposalError;
+    use inklkunn_store::ProposalStore;
+    let s = scene("k26-judged");
+    let edited = ONE.replace("Other.", "Other, more.");
+    let page = [("pages/One.md", Some(edited.as_str()))];
+    let p = s.rig.propose(&s.author, "A page edit", &page);
+    let change = match s
+        .rig
+        .acceptor()
+        .accept(&s.maintainer, &s.rig.wiki, &p.id, 1)
+    {
+        Ok(Accepted::Signed(signed)) => signed.acceptance,
+        other => panic!("{other:?}"),
+    };
+    let service = &s.rig.proposals;
+    let proposals = || {
+        service
+            .list(&s.author, &s.rig.wiki, &Default::default())
+            .expect("a list")
+            .len()
+    };
+    let notes = || {
+        service
+            .reconfirmations_of(&s.author, &s.rig.wiki, &change)
+            .expect("the notes")
+            .len()
+    };
+    let claim = contested(&s);
+    let path = claim_path(&s.claim.id);
+    let Principal::Account(person) = &s.author else {
+        panic!("a person");
+    };
+    let author_id = person.id().clone();
+    let (before, opened) = (
+        proposals(),
+        s.rig.store.open_count(&s.rig.wiki.id, &author_id).unwrap(),
+    );
+
+    // A status beside a page edit is not a curation proposal: refused in the page's words, as a submission is.
+    let mixed = edit(&[(path.as_str(), Some(claim.as_str())), page[0]]);
+    let refused = service.create_reconfirm(&s.author, &s.rig.wiki, None, mixed, &change);
+    assert!(
+        matches!(
+            refused,
+            Err(ProposalError::Invalid(Invalid::KnowledgeCurated))
+        ),
+        "{refused:?}"
+    );
+    assert_eq!(
+        (
+            proposals(),
+            notes(),
+            s.rig.store.open_count(&s.rig.wiki.id, &author_id).unwrap()
+        ),
+        (before, 0, opened),
+        "a refusal leaves no proposal, no draft and no note"
+    );
+
+    // The same status alone is a curation proposal: made, already held for review.
+    let alone = edit(&[(path.as_str(), Some(claim.as_str()))]);
+    let made = service
+        .create_reconfirm(&s.author, &s.rig.wiki, None, alone, &change)
+        .expect("a curation proposal");
+    assert_eq!(made.state, ProposalState::HeldForReview);
+    assert_eq!((proposals(), notes()), (before + 1, 1));
+}

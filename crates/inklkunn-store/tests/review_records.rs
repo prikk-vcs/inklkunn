@@ -11,10 +11,10 @@ use inklkunn_store::review::MAX_CLAIMS;
 use inklkunn_store::{
     AcceptanceId, AcceptanceOutcome, AcceptanceRecord, AcceptanceResult, AcceptanceStore,
     AccountId, AccountStore, ClaimHow, ClaimOutcome, ClaimReview, DecisionId, DecisionKind,
-    DecisionRecord, MemoryStore, ProposalId, ProposalOp, ProposalRecord, ProposalState,
-    ProposalStore, Role, SqliteStore, StoreError, WikiId, WikiStore,
+    DecisionRecord, MemoryStore, ProposalChange, ProposalId, ProposalOp, ProposalRecord,
+    ProposalState, ProposalStore, Role, SqliteStore, StoreError, WikiId, WikiStore,
 };
-use support::{account, content, draft_record, mv, open_draft, step, submit, temp, wiki};
+use support::{account, draft_record, mv, open_draft, revision, step, submit, temp, wiki};
 
 const C1: &str = "019a0000-0000-7000-8000-000000000c01";
 const C2: &str = "019a0000-0000-7000-8000-000000000c02";
@@ -112,15 +112,16 @@ fn review(
     }
 }
 
-/// A reconfirm proposal's records, as the service makes them: a draft, with the note of the change.
-fn reconfirm_draft(
+/// A reconfirm proposal as the service makes it (K26): already held for review, its creation and its submission in
+/// one step, with no draft.
+fn reconfirm_held(
     store: &impl ProposalStore,
     wiki: &WikiId,
     author: &AccountId,
     change: &AcceptanceId,
     at: i64,
 ) -> Result<ProposalRecord, StoreError> {
-    let record = draft_record(wiki, author, at);
+    let mut record = draft_record(wiki, author, at);
     let created = step(
         &record.id,
         ProposalOp::Create,
@@ -130,9 +131,28 @@ fn reconfirm_draft(
         None,
         at,
     );
-    store.create_reconfirm_proposal(&record, &content(1, "draft text"), &created, change)?;
+    let sent = ProposalChange {
+        transition: step(
+            &record.id,
+            ProposalOp::Submit,
+            Some(ProposalState::Draft),
+            ProposalState::HeldForReview,
+            author,
+            None,
+            at,
+        ),
+        text: None,
+        revision: Some(revision(&record.id, 1, "first text", at)),
+        superseded_by: None,
+    };
+    record.state = ProposalState::HeldForReview;
+    record.submitted_at = Some(at);
+    store.create_held_reconfirm_proposal(&record, &created, &sent, change)?;
     Ok(record)
 }
+
+/// A change made to a record and its submission before they are offered to the store.
+type Tweak = dyn Fn(&mut ProposalRecord, &mut ProposalChange);
 
 fn the_suite(store: &(impl ProposalStore + AcceptanceStore + WikiStore + AccountStore)) {
     let w = wiki(store, "review");
@@ -381,29 +401,53 @@ fn the_suite(store: &(impl ProposalStore + AcceptanceStore + WikiStore + Account
     );
 
     // --- A curation proposal made by the reconfirm step names the change it re-confirms, from its creation or never.
-    let origin = reconfirm_draft(store, &w.id, &reviewer, &a1.id, 70).unwrap();
+    // It is made already held for review (K26): whoever may read the proposals sees it, from the first moment.
+    let origin = reconfirm_held(store, &w.id, &reviewer, &a1.id, 70).unwrap();
+    assert_eq!(
+        store.reconfirm_of(&origin.id, None).unwrap(),
+        Some(a1.id.clone())
+    );
     assert_eq!(
         store.reconfirm_of(&origin.id, Some(&reviewer)).unwrap(),
         Some(a1.id.clone())
     );
     assert_eq!(
-        store.reconfirm_of(&origin.id, None).unwrap(),
-        None,
-        "a draft is its author's"
-    );
-    assert_eq!(
-        store.reconfirmations_of(&a1.id, Some(&reviewer)).unwrap(),
-        vec![origin.id.clone()]
-    );
-    assert!(store.reconfirmations_of(&a1.id, None).unwrap().is_empty());
-    let sent = submit(store, &origin, 71);
-    assert_eq!(
-        store.reconfirm_of(&sent.id, None).unwrap(),
-        Some(a1.id.clone())
-    );
-    assert_eq!(
         store.reconfirmations_of(&a1.id, None).unwrap(),
         vec![origin.id.clone()]
+    );
+    // Its records are a submitted proposal's: held for review, sent, revision 1, both steps, and no working copy.
+    let held = store.proposal(&origin.id, None).unwrap().unwrap();
+    assert_eq!(held, origin);
+    assert_eq!(held.state, ProposalState::HeldForReview);
+    assert_eq!(held.submitted_at, Some(70));
+    let revisions = store.revisions(&origin.id, None).unwrap();
+    assert_eq!(revisions.len(), 1);
+    assert_eq!(revisions.first().map(|r| r.seq), Some(1));
+    assert_eq!(
+        store
+            .transitions(&origin.id, None)
+            .unwrap()
+            .iter()
+            .map(|t| (t.op, t.from, t.to))
+            .collect::<Vec<_>>(),
+        vec![
+            (ProposalOp::Create, None, ProposalState::Draft),
+            (
+                ProposalOp::Submit,
+                Some(ProposalState::Draft),
+                ProposalState::HeldForReview
+            ),
+        ]
+    );
+    assert_eq!(
+        store.draft(&origin.id, Some(&reviewer)).unwrap(),
+        None,
+        "it was never a draft"
+    );
+    assert_eq!(
+        store.submitted_since(&w.id, 0).unwrap().last(),
+        Some(&(reviewer.clone(), 70)),
+        "it counts toward the hourly limit as a submission does"
     );
     assert_eq!(
         store.reconfirm_of(&p1.id, None).unwrap(),
@@ -419,7 +463,7 @@ fn the_suite(store: &(impl ProposalStore + AcceptanceStore + WikiStore + Account
             .unwrap()
             .len();
         assert_eq!(
-            reconfirm_draft(store, &w.id, &reviewer, change, 72).map(|_| ()),
+            reconfirm_held(store, &w.id, &reviewer, change, 72).map(|_| ()),
             Err(StoreError::NotFound)
         );
         assert_eq!(
@@ -441,14 +485,14 @@ fn the_suite(store: &(impl ProposalStore + AcceptanceStore + WikiStore + Account
     };
     let before = count();
     assert_eq!(
-        reconfirm_draft(store, &w.id, &reviewer, &a1.id, 73).map(|_| ()),
+        reconfirm_held(store, &w.id, &reviewer, &a1.id, 73).map(|_| ()),
         Err(StoreError::AlreadyRecorded),
         "the submitted one is open"
     );
     assert_eq!(count(), before, "no proposal is left without its note");
     // Another change is its own: the rule is per change.
-    reconfirm_draft(store, &w.id, &reviewer, &a2b.id, 74).expect("another change is its own");
-    // Closed, a proposal frees the change; a draft is open too, and the author may close it.
+    reconfirm_held(store, &w.id, &reviewer, &a2b.id, 74).expect("another change is its own");
+    // Closed, a proposal frees the change.
     mv(
         store,
         &origin.id,
@@ -458,14 +502,14 @@ fn the_suite(store: &(impl ProposalStore + AcceptanceStore + WikiStore + Account
         &reviewer,
         75,
     );
-    let second = reconfirm_draft(store, &w.id, &reviewer, &a1.id, 76).unwrap();
+    let second = reconfirm_held(store, &w.id, &reviewer, &a1.id, 76).unwrap();
     assert_eq!(
-        reconfirm_draft(store, &w.id, &reviewer, &a1.id, 77).map(|_| ()),
+        reconfirm_held(store, &w.id, &reviewer, &a1.id, 77).map(|_| ()),
         Err(StoreError::AlreadyRecorded),
-        "a draft is open"
+        "held for review is open"
     );
     assert_eq!(
-        store.reconfirmations_of(&a1.id, Some(&reviewer)).unwrap(),
+        store.reconfirmations_of(&a1.id, None).unwrap(),
         vec![origin.id.clone(), second.id.clone()],
         "the closed one stays on the record"
     );
@@ -473,12 +517,157 @@ fn the_suite(store: &(impl ProposalStore + AcceptanceStore + WikiStore + Account
         store,
         &second.id,
         ProposalOp::Withdraw,
-        ProposalState::Draft,
+        ProposalState::HeldForReview,
         ProposalState::Withdrawn,
         &reviewer,
         78,
     );
-    reconfirm_draft(store, &w.id, &reviewer, &a1.id, 79).expect("freed again");
+    reconfirm_held(store, &w.id, &reviewer, &a1.id, 79).expect("freed again");
+
+    // --- The states that keep a change's one open place are exactly `ProposalState::is_open` (K26): a proposal that
+    // re-confirms a change, in each state in turn, refuses a second for that change if and only if it is open.
+    for (n, state) in (0_i64..).zip(ProposalState::ALL) {
+        let at = 100 + n * 10;
+        let p = submit(store, &open_draft(store, &w.id, &author, at), at + 1);
+        let change = pending(store, &p, &maintainer, at + 2);
+        seal(store, &change, at + 3);
+        let held = reconfirm_held(store, &w.id, &reviewer, &change.id, at + 4).unwrap();
+        if state != ProposalState::HeldForReview {
+            mv(
+                store,
+                &held.id,
+                ProposalOp::Withdraw,
+                ProposalState::HeldForReview,
+                state,
+                &reviewer,
+                at + 5,
+            );
+        }
+        let again = reconfirm_held(store, &w.id, &reviewer, &change.id, at + 6);
+        if state.is_open() {
+            assert_eq!(
+                again.map(|_| ()),
+                Err(StoreError::AlreadyRecorded),
+                "{state}"
+            );
+        } else {
+            again.unwrap_or_else(|e| panic!("{state} is closed, so the change is free: {e}"));
+        }
+    }
+
+    // --- A proposal that is not made held for review, or is not made whole, is refused and writes nothing.
+    let before = store
+        .proposals(&w.id, &Default::default(), None)
+        .unwrap()
+        .len();
+    let wrong = |what: &Tweak| {
+        let mut record = draft_record(&w.id, &reviewer, 200);
+        let created = step(
+            &record.id,
+            ProposalOp::Create,
+            None,
+            ProposalState::Draft,
+            &reviewer,
+            None,
+            200,
+        );
+        let mut sent = ProposalChange {
+            transition: step(
+                &record.id,
+                ProposalOp::Submit,
+                Some(ProposalState::Draft),
+                ProposalState::HeldForReview,
+                &reviewer,
+                None,
+                200,
+            ),
+            text: None,
+            revision: Some(revision(&record.id, 1, "first text", 200)),
+            superseded_by: None,
+        };
+        record.state = ProposalState::HeldForReview;
+        record.submitted_at = Some(200);
+        what(&mut record, &mut sent);
+        store
+            .create_held_reconfirm_proposal(&record, &created, &sent, &a2b.id)
+            .map(|_| ())
+    };
+    let shapes: [(&str, &Tweak); 6] = [
+        ("a draft", &|r, _| r.state = ProposalState::Draft),
+        ("not sent", &|r, _| r.submitted_at = None),
+        ("no working copy", &|_, s| s.revision = None),
+        ("a second revision", &|_, s| {
+            if let Some(r) = &mut s.revision {
+                r.seq = 2;
+            }
+        }),
+        ("not a submission", &|_, s| {
+            s.transition.op = ProposalOp::Revise;
+        }),
+        ("sent by someone else", &|_, s| {
+            s.transition.actor = AccountId::new();
+        }),
+    ];
+    for (name, what) in shapes {
+        assert!(
+            matches!(wrong(what), Err(StoreError::Backend(_))),
+            "{name} is refused"
+        );
+    }
+    assert_eq!(
+        store
+            .proposals(&w.id, &Default::default(), None)
+            .unwrap()
+            .len(),
+        before,
+        "a refused shape writes nothing"
+    );
+}
+
+/// A proposal made held for review is written whole or not at all (K26): when the last of its writes is refused by
+/// the database, the proposal, its note of the change, its revision and its first step are none of them left.
+#[test]
+fn a_proposal_made_held_for_review_is_written_in_one_transaction() {
+    let tmp = temp("held-atomic");
+    let path = tmp.0.join("store.sqlite");
+    let store = SqliteStore::open(&path).unwrap();
+    let w = wiki(&store, "review");
+    let (author, maintainer) = (account(&store), account(&store));
+    let p1 = submit(&store, &open_draft(&store, &w.id, &author, 10), 11);
+    let a1 = pending(&store, &p1, &maintainer, 20);
+    seal(&store, &a1, 21);
+    let raw = rusqlite::Connection::open(&path).unwrap();
+    let counts = |raw: &rusqlite::Connection| -> Vec<i64> {
+        [
+            "proposals",
+            "proposal_reconfirms",
+            "proposal_revisions",
+            "proposal_transitions",
+            "proposal_drafts",
+        ]
+        .iter()
+        .map(|t| {
+            raw.query_row(&format!("SELECT COUNT(*) FROM {t}"), [], |r| r.get(0))
+                .unwrap()
+        })
+        .collect()
+    };
+    let before = counts(&raw);
+    // The database refuses the submission step, the last of the writes.
+    raw.execute_batch(
+        "CREATE TRIGGER refuse_the_second_step BEFORE INSERT ON proposal_transitions          WHEN NEW.op = 'submit' AND NEW.at = 30 BEGIN SELECT RAISE(ABORT, 'refused'); END;",
+    )
+    .unwrap();
+    assert!(reconfirm_held(&store, &w.id, &author, &a1.id, 30).is_err());
+    assert_eq!(counts(&raw), before, "nothing is left of it");
+    assert!(store.reconfirmations_of(&a1.id, None).unwrap().is_empty());
+    // And the change's one open place is free: the next press makes it.
+    reconfirm_held(&store, &w.id, &author, &a1.id, 31).expect("the next press works");
+    assert_eq!(
+        store.reconfirmations_of(&a1.id, None).unwrap().len(),
+        1,
+        "one proposal"
+    );
 }
 
 #[test]
@@ -647,6 +836,53 @@ fn the_database_refuses_what_the_store_would_not_write() {
         let refused = r.raw.execute(sql, []);
         let refused = refused.expect_err(sql).to_string();
         assert!(refused.contains("append-only"), "{sql}: {refused}");
+    }
+}
+
+/// The trigger `proposal_reconfirms_one_open` names the open states in SQL; this pins that list to
+/// `ProposalState::is_open` (K26) from a raw connection, which can put a proposal into any state, a draft included.
+#[test]
+fn the_triggers_list_of_open_states_is_proposal_state_is_open() {
+    let r = rig("open-states");
+    let a1 = r.a1.id.as_str();
+    r.raw
+        .execute(
+            "INSERT INTO proposal_reconfirms (proposal_id, change_id) VALUES (?1, ?2)",
+            rusqlite::params![r.proposal.id.as_str(), a1],
+        )
+        .expect("a note");
+    let second = ProposalId::new();
+    r.raw
+        .execute(
+            "INSERT INTO proposals (id, seq, wiki_id, view, state, author, summary, sources, created_at, updated_at) \
+             SELECT ?1, seq + 100, wiki_id, view, 'held-for-review', author, summary, sources, created_at, updated_at \
+             FROM proposals WHERE id = ?2",
+            rusqlite::params![second.as_str(), r.proposal.id.as_str()],
+        )
+        .expect("a second proposal");
+    for state in ProposalState::ALL {
+        r.raw.execute_batch("SAVEPOINT each").unwrap();
+        r.raw
+            .execute(
+                "UPDATE proposals SET state = ?1 WHERE id = ?2",
+                rusqlite::params![state.as_str(), r.proposal.id.as_str()],
+            )
+            .expect("a state");
+        let noted = r.raw.execute(
+            "INSERT INTO proposal_reconfirms (proposal_id, change_id) VALUES (?1, ?2)",
+            rusqlite::params![second.as_str(), a1],
+        );
+        r.raw
+            .execute_batch("ROLLBACK TO each; RELEASE each")
+            .unwrap();
+        assert_eq!(
+            noted.is_err(),
+            state.is_open(),
+            "{state}: the trigger and `is_open` agree on what is open ({noted:?})"
+        );
+        if let Err(e) = noted {
+            assert!(e.to_string().contains("is open"), "{state}: {e}");
+        }
     }
 }
 

@@ -602,7 +602,8 @@ async fn the_store_keeps_one_open_proposal_per_change_and_the_press_that_loses_m
     let change = accept_recording(&s, &id, 1, &kept(), None);
     s.w.fake
         .set("pages/Bridge.md", &BRIDGE.replace("1950", "1951"));
-    // Someone else's draft for the change: the writer cannot see it, so the page still offers the step.
+    // Someone else's proposal for the change, made as the step makes it: already held for review (K26), so that anyone
+    // who may read the proposals sees it from the first moment.
     let maintainer = person(4);
     let draft = ProposalEdit {
         summary: "Judge them again".to_owned(),
@@ -621,9 +622,13 @@ async fn the_store_keeps_one_open_proposal_per_change_and_the_press_that_loses_m
             draft.clone(),
             &change,
         )
-        .expect("their draft");
+        .expect("their proposal");
+    assert_eq!(theirs.state, inklkunn_store::ProposalState::HeldForReview);
     let offered = open(&s, &to, &s.writer).await.body();
-    assert!(offered.contains("Propose judging them again"), "{offered}");
+    assert!(
+        !offered.contains("Propose judging them again"),
+        "the step is not offered while one is open: {offered}"
+    );
     // The store refuses a second open proposal for the change, whoever makes it, and nothing is left behind.
     let count = || {
         service
@@ -641,7 +646,7 @@ async fn the_store_keeps_one_open_proposal_per_change_and_the_press_that_loses_m
         "{refused:?}"
     );
     assert_eq!(count(), before);
-    // The press of the button gets the same answer, as a page: already proposed, with no proposal of anyone's named.
+    // The press of the button gets the same answer, as a page: already proposed, with the proposal, which she may read.
     let pressed = send(&s, &format!("{to}/reconfirm"), &s.writer, &[]).await;
     assert_eq!(pressed.status, StatusCode::OK, "{}", pressed.body());
     assert!(
@@ -650,8 +655,8 @@ async fn the_store_keeps_one_open_proposal_per_change_and_the_press_that_loses_m
         pressed.body()
     );
     assert!(
-        !pressed.body().contains(&theirs.id.to_string()),
-        "another person's draft is theirs alone: {}",
+        pressed.body().contains(&theirs.id.to_string()),
+        "the proposal that got there first is linked: {}",
         pressed.body()
     );
     assert_eq!(count(), before, "the press made nothing");

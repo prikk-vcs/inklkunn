@@ -313,6 +313,44 @@ pub struct ProposalChange {
     pub superseded_by: Option<ProposalId>,
 }
 
+/// The shape [`ProposalStore::create_held_reconfirm_proposal`] takes, checked by both stores alike: the proposal as it is
+/// held, the draft step that created it and the submission that sent it, with the working copy as revision 1. Returns
+/// that revision.
+pub(crate) fn held_shape<'a>(
+    proposal: &ProposalRecord,
+    created: &ProposalTransition,
+    sent: &'a ProposalChange,
+) -> crate::Result<&'a RevisionRecord> {
+    let (t, bad) = (&sent.transition, |what: &str| {
+        crate::StoreError::Backend(format!("a proposal made held for review: {what}"))
+    });
+    if proposal.state != ProposalState::HeldForReview || proposal.submitted_at.is_none() {
+        return Err(bad("it is held for review and sent"));
+    }
+    if created.proposal != proposal.id
+        || created.op != ProposalOp::Create
+        || created.from.is_some()
+        || created.to != ProposalState::Draft
+        || created.actor != proposal.author
+    {
+        return Err(bad("its creation is the draft step"));
+    }
+    if t.proposal != proposal.id
+        || t.op != ProposalOp::Submit
+        || t.from != Some(ProposalState::Draft)
+        || t.to != ProposalState::HeldForReview
+        || t.actor != proposal.author
+        || sent.text.is_some()
+        || sent.superseded_by.is_some()
+    {
+        return Err(bad("its submission is the step from the draft"));
+    }
+    match &sent.revision {
+        Some(r) if r.proposal == proposal.id && r.seq == 1 => Ok(r),
+        _ => Err(bad("its working copy is revision 1")),
+    }
+}
+
 /// A quote selector (COLL-5): the exact text a comment is about, with the text around it, so that the anchor
 /// can be found again in a later revision when the block has no `^id`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -593,15 +631,19 @@ pub trait ProposalStore: Send + Sync {
         Ok(Vec::new())
     }
 
-    /// [`create_proposal`](ProposalStore::create_proposal) for the curation proposal of the **reconfirm step**: the
-    /// same records, and with them, in the same step, the note of the change it re-confirms (a sealed acceptance of the
-    /// proposal's wiki: [`NotFound`](crate::StoreError::NotFound) otherwise). A proposal re-confirms from its creation
-    /// or never.
-    fn create_reconfirm_proposal(
+    /// The curation proposal of the **reconfirm step**, created **already held for review**, in one transaction (K26):
+    /// the proposal as it is held (`proposal`: state held for review, `submitted_at` set), its creation (`created`, the
+    /// draft step) and its submission (`sent`: a [`ProposalOp::Submit`] from the draft state to held for review, with the
+    /// working copy as revision 1), and with them the note of the change it re-confirms (a sealed acceptance of the
+    /// proposal's wiki: [`NotFound`](crate::StoreError::NotFound) otherwise). There is **no draft row**: the proposal is
+    /// never a draft, so no one's unsent draft can hold the change's one open place. A proposal that does not fit that
+    /// shape is [`Backend`](crate::StoreError::Backend). A proposal re-confirms from its creation or never; a second
+    /// open one for the same change is [`AlreadyRecorded`](crate::StoreError::AlreadyRecorded) and nothing is written.
+    fn create_held_reconfirm_proposal(
         &self,
         _proposal: &ProposalRecord,
-        _draft: &RevisionContent,
         _created: &ProposalTransition,
+        _sent: &ProposalChange,
         _change: &AcceptanceId,
     ) -> Result<()> {
         Err(crate::StoreError::Backend(

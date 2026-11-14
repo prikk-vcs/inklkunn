@@ -377,6 +377,47 @@ fn viewer_of(principal: &Principal) -> Option<&AccountId> {
     }
 }
 
+/// Every path a change touches: the pages and both ends of each rename.
+fn touched_by(content: &RevisionContent) -> BTreeSet<&str> {
+    let files = content.files.iter().map(|f| f.path.as_str());
+    let renames = content
+        .renames
+        .iter()
+        .flat_map(|r| [r.from.as_str(), r.to.as_str()]);
+    files.chain(renames).collect()
+}
+
+/// The step that sends a draft for review: the transition and its working copy as revision 1. **The one place** it is
+/// built, for [`ProposalService::submit`] and for the reconfirm step's proposal, which is made already sent.
+fn submission(
+    id: &ProposalId,
+    from: ProposalState,
+    to: ProposalState,
+    actor: &AccountId,
+    content: RevisionContent,
+    at: i64,
+) -> ProposalChange {
+    ProposalChange {
+        transition: ProposalTransition {
+            proposal: id.clone(),
+            op: ProposalOp::Submit,
+            from: Some(from),
+            to,
+            actor: actor.clone(),
+            reason: None,
+            at,
+        },
+        text: None,
+        revision: Some(RevisionRecord {
+            proposal: id.clone(),
+            seq: 1,
+            content,
+            created_at: at,
+        }),
+        superseded_by: None,
+    }
+}
+
 /// The state `op` leaves a proposal in, by the one table.
 fn next(state: Option<ProposalState>, op: ProposalOp) -> Result<ProposalState> {
     Ok(machine::apply(state, op)?)
@@ -699,6 +740,11 @@ impl ProposalService {
     /// K11): the note of the change it re-confirms (`change`, the acceptance that put it in the history) is written in
     /// the same step as the proposal, so that the curation proposal's acceptance can record which change it
     /// re-confirmed, and the page can say that one is already proposed. The store refuses a change that did not seal.
+    ///
+    /// **The proposal is made already held for review** (K26): it is checked as a submission is (the finished text, the
+    /// files, the knowledge files, the wiki's hourly limit) *before* anything is written, and then written with its
+    /// submission in one store transaction. A refusal leaves nothing behind, and there is no draft to hold the change's
+    /// one open place; the record returned is the proposal as it is held, and is not submitted again.
     pub fn create_reconfirm(
         &self,
         principal: &Principal,
@@ -787,7 +833,9 @@ impl ProposalService {
     }
 
     /// [`ProposalService::create`], and, for a rollback (the block it undoes) or a reconfirm step (the change it
-    /// re-confirms), the note that it is one, written in the same step as the proposal.
+    /// re-confirms), the note that it is one, written in the same step as the proposal. A reconfirm step's proposal is
+    /// made **already held for review** (K26): it is checked as a submission is, before anything is written, and then
+    /// written with its submission in one store transaction, so that it is never a draft.
     fn create_as(
         &self,
         principal: &Principal,
@@ -801,8 +849,19 @@ impl ProposalService {
         let view = view.unwrap_or(&wiki.default_view).to_owned();
         let base = Self::base_of(&edit, || Ok(self.bases.base(wiki, &view)?))?;
         let content = self.content_of(&edit, base);
-        validate(&edit.summary, &edit.sources, &content, Finish::Draft)?;
-        self.judge_files(principal, wiki, &content)?;
+        let id = ProposalId::new();
+        let held = matches!(origin, Origin::Reconfirm(_));
+        if held {
+            self.allow(
+                principal,
+                Action::Propose,
+                &Self::proposal_resource(wiki, &id),
+            )?;
+            self.judge_submission(principal, wiki, &edit.summary, &edit.sources, &content)?;
+        } else {
+            validate(&edit.summary, &edit.sources, &content, Finish::Draft)?;
+            self.judge_files(principal, wiki, &content)?;
+        }
         let state = next(None, ProposalOp::Create)?;
 
         let _admission = self
@@ -811,9 +870,12 @@ impl ProposalService {
             .unwrap_or_else(PoisonError::into_inner);
         self.quotas.check_open(&wiki.id, author)?;
         self.quotas.check_opening_rate(&wiki.id, author)?;
+        if held {
+            self.check_submission_rate(wiki, author)?;
+        }
         let now = (self.clock)();
-        let record = ProposalRecord {
-            id: ProposalId::new(),
+        let mut record = ProposalRecord {
+            id,
             wiki: wiki.id.clone(),
             view,
             state,
@@ -842,9 +904,15 @@ impl ProposalService {
             Origin::Rollback(undoes) => self
                 .proposals
                 .create_rollback_proposal(&record, &content, &created, undoes)?,
-            Origin::Reconfirm(change) => self
-                .proposals
-                .create_reconfirm_proposal(&record, &content, &created, change)?,
+            Origin::Reconfirm(change) => {
+                let to = next(Some(state), ProposalOp::Submit)?;
+                let sent = submission(&record.id, state, to, author, content, now);
+                // The proposal as it is held: what a submission leaves of the record.
+                record.state = to;
+                record.submitted_at = Some(now);
+                self.proposals
+                    .create_held_reconfirm_proposal(&record, &created, &sent, change)?;
+            }
         }
         Ok(record)
     }
@@ -901,28 +969,40 @@ impl ProposalService {
             .proposals
             .draft(id, Some(author))?
             .ok_or(ProposalError::Changed)?;
-        let touched: BTreeSet<&str> = draft
-            .files
-            .iter()
-            .map(|f| f.path.as_str())
-            .chain(
-                draft
-                    .renames
-                    .iter()
-                    .flat_map(|r| [r.from.as_str(), r.to.as_str()]),
-            )
-            .collect();
+        let touched = touched_by(&draft);
         self.allow_pages(principal, wiki, &touched)?;
-        validate(&p.summary, &p.sources, &draft, Finish::Submit)?;
-        self.judge_files(principal, wiki, &draft)?;
-        self.judge_knowledge(wiki, &draft)?;
+        self.judge_submission(principal, wiki, &p.summary, &p.sources, &draft)?;
         // The wiki-wide hourly limit counts what is *sent*, so it is asked here and not when a draft is opened;
         // in one critical section with the change, so that two sends cannot both find room for the last one.
         let _admission = self
             .admission
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        // Reviewers and the roles above them are not bound by the limit and are not counted toward it.
+        self.check_submission_rate(wiki, author)?;
+        let now = (self.clock)();
+        let change = submission(id, p.state, to, author, draft, now);
+        Ok(self.proposals.change_proposal(&change)?)
+    }
+
+    /// What a submission is checked on, besides who may touch which page: the text finished, the files fit the wiki,
+    /// the knowledge files hold. **Shared** by [`ProposalService::submit`] and the reconfirm step, which is made already
+    /// sent, so that the two cannot differ.
+    fn judge_submission(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        summary: &str,
+        sources: &[String],
+        content: &RevisionContent,
+    ) -> Result<()> {
+        validate(summary, sources, content, Finish::Submit)?;
+        self.judge_files(principal, wiki, content)?;
+        self.judge_knowledge(wiki, content)
+    }
+
+    /// The wiki-wide hourly limit on what is sent for review; the caller holds the admission lock. Reviewers and the
+    /// roles above them are not bound by it and are not counted toward it.
+    fn check_submission_rate(&self, wiki: &WikiRecord, author: &AccountId) -> Result<()> {
         let at_least_reviewer = |account: &AccountId| {
             self.authorizer
                 .role_in(account, &wiki.id)
@@ -932,27 +1012,7 @@ impl ProposalService {
             .check_submission_rate(&wiki.id, at_least_reviewer(author), &|sender| {
                 !at_least_reviewer(sender)
             })?;
-        let now = (self.clock)();
-        let change = ProposalChange {
-            transition: ProposalTransition {
-                proposal: id.clone(),
-                op: ProposalOp::Submit,
-                from: Some(p.state),
-                to,
-                actor: author.clone(),
-                reason: None,
-                at: now,
-            },
-            text: None,
-            revision: Some(RevisionRecord {
-                proposal: id.clone(),
-                seq: 1,
-                content: draft,
-                created_at: now,
-            }),
-            superseded_by: None,
-        };
-        Ok(self.proposals.change_proposal(&change)?)
+        Ok(())
     }
 
     /// Add a revision to a proposal that is held for review or needs one: the proposal is held for review

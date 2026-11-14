@@ -497,10 +497,10 @@ fn judge_again(page: &Page, ctx: &Ctx, id: &inklkunn_store::ProposalId) -> Respo
         base: Some(base),
         ..ProposalEdit::default()
     };
-    // The curation proposal is made with the note of the change it re-confirms, in one step.
-    let made = service.create_reconfirm(p, w, view, proposed, &accepted.acceptance);
-    match made.and_then(|r| service.submit(p, w, &r.id).map(|_| r.id)) {
-        Ok(new) => see(&paths::proposal(ctx.slug(), new.as_str())),
+    // The curation proposal is made with the note of the change it re-confirms, already held for review, in one step
+    // (K26): a refusal (the hourly limit, a check) leaves nothing, and no draft can hold the change's one open place.
+    match service.create_reconfirm(p, w, view, proposed, &accepted.acceptance) {
+        Ok(new) => see(&paths::proposal(ctx.slug(), new.id.as_str())),
         // Another press of the button got there first: the store keeps one open proposal per change, and nothing was
         // made. Say which one, when it may be seen.
         Err(ProposalError::Store(inklkunn_store::StoreError::AlreadyRecorded)) => {
@@ -514,8 +514,9 @@ fn judge_again(page: &Page, ctx: &Ctx, id: &inklkunn_store::ProposalId) -> Respo
     }
 }
 
-/// The page that says judging these claims again is already proposed: with the proposal, when it may be seen (another
-/// person's draft is theirs alone, and is said without a link).
+/// The page that says judging these claims again is already proposed: with the proposal, when it may be seen (one that
+/// the reader may not read, such as a draft an older store still holds, is said without a link). The step's own
+/// proposals are made held for review (K26), so the winner of a race is always one to link.
 fn already_open(page: &Page, ctx: &Ctx, open: Option<&ProposalId>) -> Response {
     let t = page.t();
     let service = &ctx.services.proposals;

@@ -13,6 +13,7 @@ mod lifecycle;
 mod machine;
 mod metrics;
 mod quotas;
+mod reconfirm;
 mod rollback;
 mod support;
 mod validation;

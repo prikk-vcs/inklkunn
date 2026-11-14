@@ -10,7 +10,7 @@ use super::{SqliteStore, backend};
 use crate::proposal::{
     Anchor, CommentRecord, DecisionKind, DecisionRecord, ProposalChange, ProposalFilter,
     ProposalOp, ProposalRecord, ProposalState, ProposalStore, ProposalTransition, RevisionContent,
-    RevisionFlags, RevisionRecord,
+    RevisionFlags, RevisionRecord, held_shape,
 };
 use crate::record::{AcceptanceId, AccountId, CommentId, DecisionId, ProposalId, WikiId};
 use crate::review::{ClaimOutcome, ClaimReview};
@@ -229,6 +229,7 @@ impl SqliteStore {
         created: &ProposalTransition,
         undoes: Option<&str>,
         reconfirms: Option<&AcceptanceId>,
+        sent: Option<(&RevisionRecord, &ProposalTransition)>,
     ) -> Result<()> {
         if undoes.is_some_and(|u| !is_block_id(u)) {
             return Err(StoreError::Backend(
@@ -272,11 +273,14 @@ impl SqliteStore {
                 ],
             )
             .map_err(backend)?;
-            tx.execute(
-                "INSERT INTO proposal_drafts (proposal_id, content) VALUES (?1, ?2)",
-                params![proposal.id.as_str(), to_json(draft)?],
-            )
-            .map_err(backend)?;
+            // Made held for review, the working copy is revision 1 and there is no draft row.
+            if sent.is_none() {
+                tx.execute(
+                    "INSERT INTO proposal_drafts (proposal_id, content) VALUES (?1, ?2)",
+                    params![proposal.id.as_str(), to_json(draft)?],
+                )
+                .map_err(backend)?;
+            }
             if let Some(undoes) = undoes {
                 tx.execute(
                     "INSERT INTO proposal_rollbacks (proposal_id, undoes) VALUES (?1, ?2)",
@@ -302,6 +306,10 @@ impl SqliteStore {
                 .map_err(write_refusal)?;
             }
             insert_transition(&tx, created)?;
+            if let Some((revision, step)) = sent {
+                insert_revision(&tx, revision)?;
+                insert_transition(&tx, step)?;
+            }
             tx.commit().map_err(backend)
         })
     }
@@ -370,7 +378,7 @@ impl ProposalStore for SqliteStore {
         draft: &RevisionContent,
         created: &ProposalTransition,
     ) -> Result<()> {
-        self.create_with(proposal, draft, created, None, None)
+        self.create_with(proposal, draft, created, None, None, None)
     }
 
     fn create_rollback_proposal(
@@ -380,17 +388,25 @@ impl ProposalStore for SqliteStore {
         created: &ProposalTransition,
         undoes: &str,
     ) -> Result<()> {
-        self.create_with(proposal, draft, created, Some(undoes), None)
+        self.create_with(proposal, draft, created, Some(undoes), None, None)
     }
 
-    fn create_reconfirm_proposal(
+    fn create_held_reconfirm_proposal(
         &self,
         proposal: &ProposalRecord,
-        draft: &RevisionContent,
         created: &ProposalTransition,
+        sent: &ProposalChange,
         change: &AcceptanceId,
     ) -> Result<()> {
-        self.create_with(proposal, draft, created, None, Some(change))
+        let revision = held_shape(proposal, created, sent)?;
+        self.create_with(
+            proposal,
+            &revision.content,
+            created,
+            None,
+            Some(change),
+            Some((revision, &sent.transition)),
+        )
     }
 
     fn reconfirm_of(
