@@ -2669,11 +2669,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.change_said",
-        "It is said in one more paragraph: “{paragraph}”.",
+        "It is said in one more paragraph: {paragraph}.",
     ),
     msg(
         "know.change_unsaid",
-        "It is no longer said in the paragraph “{paragraph}”: the paragraph is removed, or the claim lets it go.",
+        "It is no longer said in the paragraph {paragraph}: the paragraph is removed, or the claim lets it go.",
     ),
     msg(
         "know.change_related",
@@ -2955,6 +2955,12 @@ pub const CATALOG: &[Entry] = &[
     msg("know.subject_claim", "{id}"),
     msg("know.subject_claim_id", "“{excerpt}” [claim {id}]"),
     msg("know.subject_source_id", "{name} [source {id}]"),
+    msg("know.subject_words", "“{words}”"),
+    msg("know.subject_paragraph", "“{words}” on the page {page}"),
+    msg(
+        "know.subject_paragraph_block",
+        "“{words}” (the paragraph marked {block}) on the page {page}",
+    ),
     // knowledge: subjects told apart (handoff 005 corrections, third round K24): end
     msg(
         "know.removed_had_standing",

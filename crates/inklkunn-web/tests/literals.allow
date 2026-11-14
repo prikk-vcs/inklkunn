@@ -503,3 +503,6 @@ exact :: curate.rs :: claim :: a placeholder name of a catalog message, or the n
 exact :: curate.rs :: heads/ :: the prefix of a view's full name in the repository, taken off for the address
 # --- K34: a read of the proposal's pages that failed, for the operator's log (never shown to a reader)
 exact :: knowledge.rs :: the pages of a proposal at its base: {why} :: a log line for the operator (the cause of a read that could not be made); the reader sees the page that says it could not be read now
+# --- K37: a paragraph line names its page
+exact :: knowledge.rs :: block :: a placeholder name of a catalog message
+exact :: knowledge.rs :: page :: a placeholder name of a catalog message

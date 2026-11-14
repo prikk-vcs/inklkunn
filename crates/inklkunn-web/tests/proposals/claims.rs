@@ -1559,3 +1559,54 @@ async fn the_page_judges_against_the_pages_the_service_reads_a_removed_page_and_
         );
     }
 }
+
+#[tokio::test]
+async fn a_claim_moving_between_two_paragraphs_that_begin_alike_names_the_page_and_the_block_on_the_real_page()
+ {
+    let s = scene();
+    let common =
+        "It opened to traffic in the spring of that year, after a long delay and a hard winter, ";
+    let page = format!(
+        "---\ntitle: Bridge\nid: bridge-page\n---\n\n{common}by the council. ^k1\n\n{common}by the guild. ^k2\n\nA note.\n"
+    );
+    s.w.fake.set("pages/Bridge.md", &page);
+    let mut moved = s.claim.clone();
+    moved.expressions = vec![Expression::new("bridge-page", "k2").expect("an expression")];
+    let to = held_unjudged(&s, vec![(claim_path(&moved.id), Some(moved.to_yaml()))]);
+    let body = as_text(open(&s, &to, &s.writer).await.body());
+    let said = format!("{common}by the guild.");
+    let unsaid = format!("{common}by the council.");
+    let (said, unsaid) = (said.as_str(), unsaid.as_str());
+    // Both lines name the page, and the block, since the two paragraphs begin alike: they cannot read as no change.
+    assert!(
+        body.contains("on the page <bdi>Bridge</bdi>")
+            && body.contains("(the paragraph marked <code>k2</code>)")
+            && body.contains("(the paragraph marked <code>k1</code>)"),
+        "{body}"
+    );
+    assert!(
+        body.contains("It is said in one more paragraph: “<bdi>It opened to traffic"),
+        "{body}"
+    );
+    assert!(
+        body.contains("It is no longer said in the paragraph “<bdi>It opened to traffic"),
+        "{body}"
+    );
+    // The first eighty characters are all a line says of a paragraph.
+    assert!(!body.contains(said) && !body.contains(unsaid), "{body}");
+    // Two paragraphs that do not begin alike are named by the page and the words, with no marker.
+    let page = page.replace(
+        &format!("{common}by the guild."),
+        "A different beginning altogether.",
+    );
+    s.w.fake.set("pages/Bridge.md", &page);
+    let to = held_unjudged(&s, vec![(claim_path(&moved.id), Some(moved.to_yaml()))]);
+    let body = as_text(open(&s, &to, &s.writer).await.body());
+    assert!(
+        body.contains(
+            "“<bdi>A different beginning altogether.</bdi>” on the page <bdi>Bridge</bdi>"
+        ),
+        "{body}"
+    );
+    assert!(!body.contains("the paragraph marked"), "{body}");
+}

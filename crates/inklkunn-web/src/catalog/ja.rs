@@ -2734,11 +2734,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.change_said",
-        "もう一つの段落にも書かれることになります：「{paragraph}」。",
+        "もう一つの段落にも書かれることになります：{paragraph}。",
     ),
     msg(
         "know.change_unsaid",
-        "段落「{paragraph}」には書かれなくなります。段落が削除されるか、主張がその段落から外れます。",
+        "段落 {paragraph} には書かれなくなります。段落が削除されるか、主張がその段落から外れます。",
     ),
     msg(
         "know.change_related",
@@ -3010,6 +3010,12 @@ pub const CATALOG: &[Entry] = &[
     msg("know.subject_claim", "{id}"),
     msg("know.subject_claim_id", "「{excerpt}」［主張 {id}］"),
     msg("know.subject_source_id", "{name}［出典 {id}］"),
+    msg("know.subject_words", "「{words}」"),
+    msg("know.subject_paragraph", "ページ {page} の「{words}」"),
+    msg(
+        "know.subject_paragraph_block",
+        "ページ {page} の「{words}」（段落の印 {block}）",
+    ),
     // knowledge: subjects told apart (handoff 005 corrections, third round K24): end
     msg(
         "know.removed_had_standing",

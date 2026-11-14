@@ -55,6 +55,11 @@ pub(crate) trait Subjects {
     /// The words of the paragraph a claim is said in (marker left out), as the proposal leaves it, else as the wiki had
     /// it.
     fn paragraph(&self, at: &Expression) -> Option<String>;
+    /// The title of the page `page_id` names, as the proposal leaves it, else as the wiki had it (K37).
+    fn page_title(&self, page_id: &str) -> Option<String>;
+    /// Does another paragraph of the page of `at` begin as the paragraph `at` does, as `begin` cuts the beginning (K37)?
+    /// Two such paragraphs read alike on a line that names the page and the opening words alone.
+    fn begins_alike(&self, at: &Expression, begin: &dyn Fn(&str) -> String) -> bool;
     /// Where a claim is said: in the proposal's own file for it, else in the wiki.
     fn places(&self, claim: &ClaimId) -> Vec<Expression>;
     /// What a source calls itself: in the proposal's own file for it, else in the wiki.
@@ -122,14 +127,37 @@ fn claim_subject(t: T, know: &dyn Subjects, claim: &ClaimId, own: &[&[Expression
     }
 }
 
-/// A paragraph, by an excerpt of its words; by its marker when it cannot be found.
-fn paragraph_subject(know: &dyn Subjects, at: &Expression) -> Rich {
-    match know
+/// A paragraph, by an excerpt of its words **and its page** (K37), and by its block's marker as well when another
+/// paragraph of the page begins alike: a claim that moves between two paragraphs that begin alike must not read as
+/// *said in X* and *no longer said in X*. By its marker alone when its words cannot be found.
+fn paragraph_subject(t: T, know: &dyn Subjects, at: &Expression) -> Rich {
+    let words = know
         .paragraph(at)
         .map(|words| excerpt(&words, SUBJECT_CHARS))
-    {
-        Some(words) if !words.is_empty() => bdi(&words),
-        _ => bdi(&format!("^{}", at.block)),
+        .filter(|words| !words.is_empty());
+    let Some(words) = words else {
+        return t
+            .msg(Key::KnowSubjectWords)
+            .rich("words", bdi(&format!("^{}", at.block)))
+            .html();
+    };
+    let Some(title) = know.page_title(&at.page_id) else {
+        return t
+            .msg(Key::KnowSubjectWords)
+            .rich("words", bdi(&words))
+            .html();
+    };
+    if know.begins_alike(at, &|text| excerpt(text, SUBJECT_CHARS)) {
+        t.msg(Key::KnowSubjectParagraphBlock)
+            .rich("words", bdi(&words))
+            .rich("block", code(&at.block))
+            .rich("page", bdi(&title))
+            .html()
+    } else {
+        t.msg(Key::KnowSubjectParagraph)
+            .rich("words", bdi(&words))
+            .rich("page", bdi(&title))
+            .html()
     }
 }
 
@@ -289,11 +317,11 @@ fn claim_change(
         ClaimChange::Rejudged { on, to } => rejudged(t, know, claim, said, on, to.as_ref()),
         ClaimChange::Said(at) => t
             .msg(Key::KnowChangeSaid)
-            .rich("paragraph", paragraph_subject(know, at))
+            .rich("paragraph", paragraph_subject(t, know, at))
             .html(),
         ClaimChange::Unsaid(at) => t
             .msg(Key::KnowChangeUnsaid)
-            .rich("paragraph", paragraph_subject(know, at))
+            .rich("paragraph", paragraph_subject(t, know, at))
             .html(),
         ClaimChange::Related(r) => relation_line(t, know, Key::KnowChangeRelated, r),
         ClaimChange::Unrelated(r) => relation_line(t, know, Key::KnowChangeUnrelated, r),
@@ -625,8 +653,8 @@ struct Resolver<'a> {
     /// The new links whose wording the claim does not have in the result, as (claim, source): found once the lines are
     /// asked for ([`Resolver::judge`]).
     unjudged: Vec<(String, String)>,
-    /// The pages of the wiki at the base, by page id (`None`: no one page has it).
-    base: RefCell<BTreeMap<String, Option<String>>>,
+    /// The pages of the wiki at the base, by page id: the path and the text (`None`: no one page has it).
+    base: RefCell<BTreeMap<String, Option<(String, String)>>>,
     failure: RefCell<Option<inklkunn_core::read::ReadError>>,
 }
 
@@ -673,8 +701,8 @@ impl<'a> Resolver<'a> {
         self.failure.borrow_mut().get_or_insert(e);
     }
 
-    /// The text of the page whose `id` is `page_id`, at the proposal's base.
-    fn base_text(&self, page_id: &str) -> Option<String> {
+    /// The path and the text of the page whose `id` is `page_id`, at the proposal's base.
+    fn base_page(&self, page_id: &str) -> Option<(String, String)> {
         if let Some(found) = self.base.borrow().get(page_id) {
             return found.clone();
         }
@@ -685,9 +713,14 @@ impl<'a> Resolver<'a> {
         found
     }
 
+    /// The text of the page whose `id` is `page_id`, at the proposal's base.
+    fn base_text(&self, page_id: &str) -> Option<String> {
+        self.base_page(page_id).map(|(_, text)| text)
+    }
+
     /// The text of the page whose `id` is `page_id` at the proposal's base. **Where the page is is read at the base
     /// too** (K22): a page renamed since is at its base path there; the tip's path would name nothing, or another page.
-    fn read_base(&self, page_id: &str) -> Option<String> {
+    fn read_base(&self, page_id: &str) -> Option<(String, String)> {
         let read = &self.ctx.services.read;
         let titles = match read.title_index_at_base(
             &self.ctx.wiki,
@@ -709,7 +742,7 @@ impl<'a> Resolver<'a> {
             return None;
         };
         match read.source_at(&self.ctx.wiki, &self.place.base.block_id, &entry.path) {
-            Ok(text) => text,
+            Ok(text) => text.map(|text| (entry.path.clone(), text)),
             Err(e) => {
                 self.failed(e);
                 None
@@ -724,6 +757,16 @@ impl<'a> Resolver<'a> {
             PageLookup::One(path) => self.pages.text(&path),
             PageLookup::None | PageLookup::Several => None,
         }
+    }
+
+    /// The text of the page of `at` and the words of the paragraph `at` names (marker left out): as the proposal leaves
+    /// it; a paragraph it takes out is named by the words it had, in the page as the base had it.
+    fn paragraph_in(&self, at: &Expression) -> Option<(String, String)> {
+        use inklkunn_core::knowledge::marker::words_with_id;
+        let found = |text: String| words_with_id(&text, &at.block, true).map(|words| (text, words));
+        self.result_text(&at.page_id)
+            .and_then(found)
+            .or_else(|| self.base_text(&at.page_id).and_then(found))
     }
 
     /// The knowledge index **at the proposal's base** (K31), as the pages are read: the claims and sources the wiki had
@@ -757,14 +800,33 @@ impl Subjects for Resolver<'_> {
     }
 
     fn paragraph(&self, at: &Expression) -> Option<String> {
-        use inklkunn_core::knowledge::marker::words_with_id;
-        // As the proposal leaves it; a paragraph it takes out is named by the words it had.
-        self.result_text(&at.page_id)
-            .and_then(|text| words_with_id(&text, &at.block, true))
-            .or_else(|| {
-                self.base_text(&at.page_id)
-                    .and_then(|text| words_with_id(&text, &at.block, true))
-            })
+        self.paragraph_in(at).map(|(_, words)| words)
+    }
+
+    fn page_title(&self, page_id: &str) -> Option<String> {
+        let path = match self.pages.with_id(page_id) {
+            PageLookup::One(path) => path,
+            PageLookup::None | PageLookup::Several => self.base_page(page_id)?.0,
+        };
+        inklkunn_markup::path_to_title(&path)
+    }
+
+    fn begins_alike(&self, at: &Expression, begin: &dyn Fn(&str) -> String) -> bool {
+        use inklkunn_markup::{BlockKind, blocks, frontmatter};
+        let Some((text, words)) = self.paragraph_in(at) else {
+            return false;
+        };
+        let own = begin(&words);
+        let (_, body, _) = frontmatter::split(&text);
+        blocks(body).iter().any(|b| {
+            if b.kind != BlockKind::Paragraph || b.id == Some(at.block.as_str()) {
+                return false;
+            }
+            let words =
+                b.id.and_then(|id| b.text.strip_suffix(&format!("^{id}")))
+                    .unwrap_or(b.text);
+            begin(words.trim_end()) == own
+        })
     }
 
     fn places(&self, claim: &ClaimId) -> Vec<Expression> {

@@ -45,9 +45,15 @@ struct Fake {
     unjudged: Vec<SourceId>,
     /// The claims the wiki has a page for (K32).
     pages: Vec<ClaimId>,
+    /// The titles of the pages, by page id (K37); a page not listed has none that can be found.
+    titles: Vec<(String, String)>,
 }
 
 impl Fake {
+    fn with_title(mut self, page_id: &str, title: &str) -> Fake {
+        self.titles.push((page_id.to_owned(), title.to_owned()));
+        self
+    }
     fn with_page(mut self, claim: ClaimId) -> Fake {
         self.pages.push(claim);
         self
@@ -92,6 +98,20 @@ impl Subjects for Fake {
             .iter()
             .find(|(e, _)| e == at)
             .map(|(_, w)| w.clone())
+    }
+    fn page_title(&self, page_id: &str) -> Option<String> {
+        self.titles
+            .iter()
+            .find(|(id, _)| id == page_id)
+            .map(|(_, title)| title.clone())
+    }
+    fn begins_alike(&self, at: &Expression, begin: &dyn Fn(&str) -> String) -> bool {
+        let Some(own) = self.paragraph(at) else {
+            return false;
+        };
+        self.paragraphs
+            .iter()
+            .any(|(e, words)| e.page_id == at.page_id && e != at && begin(words) == begin(&own))
     }
     fn places(&self, claim: &ClaimId) -> Vec<Expression> {
         self.places
@@ -1332,4 +1352,87 @@ fn a_cite_line_frames_the_wording_as_the_one_it_has_in_this_proposals_result_in_
     let line = ja.more.first().unwrap().as_str().to_owned();
     assert!(line.contains("この提案を反映した結果"), "{line}");
     assert!(!line.contains("現在"), "{line}");
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// K37: a paragraph line names its page
+
+/// A claim that moves between the paragraphs `from` and `to`: said in one more, no longer said in the other.
+fn moves(from: &str, to: &str) -> Item {
+    Item::ClaimChanged {
+        claim: claim(),
+        said: vec![here(to)],
+        was_said: vec![here(from)],
+        changes: vec![ClaimChange::Said(here(to)), ClaimChange::Unsaid(here(from))],
+    }
+}
+
+#[test]
+fn a_claim_moving_between_two_paragraphs_that_begin_alike_reads_as_a_move() {
+    let common =
+        "It opened to traffic in the spring of that year, after a long delay and a hard winter, ";
+    assert!(common.chars().count() > SUBJECT_CHARS);
+    let know = Fake::default()
+        .with_paragraph(here("b0"), &format!("{common}by the council."))
+        .with_paragraph(here("b1"), &format!("{common}by the guild."))
+        .with_title("p", "Bridge");
+    for t in [T::new(EN), japanese()] {
+        let more = lines(t, &[moves("b0", "b1")], &know).remove(0).more;
+        let (to, from) = (
+            more.first().unwrap().to_string(),
+            more.get(1).unwrap().to_string(),
+        );
+        // The page, and the block's marker too, because the two begin alike.
+        assert!(to.contains("<bdi>Bridge</bdi>"), "{to}");
+        assert!(from.contains("<bdi>Bridge</bdi>"), "{from}");
+        assert!(to.contains("<code>b1</code>"), "{to}");
+        assert!(from.contains("<code>b0</code>"), "{from}");
+        assert!(!to.contains("<code>b0</code>"), "{to}");
+        assert!(!from.contains("<code>b1</code>"), "{from}");
+    }
+    let more = lines(T::new(EN), &[moves("b0", "b1")], &know)
+        .remove(0)
+        .more;
+    assert!(
+        more.first()
+            .unwrap()
+            .as_str()
+            .starts_with("It is said in one more paragraph: “<bdi>It opened to traffic"),
+        "{more:?}"
+    );
+    assert!(
+        more.first()
+            .unwrap()
+            .as_str()
+            .ends_with("” (the paragraph marked <code>b1</code>) on the page <bdi>Bridge</bdi>."),
+        "{more:?}"
+    );
+}
+
+#[test]
+fn a_paragraph_that_begins_alone_is_named_by_its_page_and_words_without_the_marker() {
+    let know = Fake::default()
+        .with_paragraph(here("b0"), "It opened in 1950.")
+        .with_paragraph(here("b1"), "It closed in 1960.")
+        .with_title("p", "Bridge");
+    let more = lines(T::new(EN), &[moves("b0", "b1")], &know)
+        .remove(0)
+        .more;
+    assert_eq!(
+        more.first().unwrap().as_str(),
+        "It is said in one more paragraph: “<bdi>It closed in 1960.</bdi>” on the page <bdi>Bridge</bdi>."
+    );
+    assert_eq!(
+        more.get(1).unwrap().as_str(),
+        "It is no longer said in the paragraph “<bdi>It opened in 1950.</bdi>” on the page <bdi>Bridge</bdi>: the paragraph is removed, or the claim lets it go."
+    );
+    // A page whose title cannot be found: the words alone, as before.
+    let know = Fake::default().with_paragraph(here("b1"), "It closed in 1960.");
+    let more = lines(T::new(EN), &[moves("b0", "b1")], &know)
+        .remove(0)
+        .more;
+    assert_eq!(
+        more.first().unwrap().as_str(),
+        "It is said in one more paragraph: “<bdi>It closed in 1960.</bdi>”."
+    );
 }

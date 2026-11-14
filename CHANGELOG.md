@@ -859,6 +859,18 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   of the page, the note and the core name the same fields and the same actions in both languages; the cite line in both; the OpenAPI
   document. No prikk-dependent test.
 
+- **K37 (handoff 005 corrections, fourth round): a paragraph line names its page.** `know.change_said` and `know.change_unsaid` named a
+  paragraph only by its first 80 characters, with no page, so a claim moving between two paragraphs that begin alike read as *said in
+  “X…”* and *no longer said in “X…”*, which looks like no change. A paragraph is now named by an excerpt of its words **and the
+  page it is on** (“…” on the page Bridge), and **by the block's marker as well when another paragraph of that page begins with the
+  same words** (“…” (the paragraph marked k2) on the page Bridge); three new catalog messages (`know.subject_words`,
+  `know.subject_paragraph`, `know.subject_paragraph_block`, English and Japanese, with glossary rows), and the two lines now hold the
+  paragraph's name whole. The page's title is the one the proposal leaves (a moved page by its new title), else the base's; a page
+  whose title cannot be found, or a paragraph that cannot be found (named by its marker), is named as before. `Subjects` gains
+  `page_title` and `begins_alike`. Tests: the move between two paragraphs that begin alike names a different paragraph on each line,
+  in both languages, on the unit level and through the real page, and two paragraphs that do not begin alike carry no marker.
+  No prikk-dependent test.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

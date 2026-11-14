@@ -1593,6 +1593,9 @@ keys! {
     KnowSubjectClaim => "know.subject_claim",
     KnowSubjectClaimId => "know.subject_claim_id",
     KnowSubjectSourceId => "know.subject_source_id",
+    KnowSubjectWords => "know.subject_words",
+    KnowSubjectParagraph => "know.subject_paragraph",
+    KnowSubjectParagraphBlock => "know.subject_paragraph_block",
     // knowledge: subjects told apart (handoff 005 corrections, third round K24): end
     KnowRemovedHadStanding => "know.removed_had_standing",
     KnowRemovedHadLink => "know.removed_had_link",
