@@ -828,6 +828,7 @@ impl ProposalAcceptor {
                 files,
                 renames,
                 curation,
+                by_service: false,
             },
         )
         .map_err(|e| AcceptFailure::Unavailable(e.to_string()))?;

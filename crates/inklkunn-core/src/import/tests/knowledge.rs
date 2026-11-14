@@ -390,3 +390,51 @@ fn the_dry_run_says_what_the_run_would_refuse() {
     judge_knowledge(&mut sound, &rig.reads, &*rig.fake, &rig.layout, &rig.wiki).unwrap();
     assert!(sound.is_importable(), "{}", sound.report());
 }
+
+/// The reviewer's fixture (handoff 005 K52): the bundle of a wiki that has claims and a redirect page.
+#[test]
+fn an_import_is_judged_as_the_service_so_a_redirect_page_and_claims_import_together() {
+    let (rig, accept, acts) = world_with_reads("k-redirect");
+    let d = dir("k-redirect");
+    bundle(&d.0, &claim(), &source());
+    put(
+        &d.0,
+        "pages/Old.md",
+        b"---\ntitle: Old\nkind: redirect\nredirect: One\n---\n\n",
+    );
+    let mut plan = plan_folder(&d.0, &Existing::at(&rig.fake.block_id()), false).unwrap();
+    assert!(plan.is_importable(), "{}", plan.report());
+    // The dry run says nothing against it...
+    judge_knowledge(&mut plan, &rig.reads, &*rig.fake, &rig.layout, &rig.wiki).unwrap();
+    assert!(plan.is_importable(), "{}", plan.report());
+    // ... and the run, at the service's own path, writes all of it.
+    let done = run_import(&acts, &rig.wiki, &plan).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(done.files, 4);
+    let change = accept.seen.lock().unwrap().clone().unwrap();
+    assert!(
+        change
+            .files
+            .iter()
+            .any(|f| f.path == std::path::Path::new("pages/Old.md"))
+    );
+    // The knowledge rules still hold for that bundle: a decided status is refused beside the redirect.
+    let mut decided = claim();
+    decided.community_status.status = Standing::Accepted;
+    let d = dir("k-redirect-decided");
+    bundle(&d.0, &decided, &source());
+    put(
+        &d.0,
+        "pages/Old.md",
+        b"---\ntitle: Old\nkind: redirect\nredirect: One\n---\n\n",
+    );
+    let mut plan = plan_folder(&d.0, &Existing::at(&rig.fake.block_id()), false).unwrap();
+    judge_knowledge(&mut plan, &rig.reads, &*rig.fake, &rig.layout, &rig.wiki).unwrap();
+    assert_eq!(plan.refused.len(), 1, "{}", plan.report());
+    assert!(
+        plan.refused
+            .first()
+            .unwrap()
+            .name
+            .contains("knowledge/claims/")
+    );
+}

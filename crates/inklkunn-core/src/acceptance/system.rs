@@ -404,6 +404,7 @@ impl SystemActs {
                     files: &request.files,
                     renames: &request.renames,
                     curation: false,
+                    by_service: true,
                 },
             )
             .map_err(|e| SystemActFailure::Unavailable(e.to_string()))?;

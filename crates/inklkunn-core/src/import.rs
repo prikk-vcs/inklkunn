@@ -1291,7 +1291,9 @@ fn read_files(plan: &ImportPlan) -> Result<Vec<PreparedFile>, ImportError> {
 /// Judge the knowledge files of `plan` against the wiki's tip as an acceptance judges a change that is not a curation
 /// proposal (RFC 005 part 2 D-5, D-3): the references between the files and the pages the import leaves, the anchors, and
 /// the rule that no path but a curation proposal sets a status, a review day, an availability or a source link's
-/// judgement. What is refused is added to [`ImportPlan::refused`], by file and rule, and the whole import is then refused.
+/// judgement. An import is the service writing, not a proposer: the rule that keeps a proposer off the page keys only the
+/// service writes (a `kind: redirect` page, say) is not applied, the page rules being the plan's own (K52).
+/// What is refused is added to [`ImportPlan::refused`], by file and rule, and the whole import is then refused.
 /// A plan with no knowledge file asks nothing of the repository. [`SystemActs::run`] judges the same set again, under
 /// the lease, before the signer is asked: this is the dry run's answer, and the operator's early one.
 pub fn judge_knowledge(
@@ -1315,6 +1317,7 @@ pub fn judge_knowledge(
             files: &files,
             renames: &[],
             curation: false,
+            by_service: true,
         },
     )
     .map_err(|e| ImportError::Wiki(format!("the knowledge files could not be judged: {e}")))?;

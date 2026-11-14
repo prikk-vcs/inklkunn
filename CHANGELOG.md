@@ -1081,6 +1081,17 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   cleanup a queue equal to the tip's patches), whose step finishes. Two new prikk-dependent tests (counted by `skipping: prikk not on
   PATH`).
 
+- **K52 (handoff 005 corrections, fifth round): an import is judged as the service, not as a proposer.** An import's knowledge
+  judgement (`import::judge_knowledge`, and the service's own judgement under the lease, `SystemActs`) applied the rule that keeps a
+  *proposer* off the page keys only the service writes (`kind`, `visibility`, `system`), so a bundle with claims and a page that is a
+  `kind: redirect` was refused whole ("the change also changes a page key that only the service writes"), though the same pages import
+  without knowledge files: the import is the service writing, and its page rules are the import plan's own. `check::Written` gains
+  `by_service`; for an import the owned-key rule is not applied and every knowledge rule is (references, anchors, a decided status, a
+  review day, an availability, a link's judgement, the unreadable file), and an acceptance (`by_service: false`) is judged as before.
+  Tests: the reviewer's fixture (a redirect page with claims and a source) through the dry run and the run at the service's own path,
+  and the same bundle with a decided status still refused by the claim's file; mutation-checked (the rule applied again fails the
+  first). No prikk-dependent test is added.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

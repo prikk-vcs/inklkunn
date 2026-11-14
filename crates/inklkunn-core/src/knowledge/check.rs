@@ -10,7 +10,8 @@
 //! - every expression names a page the view has once, and a block that page has once (`^id`), **at the proposal's
 //!   result**;
 //! - and, whenever the change touches the knowledge layer, no key that only the service writes
-//!   ([`OWNED_PAGE_KEYS`]) is changed in any page the change writes.
+//!   ([`OWNED_PAGE_KEYS`]) is changed in any page the change writes, unless the change is the service's own (an import,
+//!   [`Written::by_service`]: it is the service that writes them, and the import plan owns the page rules).
 //!
 //! And for what the change leaves behind: a claim file the change does not write is judged again where the change
 //! touched a page it is anchored in (a block taken out of a page cannot leave a claim pointing at nothing), and a
@@ -792,6 +793,10 @@ pub struct Written<'a> {
     pub renames: &'a [(PathBuf, PathBuf)],
     /// The proposal is a curation proposal ([`super::curation::is_curation`]).
     pub curation: bool,
+    /// The change is the service's own writing (an import, RFC 005 part 2 D-12): the keys only the service writes are
+    /// its to write, so that rule, which holds a *proposer* off them, is not applied. The page rules of an import
+    /// are the import plan's; every knowledge rule applies as it does to an acceptance (K52).
+    pub by_service: bool,
 }
 
 /// Judge a prepared change against the tip `tip_block`: `Ok(vec![])` when it is sound.
@@ -811,6 +816,7 @@ pub fn check_change(
         files,
         renames,
         curation,
+        by_service,
     } = *change;
     let path_text = |p: &Path| p.to_string_lossy().into_owned();
     // A keep-file is no knowledge file: a new wiki's `knowledge/` holds nothing else.
@@ -844,6 +850,7 @@ pub fn check_change(
                 files,
                 renames,
                 curation,
+                by_service,
             )
         })
         .map_err(CheckError::Read)?
@@ -856,6 +863,7 @@ pub(crate) fn judge(
     files: &[PreparedFile],
     renames: &[(PathBuf, PathBuf)],
     curation: bool,
+    by_service: bool,
 ) -> Result<Vec<Refusal>, CheckError> {
     let path_text = |p: &Path| p.to_string_lossy().into_owned();
     // The knowledge files of the result: the tip's, the change on them.
@@ -964,7 +972,9 @@ pub(crate) fn judge(
         match f.content.as_deref().map(|b| String::from_utf8(b.to_vec())) {
             Some(Ok(text)) => {
                 ids_at.insert(path.clone(), page_id_of(&text));
-                owned_candidates.push((path.clone(), text.clone()));
+                if !by_service {
+                    owned_candidates.push((path.clone(), text.clone()));
+                }
                 at.insert(path, Origin::Written(text));
             }
             Some(Err(_)) => {

@@ -1016,7 +1016,7 @@ fn the_tree_the_acceptance_reads_names_a_tip_file_it_cannot_read_and_curation_ma
         content: Some(now.to_yaml().into_bytes()),
     }];
     let judged = |files: &[PreparedFile], curation: bool| {
-        judge(&root, 1000, 1 << 20, files, &[], curation)
+        judge(&root, 1000, 1 << 20, files, &[], curation, false)
             .expect("judged")
             .iter()
             .map(|r| (r.file.clone(), r.rule, r.field))
