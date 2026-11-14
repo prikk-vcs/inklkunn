@@ -14,6 +14,7 @@
 //!   DM-7): keyed by prikk's ids, never authoritative, with no field for a verification result.
 //! - [`proposal`]: proposals, revisions, comments, decisions and the log of every transition (RFC 004 D-1,
 //!   D-3), with drafts visible to their author only.
+//! - [`claim_thread`]: a claim's own discussion, append-only, with the proposal comments' rules (RFC 005 part 2 D-11).
 //! - [`review`]: what reviewers did with the default that a reworded claim keeps its claim (RFC 005 part 1 D-1 d).
 //! - [`acceptance`]: acceptances, intents and the lease holder (RFC 004 D-4, D-7), written once and never
 //!   updated.
@@ -29,6 +30,7 @@ pub mod acceptance;
 pub mod access;
 pub mod acts;
 pub mod audit;
+pub mod claim_thread;
 pub mod derived;
 pub mod identity;
 pub mod inbox;
@@ -55,6 +57,7 @@ pub use acts::{
 pub use audit::{
     AuditEvent, AuditLog, AuditOutcome, AuditRecord, AuditSink, MemoryAudit, export_jsonl,
 };
+pub use claim_thread::{ClaimCommentRecord, ClaimCommentRow, ClaimThreadPage, ClaimThreadStore};
 pub use derived::{
     DerivedHeading, DerivedLinks, DerivedMeta, DerivedPage, DerivedStore, IndexEntry,
     KnowledgeAnchorRow, KnowledgeClaimRow, KnowledgeInvalidRow, KnowledgeLinkRow,

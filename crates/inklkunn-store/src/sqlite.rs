@@ -15,6 +15,7 @@
 
 mod acceptance;
 mod acts;
+mod claim_thread;
 mod derived;
 mod identity;
 mod inbox;
@@ -37,7 +38,7 @@ use crate::record::{
 use crate::{Result, StoreError, WikiStore};
 
 /// The schema version this build writes and reads: the last of [`MIGRATIONS`].
-pub const SCHEMA_VERSION: i64 = 17;
+pub const SCHEMA_VERSION: i64 = 18;
 
 /// Version 1: M0's schema, the wiki records.
 const V1: &str = "
@@ -881,6 +882,40 @@ DELETE FROM knowledge_anchors;
 DELETE FROM knowledge_invalid;
 ";
 
+/// Version 18 (handoff 005, K-T10; RFC 005 part 2 D-11): **a claim's thread**, the epistemic discussion of a claim, with
+/// the shape and the rules of the proposal comments (version 9): service-authoritative and append-only, a reply in the
+/// thread of the comment it answers, and keyed by the wiki and the claim's id. Additive: one table, its two indexes and
+/// four triggers; nothing that exists is touched. `seq` is the comment's place in its thread (from 1), assigned inside
+/// the write's immediate transaction, and unique per thread, so that two writers cannot take one place.
+const V18: &str = "
+CREATE TABLE IF NOT EXISTS claim_comments (
+    id         TEXT PRIMARY KEY,
+    wiki_id    TEXT NOT NULL REFERENCES wikis(id),
+    claim_id   TEXT NOT NULL CHECK (length(claim_id) = 36 AND claim_id NOT GLOB '*[^0-9a-f-]*'),
+    seq        INTEGER NOT NULL CHECK (seq >= 1),
+    author     TEXT NOT NULL REFERENCES accounts(id),
+    parent     TEXT REFERENCES claim_comments(id),
+    body       TEXT NOT NULL CHECK (length(body) > 0),
+    created_at INTEGER NOT NULL,
+    UNIQUE (wiki_id, claim_id, seq)
+);
+CREATE INDEX IF NOT EXISTS claim_comments_author ON claim_comments(wiki_id, author, created_at);
+CREATE TRIGGER IF NOT EXISTS claim_comments_no_update BEFORE UPDATE ON claim_comments
+BEGIN SELECT RAISE(ABORT, 'claim comments are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS claim_comments_no_delete BEFORE DELETE ON claim_comments
+BEGIN SELECT RAISE(ABORT, 'claim comments are append-only'); END;
+-- Two unique keys: the id, and the place in a thread. A replacing insert on either would remove the row it collides
+-- with without firing the delete trigger.
+CREATE TRIGGER IF NOT EXISTS claim_comments_no_replace BEFORE INSERT ON claim_comments
+WHEN EXISTS (SELECT 1 FROM claim_comments WHERE id = NEW.id
+             OR (wiki_id = NEW.wiki_id AND claim_id = NEW.claim_id AND seq = NEW.seq))
+BEGIN SELECT RAISE(ABORT, 'claim comments are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS claim_comments_reply_in_thread BEFORE INSERT ON claim_comments
+WHEN NEW.parent IS NOT NULL AND NOT EXISTS (SELECT 1 FROM claim_comments
+    WHERE id = NEW.parent AND wiki_id = NEW.wiki_id AND claim_id = NEW.claim_id)
+BEGIN SELECT RAISE(ABORT, 'a reply is in the thread of the comment it answers'); END;
+";
+
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and
 /// [`SCHEMA_VERSION`] moves with it (a test holds the two together).
 pub const MIGRATIONS: &[(i64, &str)] = &[
@@ -901,6 +936,7 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (15, V15),
     (16, V16),
     (17, V17),
+    (18, V18),
 ];
 
 /// The SQLite-backed store.
