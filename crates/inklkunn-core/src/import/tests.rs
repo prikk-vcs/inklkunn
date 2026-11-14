@@ -96,7 +96,7 @@ fn a_clean_folder_is_planned_in_path_order_with_pages_and_attachments_counted() 
     put(&d.0, "users.yaml", b"users: []\n");
     put(&d.0, "history/x.jsonl", b"{}\n");
     put(&d.0, "notes.txt", b"mine");
-    let plan = plan_folder(&d.0, &nothing(), false).unwrap();
+    let plan = plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap();
     assert!(plan.is_importable(), "{}", plan.report());
     let paths: Vec<&str> = plan.files.iter().map(|f| f.path.as_str()).collect();
     assert_eq!(
@@ -137,7 +137,7 @@ fn a_folder_that_carries_claims_with_a_community_status_imports_none_of_them() {
         "knowledge/sources/01931111-0000-7000-8000-000000000001.yaml",
         b"kind: primary\navailability: available\n",
     );
-    let plan = plan_folder(&d.0, &nothing(), false).unwrap();
+    let plan = plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap();
     assert!(plan.is_importable(), "{}", plan.report());
     let paths: Vec<&str> = plan.files.iter().map(|f| f.path.as_str()).collect();
     assert_eq!(paths, vec!["pages/A.md"]);
@@ -193,7 +193,7 @@ fn hostile(root: &Path) {
 fn a_hostile_folder_is_refused_with_every_reason_named_and_the_good_page_does_not_go_alone() {
     let d = dir("hostile");
     hostile(&d.0);
-    let plan = plan_folder(&d.0, &nothing(), false).unwrap();
+    let plan = plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap();
     assert!(!plan.is_importable());
     let reasons: HashMap<String, String> = plan
         .refused
@@ -304,7 +304,7 @@ fn a_path_the_wiki_has_is_refused_unless_replacing_is_asked_for() {
     put(&d.0, "pages/Help.md", GOOD.as_bytes());
     put(&d.0, "pages/New.md", GOOD.replace("g-1", "g-9").as_bytes());
     let has = nothing().with_file("pages/Help.md", b"an older Help\n");
-    let refused = plan_folder(&d.0, &has, false).unwrap();
+    let refused = plan_folder(&d.0, &has, false, &ReadConfig::default()).unwrap();
     assert!(!refused.is_importable());
     assert_eq!(refused.refused.len(), 1);
     assert!(
@@ -313,7 +313,7 @@ fn a_path_the_wiki_has_is_refused_unless_replacing_is_asked_for() {
             .first()
             .is_some_and(|r| r.reason.contains("--replace-existing"))
     );
-    let replaced = plan_folder(&d.0, &has, true).unwrap();
+    let replaced = plan_folder(&d.0, &has, true, &ReadConfig::default()).unwrap();
     assert!(replaced.unchanged.is_empty());
     assert!(replaced.is_importable());
     let actions: Vec<(&str, Action)> = replaced
@@ -337,18 +337,30 @@ fn nothing_to_import_and_not_a_directory_are_said_plainly() {
     std::fs::create_dir_all(d.0.join("pages")).unwrap();
     put(&d.0, "users.yaml", b"users: []\n");
     assert!(matches!(
-        plan_folder(&d.0, &nothing(), false),
+        plan_folder(&d.0, &nothing(), false, &ReadConfig::default()),
         Err(ImportError::Nothing)
     ));
     put(&d.0, "afile", b"x");
-    let err = plan_folder(&d.0.join("afile"), &nothing(), false).unwrap_err();
+    let err = plan_folder(
+        &d.0.join("afile"),
+        &nothing(),
+        false,
+        &ReadConfig::default(),
+    )
+    .unwrap_err();
     assert!(err.to_string().contains("not a directory"), "{err}");
-    let err = plan_folder(&d.0.join("missing"), &nothing(), false).unwrap_err();
+    let err = plan_folder(
+        &d.0.join("missing"),
+        &nothing(),
+        false,
+        &ReadConfig::default(),
+    )
+    .unwrap_err();
     assert!(matches!(err, ImportError::Folder(_)), "{err}");
     // A top-level `pages` that is a link is refused, not followed.
     let e = dir("toplink");
     std::os::unix::fs::symlink(&d.0, e.0.join("pages")).unwrap();
-    let plan = plan_folder(&e.0, &nothing(), false).unwrap();
+    let plan = plan_folder(&e.0, &nothing(), false, &ReadConfig::default()).unwrap();
     assert!(!plan.is_importable());
     assert!(
         plan.refused
@@ -363,7 +375,7 @@ fn a_planning_and_a_dry_run_write_nothing_and_a_file_swapped_for_a_link_is_not_f
     put(&d.0, "pages/A.md", GOOD.as_bytes());
     put(&d.0, "attachments/a.bin", b"abc");
     let before = snapshot(&d.0);
-    let plan = plan_folder(&d.0, &nothing(), false).unwrap();
+    let plan = plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap();
     let _ = plan.report();
     assert_eq!(snapshot(&d.0), before, "planning changed the folder");
     // Between the plan and the read, an attachment becomes a link to something else.
@@ -448,7 +460,7 @@ fn the_run_binds_the_seal_to_the_planned_files_under_the_system_principal_and_fo
     let d = dir("run");
     put(&d.0, "pages/A.md", GOOD.as_bytes());
     put(&d.0, "attachments/a.bin", b"abc");
-    let plan = plan_folder(&d.0, &nothing(), false).unwrap();
+    let plan = plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap();
     let (rig, accept, acts) = world("import");
     let wiki = rig.wiki.clone();
     let done = run_import(&acts, &wiki, &plan).unwrap();
@@ -493,7 +505,7 @@ fn the_run_binds_the_seal_to_the_planned_files_under_the_system_principal_and_fo
     assert!(rig.store.lease_holder(&wiki.id).unwrap().is_none());
     // A plan with a refusal never reaches the signer.
     put(&d.0, "pages/CON.md", b"x");
-    let bad = plan_folder(&d.0, &nothing(), false).unwrap();
+    let bad = plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap();
     *accept.seen.lock().unwrap() = None;
     let err = run_import(&acts, &wiki, &bad).unwrap_err();
     assert!(matches!(err, ImportError::Refused(1)), "{err}");
@@ -528,7 +540,7 @@ fn a_directory_swapped_for_a_link_between_the_plan_and_the_run_is_not_followed()
     let d = dir("swapdir");
     put(&d.0, "pages/Sub/A.md", GOOD.as_bytes());
     put(&d.0, "attachments/x/y.bin", b"abc");
-    let plan = plan_folder(&d.0, &nothing(), false).unwrap();
+    let plan = plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap();
     assert!(plan.is_importable(), "{}", plan.report());
     assert_eq!(read_files(&plan).unwrap().len(), 2);
 
@@ -589,7 +601,7 @@ fn a_directory_swapped_for_a_link_between_the_plan_and_the_run_is_not_followed()
 fn a_file_replaced_by_another_with_the_same_bytes_is_not_the_file_that_was_planned() {
     let d = dir("replaced");
     put(&d.0, "attachments/a.bin", b"abc");
-    let plan = plan_folder(&d.0, &nothing(), false).unwrap();
+    let plan = plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap();
     // A new inode renamed over the old one: same path, same size, same bytes.
     put(&d.0, "attachments/a.tmp", b"abc");
     std::fs::rename(d.0.join("attachments/a.tmp"), d.0.join("attachments/a.bin")).unwrap();
@@ -602,7 +614,7 @@ fn a_pipe_swapped_in_for_a_file_between_the_plan_and_the_run_is_refused_not_wait
     let d = dir("fifo");
     put(&d.0, "pages/A.md", GOOD.as_bytes());
     put(&d.0, "attachments/a.bin", b"abc");
-    let plan = plan_folder(&d.0, &nothing(), false).unwrap();
+    let plan = plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap();
     std::fs::remove_file(d.0.join("attachments/a.bin")).unwrap();
     mkfifo(&d.0.join("attachments/a.bin"));
     let why = changed(within(10, move || read_files(&plan)).unwrap_err());
@@ -622,7 +634,7 @@ fn a_pipe_swapped_in_for_a_file_between_the_plan_and_the_run_is_refused_not_wait
     assert!(why.contains("no longer a regular file"), "{why}");
 
     // A pipe is also refused when it is found at the plan, without being opened.
-    let plan = plan_folder(&d.0, &nothing(), false).unwrap();
+    let plan = plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap();
     assert!(
         plan.refused
             .iter()
@@ -677,7 +689,7 @@ fn a_directory_swapped_for_a_link_while_the_walk_is_in_it_is_still_walked_as_the
                 std::os::unix::fs::symlink(&twin_path, root.join("pages/Sub")).unwrap();
             }
         },
-        || plan_folder(&d.0, &nothing(), false).unwrap(),
+        || plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap(),
     );
     // The walk went on in the directory it held: the folder's own page, not the twin's.
     let paths: Vec<&str> = plan.files.iter().map(|f| f.path.as_str()).collect();
@@ -712,7 +724,7 @@ fn a_directory_swapped_for_a_link_after_it_was_listed_is_refused_and_not_entered
                 std::os::unix::fs::symlink(&twin_path, root.join("pages/Sub")).unwrap();
             }
         },
-        || plan_folder(&d.0, &nothing(), false).unwrap(),
+        || plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap(),
     );
     assert!(
         plan.refused
@@ -733,7 +745,7 @@ fn the_folder_named_through_a_link_is_walked_and_its_replacement_is_refused_at_t
     put(&d.0, "real/pages/A.md", GOOD.as_bytes());
     let link = d.0.join("link");
     std::os::unix::fs::symlink(d.0.join("real"), &link).unwrap();
-    let plan = plan_folder(&link, &nothing(), false).unwrap();
+    let plan = plan_folder(&link, &nothing(), false, &ReadConfig::default()).unwrap();
     assert!(plan.is_importable(), "{}", plan.report());
     assert_eq!(read_files(&plan).unwrap().len(), 1);
     put(&d.0, "other/pages/A.md", GOOD.as_bytes());
@@ -751,7 +763,7 @@ fn a_file_with_another_name_is_refused_at_the_plan_and_when_the_name_appears_aft
     std::fs::hard_link(d.0.join("pages/A.md"), d.0.join("pages/Twin.md")).unwrap();
     // An attachment is not read at the plan, so the link count is what refuses it there.
     std::fs::hard_link(d.0.join("attachments/a.bin"), d.0.join("attachments/b.bin")).unwrap();
-    let plan = plan_folder(&d.0, &nothing(), false).unwrap();
+    let plan = plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap();
     for name in [
         "pages/A.md",
         "pages/Twin.md",
@@ -771,7 +783,7 @@ fn a_file_with_another_name_is_refused_at_the_plan_and_when_the_name_appears_aft
     std::fs::remove_file(d.0.join("pages/Twin.md")).unwrap();
     std::fs::remove_file(d.0.join("pages/A.md")).unwrap();
     std::fs::remove_file(d.0.join("attachments/b.bin")).unwrap();
-    let plan = plan_folder(&d.0, &nothing(), false).unwrap();
+    let plan = plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap();
     assert!(plan.is_importable(), "{}", plan.report());
     let outside = dir("hardlink-outside");
     std::fs::hard_link(d.0.join("attachments/a.bin"), outside.0.join("a")).unwrap();
@@ -790,7 +802,7 @@ fn a_refusal_never_carries_a_byte_of_the_pages_text_and_every_reason_is_escaped(
         "pages/Dup.md",
         "---\ntitle: Dup\n\u{1b}[2Jowned: 1\n\u{1b}[2Jowned: 2\n---\nbody\n".as_bytes(),
     );
-    let plan = plan_folder(&d.0, &nothing(), false).unwrap();
+    let plan = plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap();
     let reason = &plan
         .refused
         .iter()
@@ -858,7 +870,7 @@ fn a_page_path_must_be_the_canonical_one_of_its_title() {
     );
     // An attachment's name is its own business.
     put(&d.0, "attachments/My File.bin", b"x");
-    let plan = plan_folder(&d.0, &nothing(), false).unwrap();
+    let plan = plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap();
     let reason = |name: &str| {
         plan.refused
             .iter()
@@ -891,7 +903,7 @@ fn names_and_page_ids_are_checked_against_the_wiki_not_only_the_folder() {
     put(&d.0, "pages/HELP.md", b"---\ntitle: HELP\n---\n");
     // A new page that takes the id of a page the wiki keeps.
     put(&d.0, "pages/New.md", GOOD.replace("Good", "New").as_bytes());
-    let plan = plan_folder(&d.0, &wiki, true).unwrap();
+    let plan = plan_folder(&d.0, &wiki, true, &ReadConfig::default()).unwrap();
     let reason = |name: &str| {
         plan.refused
             .iter()
@@ -918,12 +930,12 @@ fn names_and_page_ids_are_checked_against_the_wiki_not_only_the_folder() {
         "pages/Old.md",
         GOOD.replace("Good", "Newer").as_bytes(),
     );
-    let plan = plan_folder(&e.0, &wiki, true).unwrap();
+    let plan = plan_folder(&e.0, &wiki, true, &ReadConfig::default()).unwrap();
     assert!(plan.is_importable(), "{}", plan.report());
     let e = dir("against-moved");
     put(&e.0, "pages/Old.md", GOOD.replace("g-1", "g-7").as_bytes());
     put(&e.0, "pages/New.md", GOOD.as_bytes());
-    let plan = plan_folder(&e.0, &wiki, true).unwrap();
+    let plan = plan_folder(&e.0, &wiki, true, &ReadConfig::default()).unwrap();
     assert!(plan.is_importable(), "{}", plan.report());
 }
 
@@ -935,7 +947,7 @@ fn a_file_over_the_cap_of_one_acceptance_is_refused_at_the_plan_and_sizes_are_su
     big.set_len(MAX_CHANGE_BYTES + 1).unwrap();
     std::fs::create_dir_all(d.0.join("attachments")).unwrap();
     std::fs::rename(d.0.join("big.bin"), d.0.join("attachments/big.bin")).unwrap();
-    let plan = plan_folder(&d.0, &nothing(), false).unwrap();
+    let plan = plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap();
     assert!(
         plan.refused
             .iter()
@@ -960,7 +972,7 @@ fn a_file_over_the_cap_of_one_acceptance_is_refused_at_the_plan_and_sizes_are_su
 fn the_plan_is_pinned_to_the_tip_and_a_plan_without_one_is_not_run() {
     let d = dir("pinned");
     put(&d.0, "pages/A.md", GOOD.as_bytes());
-    let plan = plan_folder(&d.0, &nothing(), false).unwrap();
+    let plan = plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap();
     assert_eq!(plan.base, TIP);
     let (rig, accept, acts) = world("pinned");
     run_import(&acts, &rig.wiki, &plan).unwrap();
@@ -987,9 +999,9 @@ fn a_folder_the_wiki_already_has_is_nothing_changed_and_a_mixed_one_writes_only_
         .with_file("pages/Home.md", GOOD.as_bytes())
         .with_file("attachments/a.bin", b"abc");
     // Without --replace-existing the paths are still taken: that rule is not softened.
-    let taken = plan_folder(&d.0, &has, false).unwrap();
+    let taken = plan_folder(&d.0, &has, false, &ReadConfig::default()).unwrap();
     assert_eq!(taken.refused.len(), 2);
-    let plan = plan_folder(&d.0, &has, true).unwrap();
+    let plan = plan_folder(&d.0, &has, true, &ReadConfig::default()).unwrap();
     assert!(
         plan.is_unchanged() && !plan.is_importable(),
         "{}",
@@ -1013,7 +1025,7 @@ fn a_folder_the_wiki_already_has_is_nothing_changed_and_a_mixed_one_writes_only_
 
     // One file differs: it alone is written, the other is reported unchanged.
     put(&d.0, "attachments/a.bin", b"abcd");
-    let plan = plan_folder(&d.0, &has, true).unwrap();
+    let plan = plan_folder(&d.0, &has, true, &ReadConfig::default()).unwrap();
     assert!(plan.is_importable() && !plan.is_unchanged());
     let written: Vec<(&str, Action)> = plan
         .files
@@ -1028,3 +1040,4 @@ fn a_folder_the_wiki_already_has_is_nothing_changed_and_a_mixed_one_writes_only_
 }
 
 mod knowledge;
+mod page_cap;

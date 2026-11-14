@@ -317,7 +317,7 @@ impl World {
             &ReadConfig::default(),
         )
         .unwrap();
-        let plan = plan_folder(&folder.0, &have, false).unwrap();
+        let plan = plan_folder(&folder.0, &have, false, &ReadConfig::default()).unwrap();
         assert!(plan.is_importable(), "{}", plan.report());
         run_import(&self.acts, &self.wiki, &plan).unwrap_or_else(|e| panic!("{e}"));
     }

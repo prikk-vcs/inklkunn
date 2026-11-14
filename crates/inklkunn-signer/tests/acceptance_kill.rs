@@ -844,7 +844,8 @@ fn fixture_over(tag: &str, real: PathBuf) -> Option<Fixture> {
     let have =
         inklkunn_core::import::wiki_state(&*s.storage, &s.layout, &wiki, &ReadConfig::default())
             .unwrap();
-    let plan = inklkunn_core::import::plan_folder(&folder.0, &have, false).unwrap();
+    let plan = inklkunn_core::import::plan_folder(&folder.0, &have, false, &ReadConfig::default())
+        .unwrap();
     inklkunn_core::import::run_import(&acts, &wiki, &plan).unwrap_or_else(|e| panic!("{e}"));
     let propose = |summary: &str, path: &str, text: String| -> ProposalRecord {
         let edit = ProposalEdit {

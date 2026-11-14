@@ -59,8 +59,35 @@ fn the_commands_parse() {
             wiki: "docs".into(),
             dir: "/in".into(),
             dry_run: true,
-            replace_existing: true
+            replace_existing: true,
+            config: None
         }
+    );
+    assert_eq!(
+        parse(&args(&[
+            "import-folder",
+            "docs",
+            "/in",
+            "--config",
+            "/etc/inklkunn.conf",
+            "--dry-run"
+        ]))
+        .unwrap(),
+        Command::ImportFolder {
+            wiki: "docs".into(),
+            dir: "/in".into(),
+            dry_run: true,
+            replace_existing: false,
+            config: Some("/etc/inklkunn.conf".into())
+        }
+    );
+    assert!(parse(&args(&["import-folder", "docs", "/in", "--config"])).is_err());
+    // Only an import judges a folder under the server's limits: no other command takes the file.
+    assert!(
+        parse(&args(&[
+            "export", "docs", "--bundle", "/b", "--config", "/c"
+        ]))
+        .is_err()
     );
     assert_eq!(
         parse(&args(&["import-folder", "docs", "/in"])).unwrap(),
@@ -68,7 +95,8 @@ fn the_commands_parse() {
             wiki: "docs".into(),
             dir: "/in".into(),
             dry_run: false,
-            replace_existing: false
+            replace_existing: false,
+            config: None
         }
     );
     assert_eq!(
@@ -2096,4 +2124,62 @@ fn an_import_is_judged_under_the_operators_read_limits_and_not_the_defaults() {
     let (status, _, err) = w.cli_with(&[("INKLKUNN_INDEX_MAX_FILES", "many")], &dry);
     assert_eq!(status, 1);
     assert!(err.contains("INKLKUNN_INDEX_MAX_FILES"), "{err}");
+}
+
+/// `wiki import-folder --config FILE` reads the file `serve --config FILE` reads (handoff 005 K57, the review's X-f): an
+/// operator who sets the server's limits in the file gets the same limits on import, the environment still wins over the
+/// file, and a file that cannot be read or has a name that is no setting stops the import before anything is opened.
+#[test]
+fn an_import_reads_the_servers_configuration_file_and_is_judged_under_its_page_cap() {
+    let Some(w) = world("config-file") else {
+        return;
+    };
+    let (status, _, err) = w.cli(&["wiki", "create", "notes", "--name", "Notes"]);
+    assert_eq!(status, 0, "{err}");
+    let f = dir(&w.tmp.0, "config-file");
+    // A page of 3 KiB: over a cap of 1 KiB, under 8 KiB and under the default.
+    let mut page = HOME.as_bytes().to_vec();
+    page.extend(std::iter::repeat_n(b'a', 3 * 1024));
+    page.push(b'\n');
+    put(&f.0, "pages/Home.md", &page);
+    let arg = f.0.to_str().unwrap();
+    let file = |name: &str, text: &str| {
+        let path = w.tmp.0.join(name);
+        std::fs::write(&path, text).unwrap();
+        path.to_str().unwrap().to_owned()
+    };
+    let lowered = file(
+        "lowered.conf",
+        "# the server's own file\nINKLKUNN_PAGE_MAX_KIB=1\n",
+    );
+    let raised = file("raised.conf", "INKLKUNN_PAGE_MAX_KIB=8\n");
+    let import = |config: Option<&str>, env: &[(&str, &str)]| {
+        let mut argv = vec!["wiki", "import-folder", "notes", arg, "--dry-run"];
+        if let Some(path) = config {
+            argv.extend(["--config", path]);
+        }
+        w.cli_with(env, &argv)
+    };
+    // The default cap takes it; the file's cap of 1 KiB refuses it, naming the cap it used.
+    let (status, out, err) = import(None, &[]);
+    assert_eq!(status, 0, "no file: {out}{err}");
+    let (status, out, err) = import(Some(&lowered), &[]);
+    assert_eq!(status, 1, "{out}{err}");
+    assert!(
+        out.contains("is larger than the 1.0 KiB cap of a page"),
+        "{out}{err}"
+    );
+    // A raised cap in the file takes it; the environment wins over the file, as it does for `serve`.
+    let (status, out, err) = import(Some(&raised), &[]);
+    assert_eq!(status, 0, "{out}{err}");
+    let (status, out, err) = import(Some(&lowered), &[("INKLKUNN_PAGE_MAX_KIB", "8")]);
+    assert_eq!(status, 0, "the environment wins: {out}{err}");
+    // A file that is not there, or names no setting, is refused in its own words.
+    let (status, _, err) = import(Some("/nonexistent/inklkunn.conf"), &[]);
+    assert_eq!(status, 1);
+    assert!(err.contains("could not be read"), "{err}");
+    let typo = file("typo.conf", "INKLKUNN_PAGE_MAX_KB=1\n");
+    let (status, _, err) = import(Some(&typo), &[]);
+    assert_eq!(status, 1);
+    assert!(err.contains("INKLKUNN_PAGE_MAX_KB"), "{err}");
 }

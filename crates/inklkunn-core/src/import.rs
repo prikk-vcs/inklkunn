@@ -194,6 +194,9 @@ pub struct ImportPlan {
     root: PathBuf,
     /// Every directory the walk entered (and the folder itself) with its identity.
     dirs: BTreeMap<PathBuf, Identity>,
+    /// The largest page the plan was made under (the operator's `page_max_bytes`): the run reads a page again under the
+    /// same cap, so a page the plan accepted is a page the server can read.
+    page_cap: u64,
 }
 
 fn unit(n: u64) -> String {
@@ -1048,11 +1051,13 @@ impl Walk<'_> {
 
 /// Plan the import of `folder`: walk it, check every entry, and say what would be written. `existing` is what
 /// the wiki has at the tip the plan is pinned to ([`wiki_state`]); `replace_existing` allows replacing a file it
-/// has. Reads pages (to check them) and nothing else; writes nothing, anywhere.
+/// has. Reads pages (to check them) and nothing else; writes nothing, anywhere. `config` is the operator's: a page is
+/// judged under its `page_max_bytes`, the cap the server reads under, and the run reads the page again under the same one.
 pub fn plan_folder(
     folder: &Path,
     existing: &Existing,
     replace_existing: bool,
+    config: &ReadConfig,
 ) -> Result<ImportPlan, ImportError> {
     // The folder is opened once; everything below it is reached through this handle.
     let root = open_root(folder).map_err(|e| {
@@ -1067,10 +1072,11 @@ pub fn plan_folder(
     let mut walk = Walk {
         existing,
         replace_existing,
-        page_cap: ReadConfig::default().page_max_bytes,
+        page_cap: config.page_max_bytes,
         plan: ImportPlan {
             base: existing.tip.clone(),
             root: folder.to_path_buf(),
+            page_cap: config.page_max_bytes,
             ..ImportPlan::default()
         },
         keys: HashMap::new(),
@@ -1161,7 +1167,9 @@ pub fn plan_folder(
 
 /// What the wiki has at its default view's tip: one extraction of the tip (in the wiki's scratch directory,
 /// removed again), every file under `pages/` and `attachments/` hashed and every page's id read. The tip's
-/// block id is [`Existing::tip`], and the extraction is of that block, so the files and the tip agree.
+/// block id is [`Existing::tip`], and the extraction is of that block, so the files and the tip agree. The extraction is
+/// bounded by the operator's `config` as a read of the wiki is (`index_max_bytes`, `index_max_files`), and a page's id is
+/// read from every page the server would read (`page_max_bytes`).
 pub fn wiki_state(
     storage: &dyn Storage,
     layout: &RootLayout,
@@ -1257,7 +1265,7 @@ fn collect(
 /// Read the files of a plan that can be imported, checking each again as it is read: the directories above it,
 /// the open handle's identity against the plan's, its size and (for a page) its content.
 fn read_files(plan: &ImportPlan) -> Result<Vec<PreparedFile>, ImportError> {
-    let page_cap = ReadConfig::default().page_max_bytes;
+    let page_cap = plan.page_cap;
     let mut files = Vec::with_capacity(plan.files.len());
     let changed =
         |f: &PlannedFile, why: String| ImportError::Changed(format!("`{}` {why}", f.path));

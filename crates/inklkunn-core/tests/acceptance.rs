@@ -301,7 +301,7 @@ impl World {
             &ReadConfig::default(),
         )
         .unwrap();
-        let plan = plan_folder(&folder.0, &have, false).unwrap();
+        let plan = plan_folder(&folder.0, &have, false, &ReadConfig::default()).unwrap();
         assert!(plan.is_importable(), "{}", plan.report());
         run_import(&self.acts, &self.wiki, &plan).unwrap_or_else(|e| panic!("{e}"))
     }
@@ -859,7 +859,7 @@ fn a_failure_injected_after_commit_flags_the_wiki_and_reads_still_serve() {
     )
     .unwrap();
     let have = wiki_state(&*w.storage, &w.layout, &w.wiki, &ReadConfig::default()).unwrap();
-    let plan = plan_folder(&folder.0, &have, false).unwrap();
+    let plan = plan_folder(&folder.0, &have, false, &ReadConfig::default()).unwrap();
     let err = run_import(&w.acts, &w.wiki, &plan).unwrap_err();
     assert!(
         matches!(
@@ -2348,7 +2348,7 @@ fn a_reconfirm_reads_the_pages_of_the_tip_the_acceptance_prepared_on() {
         w.leases.clone(),
     );
     let have = wiki_state(&*w.storage, &w.layout, &w.wiki, &ReadConfig::default()).unwrap();
-    let plan = plan_folder(&folder.0, &have, true).unwrap();
+    let plan = plan_folder(&folder.0, &have, true, &ReadConfig::default()).unwrap();
     run_import(&unseen, &w.wiki, &plan).unwrap_or_else(|e| panic!("{e}"));
     assert_ne!(w.tip(), held_tip);
     assert_eq!(

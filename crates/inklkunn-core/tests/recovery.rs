@@ -476,7 +476,7 @@ impl World {
             &ReadConfig::default(),
         )
         .unwrap();
-        let plan = plan_folder(&folder.0, &have, false).unwrap();
+        let plan = plan_folder(&folder.0, &have, false, &ReadConfig::default()).unwrap();
         assert!(plan.is_importable(), "{}", plan.report());
         run_import(&self.acts, &self.wiki, &plan).unwrap_or_else(|e| panic!("{e}"))
     }
@@ -1471,7 +1471,7 @@ fn a_wiki_under_recovery_serves_reads_and_refuses_writes_with_the_word_until_rec
     )
     .unwrap();
     let have = wiki_state(&*w.storage, &w.layout, &w.wiki, &ReadConfig::default()).unwrap();
-    let plan = plan_folder(&folder.0, &have, false).unwrap();
+    let plan = plan_folder(&folder.0, &have, false, &ReadConfig::default()).unwrap();
     let err = run_import(&w.acts, &w.wiki, &plan).unwrap_err();
     assert!(
         matches!(
@@ -1499,7 +1499,7 @@ fn an_import_that_ended_after_commit_is_completed_the_same_way() {
     )
     .unwrap();
     let have = wiki_state(&*w.storage, &w.layout, &w.wiki, &ReadConfig::default()).unwrap();
-    let plan = plan_folder(&folder.0, &have, false).unwrap();
+    let plan = plan_folder(&folder.0, &have, false, &ReadConfig::default()).unwrap();
     w.control("fail-seal", "");
     let err = run_import(&w.acts, &w.wiki, &plan).unwrap_err();
     w.uncontrol("fail-seal");

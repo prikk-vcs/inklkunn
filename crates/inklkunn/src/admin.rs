@@ -73,6 +73,9 @@ pub(crate) enum Command {
         dir: String,
         dry_run: bool,
         replace_existing: bool,
+        /// `--config FILE`: the file `serve --config` reads, so that an import is judged under the limits the server
+        /// reads under (K57).
+        config: Option<String>,
     },
     Export {
         wiki: String,
@@ -95,16 +98,26 @@ pub(crate) enum Command {
     },
 }
 
+impl Command {
+    /// The configuration file the command was given (`--config FILE`), when it takes one.
+    pub(crate) fn config_file(&self) -> Option<&str> {
+        match self {
+            Command::ImportFolder { config, .. } => config.as_deref(),
+            _ => None,
+        }
+    }
+}
+
 /// The command line was not understood (exit status 2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Usage(pub String);
 
 pub(crate) const USAGE: &str = "usage: inklkunn [--dev-unconfined] wiki create <slug> --name <name> [--license <spdx>] [--lang <tag>]... [--visibility public|private]\n       \
-inklkunn [--dev-unconfined] wiki import-folder <wiki> <dir> [--dry-run] [--replace-existing]\n       \
+inklkunn [--dev-unconfined] wiki import-folder <wiki> <dir> [--dry-run] [--replace-existing] [--config <file>]\n       \
 inklkunn [--dev-unconfined] wiki export <wiki> [--bundle <dir>] [--archive <file>]\n       \
 inklkunn [--dev-unconfined] wiki recover <wiki> [--plan] [--discard-queued-patch <patch id>]\n       \
 inklkunn [--dev-unconfined] wiki metrics <wiki> [--days <n> | --from <unix> --to <unix>]\n\
-<wiki> is the wiki's slug or id. An export's destination must not exist. `recover --plan` shows what recovery would do and changes nothing (prikk's own preview of taking a queued patch back is shown by a run, not by --plan). `--discard-queued-patch <patch id>` asks to take the one queued patch back (prikk 0.57.0 and later) when no recorded act describes it; the id is the confirmation, and the plan and the audit trail say whether it was used.";
+<wiki> is the wiki's slug or id. `import-folder --config <file>` reads the file `serve --config` reads (the environment still wins over it), so the import is judged under the same limits as the server. An export's destination must not exist. `recover --plan` shows what recovery would do and changes nothing (prikk's own preview of taking a queued patch back is shown by a run, not by --plan). `--discard-queued-patch <patch id>` asks to take the one queued patch back (prikk 0.57.0 and later) when no recorded act describes it; the id is the confirmation, and the plan and the audit trail say whether it was used.";
 
 /// Parse what follows `wiki` for `create`, `import-folder` and `export`.
 pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
@@ -148,11 +161,13 @@ pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
                 _ => return Err(usage("which folder?")),
             };
             flags = rest;
-            let (mut dry_run, mut replace_existing) = (false, false);
-            for flag in flags {
+            let (mut dry_run, mut replace_existing, mut config) = (false, false, None);
+            let mut it = flags.iter();
+            while let Some(flag) = it.next() {
                 match flag.as_str() {
                     "--dry-run" => dry_run = true,
                     "--replace-existing" => replace_existing = true,
+                    "--config" => config = Some(value("--config", &mut it)?),
                     other => {
                         return Err(usage(&format!(
                             "`{other}` is not an option of `import-folder`"
@@ -165,6 +180,7 @@ pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
                 dir,
                 dry_run,
                 replace_existing,
+                config,
             })
         }
         "export" => {
@@ -417,6 +433,7 @@ fn run(
             dir,
             dry_run,
             replace_existing,
+            config: _,
         } => import_folder(
             settings,
             get_env,
@@ -731,7 +748,8 @@ fn import_folder(
         have = wiki_state(&env.storage, &env.layout, &record, &read_config);
     }
     let have = have.map_err(|e| e.to_string())?;
-    let mut plan = plan_folder(&folder, &have, replace_existing).map_err(|e| e.to_string())?;
+    let mut plan =
+        plan_folder(&folder, &have, replace_existing, &read_config).map_err(|e| e.to_string())?;
     // The knowledge files of a bundle that declares the extension are judged as an acceptance judges them (RFC 005 part 2
     // D-12), so a dry run says what the run would refuse. The service's own path judges them again before the signer.
     let reads = Arc::new(ReadService::new(

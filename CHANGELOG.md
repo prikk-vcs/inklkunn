@@ -1314,6 +1314,21 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   `inklkunn-signer/tests/extract_pid_namespace.rs`, the one crate whose tests may start a process) leaves a held extract and
   removes a dead one.
 
+- **K57 (handoff 005 corrections, sixth round): the import is judged by the operator's limits throughout.** The plan took the
+  default page cap (1 MiB) while its knowledge judgement took the operator's, so with `INKLKUNN_PAGE_MAX_KIB=256` it wrote pages
+  the server cannot read and judged claims anchored in them sound, and with the cap raised it refused pages the server would
+  serve; `wiki_state` missed an existing page's id between the two caps (review X-d). Now `plan_folder` and `wiki_state` take the
+  `ReadConfig` (public API: one more argument each), a page is judged under its `page_max_bytes`, the plan keeps the cap it was made
+  under and the run reads each page again under it, and `wiki_state` reads a page's id from every page the server would read. And
+  `wiki import-folder` takes `--config FILE`, the file `serve --config FILE` reads (the environment still wins over it), so a
+  `serve --config` operator gets the same limits on import instead of the environment's or the defaults (X-f); a file that cannot be
+  read, or names no setting, stops the import before anything is opened. Tests: a page one byte under, exactly at and one byte over a
+  lowered cap and a raised one (a raised cap takes a page over the default; the default would have refused it), the run's second
+  read under the plan's cap, a page that grew since the plan, `wiki_state`'s page ids at the cap and one byte under it, and the
+  command line end to end against a real wiki (the file's cap refuses a 3 KiB page at 1 KiB and takes it at 8 KiB, the environment
+  wins over the file, a missing file and a misspelt name are refused). The existing test of the operator's index limits now sees the
+  refusal at the extract of the wiki's current files (K55 bounds it), before the plan.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

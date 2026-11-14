@@ -93,14 +93,27 @@ pub(crate) fn run(
                     return 2;
                 }
             };
-            let settings = match Settings::load(get_env, dev_unconfined) {
+            // `import-folder --config FILE` reads the file `serve --config FILE` reads, the environment over it, so the
+            // import is judged under the limits the server reads under (K57).
+            let file = match command.config_file() {
+                None => std::collections::HashMap::new(),
+                Some(path) => match config::load_file(path) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        let _ = writeln!(err, "inklkunn: {e}");
+                        return 1;
+                    }
+                },
+            };
+            let get = config::layered(get_env, &file);
+            let settings = match Settings::load(&get, dev_unconfined) {
                 Ok(s) => s,
                 Err(e) => {
                     let _ = writeln!(err, "inklkunn: {e}");
                     return 1;
                 }
             };
-            admin::execute(&command, &settings, get_env, now, out, err)
+            admin::execute(&command, &settings, &get, now, out, err)
         }
         other => {
             let _ = writeln!(
@@ -143,16 +156,7 @@ fn serve_command(
     };
     let file = match config_path {
         None => std::collections::HashMap::new(),
-        Some(path) => match std::fs::read_to_string(path)
-            .map_err(|e| {
-                config::ConfigError(format!(
-                    "the configuration file {path} could not be read ({})",
-                    e.kind()
-                ))
-            })
-            .and_then(|text| {
-                config::read_file(&text).map_err(|e| config::ConfigError(format!("{path}: {e}")))
-            }) {
+        Some(path) => match config::load_file(path) {
             Ok(f) => f,
             Err(e) => return fail(err, &e),
         },

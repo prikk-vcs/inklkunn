@@ -14,9 +14,9 @@
 //! | `INKLKUNN_ADMISSION_BUDGET_MIB` | (`serve`) the memory the prikk calls share | `1024` |
 //! | `INKLKUNN_ADMISSION_WAIT_MS` | (`serve`) how long a read waits for budget before it is told the service is busy | `2000` |
 //! | `INKLKUNN_TIP_TTL_SECS` | (`serve`) how long a view's newest state is held before prikk is asked again; a change made a moment ago may take this long to show on a page | `5` |
-//! | `INKLKUNN_INDEX_MAX_MIB` | (`serve`, and `wiki import-folder` from the environment) the largest wiki, in MiB of everything it holds (attachments too), the title index is built from; a larger one is "could not be read now" until this is raised. **The build extracts the whole wiki into `<data dir>/wikis/…/scratch` for a moment, so the data directory needs that much free disk.** | `4096` |
-//! | `INKLKUNN_INDEX_MAX_FILES` | (`serve`, and `wiki import-folder` from the environment) the most files the title index is built from | `200000` |
-//! | `INKLKUNN_PAGE_MAX_KIB` | (`serve`, and `wiki import-folder` from the environment) the largest page source read, in KiB | `1024` |
+//! | `INKLKUNN_INDEX_MAX_MIB` | (`serve`, and `wiki import-folder`: from the environment, or from `--config FILE`) the largest wiki, in MiB of everything it holds (attachments too), the title index is built from; a larger one is "could not be read now" until this is raised. **The build extracts the whole wiki into `<data dir>/wikis/…/scratch` for a moment, so the data directory needs that much free disk.** | `4096` |
+//! | `INKLKUNN_INDEX_MAX_FILES` | (`serve`, and `wiki import-folder`: from the environment, or from `--config FILE`) the most files the title index is built from | `200000` |
+//! | `INKLKUNN_PAGE_MAX_KIB` | (`serve`, and `wiki import-folder`: from the environment, or from `--config FILE`) the largest page source read, in KiB | `1024` |
 //! | `INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS` | (`serve`) `knowledge.review_after` (RFC 005 part 2 D-10): how many days after a person last reviewed a source it is listed on the health list *Sources to review*; a source marked unavailable, or never reviewed, is listed whatever this says. The wiki fetches nothing: a person looks at a source and says so in a proposal | `1096` (three years) |
 //! | `INKLKUNN_JOIN` | (`serve`) who may make an account without an invitation: `off` (accounts come only from invitations), `provider` (a first sign-in through the configured OpenID Connect provider makes one; **a public provider makes this open registration**) or `anyone` (also a local account with a password) | `off` |
 //! | `INKLKUNN_OIDC_ISSUER` | (`serve`) the OpenID Connect provider's issuer, an `https` address exactly as the provider publishes it (its discovery document is at `<issuer>/.well-known/openid-configuration`); switches provider sign-in on. Needs `curl`, the system CA bundle, `prlimit` and bubblewrap on the host | none (no provider) |
@@ -25,7 +25,8 @@
 //! | `INKLKUNN_OIDC_SCOPES` | (`serve`) the scopes to ask besides `openid`, which is always asked; separated by spaces or commas. Only the provider's `iss` and `sub` are ever read, so the default asks for nothing more | `openid` only |
 //! | `INKLKUNN_TRUSTED_PROXIES` | (`serve`) the reverse proxies whose `X-Forwarded-For` is believed: comma-separated addresses (or networks) **of the proxies themselves, never a network clients are in** (a client inside it would choose its own address): `127.0.0.1`; none by default | none |
 //!
-//! `serve --config FILE` reads the same names from a file, one `NAME=value` per line (`#` comments); the
+//! `serve --config FILE` (and `wiki import-folder … --config FILE`, so that an import is judged under the limits the server
+//! reads under) reads the same names from a file, one `NAME=value` per line (`#` comments); the
 //! environment wins over the file, and a name that is not a setting is refused with its line number.
 //!
 //! prikk is confined with bubblewrap unless the command line starts with `--dev-unconfined`, which is for
@@ -455,6 +456,18 @@ pub fn read_file(text: &str) -> Result<HashMap<String, OsString>, ConfigError> {
         }
     }
     Ok(out)
+}
+
+/// Read the configuration file at `path` (`serve --config FILE`, and `wiki import-folder --config FILE`).
+pub fn load_file(path: &str) -> Result<HashMap<String, OsString>, ConfigError> {
+    std::fs::read_to_string(path)
+        .map_err(|e| {
+            ConfigError(format!(
+                "the configuration file {path} could not be read ({})",
+                e.kind()
+            ))
+        })
+        .and_then(|text| read_file(&text).map_err(|e| ConfigError(format!("{path}: {e}"))))
 }
 
 /// The settings the environment gives, then the file's for what the environment leaves out.

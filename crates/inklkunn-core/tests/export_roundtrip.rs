@@ -207,7 +207,7 @@ fn do_import(
     replace: bool,
 ) -> inklkunn_core::import::Imported {
     let have = wiki_state(&w.storage, &w.layout, &wiki.record, &ReadConfig::default()).unwrap();
-    let plan = plan_folder(folder, &have, replace).unwrap();
+    let plan = plan_folder(folder, &have, replace, &ReadConfig::default()).unwrap();
     assert!(plan.is_importable(), "{}", plan.report());
     run_import(&w.acts, &wiki.record, &plan).unwrap_or_else(|e| panic!("{e}"))
 }
@@ -452,7 +452,7 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
         // Wiki B: fresh, filled from A's bundle (its own Help page is replaced by A's).
         let b = create(&w, "beta");
         let have = wiki_state(&w.storage, &w.layout, &b.record, &ReadConfig::default()).unwrap();
-        let plan = plan_folder(&dir1, &have, true).unwrap();
+        let plan = plan_folder(&dir1, &have, true, &ReadConfig::default()).unwrap();
         assert!(plan.is_importable(), "{}", plan.report());
         let skipped: Vec<&str> = plan.not_imported.iter().map(|(n, _)| n.as_str()).collect();
         assert_eq!(
@@ -468,7 +468,7 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
             ]
         );
         // Without --replace-existing the Help page that both wikis have is refused.
-        let refused = plan_folder(&dir1, &have, false).unwrap();
+        let refused = plan_folder(&dir1, &have, false, &ReadConfig::default()).unwrap();
         assert!(
             !refused.is_importable() && refused.refused.iter().any(|r| r.name == "pages/Help.md")
         );
@@ -680,7 +680,7 @@ fn a_dry_run_writes_nothing_to_the_wiki_the_folder_or_anywhere() {
         .history(&a.repo, &Point::View(a.record.default_view.clone()), None)
         .unwrap();
     let have = wiki_state(&w.storage, &w.layout, &a.record, &ReadConfig::default()).unwrap();
-    let plan = plan_folder(&folder.0, &have, false).unwrap();
+    let plan = plan_folder(&folder.0, &have, false, &ReadConfig::default()).unwrap();
     assert!(plan.is_importable());
     let report = plan.report();
     assert!(report.contains("5 file(s) to write"), "{report}");
@@ -919,7 +919,7 @@ fn an_import_is_held_to_the_tip_it_was_planned_against_and_an_unchanged_reimport
     let before = blocks(&w);
     let have = wiki_state(&w.storage, &w.layout, &a.record, &ReadConfig::default()).unwrap();
     assert_eq!(have.tip, done.sealed.block_id, "the state is as of the tip");
-    let again = plan_folder(&folder.0, &have, true).unwrap();
+    let again = plan_folder(&folder.0, &have, true, &ReadConfig::default()).unwrap();
     assert!(again.is_unchanged(), "{}", again.report());
     assert_eq!(again.unchanged.len(), 5);
     let err = run_import(&w.acts, &a.record, &again).unwrap_err();
@@ -929,7 +929,7 @@ fn an_import_is_held_to_the_tip_it_was_planned_against_and_an_unchanged_reimport
     // One page differs: only it is written, and the other four are reported unchanged.
     let guide2 = GUIDE.replace("Back to", "Return to");
     put(&folder.0, "pages/Guide.md", guide2.as_bytes());
-    let mixed = plan_folder(&folder.0, &have, true).unwrap();
+    let mixed = plan_folder(&folder.0, &have, true, &ReadConfig::default()).unwrap();
     assert_eq!(mixed.files.len(), 1, "{}", mixed.report());
     assert_eq!(mixed.unchanged.len(), 4);
 
@@ -952,7 +952,7 @@ fn an_import_is_held_to_the_tip_it_was_planned_against_and_an_unchanged_reimport
 
     // Planned again against the new tip, it goes through, and only the page that differs changes.
     let have = wiki_state(&w.storage, &w.layout, &a.record, &ReadConfig::default()).unwrap();
-    let replan = plan_folder(&folder.0, &have, true).unwrap();
+    let replan = plan_folder(&folder.0, &have, true, &ReadConfig::default()).unwrap();
     assert_eq!(replan.files.len(), 1);
     run_import(&w.acts, &a.record, &replan).unwrap();
     assert_eq!(blocks(&w), after_other + 1);

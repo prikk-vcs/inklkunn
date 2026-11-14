@@ -69,7 +69,7 @@ fn a_bundle_that_declares_the_extension_has_its_claim_and_source_files_planned_a
  {
     let d = dir("k-plan");
     bundle(&d.0, &claim(), &source());
-    let plan = plan_folder(&d.0, &nothing(), false).unwrap();
+    let plan = plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap();
     assert!(plan.is_importable(), "{}", plan.report());
     let paths: Vec<&str> = plan.files.iter().map(|f| f.path.as_str()).collect();
     let expected = [claim_path(), source_path(), "pages/One.md".to_owned()];
@@ -154,7 +154,7 @@ fn knowledge_is_read_only_when_the_manifest_declares_the_extension_this_build_re
             Some(text) => put(&d.0, "wiki-bundle.yaml", text.as_bytes()),
             None => std::fs::remove_file(d.0.join("wiki-bundle.yaml")).unwrap(),
         }
-        let plan = plan_folder(&d.0, &nothing(), false).unwrap();
+        let plan = plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap();
         assert!(plan.is_importable(), "{tag}: {}", plan.report());
         assert_eq!(plan.knowledge_count(), 0, "{tag}");
         let why = &plan
@@ -184,7 +184,7 @@ fn a_knowledge_file_that_does_not_read_or_is_not_a_claim_or_source_is_refused_by
         "knowledge/claims/not-an-id.yaml",
         b"kind: observation\n",
     );
-    let plan = plan_folder(&d.0, &nothing(), false).unwrap();
+    let plan = plan_folder(&d.0, &nothing(), false, &ReadConfig::default()).unwrap();
     assert!(!plan.is_importable());
     assert_eq!(plan.refused.len(), 3, "{}", plan.report());
     let report = plan.report();
@@ -207,7 +207,7 @@ fn what_the_wiki_has_of_knowledge_is_taken_into_account_like_a_page() {
     let d = dir("k-exists");
     bundle(&d.0, &claim(), &source());
     let has = nothing().with_file(&claim_path(), claim().to_yaml().as_bytes());
-    let taken = plan_folder(&d.0, &has, false).unwrap();
+    let taken = plan_folder(&d.0, &has, false, &ReadConfig::default()).unwrap();
     assert_eq!(taken.refused.len(), 1, "{}", taken.report());
     assert!(
         taken
@@ -217,7 +217,7 @@ fn what_the_wiki_has_of_knowledge_is_taken_into_account_like_a_page() {
             .reason
             .contains("already exists")
     );
-    let again = plan_folder(&d.0, &has, true).unwrap();
+    let again = plan_folder(&d.0, &has, true, &ReadConfig::default()).unwrap();
     assert_eq!(again.unchanged, vec![claim_path()]);
 }
 
@@ -231,7 +231,13 @@ fn world_with_reads(tag: &str) -> (Rig, Arc<Recorder>, SystemActs) {
 fn planned(tag: &str, rig: &Rig, claim: &Claim, source: &Source) -> (Dir, ImportPlan) {
     let d = dir(tag);
     bundle(&d.0, claim, source);
-    let plan = plan_folder(&d.0, &Existing::at(&rig.fake.block_id()), false).unwrap();
+    let plan = plan_folder(
+        &d.0,
+        &Existing::at(&rig.fake.block_id()),
+        false,
+        &ReadConfig::default(),
+    )
+    .unwrap();
     assert!(plan.is_importable(), "{}", plan.report());
     (d, plan)
 }
@@ -403,7 +409,13 @@ fn an_import_is_judged_as_the_service_so_a_redirect_page_and_claims_import_toget
         "pages/Old.md",
         b"---\ntitle: Old\nkind: redirect\nredirect: One\n---\n\n",
     );
-    let mut plan = plan_folder(&d.0, &Existing::at(&rig.fake.block_id()), false).unwrap();
+    let mut plan = plan_folder(
+        &d.0,
+        &Existing::at(&rig.fake.block_id()),
+        false,
+        &ReadConfig::default(),
+    )
+    .unwrap();
     assert!(plan.is_importable(), "{}", plan.report());
     // The dry run says nothing against it...
     judge_knowledge(&mut plan, &rig.reads, &*rig.fake, &rig.layout, &rig.wiki).unwrap();
@@ -428,7 +440,13 @@ fn an_import_is_judged_as_the_service_so_a_redirect_page_and_claims_import_toget
         "pages/Old.md",
         b"---\ntitle: Old\nkind: redirect\nredirect: One\n---\n\n",
     );
-    let mut plan = plan_folder(&d.0, &Existing::at(&rig.fake.block_id()), false).unwrap();
+    let mut plan = plan_folder(
+        &d.0,
+        &Existing::at(&rig.fake.block_id()),
+        false,
+        &ReadConfig::default(),
+    )
+    .unwrap();
     judge_knowledge(&mut plan, &rig.reads, &*rig.fake, &rig.layout, &rig.wiki).unwrap();
     // Two knowledge rules refuse the one file: a status only curation sets (K30) and, since K45, a decided status that
     // names no wording it was judged on. Both name the claim file, and nothing else is refused.
