@@ -2991,4 +2991,21 @@ pub const CATALOG: &[Entry] = &[
     msg("know.subject_claim_id", "「{excerpt}」［主張 {id}］"),
     msg("know.subject_source_id", "{name}［出典 {id}］"),
     // knowledge: subjects told apart (handoff 005 corrections, third round K24): end
+    msg(
+        "know.removed_had_standing",
+        "コミュニティでの扱いも一緒に削除されます：{standing}。",
+    ),
+    msg(
+        "know.removed_had_link",
+        "出典 {source} とのつながりも一緒に削除されます: {relation}（{bearing}）。",
+    ),
+    msg(
+        "know.removed_had_reviewed",
+        "最後に確認した日も一緒に削除されます：{day}。",
+    ),
+    msg(
+        "know.removed_had_availability",
+        "入手できるかどうかの記録も一緒に削除されます：{availability}。",
+    ),
+    // knowledge: what leaves with a removal (handoff 005 corrections, third round K27): end
 ];

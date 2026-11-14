@@ -1589,6 +1589,11 @@ keys! {
     KnowSubjectClaimId => "know.subject_claim_id",
     KnowSubjectSourceId => "know.subject_source_id",
     // knowledge: subjects told apart (handoff 005 corrections, third round K24): end
+    KnowRemovedHadStanding => "know.removed_had_standing",
+    KnowRemovedHadLink => "know.removed_had_link",
+    KnowRemovedHadReviewed => "know.removed_had_reviewed",
+    KnowRemovedHadAvailability => "know.removed_had_availability",
+    // knowledge: what leaves with a removal (handoff 005 corrections, third round K27): end
 }
 
 /// A typed value for a placeholder. Text is HTML-escaped; a link is an escaped label plus an `href` the

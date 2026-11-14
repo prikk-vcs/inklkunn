@@ -5,7 +5,8 @@ use std::collections::BTreeMap;
 use super::check::sound_claim;
 use super::*;
 use crate::knowledge::summary::{
-    Cite, ClaimChange, Item, Rejudgement, SourceChange, summarize, undescribed, undescribed_by,
+    Cite, ClaimChange, Item, Leaves, Rejudgement, SourceChange, summarize, undescribed,
+    undescribed_by,
 };
 
 fn nothing(_: &str) -> Option<String> {
@@ -215,7 +216,8 @@ fn a_removal_is_said_by_the_id_and_a_file_that_does_not_read_by_its_rule_only() 
         [
             Item::Removed {
                 family: Family::Claim,
-                id: id.to_string()
+                id: id.to_string(),
+                leaves: None
             },
             Item::Unreadable {
                 family: Family::Claim,
@@ -852,4 +854,90 @@ fn each_single_field_change_of_a_source_is_described_from_any_starting_point() {
             assert!(undescribed(&files, &had(old)).is_empty(), "{name}");
         }
     }
+}
+
+// ------------------------------------------------------------------------------------------------- K27: what goes
+
+#[test]
+fn a_removal_says_what_goes_with_the_file_as_the_base_had_it() {
+    let mut claim = sound_claim(1);
+    claim.community_status.status = Standing::Contested;
+    claim.sources.push(SourceLink {
+        source: source_id(2),
+        relation: Link::Challenges,
+        bearing: Bearing::Partial,
+        note: Some("a note".to_owned()),
+        judged_on: digest_of("w"),
+    });
+    claim.normalize();
+    let mut source = Source::new(source_id(1));
+    source.availability = Availability::Unavailable;
+    source.last_reviewed = Some(Reviewed {
+        date: "2026-11-04".to_owned(),
+        proposal: Some("01930000-0000-7000-8000-00000000aaaa".to_owned()),
+    });
+    let (claim_file, source_file) = (claim_path(&claim.id), source_path(&source.id));
+    let old: BTreeMap<String, String> = [
+        (claim_file.clone(), claim.to_yaml()),
+        (source_file.clone(), source.to_yaml()),
+    ]
+    .into();
+    let got = summarize(&[(claim_file, None), (source_file, None)], &had(old));
+    let [
+        Item::Removed {
+            family: Family::Claim,
+            leaves: Some(Leaves::Claim { standing, cites }),
+            ..
+        },
+        Item::Removed {
+            family: Family::Source,
+            leaves:
+                Some(Leaves::Source {
+                    reviewed,
+                    availability,
+                }),
+            ..
+        },
+    ] = got.as_slice()
+    else {
+        panic!("{got:?}");
+    };
+    // Its status and each link (the note and the wording a link was judged on are the link's own, not told here).
+    assert_eq!(*standing, Standing::Contested);
+    assert_eq!(
+        cites,
+        &[
+            Cite {
+                source: source_id(1),
+                relation: Link::Supports,
+                bearing: Bearing::Direct,
+            },
+            Cite {
+                source: source_id(2),
+                relation: Link::Challenges,
+                bearing: Bearing::Partial,
+            },
+        ]
+    );
+    // The review day (not the proposal that stamped it) and what is said of whether it can be had.
+    assert_eq!(reviewed.as_deref(), Some("2026-11-04"));
+    assert_eq!(*availability, Availability::Unavailable);
+    // A source never checked leaves no day.
+    let plain = Source::new(source_id(3));
+    let path = source_path(&plain.id);
+    let old: BTreeMap<String, String> = [(path.clone(), plain.to_yaml())].into();
+    let got = summarize(&[(path, None)], &had(old));
+    assert!(
+        matches!(
+            got.as_slice(),
+            [Item::Removed {
+                leaves: Some(Leaves::Source {
+                    reviewed: None,
+                    availability: Availability::Unknown
+                }),
+                ..
+            }]
+        ),
+        "{got:?}"
+    );
 }

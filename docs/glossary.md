@@ -1317,6 +1317,10 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `know.subject_claim` | the name of a claim in a line of that list when it is named by its identifier already (no paragraph it is said in can be found); `{excerpt}` is the identifier | "“{excerpt}”" | "「{excerpt}」" |
 | `know.subject_claim_id` | the name of a claim in a line of that list: `{excerpt}` is the beginning of a paragraph it is said in, `{id}` the start and the end of its identifier, long enough that no two claims on the page share it (two claims can be said in one paragraph, and two paragraphs can begin alike, so the words alone do not tell which claim a line is about) | "“{excerpt}” [claim {id}]" | "「{excerpt}」［主張 {id}］" |
 | `know.subject_source_id` | the name of a source in a line of that list: `{name}` is its name (title, author, date), set apart, `{id}` the start and the end of its identifier as above (two sources can have the same name) | "{name} [source {id}]" | "{name}［出典 {id}］" |
+| `know.removed_had_standing` | under a removed claim: what is lost with it; `{standing}` is the community status it had | "Its community status goes with it: {standing}." | "コミュニティでの扱いも一緒に削除されます：{standing}。" |
+| `know.removed_had_link` | under a removed claim, one line for each source it cited; `{source}` is the source's name, set apart, `{relation}` and `{bearing}` how it spoke to the claim | "Its link to the source {source} goes with it: it {relation} the claim {bearing}." | "出典 {source} とのつながりも一緒に削除されます: {relation}（{bearing}）。" |
+| `know.removed_had_reviewed` | under a removed source that was marked as checked; `{day}` is the day | "The day it was last checked goes with it: {day}." | "最後に確認した日も一緒に削除されます：{day}。" |
+| `know.removed_had_availability` | under a removed source; `{availability}` is what was recorded of whether it can be had | "What is recorded of whether it can be had goes with it: {availability}." | "入手できるかどうかの記録も一緒に削除されます：{availability}。" |
 
 ## 3. Words the interface does not say
 

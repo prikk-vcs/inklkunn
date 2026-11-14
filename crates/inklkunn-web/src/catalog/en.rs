@@ -2936,4 +2936,21 @@ pub const CATALOG: &[Entry] = &[
     msg("know.subject_claim_id", "“{excerpt}” [claim {id}]"),
     msg("know.subject_source_id", "{name} [source {id}]"),
     // knowledge: subjects told apart (handoff 005 corrections, third round K24): end
+    msg(
+        "know.removed_had_standing",
+        "Its community status goes with it: {standing}.",
+    ),
+    msg(
+        "know.removed_had_link",
+        "Its link to the source {source} goes with it: it {relation} the claim {bearing}.",
+    ),
+    msg(
+        "know.removed_had_reviewed",
+        "The day it was last checked goes with it: {day}.",
+    ),
+    msg(
+        "know.removed_had_availability",
+        "What is recorded of whether it can be had goes with it: {availability}.",
+    ),
+    // knowledge: what leaves with a removal (handoff 005 corrections, third round K27): end
 ];

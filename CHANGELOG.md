@@ -521,6 +521,19 @@ Dependency updates (the architect, 2026-11-14).
   message layer and through the real page (the proposals for A and B differ, each names its own identifier), and the
   abbreviation rule over identifiers that agree at both ends. No prikk-dependent test is added.
 
+- **K27 (handoff 005 corrections, third): a removal's line names what leaves with it.** K16 made removing a file that
+  holds a decision a curation; the line for it said only that the claim or the source was removed. Now the lines under it
+  say what goes: for a claim, its community status and each link to a source (by the source's name, how it speaks to the
+  claim and how directly); for a source, the day it was last checked (when it was) and what is recorded of whether it can
+  be had. Core: `summary::Item::Removed` gains `leaves: Option<Leaves>` (`None`: the base has no readable file of that
+  name) and `summary::Leaves` is new, taken apart with no `..` like the rest, so a field added to a claim or a source
+  does not compile until the removal's line has been thought about. Catalog: `know.removed_had_standing`,
+  `know.removed_had_link`, `know.removed_had_reviewed`, `know.removed_had_availability` (English and Japanese preview,
+  glossary rows). Tests: the core's facts from the base's file; the lines in both languages; through the real page, a
+  removal differs from another removal of a file that differs in only one of status, a link's relation, bearing or
+  source, a link more or fewer, the review day, no review, availability. Each field was mutated away in the core and in
+  the renderer and a test failed. No prikk-dependent test is added.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

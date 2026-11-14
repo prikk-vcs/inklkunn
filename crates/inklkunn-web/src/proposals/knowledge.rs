@@ -17,7 +17,9 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use inklkunn_core::knowledge::index::kept;
-use inklkunn_core::knowledge::summary::{Cite, ClaimChange, Item, Rejudgement, SourceChange};
+use inklkunn_core::knowledge::summary::{
+    Cite, ClaimChange, Item, Leaves, Rejudgement, SourceChange,
+};
 use inklkunn_core::knowledge::{
     ClaimId, Digest, Expression, Family, File, Identity, Reference, Relation, SourceId, read_file,
 };
@@ -362,6 +364,47 @@ fn source_change(t: T, know: &Page, of: &SourceId, change: &SourceChange) -> Ric
     }
 }
 
+/// What goes with a removed file: the facts of it that a person decided or checked (K27), one line for each.
+fn leaving(t: T, know: &Page, leaves: &Leaves) -> Vec<Rich> {
+    match leaves {
+        Leaves::Claim { standing, cites } => {
+            let mut more = vec![
+                t.msg(Key::KnowRemovedHadStanding)
+                    .with("standing", t.get(standing_word(*standing)))
+                    .html(),
+            ];
+            more.extend(cites.iter().map(|c| {
+                let Cite {
+                    source,
+                    relation,
+                    bearing,
+                } = c;
+                t.msg(Key::KnowRemovedHadLink)
+                    .rich("source", source_subject(t, know, source, None))
+                    .with("relation", t.get(link_word(*relation)))
+                    .with("bearing", t.get(bearing_word(*bearing)))
+                    .html()
+            }));
+            more
+        }
+        Leaves::Source {
+            reviewed,
+            availability,
+        } => {
+            let mut more = Vec::new();
+            if let Some(day) = reviewed {
+                more.push(t.msg(Key::KnowRemovedHadReviewed).with("day", day).html());
+            }
+            more.push(
+                t.msg(Key::KnowRemovedHadAvailability)
+                    .with("availability", t.get(availability_word(*availability)))
+                    .html(),
+            );
+            more
+        }
+    }
+}
+
 fn line(t: T, know: &Page, item: &Item) -> Line {
     match item {
         Item::ClaimMade {
@@ -483,7 +526,7 @@ fn line(t: T, know: &Page, item: &Item) -> Line {
                 .map(|c| source_change(t, know, source, c))
                 .collect(),
         },
-        Item::Removed { family, id } => Line {
+        Item::Removed { family, id, leaves } => Line {
             text: match family {
                 Family::Claim => t
                     .msg(Key::KnowRemovedClaim)
@@ -506,7 +549,10 @@ fn line(t: T, know: &Page, item: &Item) -> Line {
                     )
                     .html(),
             },
-            more: Vec::new(),
+            more: leaves
+                .as_ref()
+                .map(|leaves| leaving(t, know, leaves))
+                .unwrap_or_default(),
         },
         Item::UnreadableReplaced { family, id } => Line {
             text: t

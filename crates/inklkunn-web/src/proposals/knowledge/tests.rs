@@ -1,6 +1,8 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use inklkunn_core::knowledge::summary::{Cite, ClaimChange, Item, Rejudgement, SourceChange};
+use inklkunn_core::knowledge::summary::{
+    Cite, ClaimChange, Item, Leaves, Rejudgement, SourceChange,
+};
 use inklkunn_core::knowledge::{
     Availability, Bearing, ClaimId, Digest, Expression, Family, Identity, Lifecycle, Link,
     Reference, ReferenceForm, Relation, RelationType, Rule, SourceId, SourceKind, Standing,
@@ -485,14 +487,17 @@ fn removals_and_unreadable_files_are_named_by_what_they_were_and_never_by_what_t
         Item::Removed {
             family: Family::Claim,
             id: claim().to_string(),
+            leaves: None,
         },
         Item::Removed {
             family: Family::Source,
             id: source().to_string(),
+            leaves: None,
         },
         Item::Removed {
             family: Family::Claim,
             id: "not-an-id".to_owned(),
+            leaves: None,
         },
         Item::Unreadable {
             family: Family::Claim,
@@ -661,10 +666,12 @@ fn the_japanese_preview_has_every_line_and_none_is_a_marker_for_a_missing_messag
         Item::Removed {
             family: Family::Claim,
             id: claim().to_string(),
+            leaves: None,
         },
         Item::Removed {
             family: Family::Source,
             id: source().to_string(),
+            leaves: None,
         },
         Item::Unreadable {
             family: Family::Source,
@@ -961,6 +968,7 @@ fn a_subject_told_by_its_identifier_already_is_not_told_twice() {
         &[Item::Removed {
             family: Family::Source,
             id: source_n(1).to_string(),
+            leaves: None,
         }],
     );
     assert!(
@@ -1006,4 +1014,123 @@ fn identifiers_on_one_page_never_abbreviate_alike() {
     let forms = abbreviations(&heads);
     let distinct: BTreeSet<&String> = forms.values().collect();
     assert_eq!(distinct.len(), 2, "{forms:?}");
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// K27: what goes with a removal
+
+#[test]
+fn a_removed_claim_names_its_status_and_each_link_by_the_sources_name() {
+    let know = Fake::default()
+        .with_paragraph(here("b0"), "The claim that goes.")
+        .with_identity(source_n(1), "A history")
+        .with_identity(source_n(2), "A correction");
+    let mut know = know;
+    know.places.push((claim_n(1), vec![here("b0")]));
+    let item = Item::Removed {
+        family: Family::Claim,
+        id: claim_n(1).to_string(),
+        leaves: Some(Leaves::Claim {
+            standing: Standing::Contested,
+            cites: vec![
+                Cite {
+                    source: source_n(1),
+                    relation: Link::Supports,
+                    bearing: Bearing::Direct,
+                },
+                Cite {
+                    source: source_n(2),
+                    relation: Link::Challenges,
+                    bearing: Bearing::Partial,
+                },
+            ],
+        }),
+    };
+    let (text, more) = texts(&know, &[item]).remove(0);
+    assert_eq!(
+        text,
+        "Removes the claim “<bdi>The claim that goes.</bdi>” [claim <code>0193…0001</code>]."
+    );
+    assert_eq!(
+        more,
+        [
+            "Its community status goes with it: contested.",
+            "Its link to the source <cite><bdi>“A history”</bdi></cite> [source <code>0193…0001</code>] goes with it: it supports the claim directly.",
+            "Its link to the source <cite><bdi>“A correction”</bdi></cite> [source <code>0193…0002</code>] goes with it: it challenges the claim in part.",
+        ]
+    );
+}
+
+#[test]
+fn a_removed_source_names_its_review_day_and_what_was_recorded_of_its_availability() {
+    let know = Fake::default().with_identity(source_n(1), "A history");
+    let gone = |reviewed: Option<&str>, availability| Item::Removed {
+        family: Family::Source,
+        id: source_n(1).to_string(),
+        leaves: Some(Leaves::Source {
+            reviewed: reviewed.map(str::to_owned),
+            availability,
+        }),
+    };
+    let (_, more) = texts(
+        &know,
+        &[gone(Some("2026-11-04"), Availability::Unavailable)],
+    )
+    .remove(0);
+    assert_eq!(
+        more,
+        [
+            "The day it was last checked goes with it: 2026-11-04.",
+            "What is recorded of whether it can be had goes with it: it cannot be had.",
+        ]
+    );
+    // A source that was never checked has no day to lose; what was recorded of its availability is still said.
+    let (_, more) = texts(&know, &[gone(None, Availability::Available)]).remove(0);
+    assert_eq!(
+        more,
+        ["What is recorded of whether it can be had goes with it: it can be had."]
+    );
+    // A removal of a file the base does not have says nothing is lost.
+    let nothing = Item::Removed {
+        family: Family::Source,
+        id: source_n(1).to_string(),
+        leaves: None,
+    };
+    assert!(texts(&know, &[nothing]).remove(0).1.is_empty());
+}
+
+#[test]
+fn the_japanese_preview_says_what_goes_with_a_removal() {
+    let t = T::new(Lang::from_def(&JA_DEF));
+    let know = Fake::default().with_identity(source_n(1), "橋の歴史");
+    let items = [
+        Item::Removed {
+            family: Family::Claim,
+            id: claim_n(1).to_string(),
+            leaves: Some(Leaves::Claim {
+                standing: Standing::Accepted,
+                cites: vec![Cite {
+                    source: source_n(1),
+                    relation: Link::Supports,
+                    bearing: Bearing::Direct,
+                }],
+            }),
+        },
+        Item::Removed {
+            family: Family::Source,
+            id: source_n(1).to_string(),
+            leaves: Some(Leaves::Source {
+                reviewed: Some("2026-11-04".to_owned()),
+                availability: Availability::Available,
+            }),
+        },
+    ];
+    for line in lines(t, &items, &know) {
+        for text in line.more {
+            let text = text.as_str();
+            assert!(!text.contains("[know."), "{text}");
+            assert!(!text.contains('{'), "{text}");
+            assert!(text.contains("一緒に削除されます"), "{text}");
+        }
+    }
 }

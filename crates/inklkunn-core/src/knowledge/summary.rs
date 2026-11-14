@@ -96,6 +96,69 @@ pub enum SourceChange {
     Superseded(Option<SourceId>),
 }
 
+/// **What goes with a removed file** (handoff 005 corrections, third round, K27): what the file the base had holds that
+/// a person decided or checked, and that a removal takes away. Taken apart with no `..`, like the rest: a field added to
+/// a claim or a source does not compile until this says whether the removal's line names it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Leaves {
+    /// A claim: the community status it had and the links to sources it held.
+    Claim {
+        /// Its community status.
+        standing: Standing,
+        /// What it cited.
+        cites: Vec<Cite>,
+    },
+    /// A source: the day a person last checked it and whether it can be had, as that person says.
+    Source {
+        /// The day, when it was checked.
+        reviewed: Option<String>,
+        /// Whether it can be had.
+        availability: Availability,
+    },
+}
+
+/// What goes with the file `file` when it is removed.
+fn leaves(file: &File) -> Leaves {
+    match file {
+        File::Claim(claim) => {
+            let Claim {
+                id: _,
+                kind: _,
+                expressions: _,
+                relations: _,
+                lifecycle: _,
+                community_status:
+                    CommunityStatus {
+                        status,
+                        proposal: _,
+                        judged_on: _,
+                    },
+                sources,
+            } = claim.as_ref();
+            Leaves::Claim {
+                standing: *status,
+                cites: sources.iter().map(cite_of).collect(),
+            }
+        }
+        File::Source(source) => {
+            let Source {
+                id: _,
+                kind: _,
+                identity: _,
+                reference: _,
+                snapshot: _,
+                last_reviewed,
+                superseded_by: _,
+                availability,
+            } = source.as_ref();
+            Leaves::Source {
+                reviewed: last_reviewed.as_ref().map(|r| r.date.clone()),
+                availability: *availability,
+            }
+        }
+    }
+}
+
 /// One thing a revision does to the knowledge layer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Item {
@@ -166,6 +229,8 @@ pub enum Item {
         family: Family,
         /// Its id, as its name spells it.
         id: String,
+        /// What goes with it, as the base had it (`None`: the base has no readable file of that name).
+        leaves: Option<Leaves>,
     },
     /// **A file the base has and the layer cannot read is removed or written over** (handoff 005 corrections, second
     /// round, K16): what it held is not known, so this is said as what it is, never as a removal of a claim or a
@@ -388,6 +453,7 @@ pub fn summarize(
                 out.push(Item::Removed {
                     family,
                     id: name_of(path),
+                    leaves: was.as_ref().map(leaves),
                 });
             }
             continue;

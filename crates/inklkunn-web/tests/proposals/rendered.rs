@@ -886,3 +886,145 @@ async fn two_sources_of_one_name_are_told_apart_by_their_identifiers_and_a_sourc
     let on_two = section_of(&s, flipped(&claim, 2)).await;
     assert!(names_by_id(&on_two, "source", "0193…0002"), "{on_two}");
 }
+
+// ---------------------------------------------------------------------------------------------------------
+// K27: what goes with a removal
+
+#[tokio::test]
+async fn a_removed_claim_names_its_status_and_each_link_and_each_of_them_changes_the_page() {
+    let s = scene();
+    put_sources(&s);
+    let path = claim_path(&claim_id(1));
+    let mut had = claim_citing(1, "bridge-page", "k1", &[2, 3]);
+    had.community_status = CommunityStatus {
+        status: Standing::Accepted,
+        proposal: Some(PROPOSAL.to_owned()),
+        judged_on: Some(digest_of("It opened in 1950.")),
+    };
+    s.w.fake.set(&path, &had.to_yaml());
+    let removal = || vec![(path.clone(), None)];
+    let first = section_of(&s, removal()).await;
+    for want in [
+        "Removes the claim “<bdi>It opened in 1950.</bdi>” [claim <code>0193…0001</code>].",
+        "Its community status goes with it: accepted.",
+        "Its link to the source <cite><bdi>“Source number 2”</bdi></cite> [source <code>0193…0002</code>] goes with it: it supports the claim directly.",
+        "Its link to the source <cite><bdi>“Source number 3”</bdi></cite> [source <code>0193…0003</code>] goes with it: it supports the claim directly.",
+    ] {
+        assert!(first.contains(want), "{want}\n{first}");
+    }
+    // Each thing that leaves is on the page: the page of a removal of a claim that differs in only that one reads
+    // differently.
+    type Change = (&'static str, Box<dyn Fn(&mut Claim)>);
+    let changes: Vec<Change> = vec![
+        (
+            "status",
+            Box::new(|c| c.community_status.status = Standing::Contested),
+        ),
+        (
+            "a link's relation",
+            Box::new(|c| {
+                if let Some(l) = c.sources.first_mut() {
+                    l.relation = Link::Challenges;
+                }
+            }),
+        ),
+        (
+            "a link's bearing",
+            Box::new(|c| {
+                if let Some(l) = c.sources.first_mut() {
+                    l.bearing = Bearing::Partial;
+                }
+            }),
+        ),
+        (
+            "a link's source",
+            Box::new(|c| {
+                if let Some(l) = c.sources.first_mut() {
+                    l.source = source_id(1);
+                }
+                c.normalize();
+            }),
+        ),
+        (
+            "a link fewer",
+            Box::new(|c| {
+                c.sources.pop();
+            }),
+        ),
+        (
+            "a link more",
+            Box::new(|c| {
+                c.sources.push(SourceLink {
+                    source: source_id(1),
+                    relation: Link::Supports,
+                    bearing: Bearing::Direct,
+                    note: None,
+                    judged_on: digest_of("It opened in 1950."),
+                });
+                c.normalize();
+            }),
+        ),
+    ];
+    for (name, mutate) in changes {
+        let mut other = had.clone();
+        mutate(&mut other);
+        s.w.fake.set(&path, &other.to_yaml());
+        let changed = section_of(&s, removal()).await;
+        assert_ne!(
+            changed, first,
+            "`{name}` does not change the removal's page"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_removed_source_names_its_review_day_and_availability_and_each_of_them_changes_the_page()
+{
+    let s = scene();
+    put_sources(&s);
+    let mut had = Source::new(source_id(5));
+    had.identity.title = Some("A source that goes".to_owned());
+    had.availability = Availability::Unavailable;
+    had.last_reviewed = Some(Reviewed {
+        date: "2026-11-01".to_owned(),
+        proposal: Some(PROPOSAL.to_owned()),
+    });
+    let path = source_path(&had.id);
+    s.w.fake.set(&path, &had.to_yaml());
+    let removal = || vec![(path.clone(), None)];
+    let first = section_of(&s, removal()).await;
+    for want in [
+        "Removes the source <cite><bdi>“A source that goes”</bdi></cite> [source <code>0193…0005</code>].",
+        "The day it was last checked goes with it: 2026-11-01.",
+        "What is recorded of whether it can be had goes with it: it cannot be had.",
+    ] {
+        assert!(first.contains(want), "{want}\n{first}");
+    }
+    type Change = (&'static str, Box<dyn Fn(&mut Source)>);
+    let changes: Vec<Change> = vec![
+        (
+            "the review day",
+            Box::new(|s| {
+                s.last_reviewed = Some(Reviewed {
+                    date: "2026-11-02".to_owned(),
+                    proposal: None,
+                });
+            }),
+        ),
+        ("no review", Box::new(|s| s.last_reviewed = None)),
+        (
+            "availability",
+            Box::new(|s| s.availability = Availability::Available),
+        ),
+    ];
+    for (name, mutate) in changes {
+        let mut other = had.clone();
+        mutate(&mut other);
+        s.w.fake.set(&path, &other.to_yaml());
+        let changed = section_of(&s, removal()).await;
+        assert_ne!(
+            changed, first,
+            "`{name}` does not change the removal's page"
+        );
+    }
+}
