@@ -985,11 +985,21 @@ fn an_empty_lock_file_is_unreadable_to_recovery_and_the_runbooks_step_clears_exa
         "a recorded pid is not a number",
         "recorded pid: (unparseable)",
         "recorded pid: (not read: the lock body is incomplete)",
-        "prikk unlock --lock <that path>",
+        "prikk unlock --lock <that path> --force",
+        "also overrides a holder that **appears running**",
         "`no locks currently held`",
     ] {
         assert!(runbook.contains(said), "the runbook says `{said}`");
     }
+    // M15 (PK-45): the step is `--force`, never `--yes` (prikk 0.58.0 refuses `--yes` for a lock that names no process).
+    assert!(
+        !runbook.contains("`--force` is not needed"),
+        "the old sentence is gone"
+    );
+    assert!(
+        !runbook.contains("unlock --lock <that path> --yes"),
+        "the runbook's step never uses --yes"
+    );
     let before = listed(&f);
     // prikk 0.55.0 and 0.56.0 say `(unparseable)`; 0.57.0 says the body is incomplete (measured, maintenance M3).
     assert!(
@@ -999,11 +1009,11 @@ fn an_empty_lock_file_is_unreadable_to_recovery_and_the_runbooks_step_clears_exa
     );
     assert!(before.contains(&lock.display().to_string()), "{before}");
     assert_eq!(std::fs::metadata(&lock).unwrap().len(), 0);
-    // The step, as written (`--yes` is the question answered): `prikk unlock --lock <that path>`.
+    // The step, exactly as the runbook writes it: `prikk unlock --lock <that path> --force` (no question asked).
     let cleared = Command::new(&f.prikk)
         .args(["unlock", "--lock"])
         .arg(&lock)
-        .arg("--yes")
+        .arg("--force")
         .current_dir(&f.repo)
         .output()
         .unwrap();

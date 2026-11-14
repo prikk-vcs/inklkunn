@@ -221,10 +221,12 @@ If the file is not empty, or any process is working in the repository, this is n
 `foreign-process` instead. **The step.**
 
 ```sh
-prikk unlock --lock <that path>    # asks you to confirm; clears that one file and nothing else
+prikk unlock --lock <that path> --force    # clears that one file and nothing else
 ```
 
-(`--yes` skips the question; `--force` is not needed and is not for a lock a running process holds.) **After.**
+(`--force` is the form that keeps working: an empty lock names no process, so prikk will not take `--yes` for it from
+0.58.0 on. It also overrides a holder that **appears running**, so use it for this one file only, and only after the three
+checks above: size 0, and no prikk or bwrap of anybody working in this repository.) **After.**
 `prikk unlock` prints `no locks currently held`, `prikk status` and `prikk verify` read as before, and `inklkunn
 wiki recover <wiki> --plan` now makes a plan; run `inklkunn wiki recover <wiki>`. Nothing in the history was
 touched at any point.

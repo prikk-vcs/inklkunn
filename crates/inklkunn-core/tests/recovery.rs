@@ -1231,7 +1231,7 @@ fn an_empty_lock_file_fails_closed_and_the_runbooks_one_step_lets_recovery_go_on
         "a witness could not be read, so nothing is concluded: prikk unlock",
         "a recorded pid is not a number",
         "recorded pid: (unparseable)",
-        "prikk unlock --lock <that path>",
+        "prikk unlock --lock <that path> --force",
         "no locks currently held",
     ] {
         assert!(runbook.contains(said), "the runbook says `{said}`");
@@ -1241,7 +1241,7 @@ fn an_empty_lock_file_fails_closed_and_the_runbooks_one_step_lets_recovery_go_on
         0,
         "`ls -l` says size 0"
     );
-    // The step is `prikk unlock --lock <path>`, which clears exactly that file; this crate may not spawn a process,
+    // The step is `prikk unlock --lock <path> --force`, which clears exactly that file; this crate may not spawn a process,
     // so the step itself is run against a real prikk in `inklkunn-signer`'s tests (`tests/recover.rs`), and here only
     // its effect is made.
     std::fs::remove_file(&lock).unwrap();

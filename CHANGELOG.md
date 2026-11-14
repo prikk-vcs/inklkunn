@@ -730,6 +730,14 @@ same everywhere, so it is one definition now, `inklkunn_store::record::is_line_o
 `message.rs`, the trail's `clean_field`, the token label, `DisplayName`, the history summary and the preview). New: that function.
 Tests: the preview with each separator; the test that kept U+2029 no longer lists it among the characters kept. No new prikk-dependent test.
 
+M15 (handoff 010 corrections, second round): an empty lock, the operator's step that keeps working. Recovery stays fail-closed on it
+(prikk's reply of 2026-11-14, PK-45: an empty lock names no process, so no lease record proves it ours). `docs/RECOVERY.md`'s step is now
+`prikk unlock --lock <that path> --force`, after the checks it already lists (size 0, no prikk or bwrap working in the repository): prikk
+0.58.0 refuses `--yes` for it. The section says that `--force` also overrides a holder that appears running, so it is for this one file
+only and only after those checks, and no longer says that `--force` is not needed. inklkunn's own stale-lock step keeps `--yes`. The runbook
+test now runs exactly that form against a real prikk (measured on 0.55.0 and 0.57.0: it clears the file, asks nothing, and leaves every
+other lock) and checks that the runbook says it. No new prikk-dependent test.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the
