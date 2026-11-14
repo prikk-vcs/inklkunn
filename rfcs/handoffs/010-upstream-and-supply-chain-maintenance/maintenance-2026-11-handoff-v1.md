@@ -158,3 +158,13 @@ back M20 – M26 as one request, `010-maintenance-2026-11-corrections-3-review-r
   - **The Argon2 test:** it asserts the parameters, and keeps a timing bound only as generous as the slowest supported runner needs (say how much that is).
   - **K40's bounds:** they become counts of work (lookups, or `Arc::ptr_eq` for the memo) instead of wall-clock times.
   - **Every other wall-clock assertion in the workspace:** list each, and say for each why it is safe under load or change it.
+- **M27 — first: CI's clippy is red on `main`** (`ce3a3bf`, run 43578514323; T-l).
+  - **The fault.** The pinned compiler's clippy (1.99.1) refuses `crates/inklkunn-web/src/api/endpoints/knowledge_api.rs:236`, `.map(&said_in)`, under `needless_borrows_for_generic_args`. The fix is `.map(said_in)`. The architect measured on 1.99.1 that this is the only finding (fmt is clean too).
+  - **The cause.** The host's default toolchain is now **1.100.0**, whose clippy does not report it, and every local gate (the dev team's and the architect's) ran `cargo clippy` on the default.
+  - **So, in this order:**
+    1. The fix, alone, as the first commit, pushed by the architect.
+    2. A `rust-toolchain.toml` naming exactly the pinned compiler and the components CI installs (`rustfmt`, `clippy`), so every plain `cargo` in the checkout uses the pin. `pin-check` holds it equal to `ci.yml`, `supply-chain.yml` and `release.yml`'s `RUST_TOOLCHAIN`.
+    3. Checks of the rest:
+       - The `msrv` job and `cargo +1.89.0 check` keep their explicit toolchain.
+       - The Dockerfile's builder is named in the same check if it names a toolchain.
+       - Say whether anything else (the measurement tool, the scripts) assumed the default.

@@ -374,6 +374,7 @@
     - an import with claims refused redirect pages.
   - **RFC 005 part 2:** D-11 amended, D-12 *what an import may carry*.
   - Pushed.
+  - **After the push, CI's clippy went red** (run 43578514323). The cause is one line of K-T11: `.map(&said_in)` in `knowledge_api.rs:236`, which the pinned 1.99.1 clippy refuses. The host's default toolchain had moved to 1.100.0, whose clippy does not report it, so every local gate passed. The fix and a `rust-toolchain.toml` that pins the checkout to the CI compiler are **M27, the dev team's first item**. The architect measured on 1.99.1 that this is the only finding.
 
 ## Pending on the owner
 
@@ -396,7 +397,7 @@
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and handoff 003's T1 – T3 are built and
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
-(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **M12 – M19, K32 – K42 and K-T11 reviewed (2026-11-14).** **The dev team's order now:** **K43 – K54** (K51 first) and **M20 – M26**
+(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **M12 – M19, K32 – K42 and K-T11 reviewed (2026-11-14).** **The dev team's order now:** **M27 first (CI red)**, then **K43 – K54** (K51 first) and **M20 – M26**
 (all before 0.3.0); then 0.3.0's readiness; and, at the next touch of `signer/retirement.rs`,
 `seal_pause`'s operator sentence (Z7 – Z9 review). An assistive-technology pass is arranged before 0.3.0.
 
@@ -424,6 +425,8 @@ conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done a
 | IS-18 | **A restricted wiki's raw source cannot be reached when the content origin has its own host**: the session cookie does not cross hosts | dev team, handoff 003 T6 (deviation 6), 2026-10-29 | an open design decision for sign-in (RFC 006 / M2): a signed, short-lived address for the content origin is the candidate. Not a 0.1.0 matter (every visitor is anonymous; only public wikis are readable) |
 
 ## Process lessons (keep)
+
+- **Gates run on the pinned compiler, never the host's default** (2026-11-14). The host's stable moved to 1.100.0 while CI pins 1.99.1, and a lint only 1.99.1's clippy reports reached `main`. `rust-toolchain.toml` (M27) makes the pin the default in the checkout.
 
 - **A sibling's finding is checked against inklkunn's own code the day it appears.** planeter's IS-43 (a verdict
   read from an out-of-memory report) was in inklkunn's driver too; its IS-55 (an uncapped output buffer) was not.
