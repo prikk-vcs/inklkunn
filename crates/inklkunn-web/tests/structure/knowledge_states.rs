@@ -456,6 +456,57 @@ pub(super) const SCENARIOS: &[Scenario] = &[
         uri: "/handbook/-/why/Home",
         headers: &[],
     },
+    // --- a claim's discussion (K-T10)
+    Scenario {
+        id: "claim-thread",
+        identity: "claim-page",
+        status: 200,
+        warm: &[],
+        setup: discussed,
+        method: "GET",
+        uri: CLAIM,
+        headers: &[],
+    },
+    Scenario {
+        id: "claim-thread-form",
+        identity: "claim-page",
+        status: 200,
+        warm: &[],
+        setup: discussed,
+        method: "GET",
+        uri: CLAIM,
+        headers: AS_QUESTIONER,
+    },
+    Scenario {
+        id: "claim-thread-reply",
+        identity: "claim-page",
+        status: 200,
+        warm: &[],
+        setup: discussed,
+        method: "GET",
+        uri: "/handbook/-/claim/01930000-0000-7000-8000-000000000001?reply=019a0000-0000-7000-8000-000000000e01",
+        headers: AS_QUESTIONER,
+    },
+    Scenario {
+        id: "claim-thread-first-page",
+        identity: "claim-page",
+        status: 200,
+        warm: &[],
+        setup: long_discussion,
+        method: "GET",
+        uri: CLAIM,
+        headers: &[],
+    },
+    Scenario {
+        id: "claim-thread-later-page",
+        identity: "claim-page",
+        status: 200,
+        warm: &[],
+        setup: long_discussion,
+        method: "GET",
+        uri: "/handbook/-/claim/01930000-0000-7000-8000-000000000001?after=019a0000-0000-7000-8000-000000000e32",
+        headers: &[],
+    },
     // --- the health list Sources to review (K-T9)
     Scenario {
         id: "wiki-health-sources-to-review",
@@ -478,6 +529,67 @@ pub(super) const SCENARIOS: &[Scenario] = &[
         headers: &[],
     },
 ];
+
+/// The account that may comment (a questioner), who the signed-in scenarios of the discussion are.
+const QUESTIONER: &str = "019a0000-0000-7000-8000-0000000000d1";
+const AS_QUESTIONER: &[(&str, &str)] = &[("x-test-account", QUESTIONER)];
+
+/// The `n`-th comment of the discussions below: an id of its own.
+fn comment_id(n: u32) -> inklkunn_store::CommentId {
+    inklkunn_store::CommentId::parse(&format!("019a0000-0000-7000-8000-000000000e{n:02x}")).unwrap()
+}
+
+/// A comment of the first claim by `who`, replying to `parent`.
+fn comment(w: &World, n: u32, parent: Option<u32>, who: &inklkunn_store::AccountId, body: &str) {
+    use inklkunn_store::{ClaimCommentRecord, ClaimThreadStore};
+    w.store
+        .add_claim_comment(&ClaimCommentRecord {
+            id: comment_id(n),
+            wiki: w.wiki.id.clone(),
+            claim: super::common::claim_id(1).as_str().to_owned(),
+            author: who.clone(),
+            parent: parent.map(comment_id),
+            body: body.to_owned(),
+            created_at: 1_700_000_000 + i64::from(n),
+        })
+        .unwrap();
+}
+
+/// A claim with a short discussion, a reply among it, and a questioner who may add to it.
+fn discussed(w: &World) {
+    with_status(w, Standing::Contested);
+    let asker = super::common::person(1);
+    super::common::add_person(
+        w,
+        &asker,
+        "Aiko Tanaka",
+        Some(inklkunn_store::Role::Questioner),
+    );
+    super::common::add_person(
+        w,
+        &inklkunn_store::AccountId::parse(QUESTIONER).unwrap(),
+        "Ben Okoye",
+        Some(inklkunn_store::Role::Questioner),
+    );
+    comment(w, 1, None, &asker, "Where was this measured?");
+    comment(w, 2, Some(1), &asker, "<b>At the north gauge</b>, I think.");
+    comment(w, 3, None, &asker, "日本語のコメントも書けます。");
+}
+
+/// A claim with more comments than a page holds.
+fn long_discussion(w: &World) {
+    with_status(w, Standing::Contested);
+    let asker = super::common::person(1);
+    super::common::add_person(
+        w,
+        &asker,
+        "Aiko Tanaka",
+        Some(inklkunn_store::Role::Questioner),
+    );
+    for n in 1..=55 {
+        comment(w, n, None, &asker, &format!("Remark {n}."));
+    }
+}
 
 /// Sources a person should look at again: one marked unavailable that a claim relies on, one never reviewed that no
 /// claim relies on, and one reviewed long ago that two claims rely on, one of them said on a page that is not there.

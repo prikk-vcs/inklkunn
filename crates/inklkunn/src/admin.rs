@@ -33,7 +33,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use inklkunn_core::export::is_checkpoint_not_recorded;
-use inklkunn_core::export::{ExportError, export_bundle};
+use inklkunn_core::export::{ExportError, claim_discussions, export_bundle_with};
 use inklkunn_core::import::{ImportError, plan_folder, run_import, wiki_state};
 use inklkunn_core::proposal::{Period, operator_metrics};
 use inklkunn_core::recovery::needs_recovery;
@@ -841,15 +841,23 @@ fn export(
         format!("inklkunn-cli-{}", std::process::id()),
     );
     let mut failure: Option<String> = None;
+    // The claim threads are the service's records (RFC 005 part 2 D-11): the bundle's discussions. Read before the
+    // export is begun in the trail, so a failure to read them leaves nothing begun.
+    let discussions = if bundle.is_some() {
+        claim_discussions(&*store, &*store, &record.id).map_err(|e| e.to_string())?
+    } else {
+        Vec::new()
+    };
     if let Some(dest) = &bundle {
         trail.begin("wiki-export-bundle", &resource, "begun")?;
-        let mut result = export_bundle(
+        let mut result = export_bundle_with(
             &env.storage,
             &env.layout,
             &record,
             dest,
             env!("CARGO_PKG_VERSION"),
             now,
+            &discussions,
         );
         if matches!(result, Err(ExportError::CheckpointNotRecorded)) {
             // The record `extract` anchors on is missing (a prikk upgrade, a restore): bring it back, once.
@@ -859,13 +867,14 @@ fn export(
             );
             match refresh_checkpoint(&store, &maintained, &env.storage, &record, now) {
                 Ok(()) => {
-                    result = export_bundle(
+                    result = export_bundle_with(
                         &env.storage,
                         &env.layout,
                         &record,
                         dest,
                         env!("CARGO_PKG_VERSION"),
                         now,
+                        &discussions,
                     );
                 }
                 Err(why) => failure = Some(why),
@@ -904,6 +913,9 @@ fn export(
                     },
                     done.users
                 );
+                if done.discussions > 0 {
+                    let _ = writeln!(out, "  discussions: {} claim thread(s)", done.discussions);
+                }
                 trail.finish(
                     "wiki-export-bundle",
                     &resource,

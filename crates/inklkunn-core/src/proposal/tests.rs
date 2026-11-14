@@ -7,6 +7,7 @@
 
 mod authorization;
 mod bases;
+mod claim_thread;
 mod drafts;
 mod files;
 mod lifecycle;

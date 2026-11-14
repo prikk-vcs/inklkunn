@@ -34,12 +34,14 @@ use crate::authorize::{Action, Authorizer, Principal, Resource};
 use crate::notify::Notifier;
 use crate::read::{ReadError, ReadService};
 
+pub mod claim_thread;
 pub mod files;
 pub mod machine;
 pub mod metrics;
 pub mod quota;
 pub mod rollback;
 
+pub use claim_thread::NewClaimComment;
 pub use machine::{Illegal, TRANSITIONS};
 pub use metrics::{
     ClaimFigures, Metrics, Period, REVIEW_RECORD_NOTE, REVIEW_RECORD_SCHEMA, Ratio,
@@ -594,6 +596,8 @@ pub struct ProposalService {
     admission: Mutex<()>,
     /// Who is told what (RFC 004 D-9), when there is someone to tell.
     notifier: Option<Arc<Notifier>>,
+    /// A claim's own thread (RFC 005 part 2 D-11), when the service keeps them.
+    claim_threads: Option<claim_thread::Threads>,
 }
 
 impl std::fmt::Debug for ProposalService {
@@ -622,6 +626,7 @@ impl ProposalService {
             clock: inklkunn_store::record::now_secs,
             admission: Mutex::new(()),
             notifier: None,
+            claim_threads: None,
         }
     }
 

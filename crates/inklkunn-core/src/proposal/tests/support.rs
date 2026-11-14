@@ -20,7 +20,7 @@ thread_local! {
     static NOW: Cell<i64> = const { Cell::new(0) };
 }
 
-fn now() -> i64 {
+pub(super) fn now() -> i64 {
     NOW.with(Cell::get)
 }
 
@@ -160,6 +160,7 @@ pub(super) trait Everything:
     ProposalStore
     + inklkunn_store::AcceptanceStore
     + inklkunn_store::InboxStore
+    + inklkunn_store::ClaimThreadStore
     + WikiStore
     + RoleStore
     + AccountStore
@@ -170,6 +171,7 @@ impl<T> Everything for T where
     T: ProposalStore
         + inklkunn_store::AcceptanceStore
         + inklkunn_store::InboxStore
+        + inklkunn_store::ClaimThreadStore
         + WikiStore
         + RoleStore
         + AccountStore

@@ -1615,6 +1615,18 @@ keys! {
     HealthSourcesClaim => "health.sources_claim",
     HealthSourcesClaimNowhere => "health.sources_claim_nowhere",
     HealthSourcesSetting => "health.sources_setting",
+    ClaimThreadHeading => "claim_thread.heading",
+    ClaimThreadNeverChanges => "claim_thread.never_changes",
+    ClaimThreadTotal => "claim_thread.total",
+    ClaimThreadNone => "claim_thread.none",
+    ClaimThreadMeta => "claim_thread.meta",
+    ClaimThreadInReplyTo => "claim_thread.in_reply_to",
+    ClaimThreadMore => "claim_thread.more",
+    ClaimThreadFirst => "claim_thread.first",
+    ClaimThreadUnavailable => "claim_thread.unavailable",
+    ClaimThreadFormLabel => "claim_thread.form_label",
+    ClaimThreadFormReply => "claim_thread.form_reply",
+    ClaimThreadBack => "claim_thread.back",
 }
 
 /// A typed value for a placeholder. Text is HTML-escaped; a link is an escaped label plus an `href` the

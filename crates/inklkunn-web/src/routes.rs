@@ -503,6 +503,14 @@ fn wiki_specs() -> Vec<Spec> {
             guard: Guard::Action(Action::Read),
             handler: || get(knowledge::show::claim_page),
         },
+        // --- handoff 005 K-T10: a claim's own discussion (RFC 005 part 2 D-11): a comment, by the action a comment on
+        // a proposal is made with.
+        Spec {
+            path: "/{slug}/-/claim/{id}/discuss",
+            methods: &["POST"],
+            guard: Guard::Action(Action::Comment),
+            handler: post_route!(knowledge::thread::comment_post, proposals::SMALL_FORM_LIMIT),
+        },
         Spec {
             path: "/{slug}/-/why/{*title}",
             methods: &["GET", "HEAD"],

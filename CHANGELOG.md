@@ -649,6 +649,32 @@ file now says which tree and which binary every figure is about.
   claims, the cut, paging by a cursor stamped with the day, both languages, existence neutrality, escaping and the ranking words;
   no prikk-dependent test.
 
+- **K-T10 (handoff 005, a claim's thread; RFC 005 part 2 D-11, KN-7): *Discussion of this claim*, and a store schema 18.** A claim
+  has a thread of its own, the *epistemic* discussion of the claim, with the proposal thread's records and rules: service-authoritative
+  and append-only (`claim_comments`, store schema 18: one table, its indexes and four triggers that refuse an `UPDATE`, a `DELETE`, a
+  replacing `INSERT` and a reply that crosses to another thread; the migration is additive and tested from 17), keyed by the wiki and the
+  claim's id (one claim is one claim in every view), each comment with its author, its time, its place in the thread and, for a reply,
+  the comment it answers. **A thread never changes a claim**: the service writes one table and reads the knowledge index to see that the
+  claim exists, holds no handle to a repository or a claim file, and the claim page says in one sentence that only a proposal people
+  accept does (a test shows the repository, the index and the claim's status are what they were after comments, replies and a
+  maintainer's word). **Who may comment is who may comment on a proposal**: the `Comment` action (a signed-in account from questioner up;
+  an observer, an anonymous visitor and a read-only token may not), the same size, and **one** hourly limit that counts a person's comments
+  on proposals and in claim threads together (halved for a new account); a test sets the two services side by side for nine kinds of
+  principal. **Who may read is who may read the wiki**; a thread nobody has written in is an empty thread whether or not the claim exists, and a
+  wiki the visitor may not read is the page that is not there, for the page and for the post. The claim page shows the thread (comment
+  numbers, *In reply to comment N*, escaped text, fifty to a page with *Show the next comments* and *Show the first comments*), and a
+  plain form with the session's CSRF token for whoever may comment (a reply opens the same form with the comment it answers); after a
+  comment the page that has it opens. Exported with the bundle (XFER-10): `discussions/claims/<claim id>.jsonl`, one line per comment in
+  the order written, listed in `SHA256SUMS`, the authors in `users.yaml`, and the manifest then says `discussions: true` with
+  `discussions_representation: jsonl` (a wiki with no thread has the bundle it had), valid against wiki-commons' schema.
+  Retention and moderation are what a proposal's comments have: none yet (RFC 006). The API is K-T11's; the service methods are ready
+  (`ProposalService::{comment_on_claim, claim_thread, may_comment_on_claim, all_claim_comments}`). New: `ClaimThreadStore`
+  (`MemoryStore`, `SqliteStore`), `ProposalService::with_claim_threads`, `Quotas::with_claim_threads`, `export::{claim_discussions,
+  export_bundle_with}` (`export_bundle` is unchanged), `bundle::with_discussions`, the route `POST /{slug}/-/claim/{id}/discuss`
+  (`Comment`). Tests: one trait suite on both stores and the database's own refusals, the service on both stores, the pages through the
+  router, the export without prikk (a stand-in repository) and the command's export in the existing prikk test; no new
+  prikk-dependent test.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

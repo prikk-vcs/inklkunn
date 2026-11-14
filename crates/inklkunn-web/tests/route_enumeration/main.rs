@@ -108,8 +108,13 @@ async fn every_guarded_route_answers_a_restricted_wiki_exactly_as_one_that_is_no
                     && entry.methods == ["POST"]);
             // A view's creation is its own action (RFC 005 part 2 D-9; handoff 005 K-T8).
             let creates_a_view = entry.path == "/{slug}/-/views/new";
+            // A comment in a claim's own discussion is made with the action a comment on a proposal is (RFC 005 part 2
+            // D-11; handoff 005 K-T10).
+            let comments_on_a_claim = entry.path == "/{slug}/-/claim/{id}/discuss";
             let expected = if creates_a_view {
                 vec![Action::CreateView]
+            } else if comments_on_a_claim {
+                vec![Action::Comment]
             } else if writes {
                 [
                     Action::Propose,

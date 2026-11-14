@@ -54,6 +54,17 @@ pub struct ExportFacts {
     pub histories_not_written: usize,
 }
 
+/// The manifest of an export that carries discussions: `contents.discussions` true, and the representation declared
+/// (`jsonl`, one file per thread under `discussions/`, XFER-10). The manifest of an export without any says
+/// `discussions: false`, as it did; this changes that one line and nothing else.
+pub fn with_discussions(manifest: &str) -> String {
+    manifest.replacen(
+        "\n  discussions: false\n",
+        "\n  discussions: true\n  discussions_representation: jsonl\n",
+        1,
+    )
+}
+
 /// The bundle manifest for a new wiki (wiki-commons chapter 10). `pages_prefix` is `pages`; fidelity is
 /// level 3 with nothing degraded, since nothing was converted. The `contents` counts are those at creation
 /// and say so; an export rewrites them ([`manifest_with`]).

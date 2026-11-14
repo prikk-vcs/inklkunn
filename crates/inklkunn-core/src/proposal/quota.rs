@@ -11,7 +11,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use inklkunn_store::{AcceptanceStore, AccountId, AccountStore, ProposalStore, WikiId};
+use inklkunn_store::{
+    AcceptanceStore, AccountId, AccountStore, ClaimThreadStore, ProposalStore, WikiId,
+};
 
 use super::ProposalError;
 
@@ -141,6 +143,8 @@ pub struct Quotas {
     proposals: Arc<dyn ProposalStore>,
     acceptances: Arc<dyn AcceptanceStore>,
     accounts: Arc<dyn AccountStore>,
+    /// The comments in claim threads, counted beside the proposals' (RFC 005 part 2 D-11), when they are kept.
+    claim_threads: Option<Arc<dyn ClaimThreadStore>>,
     clock: fn() -> i64,
 }
 
@@ -181,8 +185,16 @@ impl Quotas {
             proposals,
             acceptances,
             accounts,
+            claim_threads: None,
             clock: inklkunn_store::record::now_secs,
         }
+    }
+
+    /// The same, counting the comments in claim threads beside the comments on proposals in the comment limit.
+    #[must_use]
+    pub fn with_claim_threads(mut self, threads: Arc<dyn ClaimThreadStore>) -> Self {
+        self.claim_threads = Some(threads);
+        self
     }
 
     /// The same, reading the time from `clock` (Unix seconds): tests pin it.
@@ -293,7 +305,12 @@ impl Quotas {
     ) -> Result<(), ProposalError> {
         let since = (self.clock)() - HOUR + 1;
         let allowed = self.allowed_for(author, self.config.comments_per_hour_per_principal)?;
-        let mine = self.proposals.comments_since(wiki, author, since)?;
+        let mut mine = self.proposals.comments_since(wiki, author, since)?;
+        // One limit for a person's comments, wherever they are made.
+        if let Some(threads) = &self.claim_threads {
+            mine.extend(threads.claim_comments_since(wiki, author, since)?);
+            mine.sort_unstable();
+        }
         if let Some(reset) = rolling_reset(&mine, allowed, HOUR) {
             return Err(refuse(
                 QuotaLimit::CommentsPerHourPerPrincipal,

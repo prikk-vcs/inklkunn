@@ -9,7 +9,12 @@
 //!   and the service for an import or a system change) as the authors. A change to a path that is not a page of
 //!   the tip (a page since removed or renamed) has no file to belong to and is counted in the manifest's report,
 //!   not dropped silently.
-//! - **`users.yaml`**: the accounts that appear in those messages, with the names they had.
+//! - **`discussions/claims/<claim id>.jsonl`** (RFC 005 part 2 D-11; XFER-10): one file per claim whose thread has
+//!   comments, one line per comment in the order written (`id`, `parent`, `at`, `author`, `body`), from the service's
+//!   records. A thread is the *discussion of a claim*: nothing in it changes a claim, and the bundle carries it beside
+//!   the claim's file, not instead of it. They are listed in `SHA256SUMS` like every other file, and the manifest then
+//!   says `discussions: true` with the representation `jsonl`. (Comments on proposals are not exported here yet.)
+//! - **`users.yaml`**: the accounts that appear in those messages and in those threads, with the names they had.
 //! - **`wiki-bundle.yaml`**: the manifest, with the fidelity, the real counts, the block it is as of, the
 //!   interwiki map and, in `checksums`, the name of the file below (wiki-commons' shape).
 //! - **`SHA256SUMS`**, beside the manifest: one `"<sha256>  <path>"` line for every other file.
@@ -26,7 +31,9 @@ use std::path::{Path, PathBuf};
 
 use inklkunn_prikk::{ExtractBounds, Point, Storage, StorageError};
 use inklkunn_signer::message::{Actor, Message};
-use inklkunn_store::{RootLayout, WikiRecord};
+use inklkunn_store::{
+    AccountStore, ClaimCommentRow, ClaimThreadStore, RootLayout, WikiId, WikiRecord,
+};
 use sha2::{Digest, Sha256};
 
 use crate::bundle::{self, ExportFacts, ManifestFacts, yaml_quote};
@@ -82,6 +89,72 @@ pub fn is_checkpoint_not_recorded(e: &StorageError) -> bool {
     )
 }
 
+/// One comment of a claim's thread, as the bundle's discussions carry it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiscussionComment {
+    /// The comment's id.
+    pub id: String,
+    /// The comment it answers, in the same thread.
+    pub parent: Option<String>,
+    /// Unix seconds.
+    pub at: i64,
+    /// The author's account id.
+    pub author_id: String,
+    /// The author's name as the account has it now.
+    pub author_name: String,
+    /// The text.
+    pub body: String,
+}
+
+/// One claim's thread, whole, for the bundle.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClaimDiscussion {
+    /// The claim's id.
+    pub claim: String,
+    /// Its comments, in the order written.
+    pub comments: Vec<DiscussionComment>,
+}
+
+/// Every claim thread of the wiki, whole and in order, with the names of the people who wrote: what an export carries as
+/// the bundle's discussions. Read from the service's records; nothing is read from a repository.
+pub fn claim_discussions(
+    threads: &dyn ClaimThreadStore,
+    accounts: &dyn AccountStore,
+    wiki: &WikiId,
+) -> Result<Vec<ClaimDiscussion>, ExportError> {
+    let rows = threads
+        .claim_comments_in_wiki(wiki)
+        .map_err(|_| ExportError::Io("the claim threads could not be read".to_owned()))?;
+    let mut names: HashMap<String, String> = HashMap::new();
+    let mut out: Vec<ClaimDiscussion> = Vec::new();
+    for ClaimCommentRow { comment, .. } in rows {
+        let author = comment.author.to_string();
+        if !names.contains_key(&author) {
+            let name = accounts
+                .account(&comment.author)
+                .map_err(|_| ExportError::Io("an account could not be read".to_owned()))?
+                .map_or_else(String::new, |a| a.display_name.as_str().to_owned());
+            names.insert(author.clone(), name);
+        }
+        let line = DiscussionComment {
+            id: comment.id.to_string(),
+            parent: comment.parent.as_ref().map(ToString::to_string),
+            at: comment.created_at,
+            author_name: names.get(&author).cloned().unwrap_or_default(),
+            author_id: author,
+            body: comment.body,
+        };
+        match out.last_mut() {
+            Some(d) if d.claim == comment.claim => d.comments.push(line),
+            _ => out.push(ClaimDiscussion {
+                claim: comment.claim,
+                comments: vec![line],
+            }),
+        }
+    }
+    Ok(out)
+}
+
 /// What an export made.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Exported {
@@ -101,6 +174,8 @@ pub struct Exported {
     pub unattributed_changes: usize,
     /// Accounts in `users.yaml`.
     pub users: usize,
+    /// Claim threads written as `discussions/claims/<claim id>.jsonl`.
+    pub discussions: usize,
     /// Pages whose history file was not written because the page id in its frontmatter cannot name a file
     /// (unsafe) or belongs to more than one page (shared): the manifest says how many.
     pub histories_not_written: usize,
@@ -385,7 +460,8 @@ fn histories(
 }
 
 /// Export the wiki as a bundle directory `dest` (absolute; must not exist; its directory must). `now` is the
-/// time written in the manifest. The wiki's scratch directory is where the tip is extracted (and removed from).
+/// time written in the manifest. The wiki's scratch directory is where the tip is extracted (and removed from). The
+/// bundle carries no discussions: see [`export_bundle_with`].
 pub fn export_bundle(
     storage: &dyn Storage,
     layout: &RootLayout,
@@ -393,6 +469,19 @@ pub fn export_bundle(
     dest: &Path,
     inklkunn_version: &str,
     now: i64,
+) -> Result<Exported, ExportError> {
+    export_bundle_with(storage, layout, record, dest, inklkunn_version, now, &[])
+}
+
+/// [`export_bundle`], carrying these claim threads as the bundle's discussions ([`claim_discussions`] reads them).
+pub fn export_bundle_with(
+    storage: &dyn Storage,
+    layout: &RootLayout,
+    record: &WikiRecord,
+    dest: &Path,
+    inklkunn_version: &str,
+    now: i64,
+    discussions: &[ClaimDiscussion],
 ) -> Result<Exported, ExportError> {
     if !dest.is_absolute() {
         return Err(ExportError::Destination(
@@ -459,6 +548,7 @@ pub fn export_bundle(
             &partial,
             inklkunn_version,
             now,
+            discussions,
         );
         match built {
             Ok(mut done) => {
@@ -535,6 +625,7 @@ fn build(
     partial: &Path,
     inklkunn_version: &str,
     now: i64,
+    discussions: &[ClaimDiscussion],
 ) -> Result<Exported, ExportError> {
     std::fs::DirBuilder::new()
         .mode(0o700)
@@ -588,16 +679,43 @@ fn build(
         checksums.push((rel, hash));
         history_entries += lines.len();
     }
+    // The claim threads, one file each (XFER-10), and the people who wrote in them join the accounts of users.yaml.
+    let mut accounts = h.accounts;
+    let mut discussions_written = 0;
+    for thread in discussions {
+        let mut text = String::new();
+        for c in &thread.comments {
+            let names = accounts.entry(c.author_id.clone()).or_default();
+            if !c.author_name.is_empty() && !names.contains(&c.author_name) {
+                names.push(c.author_name.clone());
+            }
+            text.push_str(
+                &serde_json::json!({
+                    "id": c.id,
+                    "parent": c.parent,
+                    "at": inklkunn_store::record::rfc3339(c.at),
+                    "author": {"id": c.author_id, "name": c.author_name},
+                    "body": c.body,
+                })
+                .to_string(),
+            );
+            text.push('\n');
+        }
+        let rel = format!("discussions/claims/{}.jsonl", thread.claim);
+        let hash = write_new(&partial.join(&rel), text.as_bytes())?;
+        checksums.push((rel, hash));
+        discussions_written += 1;
+    }
     let histories_written = checksums
         .iter()
         .filter(|(p, _)| p.starts_with("history/"))
         .count();
     // users.yaml: the accounts the messages name, with the names they had.
     let mut users = String::from("users:\n");
-    if h.accounts.is_empty() {
+    if accounts.is_empty() {
         users = String::from("users: []\n");
     }
-    for (id, names) in &h.accounts {
+    for (id, names) in &accounts {
         users.push_str(&format!("  - id: {}\n", yaml_quote(id)));
         users.push_str(&format!(
             "    names: [{}]\n",
@@ -617,8 +735,8 @@ fn build(
         )
     })?;
     write_new(&partial.join(bundle::CHECKSUMS), sums.as_bytes())?;
-    let accounts = h.accounts.len();
-    let manifest = bundle::manifest_with(
+    let accounts = accounts.len();
+    let mut manifest = bundle::manifest_with(
         record,
         inklkunn_version,
         &ManifestFacts {
@@ -633,6 +751,9 @@ fn build(
             }),
         },
     );
+    if discussions_written > 0 {
+        manifest = bundle::with_discussions(&manifest);
+    }
     write_new(&partial.join(bundle::MANIFEST), manifest.as_bytes())?;
     Ok(Exported {
         dir: partial.to_path_buf(),
@@ -643,6 +764,7 @@ fn build(
         history_entries,
         unattributed_changes: h.unattributed,
         users: accounts,
+        discussions: discussions_written,
         histories_not_written,
     })
 }

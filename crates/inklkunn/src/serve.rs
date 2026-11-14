@@ -172,7 +172,9 @@ fn prepare_with(
             read.clone(),
             QuotaConfig::default(),
         )
-        .with_notifier(notifier),
+        .with_notifier(notifier)
+        // A claim's own discussion (RFC 005 part 2 D-11) is kept in the same store, under the same limits.
+        .with_claim_threads(store.clone(), read.clone()),
     );
     let auth = Arc::new(outbound::attach(
         Authenticator::new(

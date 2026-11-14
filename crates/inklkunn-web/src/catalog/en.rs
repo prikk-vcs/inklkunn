@@ -3008,4 +3008,25 @@ pub const CATALOG: &[Entry] = &[
         "health.sources_setting",
         "A source is listed when it was last reviewed more than {days} days ago. The person who runs this server sets the number.",
     ),
+    msg("claim_thread.heading", "Discussion of this claim"),
+    msg(
+        "claim_thread.never_changes",
+        "A discussion never changes a claim: only a proposal that people accept does.",
+    ),
+    plural_msg("claim_thread.total", "{count} comment", "{count} comments"),
+    msg("claim_thread.none", "Nobody has discussed this claim yet."),
+    msg("claim_thread.meta", "Comment {number} · {when}"),
+    msg("claim_thread.in_reply_to", "In reply to comment {number}."),
+    msg("claim_thread.more", "Show the next comments"),
+    msg("claim_thread.first", "Show the first comments"),
+    msg(
+        "claim_thread.unavailable",
+        "The discussion of this claim could not be read now.",
+    ),
+    msg(
+        "claim_thread.form_label",
+        "Add a comment to this discussion",
+    ),
+    msg("claim_thread.form_reply", "Replying to comment {number}"),
+    msg("claim_thread.back", "Back to the claim"),
 ];

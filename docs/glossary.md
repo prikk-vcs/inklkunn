@@ -81,6 +81,7 @@ T6, RFC 004) take the word from here and do not choose their own.
 | Where a claim came from, as a person recorded how it bears on the claim | source | 出典 | yes | A source supports or challenges a claim and says how directly; the page never ranks sources | Drafted |
 | A paragraph's own mark (`^id`) that names it through every rewording | anchor | アンカー | yes | RFC 005: a chain of changes followed through an anchor is exact; a paragraph without one is traced by matching its text, and the page says so | Drafted · ja: loanword |
 | A proposal that changes claims and sources and no page: where a community status, a review date and an availability are set | curation proposal | キュレーション提案 | yes | The only way a community status changes (RFC 005 part 2 D-3): never by a count, a tally or a timer | Drafted · ja: loanword |
+| What people say about one claim, apart from what is decided about it | discussion of this claim | この主張についての議論 | yes | RFC 005 part 2 D-11: an epistemic discussion with a label of its own, kept apart from the review of a proposal; it never changes a claim (a decision does, through a proposal people accept), and the page says so beside it | Drafted |
 
 ## 2. Messages
 
@@ -1342,6 +1343,18 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `health.sources_claim` | the name of a claim that relies on a source; `{where}` is the page it is said on, `{how}` how the source bears on it | "{where} ({how})" | "{where}（{how}）" |
 | `health.sources_claim_nowhere` | the name of a claim that relies on a source and that no page says now; `{id}` is its identifier | "A claim said on no page now, identifier {id}" | "いまどのページにも書かれていない主張、識別子 {id}" |
 | `health.sources_setting` | under that list; `{days}` is the number of days after which a review is old | "A source is listed when it was last reviewed more than {days} days ago. The person who runs this server sets the number." | "最後の確認から {days} 日を超えた出典が挙げられます。この日数は、このサーバーの管理者が定めます。" |
+| `claim_thread.heading` | the heading of a claim's discussion on the claim's page | "Discussion of this claim" | "この主張についての議論" |
+| `claim_thread.never_changes` | under that heading, in one sentence: what a discussion does not do | "A discussion never changes a claim: only a proposal that people accept does." | "議論が主張を変えることはありません。主張を変えるのは、人々が受け入れた提案だけです。" |
+| `claim_thread.total` | under that sentence when the discussion has comments; `{count}` is how many in all | "{count} comment" / "{count} comments" | "{count} 件のコメント" |
+| `claim_thread.none` | in place of the comments when nobody has written in the discussion | "Nobody has discussed this claim yet." | "この主張についての議論はまだありません。" |
+| `claim_thread.meta` | the line of a comment in a claim's discussion; `{number}` is its place in the discussion, `{when}` the time | "Comment {number} · {when}" | "コメント {number} · {when}" |
+| `claim_thread.in_reply_to` | under a comment that answers another; `{number}` is the place of the comment it answers | "In reply to comment {number}." | "コメント {number} への返信です。" |
+| `claim_thread.more` | the link to the next comments, under a long discussion | "Show the next comments" | "続きのコメントを表示" |
+| `claim_thread.first` | the link back to the first comments, on a later page of a long discussion | "Show the first comments" | "最初のコメントを表示" |
+| `claim_thread.unavailable` | in place of the discussion when its records cannot be read just now | "The discussion of this claim could not be read now." | "この主張の議論を現在は読み取れません。" |
+| `claim_thread.form_label` | the label of the field that adds a comment to a claim's discussion | "Add a comment to this discussion" | "この議論にコメントを追加" |
+| `claim_thread.form_reply` | above that field when the comment answers another; `{number}` is the place of the comment it answers | "Replying to comment {number}" | "コメント {number} への返信" |
+| `claim_thread.back` | the way back to the claim's page from a refused comment | "Back to the claim" | "主張のページに戻る" |
 
 ## 3. Words the interface does not say
 

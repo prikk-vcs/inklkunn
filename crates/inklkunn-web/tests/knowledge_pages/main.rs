@@ -6,6 +6,7 @@
 
 mod freshness;
 mod golden;
+mod thread;
 
 #[path = "../common/mod.rs"]
 mod common;

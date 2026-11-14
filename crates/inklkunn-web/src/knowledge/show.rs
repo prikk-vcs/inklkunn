@@ -23,14 +23,15 @@ use axum::extract::rejection::{PathRejection, QueryRejection};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
-use inklkunn_core::knowledge::Standing;
 use inklkunn_core::knowledge::index::{self, KnowledgeIndex};
+use inklkunn_core::knowledge::{ClaimId, Standing};
 use inklkunn_core::read::{Presentation, ReadError};
 use inklkunn_markup::path::path_to_title;
 use inklkunn_store::{KnowledgeClaimRow, KnowledgeSourceRow, WikiRecord};
 
 use super::marks::distinct;
 use super::others::{self, Others, Section};
+use super::thread;
 use super::{paths, words};
 use crate::catalog::{Key, Rich, T};
 use crate::discover::Subject;
@@ -86,6 +87,7 @@ struct ClaimTpl<'a> {
     status_heading: String,
     status: StatusLine,
     others: Option<Section>,
+    thread: thread::Section,
 }
 
 /// What a request for a claim's page came to, before any template.
@@ -108,6 +110,8 @@ struct Found {
     proposal_known: bool,
     /// The other views where the claim reads differently; `None` when the wiki has no other open view.
     others: Option<Others>,
+    /// The claim's own thread: a page of it, as read for this request (RFC 005 part 2 D-11).
+    thread: thread::Read,
 }
 
 fn load(
@@ -171,6 +175,9 @@ fn load(
                 .is_ok()
         });
     let others = others::gather(services, &wiki, view.as_deref(), &tip, id);
+    // The claim is in the index, so its id is one.
+    let thread =
+        ClaimId::parse(id).map(|claim| thread::read(services, headers, &wiki, &claim, params));
     Loaded::Claim(Box::new(Found {
         wiki,
         view,
@@ -178,6 +185,7 @@ fn load(
         claim,
         proposal_known,
         others,
+        thread: thread.unwrap_or_else(thread::Read::none),
     }))
 }
 
@@ -384,6 +392,7 @@ fn render(page: &Page, found: &Found, id: &str) -> Response {
         status_heading: page.get(Key::ClaimStatusHeading),
         status: status_line(t, found),
         others: found.others.as_ref().map(|o| o.section(t, wiki)),
+        thread: thread::section(t, &found.thread, wiki, id, found.view.as_deref()),
     }
     .render();
     answer(StatusCode::OK, &page, rendered)

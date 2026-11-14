@@ -326,6 +326,7 @@ fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
             ("/{slug}/-/health", Read),
             ("/{slug}/-/health/{list}", Read),
             ("/{slug}/-/claim/{id}", Read),
+            ("/{slug}/-/claim/{id}/discuss", Comment),
             ("/{slug}/-/why/{*title}", Read),
             ("/{slug}/-/links/{*title}", Read),
             ("/{slug}/-/site.json", Read),

@@ -28,4 +28,23 @@
 {% endfor %}</ul>
 {% endif %}{% if let Some(text) = o.limit %}<p>{{ text }}</p>
 {% endif %}{% if let Some(text) = o.unchecked %}<p>{{ text }}</p>
-{% endif %}{% endif %}{% endblock %}
+{% endif %}{% endif %}<section class="claim-thread" aria-labelledby="claim-thread">
+<h2 id="claim-thread">{{ thread.heading }}</h2>
+<p class="note">{{ thread.never_changes }}</p>
+{% if let Some(text) = thread.unavailable %}<p>{{ text }}</p>
+{% endif %}{% if let Some(text) = thread.total %}<p>{{ text }}</p>
+{% endif %}{% if let Some(text) = thread.none %}<p>{{ text }}</p>
+{% endif %}{% if let Some(link) = thread.first %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
+{% endif %}{% for c in thread.comments %}{% include "proposal_comment.html" %}{% endfor %}{% if let Some(link) = thread.more %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
+{% endif %}{% if let Some(f) = thread.form %}<form method="post" action="{{ f.action }}" class="comment-form">
+{% include "csrf.html" %}
+{% for h in f.hidden %}<input type="hidden" name="{{ h.0 }}" value="{{ h.1 }}">
+{% endfor %}{% if let Some(text) = f.about %}<p>{{ text }}</p>
+{% endif %}<div class="field">
+<label for="{{ f.body_id }}">{{ f.label }}</label>
+<textarea id="{{ f.body_id }}" name="{{ f.body_name }}" rows="4" cols="80"></textarea>
+</div>
+<p><button type="submit">{{ f.button }}</button></p>
+</form>
+{% endif %}</section>
+{% endblock %}

@@ -22,6 +22,55 @@ pub(crate) fn claim(slug: &str, id: &str, view: Option<&str>) -> String {
     format!("/{slug}/{}", claim_tail(id, view))
 }
 
+/// The query parameter that names the comment a page of a claim's thread begins after.
+pub(crate) const Q_AFTER: &str = "after";
+
+/// `/<slug>/-/claim/<id>` with the view, the comment a page of the thread begins after and the comment a reply is
+/// to, whichever are given: a claim's page at a place in its thread.
+pub(crate) fn claim_page(
+    slug: &str,
+    id: &str,
+    view: Option<&str>,
+    after: Option<&str>,
+    reply: Option<&str>,
+) -> String {
+    let pairs: Vec<String> = [
+        view.map(|v| format!("view={v}")),
+        after.map(|a| format!("{Q_AFTER}={a}")),
+        reply.map(|r| format!("{}={r}", crate::proposals::fields::Q_REPLY)),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if pairs.is_empty() {
+        format!("/{slug}/-/claim/{id}")
+    } else {
+        format!("/{slug}/-/claim/{id}?{}", pairs.join("&"))
+    }
+}
+
+/// The id of the field that adds a comment to a claim's thread, which a reply link leads to.
+pub(crate) const COMMENT_FIELD_ID: &str = "claim-comment";
+
+/// A claim's page at a place in its thread, at the form, for a reply to the comment `to`.
+pub(crate) fn reply(
+    slug: &str,
+    id: &str,
+    view: Option<&str>,
+    after: Option<&str>,
+    to: &str,
+) -> String {
+    format!(
+        "{}#{COMMENT_FIELD_ID}",
+        claim_page(slug, id, view, after, Some(to))
+    )
+}
+
+/// `/<slug>/-/claim/<id>/discuss`: the form that adds a comment to the claim's thread posts here.
+pub(crate) fn discuss(slug: &str, id: &str) -> String {
+    format!("/{slug}/-/claim/{id}/discuss")
+}
+
 /// A paragraph of a page: the page's address and the fragment the renderer's id for the block makes
 /// (the page's id prefix, then `^`, then the block's id).
 pub(crate) fn paragraph(page_href: &str, block: &str) -> String {

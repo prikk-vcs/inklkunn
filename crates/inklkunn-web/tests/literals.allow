@@ -488,3 +488,8 @@ exact :: health.rs :: day :: a placeholder name of a catalog message, or the nam
 exact :: health.rs :: where :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
 exact :: health.rs :: how :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
 exact :: health.rs :: days :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+
+# --- a claim's own discussion (RFC 005 part 2 D-11; handoff K-T10)
+exact :: thread.rs :: number :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: thread.rs :: when :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: thread.rs :: author :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence

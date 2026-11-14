@@ -783,6 +783,7 @@ pub fn assemble(
             QuotaConfig::default(),
         )
         .with_notifier(notifier)
+        .with_claim_threads(store.clone(), read.clone())
         .with_clock(|| NOW),
     );
     let services = Arc::new(Services {

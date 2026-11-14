@@ -595,6 +595,37 @@ fn a_wiki_is_created_filled_exported_and_archived_through_the_commands_and_no_se
         "an unchanged import began an act"
     );
 
+    // A claim's thread, in the service's records, rides with the bundle (RFC 005 part 2 D-11).
+    let thread_claim = "019a0000-0000-7000-8000-000000000c01";
+    {
+        use inklkunn_store::{
+            Account, AccountId, AccountStore, ClaimCommentRecord, ClaimThreadStore, CommentId,
+            DisplayName, Slug, WikiStore,
+        };
+        let record = w.store.by_slug(&Slug::new("handbook").unwrap()).unwrap();
+        let author = AccountId::new();
+        w.store
+            .add_account(&Account {
+                id: author.clone(),
+                display_name: DisplayName::new("Ann").unwrap(),
+                local: None,
+                created_at: 1,
+                disabled: false,
+            })
+            .unwrap();
+        w.store
+            .add_claim_comment(&ClaimCommentRecord {
+                id: CommentId::new(),
+                wiki: record.id,
+                claim: thread_claim.to_owned(),
+                author,
+                parent: None,
+                body: "Where was this measured?".to_owned(),
+                created_at: 1_700_000_000,
+            })
+            .unwrap();
+    }
+
     // export: a bundle and an archive.
     let out_dir = dir(&w.tmp.0, "exports");
     let bundle = out_dir.0.join("bundle");
@@ -620,6 +651,14 @@ fn a_wiki_is_created_filled_exported_and_archived_through_the_commands_and_no_se
     );
     assert!(bundle.join("wiki-bundle.yaml").is_file() && bundle.join("users.yaml").is_file());
     assert!(bundle.join("history/home-1.jsonl").is_file());
+    assert!(out.contains("discussions: 1 claim thread(s)"), "{out}");
+    let thread =
+        std::fs::read_to_string(bundle.join(format!("discussions/claims/{thread_claim}.jsonl")))
+            .unwrap();
+    assert!(
+        thread.contains("Where was this measured?") && thread.contains("\"name\":\"Ann\""),
+        "{thread}"
+    );
     let mode = std::fs::metadata(&archive).unwrap().permissions().mode();
     assert_eq!(mode & 0o777, 0o600);
     assert!(std::fs::metadata(&archive).unwrap().len() > 0);

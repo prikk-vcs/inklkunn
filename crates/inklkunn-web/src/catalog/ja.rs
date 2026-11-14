@@ -3069,4 +3069,32 @@ pub const CATALOG: &[Entry] = &[
         "health.sources_setting",
         "最後の確認から {days} 日を超えた出典が挙げられます。この日数は、このサーバーの管理者が定めます。",
     ),
+    msg("claim_thread.heading", "この主張についての議論"),
+    msg(
+        "claim_thread.never_changes",
+        "議論が主張を変えることはありません。主張を変えるのは、人々が受け入れた提案だけです。",
+    ),
+    plural_msg(
+        "claim_thread.total",
+        "{count} 件のコメント",
+        "{count} 件のコメント",
+    ),
+    msg(
+        "claim_thread.none",
+        "この主張についての議論はまだありません。",
+    ),
+    msg("claim_thread.meta", "コメント {number} · {when}"),
+    msg(
+        "claim_thread.in_reply_to",
+        "コメント {number} への返信です。",
+    ),
+    msg("claim_thread.more", "続きのコメントを表示"),
+    msg("claim_thread.first", "最初のコメントを表示"),
+    msg(
+        "claim_thread.unavailable",
+        "この主張の議論を現在は読み取れません。",
+    ),
+    msg("claim_thread.form_label", "この議論にコメントを追加"),
+    msg("claim_thread.form_reply", "コメント {number} への返信"),
+    msg("claim_thread.back", "主張のページに戻る"),
 ];
