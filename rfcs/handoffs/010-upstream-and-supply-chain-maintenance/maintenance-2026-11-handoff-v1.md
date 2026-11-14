@@ -242,5 +242,10 @@ request, `010-maintenance-2026-11-corrections-6-review-request.md`.
 - **M40 — small points and the bubblewrap guard** (Z′-b, Z′-c, decision 2).
   - **`scrub`:** it filters the store's `is_line_or_control` set plus the format characters (Cf, as `yaml::is_bidi_or_format` names them) before it measures a piece. It chooses the line to show after flattening. A test for each of the three cases.
   - **`user_namespace_violations`** checks each job that runs `cargo test`, honouring `if:`.
-  - **The bubblewrap lines:** if the architect's reading of this push's CI log shows them gone, the guard fails on `skipping: bubblewrap cannot confine` and `skipping the confined policy`.
+  - **The bubblewrap lines: not yet in the guard.** The architect read CI run 43606787565 (`2e0125c`), the first run with the sysctl step:
+    - the step ran (`kernel.apparmor_restrict_unprivileged_userns = 0`), and **the PID-namespace tests ran** in both test steps;
+    - but bubblewrap still **cannot confine**: 27 skip lines (17 *running unconfined*, 6 plain, 4 *the confined policy*);
+    - the line does not say why.
+
+    So `probe_bwrap`'s skip line carries bubblewrap's own reason, the first line of its stderr (scrubbed, at most 200 characters). The next CI run then shows the cause. Name it in the request, and whether a further runner step (for example Ubuntu 24.04's `bwrap-userns-restrict` AppArmor profile) is needed and safe. The guard joins once a run shows the lines gone.
   - **The serve refusal test** runs everywhere through an injected *cannot confine* answer, so it never depends on the runner.

@@ -406,6 +406,10 @@
     - **Maintenance M38 – M40.** M35's premise was the architect's error (no YAML crate in the lock), so `pin-check` now refuses any workflow line outside one canonical form, with no new crate. Tests reach prikk capabilities only through one helper that prints the guarded line.
     - **Knowledge K71 – K75.** The acceptance merge could carry a check of an old reference onto a new one, so the reference rule moves to acceptance. A check of a new reference must be stated, never inferred from a repeated day. The export's partial sweep could delete a user's directory beside the destination.
   - Pushed.
+  - **CI run 43606787565 on `2e0125c` is green.** It is the first with the user-namespace step:
+    - the PID-namespace tests of the extract locks now **run in CI**;
+    - bubblewrap still cannot confine on the runner (27 skip lines);
+    - the reason is not printed, so M40 makes the probe print it, and the sandbox guard waits.
 
 ## Pending on the owner
 
