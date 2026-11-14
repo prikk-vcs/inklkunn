@@ -11,45 +11,51 @@ const MIN_FRAGMENT: usize = 4;
 /// Is `c` a control character, or one that some line-oriented reader splits a line on (U+2028, U+2029)? The excerpt
 /// is shown as one line, so neither may stay in it. This is `inklkunn_store::record::is_line_or_control`, the one
 /// definition of the rule everywhere else; this crate depends on the driver alone (the boundary gate), so it cannot
-/// call it and holds the same two-part test, which the tests below hold to the same characters.
+/// call it and holds the same two-part test, which a test holds equal to the store's over every code point (the store
+/// is a dev-dependency of this crate, for that test).
 fn is_line_or_control(c: char) -> bool {
     c.is_control() || matches!(c, '\u{2028}' | '\u{2029}')
 }
 
-/// The first line of `raw` that says anything, with every secret in `secrets` — whole, and in pieces split at
-/// whitespace, `&`, `=`, `:` and `,` — replaced by `[redacted]`, control characters removed and the length
-/// bounded. `raw` is lossily read as UTF-8.
+/// `s` without its line separators and controls.
+fn flattened(s: &str) -> String {
+    s.chars().filter(|c| !is_line_or_control(*c)).collect()
+}
+
+/// The first line of `raw` that says anything, with line separators and control characters removed **first**, then
+/// every secret in `secrets` — whole, and in pieces split at whitespace, `&`, `=`, `:` and `,` — replaced by
+/// `[redacted]`, and the length bounded. (Redacting first would let a secret split by U+2028 escape, and the filter
+/// would then join it back.) A secret is looked for in the same flattened form. `raw` is lossily read as UTF-8.
 pub(crate) fn scrub(raw: &[u8], secrets: &[&str]) -> String {
     let text = String::from_utf8_lossy(raw);
-    let mut needles: Vec<&str> = Vec::new();
+    let mut needles: Vec<String> = Vec::new();
     for secret in secrets {
         if secret.is_empty() {
             continue;
         }
-        needles.push(secret);
+        needles.push(flattened(secret));
         for piece in secret.split(|c: char| c.is_whitespace() || matches!(c, '&' | '=' | ':' | ','))
         {
             if piece.chars().count() >= MIN_FRAGMENT {
-                needles.push(piece);
+                needles.push(flattened(piece));
             }
         }
     }
+    // A needle that flattened to nothing would match between every two characters.
+    needles.retain(|n| !n.is_empty());
     // Longest first, so a whole secret goes before its pieces.
     needles.sort_by_key(|n| std::cmp::Reverse(n.len()));
     needles.dedup();
-    let mut line = text
-        .lines()
-        .map(str::trim)
-        .find(|l| !l.is_empty())
-        .unwrap_or("")
-        .to_owned();
-    for needle in needles {
-        line = line.replace(needle, "[redacted]");
+    let mut line = flattened(
+        text.lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty())
+            .unwrap_or(""),
+    );
+    for needle in &needles {
+        line = line.replace(needle.as_str(), "[redacted]");
     }
-    line.chars()
-        .filter(|c| !is_line_or_control(*c))
-        .take(MAX_EXCERPT)
-        .collect()
+    line.chars().take(MAX_EXCERPT).collect()
 }
 
 #[cfg(test)]

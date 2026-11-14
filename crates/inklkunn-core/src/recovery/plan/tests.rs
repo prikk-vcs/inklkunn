@@ -2065,6 +2065,62 @@ fn a_plan_promises_a_clear_only_when_prikk_does_not_say_the_holder_is_running() 
 }
 
 #[test]
+fn a_plain_stale_lock_whose_holder_appears_running_says_the_run_tries_and_may_stop_at_it() {
+    // M36 (Z-d): M31 covered only the lock that stands in front of a take-back. A stale lock with nothing queued was still
+    // planned as "clear ... prikk's own liveness line is not consulted", with no warning, and on 0.57.0 the run then
+    // failed at clear-locks. The step's line now says that prikk says the holder appears running, that 0.57.0's
+    // `unlock --yes` does not clear such a holder, and what the run does about it. The words are 0.57.0's listing's.
+    let running = "appears running -- do not clear: the process that took the lock is still running (same pid and start time)";
+    for (liveness, said) in [
+        (running, true),
+        // The older prikks' words for the same answer, and the answers that promise the clear.
+        ("appears running -- do not clear", true),
+        (
+            "does not appear to be running (not proof it is safe to clear)",
+            false,
+        ),
+        ("unknown: written by an older prikk", false),
+    ] {
+        let mut w = flagged();
+        w.locks = vec![
+            lock("active", 2_147_483_000, liveness),
+            lock("container:object-store", 2_147_483_001, "unknown (x)"),
+        ];
+        w.acts = vec![act(Chain::NotSealed)];
+        let plan = build(&w);
+        assert_eq!(plan.stop, None, "{liveness}");
+        assert_eq!(nth(&names(&plan), 0), &"clear-locks");
+        let line = nth(&plan.steps, 0).line();
+        // The step is the same either way: the run tries, and the lease record decides (PL-8).
+        assert!(
+            line.starts_with("clear 2 stale lock(s) (")
+                && line.contains("prikk's own liveness line is not consulted"),
+            "{line}"
+        );
+        if said {
+            assert!(
+                line.contains(
+                    "prikk says the holder of active (recorded pid 2147483000) appears running"
+                ) && !line.contains("container:object-store (recorded pid")
+                    && line
+                        .contains("`unlock --yes` does not clear a holder it says appears running")
+                    && line.contains(
+                        "stops at this step with the lock still held and nothing after it done"
+                    ),
+                "{liveness}: {line}"
+            );
+        } else {
+            assert!(
+                !line.contains("appears running")
+                    && !line.contains("stops at this step")
+                    && !line.contains("does not clear a holder"),
+                "{liveness}: {line}"
+            );
+        }
+    }
+}
+
+#[test]
 fn a_lone_metadata_debris_warning_is_noted_and_in_nobodys_way() {
     // M16 (PK-46): harmless, and the next commit clears it; the plan used to stop at `doctor-trouble` for it.
     let debris = || {

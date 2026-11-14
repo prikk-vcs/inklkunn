@@ -1479,6 +1479,21 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   guarded line before it in its block; a second test plants eight failures (Z-a's silent return among them) and four shapes that are right,
   and the check counts the sources, the probe functions and the guarded returns it saw so that it cannot pass without reading.
 
+- **M36 (handoff 010 corrections, fifth round): `scrub` filters before it redacts; a lock whose holder appears running is planned as an attempt.**
+  `inklkunn-fetch`'s `scrub` redacted a secret and then filtered line separators and controls, so a secret split by U+2028 escaped
+  the redaction and the filter joined it back (`token=abcd<U+2028>efgh1234` came out as `token=abcdefgh1234`). It now flattens the
+  excerpt first, and looks for each secret (whole and in pieces) in the same flattened form; a secret of only controls is not hunted.
+  Tests: that case for U+2028, U+2029, U+0085, a bell and a NUL, a secret that holds a separator itself, and a parity test that holds
+  the crate's copy of `is_line_or_control` equal to `inklkunn_store::record::is_line_or_control` over every Unicode scalar value
+  (`inklkunn-fetch` gets `inklkunn-store` as a **dev-dependency** for it: a workspace path dependency, no new crate; the boundary gate
+  reads runtime dependencies only and is unchanged). And a `clear-locks` step with a lock prikk says appears running (M31 had covered
+  only the lock in front of a take-back) now says so in the plan's line: prikk says the holder appears running, prikk 0.57.0's
+  `unlock --yes` does not clear such a holder, and the run tries and, if prikk refuses, stops at that step with the lock held and
+  nothing after it done; the reading of prikk's words is `HeldLock::appears_running`. Tests: the plan's lines for 0.57.0's listing,
+  an older prikk's, `does not appear` and `unknown`; and, on a real 0.57.0 (`on_0_57_0_...`, one new test that prints its own guarded
+  skip line), the plan and then the run of a plain stale lock behind prikk 0.57.0's refusal, and the same lock cleared once prikk no
+  longer says it is running.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

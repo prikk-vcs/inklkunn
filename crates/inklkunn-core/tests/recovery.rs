@@ -2269,6 +2269,60 @@ fn on_0_57_0_a_plan_with_a_lock_whose_holder_appears_running_says_the_run_stops_
 }
 
 #[test]
+fn on_0_57_0_a_plain_stale_lock_whose_holder_appears_running_is_planned_as_the_attempt_it_is() {
+    // Maintenance M36 (Z-d). The same listing and refusal as the test above (prikk 0.57.0's), with nothing queued: the
+    // plan used to say only "clear 1 stale lock(s) ... prikk's own liveness line is not consulted", and the run then
+    // stopped at clear-locks. The step's line says that prikk says the holder appears running and what the run does.
+    let Some(w) = World::new_057("plain-running-057", LeaseConfig::default()) else {
+        return;
+    };
+    let lock = plant_lock(
+        &w.repo,
+        "active/default/active.lock",
+        2_147_483_000,
+        "active",
+    );
+    w.flag(RecoveryReason::Interrupted);
+    w.control("appears-running", "");
+    let planned = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
+    assert_eq!(nth(&step_names(&planned), 0), &"clear-locks");
+    let line = nth(&planned.plan.steps, 0).line();
+    assert!(
+        line.contains("prikk says the holder of active (recorded pid 2147483000) appears running")
+            && line
+                .contains("the run tries to clear it, and if prikk refuses it stops at this step"),
+        "{line}"
+    );
+    let run = w.recover();
+    assert!(
+        matches!(
+            &run.outcome,
+            RecoveryOutcome::Stopped { at: Some("clear-locks"), why }
+                if why.starts_with("the lock was not cleared: ") && why.contains("appears running")
+        ),
+        "the plan said so: {:#?}",
+        run.lines()
+    );
+    assert!(Path::new(&lock).exists(), "the lock stays");
+    // A holder prikk does not say is running is the plain promise, and the run keeps it.
+    w.uncontrol("appears-running");
+    let planned = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
+    let line = nth(&planned.plan.steps, 0).line();
+    assert!(
+        !line.contains("appears running") && !line.contains("stops at this step"),
+        "{line}"
+    );
+    let run = w.recover();
+    assert_eq!(
+        run.outcome,
+        RecoveryOutcome::Recovered,
+        "{:#?}",
+        run.lines()
+    );
+    assert!(!Path::new(&lock).exists(), "the lock was cleared");
+}
+
+#[test]
 fn a_step_that_failed_keeps_its_sentence_when_the_audit_fails_after_it() {
     // Maintenance M31 (W-e). The lock is cleared, the listing that checks it fails, and then the trail refuses the
     // failure's own record: the error used to say *nothing was done*, with the step's sentence lost. Needs the preview

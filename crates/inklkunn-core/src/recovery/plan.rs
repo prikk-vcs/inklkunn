@@ -359,6 +359,20 @@ pub struct LockEntry {
     pub prikk_liveness: String,
 }
 
+impl LockEntry {
+    /// Does prikk say the holder appears to be running? The one reading of its words is [`HeldLock::appears_running`]
+    /// (used here only for what the plan says of the clear: maintenance M31, M36).
+    fn appears_running(&self) -> bool {
+        HeldLock {
+            path: self.path.clone(),
+            kind: self.kind.clone(),
+            recorded_pid: self.recorded_pid,
+            liveness: self.prikk_liveness.clone(),
+        }
+        .appears_running()
+    }
+}
+
 /// One step of a plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Step {
@@ -472,15 +486,31 @@ impl Step {
     /// The step as one line for a person.
     pub fn line(&self) -> String {
         match self {
-            Step::ClearLocks { locks } => format!(
-                "clear {} stale lock(s) ({}); the lease record shows no live holder, and prikk's own liveness line is not consulted",
-                locks.len(),
-                locks
+            Step::ClearLocks { locks } => {
+                let mut line = format!(
+                    "clear {} stale lock(s) ({}); the lease record shows no live holder, and prikk's own liveness line is not consulted",
+                    locks.len(),
+                    locks
+                        .iter()
+                        .map(|l| format!("{} recorded pid {} prikk says \"{}\"", l.kind, l.recorded_pid, l.prikk_liveness))
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                );
+                // prikk 0.57.0's `unlock --yes` does not clear a holder it says appears running (measured, M10): the
+                // run tries all the same (the lease record decides, PL-8) and stops here if prikk refuses (M36, Z-d).
+                let running: Vec<String> = locks
                     .iter()
-                    .map(|l| format!("{} recorded pid {} prikk says \"{}\"", l.kind, l.recorded_pid, l.prikk_liveness))
-                    .collect::<Vec<_>>()
-                    .join("; ")
-            ),
+                    .filter(|l| l.appears_running())
+                    .map(|l| format!("{} (recorded pid {})", l.kind, l.recorded_pid))
+                    .collect();
+                if !running.is_empty() {
+                    line.push_str(&format!(
+                        ". prikk says the holder of {} appears running, and prikk 0.57.0's `unlock --yes` does not clear a holder it says appears running: the run tries to clear it, and if prikk refuses it stops at this step with the lock still held and nothing after it done",
+                        running.join(", ")
+                    ));
+                }
+                line
+            }
             Step::SealQueued { act, patch_id, .. } => format!(
                 "seal the queued patch {patch_id}, which is the change of {} {}; it is not committed again",
                 act.kind(),
