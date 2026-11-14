@@ -1344,7 +1344,7 @@ impl Writes {
     /// line per sealed block (0.55.0 and 0.56.0). **The two differ where it matters**: the text prints no such line
     /// for a repository whose verification fails (a retired key's history, ledger PK-34), and the report lists
     /// every block all the same, so only the report lets the check run after a retirement. The choice is the
-    /// report's: a report with `block_seals` is read (and refused when it is not complete, or malformed), a report
+    /// report's: a report with `block_seals` is read (and refused when it is not whole, or malformed), a report
     /// without the field is an older prikk and the text is read as before.
     pub(crate) fn sealed_block_signers(&self, repo: &Path) -> Result<Sealers, SignerError> {
         let (run, ceiling) = self.run_raw(
@@ -1371,6 +1371,17 @@ impl Writes {
                 if report.is_partial() {
                     return Err(SignerError::Unavailable(
                         "`verify` did not run to the end, so the list of who sealed what may be incomplete"
+                            .to_owned(),
+                    ));
+                }
+                // And a report that ran to the end can still list fewer: prikk 0.57.0 leaves a block out of
+                // `block_seals` when the block (or the ref that reaches it) cannot be read, with every stage
+                // `evaluated`. A short list read as "no late seals" would be a false claim, so the list is used
+                // only where it is whole (`Verification::block_seals_are_whole`); the text is no fallback, it
+                // lists less.
+                if !report.block_seals_are_whole() {
+                    return Err(SignerError::Unavailable(
+                        "`verify` reports a failure other than publication trust, so its list of who sealed what may be incomplete; no conclusion is drawn from it"
                             .to_owned(),
                     ));
                 }

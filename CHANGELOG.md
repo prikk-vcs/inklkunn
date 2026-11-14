@@ -585,6 +585,17 @@ Dependency updates (the architect, 2026-11-14).
   base), `check::{new_links_unjudged, unjudged_by, Unjudged}`, `Rule::Judged` (so `Rule::ALL` is 18),
   `Invalid::KnowledgeUnjudged`; `knowledge_verdict` takes the pages. One new prikk-dependent test: the attach, the stale
   link at submit and at acceptance on a real history.
+M8 (maintenance corrections, prikk 0.57.0's `block_seals`): the list of who sealed which block is used only where it is whole.
+Measured on the published 0.57.0: `block_seals` is **not** filled independently of the other checks. With a block container (or
+the ref pointer index) that cannot be read it is empty or short **while every stage is `evaluated`** (the verdict fails on
+`item-failure`), a failed `local-tag-trust` or `objects` stage leaves it empty, and only a verdict that fails on publication trust
+alone (a retired key) lists every block. A short list with `sees_untrusted_keys: true` would have read as *no late seals*.
+New: `Verification::block_seals_are_whole` (every stage `evaluated`, and the verdict holds or fails on publication trust alone;
+`is_partial` and the verdict are unchanged). `Writes::sealed_block_signers` refuses a list that is not whole as unavailable
+("may be incomplete"; the text, which lists less, is no fallback); a report without the field (0.55.0, 0.56.0) is read in the
+text as before. `docs/KEYS.md` says so. Tests: the rule against eleven report shapes, the signer's seven stand-in shapes (both the
+refusals and the retired key and an older prikk), and one real-prikk test (a block container made unreadable). One new
+prikk-dependent test.
 
 ## [0.2.0] — 2026-11-04
 

@@ -536,6 +536,100 @@ fn a_report_that_is_not_complete_or_not_well_formed_gives_no_list() {
     );
 }
 
+/// A failing report whose verdict names `conditions` (condition ids) over `stages`.
+fn verify_json_failing(extra: &str, conditions: &[&str], stages: &str) -> String {
+    let conditions: Vec<String> = conditions
+        .iter()
+        .map(|id| format!(r#"{{"id":"{id}","message":"x"}}"#))
+        .collect();
+    format!(
+        r#"{{"schema_version":"verify-report-v1","verdict":{{"ok":false,"failed_conditions":[{}]}},"stages":{stages}{extra}}}"#,
+        conditions.join(",")
+    )
+}
+
+#[test]
+fn a_list_that_prikk_may_have_left_short_is_never_read_as_no_late_seals() {
+    // Measured on the published 0.57.0 (m3-measurements, section 8): with a block or a ref container that cannot be read,
+    // `block_seals` is short or empty while every stage is `evaluated`; a failed stage leaves it empty. The list is read
+    // only where it is whole (a verification that holds, or fails on publication trust alone); anywhere else it is
+    // *unavailable*, so that `sees_untrusted_keys` is never true over a list that may leave a block out.
+    let seals = format!(
+        r#","block_seals":[{{"block_id":"{}","sealed_by":["old-key"],"trusted_by":null}}]"#,
+        id(BLOCK_A)
+    );
+    const BLOCKED: &str = r#"[{"stage":"refs","status":"failed","message":"integrity error: x"},{"stage":"later","status":"not_evaluated","blocked_by":"refs"}]"#;
+    let shapes: [(&str, String); 5] = [
+        (
+            "unreadable-container",
+            verify_json_failing(&seals, &["item-failure"], EVALUATED),
+        ),
+        (
+            "failed-stage",
+            verify_json_failing(&seals, &["stage-failure", "item-failure"], BLOCKED),
+        ),
+        (
+            "trust-and-container",
+            verify_json_failing(&seals, &["publication-trust", "item-failure"], EVALUATED),
+        ),
+        (
+            "unknown-condition",
+            verify_json_failing(&seals, &["a-newer-condition"], EVALUATED),
+        ),
+        (
+            "empty-list",
+            verify_json_failing(r#","block_seals":[]"#, &["item-failure"], EVALUATED),
+        ),
+    ];
+    for (tag, json) in shapes {
+        let f = SealsFixture::new(
+            tag,
+            &json,
+            &format!("sealed-block {}: m1\n", id(BLOCK_B)),
+            1,
+        );
+        let r = f.signers();
+        assert!(
+            matches!(&r, Err(SignerError::Unavailable(why)) if why.contains("may be incomplete")),
+            "{tag}: {r:?}"
+        );
+        assert_eq!(
+            f.calls(),
+            "verify --format json\n",
+            "{tag}: the text, which lists less, is no fallback"
+        );
+    }
+    // A retired key fails the verdict on publication trust alone, and its list is whole: that is the case the list is for.
+    let retired = SealsFixture::new(
+        "retired",
+        &verify_json_failing(&seals, &["publication-trust"], EVALUATED),
+        "",
+        1,
+    );
+    assert_eq!(
+        retired.signers(),
+        Ok(Sealers {
+            pairs: vec![(id(BLOCK_A), "old-key".to_owned())],
+            as_recorded: true
+        })
+    );
+    // An older prikk's report (no `block_seals`) that fails the same way is read in the text, as before M8: the text
+    // claims no more than "the keys prikk still trusts" (`as_recorded: false`).
+    let older = SealsFixture::new(
+        "older",
+        &verify_json_failing("", &["item-failure"], EVALUATED),
+        &format!("sealed-block {}: m1\n", id(BLOCK_B)),
+        1,
+    );
+    assert_eq!(
+        older.signers(),
+        Ok(Sealers {
+            pairs: vec![(id(BLOCK_B), "m1".to_owned())],
+            as_recorded: false
+        })
+    );
+}
+
 // ---- `prikk uncommit` (0.57.0, PK-43): a stand-in prikk for the three things it can answer
 
 struct UncommitFixture {

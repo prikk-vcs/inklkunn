@@ -398,6 +398,34 @@ impl Verification {
             })
     }
 
+    /// Whether `verify --format json`'s `block_seals` (prikk 0.57.0, ledger PK-39: every block the run reached, with the
+    /// keys its seal records) can be taken for **the whole list**. A short list read as "nobody sealed anything late"
+    /// would be a false claim about the repository, so this is stricter than [`Verification::is_partial`] and is asked
+    /// only of the list.
+    ///
+    /// It is whole when every stage is `evaluated` (a stage that failed, or was not evaluated behind one that failed,
+    /// is not: the verdict may be right about it and the list still short) **and** the verdict either holds or fails on
+    /// publication trust alone, which is the retired-key case the list exists for. Any other condition
+    /// (`item-failure`, `stage-failure`, `blocking-ref-publication`, an unknown id, a failing verdict that names none)
+    /// is not whole. Measured on the published 0.57.0 (`m3-measurements-2026-11.md`, section 8): the list is **not**
+    /// filled independently of the other stages, it was empty or short for a block or ref container that could not be
+    /// read while every stage was `evaluated`, and complete for every publication-trust failure.
+    pub fn block_seals_are_whole(&self) -> bool {
+        const PUBLICATION_TRUST: &str = "publication-trust";
+        let conditions = &self.verdict.failed_conditions;
+        let verdict_allows = self.verdict.ok
+            || (!conditions.is_empty()
+                && conditions.iter().all(|c| {
+                    c.get("id").and_then(serde_json::Value::as_str) == Some(PUBLICATION_TRUST)
+                }));
+        !self.stages.is_empty()
+            && self
+                .stages
+                .iter()
+                .all(|s| matches!(s.outcome(), StageOutcome::Evaluated))
+            && verdict_allows
+    }
+
     /// The stages' names and statuses on one line, for an operator's log. No message is included.
     pub fn stage_summary(&self) -> String {
         let parts: Vec<String> = self

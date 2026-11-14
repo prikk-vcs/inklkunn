@@ -603,6 +603,35 @@ fn a_retirement_records_the_point_too_and_marks_the_key_retired() {
 }
 
 #[test]
+fn a_block_prikk_cannot_read_makes_the_late_seal_check_unavailable_and_never_clean() {
+    // Measured on the published 0.57.0 (m3-measurements, section 8): with a block container that cannot be read,
+    // `block_seals` is empty while every stage is `evaluated`, and the verdict fails on `item-failure`. A check that
+    // read that list would say "no late seals" (and `sees_untrusted_keys: true`) of a repository it could not read.
+    let Some(w) = world("late-unreadable") else {
+        return;
+    };
+    w.seal_with_current_keys("one\n");
+    w.signer
+        .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Keep)
+        .unwrap();
+    w.seal_with_current_keys("two\n");
+    assert_eq!(w.signer.seals_by_superseded_keys(&w.repo).unwrap(), vec![]);
+    if !w.prikk_reports_block_seals() {
+        return;
+    }
+    std::fs::write(
+        w.repo.join(".prikk/containers/block/a.container"),
+        b"garbage",
+    )
+    .unwrap();
+    let r = w.signer.late_seal_check(&w.repo);
+    assert!(
+        matches!(&r, Err(SignerError::Unavailable(why)) if why.contains("may be incomplete")),
+        "{r:?}"
+    );
+}
+
+#[test]
 fn a_retirement_recorded_without_findings_excuses_nothing() {
     // P2′: a record from before the set was kept (format 2 opens as a retired key with no findings) excuses nothing,
     // even when the failure is, in fact, that key's.

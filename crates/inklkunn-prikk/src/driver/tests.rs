@@ -322,3 +322,79 @@ fn a_stage_is_modelled_as_prikk_reports_it_and_an_unknown_status_is_never_a_good
         "refs failed, x not_evaluated (behind refs)"
     );
 }
+
+/// A `verify-report-v1` with the given verdict (`ok` and the ids of its failed conditions) over the given stages.
+fn report_with(ok: bool, conditions: &[&str], stages: &str) -> Verification {
+    let conditions: Vec<String> = conditions
+        .iter()
+        .map(|id| format!(r#"{{"id":"{id}","message":"x"}}"#))
+        .collect();
+    let text = format!(
+        r#"{{"schema_version":"verify-report-v1","verdict":{{"ok":{ok},"failed_conditions":[{}]}},"stages":[{stages}]}}"#,
+        conditions.join(",")
+    );
+    parse_report("verify", text.as_bytes(), "verify-report-v1").expect("a report")
+}
+
+#[test]
+fn the_list_of_block_seals_is_whole_only_where_the_report_shows_nothing_left_out() {
+    // Measured on the published 0.57.0 (m3-measurements, section 8): a repository whose verification fails on
+    // publication trust alone (a retired key) lists every block; one with a block or ref container that cannot be
+    // read lists fewer, or none, while every stage is `evaluated`; a failed stage and the stages behind it also
+    // leave it short. The stricter reading is asked of the list only: the verdict's `is_partial` is not it.
+    const NOT_RUN: &str = r#"{"stage":"b","status":"not_evaluated","blocked_by":"refs"}"#;
+    let whole = [
+        ("a repository that verifies", report_with(true, &[], DONE)),
+        (
+            "a retired key (publication trust alone)",
+            report_with(false, &["publication-trust"], DONE),
+        ),
+    ];
+    for (what, report) in &whole {
+        assert!(report.block_seals_are_whole(), "{what}");
+    }
+    let short = [
+        (
+            "a container that cannot be read, every stage evaluated",
+            report_with(false, &["item-failure"], DONE),
+        ),
+        (
+            "publication trust beside an unreadable container",
+            report_with(false, &["publication-trust", "item-failure"], DONE),
+        ),
+        (
+            "a blocked ref publication",
+            report_with(false, &["blocking-ref-publication"], DONE),
+        ),
+        (
+            "a failed stage",
+            report_with(false, &["stage-failure"], DAMAGED),
+        ),
+        (
+            "a stage not evaluated behind a failed one (a finding: not partial for the verdict)",
+            report_with(false, &["stage-failure"], &format!("{DAMAGED},{NOT_RUN}")),
+        ),
+        (
+            "a failed stage the verdict does not name (a report that contradicts itself)",
+            report_with(false, &["publication-trust"], DAMAGED),
+        ),
+        (
+            "a stage not evaluated beside a retired key",
+            report_with(false, &["publication-trust"], &format!("{DONE},{NOT_RUN}")),
+        ),
+        (
+            "a condition nobody knows",
+            report_with(false, &["a-newer-condition"], DONE),
+        ),
+        (
+            "a failing verdict that names no condition",
+            report_with(false, &[], DONE),
+        ),
+        ("no stages", report_with(true, &[], "")),
+    ];
+    for (what, report) in &short {
+        assert!(!report.block_seals_are_whole(), "{what}");
+    }
+    // The verdict's own reading is not changed: the blocked stage behind a finding is not partial.
+    assert!(!report_with(false, &["stage-failure"], &format!("{DAMAGED},{NOT_RUN}")).is_partial());
+}
