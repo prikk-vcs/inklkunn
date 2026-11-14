@@ -33,6 +33,9 @@ pub(crate) struct CommentView {
     /// Said of a comment whose anchor matches nothing any more.
     pub(crate) orphaned: Option<String>,
     pub(crate) reply: Option<LinkView>,
+    /// A reply in a claim's thread: the sentence naming the comment it answers, with a link to that comment (on its own
+    /// page) when one can be made. It stands in place of `location`.
+    pub(crate) parent: Option<crate::catalog::Rich>,
 }
 
 /// A link.

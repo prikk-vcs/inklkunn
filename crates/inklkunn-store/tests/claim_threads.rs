@@ -277,6 +277,43 @@ fn the_suite(store: &(impl ClaimThreadStore + WikiStore + AccountStore)) {
             .unwrap()
             .is_empty()
     );
+
+    // --- The comment in a place of a thread is one lookup by the thread's key (K42): the place of every comment gives
+    // that comment; place 0, a place past the end, another thread, another wiki and an id nobody has give nothing.
+    let walked = store.claim_comments(&w.id, C1, None, MAX_PAGE).unwrap();
+    assert!(walked.rows.len() > 2);
+    for row in &walked.rows {
+        assert_eq!(
+            store
+                .claim_comment_at(&w.id, C1, u64::from(row.position))
+                .unwrap(),
+            Some(row.comment.id.clone()),
+            "place {}",
+            row.position
+        );
+    }
+    let past = walked.total + 1;
+    assert_eq!(store.claim_comment_at(&w.id, C1, 0).unwrap(), None);
+    assert_eq!(store.claim_comment_at(&w.id, C1, past).unwrap(), None);
+    assert_eq!(store.claim_comment_at(&w.id, C1, u64::MAX).unwrap(), None);
+    // Another wiki's thread of the same claim is its own: its place 1 is its own comment, not this wiki's.
+    let elsewhere = store.claim_comments(&other.id, C1, None, 10).unwrap();
+    let elsewhere_first = elsewhere.rows.first().unwrap().comment.id.clone();
+    assert_eq!(
+        store.claim_comment_at(&other.id, C1, 1).unwrap(),
+        Some(elsewhere_first.clone())
+    );
+    assert_ne!(
+        store.claim_comment_at(&w.id, C1, 1).unwrap(),
+        Some(elsewhere_first)
+    );
+    assert_eq!(store.claim_comment_at(&WikiId::new(), C1, 1).unwrap(), None);
+    assert_eq!(
+        store
+            .claim_comment_at(&w.id, "019a0000-0000-7000-8000-000000000c99", 1)
+            .unwrap(),
+        None
+    );
 }
 
 /// The id of the comment at `position` in a thread.

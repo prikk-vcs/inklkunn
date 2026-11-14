@@ -8,6 +8,7 @@ mod across;
 #[path = "../common/mod.rs"]
 mod common;
 mod description;
+mod knowledge;
 mod past;
 mod shapes;
 mod write;
@@ -670,6 +671,13 @@ fn every_address(slug: &str) -> Vec<String> {
         "changes?automated=hide",
         "changes?view=nope",
         "changes?cursor=k10123456789abcdef",
+        "claims/019a0000-0000-7000-8000-000000000c01",
+        "claims/not-an-id",
+        "sources/019a0000-0000-7000-8000-000000000c01",
+        "provenance/Home",
+        "provenance/Nowhere",
+        "views/compare?b=draft",
+        "views/compare",
         "nonsense",
         "pages/Home/..%2f..",
     ]

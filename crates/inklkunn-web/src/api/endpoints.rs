@@ -29,6 +29,7 @@ use crate::services::Services;
 use crate::url::view_ref;
 
 mod across;
+mod knowledge_api;
 mod past;
 
 /// The addresses under the API's prefixes that are *not* endpoints: they answer the generic not-found problem,
@@ -83,6 +84,15 @@ pub(super) fn all() -> Vec<Endpoint> {
         documented(&describe::HEALTH, read, || get(across::health)),
         documented(&describe::SEARCH, read, || get(across::search)),
         documented(&describe::CHANGES, read, || get(across::changes)),
+        // --- the knowledge layer (RFC 005 part 2 D-12; handoff 005 K-T11)
+        documented(&describe::CLAIM, read, || get(knowledge_api::claim)),
+        documented(&describe::SOURCE, read, || get(knowledge_api::source)),
+        documented(&describe::PROVENANCE, read, || {
+            get(knowledge_api::provenance)
+        }),
+        documented(&describe::COMPARE_VIEWS, read, || {
+            get(knowledge_api::compare_views)
+        }),
         // --- the write API (handoff 004 T7)
         written(&describe::CREATE_PROPOSAL, || post(propose::create)),
         documented(&describe::GET_PROPOSAL, read, || get(propose::get)),
@@ -94,6 +104,9 @@ pub(super) fn all() -> Vec<Endpoint> {
         written(&describe::ACCEPT, || post(decide::accept)),
         written(&describe::DECLINE, || post(decide::decline)),
         written(&describe::WITHDRAW, || post(propose::withdraw)),
+        written(&describe::PROPOSE_CURATION, || {
+            post(propose::curation::create)
+        }),
         unlisted(NOT_ENDPOINTS[0], || get(unknown)),
         unlisted(NOT_ENDPOINTS[1], || get(unknown)),
     ]

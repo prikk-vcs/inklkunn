@@ -7,7 +7,13 @@
 //! the wiki's own rule). The text is the page's whole new text, carried as it is: no line ending is changed and
 //! nothing is trimmed, because the text is data.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use inklkunn_core::Action;
+use inklkunn_core::knowledge::compose::{page_id_of, without_expressions};
+use inklkunn_core::knowledge::marker::words_with_id;
+use inklkunn_core::knowledge::onpage::{claim_blocks, claims_at};
+use inklkunn_core::knowledge::{AnchorState, Claim, anchor_state, claim_path};
 use inklkunn_core::proposal::{
     Invalid, MAX_PAGE_BYTES, MAX_PROPOSAL_BYTES, MAX_SOURCES, ProposalEdit,
 };
@@ -19,6 +25,10 @@ use crate::api::write::Request;
 use crate::api::write::body::Fields;
 use crate::catalog::Key;
 use crate::proposals::form::{Front, MAX_FORM_PAGES, MAX_FORM_RENAMES, Markup, check_owned_keys};
+use crate::proposals::parts::excerpt;
+
+/// The most paragraphs one body names in `drops`.
+const MAX_DROPS: usize = 50;
 
 /// One file of the body.
 #[derive(Debug)]
@@ -39,6 +49,9 @@ pub(super) struct Sent {
     renames: Vec<Rename>,
     minor: bool,
     automated: bool,
+    /// The markers of the paragraphs that others rely on and that the text leaves out, named by the caller: the explicit
+    /// act of removing them (RFC 005 part 1 D-1 b; the form's confirmation box).
+    drops: Vec<String>,
 }
 
 /// The members a proposal's text is made of; the caller takes its own (`view`, `submit`) first.
@@ -80,6 +93,7 @@ pub(super) fn read(fields: &mut Fields) -> Result<Sent, Problem> {
         renames,
         minor: fields.opt_flag("minor")?,
         automated: fields.opt_flag("automated")?,
+        drops: fields.texts("drops", MAX_DROPS)?,
     })
 }
 
@@ -133,6 +147,7 @@ pub(super) fn prepare(
     req: &Request,
     sent: Sent,
     base: &Base,
+    view: Option<&str>,
     keep_all: bool,
 ) -> Result<ProposalEdit, Problem> {
     check_sizes(&sent).map_err(|why| req.unacceptable(why))?;
@@ -216,6 +231,9 @@ pub(super) fn prepare(
             new: file.text.clone(),
         });
     }
+    // A paragraph others rely on that the text leaves out is an act the caller names (RFC 005 part 1 D-1 b; K-T11): the
+    // claims said there stop being said there, in the same proposal, and the reviewer sees it.
+    let removals = drop_changes(req, view, base, &sent.drops, &whole)?;
     Ok(ProposalEdit {
         summary: sent.summary,
         sources: sent.sources,
@@ -226,12 +244,86 @@ pub(super) fn prepare(
                 path: w.path,
                 text: w.new,
             })
+            .chain(removals)
             .collect(),
         renames: sent.renames,
         minor: sent.minor,
         automated: sent.automated,
         base: None,
     })
+}
+
+/// The claim files a proposal comes to when it removes paragraphs that claims are said in.
+///
+/// **A removal is explicit.** For each page that exists at the base and has claims said in it (the base's derived
+/// index), a paragraph whose `^id` the page's new text no longer has (or a page the proposal removes) must be named in
+/// `drops`, or the proposal is refused naming the marker; a name in `drops` that is not such a paragraph is refused too,
+/// so that the flag never stands for something else. A named paragraph's claims are written without that expression, as
+/// the form writes them; the claim stays, said nowhere, for a reviewer to decide about.
+fn drop_changes(
+    req: &Request,
+    view: Option<&str>,
+    base: &Base,
+    drops: &[String],
+    whole: &[Whole],
+) -> Result<Vec<FileChange>, Problem> {
+    let t = req.t;
+    let read = &req.services.read;
+    let failed = |e| read_failure(req, e);
+    let mut claims: BTreeMap<String, Claim> = BTreeMap::new();
+    let mut removed: BTreeSet<String> = BTreeSet::new();
+    for page in whole {
+        let Some(old) = &page.old else { continue };
+        let Some(page_id) = page_id_of(old) else {
+            continue;
+        };
+        for block in claim_blocks(read, &req.wiki, view, old).map_err(failed)? {
+            let gone = match &page.new {
+                None => true,
+                Some(new) => anchor_state(new, &block) == AnchorState::BlockMissing,
+            };
+            if !gone {
+                continue;
+            }
+            if !drops.contains(&block) {
+                let words = words_with_id(old, &block, true).unwrap_or_default();
+                return Err(req.unacceptable_with(
+                    "claim-paragraph-removed",
+                    t.msg(Key::ApiClaimLost)
+                        .with("block", &block)
+                        .with("excerpt", excerpt(&words))
+                        .text(),
+                ));
+            }
+            let gone_blocks = BTreeSet::from([block.clone()]);
+            for claim in claims_at(read, &req.wiki, view, &base.block_id, &page_id, &block)
+                .map_err(failed)?
+            {
+                let current = claims
+                    .get(claim.id.as_str())
+                    .cloned()
+                    .unwrap_or_else(|| claim.clone());
+                claims.insert(
+                    claim.id.to_string(),
+                    without_expressions(&current, &page_id, &gone_blocks),
+                );
+            }
+            removed.insert(block);
+        }
+    }
+    if let Some(unused) = drops.iter().find(|d| !removed.contains(*d)) {
+        return Err(req.unacceptable_with(
+            "drop-not-removed",
+            t.msg(Key::ApiDropUnused).with("block", unused).text(),
+        ));
+    }
+    Ok(claims
+        .into_values()
+        .map(|claim| FileChange {
+            path: claim_path(&claim.id),
+            text: Some(claim.to_yaml()),
+        })
+        .collect())
 }
 
 /// A read of the base that failed: the repository could not be asked, or the path cannot be read.

@@ -91,6 +91,16 @@ pub trait ClaimThreadStore: Send + Sync {
     /// Every comment of every claim thread of the wiki, by claim id and then in the order written: what the
     /// bundle's discussions are made from.
     fn claim_comments_in_wiki(&self, wiki: &WikiId) -> Result<Vec<ClaimCommentRow>>;
+
+    /// The id of the comment in place `position` (from 1) of the thread, `None` when the thread has fewer: one lookup
+    /// by the thread's key, so that a caller that wants the comment a later page begins after asks once and does not walk
+    /// the pages before it.
+    fn claim_comment_at(
+        &self,
+        wiki: &WikiId,
+        claim: &str,
+        position: u64,
+    ) -> Result<Option<CommentId>>;
 }
 
 /// Is `claim` the spelling of a claim's id: 36 characters of lower-case hexadecimal digits and hyphens? (The same

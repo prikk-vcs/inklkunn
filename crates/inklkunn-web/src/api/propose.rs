@@ -25,6 +25,7 @@ use crate::pages::PageState;
 use crate::url::{decode, view_ref};
 
 pub(crate) mod answer;
+pub(crate) mod curation;
 mod files;
 
 impl Request {
@@ -59,6 +60,37 @@ fn is_state_id(text: &str) -> bool {
     Base::new(text, text).is_some()
 }
 
+/// The base of a proposal that does not exist yet: the tip of the view the caller wrote against, if it is still the tip
+/// (the `state_id` named in `If-Match`); a tip that has moved on is `409 stale-base` carrying the current one.
+pub(super) fn tip_base(req: &Request, full: Option<&str>) -> Result<Base, Problem> {
+    if !is_state_id(&req.if_match) {
+        return Err(bad_if_match());
+    }
+    let tip = req
+        .services
+        .proposals
+        .capture_base(&req.wiki, full)
+        .map_err(|error| req.refusal(error))?;
+    if tip.state_id != req.if_match {
+        return Err(Problem::new(Code::StaleBase)
+            .member(
+                "current",
+                serde_json::json!(format!("\"{}\"", tip.state_id)),
+            )
+            .member("current_state_id", serde_json::json!(tip.state_id)));
+    }
+    Ok(tip)
+}
+
+/// The view (its full name) a proposal is addressed at: where the claims its pages hold are looked for.
+fn proposal_view(req: &Request, id: &ProposalId) -> Result<String, Problem> {
+    req.services
+        .proposals
+        .get(&req.principal, &req.wiki, id)
+        .map(|record| record.view)
+        .map_err(|error| req.refusal(error))
+}
+
 fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
     let view = fields.opt_text("view")?;
     let submit = fields.flag("submit")?;
@@ -71,25 +103,9 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
             Some(view_ref(name).ok_or_else(|| Problem::new(Code::NoSuchView).named("view", name))?)
         }
     };
-    // The base: the tip the caller wrote against, if it is still the tip.
-    if !is_state_id(&req.if_match) {
-        return Err(bad_if_match());
-    }
-    let tip = req
-        .services
-        .proposals
-        .capture_base(&req.wiki, full.as_deref())
-        .map_err(|error| req.refusal(error))?;
-    if tip.state_id != req.if_match {
-        return Err(Problem::new(Code::StaleBase)
-            .member(
-                "current",
-                serde_json::json!(format!("\"{}\"", tip.state_id)),
-            )
-            .member("current_state_id", serde_json::json!(tip.state_id)));
-    }
+    let tip = tip_base(req, full.as_deref())?;
 
-    let mut edit = files::prepare(req, sent, &tip, !submit)?;
+    let mut edit = files::prepare(req, sent, &tip, full.as_deref(), !submit)?;
     if submit {
         // Checked before anything is made, so a refused submission leaves no draft behind.
         if edit.summary.trim().is_empty() {
@@ -182,7 +198,8 @@ pub(crate) async fn save_draft(
                 .proposals
                 .draft(&req.principal, &req.wiki, &id)
                 .map_err(|error| req.refusal(error))?;
-            let edit = files::prepare(req, sent, &held.base, true)?;
+            let view = proposal_view(req, &id)?;
+            let edit = files::prepare(req, sent, &held.base, Some(&view), true)?;
             let record = req
                 .services
                 .proposals
@@ -257,7 +274,8 @@ pub(crate) async fn revise(
                         state: inklkunn_store::ProposalState::Draft,
                     })
                 })?;
-            let edit = files::prepare(req, sent, &base, false)?;
+            let view = proposal_view(req, &id)?;
+            let edit = files::prepare(req, sent, &base, Some(&view), false)?;
             let record = service
                 .revise(&req.principal, &req.wiki, &id, edit)
                 .map_err(|error| req.refusal(error))?;

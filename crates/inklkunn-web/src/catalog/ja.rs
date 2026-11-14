@@ -3125,4 +3125,14 @@ pub const CATALOG: &[Entry] = &[
     msg("claim_thread.form_label", "この議論にコメントを追加"),
     msg("claim_thread.form_reply", "コメント {number} への返信"),
     msg("claim_thread.back", "主張のページに戻る"),
+    msg(
+        "api.claim_lost",
+        "「{excerpt}」で始まる、マーカー ^{block} の段落には出典が付いていますが、この変更ではその段落がなくなります。削除するときは `drops` に ^{block} を指定してください。残すときは元に戻してください。",
+    ),
+    msg(
+        "api.drop_unused",
+        "`drops` にマーカー ^{block} の段落が指定されていますが、この変更ではその段落は削除されないか、その段落に書かれた主張がありません。この変更で削除する段落だけを指定してください。",
+    ),
+    msg("claim_thread.in_reply_to_link", "{comment} への返信です。"),
+    msg("claim_thread.comment_label", "コメント {number}"),
 ];

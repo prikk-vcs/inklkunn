@@ -67,6 +67,7 @@ pub(super) fn schemas() -> Map<String, Value> {
         "renames": {"type": "array", "maxItems": 20, "items": schema_ref("ProposalRename")},
         "minor": {"type": "boolean", "description": "A minor change. Default `false`."},
         "automated": {"type": "boolean", "description": "Machine-assisted content. Default `false`."},
+        "drops": {"type": "array", "maxItems": 50, "items": {"type": "string"}, "description": "The `^id` markers (without the caret) of paragraphs that claims are said in and that these files leave out, named: the explicit act of removing them. A paragraph that is left out and not named is `unacceptable` (`claim-paragraph-removed`); a name that is not such a paragraph is `unacceptable` (`drop-not-removed`). The claims said there stop being said there, in the same proposal, and the reviewer sees it; the claim stays, said nowhere. Default: none."},
     });
     let mut new_members = edit_members.clone();
     if let Some(map) = new_members.as_object_mut() {
@@ -76,12 +77,20 @@ pub(super) fn schemas() -> Map<String, Value> {
     let new_proposal = object(
         "The body that opens a proposal. A member not listed is `invalid-body`.",
         new_members,
-        &["view", "sources", "files", "renames", "minor", "automated"],
+        &[
+            "view",
+            "sources",
+            "files",
+            "renames",
+            "minor",
+            "automated",
+            "drops",
+        ],
     );
     let proposal_edit = object(
         "The body that saves a draft or adds a revision.",
         edit_members,
-        &["sources", "files", "renames", "minor", "automated"],
+        &["sources", "files", "renames", "minor", "automated", "drops"],
     );
     let reason = object(
         "The body of a decline or a withdrawal.",

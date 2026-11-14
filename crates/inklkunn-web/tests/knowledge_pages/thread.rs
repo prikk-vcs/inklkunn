@@ -206,7 +206,14 @@ async fn a_comment_is_recorded_shown_in_order_with_its_number_and_never_changes_
         thread.contains("Comment 1 · ") && thread.contains("Comment 3 · "),
         "{thread}"
     );
-    assert!(thread.contains("In reply to comment 1."), "{thread}");
+    // On the same page, the sentence links to the comment within the page.
+    assert!(
+        thread.contains(&format!(
+            "In reply to <a href=\"{}#k-{reply_to}\">comment 1</a>.",
+            claim_uri(1)
+        )),
+        "{thread}"
+    );
     assert!(
         thread.contains("<strong>Aiko Tanaka</strong>")
             && thread.contains("<strong>Rin Sato</strong>")
@@ -523,4 +530,65 @@ async fn a_claim_read_in_a_view_has_the_one_discussion_and_the_form_stays_in_the
     .await;
     assert_ne!(a.status, StatusCode::SEE_OTHER);
     assert!(!page(&c, &claim_uri(1), None).await.contains("Nowhere."));
+}
+
+#[tokio::test]
+async fn in_reply_to_a_comment_links_to_it_on_its_own_page_whichever_page_the_reply_is_on() {
+    let c = cast();
+    let writers = [&c.questioner, &c.contributor, &c.reviewer];
+    let mut first = String::new();
+    // Fifty-two comments: two pages. The first is answered by the last, and the 51st answers the 3rd.
+    for n in 1..=52_usize {
+        let who = writers.get(n % 3).copied().unwrap();
+        let body = format!("Comment text {n}.");
+        let mut fields: Vec<(&str, &str)> = vec![("body", &body)];
+        if n == 52 {
+            fields.push(("parent", &first));
+        }
+        let a = say(&c, 1, who, &fields).await;
+        let to = location(&a);
+        if n == 1 {
+            first = to.split_once("#k-").unwrap().1.to_owned();
+        }
+    }
+    // Page one: the reply on the same page links within the page.
+    let one = page(&c, &claim_uri(1), None).await;
+    let thread = thread_of(&one);
+    assert!(thread.contains("Comment text 50."), "{thread}");
+    assert!(!thread.contains("Comment text 51."), "{thread}");
+    let next = thread
+        .split("href=\"")
+        .map(|part| part.split('"').next().unwrap_or(""))
+        .find(|href| href.contains("after="))
+        .expect("a way on")
+        .replace("&amp;", "&");
+    // Page two: comment 52 answers comment 1, which is on the first page: the link leads to that page and that comment.
+    let two = page(&c, &next, None).await;
+    let thread = thread_of(&two);
+    assert!(thread.contains("Comment text 52."), "{thread}");
+    assert!(
+        thread.contains(&format!(
+            "In reply to <a href=\"{}#k-{first}\">comment 1</a>.",
+            claim_uri(1)
+        )),
+        "{thread}"
+    );
+    // And the comment it leads to is there, with that id, on that page.
+    assert!(
+        thread_of(&one).contains(&format!("id=\"k-{first}\"")),
+        "{}",
+        thread_of(&one)
+    );
+    // In Japanese, the same link in the language's own sentence.
+    let ja = request(&c.w, APP, "GET", &next, &[("cookie", "inklkunn_lang=ja")])
+        .await
+        .body();
+    assert!(
+        thread_of(&ja).contains(&format!(
+            "<a href=\"{}#k-{first}\">コメント 1</a> への返信です。",
+            claim_uri(1)
+        )),
+        "{}",
+        thread_of(&ja)
+    );
 }

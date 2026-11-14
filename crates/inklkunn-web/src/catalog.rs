@@ -1638,6 +1638,10 @@ keys! {
     ClaimThreadFormLabel => "claim_thread.form_label",
     ClaimThreadFormReply => "claim_thread.form_reply",
     ClaimThreadBack => "claim_thread.back",
+    ApiClaimLost => "api.claim_lost",
+    ApiDropUnused => "api.drop_unused",
+    ClaimThreadInReplyToLink => "claim_thread.in_reply_to_link",
+    ClaimThreadCommentLabel => "claim_thread.comment_label",
 }
 
 /// A typed value for a placeholder. Text is HTML-escaped; a link is an escaped label plus an `href` the

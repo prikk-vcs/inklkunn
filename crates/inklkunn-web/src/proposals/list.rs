@@ -219,6 +219,7 @@ fn flatten(ctx: &Ctx, t: T, comments: &[CommentRecord]) -> Vec<CommentView> {
             quote: None,
             orphaned: None,
             reply: None,
+            parent: None,
         })
         .collect()
 }

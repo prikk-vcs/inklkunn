@@ -371,6 +371,7 @@ fn components() -> Value {
     if let Some(map) = schemas.as_object_mut() {
         map.extend(shapes::schemas());
         map.extend(writes::schemas());
+        map.extend(knowledge_api::schemas());
     }
     json!({
         "schemas": schemas,
@@ -456,6 +457,7 @@ pub(crate) fn document(table: &RouteTable, docs: &[&'static Doc]) -> Result<Valu
             {"name": "history", "description": "A page's history, one change, the difference between two changes of a page, and the wiki's recent changes."},
             {"name": "links", "description": "The pages that link to a page, and the wiki's link health lists."},
             {"name": "search", "description": "Search over titles and aliases."},
+            {"name": "knowledge", "description": "Claims, sources, a page's provenance paragraph by paragraph, and the comparison of two views (RFC 005). Nothing in them ranks, scores or judges: they say what is recorded and where views differ."},
             {"name": "proposals", "description": "Opening, reading, revising and taking back proposals (writes: scope `propose`)."},
             {"name": "review", "description": "Comments, decisions, acceptance and declining (scopes `propose`, `review`, `accept`)."},
             {"name": "description", "description": "This document."},
@@ -482,6 +484,7 @@ pub(crate) fn served() -> Result<&'static [u8], super::problem::Problem> {
         .ok_or_else(|| super::problem::Problem::new(Code::Failed))
 }
 
+mod knowledge_api;
 mod shapes;
 mod writes;
 

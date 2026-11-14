@@ -165,6 +165,46 @@ impl ProposalService {
             .claim_comments(&wiki.id, claim.as_str(), after, limit)?)
     }
 
+    /// The comment in place `position` (from 1) of `claim`'s thread: what a link to a comment on another page is made
+    /// from. Authorizes `Read`; `None` when the thread has no such place. One lookup by the thread's key.
+    pub fn claim_thread_place(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        claim: &ClaimId,
+        position: u64,
+    ) -> Result<Option<CommentId>> {
+        self.allow(principal, Action::Read, &Self::thread_resource(wiki, claim))?;
+        Ok(self
+            .threads()?
+            .store
+            .claim_comment_at(&wiki.id, claim.as_str(), position)?)
+    }
+
+    /// The comment that the **last** page of `claim`'s thread begins after, when the thread is paged `page` comments to
+    /// a page: `None` when the thread fits one page. Authorizes `Read`. **Two lookups, whatever the length**: the
+    /// thread's count, and the comment in the place the last page follows (handoff 005 K42); it does not walk the pages.
+    pub fn claim_thread_last_page(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        claim: &ClaimId,
+        page: usize,
+    ) -> Result<Option<CommentId>> {
+        self.allow(principal, Action::Read, &Self::thread_resource(wiki, claim))?;
+        let store = &self.threads()?.store;
+        let page = u64::try_from(page.max(1)).unwrap_or(u64::MAX);
+        let total = store
+            .claim_comments(&wiki.id, claim.as_str(), None, 1)?
+            .total;
+        if total <= page {
+            return Ok(None);
+        }
+        // The comments before the last page: every full page of them.
+        let before = (total - 1) / page * page;
+        Ok(store.claim_comment_at(&wiki.id, claim.as_str(), before)?)
+    }
+
     /// Every comment of every claim thread of the wiki, by claim and in the order written: what the bundle's
     /// discussions are made from. An export is an administrator's act and authorized as one by its caller; this reads
     /// the records and asks nobody.

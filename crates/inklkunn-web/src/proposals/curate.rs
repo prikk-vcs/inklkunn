@@ -50,7 +50,7 @@ type Fields = super::urlencoded::Raw;
 // ------------------------------------------------------------------------------------ the claim as it was
 
 /// The claim, its sources and its wording, as a base had them.
-pub(super) struct Loaded {
+pub(crate) struct Loaded {
     claim: Claim,
     /// Each source the claim cites (`None`: its file is not there or cannot be read), in the claim's order.
     cited: Vec<Option<Source>>,
@@ -60,13 +60,18 @@ pub(super) struct Loaded {
 
 impl Loaded {
     /// The claim.
-    pub(super) fn claim(&self) -> &Claim {
+    pub(crate) fn claim(&self) -> &Claim {
         &self.claim
     }
 
     /// The digest of the wording the claim has, when it is said in a paragraph.
-    pub(super) fn digest(&self) -> Option<&Digest> {
+    pub(crate) fn digest(&self) -> Option<&Digest> {
         self.wording.as_ref().map(|(_, d)| d)
+    }
+
+    /// The sources the claim cites that could be read, in the claim's order.
+    pub(crate) fn cited(&self) -> Vec<Source> {
+        self.cited.iter().flatten().cloned().collect()
     }
 }
 
@@ -77,9 +82,19 @@ pub(super) fn load(
     base_block: &str,
     id: &ClaimId,
 ) -> Result<Option<Loaded>, ReadError> {
-    let read = &ctx.services.read;
+    load_with(&ctx.services.read, &ctx.wiki, view, base_block, id)
+}
+
+/// [`load`], for a caller that has the read service and the wiki and no form's context (the write API's curation).
+pub(crate) fn load_with(
+    read: &inklkunn_core::read::ReadService,
+    wiki: &inklkunn_store::WikiRecord,
+    view: Option<&str>,
+    base_block: &str,
+    id: &ClaimId,
+) -> Result<Option<Loaded>, ReadError> {
     let path = claim_path(id);
-    let Some(text) = read.source_at(&ctx.wiki, base_block, &path)? else {
+    let Some(text) = read.source_at(wiki, base_block, &path)? else {
         return Ok(None);
     };
     let Ok(File::Claim(claim)) = read_file(&path, text.as_bytes()) else {
@@ -88,16 +103,15 @@ pub(super) fn load(
     let mut cited = Vec::new();
     for link in &claim.sources {
         let path = source_path(&link.source);
-        cited.push(
-            read.source_at(&ctx.wiki, base_block, &path)?
-                .and_then(|text| match read_file(&path, text.as_bytes()) {
-                    Ok(File::Source(source)) => Some(*source),
-                    _ => None,
-                }),
-        );
+        cited.push(read.source_at(wiki, base_block, &path)?.and_then(|text| {
+            match read_file(&path, text.as_bytes()) {
+                Ok(File::Source(source)) => Some(*source),
+                _ => None,
+            }
+        }));
     }
     // Where the claim is said: the index of the tip names the page of an expression; its text is read at the base.
-    let index = read.knowledge_index(&ctx.wiki, view)?;
+    let index = read.knowledge_index(wiki, view)?;
     let mut wording = None;
     for e in &claim.expressions {
         let Some(at) = index
@@ -107,7 +121,7 @@ pub(super) fn load(
         else {
             continue;
         };
-        let Some(page) = read.source_at(&ctx.wiki, base_block, &at)? else {
+        let Some(page) = read.source_at(wiki, base_block, &at)? else {
             continue;
         };
         if page_id_of(&page).as_deref() != Some(e.page_id.as_str()) {

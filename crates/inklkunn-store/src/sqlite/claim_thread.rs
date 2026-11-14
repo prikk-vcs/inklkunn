@@ -184,4 +184,26 @@ impl ClaimThreadStore for SqliteStore {
             rows.collect::<rusqlite::Result<Vec<_>>>().map_err(backend)
         })
     }
+
+    fn claim_comment_at(
+        &self,
+        wiki: &WikiId,
+        claim: &str,
+        position: u64,
+    ) -> Result<Option<CommentId>> {
+        let Ok(position) = i64::try_from(position) else {
+            return Ok(None);
+        };
+        self.with(|conn| {
+            match conn.query_row(
+                "SELECT id FROM claim_comments WHERE wiki_id = ?1 AND claim_id = ?2 AND seq = ?3",
+                params![wiki.as_str(), claim, position],
+                |r| r.get::<_, String>(0),
+            ) {
+                Ok(id) => Ok(CommentId::parse(&id)),
+                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                Err(other) => Err(backend(other)),
+            }
+        })
+    }
 }

@@ -1,6 +1,7 @@
 <div class="comment depth-{{ c.depth }}" id="{{ c.id }}">
 <p class="comment-head"><strong>{{ c.author }}</strong> · {{ c.meta }}</p>
-{% if let Some(text) = c.location %}<p class="note">{{ text }}</p>
+{% if let Some(link) = c.parent %}<p class="note">{{ link }}</p>
+{% else if let Some(text) = c.location %}<p class="note">{{ text }}</p>
 {% endif %}{% if let Some(text) = c.orphaned %}<p class="note" role="note">{{ text }}</p>
 {% endif %}{% if let Some(quote) = c.quote %}<blockquote class="comment-quote"><p>{{ quote }}</p></blockquote>
 {% endif %}<p class="comment-body">{{ c.body }}</p>

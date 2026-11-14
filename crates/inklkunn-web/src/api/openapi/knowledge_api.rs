@@ -1,0 +1,275 @@
+//! The schemas of the knowledge layer's endpoints (RFC 005 part 2 D-12; handoff 005 K-T11): a claim, a source, a page's
+//! provenance, the comparison of two views, and the body of a curation proposal. The enumerations are read from the
+//! format's own words (`inklkunn_core::knowledge`), so the document cannot say a word the files do not. A test holds
+//! each endpoint's real answer to its schema's members (`tests/api/knowledge.rs`).
+
+use inklkunn_core::knowledge::{
+    Availability, Bearing, Lifecycle, Link, RelationType, SourceKind, Standing, StatementKind,
+};
+use serde_json::{Map, Value, json};
+
+use super::shapes::{object, schema_ref};
+
+fn words<T: Copy>(all: &[T], word: impl Fn(T) -> &'static str) -> Vec<&'static str> {
+    all.iter().map(|w| word(*w)).collect()
+}
+
+/// The schemas, by name.
+pub(super) fn schemas() -> Map<String, Value> {
+    let tip = schema_ref("Tip");
+    let judgement = json!({"type": "string", "enum": ["current", "earlier", "none"], "description": "`current`: judged on the wording the claim has now. `earlier`: judged on an earlier wording, which nobody has confirmed since. `none`: nothing was judged."});
+    let relation = json!({"type": "string", "enum": words(Link::ALL, Link::word), "description": "Whether the source supports the claim or challenges it."});
+    let bearing = json!({"type": "string", "enum": words(Bearing::ALL, Bearing::word), "description": "How directly the source speaks to the claim, never how true either is."});
+    let mut out = Map::new();
+    out.insert(
+        "ClaimSaid".to_owned(),
+        object(
+            "A place a claim is said: a paragraph of a page.",
+            json!({
+                "title": {"type": ["string", "null"], "description": "The page's title at the tip, when exactly one page has the id the claim names."},
+                "page_id": {"type": "string", "description": "The page's `id`, as the claim names it."},
+                "block": {"type": "string", "description": "The paragraph's `^id`."},
+                "state": {"type": "string", "enum": ["present", "page-missing", "page-repeated", "block-missing", "block-repeated"], "description": "`present`: the page has the paragraph once. The others say why there is no paragraph to point at."},
+            }),
+            &[],
+        ),
+    );
+    out.insert(
+        "ClaimSource".to_owned(),
+        object(
+            "A source a claim cites and how it bears on the claim.",
+            json!({
+                "source": {"type": "string", "description": "The source's id: give it to `sources/{id}`."},
+                "relation": relation.clone(),
+                "bearing": bearing.clone(),
+                "judged_on": judgement.clone(),
+                "readable": {"type": "boolean", "description": "The source's file can be read. When it cannot, nothing more is known of it."},
+            }),
+            &[],
+        ),
+    );
+    out.insert(
+        "Claim".to_owned(),
+        object(
+            "A claim, from the derived knowledge index of the view's tip. Nothing in it is a score, a rank or a verdict.",
+            json!({
+                "id": {"type": "string"},
+                "kind": {"type": "string", "enum": words(StatementKind::ALL, StatementKind::word), "description": "What kind of statement it is."},
+                "lifecycle": {"type": "string", "enum": words(Lifecycle::ALL, Lifecycle::word)},
+                "status": {
+                    "type": "object",
+                    "description": "What the community has decided, by an accepted curation proposal and never by a count.",
+                    "required": ["standing", "proposal", "proposal_unlisted", "judged_on"],
+                    "properties": {
+                        "standing": {"type": "string", "enum": words(Standing::ALL, Standing::word)},
+                        "proposal": {"type": ["string", "null"], "description": "The proposal that decided it, when one did and the caller may read it."},
+                        "proposal_unlisted": {"type": "boolean", "description": "A proposal decided it and the caller may not read it."},
+                        "judged_on": judgement,
+                    },
+                },
+                "said": {"type": "array", "items": schema_ref("ClaimSaid"), "description": "Where the claim is said."},
+                "sources": {"type": "array", "items": schema_ref("ClaimSource"), "description": "The sources it cites."},
+                "relations": {
+                    "type": "array",
+                    "description": "How it relates to other claims.",
+                    "items": {
+                        "type": "object",
+                        "required": ["type", "claim"],
+                        "properties": {
+                            "type": {"type": "string", "enum": words(RelationType::ALL, RelationType::word)},
+                            "claim": {"type": "string", "description": "The other claim's id."},
+                        },
+                    },
+                },
+                "tip": tip.clone(),
+            }),
+            &[],
+        ),
+    );
+    out.insert(
+        "SourceCitedBy".to_owned(),
+        object(
+            "A claim that relies on a source.",
+            json!({
+                "claim": {"type": "string", "description": "The claim's id: give it to `claims/{id}`."},
+                "relation": relation,
+                "bearing": bearing,
+                "judged_on": judgement,
+            }),
+            &[],
+        ),
+    );
+    out.insert(
+        "Source".to_owned(),
+        object(
+            "A source, from the derived knowledge index of the view's tip. Its texts are as written, cut at 300 characters, and untrusted.",
+            json!({
+                "id": {"type": "string"},
+                "kind": {"type": "string", "enum": words(SourceKind::ALL, SourceKind::word)},
+                "availability": {"type": "string", "enum": words(Availability::ALL, Availability::word), "description": "Whether it can be had, as a person who checked says."},
+                "last_reviewed": {"type": ["string", "null"], "description": "The day a person last reviewed it, as written (`YYYY-MM-DD`)."},
+                "superseded_by": {"type": ["string", "null"], "description": "The source that replaces it."},
+                "title": {"type": ["string", "null"]},
+                "author": {"type": ["string", "null"], "description": "An author or a publisher."},
+                "date": {"type": ["string", "null"], "description": "A year, a season or a day, as written."},
+                "reference": {"type": ["string", "null"], "description": "Where it is found: a web address, a citation, a place. Never fetched by the wiki."},
+                "claims": {"type": "array", "maxItems": 50, "items": schema_ref("SourceCitedBy"), "description": "The claims that cite it, by claim id, at most 50."},
+                "claims_total": {"type": "integer", "minimum": 0, "description": "How many claims cite it in all."},
+                "tip": tip.clone(),
+            }),
+            &[],
+        ),
+    );
+    out.insert(
+        "ProvenanceParagraph".to_owned(),
+        object(
+            "A paragraph of the page and its past, as numbers of `changes`.",
+            json!({
+                "ordinal": {"type": "integer", "minimum": 1, "description": "Its place among the page's blocks, from 1."},
+                "id": {"type": ["string", "null"], "description": "Its `^id`, when it has one."},
+                "excerpt": {"type": "string", "description": "How it begins, on one line. Untrusted text."},
+                "claims": {"type": "array", "items": {"type": "string"}, "description": "The claims said in it, by id."},
+                "basis": {"type": "string", "enum": ["anchor", "text"], "description": "`anchor`: followed through its `^id`, which is exact. `text`: traced by matching its text, so what was found is the earliest wording found and not what happened."},
+                "last_changed": {"type": ["integer", "null"], "description": "The `number` of the change that last changed it; `null` when no change read changed it."},
+                "first_written": {"type": ["integer", "null"], "description": "The `number` of the change that first wrote it; `null` when the reading ended while it still had an earlier counterpart."},
+            }),
+            &[],
+        ),
+    );
+    let change = super::shapes::schemas()
+        .remove("Change")
+        .unwrap_or_default();
+    let mut change_properties: Map<String, Value> = change
+        .get("properties")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    change_properties.insert(
+        "proposal".to_owned(),
+        json!({
+            "type": ["object", "null"],
+            "description": "The proposal the change was made from: set only when the message names one, the acceptance records tie it to this change and the caller may read it.",
+            "required": ["id", "summary", "sources"],
+            "properties": {
+                "id": {"type": "string"},
+                "summary": {"type": "string", "description": "Untrusted text."},
+                "sources": {"type": "array", "items": {"type": "string"}, "description": "The sources the proposer gave with it, each cut at 300 characters. Untrusted text."},
+            },
+        }),
+    );
+    out.insert(
+        "ProvenanceChange".to_owned(),
+        object(
+            "A change a paragraph's past names: the members of a change, and the proposal it was made from.",
+            Value::Object(change_properties),
+            &[],
+        ),
+    );
+    out.insert(
+        "PageProvenance".to_owned(),
+        object(
+            "*Why is this here?* for a page, as data.",
+            json!({
+                "title": {"type": "string"},
+                "tip": tip.clone(),
+                "reach": {"type": "string", "enum": ["whole", "bounded", "spent", "unfollowed"], "description": "How far back the history was read. `whole`: every paragraph was followed to the change that wrote it. `bounded`: the history page's bounds ended the reading. `spent`: the work bound did. `unfollowed`: an earlier version could not be read."},
+                "left_out": {"type": "integer", "minimum": 0, "description": "How many more paragraphs the page has than the 500 followed."},
+                "paragraphs": {"type": "array", "items": schema_ref("ProvenanceParagraph")},
+                "changes": {"type": "array", "items": schema_ref("ProvenanceChange"), "description": "The changes the paragraphs name, newest first."},
+            }),
+            &[],
+        ),
+    );
+    out.insert(
+        "ComparedPage".to_owned(),
+        object(
+            "A page the two views have differently.",
+            json!({
+                "title": {"type": "string"},
+                "path": {"type": "string"},
+                "status": {"type": "string", "enum": ["unchanged", "added", "removed", "modified", "other"], "description": "`added`: only `b` has it. `removed`: only `a`."},
+                "added": {"type": "integer", "minimum": 0, "description": "Lines `b` has that `a` does not."},
+                "removed": {"type": "integer", "minimum": 0, "description": "Lines `a` has that `b` does not."},
+            }),
+            &[],
+        ),
+    );
+    out.insert(
+        "ComparedClaim".to_owned(),
+        object(
+            "A claim that differs between the two views. A claim whose three facts agree is not listed.",
+            json!({
+                "id": {"type": "string"},
+                "presence": {"type": "string", "enum": ["both", "only-a", "only-b", "unreadable-in-a", "unreadable-in-b"], "description": "Which views have it. `unreadable-in-b`: `a` has it and `b` has a file of that name that cannot be read, which is not the same as having none."},
+                "wording": {"type": "boolean", "description": "Both have it and its paragraphs read differently."},
+                "status": {
+                    "type": ["object", "null"],
+                    "description": "Both have it and the community's status differs.",
+                    "required": ["a", "b"],
+                    "properties": {"a": {"type": "string"}, "b": {"type": "string"}},
+                },
+                "sources": {"type": "boolean", "description": "Both have it and the sources that bear on it, or how, or what a source is, differ."},
+                "said_in": {"type": ["string", "null"], "description": "The title of the first page that says it, so that it can be told from another."},
+            }),
+            &[],
+        ),
+    );
+    out.insert(
+        "ViewComparison".to_owned(),
+        object(
+            "Two views, compared: where they differ, claim by claim and page by page, and nothing about which is right.",
+            json!({
+                "a": tip.clone(),
+                "b": tip,
+                "same": {"type": "boolean", "description": "The two tips are one and the same change: nothing differs."},
+                "pages": {"type": "array", "maxItems": 200, "items": schema_ref("ComparedPage")},
+                "pages_omitted": {"type": "integer", "minimum": 0},
+                "claims": {"type": "array", "maxItems": 200, "items": schema_ref("ComparedClaim")},
+                "claims_omitted": {"type": "integer", "minimum": 0},
+            }),
+            &[],
+        ),
+    );
+    out.insert(
+        "CurationLink".to_owned(),
+        object(
+            "How a source the claim cites should bear on it.",
+            json!({
+                "source": {"type": "string", "description": "A source the claim cites."},
+                "relation": {"type": "string", "enum": words(Link::ALL, Link::word)},
+                "bearing": {"type": "string", "enum": words(Bearing::ALL, Bearing::word)},
+            }),
+            &[],
+        ),
+    );
+    out.insert(
+        "CurationSource".to_owned(),
+        object(
+            "What a person checked about a source the claim cites.",
+            json!({
+                "source": {"type": "string", "description": "A source the claim cites."},
+                "reviewed": {"type": "string", "description": "The day a person last checked it, `YYYY-MM-DD`; the empty text for none."},
+                "availability": {"type": "string", "enum": words(Availability::ALL, Availability::word), "description": "Whether it can be had, as the person who checked says."},
+            }),
+            &[],
+        ),
+    );
+    out.insert(
+        "NewCuration".to_owned(),
+        object(
+            "The body of a curation proposal. A member not listed is `invalid-body`; a member left out is left as the base has it.",
+            json!({
+                "claim": {"type": "string", "description": "The claim's id."},
+                "summary": {"type": "string", "description": "What and why: one line of at most 120 characters. Required to send for review."},
+                "view": {"type": "string", "description": "The view to propose to. Default: the wiki's default view."},
+                "submit": {"type": "boolean", "description": "`true` sends the proposal for review at once; `false` keeps a draft only the proposer sees."},
+                "status": {"type": "string", "enum": words(Standing::ALL, Standing::word), "description": "The community status to propose."},
+                "links": {"type": "array", "maxItems": 256, "items": schema_ref("CurationLink"), "description": "Links to change, each naming a source the claim cites."},
+                "sources": {"type": "array", "maxItems": 256, "items": schema_ref("CurationSource"), "description": "Sources to record a check of, each naming a source the claim cites."},
+                "confirm": {"type": "boolean", "description": "Judge the sources and the status again on the wording the claim has in the base. Default `false`."},
+            }),
+            &["view", "status", "links", "sources", "confirm"],
+        ),
+    );
+    out
+}

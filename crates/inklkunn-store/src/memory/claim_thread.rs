@@ -151,4 +151,22 @@ impl ClaimThreadStore for MemoryStore {
             .flat_map(|claim| d.thread(wiki, claim))
             .collect())
     }
+
+    fn claim_comment_at(
+        &self,
+        wiki: &WikiId,
+        claim: &str,
+        position: u64,
+    ) -> Result<Option<CommentId>> {
+        let d = self.claim_threads_lock();
+        let index = usize::try_from(position.saturating_sub(1)).unwrap_or(usize::MAX);
+        Ok(match position {
+            0 => None,
+            _ => d
+                .thread(wiki, claim)
+                .into_iter()
+                .nth(index)
+                .map(|r| r.comment.id),
+        })
+    }
 }

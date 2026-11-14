@@ -133,7 +133,7 @@ pub(super) async fn revision(
     .await
 }
 
-const fn status_code(status: DiffStatus) -> &'static str {
+pub(super) const fn status_code(status: DiffStatus) -> &'static str {
     match status {
         DiffStatus::Unchanged => "unchanged",
         DiffStatus::Added => "added",

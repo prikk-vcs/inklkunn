@@ -131,7 +131,7 @@ pub(super) fn restore(
 }
 
 /// The words for something the core refused to write.
-pub(super) fn mistake_text(t: T, m: Mistake) -> String {
+pub(crate) fn mistake_text(t: T, m: Mistake) -> String {
     match m {
         Mistake::NoParagraph => t.get(Key::AttachNoParagraph),
         Mistake::PageUnreadable => t.get(Key::AttachPageUnreadable),

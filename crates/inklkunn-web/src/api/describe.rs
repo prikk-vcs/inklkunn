@@ -123,7 +123,7 @@ pub(crate) fn path_param(name: &str) -> Option<(&'static str, &'static str)> {
             "string",
         )),
         "id" => Some((
-            "The id of one recorded change (1 to 64 lower-case hexadecimal digits), or of a proposal (a UUID).",
+            "The id of one recorded change (1 to 64 lower-case hexadecimal digits), of a proposal, a claim or a source (a UUID).",
             "string",
         )),
         _ => None,
@@ -494,3 +494,6 @@ pub(crate) const SIZES: (usize, usize) = (DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
 
 mod write;
 pub(crate) use write::*;
+
+mod knowledge_api;
+pub(crate) use knowledge_api::*;

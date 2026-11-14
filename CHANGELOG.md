@@ -908,6 +908,54 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   export through a stand-in repository and the import through the service's own path over the in-memory repository, both in both test
   runs; the command's export in the existing prikk test (updated, not added); no new prikk-dependent test.
 
+- **K-T11, the API (handoff 005; RFC 005 part 2 D-12; ruling 4 of the K3–K14 review): the read API gains a claim, a source, a
+  page's provenance and a comparison of two views; the write API gains the curation proposal and the explicit drop; all in the OpenAPI
+  document.** *Reads*, each authorized as the pages are (`Read`) and existence-neutral (a wiki that is absent and one the caller may
+  not read are one `not-found`, byte for byte, and a claim or a source the wiki does not hold is the same `not-found` as an id that is
+  not an id): `GET /{slug}/-/api/v1/claims/{id}` (kind, lifecycle, where it is said and whether the paragraph is there, each source
+  with `supports`/`challenges`, how directly, and whether it was judged on the wording the claim has now, its relations, and its
+  community status; the deciding proposal is named only to a caller who may read it, and `proposal_unlisted` says one decided it
+  and is not among the records), `GET …/sources/{id}` (kind, availability, the day it was last reviewed, what it says of itself as
+  written and cut at 300 characters, the claims that cite it, at most 50 and counted; nothing is fetched), `GET …/provenance/{title}`
+  (*Why is this here?* as data: each paragraph with the change that last changed it and the one that first wrote it, whether it was
+  followed through its `^id` or traced by its text, how far back the history was read; the changes carry what their messages say
+  of the people and, **only when the acceptance records seal the proposal as that change and the caller may read it**, the proposal's
+  id, summary and the sources given with it) and `GET …/views/compare?a=&b=` (claims and pages where two views differ, bounded, with
+  what is left out counted; no verdict; the same view twice is `invalid-parameter`). *Writes*: `POST …/proposals/curation` opens the
+  curation proposal from a JSON body (`claim`, `summary`, `submit`, optional `view`, `status`, `links`, `sources`, `confirm`) through
+  the very function the curation form uses (`knowledge::compose::curate`), over the claim and its sources **as the base named in
+  `If-Match` has them**: a member left out is left as the base has it, a body that changes nothing is `unacceptable`
+  (`nothing-to-curate`), a source the claim does not cite is `unknown-source`, a day that is not a day `not-a-day`, a claim the base
+  does not hold `not-found`; it is a proposal like any other (held for review, accepted by someone who may, the status it sets names
+  it), judged by the same rules at submit and at acceptance, and a status is still set by nothing else. **The explicit drop**: a page
+  proposal of the write API (`POST …/proposals`, a draft, a revision) that leaves out a paragraph a claim is said in, or removes a
+  page that has one, is refused (`claim-paragraph-removed`, naming the marker and how the paragraph begins) unless the body names its
+  marker in the new `drops`; a name in `drops` that is not such a paragraph is refused too (`drop-not-removed`), so the flag stands
+  for nothing else; a named paragraph's claims are written without that expression, in the same proposal, as the form writes them
+  (the claim stays, said nowhere, for a reviewer to decide about). The OpenAPI document describes all five endpoints, the
+  `knowledge` tag, the schemas (their enumerations are read from the format's own words) and `drops`; the document is built from the
+  route table as before, drift is still tested both ways, and the shape test holds every real answer of the new endpoints to its
+  schema and finds every declared member in some answer. Two choices to know: the provenance endpoint is `provenance/{title}`
+  and not `pages/{title}/provenance`, because `pages/{*title}` takes the rest of the path (a title may hold `/`; `history/{title}`
+  is the same), and the curation endpoint is `proposals/curation`, because the route table's rule is that a write under the API is
+  under `proposals`. New: `Sent.drops` (internal), `ProposalService::{claim_thread_place, claim_thread_last_page}`, `ClaimThreadStore::
+  claim_comment_at` (both stores), `proposals::curate::{Loaded::cited, load_with}`, `proposals::claims::mistake_text` is `pub(crate)`,
+  catalog `api.claim_lost`, `api.drop_unused`. Tests: the read endpoints and the shape test in `tests/api/knowledge.rs` and `shapes.rs`,
+  the writes in `tests/api/write/knowledge.rs`, the existence-neutrality sweep in `main.rs`, all without prikk; no new prikk-dependent test.
+
+- **K42 (handoff 005 corrections, fourth round): a claim's thread, the small points.** (1) After a post the page that has the
+  comment is found with **two lookups**, however long the thread is: the thread's count and the comment the last page follows
+  (`ProposalService::claim_thread_last_page`, `ClaimThreadStore::claim_comment_at`, one lookup by the thread's key on both stores),
+  not a walk of every page (`last_page` made a count, a page query and an authorization per page). (2) `ClaimDiscussion.claim` is a
+  `ClaimId`, so the bundle's path is built only from a checked id (K41); a record under an id that is not one is an error of the export,
+  never a path. (3) *In reply to comment N* **links to that comment on its own page**: within the page by the page's address and the
+  comment, on an earlier page by that page's address (the comment its page follows, by two lookups per place, at most one reply page's
+  worth) and the comment (`claim_thread.in_reply_to_link`, `claim_thread.comment_label`, both languages; the plain sentence stays
+  where no place can be found). (4) V18's comment says one index of its own beside the UNIQUE key's. Tests: the count of lookups and the
+  place on every length of thread and page size (both stores through the service), the store's suite for the new lookup on both
+  stores, the claim page through the router for a thread of two pages in both languages (a reply on the first page, a reply on the
+  second to the first page's comment).
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

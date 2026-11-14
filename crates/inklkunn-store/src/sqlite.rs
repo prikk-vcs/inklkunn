@@ -884,7 +884,7 @@ DELETE FROM knowledge_invalid;
 
 /// Version 18 (handoff 005, K-T10; RFC 005 part 2 D-11): **a claim's thread**, the epistemic discussion of a claim, with
 /// the shape and the rules of the proposal comments (version 9): service-authoritative and append-only, a reply in the
-/// thread of the comment it answers, and keyed by the wiki and the claim's id. Additive: one table, its two indexes and
+/// thread of the comment it answers, and keyed by the wiki and the claim's id. Additive: one table, one index of its own (beside the one the UNIQUE key makes) and
 /// four triggers; nothing that exists is touched. `seq` is the comment's place in its thread (from 1), assigned inside
 /// the write's immediate transaction, and unique per thread, so that two writers cannot take one place.
 const V18: &str = "

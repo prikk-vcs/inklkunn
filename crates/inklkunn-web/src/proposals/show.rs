@@ -172,6 +172,7 @@ fn comment_view(
         quote,
         orphaned,
         reply,
+        parent: None,
     }
 }
 
@@ -318,6 +319,7 @@ fn copy_comment(c: &CommentView) -> CommentView {
             href: l.href.clone(),
             label: l.label.clone(),
         }),
+        parent: c.parent.clone(),
     }
 }
 

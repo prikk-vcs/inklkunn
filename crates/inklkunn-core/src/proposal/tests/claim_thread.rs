@@ -573,3 +573,130 @@ fn the_thread_of_a_wiki_that_may_not_be_read_is_not_there_to_read_or_to_write_in
         );
     });
 }
+
+/// A claim-thread store that counts the lookups made of it, over the real one.
+struct Counting {
+    inner: Arc<dyn inklkunn_store::ClaimThreadStore>,
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl Counting {
+    fn bump(&self) {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    fn calls(&self) -> usize {
+        self.calls.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+impl inklkunn_store::ClaimThreadStore for Counting {
+    fn add_claim_comment(
+        &self,
+        comment: &inklkunn_store::ClaimCommentRecord,
+    ) -> inklkunn_store::Result<()> {
+        self.inner.add_claim_comment(comment)
+    }
+
+    fn claim_comments(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+        claim: &str,
+        after: Option<&CommentId>,
+        limit: usize,
+    ) -> inklkunn_store::Result<inklkunn_store::ClaimThreadPage> {
+        self.bump();
+        self.inner.claim_comments(wiki, claim, after, limit)
+    }
+
+    fn claim_comments_since(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+        author: &inklkunn_store::AccountId,
+        since: i64,
+    ) -> inklkunn_store::Result<Vec<i64>> {
+        self.inner.claim_comments_since(wiki, author, since)
+    }
+
+    fn claim_comments_in_wiki(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+    ) -> inklkunn_store::Result<Vec<inklkunn_store::ClaimCommentRow>> {
+        self.inner.claim_comments_in_wiki(wiki)
+    }
+
+    fn claim_comment_at(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+        claim: &str,
+        position: u64,
+    ) -> inklkunn_store::Result<Option<CommentId>> {
+        self.bump();
+        self.inner.claim_comment_at(wiki, claim, position)
+    }
+}
+
+#[test]
+fn the_last_page_of_a_thread_is_found_with_two_lookups_however_long_the_thread_is() {
+    on_both(|e| {
+        let w = repository();
+        let reads = Arc::new(World::service_over(
+            &w.counting,
+            &w.store,
+            &w.layout,
+            ReadConfig {
+                tip_ttl: Duration::from_secs(3600),
+                ..ReadConfig::default()
+            },
+        ));
+        let counting = Arc::new(Counting {
+            inner: e.store.clone(),
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        });
+        let s = service_with(e, QuotaConfig::default(), None)
+            .with_claim_threads(counting.clone(), reads);
+        let id = claim_id(1);
+        let last = |page: usize| {
+            s.claim_thread_last_page(&e.author.principal, &e.wiki, &id, page)
+                .unwrap()
+        };
+        // Nothing written: one page, which is the first.
+        assert_eq!(last(3), None);
+        let mut comments: Vec<CommentId> = Vec::new();
+        for n in 1..=9_usize {
+            set_now(T0 + i64::try_from(n).unwrap());
+            comments.push(
+                s.comment_on_claim(
+                    &e.author.principal,
+                    &e.wiki,
+                    None,
+                    &id,
+                    say(&format!("No. {n}")),
+                )
+                .unwrap()
+                .id,
+            );
+            for page in 1..=4_usize {
+                // The comment the last page follows is the one at the end of the pages before it.
+                let before = (n - 1) / page * page;
+                let expected = before.checked_sub(1).and_then(|i| comments.get(i)).cloned();
+                counting.calls.store(0, std::sync::atomic::Ordering::SeqCst);
+                assert_eq!(last(page), expected, "{n} comments, {page} to a page");
+                assert!(
+                    counting.calls() <= 2,
+                    "{n} comments, {page} to a page: {} lookups",
+                    counting.calls()
+                );
+            }
+        }
+        // And it is a place `claim_thread` can continue from: the last page holds the last comment.
+        let after = last(4);
+        let page = s
+            .claim_thread(&e.author.principal, &e.wiki, &id, after.as_ref(), 4)
+            .unwrap();
+        assert_eq!(
+            page.rows.last().map(|r| r.comment.id.clone()),
+            comments.last().cloned()
+        );
+    });
+}

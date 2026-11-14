@@ -1365,6 +1365,10 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `claim_thread.form_label` | the label of the field that adds a comment to a claim's discussion | "Add a comment to this discussion" | "この議論にコメントを追加" |
 | `claim_thread.form_reply` | above that field when the comment answers another; `{number}` is the place of the comment it answers | "Replying to comment {number}" | "コメント {number} への返信" |
 | `claim_thread.back` | the way back to the claim's page from a refused comment | "Back to the claim" | "主張のページに戻る" |
+| `api.claim_lost` | a problem of the write API: the text leaves out a paragraph that has sources attached and `drops` does not name it; `{block}` is the paragraph's marker, `{excerpt}` how it begins | "The paragraph marked ^{block}, which begins “{excerpt}”, has sources attached, and this change leaves it out. To remove it, name ^{block} in `drops`. To keep it, put it back." | "「{excerpt}」で始まる、マーカー ^{block} の段落には出典が付いていますが、この変更ではその段落がなくなります。削除するときは `drops` に ^{block} を指定してください。残すときは元に戻してください。" |
+| `api.drop_unused` | a problem of the write API: `drops` names a paragraph the change does not leave out, or that no claim is said in; `{block}` is the paragraph's marker | "`drops` names the paragraph marked ^{block}, but this change does not leave it out, or no claim is said in it. Name only the paragraphs this change removes." | "`drops` にマーカー ^{block} の段落が指定されていますが、この変更ではその段落は削除されないか、その段落に書かれた主張がありません。この変更で削除する段落だけを指定してください。" |
+| `claim_thread.in_reply_to_link` | under a comment that answers another, when the comment it answers can be linked to; `{comment}` is a link to it, worded by `claim_thread.comment_label` | "In reply to {comment}." | "{comment} への返信です。" |
+| `claim_thread.comment_label` | the words of that link; `{number}` is the place of the comment in its thread | "comment {number}" | "コメント {number}" |
 
 ## 3. Words the interface does not say
 

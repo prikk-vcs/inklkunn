@@ -11,6 +11,7 @@ fn sent(files: Vec<File>, renames: Vec<Rename>) -> Sent {
         renames,
         minor: false,
         automated: false,
+        drops: Vec::new(),
     }
 }
 

@@ -244,6 +244,24 @@ async fn samples() -> Vec<(String, String, Value)> {
         let a = get(&w, &format!("/handbook/-/api/v1/{tail}")).await;
         results.push((route("changes"), tail.to_owned(), a.json()));
     }
+    // The knowledge layer: a claim judged on an earlier wording, its sources, a page's provenance, two views compared.
+    let w = super::knowledge::reworded();
+    let claim = inklkunn_core::knowledge::ClaimId::parse("01930000-0000-7000-8000-000000000001")
+        .expect("a claim id");
+    let source = inklkunn_core::knowledge::SourceId::parse("01931111-0000-7000-8000-000000000001")
+        .expect("a source id");
+    for (template, tail) in [
+        ("claims/{id}", format!("claims/{claim}")),
+        ("sources/{id}", format!("sources/{source}")),
+        ("provenance/{title}", "provenance/Home".to_owned()),
+    ] {
+        let a = get(&w, &format!("/handbook/-/api/v1/{tail}")).await;
+        results.push((route(template), tail, a.json()));
+    }
+    let w = super::knowledge::forked();
+    let tail = "views/compare?a=main&b=alt".to_owned();
+    let a = get(&w, &format!("/handbook/-/api/v1/{tail}")).await;
+    results.push((route("views/compare"), tail, a.json()));
     results
 }
 
@@ -257,7 +275,7 @@ async fn every_answer_is_of_the_shape_the_document_promises_and_every_declared_m
     };
     let mut problems = Vec::new();
     let answers = samples().await;
-    assert!(answers.len() >= 25, "{}", answers.len());
+    assert!(answers.len() >= 29, "{}", answers.len());
     for (template, tail, body) in &answers {
         assert!(
             body.get("type")
@@ -301,6 +319,17 @@ async fn every_answer_is_of_the_shape_the_document_promises_and_every_declared_m
         "ChangeRow",
         "ChangePage",
         "Provenance",
+        "Claim",
+        "ClaimSaid",
+        "ClaimSource",
+        "Source",
+        "SourceCitedBy",
+        "PageProvenance",
+        "ProvenanceParagraph",
+        "ProvenanceChange",
+        "ViewComparison",
+        "ComparedPage",
+        "ComparedClaim",
         "Person",
     ];
     for name in covered {

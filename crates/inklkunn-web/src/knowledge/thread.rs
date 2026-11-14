@@ -23,12 +23,13 @@ use axum::extract::rejection::PathRejection;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::response::Response;
+use inklkunn_core::Principal;
 use inklkunn_core::knowledge::ClaimId;
 use inklkunn_core::proposal::{NewClaimComment, ProposalError};
 use inklkunn_store::{AccountId, ClaimCommentRow, ClaimThreadPage, CommentId, WikiRecord};
 
 use super::paths;
-use crate::catalog::{Key, T};
+use crate::catalog::{Key, Rich, T};
 use crate::csrf::Decided;
 use crate::pages::{Page, PageState};
 use crate::proposals::render::{CommentView, LinkView};
@@ -83,6 +84,14 @@ pub(crate) struct Read {
     can_comment: bool,
     /// The display names of the people who wrote, by account id; `None` for one the service does not know.
     names: HashMap<String, Option<String>>,
+    /// Where a comment this page answers is, when it is on an earlier page, by its place in the thread.
+    parents: HashMap<u32, Parent>,
+}
+
+/// A comment on an earlier page, and the comment its page follows (`None` for the first page).
+struct Parent {
+    id: CommentId,
+    after: Option<CommentId>,
 }
 
 impl Read {
@@ -94,8 +103,59 @@ impl Read {
             reply: None,
             can_comment: false,
             names: HashMap::new(),
+            parents: HashMap::new(),
         }
     }
+}
+
+/// Where the comments that this page's replies answer are, when they are on an earlier page (K42): for each, the comment
+/// and the comment its page follows, by two lookups of the thread's key, made once per place and per page. A reply
+/// page holds at most [`PAGE`] comments, so at most that many places are looked up; one that cannot be found is left
+/// as the sentence without a link.
+fn earlier_parents(
+    services: &Services,
+    principal: &Principal,
+    wiki: &WikiRecord,
+    claim: &ClaimId,
+    page: &ClaimThreadPage,
+) -> HashMap<u32, Parent> {
+    let place = |position: u64| {
+        services
+            .proposals
+            .claim_thread_place(principal, wiki, claim, position)
+            .ok()
+            .flatten()
+    };
+    let per_page = u32::try_from(PAGE).unwrap_or(u32::MAX);
+    let mut found: HashMap<u32, Parent> = HashMap::new();
+    let mut followed: HashMap<u32, Option<CommentId>> = HashMap::new();
+    let Some(first) = page.rows.first().map(|r| r.position) else {
+        return found;
+    };
+    for position in page
+        .rows
+        .iter()
+        .filter_map(|r| r.parent_position)
+        .filter(|p| *p < first)
+    {
+        if found.contains_key(&position) {
+            continue;
+        }
+        // The comments before the parent's page: every full page of them.
+        let before = (position - 1) / per_page * per_page;
+        let after = followed
+            .entry(before)
+            .or_insert_with(|| (before > 0).then(|| place(u64::from(before))).flatten())
+            .clone();
+        let Some(id) = place(u64::from(position)) else {
+            continue;
+        };
+        if before > 0 && after.is_none() {
+            continue;
+        }
+        found.insert(position, Parent { id, after });
+    }
+    found
 }
 
 /// Read a page of the thread of `claim` for the request in `headers`. The query's `after` and `reply` name comments; one
@@ -138,6 +198,9 @@ pub(crate) fn read(
             }
         });
     }
+    let parents = page.as_ref().map_or_else(HashMap::new, |p| {
+        earlier_parents(services, &principal, wiki, claim, p)
+    });
     Read {
         can_comment: page.is_some()
             && services
@@ -147,6 +210,7 @@ pub(crate) fn read(
         after,
         reply,
         names,
+        parents,
     }
 }
 
@@ -180,12 +244,48 @@ pub(crate) fn section(
         Some(Some(name)) => name.clone(),
         _ => t.get(Key::PersonUnknown),
     };
+    // The sentence that names the comment a reply answers, linked to it: on this page by a fragment, on an earlier page by
+    // that page's address and the fragment. Without a place to link to it is the sentence alone (`location`).
+    let answers = |row: &ClaimCommentRow| -> Option<Rich> {
+        let position = row.parent_position?;
+        let here = page.rows.iter().find(|r| r.position == position);
+        let href = match (here, read.parents.get(&position)) {
+            // A message's link is a path, never a bare fragment: the page's own address, and the comment.
+            (Some(parent), _) => format!(
+                "{}#k-{}",
+                paths::claim_page(slug, claim, view, after, None),
+                parent.comment.id
+            ),
+            (None, Some(parent)) => format!(
+                "{}#k-{}",
+                paths::claim_page(
+                    slug,
+                    claim,
+                    view,
+                    parent.after.as_ref().map(CommentId::as_str),
+                    None
+                ),
+                parent.id
+            ),
+            (None, None) => return None,
+        };
+        let label = t
+            .msg(Key::ClaimThreadCommentLabel)
+            .with("number", position)
+            .text();
+        Some(
+            t.msg(Key::ClaimThreadInReplyToLink)
+                .link("comment", label, href)
+                .html(),
+        )
+    };
     let comments = page
         .rows
         .iter()
         .map(|row| {
             let author = name(row);
             CommentView {
+                parent: answers(row),
                 id: format!("k-{}", row.comment.id),
                 depth: 0,
                 meta: t
@@ -344,16 +444,10 @@ pub(crate) async fn comment_post(
 
 /// The comment that the last page of the thread begins after (`None` when the thread has one page).
 fn last_page(ctx: &Ctx, claim: &ClaimId) -> Option<CommentId> {
-    let mut after: Option<CommentId> = None;
-    loop {
-        let page = ctx
-            .services
-            .proposals
-            .claim_thread(&ctx.principal, &ctx.wiki, claim, after.as_ref(), PAGE)
-            .ok()?;
-        match page.next {
-            Some(next) => after = Some(next),
-            None => return after,
-        }
-    }
+    // Two lookups however long the thread is (handoff 005 K42): its count, and the comment the last page follows.
+    ctx.services
+        .proposals
+        .claim_thread_last_page(&ctx.principal, &ctx.wiki, claim, PAGE)
+        .ok()
+        .flatten()
 }

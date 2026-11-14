@@ -16,6 +16,8 @@ use tower::ServiceExt as _;
 use super::common::{self, World, add_person, block_id, page, person, state_id, with_accounts};
 use super::{Answer, At, get, router};
 
+mod knowledge;
+
 const HOME: &str =
     "---\ntitle: Home\n---\n\nFirst paragraph.\n\nSecond paragraph.\n\nThird paragraph.\n";
 const API: &str = "/handbook/-/api/v1";

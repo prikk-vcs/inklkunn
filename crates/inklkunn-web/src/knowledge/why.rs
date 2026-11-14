@@ -183,29 +183,37 @@ struct Reading<'a> {
     t: T,
 }
 
-impl Reading<'_> {
-    /// Do the acceptance records say that this proposal was sealed as this block? A revision of it, whichever.
-    fn sealed_as(&self, id: &ProposalId, block: &str) -> bool {
-        let Ok(revisions) = self
-            .services
-            .proposals
-            .revisions(self.principal, self.wiki, id)
-        else {
-            return false;
-        };
-        revisions.iter().any(|revision| {
-            self.services
-                .acceptances
-                .acceptances_of(id, revision.seq)
-                .is_ok_and(|entries| {
-                    entries.iter().any(|entry| {
-                        matches!(
-                            entry.result.as_ref().map(|r| &r.outcome),
-                            Some(AcceptanceOutcome::Sealed { block_id, .. }) if block_id == block
-                        )
-                    })
+/// Do the acceptance records say that this proposal was sealed as this block? A revision of it, whichever. (The API's
+/// provenance asks the same, so that a message that names a proposal is never taken for the proof that it was one.)
+pub(crate) fn sealed_as(
+    services: &Services,
+    principal: &Principal,
+    wiki: &WikiRecord,
+    id: &ProposalId,
+    block: &str,
+) -> bool {
+    let Ok(revisions) = services.proposals.revisions(principal, wiki, id) else {
+        return false;
+    };
+    revisions.iter().any(|revision| {
+        services
+            .acceptances
+            .acceptances_of(id, revision.seq)
+            .is_ok_and(|entries| {
+                entries.iter().any(|entry| {
+                    matches!(
+                        entry.result.as_ref().map(|r| &r.outcome),
+                        Some(AcceptanceOutcome::Sealed { block_id, .. }) if block_id == block
+                    )
                 })
-        })
+            })
+    })
+}
+
+impl Reading<'_> {
+    /// Do the acceptance records say that this proposal was sealed as this block?
+    fn sealed_as(&self, id: &ProposalId, block: &str) -> bool {
+        sealed_as(self.services, self.principal, self.wiki, id, block)
     }
 
     /// The review of a proposal: its decisions, then its comments, oldest first, at most [`MAX_REVIEW_ITEMS`] of
