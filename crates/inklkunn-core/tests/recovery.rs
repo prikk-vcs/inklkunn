@@ -13,7 +13,8 @@
 //! made on cue: handoff 004, P15; `leaves-the-lock` adds the stale `active.lock` the killed process would have left,
 //! and `leaves-only-the-metadata` puts back the ref's metadata but not the queue: the other state a kill just after
 //! the publication leaves, a lone `ACTIVE-REF-METADATA-DEBRIS` warning); `fail-unlock-clear` fails `unlock` only when
-//! it is asked to clear a lock (`unlock --lock <path> ...`), so the listing still works.
+//! it is asked to clear a lock (`unlock --lock <path> ...`), so the listing still works; `format-marker` (holding a number) makes
+//! every verb but `--version` answer `error: unsupported format version: <number>`, exit 1 (a damaged or unknown marker).
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::collections::HashMap;
@@ -29,19 +30,20 @@ use inklkunn_core::reconcile::{Report, reconcile};
 use inklkunn_core::recovery::processes::{ProcessInfo, ProcessTable};
 use inklkunn_core::recovery::{Step, Stop};
 use inklkunn_core::{
-    AcceptFailure, AcceptanceLedger, AcceptanceParts, AcceptanceToken, Authorizer, ExpectedMessage,
-    IdentityAuthority, KeyAuthority, LeaseConfig, LedgerError, OldKey, PreparedChange,
-    PreparedFile, Principal, ProposalAcceptor, Purpose, ReadConfig, ReadService, Recover,
-    RecoverOptions, Recovery, RecoveryError, RecoveryMode, RecoveryOutcome, RecoveryParts, Signer,
-    SignerConfig, StoreActs, StoreAuthz, StoreLedger, SystemActFailure, SystemActs,
-    ViewCreationAct, ViewCreationFacts, WikiLeases, Witnesses, WriteLeases, create_wiki,
+    AcceptFailure, AcceptanceLedger, AcceptanceParts, AcceptanceToken, Authorizer, CheckOutcome,
+    ExpectedMessage, IdentityAuthority, KeyAuthority, LeaseConfig, LedgerError, OldKey,
+    PreparedChange, PreparedFile, Principal, ProposalAcceptor, Purpose, ReadConfig, ReadService,
+    Recover, RecoverOptions, Recovery, RecoveryError, RecoveryMode, RecoveryOutcome, RecoveryParts,
+    Signer, SignerConfig, StoreActs, StoreAuthz, StoreLedger, SystemActFailure, SystemActs,
+    Verifier, ViewCreationAct, ViewCreationFacts, WikiLeases, Witnesses, WriteLeases, create_wiki,
 };
 use inklkunn_prikk::{Admission, Point, PrikkCli, Sandbox, Storage};
 use inklkunn_store::{
     AcceptanceOutcome, AcceptanceStore, Account, AccountId, AccountStore, ActStore, AuditEvent,
     AuditLog, AuditSink, DisplayName, FileChange, IntentEnd, NewWiki, ProposalRecord,
     ProposalState, RecoveryEnding, RecoveryFlag, RecoveryReason, Role, RoleGrant, RoleStore, Slug,
-    SqliteStore, SystemActEnd, SystemActId, SystemActKind, SystemActRecord,
+    SqliteStore, SystemActEnd, SystemActId, SystemActKind, SystemActRecord, VerificationState,
+    WikiStore,
 };
 
 const MAIN: &str = "heads/main";
@@ -112,6 +114,7 @@ if [ "$verb" = uncommit ] && [ -e "$CTL/hold-uncommit" ]; then
 fi
 if [ "$verb" = unlock ] && [ "$#" -gt 1 ] && [ -e "$CTL/fail-unlock-clear" ]; then echo "error: precondition not met: injected failure of unlock --lock" >&2; exit 1; fi
 if [ -e "$CTL/fail-$verb" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
+if [ -e "$CTL/format-marker" ] && [ "$verb" != --version ]; then echo "error: unsupported format version: $(cat "$CTL/format-marker")" >&2; exit 1; fi
 if [ -e "$CTL/failafter-$verb" ]; then
   n="$(cat "$CTL/failafter-$verb")"; c="$(cat "$CTL/count-$verb" 2>/dev/null || echo 0)"
   echo "$((c + 1))" > "$CTL/count-$verb"
@@ -3685,5 +3688,90 @@ fn a_lock_that_could_not_be_cleared_is_a_stop_at_that_step_with_nothing_done() {
             .is_some_and(|why| why.contains("this run clears it")),
         "the plan's field is its intent: {:?}",
         r.plan.discard_unused
+    );
+}
+
+#[test]
+fn a_format_marker_prikk_will_not_read_fails_the_check_flags_the_wiki_and_stops_recovery_until_it_is_put_right()
+ {
+    // M17: the marker names a number no table knows (`9`), whatever prikk is running. Every prikk call fails with
+    // `unsupported format version: 9`. The check records a failed verdict (the last one, Verified, cannot stand) and
+    // flags the wiki; recovery stops with its own word and changes nothing; once the marker reads again, recovery
+    // finishes and clears the flag.
+    let Some(w) = World::new("format-marker", LeaseConfig::default()) else {
+        return;
+    };
+    let verifier = Verifier::new(w.storage.clone(), w.store.clone(), w.layout.clone());
+    verifier.flag_format_markers_in(w.store.clone());
+    let sound = verifier.check_unthrottled(&w.wiki);
+    assert!(
+        matches!(sound.outcome, CheckOutcome::Verified),
+        "{:?}",
+        sound.outcome
+    );
+    let blocks = w.history().len();
+    w.control("format-marker", "9");
+    let checked = verifier.check_unthrottled(&w.wiki);
+    assert!(
+        matches!(checked.outcome, CheckOutcome::Failed { .. }),
+        "{:?}",
+        checked.outcome
+    );
+    let operator = checked.operator.expect("the operator's text");
+    assert!(
+        operator.contains("format 9") && operator.contains(".prikk/FORMAT"),
+        "{operator}"
+    );
+    assert!(
+        !operator.contains("nothing in the repository is damaged"),
+        "{operator}"
+    );
+    let record = w.store.get(&w.wiki.id).unwrap();
+    assert_eq!(record.verification.state, VerificationState::Failed);
+    let flag = w.store.recovery_flag(&w.wiki.id).unwrap().expect("flagged");
+    assert_eq!(flag.reason, RecoveryReason::Interrupted);
+    // Recovery shows the stop, and a run ends in it without changing anything.
+    let shown = w
+        .recovery
+        .recover(&w.wiki, RecoveryMode::PlanOnly)
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        shown.plan.stop,
+        Some(Stop::FormatMarker),
+        "{:#?}",
+        shown.lines()
+    );
+    assert!(shown.plan.steps.is_empty());
+    let run = w.recover();
+    assert!(
+        matches!(&run.outcome, RecoveryOutcome::Stopped { at: None, .. }),
+        "{:?}",
+        run.outcome
+    );
+    assert!(run.done.is_empty(), "recovery ran nothing");
+    assert!(
+        run.lines()
+            .iter()
+            .any(|l| l.contains("STOP (format-marker)")),
+        "{:#?}",
+        run.lines()
+    );
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
+    // The marker reads again: recovery finishes, the flag goes, the history is as it was, and a check verifies.
+    w.uncontrol("format-marker");
+    assert_eq!(w.history().len(), blocks);
+    let done = w.recover();
+    assert_eq!(
+        done.outcome,
+        RecoveryOutcome::Recovered,
+        "{:#?}",
+        done.lines()
+    );
+    assert_eq!(w.store.recovery_flag(&w.wiki.id).unwrap(), None);
+    let again = verifier.check_unthrottled(&w.wiki);
+    assert!(
+        matches!(again.outcome, CheckOutcome::Verified),
+        "{:?}",
+        again.outcome
     );
 }

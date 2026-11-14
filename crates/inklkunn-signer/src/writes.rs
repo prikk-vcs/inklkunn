@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use inklkunn_prikk::sandbox::{CallLimits, Mounts, Run, Sandbox};
 use inklkunn_prikk::storage::{Change, History, HistoryBlock, RepoStatus, Verification};
-use inklkunn_prikk::{parse_report, parse_status, schema};
+use inklkunn_prikk::{FormatError, classify_format_error, parse_report, parse_status, schema};
 use serde::Deserialize;
 
 use crate::cost::{self, WriteVerb};
@@ -25,11 +25,19 @@ use crate::recover::text::{
 pub enum SignerError {
     /// prikk refused and said why; nothing changed. The text is prikk's (operator text).
     Refused(String),
-    /// The repository's format is one this prikk does not read (`error: unsupported format version: N`, whole, exit 1:
-    /// prikk 0.55.0 and 0.56.0 on a wiki made under 0.57.0, format 8). **An operator's mismatch**: nothing was done,
-    /// nothing is damaged, and it is no case for recovery (it is never a refusal about what was asked, and never
-    /// `Incomplete` or `NeedsRecovery`); the answer is the prikk that made the wiki, or a restore.
+    /// The repository's format is one this prikk is **known not to read** (`error: unsupported format version: N`, whole,
+    /// exit 1, from a prikk older than the first that reads N: prikk 0.55.0 and 0.56.0 on a wiki made under 0.57.0,
+    /// format 8). **An operator's mismatch**: nothing was done, and it is no case for recovery (it is never a refusal
+    /// about what was asked, and never `Incomplete` or `NeedsRecovery`); the answer is the prikk that made the wiki, or a
+    /// restore.
     UnsupportedFormat {
+        /// The format version prikk named.
+        version: u64,
+    },
+    /// The same sentence from a prikk that is **not known to refuse that format** (maintenance M17): the format marker is
+    /// damaged or unknown. Nothing was done, and nothing is said to be intact; the wiki is for recovery, which stops at
+    /// `format-marker` and points at the runbook.
+    FormatMarker {
         /// The format version prikk named.
         version: u64,
     },
@@ -82,6 +90,11 @@ impl std::fmt::Display for SignerError {
                 f,
                 "prikk cannot open this wiki's repository, and nothing was done: {}",
                 inklkunn_prikk::unsupported_format_sentence(*version)
+            ),
+            SignerError::FormatMarker { version } => write!(
+                f,
+                "prikk cannot open this wiki's repository, and nothing was done: {}",
+                inklkunn_prikk::format_marker_sentence(*version)
             ),
             SignerError::Unavailable(m) => write!(f, "the write could not run to completion: {m}"),
             SignerError::Damaged(m) => write!(f, "prikk's output could not be read: {m}"),
@@ -351,7 +364,12 @@ fn scrub(text: &str) -> String {
 }
 
 /// The outcome of a confined call, read in the signer's terms.
-fn outcome(verb: &str, run: Run, ceiling: u64) -> Result<Vec<u8>, SignerError> {
+fn outcome(
+    binary: &std::ffi::OsStr,
+    verb: &str,
+    run: Run,
+    ceiling: u64,
+) -> Result<Vec<u8>, SignerError> {
     if run.timed_out {
         return Err(SignerError::Unavailable(format!(
             "`{verb}` was stopped at its {} s bound; the repository's state must be read before a retry",
@@ -381,8 +399,21 @@ fn outcome(verb: &str, run: Run, ceiling: u64) -> Result<Vec<u8>, SignerError> {
             .strip_prefix("error:")
             .map_or(stderr.as_str(), str::trim)
             .to_owned();
-        if let Some(version) = inklkunn_prikk::unsupported_format_version(&text) {
-            return Err(SignerError::UnsupportedFormat { version });
+        // prikk's `unsupported format version: N`: the driver's classifier, with the same conditions (exit 1, no
+        // `refusal-v1` report, the sentence whole). Whether it is a mismatch or a damaged marker depends on the running
+        // prikk's version, which is asked only now (M17).
+        let code = run.status.code();
+        if classify_format_error(code, &run.stdout, &stderr, None).is_some() {
+            let running = inklkunn_prikk::probe_version(binary);
+            match classify_format_error(code, &run.stdout, &stderr, running) {
+                Some(FormatError::Mismatch { format }) => {
+                    return Err(SignerError::UnsupportedFormat { version: format });
+                }
+                Some(FormatError::Marker { format }) => {
+                    return Err(SignerError::FormatMarker { version: format });
+                }
+                None => {}
+            }
         }
         return Err(SignerError::Refused(if text.is_empty() {
             format!("`{verb}` exited {} without a reason", run.status)
@@ -720,12 +751,17 @@ pub(crate) fn parse_publication_trust(text: &str) -> PublicationTrust {
 /// Like [`outcome`], for a verb whose **report is the answer even when it exits 1**: `worktree-status` exits
 /// 1 on a dirty tree and `verify` on a failing verdict, each still printing its JSON report on stdout. A
 /// non-zero exit with a report on stdout is returned as the report; one without is the refusal it says.
-fn report_outcome(verb: &str, run: Run, ceiling: u64) -> Result<Vec<u8>, SignerError> {
+fn report_outcome(
+    binary: &std::ffi::OsStr,
+    verb: &str,
+    run: Run,
+    ceiling: u64,
+) -> Result<Vec<u8>, SignerError> {
     let has_report = run.stdout.first() == Some(&b'{');
     if has_report && !run.timed_out && !run.output_exceeded {
         return Ok(run.stdout);
     }
-    outcome(verb, run, ceiling)
+    outcome(binary, verb, run, ceiling)
 }
 
 impl Writes {
@@ -748,7 +784,7 @@ impl Writes {
     ) -> Result<Vec<u8>, SignerError> {
         let name = args.first().copied().unwrap_or("");
         let run = self.run_raw(mounts, size, args)?;
-        outcome(name, run.0, run.1)
+        outcome(&self.binary, name, run.0, run.1)
     }
 
     /// The run itself, and the ceiling it had.
@@ -940,7 +976,7 @@ impl Writes {
     fn read_report(&self, repo: &Path, args: &[&str]) -> Result<Vec<u8>, SignerError> {
         let verb = args.first().copied().unwrap_or("");
         let (run, ceiling) = self.run_raw(&Mounts::read(repo, None), Sizing::repo(repo), args)?;
-        report_outcome(verb, run, ceiling)
+        report_outcome(&self.binary, verb, run, ceiling)
     }
 
     /// `prikk status`: the current branch and the unsealed queue.
@@ -993,7 +1029,7 @@ impl Writes {
             return Ok(report);
         }
         let stdout = String::from_utf8_lossy(&run.stdout).into_owned();
-        outcome("doctor", run, ceiling)?;
+        outcome(&self.binary, "doctor", run, ceiling)?;
         // It ran and succeeded, and what it printed is not a report: say so.
         parse_doctor_output(&stdout).map_err(SignerError::Damaged)
     }
@@ -1033,7 +1069,7 @@ impl Writes {
         if uncommit_is_unknown(run.status.code(), &String::from_utf8_lossy(&run.stderr)) {
             return Ok(None);
         }
-        let out = outcome("uncommit", run, ceiling)?;
+        let out = outcome(&self.binary, "uncommit", run, ceiling)?;
         parse_uncommit_plan(&String::from_utf8_lossy(&out), patch_id)
             .map(Some)
             .map_err(SignerError::Damaged)
@@ -1245,7 +1281,7 @@ impl Writes {
                 bytes: ceiling,
             });
         }
-        let out = report_outcome("verify", run, ceiling)?;
+        let out = report_outcome(&self.binary, "verify", run, ceiling)?;
         parse_report("verify", &out, schema::VERIFY_REPORT)
             .map_err(|e| SignerError::Damaged(e.to_string()))
     }
@@ -1325,7 +1361,7 @@ impl Writes {
         let text = String::from_utf8_lossy(&run.stdout).into_owned();
         let success = run.status.success();
         if text.trim().is_empty() && !success {
-            outcome("verify", run, ceiling)?;
+            outcome(&self.binary, "verify", run, ceiling)?;
         }
         Ok((text, success))
     }
@@ -1450,7 +1486,7 @@ impl Writes {
         let signers = parse_sealed_blocks(&text);
         if signers.is_empty() && !run.status.success() {
             // Nothing listed and a failure: the ceiling, or a refusal, with the usual words.
-            return outcome("verify", run, 0).map(|_| Vec::new());
+            return outcome(&self.binary, "verify", run, 0).map(|_| Vec::new());
         }
         Ok(signers)
     }

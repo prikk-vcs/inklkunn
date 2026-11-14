@@ -431,10 +431,10 @@ fn a_repository_of_a_format_prikk_does_not_read_is_could_not_be_read_now_names_t
             ),
             "{e:?}"
         );
-        // The operator's text names the version and says nothing is damaged; a surface shows a reader neither.
+        // The operator's text names the version and the first prikk that reads it; a surface shows a reader neither.
         let text = e.to_string();
         assert!(
-            text.contains("format 8") && text.contains("nothing in the repository is damaged"),
+            text.contains("format 8") && text.contains("0.57.0") && !text.contains("damaged"),
             "{text}"
         );
     }
@@ -447,4 +447,42 @@ fn a_repository_of_a_format_prikk_does_not_read_is_could_not_be_read_now_names_t
     assert_eq!(record.verification, w.wiki.verification);
     w.fake().fail_views(None);
     assert!(w.service.page(&w.wiki, None, "Home", &Env::EN).is_ok());
+}
+
+#[test]
+fn a_damaged_or_unknown_format_marker_is_could_not_be_read_now_and_the_operators_text_names_what_prikk_gave()
+ {
+    // M17: the same words from a prikk that is not known to refuse the format. A reader is told the page could not be
+    // read now; the operator's text names the number prikk gave (never a fixed 8), says nothing is intact, and points at
+    // the marker. Flagging the wiki is the check's and recovery's, not a read's.
+    use inklkunn_store::ActStore;
+    let w = World::pages(&[("Home", &[], "x\n")]);
+    w.fake().fail_views(Some(StorageError::FormatMarker {
+        verb: "branch",
+        version: 9,
+    }));
+    let e = w
+        .service
+        .page(&w.wiki, None, "Home", &Env::EN)
+        .expect_err("a repository whose marker prikk will not read");
+    assert!(
+        matches!(
+            &e,
+            ReadError::CouldNotBeReadNow(Cause::Storage(StorageError::FormatMarker {
+                version: 9,
+                ..
+            }))
+        ),
+        "{e:?}"
+    );
+    let text = e.to_string();
+    assert!(
+        text.contains("format 9") && text.contains(".prikk/FORMAT") && !text.contains("format 8"),
+        "{text}"
+    );
+    assert!(
+        !text.contains("nothing in the repository is damaged"),
+        "{text}"
+    );
+    assert_eq!(w.store.recovery_flag(&w.wiki.id).unwrap(), None);
 }

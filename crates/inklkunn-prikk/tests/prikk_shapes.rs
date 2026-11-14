@@ -284,3 +284,37 @@ esac"#,
         }
     }
 }
+
+#[test]
+fn the_same_sentence_from_a_prikk_that_reads_the_format_is_a_damaged_marker_for_every_verb() {
+    // M17: prikk 0.57.0 reads format 8, and says `unsupported format version: 8` itself when `.prikk/FORMAT` holds `8`
+    // without its newline (measured). The driver does not call that a mismatch of installations, whichever verb is asked.
+    let tmp = TempDir::new("format-marker");
+    let repo = repo(&tmp);
+    let fake = shim(
+        &tmp.0,
+        "prikk",
+        r#"case "$1" in
+  --version) echo 'prikk 0.57.0' ;;
+  *) echo "error: unsupported format version: 8" >&2; exit 1 ;;
+esac"#,
+    );
+    let d = open_shim(&fake);
+    let view = Point::View("heads/main".into());
+    let outcomes = [
+        ("branch", retry(|| d.views(&repo)).map(|_| ())),
+        ("tree", retry(|| d.tree(&repo, &view, None)).map(|_| ())),
+        ("log", retry(|| d.history(&repo, &view, None)).map(|_| ())),
+        ("verify", retry(|| d.verify(&repo)).map(|_| ())),
+        ("status", retry(|| d.status(&repo)).map(|_| ())),
+    ];
+    for (verb, outcome) in outcomes {
+        match outcome {
+            Err(StorageError::FormatMarker { verb: v, version }) => {
+                assert_eq!(v, verb);
+                assert_eq!(version, 8);
+            }
+            other => panic!("{verb}: expected the damaged-marker outcome, got {other:?}"),
+        }
+    }
+}

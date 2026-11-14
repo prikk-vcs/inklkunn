@@ -27,8 +27,8 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use inklkunn_prikk::{Storage, StorageError, Unavailable};
 use inklkunn_signer::Recover;
 use inklkunn_store::{
-    Attempt, NotRun, RootLayout, Verification, VerificationState, WikiRecord, WikiStore,
-    record::now_secs,
+    ActStore, Attempt, NotRun, RecoveryFlag, RecoveryReason, RootLayout, Verification,
+    VerificationState, WikiRecord, WikiStore, record::now_secs,
 };
 
 /// A check that ran (or could not run) less than this long ago is not repeated.
@@ -142,6 +142,8 @@ pub struct Verifier {
     running: Mutex<BTreeSet<String>>,
     /// The signer, asked (read-only, no keys) whether a failure is a retirement's; set once, when there is a signer.
     retirements: OnceLock<Arc<dyn RetirementReader>>,
+    /// Where a wiki whose format marker is damaged or unknown is flagged *needs recovery* (maintenance M17); set once.
+    flags: OnceLock<Arc<dyn ActStore>>,
 }
 
 /// A claim on one wiki's check, given back when it is dropped (also when the check panics).
@@ -176,7 +178,15 @@ impl Verifier {
             cap: CONCURRENT_CHECKS,
             running: Mutex::new(BTreeSet::new()),
             retirements: OnceLock::new(),
+            flags: OnceLock::new(),
         }
+    }
+
+    /// Flag a wiki *needs recovery* in `acts` when a check meets a format marker that is damaged or unknown (M17):
+    /// every prikk call fails then, and recovery is the operator's way to the runbook. Set once; a later call changes
+    /// nothing. Without it the check still records the failed verdict.
+    pub fn flag_format_markers_in(&self, acts: Arc<dyn ActStore>) {
+        let _ = self.flags.set(acts);
     }
 
     /// Ask `signer` whether a failed check is made of what a key retirement recorded, to say so beside the result
@@ -249,6 +259,20 @@ impl Verifier {
         }
         let result = self.storage.verify(&self.layout.repo_dir(&wiki.id));
         let at = (self.clock)();
+        // A format marker that is damaged or unknown (M17): no prikk opens the repository, so the last verdict cannot
+        // stand and the wiki is flagged for recovery, which stops at `format-marker` and names the runbook. A flag that
+        // is already there stays as it is (the first reason stays).
+        if matches!(result, Err(StorageError::FormatMarker { .. }))
+            && let Some(acts) = self.flags.get()
+            && !matches!(acts.recovery_flag(&wiki.id), Ok(Some(_)))
+        {
+            let _ = acts.set_recovery_flag(&RecoveryFlag {
+                wiki: wiki.id.clone(),
+                reason: RecoveryReason::Interrupted,
+                act: None,
+                since: at,
+            });
+        }
         let (mut outcome, operator) = classify(result);
         if let CheckOutcome::Failed {
             explained_by_retirement,
@@ -343,6 +367,15 @@ fn classify(
                 explained_by_retirement: Vec::new(),
             },
             None,
+        ),
+        // The marker is damaged or unknown: the repository does not verify, whatever the last verdict said. The failure
+        // names no stage (none ran); the operator's text says what it is and what to compare.
+        Err(e @ StorageError::FormatMarker { .. }) => (
+            CheckOutcome::Failed {
+                stages: Vec::new(),
+                explained_by_retirement: Vec::new(),
+            },
+            Some(e.to_string()),
         ),
         Err(e) => {
             let why = match &e {

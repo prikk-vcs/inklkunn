@@ -17,12 +17,42 @@ touch prikk's files by hand.
 ## Not a case for recovery: a wiki that this prikk does not read (format 8)
 
 A wiki created under prikk 0.57.0 is **format 8**, and prikk 0.55.0 and 0.56.0 refuse it on every command with
-`error: unsupported format version: 8` (the version in the sentence is the repository's). If the service or a command
-says `prikk … cannot open this repository: it is format 8, which this prikk does not read`, an older prikk was put back
-beside wikis made by a newer one. The repository is **not damaged**, the wiki is **not flagged**, `wiki recover` has
-nothing to do, and readers are told only that the page *could not be read now*. Install the prikk that made the wiki
-(0.57.0 or later), or restore the wiki from a backup made before it was made in format 8. Nothing else is needed, and
-nothing here should be done by editing prikk's files.
+`error: unsupported format version: 8` (the version in the sentence is the repository's). A wiki that was *created* in
+format 8 is the ordinary case of this section: nothing was ever converted, and a prikk of 0.57.0 or later reads it. If the
+service or a command says `prikk … cannot open this repository: it is format 8, which this prikk does not read (prikk
+0.57.0 is the first that does)`, a prikk that is **known** not to read that format (older than the first that does) was put
+back beside wikis made by a newer one. The wiki is **not flagged**, `wiki recover` has nothing to do, and readers are told
+only that the page *could not be read now*. Install the prikk that made the wiki (0.57.0 or later), or restore the wiki
+from a backup made before it was made in format 8. Nothing else is needed, and nothing here should be done by editing
+prikk's files.
+
+**The same words from a prikk that reads that format are not this case.** If prikk 0.57.0 or later says
+`unsupported format version: 8`, or any prikk names a number it is not known to refuse (`9`, say), the format marker is
+damaged or unknown, and the next section applies: the wiki is flagged and nothing is called intact.
+
+## A format marker prikk will not read: recovery stops at `format-marker`
+
+**What you see.** A check ends with *Verification failed* on a wiki that was verified, the wiki is flagged, and the log
+says `prikk … cannot open this repository: prikk says the repository is format N and will not open it, but this prikk is
+not known to refuse that format: the format marker (.prikk/FORMAT) may be damaged …` (N is the number prikk gave).
+`inklkunn wiki recover <wiki> --plan` ends with `STOP (format-marker)`. **What it is.** `.prikk/FORMAT` holds a number
+that prikk refuses although the running prikk should read it (`8` written without its newline makes prikk 0.57.0 say so
+itself), or a number this build has no table for. Recovery can read nothing else, so it concludes nothing and changes
+nothing; do not take the rest of the repository to be intact.
+
+**Before.** From the repository directory:
+
+```sh
+prikk --version                    # the running prikk
+cat .prikk/FORMAT | od -c          # what the marker holds, byte by byte (a number and a newline)
+```
+
+Compare `.prikk/FORMAT` with the same file in a backup of this wiki. The marker is one short file: a number and a final
+newline. **The step.** If the backup's marker differs only in that, the marker is what is damaged: restore the whole
+repository from the backup (preferred), or put the backup's marker back **only** after the backup's repository is shown to
+be the same one (`prikk verify` on the restored copy). If the number is one a newer prikk wrote (a format this build has
+no table for), run the prikk that made the wiki. **After.** `prikk verify` exits 0, a check records *Verified*, and
+`inklkunn wiki recover <wiki>` clears the flag. Nothing here should be done by guessing a number into the file.
 
 ## The commands
 
@@ -126,7 +156,7 @@ either rewrites the history or puts an unaccepted change into it:
 The other STOP words (`queued-patch-is-not-the-act`, `published-block-is-not-the-act`, `several-queued`,
 `several-acts`, `tip-moved`, `interrupted-state`, `doctor-trouble`, `unknown-lock`, `foreign-process`,
 `history-unreadable`, and those of the sections below: `retirement-unfinished`,
-`cleanup-beside-trust-findings` and `view-creation-unclear`) are printed with their meaning by `inklkunn wiki recover <wiki> --plan`. Each one is a state
+`cleanup-beside-trust-findings`, `view-creation-unclear` and `format-marker`) are printed with their meaning by `inklkunn wiki recover <wiki> --plan`. Each one is a state
 where the witnesses disagree or recovery has no answer; the principle is the same: read, export, decide, and do not
 guess. Two states have no word, because recovery cannot even read them; they are the next two sections.
 

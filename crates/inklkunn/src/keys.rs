@@ -916,9 +916,10 @@ fn refresh_verdict(
         let wikis = Arc::new(SqliteStore::open(&settings.store_path()).map_err(|e| e.to_string())?);
         let verifier = Verifier::new(
             Arc::new(storage),
-            wikis,
+            wikis.clone(),
             RootLayout::new(settings.wikis_root()),
         );
+        verifier.flag_format_markers_in(wikis);
         verifier.explain_retirements_with(signer.clone());
         Ok(verifier.check_unthrottled(record))
     })();

@@ -738,6 +738,26 @@ only and only after those checks, and no longer says that `--force` is not neede
 test now runs exactly that form against a real prikk (measured on 0.55.0 and 0.57.0: it clears the file, asks nothing, and leaves every
 other lock) and checks that the runbook says it. No new prikk-dependent test.
 
+M17 (handoff 010 corrections, second round): a format error is classified, never assumed. M11 read every `unsupported format version: N` as
+an older prikk meeting a newer repository and said *nothing is damaged*; prikk 0.57.0 itself says it when `.prikk/FORMAT` holds `8`
+without its newline (measured), so a damaged marker kept the last *Verified* verdict on a repository no prikk opens. Now one classifier in
+`inklkunn-prikk` (`format::classify_format_error`), asked by the driver and the signer with the same conditions (exit 1, no `refusal-v1`
+report, prikk's sentence whole, a number of at most nine digits **without a leading zero**: `08` is refused), calls it **a mismatch**
+(`StorageError::UnsupportedFormat`, `SignerError::UnsupportedFormat`: not flagged, as before) only when the running prikk's version is
+known not to read format N, by one table (`format::first_reader`: format 8 is read from 0.57.0 on); anything else is **a damaged or
+unknown format marker** (`StorageError::FormatMarker`, `SignerError::FormatMarker`). The signer asks `prikk --version` (new
+`inklkunn_prikk::probe_version`) only when it meets the sentence. A marker error: the check records a *failed* verdict and flags the wiki
+(`Verifier::flag_format_markers_in`, set by `serve` and the one-off check of `wiki keys`; the flag is the existing *interrupted* reason and
+an existing flag keeps its reason), recovery stops with a new word, `format-marker` (`Stop::FormatMarker`, `Witness::format_marker`: nothing
+else of prikk is read), and `docs/RECOVERY.md` has its section (compare `.prikk/FORMAT` with a backup; the section for the mismatch says a
+wiki created in format 8 is the ordinary case). No sentence says *nothing is damaged* any more: the mismatch names the number prikk gave and
+the first prikk that reads it, the marker sentence names the number prikk gave (never a fixed 8) and says not to take the rest to be
+intact. Tests: the classifier table, the driver against every verb (0.55.0, 0.56.0, 0.57.0 and unknown versions, near misses, leading
+zeros), the signer's `outcome` with stand-in `--version` binaries, the check (flag, failed verdict, an existing flag kept, no flag store),
+the plan, recovery through the real state (a stand-in `format-marker` control: check, stop, a run that changes nothing, then recovered), and
+two real-prikk tests that find their binaries themselves (`8` without its newline and `9` on 0.57.0, format 8 on a prikk older than
+0.57.0). One new prikk-dependent test counted by `EXPECTED_SKIPS` (recovery), two more that print their own skip line.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

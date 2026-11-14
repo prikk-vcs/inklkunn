@@ -14,6 +14,7 @@
 pub mod admission;
 pub mod cost;
 pub mod driver;
+pub mod format;
 pub mod sandbox;
 pub mod storage;
 
@@ -21,14 +22,18 @@ pub use admission::{Admission, Permit, Refusal};
 pub use cost::{ReadVerb, SizeHints};
 pub use driver::{
     DEFAULT_HISTORY_LIMIT, PrikkCli, is_repo_path, parse_report, parse_status, parse_version,
-    schema,
+    probe_version, schema,
+};
+pub use format::{
+    FormatError, classify_format_error, first_reader, format_marker_sentence,
+    unsupported_format_sentence,
 };
 pub use sandbox::{BwrapConfig, CallLimits, Mounts, Run, Sandbox};
 pub use storage::{
     Change, Diff, DiffEntry, Entry, ExtractBounds, FileMeta, History, HistoryBlock, Materialized,
     Operation, Patch, PatchMessage, Point, Queue, QueuedPatch, RepoStatus, Result, Stage,
     StageOutcome, Storage, StorageError, Tree, Unavailable, Verdict, Verification, View, Views,
-    unsupported_format_sentence, unsupported_format_version,
+    unsupported_format_version,
 };
 
 /// The prikk floor (RFC 001 D-3 / RFC 010 D-3): the oldest prikk the driver accepts. One value with the

@@ -121,6 +121,7 @@ fn flagged() -> Witness {
         lease_held: true,
         cleanup_pending: None,
         retirement_unfinished: None,
+        format_marker: None,
     }
 }
 
@@ -2041,4 +2042,40 @@ fn the_cleanup_pending_step_says_that_the_queues_content_is_checked() {
             && lines.contains("exactly the one published patch"),
         "{lines}"
     );
+}
+
+#[test]
+fn a_format_marker_prikk_will_not_open_is_a_stop_of_its_own_and_nothing_else_is_concluded() {
+    // M17: prikk refused the repository by its format marker, and this prikk is not known to refuse that format. Nothing
+    // else was read, so whatever the other witnesses would say (a queue, an unfinished act, a lock) is not consulted.
+    let mut w = flagged();
+    w.format_marker = Some(9);
+    let plan = build(&w);
+    assert_eq!(plan.stop, Some(Stop::FormatMarker));
+    assert!(plan.steps.is_empty(), "{:?}", names(&plan));
+    assert_eq!(Stop::FormatMarker.as_str(), "format-marker");
+    let lines = plan.lines();
+    assert!(
+        lines.iter().any(|l| l.contains("STOP (format-marker)")),
+        "{lines:#?}"
+    );
+    assert!(
+        lines.iter().any(|l| l.contains("format 9")),
+        "the plan names the number prikk gave: {lines:#?}"
+    );
+    // It comes before every other stop, and without the marker the same witness plans as before.
+    let mut busy = w.clone();
+    busy.foreign = vec![Foreign {
+        pid: 4242,
+        tool: "prikk".to_owned(),
+    }];
+    assert_eq!(build(&busy).stop, Some(Stop::FormatMarker));
+    assert_eq!(build(&flagged()).stop, None);
+    // The runbook has a section for the stop, and says what to compare.
+    let runbook = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/RECOVERY.md"),
+    )
+    .unwrap();
+    assert!(runbook.contains("`format-marker`"));
+    assert!(runbook.contains(".prikk/FORMAT"));
 }

@@ -32,9 +32,11 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::Arc;
 
-use inklkunn_prikk::{Point, Storage};
+use inklkunn_prikk::{Point, Storage, StorageError};
 use inklkunn_signer::recover::text::PUBLICATION_UNTRUSTED_CODE;
-use inklkunn_signer::{AcceptanceToken, Recover, RecoveryToken, ViewCreationAct, Witnesses};
+use inklkunn_signer::{
+    AcceptanceToken, Recover, RecoveryToken, SignerError, ViewCreationAct, Witnesses,
+};
 use inklkunn_store::{
     AcceptanceOutcome, AcceptanceResult, AcceptanceStore, ActStore, AuditEvent, AuditOutcome,
     AuditSink, IntentCompletion, IntentEnd, IntentId, LeaseHolder, ProposalChange, ProposalOp,
@@ -315,6 +317,19 @@ impl ActBase {
 
 fn witness_error(what: &str, e: impl std::fmt::Display) -> RecoveryError {
     RecoveryError::Witness(format!("{what}: {e}"))
+}
+
+/// The format prikk named, when one of the first reads was refused for a format marker this prikk is not known to
+/// refuse (maintenance M17).
+fn format_marker_in<T, U>(
+    status: &Result<T, StorageError>,
+    doctor: &Result<U, SignerError>,
+) -> Option<u64> {
+    match (status, doctor) {
+        (Err(StorageError::FormatMarker { version, .. }), _)
+        | (_, Err(SignerError::FormatMarker { version })) => Some(*version),
+        _ => None,
+    }
 }
 
 impl Recovery {
@@ -636,10 +651,40 @@ impl Recovery {
         let view_acts = self.view_act_witnesses(wiki)?;
         let status_read = p.storage.status(&repo);
         let table = self.processes.processes();
-        let mut doctor = p
-            .witnesses
-            .doctor(&wiki.id)
-            .map_err(|e| witness_error("prikk doctor", e))?;
+        let doctor_read = p.witnesses.doctor(&wiki.id);
+        // A format marker that is damaged or unknown (M17): prikk opens nothing, so nothing else is read and the plan
+        // stops with its own word instead of "a witness could not be read".
+        if let Some(format) = format_marker_in(&status_read, &doctor_read) {
+            return Ok(Witness {
+                wiki: wiki.id.clone(),
+                flag: p.acts.recovery_flag(&wiki.id)?,
+                dead_holder: dead,
+                interrupted_recoveries: p
+                    .acts
+                    .recovery_acts(&wiki.id)?
+                    .iter()
+                    .filter(|e| e.end.is_none())
+                    .count(),
+                acts,
+                view_acts,
+                status: cleanup::unread_status(None),
+                doctor: inklkunn_signer::recover::text::DoctorReport {
+                    errors: 0,
+                    warnings: 0,
+                    info: 0,
+                    diagnostics: Vec::new(),
+                },
+                retirement: None,
+                retirement_unfinished: None,
+                worktree: None,
+                locks: Vec::new(),
+                foreign: processes::foreign(&table, &repo, std::process::id()),
+                lease_held,
+                cleanup_pending: None,
+                format_marker: Some(format),
+            });
+        }
+        let mut doctor = doctor_read.map_err(|e| witness_error("prikk doctor", e))?;
         // A retired key never freezes the wiki (P2, DR-10): `doctor` reports each thing the retired key signed as an
         // error. When the signer says that `verify` fails exactly and only for what a retirement recorded, the
         // diagnostics that name exactly those blocks, ref states and ref updates are a note and not damage (P13);
@@ -718,6 +763,7 @@ impl Recovery {
             foreign: processes::foreign(&table, &repo, std::process::id()),
             lease_held,
             cleanup_pending,
+            format_marker: None,
         })
     }
 

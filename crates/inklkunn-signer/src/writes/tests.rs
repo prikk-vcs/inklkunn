@@ -42,13 +42,18 @@ fn a_refused_write_carries_prikks_words_without_the_seed_path() {
         timed_out: false,
         output_exceeded: false,
     };
-    let e = outcome("commit", run, 1 << 30).unwrap_err();
+    let e = outcome(no_binary(), "commit", run, 1 << 30).unwrap_err();
     let shown = e.to_string();
     assert!(
         !shown.contains("inklkunn-seeds-") && !shown.contains("/run/"),
         "{shown}"
     );
     assert!(shown.contains("<seed directory>"), "{shown}");
+}
+
+/// A binary that is not there: a call that is not a format error never asks for the version.
+fn no_binary() -> &'static std::ffi::OsStr {
+    std::ffi::OsStr::new("/nonexistent/prikk")
 }
 
 fn run_of(wait_status: i32, stderr: &str) -> Run {
@@ -82,7 +87,7 @@ fn a_call_that_died_of_its_memory_ceiling_is_the_ceiling_and_never_a_refusal() {
         ),
         ("bwrap out of memory", run_of(1 << 8, "Out of memory")),
     ] {
-        match outcome("verify", run, 1 << 30) {
+        match outcome(no_binary(), "verify", run, 1 << 30) {
             Err(SignerError::CeilingExceeded { verb, bytes }) => {
                 assert_eq!((verb.as_str(), bytes), ("verify", 1 << 30), "{what}");
             }
@@ -92,6 +97,7 @@ fn a_call_that_died_of_its_memory_ceiling_is_the_ceiling_and_never_a_refusal() {
     // A refusal is still a refusal, and the same text is not mistaken for a ceiling when the run succeeded.
     assert!(matches!(
         outcome(
+            no_binary(),
             "commit",
             run_of(1 << 8, "error: precondition not met: x"),
             1 << 30
@@ -100,6 +106,7 @@ fn a_call_that_died_of_its_memory_ceiling_is_the_ceiling_and_never_a_refusal() {
     ));
     assert!(
         outcome(
+            no_binary(),
             "commit",
             run_of(0, "memory allocation of 8 bytes failed"),
             1 << 30
@@ -790,34 +797,155 @@ fn a_take_back_is_done_only_when_prikk_says_where_to_undo_it() {
     assert!(matches!(r, Err(SignerError::Damaged(_))), "{r:?}");
 }
 
+/// A stand-in `prikk` that answers `--version` with `version` (and nothing else), in its own directory.
+struct VersionOnly {
+    dir: PathBuf,
+}
+
+impl VersionOnly {
+    fn new(tag: &str, version: &str) -> Self {
+        use std::os::unix::fs::PermissionsExt;
+        let dir =
+            std::env::temp_dir().join(format!("inklkunn-version-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("prikk");
+        std::fs::write(
+            &path,
+            format!("#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'prikk {version}'; exit 0; fi\nexit 2\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // A script just written can be refused with `ETXTBSY` while a sibling test forks.
+        for _ in 0..100 {
+            if inklkunn_prikk::probe_version(path.as_os_str()).is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        VersionOnly { dir }
+    }
+
+    fn binary(&self) -> std::ffi::OsString {
+        self.dir.join("prikk").into_os_string()
+    }
+}
+
+impl Drop for VersionOnly {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
 #[test]
 fn a_repository_of_a_format_prikk_does_not_read_is_the_operators_mismatch_and_never_a_refusal_or_a_recovery()
  {
     // Measured: prikk 0.55.0 and 0.56.0 on a repository made by 0.57.0 (format 8), for every command:
     // `error: unsupported format version: 8`, exit 1.
-    let e = outcome(
-        "commit",
-        run_of(1 << 8, "error: unsupported format version: 8\n"),
-        1 << 30,
-    )
-    .unwrap_err();
-    assert!(
-        matches!(e, SignerError::UnsupportedFormat { version: 8 }),
-        "{e:?}"
-    );
-    let shown = e.to_string();
-    assert!(
-        shown.contains("format 8") && shown.contains("nothing was done"),
-        "{shown}"
-    );
-    assert!(!shown.contains("recover"), "no case for recovery: {shown}");
+    for version in ["0.55.0", "0.56.0"] {
+        let old = VersionOnly::new(&format!("old-{version}"), version);
+        let e = outcome(
+            &old.binary(),
+            "commit",
+            run_of(1 << 8, "error: unsupported format version: 8\n"),
+            1 << 30,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(e, SignerError::UnsupportedFormat { version: 8 }),
+            "{version}: {e:?}"
+        );
+        let shown = e.to_string();
+        assert!(
+            shown.contains("format 8") && shown.contains("nothing was done"),
+            "{shown}"
+        );
+        assert!(!shown.contains("recover"), "no case for recovery: {shown}");
+    }
     // Any other sentence is a refusal as before, whatever it names.
     for other in [
         "error: page \"unsupported format version: 8\" is not there\n",
         "error: unsupported format version: 8 (and more)\n",
         "error: unsupported format version: x\n",
     ] {
-        let e = outcome("commit", run_of(1 << 8, other), 1 << 30).unwrap_err();
+        let e = outcome(no_binary(), "commit", run_of(1 << 8, other), 1 << 30).unwrap_err();
         assert!(matches!(e, SignerError::Refused(_)), "{other}: {e:?}");
     }
+}
+
+#[test]
+fn the_same_sentence_from_a_prikk_that_reads_the_format_is_a_damaged_or_unknown_marker() {
+    // M17 (finding R-a): `.prikk/FORMAT` written as `8` without its newline makes prikk 0.57.0 itself say
+    // `unsupported format version: 8`; `9` is a number no table knows. Neither is "nothing is damaged".
+    let new = VersionOnly::new("new", "0.57.0");
+    let old = VersionOnly::new("old", "0.55.0");
+    let say = |binary: &std::ffi::OsStr, said: &str| {
+        outcome(binary, "commit", run_of(1 << 8, said), 1 << 30).unwrap_err()
+    };
+    let e = say(&new.binary(), "error: unsupported format version: 8\n");
+    assert!(
+        matches!(e, SignerError::FormatMarker { version: 8 }),
+        "{e:?}"
+    );
+    let e = say(&new.binary(), "error: unsupported format version: 9\n");
+    assert!(
+        matches!(e, SignerError::FormatMarker { version: 9 }),
+        "{e:?}"
+    );
+    let shown = e.to_string();
+    assert!(
+        shown.contains("format 9") && !shown.contains('8'),
+        "{shown}"
+    );
+    assert!(shown.contains(".prikk/FORMAT"), "{shown}");
+    assert!(
+        !shown.contains("nothing in the repository is damaged"),
+        "{shown}"
+    );
+    // A number the table does not know is a marker on an old prikk too; a binary that does not say its version
+    // is never taken to refuse anything.
+    let e = say(&old.binary(), "error: unsupported format version: 9\n");
+    assert!(
+        matches!(e, SignerError::FormatMarker { version: 9 }),
+        "{e:?}"
+    );
+    let e = say(no_binary(), "error: unsupported format version: 8\n");
+    assert!(
+        matches!(e, SignerError::FormatMarker { version: 8 }),
+        "{e:?}"
+    );
+    // The driver's conditions: exit 1 (not 2), no report on stdout, the number without a leading zero.
+    for (what, run) in [
+        (
+            "exit 2",
+            run_of(2 << 8, "error: unsupported format version: 8\n"),
+        ),
+        (
+            "a leading zero",
+            run_of(1 << 8, "error: unsupported format version: 08\n"),
+        ),
+        (
+            "a signal",
+            run_of(9, "error: unsupported format version: 8\n"),
+        ),
+    ] {
+        let e = outcome(&new.binary(), "commit", run, 1 << 30).unwrap_err();
+        assert!(
+            !matches!(
+                e,
+                SignerError::FormatMarker { .. } | SignerError::UnsupportedFormat { .. }
+            ),
+            "{what}: {e:?}"
+        );
+    }
+    let mut with_report = run_of(1 << 8, "error: unsupported format version: 8\n");
+    with_report.stdout = br#"{"schema_version":"refusal-v1","refusal":"x","reason":null,"message":"unsupported format version: 8"}"#.to_vec();
+    let e = outcome(&new.binary(), "commit", with_report, 1 << 30).unwrap_err();
+    assert!(
+        !matches!(
+            e,
+            SignerError::FormatMarker { .. } | SignerError::UnsupportedFormat { .. }
+        ),
+        "a refusal-v1 report: {e:?}"
+    );
 }

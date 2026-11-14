@@ -809,7 +809,7 @@ async fn a_repository_of_a_format_prikk_does_not_read_is_could_not_be_read_now_a
  {
     // M11: a wiki made under prikk 0.57.0 (format 8) and a prikk that refuses it. A reader is told the page could not
     // be read now, as for any prikk that cannot be asked, and nothing of the cause; the operator's log names the
-    // version and says nothing is damaged.
+    // version and the first prikk that reads it.
     let w = handbook();
     w.fake
         .fail_views(Some(inklkunn_prikk::StorageError::UnsupportedFormat {
@@ -829,8 +829,45 @@ async fn a_repository_of_a_format_prikk_does_not_read_is_could_not_be_read_now_a
     assert!(
         w.logged()
             .iter()
-            .any(|l| l.contains("format 8") && l.contains("nothing in the repository is damaged")),
+            .any(|l| l.contains("format 8") && l.contains("0.57.0")),
         "the operator is told: {:?}",
+        w.logged()
+    );
+}
+
+#[tokio::test]
+async fn a_format_marker_prikk_will_not_read_is_could_not_be_read_now_and_the_operator_is_told_what_it_is()
+ {
+    // M17: the same words from a prikk that is not known to refuse the format. A reader is told the same, and nothing of
+    // the cause; the operator's log names the number prikk gave and the marker, and never says nothing is damaged.
+    let w = handbook();
+    w.fake
+        .fail_views(Some(inklkunn_prikk::StorageError::FormatMarker {
+            verb: "branch",
+            version: 9,
+        }));
+    let a = get(&w, "/handbook/Home").await;
+    assert_eq!(a.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(a.body.contains("This page could not be read now"));
+    for operator_word in ["format 9", "unsupported", "marker", "backup", "damaged"] {
+        assert!(
+            !a.body.to_lowercase().contains(operator_word),
+            "a reader is told nothing of the cause ({operator_word}): {}",
+            a.body
+        );
+    }
+    assert!(
+        w.logged()
+            .iter()
+            .any(|l| l.contains("format 9") && l.contains(".prikk/FORMAT")),
+        "the operator is told: {:?}",
+        w.logged()
+    );
+    assert!(
+        w.logged()
+            .iter()
+            .all(|l| !l.contains("nothing in the repository is damaged")),
+        "{:?}",
         w.logged()
     );
 }

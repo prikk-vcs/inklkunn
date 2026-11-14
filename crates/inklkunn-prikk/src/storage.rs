@@ -10,6 +10,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::format::{format_marker_sentence, unsupported_format_sentence};
+
 /// A place in a repository's history: a view (branch) or a block id.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Point {
@@ -622,13 +624,22 @@ pub enum StorageError {
         /// The floor.
         required: &'static str,
     },
-    /// The repository's format is one this prikk does not read: `error: unsupported format version: N` (exit 1, no
-    /// report), what every command of prikk 0.55.0 and 0.56.0 says of a repository made by 0.57.0 (format 8). **An
-    /// operator's mismatch, not damage and not a verdict**: nothing is wrong with the repository, and nothing is for
-    /// recovery to cure (the wiki is not flagged); the answer is the prikk that made it, or a restore. The version is
-    /// prikk's own number (see [`unsupported_format_version`]); a surface shows a reader *could not be read now* and
-    /// names the version to the operator only.
+    /// The repository's format is one **this prikk is known not to read**: `error: unsupported format version: N` (exit 1,
+    /// no report) from a prikk older than the first that reads N (prikk 0.55.0 and 0.56.0 on a repository made by 0.57.0,
+    /// format 8; the table is [`crate::format::first_reader`]). **An operator's mismatch, not a verdict**: the repository
+    /// was made by a newer prikk, and nothing is for recovery to cure (the wiki is not flagged); the answer is the prikk
+    /// that made it, or a restore. The version is prikk's own number (see [`unsupported_format_version`]); a surface
+    /// shows a reader *could not be read now* and names the version to the operator only.
     UnsupportedFormat {
+        /// The prikk verb.
+        verb: &'static str,
+        /// The format version prikk named.
+        version: u64,
+    },
+    /// The same sentence from a prikk that is **not known to refuse that format** (maintenance M17): the format marker
+    /// (`.prikk/FORMAT`) is damaged, or names a format this build does not know. Not an operator's mismatch and never
+    /// "nothing is damaged": the wiki is flagged and recovery stops at `format-marker`.
+    FormatMarker {
         /// The prikk verb.
         verb: &'static str,
         /// The format version prikk named.
@@ -704,6 +715,13 @@ impl std::fmt::Display for StorageError {
                     unsupported_format_sentence(*version)
                 )
             }
+            StorageError::FormatMarker { verb, version } => {
+                write!(
+                    f,
+                    "prikk {verb} cannot open this repository: {}",
+                    format_marker_sentence(*version)
+                )
+            }
             StorageError::Driver { verb, detail } => {
                 write!(f, "the driver misused prikk {verb}: {detail}")
             }
@@ -717,26 +735,23 @@ impl std::error::Error for StorageError {}
 pub type Result<T> = std::result::Result<T, StorageError>;
 
 /// The format version in prikk's `unsupported format version: N`, when `message` (prikk's stderr, with or without
-/// the `error:` prefix) is **exactly** that sentence with a decimal number of at most 9 digits. Never a substring
-/// match: a message can carry a name the repository's contributors chose, and a page titled like this one must not
-/// turn some other refusal into a format mismatch. Measured on prikk 0.55.0, 0.56.0 and 0.57.0
-/// (`m3-measurements-2026-11.md`, section 8).
+/// the `error:` prefix) is **exactly** that sentence with a decimal number of at most 9 digits and **no leading zero**
+/// (`08` is not a number prikk writes). Never a substring match: a message can carry a name the repository's
+/// contributors chose, and a page titled like this one must not turn some other refusal into a format error. Measured
+/// on prikk 0.55.0, 0.56.0 and 0.57.0 (`m3-measurements-2026-11.md`, section 8). What the number means is
+/// [`crate::format::classify_format_error`]'s to say.
 pub fn unsupported_format_version(message: &str) -> Option<u64> {
     let message = message.trim();
     let message = message.strip_prefix("error:").map_or(message, str::trim);
     let digits = message.strip_prefix("unsupported format version: ")?;
-    if digits.is_empty() || digits.len() > 9 || !digits.bytes().all(|b| b.is_ascii_digit()) {
+    if digits.is_empty()
+        || digits.len() > 9
+        || !digits.bytes().all(|b| b.is_ascii_digit())
+        || (digits.len() > 1 && digits.starts_with('0'))
+    {
         return None;
     }
     digits.parse().ok()
-}
-
-/// What an operator is told of a repository whose format this prikk does not read. One sentence for the driver and the
-/// signer, so the words do not drift. It names the version prikk gave and what is known of who writes it.
-pub fn unsupported_format_sentence(version: u64) -> String {
-    format!(
-        "it is format {version}, which this prikk does not read (a wiki made under prikk 0.57.0 is format 8, and prikk 0.55.0 and 0.56.0 refuse it); run the prikk that made it, or restore the wiki from a backup made before; nothing in the repository is damaged"
-    )
 }
 
 /// What inklkunn needs of a repository. Every method is a read; nothing here takes a write lock (STO-5).

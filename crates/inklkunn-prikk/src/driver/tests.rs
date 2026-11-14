@@ -75,6 +75,7 @@ fn a_refusal_report_carries_its_id_and_its_reason() {
         &run,
         Some(1 << 30),
         Duration::from_secs(120),
+        None,
     );
     match e {
         StorageError::Refused {
@@ -95,7 +96,7 @@ fn a_refusal_report_carries_its_id_and_its_reason() {
 fn a_refusal_without_a_report_or_without_a_reason_has_none() {
     // A refusal that prints no `refusal-v1` has stderr only.
     let plain = failed_run(1, "", "error: path pages/Nope.md not found");
-    let e = PrikkCli::failure(ReadVerb::Cat, &plain, None, Duration::from_secs(30));
+    let e = PrikkCli::failure(ReadVerb::Cat, &plain, None, Duration::from_secs(30), None);
     assert!(
         matches!(
             &e,
@@ -106,7 +107,13 @@ fn a_refusal_without_a_report_or_without_a_reason_has_none() {
     // A refusal id that carries `reason: null` (every id but `no-checkpoint-in-reach`).
     let report = r#"{"schema_version": "refusal-v1", "command": "extract", "refusal": "over-max-bytes", "reason": null, "message": "too big"}"#;
     let run = failed_run(1, report, "error: too big");
-    let e = PrikkCli::failure(ReadVerb::Extract, &run, None, Duration::from_secs(120));
+    let e = PrikkCli::failure(
+        ReadVerb::Extract,
+        &run,
+        None,
+        Duration::from_secs(120),
+        None,
+    );
     assert!(
         matches!(
             &e,
@@ -445,30 +452,91 @@ fn the_list_of_block_seals_is_whole_only_where_the_report_shows_nothing_left_out
     assert!(!report_with(false, &["stage-failure"], &format!("{DAMAGED},{NOT_RUN}")).is_partial());
 }
 
+/// `prikk --version` as the driver reads it.
+const V055: Option<(u64, u64, u64)> = Some((0, 55, 0));
+const V056: Option<(u64, u64, u64)> = Some((0, 56, 0));
+const V057: Option<(u64, u64, u64)> = Some((0, 57, 0));
+
+fn format_failure(stderr: &str, prikk: Option<(u64, u64, u64)>) -> StorageError {
+    PrikkCli::failure(
+        ReadVerb::Tree,
+        &failed_run(1, "", stderr),
+        None,
+        Duration::from_secs(120),
+        prikk,
+    )
+}
+
 #[test]
-fn prikks_unsupported_format_sentence_is_a_typed_mismatch_read_whole_and_never_a_substring() {
+fn prikks_unsupported_format_sentence_is_a_mismatch_only_where_the_running_prikk_is_known_not_to_read_it()
+ {
     // Measured: `error: unsupported format version: 8` on stderr, exit 1, no report, from prikk 0.55.0 and 0.56.0 on a
-    // repository made by 0.57.0 (format 8), for every command that opens the repository.
-    let run = failed_run(1, "", "error: unsupported format version: 8\n");
-    let e = PrikkCli::failure(ReadVerb::Tree, &run, None, Duration::from_secs(120));
-    assert!(
-        matches!(
-            e,
-            StorageError::UnsupportedFormat {
-                verb: "tree",
-                version: 8
-            }
-        ),
-        "{e:?}"
-    );
-    let said = e.to_string();
-    assert!(said.contains("format 8"), "{said}");
-    assert!(
-        said.contains("nothing in the repository is damaged"),
-        "{said}"
-    );
+    // repository made by 0.57.0 (format 8), for every command that opens the repository: an operator's mismatch.
+    for prikk in [V055, V056] {
+        let e = format_failure("error: unsupported format version: 8\n", prikk);
+        assert!(
+            matches!(
+                e,
+                StorageError::UnsupportedFormat {
+                    verb: "tree",
+                    version: 8
+                }
+            ),
+            "{prikk:?}: {e:?}"
+        );
+        let said = e.to_string();
+        assert!(said.contains("format 8"), "{said}");
+        assert!(
+            said.contains("0.57.0"),
+            "the first prikk that reads it: {said}"
+        );
+        assert!(!said.contains("damaged"), "{said}");
+    }
+    // The same words from a prikk that reads format 8 (measured on 0.57.0 with `.prikk/FORMAT` holding `8` without its
+    // newline), from one whose version is not known, from a newer one: a damaged or unknown marker, never a mismatch.
+    for (what, prikk) in [
+        ("0.57.0", V057),
+        ("0.58.0", Some((0, 58, 0))),
+        ("a version nobody read", None),
+    ] {
+        let e = format_failure("error: unsupported format version: 8\n", prikk);
+        assert!(
+            matches!(
+                e,
+                StorageError::FormatMarker {
+                    verb: "tree",
+                    version: 8
+                }
+            ),
+            "{what}: {e:?}"
+        );
+        let said = e.to_string();
+        assert!(said.contains(".prikk/FORMAT"), "{said}");
+        assert!(
+            !said.contains("nothing in the repository is damaged"),
+            "{said}"
+        );
+    }
+    // A number the table knows nothing about is a marker this build cannot judge, on any prikk, and the sentence names
+    // the number prikk gave, never a fixed 8.
+    for (what, prikk) in [("0.57.0", V057), ("0.55.0", V055)] {
+        let e = format_failure("error: unsupported format version: 9\n", prikk);
+        assert!(
+            matches!(
+                e,
+                StorageError::FormatMarker {
+                    verb: "tree",
+                    version: 9
+                }
+            ),
+            "{what}: {e:?}"
+        );
+        let said = e.to_string();
+        assert!(said.contains("format 9"), "{said}");
+        assert!(!said.contains('8'), "{said}");
+    }
     // Whatever else it says is a refusal or damage as before: a name the repository's contributors chose, a longer
-    // sentence, a number that is not one, the usage exit, a report that names a refusal.
+    // sentence, a number that is not one (or has a leading zero), the usage exit, a report that names a refusal.
     let others = [
         (
             1,
@@ -479,6 +547,8 @@ fn prikks_unsupported_format_sentence_is_a_typed_mismatch_read_whole_and_never_a
         (1, "", "error: not an unsupported format version: 8"),
         (1, "", "error: unsupported format version: eight"),
         (1, "", "error: unsupported format version: "),
+        (1, "", "error: unsupported format version: 08"),
+        (1, "", "error: unsupported format version: 00"),
         (
             1,
             "",
@@ -492,17 +562,23 @@ fn prikks_unsupported_format_sentence_is_a_typed_mismatch_read_whole_and_never_a
             "error: unsupported format version: 8",
         ),
     ];
-    for (code, stdout, stderr) in others {
-        let e = PrikkCli::failure(
-            ReadVerb::Tree,
-            &failed_run(code, stdout, stderr),
-            None,
-            Duration::from_secs(120),
-        );
-        assert!(
-            !matches!(e, StorageError::UnsupportedFormat { .. }),
-            "{stderr}: {e:?}"
-        );
+    for prikk in [V055, V057] {
+        for (code, stdout, stderr) in others {
+            let e = PrikkCli::failure(
+                ReadVerb::Tree,
+                &failed_run(code, stdout, stderr),
+                None,
+                Duration::from_secs(120),
+                prikk,
+            );
+            assert!(
+                !matches!(
+                    e,
+                    StorageError::UnsupportedFormat { .. } | StorageError::FormatMarker { .. }
+                ),
+                "{stderr}: {e:?}"
+            );
+        }
     }
     // And the parser itself: with and without the prefix, padded, 9 digits at most.
     assert_eq!(
@@ -517,4 +593,16 @@ fn prikks_unsupported_format_sentence_is_a_typed_mismatch_read_whole_and_never_a
         crate::unsupported_format_version("unsupported format version: 1234567890"),
         None
     );
+    // `0` is a number; `08` and `007` are not what prikk writes.
+    assert_eq!(
+        crate::unsupported_format_version("unsupported format version: 0"),
+        Some(0)
+    );
+    for padded in ["08", "007", "00"] {
+        assert_eq!(
+            crate::unsupported_format_version(&format!("unsupported format version: {padded}")),
+            None,
+            "{padded}"
+        );
+    }
 }

@@ -124,6 +124,7 @@ fn prepare_with(
         store.clone(),
         layout.clone(),
     ));
+    verifier.flag_format_markers_in(store.clone());
     let read = Arc::new(
         ReadService::new(
             storage.clone(),

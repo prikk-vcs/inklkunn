@@ -13,12 +13,13 @@ use serde::de::DeserializeOwned;
 use crate::MIN_PRIKK_VERSION;
 use crate::admission::{Admission, Refusal};
 use crate::cost::{MAX_REPORT_BYTES, ReadVerb, SizeHints, StoreSizeError, ceiling_for, store_size};
+use crate::format::{FormatError, Version, classify_format_error};
 use crate::sandbox::{
     CallLimits, Mounts, Run, Sandbox, probe_bwrap, probe_prlimit, resolve_binary,
 };
 use crate::storage::{
     Change, Diff, ExtractBounds, FileMeta, History, Materialized, Point, RepoStatus, Result,
-    Storage, StorageError, Tree, Unavailable, Verification, Views, unsupported_format_version,
+    Storage, StorageError, Tree, Unavailable, Verification, Views,
 };
 
 /// The pinned report schemas (RFC 001 D-3): one name per verb. A report naming anything else is refused.
@@ -81,6 +82,22 @@ const _: () = assert!(
     FLOOR.0 == 0 && FLOOR.1 == 54 && FLOOR.2 == 0,
     "the floor tuple must equal MIN_PRIKK_VERSION"
 );
+
+/// `binary --version` read as a version: bounded, unconfined, with a cleared environment, as at [`PrikkCli::open`].
+/// `None` when the binary does not run or says something this driver does not read. The signer asks it only when it
+/// has to tell a mismatch from a damaged format marker.
+pub fn probe_version(binary: &std::ffi::OsStr) -> Option<Version> {
+    let binary = resolve_binary(binary);
+    let mut cmd = std::process::Command::new(&binary);
+    cmd.arg("--version")
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin");
+    let run = crate::sandbox::run_probe(cmd, PROBE_DEADLINE).ok()?;
+    if run.timed_out || !run.status.success() {
+        return None;
+    }
+    parse_version(String::from_utf8_lossy(&run.stdout).trim())
+}
 
 impl PrikkCli {
     /// Open the driver: check the binary's version against the floor and the sandbox prerequisites. Nothing
@@ -271,12 +288,24 @@ impl PrikkCli {
         }
     }
 
-    /// Map a non-success run to the typed outcome.
+    /// The running prikk's version, when its `--version` text was one this driver reads.
+    fn running(&self) -> Option<Version> {
+        parse_version(&self.version)
+    }
+
+    /// [`PrikkCli::failure`] for a run of this driver's prikk.
+    fn failed(&self, verb: ReadVerb, run: &Run, ceiling: Option<u64>) -> StorageError {
+        Self::failure(verb, run, ceiling, self.deadline_for(verb), self.running())
+    }
+
+    /// Map a non-success run to the typed outcome. `prikk` is the running prikk's version when it is known: it decides
+    /// whether `unsupported format version: N` is a mismatch or a damaged marker (maintenance M17).
     fn failure(
         verb: ReadVerb,
         run: &Run,
         ceiling: Option<u64>,
         deadline: Duration,
+        prikk: Option<Version>,
     ) -> StorageError {
         use std::os::unix::process::ExitStatusExt;
         let name = verb.name();
@@ -340,16 +369,24 @@ impl PrikkCli {
         };
         match run.status.code() {
             Some(1) => {
-                // A repository of a format this prikk does not read: prikk's own words, whole, on stderr and with no
-                // report (0.55.0, 0.56.0 on a format-8 repository). An operator's mismatch, not a refusal about the
-                // thing asked and not damage.
-                if refusal.is_none()
-                    && let Some(version) = unsupported_format_version(&message)
-                {
-                    return StorageError::UnsupportedFormat {
-                        verb: name,
-                        version,
-                    };
+                // prikk's `unsupported format version: N`, whole, on stderr and with no report (the one classifier,
+                // shared with the signer): a mismatch where this prikk is known not to read N (0.55.0, 0.56.0 on a
+                // format-8 repository), a damaged or unknown marker anywhere else (M17). Neither is a refusal about the
+                // thing asked.
+                match classify_format_error(run.status.code(), &run.stdout, &stderr, prikk) {
+                    Some(FormatError::Mismatch { format }) => {
+                        return StorageError::UnsupportedFormat {
+                            verb: name,
+                            version: format,
+                        };
+                    }
+                    Some(FormatError::Marker { format }) => {
+                        return StorageError::FormatMarker {
+                            verb: name,
+                            version: format,
+                        };
+                    }
+                    None => {}
                 }
                 let (kind, reason) = match refusal {
                     Some(r) => (r.refusal, r.reason),
@@ -396,7 +433,7 @@ impl PrikkCli {
     ) -> Result<T> {
         let (run, ceiling) = self.execute(verb, repo, scratch, args, MAX_REPORT_BYTES)?;
         if !run.status.success() || run.timed_out || run.output_exceeded {
-            return Err(Self::failure(verb, &run, ceiling, self.deadline_for(verb)));
+            return Err(self.failed(verb, &run, ceiling));
         }
         parse_report(verb.name(), &run.stdout, pinned)
     }
@@ -608,12 +645,7 @@ impl Storage for PrikkCli {
             max_bytes.saturating_add(64 << 10),
         )?;
         if !run.status.success() || run.timed_out || run.output_exceeded {
-            return Err(Self::failure(
-                ReadVerb::Cat,
-                &run,
-                ceiling,
-                self.deadline_for(ReadVerb::Cat),
-            ));
+            return Err(self.failed(ReadVerb::Cat, &run, ceiling));
         }
         Ok(run.stdout)
     }
@@ -741,12 +773,7 @@ impl Storage for PrikkCli {
         )?;
         match Self::verdict_of(&run, ceiling) {
             Some(read) => read,
-            None => Err(Self::failure(
-                ReadVerb::Verify,
-                &run,
-                ceiling,
-                self.deadline_for(ReadVerb::Verify),
-            )),
+            None => Err(self.failed(ReadVerb::Verify, &run, ceiling)),
         }
     }
 
@@ -759,12 +786,7 @@ impl Storage for PrikkCli {
             MAX_REPORT_BYTES,
         )?;
         if !run.status.success() || run.timed_out || run.output_exceeded {
-            return Err(Self::failure(
-                ReadVerb::Status,
-                &run,
-                ceiling,
-                self.deadline_for(ReadVerb::Status),
-            ));
+            return Err(self.failed(ReadVerb::Status, &run, ceiling));
         }
         parse_status(&run.stdout)
     }

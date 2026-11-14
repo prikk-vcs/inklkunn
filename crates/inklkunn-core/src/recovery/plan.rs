@@ -222,6 +222,9 @@ pub struct Witness {
     pub lease_held: bool,
     /// A publication whose cleanup a killed `seal` did not finish, when `doctor` names exactly that (P15).
     pub cleanup_pending: Option<CleanupPending>,
+    /// The format prikk named when it refused to open the repository by a marker this prikk is not known to refuse
+    /// (maintenance M17). Then nothing else of prikk was read: the fields that come from prikk hold nothing.
+    pub format_marker: Option<u64>,
 }
 
 /// Why recovery will not act: each a fixed word. None names a path.
@@ -260,6 +263,10 @@ pub enum Stop {
     ForeignProcess,
     /// The history could not be read as far as the question needs.
     HistoryUnreadable,
+    /// prikk will not open the repository because of the format marker (`.prikk/FORMAT`) it holds, and this prikk is not
+    /// known to refuse that format: the marker is damaged, or names a format this build does not know (maintenance
+    /// M17). Nothing else could be read, so nothing is concluded about the rest.
+    FormatMarker,
     /// A view's creation never ended, and what prikk shows of the view is neither of the two states recovery knows
     /// (the view is there and `doctor` is clean; or it is there at the block it was forked from, with exactly its own
     /// ref's publication unfinished; or it is not there and nothing is unfinished): the view is at another block, or
@@ -284,6 +291,7 @@ impl Stop {
             Stop::UnknownLock => "unknown-lock",
             Stop::ForeignProcess => "foreign-process",
             Stop::HistoryUnreadable => "history-unreadable",
+            Stop::FormatMarker => "format-marker",
             Stop::ViewCreationUnclear => "view-creation-unclear",
         }
     }
@@ -318,6 +326,9 @@ impl Stop {
                 "a prikk or bwrap of somebody else's may be working in the repository"
             }
             Stop::HistoryUnreadable => "the history could not be read as far as recovery needs",
+            Stop::FormatMarker => {
+                "prikk will not open the repository because of its format marker (`.prikk/FORMAT`), and this prikk is not known to refuse that format: the marker is damaged, or names a format this build does not know; compare it with a backup (docs/RECOVERY.md, format-marker); nothing else could be read, so nothing is concluded about the rest of the repository"
+            }
             Stop::ViewCreationUnclear => {
                 "the creation of a view never ended, and what prikk shows is not a state recovery can tell apart: the view is at another block than the one it was forked from, or its block cannot be read, or the view is not listed while doctor names its publication"
             }
@@ -967,6 +978,13 @@ fn build_plan(w: &Witness, discard: &DiscardInput, unused: &mut Option<String>) 
             "{} earlier recovery act(s) were begun and never ended",
             w.interrupted_recoveries
         ));
+    }
+    if let Some(format) = w.format_marker {
+        wit.push(format!(
+            "prikk refuses the repository by its format marker (format {format}), which this prikk is not known to refuse: nothing else of prikk could be read"
+        ));
+        plan.stop = Some(Stop::FormatMarker);
+        return plan;
     }
     if w.acts.is_empty() {
         wit.push("no act is unfinished".to_owned());

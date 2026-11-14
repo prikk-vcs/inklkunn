@@ -693,3 +693,74 @@ fn a_repository_of_a_format_prikk_does_not_read_is_a_check_that_could_not_be_mad
     assert_eq!(after.verification, verified, "the verdict is not replaced");
     assert_eq!(store.recovery_flag(&wiki.id).unwrap(), None);
 }
+
+/// M17: a format marker prikk will not read (damaged, or a number nobody knows) is not "could not be checked, the last
+/// verdict stands": no prikk opens the repository, so the verdict is failed, the wiki is flagged for recovery, and the
+/// operator's text names the number prikk gave and claims nothing is intact.
+#[test]
+fn a_damaged_or_unknown_format_marker_fails_the_verdict_and_flags_the_wiki() {
+    use inklkunn_store::{ActStore, RecoveryReason};
+    let store = Arc::new(MemoryStore::new());
+    let wiki = new_wiki(&store, "format-nine");
+    let verified = Verification {
+        state: VerificationState::Verified,
+        at: Some(NOW - 10_000),
+    };
+    store.set_verification(&wiki.id, verified).unwrap();
+    let wiki = store.get(&wiki.id).unwrap();
+    let marker = || {
+        Arc::new(Canned::of(vec![Err(
+            inklkunn_prikk::StorageError::FormatMarker {
+                verb: "verify",
+                version: 9,
+            },
+        )]))
+    };
+    let v = verifier(&store, marker());
+    v.flag_format_markers_in(store.clone());
+    let c = v.check_unthrottled(&wiki);
+    assert!(
+        matches!(&c.outcome, CheckOutcome::Failed { stages, .. } if stages.is_empty()),
+        "{:?}",
+        c.outcome
+    );
+    let said = c.operator.as_deref().unwrap_or_default();
+    assert!(
+        said.contains("format 9") && said.contains(".prikk/FORMAT"),
+        "{said}"
+    );
+    assert!(
+        !said.contains("nothing in the repository is damaged"),
+        "{said}"
+    );
+    assert_eq!(
+        store.get(&wiki.id).unwrap().verification.state,
+        VerificationState::Failed,
+        "the last verdict does not stand"
+    );
+    let flag = store.recovery_flag(&wiki.id).unwrap().expect("flagged");
+    assert_eq!(flag.reason, RecoveryReason::Interrupted);
+    assert_eq!(flag.since, NOW);
+    // A flag that is already there stays as it is: the first reason stays.
+    let other = new_wiki(&store, "format-nine-flagged");
+    store
+        .set_recovery_flag(&inklkunn_store::RecoveryFlag {
+            wiki: other.id.clone(),
+            reason: RecoveryReason::Queued,
+            act: None,
+            since: 1,
+        })
+        .unwrap();
+    let w = store.get(&other.id).unwrap();
+    let v = verifier(&store, marker());
+    v.flag_format_markers_in(store.clone());
+    let _ = v.check_unthrottled(&w);
+    let kept = store.recovery_flag(&other.id).unwrap().expect("flagged");
+    assert_eq!((kept.reason, kept.since), (RecoveryReason::Queued, 1));
+    // Without a flag store the check still records the failed verdict and flags nothing.
+    let alone = new_wiki(&store, "format-nine-alone");
+    let w = store.get(&alone.id).unwrap();
+    let c = verifier(&store, marker()).check_unthrottled(&w);
+    assert!(matches!(c.outcome, CheckOutcome::Failed { .. }));
+    assert_eq!(store.recovery_flag(&alone.id).unwrap(), None);
+}

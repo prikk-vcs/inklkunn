@@ -160,10 +160,14 @@ write lock, so a command beside a running server is told the wiki is busy, namin
 existing one by itself, and prikk 0.55.0 and 0.56.0 refuse a format-8 repository on every command
 (`error: unsupported format version: 8`). So an operator who creates wikis under 0.57.0 and later puts an older prikk
 back loses those wikis until prikk 0.57.0 (or a later one) returns: pages are served only from what is cached, nothing is accepted, and the
-log of each call says `prikk … cannot open this repository: it is format 8 …`. **It is not damage and not a case for
-recovery**: the wiki is not flagged, its verification record keeps its last verdict, readers are shown *could not be read
-now* (never the version), and the repository is exactly as it was. Put the prikk that made the wiki back, or restore the
-wiki from a backup made before. The format prikk wrote is kept in the wiki's store record when the wiki is created
+log of each call says `prikk … cannot open this repository: it is format 8 …`. **That is a mismatch, not a case for
+recovery, only where the running prikk is known not to read the format** (format 8 is read from 0.57.0 on: one table in
+`inklkunn-prikk`): the wiki is not flagged, its verification record keeps its last verdict, readers are shown *could not
+be read now* (never the version), and the repository is exactly as it was. Put the prikk that made the wiki back, or
+restore the wiki from a backup made before. **The same sentence from any other prikk** (0.57.0 or later saying format 8,
+or any prikk naming a number it is not known to refuse) **is a damaged or unknown format marker**: the check records a
+failed verdict, the wiki is flagged, recovery stops at `format-marker`, and nothing says the repository is intact
+(`docs/RECOVERY.md`). The format prikk wrote is kept in the wiki's store record when the wiki is created
 (`prikk_format_version`, for information: nothing reads it to decide anything, prikk is always the one asked).
 
 The **bootstrap signer** over a plain-text key directory exists only behind the `bootstrap` cargo feature, for
