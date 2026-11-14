@@ -110,7 +110,7 @@ async fn the_list_names_each_source_a_person_should_look_at_and_why() {
         "{body}"
     );
     assert!(first.contains("Last reviewed on 2023-10-01."), "{body}");
-    assert!(first.contains("1 claim relies on it:"), "{body}");
+    assert!(first.contains("1 claim cites it:"), "{body}");
     assert!(first.contains("(supports, directly)"), "{body}");
     assert!(
         first.contains(&format!("href=\"{}\"", claim_uri(1))),
@@ -122,15 +122,15 @@ async fn the_list_names_each_source_a_person_should_look_at_and_why() {
         second.contains("No one has recorded looking at it."),
         "{body}"
     );
-    assert!(second.contains("No claim relies on it."), "{body}");
+    assert!(second.contains("No claim cites it."), "{body}");
     let third = r.get(2).expect("a row");
     assert!(third.contains("The Tide Tables"), "{body}");
     assert!(
         third.contains("Last reviewed on 2020-11-12, more than 1096 days ago."),
         "{body}"
     );
-    // Both claims that rely on it, each named by the page it is said on or, when no page says it, by its id.
-    assert!(third.contains("2 claims rely on it:"), "{body}");
+    // Both claims that cite it, each named by the page it is said on or, when no page says it, by its id.
+    assert!(third.contains("2 claims cite it:"), "{body}");
     assert!(third.contains("Home (challenges, in part)"), "{body}");
     assert!(
         third.contains("A claim said on no page now, identifier 01930000-0000-7000-8000-000000000002 (supports, indirectly)"),

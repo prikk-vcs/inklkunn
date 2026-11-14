@@ -122,9 +122,10 @@ pub struct Judged {
 /// What only a curation proposal sets (part 2 D-3, D-10, and the clarification of 2026-11-08): a claim's community
 /// status and **every change to a source link it already has** (its relation, its bearing, the wording it was judged
 /// on, or its removal; attaching a new link stays with the page edit it belongs to); a source's `last_reviewed` and
-/// `availability`; and, **for a source that was checked** (it has a review day or an availability), who and what it is
-/// and where it is found (K30: the check vouches for that work, so a page edit may not make it another). A file the
-/// tip does not have has the baseline: nothing decided, no link, nothing checked.
+/// `availability`; and, **for a source that was checked** (it has a review day or an availability), who and what it is,
+/// where it is found and which source replaces it (K30, K36: the check vouches for that work, so a page edit may not
+/// make it another or point readers at another). A file the tip does not have has the baseline: nothing decided, no
+/// link, nothing checked.
 ///
 /// **One rule for every surface**: acceptance ([`validate`]), the proposal service at submit and at every revision,
 /// and the proposal page's warning all ask [`Curated::departure`] and [`Curated::removal_refused`] (through
@@ -149,6 +150,9 @@ pub enum Curated {
         identity: Identity,
         /// Where it is found: curation's to change once the source was checked.
         reference: Option<Reference>,
+        /// The source that replaces it, which points readers at another work: curation's to change once the source was
+        /// checked (K36).
+        superseded_by: Option<SourceId>,
     },
 }
 
@@ -178,6 +182,7 @@ impl Curated {
                 reviewed: s.last_reviewed.clone(),
                 identity: s.identity.clone(),
                 reference: s.reference.clone(),
+                superseded_by: s.superseded_by.clone(),
             },
         }
     }
@@ -195,6 +200,7 @@ impl Curated {
                 // Nothing was checked, so the work it names is the page edit's whatever it is.
                 identity: s.identity.clone(),
                 reference: s.reference.clone(),
+                superseded_by: s.superseded_by.clone(),
             },
         }
     }
@@ -231,12 +237,14 @@ impl Curated {
                     reviewed: ra,
                     identity: ia,
                     reference: fa,
+                    superseded_by: sa,
                 },
                 Curated::Source {
                     availability: b,
                     reviewed: rb,
                     identity: ib,
                     reference: fb,
+                    superseded_by: sb,
                 },
             ) => {
                 if a != b {
@@ -244,12 +252,14 @@ impl Curated {
                 } else if ra != rb {
                     Some("last_reviewed")
                 } else if *a == Availability::Unknown && ra.is_none() {
-                    // Not checked: who and what it is, and where, are the page edit's.
+                    // Not checked: who and what it is, where, and what replaces it are the page edit's.
                     None
                 } else if ia != ib {
                     Some("identity")
                 } else if fa != fb {
                     Some("reference")
+                } else if sa != sb {
+                    Some("superseded_by")
                 } else {
                     None
                 }

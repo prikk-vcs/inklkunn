@@ -256,7 +256,7 @@ const HEALTH_LIST: Param = Param {
     ]),
     required: true,
     missing: Code::InvalidParameter,
-    description: "Which list: `wanted` (titles that links lead to and no page has), `orphans` (pages nothing links to), `dead-ends` (pages that link to no page), `redirects` (redirects that cannot be followed or take two hops), `wants-help` (pages marked work in progress, draft or stub), `stale` (pages that have gone longest without a change), `knowledge-files` (claim and source files that cannot be read), `sources-to-review` (sources marked unavailable, never reviewed, or reviewed longer ago than the wiki's `knowledge.review_after`, each with the claims that rely on it).",
+    description: "Which list: `wanted` (titles that links lead to and no page has), `orphans` (pages nothing links to), `dead-ends` (pages that link to no page), `redirects` (redirects that cannot be followed or take two hops), `wants-help` (pages marked work in progress, draft or stub), `stale` (pages that have gone longest without a change), `knowledge-files` (claim and source files that cannot be read), `sources-to-review` (sources marked unavailable, never reviewed, or reviewed longer ago than the operator's `knowledge.review_after`, one value for every wiki of the instance, each with the claims that cite it).",
 };
 
 const CHANGES_NAMESPACE: Param = text(

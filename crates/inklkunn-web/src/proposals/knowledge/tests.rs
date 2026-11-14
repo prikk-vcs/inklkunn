@@ -192,9 +192,9 @@ fn a_claim_that_is_made_is_named_by_a_paragraph_and_says_its_kind_standing_life_
                     "It has a relation to the claim <code>{}</code>: is at odds with.",
                     other_claim().as_str()
                 ),
-                "Cites the source <cite><bdi>“A history of the bridge”</bdi></cite> [source <code>01931111-0000-7000-8000-000000000001</code>]: it supports the claim directly, judged on the wording it has now."
+                "Cites the source <cite><bdi>“A history of the bridge”</bdi></cite> [source <code>01931111-0000-7000-8000-000000000001</code>]: it supports the claim directly, judged on the wording it has in this proposal&#39;s result."
                     .to_owned(),
-                "Cites the source <cite><bdi>“A history of the bridge”</bdi></cite> [source <code>01931111-0000-7000-8000-000000000001</code>]: it challenges the claim by implication, judged on the wording it has now."
+                "Cites the source <cite><bdi>“A history of the bridge”</bdi></cite> [source <code>01931111-0000-7000-8000-000000000001</code>]: it challenges the claim by implication, judged on the wording it has in this proposal&#39;s result."
                     .to_owned(),
             ]
         )]
@@ -373,7 +373,7 @@ fn every_change_to_a_claim_that_exists_names_the_claim_and_what_it_is_about() {
                 .to_owned(),
             "A relation to the claim “<bdi>It opened in 1950.</bdi>” [claim <code>01930000-0000-7000-8000-000000000002</code>] is removed: came out of."
                 .to_owned(),
-            format!("Cites the source {named}: it supports the claim in part, judged on the wording it has now."),
+            format!("Cites the source {named}: it supports the claim in part, judged on the wording it has in this proposal&#39;s result."),
             format!("It no longer cites the source {named}."),
             format!("The source {named}, which it cites, now challenges it directly."),
             format!("The note on the source {named}, which it cites, changes."),
@@ -1304,4 +1304,32 @@ fn the_japanese_preview_says_what_goes_with_a_removal() {
             assert!(text.contains("一緒に削除されます"), "{text}");
         }
     }
+}
+
+#[test]
+fn a_cite_line_frames_the_wording_as_the_one_it_has_in_this_proposals_result_in_both_languages() {
+    // K36: not *the wording it has now*, which reads as the wiki's present wording; the sister line (a wording the claim
+    // does not have) says *in this proposal's result* too.
+    let item = Item::ClaimChanged {
+        claim: claim(),
+        said: Vec::new(),
+        was_said: Vec::new(),
+        changes: vec![ClaimChange::Cited(Cite {
+            source: source(),
+            relation: Link::Supports,
+            bearing: Bearing::Direct,
+        })],
+    };
+    let know = Fake::default();
+    let en = lines(T::new(EN), std::slice::from_ref(&item), &know).remove(0);
+    let line = en.more.first().unwrap().as_str().to_owned();
+    assert!(
+        line.ends_with("judged on the wording it has in this proposal&#39;s result."),
+        "{line}"
+    );
+    assert!(!line.contains("has now"), "{line}");
+    let ja = lines(japanese(), std::slice::from_ref(&item), &know).remove(0);
+    let line = ja.more.first().unwrap().as_str().to_owned();
+    assert!(line.contains("この提案を反映した結果"), "{line}");
+    assert!(!line.contains("現在"), "{line}");
 }

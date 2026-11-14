@@ -843,6 +843,22 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   have; submit answers `KnowledgeUnjudged`), and on the sound control; the old behaviour (the base's pages only) fails it. No
   prikk-dependent test.
 
+- **K36 (handoff 005 corrections, fourth round): the sentences say the rule, the same in both languages.** (1) `know.not_curation`
+  says a file that cannot be read is *replaced or removed* (ja: 置き換えるか削除), as the rule and `health.rule_status` always did.
+  (2) K30's protected fields are named alike in English and Japanese, here and in the core's `Rule::Status` sentence: the title, author,
+  date and reference of a source that was checked (English no longer says *who or what it is*, which suggested the kind is protected;
+  it is not). (3) **`superseded_by` set, changed or taken away on a checked source is a curation change**, as its identity and its
+  reference are (it points readers at another work): the field is named `superseded_by` in the refusal, at submit, at every revision
+  and at acceptance (`Curated::Source` holds it), and the sentences name it (*the source that replaces it*); an unchecked source's is
+  still a page edit's. (4) `know.cite` says the claim is *judged on the wording it has in this proposal's result* (it said *now*, which
+  reads as the wiki's present wording; the sister line already said *in this proposal's result*). (5) The list of sources to review says
+  *Claims that cite it* (it said *rely on it*, which counted claims the source challenges: *1 claim relies on it: Foo (challenges,
+  direct)*); the OpenAPI text says the same. (6) The API, its OpenAPI text and the core's doc comments call `knowledge.review_after` the
+  **operator's**, one value for every wiki of the instance (RFC 005 part 2 D-10), not the wiki's. The glossary follows each. Tests: the
+  field in the refusal for set, changed and cleared on a checked source and not on an unchecked one, on both surfaces; the sentences
+  of the page, the note and the core name the same fields and the same actions in both languages; the cite line in both; the OpenAPI
+  document. No prikk-dependent test.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

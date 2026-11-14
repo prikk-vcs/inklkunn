@@ -541,7 +541,7 @@ async fn attaching_a_source_to_a_paragraph_makes_the_claim_and_the_source_in_the
     );
     assert!(
         body.contains(&format!(
-            "Cites the source <cite><bdi>“A survey of bridges”, dated 1962</bdi></cite> {source_tag}: it supports the claim in part, judged on the wording it has now."
+            "Cites the source <cite><bdi>“A survey of bridges”, dated 1962</bdi></cite> {source_tag}: it supports the claim in part, judged on the wording it has in this proposal&#39;s result."
         )),
         "{body}"
     );
@@ -577,7 +577,7 @@ async fn challenging_a_paragraph_attaches_a_source_that_challenges() {
     let source_tag = tag("source", &link.source);
     assert!(
         body.contains(&format!(
-            "Cites the source <cite><bdi>“A correction”, dated 1962</bdi></cite> {source_tag}: it challenges the claim in part, judged on the wording it has now."
+            "Cites the source <cite><bdi>“A correction”, dated 1962</bdi></cite> {source_tag}: it challenges the claim in part, judged on the wording it has in this proposal&#39;s result."
         )),
         "{body}"
     );
@@ -917,7 +917,7 @@ async fn a_new_link_is_said_to_be_judged_on_the_wording_it_has_now_only_when_it_
         ]
     };
     let now = &format!(
-        "Cites the source <cite><bdi>“A second history”</bdi></cite> {}: it challenges the claim in part, judged on the wording it has now.",
+        "Cites the source <cite><bdi>“A second history”</bdi></cite> {}: it challenges the claim in part, judged on the wording it has in this proposal&#39;s result.",
         tag("source", &second)
     );
     let unjudged = "judged on a wording the claim does not have in this proposal&#39;s result.";
@@ -1505,7 +1505,7 @@ fn second_link_judged_on_the_paragraph(s: &Scene) -> Vec<(String, Option<String>
 #[tokio::test]
 async fn the_page_judges_against_the_pages_the_service_reads_a_removed_page_and_a_changed_id() {
     let s = scene();
-    let now = "judged on the wording it has now.";
+    let now = "judged on the wording it has in this proposal&#39;s result.";
     let unjudged = "judged on a wording the claim does not have in this proposal&#39;s result.";
     let removed = ("pages/Bridge.md".to_owned(), None);
     let reid = (

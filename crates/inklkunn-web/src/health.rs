@@ -556,7 +556,7 @@ struct SourcesDraw<'a> {
 
 /// The rows of *Sources to review* (RFC 005 part 2 D-10): the source by the name it has on a claim's page, why it is
 /// listed (a person marked it unavailable; no one recorded looking at it; the last look was long ago, or on a day that
-/// has not come), the claims that rely on it, each linked to its page and said with how the source bears on it, and what
+/// has not come), the claims that cite it, each linked to its page and said with how the source bears on it, and what
 /// would resolve it. Nothing ranks: the rows are in the source ids' order, and the words say what a person has recorded
 /// and nothing about the source's worth. Every text is a person's and is printed escaped. A page of the list is
 /// [`SOURCES_PAGE`] rows; the way to the next and back to the first is under it (K40).

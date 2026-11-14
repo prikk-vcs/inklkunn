@@ -272,7 +272,7 @@ fn each_listed_source_names_the_claims_that_rely_on_it_with_how_they_say_it_bear
         ],
     );
     let rows = listed(&w, NOW, DEFAULT_REVIEW_AFTER_DAYS);
-    // Source 2 is fresh and is not listed, though claims rely on it.
+    // Source 2 is fresh and is not listed, though claims cite it.
     assert_eq!(ids(&rows), [source_id(1).as_str()]);
     let row = rows.first().expect("a row");
     assert_eq!(row.claims_total, 2);

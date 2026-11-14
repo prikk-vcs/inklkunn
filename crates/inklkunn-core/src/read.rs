@@ -446,7 +446,7 @@ impl ReadService {
         self
     }
 
-    /// The same, with the wiki's `knowledge.review_after` (RFC 005 part 2 D-10) as this many days: a source whose
+    /// The same, with the operator's `knowledge.review_after` (RFC 005 part 2 D-10) as this many days: a source whose
     /// review is older is listed. Between 1 and [`MAX_REVIEW_AFTER_DAYS`](crate::knowledge::freshness::MAX_REVIEW_AFTER_DAYS);
     /// a value outside it is kept at the nearest bound.
     #[must_use]
@@ -462,7 +462,7 @@ impl ReadService {
 
     /// The sources of the view's tip that want a person's look (RFC 005 part 2 D-10): marked unavailable, never
     /// reviewed, reviewed longer ago than `knowledge.review_after`, or reviewed on a day that has not come, each with
-    /// the claims that rely on it. **The whole list**; a surface that shows it asks for a page
+    /// the claims that cite it. **The whole list**; a surface that shows it asks for a page
     /// ([`ReadService::sources_to_review_page`]). Read from the knowledge index of the tip and the injected clock;
     /// **nothing is fetched**.
     pub fn sources_to_review(

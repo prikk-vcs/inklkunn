@@ -100,7 +100,7 @@ pub enum HealthList {
     /// and the pages are served all the same.
     KnowledgeFiles,
     /// Sources a person should look at again (RFC 005 part 2 D-10): marked unavailable, never reviewed, or reviewed
-    /// longer ago than the wiki's `knowledge.review_after`; each with the claims that rely on it.
+    /// longer ago than the operator's `knowledge.review_after` (one value for every wiki); each with the claims that cite it.
     SourcesToReview,
 }
 
@@ -154,7 +154,7 @@ pub enum HealthRows {
     Stale(Vec<StalePage>),
     /// Knowledge files that cannot be read, by path.
     KnowledgeFiles(Vec<UnreadableKnowledgeFile>),
-    /// Sources that want a person's look, by source id, each with the claims that rely on it.
+    /// Sources that want a person's look, by source id, each with the claims that cite it.
     SourcesToReview(Vec<SourceToReview>),
 }
 

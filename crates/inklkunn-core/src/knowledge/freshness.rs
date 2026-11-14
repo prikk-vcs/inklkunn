@@ -6,12 +6,12 @@
 //!
 //! - every source marked `unavailable`;
 //! - every source with **no** `last_reviewed` (*never reviewed*);
-//! - every source whose `last_reviewed` is **older than the setting** (`knowledge.review_after`, three years unless
-//!   the operator says otherwise; one value for every wiki of the instance until RFC 006's policy as data);
+//! - every source whose `last_reviewed` is **older than the operator's setting** (`knowledge.review_after`, three years
+//!   unless the operator says otherwise; one value for every wiki of the instance until RFC 006's policy as data);
 //! - every source whose `last_reviewed` is a day that **has not come**: a person cannot have looked on it, and a
 //!   mistyped year would otherwise keep the source out of the list for years (K40);
 //!
-//! each with the claims that rely on it. The list is **not a ranking and not a verdict**: a listed source is one a
+//! each with the claims that cite it. The list is **not a ranking and not a verdict**: a listed source is one a
 //! person has not looked at lately, which says nothing about whether it is right, and an unlisted one is not
 //! thereby vouched for.
 //!
@@ -80,9 +80,9 @@ pub struct SourceToReview {
     pub unavailable: bool,
     /// When it was last reviewed.
     pub review: LastReview,
-    /// The claims that rely on it, by claim id, at most [`MAX_RELYING`].
+    /// The claims that cite it, by claim id, at most [`MAX_RELYING`].
     pub claims: Vec<RelyingClaim>,
-    /// How many claims rely on it in all.
+    /// How many claims cite it in all.
     pub claims_total: usize,
 }
 

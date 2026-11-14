@@ -318,3 +318,18 @@ fn the_problem_registry_is_in_the_document() {
         assert_eq!(listed.at("/status"), code.status().as_u16());
     }
 }
+
+#[test]
+fn the_document_calls_the_review_setting_the_operators_and_says_claims_cite_a_source() {
+    // K36: `knowledge.review_after` is one value for every wiki of the instance until RFC 006's policy as data, and a
+    // source is cited, not relied on, by the claims the list names.
+    let text = document(&real_table(), &docs()).unwrap().to_string();
+    assert!(
+        text.contains("the operator's `knowledge.review_after`"),
+        "the setting is the operator's"
+    );
+    assert!(!text.contains("wiki's `knowledge.review_after`"));
+    assert!(text.contains("claims that cite"));
+    assert!(!text.contains("claims that rely"));
+    assert!(!text.contains("claims rely"));
+}

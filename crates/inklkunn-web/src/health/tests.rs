@@ -35,7 +35,7 @@ fn the_status_rule_is_worded_with_the_removals_and_the_unreadable_files_it_refus
         "removes a claim or a source",
         "cannot be read",
         "source link",
-        "a source that was checked",
+        "a source that was checked in its title, author, date, reference or the source that replaces it",
         "outside a curation proposal",
     ] {
         assert!(en.contains(part), "{part}: {en}");
@@ -45,10 +45,56 @@ fn the_status_rule_is_worded_with_the_removals_and_the_unreadable_files_it_refus
         "主張や出典の削除",
         "読み取れないファイル",
         "出典リンク",
-        "確認済みの出典",
+        "確認済みの出典の題名・著者・日付・参照先・置き換え先",
     ] {
         assert!(ja.contains(part), "{part}: {ja}");
     }
+}
+
+#[test]
+fn the_sentences_that_say_what_only_curation_does_say_it_alike_in_both_languages() {
+    // K36: the page's reason, the proposal page's note and the core's sentence name the same fields (title, author, date,
+    // reference, and the source that replaces it; not the kind) and the same actions on an unreadable file (replaces or
+    // removes), in English and in Japanese.
+    use crate::catalog::{EN, JA_DEF, Key, Lang, T};
+    for (t, fields, unreadable) in [
+        (
+            T::new(EN),
+            &["title, author, date, reference or the source that replaces it"][..],
+            "replaces or removes a file that cannot be read",
+        ),
+        (
+            T::new(Lang::from_def(&JA_DEF)),
+            &["題名・著者・日付・参照先・置き換え先"][..],
+            "",
+        ),
+    ] {
+        for key in [Key::HealthRuleStatus, Key::KnowNotCuration] {
+            let text = t.get(key);
+            for field in fields {
+                assert!(text.contains(field), "{field}: {text}");
+            }
+            assert!(!text.contains("who or what"), "{text}");
+            assert!(!text.contains("kind"), "{text}");
+            assert!(text.contains(unreadable), "{unreadable}: {text}");
+        }
+    }
+    let ja = T::new(Lang::from_def(&JA_DEF));
+    for key in [Key::HealthRuleStatus, Key::KnowNotCuration] {
+        let text = ja.get(key);
+        assert!(text.contains("削除"), "{text}");
+    }
+    let ja = ja.get(Key::KnowNotCuration);
+    assert!(
+        ja.contains("読み取れないファイルを置き換えるか削除"),
+        "{ja}"
+    );
+    // The core's sentence is the English one.
+    assert!(
+        Rule::Status
+            .sentence()
+            .contains("title, author, date, reference or the source that replaces it")
+    );
 }
 
 #[test]

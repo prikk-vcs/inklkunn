@@ -283,7 +283,18 @@ fn what_a_checked_source_is_and_where_it_is_found_is_curation_and_before_the_che
         let held = texts_of(&[], &[before]);
         let given = vec![(path.clone(), Some(after.to_yaml()))];
         let by_submission: Vec<_> = refused_files(&given, &held);
-        let files = files_of(&[(path.clone(), after.to_yaml())]);
+        // The sources a source may be replaced by are in the tree (a reference to nothing is another rule's).
+        let files = files_of(&[
+            (path.clone(), after.to_yaml()),
+            (
+                source_path(&source_id(8)),
+                Source::new(source_id(8)).to_yaml(),
+            ),
+            (
+                source_path(&source_id(9)),
+                Source::new(source_id(9)).to_yaml(),
+            ),
+        ]);
         let mut touched = Touched {
             written: [path.clone()].into(),
             ..Touched::default()
@@ -359,6 +370,22 @@ fn what_a_checked_source_is_and_where_it_is_found_is_curation_and_before_the_che
             Some("reference"),
             how,
         );
+        // K36: the source that replaces it points readers at another work, so it is a checked source's too: set,
+        // changed, or taken away.
+        both_surfaces(
+            &changed(&|s| s.superseded_by = Some(source_id(9))),
+            &checked,
+            Some("superseded_by"),
+            how,
+        );
+        let replaced = changed(&|s| s.superseded_by = Some(source_id(8)));
+        both_surfaces(
+            &changed(&|s| s.superseded_by = Some(source_id(9))),
+            &replaced,
+            Some("superseded_by"),
+            how,
+        );
+        both_surfaces(&checked, &replaced, Some("superseded_by"), how);
         // What the check does not vouch for stays a page edit's: the kind of source.
         both_surfaces(
             &changed(&|s| s.kind = SourceKind::Primary),
@@ -372,6 +399,7 @@ fn what_a_checked_source_is_and_where_it_is_found_is_curation_and_before_the_che
     let mut retitled = unchecked.clone();
     retitled.identity.title = Some("Another".to_owned());
     retitled.reference = Some(reference("https://example.org/b"));
+    retitled.superseded_by = Some(source_id(9));
     both_surfaces(&retitled, &unchecked, None, "unchecked");
     assert!(
         refused_files(&[(path.clone(), Some(retitled.to_yaml()))], &Texts::new()).is_empty(),

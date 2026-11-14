@@ -833,7 +833,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "health.rule_status",
-        "The change sets a community status, a review date or an availability, changes or removes a source link a claim already has, changes who or what a source that was checked is, or where it is found, removes a claim or a source that holds any of these, or replaces or removes a file that cannot be read, outside a curation proposal.",
+        "The change sets a community status, a review date or an availability, changes or removes a source link a claim already has, changes a source that was checked in its title, author, date, reference or the source that replaces it, removes a claim or a source that holds any of these, or replaces or removes a file that cannot be read, outside a curation proposal.",
     ),
     msg(
         "health.rule_judged",
@@ -2640,7 +2640,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.cite",
-        "Cites the source {source}: it {relation} the claim {bearing}, judged on the wording it has now.",
+        "Cites the source {source}: it {relation} the claim {bearing}, judged on the wording it has in this proposal's result.",
     ),
     msg(
         "know.cite_unjudged",
@@ -2727,7 +2727,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.not_curation",
-        "This proposal sets a community status, a review date or an availability, changes or removes a source link a claim already has, changes who or what a source that was checked is, or where it is found, removes a claim or a source that holds any of these, or replaces a file that cannot be read, which only a curation proposal may do. It cannot be accepted as it is.",
+        "This proposal sets a community status, a review date or an availability, changes or removes a source link a claim already has, changes a source that was checked in its title, author, date, reference or the source that replaces it, removes a claim or a source that holds any of these, or replaces or removes a file that cannot be read, which only a curation proposal may do. It cannot be accepted as it is.",
     ),
     msg(
         "know.not_judged",
@@ -2976,11 +2976,11 @@ pub const CATALOG: &[Entry] = &[
     msg("health.sources_name", "Sources to review"),
     msg(
         "health.sources_desc",
-        "Sources that were last reviewed long ago or never, and sources a person marked as unavailable, each with the claims that rely on it. The wiki checks nothing and fetches nothing: a person looks at the source and says so in a proposal.",
+        "Sources that were last reviewed long ago or never, and sources a person marked as unavailable, each with the claims that cite it. The wiki checks nothing and fetches nothing: a person looks at the source and says so in a proposal.",
     ),
     msg("health.col_source", "Source"),
     msg("health.col_why", "Why it is listed"),
-    msg("health.col_claims", "Claims that rely on it"),
+    msg("health.col_claims", "Claims that cite it"),
     msg(
         "health.sources_action",
         "Look at the source, then propose the day you looked and whether it can be had.",
@@ -2998,11 +2998,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     plural_msg(
         "health.sources_claims",
-        "{count} claim relies on it:",
-        "{count} claims rely on it:",
+        "{count} claim cites it:",
+        "{count} claims cite it:",
     ),
     msg("health.sources_cut", "The first {limit} are named."),
-    msg("health.sources_no_claims", "No claim relies on it."),
+    msg("health.sources_no_claims", "No claim cites it."),
     msg("health.sources_claim", "{where} ({how})"),
     msg(
         "health.sources_claim_nowhere",
