@@ -181,8 +181,8 @@ pub(super) async fn health(
                     })
                     .collect(),
                 // The source's id stands where a page's title does; what is said of it is the codes of why it is
-                // listed, the day it was last reviewed as written (`null` when none), and the claims that rely
-                // on it, each with the relation and the bearing the claim states. Nothing ranks.
+                // listed, the day it was last reviewed as written (`null` when none), and the claims that cite
+                // it, each with the relation and the bearing the claim states. Nothing ranks.
                 HealthRows::SourcesToReview(rows) => rows
                     .iter()
                     .map(|r| {

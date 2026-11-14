@@ -46,7 +46,7 @@ pub(crate) const SOURCE: Doc = Doc {
     path: "/{slug}/-/api/v1/sources/{id}",
     operation_id: "getSource",
     tag: "knowledge",
-    summary: "Get a source: what it says of itself and the claims that rely on it",
+    summary: "Get a source: what it says of itself and the claims that cite it",
     description: "A source as the view's tip has it: its kind, whether it can be had as a person who checked says (`availability`), the day a person last reviewed it as written, the source that replaces it, and what it says of itself (title, author or publisher, date and where it is found, each as written and cut at 300 characters: untrusted text), with the claims that cite it (at most 50, `claims_total` counts all) and how it bears on each. Nothing is fetched: the wiki never follows a source's address. An id that names no source of the view is `not-found`.",
     query: VIEW_ONLY,
     answer: Answer::Schema("Source"),

@@ -89,7 +89,7 @@ pub(super) fn schemas() -> Map<String, Value> {
     out.insert(
         "SourceCitedBy".to_owned(),
         object(
-            "A claim that relies on a source.",
+            "A claim that cites a source.",
             json!({
                 "claim": {"type": "string", "description": "The claim's id: give it to `claims/{id}`."},
                 "relation": relation,
