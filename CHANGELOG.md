@@ -623,6 +623,15 @@ wiki made under 0.57.0 is format 8 and an older prikk refuses it. Tests: the sen
 through a stand-in prikk, the signer's classification and the acceptance and recovery mapping, a read, a check and a page (the
 reader sees nothing of the version, the log does), and the creation's record against nine markers. No prikk-dependent test.
 
+M10 (maintenance corrections, 0.57.0 measured on the published release): section 8 of `m3-measurements-2026-11.md` repeats every
+statement made on the `bfd5b3c9` build on the host's published 0.57.0 (`prikk --version` prints `prikk 0.57.0`; the installed
+binary's SHA-256 is recorded as the binary's, not the release asset's, which was not fetched). The whole suite: 2,686 passed, 0
+failed on the tree before M8 - M11; 2,697 passed, 0 failed after them, with the host's 0.57.0, with 0.55.0 first on `PATH`, and with
+prikk shimmed off `PATH` (299 self-skips). Everything holds, with three corrections to what was said: `block_seals` is **not**
+whole when `verify` fails (M8); a path not in NFC is **refused** at `commit`, not rewritten; and the `uncommit` cost rule
+needed 9.0 x S (M9). Also measured for the first time: `unlock --yes` refuses a live 0.57 holder and leaves its lock. The notes
+file now says which tree and which binary every figure is about.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the
