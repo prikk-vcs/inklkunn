@@ -25,11 +25,23 @@ fn plant(scratch: &Path, name: &str) -> PathBuf {
     dir
 }
 
+/// The pages of exactly the block `block_id`, read from one extract of it under the wiki's build lock: the shape of
+/// work these tests need (an extract that a second service can sweep around), now that the acceptance reads the title
+/// index of the prepared state instead (K54 U-l).
+fn entries_at_block(
+    service: &ReadService,
+    wiki: &WikiRecord,
+    block_id: &str,
+) -> Result<Vec<IndexEntry>, ReadError> {
+    service.with_block_tree(wiki, block_id, |root, config| {
+        entries_from_tree(root, config.index_max_files)
+            .map_err(|e| ReadError::CouldNotBeReadNow(Cause::Scratch(format!("{e:?}"))))
+    })?
+}
+
 /// A build of `w` that sweeps (any read does).
 fn build(w: &World) {
-    w.service
-        .page_entries_at_block(&w.wiki, &w.fake().block_id())
-        .expect("entries");
+    entries_at_block(&w.service, &w.wiki, &w.fake().block_id()).expect("entries");
 }
 
 #[test]
@@ -94,9 +106,8 @@ fn two_services_on_one_layout_never_judge_each_other_on_an_empty_tree() {
         .service
         .with_block_tree(&w.wiki, &block, |root, config| {
             let before = entries_from_tree(root, config.index_max_files).expect("mine, before");
-            let theirs = other
-                .page_entries_at_block(&w.wiki, &block)
-                .expect("the other's extract is whole");
+            let theirs =
+                entries_at_block(&other, &w.wiki, &block).expect("the other's extract is whole");
             assert_eq!(titles(&theirs), want, "the other is not judged on nothing");
             assert!(root.join("pages").is_dir(), "mine is still there");
             let after = entries_from_tree(root, config.index_max_files).expect("mine, after");
@@ -108,9 +119,7 @@ fn two_services_on_one_layout_never_judge_each_other_on_an_empty_tree() {
     // And the other way about.
     let seen = other
         .with_block_tree(&w.wiki, &block, |root, config| {
-            let mine = w
-                .service
-                .page_entries_at_block(&w.wiki, &block)
+            let mine = entries_at_block(&w.service, &w.wiki, &block)
                 .expect("the first's extract is whole");
             assert_eq!(titles(&mine), want);
             entries_from_tree(root, config.index_max_files).expect("the other's, after")
