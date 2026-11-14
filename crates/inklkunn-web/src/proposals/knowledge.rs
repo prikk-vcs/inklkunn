@@ -574,28 +574,26 @@ impl<'a> Resolver<'a> {
     /// too** (K22): a page renamed since is at its base path there; the tip's path would name nothing, or another page.
     fn read_base(&self, page_id: &str) -> Option<String> {
         let read = &self.ctx.services.read;
-        let index = match read.knowledge_index_at_base(
+        let titles = match read.title_index_at_base(
             &self.ctx.wiki,
             self.place.view,
             &self.place.base.state_id,
             &self.place.base.block_id,
         ) {
-            Ok(index) => index,
+            Ok(titles) => titles,
             Err(e) => {
                 self.failed(e);
                 return None;
             }
         };
-        let mut at = index
-            .rows()
-            .anchors
+        let mut at = titles
+            .entries()
             .iter()
-            .filter(|a| a.page_id == page_id)
-            .filter_map(|a| a.page_path.clone());
-        let (Some(path), None) = (at.next(), at.next()) else {
+            .filter(|e| e.page_id.as_deref() == Some(page_id));
+        let (Some(entry), None) = (at.next(), at.next()) else {
             return None;
         };
-        match read.source_at(&self.ctx.wiki, &self.place.base.block_id, &path) {
+        match read.source_at(&self.ctx.wiki, &self.place.base.block_id, &entry.path) {
             Ok(text) => text,
             Err(e) => {
                 self.failed(e);

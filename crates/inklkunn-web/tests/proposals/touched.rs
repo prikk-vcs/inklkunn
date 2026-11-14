@@ -738,8 +738,7 @@ async fn a_renamed_page_is_read_at_the_base_by_its_base_path() {
     judged.community_status.judged_on = Some(now.clone());
     judged.sources.first_mut().expect("a link").judged_on = now;
     let to = held_with(&s, vec![(claim_path(&judged.id), Some(judged.to_yaml()))]);
-    let wording =
-        "What its community status was judged on becomes this wording: “It opened in 1950.”";
+    let wording = "What its community status was judged on becomes this wording: “<bdi>It opened in 1950.</bdi>”";
     let body = open(&s, &to, &s.writer).await.body();
     assert!(body.contains(wording), "{body}");
     // The page is renamed in the history after the proposal was written (same text, same `id`): the tip knows it at

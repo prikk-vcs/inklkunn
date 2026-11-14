@@ -581,6 +581,24 @@ impl ReadService {
         self.knowledge_at(wiki, &tip)
     }
 
+    /// The title index of exactly the state a proposal's base names, whatever the view has moved to since: where every
+    /// page was (by its `id`) when the proposal was written, so a page renamed since is found at its base path (handoff
+    /// 005 K22). The same hold as the tip's.
+    pub fn title_index_at_base(
+        &self,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+        state_id: &str,
+        block_id: &str,
+    ) -> Result<Arc<TitleIndex>, ReadError> {
+        let tip = Tip {
+            view: view.unwrap_or(&wiki.default_view).to_owned(),
+            state_id: state_id.to_owned(),
+            block_id: block_id.to_owned(),
+        };
+        self.index_at(wiki, &tip)
+    }
+
     /// [`ReadService::knowledge_index`] of a tip that was already read: the index of exactly that state, whatever the
     /// view has moved to since (a comparison keys what it derives by the tips it read, and so reads their indexes; a
     /// claim page reads its view's tip once and everything it shows is of that tip, handoff 005 K23).
