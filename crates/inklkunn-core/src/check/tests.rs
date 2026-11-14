@@ -712,7 +712,7 @@ fn a_damaged_or_unknown_format_marker_fails_the_verdict_and_flags_the_wiki() {
         Arc::new(Canned::of(vec![Err(
             inklkunn_prikk::StorageError::FormatMarker {
                 verb: "verify",
-                version: 9,
+                version: Some(9),
             },
         )]))
     };

@@ -459,7 +459,7 @@ fn a_damaged_or_unknown_format_marker_is_could_not_be_read_now_and_the_operators
     let w = World::pages(&[("Home", &[], "x\n")]);
     w.fake().fail_views(Some(StorageError::FormatMarker {
         verb: "branch",
-        version: 9,
+        version: Some(9),
     }));
     let e = w
         .service
@@ -469,7 +469,7 @@ fn a_damaged_or_unknown_format_marker_is_could_not_be_read_now_and_the_operators
         matches!(
             &e,
             ReadError::CouldNotBeReadNow(Cause::Storage(StorageError::FormatMarker {
-                version: 9,
+                version: Some(9),
                 ..
             }))
         ),

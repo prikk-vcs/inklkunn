@@ -2049,7 +2049,7 @@ fn a_format_marker_prikk_will_not_open_is_a_stop_of_its_own_and_nothing_else_is_
     // M17: prikk refused the repository by its format marker, and this prikk is not known to refuse that format. Nothing
     // else was read, so whatever the other witnesses would say (a queue, an unfinished act, a lock) is not consulted.
     let mut w = flagged();
-    w.format_marker = Some(9);
+    w.format_marker = Some(Some(9));
     let plan = build(&w);
     assert_eq!(plan.stop, Some(Stop::FormatMarker));
     assert!(plan.steps.is_empty(), "{:?}", names(&plan));
@@ -2078,4 +2078,53 @@ fn a_format_marker_prikk_will_not_open_is_a_stop_of_its_own_and_nothing_else_is_
     .unwrap();
     assert!(runbook.contains("`format-marker`"));
     assert!(runbook.contains(".prikk/FORMAT"));
+}
+
+#[test]
+fn a_format_marker_that_is_not_a_number_is_said_so_and_the_flags_reason_is_explained() {
+    // M20: prikk named no number (`8\r\n`, an empty file): the plan does not invent one, and the store's only reason for
+    // a flag whose act is not known (`interrupted`) is said to be that, never left to read as an act that never ended.
+    let mut w = flagged();
+    w.flag.as_mut().unwrap().reason = inklkunn_store::RecoveryReason::Interrupted;
+    w.format_marker = Some(None);
+    let plan = build(&w);
+    assert_eq!(plan.stop, Some(Stop::FormatMarker));
+    let lines = plan.lines();
+    assert!(
+        lines.iter().any(|l| l.contains(
+            "prikk refuses the repository because its format marker holds something that is not a format number"
+        )),
+        "{lines:#?}"
+    );
+    assert!(
+        lines.iter().any(|l| l
+            .contains("flagged needs-recovery (interrupted: the reason the store gives a flag whose act is not known")
+            && l.contains("damaged format marker")),
+        "{lines:#?}"
+    );
+    assert!(
+        !lines.iter().any(|l| l.contains("format None")),
+        "{lines:#?}"
+    );
+    // Without a marker the same flag reads as before, and another reason is printed as it is.
+    let mut sound = w.clone();
+    sound.format_marker = None;
+    assert!(
+        build(&sound)
+            .lines()
+            .iter()
+            .any(|l| l.ends_with("flagged needs-recovery (interrupted)")),
+        "{:#?}",
+        build(&sound).lines()
+    );
+    let mut queued = w.clone();
+    queued.flag.as_mut().unwrap().reason = inklkunn_store::RecoveryReason::Queued;
+    assert!(
+        build(&queued)
+            .lines()
+            .iter()
+            .any(|l| l.ends_with("flagged needs-recovery (queued)")),
+        "{:#?}",
+        build(&queued).lines()
+    );
 }

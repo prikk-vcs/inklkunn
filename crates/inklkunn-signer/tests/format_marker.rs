@@ -112,17 +112,19 @@ fn a_marker_prikk_0_57_0_will_not_read_is_a_damaged_or_unknown_marker_for_the_dr
         let (driver, signer) = repo.read_by(&new);
         match driver {
             Err(StorageError::FormatMarker { version, .. }) => {
-                assert_eq!(version, format, "{what}")
+                assert_eq!(version, Some(format), "{what}")
             }
             other => panic!("{what}: the driver said {other:?}"),
         }
         match signer {
-            Err(SignerError::FormatMarker { version }) => assert_eq!(version, format, "{what}"),
+            Err(SignerError::FormatMarker { version }) => {
+                assert_eq!(version, Some(format), "{what}")
+            }
             other => panic!("{what}: the signer said {other:?}"),
         }
         let said = StorageError::FormatMarker {
             verb: "status",
-            version: format,
+            version: Some(format),
         }
         .to_string();
         assert!(said.contains(&format!("format {format}")), "{said}");
@@ -160,11 +162,89 @@ fn a_format_8_repository_read_by_a_prikk_older_than_0_57_0_is_the_operators_mism
     repo.marker(b"9\n");
     let (driver, signer) = repo.read_by(&old);
     assert!(
-        matches!(driver, Err(StorageError::FormatMarker { version: 9, .. })),
+        matches!(
+            driver,
+            Err(StorageError::FormatMarker {
+                version: Some(9),
+                ..
+            })
+        ),
         "{driver:?}"
     );
     assert!(
-        matches!(signer, Err(SignerError::FormatMarker { version: 9 })),
+        matches!(signer, Err(SignerError::FormatMarker { version: Some(9) })),
         "{signer:?}"
     );
+}
+
+/// The markers prikk answers with its integrity error instead of `unsupported format version` (maintenance M20, finding
+/// T-a): a stray carriage return, a leading space, a word, an empty file. Measured on 0.55.0 and 0.57.0.
+const UNREADABLE_MARKERS: [(&str, &[u8]); 4] = [
+    ("8 with a carriage return", b"8\r\n"),
+    ("8 with a leading space", b" 8\n"),
+    ("a word", b"x\n"),
+    ("an empty file", b""),
+];
+
+/// Every damaged marker above ends as a damaged marker for the driver and the signer, with no number, read by `reader`
+/// of a repository made by `maker`; and the sound marker is put back and read again.
+fn unreadable_markers_are_damaged_markers(maker: &Path, reader: &Path, tag: &str) {
+    let repo = made_by(maker, tag);
+    let sound = std::fs::read(repo.repo.join(".prikk/FORMAT")).unwrap();
+    let (driver, signer) = repo.read_by(reader);
+    assert!(driver.is_ok(), "{driver:?}");
+    assert!(signer.is_ok(), "{signer:?}");
+    for (what, bytes) in UNREADABLE_MARKERS {
+        repo.marker(bytes);
+        let (driver, signer) = repo.read_by(reader);
+        assert!(
+            matches!(
+                driver,
+                Err(StorageError::FormatMarker { version: None, .. })
+            ),
+            "{what}: the driver said {driver:?}"
+        );
+        assert!(
+            matches!(signer, Err(SignerError::FormatMarker { version: None })),
+            "{what}: the signer said {signer:?}"
+        );
+        for said in [
+            driver.unwrap_err().to_string(),
+            signer.unwrap_err().to_string(),
+        ] {
+            assert!(said.contains(".prikk/FORMAT"), "{what}: {said}");
+            assert!(
+                said.contains("not a format number") && !said.contains("format 8"),
+                "{what}: {said}"
+            );
+            assert!(
+                !said.contains("nothing in the repository is damaged"),
+                "{said}"
+            );
+        }
+    }
+    repo.marker(&sound);
+    let (driver, signer) = repo.read_by(reader);
+    assert!(driver.is_ok(), "{driver:?}");
+    assert!(signer.is_ok(), "{signer:?}");
+}
+
+#[test]
+fn a_marker_prikk_0_57_0_cannot_read_as_a_number_is_a_damaged_marker_for_the_driver_and_the_signer()
+{
+    let Some(new) = prikk_where(|v| v >= (0, 57, 0)) else {
+        println!("skipping: prikk 0.57.0 or newer not found");
+        return;
+    };
+    unreadable_markers_are_damaged_markers(&new, &new, "unreadable-new");
+}
+
+#[test]
+fn a_marker_an_older_prikk_cannot_read_as_a_number_is_a_damaged_marker_for_the_driver_and_the_signer()
+ {
+    let Some(old) = prikk_where(|v| ((0, 54, 0)..(0, 57, 0)).contains(&v)) else {
+        println!("skipping: no prikk older than 0.57.0 (and at the floor) found");
+        return;
+    };
+    unreadable_markers_are_damaged_markers(&old, &old, "unreadable-old");
 }

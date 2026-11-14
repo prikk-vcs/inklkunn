@@ -3775,3 +3775,124 @@ fn a_format_marker_prikk_will_not_read_fails_the_check_flags_the_wiki_and_stops_
         again.outcome
     );
 }
+
+/// M20 (finding T-a): the markers that prikk answers with its own integrity error (`8\r\n`, ` 8\n`, `x\n`, an empty
+/// file), on a repository `w` made and read by one real prikk. Each ends the check flagged and failed, and recovery at
+/// the `format-marker` stop with a plan that says what the flag is; the sound marker put back, recovery finishes.
+fn a_marker_that_is_not_a_number_flags_the_wiki_and_stops_recovery(w: &World) {
+    let marker = w.repo.join(".prikk/FORMAT");
+    let sound = std::fs::read(&marker).unwrap();
+    let verifier = Verifier::new(w.storage.clone(), w.store.clone(), w.layout.clone());
+    verifier.flag_format_markers_in(w.store.clone());
+    let first = verifier.check_unthrottled(&w.wiki);
+    assert!(
+        matches!(first.outcome, CheckOutcome::Verified),
+        "{:?}",
+        first.outcome
+    );
+    for (what, bytes) in [
+        ("8 with a carriage return", b"8\r\n".as_slice()),
+        ("8 with a leading space", b" 8\n".as_slice()),
+        ("a word", b"x\n".as_slice()),
+        ("an empty file", b"".as_slice()),
+    ] {
+        std::fs::write(&marker, bytes).unwrap();
+        let checked = verifier.check_unthrottled(&w.wiki);
+        assert!(
+            matches!(checked.outcome, CheckOutcome::Failed { .. }),
+            "{what}: {:?}",
+            checked.outcome
+        );
+        let operator = checked.operator.expect("the operator's text");
+        assert!(
+            operator.contains(".prikk/FORMAT") && operator.contains("not a format number"),
+            "{what}: {operator}"
+        );
+        let record = w.store.get(&w.wiki.id).unwrap();
+        assert_eq!(
+            record.verification.state,
+            VerificationState::Failed,
+            "{what}"
+        );
+        let flag = w
+            .store
+            .recovery_flag(&w.wiki.id)
+            .unwrap()
+            .unwrap_or_else(|| panic!("{what}: not flagged"));
+        assert_eq!(flag.reason, RecoveryReason::Interrupted, "{what}");
+        let shown = w
+            .recovery
+            .recover(&w.wiki, RecoveryMode::PlanOnly)
+            .unwrap_or_else(|e| panic!("{what}: {e}"));
+        assert_eq!(
+            shown.plan.stop,
+            Some(Stop::FormatMarker),
+            "{what}: {:#?}",
+            shown.lines()
+        );
+        let lines = shown.lines();
+        assert!(
+            lines.iter().any(|l| l.contains("is not a format number")),
+            "{what}: {lines:#?}"
+        );
+        // The flag's reason is said for what it is here, and no act is blamed.
+        assert!(
+            lines.iter().any(|l| l
+                .contains("interrupted: the reason the store gives a flag whose act is not known")
+                && l.contains("damaged format marker")),
+            "{what}: {lines:#?}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("were begun and never ended")),
+            "{what}: {lines:#?}"
+        );
+        let run = w.recover();
+        assert!(
+            matches!(&run.outcome, RecoveryOutcome::Stopped { at: None, .. }),
+            "{what}: {:?}",
+            run.outcome
+        );
+        assert!(run.done.is_empty(), "{what}: recovery ran nothing");
+        assert!(
+            run.lines()
+                .iter()
+                .any(|l| l.contains("STOP (format-marker)")),
+            "{what}: {:#?}",
+            run.lines()
+        );
+        assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
+    }
+    std::fs::write(&marker, &sound).unwrap();
+    let done = w.recover();
+    assert_eq!(
+        done.outcome,
+        RecoveryOutcome::Recovered,
+        "{:#?}",
+        done.lines()
+    );
+    assert_eq!(w.store.recovery_flag(&w.wiki.id).unwrap(), None);
+    let again = verifier.check_unthrottled(&w.wiki);
+    assert!(
+        matches!(again.outcome, CheckOutcome::Verified),
+        "{:?}",
+        again.outcome
+    );
+}
+
+#[test]
+fn a_marker_that_is_not_a_number_flags_the_wiki_and_stops_recovery_on_the_first_prikk_on_path() {
+    let Some(w) = World::new("marker-text-055", LeaseConfig::default()) else {
+        return;
+    };
+    a_marker_that_is_not_a_number_flags_the_wiki_and_stops_recovery(&w);
+}
+
+#[test]
+fn a_marker_that_is_not_a_number_flags_the_wiki_and_stops_recovery_on_prikk_0_57_0() {
+    let Some(w) = World::new_057("marker-text-057", LeaseConfig::default()) else {
+        return;
+    };
+    a_marker_that_is_not_a_number_flags_the_wiki_and_stops_recovery(&w);
+}

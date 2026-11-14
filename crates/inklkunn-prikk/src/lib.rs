@@ -25,15 +25,15 @@ pub use driver::{
     probe_version, schema,
 };
 pub use format::{
-    FormatError, classify_format_error, first_reader, format_marker_sentence,
-    unsupported_format_sentence,
+    FormatError, classify_format_error, first_reader, format_marker_sentence, marker_sentence,
+    unreadable_marker_sentence, unsupported_format_sentence,
 };
 pub use sandbox::{BwrapConfig, CallLimits, Mounts, Run, Sandbox};
 pub use storage::{
     Change, Diff, DiffEntry, Entry, ExtractBounds, FileMeta, History, HistoryBlock, Materialized,
     Operation, Patch, PatchMessage, Point, Queue, QueuedPatch, RepoStatus, Result, Stage,
     StageOutcome, Storage, StorageError, Tree, Unavailable, Verdict, Verification, View, Views,
-    unsupported_format_version,
+    unreadable_format_marker, unsupported_format_version,
 };
 
 /// The prikk floor (RFC 001 D-3 / RFC 010 D-3): the oldest prikk the driver accepts. One value with the

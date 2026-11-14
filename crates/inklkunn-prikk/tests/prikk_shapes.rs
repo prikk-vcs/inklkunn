@@ -312,7 +312,7 @@ esac"#,
         match outcome {
             Err(StorageError::FormatMarker { verb: v, version }) => {
                 assert_eq!(v, verb);
-                assert_eq!(version, 8);
+                assert_eq!(version, Some(8));
             }
             other => panic!("{verb}: expected the damaged-marker outcome, got {other:?}"),
         }

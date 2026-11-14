@@ -956,6 +956,32 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   stores, the claim page through the router for a thread of two pages in both languages (a reply on the first page, a reply on the
   second to the first page's comment).
 
+- **M20, M24 (handoff 010 corrections, third round): every damaged marker is a marker error; `failed_objects` is read leniently.**
+  prikk calls a marker it cannot read as a number an *integrity error*, not `unsupported format version`: measured on 0.55.0 and
+  0.57.0 with `8\r\n`, ` 8\n`, `x\n`, an empty file (and quotes, backslashes, non-UTF-8 bytes, a 20-digit number, a 300-byte line)
+  the stderr, exit 1, is `integrity error: the repository format marker .prikk/FORMAT holds "<text>", which is not a format number this
+  version reads (it reads formats 6 and 7)` (`6, 7 and 8` on 0.57.0), `<text>` being the first line in Rust's `Debug` escapes. That
+  became *Refused*, then *could not be checked*: the verdict stayed *Verified*, nothing was flagged, and recovery blamed a witness. The
+  classifier (`classify_format_error`, the driver's and the signer's one) now also matches that sentence, whole (the escapes `Debug`
+  writes, no bare quote, the list of formats as numbers; never a substring), under the same conditions (exit 1, no `refusal-v1`
+  report), and calls it a damaged marker on **every** prikk: `FormatError::Marker`, `StorageError::FormatMarker` and
+  `SignerError::FormatMarker` carry `Option<u64>` now (`None`: prikk named no number; the text of the marker is never kept), with
+  `unreadable_format_marker`, `unreadable_marker_sentence` and `marker_sentence` beside the existing sentences, and the recovery
+  witness's `format_marker` is `Option<Option<u64>>`. The check flags the wiki and recovery stops at `format-marker` for these markers
+  too. **The flag's reason:** the store's reason for a flag whose act is not known is `interrupted`, fixed by the schema (a reason
+  of its own would be a schema change), so the plan's line now says *interrupted: the reason the store gives a flag whose act is not
+  known, which is also what a check records for a damaged format marker* when the plan stops at the marker, and the runbook says no
+  act of the service is unfinished because of it. **`docs/RECOVERY.md` and `SECURITY.md`** say that only a check flags the wiki, and
+  when a check runs (the verify button, at most once a minute; after an accepted change is sealed; after a key retirement ends), and
+  that until then readers see *could not be read now* while the badge shows the last verdict. **M24:** `Verification.failed_objects`
+  is read leniently: a value that is not a list (`null`, a string, a number, a boolean, an object) is `None`, so the list is not whole
+  and the rest of the report (verdict, stages) is still read, instead of failing the whole `verify` report. Tests: the classifier
+  on the measured sentences and their escapes, and on every near miss, in `format/tests.rs`; the driver on every verb's class and on
+  `failed_objects`; the driver and the signer against real 0.55.0 and 0.57.0 repositories with the four markers
+  (`inklkunn-signer/tests/format_marker.rs`); the check, the flag, the plan's lines and recovery's stop and its finish after the marker
+  is put back, on real 0.55.0 and 0.57.0 (`inklkunn-core/tests/recovery.rs`); the plan's two lines. **Four new prikk-dependent tests**
+  (two in the signer's `format_marker.rs`, two in core's `recovery.rs`, each printing its skip line when its prikk is absent).
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

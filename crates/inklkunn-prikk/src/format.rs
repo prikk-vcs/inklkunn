@@ -13,7 +13,7 @@
 //! The driver and the signer ask the same classifier with the same conditions, so a surface cannot be told one thing by
 //! one and another by the other.
 
-use crate::storage::unsupported_format_version;
+use crate::storage::{unreadable_format_marker, unsupported_format_version};
 
 /// A prikk version, `(major, minor, patch)`.
 pub type Version = (u64, u64, u64);
@@ -40,19 +40,23 @@ pub enum FormatError {
         format: u64,
     },
     /// The format marker is damaged or unknown: the running prikk should read `format` or cannot be shown to refuse
-    /// it. The repository is flagged and nothing is called intact.
+    /// it, or prikk could not read the marker as a number at all. The repository is flagged and nothing is called
+    /// intact.
     Marker {
-        /// The format prikk named.
-        format: u64,
+        /// The format prikk named; `None` for prikk's own integrity error about a marker that is not a format number
+        /// (`8\r\n`, ` 8\n`, `x\n`, an empty file; M20).
+        format: Option<u64>,
     },
 }
 
-/// Whether a failed run of prikk is its `unsupported format version: N`, and what that is.
+/// Whether a failed run of prikk is its `unsupported format version: N` or its integrity error for a marker that is not
+/// a format number ([`unreadable_format_marker`]), and what that is.
 ///
 /// The conditions are the same for every caller: the exit code is 1, stdout holds no `refusal-v1` report (a refusal
 /// about the thing asked is not this), and `stderr` is, whole, prikk's sentence with a decimal number of at most nine
-/// digits and no leading zero ([`unsupported_format_version`]). `prikk` is the running prikk's version when it is
-/// known; **an unknown version is never read as one that refuses**.
+/// digits and no leading zero ([`unsupported_format_version`]), or prikk's integrity-error sentence whole. `prikk` is
+/// the running prikk's version when it is known; **an unknown version is never read as one that refuses**. The integrity
+/// error is a damaged marker on every prikk: it names no format that another could read.
 pub fn classify_format_error(
     code: Option<i32>,
     stdout: &[u8],
@@ -62,7 +66,9 @@ pub fn classify_format_error(
     if code != Some(1) || is_refusal_report(stdout) {
         return None;
     }
-    let format = unsupported_format_version(stderr)?;
+    let Some(format) = unsupported_format_version(stderr) else {
+        return unreadable_format_marker(stderr).then_some(FormatError::Marker { format: None });
+    };
     let refuses = match (prikk, first_reader(format)) {
         (Some(running), Some(first)) => running < first,
         _ => false,
@@ -70,7 +76,9 @@ pub fn classify_format_error(
     Some(if refuses {
         FormatError::Mismatch { format }
     } else {
-        FormatError::Marker { format }
+        FormatError::Marker {
+            format: Some(format),
+        }
     })
 }
 
@@ -103,6 +111,21 @@ pub fn format_marker_sentence(format: u64) -> String {
     format!(
         "prikk says the repository is format {format} and will not open it, but this prikk is not known to refuse that format: the format marker (`.prikk/FORMAT`) may be damaged, or may be one this build does not know; compare it with a backup, and do not take the rest of the repository to be intact"
     )
+}
+
+/// What an operator is told of a format marker prikk could not read as a number (M20). It says what prikk said, names
+/// the file, and claims nothing about the rest of the repository; the marker's text is not repeated (it is the
+/// repository's file).
+pub fn unreadable_marker_sentence() -> String {
+    "prikk says the format marker (`.prikk/FORMAT`) holds something that is not a format number it reads, and will not open the repository: the marker is damaged (a stray character, an empty file); compare it with a backup, and do not take the rest of the repository to be intact".to_owned()
+}
+
+/// What an operator is told of a damaged or unknown marker, by what prikk named (`None`: no number).
+pub fn marker_sentence(format: Option<u64>) -> String {
+    match format {
+        Some(format) => format_marker_sentence(format),
+        None => unreadable_marker_sentence(),
+    }
 }
 
 #[cfg(test)]

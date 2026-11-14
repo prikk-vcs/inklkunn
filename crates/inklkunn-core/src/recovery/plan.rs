@@ -223,8 +223,9 @@ pub struct Witness {
     /// A publication whose cleanup a killed `seal` did not finish, when `doctor` names exactly that (P15).
     pub cleanup_pending: Option<CleanupPending>,
     /// The format prikk named when it refused to open the repository by a marker this prikk is not known to refuse
-    /// (maintenance M17). Then nothing else of prikk was read: the fields that come from prikk hold nothing.
-    pub format_marker: Option<u64>,
+    /// (maintenance M17); `Some(None)` when the marker is not a number prikk reads at all (M20). Then nothing else of
+    /// prikk was read: the fields that come from prikk hold nothing.
+    pub format_marker: Option<Option<u64>>,
 }
 
 /// Why recovery will not act: each a fixed word. None names a path.
@@ -964,6 +965,11 @@ fn build_plan(w: &Witness, discard: &DiscardInput, unused: &mut Option<String>) 
     // --- What was read.
     let wit = &mut plan.witnesses;
     wit.push(match &w.flag {
+        // The store has one reason for a flag whose act is not known, and a check that meets a damaged format marker
+        // records it (M20): the line says so rather than let "interrupted" read as an act that never ended.
+        Some(f) if w.format_marker.is_some() && f.reason == inklkunn_store::RecoveryReason::Interrupted => {
+            "the wiki is flagged needs-recovery (interrupted: the reason the store gives a flag whose act is not known, which is also what a check records for a damaged format marker)".to_owned()
+        }
         Some(f) => format!("the wiki is flagged needs-recovery ({})", f.reason.as_str()),
         None => "the wiki is not flagged".to_owned(),
     });
@@ -980,9 +986,12 @@ fn build_plan(w: &Witness, discard: &DiscardInput, unused: &mut Option<String>) 
         ));
     }
     if let Some(format) = w.format_marker {
-        wit.push(format!(
-            "prikk refuses the repository by its format marker (format {format}), which this prikk is not known to refuse: nothing else of prikk could be read"
-        ));
+        wit.push(match format {
+            Some(format) => format!(
+                "prikk refuses the repository by its format marker (format {format}), which this prikk is not known to refuse: nothing else of prikk could be read"
+            ),
+            None => "prikk refuses the repository because its format marker holds something that is not a format number: nothing else of prikk could be read".to_owned(),
+        });
         plan.stop = Some(Stop::FormatMarker);
         return plan;
     }

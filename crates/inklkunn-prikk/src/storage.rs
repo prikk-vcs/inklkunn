@@ -10,7 +10,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::format::{format_marker_sentence, unsupported_format_sentence};
+use crate::format::{marker_sentence, unsupported_format_sentence};
 
 /// A place in a repository's history: a view (branch) or a block id.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -372,9 +372,22 @@ pub struct Verification {
     #[serde(default)]
     pub stages: Vec<Stage>,
     /// The objects `verify` could not read (`verify-report-v1`, prikk 0.57.0), kept as sent. `None` when the report
-    /// has no such field: nothing then shows the list is empty (see [`Verification::block_seals_are_whole`]).
-    #[serde(default)]
+    /// has no such field **or the field is not a list** (read leniently, M24: a value of another type makes the list
+    /// not whole and never fails the rest of the report): nothing then shows the list is empty (see
+    /// [`Verification::block_seals_are_whole`]).
+    #[serde(default, deserialize_with = "list_or_none")]
     pub failed_objects: Option<Vec<serde_json::Value>>,
+}
+
+/// A JSON list as `Some`, anything else (`null`, a string, a number, an object) as `None`.
+fn list_or_none<'de, D>(d: D) -> std::result::Result<Option<Vec<serde_json::Value>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(match serde_json::Value::deserialize(d)? {
+        serde_json::Value::Array(items) => Some(items),
+        _ => None,
+    })
 }
 
 impl Verification {
@@ -636,14 +649,16 @@ pub enum StorageError {
         /// The format version prikk named.
         version: u64,
     },
-    /// The same sentence from a prikk that is **not known to refuse that format** (maintenance M17): the format marker
-    /// (`.prikk/FORMAT`) is damaged, or names a format this build does not know. Not an operator's mismatch and never
-    /// "nothing is damaged": the wiki is flagged and recovery stops at `format-marker`.
+    /// The same sentence from a prikk that is **not known to refuse that format** (maintenance M17), or prikk's own
+    /// integrity error for a marker it cannot read as a number at all (`8\r\n`, ` 8\n`, `x\n`, an empty file; M20):
+    /// the format marker (`.prikk/FORMAT`) is damaged, or names a format this build does not know. Not an operator's
+    /// mismatch and never "nothing is damaged": the wiki is flagged and recovery stops at `format-marker`.
     FormatMarker {
         /// The prikk verb.
         verb: &'static str,
-        /// The format version prikk named.
-        version: u64,
+        /// The format version prikk named; `None` when the marker holds no number prikk could read (its text is never
+        /// kept: it is the repository's file).
+        version: Option<u64>,
     },
     /// The driver itself misused prikk (its exit 2, usage): a bug here, not the repository's fault.
     Driver {
@@ -719,7 +734,7 @@ impl std::fmt::Display for StorageError {
                 write!(
                     f,
                     "prikk {verb} cannot open this repository: {}",
-                    format_marker_sentence(*version)
+                    marker_sentence(*version)
                 )
             }
             StorageError::Driver { verb, detail } => {
@@ -752,6 +767,82 @@ pub fn unsupported_format_version(message: &str) -> Option<u64> {
         return None;
     }
     digits.parse().ok()
+}
+
+/// Is `message` (prikk's stderr, with or without the `error:` prefix) **exactly** prikk's integrity error for a format
+/// marker it cannot read as a number: `integrity error: the repository format marker .prikk/FORMAT holds "<text>", which
+/// is not a format number this version reads (it reads formats 6 and 7)` (maintenance M20)? Measured on prikk 0.55.0
+/// and 0.57.0 with the markers `8\r\n`, ` 8\n`, `x\n`, an empty file and others: `<text>` is the marker's first line in
+/// Rust's `Debug` escapes (`\r`, `\"`, `\\`, `\u{…}`), so it holds no bare double quote, and the list is the formats
+/// that prikk reads (`6 and 7`, `6, 7 and 8`).
+///
+/// The text itself is never kept or shown: it is somebody's file. **Never a substring match**, as for
+/// [`unsupported_format_version`]: only the whole sentence counts, and what follows the closing quote is checked word
+/// for word.
+pub fn unreadable_format_marker(message: &str) -> bool {
+    const HEAD: &str = "integrity error: the repository format marker .prikk/FORMAT holds \"";
+    const MIDDLE: &str = ", which is not a format number this version reads (it reads formats ";
+    let message = message.trim();
+    let message = message.strip_prefix("error:").map_or(message, str::trim);
+    let Some(rest) = message.strip_prefix(HEAD) else {
+        return false;
+    };
+    let Some(after_text) = after_debug_escaped_text(rest) else {
+        return false;
+    };
+    let Some(list) = after_text
+        .strip_prefix(MIDDLE)
+        .and_then(|l| l.strip_suffix(')'))
+    else {
+        return false;
+    };
+    // `6 and 7`, `6, 7 and 8`: format numbers, as many as prikk reads.
+    let numbers = list.replace(" and ", ", ");
+    let mut any = false;
+    for n in numbers.split(", ") {
+        if n.is_empty()
+            || n.len() > 9
+            || !n.bytes().all(|b| b.is_ascii_digit())
+            || (n.len() > 1 && n.starts_with('0'))
+        {
+            return false;
+        }
+        any = true;
+    }
+    any
+}
+
+/// What follows the closing double quote of a string written with Rust's `Debug` escapes, when `rest` starts inside
+/// one: a bare quote ends it, and a backslash must start one of the escapes `Debug` writes.
+fn after_debug_escaped_text(rest: &str) -> Option<&str> {
+    let mut chars = rest.char_indices();
+    while let Some((at, c)) = chars.next() {
+        match c {
+            '"' => return rest.get(at + 1..),
+            '\\' => match chars.next()?.1 {
+                '\\' | '"' | 'n' | 'r' | 't' | '0' => {}
+                'u' => {
+                    if chars.next()?.1 != '{' {
+                        return None;
+                    }
+                    let mut digits = 0;
+                    loop {
+                        match chars.next()?.1 {
+                            '}' => break,
+                            h if h.is_ascii_hexdigit() && digits < 6 => digits += 1,
+                            _ => return None,
+                        }
+                    }
+                    if digits == 0 {
+                        return None;
+                    }
+                }
+                _ => return None,
+            },
+            _ => {}
+        }
+    }
+    None
 }
 
 /// What inklkunn needs of a repository. Every method is a read; nothing here takes a write lock (STO-5).

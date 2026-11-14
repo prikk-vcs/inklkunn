@@ -505,7 +505,7 @@ fn prikks_unsupported_format_sentence_is_a_mismatch_only_where_the_running_prikk
                 e,
                 StorageError::FormatMarker {
                     verb: "tree",
-                    version: 8
+                    version: Some(8)
                 }
             ),
             "{what}: {e:?}"
@@ -526,7 +526,7 @@ fn prikks_unsupported_format_sentence_is_a_mismatch_only_where_the_running_prikk
                 e,
                 StorageError::FormatMarker {
                     verb: "tree",
-                    version: 9
+                    version: Some(9)
                 }
             ),
             "{what}: {e:?}"
@@ -605,4 +605,75 @@ fn prikks_unsupported_format_sentence_is_a_mismatch_only_where_the_running_prikk
             "{padded}"
         );
     }
+}
+
+#[test]
+fn prikks_integrity_error_for_a_marker_that_is_not_a_number_is_a_format_marker_on_every_prikk() {
+    // M20, measured on 0.55.0 and 0.57.0 with `.prikk/FORMAT` holding `8\r\n`: exit 1, no report, this sentence (the
+    // list is what that prikk reads). No prikk version makes it a mismatch, and it names no number.
+    for (what, said) in [
+        (
+            "0.55.0",
+            "error: integrity error: the repository format marker .prikk/FORMAT holds \"8\\r\", which is not a format number this version reads (it reads formats 6 and 7)\n",
+        ),
+        (
+            "0.57.0",
+            "error: integrity error: the repository format marker .prikk/FORMAT holds \"\", which is not a format number this version reads (it reads formats 6, 7 and 8)\n",
+        ),
+    ] {
+        for prikk in [V055, V056, V057, None] {
+            let e = format_failure(said, prikk);
+            assert!(
+                matches!(
+                    e,
+                    StorageError::FormatMarker {
+                        verb: "tree",
+                        version: None
+                    }
+                ),
+                "{what} / {prikk:?}: {e:?}"
+            );
+            let text = e.to_string();
+            assert!(
+                text.contains(".prikk/FORMAT") && text.contains("not a format number"),
+                "{text}"
+            );
+        }
+    }
+    // Another integrity error, or the sentence inside a longer one, stays a refusal.
+    for said in [
+        "error: integrity error: the block store is damaged\n",
+        "error: integrity error: the repository format marker .prikk/FORMAT holds \"x\", which is not a format number this version reads (it reads formats 6 and 7) and more\n",
+    ] {
+        let e = format_failure(said, V057);
+        assert!(matches!(e, StorageError::Refused { .. }), "{said}: {e:?}");
+    }
+}
+
+#[test]
+fn a_failed_objects_that_is_not_a_list_makes_the_list_not_whole_and_the_rest_of_the_report_is_still_read()
+ {
+    // M24: a value of another type must not fail the whole `verify` report.
+    const ALL: &str =
+        r#"{"stage":"objects","status":"evaluated"},{"stage":"refs","status":"evaluated"}"#;
+    for (what, value) in [
+        ("null", "null"),
+        ("a string", r#""none""#),
+        ("a number", "0"),
+        ("a boolean", "true"),
+        ("an object", r#"{"count":0}"#),
+    ] {
+        let report = report_with_failed_objects(true, &[], ALL, Some(value));
+        assert_eq!(report.failed_objects, None, "{what}");
+        assert!(!report.block_seals_are_whole(), "{what}");
+        assert!(report.verdict.ok, "{what}");
+        assert_eq!(report.stages.len(), 2, "{what}: the stages are read");
+        assert!(!report.is_partial(), "{what}");
+    }
+    // A list is kept as sent, and an empty one is whole.
+    let kept = report_with_failed_objects(true, &[], ALL, Some(r#"[{"object_type":"block"}]"#));
+    assert_eq!(kept.failed_objects.as_ref().map(Vec::len), Some(1));
+    let whole = report_with_failed_objects(true, &[], ALL, Some("[]"));
+    assert_eq!(whole.failed_objects, Some(Vec::new()));
+    assert!(whole.block_seals_are_whole());
 }

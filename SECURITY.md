@@ -165,9 +165,12 @@ recovery, only where the running prikk is known not to read the format** (format
 `inklkunn-prikk`): the wiki is not flagged, its verification record keeps its last verdict, readers are shown *could not
 be read now* (never the version), and the repository is exactly as it was. Put the prikk that made the wiki back, or
 restore the wiki from a backup made before. **The same sentence from any other prikk** (0.57.0 or later saying format 8,
-or any prikk naming a number it is not known to refuse) **is a damaged or unknown format marker**: the check records a
-failed verdict, the wiki is flagged, recovery stops at `format-marker`, and nothing says the repository is intact
-(`docs/RECOVERY.md`). The format prikk wrote is kept in the wiki's store record when the wiki is created
+or any prikk naming a number it is not known to refuse, or prikk's own *integrity error* for a marker that is no format
+number at all, such as `8` with a carriage return, a leading space, a word or an empty file) **is a damaged or unknown
+format marker**: the check records a failed verdict, the wiki is flagged, recovery stops at `format-marker`, and nothing
+says the repository is intact (`docs/RECOVERY.md`). **Only a check flags the wiki**: one runs when somebody presses the
+wiki's verify button (at most once a minute), after an accepted change is sealed, and after a key retirement ends; until
+then readers see *could not be read now* and the badge shows the last verdict. The format prikk wrote is kept in the wiki's store record when the wiki is created
 (`prikk_format_version`, for information: nothing reads it to decide anything, prikk is always the one asked).
 
 The **bootstrap signer** over a plain-text key directory exists only behind the `bootstrap` cargo feature, for

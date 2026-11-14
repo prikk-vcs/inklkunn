@@ -34,11 +34,22 @@ damaged or unknown, and the next section applies: the wiki is flagged and nothin
 
 **What you see.** A check ends with *Verification failed* on a wiki that was verified, the wiki is flagged, and the log
 says `prikk … cannot open this repository: prikk says the repository is format N and will not open it, but this prikk is
-not known to refuse that format: the format marker (.prikk/FORMAT) may be damaged …` (N is the number prikk gave).
-`inklkunn wiki recover <wiki> --plan` ends with `STOP (format-marker)`. **What it is.** `.prikk/FORMAT` holds a number
+not known to refuse that format: the format marker (.prikk/FORMAT) may be damaged …` (N is the number prikk gave), or
+`prikk says the format marker (.prikk/FORMAT) holds something that is not a format number it reads …` when prikk named
+no number. `inklkunn wiki recover <wiki> --plan` ends with `STOP (format-marker)`, and its first line says the wiki is
+flagged *interrupted*: that is the one reason the store has for a flag whose act is not known, and the check records it
+for this case too; no act of the service is unfinished because of it. **What it is.** `.prikk/FORMAT` holds a number
 that prikk refuses although the running prikk should read it (`8` written without its newline makes prikk 0.57.0 say so
-itself), or a number this build has no table for. Recovery can read nothing else, so it concludes nothing and changes
-nothing; do not take the rest of the repository to be intact.
+itself), a number this build has no table for, or something that is no format number at all (`8` with a carriage return
+after it, a leading space, a word, an empty file: prikk 0.55.0 and 0.57.0 both call that an *integrity error*). Recovery
+can read nothing else, so it concludes nothing and changes nothing; do not take the rest of the repository to be intact.
+
+**When the wiki is flagged.** Only a **check** flags it, and a check runs when somebody presses the wiki's verify button
+(not more than once a minute), after a change has been accepted and sealed, and after a key retirement ends or is given
+up (`inklkunn wiki keys …`). Until the next of these, readers are shown *could not be read now* (every prikk call fails)
+while the wiki's badge still shows its last verdict, *Verified*: the damage is not noticed by itself. A host that
+suspects a damaged marker presses the verify button, or runs `prikk verify` in the repository, to find out; the check
+then flags the wiki and this section applies.
 
 **Before.** From the repository directory:
 

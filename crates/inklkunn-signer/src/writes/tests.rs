@@ -884,12 +884,12 @@ fn the_same_sentence_from_a_prikk_that_reads_the_format_is_a_damaged_or_unknown_
     };
     let e = say(&new.binary(), "error: unsupported format version: 8\n");
     assert!(
-        matches!(e, SignerError::FormatMarker { version: 8 }),
+        matches!(e, SignerError::FormatMarker { version: Some(8) }),
         "{e:?}"
     );
     let e = say(&new.binary(), "error: unsupported format version: 9\n");
     assert!(
-        matches!(e, SignerError::FormatMarker { version: 9 }),
+        matches!(e, SignerError::FormatMarker { version: Some(9) }),
         "{e:?}"
     );
     let shown = e.to_string();
@@ -906,12 +906,12 @@ fn the_same_sentence_from_a_prikk_that_reads_the_format_is_a_damaged_or_unknown_
     // is never taken to refuse anything.
     let e = say(&old.binary(), "error: unsupported format version: 9\n");
     assert!(
-        matches!(e, SignerError::FormatMarker { version: 9 }),
+        matches!(e, SignerError::FormatMarker { version: Some(9) }),
         "{e:?}"
     );
     let e = say(no_binary(), "error: unsupported format version: 8\n");
     assert!(
-        matches!(e, SignerError::FormatMarker { version: 8 }),
+        matches!(e, SignerError::FormatMarker { version: Some(8) }),
         "{e:?}"
     );
     // The driver's conditions: exit 1 (not 2), no report on stdout, the number without a leading zero.

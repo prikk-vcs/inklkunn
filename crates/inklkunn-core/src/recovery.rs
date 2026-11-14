@@ -319,12 +319,12 @@ fn witness_error(what: &str, e: impl std::fmt::Display) -> RecoveryError {
     RecoveryError::Witness(format!("{what}: {e}"))
 }
 
-/// The format prikk named, when one of the first reads was refused for a format marker this prikk is not known to
-/// refuse (maintenance M17).
+/// The format prikk named (`Some(None)` when it named none: the marker is not a number), when one of the first reads
+/// was refused for a format marker this prikk is not known to refuse (maintenance M17, M20).
 fn format_marker_in<T, U>(
     status: &Result<T, StorageError>,
     doctor: &Result<U, SignerError>,
-) -> Option<u64> {
+) -> Option<Option<u64>> {
     match (status, doctor) {
         (Err(StorageError::FormatMarker { version, .. }), _)
         | (_, Err(SignerError::FormatMarker { version })) => Some(*version),

@@ -34,12 +34,13 @@ pub enum SignerError {
         /// The format version prikk named.
         version: u64,
     },
-    /// The same sentence from a prikk that is **not known to refuse that format** (maintenance M17): the format marker is
-    /// damaged or unknown. Nothing was done, and nothing is said to be intact; the wiki is for recovery, which stops at
-    /// `format-marker` and points at the runbook.
+    /// The same sentence from a prikk that is **not known to refuse that format** (maintenance M17), or prikk's integrity
+    /// error for a marker that is not a format number at all (M20): the format marker is damaged or unknown. Nothing was
+    /// done, and nothing is said to be intact; the wiki is for recovery, which stops at `format-marker` and points at
+    /// the runbook.
     FormatMarker {
-        /// The format version prikk named.
-        version: u64,
+        /// The format version prikk named; `None` when the marker holds no number prikk could read.
+        version: Option<u64>,
     },
     /// The call could not run (spawn, a missing tool), or was stopped at its bound. **After a stopped
     /// `commit` the repository's state is not known**: read `log` and `status` before retrying.
@@ -94,7 +95,7 @@ impl std::fmt::Display for SignerError {
             SignerError::FormatMarker { version } => write!(
                 f,
                 "prikk cannot open this wiki's repository, and nothing was done: {}",
-                inklkunn_prikk::format_marker_sentence(*version)
+                inklkunn_prikk::marker_sentence(*version)
             ),
             SignerError::Unavailable(m) => write!(f, "the write could not run to completion: {m}"),
             SignerError::Damaged(m) => write!(f, "prikk's output could not be read: {m}"),

@@ -844,7 +844,7 @@ async fn a_format_marker_prikk_will_not_read_is_could_not_be_read_now_and_the_op
     w.fake
         .fail_views(Some(inklkunn_prikk::StorageError::FormatMarker {
             verb: "branch",
-            version: 9,
+            version: Some(9),
         }));
     let a = get(&w, "/handbook/Home").await;
     assert_eq!(a.status, StatusCode::SERVICE_UNAVAILABLE);

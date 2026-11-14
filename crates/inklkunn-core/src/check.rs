@@ -261,7 +261,8 @@ impl Verifier {
         let at = (self.clock)();
         // A format marker that is damaged or unknown (M17): no prikk opens the repository, so the last verdict cannot
         // stand and the wiki is flagged for recovery, which stops at `format-marker` and names the runbook. A flag that
-        // is already there stays as it is (the first reason stays).
+        // is already there stays as it is (the first reason stays). The reason is `Interrupted`, the store's one reason for
+        // a flag whose act is not known (a reason of its own would be a schema change); the plan says so (M20).
         if matches!(result, Err(StorageError::FormatMarker { .. }))
             && let Some(acts) = self.flags.get()
             && !matches!(acts.recovery_flag(&wiki.id), Ok(Some(_)))

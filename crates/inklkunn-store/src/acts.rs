@@ -27,7 +27,9 @@ pub enum RecoveryReason {
     /// A failure before `commit` could not be undone: the worktree holds uncommitted changes.
     WorktreeDirty,
     /// An earlier act never ended (its process died holding the lease, or its intent is open): what it did
-    /// is not known until recovery reads the witnesses.
+    /// is not known until recovery reads the witnesses. It is also the reason a check records for a damaged or unknown
+    /// format marker (maintenance M17, M20): the store has no reason of its own for it (the stored words are fixed by
+    /// the schema), so the recovery plan says so beside the reason instead of letting it read as an unfinished act.
     Interrupted,
 }
 
