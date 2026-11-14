@@ -442,6 +442,13 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   (5.0 x the store, floor 16 MiB). Tests: the plan's rules against every other state, the signer's guards with a real
   prikk (and the undo), prikk's text read strictly, the verb absent, and the CLI's flag. Five new prikk-dependent tests in all across M3 (the shimmed run's self-skips: 289 to 294); the stand-in tests need no prikk.
 
+Dependency updates (the architect, 2026-11-14).
+
+- **`ammonia` 4.2.4 → 4.2.5** (RUSTSEC-2026-0533, mutation XSS through embedded SVG and MathML) and **`rustix` 1.1.5 → 1.1.6**
+  (RUSTSEC-2026-0486, unsound `xattr` functions), lock only. inklkunn's sanitizer allows no MathML, SVG or raw-text element and drops
+  them with their contents, and Markdown's raw HTML is escaped before it, so **0.2.0 is not affected**; `rustix`'s `xattr` functions
+  are not called. The gates match by version, so the lock moves to the fixed releases.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the
