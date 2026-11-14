@@ -18,8 +18,10 @@
 //! **Time is a parameter.** The day comes from the caller (the read service's injected clock), never from here,
 //! so a test fixes it. A source is *older than the setting* when more than `review_after_days` whole days have
 //! passed since the day it was reviewed: reviewed exactly `review_after_days` days ago, it is not yet listed. A day
-//! in the future (a mistyped year) is not old, and is listed on its own reason ([`LastReview::Ahead`]). A `last_reviewed` the index holds that does not read as a day (a row
-//! written by another build) is read as *never reviewed*, so it is listed rather than trusted.
+//! that has not come (a mistyped year; a day after the current date in the earliest timezone, UTC+14, so that no
+//! reviewer's own today is one) is not old, and is listed on its own reason ([`LastReview::Ahead`]). A
+//! `last_reviewed` the index holds that does not read as a day (a row written by another build) is read as *never
+//! reviewed*, so it is listed rather than trusted.
 //!
 //! **Bounded.** The rows are the index's sources (bounded as the index is, by the file count); the claims named
 //! beside a source are cut at [`MAX_RELYING`] with their whole count kept. The index finds the links of a source by
@@ -31,6 +33,10 @@ use std::sync::{Arc, PoisonError};
 use inklkunn_store::{KnowledgeLinkRow, KnowledgeSourceRow};
 
 use super::index::KnowledgeIndex;
+
+/// How far ahead of UTC the earliest timezone is, in seconds (UTC+14, Kiritimati): *a day that has not come* is a day
+/// after the current date there, so that no reviewer's own date, in any timezone, is called one that has not come (K49).
+pub const EARLIEST_ZONE_SECS: i64 = 14 * 3_600;
 
 /// The setting's default: three years, counting one leap day (`knowledge.review_after`, in days).
 pub const DEFAULT_REVIEW_AFTER_DAYS: u32 = 1096;
@@ -116,6 +122,17 @@ pub struct SourcesToReview {
     pub review_after_days: u32,
 }
 
+/// Is `day` (`YYYY-MM-DD`) after the current date in the earliest timezone (UTC+14) at `now` (Unix seconds)? Such a
+/// day has not come anywhere on earth, so no one can have looked on it. A text that is not a day has not "not come".
+pub fn day_has_not_come(day: &str, now: i64) -> bool {
+    day_number(day).is_some_and(|d| d > latest_date(now))
+}
+
+/// The number of the current date in the earliest timezone at `now` (days since 1970-01-01).
+fn latest_date(now: i64) -> i64 {
+    now.saturating_add(EARLIEST_ZONE_SECS).div_euclid(86_400)
+}
+
 /// The sources of `index` that want a look at `now` (Unix seconds, UTC) under a setting of `review_after_days`, by
 /// source id. Reads the index and nothing else.
 pub fn sources_to_review(
@@ -124,6 +141,7 @@ pub fn sources_to_review(
     review_after_days: u32,
 ) -> Vec<SourceToReview> {
     let today = now.div_euclid(86_400);
+    let latest = latest_date(now);
     let limit = i64::from(review_after_days);
     index
         .sources()
@@ -132,8 +150,8 @@ pub fn sources_to_review(
             let unavailable = source.availability == "unavailable";
             let review = match source.last_reviewed.as_deref().and_then(day_number) {
                 None => LastReview::Never,
-                // A day that has not come is not a look (K40).
-                Some(reviewed) if reviewed > today => LastReview::Ahead {
+                // A day that has not come, in any timezone, is not a look (K40, K49).
+                Some(reviewed) if reviewed > latest => LastReview::Ahead {
                     day: source.last_reviewed.clone().unwrap_or_default(),
                 },
                 Some(reviewed) => LastReview::On {
@@ -174,7 +192,8 @@ pub fn sources_to_review(
 /// The list kept with an index: for which day and setting it was computed, and the list.
 #[derive(Debug)]
 pub(super) struct Memo {
-    day: i64,
+    /// The UTC day, and the date in the earliest timezone: the list reads both.
+    days: (i64, i64),
     review_after_days: u32,
     list: Arc<Vec<SourceToReview>>,
 }
@@ -187,20 +206,20 @@ pub fn sources_to_review_kept(
     now: i64,
     review_after_days: u32,
 ) -> Arc<Vec<SourceToReview>> {
-    let day = now.div_euclid(86_400);
+    let day = (now.div_euclid(86_400), latest_date(now));
     let mut memo = index
         .freshness_memo()
         .lock()
         .unwrap_or_else(PoisonError::into_inner);
     if let Some(kept) = memo
         .as_ref()
-        .filter(|m| m.day == day && m.review_after_days == review_after_days)
+        .filter(|m| m.days == day && m.review_after_days == review_after_days)
     {
         return Arc::clone(&kept.list);
     }
     let list = Arc::new(sources_to_review(index, now, review_after_days));
     *memo = Some(Memo {
-        day,
+        days: day,
         review_after_days,
         list: Arc::clone(&list),
     });

@@ -1456,6 +1456,7 @@ keys! {
     CurateNotADay => "curate.not_a_day",
     CurateUnknownSource => "curate.unknown_source",
     CurateNoWording => "curate.no_wording",
+    CurateDayNotCome => "curate.day_not_come",
     ProposeClaimHeldOne => "propose.claim_held_one",
     ProposeClaimHeldMany => "propose.claim_held_many",
     ProposeClaimLost => "propose.claim_lost",
@@ -1623,6 +1624,7 @@ keys! {
     HealthSourcesShowing => "health.sources_showing",
     HealthSourcesMore => "health.sources_more",
     HealthSourcesFirst => "health.sources_first",
+    HealthSourcesNoMore => "health.sources_no_more",
     KnowCurateLink => "know.curate_link",
     KnowCurateLinkOf => "know.curate_link_of",
     // knowledge: the freshness list's pages, a future day, the curation form's link (handoff 005 corrections, fourth round K39, K40): end

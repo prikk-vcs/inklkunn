@@ -159,6 +159,16 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
         sources,
         confirm,
     };
+    // A day that has not come is refused at its member, before anything is made (K49).
+    if let Some(day) = subject
+        .days_not_come(&req.services.read, &edit.sources)
+        .first()
+    {
+        return Err(req
+            .unacceptable_with("day-not-come", day.text(req.t))
+            .named("member", format!("sources[{}].reviewed", day.at))
+            .member("source", serde_json::json!(day.source.to_string())));
+    }
     let files = curate(subject.claim(), &subject.cited(), subject.digest(), &edit)
         .map_err(|m| mistake(req, m))?;
     if files.is_empty() {

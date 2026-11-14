@@ -2682,6 +2682,10 @@ pub const CATALOG: &[Entry] = &[
         "この主張はいま、どの段落にも書かれていないため、出典や状態を判断する文章がありません。",
     ),
     msg(
+        "curate.day_not_come",
+        "出典: {title}。{day} はどの時間帯でもまだ来ていない日のため、その日に確認した人はいません。確認した日を書くか、日付を空にしてください。",
+    ),
+    msg(
         "propose.claim_held_one",
         "この段落は他の人が頼りにしています。出典が付いています。目印はこちらで保っておくので、文章だけを編集してください。",
     ),
@@ -3092,6 +3096,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg("health.sources_more", "続きの出典を表示"),
     msg("health.sources_first", "最初の出典を表示"),
+    msg("health.sources_no_more", "これ以上の出典はありません。"),
     msg("know.curate_link", "この主張の扱いや出典の変更を提案する"),
     msg(
         "know.curate_link_of",

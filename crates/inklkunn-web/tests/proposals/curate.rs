@@ -179,7 +179,7 @@ async fn a_change_of_relation_or_bearing_and_a_check_of_a_source_are_proposed_pe
         &[
             ("c0_relation", "challenges"),
             ("c0_bearing", "indirect"),
-            ("c0_reviewed", "2026-11-04"),
+            ("c0_reviewed", "2023-11-04"),
             ("c0_availability", "available"),
         ],
     );
@@ -199,7 +199,7 @@ async fn a_change_of_relation_or_bearing_and_a_check_of_a_source_are_proposed_pe
     assert_eq!(source.availability, Availability::Available);
     assert_eq!(
         source.last_reviewed.as_ref().map(|r| r.date.as_str()),
-        Some("2026-11-04")
+        Some("2023-11-04")
     );
     assert_eq!(
         source
@@ -210,7 +210,7 @@ async fn a_change_of_relation_or_bearing_and_a_check_of_a_source_are_proposed_pe
     );
     // A review alone changes the source file and not the claim's.
     let s = scene();
-    let fields = with(unchanged(&s, 1), &[("c0_reviewed", "2026-11-04")]);
+    let fields = with(unchanged(&s, 1), &[("c0_reviewed", "2023-11-04")]);
     let files = files_of(&s, &location(&send(&s, FORM, &s.writer, &fields).await));
     assert_eq!(
         paths(&files),
@@ -531,5 +531,58 @@ async fn a_refused_curation_leaves_no_draft_behind() {
     assert_eq!(
         inklkunn_store::ProposalStore::open_count(&*s.w.store, &s.w.wiki.id, &s.writer).unwrap(),
         1
+    );
+}
+
+#[tokio::test]
+async fn a_day_that_has_not_come_in_any_timezone_is_refused_on_the_form_and_nothing_is_made() {
+    // The clock of these tests is 2023-11-14T22:13Z: it is already 2023-11-15 at UTC+14, and 2023-11-16 has not come
+    // anywhere (K49).
+    let s = scene();
+    let not_come = with(unchanged(&s, 1), &[("c0_reviewed", "2023-11-16")]);
+    let a = send(&s, FORM, &s.writer, &not_come).await;
+    assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        a.body().contains(
+            "Source: A history of the bridge. The day 2023-11-16 has not come yet in any timezone"
+        ),
+        "{}",
+        a.body()
+    );
+    // The value is still in the field, and the other sentence about a day is not said.
+    assert!(a.body().contains("value=\"2023-11-16\""));
+    assert!(!a.body().contains("A date has to be written"));
+    let far = with(unchanged(&s, 1), &[("c0_reviewed", "2999-01-01")]);
+    assert_eq!(
+        send(&s, FORM, &s.writer, &far).await.status,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    // Changes are shown for a form that is right, and not for one that is refused.
+    let preview = with(
+        unchanged(&s, 1),
+        &[("c0_reviewed", "2023-11-16"), ("op", "changes")],
+    );
+    let a = send(&s, FORM, &s.writer, &preview).await;
+    assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let all =
+        s.w.services
+            .proposals
+            .list(
+                &super::claims::principal(&s.writer),
+                &s.w.wiki,
+                &Default::default(),
+            )
+            .expect("a list");
+    assert!(all.is_empty());
+    // The date in UTC+14 has come there, so a reviewer there who writes it is not told it has not.
+    let today_there = with(unchanged(&s, 1), &[("c0_reviewed", "2023-11-15")]);
+    let sent = send(&s, FORM, &s.writer, &today_there).await;
+    let files = files_of(&s, &location(&sent));
+    assert_eq!(
+        sources_in(&files)
+            .first()
+            .and_then(|source| source.last_reviewed.as_ref())
+            .map(|r| r.date.as_str()),
+        Some("2023-11-15")
     );
 }

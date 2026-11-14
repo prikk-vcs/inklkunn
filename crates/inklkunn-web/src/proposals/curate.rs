@@ -73,6 +73,59 @@ impl Loaded {
     pub(crate) fn cited(&self) -> Vec<Source> {
         self.cited.iter().flatten().cloned().collect()
     }
+
+    /// The edits that would record, as the day a person looked at a source, a day that has not come (after the
+    /// current date in UTC+14 by the service's clock, K49), each with its place among `edits`. A day left as the base
+    /// has it is not a new record, and a text that is no day is `Mistake::NotADay`'s business, not this one's.
+    pub(crate) fn days_not_come(
+        &self,
+        read: &inklkunn_core::read::ReadService,
+        edits: &[SourceEdit],
+    ) -> Vec<DayNotCome> {
+        edits
+            .iter()
+            .enumerate()
+            .filter_map(|(at, e)| {
+                let source = self.cited.iter().flatten().find(|s| s.id == e.source)?;
+                let kept = source.last_reviewed.as_ref().map(|r| r.date.as_str());
+                (!e.reviewed.is_empty()
+                    && kept != Some(e.reviewed.as_str())
+                    && read.day_has_not_come(&e.reviewed))
+                .then(|| DayNotCome {
+                    at,
+                    source: e.source.clone(),
+                    title: source.identity.title.clone(),
+                    day: e.reviewed.clone(),
+                })
+            })
+            .collect()
+    }
+}
+
+/// A day that has not come, given as the day a source was looked at (K49).
+pub(crate) struct DayNotCome {
+    /// Its place among the edits of the body.
+    pub(crate) at: usize,
+    /// The source.
+    pub(crate) source: SourceId,
+    /// The source's title, when it has one.
+    pub(crate) title: Option<String>,
+    /// The day, as it was written.
+    pub(crate) day: String,
+}
+
+impl DayNotCome {
+    /// The refusal in the person's words: the source (as the form's own legend names it) and the day.
+    pub(crate) fn text(&self, t: crate::catalog::T) -> String {
+        let title = self
+            .title
+            .clone()
+            .unwrap_or_else(|| t.get(Key::CurateSourceUntitled));
+        t.msg(Key::CurateDayNotCome)
+            .with("title", title)
+            .with("day", &self.day)
+            .text()
+    }
 }
 
 /// Read the claim `id` and what it cites at `base_block` of `view`. `Ok(None)`: there is no such claim then.
@@ -655,6 +708,15 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
             status,
         )
     };
+    // A day that has not come is refused at its field, before anything is made (K49).
+    let not_come = subject.days_not_come(&ctx.services.read, &edit.sources);
+    if !not_come.is_empty() {
+        return draw(
+            not_come.iter().map(|d| d.text(t)).collect(),
+            Vec::new(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        );
+    }
     let files = match curate(&subject.claim, &cited, now, &edit) {
         Ok(files) => files,
         Err(m) => {

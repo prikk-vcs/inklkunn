@@ -27,18 +27,20 @@ struct Cast {
 /// A wiki whose `Home` says one claim in its first paragraph (undecided, citing two sources, judged on the words as they
 /// are), already in version 1, so that a proposal's base is `state_id(1)`.
 fn cast() -> Cast {
+    cast_of(&[
+        source(1, SourceKind::Primary),
+        source(2, SourceKind::Secondary),
+    ])
+}
+
+/// [`cast`], with these two sources.
+fn cast_of(sources: &[inklkunn_core::knowledge::Source]) -> Cast {
     let mut c = claim(1, Standing::Unknown, None, SAID);
     c.sources = vec![
         link(1, Link::Supports, Bearing::Direct, SAID),
         link(2, Link::Challenges, Bearing::Partial, SAID),
     ];
-    let mut all = files(
-        &[c],
-        &[
-            source(1, SourceKind::Primary),
-            source(2, SourceKind::Secondary),
-        ],
-    );
+    let mut all = files(&[c], sources);
     all.push(("pages/Home.md".to_owned(), home_with(SAID)));
     let borrowed: Vec<(&str, &str)> = all.iter().map(|(p, t)| (p.as_str(), t.as_str())).collect();
     let w = with_accounts(World::new("handbook", "The Handbook", &borrowed));
@@ -114,7 +116,7 @@ async fn a_curation_proposal_sets_a_status_a_link_and_a_check_in_a_proposal_that
         json!({
             "status": "accepted",
             "links": [{"source": source_id(2).to_string(), "relation": "supports", "bearing": "indirect"}],
-            "sources": [{"source": source_id(1).to_string(), "reviewed": "2026-11-01", "availability": "available"}],
+            "sources": [{"source": source_id(1).to_string(), "reviewed": "2023-11-01", "availability": "available"}],
         }),
     )
     .await;
@@ -148,7 +150,7 @@ async fn a_curation_proposal_sets_a_status_a_link_and_a_check_in_a_proposal_that
     );
     let source_text = text_at(&files, &source_path(&source_id(1)));
     assert!(
-        source_text.contains("2026-11-01") && source_text.contains("available"),
+        source_text.contains("2023-11-01") && source_text.contains("available"),
         "{source_text}"
     );
     // Nothing in the repository changed: a status is set by a proposal that people accept.
@@ -223,6 +225,64 @@ async fn a_curation_that_leaves_the_base_as_it_is_or_names_what_is_not_there_is_
             .map(|l| l.is_empty())
             .unwrap_or(false)
     );
+}
+
+#[tokio::test]
+async fn a_day_that_has_not_come_in_any_timezone_is_refused_at_its_member_before_a_proposal_exists()
+{
+    // The wiki's clock is 2023-11-14T22:13Z: it is already 2023-11-15 at UTC+14, and 2023-11-16 has not come anywhere (K49).
+    let mut kept = source(2, SourceKind::Secondary);
+    kept.last_reviewed = Some(inklkunn_core::knowledge::Reviewed {
+        date: "2999-01-01".to_owned(),
+        proposal: None,
+    });
+    let c = cast_of(&[source(1, SourceKind::Primary), kept]);
+    let reviewed = |source: u8, day: &str| json!({"sources": [{"source": source_id(source).to_string(), "reviewed": day, "availability": "available"}]});
+    let not_come = propose(&c, reviewed(1, "2023-11-16")).await;
+    assert_eq!(not_come.status, 422, "{}", not_come.text());
+    assert_eq!(problem_type(&not_come), urn("unacceptable"));
+    assert_eq!(not_come.json().at("/reason"), "day-not-come");
+    assert_eq!(not_come.json().at("/member"), "sources[0].reviewed");
+    assert_eq!(
+        not_come.json().at("/source"),
+        &json!(source_id(1).to_string())
+    );
+    let detail = not_come
+        .json()
+        .at("/detail")
+        .as_str()
+        .unwrap_or("")
+        .to_owned();
+    assert!(detail.contains("2023-11-16"), "{detail}");
+    // A day far ahead is the same.
+    assert_eq!(propose(&c, reviewed(1, "2999-01-01")).await.status, 422);
+    // Nothing was made.
+    let list = || {
+        c.w.services
+            .proposals
+            .list(
+                &principal(&c.contributor),
+                &c.w.wiki,
+                &inklkunn_store::ProposalFilter::default(),
+            )
+            .unwrap()
+    };
+    assert!(list().is_empty());
+    // The date in UTC+14 is not one that has not come: a reviewer there may have written it.
+    let today_there = propose(&c, reviewed(1, "2023-11-15")).await;
+    assert_eq!(today_there.status, 201, "{}", today_there.text());
+    // A day the base already has is not a new record: it is left as it is, whatever it is.
+    let unchanged = propose(
+        &c,
+        json!({"sources": [{"source": source_id(2).to_string(), "reviewed": "2999-01-01", "availability": "unavailable"}]}),
+    )
+    .await;
+    assert_eq!(unchanged.status, 201, "{}", unchanged.text());
+    // A different day on that source is a new record.
+    let other = propose(&c, reviewed(2, "2999-01-02")).await;
+    assert_eq!(other.status, 422, "{}", other.text());
+    assert_eq!(other.json().at("/member"), "sources[0].reviewed");
+    assert_eq!(list().len(), 2);
 }
 
 #[tokio::test]

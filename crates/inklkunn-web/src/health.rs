@@ -554,6 +554,33 @@ struct SourcesDraw<'a> {
     nav: &'a mut Vec<(String, String)>,
 }
 
+/// How a claim is named in *Sources to review*: by the page it is said on, with a count when an earlier claim has the
+/// same page title; a claim keeps the name it was given wherever else the list names it.
+fn claim_said(
+    t: T,
+    index: &KnowledgeIndex,
+    named: &mut HashMap<String, String>,
+    used: &mut HashMap<String, usize>,
+    claim: &str,
+) -> String {
+    named
+        .entry(claim.to_owned())
+        .or_insert_with(|| {
+            let title = index
+                .anchors_of(claim)
+                .filter(|a| a.state == inklkunn_core::knowledge::index::PRESENT)
+                .find_map(|a| inklkunn_markup::path::path_to_title(a.page_path.as_deref()?));
+            match title {
+                Some(title) => crate::knowledge::marks::distinct(used, title),
+                None => t
+                    .msg(Key::HealthSourcesClaimNowhere)
+                    .with("id", claim)
+                    .text(),
+            }
+        })
+        .clone()
+}
+
 /// The rows of *Sources to review* (RFC 005 part 2 D-10): the source by the name it has on a claim's page, why it is
 /// listed (a person marked it unavailable; no one recorded looking at it; the last look was long ago, or on a day that
 /// has not come), the claims that cite it, each linked to its page and said with how the source bears on it, and what
@@ -572,6 +599,13 @@ fn source_rows(
     // keeps the name it was given wherever else the page names it.
     let mut named: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     let mut used = std::collections::HashMap::new();
+    // The numbering continues across pages: what the pages before this one named is named first, so a claim that
+    // shares its page title with an earlier one is told from it by the same count on every page (U-i).
+    for earlier in list.whole.get(..list.offset).unwrap_or_default() {
+        for c in &earlier.claims {
+            claim_said(t, &list.index, &mut named, &mut used, &c.claim);
+        }
+    }
     let rows = list
         .rows
         .iter()
@@ -607,25 +641,7 @@ fn source_rows(
                 .claims
                 .iter()
                 .map(|c| {
-                    let said = named
-                        .entry(c.claim.clone())
-                        .or_insert_with(|| {
-                            let title = list
-                                .index
-                                .anchors_of(&c.claim)
-                                .filter(|a| a.state == inklkunn_core::knowledge::index::PRESENT)
-                                .find_map(|a| {
-                                    inklkunn_markup::path::path_to_title(a.page_path.as_deref()?)
-                                });
-                            match title {
-                                Some(title) => crate::knowledge::marks::distinct(&mut used, title),
-                                None => t
-                                    .msg(Key::HealthSourcesClaimNowhere)
-                                    .with("id", &c.claim)
-                                    .text(),
-                            }
-                        })
-                        .clone();
+                    let said = claim_said(t, &list.index, &mut named, &mut used, &c.claim);
                     let label = match words::how(&c.relation, &c.bearing) {
                         Some(how) => t
                             .msg(Key::HealthSourcesClaim)
@@ -674,7 +690,8 @@ fn source_rows(
             .with("days", list.review_after_days)
             .text(),
     );
-    if list.offset > 0 || list.next.is_some() {
+    // A page past the last row shows no places (there are none to count): its body says so (K50).
+    if !list.rows.is_empty() && (list.offset > 0 || list.next.is_some()) {
         notes.push(
             t.msg(Key::HealthSourcesShowing)
                 .with("from", list.offset.saturating_add(1))
@@ -823,7 +840,13 @@ pub(crate) async fn health_list(
         caption: page.get(kind.name()),
         headers,
         rows,
-        none: page.get(kind.none()),
+        none: match &built {
+            // A page that begins after the last source is not an empty list (K50).
+            Built::Sources(list, _) if list.rows.is_empty() && list.total > 0 => {
+                page.get(Key::HealthSourcesNoMore)
+            }
+            _ => page.get(kind.none()),
+        },
         notes,
         nav,
         back_href: format!("/{}/-/health", wiki.slug),

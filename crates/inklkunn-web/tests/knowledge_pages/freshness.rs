@@ -379,3 +379,103 @@ async fn a_list_of_one_page_says_nothing_of_pages() {
     );
     assert!(body.contains("続きの出典を表示"), "{body}");
 }
+
+// ------------------------------------------------------------------------------------ the cursor and the numbering (K50, U-i)
+
+/// The sources `from` to `to`, unreviewed and titled by their number.
+fn sources_between(from: u8, to: u8) -> Vec<inklkunn_core::knowledge::Source> {
+    (from..=to)
+        .map(|i| {
+            let mut s = source(i, SourceKind::Other);
+            s.identity.title = Some(format!("Survey number {i}"));
+            s
+        })
+        .collect()
+}
+
+/// The sources `from` to `to`, as `sources_between` makes them, but looked at lately: they are not listed.
+fn looked_at(from: u8, to: u8) -> Vec<inklkunn_core::knowledge::Source> {
+    sources_between(from, to)
+        .into_iter()
+        .map(|mut s| {
+            s.last_reviewed = reviewed("2023-11-01");
+            s
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn an_edit_elsewhere_does_not_send_the_reader_back_to_the_first_rows() {
+    let w = crowd(55);
+    let first = get(&w, LIST).await.body();
+    let more = link_to(&first, "Show the next sources").expect("a link to the next rows");
+    // The wiki changes while the reader reads: the first source is looked at and no longer listed.
+    put(&w, &home_with(SAID), &[], &looked_at(1, 1));
+    let second = get(&w, &more).await.body();
+    // The page continues after the last source the reader was shown (number 50), wherever that now stands.
+    assert!(second.contains("Survey number 51”"), "{second}");
+    assert!(second.contains("Survey number 55”"), "{second}");
+    assert!(!second.contains("Survey number 50”"), "{second}");
+    assert_eq!(rows(&second).len(), 5, "{second}");
+    assert!(
+        second.contains("Showing sources 50 to 54 of 54."),
+        "{second}"
+    );
+}
+
+#[tokio::test]
+async fn a_cursor_past_the_end_says_there_are_no_more_sources_and_never_counts_backwards() {
+    let w = crowd(55);
+    let first = get(&w, LIST).await.body();
+    let more = link_to(&first, "Show the next sources").expect("a link to the next rows");
+    // The list is shorter now than when the link was made: five sources remain, and the reader had seen fifty.
+    put(&w, &home_with(SAID), &[], &looked_at(6, 55));
+    let past = get(&w, &more).await;
+    assert_eq!(past.status, StatusCode::OK);
+    let past = past.body();
+    assert!(rows(&past).is_empty(), "{past}");
+    assert!(past.contains("No more sources."), "{past}");
+    assert!(!past.contains("Showing sources"), "{past}");
+    assert!(!past.contains("No source needs a look."), "{past}");
+    assert_eq!(
+        link_to(&past, "Show the first sources").as_deref(),
+        Some(LIST)
+    );
+    let ja = request(&w, APP, "GET", &more, JA).await.body();
+    assert!(ja.contains("これ以上の出典はありません。"), "{ja}");
+    // A list with nothing to review at all still says so in its own words.
+    put(&w, &home_with(SAID), &[], &looked_at(1, 5));
+    let none = get(&w, &more).await.body();
+    assert!(none.contains("No source needs a look."), "{none}");
+    assert!(!none.contains("No more sources."), "{none}");
+}
+
+#[tokio::test]
+async fn two_claims_said_on_one_page_are_told_apart_by_a_count_that_goes_on_across_pages() {
+    // 55 sources, each cited by one claim, and every claim is said on the page `Home`: the claims are told apart by a
+    // count (Home, Home (2), …), and the second page goes on from where the first stopped (U-i).
+    let w = crowd(55);
+    let claims: Vec<_> = (1..=55u8)
+        .map(|n| {
+            let mut c = claim(n, Standing::Unknown, None, SAID);
+            c.sources = vec![link(n, Link::Supports, Bearing::Direct, SAID)];
+            c
+        })
+        .collect();
+    put(&w, &home_with(SAID), &claims, &sources_between(1, 55));
+    let first = get(&w, LIST).await.body();
+    assert!(first.contains("Home (supports, directly)"), "{first}");
+    assert!(first.contains("Home (50) (supports, directly)"), "{first}");
+    let more = link_to(&first, "Show the next sources").expect("a link to the next rows");
+    let second = get(&w, &more).await.body();
+    assert!(
+        second.contains("Home (51) (supports, directly)"),
+        "{second}"
+    );
+    assert!(
+        second.contains("Home (55) (supports, directly)"),
+        "{second}"
+    );
+    // None of the five begins again at the page's bare name.
+    assert!(!second.contains("Home (supports, directly)"), "{second}");
+}

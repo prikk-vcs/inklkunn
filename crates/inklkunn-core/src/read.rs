@@ -460,6 +460,12 @@ impl ReadService {
         self.review_after_days
     }
 
+    /// Is `day` (`YYYY-MM-DD`) a day that has not come: after the current date in the earliest timezone (UTC+14), by
+    /// this service's clock? A surface refuses to record such a day as the day someone looked (K49).
+    pub fn day_has_not_come(&self, day: &str) -> bool {
+        crate::knowledge::freshness::day_has_not_come(day, (self.clock)())
+    }
+
     /// The sources of the view's tip that want a person's look (RFC 005 part 2 D-10): marked unavailable, never
     /// reviewed, reviewed longer ago than `knowledge.review_after`, or reviewed on a day that has not come, each with
     /// the claims that cite it. **The whole list**; a surface that shows it asks for a page

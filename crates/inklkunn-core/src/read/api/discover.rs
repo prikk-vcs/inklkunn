@@ -4,7 +4,8 @@
 //!
 //! The backlinks and the health lists are computed whole for one tip and walked by an **offset stamped with
 //! that tip**: a walk that outlives its tip is told to start again (`invalid-cursor`) instead of being handed
-//! a page of a different list. The changes are walked by the last change seen.
+//! a page of a different list. The changes are walked by the last change seen, and so is the list of sources to review
+//! (by the last source id seen: an edit elsewhere does not restart it).
 
 use std::sync::Arc;
 
@@ -169,7 +170,8 @@ pub struct UnreadableKnowledgeFile {
     pub rule: Rule,
 }
 
-/// One page of the list of sources to review, with what a page of it is named from (K40).
+/// One page of the list of sources to review, with what a page of it is named from (K40). The walk continues after the
+/// last source id shown, not at an offset (K50).
 #[derive(Debug, Clone)]
 pub struct SourcesToReviewPage {
     /// The knowledge index of the tip the list was read at: a page names the claims and the sources from it.
@@ -180,10 +182,14 @@ pub struct SourcesToReviewPage {
     pub total: usize,
     /// Where the next page begins; `None` on the last.
     pub next: Option<Cursor>,
-    /// How many rows come before this page.
+    /// How many rows come before this page. It is where the cursor's source stands **now**; a cursor past the
+    /// last source gives an empty page with the whole list's length here.
     pub offset: usize,
     /// `knowledge.review_after`, in days, as the list was read under.
     pub review_after_days: u32,
+    /// The whole list, of which `rows` is the slice from `offset`: a page that numbers what it names (two claims said
+    /// on one title) numbers them as the pages before it did.
+    pub whole: Arc<Vec<SourceToReview>>,
 }
 
 /// How far the stale list looked.
@@ -234,8 +240,10 @@ pub struct ChangePage {
 
 impl ReadService {
     /// One page of the sources that want a person's look, from the list kept with the knowledge index of the view's
-    /// tip (computed once for the tip, the day and the setting). The day is read once: the rows and the cursor's
-    /// stamp are of the same day, and a cursor of another tip, day or setting is [`ApiError::InvalidCursor`].
+    /// tip (computed once for the tip, the day and the setting). The day is read once. The walk continues **after the
+    /// last source id shown** (the list's order), so an edit elsewhere, a new day or a changed setting does not
+    /// restart it; a cursor past the last source is an empty page, and a cursor that is not a source's is
+    /// [`ApiError::InvalidCursor`].
     pub fn sources_to_review_page(
         &self,
         wiki: &WikiRecord,
@@ -246,26 +254,31 @@ impl ReadService {
         let now = (self.clock)();
         let index = self.knowledge_index(wiki, view)?;
         let all = freshness::sources_to_review_kept(&index, now, self.review_after_days);
-        let stamp = list_stamp(
-            index.tip(),
-            &format!(
-                "health:sources-to-review:{}:{}",
-                now.div_euclid(86_400),
-                self.review_after_days
-            ),
-        );
-        let offset = match after.map(Cursor::position) {
-            Some(Some(Position::Offset { at, .. })) => at,
-            _ => 0,
+        // The page begins after the last source id the reader was shown, wherever that id now stands in the list:
+        // an edit elsewhere, a new day or a changed setting does not send the walk back to the first page (K50).
+        let start = match after.map(Cursor::position) {
+            None => 0,
+            Some(Some(Position::Source(seen))) => {
+                all.partition_point(|row| row.source.id.as_str() <= seen.as_str())
+            }
+            Some(_) => return Err(ApiError::InvalidCursor),
         };
-        let (rows, next) = offset_page(&all, &stamp, after, limit)?;
+        let end = start
+            .saturating_add(limit.clamp(1, MAX_PAGE_SIZE))
+            .min(all.len());
+        let rows = all.get(start..end).unwrap_or_default().to_vec();
+        let next = (end < all.len())
+            .then(|| all.get(end.saturating_sub(1)))
+            .flatten()
+            .map(|last| Cursor::after_source(&last.source.id));
         Ok(SourcesToReviewPage {
             index,
             rows,
             total: all.len(),
             next,
-            offset,
+            offset: start,
             review_after_days: self.review_after_days,
+            whole: all,
         })
     }
 

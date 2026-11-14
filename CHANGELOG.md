@@ -981,6 +981,29 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   (`inklkunn-signer/tests/format_marker.rs`); the check, the flag, the plan's lines and recovery's stop and its finish after the marker
   is put back, on real 0.55.0 and 0.57.0 (`inklkunn-core/tests/recovery.rs`); the plan's two lines. **Four new prikk-dependent tests**
   (two in the signer's `format_marker.rs`, two in core's `recovery.rs`, each printing its skip line when its prikk is absent).
+- **K49 (handoff 005 corrections, fifth round): a future day, in any timezone.** *A day that has not come* is a day after the
+  current date in the earliest timezone, UTC+14 (`freshness::day_has_not_come`, `EARLIEST_ZONE_SECS`, `ReadService::day_has_not_come`
+  by the service's clock), so a reviewer in Japan or Kiritimati who records their own today is no longer told it has not come; the list
+  of *Sources to review* classifies `review-in-future` by the same rule, and the list kept with an index is keyed by the UTC day and
+  that date. The curation form and `POST …/proposals/curation` refuse such a day **at its field** before a proposal exists: the form
+  says it as a problem naming the source and the day (`curate.day_not_come`, both languages), the API as `422 unacceptable`
+  with `reason: day-not-come`, `member: sources[i].reviewed` and `source`; a day the base already has is not a new record and is left
+  as it is. Tests: the boundary at 09:59:59 and 10:00:00 UTC, the kept list across it, the list's reason, the form and the API for a
+  day ahead, the date in UTC+14 itself, and a day already recorded; the tests that sent a 2026 day through the form now send a
+  2023 one (the web tests' clock is 2023-11-14). A test that sends a `reviewed` day through the form or the API must use a day on or
+  before 2023-11-15. No new prikk-dependent test.
+
+- **K50 (handoff 005 corrections, fifth round): the list's cursor survives other edits.** The cursor of *Sources to review* (the page
+  and `GET …/health/sources-to-review`) is `s1` and the last source id shown, not an offset stamped with the tip and the day: the
+  list continues **after that id** in the list's order (`Position::Source`), so an accepted edit elsewhere, a new day or a changed
+  setting no longer sends the reader back to row 1. A cursor past the last source is an empty page and the page says *No more
+  sources.* (`health.sources_no_more`, both languages) with the way back to the first, instead of *Showing sources 56 to 55 of 55*;
+  the places shown (`Showing sources 51 to 55 of 55`) are where the id stands in the list as it is now. A cursor of another list,
+  or one that is not an id, is still `invalid-cursor` (the page starts the list). **K54 U-i point 3:** the count that tells two claims
+  said on one page apart (`Home`, `Home (2)`, …) continues across pages: `SourcesToReviewPage.whole` carries the whole list and a page
+  names the claims of the rows before it first. New: `Cursor` tag `s1` (opaque), `SourcesToReviewPage.whole`. Tests: the walk across
+  tips and days, a cursor past the end and exactly at the end, forged cursors, the page through the router in both languages, and
+  the numbering on the second page. No new prikk-dependent test.
 
 ## [0.2.0] — 2026-11-04
 

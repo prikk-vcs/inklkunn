@@ -212,13 +212,15 @@ fn a_day_that_has_not_come_is_listed_on_its_own_reason_never_hidden() {
         &[],
         &[
             source(1, Availability::Available, Some("2999-01-01")),
-            source(2, Availability::Available, Some("2026-11-16")),
+            source(2, Availability::Available, Some("2026-11-17")),
             source(3, Availability::Available, Some(TODAY)),
             source(4, Availability::Unavailable, Some("2999-01-01")),
+            // The date in UTC+14 is 2026-11-16 at this moment: a reviewer in Kiritimati may have written it (K49).
+            source(5, Availability::Available, Some("2026-11-16")),
         ],
     );
     let rows = listed(&w, NOW, DEFAULT_REVIEW_AFTER_DAYS);
-    // Tomorrow is a day that has not come; today is not.
+    // The day after the date in the earliest timezone is a day that has not come; that date and today are not.
     assert_eq!(
         ids(&rows),
         [
@@ -249,6 +251,49 @@ fn a_day_that_has_not_come_is_listed_on_its_own_reason_never_hidden() {
         [source_id(1).as_str(), source_id(4).as_str()],
         "the day of source 2 has come, and it is not old"
     );
+}
+
+#[test]
+fn a_day_has_not_come_only_when_it_is_after_the_date_in_utc_plus_14() {
+    use crate::knowledge::freshness::day_has_not_come;
+    // 2026-11-15T09:59:59Z is 23:59:59 on 2026-11-15 in UTC+14; one second later it is 2026-11-16 there.
+    let before = NOW - 7_201;
+    let after = NOW - 7_200;
+    assert!(!day_has_not_come("2026-11-15", before));
+    assert!(day_has_not_come("2026-11-16", before));
+    assert!(!day_has_not_come("2026-11-16", after));
+    assert!(day_has_not_come("2026-11-17", after));
+    // At midnight UTC itself the reviewers of Japan, Australia and Kiritimati are already on the new date.
+    let midnight = NOW - 12 * 3_600;
+    assert!(!day_has_not_come("2026-11-15", midnight));
+    assert!(!day_has_not_come("2026-11-14", midnight));
+    // A text that is not a day has not "not come" (it is refused as no day).
+    assert!(!day_has_not_come("next week", NOW));
+    assert!(!day_has_not_come("", NOW));
+    // The service says it by its clock.
+    let w = world(&[], &[]);
+    let service = clocked(&w, DEFAULT_REVIEW_AFTER_DAYS);
+    assert!(!service.day_has_not_come("2026-11-16"));
+    assert!(service.day_has_not_come("2026-11-17"));
+}
+
+#[test]
+fn the_kept_list_follows_the_date_in_utc_plus_14_as_well_as_the_utc_day() {
+    // One source reviewed on 2026-11-16: it is a day that has not come until 10:00 UTC on 2026-11-15, then it has.
+    let w = world(
+        &[],
+        &[source(1, Availability::Available, Some("2026-11-16"))],
+    );
+    let index = index_of(&w);
+    let kept = |now: i64| {
+        crate::knowledge::freshness::sources_to_review_kept(&index, now, DEFAULT_REVIEW_AFTER_DAYS)
+    };
+    let before = kept(NOW - 7_201);
+    assert_eq!(before.len(), 1);
+    // The same UTC day, the next second: the list is another one, and the source is not listed.
+    let after = kept(NOW - 7_200);
+    assert!(after.is_empty());
+    assert!(!Arc::ptr_eq(&before, &after));
 }
 
 #[test]
@@ -559,7 +604,7 @@ fn the_setting_is_kept_between_one_day_and_a_hundred_years() {
 }
 
 #[test]
-fn the_list_is_walked_in_pages_by_a_cursor_stamped_with_the_tip_and_the_day() {
+fn the_list_is_walked_in_pages_by_a_cursor_after_the_last_source_shown() {
     let sources: Vec<Source> = (1..=5u8)
         .map(|n| source(n, Availability::Unavailable, Some(TODAY)))
         .collect();
@@ -581,25 +626,120 @@ fn the_list_is_walked_in_pages_by_a_cursor_stamped_with_the_tip_and_the_day() {
     let mut sorted = all.clone();
     sorted.sort();
     assert_eq!(all, sorted);
-    // A cursor of another list is not followed, and neither is one from another day.
+    // A cursor of another list is not followed.
     assert!(
         service
             .api_health(&w.wiki, None, HealthList::Wanted, first.next.as_ref(), 2)
             .is_err()
     );
+    // The cursor says the id it follows, and nothing of the tip or the day: the list continues after that source
+    // on another day, too (K50).
+    let cursor = first.next.as_ref().expect("a next page");
+    assert_eq!(
+        cursor.as_str(),
+        format!("s1{}", source_id(2).as_str()),
+        "after the last source shown"
+    );
     let tomorrow =
         World::service_over(&w.counting, &w.store, &w.layout, config()).with_clock(|| NOW + 86_400);
-    assert!(
-        tomorrow
-            .api_health(
-                &w.wiki,
-                None,
-                HealthList::SourcesToReview,
-                first.next.as_ref(),
-                2
-            )
-            .is_err()
+    let next_day = tomorrow
+        .sources_to_review_page(&w.wiki, None, Some(cursor), 2)
+        .expect("a page");
+    assert_eq!(
+        ids(&next_day.rows),
+        [source_id(3).as_str(), source_id(4).as_str()]
     );
+    assert_eq!(next_day.offset, 2);
+}
+
+#[test]
+fn an_edit_elsewhere_does_not_restart_the_walk() {
+    let five: Vec<Source> = (1..=5u8)
+        .map(|n| source(n, Availability::Unavailable, Some(TODAY)))
+        .collect();
+    let w = world(&[], &five);
+    let service = clocked(&w, DEFAULT_REVIEW_AFTER_DAYS);
+    let first = service
+        .sources_to_review_page(&w.wiki, None, None, 2)
+        .expect("a page");
+    let cursor = first.next.expect("a next page");
+    // Another tip of the wiki: source 1 is gone (it was looked at), source 6 is new.
+    let edited: Vec<Source> = (2..=6u8)
+        .map(|n| source(n, Availability::Unavailable, Some(TODAY)))
+        .collect();
+    let other = world(&[], &edited);
+    let service = clocked(&other, DEFAULT_REVIEW_AFTER_DAYS);
+    let second = service
+        .sources_to_review_page(&other.wiki, None, Some(&cursor), 2)
+        .expect("a page, not an invalid cursor");
+    assert_eq!(
+        ids(&second.rows),
+        [source_id(3).as_str(), source_id(4).as_str()]
+    );
+    // The page says where it stands in the list as it is now: source 2 is its first row.
+    assert_eq!((second.offset, second.total), (1, 5));
+    // The pages before it are in hand, so what a page numbers is numbered as the earlier pages did.
+    assert_eq!(second.whole.len(), 5);
+    assert_eq!(
+        ids(second.whole.get(..second.offset).unwrap_or_default()),
+        [source_id(2).as_str()]
+    );
+}
+
+#[test]
+fn a_cursor_past_the_end_is_an_empty_page_not_an_error_and_not_a_wrong_count() {
+    let five: Vec<Source> = (1..=5u8)
+        .map(|n| source(n, Availability::Unavailable, Some(TODAY)))
+        .collect();
+    let w = world(&[], &five);
+    let service = clocked(&w, DEFAULT_REVIEW_AFTER_DAYS);
+    let cursor = service
+        .sources_to_review_page(&w.wiki, None, None, 4)
+        .expect("a page")
+        .next
+        .expect("a next page");
+    // The wiki now lists three: the reader was shown up to source 4.
+    let three: Vec<Source> = (1..=3u8)
+        .map(|n| source(n, Availability::Unavailable, Some(TODAY)))
+        .collect();
+    let other = world(&[], &three);
+    let page = clocked(&other, DEFAULT_REVIEW_AFTER_DAYS)
+        .sources_to_review_page(&other.wiki, None, Some(&cursor), 4)
+        .expect("a page");
+    assert!(page.rows.is_empty() && page.next.is_none());
+    assert_eq!((page.offset, page.total), (3, 3));
+    // And exactly at the last source.
+    let at_end =
+        crate::read::Cursor::parse(&format!("s1{}", source_id(3).as_str())).expect("a cursor");
+    let page = clocked(&other, DEFAULT_REVIEW_AFTER_DAYS)
+        .sources_to_review_page(&other.wiki, None, Some(&at_end), 4)
+        .expect("a page");
+    assert!(page.rows.is_empty() && page.next.is_none());
+}
+
+#[test]
+fn only_a_cursor_that_names_a_source_id_is_one() {
+    use crate::read::Cursor;
+    let id = source_id(2);
+    assert!(Cursor::parse(&format!("s1{id}")).is_some());
+    for bad in [
+        "s1",
+        "s1 ",
+        "s1ABC",
+        "s1../x",
+        "s1%2e",
+        &format!("s1{id}{id}{id}"),
+    ] {
+        assert!(Cursor::parse(bad).is_none(), "{bad:?}");
+    }
+    // A cursor of another list is refused by the sources' list.
+    let w = world(&[], &[source(1, Availability::Unavailable, Some(TODAY))]);
+    let service = clocked(&w, DEFAULT_REVIEW_AFTER_DAYS);
+    let foreign = Cursor::parse("n12").expect("a cursor");
+    assert!(matches!(
+        service.sources_to_review_page(&w.wiki, None, Some(&foreign), 2),
+        Err(crate::read::ApiError::InvalidCursor)
+    ));
 }
 
 #[test]

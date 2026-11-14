@@ -510,3 +510,4 @@ exact :: knowledge.rs :: page :: a placeholder name of a catalog message
 scope :: knowledge_api.rs :: * :: the knowledge endpoints: their descriptions and schemas (English by decision, like describe.rs), JSON member names and codes (presence, reach, basis); every sentence a caller reads is a problem detail or a catalog message
 scope :: curation.rs :: * :: the curation proposal over the API: JSON member names and the stable words of what was wrong (`nothing-to-curate`, `unknown-source`); every sentence a caller reads is a catalog message the form uses as well
 exact :: thread.rs :: comment :: a placeholder name of a catalog message (the link of a reply to the comment it answers)
+exact :: curate.rs :: day :: a placeholder name of a catalog message (the day a source was said to be looked at, K49)

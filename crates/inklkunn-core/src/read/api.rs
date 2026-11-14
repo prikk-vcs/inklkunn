@@ -41,6 +41,7 @@ const CURSOR_TAG: &str = "c1";
 const NUMBER_TAG: &str = "n1";
 const OFFSET_TAG: &str = "o1";
 const KEY_TAG: &str = "k1";
+const SOURCE_TAG: &str = "s1";
 
 /// A position in a list. **Opaque to callers** (it is a version tag and what the list's order is keyed by; the
 /// format may change, and a cursor from another format, or one made for another list, is refused).
@@ -59,6 +60,9 @@ enum Position {
     /// After the change whose block id has this key (the recent changes): the key is a hash, so a cursor does
     /// not carry the id of a change the reader may not be allowed to see.
     Key(String),
+    /// After the source with this id (the list of sources to review): the list's order is the ids', so an edit
+    /// elsewhere does not move the place (K50).
+    Source(String),
 }
 
 impl Cursor {
@@ -81,6 +85,11 @@ impl Cursor {
     /// The position at this offset of the list computed for the tip `stamp`.
     fn at_offset(at: usize, stamp: &str) -> Cursor {
         Cursor(format!("{OFFSET_TAG}{at}.{stamp}"))
+    }
+
+    /// The position just after the source with this id.
+    fn after_source(id: &str) -> Cursor {
+        Cursor(format!("{SOURCE_TAG}{id}"))
     }
 
     /// The position just after the change in block `block_id`.
@@ -120,6 +129,14 @@ impl Cursor {
                 at,
                 stamp: stamp.to_owned(),
             });
+        }
+        if let Some(id) = text.strip_prefix(SOURCE_TAG) {
+            // A source id is a lower-case UUID: hexadecimal digits and hyphens, nothing else.
+            let id_like = (1..=64).contains(&id.len())
+                && id
+                    .bytes()
+                    .all(|b| b == b'-' || b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+            return id_like.then(|| Position::Source(id.to_owned()));
         }
         let key = text.strip_prefix(KEY_TAG)?;
         is_hex(key, 16..=16).then(|| Position::Key(key.to_owned()))

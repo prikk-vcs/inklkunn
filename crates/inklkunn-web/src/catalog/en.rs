@@ -2616,6 +2616,10 @@ pub const CATALOG: &[Entry] = &[
         "The claim is not said in any paragraph now, so there is no wording to judge a source or a status on.",
     ),
     msg(
+        "curate.day_not_come",
+        "Source: {title}. The day {day} has not come yet in any timezone, so no one can have looked on it. Write the day it was looked at, or leave the date empty.",
+    ),
+    msg(
         "propose.claim_held_one",
         "Others rely on this paragraph: sources are attached to it. Its marker is kept for you, so just edit the words.",
     ),
@@ -3028,6 +3032,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg("health.sources_more", "Show the next sources"),
     msg("health.sources_first", "Show the first sources"),
+    msg("health.sources_no_more", "No more sources."),
     msg(
         "know.curate_link",
         "Propose a change to its status or sources",
