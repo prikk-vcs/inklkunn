@@ -356,6 +356,24 @@
     - a claim's thread leaves `discussions/` (wiki-commons' page discussions) for the knowledge extension, with escaped bodies.
   - **RFC 005 part 2:** four clarifications.
   - Pushed.
+- **2026-11-14 — M12 – M19, K32 – K40, K42 and K-T11 with K41 reviewed** (`10370b7`).
+  - **Gates and readings:** 2,880 tests passed shimmed off (307 self-skips), on the host's 0.57.0 and on the release asset's binary. On 0.55.0, two load-sensitive tests failed under the reviewers' parallel builds and pass alone. Three adversarial readings.
+  - **All three Conditionally Approved.**
+  - **Maintenance M20 – M26:**
+    - a format marker prikk calls an integrity error (a stray CR) is a marker error too;
+    - the plan promises only what the run will do;
+    - debris is never in the way, in the signer too;
+    - **CI installs the 0.57.0 asset** (checksum pinned) after the floor, so the 0.57.0 tests run;
+    - no test fails because the machine is busy.
+  - **Knowledge K43 – K54:**
+    - **an import beside a running server could be judged against an empty tree**: one process's sweep removed the other's extract (K51, first);
+    - curation could not remove a link or correct a checked source, so it gains both;
+    - a decided status needs a judgement;
+    - the claim page names sources by their whole id;
+    - a thread's body is a fenced text block, not escaped Markdown;
+    - an import with claims refused redirect pages.
+  - **RFC 005 part 2:** D-11 amended, D-12 *what an import may carry*.
+  - Pushed.
 
 ## Pending on the owner
 
@@ -378,8 +396,8 @@
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and handoff 003's T1 – T3 are built and
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
-(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **The dev team's order now:** **K32 – K42** and **M12 – M19**,
-with K-T11 beside them (all before 0.3.0); and, at the next touch of `signer/retirement.rs`,
+(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **M12 – M19, K32 – K42 and K-T11 reviewed (2026-11-14).** **The dev team's order now:** **K43 – K54** (K51 first) and **M20 – M26**
+(all before 0.3.0); then 0.3.0's readiness; and, at the next touch of `signer/retirement.rs`,
 `seal_pause`'s operator sentence (Z7 – Z9 review). An assistive-technology pass is arranged before 0.3.0.
 
 ## Issue register

@@ -123,3 +123,38 @@ request, `010-maintenance-2026-11-corrections-2-review-request.md`.
 - **M19 — the preview's line separators.** The preview's replacement set gains U+2028 and U+2029, as `message.rs` and `audit.rs` treat them. Make it one shared definition if they are the same set; otherwise name why they differ. The test that keeps U+2029 changes with it.
 
 Process: the dates of records are the day's real date (the request said 2026-11-15 on 2026-11-14).
+
+## Corrections from the review of 2026-11-14, third round (binding; **before 0.3.0**)
+
+M12 – M19 are **Conditionally Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-corrections-2-review-result.md`). Hand
+back M20 – M26 as one request, `010-maintenance-2026-11-corrections-3-review-request.md`.
+
+- **M20 — every damaged marker is a marker error** (T-a, T-e, T-f).
+  - **What is classified.** The classifier also recognises prikk's own sentence for a marker it cannot read: `integrity error: the repository format marker .prikk/FORMAT holds "<text>", which is not a format number this version reads (it reads formats …)`. It is matched exactly as M17 matches the other, and measured on 0.55.0 and 0.57.0. Its result is `FormatMarker`.
+  - **Tests:** the markers `8\r\n`, ` 8\n`, `x\n` and an empty file, each on 0.55.0 and 0.57.0, each ending flagged and at the `format-marker` stop.
+  - **The flag's reason says what it is.** Add a reason for a damaged format marker, or say in the plan's line why `interrupted` is used; never print *interrupted* for it.
+  - **`docs/RECOVERY.md` and `SECURITY.md`** say that the next check flags the wiki, and when checks run.
+- **M21 — the plan promises only what the run will do** (T-b).
+  - `--plan` asks `has_uncommit`, which is safe in a plan (M12).
+  - `InARun` promises the take-back only when prikk has the verb and no stale lock stands in the way.
+  - Otherwise the plan says what the run will do: clear the lock and stop with the preview, or nothing, and why.
+  - Tests on 0.55.0 and on 0.57.0 with a stale lock, comparing the plan's sentence with what the run did.
+- **M22 — the sentences are true** (T-c, T-g, T-h).
+  - `AfterSteps` never says *nothing was done* when steps were done.
+  - *The lock was not cleared* only when the clear itself failed; a failed re-listing after a clear says so.
+  - *Still held* names the lock that is.
+  - `is_line_or_control` is used by every text shown as one line, including the foreign-block summary and rollback's `fit`, or the doc comment claims less.
+  - Tests assert the whole sentence.
+- **M23 — debris is never in the way, in the signer too** (decision 1, T-d). The cleanup-pending step and the view-creation step read *only that finding* through the same rule as `others()`. RECOVERY.md's sentence is then true. Test: debris beside each of the two, on the real state where it can be made.
+- **M24 — `failed_objects` read leniently** (T-i). A value that is not a list makes the list not whole; the rest of the report is still read. A driver test.
+- **M25 — CI runs the 0.57.0 tests** (T-j, decision 4).
+  - `ci.yml`'s build job and `release.yml` install the prikk **0.57.0** release asset as well as the floor. The asset's checksum is pinned in the workflow beside the floor's: `4e621147c3064c1f456803c67f120df9ea35d93e40554e920c9ea55e69d3f9a8` for `prikk-x86_64-unknown-linux-gnu.tar.gz`, measured by the architect against its `.sha256`.
+  - It goes in its own directory **after** the floor on `PATH`, so the floor stays the prikk every other test uses.
+  - The with-prikk run fails if any `skipping: prikk 0.57.0 or newer not found` or `skipping: no prikk older than 0.57.0` line appears.
+  - The shimmed run removes both directories, and `EXPECTED_SKIPS` counts what it counts today.
+  - `floor-check` and RFC 010's pin rule name the second pin as a **test-only** prikk, not a floor.
+- **M26 — no test fails because the machine is busy** (T-k, and the knowledge result's U-k).
+  - **The lock test:** the waiter takes the lock with the product's grace, or the test runs in its own process. What it asserts stays.
+  - **The Argon2 test:** it asserts the parameters, and keeps a timing bound only as generous as the slowest supported runner needs (say how much that is).
+  - **K40's bounds:** they become counts of work (lookups, or `Arc::ptr_eq` for the memo) instead of wall-clock times.
+  - **Every other wall-clock assertion in the workspace:** list each, and say for each why it is safe under load or change it.

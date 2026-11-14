@@ -271,3 +271,63 @@ K32 – K42 as one request, `005-knowledge-layer-corrections-4-review-request.md
   - V18's doc comment says one index.
 
 Process: never kill processes by pattern (`pkill`, `killall`); a record carries the day it was written.
+
+## Corrections from the review of 2026-11-14, fifth round (binding; **before 0.3.0**)
+
+K32 – K40, K42 and K-T11 with K41 are **Conditionally Approved**:
+- `.git-exclude/reviewed/005-knowledge-layer-corrections-4-review-result.md`
+- `.git-exclude/reviewed/005-knowledge-layer-k-t11-review-result.md`
+
+RFC 005 part 2: D-11's clarification is amended (the bodies are a fenced text block), and D-12, *what an import may carry*, is added. Hand back
+K43 – K54 as one request, `005-knowledge-layer-corrections-5-review-request.md`. **K51 first.**
+
+- **K43 — the whole identifier where readers look** (U-a).
+  - The claim page's source lines and *Sources to review* carry each source's whole id in `<code>`, as K32's lines do. *Sources to review* names each claim by its id as well as its page.
+  - The test that asserts the claim page shows no id is turned around.
+  - A twin source gives two lines that differ, on both surfaces, en and ja.
+- **K44 — curation can make every change only curation may** (U-b).
+  - The curation proposal (form and `POST …/proposals/curation`, one `Curation` in `compose`) gains:
+    - **removing a link**;
+    - **on a checked source:** its identity (title, author, date), its reference and its `superseded_by`.
+  - Shown and confirmed line by line like the rest, and judged by the same rules at acceptance.
+  - K39's link is offered only for refusals the form can then make. For any other refusal the sentence says what can be done instead (for example: a removal of a claim or of a source file is decided by a reviewer, not a proposer).
+  - Tests: each newly reachable change, from the refusal's link to the accepted file.
+- **K45 — every judgement, every way** (U-c).
+  - A decided community status (not `undecided`) must carry a `judged_on`.
+  - A link whose relation or bearing changes, and a status whose value changes, is a new judgement: its `judged_on` must name a wording the result has, even if the digest is unchanged.
+  - One function, at the three places.
+  - The `cleared` test is turned around.
+- **K46 — the form reads renames** (U-d, decision 4). The page-edit and revise form passes the edit's renames to `ProposedPages`. Test: revising a proposal that renames and edits a page, where the page and submit agree.
+- **K47 — the API's curation is one step** (U-e). `POST …/proposals/curation` uses `create_and_submit`. A refused send leaves nothing (test).
+- **K48 — a link leads to what exists** (U-f).
+  - A claim is linked only when the view's **tip** has it.
+  - A source fragment is used only when that claim's page at the tip lists the source; otherwise the claim is linked without the fragment.
+- **K49 — a future day, in any timezone** (U-g).
+  - *A day that has not come* means a day after the current date in the earliest timezone (UTC+14), so no reviewer's local today is called future.
+  - The curation form and the API refuse such a day, by field, before a proposal exists.
+- **K50 — the list's cursor survives other edits** (U-h).
+  - The cursor continues after the last source id shown (the list's order), not after an offset stamped with the tip. An edit elsewhere does not restart it.
+  - A cursor past the end shows *No more sources*, never *56 to 55*.
+- **K51 — one extract cannot remove another's, and a vanished extract is an error** (V-a).
+  - Each process extracts under its own directory (`scratch/<pid>-<start time>/`, or an equivalent unique name). The sweep removes only directories whose process is gone (the record of the pid and start time, as the lease records do).
+  - `with_tree` checks that its extract root still exists after the work. A missing root is *could not be read now*, never an empty tree.
+  - Test: two `ReadService`s on one layout, one extracting while the other sweeps; neither is judged on an empty tree.
+- **K52 — an import is judged as the service, not as a proposer** (V-b). The import's knowledge judgement applies the knowledge rules. The page-key ownership rule is the import plan's own (as without knowledge files). Test: the reviewer's fixture with a `kind: redirect` page and claims.
+- **K53 — a thread's body is a fenced text block** (V-c; RFC clarification D-11 amended).
+  - Each body is carried as a fenced code block with the info string `text`, fenced with one more backtick than the longest run of backticks in the body. Line endings are normalised to LF first; no other change is made.
+  - Every CommonMark and GFM reader shows exactly the text, and no construct inside renders.
+  - `markdown_text`'s construct-by-construct escaping goes.
+  - Tests, through a CommonMark and GFM parser other than inklkunn's renderer (a dev-dependency):
+    - the reviewer's cases (`www.`, mail addresses, `\r`, NBSP, `$…$`, `%%`);
+    - a body full of backticks;
+    - that a round trip of the fence returns the text.
+- **K54 — small points:**
+  - **The fourth-round result (U-items).**
+    - **U-i:** the one-claim link names the claim; `curate_link_of`'s id is in `<code>`; the numbering of claims in *Sources to review* continues across pages; *and N more* appears beyond five.
+    - **U-j:** `begins_alike` compares both lines against the base and the result together.
+    - **U-l:** the reconfirm reads the title index at the prepared state (`title_index_at_base`, cached) instead of extracting the tree.
+  - **The K-T11 result (V-items).**
+    - **V-d:** the import judges with the operator's `ReadConfig`.
+    - **V-e:** each drop names its page and block, and so does its refusal. The doc comment says the tip's index. `api.claim_lost` says *claims are said there*. `drop-not-removed` is mutation-checked.
+    - **V-f:** provenance reads the index at `page_why`'s tip.
+    - **V-g:** the five drift points, with `compare_views` in path order and a test.

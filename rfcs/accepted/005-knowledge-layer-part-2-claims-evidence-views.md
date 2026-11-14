@@ -183,7 +183,12 @@ index (D-1 … D-6) may start earlier if the dev team has room, as they touch no
 - **D-11, a thread in the bundle (2026-11-14).** wiki-commons' `discussions/` holds one file per **page**, with bodies in Markdown
   (XFER-10). A claim's thread is neither, so it is the knowledge extension's data:
   - it is exported where K-T11's extension (`inklkunn-knowledge@1`) declares;
-  - its bodies are escaped so that Markdown shows them as the plain text inklkunn showed;
+  - its bodies are carried as fenced text blocks (amended 2026-11-14 from *escaped*), so that every Markdown reader shows exactly the plain text inklkunn showed;
   - the manifest's `discussions` stays a statement about page discussions.
 
   Proposal comments are interchange of RFC 004's records, so they go to RFC 007 (M5), not to 0.3.0.
+- **D-12, what an import may carry (2026-11-14).** An import is the service writing: the page rules are the import plan's, and
+  the knowledge rules are an acceptance's. It may bring claims, sources and links, **but no curated state**: no decided
+  status, no review day, no availability, and no source that is checked. Such a bundle is refused whole, by file and rule,
+  never stripped: stripping would be a decision, and carrying the state would assert decisions this wiki's people never made.
+  Importing curated state with its provenance, and reading back threads and view records, are RFC 007's (M5).
