@@ -1450,6 +1450,20 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   `know.not_by_form` and in no other), the refusal's own words, the choice for every mix of refusals, the proposal page, the refused
   send and the Japanese page for a removal and for an unreadable file.
 
+- **K68 (handoff 005 corrections, seventh round): the request schemas are standard and the test sees closedness.**
+  `CurationSource.superseded_by` was a `oneOf` of a `format: uuid` string and `const: ""`, and `""` is a valid `uuid` for a validator that
+  treats `format` as an annotation (OpenAPI 3.1): two alternatives matched. It is an `anyOf` of the lower-case version-7 id (with
+  white space around it, which the handler trims) and of white space only. Ids of claims and sources carry the `pattern`
+  `^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`, besides `format: uuid`, so an id in upper case or of another
+  version is invalid for the schema as it is for the handler. The `reason`'s description says it counts bytes (JSON Schema's
+  `maxLength` counts characters, and stays as the first check). The test's walk (`tests/api/shapes.rs`) reads `pattern` (a small subset
+  of regular expressions, refusing one it cannot read) and `anyOf`, and holds a request to what its schema says: an object is open
+  unless `additionalProperties` is `false` (`Checker::for_request`); answers are still held to every member they declare. A new test
+  opens every closed place of the request schemas in a copy of the document, one at a time, and fails unless a refused row is then
+  valid (it found four places no row covered: the comment, the decision, a rename and a drop; they have rows now). Rows for a trimmed
+  and for an empty `superseded_by`, for ids in upper case or of another version (claim, link, source, replacement), and a test of a
+  reason counted in bytes (4096 bytes taken, 2049 two-byte characters refused by the handler and not by `maxLength`).
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

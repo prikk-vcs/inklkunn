@@ -143,7 +143,7 @@ async fn every_write_body_has_examples_and_each_is_valid_for_its_schema_and_take
         assert!(!examples.is_empty(), "{name} has no example");
         for (i, example) in examples.iter().enumerate() {
             let mut problems = Vec::new();
-            Checker::new(&document).check(
+            Checker::for_request(&document).check(
                 &json!({"$ref": format!("#/components/schemas/{name}")}),
                 example,
                 "$",
@@ -193,6 +193,16 @@ fn curation(more: Value) -> Value {
         into.extend(from);
     }
     body
+}
+
+/// An id of the same layout whose version is not 7.
+fn other_version(id: &str) -> String {
+    assert_eq!(id.get(14..15), Some("7"), "{id}");
+    format!(
+        "{}4{}",
+        id.get(..14).unwrap_or(""),
+        id.get(15..).unwrap_or("")
+    )
 }
 
 /// The shapes of a curation body: what a link, a source and a reference may and may not say.
@@ -377,6 +387,56 @@ fn curation_shapes() -> Vec<Shape> {
             "a source replaced by no id",
             source(json!({"source": one, "superseded_by": "the later one"})),
         ),
+        // The handler trims the replacement (K68): white space around an id is the id, and white space alone is none.
+        yes(
+            "a source replaced by an id with white space around it",
+            source(json!({"source": one, "superseded_by": format!(" \t{two}\n")})),
+        ),
+        yes(
+            "a source that white space says nothing replaces",
+            source(json!({"source": one, "superseded_by": " \n"})),
+        ),
+        no(
+            "a source replaced by an id with white space inside it",
+            source(json!({"source": one, "superseded_by": two.to_string().replacen('-', " ", 1)})),
+        ),
+        // Ids are in lower case and of version 7, as the format has them (`format: uuid` is not enough).
+        no(
+            "a source replaced by an id in upper case",
+            source(
+                json!({"source": one, "superseded_by": source_id(0xab).to_string().to_uppercase()}),
+            ),
+        ),
+        no(
+            "a source replaced by an id of another version",
+            source(json!({"source": one, "superseded_by": other_version(&two.to_string())})),
+        ),
+        no(
+            "a source in upper case",
+            source(json!({"source": source_id(0xab).to_string().to_uppercase()})),
+        ),
+        no(
+            "a source of another version",
+            source(json!({"source": other_version(&one.to_string())})),
+        ),
+        no(
+            "a link's source in upper case",
+            link(
+                json!({"source": source_id(0xab).to_string().to_uppercase(), "relation": "supports", "bearing": "direct"}),
+            ),
+        ),
+        no(
+            "a link's source of another version",
+            link(json!({"source": other_version(&two.to_string()), "remove": true})),
+        ),
+        no(
+            "a claim in upper case",
+            curation(json!({"claim": claim_id(0xab).to_string().to_uppercase()})),
+        ),
+        no(
+            "a claim of another version",
+            curation(json!({"claim": other_version(&claim_id(1).to_string())})),
+        ),
     ]
 }
 
@@ -404,6 +464,14 @@ fn shapes_of(schema: &str) -> Vec<Shape> {
             yes(
                 "a rename and a drop",
                 json!({"summary": "x", "submit": false, "renames": [{"from": "pages/Guide.md", "to": "pages/Manual.md"}], "drops": [{"path": "pages/Home.md", "marker": "b1"}]}),
+            ),
+            no(
+                "a rename with a member nobody knows",
+                json!({"summary": "x", "submit": false, "renames": [{"from": "pages/Guide.md", "to": "pages/Manual.md", "keep": true}]}),
+            ),
+            no(
+                "a drop with a member nobody knows",
+                json!({"summary": "x", "submit": false, "drops": [{"path": "pages/Home.md", "marker": "b1", "why": "x"}]}),
             ),
             no("no summary", json!({"submit": false})),
             no("no choice", json!({"summary": "x"})),
@@ -491,6 +559,7 @@ fn shapes_of(schema: &str) -> Vec<Shape> {
                 json!({"body": "x", "parent": "not-a-comment"}),
             ),
             no("no body", json!({})),
+            no("a member nobody knows", json!({"body": "x", "score": 5})),
             no("a body that is no text", json!({"body": 1})),
             no(
                 "an anchor with no position",
@@ -524,6 +593,10 @@ fn shapes_of(schema: &str) -> Vec<Shape> {
                 json!({"decision": "request-changes", "body": "x"}),
             ),
             no("no decision", json!({})),
+            no(
+                "a member nobody knows",
+                json!({"decision": "approve", "score": 5}),
+            ),
             no("a decision nobody knows", json!({"decision": "maybe"})),
             no(
                 "words that are no text",
@@ -542,7 +615,7 @@ async fn the_schema_and_the_handler_agree_on_the_shapes_of_every_write_body() {
     for name in request_schemas(&document).keys() {
         for shape in shapes_of(name) {
             let mut problems = Vec::new();
-            Checker::new(&document).check(
+            Checker::for_request(&document).check(
                 &json!({"$ref": format!("#/components/schemas/{name}")}),
                 &shape.body,
                 "$",
@@ -572,4 +645,170 @@ async fn the_schema_and_the_handler_agree_on_the_shapes_of_every_write_body() {
         }
     }
     assert!(disagreements.is_empty(), "{disagreements:#?}");
+}
+
+/// The pointers of every schema object under `value` that says `additionalProperties: false`.
+fn closed_places(value: &Value, at: &str, out: &mut Vec<String>) {
+    match value {
+        Value::Object(map) => {
+            if map.get("additionalProperties") == Some(&Value::Bool(false)) {
+                out.push(at.to_owned());
+            }
+            for (key, inner) in map {
+                closed_places(
+                    inner,
+                    &format!("{at}/{}", key.replace('~', "~0").replace('/', "~1")),
+                    out,
+                );
+            }
+        }
+        Value::Array(items) => {
+            for (i, inner) in items.iter().enumerate() {
+                closed_places(inner, &format!("{at}/{i}"), out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The names of the schemas a request schema is made of: itself, and every schema it refers to, and so on.
+fn made_of(document: &Value, name: &str, found: &mut std::collections::BTreeSet<String>) {
+    if !found.insert(name.to_owned()) {
+        return;
+    }
+    let mut refs = Vec::new();
+    fn collect(value: &Value, refs: &mut Vec<String>) {
+        match value {
+            Value::Object(map) => {
+                if let Some(r) = map.get("$ref").and_then(Value::as_str) {
+                    refs.push(r.rsplit('/').next().unwrap_or("").to_owned());
+                }
+                map.values().for_each(|v| collect(v, refs));
+            }
+            Value::Array(items) => items.iter().for_each(|v| collect(v, refs)),
+            _ => {}
+        }
+    }
+    collect(
+        document.at(&format!("/components/schemas/{name}")),
+        &mut refs,
+    );
+    for r in refs {
+        made_of(document, &r, found);
+    }
+}
+
+#[tokio::test]
+async fn a_request_schema_that_stops_being_closed_is_seen_by_a_row_the_schema_then_takes() {
+    // K68: the walk treats an object as open unless `additionalProperties` is `false`, so every place a request schema
+    // is closed (`closed()`) must be one a row refuses a member at. Each place is opened in turn, in a copy of the
+    // document, and some row that is refused must then be valid for the schema: a place no row sees would be a
+    // closedness nobody tests.
+    let c = cast();
+    let document = get(&c.w, "/-/api/v1/openapi.json").await.json();
+    let requests = request_schemas(&document);
+    let mut names = std::collections::BTreeSet::new();
+    for name in requests.keys() {
+        made_of(&document, name, &mut names);
+    }
+    let mut places = Vec::new();
+    for name in &names {
+        closed_places(
+            document.at(&format!("/components/schemas/{name}")),
+            &format!("/components/schemas/{name}"),
+            &mut places,
+        );
+    }
+    assert!(
+        places.len() >= 12,
+        "the request schemas are closed in {places:?}"
+    );
+    // The rows that are refused, with the schema they are the body of.
+    let refused: Vec<(String, Shape)> = requests
+        .keys()
+        .flat_map(|name| {
+            shapes_of(name)
+                .into_iter()
+                .filter(|s| !s.taken)
+                .map(|s| (name.clone(), s))
+        })
+        .collect();
+    let valid_for = |document: &Value, name: &str, body: &Value| {
+        let mut problems = Vec::new();
+        Checker::for_request(document).check(
+            &json!({"$ref": format!("#/components/schemas/{name}")}),
+            body,
+            "$",
+            &mut problems,
+        );
+        problems.is_empty()
+    };
+    let mut unseen = Vec::new();
+    for place in &places {
+        let mut opened = document.clone();
+        let target = opened
+            .pointer_mut(place)
+            .and_then(Value::as_object_mut)
+            .expect("a schema object");
+        target.remove("additionalProperties");
+        let seen = refused
+            .iter()
+            .any(|(name, shape)| valid_for(&opened, name, &shape.body));
+        if !seen {
+            unseen.push(place.clone());
+        }
+    }
+    assert!(
+        unseen.is_empty(),
+        "closed, and no row would notice if it were not: {unseen:#?}"
+    );
+}
+
+#[tokio::test]
+async fn a_reason_is_counted_in_bytes_as_the_document_says_and_the_handler_does() {
+    // K68: JSON Schema's `maxLength` counts characters and the handler counts bytes (at most 4096). The schema says bytes
+    // in words, and keeps `maxLength` as the first check; the rows show where they part.
+    let c = cast();
+    let document = get(&c.w, "/-/api/v1/openapi.json").await.json();
+    let description = document.at("/components/schemas/Reason/properties/reason/description");
+    assert!(
+        description
+            .as_str()
+            .is_some_and(|d| d.contains("4096 bytes")),
+        "{description}"
+    );
+    assert_eq!(
+        document.at("/components/schemas/Reason/properties/reason/maxLength"),
+        4096
+    );
+    let by_schema = |reason: &str| {
+        let mut problems = Vec::new();
+        Checker::for_request(&document).check(
+            &json!({"$ref": "#/components/schemas/Reason"}),
+            &json!({"reason": reason}),
+            "$",
+            &mut problems,
+        );
+        problems.is_empty()
+    };
+    for (what, reason, schema_takes, handler_takes) in [
+        ("4096 one-byte characters", "x".repeat(4096), true, true),
+        ("4097 one-byte characters", "x".repeat(4097), false, false),
+        ("2048 two-byte characters", "é".repeat(2048), true, true),
+        // Fewer characters than the bound, more bytes than it: the schema's first check passes, the handler refuses.
+        ("2049 two-byte characters", "é".repeat(2049), true, false),
+        ("1366 three-byte characters", "あ".repeat(1366), true, false),
+    ] {
+        assert_eq!(by_schema(&reason), schema_takes, "{what}");
+        let answer = through_handler("Reason", &json!({"reason": reason})).await;
+        assert_eq!(
+            (200..300).contains(&answer.status.as_u16()),
+            handler_takes,
+            "{what}: {}",
+            said(&answer)
+        );
+        if !handler_takes {
+            assert_eq!(answer.json().at("/reason"), "reason-too-long", "{what}");
+        }
+    }
 }

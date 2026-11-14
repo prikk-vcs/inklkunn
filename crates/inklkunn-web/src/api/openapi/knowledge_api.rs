@@ -16,6 +16,15 @@ const EXAMPLE_CLAIM: &str = "01930000-0000-7000-8000-000000000001";
 const EXAMPLE_FIRST: &str = "01931111-0000-7000-8000-000000000001";
 const EXAMPLE_SECOND: &str = "01931111-0000-7000-8000-000000000002";
 
+/// The shape of the id of a claim or a source: a version-7 UUID in lower case with hyphens, the only text the format
+/// and the handlers take. (`format: uuid` is an annotation for a validator, and admits more.)
+const ID_PATTERN: &str = "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
+/// The same with white space around it, which the handler of a source's replacement ignores.
+const ID_PATTERN_PADDED: &str =
+    "^\\s*[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\s*$";
+/// Nothing, or white space only: the handler takes it for no source.
+const NO_ID_PATTERN: &str = "^\\s*$";
+
 fn relation_enum() -> Value {
     json!({"type": "string", "enum": words(Link::ALL, Link::word), "description": "Whether the source supports the claim or challenges it."})
 }
@@ -246,7 +255,7 @@ pub(super) fn schemas() -> Map<String, Value> {
     );
     // A link is changed or let go, and the two shapes are the alternatives: a schema that marked `relation` and `bearing`
     // required would forbid letting a link go, and one that marked them optional would allow a body the handler refuses.
-    let source_id = json!({"type": "string", "format": "uuid", "description": "A source the claim cites: a source id."});
+    let source_id = json!({"type": "string", "format": "uuid", "pattern": ID_PATTERN, "description": "A source the claim cites: a source id, in lower case."});
     out.insert(
         "CurationLink".to_owned(),
         json!({
@@ -290,9 +299,9 @@ pub(super) fn schemas() -> Map<String, Value> {
                     "type": {"type": "string", "enum": words(ReferenceForm::ALL, ReferenceForm::word)},
                     "value": {"type": "string", "description": "The reference; the empty text for none."},
                 }, "required": ["type", "value"], "additionalProperties": false},
-                "superseded_by": {"description": "The id of the source that replaces it, a source of this wiki (`unknown-successor`) that does not lead back to this one or to a source it passed (`successor-cycle`). Left out: unchanged. The empty text for none.", "oneOf": [
-                    {"type": "string", "format": "uuid"},
-                    {"type": "string", "const": ""},
+                "superseded_by": {"description": "The id of the source that replaces it, a source of this wiki (`unknown-successor`) that does not lead back to this one or to a source it passed (`successor-cycle`). White space around it is ignored. Left out: unchanged. The empty text, or white space only, for none.", "anyOf": [
+                    {"type": "string", "pattern": ID_PATTERN_PADDED},
+                    {"type": "string", "pattern": NO_ID_PATTERN},
                 ]},
             }),
             &["reviewed", "availability", "title", "author", "date", "reference", "superseded_by"],
@@ -304,7 +313,7 @@ pub(super) fn schemas() -> Map<String, Value> {
             object(
                 "The body of a curation proposal. A member not listed is `invalid-body`; a member left out is left as the base has it.",
                 json!({
-                    "claim": {"type": "string", "format": "uuid", "description": "The claim's id."},
+                    "claim": {"type": "string", "format": "uuid", "pattern": ID_PATTERN, "description": "The claim's id, in lower case."},
                     "summary": {"type": "string", "description": "What and why: one line of at most 120 characters. Required to send for review."},
                     "view": {"type": "string", "description": "The view to propose to. Default: the wiki's default view."},
                     "submit": {"type": "boolean", "description": "`true` sends the proposal for review at once; `false` keeps a draft only the proposer sees."},

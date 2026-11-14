@@ -130,7 +130,7 @@ pub(super) fn schemas() -> Map<String, Value> {
     let reason = request(
         object(
             "The body of a decline or a withdrawal.",
-            json!({"reason": {"type": "string", "maxLength": 4096, "description": "Required; at most 4096 bytes."}}),
+            json!({"reason": {"type": "string", "maxLength": 4096, "description": "Required; at most 4096 bytes of UTF-8. `maxLength` counts characters, so it is only the first check: a text of fewer characters can still be longer than 4096 bytes, and is refused (`reason-too-long`)."}}),
             &[],
         ),
         json!([{"reason": "Another proposal says this better"}]),

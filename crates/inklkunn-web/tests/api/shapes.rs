@@ -13,13 +13,136 @@ use super::get;
 use super::{across, past};
 
 /// A subset of JSON Schema, enough for the document this project writes: `$ref`, `type`, `enum`, `const`, `minimum`,
-/// `maxLength`, `format: uuid`, `required`, `properties` (a member that is not declared is a problem), `items`,
-/// `maxItems`, `additionalProperties: false` and `oneOf`. No JSON-schema crate is in the lock, so a keyword the document uses and this does not know is
-/// a gap in this walk, and a request body is held to it as an answer is (`write/shapes.rs`).
+/// `maxLength`, `format: uuid`, `pattern` (a small subset of regular expressions: see [`pattern_matches`]), `required`,
+/// `properties`, `items`, `maxItems`, `additionalProperties`, `oneOf` and `anyOf`. No JSON-schema crate is in the lock,
+/// so a keyword the document uses and this does not know is a gap in this walk.
+///
+/// **Closedness.** An *answer* is held to a promise the document does not need to make in its schemas: no member a
+/// schema with `properties` does not declare ([`Checker::new`]). A *request* is held to what its schema says
+/// ([`Checker::for_request`]): as in JSON Schema, an object is **open unless `additionalProperties` is `false`**, so
+/// a request schema that forgets `closed()` is seen to admit a member the handler refuses (`write/shapes.rs`).
 pub(super) struct Checker<'a> {
     pub(super) document: &'a Value,
     /// Members seen, by schema name.
     pub(super) seen: BTreeMap<String, BTreeSet<String>>,
+    /// The schemas are those of a request: closed only where they say so.
+    requests: bool,
+}
+
+/// One thing a pattern matches, with how many times.
+struct Repeated {
+    ranges: Vec<(char, char)>,
+    space: bool,
+    min: usize,
+    max: usize,
+}
+
+impl Repeated {
+    fn takes(&self, c: char) -> bool {
+        (self.space && c.is_whitespace()) || self.ranges.iter().any(|(a, b)| (*a..=*b).contains(&c))
+    }
+}
+
+/// Parse the subset of regular expressions the document's patterns use: `^` and `$` at the ends, literal characters,
+/// `\s`, an escaped character, classes such as `[0-9a-f-]` and the repetitions `{n}`, `{m,n}`, `*`, `+` and `?`. Anything
+/// else is an error: this walk does not guess at a pattern it cannot read.
+fn parse_pattern(pattern: &str) -> Result<Vec<Repeated>, String> {
+    let body = pattern
+        .strip_prefix('^')
+        .and_then(|p| p.strip_suffix('$'))
+        .ok_or_else(|| format!("{pattern}: not anchored at both ends"))?;
+    let mut chars = body.chars().peekable();
+    let mut out: Vec<Repeated> = Vec::new();
+    while let Some(c) = chars.next() {
+        let mut item = Repeated {
+            ranges: Vec::new(),
+            space: false,
+            min: 1,
+            max: 1,
+        };
+        match c {
+            '[' => loop {
+                let a = chars.next().ok_or("an unclosed class")?;
+                if a == ']' {
+                    break;
+                }
+                if chars.peek() == Some(&'-') {
+                    chars.next();
+                    match chars.next().ok_or("an unclosed class")? {
+                        ']' => {
+                            item.ranges.push((a, a));
+                            item.ranges.push(('-', '-'));
+                            break;
+                        }
+                        b => item.ranges.push((a, b)),
+                    }
+                } else {
+                    item.ranges.push((a, a));
+                }
+            },
+            '\\' => match chars.next().ok_or("a dangling escape")? {
+                's' => item.space = true,
+                other => item.ranges.push((other, other)),
+            },
+            '(' | ')' | '|' | '.' | '^' | '$' | '{' | '}' | '*' | '+' | '?' => {
+                return Err(format!("{pattern}: {c} is beyond this walk"));
+            }
+            other => item.ranges.push((other, other)),
+        }
+        match chars.peek().copied() {
+            Some('*') => (item.min, item.max) = (0, usize::MAX),
+            Some('+') => (item.min, item.max) = (1, usize::MAX),
+            Some('?') => (item.min, item.max) = (0, 1),
+            Some('{') => {
+                chars.next();
+                let mut spelled = String::new();
+                for d in chars.by_ref() {
+                    if d == '}' {
+                        break;
+                    }
+                    spelled.push(d);
+                }
+                let (lo, hi) = spelled.split_once(',').unwrap_or((&spelled, &spelled));
+                item.min = lo
+                    .parse()
+                    .map_err(|_| format!("{pattern}: {{{spelled}}}"))?;
+                item.max = hi
+                    .parse()
+                    .map_err(|_| format!("{pattern}: {{{spelled}}}"))?;
+                out.push(item);
+                continue;
+            }
+            _ => {
+                out.push(item);
+                continue;
+            }
+        }
+        chars.next();
+        out.push(item);
+    }
+    Ok(out)
+}
+
+fn matches_from(items: &[Repeated], text: &[char]) -> bool {
+    let Some((item, rest)) = items.split_first() else {
+        return text.is_empty();
+    };
+    let mut reach = 0;
+    while reach < item.max && text.get(reach).is_some_and(|c| item.takes(*c)) {
+        reach += 1;
+    }
+    (item.min..=reach).rev().any(|taken| {
+        text.get(taken..)
+            .is_some_and(|after| matches_from(rest, after))
+    })
+}
+
+/// Does `text` match `pattern`, a regular expression of the subset [`parse_pattern`] reads (the whole text, as the
+/// document's patterns are anchored)?
+pub(super) fn pattern_matches(pattern: &str, text: &str) -> Result<bool, String> {
+    let items = parse_pattern(pattern)?;
+    let chars: Vec<char> = text.chars().collect();
+    Ok(matches_from(&items, &chars))
 }
 
 /// The shape of a version-7 id in the format's words: 36 characters, lower-case hexadecimal, hyphens in their places.
@@ -44,11 +167,21 @@ fn kind_of(value: &Value) -> &'static str {
 }
 
 impl<'a> Checker<'a> {
-    /// A checker of values against the schemas of `document`.
+    /// A checker of an *answer* against the schemas of `document`: no member a schema with `properties` does not declare.
     pub(super) fn new(document: &'a Value) -> Self {
         Checker {
             document,
             seen: BTreeMap::new(),
+            requests: false,
+        }
+    }
+
+    /// A checker of a *request* against the schemas of `document`: an object is open unless its schema says
+    /// `additionalProperties: false`, or gives the schema of the members it does not list.
+    pub(super) fn for_request(document: &'a Value) -> Self {
+        Checker {
+            requests: true,
+            ..Checker::new(document)
         }
     }
 
@@ -84,13 +217,17 @@ impl<'a> Checker<'a> {
         at: &str,
         problems: &mut Vec<String>,
     ) {
-        if let Some(variants) = schema.get("oneOf").and_then(Value::as_array) {
+        // `oneOf`: exactly one alternative holds; `anyOf`: at least one does.
+        for (keyword, exactly_one) in [("oneOf", true), ("anyOf", false)] {
+            let Some(variants) = schema.get(keyword).and_then(Value::as_array) else {
+                continue;
+            };
             let mut matching = 0;
             for variant in variants {
                 let mut inner = Vec::new();
                 let mut trial = Checker {
-                    document: self.document,
-                    seen: BTreeMap::new(),
+                    requests: self.requests,
+                    ..Checker::new(self.document)
                 };
                 trial.check(variant, value, at, &mut inner);
                 if inner.is_empty() {
@@ -100,8 +237,10 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
-            if matching != 1 {
-                problems.push(format!("{at}: {matching} variants of oneOf match {value}"));
+            if (exactly_one && matching != 1) || matching == 0 {
+                problems.push(format!(
+                    "{at}: {matching} variants of {keyword} match {value}"
+                ));
             }
             return;
         }
@@ -140,6 +279,13 @@ impl<'a> Checker<'a> {
             {
                 problems.push(format!("{at}: longer than {max}"));
             }
+            if let Some(pattern) = schema.get("pattern").and_then(Value::as_str) {
+                match pattern_matches(pattern, text) {
+                    Ok(true) => {}
+                    Ok(false) => problems.push(format!("{at}: does not match {pattern}")),
+                    Err(why) => problems.push(format!("{at}: {why}")),
+                }
+            }
         }
         if let (Some(min), Some(n)) = (
             schema.get("minimum").and_then(Value::as_i64),
@@ -161,27 +307,28 @@ impl<'a> Checker<'a> {
                         problems.push(format!("{at}: required member {r} is missing"));
                     }
                 }
-                // A schema that says `additionalProperties: false` and declares nothing admits no member.
-                if declared.is_none()
-                    && schema.get("additionalProperties") == Some(&Value::Bool(false))
-                {
-                    for key in members.keys() {
-                        problems.push(format!("{at}: {key} is not declared"));
-                    }
-                }
-                if let Some(declared) = declared {
-                    for (key, inner) in members {
-                        match declared.get(key) {
-                            Some(schema) => {
-                                if !name.is_empty() {
-                                    self.seen
-                                        .entry(name.to_owned())
-                                        .or_default()
-                                        .insert(key.clone());
-                                }
-                                self.check(schema, inner, &format!("{at}/{key}"), problems);
+                // A member the schema does not list: refused when the schema says `additionalProperties: false`
+                // (and, for an answer, whenever it lists members at all); held to the schema `additionalProperties`
+                // is, when it is one; otherwise free, as in JSON Schema.
+                let extra = schema.get("additionalProperties");
+                let closed =
+                    extra == Some(&Value::Bool(false)) || (!self.requests && declared.is_some());
+                for (key, inner) in members {
+                    match declared.and_then(|d| d.get(key)) {
+                        Some(schema) => {
+                            if !name.is_empty() {
+                                self.seen
+                                    .entry(name.to_owned())
+                                    .or_default()
+                                    .insert(key.clone());
                             }
-                            None => problems.push(format!("{at}: {key} is not declared")),
+                            self.check(schema, inner, &format!("{at}/{key}"), problems);
+                        }
+                        None if closed => problems.push(format!("{at}: {key} is not declared")),
+                        None => {
+                            if let Some(rest) = extra.filter(|e| e.is_object()) {
+                                self.check(rest, inner, &format!("{at}/{key}"), problems);
+                            }
                         }
                     }
                 }
@@ -320,10 +467,7 @@ async fn samples() -> Vec<(String, String, Value)> {
 async fn every_answer_is_of_the_shape_the_document_promises_and_every_declared_member_is_seen() {
     let w = World::new("handbook", "The Handbook", &[]);
     let document = get(&w, OPENAPI_PATH).await.json();
-    let mut checker = Checker {
-        document: &document,
-        seen: BTreeMap::new(),
-    };
+    let mut checker = Checker::new(&document);
     let mut problems = Vec::new();
     let answers = samples().await;
     assert!(answers.len() >= 29, "{}", answers.len());
@@ -409,10 +553,7 @@ fn the_checker_can_fail_a_member_nobody_declared_a_wrong_type_and_a_missing_memb
         "properties": {"a": {"type": "string", "enum": ["x", "y"]}, "b": {"type": ["integer", "null"], "minimum": 1}},
     }}}});
     let schema = json!({"$ref": "#/components/schemas/S"});
-    let mut checker = Checker {
-        document: &document,
-        seen: BTreeMap::new(),
-    };
+    let mut checker = Checker::new(&document);
     let mut check = |value: Value| {
         let mut problems = Vec::new();
         checker.check(&schema, &value, "v", &mut problems);
@@ -452,4 +593,117 @@ fn the_checker_knows_a_constant_an_id_a_length_and_exactly_one_alternative() {
     );
     assert!(!check(json!({"id": id, "go": false})).is_empty(), "const");
     assert!(!check(json!({"go": true})).is_empty(), "required");
+}
+
+#[test]
+fn the_checker_reads_a_pattern_and_refuses_one_it_cannot_read() {
+    let id = "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
+    let padded = "^\\s*[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\s*$";
+    let good = "01930000-0000-7000-8000-000000000001";
+    for (pattern, text, matches) in [
+        (id, good, true),
+        (id, "01930000-0000-7000-8000-00000000000A", false),
+        (id, "01930000-0000-4000-8000-000000000001", false),
+        (id, "01930000-0000-7000-c000-000000000001", false),
+        (id, "", false),
+        (id, " 01930000-0000-7000-8000-000000000001", false),
+        (padded, " \t01930000-0000-7000-8000-000000000001\n", true),
+        (padded, "", false),
+        ("^\\s*$", "", true),
+        ("^\\s*$", " \n", true),
+        ("^\\s*$", " x", false),
+        ("^[0-9a-f-]{3,5}$", "a-f", true),
+        ("^[0-9a-f-]{3,5}$", "a-", false),
+        ("^[0-9a-f-]{3,5}$", "a-f-0-", false),
+        ("^a+b?$", "aaa", true),
+        ("^a+b?$", "aab", true),
+        ("^a+b?$", "b", false),
+        ("^a*a$", "aaaa", true),
+    ] {
+        assert_eq!(
+            pattern_matches(pattern, text),
+            Ok(matches),
+            "{pattern} on {text:?}"
+        );
+    }
+    for pattern in ["a|b", "^(a)$", "^a.b$", "abc", "^[a-$"] {
+        assert!(pattern_matches(pattern, "a").is_err(), "{pattern}");
+    }
+    let document = json!({"components": {"schemas": {"S": {
+        "type": "string",
+        "anyOf": [{"pattern": id}, {"pattern": "^\\s*$"}],
+    }}}});
+    let schema = json!({"$ref": "#/components/schemas/S"});
+    let mut checker = Checker::new(&document);
+    let mut check = |value: Value| {
+        let mut problems = Vec::new();
+        checker.check(&schema, &value, "v", &mut problems);
+        problems
+    };
+    assert!(check(json!(good)).is_empty());
+    assert!(check(json!("")).is_empty(), "the other alternative");
+    assert!(!check(json!("the later one")).is_empty(), "neither");
+}
+
+#[test]
+fn an_answer_is_closed_by_what_it_declares_and_a_request_only_by_additional_properties() {
+    let schema = |closed: bool| {
+        let mut s =
+            json!({"type": "object", "required": ["a"], "properties": {"a": {"type": "string"}}});
+        if closed {
+            s.as_object_mut()
+                .expect("an object")
+                .insert("additionalProperties".to_owned(), json!(false));
+        }
+        json!({"components": {"schemas": {"S": s}}})
+    };
+    let reference = json!({"$ref": "#/components/schemas/S"});
+    let body = json!({"a": "x", "b": 1});
+    let problems = |document: &Value, request: bool| {
+        let mut checker = if request {
+            Checker::for_request(document)
+        } else {
+            Checker::new(document)
+        };
+        let mut problems = Vec::new();
+        checker.check(&reference, &body, "v", &mut problems);
+        problems
+    };
+    // An answer may not hold what the document does not declare, closed or not.
+    assert!(!problems(&schema(false), false).is_empty());
+    assert!(!problems(&schema(true), false).is_empty());
+    // A request is free to hold it where the schema does not close the object, as in JSON Schema.
+    assert!(problems(&schema(false), true).is_empty());
+    assert!(!problems(&schema(true), true).is_empty());
+    // And `additionalProperties` may be the schema of the rest.
+    let typed = json!({"components": {"schemas": {"S": {
+        "type": "object", "properties": {"a": {"type": "string"}},
+        "additionalProperties": {"type": "integer"},
+    }}}});
+    assert!(problems(&typed, true).is_empty());
+    let mut checker = Checker::for_request(&typed);
+    let mut wrong = Vec::new();
+    checker.check(&reference, &json!({"a": "x", "b": "no"}), "v", &mut wrong);
+    assert!(!wrong.is_empty(), "{wrong:?}");
+}
+
+#[test]
+fn any_of_holds_when_one_alternative_does_and_one_of_when_exactly_one_does() {
+    let document = json!({"components": {"schemas": {
+        "Any": {"anyOf": [{"type": "string"}, {"const": "x"}]},
+        "One": {"oneOf": [{"type": "string"}, {"const": "x"}]},
+    }}});
+    let any = json!({"$ref": "#/components/schemas/Any"});
+    let one = json!({"$ref": "#/components/schemas/One"});
+    let mut checker = Checker::new(&document);
+    let mut check = |schema: &Value, value: Value| {
+        let mut problems = Vec::new();
+        checker.check(schema, &value, "v", &mut problems);
+        problems.is_empty()
+    };
+    assert!(check(&any, json!("x")), "both match: any");
+    assert!(!check(&one, json!("x")), "both match: not exactly one");
+    assert!(check(&any, json!("y")));
+    assert!(check(&one, json!("y")));
+    assert!(!check(&any, json!(1)), "neither");
 }
