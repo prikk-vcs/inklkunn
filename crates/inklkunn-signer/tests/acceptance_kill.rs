@@ -37,10 +37,10 @@ use inklkunn_core::reconcile::reconcile;
 use inklkunn_core::recovery::Stop;
 use inklkunn_core::{
     AcceptStep, AcceptanceParts, Authorizer, IdentityAuthority, KeyAuthority, LeaseConfig,
-    PreparedFile, Principal, ProposalAcceptor, ReadConfig, ReadService, Recover, Recovery,
-    RecoveryError, RecoveryMode, RecoveryOutcome, RecoveryParts, Signer, SignerConfig, StoreActs,
-    StoreAuthz, StoreLedger, SystemActs, SystemRequest, SystemStep, WikiLeases, Witnesses,
-    WriteLeases, create_wiki,
+    PreparedFile, Principal, ProposalAcceptor, ReadConfig, ReadService, Recover, RecoverOptions,
+    Recovery, RecoveryError, RecoveryMode, RecoveryOutcome, RecoveryParts, Signer, SignerConfig,
+    StoreActs, StoreAuthz, StoreLedger, SystemActs, SystemRequest, SystemStep, WikiLeases,
+    Witnesses, WriteLeases, create_wiki,
 };
 use inklkunn_prikk::{Admission, Point, PrikkCli, Sandbox, Storage};
 use inklkunn_store::{
@@ -1883,4 +1883,64 @@ fn the_runbooks_way_out_of_an_orphan_queued_patch(f: Fixture, verb: bool) {
         acts.first()
             .is_some_and(|a| a.act.plan.contains("foreign-queued-patch"))
     );
+    if !has_uncommit {
+        return;
+    }
+
+    // The row's last word (maintenance M37, Z-e): from this very state a person types the patch's id, the run takes the
+    // patch back, and the worktree is put back to what the tip says. Offering the take-back was all this row used to
+    // check; the take-back itself was only exercised from a planted patch.
+    let id = s
+        .storage
+        .status(&f.repo)
+        .unwrap()
+        .queue
+        .patches
+        .first()
+        .map(|p| p.patch_id.clone())
+        .expect("the patch is still queued");
+    assert!(
+        std::fs::read_to_string(f.repo.join("pages/Home.md"))
+            .unwrap()
+            .contains("Uno."),
+        "before the take-back the worktree holds the patch's result"
+    );
+    let taken = recovery
+        .recover_with(
+            &f.wiki,
+            RecoveryMode::Run,
+            &RecoverOptions {
+                discard_queued_patch: Some(id.clone()),
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        taken.outcome,
+        RecoveryOutcome::Recovered,
+        "{:#?}",
+        taken.lines()
+    );
+    let done: Vec<&str> = taken.done.iter().map(|d| d.step).collect();
+    assert_eq!(
+        done,
+        [
+            "discard-queued",
+            "restore-worktree",
+            "verify",
+            "reconcile",
+            "clear-flag"
+        ]
+    );
+    assert_eq!(s.storage.status(&f.repo).unwrap().queue.count, 0);
+    assert_eq!(log(&s, &f.repo), blocks, "no block was made or taken away");
+    let home = std::fs::read_to_string(f.repo.join("pages/Home.md")).unwrap();
+    assert_eq!(home, HOME, "the worktree is the tip's page again");
+    assert!(!home.contains("Uno."));
+    let verified = Command::new(&real)
+        .arg("verify")
+        .current_dir(&f.repo)
+        .output()
+        .unwrap();
+    assert!(verified.status.success(), "{verified:?}");
+    assert!(s.store.recovery_flag(&f.wiki.id).unwrap().is_none());
 }

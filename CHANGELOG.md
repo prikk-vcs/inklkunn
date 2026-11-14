@@ -1494,6 +1494,13 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   skip line), the plan and then the run of a plain stale lock behind prikk 0.57.0's refusal, and the same lock cleared once prikk no
   longer says it is running.
 
+- **M37 (handoff 010 corrections, fifth round), the kill matrix's 0.57.0 row.** The row checked only that recovery *offers* the
+  take-back of the queued patch a commit kill leaves; it never took the patch back from that state. On a prikk with `uncommit`
+  (`on_0_57_0_the_runbooks_way_out_of_an_orphan_queued_patch_is_true_of_the_state_a_commit_kill_leaves`) the test now goes on from
+  the state the kill left: a person types the patch's id, the run takes the patch back (`discard-queued`, `restore-worktree`,
+  `verify`, `reconcile`, `clear-flag`), the queue is empty, no block was made or taken away, the page in the worktree is the tip's
+  again and the repository verifies. No new test, so no change to the skip count.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the
