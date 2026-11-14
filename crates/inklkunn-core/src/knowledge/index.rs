@@ -91,6 +91,20 @@ pub struct KnowledgeIndex {
     /// The list of sources to review, computed for one day and setting and kept with the index (K40); clones of
     /// the index share it, since they are of one tip.
     freshness: Arc<Mutex<Option<super::freshness::Memo>>>,
+    /// What the lookups did, for the tests that show a list costs what it returns (K40; counts of work and no clock,
+    /// maintenance M26). Compiled into test builds only.
+    #[cfg(test)]
+    work: Arc<Work>,
+}
+
+/// Counts of work done through the index's accessors (test builds only).
+#[cfg(test)]
+#[derive(Debug, Default)]
+pub(super) struct Work {
+    /// Calls of [`KnowledgeIndex::claims_citing`]: one lookup of the map, whatever it then yields.
+    pub(super) lookups: std::sync::atomic::AtomicUsize,
+    /// Calls of [`KnowledgeIndex::rows`]: the whole of the rows, the way a pass over every link would start.
+    pub(super) whole_reads: std::sync::atomic::AtomicUsize,
 }
 
 impl KnowledgeIndex {
@@ -137,7 +151,19 @@ impl KnowledgeIndex {
             links_by_claim,
             anchors_by_claim,
             freshness: Arc::new(Mutex::new(None)),
+            #[cfg(test)]
+            work: Arc::new(Work::default()),
         }
+    }
+
+    /// `(lookups, whole reads)` so far (test builds only).
+    #[cfg(test)]
+    pub(super) fn work_done(&self) -> (usize, usize) {
+        use std::sync::atomic::Ordering::Relaxed;
+        (
+            self.work.lookups.load(Relaxed),
+            self.work.whole_reads.load(Relaxed),
+        )
     }
 
     /// The memo of the freshness list (see [`super::freshness`]).
@@ -152,6 +178,10 @@ impl KnowledgeIndex {
 
     /// The rows as the store keeps them.
     pub fn rows(&self) -> &KnowledgeRows {
+        #[cfg(test)]
+        self.work
+            .whole_reads
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         &self.rows
     }
 
@@ -197,6 +227,10 @@ impl KnowledgeIndex {
         &'a self,
         source: &'a str,
     ) -> impl Iterator<Item = &'a KnowledgeLinkRow> {
+        #[cfg(test)]
+        self.work
+            .lookups
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.links_by_source
             .get(source)
             .into_iter()

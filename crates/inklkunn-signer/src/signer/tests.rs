@@ -155,6 +155,32 @@ fn opening_the_signer_on_a_mistyped_key_directory_is_refused_and_makes_nothing()
 fn the_in_process_turn_is_given_up_only_after_the_file_lock_is_released() {
     // A thread waiting for its turn must find the file lock free the moment it has the turn: if the guard
     // gave the turn up first, the waiter would see its own process "busy" in the gap.
+    //
+    // **This runs in a process of its own** (maintenance M26): a sibling test's `fork` holds a copy of the lock's
+    // descriptor until its child execs, which under load can outlast any grace the waiter is given, and a grace
+    // long enough to ride that out (the product's 250 ms) would hide the gap this test exists to see (the guard
+    // widens it by 40 ms in a test build). Alone in its process nothing forks, so the waiter can take the lock
+    // with no grace at all: busy is then exactly "the file lock was still held".
+    const CHILD: &str = "INKLKUNN_TURN_ORDER_IN_ITS_OWN_PROCESS";
+    if std::env::var_os(CHILD).is_none() {
+        let name = format!(
+            "{}::the_in_process_turn_is_given_up_only_after_the_file_lock_is_released",
+            module_path!().split_once("::").map_or("", |(_, rest)| rest)
+        );
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([name.as_str(), "--exact", "--test-threads=1"])
+            .env(CHILD, "1")
+            .output()
+            .unwrap();
+        let said = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success() && said.contains("test result: ok. 1 passed"),
+            "the test in its own process: {:?}\n{said}\n{}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    }
     let dir = std::env::temp_dir().join(format!("inklkunn-turn-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
@@ -163,8 +189,6 @@ fn the_in_process_turn_is_given_up_only_after_the_file_lock_is_released() {
     let locks = WikiLocks::default();
     for round in 0..40 {
         locks.enter(&wiki);
-        // Taken as the product takes it, with the grace: a sibling test's `fork` holds a copy of the descriptor
-        // for microseconds, and "busy" at that instant is not what this test is about.
         let Acquired::Held(file) =
             flock::exclusive_within(&path, Duration::from_millis(500)).unwrap()
         else {
@@ -179,9 +203,8 @@ fn the_in_process_turn_is_given_up_only_after_the_file_lock_is_released() {
         std::thread::scope(|s| {
             let waiter = s.spawn(|| {
                 locks.enter(&wiki);
-                // A short grace: a sibling test forking holds a copy of the descriptor for microseconds, which is
-                // not what is under test; a lock held across the gap below is.
-                let got = flock::exclusive_within(&path, Duration::from_millis(10)).unwrap();
+                // No grace: one attempt. Busy here is the lock still held across the gap below.
+                let got = flock::exclusive_within(&path, Duration::ZERO).unwrap();
                 let held = matches!(got, Acquired::Held(_));
                 drop(got);
                 locks.leave(&wiki);

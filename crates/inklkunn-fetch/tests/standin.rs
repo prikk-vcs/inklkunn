@@ -117,7 +117,9 @@ fn a_redirect_is_an_error_and_is_never_followed() {
 #[test]
 fn a_child_that_outlives_the_deadline_is_killed_and_reported_as_a_timeout() {
     let d = Dir::new("timeout");
-    let curl = d.script("curl", "exec sleep 30");
+    // The child would sit out two minutes; the bound is half of that against a deadline of a second, so a busy
+    // machine cannot fail it and a child that was never killed cannot pass it (maintenance M26).
+    let curl = d.script("curl", "exec sleep 120");
     let started = Instant::now();
     let e = fetch(
         &fetcher(&curl).with_limits(quick()),
@@ -126,7 +128,7 @@ fn a_child_that_outlives_the_deadline_is_killed_and_reported_as_a_timeout() {
     .unwrap_err();
     assert_eq!(e, CurlError::TimedOut);
     assert!(
-        started.elapsed() < Duration::from_secs(10),
+        started.elapsed() < Duration::from_secs(60),
         "{:?}",
         started.elapsed()
     );
@@ -161,7 +163,6 @@ fn a_body_over_the_cap_is_too_large_and_an_endless_one_is_cut_at_the_cap() {
     // Endless: only the Rust-side read cap stops this one before the deadline (curl is not trusted to
     // enforce `--max-filesize` on a body of unknown length).
     let curl = d.script("curl", "exec yes");
-    let started = Instant::now();
     let limits = FetchLimits {
         max_time: Duration::from_secs(5),
         ..quick()
@@ -170,11 +171,8 @@ fn a_body_over_the_cap_is_too_large_and_an_endless_one_is_cut_at_the_cap() {
         fetch(&fetcher(&curl).with_limits(limits), &r).unwrap_err(),
         CurlError::TooLarge
     );
-    assert!(
-        started.elapsed() < Duration::from_secs(10),
-        "the cap, not the deadline, ended it: {:?}",
-        started.elapsed()
-    );
+    // (The kind of the error is the proof that the cap and not the deadline ended it: the deadline says
+    // `TimedOut`. No clock, maintenance M26.)
     // At the cap exactly is fine.
     let curl = d.script(
         "curl",

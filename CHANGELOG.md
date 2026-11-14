@@ -1123,6 +1123,48 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   be judged" with `INKLKUNN_INDEX_MAX_FILES=1` (mutation-checked: the default config back in the import fails it). One prikk-dependent
   test is added.
 
+- **M25 (handoff 010 corrections, third round): CI runs the tests that need prikk 0.57.0.** `ci.yml`'s build job and `release.yml`'s gates job
+  install the prikk **0.57.0** release asset as well as the floor, checked against the checksum recorded in the workflow
+  (`PRIKK_TEST_SHA256_X86_64`, the architect's measurement of the asset against its `.sha256`, `4e621147…`), into a directory of its own
+  that comes **after** the floor on `PATH` (its step is the earlier one, because each `$GITHUB_PATH` entry is prepended), so the floor stays
+  the prikk every other test uses; a step after both asserts the order, the floor first and the test-only prikk second. The with-prikk run is
+  now `cargo test … -- --nocapture` with its output kept, and **fails if either `skipping: prikk 0.57.0 or newer not found` or
+  `skipping: no prikk older than 0.57.0` appears** (a passing test's skip line was never printed, so nothing counted those before). The
+  shimmed run removes both directories, and `EXPECTED_SKIPS` counts what it counts today (307). The second pin is **test-only, never a
+  floor**: it is not `PRIKK_VERSION`, not in the Dockerfile, not the driver's `MIN_PRIKK_VERSION`. `floor-check` holds the version and the
+  checksum equal in the two workflows, newer than the floor and at least 0.57.0, kept out of the floor's rules and out of the image, and
+  `test_prikk_shape_violations` holds the shape of every use (the order, the checksum check, `--nocapture`, both skip lines failing the run,
+  both directories removed in the shimmed run), each with a planted failure. The workflows cannot be run here: they were parsed (every job
+  and step), every `run:` script was checked with `bash -n`, the new shell steps were run on a copy of the 0.57.0 asset, and the pin-check
+  and floor-check tests were mutated against the real files. No prikk-dependent test is added or removed.
+
+- **M26 (handoff 010 corrections, third round): no test fails because the machine is busy.** The lock test
+  (`the_in_process_turn_is_given_up_only_after_the_file_lock_is_released`) runs **in a process of its own**, where nothing forks, and its waiter
+  takes the lock with no grace at all (the product's 250 ms would hide the 40 ms gap the test widens on purpose); what it asserts is
+  unchanged. The Argon2 test asserts the default costs (`64 MiB, 3 passes, 1 lane`) and keeps only a lower bound (no load breaks it) and an
+  upper bound of 60 s (the unoptimized build takes about 1.5 s here; the slowest supported runner is taken as 10x that); it is renamed
+  `…_is_neither_free_nor_unbearable`, since it never took *a fraction of a second* in a debug build. K40's two bounds are **counts of work**: the
+  index counts, in test builds only, its lookups of a source's claims and its reads of the whole rows, and the list of 2,000 sources must make
+  2,000 lookups and no whole read, a second ask none and the same allocation. The hostile hash is asserted refused by `is_verifiable` (the one
+  check `verify` makes first) and no longer timed. Tests that waited for a lease and then timed how soon a refusal came (`NotAllowed` against
+  `Busy` already says it), the follow-up queue's *asking never waits* (a held job that cannot finish makes any wait a hang), the endless
+  body's *the cap, not the deadline* (the error's kind says it) and the tip, hint and cache holds of 20 to 40 ms (a hold of an hour and a hold
+  of nothing, or a set read back in a repeated try) are changed; the child that outlives its deadline sleeps two minutes against a bound of
+  one, `try_acquire` is judged against a wait of a minute and a bound of half of it, the signer's *busy is an answer* against the holder's
+  minute and half of it, and the export that must wait for the server's signing call is compared with the stand-in's own `inside-seal`
+  marker instead of a fixed pause. The report lists every other wall-clock assertion and why it is safe. No prikk-dependent test added or
+  removed.
+
+- **M27 (handoff 010 corrections, third round): the checkout builds with the compiler CI pins.** `rust-toolchain.toml` names exactly
+  `1.99.1` with the components CI installs (`rustfmt`, `clippy`) and the minimal profile, so a plain `cargo` in a checkout is the pinned
+  compiler's, and its clippy the one CI runs (the first commit of M27, `1808d1c`, was the one line the pinned clippy refused). **A toolchain
+  file beats `rustup default`**, so the `msrv` job now names its compiler on every command (`cargo +1.89.0 check …`, `rustc +1.89.0
+  --version`) and keeps its explicit installation; no other job installs a compiler other than the pin. `pin-check` holds the file's channel
+  equal to the compiler every workflow installs and to `release.yml`'s `RUST_TOOLCHAIN`, its components equal to what CI installs, every
+  `rustup default` equal to the pin or the declared minimum, and every `cargo` or `rustc` of a job that installs the minimum naming it, each
+  with a planted failure. The Dockerfile names no toolchain (its builder compiles nothing: the release binaries are prebuilt); the
+  measurement tool and `tools/spikes/lock-inventory.py` use a plain `cargo` and now get the pin.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

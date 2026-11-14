@@ -839,9 +839,15 @@ fn a_wiki_the_server_is_signing_makes_the_command_line_wait_its_turn() {
             let cli =
                 scope.spawn(|| world.cli(&["wiki", "export", "handbook", "--archive", &archive]));
             // While the signing call is inside `seal` (it is held there for seconds) nothing of the archive exists.
+            // The stand-in removes `inside-seal` when its delay is over, and a file that is there at the second
+            // look was there all along, so an archive seen first and `inside-seal` seen after it is an export that
+            // ran inside the signing call. A stall on a busy machine that outlasts the delay only makes the check
+            // vacuous; it can no longer fail it (maintenance M26).
             std::thread::sleep(Duration::from_millis(1500));
+            let archive_seen = archive_exists(&world);
+            let still_inside = world.ctl.join("inside-seal").exists();
             assert!(
-                !archive_exists(&world),
+                !(archive_seen && still_inside),
                 "the export ran while the server was signing"
             );
             cli.join().unwrap()

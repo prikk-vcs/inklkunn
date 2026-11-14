@@ -2633,8 +2633,10 @@ fn a_wiki_written_by_another_process_is_busy_by_name_and_free_again_when_its_hol
             "{r:?}"
         );
     }
+    // The holder sleeps a minute: an answer that waited for its work would take that long, and five answers that
+    // each ride out the lock's grace take a few seconds; half the minute cannot fail a busy machine (maintenance M26).
     assert!(
-        started.elapsed() < Duration::from_secs(10),
+        started.elapsed() < Duration::from_secs(30),
         "busy is an answer, not a wait"
     );
     let shown = f

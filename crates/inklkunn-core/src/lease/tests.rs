@@ -299,7 +299,9 @@ fn a_lock_held_by_another_process_is_told_as_such_with_the_process_that_holds_it
 
 #[test]
 fn try_acquire_never_waits_and_never_jumps_the_queue() {
-    let w = world("try", quick(5_000));
+    // A taker that waited would sit out the whole minute; the bound is half of that, so a busy machine cannot
+    // fail it and a wait cannot pass it (maintenance M26).
+    let w = world("try", quick(60_000));
     let held = w
         .leases
         .try_acquire(&w.wiki.id, Purpose::Recovery, None)
@@ -309,7 +311,7 @@ fn try_acquire_never_waits_and_never_jumps_the_queue() {
         w.leases.try_acquire(&w.wiki.id, Purpose::Recovery, None),
         Err(LeaseError::Busy(_))
     ));
-    assert!(started.elapsed() < Duration::from_secs(1));
+    assert!(started.elapsed() < Duration::from_secs(30));
     drop(held);
     w.leases
         .try_acquire(&w.wiki.id, Purpose::Recovery, None)

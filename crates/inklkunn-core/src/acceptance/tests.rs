@@ -209,21 +209,17 @@ fn an_overlap_stops_before_the_signer_records_both_texts_and_sends_the_proposal_
 #[test]
 fn an_unauthorized_acceptor_is_refused_before_the_lease_is_taken() {
     let (rig, _m, _mid, author, _aid, p) = rig_with_proposal();
-    // The lease is held by someone else and would make any taker wait 5 s: the refusal comes at once.
+    // The lease is held by someone else and would make any taker wait 5 s and then say `Busy`: the refusal comes
+    // first, and `NotAllowed` below is the proof (no clock: a bound on how soon it comes would fail a busy machine).
     let held = rig
         .leases
         .acquire(&rig.wiki.id, Purpose::Export, None)
         .unwrap();
-    let started = Instant::now();
     let (_, bystander) = rig.person("Bea", Some(Role::Reviewer));
     for who in [&author, &bystander, &Principal::Anonymous] {
         let err = rig.acceptor().accept(who, &rig.wiki, &p.id, 1).unwrap_err();
         assert_eq!(err, AcceptFailure::NotAllowed);
     }
-    assert!(
-        started.elapsed() < Duration::from_secs(2),
-        "it waited for the lease"
-    );
     assert_eq!(rig.leases.waiting(&rig.wiki.id), 0);
     assert!(rig.double.calls().is_empty());
     drop(held);

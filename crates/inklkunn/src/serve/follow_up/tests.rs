@@ -51,16 +51,13 @@ fn a_flood_of_asks_is_bounded_asked_without_waiting_and_run_one_at_a_time() {
     // The first job is taken by the worker and held there.
     follow_up.warm_title_index(records.first().unwrap());
     started_rx.recv_timeout(Duration::from_secs(10)).unwrap();
-    // Many more asks while it is held: none of them waits, and no more than the bound is kept.
-    let began = Instant::now();
+    // Many more asks while it is held: none of them waits, and no more than the bound is kept. (No clock,
+    // maintenance M26: the held job cannot finish before the sends below, so an ask that waited for the work would
+    // never return and the test would hang; a bound on how soon the asks return could only fail a busy machine.)
     for record in records.iter().skip(1) {
         follow_up.warm_title_index(record);
         follow_up.enqueue_verification(record);
     }
-    assert!(
-        began.elapsed() < Duration::from_secs(2),
-        "asking never waits for the work"
-    );
     for _ in 0..(records.len() * 2) {
         let _ = go_tx.send(());
     }

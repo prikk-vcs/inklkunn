@@ -32,7 +32,9 @@ fn repo_with_store(tmp: &TempDir, bytes: usize) -> std::path::PathBuf {
 
 #[test]
 fn an_answer_is_held_for_the_hold_and_then_asked_for_again() {
-    let tips = Tips::new(Duration::from_millis(40), None);
+    // No short clock (maintenance M26): a hold of a minute is held for this whole test however busy the machine is,
+    // and a hold of nothing is over at once (`elapsed < ttl` is never true for a zero ttl).
+    let tips = Tips::new(Duration::from_secs(60), None);
     let wiki = WikiId::new();
     let repo = std::path::Path::new("/nowhere");
     assert_eq!(tips.fresh(&wiki, "heads/main"), None, "nothing is held yet");
@@ -54,10 +56,15 @@ fn an_answer_is_held_for_the_hold_and_then_asked_for_again() {
     assert_eq!(tips.fresh(&wiki, "heads/none"), Some(None));
     // Another wiki has nothing held.
     assert_eq!(tips.fresh(&WikiId::new(), "heads/main"), None);
-    std::thread::sleep(Duration::from_millis(120));
-    assert_eq!(tips.fresh(&wiki, "heads/main"), None, "the hold is over");
+    let over = Tips::new(Duration::ZERO, None);
+    over.hold(
+        &wiki,
+        repo,
+        &views(&[("heads/main", "s1"), ("heads/other", "s2")]),
+    );
+    assert_eq!(over.fresh(&wiki, "heads/main"), None, "the hold is over");
     // Even then the last answer names the tips every view has (for pruning the cache).
-    assert_eq!(tips.current_tips(&wiki), ["s1", "s2"]);
+    assert_eq!(over.current_tips(&wiki), ["s1", "s2"]);
 }
 
 #[test]
@@ -129,15 +136,20 @@ fn a_hint_that_expired_is_walked_again_even_though_the_views_did_not_move() {
     let wiki = WikiId::new();
     let same = views(&[("heads/main", "s1")]);
     tips.hold(&wiki, &repo, &same);
-    assert_eq!(hints.get(&repo), Some(10));
     std::fs::write(repo.join(".prikk/blob"), vec![0u8; 20]).expect("grow");
+    // The wait is a lower bound (maintenance M26): a busy machine only makes the figure older.
     std::thread::sleep(Duration::from_millis(100));
     assert_eq!(hints.get(&repo), None, "the driver no longer trusts it");
-    tips.hold(&wiki, &repo, &same);
-    assert_eq!(
-        hints.get(&repo),
-        Some(20),
-        "so the service walks and hands it a fresh one"
+    // A figure is fresh for 30 ms, and a stall between the walk and the read can use that up: so the read is
+    // tried again, and each try walks again (the figure it finds is old). A service that did not walk again
+    // would find none in every try.
+    let handed = (0..50).any(|_| {
+        tips.hold(&wiki, &repo, &same);
+        hints.get(&repo) == Some(20)
+    });
+    assert!(
+        handed,
+        "the service walks and hands the driver a fresh figure"
     );
 }
 

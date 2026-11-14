@@ -1162,15 +1162,27 @@ fn randomness_is_real_and_hex_is_strict() {
 }
 
 #[test]
-fn the_production_open_uses_the_default_costs_and_takes_a_fraction_of_a_second() {
+fn the_production_open_uses_the_default_costs_and_is_neither_free_nor_unbearable() {
     let tmp = temp("default");
     let started = std::time::Instant::now();
     let store = KeyStore::create_or_open(&tmp.0.join("keys"), &secret()).unwrap();
     let took = started.elapsed();
     println!("default Argon2id (64 MiB, 3 passes, 1 lane), store opened: {took:?}");
-    // A loose bound: a slow CI runner must not fail this, but a derivation that stopped being memory-hard
-    // (a few milliseconds) or became unbearable (many seconds) is a mistake in the parameters.
-    assert!(took < std::time::Duration::from_secs(10), "{took:?}");
+    // The parameters are asserted, not inferred from a clock (maintenance M26): the costs are the documented ones...
+    assert_eq!(
+        (
+            KdfParams::DEFAULT.m_cost_kib,
+            KdfParams::DEFAULT.t_cost,
+            KdfParams::DEFAULT.p_cost
+        ),
+        (64 * 1024, 3, 1)
+    );
+    // ...and the clock only catches the two mistakes the parameters cannot: a derivation that is not done at all
+    // (a lower bound, which no load can break: load only lengthens it) or one nobody could wait for. The upper
+    // bound is a generosity, not a measurement: the unoptimized build takes about 1.5 s on the development host
+    // (measured 2026-11-14), the slowest supported runner (a two-vCPU hosted one, debug build, other jobs busy) is
+    // taken as 10x that, 15 s, and 60 s is four times what that needs.
+    assert!(took < std::time::Duration::from_secs(60), "{took:?}");
     assert!(
         took > std::time::Duration::from_millis(5),
         "{took:?}: no longer memory-hard?"

@@ -4,8 +4,6 @@
 //! The same path against a real prikk and the real signer is `tests/views.rs`.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use std::time::Duration;
-
 use inklkunn_signer::accept::AcceptError;
 use inklkunn_store::{
     AcceptanceStore, AccountId, ActStore, LeaseHolder, RecoveryFlag, RecoveryReason, Role, Scope,
@@ -143,9 +141,8 @@ fn reviewers_and_above_may_and_nobody_below_or_unknown_may() {
         .leases
         .acquire(&rig.wiki.id, Purpose::Export, None)
         .unwrap();
-    let started = std::time::Instant::now();
-    // Refused before the lease is asked for (the lease is held and would make a taker wait): nothing is recorded,
-    // the signer is never called.
+    // Refused before the lease is asked for (the lease is held and would make a taker wait, then say `Busy`, which
+    // `NotAllowed` below is not; no clock, maintenance M26): nothing is recorded, the signer is never called.
     for role in [
         None,
         Some(Role::Observer),
@@ -165,10 +162,6 @@ fn reviewers_and_above_may_and_nobody_below_or_unknown_may() {
     );
     let system = Principal::system(inklkunn_signer::message::SystemLabel::inklkunn());
     assert_eq!(made(&rig, &system, "x"), Err(ViewFailure::NotAllowed));
-    assert!(
-        started.elapsed() < Duration::from_secs(2),
-        "it waited for the lease"
-    );
     assert!(rig.double.view_calls().is_empty());
     assert!(entries(&rig).is_empty());
     drop(held);

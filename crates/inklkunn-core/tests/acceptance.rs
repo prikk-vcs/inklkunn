@@ -722,15 +722,11 @@ fn an_unauthorized_acceptor_is_refused_before_the_lease_is_taken() {
     // Someone else holds the lease for a long time: any taker would wait 30 s.
     let held = w.leases.acquire(&w.wiki.id, Purpose::Export, None).unwrap();
     let before = w.leases.recorded_holder(&w.wiki.id).unwrap();
-    let started = Instant::now();
+    // (No clock, maintenance M26: a refusal that waited for the lease would have said `Busy`, not `NotAllowed`.)
     for who in [&w.contributor, &Principal::Anonymous] {
         let err = w.acceptor.accept(who, &w.wiki, &p.id, 1).unwrap_err();
         assert_eq!(err, AcceptFailure::NotAllowed);
     }
-    assert!(
-        started.elapsed() < Duration::from_secs(5),
-        "it waited for the lease"
-    );
     assert_eq!(w.leases.waiting(&w.wiki.id), 0);
     assert_eq!(
         w.leases.recorded_holder(&w.wiki.id).unwrap(),

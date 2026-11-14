@@ -274,20 +274,28 @@ fn another_view_has_its_own_tip_and_an_unknown_view_is_not_found() {
         Err(ReadError::NoSuchView(v)) if v == "heads/nope"
     ));
     assert_eq!(w.calls().views, 1, "no call to learn that");
-    // The tip is held for the hold, and asked for again after it.
-    let short = World::pages_with(
+    // The tip is held for the hold, and asked for again after it. No short clock (maintenance M26): a hold of an
+    // hour holds for the test however busy the machine is, and a hold of nothing is over at once.
+    let held = World::pages_with(
         &[("Home", &[], "x\n")],
         ReadConfig {
-            tip_ttl: Duration::from_millis(30),
+            tip_ttl: Duration::from_secs(3600),
             ..ReadConfig::default()
         },
     );
-    short.service.tip(&short.wiki, None).expect("tip");
-    short.service.tip(&short.wiki, None).expect("tip");
-    assert_eq!(short.calls().views, 1);
-    std::thread::sleep(Duration::from_millis(100));
-    short.service.tip(&short.wiki, None).expect("tip");
-    assert_eq!(short.calls().views, 2);
+    held.service.tip(&held.wiki, None).expect("tip");
+    held.service.tip(&held.wiki, None).expect("tip");
+    assert_eq!(held.calls().views, 1);
+    let over = World::pages_with(
+        &[("Home", &[], "x\n")],
+        ReadConfig {
+            tip_ttl: Duration::ZERO,
+            ..ReadConfig::default()
+        },
+    );
+    over.service.tip(&over.wiki, None).expect("tip");
+    over.service.tip(&over.wiki, None).expect("tip");
+    assert_eq!(over.calls().views, 2, "asked for again after the hold");
 }
 
 #[test]

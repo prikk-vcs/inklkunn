@@ -67,11 +67,14 @@ fn a_hash_that_asks_for_more_than_the_ceiling_is_refused_before_any_work() {
     // 4 GiB of memory: a damaged or hostile row. It must return at once, not allocate.
     let hostile =
         "$argon2id$v=19$m=4194304,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNo";
-    let started = std::time::Instant::now();
+    // Refused before any work is not a thing a clock can show (maintenance M26): `verify` answers `false` for a string
+    // `is_verifiable` refuses before it builds an Argon2 context at all (both read the one `inspect`), so the
+    // refusal is asserted, not timed.
+    assert!(!h.is_verifiable(hostile));
     assert!(!h.verify("x", hostile));
-    assert!(started.elapsed() < std::time::Duration::from_secs(1));
     let many_passes =
         "$argon2id$v=19$m=64,t=1000,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNo";
+    assert!(!h.is_verifiable(many_passes));
     assert!(!h.verify("x", many_passes));
 }
 

@@ -500,18 +500,20 @@ fn crowded(sources: usize, per_source: usize) -> kix::KnowledgeIndex {
 #[test]
 fn the_list_of_two_thousand_sources_costs_what_it_returns_not_sources_times_links() {
     // 2,000 unreviewed sources, 200,000 links, 200,000 places: a pass over every link for each source is 4 * 10^8
-    // comparisons; a map built once is 2 * 10^5 steps.
+    // comparisons; a map built once is 2 * 10^5 steps. Counted, not timed (maintenance M26: a bound on seconds
+    // fails a busy machine): the list asks the map once for each source it lists and never takes the whole of the
+    // rows, which is what a pass over every link would start with.
     let index = crowded(2_000, 100);
-    let started = std::time::Instant::now();
+    assert_eq!(index.work_done(), (0, 0), "a new index has done no work");
     let list =
         crate::knowledge::freshness::sources_to_review_kept(&index, NOW, DEFAULT_REVIEW_AFTER_DAYS);
-    let took = started.elapsed();
     assert_eq!(list.len(), 2_000);
     assert!(list.iter().all(|r| r.claims_total == 100));
     assert!(list.iter().all(|r| r.claims.len() == MAX_RELYING));
-    assert!(
-        took < Duration::from_secs(1),
-        "the list of 2,000 sources took {took:?}"
+    assert_eq!(
+        index.work_done(),
+        (2_000, 0),
+        "one lookup for each source listed, and no pass over the rows"
     );
     // The lookups answer in what they return, in the rows' order.
     let source = index.sources().first().expect("a source").id.clone();
@@ -527,12 +529,12 @@ fn the_list_of_two_thousand_sources_costs_what_it_returns_not_sources_times_link
     assert_eq!(index.anchors_of(&claim).count(), 1);
     assert_eq!(index.links_of(&claim).count(), 1);
     assert_eq!(index.anchors_of("no such claim").count(), 0);
-    // A second ask costs nothing: it is the list that was kept.
-    let again = std::time::Instant::now();
+    // A second ask costs nothing: it is the list that was kept (the same allocation, and no work done to give it).
+    let before = index.work_done();
     let same =
         crate::knowledge::freshness::sources_to_review_kept(&index, NOW, DEFAULT_REVIEW_AFTER_DAYS);
     assert!(Arc::ptr_eq(&list, &same));
-    assert!(again.elapsed() < Duration::from_millis(50));
+    assert_eq!(index.work_done(), before, "the kept list did no work");
 }
 
 // ------------------------------------------------------------------------------------ the list at the API's seam

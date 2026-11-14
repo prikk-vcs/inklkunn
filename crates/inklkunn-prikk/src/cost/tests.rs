@@ -75,13 +75,19 @@ fn a_hint_is_returned_until_forgotten_and_never_for_another_repository() {
 fn a_hint_older_than_its_maximum_age_is_not_trusted() {
     let hints = SizeHints::with_max_age(Duration::from_millis(20));
     let repo = Path::new("/srv/wikis/old");
-    hints.set(repo, 1);
-    assert_eq!(hints.get(repo), Some(1));
+    // A figure is fresh for 20 ms, and a stall between a set and its read can use that up on a busy machine
+    // (maintenance M26): a set is read back in a try that is repeated, and the waiting below is a lower bound.
+    let fresh_after_set = |value: u64| {
+        (0..50).any(|_| {
+            hints.set(repo, value);
+            hints.get(repo) == Some(value)
+        })
+    };
+    assert!(fresh_after_set(1), "a figure just set is trusted");
     std::thread::sleep(Duration::from_millis(80));
     assert_eq!(hints.get(repo), None, "the walk is the fallback again");
     // Setting it again makes it fresh.
-    hints.set(repo, 2);
-    assert_eq!(hints.get(repo), Some(2));
+    assert!(fresh_after_set(2), "a figure set again is trusted again");
     assert_eq!(
         SizeHints::default().get(repo),
         None,
