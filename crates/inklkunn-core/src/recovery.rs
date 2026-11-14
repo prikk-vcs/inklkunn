@@ -100,6 +100,36 @@ pub enum RecoveryError {
     Audit(String),
     /// A store failed.
     Store(StoreError),
+    /// Recovery took steps and then ended in an error (the audit trail or a record could not be written): `cause` is
+    /// that error and `done` the names of the steps that finished before it, in order. What was taken back, or cleared,
+    /// stays so; a surface that reports what the run did reads it here and not from the plan (maintenance M18).
+    AfterSteps {
+        /// The steps that finished.
+        done: Vec<&'static str>,
+        /// The error that ended the run.
+        cause: Box<RecoveryError>,
+    },
+}
+
+impl RecoveryError {
+    /// The names of the steps that finished before this error, in order; empty when none did.
+    pub fn steps_done(&self) -> &[&'static str] {
+        match self {
+            RecoveryError::AfterSteps { done, .. } => done,
+            _ => &[],
+        }
+    }
+
+    /// This error, carrying the steps of `done` when there are any.
+    fn after_steps(self, done: &[StepDone]) -> Self {
+        if done.is_empty() {
+            return self;
+        }
+        RecoveryError::AfterSteps {
+            done: done.iter().map(|d| d.step).collect(),
+            cause: Box::new(self),
+        }
+    }
 }
 
 impl std::fmt::Display for RecoveryError {
@@ -123,6 +153,9 @@ impl std::fmt::Display for RecoveryError {
                 "the audit trail could not be written ({why}); nothing was done"
             ),
             RecoveryError::Store(e) => write!(f, "{e}"),
+            RecoveryError::AfterSteps { done, cause } => {
+                write!(f, "{cause}; steps already done: {}", done.join(", "))
+            }
         }
     }
 }
@@ -723,7 +756,9 @@ impl Recovery {
     /// that state, with prikk's own `uncommit --plan-only`. **That verb takes prikk's active lock, so it writes**
     /// (maintenance M5): it is asked only in a run, under the lease, and never while a lock is held (M6: the run
     /// clears the stale lock first and asks again). Whatever is not that state is `NotAsked`; a plan only shown is
-    /// `InARun`; a prikk without the verb is `NoVerb`; an answer that cannot be read is said, and offers nothing.
+    /// `InARun`; a prikk without the verb is `NoVerb`; an answer that cannot be read is said, and offers nothing. While a
+    /// lock is held the preview is not asked at all; whether the verb exists is (M12), and the answer decides whether the
+    /// plan clears the lock (`InARun` and `AfterLocks`: a preview will follow) or clears nothing (`NoVerb`, `Unreadable`).
     fn read_discard(
         &self,
         wiki: &WikiRecord,
@@ -741,10 +776,18 @@ impl Recovery {
                     && w.foreign.is_empty()
                     && w.status.trailing_partial_wal_bytes == 0 =>
             {
-                if mode == Mode::PlanOnly {
+                if !w.locks.is_empty() {
+                    // A stale lock holds prikk's lock, so the preview cannot be read; the run clears it only when
+                    // there is a preview to read afterwards, that is, when this prikk has the verb (M12). The question
+                    // is asked without a patch id, so it takes no lock, and a plan shown may ask it too.
+                    match self.parts.witnesses.has_uncommit(&wiki.id) {
+                        Ok(true) if mode == Mode::PlanOnly => DiscardOffer::InARun,
+                        Ok(true) => DiscardOffer::AfterLocks,
+                        Ok(false) => DiscardOffer::NoVerb,
+                        Err(e) => DiscardOffer::Unreadable(e.to_string()),
+                    }
+                } else if mode == Mode::PlanOnly {
                     DiscardOffer::InARun
-                } else if !w.locks.is_empty() {
-                    DiscardOffer::AfterLocks
                 } else {
                     match self
                         .parts
@@ -921,7 +964,8 @@ impl Recovery {
                 &resource,
                 AuditOutcome::Allowed,
                 step.name(),
-            )?;
+            )
+            .map_err(|e| e.after_steps(&report.done))?;
             match self.run_step(wiki, &token, step, &bases, &mut report.reconciliation) {
                 Ok(detail) => {
                     sealed_something |= matches!(step, Step::EndSealed { .. });
@@ -931,18 +975,20 @@ impl Recovery {
                     });
                 }
                 Err(why) => {
+                    report.outcome = Outcome::Stopped {
+                        at: Some(step.name()),
+                        why,
+                    };
                     self.trail(
                         "recovery-step",
                         &resource,
                         AuditOutcome::Failed,
                         &format!("{} failed", step.name()),
-                    )?;
-                    report.outcome = Outcome::Stopped {
-                        at: Some(step.name()),
-                        why,
-                    };
-                    self.trail("recovery", &resource, AuditOutcome::Failed, "stopped")?;
-                    finish(RecoveryEnding::Stopped)?;
+                    )
+                    .map_err(|e| e.after_steps(&report.done))?;
+                    self.trail("recovery", &resource, AuditOutcome::Failed, "stopped")
+                        .map_err(|e| e.after_steps(&report.done))?;
+                    finish(RecoveryEnding::Stopped).map_err(|e| e.after_steps(&report.done))?;
                     return Ok(report);
                 }
             }
@@ -985,12 +1031,14 @@ impl Recovery {
                 &resource,
                 AuditOutcome::Failed,
                 &format!("stopped: {}", stop.as_str()),
-            )?;
-            finish(RecoveryEnding::Stopped)?;
+            )
+            .map_err(|e| e.after_steps(&report.done))?;
+            finish(RecoveryEnding::Stopped).map_err(|e| e.after_steps(&report.done))?;
             return Ok(report);
         }
-        self.trail("recovery", &resource, AuditOutcome::Allowed, "recovered")?;
-        finish(RecoveryEnding::Recovered)?;
+        self.trail("recovery", &resource, AuditOutcome::Allowed, "recovered")
+            .map_err(|e| e.after_steps(&report.done))?;
+        finish(RecoveryEnding::Recovered).map_err(|e| e.after_steps(&report.done))?;
         drop(scope);
         drop(lease);
         if sealed_something {

@@ -1855,3 +1855,190 @@ fn the_command_is_offered_only_when_it_would_be_honoured_and_names_the_wiki() {
     d.confirmed = Some(id.clone());
     assert!(!build_with(&w, &d).steps.is_empty());
 }
+
+// ---- maintenance corrections, second round (M12, M14, M16)
+
+/// The state of M6: one orphan patch and a stale lock held.
+fn orphan_with_lock() -> (Witness, String) {
+    let (mut w, id) = orphan();
+    w.locks = vec![lock(
+        "active",
+        2_147_483_000,
+        "unknown (not proof it is safe to clear)",
+    )];
+    (w, id)
+}
+
+fn with_offer(w: &Witness, offer: DiscardOffer) -> Plan {
+    build_with(
+        w,
+        &DiscardInput {
+            offer,
+            confirmed: None,
+        },
+    )
+}
+
+#[test]
+fn a_stale_lock_beside_an_orphan_patch_is_cleared_only_when_a_preview_can_follow() {
+    // M12 (R-e): prikk before 0.57.0 has no `uncommit`, so clearing the lock buys nothing there and the stop clears
+    // nothing; the same when the question could not be answered or was not asked.
+    let (w, id) = orphan_with_lock();
+    for offer in [DiscardOffer::InARun, DiscardOffer::AfterLocks] {
+        let plan = with_offer(&w, offer.clone());
+        assert_eq!(plan.stop, Some(Stop::ForeignQueuedPatch));
+        assert_eq!(names(&plan), ["clear-locks"], "{offer:?}");
+    }
+    for offer in [
+        DiscardOffer::NoVerb,
+        DiscardOffer::Unreadable("no".to_owned()),
+        DiscardOffer::NotAsked,
+    ] {
+        let plan = with_offer(&w, offer.clone());
+        assert_eq!(plan.stop, Some(Stop::ForeignQueuedPatch));
+        assert!(
+            plan.steps.is_empty() && plan.ops().is_empty(),
+            "{offer:?}: {:?}",
+            plan.steps
+        );
+        assert!(
+            plan.notes
+                .iter()
+                .any(|n| n.contains("a stale lock is held") && n.contains("nothing is cleared")),
+            "{offer:?}: {:?}",
+            plan.notes
+        );
+    }
+    // The word typed on a prikk without the verb is not used, and no step is planned for it.
+    let said = typed(&w, DiscardOffer::NoVerb, &id);
+    assert!(said.steps.is_empty());
+    assert!(said.discard_unused.is_some());
+}
+
+#[test]
+fn no_other_stop_clears_a_lock() {
+    // M12: a stop that waits for a person clears nothing; the orphan patch's preview is the one exception.
+    let held = || vec![lock("active", 2_147_483_000, "x")];
+    let mut cases: Vec<(Witness, Stop)> = Vec::new();
+    let (mut w, _) = orphan();
+    w.status = status(vec![patch(MESSAGE), patch(MESSAGE)], 0);
+    w.locks = held();
+    cases.push((w, Stop::SeveralQueued));
+    let mut w = flagged();
+    w.status = status(vec![patch("Something else\n\nKind: proposal\n")], 0);
+    w.acts = vec![act(Chain::NotSealed)];
+    w.locks = held();
+    cases.push((w, Stop::QueuedPatchIsNotTheAct));
+    let mut w = flagged();
+    w.acts = vec![act(Chain::TipMoved)];
+    w.locks = held();
+    cases.push((w, Stop::TipMoved));
+    let mut w = flagged();
+    w.doctor = doctor(vec![diag(
+        Severity::Error,
+        "PRIKK-DOCTOR-OBJECT-MISSING",
+        None,
+    )]);
+    w.locks = held();
+    cases.push((w, Stop::DoctorTrouble));
+    for (w, stop) in cases {
+        let plan = with_offer(&w, DiscardOffer::AfterLocks);
+        assert_eq!(plan.stop, Some(stop), "{:#?}", plan.lines());
+        assert!(
+            plan.steps.is_empty() && plan.ops().is_empty(),
+            "{stop:?} cleared something: {:?}",
+            plan.steps
+        );
+    }
+}
+
+#[test]
+fn a_plan_promises_the_command_only_when_a_run_would_offer_it() {
+    // M12 (R-f): the queue targets the worktree's branch, or the notes promise no command and the word says why.
+    let (w, id) = orphan_with_lock();
+    for offer in [DiscardOffer::InARun, DiscardOffer::AfterLocks] {
+        let on = with_offer(&w, offer.clone());
+        let notes = on.notes.join("\n");
+        assert!(
+            notes.contains("the command that does it") || notes.contains("and the command"),
+            "{offer:?}: {notes}"
+        );
+        assert!(!notes.contains("offers no command"), "{offer:?}: {notes}");
+        let mut elsewhere = w.clone();
+        elsewhere.status.queue.target_ref = Some("heads/other".to_owned());
+        let off = with_offer(&elsewhere, offer.clone());
+        let notes = off.notes.join("\n");
+        assert!(
+            notes.contains("other than the one the worktree is on")
+                && notes.contains("offers no command")
+                && !notes.contains("the command that does it")
+                && !notes.contains("and the command"),
+            "{offer:?}: {notes}"
+        );
+        let said = typed(&elsewhere, offer.clone(), &id);
+        assert!(
+            said.discard_unused
+                .as_deref()
+                .is_some_and(|why| why.contains("other than the one the worktree is on")
+                    && !why.contains("the next run takes the patch back")),
+            "{offer:?}: {:?}",
+            said.discard_unused
+        );
+    }
+}
+
+#[test]
+fn a_lone_metadata_debris_warning_is_noted_and_in_nobodys_way() {
+    // M16 (PK-46): harmless, and the next commit clears it; the plan used to stop at `doctor-trouble` for it.
+    let debris = || {
+        diag(
+            Severity::Warning,
+            "PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS",
+            Some("no repair is required"),
+        )
+    };
+    let mut w = flagged();
+    w.doctor = doctor(vec![debris()]);
+    let plan = build(&w);
+    assert_eq!(plan.stop, None, "{:#?}", plan.lines());
+    assert_eq!(names(&plan), TAIL);
+    assert!(
+        plan.notes
+            .contains(&"prikk's stale ref metadata; the next accepted change clears it".to_owned()),
+        "{:?}",
+        plan.notes
+    );
+    // An unfinished act whose change is in the history is ended as sealed, as without the warning.
+    let mut w = flagged();
+    w.doctor = doctor(vec![debris()]);
+    w.acts = vec![published_act()];
+    let plan = build(&w);
+    assert_eq!(plan.stop, None, "{:#?}", plan.lines());
+    assert_eq!(nth(&names(&plan), 0), &"end-sealed");
+    // Nothing else is let through by it: another warning or an error beside it is still trouble.
+    for other in [
+        diag(Severity::Warning, "PRIKK-DOCTOR-SOMETHING-ELSE", None),
+        diag(Severity::Error, "PRIKK-DOCTOR-OBJECT-MISSING", None),
+    ] {
+        let mut w = flagged();
+        w.doctor = doctor(vec![debris(), other]);
+        assert_eq!(build(&w).stop, Some(Stop::DoctorTrouble));
+    }
+    // Beside a pending cleanup the signer's step asks for exactly one finding, so the plan does not offer it.
+    let mut w = cleanup_pending();
+    w.doctor = doctor(vec![cleanup_error(), debris()]);
+    assert_eq!(build(&w).stop, Some(Stop::DoctorTrouble));
+}
+
+#[test]
+fn the_cleanup_pending_step_says_that_the_queues_content_is_checked() {
+    // M14 (R-i): prikk reports the code only when the queue equals the tip block's patches (PK-44).
+    let plan = build(&cleanup_pending());
+    let lines = plan.lines().join("\n");
+    assert!(
+        lines.contains("checks the queue's content as well as its size")
+            && lines.contains("PK-44")
+            && lines.contains("exactly the one published patch"),
+        "{lines}"
+    );
+}

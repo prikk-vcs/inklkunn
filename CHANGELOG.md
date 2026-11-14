@@ -675,6 +675,45 @@ file now says which tree and which binary every figure is about.
   router, the export without prikk (a stand-in repository) and the command's export in the existing prikk test; no new
   prikk-dependent test.
 
+- **M12 (handoff 010 corrections, second round): the stale lock beside an orphan patch is cleared only when a preview can follow.**
+  `inklkunn wiki recover` clears the stale lock of an orphan queued patch (M6) only on a prikk that has `uncommit` (0.57.0 and
+  later): on 0.55.0 and 0.56.0 there is no preview to read afterwards, so the stop clears nothing, as no other stop does (a note
+  says so). Whether the verb exists is asked of prikk as `prikk uncommit` with no patch id, which prikk refuses while it reads its
+  arguments, before it takes a lock; it is asked while a stale lock is held and in a plan shown (a read-only mount), and an answer
+  that is neither *unknown command* nor a usage error is *could not be read*, which clears nothing. A plan promises *the command that
+  does it* only when a run would offer it, that is, when the queue targets the branch the worktree is on; otherwise it says the
+  preview is shown and no command is offered, and the word a person typed is answered with the same reason. New:
+  `Witnesses::has_uncommit`. Tests: the plan's rows for each answer, no other stop clears a lock, the command promised or not, the
+  question answered with a lock held on both sides of 0.57.0, and one real-prikk test on 0.57.0: a held stale lock makes `uncommit
+  --plan-only` refuse (PK-47) and the run that clears it reads the preview. One new prikk-dependent test (it prints `skipping: prikk
+  0.57.0 or newer not found` otherwise).
+
+- **M14 (handoff 010 corrections, second round): the cleanup-pending step says what it checks.** The signer's comment, the step's
+  line in the plan and `docs/RECOVERY.md` say that the queue's *content* is checked, not only its size: `verify` reports
+  `PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING` only when the queue holds exactly the patches of the tip block (prikk's answer, ledger
+  PK-44), and the step requires a tip block of exactly the one published patch. The size check from the plain text stays. Test: the
+  step's line.
+
+- **M16 (handoff 010 corrections, second round): a lone metadata-debris warning is not in the way.** `DoctorReport::others` never
+  counts `PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS` (PK-46: harmless, and the next commit replaces the stale metadata). Recovery
+  notes it in one line (*prikk's stale ref metadata; the next accepted change clears it*) and goes on, so a wiki whose `seal` was
+  killed just after it published recovers and takes writes again, where it used to stop at `doctor-trouble` for good (only the
+  service commits, and only after recovery). Beside a pending cleanup or an unfinished view creation the warning is still trouble,
+  because the signer's step for those two asks for *exactly one* finding. The `docs/RECOVERY.md` section for it is the one sentence.
+  Nothing runs `seal` with nothing queued. Tests: the plan's rows, the doctor reader, and one real-state test on any prikk and one on
+  0.57.0 that recover, then show the next acceptance's commit clearing the warning (the kill matrix's rows that ended at
+  `doctor-trouble` for it now recover). One new prikk-dependent test on 0.57.0, and the old fail-closed test now recovers.
+
+- **M18 (handoff 010 corrections, second round): the word's fate says what the run did.** The end event of `inklkunn wiki recover
+  --discard-queued-patch` is derived from the steps that finished, never from the plan's intent: *taken back* whenever
+  `discard-queued` finished, whatever failed after it; *the lock was not cleared: <why>* when `clear-locks` failed; *recovery ended in
+  an error before it took the patch back* only when it did end before that. A recovery error that follows steps carries them:
+  `RecoveryError::AfterSteps { done, cause }` and `RecoveryError::steps_done()` (new; the other variants are unchanged and the text
+  of the new one is the cause's, then `steps already done: …`). Tests, both orders: a trail that refuses its last record after the
+  take-back (the error carries `discard-queued`, the queue is empty) and one that refuses before any step; a `clear-locks` that
+  fails (no step done, the plan still carries its intent, the sentence does not); the derivation for every outcome. Two new
+  prikk-dependent tests, both on 0.57.0.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

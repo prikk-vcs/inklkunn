@@ -96,7 +96,8 @@ impl Diagnostic {
         (hex && matches!(kind, "block" | "ref-state" | "ref-update")).then_some((kind, id))
     }
 
-    /// The warning that rides along with an acknowledged damage and asks for nothing.
+    /// The warning that asks for nothing: stale ref metadata, which the next commit replaces (it rides along with an
+    /// acknowledged damage, or stands alone after a `seal` was killed).
     pub fn is_metadata_debris(&self) -> bool {
         self.severity == Severity::Warning && self.code == ACTIVE_REF_METADATA_DEBRIS_CODE
     }
@@ -260,14 +261,16 @@ impl DoctorReport {
     }
 
     /// The diagnostics that stand in the way of every automatic step: errors and warnings that are not an unreached
-    /// note, not an acknowledged damage (which `--discard-damaged-commits` answers) and not the metadata debris that
-    /// rides along with one.
+    /// note, not an acknowledged damage (which `--discard-damaged-commits` answers) and **not the metadata debris**,
+    /// whether it rides along with a damage or stands alone: prikk says it is harmless and that the next commit replaces
+    /// the stale metadata (ledger PK-46, maintenance M16).
     pub fn others(&self) -> Vec<&Diagnostic> {
         self.diagnostics
             .iter()
             .filter(|d| d.severity != Severity::Info)
-            .filter(|d| !d.is_unreached_note() && !d.is_acknowledged_damage())
-            .filter(|d| !(d.is_metadata_debris() && self.has_acknowledged_damage()))
+            .filter(|d| {
+                !d.is_unreached_note() && !d.is_acknowledged_damage() && !d.is_metadata_debris()
+            })
             .collect()
     }
 }

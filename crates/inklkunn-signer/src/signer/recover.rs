@@ -335,9 +335,10 @@ impl Recover for Signer {
         }
         // Nothing else is queued (Q2). `status --format json` refuses in this state, but the plain text of `status`
         // reads, and states the queue's size: exactly one patch, on this view, in a log with one record and no torn
-        // byte. The patch is the published one (`doctor` names a publication whose active state matches it, and the
-        // block's own patch was read above); *which* patch the queue holds is not shown in the text (an
-        // open question for prikk: a read of the queue that does not refuse in this state).
+        // byte. The queue's **content** is checked as well, by what prikk reports and what was read above: `verify`
+        // reports this code (`doctor` names its finding) only when the queue holds exactly the patches of the block
+        // the ref points at (ledger PK-44), and that tip block was required to hold exactly the one published patch.
+        // So the queue is that patch, and no other; the size check below is kept beside it.
         let queue = parse_status_text(&w.status_text(&repo)?).map_err(|why| {
             RecoverError::Unavailable(format!("the queue could not be read: {why}"))
         })?;

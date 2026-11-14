@@ -12,7 +12,8 @@
 //! active session that it emptied, as they were, and fails (a `seal` killed between publishing and draining the queue,
 //! made on cue: handoff 004, P15; `leaves-the-lock` adds the stale `active.lock` the killed process would have left,
 //! and `leaves-only-the-metadata` puts back the ref's metadata but not the queue: the other state a kill just after
-//! the publication leaves, a lone `ACTIVE-REF-METADATA-DEBRIS` warning).
+//! the publication leaves, a lone `ACTIVE-REF-METADATA-DEBRIS` warning); `fail-unlock-clear` fails `unlock` only when
+//! it is asked to clear a lock (`unlock --lock <path> ...`), so the listing still works.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::collections::HashMap;
@@ -37,10 +38,10 @@ use inklkunn_core::{
 };
 use inklkunn_prikk::{Admission, Point, PrikkCli, Sandbox, Storage};
 use inklkunn_store::{
-    AcceptanceOutcome, AcceptanceStore, Account, AccountId, AccountStore, ActStore, AuditLog,
-    DisplayName, FileChange, IntentEnd, NewWiki, ProposalRecord, ProposalState, RecoveryEnding,
-    RecoveryFlag, RecoveryReason, Role, RoleGrant, RoleStore, Slug, SqliteStore, SystemActEnd,
-    SystemActId, SystemActKind, SystemActRecord,
+    AcceptanceOutcome, AcceptanceStore, Account, AccountId, AccountStore, ActStore, AuditEvent,
+    AuditLog, AuditSink, DisplayName, FileChange, IntentEnd, NewWiki, ProposalRecord,
+    ProposalState, RecoveryEnding, RecoveryFlag, RecoveryReason, Role, RoleGrant, RoleStore, Slug,
+    SqliteStore, SystemActEnd, SystemActId, SystemActKind, SystemActRecord,
 };
 
 const MAIN: &str = "heads/main";
@@ -61,6 +62,25 @@ fn real_prikk() -> Option<PathBuf> {
             .map(|d| d.join("prikk"))
             .find(|c| c.is_file())
     })
+}
+
+/// The first `prikk` on `PATH` (any directory, not only the first) that reports 0.57.0 or newer.
+fn real_prikk_at_least_057() -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|d| d.join("prikk"))
+        .filter(|c| c.is_file())
+        .find(|c| {
+            // The driver asks the binary for its version (the core crate may not spawn a process itself).
+            PrikkCli::open(
+                c,
+                Sandbox::Unconfined,
+                Admission::new(1 << 30, 64 << 20, Duration::from_millis(200)),
+            )
+            .ok()
+            .and_then(|p| inklkunn_prikk::parse_version(p.version()))
+            .is_some_and(|v| v >= (0, 57, 0))
+        })
 }
 
 struct Dir(PathBuf);
@@ -84,12 +104,13 @@ fn write_standin(ctl: &Path, real: &Path) -> PathBuf {
         r#"#!/bin/sh
 CTL="{ctl}"
 verb="$1"
-echo "$verb" >> "$CTL/calls.log"
+if [ "$verb" = uncommit ] && [ "$#" -eq 1 ]; then echo uncommit-probe >> "$CTL/calls.log"; else echo "$verb" >> "$CTL/calls.log"; fi
 if [ "$verb" = uncommit ] && [ -e "$CTL/hold-uncommit" ]; then
   : > "$CTL/uncommit-started"
   n=0
   while [ ! -e "$CTL/release" ] && [ "$n" -lt 400 ]; do sleep 0.05; n=$((n + 1)); done
 fi
+if [ "$verb" = unlock ] && [ "$#" -gt 1 ] && [ -e "$CTL/fail-unlock-clear" ]; then echo "error: precondition not met: injected failure of unlock --lock" >&2; exit 1; fi
 if [ -e "$CTL/fail-$verb" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
 if [ -e "$CTL/failafter-$verb" ]; then
   n="$(cat "$CTL/failafter-$verb")"; c="$(cat "$CTL/count-$verb" 2>/dev/null || echo 0)"
@@ -174,6 +195,20 @@ impl World {
             println!("skipping: prikk not on PATH");
             return None;
         };
+        World::over(tag, lease, &real)
+    }
+
+    /// The same, over the first prikk on `PATH` that is 0.57.0 or newer (the host's, when the gate runs with 0.55.0
+    /// first): for the tests that need `uncommit` and what 0.57.0 does with a held lock.
+    fn new_057(tag: &str, lease: LeaseConfig) -> Option<World> {
+        let Some(real) = real_prikk_at_least_057() else {
+            println!("skipping: prikk 0.57.0 or newer not found");
+            return None;
+        };
+        World::over(tag, lease, &real)
+    }
+
+    fn over(tag: &str, lease: LeaseConfig, real: &Path) -> Option<World> {
         if !Path::new("/dev/shm").is_dir() {
             println!("skipping: no /dev/shm here");
             return None;
@@ -182,7 +217,7 @@ impl World {
         let shm = dir_in(Path::new("/dev/shm"), tag);
         let ctl = tmp.0.join("ctl");
         std::fs::create_dir_all(&ctl).unwrap();
-        let standin = write_standin(&ctl, &real);
+        let standin = write_standin(&ctl, real);
         let secret = tmp.0.join("secret");
         std::fs::write(&secret, "an operator secret long enough for the tests\n").unwrap();
         let layout = inklkunn_store::RootLayout::new(tmp.0.join("root"));
@@ -1055,19 +1090,13 @@ fn a_pending_cleanup_is_not_finished_unless_doctor_names_exactly_that_and_the_bl
     assert!(w.storage.status(&w.repo).is_err());
 }
 
-#[test]
-fn a_lone_metadata_debris_after_a_kill_inside_seal_stays_fail_closed_with_the_flag_kept() {
-    // Handoff 004, P15 / ruling 1: recovery has no answer for this and says so. Nothing is changed, the flag is
-    // kept, the operator's steps are in docs/RECOVERY.md.
-    let Some(w) = World::new("failclosed", LeaseConfig::default()) else {
-        return;
-    };
+/// A `seal` killed just after it published (the queue drained, the ref's metadata stale): recovery notes the one
+/// warning `doctor` has and finishes; the next acceptance's commit replaces the stale metadata (M16, PK-46).
+fn a_lone_metadata_debris_is_noted_and_recovery_finishes(w: &World) {
     let p = w.propose(
         "Say it in Spanish",
         &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
     );
-    // A `seal` killed just after it published: the queue is drained, the ref's metadata is stale. `status` reads;
-    // `doctor` has one warning that asks for nothing; the block is the acceptance's, and recovery still stops.
     w.killed_seal(&p, &["leaves-only-the-metadata"]);
     let blocks = w.history();
     assert_eq!(w.queue_count(), 0, "the queue is drained");
@@ -1077,34 +1106,7 @@ fn a_lone_metadata_debris_after_a_kill_inside_seal_stays_fail_closed_with_the_fl
         "{doctor:?}"
     );
     assert!(!doctor.is_only_cleanup_pending());
-    for mode in [RecoveryMode::PlanOnly, RecoveryMode::Run] {
-        let r = w.recovery.recover(&w.wiki, mode).unwrap();
-        assert_eq!(r.plan.stop, Some(Stop::DoctorTrouble), "{:#?}", r.lines());
-        assert!(r.done.is_empty());
-    }
-    assert_eq!(w.history(), blocks);
-    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
-    assert_eq!(w.store.open_intents(&w.wiki.id).unwrap().len(), 1);
-    assert!(w.verifies(), "nothing is lost: the repository verifies");
-
-    // What docs/RECOVERY.md says about it, checked against what recovery and prikk say.
-    let runbook = runbook();
-    for said in [
-        "STOP (doctor-trouble)",
-        "PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS",
-        "active WAL is empty but stale ref metadata remains",
-        "no repair is required; the next guarded active-WAL append will replace stale metadata",
-    ] {
-        assert!(runbook.contains(said), "the runbook says `{said}`");
-    }
-    let r = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
-    assert!(
-        r.lines()
-            .iter()
-            .any(|l| l.contains("STOP (doctor-trouble)")),
-        "{:#?}",
-        r.lines()
-    );
+    assert!(doctor.others().is_empty(), "{:?}", doctor.others());
     let debris = doctor
         .diagnostics
         .iter()
@@ -1121,6 +1123,69 @@ fn a_lone_metadata_debris_after_a_kill_inside_seal_stays_fail_closed_with_the_fl
             "no repair is required; the next guarded active-WAL append will replace stale metadata"
         )
     );
+    assert!(w.verifies(), "nothing is lost: the repository verifies");
+
+    // The plan is no stop: it ends the act as sealed and carries the one-line note.
+    let shown = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
+    assert_eq!(shown.plan.stop, None, "{:#?}", shown.lines());
+    assert_eq!(nth(&step_names(&shown), 0), &"end-sealed");
+    assert!(
+        shown
+            .plan
+            .notes
+            .contains(&"prikk's stale ref metadata; the next accepted change clears it".to_owned()),
+        "{:?}",
+        shown.plan.notes
+    );
+    // The run recovers: records ended, the flag cleared, the history untouched.
+    let r = w.recover();
+    assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());
+    assert_eq!(w.history(), blocks);
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_none());
+    assert!(w.store.open_intents(&w.wiki.id).unwrap().is_empty());
+    assert_eq!(w.state(&p), ProposalState::Accepted);
+    assert!(w.verifies());
+    // Recovery does not touch the metadata; the next accepted change's commit replaces it.
+    let still = w.recovery_witnesses().doctor(&w.wiki.id).unwrap();
+    assert!(still.diagnostics.iter().any(|d| d.is_metadata_debris()));
+    let next = w.propose(
+        "And in Portuguese",
+        &[("pages/Other.md", Some(&OTHER.replace("Hello.", "Ola.")))],
+    );
+    assert!(w.accept(&next).is_ok(), "the wiki takes writes again");
+    let after = w.recovery_witnesses().doctor(&w.wiki.id).unwrap();
+    assert!(
+        !after.diagnostics.iter().any(|d| d.is_metadata_debris()),
+        "the next commit cleared it: {after:?}"
+    );
+    assert!(w.verifies());
+
+    // What docs/RECOVERY.md says about it.
+    let runbook = runbook();
+    assert!(
+        runbook.contains("prikk's stale ref metadata; the next accepted change clears it"),
+        "the runbook says the sentence"
+    );
+    assert!(!runbook.contains("recovery stops at `doctor-trouble`"));
+}
+
+#[test]
+fn a_lone_metadata_debris_after_a_kill_inside_seal_is_noted_and_in_the_way_of_nothing() {
+    // Maintenance M16 (ledger PK-46). Handoff 004's P15 stopped here at `doctor-trouble`, and the wiki stayed unable to
+    // take writes, because only a commit clears the warning and only the service commits.
+    let Some(w) = World::new("debris", LeaseConfig::default()) else {
+        return;
+    };
+    a_lone_metadata_debris_is_noted_and_recovery_finishes(&w);
+}
+
+#[test]
+fn on_0_57_0_the_next_acceptances_commit_clears_the_metadata_debris_recovery_left() {
+    // Maintenance M16, through the real state on 0.57.0 (the host's prikk, found on `PATH` wherever it stands).
+    let Some(w) = World::new_057("debris-057", LeaseConfig::default()) else {
+        return;
+    };
+    a_lone_metadata_debris_is_noted_and_recovery_finishes(&w);
 }
 
 #[test]
@@ -1628,7 +1693,15 @@ fn a_stale_lock_beside_an_orphan_patch_is_cleared_then_the_stop_comes_with_the_p
     let before = w.history();
     let verb = inklkunn_prikk::parse_version(w.storage.version()).is_some_and(|v| v >= (0, 57, 0));
 
-    // A plan shown: the clearing is the one step, the stop follows, nothing is asked and nothing is done.
+    // Whether prikk has the verb is asked of prikk without a patch id, which takes no lock: it is answered with the
+    // lock held, on both sides of 0.57.0 (M12).
+    assert_eq!(
+        w.recovery_witnesses().has_uncommit(&w.wiki.id).unwrap(),
+        verb
+    );
+
+    // A plan shown: with the verb the clearing is the one step and the stop follows; without it the stop clears
+    // nothing (M12: no preview can follow). Nothing is asked for the preview and nothing is done.
     let shown = w
         .recovery
         .recover_with(&w.wiki, RecoveryMode::PlanOnly, &RecoverOptions::default())
@@ -1636,10 +1709,41 @@ fn a_stale_lock_beside_an_orphan_patch_is_cleared_then_the_stop_comes_with_the_p
     assert_eq!(shown.plan.stop, Some(Stop::ForeignQueuedPatch));
     assert_eq!(
         shown.plan.steps.iter().map(Step::name).collect::<Vec<_>>(),
-        ["clear-locks"]
+        if verb {
+            vec!["clear-locks"]
+        } else {
+            Vec::new()
+        }
     );
     assert!(Path::new(&lock).exists());
     assert_eq!(w.uncommit_calls(), 0);
+
+    if !verb {
+        // A run clears nothing either: the lock stays, the wiki stays flagged, and the plan says why.
+        let run = w
+            .recovery
+            .recover_with(
+                &w.wiki,
+                RecoveryMode::Run,
+                &RecoverOptions {
+                    discard_queued_patch: Some(id.clone()),
+                },
+            )
+            .unwrap();
+        assert_eq!(run.plan.stop, Some(Stop::ForeignQueuedPatch));
+        assert!(run.done.is_empty() && run.plan.steps.is_empty());
+        assert!(Path::new(&lock).exists(), "nothing was cleared");
+        assert_eq!(w.uncommit_calls(), 0, "no preview was asked for");
+        let notes = run.plan.notes.join("\n");
+        assert!(
+            notes.contains("has no `uncommit`") && notes.contains("nothing is cleared"),
+            "{notes}"
+        );
+        assert_eq!(w.queue_count(), 1);
+        assert_eq!(w.history(), before);
+        assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
+        return;
+    }
 
     // The run with the word typed: the lock is cleared, the preview is shown, the stop stays, the word is not used yet.
     let first = w
@@ -1667,43 +1771,31 @@ fn a_stale_lock_beside_an_orphan_patch_is_cleared_then_the_stop_comes_with_the_p
     assert_eq!(w.history(), before);
     assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
     assert_eq!(w.uncommit_calls(), 1, "asked once, after the lock was gone");
-    if verb {
-        let notes = first.plan.notes.join("\n");
-        assert!(
-            notes.contains(&format!("prikk can take the queued patch {id} back"))
-                && notes.contains("prikk says: ")
-                && !notes.contains("could not be read"),
-            "{notes}"
-        );
-        assert!(
-            notes.contains(&format!(
-                "inklkunn wiki recover {} --discard-queued-patch {id}",
-                w.wiki.id
-            )),
-            "{notes}"
-        );
-        assert!(
-            first
-                .plan
-                .discard_unused
-                .as_deref()
-                .is_some_and(|why| why.contains("stale lock")),
-            "{:?}",
-            first.plan.discard_unused
-        );
-    } else {
-        assert!(
-            first
-                .plan
-                .notes
-                .iter()
-                .any(|n| n.contains("has no `uncommit`")),
-            "{:?}",
-            first.plan.notes
-        );
-    }
+    let notes = first.plan.notes.join("\n");
+    assert!(
+        notes.contains(&format!("prikk can take the queued patch {id} back"))
+            && notes.contains("prikk says: ")
+            && !notes.contains("could not be read"),
+        "{notes}"
+    );
+    assert!(
+        notes.contains(&format!(
+            "inklkunn wiki recover {} --discard-queued-patch {id}",
+            w.wiki.id
+        )),
+        "{notes}"
+    );
+    assert!(
+        first
+            .plan
+            .discard_unused
+            .as_deref()
+            .is_some_and(|why| why.contains("stale lock")),
+        "{:?}",
+        first.plan.discard_unused
+    );
 
-    // The next run, with the word: the offer works (on a prikk that has the verb).
+    // The next run, with the word: the offer works.
     let second = w
         .recovery
         .recover_with(
@@ -1714,21 +1806,68 @@ fn a_stale_lock_beside_an_orphan_patch_is_cleared_then_the_stop_comes_with_the_p
             },
         )
         .unwrap();
-    if verb {
-        assert_eq!(
-            second.outcome,
-            RecoveryOutcome::Recovered,
-            "{:#?}",
-            second.lines()
-        );
-        assert_eq!(w.queue_count(), 0);
-        assert!(w.verifies());
-        assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_none());
-        assert!(second.plan.discard_unused.is_none());
-    } else {
-        assert_eq!(second.plan.stop, Some(Stop::ForeignQueuedPatch));
-        assert_eq!(w.queue_count(), 1);
-    }
+    assert_eq!(
+        second.outcome,
+        RecoveryOutcome::Recovered,
+        "{:#?}",
+        second.lines()
+    );
+    assert_eq!(w.queue_count(), 0);
+    assert!(w.verifies());
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_none());
+    assert!(second.plan.discard_unused.is_none());
+}
+
+#[test]
+fn on_0_57_0_a_held_stale_lock_makes_the_preview_refuse_and_the_run_that_clears_it_reads_it() {
+    // Maintenance M12 (ledger PK-47, measured on 0.57.0): `uncommit --plan-only` takes the active lock, so a stale
+    // lock that is held makes it refuse. That is why the run clears the lock first, and the preview it then reads is
+    // prikk's own. Needs a 0.57.0 prikk: the host's, found on `PATH` wherever it stands.
+    let Some(w) = World::new_057("held-lock-refuses", LeaseConfig::default()) else {
+        return;
+    };
+    w.plant_queued_patch(
+        "pages/Home.md",
+        "---\ntitle: Home\nid: p-home\n---\n\nPlanted.\n",
+    );
+    let lock = plant_lock(
+        &w.repo,
+        "active/default/active.lock",
+        2_147_483_000,
+        "active",
+    );
+    w.flag(RecoveryReason::Interrupted);
+    let id = w.queued_patch_id();
+    let witnesses = w.recovery_witnesses();
+    // The question whether the verb exists is answered while the lock is held; the preview itself is refused.
+    assert!(witnesses.has_uncommit(&w.wiki.id).unwrap());
+    let refused = witnesses.uncommit_plan(&w.wiki.id, &id);
+    assert!(
+        refused.is_err(),
+        "a held stale lock makes `uncommit --plan-only` refuse: {refused:?}"
+    );
+    assert!(Path::new(&lock).exists(), "the refusal changed nothing");
+    assert_eq!(w.queue_count(), 1);
+    // The run clears the lock and then reads the preview.
+    let run = w
+        .recovery
+        .recover_with(&w.wiki, RecoveryMode::Run, &RecoverOptions::default())
+        .unwrap();
+    assert_eq!(run.plan.stop, Some(Stop::ForeignQueuedPatch));
+    assert_eq!(
+        run.done.iter().map(|d| d.step).collect::<Vec<_>>(),
+        ["clear-locks"]
+    );
+    assert!(!Path::new(&lock).exists());
+    let notes = run.plan.notes.join("\n");
+    assert!(
+        notes.contains(&format!("prikk can take the queued patch {id} back"))
+            && notes.contains("prikk says: ")
+            && !notes.contains("could not be read"),
+        "{notes}"
+    );
+    assert!(witnesses.uncommit_plan(&w.wiki.id, &id).unwrap().is_some());
+    assert_eq!(w.queue_count(), 1, "nothing was taken back");
 }
 
 #[test]
@@ -3389,4 +3528,162 @@ fn recovery_does_not_seal_a_queued_patch_while_a_retirement_is_unfinished_and_na
     assert_eq!(w.queue_count(), 1, "nothing was sealed");
     assert_eq!(w.history(), history);
     assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
+}
+
+/// A trail that takes every event but the ones of one action: the store's write that fails after steps were done.
+struct TrailThatRefuses {
+    inner: Arc<SqliteStore>,
+    action: &'static str,
+}
+
+impl AuditSink for TrailThatRefuses {
+    fn record(&self, event: &AuditEvent) -> inklkunn_store::Result<()> {
+        if event.action == self.action {
+            return Err(inklkunn_store::StoreError::Backend(
+                "the trail is full".to_owned(),
+            ));
+        }
+        self.inner.record(event)
+    }
+}
+
+/// The same recovery as the world's, writing its trail to `audit`.
+fn recovery_writing_to(w: &World, audit: Arc<dyn AuditSink>) -> Recovery {
+    Recovery::new(RecoveryParts {
+        acceptances: w.store.clone(),
+        acts: w.store.clone(),
+        proposals: w.store.clone(),
+        storage: w.storage.clone(),
+        witnesses: Arc::new(w.recovery_witnesses()),
+        signer: w.signer.clone() as Arc<dyn Recover>,
+        leases: w.leases.clone(),
+        layout: w.layout.clone(),
+        audit,
+    })
+}
+
+#[test]
+fn an_error_after_the_take_back_carries_the_steps_that_were_done() {
+    // Maintenance M18 (R-b), the order that matters: `discard-queued` finished, then a write failed. The patch is gone
+    // for good, and the error says so, so that no surface denies it. Needs `uncommit` (0.57.0).
+    let Some(w) = World::new_057("error-after-take-back", LeaseConfig::default()) else {
+        return;
+    };
+    w.plant_queued_patch(
+        "pages/Home.md",
+        "---\ntitle: Home\nid: p-home\n---\n\nPlanted.\n",
+    );
+    w.flag(RecoveryReason::Interrupted);
+    let id = w.queued_patch_id();
+    let refusing = recovery_writing_to(
+        &w,
+        Arc::new(TrailThatRefuses {
+            inner: w.store.clone(),
+            action: "recovery",
+        }),
+    );
+    let err = refusing
+        .recover_with(
+            &w.wiki,
+            RecoveryMode::Run,
+            &RecoverOptions {
+                discard_queued_patch: Some(id),
+            },
+        )
+        .unwrap_err();
+    assert_eq!(w.queue_count(), 0, "the patch was taken back");
+    assert!(
+        err.steps_done().contains(&"discard-queued"),
+        "the error carries the steps that finished: {err:?}"
+    );
+    assert!(matches!(&err, RecoveryError::AfterSteps { cause, .. }
+        if matches!(**cause, RecoveryError::Audit(_))));
+    assert!(
+        err.to_string()
+            .contains("steps already done: discard-queued"),
+        "{err}"
+    );
+
+    // The other order: the trail refuses before any step (the first record of the run), so no step is carried.
+    w.plant_queued_patch(
+        "pages/Home.md",
+        "---\ntitle: Home\nid: p-home\n---\n\nPlanted again.\n",
+    );
+    let id = w.queued_patch_id();
+    let early = recovery_writing_to(
+        &w,
+        Arc::new(TrailThatRefuses {
+            inner: w.store.clone(),
+            action: "recovery-begin",
+        }),
+    );
+    let err = early
+        .recover_with(
+            &w.wiki,
+            RecoveryMode::Run,
+            &RecoverOptions {
+                discard_queued_patch: Some(id),
+            },
+        )
+        .unwrap_err();
+    assert!(err.steps_done().is_empty(), "{err:?}");
+    assert!(matches!(err, RecoveryError::Audit(_)), "{err:?}");
+    assert_eq!(w.queue_count(), 1, "nothing was taken back this time");
+}
+
+#[test]
+fn a_lock_that_could_not_be_cleared_is_a_stop_at_that_step_with_nothing_done() {
+    // Maintenance M18 (R-c). 0.57.0's `unlock --yes` can refuse a holder that appears running; the run stops at
+    // `clear-locks`, no preview is shown, and the plan still carries its intent (the sentence the end event no longer
+    // takes from it: `inklkunn`'s `discard_word_fate` reads `outcome` and `done`). Needs 0.57.0 for the preview.
+    let Some(w) = World::new_057("lock-not-cleared", LeaseConfig::default()) else {
+        return;
+    };
+    w.plant_queued_patch(
+        "pages/Home.md",
+        "---\ntitle: Home\nid: p-home\n---\n\nPlanted.\n",
+    );
+    let lock = plant_lock(
+        &w.repo,
+        "active/default/active.lock",
+        2_147_483_000,
+        "active",
+    );
+    w.flag(RecoveryReason::Interrupted);
+    let id = w.queued_patch_id();
+    w.control("fail-unlock-clear", "");
+    let r = w
+        .recovery
+        .recover_with(
+            &w.wiki,
+            RecoveryMode::Run,
+            &RecoverOptions {
+                discard_queued_patch: Some(id),
+            },
+        )
+        .unwrap();
+    w.uncontrol("fail-unlock-clear");
+    assert!(
+        matches!(
+            &r.outcome,
+            RecoveryOutcome::Stopped {
+                at: Some("clear-locks"),
+                ..
+            }
+        ),
+        "{:#?}",
+        r.lines()
+    );
+    assert!(r.done.is_empty(), "no step finished");
+    assert!(Path::new(&lock).exists(), "the lock was not cleared");
+    assert_eq!(w.uncommit_calls(), 0, "no preview was read");
+    assert_eq!(w.queue_count(), 1);
+    assert!(
+        r.plan
+            .discard_unused
+            .as_deref()
+            .is_some_and(|why| why.contains("this run clears it")),
+        "the plan's field is its intent: {:?}",
+        r.plan.discard_unused
+    );
 }

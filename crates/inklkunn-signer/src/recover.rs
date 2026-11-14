@@ -405,6 +405,12 @@ impl Witnesses {
             .uncommit_plan(&self.root.repo_dir(wiki), patch_id)
     }
 
+    /// Does this prikk have `uncommit` (0.57.0 and later)? Asked without a patch id, so prikk answers before it takes any
+    /// lock: it is safe while a stale lock is held (maintenance M12).
+    pub fn has_uncommit(&self, wiki: &WikiId) -> Result<bool, SignerError> {
+        self.writes.has_uncommit(&self.root.repo_dir(wiki))
+    }
+
     /// `prikk worktree-status`: whether the worktree is the baseline, and how far it is from it.
     pub fn worktree(&self, wiki: &WikiId) -> Result<WorktreeState, SignerError> {
         let w = self.writes.worktree_full(&self.root.repo_dir(wiki))?;

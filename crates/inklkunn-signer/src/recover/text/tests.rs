@@ -81,10 +81,25 @@ fn an_acknowledged_damage_is_read_and_its_companion_warning_does_not_hide_other_
         damage.map(|d| d.named_flags()),
         Some(vec!["--discard-damaged-commits".to_owned()])
     );
-    // The same debris warning with no damage beside it is not waved through.
+    // The same debris warning with no damage beside it is no longer in the way either (M16, PK-46: harmless, and the
+    // next commit replaces the stale metadata) ...
     let alone = "doctor repository: /x\nwarning [PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS]: x\nissue summary: errors=0, warnings=1, info=0\n";
     let alone = parse_doctor_output(alone).unwrap();
-    assert_eq!(alone.others().len(), 1);
+    assert!(alone.others().is_empty(), "{:?}", alone.others());
+    assert!(!alone.is_clean_for_recovery(), "it is still a warning");
+    // ... but it hides nothing beside it: another warning of its own severity is still counted, and so is a debris
+    // warning of another code.
+    let beside = "doctor repository: /x\nwarning [PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS]: x\nwarning [PRIKK-DOCTOR-SOMETHING]: y\nissue summary: errors=0, warnings=2, info=0\n";
+    let beside = parse_doctor_output(beside).unwrap();
+    assert_eq!(beside.others().len(), 1);
+    assert_eq!(nth(&beside.others(), 0).code, "PRIKK-DOCTOR-SOMETHING");
+    let error = "doctor repository: /x\nerror [PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS]: x\nissue summary: errors=1, warnings=0, info=0\n";
+    let error = parse_doctor_output(error).unwrap();
+    assert_eq!(
+        error.others().len(),
+        1,
+        "an error of that code is not the warning prikk calls harmless"
+    );
     // Another error beside the damage is still in the way.
     let more = DOCTOR_DAMAGED.replace(
         "issue summary: errors=1, warnings=1, info=0",

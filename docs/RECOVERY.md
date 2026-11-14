@@ -91,8 +91,11 @@ and that it stopped.
    own preview, the commit's message and the paths it changes) and the command that is your confirmation, with the wiki's
    id in it: `inklkunn wiki recover <wiki id> --discard-queued-patch <patch id>`. `--plan` does not show the preview,
    because prikk takes its own lock to make it and a plan shown writes nothing: it says the preview is shown in a run
-   (that run takes nothing back without your word). A stale lock left beside the patch is cleared by that run first, and
-   the run then stops with the preview. **You confirm by typing the patch's id** (64
+   (that run takes nothing back without your word). A stale lock left beside the patch holds prikk's own lock, so the
+   preview cannot be read while it stands: with 0.57.0 that run clears the lock first and then stops with the preview;
+   with an older prikk (no `uncommit`, so no preview can follow) it clears nothing, and neither does any other stop.
+   The command is offered only when the queue targets the branch the worktree is on; the plan says so before a run.
+   **You confirm by typing the patch's id** (64
    characters, as `prikk status --format json` prints it and the note repeats it); recovery never takes a patch
    back on its own, and not for a patch that is the change of a recorded act (that one is sealed, or stopped on),
    not when more than one patch is queued, and not for a queue that targets another branch than the worktree's.
@@ -140,8 +143,10 @@ and files, to the digest, and sits on the block the act was made on. The step ma
 published); recovery checks that the tip is the same block afterwards, and that `doctor` no longer reports the
 cleanup, **and that the queue is exactly that one patch**: `status --format json` refuses in this state, but the plain
 text of `prikk status` reads (it prints `queued patches: N targeting REF` and `active WAL records: N`), and the step is
-refused unless it shows one patch on the view in a log of one record with no torn byte (it does not show *which* patch;
-that is a question for prikk). Any other code beside it is `doctor-trouble`; a block that is not the act's, or no unfinished act, is the
+refused unless it shows one patch on the view in a log of one record with no torn byte. The queue's **content** is
+checked as well as its size: `prikk verify` reports this code only when the queue holds exactly the patches of the
+block the ref points at (prikk's answer, ledger PK-44), and the step requires that this tip block holds exactly the one
+published patch, so the queue is that patch and no other. Any other code beside it is `doctor-trouble`; a block that is not the act's, or no unfinished act, is the
 stop `published-block-is-not-the-act`, with nothing changed. For that stop, look as under `foreign-queued-patch`
 (`prikk log` shows the newest block; `prikk verify` says whether the repository is sound) and do not run `prikk
 seal` yourself.
@@ -224,31 +229,13 @@ prikk unlock --lock <that path>    # asks you to confirm; clears that one file a
 wiki recover <wiki> --plan` now makes a plan; run `inklkunn wiki recover <wiki>`. Nothing in the history was
 touched at any point.
 
-## A lone `ACTIVE-REF-METADATA-DEBRIS` warning: recovery stops at `doctor-trouble`
+## A lone `ACTIVE-REF-METADATA-DEBRIS` warning: not in the way
 
-**What you see.** The plan says `STOP (doctor-trouble)`. **What it is.** A `seal` killed just after it published
-its block, when the queue was already emptied and the ref's metadata was not: `prikk doctor` reports one warning,
-`PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS` (*active WAL is empty but stale ref metadata remains*), with the
-recommendation *no repair is required; the next guarded active-WAL append will replace stale metadata*. The history
-is sound and complete; what is unfinished is the service's records of the act, and recovery will not finish them
-beside a warning it has no answer for. prikk 0.55 has no verb for this metadata.
-
-**Before.** From the repository directory, check that it is only that:
-
-```sh
-prikk doctor                       # one warning, PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS, and nothing else but `info`
-prikk status --format json         # queue.count is 0
-prikk verify                       # passes (exit status 0)
-prikk log --limit 3                # the newest block is the change the interrupted acceptance meant
-```
-
-**What you may do.** Nothing changes the repository: there is no prikk verb that removes the metadata, and the
-next guarded append that would replace it is a commit, which only the service makes, after recovery. So the wiki
-waits, readable and exportable, as under `foreign-queued-patch` (keep the evidence; or make a new wiki from the
-export if it must take writes). Do **not** delete files under `.prikk/active/`, run `prikk commit` or `prikk seal`
-by hand to make the metadata go away, or use any `prikk doctor` repair: each acts on the repository without the
-service's record. **After.** Nothing changed: the plan stops at `doctor-trouble` again until prikk answers (this is
-one of the two states asked of prikk in the next letter, `docs/UPSTREAM.md`).
+prikk's stale ref metadata; the next accepted change clears it. `prikk doctor` reports one warning,
+`PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS` (*active WAL is empty but stale ref metadata remains*), after a `seal` was
+killed just after it published its block; prikk says it is harmless (`verify` and `doctor` exit 0 with it). Recovery
+notes it in the plan and goes on: it is never a stop. Do **not** run `prikk seal` with nothing queued to make it go
+away (it clears the metadata and then exits 1), and do not delete files under `.prikk/active/`.
 
 ## A view whose creation was killed: finished by recovery, or `view-creation-unclear`
 

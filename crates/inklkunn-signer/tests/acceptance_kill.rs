@@ -1175,8 +1175,9 @@ fn a_sigkill_at_each_step_of_an_acceptance_is_recovered_with_nothing_lost_or_mad
             Err(e) => panic!("{label}: {e}"),
         };
         // A kill inside a real verb can also leave a state recovery has no answer for, and **names** that: the plan
-        // stops (a `doctor` warning about stale reference metadata that asks for nothing, say, when `seal` was killed
-        // just after it published the block). The recovery changes nothing, the wiki stays flagged, a person decides.
+        // stops. The recovery changes nothing, the wiki stays flagged, a person decides. (A `doctor` warning about stale
+        // reference metadata, which asks for nothing, when `seal` was killed just after it published the block, is no
+        // longer such a state: recovery notes it and goes on, M16.)
         if timed && let Some(stop) = shown.plan.stop {
             let run = recovery
                 .recover(&f.wiki, RecoveryMode::Run)

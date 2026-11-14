@@ -468,7 +468,7 @@ impl Step {
             Step::CompletePublication {
                 act, block_id, ..
             } => format!(
-                "run seal --allow-no-audit once, as prikk's doctor recommends, to finish the cleanup of block {block_id}, which is the change of {} {}; no block is made",
+                "run seal --allow-no-audit once, as prikk's doctor recommends, to finish the cleanup of block {block_id}, which is the change of {} {}; no block is made. Before it, the signer checks the queue's content as well as its size: prikk's verify reports this state only when the queue holds exactly the patches of the tip block (PK-44), and the tip block must hold exactly the one published patch",
                 act.kind(),
                 act.token()
             ),
@@ -740,6 +740,11 @@ fn discard_honoured(w: &Witness, target: Option<&str>, offer: &UncommitPlan) -> 
     target.is_some() && target == current && current == Some(offer.target.as_str())
 }
 
+/// Does the queue target the branch the worktree is on (so that a run would offer the command)?
+fn on_the_worktrees_branch(w: &Witness, target: Option<&str>) -> bool {
+    target.is_some() && target == w.status.current_branch.as_deref()
+}
+
 /// What the plan says about taking an orphan queued patch back, when it stops on it. The answer is why a patch id the
 /// person typed was not used, when one was typed and it is already clear it will not be (maintenance M4).
 fn discard_notes(
@@ -791,20 +796,40 @@ fn discard_notes(
             })
         }
         DiscardOffer::InARun => {
+            // The command is promised only when a run would offer it: the queue targets the worktree's branch (R-f).
+            let command = if on_the_worktrees_branch(w, target) {
+                "and the command that does it"
+            } else {
+                "(the queue targets a branch other than the one the worktree is on, so it offers no command)"
+            };
             plan.notes.push(format!(
-                "with prikk 0.57.0 or later, a run of `inklkunn wiki recover {}` shows prikk's own preview of taking the queued patch {patch_id} back and the command that does it; `recover --plan` does not ask prikk for it, because prikk takes its lock to make the preview and a plan shown writes nothing",
+                "with prikk 0.57.0 or later, a run of `inklkunn wiki recover {}` shows prikk's own preview of taking the queued patch {patch_id} back {command}; `recover --plan` does not ask prikk for it, because prikk takes its lock to make the preview and a plan shown writes nothing",
                 w.wiki
             ));
-            given.map(|_| "`recover --plan` only shows; a run takes the patch back".to_owned())
+            given.map(|_| {
+                if on_the_worktrees_branch(w, target) {
+                    "`recover --plan` only shows; a run takes the patch back".to_owned()
+                } else {
+                    "`recover --plan` only shows, and the queue targets a branch other than the one the worktree is on, so recovery will not take the patch back".to_owned()
+                }
+            })
         }
         DiscardOffer::AfterLocks => {
+            let (then, word) = if on_the_worktrees_branch(w, target) {
+                (
+                    "stops here with the preview and the command",
+                    "a stale lock stood in the way: this run clears it and stops with the preview, and the next run takes the patch back",
+                )
+            } else {
+                (
+                    "stops here with the preview (the queue targets a branch other than the one the worktree is on, so it offers no command)",
+                    "a stale lock stood in the way, and the queue targets a branch other than the one the worktree is on, so recovery will not take the patch back",
+                )
+            };
             plan.notes.push(format!(
-                "prikk's preview of taking the queued patch {patch_id} back needs prikk's lock, which a stale lock holds: the run clears it first (step 1) and then reads the preview, and stops here with the preview and the command"
+                "prikk's preview of taking the queued patch {patch_id} back needs prikk's lock, which a stale lock holds: the run clears it first (step 1) and then reads the preview, and {then}"
             ));
-            given.map(|_| {
-                "a stale lock stood in the way: this run clears it and stops with the preview, and the next run takes the patch back"
-                    .to_owned()
-            })
+            given.map(|_| word.to_owned())
         }
         DiscardOffer::NotAsked => None,
     }
@@ -1039,6 +1064,10 @@ fn build_plan(w: &Witness, discard: &DiscardInput, unused: &mut Option<String>) 
             "prikk does not verify the repository, and only because of a retired maintainer key (DR-10): {note}"
         ));
     }
+    if w.doctor.diagnostics.iter().any(|d| d.is_metadata_debris()) {
+        plan.notes
+            .push("prikk's stale ref metadata; the next accepted change clears it".to_owned());
+    }
     let unreached = w.doctor.unreached_notes();
     if unreached > 0 {
         plan.notes.push(format!(
@@ -1088,6 +1117,16 @@ fn build_plan(w: &Witness, discard: &DiscardInput, unused: &mut Option<String>) 
             .any(|d| d.code == PUBLICATION_UNTRUSTED_CODE)
     {
         stop(&mut plan, Stop::CleanupBesideTrustFindings);
+        return plan;
+    }
+    // The debris warning is nobody's business (M16, PK-46), except beside the two states whose signer step asks for
+    // "exactly this one finding" (a pending cleanup, an unfinished view creation): the step would refuse, so the plan
+    // does not offer it.
+    if (w.cleanup_pending.is_some() || !w.view_acts.is_empty())
+        && !w.doctor.has_acknowledged_damage()
+        && w.doctor.diagnostics.iter().any(|d| d.is_metadata_debris())
+    {
+        stop(&mut plan, Stop::DoctorTrouble);
         return plan;
     }
     // The one error a pending cleanup stands for is that row's own business (P15); anything beside it is trouble.
@@ -1299,12 +1338,24 @@ fn build_plan(w: &Witness, discard: &DiscardInput, unused: &mut Option<String>) 
                     w,
                     discard,
                 );
-                // A stale lock beside the orphan patch is cleared all the same (M6): it is the one thing in the way
-                // of reading prikk's preview, and clearing it is what recovery does for any lock it finds.
+                // A stale lock beside the orphan patch is cleared all the same (M6) **when a preview follows**: it is
+                // the one thing in the way of reading prikk's preview, and only a prikk that has `uncommit` has one
+                // (M12). On a prikk without the verb, or whose answer could not be read, this stop clears nothing, as
+                // every other stop; so does a plan that did not ask.
+                let preview_follows = matches!(
+                    discard.offer,
+                    DiscardOffer::InARun | DiscardOffer::AfterLocks
+                );
                 let clearing: Vec<Step> = std::mem::take(&mut steps)
                     .into_iter()
-                    .filter(|s| matches!(s, Step::ClearLocks { .. }))
+                    .filter(|s| preview_follows && matches!(s, Step::ClearLocks { .. }))
                     .collect();
+                if !preview_follows && !w.locks.is_empty() {
+                    plan.notes.push(
+                        "a stale lock is held, and recovery clears it here only when a preview of taking the patch back can follow (prikk 0.57.0 or later): nothing is cleared"
+                            .to_owned(),
+                    );
+                }
                 stop(&mut plan, Stop::ForeignQueuedPatch);
                 plan.steps = clearing;
                 return plan;

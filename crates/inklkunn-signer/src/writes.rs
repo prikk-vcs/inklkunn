@@ -1039,6 +1039,25 @@ impl Writes {
             .map_err(SignerError::Damaged)
     }
 
+    /// Does this prikk have the verb `uncommit` (0.57.0 and later)? Asked as ``prikk uncommit`` with no patch id, which
+    /// prikk refuses while it reads its arguments (exit 2, a usage error), before it takes any lock: so the question
+    /// can be asked while a stale lock is held and on a repository mounted read-only (maintenance M12). A prikk without
+    /// the verb says `unknown command` (exit 2). Any other answer is not an answer, and is an error.
+    pub(crate) fn has_uncommit(&self, repo: &Path) -> Result<bool, SignerError> {
+        let (run, _) =
+            self.run_raw(&Mounts::read(repo, None), Sizing::repo(repo), &["uncommit"])?;
+        let stderr = String::from_utf8_lossy(&run.stderr);
+        if uncommit_is_unknown(run.status.code(), &stderr) {
+            return Ok(false);
+        }
+        if run.status.code() == Some(2) {
+            return Ok(true);
+        }
+        Err(SignerError::Damaged(
+            "prikk did not say whether it has `uncommit`".to_owned(),
+        ))
+    }
+
     /// ``prikk uncommit <patch>``: the newest queued commit leaves the queue and is kept in prikk's recovery log; the
     /// files in the worktree are **not** changed. Returns the recovery run it was saved under (``prikk doctor
     /// --recovery-restore <run>`` undoes it). Signs nothing. **The caller has decided** (recovery, from a plan the

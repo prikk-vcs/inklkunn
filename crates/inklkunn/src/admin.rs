@@ -1112,26 +1112,35 @@ fn recover(
 }
 
 /// Why a patch id typed with `--discard-queued-patch` was not used, when it was not: `None` when the patch was taken
-/// back. The plan says it for every state it was made in; a recovery that stopped before the step, or that did not
-/// run, says that.
+/// back. **The sentence is derived from the steps that finished** (maintenance M18), never from what the plan meant to
+/// do: a take-back that happened is not denied because a later write failed, and a lock that was not cleared is not
+/// reported as cleared. The plan's own reason is used only for a run that took no step to explain it (it planned no
+/// take-back at all).
 fn discard_word_fate(result: &Result<RecoveryReport, RecoveryError>) -> Option<String> {
+    const TAKEN_BACK: &str = "discard-queued";
     let report = match result {
         Ok(report) => report,
-        Err(_) => return Some("recovery did not run, so nothing was taken back".to_owned()),
+        Err(e) if e.steps_done().contains(&TAKEN_BACK) => return None,
+        Err(_) => {
+            return Some("recovery ended in an error before it took the patch back".to_owned());
+        }
     };
-    if report.done.iter().any(|d| d.step == "discard-queued") {
+    if report.done.iter().any(|d| d.step == TAKEN_BACK) {
         return None;
     }
-    if report
-        .plan
-        .steps
-        .iter()
-        .any(|s| s.name() == "discard-queued")
+    if let RecoveryOutcome::Stopped {
+        at: Some(step),
+        why,
+    } = &report.outcome
     {
-        return Some(
-            "recovery stopped before it took the patch back, or the step failed: nothing was taken back"
-                .to_owned(),
-        );
+        return Some(match *step {
+            "clear-locks" => format!("the lock was not cleared: {why}"),
+            TAKEN_BACK => format!("taking the patch back failed: {why}"),
+            other => format!("recovery stopped at {other} before it took the patch back"),
+        });
+    }
+    if report.plan.steps.iter().any(|s| s.name() == TAKEN_BACK) {
+        return Some("recovery stopped before it took the patch back".to_owned());
     }
     Some(
         report

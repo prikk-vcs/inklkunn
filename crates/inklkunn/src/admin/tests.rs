@@ -1480,12 +1480,11 @@ fn the_end_event_says_what_became_of_the_word_whatever_the_run_did() {
     let take = || Step::DiscardQueued {
         patch_id: id.clone(),
     };
-    // It did not run.
+    // It ended in an error before any step: the words say that, and not that it did not run (M18: it may have begun).
     let busy: Result<RecoveryReport, RecoveryError> = Err(RecoveryError::Lease("no".to_owned()));
-    assert!(
-        discard_word_fate(&busy).is_some_and(|w| w.contains("did not run")),
-        "{:?}",
-        discard_word_fate(&busy)
+    assert_eq!(
+        discard_word_fate(&busy).as_deref(),
+        Some("recovery ended in an error before it took the patch back")
     );
     // It planned no take-back: the plan's own reason, else a plain statement.
     let mut p = plan(Vec::new());
@@ -1501,7 +1500,7 @@ fn the_end_event_says_what_became_of_the_word_whatever_the_run_did() {
     // It planned one and did not reach it (a step before failed, or the step did).
     assert!(
         discard_word_fate(&Ok(report(plan(vec![take()]), Vec::new())))
-            .is_some_and(|w| w.contains("nothing was taken back"))
+            .is_some_and(|w| w.contains("before it took the patch back"))
     );
     // It took the patch back: nothing to say.
     let done = vec![StepDone {
@@ -1511,6 +1510,136 @@ fn the_end_event_says_what_became_of_the_word_whatever_the_run_did() {
     assert_eq!(
         discard_word_fate(&Ok(report(plan(vec![take()]), done))),
         None
+    );
+}
+
+#[test]
+fn the_end_event_is_derived_from_the_steps_that_finished_never_from_the_plans_intent() {
+    // Maintenance M18 (R-b, R-c). Both orders: a failure after the take-back, and a failure before it.
+    use inklkunn_core::RecoveryReport;
+    use inklkunn_core::recovery::{LockEntry, Plan, Step, StepDone};
+    let id = "ab".repeat(32);
+    let wiki = inklkunn_store::WikiId::new();
+    let plan = |steps: Vec<Step>, unused: Option<&str>| Plan {
+        wiki: wiki.clone(),
+        view: None,
+        witnesses: Vec::new(),
+        steps,
+        stop: None,
+        notes: Vec::new(),
+        discard_unused: unused.map(str::to_owned),
+    };
+    let done = |name: &'static str| StepDone {
+        step: name,
+        detail: String::new(),
+    };
+    let report = |plan: Plan, outcome: RecoveryOutcome, done: Vec<StepDone>| RecoveryReport {
+        wiki: wiki.clone(),
+        plan,
+        act: None,
+        outcome,
+        done,
+        reconciliation: None,
+        under_lease: true,
+    };
+    let take = || Step::DiscardQueued {
+        patch_id: id.clone(),
+    };
+
+    // After: the patch was taken back and a later write failed. The take-back is not denied, whichever way the
+    // failure reaches the end event (a report that says where it stopped, or an error that carries the steps done).
+    let stopped_later = report(
+        plan(vec![take(), Step::Verify], None),
+        RecoveryOutcome::Stopped {
+            at: Some("verify"),
+            why: "the repository does not verify".to_owned(),
+        },
+        vec![done("discard-queued")],
+    );
+    assert_eq!(discard_word_fate(&Ok(stopped_later)), None);
+    let errored: Result<RecoveryReport, RecoveryError> = Err(RecoveryError::AfterSteps {
+        done: vec!["discard-queued", "restore-worktree"],
+        cause: Box::new(RecoveryError::Audit("the trail is full".to_owned())),
+    });
+    assert_eq!(discard_word_fate(&errored), None);
+    assert!(
+        errored
+            .as_ref()
+            .err()
+            .is_some_and(|e| e.to_string().contains("steps already done: discard-queued")),
+        "{:?}",
+        errored.as_ref().err().map(ToString::to_string)
+    );
+
+    // Before: an error with no step finished, or with steps that are not the take-back, says so, and says nothing
+    // about a lock or a preview.
+    for e in [
+        RecoveryError::Witness("prikk doctor: gone".to_owned()),
+        RecoveryError::AfterSteps {
+            done: vec!["clear-locks"],
+            cause: Box::new(RecoveryError::Audit("full".to_owned())),
+        },
+    ] {
+        assert_eq!(
+            discard_word_fate(&Err(e)).as_deref(),
+            Some("recovery ended in an error before it took the patch back")
+        );
+    }
+
+    // The lock was not cleared: the plan meant to clear it and stop with the preview, and the step failed. The plan's
+    // own reason (the intent) is not what is said.
+    let intent = "a stale lock stood in the way: this run clears it and stops with the preview, and the next run takes the patch back";
+    let lock_step = Step::ClearLocks {
+        locks: vec![LockEntry {
+            path: "/x".to_owned(),
+            kind: "active".to_owned(),
+            recorded_pid: 1,
+            prikk_liveness: String::new(),
+        }],
+    };
+    let not_cleared = report(
+        plan(vec![lock_step], Some(intent)),
+        RecoveryOutcome::Stopped {
+            at: Some("clear-locks"),
+            why: "prikk refused to clear the lock".to_owned(),
+        },
+        Vec::new(),
+    );
+    let fate = discard_word_fate(&Ok(not_cleared)).expect("the word was not used");
+    assert_eq!(
+        fate,
+        "the lock was not cleared: prikk refused to clear the lock"
+    );
+    assert!(!fate.contains("this run clears it"), "{fate}");
+
+    // A lock that was cleared and a preview shown: the plan's reason (written after the clearing) is the sentence.
+    let cleared = report(
+        plan(
+            Vec::new(),
+            Some(
+                "a stale lock stood in the way: this run cleared it and stops with the preview, and the next run takes the patch back",
+            ),
+        ),
+        RecoveryOutcome::Stopped {
+            at: None,
+            why: "a patch is queued that no recorded act describes".to_owned(),
+        },
+        vec![done("clear-locks")],
+    );
+    assert!(discard_word_fate(&Ok(cleared)).is_some_and(|w| w.contains("this run cleared it")),);
+
+    // The take-back itself failed.
+    let failed = report(
+        plan(vec![take()], None),
+        RecoveryOutcome::Stopped {
+            at: Some("discard-queued"),
+            why: "prikk refused".to_owned(),
+        },
+        Vec::new(),
+    );
+    assert_eq!(
+        discard_word_fate(&Ok(failed)).as_deref(),
+        Some("taking the patch back failed: prikk refused")
     );
 }
 
