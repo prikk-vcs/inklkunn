@@ -790,6 +790,36 @@ fn what_prikk_prints_of_a_commit_is_kept_short_and_without_control_characters() 
 }
 
 #[test]
+fn what_prikk_prints_of_a_commit_has_its_direction_characters_replaced_too() {
+    // Maintenance M7 (the characters of handoff 005's K14 and K23): a message that holds a right-to-left override or
+    // the Arabic letter mark could make a line of the preview read as another, so each is replaced, and only those.
+    let direction = [
+        '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}', '\u{202e}', '\u{2066}', '\u{2067}',
+        '\u{2068}', '\u{2069}', '\u{200e}', '\u{200f}', '\u{061c}',
+    ];
+    let text_neighbours = [
+        '\u{200b}', '\u{200c}', '\u{200d}', '\u{2029}', '\u{2065}', '\u{206a}', '\u{061b}',
+        '\u{061d}',
+    ];
+    for c in direction {
+        assert!(is_direction_or_format(c), "{c:?}");
+        let text = format!(
+            "commit {UNCOMMIT_ID} (sequence 1 on heads/main)\nmessage: a{c}b\nplan only -- nothing written\n"
+        );
+        let plan = parse_uncommit_plan(&text, UNCOMMIT_ID).unwrap();
+        assert_eq!(nth(&plan.lines, 0), "message: a?b", "{c:?}");
+    }
+    for c in text_neighbours {
+        assert!(!is_direction_or_format(c), "{c:?}");
+        let text = format!(
+            "commit {UNCOMMIT_ID} (sequence 1 on heads/main)\nmessage: a{c}b\nplan only -- nothing written\n"
+        );
+        let plan = parse_uncommit_plan(&text, UNCOMMIT_ID).unwrap();
+        assert_eq!(nth(&plan.lines, 0), &format!("message: a{c}b"), "{c:?}");
+    }
+}
+
+#[test]
 fn a_prikk_without_uncommit_is_told_by_its_exact_refusal_and_by_nothing_else() {
     let said = "error: unknown command: uncommit\n";
     assert!(uncommit_is_unknown(Some(2), said));

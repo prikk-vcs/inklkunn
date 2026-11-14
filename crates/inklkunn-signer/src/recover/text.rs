@@ -640,11 +640,29 @@ pub fn parse_uncommit_plan(stdout: &str, patch_id: &str) -> Result<UncommitPlan,
     })
 }
 
-/// A line of prikk's text for a person: control characters become `?`, and it is cut at [`PLAN_LINE_CHARS`].
+/// Is `c` a bidirectional control or a format character that changes how text reads without being seen (U+202A -
+/// U+202E, U+2066 - U+2069, U+200E, U+200F and the Arabic letter mark U+061C)? **The one definition**: the knowledge
+/// files refuse these in every text they hold (handoff 005 corrections K14, K23), and a line of prikk's text that is
+/// shown to a person has them replaced (maintenance M7), so neither can make a line read as another.
+pub fn is_direction_or_format(c: char) -> bool {
+    matches!(
+        c,
+        '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{200e}' | '\u{200f}' | '\u{061c}'
+    )
+}
+
+/// A line of prikk's text for a person: control characters and direction characters become `?` (the commit's message
+/// and paths are somebody's text), and it is cut at [`PLAN_LINE_CHARS`].
 fn clean_line(line: &str) -> String {
     let mut out: String = line
         .chars()
-        .map(|c| if c.is_control() { '?' } else { c })
+        .map(|c| {
+            if c.is_control() || is_direction_or_format(c) {
+                '?'
+            } else {
+                c
+            }
+        })
         .take(PLAN_LINE_CHARS)
         .collect();
     if line.chars().count() > PLAN_LINE_CHARS {

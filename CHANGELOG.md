@@ -462,6 +462,13 @@ Dependency updates (the architect, 2026-11-14).
   proposal always allows. Schema stays 17; migration V16's trigger already names the open states and is unchanged, and a
   test now pins its list to `ProposalState::is_open` for every state, from a raw connection (a draft included) and on both
   stores. The returned record is the held proposal: callers no longer submit it. No prikk-dependent test is added or removed.
+- **M7 (maintenance corrections, review finding N-e; the preview's lines): direction characters are replaced too.** The lines of
+  prikk's `uncommit --plan-only` that recovery shows a person (a commit's message and paths: somebody's text) had only control
+  characters replaced; now the bidirectional controls and format characters of K14 and K23 (U+202A - U+202E, U+2066 - U+2069,
+  U+200E, U+200F, U+061C) become `?` as well, so a message cannot make a line of the preview read as another. The set has one
+  definition, `inklkunn_signer::recover::text::is_direction_or_format` (the lowest crate that needs it); the knowledge files' check
+  (`yaml::is_bidi_or_format`) calls it, so the two cannot drift. Test: every character of the set is replaced and its neighbours
+  in the code space are kept.
 
 ## [0.2.0] — 2026-11-04
 
