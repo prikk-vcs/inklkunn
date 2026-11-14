@@ -263,3 +263,119 @@ async fn nothing_on_the_list_ranks_a_source() {
         assert!(!body.contains("style="), "{body}");
     }
 }
+
+// ------------------------------------------------------------------------------------ a day that has not come, and pages (K40)
+
+#[tokio::test]
+async fn a_review_on_a_day_that_has_not_come_is_listed_with_its_own_reason_in_both_languages() {
+    let w = handbook(&[("pages/Home.md", &home_with(SAID))]);
+    let mut ahead = source(1, SourceKind::Primary);
+    ahead.last_reviewed = reviewed("2999-01-01");
+    ahead.identity.title = Some("The Mistyped Year".to_owned());
+    let mut fine = source(2, SourceKind::Primary);
+    fine.last_reviewed = reviewed("2023-11-14");
+    fine.identity.title = Some("Looked At Today".to_owned());
+    put(&w, &home_with(SAID), &[], &[ahead, fine]);
+    let body = get(&w, LIST).await.body();
+    let r = rows(&body);
+    assert_eq!(r.len(), 1, "{body}");
+    let row = r.first().expect("a row");
+    assert!(row.contains("The Mistyped Year"), "{body}");
+    assert!(
+        row.contains("Recorded as reviewed on 2999-01-01, a day that has not come."),
+        "{body}"
+    );
+    // It is not said to have been last reviewed, nor to be old.
+    assert!(!row.contains("Last reviewed on"), "{body}");
+    assert!(!row.contains("days ago"), "{body}");
+    assert!(!body.contains("Looked At Today"), "{body}");
+    let ja = request(&w, APP, "GET", LIST, JA).await.body();
+    assert!(
+        ja.contains("確認した日として 2999-01-01 と記録されていますが、その日はまだ来ていません。"),
+        "{ja}"
+    );
+}
+
+/// `n` sources nobody reviewed, titled by their number.
+fn crowd(n: u8) -> World {
+    let w = handbook(&[("pages/Home.md", &home_with(SAID))]);
+    let sources: Vec<_> = (1..=n)
+        .map(|i| {
+            let mut s = source(i, SourceKind::Other);
+            s.identity.title = Some(format!("Survey number {i}"));
+            s
+        })
+        .collect();
+    put(&w, &home_with(SAID), &[], &sources);
+    w
+}
+
+/// The address of the link whose words are `words`, in `body`.
+fn link_to(body: &str, words: &str) -> Option<String> {
+    body.split("<a href=\"").skip(1).find_map(|rest| {
+        let (href, after) = rest.split_once("\">")?;
+        after.starts_with(words).then(|| href.replace("&amp;", "&"))
+    })
+}
+
+#[tokio::test]
+async fn the_list_is_shown_fifty_rows_at_a_time_with_a_cursor_and_the_way_back() {
+    let w = crowd(55);
+    let first = get(&w, LIST).await.body();
+    assert_eq!(rows(&first).len(), 50, "{first}");
+    assert!(first.contains("Showing sources 1 to 50 of 55."), "{first}");
+    assert!(
+        link_to(&first, "Show the first sources").is_none(),
+        "{first}"
+    );
+    let more = link_to(&first, "Show the next sources").expect("a link to the next rows");
+    assert!(more.starts_with(&format!("{LIST}?after=")), "{more}");
+    // The next page is the five that remain, with the way back and no way on.
+    let second = get(&w, &more).await;
+    assert_eq!(second.status, StatusCode::OK);
+    let second = second.body();
+    assert_eq!(rows(&second).len(), 5, "{second}");
+    assert!(
+        second.contains("Showing sources 51 to 55 of 55."),
+        "{second}"
+    );
+    assert!(
+        link_to(&second, "Show the next sources").is_none(),
+        "{second}"
+    );
+    assert_eq!(
+        link_to(&second, "Show the first sources").as_deref(),
+        Some(LIST)
+    );
+    // No row is on both pages, and every source is on one.
+    let titles = |body: &str| -> Vec<String> {
+        (1..=55)
+            .map(|i| format!("Survey number {i}”"))
+            .filter(|t| body.contains(t.as_str()))
+            .collect()
+    };
+    let (a, b) = (titles(&first), titles(&second));
+    assert_eq!((a.len(), b.len()), (50, 5));
+    assert!(a.iter().all(|t| !b.contains(t)));
+    // A cursor that is not one this service gave out is no place to continue from: the list begins.
+    let lost = get(&w, &format!("{LIST}?after=not-a-cursor")).await.body();
+    assert_eq!(rows(&lost).len(), 50, "{lost}");
+    assert!(lost.contains("Showing sources 1 to 50 of 55."), "{lost}");
+}
+
+#[tokio::test]
+async fn a_list_of_one_page_says_nothing_of_pages() {
+    let w = crowd(50);
+    let body = get(&w, LIST).await.body();
+    assert_eq!(rows(&body).len(), 50);
+    assert!(!body.contains("Showing sources"), "{body}");
+    assert!(!body.contains("Show the next sources"), "{body}");
+    assert!(!body.contains("Show the first sources"), "{body}");
+    let ja = crowd(51);
+    let body = request(&ja, APP, "GET", LIST, JA).await.body();
+    assert!(
+        body.contains("51 件のうち 1 件目から 50 件目までを表示しています。"),
+        "{body}"
+    );
+    assert!(body.contains("続きの出典を表示"), "{body}");
+}

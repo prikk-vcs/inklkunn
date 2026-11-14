@@ -6,8 +6,10 @@
 //!
 //! - every source marked `unavailable`;
 //! - every source with **no** `last_reviewed` (*never reviewed*);
-//! - every source whose `last_reviewed` is **older than the wiki's setting** (`knowledge.review_after`, three years
-//!   unless the operator says otherwise),
+//! - every source whose `last_reviewed` is **older than the setting** (`knowledge.review_after`, three years unless
+//!   the operator says otherwise; one value for every wiki of the instance until RFC 006's policy as data);
+//! - every source whose `last_reviewed` is a day that **has not come**: a person cannot have looked on it, and a
+//!   mistyped year would otherwise keep the source out of the list for years (K40);
 //!
 //! each with the claims that rely on it. The list is **not a ranking and not a verdict**: a listed source is one a
 //! person has not looked at lately, which says nothing about whether it is right, and an unlisted one is not
@@ -16,13 +18,15 @@
 //! **Time is a parameter.** The day comes from the caller (the read service's injected clock), never from here,
 //! so a test fixes it. A source is *older than the setting* when more than `review_after_days` whole days have
 //! passed since the day it was reviewed: reviewed exactly `review_after_days` days ago, it is not yet listed. A day
-//! in the future (a mistyped year) is not old. A `last_reviewed` the index holds that does not read as a day (a row
+//! in the future (a mistyped year) is not old, and is listed on its own reason ([`LastReview::Ahead`]). A `last_reviewed` the index holds that does not read as a day (a row
 //! written by another build) is read as *never reviewed*, so it is listed rather than trusted.
 //!
 //! **Bounded.** The rows are the index's sources (bounded as the index is, by the file count); the claims named
-//! beside a source are cut at [`MAX_RELYING`] with their whole count kept.
+//! beside a source are cut at [`MAX_RELYING`] with their whole count kept. The index finds the links of a source by
+//! a map built once, and the list is computed **once for a tip, a day and a setting** and kept with the index
+//! ([`sources_to_review_kept`]): a reader who asks again, or asks for the next page, costs a slice of it (K40).
 
-use std::sync::Arc;
+use std::sync::{Arc, PoisonError};
 
 use inklkunn_store::{KnowledgeLinkRow, KnowledgeSourceRow};
 
@@ -41,12 +45,18 @@ pub const MAX_RELYING: usize = 50;
 pub enum LastReview {
     /// No person has said they checked it.
     Never,
-    /// A person checked it on this day (as written, `YYYY-MM-DD`).
+    /// A person checked it on this day (as written, `YYYY-MM-DD`), which has come.
     On {
         /// The day, as the file has it.
         day: String,
         /// More than the setting's days ago.
         overdue: bool,
+    },
+    /// The file says a person checked it on a day that has not come yet: no one can have, so it counts as no look
+    /// (K40).
+    Ahead {
+        /// The day, as the file has it.
+        day: String,
     },
 }
 
@@ -77,7 +87,8 @@ pub struct SourceToReview {
 }
 
 impl SourceToReview {
-    /// The reasons it is listed, as stable words: `unavailable`, `never-reviewed`, `overdue`. At least one.
+    /// The reasons it is listed, as stable words: `unavailable`, `never-reviewed`, `overdue`, `review-in-future`. At
+    /// least one.
     pub fn reasons(&self) -> Vec<&'static str> {
         let mut out = Vec::new();
         if self.unavailable {
@@ -86,6 +97,7 @@ impl SourceToReview {
         match &self.review {
             LastReview::Never => out.push("never-reviewed"),
             LastReview::On { overdue: true, .. } => out.push("overdue"),
+            LastReview::Ahead { .. } => out.push("review-in-future"),
             LastReview::On { .. } => {}
         }
         out
@@ -120,6 +132,10 @@ pub fn sources_to_review(
             let unavailable = source.availability == "unavailable";
             let review = match source.last_reviewed.as_deref().and_then(day_number) {
                 None => LastReview::Never,
+                // A day that has not come is not a look (K40).
+                Some(reviewed) if reviewed > today => LastReview::Ahead {
+                    day: source.last_reviewed.clone().unwrap_or_default(),
+                },
                 Some(reviewed) => LastReview::On {
                     day: source.last_reviewed.clone().unwrap_or_default(),
                     // Strictly more than the limit: reviewed `limit` days ago is not yet old.
@@ -129,7 +145,9 @@ pub fn sources_to_review(
             let wanted = unavailable
                 || matches!(
                     review,
-                    LastReview::Never | LastReview::On { overdue: true, .. }
+                    LastReview::Never
+                        | LastReview::Ahead { .. }
+                        | LastReview::On { overdue: true, .. }
                 );
             wanted.then(|| {
                 let relying: Vec<&KnowledgeLinkRow> = index.claims_citing(&source.id).collect();
@@ -151,6 +169,42 @@ pub fn sources_to_review(
             })
         })
         .collect()
+}
+
+/// The list kept with an index: for which day and setting it was computed, and the list.
+#[derive(Debug)]
+pub(super) struct Memo {
+    day: i64,
+    review_after_days: u32,
+    list: Arc<Vec<SourceToReview>>,
+}
+
+/// [`sources_to_review`], computed **once** for the index, the day of `now` and the setting, and kept with the index
+/// (K40): the next reader of the same day, and the next page of the same walk, share the list. The first reader of
+/// a day computes it while the others wait, so the work is not repeated by a crowd.
+pub fn sources_to_review_kept(
+    index: &KnowledgeIndex,
+    now: i64,
+    review_after_days: u32,
+) -> Arc<Vec<SourceToReview>> {
+    let day = now.div_euclid(86_400);
+    let mut memo = index
+        .freshness_memo()
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    if let Some(kept) = memo
+        .as_ref()
+        .filter(|m| m.day == day && m.review_after_days == review_after_days)
+    {
+        return Arc::clone(&kept.list);
+    }
+    let list = Arc::new(sources_to_review(index, now, review_after_days));
+    *memo = Some(Memo {
+        day,
+        review_after_days,
+        list: Arc::clone(&list),
+    });
+    list
 }
 
 /// The number of days from 1970-01-01 to the day `YYYY-MM-DD`; `None` when the text is not a day in that form.

@@ -560,8 +560,8 @@ fn post(
         view: full_view.as_deref(),
         base: &base,
     };
-    let carried_lines = match file_lines(ctx, t, &place, &knowledge_files) {
-        Ok(found) => found.lines,
+    let (carried_lines, carried_curated) = match file_lines(ctx, t, &place, &knowledge_files) {
+        Ok(found) => (found.lines, found.curated),
         Err(e) => return read_failure(page, ctx, e),
     };
     let prepared = prepared;
@@ -635,6 +635,7 @@ fn post(
                 drops: dropping.clone(),
                 confirmed: sub.drops.clone(),
                 carried: carried_lines.clone(),
+                curate: Vec::new(),
             },
         }
     };
@@ -740,29 +741,52 @@ fn post(
             };
             match outcome {
                 Ok(to) => see(&to),
-                Err(Failure::Plain(ProposalError::Invalid(why))) => render_form(
-                    page,
-                    ctx,
-                    state(vec![words::invalid_text(t, why)]),
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                ),
+                Err(Failure::Plain(ProposalError::Invalid(why))) => {
+                    let mut shown = state(vec![words::invalid_text(t, why)]);
+                    // A change that needs a curation proposal leads to where one is made (K39).
+                    if matches!(why, Invalid::KnowledgeCurated) {
+                        match curate_offers(ctx, t, full_view.as_deref(), &carried_curated) {
+                            Ok(offered) => shown.knowledge.curate = offered,
+                            Err(e) => return read_failure(page, ctx, e),
+                        }
+                    }
+                    render_form(page, ctx, shown, StatusCode::UNPROCESSABLE_ENTITY)
+                }
                 Err(Failure::Plain(error)) => refused(page, ctx, &error, Vec::new()),
                 // The draft was made and could not be sent: say why, and leave the person on the draft.
                 Err(Failure::Late { id, error }) => {
                     let to = paths::act(slug, id.as_str(), paths::ACT_EDIT);
-                    refused(
-                        page,
-                        ctx,
-                        &error,
-                        vec![Choice {
-                            label: t.get(Key::ProposeContinueDraft),
-                            href: to,
-                        }],
-                    )
+                    let mut choices = vec![Choice {
+                        label: t.get(Key::ProposeContinueDraft),
+                        href: to,
+                    }];
+                    if matches!(error, ProposalError::Invalid(Invalid::KnowledgeCurated)) {
+                        match curate_offers(ctx, t, full_view.as_deref(), &carried_curated) {
+                            Ok(offered) => choices.extend(
+                                offered
+                                    .into_iter()
+                                    .map(|(label, href)| Choice { label, href }),
+                            ),
+                            Err(e) => return read_failure(page, ctx, e),
+                        }
+                    }
+                    refused(page, ctx, &error, choices)
                 }
             }
         }
     }
+}
+
+/// The way to the curation form of each claim a refused change touches (K39), for the view the proposal is for
+/// (`None`: the default view).
+fn curate_offers(
+    ctx: &Ctx,
+    t: crate::catalog::T,
+    full_view: Option<&str>,
+    curated: &[inklkunn_core::knowledge::check::Refusal],
+) -> Result<Vec<(String, String)>, inklkunn_core::read::ReadError> {
+    let view = full_view.unwrap_or(ctx.wiki.default_view.as_str());
+    crate::knowledge::curate::offers(ctx, t, view, curated)
 }
 
 /// Why a write failed: plainly, or after the draft it began with was made.

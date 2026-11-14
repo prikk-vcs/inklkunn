@@ -134,7 +134,7 @@ pub use why::{
 pub use api::{
     ApiError, BacklinkAnswer, BacklinkPage, ChangePage, Cursor, DEFAULT_PAGE_SIZE, Feature,
     HealthList, HealthPage, HealthRows, HistoryAnswer, ListedPage, MAX_PAGE_SIZE, PageFilter,
-    PageList, RawInfo, StaleScan, UnreadableKnowledgeFile,
+    PageList, RawInfo, SourcesToReviewPage, StaleScan, UnreadableKnowledgeFile,
 };
 
 /// Plain-data views of what a page carries, as the derived cache keeps them.
@@ -461,8 +461,10 @@ impl ReadService {
     }
 
     /// The sources of the view's tip that want a person's look (RFC 005 part 2 D-10): marked unavailable, never
-    /// reviewed, or reviewed longer ago than `knowledge.review_after`, each with the claims that rely on it. Read
-    /// from the knowledge index of the tip and the injected clock; **nothing is fetched**.
+    /// reviewed, reviewed longer ago than `knowledge.review_after`, or reviewed on a day that has not come, each with
+    /// the claims that rely on it. **The whole list**; a surface that shows it asks for a page
+    /// ([`ReadService::sources_to_review_page`]). Read from the knowledge index of the tip and the injected clock;
+    /// **nothing is fetched**.
     pub fn sources_to_review(
         &self,
         wiki: &WikiRecord,
@@ -470,11 +472,12 @@ impl ReadService {
     ) -> Result<crate::knowledge::freshness::SourcesToReview, ReadError> {
         let index = self.knowledge_index(wiki, view)?;
         Ok(crate::knowledge::freshness::SourcesToReview {
-            rows: crate::knowledge::freshness::sources_to_review(
+            rows: crate::knowledge::freshness::sources_to_review_kept(
                 &index,
                 (self.clock)(),
                 self.review_after_days,
-            ),
+            )
+            .to_vec(),
             index,
             review_after_days: self.review_after_days,
         })

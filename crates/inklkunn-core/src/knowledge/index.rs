@@ -24,6 +24,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use inklkunn_store::{
     IndexEntry, KnowledgeAnchorRow, KnowledgeClaimRow, KnowledgeInvalidRow, KnowledgeLinkRow,
@@ -81,6 +82,15 @@ pub struct KnowledgeIndex {
     rows: KnowledgeRows,
     claims: HashMap<String, usize>,
     sources: HashMap<String, usize>,
+    /// The positions of the rows of `rows.links` by the source they name, by the claim that holds them, and of
+    /// `rows.anchors` by claim: built once, so that *who cites this source* and *where is this claim said* cost what
+    /// they return, never a pass over every link (K40). Positions are in the rows' order.
+    links_by_source: HashMap<String, Vec<usize>>,
+    links_by_claim: HashMap<String, Vec<usize>>,
+    anchors_by_claim: HashMap<String, Vec<usize>>,
+    /// The list of sources to review, computed for one day and setting and kept with the index (K40); clones of
+    /// the index share it, since they are of one tip.
+    freshness: Arc<Mutex<Option<super::freshness::Memo>>>,
 }
 
 impl KnowledgeIndex {
@@ -99,12 +109,40 @@ impl KnowledgeIndex {
             .enumerate()
             .map(|(i, s)| (s.id.clone(), i))
             .collect();
+        let mut links_by_source: HashMap<String, Vec<usize>> = HashMap::new();
+        let mut links_by_claim: HashMap<String, Vec<usize>> = HashMap::new();
+        for (i, link) in rows.links.iter().enumerate() {
+            links_by_source
+                .entry(link.source.clone())
+                .or_default()
+                .push(i);
+            links_by_claim
+                .entry(link.claim.clone())
+                .or_default()
+                .push(i);
+        }
+        let mut anchors_by_claim: HashMap<String, Vec<usize>> = HashMap::new();
+        for (i, anchor) in rows.anchors.iter().enumerate() {
+            anchors_by_claim
+                .entry(anchor.claim.clone())
+                .or_default()
+                .push(i);
+        }
         KnowledgeIndex {
             tip: tip.into(),
             rows,
             claims,
             sources,
+            links_by_source,
+            links_by_claim,
+            anchors_by_claim,
+            freshness: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// The memo of the freshness list (see [`super::freshness`]).
+    pub(super) fn freshness_memo(&self) -> &Mutex<Option<super::freshness::Memo>> {
+        &self.freshness
     }
 
     /// The tip's state id.
@@ -147,7 +185,11 @@ impl KnowledgeIndex {
 
     /// The relations of a claim to its sources.
     pub fn links_of<'a>(&'a self, claim: &'a str) -> impl Iterator<Item = &'a KnowledgeLinkRow> {
-        self.rows.links.iter().filter(move |l| l.claim == claim)
+        self.links_by_claim
+            .get(claim)
+            .into_iter()
+            .flatten()
+            .filter_map(move |i| self.rows.links.get(*i))
     }
 
     /// The claims that rely on a source (cite it, supporting or challenging), by claim id.
@@ -155,7 +197,11 @@ impl KnowledgeIndex {
         &'a self,
         source: &'a str,
     ) -> impl Iterator<Item = &'a KnowledgeLinkRow> {
-        self.rows.links.iter().filter(move |l| l.source == source)
+        self.links_by_source
+            .get(source)
+            .into_iter()
+            .flatten()
+            .filter_map(move |i| self.rows.links.get(*i))
     }
 
     /// Where a claim is said.
@@ -163,7 +209,11 @@ impl KnowledgeIndex {
         &'a self,
         claim: &'a str,
     ) -> impl Iterator<Item = &'a KnowledgeAnchorRow> {
-        self.rows.anchors.iter().filter(move |a| a.claim == claim)
+        self.anchors_by_claim
+            .get(claim)
+            .into_iter()
+            .flatten()
+            .filter_map(move |i| self.rows.anchors.get(*i))
     }
 
     /// The claims said at a block of a page (by the page's id and the block's `^id`).

@@ -14,9 +14,11 @@
 //!   and the proposal records alone, and labelled *traced by matching the text* wherever no anchor carries the chain.
 //! - `thread` (K-T10): *Discussion of this claim* on the claim's page and the form that adds a comment to it; a discussion
 //!   never changes a claim.
+//! - `curate` (K39): the link to the curation form, for those who may propose.
 //! - `others`: *Other views:* on a claim's page, each view where the claim reads differently (handoff K-T8).
 //! - `paths`: their addresses. `words`: what each word of a claim's file is called.
 
+pub(crate) mod curate;
 pub(crate) mod marks;
 pub(crate) mod others;
 pub(crate) mod paths;

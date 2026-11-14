@@ -193,7 +193,9 @@ pub(super) async fn health(
                                 "reasons": r.reasons(),
                                 "last_reviewed": match &r.review {
                                     LastReview::Never => None,
-                                    LastReview::On { day, .. } => Some(day.as_str()),
+                                    LastReview::On { day, .. } | LastReview::Ahead { day } => {
+                                        Some(day.as_str())
+                                    }
                                 },
                                 "claims": r.claims.iter().map(|c| json!({
                                     "claim": c.claim,

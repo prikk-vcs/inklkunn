@@ -96,7 +96,7 @@ fn pages() -> Vec<(String, String)> {
 }
 
 /// Sources to review (RFC 005 part 2 D-10): a source a person marked unavailable and one never reviewed, a claim
-/// that relies on both, and one source that needs no look (reviewed on a day that has not come yet).
+/// that relies on both, and one source a person recorded as reviewed on a day that has not come yet (K40).
 fn freshness_files() -> Vec<(String, String)> {
     let mut unavailable = common::source(3, SourceKind::Secondary);
     unavailable.availability = Availability::Unavailable;
@@ -105,8 +105,8 @@ fn freshness_files() -> Vec<(String, String)> {
         proposal: None,
     });
     let never = common::source(4, SourceKind::Primary);
-    let mut fine = common::source(5, SourceKind::Primary);
-    fine.last_reviewed = Some(Reviewed {
+    let mut ahead = common::source(5, SourceKind::Primary);
+    ahead.last_reviewed = Some(Reviewed {
         date: "2999-12-31".to_owned(),
         proposal: None,
     });
@@ -116,7 +116,7 @@ fn freshness_files() -> Vec<(String, String)> {
         common::link(4, Link::Challenges, Bearing::Partial, "Said."),
         common::link(5, Link::Supports, Bearing::Indirect, "Said."),
     ];
-    common::files(&[claim], &[unavailable, never, fine])
+    common::files(&[claim], &[unavailable, never, ahead])
 }
 
 pub(super) fn wiki() -> World {
@@ -592,16 +592,17 @@ async fn sources_to_review_names_what_a_person_recorded_and_the_claims_that_rely
     let w = wiki();
     let body = ok(&get(&w, &api("health?list=sources-to-review")).await);
     assert_eq!(body.at("/list"), "sources-to-review");
-    // The source a person marked unavailable and the one never reviewed, by id; the one reviewed on a day that has
-    // not come yet is not listed, however many claims rely on it.
+    // The source a person marked unavailable, the one never reviewed and the one recorded as reviewed on a day that
+    // has not come yet, by id: the last is not hidden from review by a mistyped year.
     assert_eq!(
         titles(&body),
         [
             "01931111-0000-7000-8000-000000000003",
-            "01931111-0000-7000-8000-000000000004"
+            "01931111-0000-7000-8000-000000000004",
+            "01931111-0000-7000-8000-000000000005"
         ]
     );
-    assert_eq!(body.at("/total"), 2);
+    assert_eq!(body.at("/total"), 3);
     let first = body.at("/items/0");
     assert_eq!(first.at("/action"), "check-the-source");
     assert_eq!(first.at("/reasons"), &json!(["unavailable", "overdue"]));
@@ -620,6 +621,9 @@ async fn sources_to_review_names_what_a_person_recorded_and_the_claims_that_rely
     assert_eq!(*second.at("/last_reviewed"), Value::Null);
     assert_eq!(second.at("/claims/0/relation"), "challenges");
     assert_eq!(second.at("/claims/0/bearing"), "partial");
+    let third = body.at("/items/2");
+    assert_eq!(third.at("/reasons"), &json!(["review-in-future"]));
+    assert_eq!(third.at("/last_reviewed"), "2999-12-31");
     // Walked in pages of one: the cursor follows.
     let page = ok(&get(&w, &api("health?list=sources-to-review&limit=1")).await);
     assert_eq!(page.at("/items").as_array().unwrap().len(), 1);

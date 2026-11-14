@@ -10,30 +10,44 @@
 //! which is the view these lists are of; the same form the missing-page notice and every red link lead to). A page
 //! is made by a proposal, so no row needs a control of its own.
 
+use std::collections::HashMap;
+
 use askama::Template;
-use axum::extract::rejection::PathRejection;
-use axum::extract::{Path, State};
+use axum::extract::rejection::{PathRejection, QueryRejection};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use std::sync::Arc;
 
 use inklkunn_core::knowledge::Rule;
-use inklkunn_core::knowledge::freshness::{LastReview, MAX_RELYING, SourcesToReview};
+use inklkunn_core::knowledge::freshness::{LastReview, MAX_RELYING};
 use inklkunn_core::knowledge::index::KnowledgeIndex;
 use inklkunn_core::read::{
-    Backlink, BacklinkKind, LinkGraph, Lookup, ReadError, RedirectIssueKind,
+    ApiError, Backlink, BacklinkKind, Cursor, LinkGraph, Lookup, ReadError, RedirectIssueKind,
+    SourcesToReviewPage,
 };
 use inklkunn_store::WikiRecord;
 
 use crate::catalog::{Key, T};
 use crate::discover::{Subject, resolve};
-use crate::knowledge::{paths as knowledge_paths, show::source_name, words};
+use crate::knowledge::{
+    curate as knowledge_curate, paths as knowledge_paths, show::source_name, words,
+};
 use crate::pages::{Page, PageState, answer};
 use crate::time::utc_minutes;
 use crate::url::encode_title;
 use crate::wiki::{
     Choice, Shell, blocking, generic_not_found, notice, render_failed, with_retry_after,
 };
+
+/// How many rows of *Sources to review* a page shows, as the API's pages do by default (K40).
+pub(crate) const SOURCES_PAGE: usize = 50;
+
+/// The query of a list: `after` is the cursor of the page, as the API gives it.
+type Params = Result<Query<HashMap<String, String>>, QueryRejection>;
+
+/// The query parameter that names where a page of *Sources to review* begins.
+pub(crate) const Q_AFTER: &str = "after";
 
 /// The lists, by the word the address ends with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -278,10 +292,28 @@ pub(crate) async fn health_index(
 
 // ------------------------------------------------------------------------------------ one list
 
+/// A link beside a cell's text: its words and its address, and, on the same line, another (a claim's link, and the
+/// way to its curation form).
+struct CellLink {
+    label: String,
+    href: String,
+    also: Option<(String, String)>,
+}
+
+impl CellLink {
+    fn to(label: String, href: String) -> CellLink {
+        CellLink {
+            label,
+            href,
+            also: None,
+        }
+    }
+}
+
 struct Cell {
     text: String,
-    /// Links beside the text, each its words and its address, one under another.
-    links: Vec<(String, String)>,
+    /// Links beside the text, one under another.
+    links: Vec<CellLink>,
     href: Option<String>,
 }
 
@@ -316,6 +348,8 @@ struct ListTpl<'a> {
     rows: Vec<Vec<Cell>>,
     none: String,
     notes: Vec<String>,
+    /// The way on and back through a list that has pages: each its words and its address.
+    nav: Vec<(String, String)>,
     back_href: String,
     back_text: String,
 }
@@ -343,11 +377,11 @@ fn rows_of(
                 .map(|w| {
                     let mut act = action(Resolve::WantedAdd);
                     act.links = vec![
-                        (
+                        CellLink::to(
                             t.msg(Key::HealthSeeLinks).with("title", &w.title).text(),
                             format!("/{}/-/links/{}", wiki.slug, encode_title(&w.title)),
                         ),
-                        (
+                        CellLink::to(
                             t.msg(Key::HealthProposePage).with("title", &w.title).text(),
                             crate::proposals::paths::new_page(wiki.slug.as_str(), Some(&w.title)),
                         ),
@@ -511,18 +545,29 @@ fn knowledge_rows(page: &Page, index: &KnowledgeIndex) -> (Vec<String>, Vec<Vec<
     )
 }
 
+/// What a page of *Sources to review* is drawn with beside the rows: whether the reader is offered the claims'
+/// curation forms (K39), and where the notes and the way on and back go.
+struct SourcesDraw<'a> {
+    /// The visitor may propose, so each claim named is followed by the way to its curation form.
+    curate: bool,
+    notes: &'a mut Vec<String>,
+    nav: &'a mut Vec<(String, String)>,
+}
+
 /// The rows of *Sources to review* (RFC 005 part 2 D-10): the source by the name it has on a claim's page, why it is
-/// listed (a person marked it unavailable; no one recorded looking at it; the last look was long ago), the claims that
-/// rely on it, each linked to its page and said with how the source bears on it, and what would resolve it. Nothing
-/// ranks: the rows are in the source ids' order, and the words say what a person has recorded and nothing about the
-/// source's worth. Every text is a person's and is printed escaped.
+/// listed (a person marked it unavailable; no one recorded looking at it; the last look was long ago, or on a day that
+/// has not come), the claims that rely on it, each linked to its page and said with how the source bears on it, and what
+/// would resolve it. Nothing ranks: the rows are in the source ids' order, and the words say what a person has recorded
+/// and nothing about the source's worth. Every text is a person's and is printed escaped. A page of the list is
+/// [`SOURCES_PAGE`] rows; the way to the next and back to the first is under it (K40).
 fn source_rows(
     page: &Page,
     t: T,
     wiki: &WikiRecord,
-    list: &SourcesToReview,
-    notes: &mut Vec<String>,
+    list: &SourcesToReviewPage,
+    draw: SourcesDraw<'_>,
 ) -> (Vec<String>, Vec<Vec<Cell>>) {
+    let SourcesDraw { curate, notes, nav } = draw;
     // A claim is named by the page it is said on; two claims on one title are told apart by a count, and a claim
     // keeps the name it was given wherever else the page names it.
     let mut named: std::collections::HashMap<String, String> = std::collections::HashMap::new();
@@ -554,8 +599,11 @@ fn source_rows(
                 } => {
                     why.push(t.msg(Key::HealthSourcesLast).with("day", day).text());
                 }
+                LastReview::Ahead { day } => {
+                    why.push(t.msg(Key::HealthSourcesFuture).with("day", day).text());
+                }
             }
-            let links: Vec<(String, String)> = row
+            let links: Vec<CellLink> = row
                 .claims
                 .iter()
                 .map(|c| {
@@ -587,10 +635,12 @@ fn source_rows(
                         // A phrase for a relation or a bearing this build does not know is not made up.
                         None => said,
                     };
-                    (
+                    CellLink {
                         label,
-                        knowledge_paths::claim(wiki.slug.as_str(), &c.claim, None),
-                    )
+                        href: knowledge_paths::claim(wiki.slug.as_str(), &c.claim, None),
+                        also: curate
+                            .then(|| knowledge_curate::link(t, wiki.slug.as_str(), &c.claim, None)),
+                    }
                 })
                 .collect();
             let mut claims = if row.claims_total == 0 {
@@ -624,6 +674,32 @@ fn source_rows(
             .with("days", list.review_after_days)
             .text(),
     );
+    if list.offset > 0 || list.next.is_some() {
+        notes.push(
+            t.msg(Key::HealthSourcesShowing)
+                .with("from", list.offset.saturating_add(1))
+                .with("to", list.offset.saturating_add(list.rows.len()))
+                .with("total", list.total)
+                .text(),
+        );
+    }
+    if list.offset > 0 {
+        nav.push((
+            page.get(Key::HealthSourcesFirst),
+            format!("/{}/-/health/{}", wiki.slug, Kind::SourcesToReview.slug()),
+        ));
+    }
+    if let Some(next) = &list.next {
+        nav.push((
+            page.get(Key::HealthSourcesMore),
+            format!(
+                "/{}/-/health/{}?{Q_AFTER}={}",
+                wiki.slug,
+                Kind::SourcesToReview.slug(),
+                next.as_str()
+            ),
+        ));
+    }
     (
         vec![
             page.get(Key::HealthColSource),
@@ -641,8 +717,9 @@ enum Built {
     Links(Arc<LinkGraph>, Option<inklkunn_core::read::StaleList>),
     /// The knowledge index.
     Knowledge(Arc<KnowledgeIndex>),
-    /// The sources that want a look, read from the knowledge index at the clock's day.
-    Sources(Box<SourcesToReview>),
+    /// A page of the sources that want a look, read from the list kept with the knowledge index at the clock's day,
+    /// and whether the visitor is offered the claims' curation forms.
+    Sources(Box<SourcesToReviewPage>, bool),
 }
 
 /// `GET /{slug}/-/health/{list}`.
@@ -651,6 +728,7 @@ pub(crate) async fn health_list(
     page: Page,
     headers: HeaderMap,
     path: Result<Path<(String, String)>, PathRejection>,
+    params: Params,
 ) -> Response {
     let Ok(Path((slug, list))) = path else {
         return generic_not_found(&page);
@@ -658,20 +736,38 @@ pub(crate) async fn health_list(
     let Some(kind) = Kind::from_slug(&list) else {
         return generic_not_found(&page);
     };
+    // The cursor of the page asked for; one that is not one this service gave is no place to continue from, and the
+    // list begins at its first page (the note under it says which rows it shows).
+    let after = params
+        .ok()
+        .and_then(|Query(p)| p.get(Q_AFTER).and_then(|a| Cursor::parse(a)));
+    let asked_by = headers.clone();
     let Some((services, wiki)) = resolve(&state, headers, slug).await else {
         return generic_not_found(&page);
     };
     let for_work = wiki.clone();
-    let built = blocking(move || -> Result<_, ReadError> {
+    let built = blocking(move || -> Result<_, ApiError> {
         if kind == Kind::KnowledgeFiles {
             return Ok(Built::Knowledge(
                 services.read.knowledge_index(&for_work, None)?,
             ));
         }
         if kind == Kind::SourcesToReview {
-            return Ok(Built::Sources(Box::new(
-                services.read.sources_to_review(&for_work, None)?,
-            )));
+            let asked = |after: Option<&Cursor>| {
+                services
+                    .read
+                    .sources_to_review_page(&for_work, None, after, SOURCES_PAGE)
+            };
+            let list = match asked(after.as_ref()) {
+                Err(ApiError::InvalidCursor) => asked(None)?,
+                other => other?,
+            };
+            let curate = knowledge_curate::may_propose(
+                &services,
+                &services.identity.principal(&asked_by),
+                &for_work,
+            );
+            return Ok(Built::Sources(Box::new(list), curate));
         }
         let graph = services.read.link_graph(&for_work, None)?;
         let stale = if kind == Kind::Stale {
@@ -694,12 +790,23 @@ pub(crate) async fn health_list(
         Subject::Surface(&format!("-/health/{}", kind.slug())),
     );
     let mut notes = Vec::new();
+    let mut nav = Vec::new();
     let (headers, rows) = match &built {
         Built::Links(graph, stale) => {
             rows_of(&page, t, &wiki, kind, graph, stale.as_ref(), &mut notes)
         }
         Built::Knowledge(index) => knowledge_rows(&page, index),
-        Built::Sources(list) => source_rows(&page, t, &wiki, list, &mut notes),
+        Built::Sources(list, curate) => source_rows(
+            &page,
+            t,
+            &wiki,
+            list,
+            SourcesDraw {
+                curate: *curate,
+                notes: &mut notes,
+                nav: &mut nav,
+            },
+        ),
     };
     let name = wiki.display_name.as_str();
     let rendered = ListTpl {
@@ -718,6 +825,7 @@ pub(crate) async fn health_list(
         rows,
         none: page.get(kind.none()),
         notes,
+        nav,
         back_href: format!("/{}/-/health", wiki.slug),
         back_text: page.get(Key::HealthBack),
     }

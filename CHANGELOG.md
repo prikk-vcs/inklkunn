@@ -783,6 +783,38 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   store transaction (`ProposalStore::create_held_proposal`, a provided method with the memory and SQLite implementations beside
   `create_held_reconfirm_proposal`); a refusal leaves no draft behind. Tests: on both stores, a press right after another under each
   limit, a sent proposal's records and a refused send; through the form, a send the wiki's hourly limit refuses leaves no draft; no new
+- **K39 (handoff 005 corrections, fourth round): the curation form is reachable.** `…/proposals/curate?claim=<id>[&view=]` is the
+  only place a community status, a review day or an availability is proposed, and nothing led to it. Now it is linked, **for those who may
+  propose** (an account the authorizer lets propose to the wiki) and for nobody else: from **a claim's page** (*Propose a change to its
+  status or sources*, in the view the page is read in), from **each claim named in a row of *Sources to review*** (on the claim's own
+  line, after its link), and from **every refusal that says a change needs a curation proposal** (the proposal's page, where the note says
+  it, and the page-edit form when the submission of a draft that carries such a change is refused): one link to the form of the one claim the
+  change touches, or, where it touches several (a claim's file, or the claims that cite a source file it changes; at most five), one link for
+  each that names the claim by its whole identifier. The API's refusal (`knowledge-curated`) is a document with an explanation and no
+  page, so it carries no link. New: the catalog entries `know.curate_link`, `know.curate_link_of` (both languages, glossary rows),
+  `knowledge::curate`, the address `proposals::paths::curate`. Tests through the router: the link on a claim's page, in a row and in a
+  view (and that it opens that claim's form), nothing for a reader who may not propose or an anonymous visitor, the proposal page
+  with one claim and with two, the refused submission of a draft, Japanese; each fails when the link is taken away or offered to all.
+  No prikk-dependent test.
+
+- **K40 (handoff 005 corrections, fourth round): the freshness list's cost, its pages, and a day that has not come.** The knowledge
+  index builds the source-to-links, claim-to-links and claim-to-anchors maps **once**, so `claims_citing`, `links_of` and `anchors_of`
+  cost what they return (they were a pass over every link or anchor for each source or claim listed: with 2,000 unreviewed sources and
+  200,000 links a request did 4 x 10^8 comparisons, and the new test shows it taking seconds before and milliseconds after). The list is
+  computed **once for a tip, a day and a setting** and kept with the index (`freshness::sources_to_review_kept`; the first reader of a day
+  computes it while the others wait), and the API and the page read slices of it. **The web list pages like the API**: fifty rows
+  and a cursor (`?after=`, the API's cursor, stamped with the tip, the day and the setting), with *Showing sources 1 to 50 of 55*, *Show
+  the next sources* and *Show the first sources*; a cursor that is not one this service gave out begins the list (as the claim thread
+  does). **A `last_reviewed` after today is no longer hidden**: a person cannot have looked on a day that has not come, and a mistyped year
+  would have kept the source out of review for years, so it is listed with its own reason, *Recorded as reviewed on {day}, a day that has not
+  come* (`LastReview::Ahead`, the code `review-in-future` in the API's `reasons`, the OpenAPI enum, both languages, the glossary). The
+  setting stays the operator's, one value for every wiki of the instance until RFC 006's policy as data. New: `ReadService::
+  sources_to_review_page`, `SourcesToReviewPage`, `freshness::sources_to_review_kept`, `LastReview::Ahead`, the catalog entries
+  `health.sources_future`, `health.sources_showing`, `health.sources_more`, `health.sources_first`. `ReadService::sources_to_review` still
+  gives the whole list (from the kept one). Tests: the future day (tomorrow listed, today not, and read as any day when it has come), the
+  list kept (the same list for the same day and setting, another for another), the service's pages sharing one list, 2,000 sources
+  bounded in work (killed by putting the filters back), the web list in fifty-row pages with the way on and back and a lost cursor, Japanese,
+  and the API item with the new reason, checked against the OpenAPI document by the existing shape test. No store change; no
   prikk-dependent test.
 
 ## [0.2.0] — 2026-11-04

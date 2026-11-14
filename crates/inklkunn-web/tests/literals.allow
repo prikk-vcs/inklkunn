@@ -493,3 +493,11 @@ exact :: health.rs :: days :: a placeholder name of a catalog message, or the na
 exact :: thread.rs :: number :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
 exact :: thread.rs :: when :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
 exact :: thread.rs :: author :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+
+# --- the freshness list's pages and the way to the curation form (handoff 005 corrections, fourth round K39, K40)
+exact :: health.rs :: after :: the name of the query parameter that holds the cursor of a page of the list: data, not a sentence
+exact :: health.rs :: from :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: health.rs :: total :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: health.rs :: /{}/-/health/{}?{Q_AFTER}={} :: an address of the wiki's own surfaces, or an identifier built from one (RFC 003 D-1): no sentence a reader sees
+exact :: curate.rs :: claim :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: curate.rs :: heads/ :: the prefix of a view's full name in the repository, taken off for the address

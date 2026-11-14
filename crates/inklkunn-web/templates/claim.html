@@ -17,7 +17,8 @@
 {% endfor %}</ul>
 {% endif %}<h2>{{ status_heading }}</h2>
 <p class="claim-status">{{ status.sentence }}{% if let Some(by) = status.decided %} {{ by }}{% endif %}{% if let Some(text) = status.unlisted %} {{ text }}{% endif %}{% if let Some(note) = status.earlier %} <span class="claim-note">{{ note }}</span>{% endif %}</p>
-{% if let Some(o) = others %}<h2>{{ o.heading }}</h2>
+{% if let Some(c) = curate %}<p class="claim-curate"><a href="{{ c.1 }}">{{ c.0 }}</a></p>
+{% endif %}{% if let Some(o) = others %}<h2>{{ o.heading }}</h2>
 {% if let Some(text) = o.none %}<p>{{ text }}</p>
 {% endif %}{% if !o.lines.is_empty() %}<ul class="claim-others">
 {% for line in o.lines %}<li>

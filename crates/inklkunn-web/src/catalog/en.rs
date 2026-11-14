@@ -3012,6 +3012,24 @@ pub const CATALOG: &[Entry] = &[
         "health.sources_setting",
         "A source is listed when it was last reviewed more than {days} days ago. The person who runs this server sets the number.",
     ),
+    msg(
+        "health.sources_future",
+        "Recorded as reviewed on {day}, a day that has not come.",
+    ),
+    msg(
+        "health.sources_showing",
+        "Showing sources {from} to {to} of {total}.",
+    ),
+    msg("health.sources_more", "Show the next sources"),
+    msg("health.sources_first", "Show the first sources"),
+    msg(
+        "know.curate_link",
+        "Propose a change to its status or sources",
+    ),
+    msg(
+        "know.curate_link_of",
+        "Propose a change to the status or sources of the claim {claim}",
+    ),
     msg("claim_thread.heading", "Discussion of this claim"),
     msg(
         "claim_thread.never_changes",

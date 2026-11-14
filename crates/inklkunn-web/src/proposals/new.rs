@@ -99,6 +99,7 @@ struct FormTpl<'a> {
     choose: Option<LinkView>,
     saved: Option<String>,
     problems: Vec<String>,
+    problem_links: Vec<(String, String)>,
     action: String,
     hidden: Vec<Hidden>,
     fields: Vec<FieldView>,
@@ -204,6 +205,9 @@ pub(super) struct KnowledgeState {
     pub(super) confirmed: std::collections::BTreeSet<String>,
     /// What the proposal already does to claims and sources (a revision carries it forward).
     pub(super) carried: Vec<super::knowledge::Line>,
+    /// Under a refusal that says the change needs a curation proposal: the way to the curation form of each claim it
+    /// touches (K39), for those who may propose.
+    pub(super) curate: Vec<(String, String)>,
 }
 
 /// What the form is for, for its heading.
@@ -441,6 +445,7 @@ pub(super) fn render_form(
         choose,
         saved: state.saved.then(|| t.get(Key::ProposeSaved)),
         problems: state.problems,
+        problem_links: state.knowledge.curate.clone(),
         action: state.action,
         hidden,
         fields: field_views,

@@ -3073,6 +3073,21 @@ pub const CATALOG: &[Entry] = &[
         "health.sources_setting",
         "最後の確認から {days} 日を超えた出典が挙げられます。この日数は、このサーバーの管理者が定めます。",
     ),
+    msg(
+        "health.sources_future",
+        "確認した日として {day} と記録されていますが、その日はまだ来ていません。",
+    ),
+    msg(
+        "health.sources_showing",
+        "{total} 件のうち {from} 件目から {to} 件目までを表示しています。",
+    ),
+    msg("health.sources_more", "続きの出典を表示"),
+    msg("health.sources_first", "最初の出典を表示"),
+    msg("know.curate_link", "この主張の扱いや出典の変更を提案する"),
+    msg(
+        "know.curate_link_of",
+        "主張 {claim} の扱いや出典の変更を提案する",
+    ),
     msg("claim_thread.heading", "この主張についての議論"),
     msg(
         "claim_thread.never_changes",

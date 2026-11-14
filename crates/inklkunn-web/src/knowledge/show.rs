@@ -86,6 +86,8 @@ struct ClaimTpl<'a> {
     sources_none: Option<String>,
     status_heading: String,
     status: StatusLine,
+    /// The link to the claim's curation form, for those who may propose (K39).
+    curate: Option<(String, String)>,
     others: Option<Section>,
     thread: thread::Section,
 }
@@ -112,6 +114,8 @@ struct Found {
     others: Option<Others>,
     /// The claim's own thread: a page of it, as read for this request (RFC 005 part 2 D-11).
     thread: thread::Read,
+    /// The visitor may propose to the wiki, so the claim's curation form is offered (K39).
+    may_propose: bool,
 }
 
 fn load(
@@ -174,6 +178,8 @@ fn load(
                 .get(&services.identity.principal(headers), &wiki, &p)
                 .is_ok()
         });
+    let may_propose =
+        super::curate::may_propose(services, &services.identity.principal(headers), &wiki);
     let others = others::gather(services, &wiki, view.as_deref(), &tip, id);
     // The claim is in the index, so its id is one.
     let thread =
@@ -186,6 +192,7 @@ fn load(
         proposal_known,
         others,
         thread: thread.unwrap_or_else(thread::Read::none),
+        may_propose,
     }))
 }
 
@@ -391,6 +398,9 @@ fn render(page: &Page, found: &Found, id: &str) -> Response {
         sources,
         status_heading: page.get(Key::ClaimStatusHeading),
         status: status_line(t, found),
+        curate: found
+            .may_propose
+            .then(|| super::curate::link(t, wiki.slug.as_str(), id, found.view.as_deref())),
         others: found.others.as_ref().map(|o| o.section(t, wiki)),
         thread: thread::section(t, &found.thread, wiki, id, found.view.as_deref()),
     }

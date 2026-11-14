@@ -1616,6 +1616,13 @@ keys! {
     HealthSourcesClaim => "health.sources_claim",
     HealthSourcesClaimNowhere => "health.sources_claim_nowhere",
     HealthSourcesSetting => "health.sources_setting",
+    HealthSourcesFuture => "health.sources_future",
+    HealthSourcesShowing => "health.sources_showing",
+    HealthSourcesMore => "health.sources_more",
+    HealthSourcesFirst => "health.sources_first",
+    KnowCurateLink => "know.curate_link",
+    KnowCurateLinkOf => "know.curate_link_of",
+    // knowledge: the freshness list's pages, a future day, the curation form's link (handoff 005 corrections, fourth round K39, K40): end
     ClaimThreadHeading => "claim_thread.heading",
     ClaimThreadNeverChanges => "claim_thread.never_changes",
     ClaimThreadTotal => "claim_thread.total",

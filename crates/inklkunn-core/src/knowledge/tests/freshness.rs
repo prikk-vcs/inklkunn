@@ -190,15 +190,9 @@ fn an_old_unavailable_source_is_listed_once_with_both_reasons() {
 }
 
 #[test]
-fn a_day_in_the_future_is_not_old_and_a_fresh_source_is_not_listed() {
-    let w = world(
-        &[],
-        &[
-            source(1, Availability::Available, Some("2999-01-01")),
-            source(2, Availability::Available, Some(TODAY)),
-        ],
-    );
-    // Even at a setting of one day, today's review and a mistyped future one are not older than it.
+fn a_review_of_today_is_not_listed_until_it_is_older_than_the_setting() {
+    let w = world(&[], &[source(1, Availability::Available, Some(TODAY))]);
+    // Even at a setting of one day, today's review is not older than it.
     assert!(listed(&w, NOW, 1).is_empty());
     assert!(listed(&w, NOW, DEFAULT_REVIEW_AFTER_DAYS).is_empty());
     // A day later, today's review is one day old: not more than a day.
@@ -206,7 +200,54 @@ fn a_day_in_the_future_is_not_old_and_a_fresh_source_is_not_listed() {
     // Two days later it is older than the setting.
     assert_eq!(
         ids(&listed(&w, NOW + 2 * 86_400, 1)),
-        [source_id(2).as_str()]
+        [source_id(1).as_str()]
+    );
+}
+
+#[test]
+fn a_day_that_has_not_come_is_listed_on_its_own_reason_never_hidden() {
+    // A person cannot have looked on a day that has not come; a mistyped year would otherwise keep the source out of
+    // the list for years (K40).
+    let w = world(
+        &[],
+        &[
+            source(1, Availability::Available, Some("2999-01-01")),
+            source(2, Availability::Available, Some("2026-11-16")),
+            source(3, Availability::Available, Some(TODAY)),
+            source(4, Availability::Unavailable, Some("2999-01-01")),
+        ],
+    );
+    let rows = listed(&w, NOW, DEFAULT_REVIEW_AFTER_DAYS);
+    // Tomorrow is a day that has not come; today is not.
+    assert_eq!(
+        ids(&rows),
+        [
+            source_id(1).as_str(),
+            source_id(2).as_str(),
+            source_id(4).as_str()
+        ]
+    );
+    let first = rows.first().expect("a row");
+    assert_eq!(
+        first.review,
+        LastReview::Ahead {
+            day: "2999-01-01".to_owned()
+        }
+    );
+    assert_eq!(first.reasons(), ["review-in-future"]);
+    // The reason is told with the other: the source is marked unavailable too.
+    assert_eq!(
+        rows.get(2).expect("a row").reasons(),
+        ["unavailable", "review-in-future"]
+    );
+    // It does not matter how short the setting is: the day is not "old", it has not come.
+    assert_eq!(listed(&w, NOW, 1).len(), 3);
+    // When the day has come it is read as any other: tomorrow's review, a day later, is today's.
+    let later = listed(&w, NOW + 86_400, DEFAULT_REVIEW_AFTER_DAYS);
+    assert_eq!(
+        ids(&later),
+        [source_id(1).as_str(), source_id(4).as_str()],
+        "the day of source 2 has come, and it is not old"
     );
 }
 
@@ -302,6 +343,151 @@ fn a_review_day_the_index_cannot_read_is_never_reviewed_not_trusted() {
         assert_eq!(listed.len(), 1, "{bad:?}");
         assert_eq!(listed.first().expect("a row").review, LastReview::Never);
     }
+}
+
+// ------------------------------------------------------------------------------------ the cost of the list (K40)
+
+#[test]
+fn the_list_is_computed_once_for_a_tip_a_day_and_a_setting() {
+    let w = world(
+        &[claim_citing(1, &[(1, Link::Supports, Bearing::Direct)])],
+        &[source(1, Availability::Unavailable, Some(TODAY))],
+    );
+    let index = index_of(&w);
+    let kept = |now: i64, days: u32| {
+        crate::knowledge::freshness::sources_to_review_kept(&index, now, days)
+    };
+    let first = kept(NOW, DEFAULT_REVIEW_AFTER_DAYS);
+    // The same day (any moment of it) and setting: the list that was computed, not another.
+    assert!(Arc::ptr_eq(
+        &first,
+        &kept(NOW + 60, DEFAULT_REVIEW_AFTER_DAYS)
+    ));
+    assert_eq!(first.len(), 1);
+    // Another setting or another day is another list (the answer can differ), and it replaces the kept one.
+    let strict = kept(NOW, 1);
+    assert!(!Arc::ptr_eq(&first, &strict));
+    assert!(Arc::ptr_eq(&strict, &kept(NOW, 1)));
+    let tomorrow = kept(NOW + 86_400, 1);
+    assert!(!Arc::ptr_eq(&strict, &tomorrow));
+    // The answer is the one the plain function gives.
+    assert_eq!(
+        ids(&first),
+        ids(&sources_to_review(&index, NOW, DEFAULT_REVIEW_AFTER_DAYS))
+    );
+}
+
+#[test]
+fn the_service_gives_one_list_to_every_reader_of_a_tip_and_a_day() {
+    let w = world(
+        &[],
+        &[
+            source(1, Availability::Unavailable, Some(TODAY)),
+            source(2, Availability::Unavailable, Some(TODAY)),
+            source(3, Availability::Unavailable, Some(TODAY)),
+        ],
+    );
+    let service = clocked(&w, DEFAULT_REVIEW_AFTER_DAYS);
+    let a = service
+        .sources_to_review_page(&w.wiki, None, None, 2)
+        .expect("a page");
+    let b = service
+        .sources_to_review_page(&w.wiki, None, a.next.as_ref(), 2)
+        .expect("a page");
+    // The two pages are of one list of one index, and the second begins where the first ended.
+    assert!(Arc::ptr_eq(&a.index, &b.index));
+    assert_eq!((a.offset, b.offset), (0, 2));
+    assert_eq!((a.rows.len(), b.rows.len(), a.total), (2, 1, 3));
+    assert!(b.next.is_none());
+    assert!(Arc::ptr_eq(
+        &crate::knowledge::freshness::sources_to_review_kept(
+            &a.index,
+            NOW,
+            DEFAULT_REVIEW_AFTER_DAYS
+        ),
+        &crate::knowledge::freshness::sources_to_review_kept(
+            &b.index,
+            NOW,
+            DEFAULT_REVIEW_AFTER_DAYS
+        ),
+    ));
+}
+
+/// An index with `sources` unreviewed sources, each cited by `per_source` claims (so `sources * per_source` links),
+/// and one place for every claim: the size of a new wiki that was filled in from a list.
+fn crowded(sources: usize, per_source: usize) -> kix::KnowledgeIndex {
+    let mut rows = inklkunn_store::KnowledgeRows::default();
+    for s in 0..sources {
+        rows.sources.push(inklkunn_store::KnowledgeSourceRow {
+            id: format!("01930000-0000-7000-8000-{s:012x}"),
+            kind: "other".to_owned(),
+            availability: "available".to_owned(),
+            last_reviewed: None,
+            superseded_by: None,
+            title: None,
+            author: None,
+            date: None,
+            reference: None,
+        });
+    }
+    let claims = sources * per_source;
+    for c in 0..claims {
+        let id = format!("01940000-0000-7000-8000-{c:012x}");
+        rows.links.push(inklkunn_store::KnowledgeLinkRow {
+            claim: id.clone(),
+            source: format!("01930000-0000-7000-8000-{:012x}", c % sources),
+            relation: "supports".to_owned(),
+            bearing: "direct".to_owned(),
+            judgement: "current".to_owned(),
+        });
+        rows.anchors.push(inklkunn_store::KnowledgeAnchorRow {
+            claim: id,
+            page_id: "p1".to_owned(),
+            block: "b1".to_owned(),
+            page_path: Some("pages/One.md".to_owned()),
+            state: "present".to_owned(),
+            digest: None,
+        });
+    }
+    kix::KnowledgeIndex::new("tip", rows)
+}
+
+#[test]
+fn the_list_of_two_thousand_sources_costs_what_it_returns_not_sources_times_links() {
+    // 2,000 unreviewed sources, 200,000 links, 200,000 places: a pass over every link for each source is 4 * 10^8
+    // comparisons; a map built once is 2 * 10^5 steps.
+    let index = crowded(2_000, 100);
+    let started = std::time::Instant::now();
+    let list =
+        crate::knowledge::freshness::sources_to_review_kept(&index, NOW, DEFAULT_REVIEW_AFTER_DAYS);
+    let took = started.elapsed();
+    assert_eq!(list.len(), 2_000);
+    assert!(list.iter().all(|r| r.claims_total == 100));
+    assert!(list.iter().all(|r| r.claims.len() == MAX_RELYING));
+    assert!(
+        took < Duration::from_secs(1),
+        "the list of 2,000 sources took {took:?}"
+    );
+    // The lookups answer in what they return, in the rows' order.
+    let source = index.sources().first().expect("a source").id.clone();
+    let cited: Vec<&str> = index
+        .claims_citing(&source)
+        .map(|l| l.claim.as_str())
+        .collect();
+    assert_eq!(cited.len(), 100);
+    let mut sorted = cited.clone();
+    sorted.sort_unstable();
+    assert_eq!(cited, sorted);
+    let claim = index.rows().links.first().expect("a link").claim.clone();
+    assert_eq!(index.anchors_of(&claim).count(), 1);
+    assert_eq!(index.links_of(&claim).count(), 1);
+    assert_eq!(index.anchors_of("no such claim").count(), 0);
+    // A second ask costs nothing: it is the list that was kept.
+    let again = std::time::Instant::now();
+    let same =
+        crate::knowledge::freshness::sources_to_review_kept(&index, NOW, DEFAULT_REVIEW_AFTER_DAYS);
+    assert!(Arc::ptr_eq(&list, &same));
+    assert!(again.elapsed() < Duration::from_millis(50));
 }
 
 // ------------------------------------------------------------------------------------ the list at the API's seam

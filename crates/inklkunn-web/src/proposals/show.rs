@@ -102,6 +102,9 @@ struct ProposalTpl<'a> {
     changes: Option<ChangesView>,
     know_heading: String,
     know_notes: Vec<String>,
+    /// Where a change that needs a curation proposal is made: the curation form of each claim it touches, for those
+    /// who may propose (K39).
+    know_curate: Vec<(String, String)>,
     know: Vec<super::knowledge::Line>,
     touch_heading: String,
     touch_intro: String,
@@ -674,7 +677,7 @@ pub(crate) fn draw(
     let touch = super::touched::lines(t, &touched);
 
     // What the proposal does to claims and sources, and whether it is a curation proposal.
-    let (know, know_notes) = match &r.content {
+    let (know, know_notes, know_curate) = match &r.content {
         Some(content) => {
             let place = Place {
                 view: Some(&record.view),
@@ -685,6 +688,7 @@ pub(crate) fn draw(
                 Err(e) => return crate::proposals::new::read_failure(page, ctx, e),
             };
             let mut notes = Vec::new();
+            let mut offered = Vec::new();
             let has_knowledge_files = content
                 .files
                 .iter()
@@ -699,14 +703,20 @@ pub(crate) fn draw(
             } else if !known.curated.is_empty() {
                 // The acceptance's own rule (K7): the same sentence the submission is refused with.
                 notes.push(t.get(Key::KnowNotCuration));
+                // The way to where the change is proposed (K39): the curation form of each claim it touches.
+                offered =
+                    match crate::knowledge::curate::offers(ctx, t, &record.view, &known.curated) {
+                        Ok(offered) => offered,
+                        Err(e) => return crate::proposals::new::read_failure(page, ctx, e),
+                    };
             }
             // A new link judged on words its claim does not have (K25): a draft may hold one, and says so.
             if known.unjudged {
                 notes.push(t.get(Key::KnowNotJudged));
             }
-            (known.lines, notes)
+            (known.lines, notes, offered)
         }
-        None => (Vec::new(), Vec::new()),
+        None => (Vec::new(), Vec::new(), Vec::new()),
     };
 
     // The comment form: about a part, or a reply, or neither.
@@ -820,6 +830,7 @@ pub(crate) fn draw(
         changes: Some(changes),
         know_heading: t.get(Key::KnowHeading),
         know_notes,
+        know_curate,
         know,
         touch_heading: t.get(Key::TouchHeading),
         touch_intro: t.get(Key::TouchIntro),

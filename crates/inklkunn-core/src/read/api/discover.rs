@@ -13,6 +13,7 @@ use inklkunn_store::{IndexEntry, WikiRecord};
 use super::{ApiError, Cursor, MAX_PAGE_SIZE, Position, change_key, list_stamp};
 use crate::knowledge::Rule;
 use crate::knowledge::freshness::{self, SourceToReview};
+use crate::knowledge::index::KnowledgeIndex;
 use crate::read::graph::MAX_BACKLINKS;
 use crate::read::{
     Backlink, ChangeFilter, ChangeRow, GraphPage, LinkGraph, Lookup, ReadError, ReadService,
@@ -168,6 +169,23 @@ pub struct UnreadableKnowledgeFile {
     pub rule: Rule,
 }
 
+/// One page of the list of sources to review, with what a page of it is named from (K40).
+#[derive(Debug, Clone)]
+pub struct SourcesToReviewPage {
+    /// The knowledge index of the tip the list was read at: a page names the claims and the sources from it.
+    pub index: Arc<KnowledgeIndex>,
+    /// The rows of this page, by source id.
+    pub rows: Vec<SourceToReview>,
+    /// How many rows the whole list has.
+    pub total: usize,
+    /// Where the next page begins; `None` on the last.
+    pub next: Option<Cursor>,
+    /// How many rows come before this page.
+    pub offset: usize,
+    /// `knowledge.review_after`, in days, as the list was read under.
+    pub review_after_days: u32,
+}
+
 /// How far the stale list looked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StaleScan {
@@ -215,6 +233,42 @@ pub struct ChangePage {
 }
 
 impl ReadService {
+    /// One page of the sources that want a person's look, from the list kept with the knowledge index of the view's
+    /// tip (computed once for the tip, the day and the setting). The day is read once: the rows and the cursor's
+    /// stamp are of the same day, and a cursor of another tip, day or setting is [`ApiError::InvalidCursor`].
+    pub fn sources_to_review_page(
+        &self,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+        after: Option<&Cursor>,
+        limit: usize,
+    ) -> Result<SourcesToReviewPage, ApiError> {
+        let now = (self.clock)();
+        let index = self.knowledge_index(wiki, view)?;
+        let all = freshness::sources_to_review_kept(&index, now, self.review_after_days);
+        let stamp = list_stamp(
+            index.tip(),
+            &format!(
+                "health:sources-to-review:{}:{}",
+                now.div_euclid(86_400),
+                self.review_after_days
+            ),
+        );
+        let offset = match after.map(Cursor::position) {
+            Some(Some(Position::Offset { at, .. })) => at,
+            _ => 0,
+        };
+        let (rows, next) = offset_page(&all, &stamp, after, limit)?;
+        Ok(SourcesToReviewPage {
+            index,
+            rows,
+            total: all.len(),
+            next,
+            offset,
+            review_after_days: self.review_after_days,
+        })
+    }
+
     /// One page of the pages that link to the page the title leads to, or, for a title that leads to no page,
     /// of the pages that link to it anyway. As the page view finds them: through the link graph of the tip.
     pub fn api_backlinks(
@@ -320,23 +374,11 @@ impl ReadService {
             ));
         }
         if list == HealthList::SourcesToReview {
-            // The day is read once: the rows and the cursor's stamp are of the same day.
-            let now = (self.clock)();
-            let index = self.knowledge_index(wiki, view)?;
-            let all = freshness::sources_to_review(&index, now, self.review_after_days);
-            let stamp = list_stamp(
-                &tip.state_id,
-                &format!(
-                    "health:sources-to-review:{}:{}",
-                    now.div_euclid(86_400),
-                    self.review_after_days
-                ),
-            );
-            let (rows, next) = offset_page(&all, &stamp, after, limit)?;
+            let walk = self.sources_to_review_page(wiki, view, after, limit)?;
             return Ok(page(
-                HealthRows::SourcesToReview(rows),
-                all.len(),
-                next,
+                HealthRows::SourcesToReview(walk.rows),
+                walk.total,
+                walk.next,
                 None,
             ));
         }

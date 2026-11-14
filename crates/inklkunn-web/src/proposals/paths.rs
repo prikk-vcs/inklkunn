@@ -95,6 +95,24 @@ pub(crate) fn curate_action(slug: &str) -> String {
     format!("/{slug}/-/proposals/curate")
 }
 
+/// The curation form of a claim (K39): `…/proposals/curate?claim=<id>`, with `&view=` for a view other than the
+/// default.
+pub(crate) fn curate(slug: &str, claim: &str, view: Option<&str>) -> String {
+    let mut out = format!(
+        "{}?{}={}",
+        curate_action(slug),
+        fields::CLAIM,
+        inklkunn_markup::percent_encode(claim)
+    );
+    if let Some(view) = view {
+        out.push('&');
+        out.push_str(fields::VIEW);
+        out.push('=');
+        out.push_str(&inklkunn_markup::percent_encode(view));
+    }
+    out
+}
+
 /// The form that opens a new proposal.
 pub(crate) fn new_action(slug: &str) -> String {
     format!("/{slug}/-/proposals/new")

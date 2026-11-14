@@ -412,8 +412,8 @@ mod discover;
 mod past;
 
 pub use discover::{
-    BacklinkAnswer, BacklinkPage, ChangePage, HealthList, HealthPage, HealthRows, StaleScan,
-    UnreadableKnowledgeFile,
+    BacklinkAnswer, BacklinkPage, ChangePage, HealthList, HealthPage, HealthRows,
+    SourcesToReviewPage, StaleScan, UnreadableKnowledgeFile,
 };
 pub use past::HistoryAnswer;
 
