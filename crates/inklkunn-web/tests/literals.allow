@@ -465,3 +465,16 @@ exact :: show.rs :: name :: a placeholder name of a catalog message
 exact :: touched.rs :: proposal :: a placeholder name of a catalog message
 exact :: knowledge.rs :: subject :: a placeholder name of a catalog message
 exact :: knowledge.rs :: words :: a placeholder name of a catalog message
+exact :: knowledge.rs :: author :: a placeholder name of a catalog message
+exact :: knowledge.rs :: date :: a placeholder name of a catalog message
+exact :: knowledge.rs :: first :: a placeholder name of a catalog message
+exact :: knowledge.rs :: second :: a placeholder name of a catalog message
+exact :: knowledge.rs :: source :: a placeholder name of a catalog message
+exact :: knowledge.rs :: paragraph :: a placeholder name of a catalog message
+exact :: knowledge.rs :: other :: a placeholder name of a catalog message
+exact :: knowledge.rs :: identity :: a placeholder name of a catalog message
+exact :: knowledge.rs :: form :: a placeholder name of a catalog message
+exact :: knowledge.rs :: reference :: a placeholder name of a catalog message
+exact :: knowledge.rs :: claim :: a placeholder name of a catalog message
+exact :: knowledge.rs :: standing :: a placeholder name of a catalog message
+exact :: knowledge.rs :: file :: a placeholder name of a catalog message

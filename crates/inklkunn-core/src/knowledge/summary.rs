@@ -9,8 +9,8 @@ use std::collections::BTreeSet;
 
 use super::{
     Availability, Bearing, Claim, ClaimId, CommunityStatus, Digest, Expression, Family, File,
-    Lifecycle, Link, Relation, Reviewed, Rule, Source, SourceId, SourceKind, SourceLink, Standing,
-    StatementKind, family_of, read_file,
+    Identity, Lifecycle, Link, Reference, Relation, Reviewed, Rule, Source, SourceId, SourceKind,
+    SourceLink, Standing, StatementKind, family_of, read_file,
 };
 
 /// A claim's citation of a source.
@@ -81,24 +81,26 @@ pub enum ClaimChange {
 pub enum SourceChange {
     /// What kind of source.
     Kind(SourceKind),
-    /// Who and what it is, as written.
-    Identity,
-    /// Where it is found.
-    Reference,
+    /// Who and what it is, as written: **what it is now** (K15: a line that says only that it changed cannot be
+    /// told from another).
+    Identity(Identity),
+    /// Where it is found: what it is now (`None`: it says nowhere).
+    Reference(Option<Reference>),
     /// The copy kept.
     Snapshot,
     /// The day a person last checked it (`None`: cleared).
     Reviewed(Option<String>),
     /// Whether it can be had, as the person who checked says.
     Availability(Availability),
-    /// The source that replaces it.
-    Superseded,
+    /// The source that replaces it (`None`: it is no longer marked as replaced).
+    Superseded(Option<SourceId>),
 }
 
 /// One thing a revision does to the knowledge layer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Item {
-    /// A claim is made.
+    /// A claim is made. **Everything the file says that a person decides on is here** (K15): the page has a line for
+    /// each of these, and none is left out by a `..`.
     ClaimMade {
         /// The claim.
         claim: ClaimId,
@@ -106,8 +108,14 @@ pub enum Item {
         kind: StatementKind,
         /// Its community status as the file has it (only a curation proposal may set one).
         standing: Standing,
+        /// The wording that status was decided on, when it was.
+        judged_on: Option<Digest>,
+        /// Where it stands in its life.
+        lifecycle: Lifecycle,
         /// Where it is said.
         said: Vec<Expression>,
+        /// What it relates to.
+        relations: Vec<Relation>,
         /// What it cites.
         cites: Vec<Cite>,
     },
@@ -116,26 +124,39 @@ pub enum Item {
         /// The claim.
         claim: ClaimId,
         /// Where it is said once the change is made: where a surface finds the wording a [`ClaimChange::Rejudged`]
-        /// moved to.
+        /// moved to, and the paragraph that names the claim on the page.
         said: Vec<Expression>,
+        /// Where it was said before: the paragraph that names the claim when it is said nowhere now.
+        was_said: Vec<Expression>,
         /// What changes.
         changes: Vec<ClaimChange>,
     },
-    /// A source is recorded.
+    /// A source is recorded. **Everything the file says of it** (K15): who and what it is, where it is found, whether
+    /// it can be had and the day a person checked it are on its line.
     SourceRecorded {
         /// The source.
         source: SourceId,
         /// What kind.
         kind: SourceKind,
-        /// Its title as written, if it has one.
-        title: Option<String>,
-        /// The file says someone checked it (a review date or an availability): only a curation proposal may.
-        checked: bool,
+        /// Who and what it is, as written.
+        identity: Identity,
+        /// Where it is found.
+        reference: Option<Reference>,
+        /// A copy of it is kept (which one is the file's).
+        snapshot: bool,
+        /// The day a person last checked it: only a curation proposal may set one.
+        reviewed: Option<String>,
+        /// The source that replaces it.
+        superseded_by: Option<SourceId>,
+        /// Whether it can be had, as the person who checked says: only a curation proposal may set one.
+        availability: Availability,
     },
     /// A source that exists is changed.
     SourceChanged {
         /// The source.
         source: SourceId,
+        /// Who and what it was, as the base had it: the name by which a reader knows it.
+        named: Identity,
         /// What changes.
         changes: Vec<SourceChange>,
     },
@@ -159,6 +180,8 @@ pub enum Item {
     Unreadable {
         /// Which kind of file it is meant to be.
         family: Family,
+        /// Its name, as the path spells it (never what the file said).
+        id: String,
         /// The rule it breaks.
         rule: Rule,
     },
@@ -284,10 +307,10 @@ fn source_changes(before: &Source, after: &Source) -> Vec<SourceChange> {
         out.push(SourceChange::Kind(after.kind));
     }
     if *identity != after.identity {
-        out.push(SourceChange::Identity);
+        out.push(SourceChange::Identity(after.identity.clone()));
     }
     if *reference != after.reference {
-        out.push(SourceChange::Reference);
+        out.push(SourceChange::Reference(after.reference.clone()));
     }
     if *snapshot != after.snapshot {
         out.push(SourceChange::Snapshot);
@@ -301,7 +324,7 @@ fn source_changes(before: &Source, after: &Source) -> Vec<SourceChange> {
         out.push(SourceChange::Availability(after.availability));
     }
     if *superseded_by != after.superseded_by {
-        out.push(SourceChange::Superseded);
+        out.push(SourceChange::Superseded(after.superseded_by.clone()));
     }
     out
 }
@@ -374,40 +397,80 @@ pub fn summarize(
             Err(fault) => {
                 out.push(Item::Unreadable {
                     family,
+                    id: name_of(path),
                     rule: fault.rule,
                 });
                 continue;
             }
         };
         match (was, now) {
-            (None, File::Claim(c)) => out.push(Item::ClaimMade {
-                claim: c.id.clone(),
-                kind: c.kind,
-                standing: c.community_status.status,
-                said: c.expressions.clone(),
-                cites: c.sources.iter().map(cite_of).collect(),
-            }),
+            (None, File::Claim(c)) => {
+                // Taken apart with no `..`: a field added to a claim does not compile until this says what the page
+                // does with it (K15).
+                let Claim {
+                    id,
+                    kind,
+                    expressions,
+                    relations,
+                    lifecycle,
+                    community_status:
+                        CommunityStatus {
+                            status,
+                            proposal: _,
+                            judged_on,
+                        },
+                    sources,
+                } = *c;
+                out.push(Item::ClaimMade {
+                    claim: id,
+                    kind,
+                    standing: status,
+                    judged_on,
+                    lifecycle,
+                    said: expressions,
+                    relations,
+                    cites: sources.iter().map(cite_of).collect(),
+                });
+            }
             (Some(File::Claim(b)), File::Claim(a)) => {
                 let changes = claim_changes(&b, &a);
                 if !changes.is_empty() {
                     out.push(Item::ClaimChanged {
                         claim: a.id.clone(),
                         said: a.expressions.clone(),
+                        was_said: b.expressions.clone(),
                         changes,
                     });
                 }
             }
-            (None, File::Source(s)) => out.push(Item::SourceRecorded {
-                source: s.id.clone(),
-                kind: s.kind,
-                title: s.identity.title.clone(),
-                checked: s.last_reviewed.is_some() || s.availability != Availability::Unknown,
-            }),
+            (None, File::Source(s)) => {
+                let Source {
+                    id,
+                    kind,
+                    identity,
+                    reference,
+                    snapshot,
+                    last_reviewed,
+                    superseded_by,
+                    availability,
+                } = *s;
+                out.push(Item::SourceRecorded {
+                    source: id,
+                    kind,
+                    identity,
+                    reference,
+                    snapshot: snapshot.is_some(),
+                    reviewed: last_reviewed.map(|r| r.date),
+                    superseded_by,
+                    availability,
+                });
+            }
             (Some(File::Source(b)), File::Source(a)) => {
                 let changes = source_changes(&b, &a);
                 if !changes.is_empty() {
                     out.push(Item::SourceChanged {
                         source: a.id.clone(),
+                        named: b.identity.clone(),
                         changes,
                     });
                 }

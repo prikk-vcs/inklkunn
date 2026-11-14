@@ -1464,7 +1464,6 @@ keys! {
     KnowClaimMade => "know.claim_made",
     KnowCite => "know.cite",
     KnowSourceRecorded => "know.source_recorded",
-    KnowSourceRecordedUntitled => "know.source_recorded_untitled",
     KnowClaimChanged => "know.claim_changed",
     KnowSourceChanged => "know.source_changed",
     KnowRemovedClaim => "know.removed_claim",
@@ -1577,6 +1576,14 @@ keys! {
     // knowledge: direction characters refused (handoff 005 corrections K14): end
     KnowReplacedUnreadableClaim => "know.replaced_unreadable_claim",
     KnowReplacedUnreadableSource => "know.replaced_unreadable_source",
+    KnowMadeLifecycle => "know.made_lifecycle",
+    KnowMadeRelated => "know.made_related",
+    KnowSourceMadeAvailability => "know.source_made_availability",
+    KnowSourceWhere => "know.source_where",
+    KnowSourceCopy => "know.source_copy",
+    KnowSourceChangeUnsuperseded => "know.source_change_unsuperseded",
+    KnowSourceChangeReferenceCleared => "know.source_change_reference_cleared",
+    KnowSourceNameless => "know.source_nameless",
     // knowledge: a file that cannot be read is replaced (handoff 005 corrections, second round K16): end
 }
 
@@ -1595,6 +1602,9 @@ pub enum Slot {
         /// Where it goes.
         href: String,
     },
+    /// Markup this module built from escaped parts ([`Rich`]): [`bdi`], [`cite`] or another message's output. It
+    /// can be nothing a caller wrote.
+    Rich(String),
     /// Text in another language than the sentence's (a language's name in itself): `<span lang="…">`.
     InLang {
         /// The BCP 47 tag of the text.
@@ -1636,6 +1646,7 @@ impl Slot {
             Slot::Text(s) => s,
             Slot::Link { label, .. } => label,
             Slot::InLang { text, .. } => text,
+            Slot::Rich(markup) => markup,
         }
     }
 
@@ -1650,6 +1661,7 @@ impl Slot {
                 out.push_str("</a>");
             }
             Slot::Link { label, .. } => escape_into(out, label),
+            Slot::Rich(markup) => out.push_str(markup),
             Slot::InLang { tag, text } if tag_ok(tag) => {
                 out.push_str("<span lang=\"");
                 out.push_str(tag);
@@ -1694,6 +1706,25 @@ pub fn in_lang(tag: &str, text: &str) -> Rich {
     Rich(out)
 }
 
+/// `text` isolated from the direction of the sentence around it (`<bdi>`), escaped: a text a person wrote (a
+/// paragraph's excerpt, a name) that may hold characters of the other direction, so that it cannot reorder the words
+/// beside it.
+pub fn bdi(text: &str) -> Rich {
+    let mut out = String::from("<bdi>");
+    escape_into(&mut out, text);
+    out.push_str("</bdi>");
+    Rich(out)
+}
+
+/// `text` as the name of a work (`<cite>`, direction-isolated and escaped): a source's name has a visible boundary,
+/// so that a title written to read like another source's line is the name it is.
+pub fn cite(text: &str) -> Rich {
+    let mut out = String::from("<cite><bdi>");
+    escape_into(&mut out, text);
+    out.push_str("</bdi></cite>");
+    Rich(out)
+}
+
 /// A message being filled in.
 #[derive(Clone, Debug)]
 pub struct Msg {
@@ -1721,6 +1752,13 @@ impl Msg {
                 href: href.to_string(),
             },
         ));
+        self
+    }
+
+    /// A placeholder that is markup this module built ([`bdi`], [`cite`], or another message's [`Msg::html`]).
+    #[must_use]
+    pub fn rich(mut self, name: &'static str, value: Rich) -> Msg {
+        self.args.push((name, Slot::Rich(value.0)));
         self
     }
 

@@ -10,6 +10,7 @@ mod claims;
 mod common;
 mod curate;
 mod flows;
+mod rendered;
 mod review;
 mod rules;
 mod safety;

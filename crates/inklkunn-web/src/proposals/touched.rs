@@ -30,7 +30,6 @@ use inklkunn_store::{
 };
 
 use super::curate::load;
-use super::knowledge::Line;
 use super::labels::standing_word;
 use super::new::read_failure;
 use super::parts::excerpt;
@@ -44,6 +43,13 @@ use crate::pages::{Page, PageState};
 use crate::wiki::{Choice, generic_not_found, services_of};
 
 type Fields = super::urlencoded::Raw;
+
+/// One thing a change does to a claim, with the particulars under it: plain text, which the page escapes.
+#[derive(Clone)]
+pub(crate) struct Line {
+    pub(crate) text: String,
+    pub(crate) more: Vec<String>,
+}
 
 /// The lines of a proposal's page for these touches: what happens to the paragraph, and what that leaves judged on
 /// an earlier wording.

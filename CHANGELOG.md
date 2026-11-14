@@ -360,6 +360,34 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
   prikk-dependent test), the unreadable file removed and written over at submit, in `validate`, in `judge` over a tree
   and on the page.
 
+- **K15 (handoff 005 corrections, second; review finding L-a): the page says everything the core describes, and
+  which.** Every line of *Claims and sources in this proposal* names its subject: **a claim by an excerpt of a paragraph
+  it is said in** (80 characters, escaped, in `<bdi>`; else, as the proposal leaves the pages, the paragraph the base
+  had; a claim said nowhere that can be found is named by its identifier) and **a source by its name**, the title,
+  author and date the claim page names it by (K9), **in `<cite>`** (`<cite><bdi>…</bdi></cite>`: a title written to read
+  like another source's whole line stays inside its own boundary). A new claim's line carries its **community status**,
+  its place in its life, the wording the status was decided on, each relation (naming the other claim) and each
+  citation (naming the source); a new source's line carries its name, where it is found, **whether it can be had, the
+  day it was checked**, that a copy is kept and what replaces it; a changed source's **identity and reference show their
+  new values** (and a source no longer marked as replaced says so, which a *now replaced by another source* line could
+  not); the lines under a changed claim name the paragraph that is added or let go, the other claim of a relation, and
+  the source of a citation, a re-citation, a note and a re-judgement; a removal and a file that cannot be read are
+  named by what they were. **No renderer arm drops a field with `..`:** `Item` carries what the file says
+  (`ClaimMade`: lifecycle, relations, the wording of the status; `SourceRecorded`: identity, reference, copy, review day,
+  replacement, availability in place of `title` and `checked`; `SourceChanged`: the name by which it was known;
+  `SourceChange::{Identity, Reference, Superseded}`: what they become; `Unreadable`: the file's name), `summarize` takes
+  `Claim` and `Source` apart field by field, and `lines` matches every field of every item (the one field named `_`,
+  an unreadable file's family, is said by its name). New catalog slots: `Msg::rich` with `catalog::bdi` and
+  `catalog::cite` (markup only the catalog builds); the lines are `Rich`, not text the page escapes. Eight messages are new,
+  nineteen reworded, one (`know.source_recorded_untitled`) is gone: the name of a source without a title says so.
+  **`KnowledgeNotShown`'s property tests moved to the rendered layer** (`tests/proposals/rendered.rs`, the generators of
+  the core's `summary.rs` made to fit a wiki): for every single-field change of a claim and of a source, from five starting
+  points, through the router and the real renderer, the page differs from the page of the proposal that changes nothing and
+  names the claim by its paragraph or the source by its name; the printed fields of a new claim and a new source likewise;
+  and the standing, availability, review day, identity and reference are asserted by their words. (The wording a status
+  or a link was judged on is not printed when no paragraph has it: two such wordings read alike, as the line says they
+  are *a wording none of the claim's paragraphs has*; a new link's note is not printed.)
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

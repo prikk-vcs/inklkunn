@@ -2697,24 +2697,23 @@ pub const CATALOG: &[Entry] = &[
     msg("know.heading", "この提案での主張と出典"),
     msg(
         "know.claim_made",
-        "主張を記録します（{kind}）。{count} か所に書かれています。",
+        "主張「{claim}」を記録します（{kind}）。{count} か所に書かれています。コミュニティでの扱い：{standing}。",
     ),
-    msg("know.cite", "出典を引用します: {relation}（{bearing}）。"),
+    msg(
+        "know.cite",
+        "出典 {source} を引用します: {relation}（{bearing}）。",
+    ),
     msg(
         "know.source_recorded",
-        "出典を記録します（{kind}）: {title}",
+        "出典 {source} を記録します（{kind}）。",
     ),
-    msg(
-        "know.source_recorded_untitled",
-        "出典を記録します（{kind}）。",
-    ),
-    msg("know.claim_changed", "既存の主張を変更します:"),
-    msg("know.source_changed", "既存の出典を変更します:"),
-    msg("know.removed_claim", "主張を削除します。"),
-    msg("know.removed_source", "出典を削除します。"),
+    msg("know.claim_changed", "主張「{claim}」を変更します:"),
+    msg("know.source_changed", "出典 {source} を変更します:"),
+    msg("know.removed_claim", "主張「{claim}」を削除します。"),
+    msg("know.removed_source", "出典 {source} を削除します。"),
     msg(
         "know.unreadable",
-        "この提案のファイルは、ウィキが読める形になっていません。{reason}",
+        "この提案のファイル {file} は、ウィキが読める形になっていません。{reason}",
     ),
     msg("know.change_kind", "記述の種類が {kind} になります。"),
     msg(
@@ -2727,32 +2726,41 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.change_said",
-        "もう一つの段落にも書かれることになります。",
+        "もう一つの段落にも書かれることになります：「{paragraph}」。",
     ),
     msg(
         "know.change_unsaid",
-        "ある段落には書かれなくなります。段落が削除されるか、主張がその段落から外れます。",
+        "段落「{paragraph}」には書かれなくなります。段落が削除されるか、主張がその段落から外れます。",
     ),
     msg(
         "know.change_related",
-        "別の主張との関係が加わります: {relation}。",
+        "主張「{other}」との関係が加わります: {relation}。",
     ),
     msg(
         "know.change_unrelated",
-        "別の主張との関係がなくなります: {relation}。",
+        "主張「{other}」との関係がなくなります: {relation}。",
     ),
-    msg("know.change_uncited", "出典を一つ引用しなくなります。"),
+    msg(
+        "know.change_uncited",
+        "出典 {source} を引用しなくなります。",
+    ),
     msg(
         "know.change_recited",
-        "引用している出典と主張の関係が変わります: {relation}（{bearing}）。",
+        "引用している出典 {source} と主張の関係が変わります: {relation}（{bearing}）。",
     ),
-    msg("know.change_noted", "引用している出典のメモが変わります。"),
+    msg(
+        "know.change_noted",
+        "引用している出典 {source} のメモが変わります。",
+    ),
     msg("know.source_change_kind", "種類が {kind} になります。"),
     msg(
         "know.source_change_identity",
-        "書かれている出典の名前や著者などが変わります。",
+        "書かれている出典の名前や著者などが {identity} になります。",
     ),
-    msg("know.source_change_reference", "参照先が変わります。"),
+    msg(
+        "know.source_change_reference",
+        "参照先が（{form}）{reference} になります。",
+    ),
     msg(
         "know.source_change_snapshot",
         "保存されている写しが変わります。",
@@ -2771,7 +2779,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.source_change_superseded",
-        "別の出典に置き換えられます。",
+        "出典 {source} に置き換えられます。",
     ),
     msg(
         "know.is_curation",
@@ -2939,7 +2947,7 @@ pub const CATALOG: &[Entry] = &[
         "{subject}を判断した文面は、記録されなくなります。",
     ),
     msg("know.rejudged_status", "コミュニティでの扱い"),
-    msg("know.rejudged_source", "引用している出典"),
+    msg("know.rejudged_source", "引用している出典 {source}"),
     msg(
         "know.nothing_changes",
         "この提案の主張・出典ファイルは、ウィキにすでにあるファイルと同じです。変更はありません。",
@@ -2958,5 +2966,25 @@ pub const CATALOG: &[Entry] = &[
         "know.replaced_unreadable_source",
         "読み取れない出典ファイル（{id}）を置き換えるか削除します。その内容は分かっていません。",
     ),
+    msg("know.made_lifecycle", "主張の扱いの段階：{lifecycle}。"),
+    msg(
+        "know.made_related",
+        "主張「{other}」との関係があります: {relation}。",
+    ),
+    msg(
+        "know.source_made_availability",
+        "入手できるかどうか：{availability}。",
+    ),
+    msg("know.source_where", "参照先（{form}）：{reference}。"),
+    msg("know.source_copy", "写しが保存されています。"),
+    msg(
+        "know.source_change_unsuperseded",
+        "置き換えられたという印がなくなります。",
+    ),
+    msg(
+        "know.source_change_reference_cleared",
+        "参照先が書かれなくなります。",
+    ),
+    msg("know.source_nameless", "題名のない出典（識別子 {id}）"),
     // knowledge: a file that cannot be read is replaced (handoff 005 corrections, second round K16): end
 ];

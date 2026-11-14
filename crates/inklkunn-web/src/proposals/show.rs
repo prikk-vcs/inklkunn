@@ -105,7 +105,7 @@ struct ProposalTpl<'a> {
     know: Vec<super::knowledge::Line>,
     touch_heading: String,
     touch_intro: String,
-    touch: Vec<super::knowledge::Line>,
+    touch: Vec<super::touched::Line>,
     reconfirm: Option<ReconfirmView>,
     reconfirm_later: Option<String>,
     reconfirm_open: Option<Rich>,

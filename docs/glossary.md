@@ -1198,33 +1198,32 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `propose.claim_drop_legend` | the legend of the box that confirms the removal of a paragraph that has sources attached | "Paragraphs you are removing" | "削除する段落" |
 | `propose.claim_drop` | the box that confirms that removal; `{excerpt}` is how the paragraph begins | "Remove “{excerpt}”. It stops being where its claim is said, and the reviewer will see that." | "「{excerpt}」を削除する。この段落は主張が書かれている場所ではなくなり、レビュアーにもそのことが示されます。" |
 | `know.heading` | the heading of the list of what a proposal does to claims and sources | "Claims and sources in this proposal" | "この提案での主張と出典" |
-| `know.claim_made` | a line of that list: a claim is recorded; `{kind}` is what kind of statement, `{count}` in how many places it is said | "Records a claim ({kind}), said in {count} place." / "Records a claim ({kind}), said in {count} places." | "主張を記録します（{kind}）。{count} か所に書かれています。" |
-| `know.cite` | under that line, and for a claim's sources | "Cites a source: it {relation} the claim {bearing}." | "出典を引用します: {relation}（{bearing}）。" |
-| `know.source_recorded` | a line of that list: a source is recorded; `{kind}` is what kind, `{title}` how it is titled | "Records a source ({kind}): {title}" | "出典を記録します（{kind}）: {title}" |
-| `know.source_recorded_untitled` | a line of that list: a source without a title is recorded | "Records a source ({kind})." | "出典を記録します（{kind}）。" |
-| `know.claim_changed` | a line of that list: a claim that exists is changed, the changes follow | "Changes a claim:" | "既存の主張を変更します:" |
-| `know.source_changed` | a line of that list: a source that exists is changed, the changes follow | "Changes a source:" | "既存の出典を変更します:" |
-| `know.removed_claim` | a line of that list | "Removes a claim." | "主張を削除します。" |
-| `know.removed_source` | a line of that list | "Removes a source." | "出典を削除します。" |
-| `know.unreadable` | a line of that list: a file is not in the form the wiki reads; `{reason}` says which rule | "A file in this proposal is not in the form the wiki reads. {reason}" | "この提案のファイルは、ウィキが読める形になっていません。{reason}" |
+| `know.claim_made` | a line of that list: a claim is recorded; `{claim}` is an excerpt of a paragraph it is said in (or its identifier when none is found), `{kind}` what kind of statement, `{count}` in how many places it is said, `{standing}` its community status | "Records the claim “{claim}” ({kind}), said in {count} place. Its community status: {standing}." / "Records the claim “{claim}” ({kind}), said in {count} places. Its community status: {standing}." | "主張「{claim}」を記録します（{kind}）。{count} か所に書かれています。コミュニティでの扱い：{standing}。" |
+| `know.cite` | under that line, and for a claim's sources; `{source}` is the source's name, set apart | "Cites the source {source}: it {relation} the claim {bearing}." | "出典 {source} を引用します: {relation}（{bearing}）。" |
+| `know.source_recorded` | a line of that list: a source is recorded; `{source}` is its name (title, author, date), set apart, `{kind}` what kind | "Records the source {source} ({kind})." | "出典 {source} を記録します（{kind}）。" |
+| `know.claim_changed` | a line of that list: a claim that exists is changed, the changes follow; `{claim}` is an excerpt of a paragraph it is said in | "Changes the claim “{claim}”:" | "主張「{claim}」を変更します:" |
+| `know.source_changed` | a line of that list: a source that exists is changed, the changes follow; `{source}` is its name as the wiki has it, set apart | "Changes the source {source}:" | "出典 {source} を変更します:" |
+| `know.removed_claim` | a line of that list; `{claim}` is an excerpt of a paragraph it is said in | "Removes the claim “{claim}”." | "主張「{claim}」を削除します。" |
+| `know.removed_source` | a line of that list; `{source}` is its name, set apart | "Removes the source {source}." | "出典 {source} を削除します。" |
+| `know.unreadable` | a line of that list: a file is not in the form the wiki reads; `{file}` is its name, `{reason}` says which rule | "The file {file} in this proposal is not in the form the wiki reads. {reason}" | "この提案のファイル {file} は、ウィキが読める形になっていません。{reason}" |
 | `know.change_kind` | under a changed claim | "The kind of statement becomes {kind}." | "記述の種類が {kind} になります。" |
 | `know.change_lifecycle` | under a changed claim | "Where it stands in its life becomes: {lifecycle}." | "主張の扱いの段階が「{lifecycle}」になります。" |
 | `know.change_standing` | under a changed claim: its community status changes | "Its community status changes from {from} to {to}." | "コミュニティでの扱いが「{from}」から「{to}」に変わります。" |
-| `know.change_said` | under a changed claim | "It is said in one more paragraph." | "もう一つの段落にも書かれることになります。" |
-| `know.change_unsaid` | under a changed claim: a paragraph stops being where it is said | "It is no longer said in a paragraph: the paragraph is removed, or the claim lets it go." | "ある段落には書かれなくなります。段落が削除されるか、主張がその段落から外れます。" |
-| `know.change_related` | under a changed claim; `{relation}` says how it relates to another claim | "A relation to another claim is added: {relation}." | "別の主張との関係が加わります: {relation}。" |
-| `know.change_unrelated` | under a changed claim | "A relation to another claim is removed: {relation}." | "別の主張との関係がなくなります: {relation}。" |
-| `know.change_uncited` | under a changed claim | "It no longer cites a source." | "出典を一つ引用しなくなります。" |
-| `know.change_recited` | under a changed claim: how a source it cites speaks to it changes | "A source it cites now {relation} it {bearing}." | "引用している出典と主張の関係が変わります: {relation}（{bearing}）。" |
-| `know.change_noted` | under a changed claim | "The note on a source it cites changes." | "引用している出典のメモが変わります。" |
+| `know.change_said` | under a changed claim; `{paragraph}` is an excerpt of the paragraph | "It is said in one more paragraph: “{paragraph}”." | "もう一つの段落にも書かれることになります：「{paragraph}」。" |
+| `know.change_unsaid` | under a changed claim: a paragraph stops being where it is said; `{paragraph}` is an excerpt of it | "It is no longer said in the paragraph “{paragraph}”: the paragraph is removed, or the claim lets it go." | "段落「{paragraph}」には書かれなくなります。段落が削除されるか、主張がその段落から外れます。" |
+| `know.change_related` | under a changed claim; `{other}` is an excerpt of a paragraph the other claim is said in, `{relation}` says how it relates to it | "A relation to the claim “{other}” is added: {relation}." | "主張「{other}」との関係が加わります: {relation}。" |
+| `know.change_unrelated` | under a changed claim | "A relation to the claim “{other}” is removed: {relation}." | "主張「{other}」との関係がなくなります: {relation}。" |
+| `know.change_uncited` | under a changed claim; `{source}` is the source's name, set apart | "It no longer cites the source {source}." | "出典 {source} を引用しなくなります。" |
+| `know.change_recited` | under a changed claim: how a source it cites speaks to it changes | "The source {source}, which it cites, now {relation} it {bearing}." | "引用している出典 {source} と主張の関係が変わります: {relation}（{bearing}）。" |
+| `know.change_noted` | under a changed claim | "The note on the source {source}, which it cites, changes." | "引用している出典 {source} のメモが変わります。" |
 | `know.source_change_kind` | under a changed source | "Its kind becomes {kind}." | "種類が {kind} になります。" |
-| `know.source_change_identity` | under a changed source | "Who or what it is, as written, changes." | "書かれている出典の名前や著者などが変わります。" |
-| `know.source_change_reference` | under a changed source | "Where it is found changes." | "参照先が変わります。" |
+| `know.source_change_identity` | under a changed source; `{identity}` is its name as it becomes (title, author, date), set apart | "Who or what it is, as written, becomes {identity}." | "書かれている出典の名前や著者などが {identity} になります。" |
+| `know.source_change_reference` | under a changed source; `{form}` is how the reference is written, `{reference}` the reference | "Where it is found becomes ({form}): {reference}." | "参照先が（{form}）{reference} になります。" |
 | `know.source_change_snapshot` | under a changed source | "The copy kept of it changes." | "保存されている写しが変わります。" |
 | `know.source_change_reviewed` | under a changed source; `{day}` is the day | "Last checked on {day}." | "最後に確認した日が {day} になります。" |
 | `know.source_change_unreviewed` | under a changed source | "It is no longer marked as checked." | "確認済みの印がなくなります。" |
 | `know.source_change_availability` | under a changed source | "Whether it can be had becomes: {availability}." | "入手できるかどうかが「{availability}」になります。" |
-| `know.source_change_superseded` | under a changed source | "It is now replaced by another source." | "別の出典に置き換えられます。" |
+| `know.source_change_superseded` | under a changed source, and under a recorded one that says it is replaced; `{source}` is the source's name, set apart | "It is now replaced by the source {source}." | "出典 {source} に置き換えられます。" |
 | `know.is_curation` | on a proposal that changes claims and sources and no page | "This is a curation proposal: it changes claims and sources and no page." | "これはキュレーション提案です。主張と出典を変更し、ページは変更しません。" |
 | `know.not_curation` | on a proposal that sets what only a curation proposal may set | "This proposal sets a community status, a review date or an availability, changes or removes a source link a claim already has, removes a claim or a source that holds any of these, or replaces a file that cannot be read, which only a curation proposal may do. It cannot be accepted as it is." | "この提案はコミュニティでの扱い、確認日、入手できるかどうかを設定するか、主張がすでに持つ出典リンクを変更・削除するか、これらを持つ主張や出典を削除するか、読み取れないファイルを置き換えていますが、これができるのはキュレーション提案だけです。このままでは受け入れられません。" |
 | `know.kind_observation` | a kind of statement, inside a sentence | "an observation" | "観察" |
@@ -1302,11 +1301,19 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `know.change_rejudged_unseen` | the same, when no paragraph of the claim has that wording once the proposal is made | "What {subject} was judged on becomes a wording that none of the claim's paragraphs has once this proposal is made." | "{subject}を判断したときの文面が、この提案のあとには主張のどの段落にもない文面に変わります。" |
 | `know.change_rejudged_cleared` | the same, when it is no longer tied to a wording | "It is no longer recorded which wording {subject} was judged on." | "{subject}を判断した文面は、記録されなくなります。" |
 | `know.rejudged_status` | the subject of those lines: the claim's status | "its community status" | "コミュニティでの扱い" |
-| `know.rejudged_source` | the subject of those lines: a source the claim cites | "a source it cites" | "引用している出典" |
+| `know.rejudged_source` | the subject of those lines: a source the claim cites; `{source}` is its name, set apart | "the source {source} that it cites" | "引用している出典 {source}" |
 | `know.nothing_changes` | a note on a proposal page whose claim and source files are the files the wiki already has | "The claim and source files in this proposal are the files the wiki already has: they change nothing." | "この提案の主張・出典ファイルは、ウィキにすでにあるファイルと同じです。変更はありません。" |
 | `attach.direction` | a problem: a text of the source holds a character that changes the direction of text or is not shown | "A text in the source holds a character that changes the direction of text or is not shown, which cannot be kept." | "出典の文章に、文字の向きを変える文字や、表示されない文字が含まれていて、保存できません。" |
 | `know.replaced_unreadable_claim` | a line of a proposal: a claim file the wiki has and cannot read is replaced or removed; `{id}` is its identifier | "Replaces or removes a claim file that cannot be read ({id}). What it held is not known." | "読み取れない主張ファイル（{id}）を置き換えるか削除します。その内容は分かっていません。" |
 | `know.replaced_unreadable_source` | the same, for a source file | "Replaces or removes a source file that cannot be read ({id}). What it held is not known." | "読み取れない出典ファイル（{id}）を置き換えるか削除します。その内容は分かっていません。" |
+| `know.made_lifecycle` | under a recorded claim | "Where it stands in its life: {lifecycle}." | "主張の扱いの段階：{lifecycle}。" |
+| `know.made_related` | under a recorded claim; `{other}` is an excerpt of a paragraph the other claim is said in | "It has a relation to the claim “{other}”: {relation}." | "主張「{other}」との関係があります: {relation}。" |
+| `know.source_made_availability` | under a recorded source | "Whether it can be had: {availability}." | "入手できるかどうか：{availability}。" |
+| `know.source_where` | under a recorded source; `{form}` is how the reference is written, `{reference}` the reference | "Where it is found ({form}): {reference}." | "参照先（{form}）：{reference}。" |
+| `know.source_copy` | under a recorded source | "A copy of it is kept." | "写しが保存されています。" |
+| `know.source_change_unsuperseded` | under a changed source | "It is no longer marked as replaced." | "置き換えられたという印がなくなります。" |
+| `know.source_change_reference_cleared` | under a changed source | "It no longer says where it is found." | "参照先が書かれなくなります。" |
+| `know.source_nameless` | the name of a source that has no title, author or date in the wiki or the proposal, in a line of that list; `{id}` is its identifier | "A source without a title (identifier {id})" | "題名のない出典（識別子 {id}）" |
 
 ## 3. Words the interface does not say
 

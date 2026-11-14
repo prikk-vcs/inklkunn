@@ -2631,25 +2631,24 @@ pub const CATALOG: &[Entry] = &[
     msg("know.heading", "Claims and sources in this proposal"),
     plural_msg(
         "know.claim_made",
-        "Records a claim ({kind}), said in {count} place.",
-        "Records a claim ({kind}), said in {count} places.",
+        "Records the claim “{claim}” ({kind}), said in {count} place. Its community status: {standing}.",
+        "Records the claim “{claim}” ({kind}), said in {count} places. Its community status: {standing}.",
     ),
     msg(
         "know.cite",
-        "Cites a source: it {relation} the claim {bearing}.",
+        "Cites the source {source}: it {relation} the claim {bearing}.",
     ),
-    msg("know.source_recorded", "Records a source ({kind}): {title}"),
     msg(
-        "know.source_recorded_untitled",
-        "Records a source ({kind}).",
+        "know.source_recorded",
+        "Records the source {source} ({kind}).",
     ),
-    msg("know.claim_changed", "Changes a claim:"),
-    msg("know.source_changed", "Changes a source:"),
-    msg("know.removed_claim", "Removes a claim."),
-    msg("know.removed_source", "Removes a source."),
+    msg("know.claim_changed", "Changes the claim “{claim}”:"),
+    msg("know.source_changed", "Changes the source {source}:"),
+    msg("know.removed_claim", "Removes the claim “{claim}”."),
+    msg("know.removed_source", "Removes the source {source}."),
     msg(
         "know.unreadable",
-        "A file in this proposal is not in the form the wiki reads. {reason}",
+        "The file {file} in this proposal is not in the form the wiki reads. {reason}",
     ),
     msg("know.change_kind", "The kind of statement becomes {kind}."),
     msg(
@@ -2660,34 +2659,43 @@ pub const CATALOG: &[Entry] = &[
         "know.change_standing",
         "Its community status changes from {from} to {to}.",
     ),
-    msg("know.change_said", "It is said in one more paragraph."),
+    msg(
+        "know.change_said",
+        "It is said in one more paragraph: “{paragraph}”.",
+    ),
     msg(
         "know.change_unsaid",
-        "It is no longer said in a paragraph: the paragraph is removed, or the claim lets it go.",
+        "It is no longer said in the paragraph “{paragraph}”: the paragraph is removed, or the claim lets it go.",
     ),
     msg(
         "know.change_related",
-        "A relation to another claim is added: {relation}.",
+        "A relation to the claim “{other}” is added: {relation}.",
     ),
     msg(
         "know.change_unrelated",
-        "A relation to another claim is removed: {relation}.",
+        "A relation to the claim “{other}” is removed: {relation}.",
     ),
-    msg("know.change_uncited", "It no longer cites a source."),
+    msg(
+        "know.change_uncited",
+        "It no longer cites the source {source}.",
+    ),
     msg(
         "know.change_recited",
-        "A source it cites now {relation} it {bearing}.",
+        "The source {source}, which it cites, now {relation} it {bearing}.",
     ),
     msg(
         "know.change_noted",
-        "The note on a source it cites changes.",
+        "The note on the source {source}, which it cites, changes.",
     ),
     msg("know.source_change_kind", "Its kind becomes {kind}."),
     msg(
         "know.source_change_identity",
-        "Who or what it is, as written, changes.",
+        "Who or what it is, as written, becomes {identity}.",
     ),
-    msg("know.source_change_reference", "Where it is found changes."),
+    msg(
+        "know.source_change_reference",
+        "Where it is found becomes ({form}): {reference}.",
+    ),
     msg(
         "know.source_change_snapshot",
         "The copy kept of it changes.",
@@ -2703,7 +2711,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.source_change_superseded",
-        "It is now replaced by another source.",
+        "It is now replaced by the source {source}.",
     ),
     msg(
         "know.is_curation",
@@ -2875,7 +2883,7 @@ pub const CATALOG: &[Entry] = &[
         "It is no longer recorded which wording {subject} was judged on.",
     ),
     msg("know.rejudged_status", "its community status"),
-    msg("know.rejudged_source", "a source it cites"),
+    msg("know.rejudged_source", "the source {source} that it cites"),
     msg(
         "know.nothing_changes",
         "The claim and source files in this proposal are the files the wiki already has: they change nothing.",
@@ -2893,6 +2901,35 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "know.replaced_unreadable_source",
         "Replaces or removes a source file that cannot be read ({id}). What it held is not known.",
+    ),
+    msg(
+        "know.made_lifecycle",
+        "Where it stands in its life: {lifecycle}.",
+    ),
+    msg(
+        "know.made_related",
+        "It has a relation to the claim “{other}”: {relation}.",
+    ),
+    msg(
+        "know.source_made_availability",
+        "Whether it can be had: {availability}.",
+    ),
+    msg(
+        "know.source_where",
+        "Where it is found ({form}): {reference}.",
+    ),
+    msg("know.source_copy", "A copy of it is kept."),
+    msg(
+        "know.source_change_unsuperseded",
+        "It is no longer marked as replaced.",
+    ),
+    msg(
+        "know.source_change_reference_cleared",
+        "It no longer says where it is found.",
+    ),
+    msg(
+        "know.source_nameless",
+        "A source without a title (identifier {id})",
     ),
     // knowledge: a file that cannot be read is replaced (handoff 005 corrections, second round K16): end
 ];

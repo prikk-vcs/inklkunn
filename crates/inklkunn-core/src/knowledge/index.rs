@@ -304,7 +304,7 @@ pub const MAX_SOURCE_NAME_CHARS: usize = 300;
 
 /// `text` as it was written, cut to [`MAX_SOURCE_NAME_CHARS`] characters (on a character boundary, never inside a
 /// code point) with an ellipsis where it was cut, so that a reader can see that it was.
-fn kept(text: &str) -> String {
+pub fn kept(text: &str) -> String {
     if text.chars().count() <= MAX_SOURCE_NAME_CHARS {
         return text.to_owned();
     }

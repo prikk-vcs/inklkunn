@@ -428,7 +428,7 @@ async fn emptying_a_claim_paragraph_is_an_explicit_act_and_the_claim_loses_the_e
     // The reviewer is shown it.
     let page = open(&s, &to, &s.writer).await.body();
     assert!(
-        page.contains("It is no longer said in a paragraph"),
+        page.contains("It is no longer said in the paragraph “<bdi>It opened in 1950.</bdi>”"),
         "{page}"
     );
 }
@@ -532,16 +532,21 @@ async fn attaching_a_source_to_a_paragraph_makes_the_claim_and_the_source_in_the
     assert_eq!(body.matches("Page: ").count(), 1, "{body}");
     assert!(!body.contains("lifecycle: proposed"), "{body}");
     assert!(
-        body.contains("Records a claim (an opinion), said in 1 place."),
+        body.contains(
+            "Records the claim “<bdi>It is long.</bdi>” (an opinion), said in 1 place. Its community status: not decided."
+        ),
         "{body}"
     );
     assert!(
-        body.contains("Cites a source: it supports the claim in part."),
+        body.contains(
+            "Cites the source <cite><bdi>“A survey of bridges”, dated 1962</bdi></cite>: it supports the claim in part."
+        ),
         "{body}"
     );
     assert!(
-        body.contains("Records a source (a person&#39;s account): A survey of bridges")
-            || body.contains("Records a source (a person's account): A survey of bridges"),
+        body.contains(
+            "Records the source <cite><bdi>“A survey of bridges”, dated 1962</bdi></cite> (a person&#39;s account)."
+        ),
         "{body}"
     );
 }
@@ -563,7 +568,9 @@ async fn challenging_a_paragraph_attaches_a_source_that_challenges() {
     assert_eq!(link.relation, Link::Challenges);
     let body = open(&s, &to, &s.writer).await.body();
     assert!(
-        body.contains("Cites a source: it challenges the claim in part."),
+        body.contains(
+            "Cites the source <cite><bdi>“A correction”, dated 1962</bdi></cite>: it challenges the claim in part."
+        ),
         "{body}"
     );
 }
@@ -720,7 +727,7 @@ async fn a_draft_keeps_the_claim_and_a_revision_carries_it_forward() {
         body.contains("Claims and sources in this proposal"),
         "{body}"
     );
-    assert!(body.contains("Records a claim"), "{body}");
+    assert!(body.contains("Records the claim"), "{body}");
     assert!(body.contains("name=\"p0_text\""), "{body}");
     assert!(
         !body.contains("p1_text"),
@@ -876,7 +883,7 @@ async fn a_status_beside_a_page_edit_is_said_to_be_refused_and_the_change_to_it_
     assert!(!body.contains("only a curation proposal may do"), "{body}");
     // The section is there to say so (K5), with no line under it: an empty list is said, not left out.
     assert!(body.contains("they change nothing"), "{body}");
-    assert!(!body.contains("Changes a claim"), "{body}");
+    assert!(!body.contains("Changes the claim"), "{body}");
 }
 
 #[tokio::test]
@@ -1013,7 +1020,7 @@ async fn removing_a_claim_with_a_link_or_a_file_that_cannot_be_read_beside_a_pag
         "{body}"
     );
     assert!(body.contains(note), "{body}");
-    assert!(!body.contains("Removes a claim."), "{body}");
+    assert!(!body.contains("Removes the claim"), "{body}");
     assert!(!body.contains("secret"), "{body}");
     // Written over with a claim that reads: the same line, and the new claim beside it.
     let mut over = s.claim.clone();
@@ -1032,7 +1039,7 @@ async fn removing_a_claim_with_a_link_or_a_file_that_cannot_be_read_beside_a_pag
         body.contains("Replaces or removes a claim file that cannot be read"),
         "{body}"
     );
-    assert!(body.contains("Records a claim"), "{body}");
+    assert!(body.contains("Records the claim"), "{body}");
     // Alone it is a curation proposal: no warning, and the line stays.
     let body = open(
         &s,
@@ -1126,13 +1133,13 @@ async fn a_curation_that_judges_again_shows_each_re_judgement_with_the_wording_i
     // Both the status's and the source's: two lines, neither of them *accepted to accepted*.
     assert!(
         body.contains(
-            "What its community status was judged on becomes this wording: “It opened in 1950.”"
+            "What its community status was judged on becomes this wording: “<bdi>It opened in 1950.</bdi>”"
         ),
         "{body}"
     );
     assert!(
         body.contains(
-            "What a source it cites was judged on becomes this wording: “It opened in 1950.”"
+            "What the source <cite><bdi>“A history of the bridge”</bdi></cite> that it cites was judged on becomes this wording: “<bdi>It opened in 1950.</bdi>”"
         ),
         "{body}"
     );
@@ -1158,11 +1165,11 @@ async fn a_re_judgement_to_wording_no_paragraph_has_says_so_and_wording_is_escap
     );
     let body = open(&s, &to, &s.writer).await.body();
     assert!(
-        body.contains("&#60;b&#62;in&#60;/b&#62; 1950 &#38; more."),
+        body.contains("&lt;b&gt;in&lt;/b&gt; 1950 &amp; more."),
         "{body}"
     );
     assert!(!body.contains("<b>in</b>"), "{body}");
-    assert!(body.contains("…”"), "the long wording is cut: {body}");
+    assert!(body.contains("…</bdi>”"), "the long wording is cut: {body}");
     assert!(!body.contains(&long), "{body}");
     // Judged on a wording that is not on the page: said so, never shown as a wording.
     let to = rejudging(&s, &page, "A wording the page never had. ^k1");

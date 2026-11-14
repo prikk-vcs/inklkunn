@@ -35,7 +35,10 @@ fn a_new_claim_and_a_new_source_are_made_and_recorded() {
                 claim: claim.id.clone(),
                 kind: StatementKind::Observation,
                 standing: Standing::Unknown,
+                judged_on: None,
+                lifecycle: claim.lifecycle,
                 said: claim.expressions.clone(),
+                relations: claim.relations.clone(),
                 cites: vec![Cite {
                     source: source_id(1),
                     relation: Link::Supports,
@@ -45,8 +48,16 @@ fn a_new_claim_and_a_new_source_are_made_and_recorded() {
             Item::SourceRecorded {
                 source: source.id.clone(),
                 kind: SourceKind::Primary,
-                title: Some("A title".to_owned()),
-                checked: false,
+                identity: Identity {
+                    title: Some("A title".to_owned()),
+                    author: None,
+                    date: None,
+                },
+                reference: None,
+                snapshot: false,
+                reviewed: None,
+                superseded_by: None,
+                availability: Availability::Unknown,
             },
         ]
     );
@@ -146,7 +157,7 @@ fn a_file_that_says_what_the_tip_says_is_no_item() {
 }
 
 #[test]
-fn what_changes_in_a_source_is_said_without_what_it_changed_to_except_a_day_and_an_availability() {
+fn what_changes_in_a_source_is_said_with_what_it_changed_to() {
     let before = Source::new(source_id(1));
     let mut after = before.clone();
     after.kind = SourceKind::Primary;
@@ -171,11 +182,18 @@ fn what_changes_in_a_source_is_said_without_what_it_changed_to_except_a_day_and_
         changes,
         &[
             SourceChange::Kind(SourceKind::Primary),
-            SourceChange::Identity,
-            SourceChange::Reference,
+            SourceChange::Identity(Identity {
+                title: Some("Another".to_owned()),
+                author: None,
+                date: None,
+            }),
+            SourceChange::Reference(Some(Reference {
+                form: ReferenceForm::Citation,
+                value: "Smith".to_owned(),
+            })),
             SourceChange::Reviewed(Some("2026-11-04".to_owned())),
             SourceChange::Availability(Availability::Unavailable),
-            SourceChange::Superseded,
+            SourceChange::Superseded(Some(source_id(2))),
         ]
     );
 }
@@ -201,6 +219,7 @@ fn a_removal_is_said_by_the_id_and_a_file_that_does_not_read_by_its_rule_only() 
             },
             Item::Unreadable {
                 family: Family::Claim,
+                id: claim_id(4).to_string(),
                 rule: Rule::Unknown
             },
         ]
