@@ -1376,10 +1376,29 @@ fn the_persons_word_to_take_a_queued_patch_back_is_in_the_audit_trail_before_any
     let begun = w
         .operator_details()
         .into_iter()
-        .find(|(a, d)| a == "wiki-recover" && d.contains("a person confirmed"));
+        .find(|(a, d)| a == "wiki-recover" && d.contains("a person asked to take queued patch"));
     assert!(
         begun.as_ref().is_some_and(|(_, d)| d.contains(&id)),
         "{begun:?}"
+    );
+    // The begin event records what was asked, never that a take-back was confirmed or done (M4) ...
+    assert!(
+        w.operator_details()
+            .iter()
+            .all(|(_, d)| !d.contains("confirmed")),
+        "{:?}",
+        w.operator_details()
+    );
+    // ... and the end event says that the word was not used, and why: nothing was queued.
+    let ended = w
+        .operator_details()
+        .into_iter()
+        .find(|(a, d)| a == "wiki-recover" && d.starts_with("recovered;"));
+    assert!(
+        ended.as_ref().is_some_and(|(_, d)| d.contains(&format!(
+            "--discard-queued-patch {id} was not used: nothing is queued"
+        ))),
+        "{ended:?}"
     );
     // Without the word the begun event says nothing of the kind.
     flag(&w, "notes");
@@ -1391,6 +1410,69 @@ fn the_persons_word_to_take_a_queued_patch_back_is_in_the_audit_trail_before_any
         .filter(|(a, d)| a == "wiki-recover" && d == "begun")
         .collect();
     assert_eq!(plain.len(), 1, "{plain:?}");
+}
+
+#[test]
+fn the_end_event_says_what_became_of_the_word_whatever_the_run_did() {
+    // Maintenance M4, the ways a word is not used that the report alone tells: recovery did not run; it planned no
+    // take-back; it planned one and did not reach it. And the one way it is used.
+    use inklkunn_core::RecoveryReport;
+    use inklkunn_core::recovery::{Plan, Step, StepDone};
+    let id = "ab".repeat(32);
+    let wiki = inklkunn_store::WikiId::new();
+    let plan = |steps: Vec<Step>| Plan {
+        wiki: wiki.clone(),
+        view: None,
+        witnesses: Vec::new(),
+        steps,
+        stop: None,
+        notes: Vec::new(),
+        discard_unused: None,
+    };
+    let report = |plan: Plan, done: Vec<StepDone>| RecoveryReport {
+        wiki: wiki.clone(),
+        plan,
+        act: None,
+        outcome: RecoveryOutcome::Recovered,
+        done,
+        reconciliation: None,
+        under_lease: true,
+    };
+    let take = || Step::DiscardQueued {
+        patch_id: id.clone(),
+    };
+    // It did not run.
+    let busy: Result<RecoveryReport, RecoveryError> = Err(RecoveryError::Lease("no".to_owned()));
+    assert!(
+        discard_word_fate(&busy).is_some_and(|w| w.contains("did not run")),
+        "{:?}",
+        discard_word_fate(&busy)
+    );
+    // It planned no take-back: the plan's own reason, else a plain statement.
+    let mut p = plan(Vec::new());
+    p.discard_unused = Some("nothing is queued".to_owned());
+    assert_eq!(
+        discard_word_fate(&Ok(report(p, Vec::new()))).as_deref(),
+        Some("nothing is queued")
+    );
+    assert!(
+        discard_word_fate(&Ok(report(plan(Vec::new()), Vec::new())))
+            .is_some_and(|w| w.contains("planned no take-back"))
+    );
+    // It planned one and did not reach it (a step before failed, or the step did).
+    assert!(
+        discard_word_fate(&Ok(report(plan(vec![take()]), Vec::new())))
+            .is_some_and(|w| w.contains("nothing was taken back"))
+    );
+    // It took the patch back: nothing to say.
+    let done = vec![StepDone {
+        step: "discard-queued",
+        detail: String::new(),
+    }];
+    assert_eq!(
+        discard_word_fate(&Ok(report(plan(vec![take()]), done))),
+        None
+    );
 }
 
 #[test]

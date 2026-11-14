@@ -498,6 +498,14 @@ Dependency updates (the architect, 2026-11-14).
   the preview and the reason, and no command. The wiki's id replaces the literal `<wiki>`. `docs/RECOVERY.md` says where the
   preview is shown and that the word is "not used", not "ignored".
 
+- **M4 (maintenance corrections, review finding N-a; the trail's half): the audit trail says what happened.** `inklkunn wiki
+  recover` recorded, before any plan existed, that a person *confirmed* taking queued patch X back, even when the patch typed was
+  an act's own (sealed, correctly) or nothing was to be done. The begin event now says the person *asked*; the end event adds
+  `--discard-queued-patch X was not used: <why>` whenever no `discard-queued` step was taken (the plan's own reason, or that
+  recovery did not run, or planned the step and did not reach it), and says nothing of the kind when the patch was taken back.
+  Tests: the word on a flagged wiki with nothing queued (begin and end events, no "confirmed" anywhere), and the four fates of
+  the word as a unit test of the report (`discard_word_fate`).
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

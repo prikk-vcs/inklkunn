@@ -39,9 +39,9 @@ use inklkunn_core::proposal::{Period, operator_metrics};
 use inklkunn_core::recovery::needs_recovery;
 use inklkunn_core::{
     Authorizer, LeaseConfig, Leased, Maintenance, NoLedger, Recover, RecoverOptions, Recovery,
-    RecoveryError, RecoveryMode, RecoveryOutcome, RecoveryParts, Signer, SignerConfig, StoreAuthz,
-    StoreLedger, SweepAudit, SystemActFailure, SystemActs, WikiLeases, Witnesses, WriteLeases,
-    create_wiki, sweep_unfinished_creations,
+    RecoveryError, RecoveryMode, RecoveryOutcome, RecoveryParts, RecoveryReport, Signer,
+    SignerConfig, StoreAuthz, StoreLedger, SweepAudit, SystemActFailure, SystemActs, WikiLeases,
+    Witnesses, WriteLeases, create_wiki, sweep_unfinished_creations,
 };
 use inklkunn_prikk::sandbox::Sandbox;
 use inklkunn_prikk::{Admission, PrikkCli, Storage};
@@ -102,7 +102,7 @@ inklkunn [--dev-unconfined] wiki import-folder <wiki> <dir> [--dry-run] [--repla
 inklkunn [--dev-unconfined] wiki export <wiki> [--bundle <dir>] [--archive <file>]\n       \
 inklkunn [--dev-unconfined] wiki recover <wiki> [--plan] [--discard-queued-patch <patch id>]\n       \
 inklkunn [--dev-unconfined] wiki metrics <wiki> [--days <n> | --from <unix> --to <unix>]\n\
-<wiki> is the wiki's slug or id. An export's destination must not exist. `recover --plan` shows what recovery would do and changes nothing. `--discard-queued-patch <patch id>` takes the one queued patch back (prikk 0.57.0 and later) when no recorded act describes it; the id is the confirmation, and recovery names it in the plan.";
+<wiki> is the wiki's slug or id. An export's destination must not exist. `recover --plan` shows what recovery would do and changes nothing (prikk's own preview of taking a queued patch back is shown by a run, not by --plan). `--discard-queued-patch <patch id>` asks to take the one queued patch back (prikk 0.57.0 and later) when no recorded act describes it; the id is the confirmation, and the plan and the audit trail say whether it was used.";
 
 /// Parse what follows `wiki` for `create`, `import-folder` and `export`.
 pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
@@ -1038,12 +1038,14 @@ fn recover(
     // A plan shown changes nothing, so it is not an act to audit; a recovery is, before and after.
     let trail = Trail { sink: &*store, now };
     if !plan_only {
-        // The person's word is part of the act: what they confirmed is in the trail before anything is done.
+        // The person's word is part of the act: what they asked is in the trail before anything is done. It says
+        // *asked*: whether the patch is taken back is decided by what recovery then finds, and the end event says
+        // what happened (M4).
         trail.begin(
             "wiki-recover",
             &resource,
             &match discard_queued_patch {
-                Some(id) => format!("begun; a person confirmed taking queued patch {id} back"),
+                Some(id) => format!("begun; a person asked to take queued patch {id} back"),
                 None => "begun".to_owned(),
             },
         )?;
@@ -1084,9 +1086,48 @@ fn recover(
         Err(e) => (AuditOutcome::Failed, "failed", Some(e.to_string())),
     };
     if !plan_only {
-        trail.finish("wiki-recover", &resource, outcome, detail)?;
+        // The end event says what happened to the word, too: a take-back that never happened is not left standing in
+        // the trail as one (M4).
+        let detail = match (discard_queued_patch, discard_word_fate(&result)) {
+            (Some(id), Some(why)) => {
+                format!("{detail}; --discard-queued-patch {id} was not used: {why}")
+            }
+            _ => detail.to_owned(),
+        };
+        trail.finish("wiki-recover", &resource, outcome, &detail)?;
     }
     message.map_or(Ok(()), Err)
+}
+
+/// Why a patch id typed with `--discard-queued-patch` was not used, when it was not: `None` when the patch was taken
+/// back. The plan says it for every state it was made in; a recovery that stopped before the step, or that did not
+/// run, says that.
+fn discard_word_fate(result: &Result<RecoveryReport, RecoveryError>) -> Option<String> {
+    let report = match result {
+        Ok(report) => report,
+        Err(_) => return Some("recovery did not run, so nothing was taken back".to_owned()),
+    };
+    if report.done.iter().any(|d| d.step == "discard-queued") {
+        return None;
+    }
+    if report
+        .plan
+        .steps
+        .iter()
+        .any(|s| s.name() == "discard-queued")
+    {
+        return Some(
+            "recovery stopped before it took the patch back, or the step failed: nothing was taken back"
+                .to_owned(),
+        );
+    }
+    Some(
+        report
+            .plan
+            .discard_unused
+            .clone()
+            .unwrap_or_else(|| "recovery planned no take-back".to_owned()),
+    )
 }
 
 /// The prikk version the driver found, as the record keeps it.
