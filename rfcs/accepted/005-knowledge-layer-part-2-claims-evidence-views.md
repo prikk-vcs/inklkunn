@@ -196,6 +196,9 @@ index (D-1 … D-6) may start earlier if the dev team has room, as they touch no
   or `superseded_by` is made by a curation proposal **whether or not the source is checked**, since no page edit writes an
   existing source file. On a checked source only curation may make it (K30). A `superseded_by` chain never returns to a
   source it has passed.
+  *Amended 2026-11-14:*
+  - **A change of a source's reference** (where it is found) is a change of what was checked. It clears the source's review day and availability, unless the same proposal records a new check.
+  - **A correction of its title, author or date** keeps them. The proposal's page says that the review of that day stays and names the other claims that cite the source, so the reviewer who accepts it vouches that it is still the same work.
 - **What is not offered in 0.3.0 (2026-11-14).** Removing a claim file or a source file, and replacing a file that cannot be
   read. Every surface that meets one says so plainly, and names no reviewer or form that cannot act on it. Retiring claims
   and sources is designed with RFC 006 (moderation, M4).

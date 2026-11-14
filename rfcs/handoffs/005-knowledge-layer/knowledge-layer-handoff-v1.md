@@ -377,3 +377,40 @@ source*, and *what is not offered in 0.3.0*. Hand back K55 – K64 as one reques
 - **K64 — small points:**
   - **X-g:** comment bodies are stored trimmed, so a body never ends in `\n`; assert it, and handle a NUL by refusing it at the comment form, or by naming in the bundle that it is carried as U+FFFD. Add `\t` and `\0` to the exhaustive alphabet.
   - **Decision 4:** `docs/dependency-policy.md` gets `pulldown-cmark`'s dev-dependency row.
+
+## Corrections from the review of 2026-11-14, seventh round (binding; **before 0.3.0**)
+
+K55 is **Approved for the read path**; K56 – K64 and K57 are **Conditionally Approved**
+(`.git-exclude/reviewed/005-knowledge-layer-corrections-6-review-result.md`). The clarification *correcting a source* is amended (a
+changed reference clears the review). Hand back K65 – K70 as one request, `005-knowledge-layer-corrections-7-review-request.md`.
+**K65 first.**
+
+- **K65 — no liveness from `/proc` in the scratch directory, anywhere** (A-a, A-b, A-c, A-d, and the architect's note).
+  - **The export** extracts through `Extract`, and its `.partial-` directory is held the same way: a lock file beside it, swept only when its lock can be taken.
+  - **`build`** compares the files it bundles with the `Materialized` report and refuses a difference.
+  - **`process_has_ended` and the `/proc` sweeps go.**
+  - **Docs:**
+    - network filesystems (NFS, SMB, any `local_lock` setup) are **unsupported** for the data directory, and the docs no longer promise that a failure is detected there;
+    - recovery's foreign-process check sees only its own PID namespace, so before a recovery the operator stops every process that writes the repository, in any container.
+  - **The CHANGELOG's upgrade note:** stop every 0.2.x process before starting 0.3.0, and delete any `import-<pid>-<nanos>` directory that 0.2.0's crashed imports left in the scratch directory (with the path to look in).
+  - **Tests:**
+    - an export beside a sweep from another PID namespace;
+    - a `build` given a tree with a file missing;
+    - the reviewer's 2-second stress of `is_at`, which fails when the check is forced true.
+- **K66 — a changed reference clears the check** (B-b; the amended clarification).
+  - A curation that changes a source's reference clears its `last_reviewed` and `availability`, unless the same proposal records a new review day or availability.
+  - A correction of title, author or date keeps them. The proposal page then says *the review of <day> stays: accept only if this is still the same work*, and names the other claims that cite the source.
+  - A white-space change of a name is shown as such: the two spellings with their white space made visible.
+  - Tests through the core, the form and the API, en and ja.
+- **K67 — the removal clause, said once** (B-a, decision 3). `know.not_curation`, `health.rule_status`, `Rule::Status` and the write API's `knowledge-curated` explanation lose the removal and unreadable-file clauses. A refusal that is about a removal or an unreadable file says `know.not_by_form` instead (`Refusal::removes` and `UNREADABLE` choose). Test: no page or API body carries both sentences, en and ja.
+- **K68 — the request schemas are standard and the test sees closedness** (B-c).
+  - `superseded_by` is an `anyOf`, or a `pattern` on the id branch, valid under OpenAPI 3.1.
+  - Ids carry the lower-case v7 `pattern`.
+  - The test's walk honours `additionalProperties`: open unless `false`. A row shows that removing `closed()` fails.
+  - Rows for the trimmed `superseded_by` and for a byte-length bound (or the schema says bytes).
+- **K69 — the cycle refusal and its cost** (B-d, B-e, decision 4).
+  - The form names the source whose chain returns, at its field.
+  - The surfaces read each source once per request.
+  - `validate` remembers the sources already walked, so a chain costs O(N).
+  - The form's hint says that a change of line breaks alone is made through the API.
+- **K70 — `--config` once** (A-e). A second `--config`, or a flag in its place, is a usage error.

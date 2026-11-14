@@ -197,3 +197,27 @@ step 1 was pushed alone and CI is green on it. RFC 010 D-3 now names the test-on
   - `SECURITY.md` and `docs/RECOVERY.md` say that the check after a seal is throttled (at most once a minute), and use one wording for a retirement's end.
   - `inklkunn-fetch/src/scrub.rs` uses `is_line_or_control`.
 - **M33 — `Witness.format_marker` is an enum** (decision 2): a marker error with a number, and a marker error without one. There is no `Option<Option<_>>`.
+
+## Corrections from the review of 2026-11-14, fifth round (binding; **before 0.3.0**)
+
+M28 – M33 are **Conditionally Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-corrections-4-review-result.md`). Hand
+back M34 – M37 as one request, `010-maintenance-2026-11-corrections-5-review-request.md`.
+
+- **M34 — no test of a 0.57.0 subject passes by not reaching it** (Z-a, decision 2).
+  - The four `reports_block_seals` tests are split as M28 split the take-back: a floor test, and an `on_0_57_0_…` test on the first prikk 0.57.0 or newer, with the guarded lines.
+  - `a_block_prikk_cannot_read_…` never returns without a guarded line.
+  - A workspace check (a test in `floor-check`, or a grep in CI) fails on any early return after a prikk-capability probe that prints no guarded line.
+- **M35 — `pin-check` reads the workflows as YAML** (Z-b).
+  - Jobs and their `timeout-minutes` come from a YAML parser (`serde_yaml` is already in the lock for the workflow tests), not from line shapes.
+  - An install is any `rustup toolchain install` or `rustup install` of the pin anywhere in a `run:` script, single-line or block, split at `;`, `&&`, `||` and newlines.
+  - Every one of the reviewer's forms is a planted-failure test.
+  - Each non-vacuity guard counts what it guards: jobs, and installs found by the parser.
+- **M36 — `scrub` and the lock step** (Z-c, Z-d, decision 3).
+  - `scrub` filters line separators and controls **before** it redacts, with the reviewer's case as a test.
+  - A parity test (fetch's dev-dependency on the store) holds `scrub`'s copy of `is_line_or_control` equal to the store's over every code point.
+  - A `ClearLocks` step whose lock prikk says appears running says so in the plan: the run will try it and stop there, and why. A test on 0.57.0's listing.
+- **M37 — smaller points and CI** (Z-e; the knowledge result's decision 2).
+  - The kill matrix's 0.57.0 row takes the patch back from the kill state and shows the worktree put back.
+  - `binaries` gets `timeout-minutes: 10`.
+  - **CI lifts the runner's restriction on unprivileged user namespaces** for the test steps (`sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`, Ubuntu 24.04), so the PID-namespace test of K55 runs. The with-prikk run's guard fails on `skipping: PID namespaces unavailable` as on the 0.57.0 lines.
+  - Say whether the bubblewrap self-skips then stop printing in CI, which would make the sandbox tests real there too.
