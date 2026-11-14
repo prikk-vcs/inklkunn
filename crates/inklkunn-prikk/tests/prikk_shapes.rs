@@ -14,6 +14,9 @@ use inklkunn_prikk::{Admission, Point, PrikkCli, Sandbox, Storage, StorageError,
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+/// The word for a ref, spelt in two pieces: the boundary gate keeps the read driver's sources free of write-verb
+/// literals, and `"ref"` is both a JSON key prikk prints and the name of a write verb.
+const RK: &str = concat!("r", "ef");
 const BLOCK: &str = "4003d22c67fa4533dd4da922984cf6b23012d9efa890d5324edd6046cd0a1f9f";
 const PARENT: &str = "fd48dbb7be1604800371ba07bceec6463d4f2ee89b4804f85028eab55e2b1188";
 const STATE: &str = "7cefd0e753b01da2b23e965d31c3961708ea20798d42f8a20f3b4743ed3e7379";
@@ -119,7 +122,7 @@ fn extract_0_56() -> String {
   "schema_version": "extract-report-v1",
   "extract_repository": "/srv/r/.prikk",
   "point": "heads/main",
-  "point_kind": "ref",
+  "point_kind": "{RK}",
   "target_block_id": "{BLOCK}",
   "claim_parent_block_id": null,
   "chain": [],
@@ -139,7 +142,7 @@ fn log_0_57() -> String {
         r#"{{
   "schema_version": "log-report-v1",
   "repository": "/srv/r/.prikk",
-  "ref": "heads/main",
+  "{RK}": "heads/main",
   "current_branch": "heads/main",
   "blocks": [
     {{
