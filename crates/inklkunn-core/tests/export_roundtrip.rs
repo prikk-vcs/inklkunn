@@ -785,40 +785,55 @@ fn an_export_begins_by_sweeping_what_a_killed_one_left_and_touches_nothing_else(
     std::fs::create_dir_all(&scratch).unwrap();
     let out = dir_in(&w.tmp, "out");
     let dest = out.0.join("bundle");
-    // A process id no machine has (above the kernel's maximum), and this process's own.
+    // What a killed export left: its extraction and its partial bundle, each with the lock file nobody holds (a pid no
+    // machine has, above the kernel's maximum, which a sweep that looked the pid up would call dead; the pid below is
+    // this very process's, which one would call live: only the lock says).
     let dead = 4_294_967_000_u32;
     let me = std::process::id();
-    let killed_extraction = scratch.join(format!("export-{dead}-1"));
-    let killed_partial = out.0.join(format!(".bundle.partial-{dead}-1"));
+    let killed_extraction = scratch.join(format!("index-{dead}-5-0"));
+    let killed_partial = out.0.join(format!(".bundle.partial-{me}-5-0"));
     for dir in [&killed_extraction, &killed_partial] {
         std::fs::create_dir_all(dir.join("pages")).unwrap();
         std::fs::write(dir.join("pages/Half.md"), "half a page").unwrap();
+        let lock = PathBuf::from(format!("{}.lock", dir.display()));
+        drop(inklkunn_signer::flock::try_exclusive(&lock).unwrap());
     }
-    // Not leftovers of this export: a live process's (this one), another destination's, another name.
+    // Not leftovers of this export: another destination's, another name, an old-style export extraction.
     let kept: Vec<PathBuf> = vec![
-        scratch.join(format!("export-{me}-1")),
+        scratch.join(format!("export-{dead}-1")),
         scratch.join("tip-index"),
-        scratch.join(format!("export-{dead}")),
-        out.0.join(format!(".other.partial-{dead}-1")),
-        out.0.join(format!(".bundle.partial-{me}-1")),
+        out.0.join(format!(".other.partial-{dead}-1-0")),
+        out.0.join(format!(".bundle.partial-{dead}")),
         out.0.join("bundle-notes"),
     ];
     for dir in &kept {
         std::fs::create_dir_all(dir).unwrap();
     }
+    // A live export of the same destination (its partial bundle is held) and a live extract: whole afterwards, whoever
+    // they belong to.
+    let live_partial = inklkunn_core::read::scratch::Partial::begin(&out.0, "bundle").unwrap();
+    std::fs::create_dir_all(live_partial.path().join("pages")).unwrap();
+    std::fs::write(live_partial.path().join("pages/Mine.md"), "mine").unwrap();
+    let live_extract = inklkunn_core::read::scratch::Extract::begin(&scratch).unwrap();
+    std::fs::create_dir_all(live_extract.root().join("pages")).unwrap();
+    std::fs::write(live_extract.root().join("pages/Mine.md"), "mine").unwrap();
     export_bundle(&w.storage, &w.layout, &a.record, &dest, "0.0.0", 1)
         .unwrap_or_else(|e| panic!("{e}"));
-    assert!(
-        !killed_extraction.exists(),
-        "a killed export's extraction was left"
-    );
-    assert!(
-        !killed_partial.exists(),
-        "a killed export's partial bundle was left"
-    );
+    for gone in [&killed_extraction, &killed_partial] {
+        assert!(!gone.exists(), "{gone:?}: a killed export's was left");
+        assert!(
+            !PathBuf::from(format!("{}.lock", gone.display())).exists(),
+            "{gone:?}: and its lock file"
+        );
+    }
     for dir in &kept {
         assert!(dir.exists(), "{dir:?} is not a leftover and was removed");
     }
+    assert!(
+        live_partial.path().join("pages/Mine.md").is_file()
+            && live_extract.root().join("pages/Mine.md").is_file(),
+        "a held directory is left whole"
+    );
     assert!(dest.join("wiki-bundle.yaml").is_file());
 }
 

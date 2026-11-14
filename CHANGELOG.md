@@ -1378,6 +1378,34 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   0.57.0 lines. `floor-check` holds both: the guard names all three lines, and the lift comes before the first `cargo test`
   (planted failures: no lift, a lift after the tests, the restriction set instead, no test).
 
+- **K65 (handoff 005 corrections, seventh round): no liveness from `/proc` in the scratch directory, the export included (review A-a,
+  A-b, A-c, A-d).** The export still swept `export-<pid>-<nanos>` and `.<name>.partial-<pid>-<nanos>` when `/proc/<pid>` was missing,
+  which means nothing across PID namespaces: `docker exec … wiki export` beside `docker run … wiki export` (PID 1) removed the first
+  export's live tree, and the first wrote a bundle with files missing, checksums that matched what it held, and success; a crashed
+  PID-1 export leaked a whole copy for good. Now the export extracts through `read::scratch::Extract` (K55), and the directory it
+  builds the bundle in beside its destination is held the same way (`read::scratch::Partial`: a lock file `.<name>.partial-<pid>-<start>-<n>.lock`
+  beside it, made before the directory, swept only when its lock can be taken, removed after it). `process_has_ended`, `leftover_pid`
+  and every `/proc` sweep are gone. `build` compares the files it bundles with the `Materialized` report (their number and their bytes)
+  and refuses a difference, with nothing written, so a tree that lost a file is an error and never a bundle. **Docs:** network
+  filesystems (NFS, SMB, anything mounted with `local_lock`) are **unsupported** for the data directory and for the directory an export
+  is written to (there `flock` may be per process or local to one host, and nothing detects that; `SECURITY.md`, the configuration
+  table, the threat model's RR-10 and `scratch.rs` no longer promise a failure there), and recovery's foreign-process check
+  (`recovery/processes.rs`) reads `/proc` and so sees only its own PID namespace: before a recovery the operator stops every process
+  that writes the repository, in every container (`docs/RECOVERY.md`, `SECURITY.md`). **Upgrading from 0.2.x:** stop every 0.2.x
+  process (the server, a `wiki import-folder`, a `wiki export`) before starting 0.3.0. A 0.2.x process beside this build would remove
+  the other's live extracts both ways (0.2.0 sweeps every `index-*`, and this build reads a lockless `index-<pid>-<n>` as a leftover).
+  Then look in each wiki's scratch directory, `<INKLKUNN_DATA_DIR>/wikis/<xx>/<wiki id>.scratch/` (`<xx>` is the first two characters of
+  the id), and delete any `import-<pid>-<nanos>` directory there: a crashed 0.2.0 `wiki import-folder` left a whole copy of the wiki in
+  one, and nothing sweeps that name any more; likewise any `export-<pid>-<nanos>` there, the same for a crashed 0.2.0 export (a
+  `.<name>.partial-<pid>-<nanos>` directory beside an export's destination is swept by the next export to that destination). Tests: a
+  sweep as PID 1 of a fresh PID namespace beside an export, at the two moments it is exposed (its extraction just made, its bundle
+  being built), leaves both whole and the bundle has every page (`inklkunn-signer/tests/extract_pid_namespace.rs`, which prints
+  `skipping: PID namespaces unavailable` where there is no namespace); a `build` given a tree with a file missing, one more, or the
+  bytes of one different from the report is refused and writes nothing; a held partial bundle is whole through a second claim and a
+  sweep and a free one goes with its lock file; the export's sweep of a killed export's leftovers (rewritten for the locks); and the
+  reviewer's two-second stress of `FileLock::is_at` (four claimers and four sweepers, every claimer reads a whole tree), which fails
+  every time with the check forced true.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

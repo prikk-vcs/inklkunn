@@ -162,27 +162,65 @@ fn a_manifest_carries_the_fidelity_the_counts_the_block_the_interwiki_map_and_th
     assert!(!created.contains("checksums:") && !created.contains("exported_at"));
 }
 
-#[test]
-fn only_a_leftover_of_exactly_the_shape_and_of_an_ended_process_is_swept() {
-    assert_eq!(leftover_pid("export-123-456", "export-"), Some(123));
-    assert_eq!(leftover_pid(".out.partial-7-8", ".out.partial-"), Some(7));
-    for not in [
-        "export-123",
-        "export--1",
-        "export-12-",
-        "export-1a-2",
-        "export-1-2-3",
-        "export-123-456x",
-        "tip-index",
-        "export-99999999999999999999-1",
-    ] {
-        assert_eq!(leftover_pid(not, "export-"), None, "{not}");
+/// The report prikk gave of an extraction of these files.
+fn reported(files: u64, bytes: u64) -> Materialized {
+    Materialized {
+        schema_version: "extract-report-v1".to_owned(),
+        point: "block".to_owned(),
+        point_kind: "block".to_owned(),
+        target_block_id: "b".repeat(64),
+        claim_parent_block_id: None,
+        provisional: false,
+        written: true,
+        file_count: files,
+        total_bytes: bytes,
+        largest_file_bytes: 0,
     }
-    assert!(
-        !process_has_ended(std::process::id()),
-        "this process is alive"
-    );
-    assert!(process_has_ended(4_294_967_000), "no such process");
+}
+
+/// K65: the bundle is of the files prikk reported extracting. A tree with a file gone (a sweep, a crash, a full disk) would
+/// give a bundle with checksums that match what it holds and a success, and so a false statement about the wiki.
+#[test]
+fn a_tree_that_is_not_the_one_prikk_reported_is_refused_and_nothing_is_written() {
+    let tmp = std::env::temp_dir().join(format!("inklkunn-export-report-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let extracted = tmp.join("extracted");
+    std::fs::create_dir_all(extracted.join("pages")).unwrap();
+    std::fs::write(extracted.join("pages/A.md"), "aaa").unwrap();
+    std::fs::write(extracted.join("pages/B.md"), "bb").unwrap();
+    let partial = tmp.join("partial");
+    let build_with = |report: &Materialized| {
+        build(
+            &Unreachable,
+            Path::new("/repo"),
+            &record(),
+            "main",
+            "tip",
+            &extracted,
+            report,
+            &partial,
+            "0.0.0",
+            1,
+            None,
+        )
+    };
+    for (what, report) in [
+        ("a file missing", reported(3, 5)),
+        ("a file more", reported(1, 5)),
+        ("the bytes of one short", reported(2, 7)),
+        ("the bytes of one over", reported(2, 4)),
+    ] {
+        let err = build_with(&report).unwrap_err();
+        assert!(
+            matches!(&err, ExportError::Io(why) if why.contains("nothing was written")),
+            "{what}: {err}"
+        );
+        assert!(!partial.exists(), "{what}: the bundle's directory was made");
+    }
+    // The tree prikk reported goes through the check (and on to the history, which this storage refuses).
+    let err = build_with(&reported(2, 5)).unwrap_err();
+    assert!(matches!(err, ExportError::Storage(_)), "{err}");
+    let _ = std::fs::remove_dir_all(&tmp);
 }
 
 #[test]

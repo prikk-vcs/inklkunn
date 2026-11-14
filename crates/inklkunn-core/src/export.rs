@@ -27,15 +27,16 @@
 //!
 //! The bundle is built beside its destination and renamed into place only when complete, and the destination
 //! must not exist: a failed export leaves nothing. The extraction directory in the wiki's scratch directory is
-//! removed whatever happened, and an export begins by sweeping what a killed one left (its extraction there,
-//! its `.<name>.partial-*` beside the destination).
+//! removed whatever happened. Both directories (the extraction, and `.<name>.partial-*` beside the destination) are
+//! held by a lock file for as long as the export lives ([`crate::read::scratch`]), and an export begins by sweeping
+//! what a killed one left there: only a directory whose lock is free, never one decided dead from `/proc` (K65).
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::Write as _;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
-use inklkunn_prikk::{ExtractBounds, Point, Storage, StorageError};
+use inklkunn_prikk::{ExtractBounds, Materialized, Point, Storage, StorageError};
 use inklkunn_signer::message::{Actor, Message};
 use inklkunn_store::{
     AccountStore, ActStore, ClaimCommentRow, ClaimThreadStore, RootLayout, ViewActOutcome, WikiId,
@@ -45,6 +46,7 @@ use sha2::{Digest, Sha256};
 
 use crate::bundle::{self, ExportFacts, ManifestFacts, markdown_text, yaml_quote};
 use crate::knowledge::ClaimId;
+use crate::read::scratch::{Extract, Partial};
 
 /// How many blocks of history an export reads (`log --limit`). A history longer than this is refused rather than
 /// cut short: an export that silently lacks its oldest changes would be a lie about the wiki.
@@ -302,61 +304,8 @@ fn io(what: &str, e: &std::io::Error) -> ExportError {
     ExportError::Io(format!("{what} ({})", e.kind()))
 }
 
-fn nanos() -> u128 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_nanos())
-}
-
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-/// Remove a directory tree; a failure is the caller's to ignore (the next export sweeps its own leftovers).
-fn remove_tree(path: &Path) {
-    let _ = std::fs::remove_dir_all(path);
-}
-
-/// Is `pid` a process that has ended? `false` for this process, for a live one, and whenever `/proc` cannot say
-/// (no export is ever swept on a guess).
-fn process_has_ended(pid: u32) -> bool {
-    pid != std::process::id()
-        && Path::new("/proc/self").exists()
-        && !Path::new(&format!("/proc/{pid}")).exists()
-}
-
-/// The process id of a leftover named `<prefix><pid>-<nanos>`, when the name has exactly that shape.
-fn leftover_pid(name: &str, prefix: &str) -> Option<u32> {
-    let (pid, nanos) = name.strip_prefix(prefix)?.split_once('-')?;
-    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
-    if digits(pid) && digits(nanos) {
-        pid.parse().ok()
-    } else {
-        None
-    }
-}
-
-/// Remove the directories a killed export left: `export-<pid>-<nanos>` in `scratch` and
-/// `.<name>.partial-<pid>-<nanos>` in `parent`, when the process that made them has ended (a live export of the
-/// same wiki or destination, in another process, keeps its own). Only directories of exactly these names; nothing
-/// is followed.
-fn sweep_leftovers(scratch: &Path, parent: &Path, name: &str) {
-    let partial_prefix = format!(".{name}.partial-");
-    for (dir, prefix) in [(scratch, "export-"), (parent, partial_prefix.as_str())] {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            continue;
-        };
-        for entry in entries.filter_map(Result::ok) {
-            let file_name = entry.file_name();
-            let is_leftover = file_name
-                .to_str()
-                .and_then(|n| leftover_pid(n, prefix))
-                .is_some_and(process_has_ended);
-            if is_leftover && entry.file_type().is_ok_and(|t| t.is_dir()) {
-                remove_tree(&entry.path());
-            }
-        }
-    }
 }
 
 /// Every regular file under `dir`, as `/`-separated relative paths in order. A link or any other kind of entry
@@ -646,62 +595,52 @@ fn export_bundle_inner(
         .tree(&repo, &Point::View(view.to_owned()), None)
         .map_err(ExportError::Storage)?;
     let tip = tree.target_block_id;
-    // One extraction of it, in the wiki's scratch directory.
+    // One extraction of it, in the wiki's scratch directory: claimed by a lock, which holds until the extraction is
+    // removed (at the end of this function, whatever happened), so no other process's sweep takes it from under the
+    // export, and a killed export's is swept by the next one.
     let scratch = layout.scratch_dir(&record.id);
     std::fs::create_dir_all(&scratch)
         .map_err(|e| io("the wiki's scratch directory could not be made", &e))?;
-    sweep_leftovers(&scratch, parent, name);
-    let extraction = format!("export-{}-{}", std::process::id(), nanos());
-    let result = (|| {
-        storage
-            .materialize(
-                &repo,
-                &Point::Block(tip.clone()),
-                &scratch,
-                &extraction,
-                ExtractBounds {
-                    max_bytes: None,
-                    max_files: None,
-                },
-            )
-            .map_err(|e| {
-                if is_checkpoint_not_recorded(&e) {
-                    ExportError::CheckpointNotRecorded
-                } else {
-                    ExportError::Storage(e)
-                }
-            })?;
-        let partial = parent.join(format!(
-            ".{name}.partial-{}-{}",
-            std::process::id(),
-            nanos()
-        ));
-        let built = build(
-            storage,
+    let extraction = Extract::begin(&scratch)
+        .map_err(|e| io("the wiki's scratch directory could not be used", &e))?;
+    let extracted = storage
+        .materialize(
             &repo,
-            record,
-            view,
-            &tip,
-            &scratch.join(&extraction),
-            &partial,
-            inklkunn_version,
-            now,
-            records,
-        );
-        match built {
-            Ok(mut done) => {
-                put_in_place(&partial, dest).inspect_err(|_| remove_tree(&partial))?;
-                done.dir = dest.to_path_buf();
-                Ok(done)
+            &Point::Block(tip.clone()),
+            &scratch,
+            extraction.name(),
+            ExtractBounds {
+                max_bytes: None,
+                max_files: None,
+            },
+        )
+        .map_err(|e| {
+            if is_checkpoint_not_recorded(&e) {
+                ExportError::CheckpointNotRecorded
+            } else {
+                ExportError::Storage(e)
             }
-            Err(e) => {
-                remove_tree(&partial);
-                Err(e)
-            }
-        }
-    })();
-    remove_tree(&scratch.join(&extraction));
-    result
+        })?;
+    // The bundle is built in a directory beside the destination that is held the same way. Dropping it removes what is
+    // left of it (nothing, once the bundle is in place).
+    let partial = Partial::begin(parent, name)
+        .map_err(|e| io("the destination's directory could not be used", &e))?;
+    let mut done = build(
+        storage,
+        &repo,
+        record,
+        view,
+        &tip,
+        &extraction.root(),
+        &extracted,
+        &partial.path(),
+        inklkunn_version,
+        now,
+        records,
+    )?;
+    put_in_place(&partial.path(), dest)?;
+    done.dir = dest.to_path_buf();
+    Ok(done)
 }
 
 /// Move the finished bundle `partial` to `dest`, which must not exist. One `renameat2(2)` with `RENAME_NOREPLACE`:
@@ -760,11 +699,29 @@ fn build(
     view: &str,
     tip: &str,
     extracted: &Path,
+    report: &Materialized,
     partial: &Path,
     inklkunn_version: &str,
     now: i64,
     records: Option<&KnowledgeRecords>,
 ) -> Result<Exported, ExportError> {
+    // The bundle is of the files prikk said it extracted: a tree with a file missing (or one more) is not that tree,
+    // and a bundle of it, with checksums that match what it holds, would be a false statement about the wiki.
+    let files = files_under(extracted)?;
+    let mut bytes = 0_u64;
+    for rel in &files {
+        bytes += std::fs::symlink_metadata(extracted.join(rel))
+            .map_err(|e| io("an extracted file could not be examined", &e))?
+            .len();
+    }
+    if files.len() as u64 != report.file_count || bytes != report.total_bytes {
+        return Err(ExportError::Io(format!(
+            "the extraction holds {} files of {bytes} bytes and prikk reported {} files of {} bytes; nothing was written",
+            files.len(),
+            report.file_count,
+            report.total_bytes
+        )));
+    }
     std::fs::DirBuilder::new()
         .mode(0o700)
         .create(partial)
@@ -772,7 +729,7 @@ fn build(
     let mut checksums: Vec<(String, String)> = Vec::new();
     let (mut pages, mut attachments, mut knowledge_files) = (0, 0, 0);
     let mut page_ids: HashMap<String, String> = HashMap::new();
-    for rel in files_under(extracted)? {
+    for rel in files {
         // The manifest is rewritten; everything else is the file as stored.
         if rel == bundle::MANIFEST {
             continue;

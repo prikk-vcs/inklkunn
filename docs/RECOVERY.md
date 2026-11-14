@@ -76,6 +76,13 @@ inklkunn wiki recover <wiki> --plan   # shows what recovery would do, and change
 inklkunn wiki recover <wiki>          # does it (audited before and after)
 ```
 
+**Before a recovery, stop every process that writes the repository, in every container that shares the data directory**
+(the service, a second `docker run` on the same volume, a `docker exec` shell where someone is running `prikk`). The
+recovery's check for a foreign `prikk` or `bwrap` (`foreign-process`) reads `/proc`, so it sees only the processes of its
+own PID namespace and cannot find one in another container; the lock on the wiki excludes the service's own acts, not a
+`prikk` someone runs by hand. The data directory must be on a local filesystem (or a bind mount of one); a network
+filesystem (NFS, SMB, any `local_lock` setup) is unsupported, and none of the locks here is promised to hold there.
+
 `<wiki>` is the slug or the id. The plan names every witness recovery read (the lease record, the unfinished
 acts, `prikk status`, `prikk doctor`, the worktree) and either lists the steps it will take, each one something
 the acceptance itself would have done, or says **STOP** with a fixed word and what that word means. A recovery

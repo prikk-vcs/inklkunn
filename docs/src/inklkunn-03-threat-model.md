@@ -344,7 +344,11 @@ A forged identity assertion from a fake planeter; planeter's guarantees weakened
   and read-only until a person decides: automating the choice would either seal an unaccepted change or hide
   damage. The plan is recorded either way.
 - **RR-10 — The lease is per host.** The `flock` and the in-process queue exclude every process on one host; a
-  multi-host deployment on shared storage needs a shared lease (the same operations RFC as RR-7).
+  multi-host deployment on shared storage needs a shared lease (the same operations RFC as RR-7). Network filesystems
+  (NFS, SMB, any `local_lock` setup) are **unsupported** for the data directory: there `flock` may be per process or
+  local to one host, so two hosts can each hold the same lock, and nothing detects it. Recovery's foreign-process check
+  reads `/proc` and sees only its own PID namespace, so the operator stops every process that writes the repository, in
+  any container, before a recovery.
 - **RR-11 — Accepting is served once sign-in and the acceptor are configured.** The server builds its acceptor at
   start (`inklkunn/src/serve/acceptor.rs`) when the operator's secret file is there and the key store opens; it then
   accepts proposals for the people its sign-in identifies, under the same write lease as the command line (C-1g), and

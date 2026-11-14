@@ -8,6 +8,11 @@
 //! descendant of it: the reads the server is making) is not foreign. A process whose command line could not be read
 //! is not skipped: it is counted as *unreadable* and is treated as foreign when it could be a tool, because not being
 //! able to see is not seeing nothing.
+//!
+//! **What it cannot see.** `/proc` shows only the processes of this process's own PID namespace. A `prikk` run by hand in
+//! another container that shares the data directory (`docker exec`, a second `docker run` on the same volume) is not on
+//! the table, and so is not found. Before a recovery the operator therefore stops every process that writes the
+//! repository, in any container (`docs/RECOVERY.md`); this witness is a second look, not the lock.
 
 use std::path::Path;
 

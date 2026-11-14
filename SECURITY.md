@@ -70,12 +70,17 @@ changes that verify. The design bounds, detects and attributes that risk rather 
   writes its repository or its key record takes an exclusive `flock` on a lock file in the data directory (never
   inside `.prikk/`), so the command line beside a running server and a second server process are refused at once,
   naming the process that holds it, and a killed holder leaves nothing to clear (RFC 004's lease is built on it);
-  The read path's extracts in a wiki's scratch directory (and the import's) are held the same way, one lock file
-  beside each: a sweep removes an extract only after taking its lock without waiting, so a server, the command
-  line and a container of its own share a data directory without removing each other's live extract (nothing is
-  decided from `/proc`). **The data directory must be on a filesystem where `flock` works between the processes
-  that share it** (a local filesystem, or a bind mount of one); where it does not, a read says the wiki could not
-  be read now, and never goes on without the lock;
+  The read path's extracts in a wiki's scratch directory (the import's and the export's too, and the export's partial
+  bundle beside its destination) are held the same way, one lock file beside each: a sweep removes a directory only
+  after taking its lock without waiting, so a server, the command line and a container of its own share a data
+  directory without removing each other's live extract (nothing is decided from `/proc`). **The data directory (and
+  the directory an export is written to) must be on a local filesystem, or a bind mount of one,** where `flock` is one
+  lock for every process that has the file open. **Network filesystems (NFS, SMB, any `local_lock` setup) are
+  unsupported:** there `flock` may be per process or local to one host, so two hosts can each hold the same lock
+  without either being told, and nothing in inklkunn detects that or promises a failure there. **Recovery's
+  foreign-process check** (a `prikk` or `bwrap` of somebody else working in the repository) reads `/proc` and so sees
+  only the processes of its own PID namespace: before a recovery, stop every process that writes the repository, in
+  every container that shares the data directory;
 - keys rotate per wiki (`inklkunn wiki keys rotate`; the runbook is `docs/KEYS.md`, including the cost of
   retiring a key under prikk 0.54.1), and the surface tells readers only what was checked (*Verified*, *Verification
   failed*, *Could not be checked now*), never that a person signed cryptographically (RFC 002 D-6, D-8).

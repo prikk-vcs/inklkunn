@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use inklkunn_signer::flock::{Acquired, try_exclusive};
 
-use super::super::scratch::{Extract, sweep_leftovers};
+use super::super::scratch::{Extract, Partial, sweep_leftovers, sweep_partials};
 use super::super::testing::World;
 use super::*;
 use crate::import::{ImportError, wiki_state};
@@ -389,4 +389,141 @@ fn a_sweep_running_all_the_while_never_takes_an_import_extract_from_under_it() {
         sweeping.join().expect("the sweeper");
     });
     assert!(entries(&scratch).is_empty(), "{:?}", entries(&scratch));
+}
+
+/// The retry in `Extract::begin` and the check in the sweep (`FileLock::is_at`): a sweep may take a lock file that was
+/// free for a moment, remove it, and let go, after a claimer opened it and before the claimer locked it. The claimer's
+/// lock is then on a file nobody can find; a later sweep makes the file anew, takes *its* lock and removes the claimer's
+/// directory while it is filled. Without the check the claimer reads a partial tree (the reviewer's stress of 2026-11-14:
+/// 22 – 69 of them per process in two seconds with the check forced true). Names are never shared here, so the only thing
+/// between a claimer and a partial tree is that check.
+#[test]
+fn claimers_and_sweepers_running_all_the_while_never_leave_a_claimer_a_partial_tree() {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::time::Instant;
+    const FILES: usize = 24;
+    let w = World::pages(&[("Home", &[], "x\n")]);
+    let scratch = scratch_of(&w);
+    let stop = AtomicBool::new(false);
+    let claimed = AtomicUsize::new(0);
+    let partial = AtomicUsize::new(0);
+    let began = Instant::now();
+    std::thread::scope(|scope| {
+        let mut claimers = Vec::new();
+        for _ in 0..4 {
+            claimers.push(scope.spawn(|| {
+                while began.elapsed() < Duration::from_secs(2) {
+                    // Nothing here may panic: the sweepers run until the claimers are joined.
+                    let Ok(extract) = Extract::begin(&scratch) else {
+                        partial.fetch_add(1, Ordering::Relaxed);
+                        break;
+                    };
+                    let root = extract.root();
+                    let _ = std::fs::create_dir_all(root.join("pages"));
+                    for n in 0..FILES {
+                        let _ = std::fs::write(root.join(format!("pages/P{n}.md")), "x");
+                    }
+                    // A sweep that took the extract meanwhile has removed some of it.
+                    let seen = std::fs::read_dir(root.join("pages")).map_or(0, Iterator::count);
+                    claimed.fetch_add(1, Ordering::Relaxed);
+                    if seen != FILES {
+                        partial.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+            }));
+        }
+        let sweepers: Vec<_> = (0..4)
+            .map(|_| {
+                scope.spawn(|| {
+                    while !stop.load(Ordering::Relaxed) {
+                        sweep_leftovers(&scratch);
+                    }
+                })
+            })
+            .collect();
+        for claimer in claimers {
+            let _ = claimer.join();
+        }
+        stop.store(true, Ordering::Relaxed);
+        for sweeper in sweepers {
+            let _ = sweeper.join();
+        }
+    });
+    assert!(
+        claimed.load(Ordering::Relaxed) > 100,
+        "the stress made too few claims to mean anything: {}",
+        claimed.load(Ordering::Relaxed)
+    );
+    assert_eq!(
+        partial.load(Ordering::Relaxed),
+        0,
+        "extracts were swept from under their claimers"
+    );
+    assert!(entries(&scratch).is_empty(), "{:?}", entries(&scratch));
+}
+
+/// K65: the export's partial bundle is held like an extract: a lock file beside it from before the directory until after,
+/// swept only when its lock can be taken, and only for the destination it was made for.
+#[test]
+fn a_partial_bundle_is_held_by_a_lock_file_and_swept_only_when_the_lock_is_free() {
+    let w = World::pages(&[("Home", &[], "x\n")]);
+    let parent = scratch_of(&w);
+    let dest = "bundle";
+    // Left by processes that are gone: a free lock (this process's own pid among them: only the lock says), a lock file
+    // alone, and the earlier build's name without a lock file.
+    let gone = plant(
+        &parent,
+        &format!(".{dest}.partial-{}-5-0", std::process::id()),
+    );
+    let lock_only = parent.join(format!(".{dest}.partial-{NO_SUCH_PID}-5-1.lock"));
+    drop(try_exclusive(&lock_only).expect("lock file"));
+    let no_lock = plant_directory(&parent, &format!(".{dest}.partial-{NO_SUCH_PID}-7"));
+    // Not this destination's partial bundles: left alone.
+    let other = plant(&parent, &format!(".other.partial-{NO_SUCH_PID}-5-0"));
+    let not_a_tail = plant(&parent, &format!(".{dest}.partial-{NO_SUCH_PID}"));
+    let a_file = parent.join(format!(".{dest}.partial-{NO_SUCH_PID}-5-9"));
+    std::fs::write(&a_file, "mine").expect("a file");
+    // A held one: whole through any number of sweeps.
+    let held = Partial::begin(&parent, dest).expect("a partial bundle");
+    let lock = parent.join(format!(
+        "{}.lock",
+        held.path().file_name().unwrap().to_str().unwrap()
+    ));
+    assert!(
+        lock.is_file(),
+        "the lock file is there before the directory"
+    );
+    assert!(!held.path().exists(), "the export makes the directory");
+    assert!(matches!(try_exclusive(&lock), Ok(Acquired::Busy { .. })));
+    std::fs::create_dir_all(held.path().join("pages")).expect("directory");
+    for n in 0..100 {
+        std::fs::write(held.path().join(format!("pages/P{n}.md")), "x").expect("page");
+    }
+    let second = Partial::begin(&parent, dest).expect("a second");
+    assert_ne!(held.path(), second.path());
+    drop(second);
+    sweep_partials(&parent, dest);
+    assert_eq!(
+        std::fs::read_dir(held.path().join("pages"))
+            .unwrap()
+            .count(),
+        100,
+        "a held partial bundle is whole after a second claim and a sweep"
+    );
+    for removed in [&gone, &no_lock, &lock_only] {
+        assert!(!removed.exists(), "{removed:?} was not held and stayed");
+    }
+    assert!(
+        !PathBuf::from(format!("{}.lock", gone.display())).exists(),
+        "a lock file goes with its directory"
+    );
+    for kept in [&other, &not_a_tail, &a_file] {
+        assert!(kept.exists(), "{kept:?} is not this destination's and went");
+    }
+    // The export moves the bundle away: nothing is left of the claim but its lock file, and that goes with the value.
+    let moved = parent.join("moved");
+    std::fs::rename(held.path(), &moved).expect("the move");
+    drop(held);
+    assert!(!lock.exists(), "the lock file goes after the directory");
+    assert!(moved.join("pages/P99.md").exists(), "and the bundle stays");
 }
