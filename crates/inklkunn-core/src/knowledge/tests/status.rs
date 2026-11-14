@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use inklkunn_store::{FileChange, RevisionContent};
 
-use super::check::{files_of, sound_claim};
+use super::check::{files_of, said, sound_claim};
 use super::*;
 use crate::knowledge::check::{Curated, PageLookup, Pages, Touched, curated_by, validate};
 use crate::knowledge::curation::is_curation;
@@ -376,11 +376,11 @@ fn what_a_checked_source_is_and_where_it_is_found_is_curation_and_before_the_che
     let was = |p: &str| held.get(p).cloned();
     let given = vec![(path, Some(other.to_yaml()))];
     assert_eq!(
-        crate::proposal::files::knowledge_verdict(&given, &was, false, &summarize),
+        crate::proposal::files::knowledge_verdict(&given, &was, false, &summarize, &One),
         Err(crate::proposal::Invalid::KnowledgeCurated)
     );
     assert_eq!(
-        crate::proposal::files::knowledge_verdict(&given, &was, true, &summarize),
+        crate::proposal::files::knowledge_verdict(&given, &was, true, &summarize, &One),
         Ok(())
     );
 }
@@ -469,7 +469,7 @@ fn link(source: u8, f: impl FnOnce(&mut SourceLink)) -> SourceLink {
         relation: Link::Supports,
         bearing: Bearing::Direct,
         note: None,
-        judged_on: digest_of("w"),
+        judged_on: said(),
     };
     f(&mut l);
     l
@@ -807,11 +807,11 @@ fn a_challenge_is_not_laundered_out_by_removing_its_claim_and_writing_another_on
     // The proposal service says so at submit: with a page beside it the proposal is not a curation proposal.
     let was = |p: &str| held.get(p).cloned();
     assert_eq!(
-        crate::proposal::files::knowledge_verdict(&written, &was, false, &summarize),
+        crate::proposal::files::knowledge_verdict(&written, &was, false, &summarize, &One),
         Err(crate::proposal::Invalid::KnowledgeCurated)
     );
     assert_eq!(
-        crate::proposal::files::knowledge_verdict(&written, &was, true, &summarize),
+        crate::proposal::files::knowledge_verdict(&written, &was, true, &summarize, &One),
         Ok(())
     );
 }
@@ -858,12 +858,15 @@ fn a_file_the_base_has_and_cannot_read_is_not_replaced_or_removed_by_any_other_p
     // The service refuses it at submit outside a curation proposal and sends it as one.
     use crate::proposal::{Invalid, files::knowledge_verdict};
     assert_eq!(
-        knowledge_verdict(&over, &was, false, &summarize),
+        knowledge_verdict(&over, &was, false, &summarize, &One),
         Err(Invalid::KnowledgeCurated)
     );
-    assert_eq!(knowledge_verdict(&over, &was, true, &summarize), Ok(()));
     assert_eq!(
-        knowledge_verdict(&gone(path), &was, false, &summarize),
+        knowledge_verdict(&over, &was, true, &summarize, &One),
+        Ok(())
+    );
+    assert_eq!(
+        knowledge_verdict(&gone(path), &was, false, &summarize, &One),
         Err(Invalid::KnowledgeCurated)
     );
 }

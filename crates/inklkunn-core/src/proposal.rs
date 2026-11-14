@@ -88,6 +88,26 @@ pub trait BaseSource: Send + Sync {
         base: &Base,
         path: &str,
     ) -> std::result::Result<Option<String>, BaseError>;
+
+    /// The paths of the pages whose `id` is `id` at `base`: where an expression's page is when a new source link is
+    /// judged on the wording of its paragraph (K25). **The default reads every page**, which is right and slow;
+    /// [`ReadService`] answers from the title index of exactly that state.
+    fn pages_with_id(
+        &self,
+        wiki: &WikiRecord,
+        base: &Base,
+        id: &str,
+    ) -> std::result::Result<Vec<String>, BaseError> {
+        let mut found = Vec::new();
+        for path in self.page_paths(wiki, base)? {
+            if self.page_text(wiki, base, &path)?.is_some_and(|text| {
+                crate::knowledge::compose::page_id_of(&text).as_deref() == Some(id)
+            }) {
+                found.push(path);
+            }
+        }
+        Ok(found)
+    }
 }
 
 /// Why no base could be had.
@@ -127,6 +147,23 @@ impl BaseSource for ReadService {
     ) -> std::result::Result<Option<String>, BaseError> {
         self.source_at(wiki, &base.block_id, path)
             .map_err(|e| BaseError::Unavailable(e.to_string()))
+    }
+
+    fn pages_with_id(
+        &self,
+        wiki: &WikiRecord,
+        base: &Base,
+        id: &str,
+    ) -> std::result::Result<Vec<String>, BaseError> {
+        let titles = self
+            .title_index_at_base(wiki, None, &base.state_id, &base.block_id)
+            .map_err(|e| BaseError::Unavailable(e.to_string()))?;
+        Ok(titles
+            .entries()
+            .iter()
+            .filter(|e| e.page_id.as_deref() == Some(id))
+            .map(|e| e.path.clone())
+            .collect())
     }
 }
 
@@ -232,6 +269,10 @@ pub enum Invalid {
     /// reviews it could not see what it does (RFC 005 part 1 H-1: trust never moves silently; handoff 005
     /// corrections K5).
     KnowledgeNotShown,
+    /// A claim file adds a source link judged on a wording that no paragraph of the claim has once the proposal is made:
+    /// the acceptance would refuse it, and a digest must never name wording that is not in the history (RFC 005 part 2
+    /// D-3, *a new link*; handoff 005 corrections, third round, K25).
+    KnowledgeUnjudged,
 }
 
 /// Why a call to the service was refused. Every variant is one plain fact (RFC 004 D-6: failure is honest).

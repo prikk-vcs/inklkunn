@@ -206,6 +206,7 @@ pub(crate) const fn rule_key(rule: Rule) -> Key {
         Rule::InUse => Key::HealthRuleInUse,
         Rule::Owned => Key::HealthRuleOwned,
         Rule::Status => Key::HealthRuleStatus,
+        Rule::Judged => Key::HealthRuleJudged,
     }
 }
 

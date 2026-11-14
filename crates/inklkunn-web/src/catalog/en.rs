@@ -835,6 +835,10 @@ pub const CATALOG: &[Entry] = &[
         "health.rule_status",
         "The change sets a community status, a review date or an availability, changes or removes a source link a claim already has, changes who or what a source that was checked is, or where it is found, removes a claim or a source that holds any of these, or replaces or removes a file that cannot be read, outside a curation proposal.",
     ),
+    msg(
+        "health.rule_judged",
+        "A source link the change adds is judged on a wording that no paragraph of its claim has in the result.",
+    ),
     msg("title.links", "Links to {page} · {wiki} · {product}"),
     msg("links.heading", "Pages that link to {page}"),
     msg(
@@ -2636,7 +2640,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.cite",
-        "Cites the source {source}: it {relation} the claim {bearing}.",
+        "Cites the source {source}: it {relation} the claim {bearing}, judged on the wording it has now.",
+    ),
+    msg(
+        "know.cite_unjudged",
+        "Cites the source {source}: it {relation} the claim {bearing}, judged on a wording the claim does not have in this proposal's result.",
     ),
     msg(
         "know.source_recorded",
@@ -2720,6 +2728,10 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "know.not_curation",
         "This proposal sets a community status, a review date or an availability, changes or removes a source link a claim already has, changes who or what a source that was checked is, or where it is found, removes a claim or a source that holds any of these, or replaces a file that cannot be read, which only a curation proposal may do. It cannot be accepted as it is.",
+    ),
+    msg(
+        "know.not_judged",
+        "This proposal adds a source to a claim, judged on a wording that no paragraph of that claim has once the proposal is made. It cannot be accepted as it is.",
     ),
     msg("know.kind_observation", "an observation"),
     msg("know.kind_interpretation", "an interpretation"),
@@ -2869,6 +2881,10 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "invalid.knowledge_not_shown",
         "A change to a claim or a source in this proposal is one this page would not describe, so nobody reviewing it could see what it does. It is not sent.",
+    ),
+    msg(
+        "invalid.knowledge_unjudged",
+        "A source this proposal adds to a claim is judged on a wording that no paragraph of that claim has once the proposal is made. It is not sent.",
     ),
     msg(
         "know.change_rejudged",

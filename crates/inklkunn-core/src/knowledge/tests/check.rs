@@ -41,7 +41,12 @@ pub(super) fn page(id: &str, body: &str) -> String {
     format!("---\ntitle: T-{id}\nid: {id}\n---\n\n{body}\n")
 }
 
-/// A sound claim anchored at `p1#b1`, sourced by source 1.
+/// The wording `p1#b1` has in the test pages (K25: a link is judged on a wording its claim's paragraph has).
+pub(super) fn said() -> Digest {
+    digest_of_block("Said. ^b1")
+}
+
+/// A sound claim anchored at `p1#b1`, sourced by source 1, judged on the wording the paragraph has.
 pub(super) fn sound_claim(n: u8) -> Claim {
     let mut c = Claim::new(claim_id(n));
     c.kind = StatementKind::Observation;
@@ -51,7 +56,7 @@ pub(super) fn sound_claim(n: u8) -> Claim {
         relation: Link::Supports,
         bearing: Bearing::Direct,
         note: None,
-        judged_on: digest_of("w"),
+        judged_on: said(),
     }];
     c
 }
@@ -159,6 +164,8 @@ fn an_anchor_must_name_a_page_and_a_block_the_result_has_once() {
     let check = |page_id: &str, block: &str, on: &Mem| {
         let mut claim = sound_claim(1);
         claim.expressions = vec![Expression::new(page_id, block).expect("an expression")];
+        // About the anchor alone: a new link would be judged on a wording too (K25), and there is none to judge on.
+        claim.sources.clear();
         let path = claim_path(&claim.id);
         let files = files_of(&[claim_file(&claim), source.clone()]);
         rules(&validate(&files, &touched(&[&path]), on, on))

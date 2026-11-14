@@ -41,9 +41,15 @@ struct Fake {
     places: Vec<(ClaimId, Vec<Expression>)>,
     identities: Vec<(SourceId, Identity)>,
     wording: Option<Wording>,
+    /// The sources whose new link is judged on a wording the claim does not have (K25).
+    unjudged: Vec<SourceId>,
 }
 
 impl Fake {
+    fn with_unjudged(mut self, source: SourceId) -> Fake {
+        self.unjudged.push(source);
+        self
+    }
     fn with_paragraph(mut self, at: Expression, words: &str) -> Fake {
         self.paragraphs.push((at, words.to_owned()));
         self
@@ -93,6 +99,9 @@ impl Subjects for Fake {
             .iter()
             .find(|(s, _)| s == source)
             .map(|(_, i)| i.clone())
+    }
+    fn judged_now(&self, _: &ClaimId, source: &SourceId) -> bool {
+        !self.unjudged.contains(source)
     }
 }
 
@@ -168,13 +177,75 @@ fn a_claim_that_is_made_is_named_by_a_paragraph_and_says_its_kind_standing_life_
                     "It has a relation to the claim “<bdi>{}</bdi>”: is at odds with.",
                     other_claim().as_str()
                 ),
-                "Cites the source <cite><bdi>“A history of the bridge”</bdi></cite> [source <code>0193…0001</code>]: it supports the claim directly."
+                "Cites the source <cite><bdi>“A history of the bridge”</bdi></cite> [source <code>0193…0001</code>]: it supports the claim directly, judged on the wording it has now."
                     .to_owned(),
-                "Cites the source <cite><bdi>“A history of the bridge”</bdi></cite> [source <code>0193…0001</code>]: it challenges the claim by implication."
+                "Cites the source <cite><bdi>“A history of the bridge”</bdi></cite> [source <code>0193…0001</code>]: it challenges the claim by implication, judged on the wording it has now."
                     .to_owned(),
             ]
         )]
     );
+    // K25: a link judged on a wording the claim does not have in the result is not said to be judged on the wording it
+    // has now, in either language, whether the claim is made or an existing claim cites one more source.
+    let unjudged = Fake::default()
+        .with_paragraph(here("b0"), "It opened in 1950.")
+        .with_identity(source(), "A history of the bridge")
+        .with_unjudged(source());
+    let new_claim = Item::ClaimMade {
+        claim: claim(),
+        kind: StatementKind::Hypothesis,
+        standing: Standing::Unknown,
+        judged_on: None,
+        lifecycle: Lifecycle::Adopted,
+        said: vec![here("b0")],
+        relations: Vec::new(),
+        cites: vec![Cite {
+            source: source(),
+            relation: Link::Supports,
+            bearing: Bearing::Direct,
+        }],
+    };
+    let changed = Item::ClaimChanged {
+        claim: claim(),
+        said: vec![here("b0")],
+        was_said: vec![here("b0")],
+        changes: vec![ClaimChange::Cited(Cite {
+            source: source(),
+            relation: Link::Supports,
+            bearing: Bearing::Direct,
+        })],
+    };
+    for item in [new_claim, changed] {
+        let got = texts(&unjudged, std::slice::from_ref(&item));
+        let cites: Vec<&String> = got
+            .iter()
+            .flat_map(|(first, more)| std::iter::once(first).chain(more))
+            .filter(|l| l.starts_with("Cites the source"))
+            .collect();
+        let [cite] = cites.as_slice() else {
+            panic!("{got:?}")
+        };
+        assert!(
+            cite.ends_with(
+                "it supports the claim directly, judged on a wording the claim does not have in this proposal&#39;s result."
+            ),
+            "{cite}"
+        );
+        assert!(!cite.contains("on the wording it has now"), "{cite}");
+        // The same lines in the other language say the same thing about the same links.
+        let ja = lines(
+            T::new(Lang::from_def(&JA_DEF)),
+            std::slice::from_ref(&item),
+            &unjudged,
+        );
+        assert!(
+            ja.iter()
+                .flat_map(|l| std::iter::once(&l.text).chain(&l.more))
+                .any(|l| l
+                    .as_str()
+                    .contains("この提案を反映した結果で主張が持たない文言")),
+            "the Japanese line says the same of the same link"
+        );
+    }
     // One place and many are told apart.
     let one = english(&[made(1)]);
     assert!(
@@ -287,7 +358,7 @@ fn every_change_to_a_claim_that_exists_names_the_claim_and_what_it_is_about() {
                 .to_owned(),
             "A relation to the claim “<bdi>It opened in 1950.</bdi>” [claim <code>0193…0002</code>] is removed: came out of."
                 .to_owned(),
-            format!("Cites the source {named}: it supports the claim in part."),
+            format!("Cites the source {named}: it supports the claim in part, judged on the wording it has now."),
             format!("It no longer cites the source {named}."),
             format!("The source {named}, which it cites, now challenges it directly."),
             format!("The note on the source {named}, which it cites, changes."),

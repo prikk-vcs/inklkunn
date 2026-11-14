@@ -33,9 +33,9 @@ use inklkunn_store::WikiRecord;
 
 use super::tree::{TreeError, read_tree};
 use super::{
-    AnchorState, Availability, Bearing, CommunityStatus, Digest, Expression, Fault, File, Identity,
-    KNOWLEDGE_DIR, Link, Reference, Reviewed, Rule, SourceId, anchor_state, claim_path, family_of,
-    is_keep, is_knowledge_path, read_file, source_path,
+    AnchorState, Availability, Bearing, Claim, ClaimId, CommunityStatus, Digest, Expression, Fault,
+    File, Identity, KNOWLEDGE_DIR, Link, Reference, Reviewed, Rule, SourceId, anchor_state,
+    claim_path, family_of, is_keep, is_knowledge_path, read_file, source_path,
 };
 use crate::import::shown;
 use crate::read::{ReadError, ReadService, entries_from_tree};
@@ -354,6 +354,98 @@ pub fn curated_by(
     out
 }
 
+/// A new source link whose `judged_on` names no wording any paragraph of its claim has in the result of the change.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Unjudged {
+    /// The claim.
+    pub claim: ClaimId,
+    /// The source the link cites.
+    pub source: SourceId,
+}
+
+/// The wordings (digests of the paragraph, marker and all) the places `claim` is said in have in `pages`: one for each
+/// place whose page the view has once and whose block that page has once.
+fn wordings_of(claim: &Claim, pages: &dyn Pages) -> Vec<Digest> {
+    claim
+        .expressions
+        .iter()
+        .filter_map(|e| {
+            let PageLookup::One(at) = pages.with_id(&e.page_id) else {
+                return None;
+            };
+            match anchor_state(&pages.text(&at)?, &e.block) {
+                AnchorState::Present(digest) => Some(digest),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+/// The sources of the links `now` has that `was` (what the tip had of the claim; `None` for a claim it did not have)
+/// does not, **whose `judged_on` is not a wording one of the claim's paragraphs has in the result** (`pages`; handoff
+/// 005 corrections, third round, K25 and RFC 005 part 2, D-3, *a new link*). A digest must never name wording that is
+/// not in the history: a link judged on words nobody has written would read *current* the day a page edit happened to
+/// write them. What `compose` writes for a link is exactly such a wording (the paragraph as the page will have it).
+///
+/// **One rule for every surface**, like [`Curated::departure`]: the acceptance ([`validate`]) asks it of the files it
+/// writes, and the proposal service at submit and at every revision asks it through [`unjudged_by`].
+pub fn new_links_unjudged(now: &Claim, was: Option<&Curated>, pages: &dyn Pages) -> Vec<SourceId> {
+    let had = match was {
+        Some(Curated::Claim { links, .. }) => Some(links),
+        _ => None,
+    };
+    let fresh: Vec<_> = now
+        .sources
+        .iter()
+        .filter(|l| !had.is_some_and(|links| links.contains_key(&l.source)))
+        .collect();
+    if fresh.is_empty() {
+        return Vec::new();
+    }
+    let wordings = wordings_of(now, pages);
+    fresh
+        .into_iter()
+        .filter(|l| !wordings.contains(&l.judged_on))
+        .map(|l| l.source.clone())
+        .collect()
+}
+
+/// The new links of the claim files a revision writes (`files`: path, and the new text or `None` for a removal) that
+/// are judged on no wording the claim has in the result (`pages`), against `before` (the text a path had at the
+/// proposal's base): [`new_links_unjudged`] **without a tree**, what the proposal service asks at submit and at every
+/// revision and what the proposal page says. A file that does not read is not judged here (the acceptance refuses it by
+/// its own rule). In path order.
+pub fn unjudged_by(
+    files: &[(String, Option<String>)],
+    before: &dyn Fn(&str) -> Option<String>,
+    pages: &dyn Pages,
+) -> Vec<Unjudged> {
+    let mut sorted: Vec<&(String, Option<String>)> = files.iter().collect();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut out = Vec::new();
+    for (path, text) in sorted {
+        if family_of(path) != Some(super::Family::Claim) {
+            continue;
+        }
+        let Some(Ok(File::Claim(now))) = text.as_ref().map(|t| read_file(path, t.as_bytes()))
+        else {
+            continue;
+        };
+        let was = before(path)
+            .and_then(|t| read_file(path, t.as_bytes()).ok())
+            .map(|file| Curated::of(&file));
+        out.extend(
+            new_links_unjudged(&now, was.as_ref(), pages)
+                .into_iter()
+                .map(|source| Unjudged {
+                    claim: now.id.clone(),
+                    source,
+                }),
+        );
+    }
+    out
+}
+
 /// The change, as the validator needs it.
 #[derive(Debug, Default)]
 pub struct Touched {
@@ -410,6 +502,13 @@ pub fn validate(
                     && let Some(field) = Curated::of(file).departure(&was)
                 {
                     out.insert(Refusal::rule(path, Rule::Status, field));
+                }
+                // A link the change adds is judged on a wording the claim has in the result (K25), in any proposal.
+                if let File::Claim(claim) = file
+                    && !new_links_unjudged(claim, touched.curated_before.get(path), pages)
+                        .is_empty()
+                {
+                    out.insert(Refusal::rule(path, Rule::Judged, "sources"));
                 }
             }
             Some(Err(fault)) => {

@@ -898,6 +898,10 @@ pub const CATALOG: &[Entry] = &[
         "health.rule_status",
         "コミュニティの状態、確認日、入手できるかどうかの設定、主張がすでに持つ出典リンクの変更・削除、確認済みの出典の題名・著者・日付・参照先の変更、これらを持つ主張や出典の削除、読み取れないファイルの置き換え・削除が、キュレーション提案ではない変更で行われています。",
     ),
+    msg(
+        "health.rule_judged",
+        "変更が追加した出典リンクが、その主張のどの段落にも結果として存在しない文言で判断されています。",
+    ),
     msg("title.links", "{page} へのリンク · {wiki} · {product}"),
     msg("links.heading", "{page} へのリンク元のページ"),
     msg(
@@ -2701,7 +2705,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.cite",
-        "出典 {source} を引用します: {relation}（{bearing}）。",
+        "出典 {source} を引用します: {relation}（{bearing}）。現在の文言で判断しています。",
+    ),
+    msg(
+        "know.cite_unjudged",
+        "出典 {source} を引用します: {relation}（{bearing}）。この提案を反映した結果で主張が持たない文言で判断されています。",
     ),
     msg(
         "know.source_recorded",
@@ -2788,6 +2796,10 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "know.not_curation",
         "この提案はコミュニティでの扱い、確認日、入手できるかどうかを設定するか、主張がすでに持つ出典リンクを変更・削除するか、確認済みの出典の題名・著者・日付・参照先を変更するか、これらを持つ主張や出典を削除するか、読み取れないファイルを置き換えていますが、これができるのはキュレーション提案だけです。このままでは受け入れられません。",
+    ),
+    msg(
+        "know.not_judged",
+        "この提案は主張に出典を追加していますが、その判断は、提案を反映した結果にその主張のどの段落にも存在しない文言に基づいています。このままでは受け入れられません。",
     ),
     msg("know.kind_observation", "観察"),
     msg("know.kind_interpretation", "解釈"),
@@ -2933,6 +2945,10 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "invalid.knowledge_not_shown",
         "この提案の主張または出典の変更には、このページが説明しないものがあり、確認する人が内容を見られません。送信できません。",
+    ),
+    msg(
+        "invalid.knowledge_unjudged",
+        "この提案が主張に追加する出典は、提案を反映した結果にその主張のどの段落にも存在しない文言で判断されています。送信できません。",
     ),
     msg(
         "know.change_rejudged",

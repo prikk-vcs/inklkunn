@@ -55,6 +55,9 @@ pub(crate) trait Subjects {
     fn places(&self, claim: &ClaimId) -> Vec<Expression>;
     /// What a source calls itself: in the proposal's own file for it, else in the wiki.
     fn identity(&self, source: &SourceId) -> Option<Identity>;
+    /// Is the link of `claim` to `source` that the proposal adds judged on a wording one of the claim's paragraphs has
+    /// in the proposal's result (K25)? A proposal that is sent always is; a draft may not be, and then its line says so.
+    fn judged_now(&self, claim: &ClaimId, source: &SourceId) -> bool;
 }
 
 /// What one page of lines is written with: what names the subjects, and what the lines have named so far (K24).
@@ -75,6 +78,9 @@ impl Page<'_> {
     }
     fn identity(&self, source: &SourceId) -> Option<Identity> {
         self.subjects.identity(source)
+    }
+    fn judged_now(&self, claim: &ClaimId, source: &SourceId) -> bool {
+        self.subjects.judged_now(claim, source)
     }
 }
 
@@ -221,13 +227,19 @@ fn source_subject(t: T, know: &Page, id: &SourceId, own: Option<&Identity>) -> R
     }
 }
 
-fn cite_line(t: T, know: &Page, c: &Cite) -> Rich {
+fn cite_line(t: T, know: &Page, claim: &ClaimId, c: &Cite) -> Rich {
     let Cite {
         source,
         relation,
         bearing,
     } = c;
-    t.msg(Key::KnowCite)
+    // A new link is judged on the wording the claim has now (K25): the line says so only when it is true.
+    let key = if know.judged_now(claim, source) {
+        Key::KnowCite
+    } else {
+        Key::KnowCiteUnjudged
+    };
+    t.msg(key)
         .rich("source", source_subject(t, know, source, None))
         .with("relation", t.get(link_word(*relation)))
         .with("bearing", t.get(bearing_word(*bearing)))
@@ -270,7 +282,13 @@ fn rejudged(t: T, know: &Page, said: &[Expression], on: &Rejudgement, to: Option
     }
 }
 
-fn claim_change(t: T, know: &Page, change: &ClaimChange, said: &[Expression]) -> Rich {
+fn claim_change(
+    t: T,
+    know: &Page,
+    claim: &ClaimId,
+    change: &ClaimChange,
+    said: &[Expression],
+) -> Rich {
     match change {
         ClaimChange::Kind(k) => t
             .msg(Key::KnowChangeKind)
@@ -296,7 +314,7 @@ fn claim_change(t: T, know: &Page, change: &ClaimChange, said: &[Expression]) ->
             .html(),
         ClaimChange::Related(r) => relation_line(t, know, Key::KnowChangeRelated, r),
         ClaimChange::Unrelated(r) => relation_line(t, know, Key::KnowChangeUnrelated, r),
-        ClaimChange::Cited(c) => cite_line(t, know, c),
+        ClaimChange::Cited(c) => cite_line(t, know, claim, c),
         ClaimChange::Uncited(source) => t
             .msg(Key::KnowChangeUncited)
             .rich("source", source_subject(t, know, source, None))
@@ -438,7 +456,7 @@ fn line(t: T, know: &Page, item: &Item) -> Line {
                     .with("relation", t.get(relation_type_word(*kind)))
                     .html()
             }));
-            more.extend(cites.iter().map(|c| cite_line(t, know, c)));
+            more.extend(cites.iter().map(|c| cite_line(t, know, claim, c)));
             Line {
                 text: t
                     .msg(Key::KnowClaimMade)
@@ -462,7 +480,7 @@ fn line(t: T, know: &Page, item: &Item) -> Line {
                 .html(),
             more: changes
                 .iter()
-                .map(|c| claim_change(t, know, c, said))
+                .map(|c| claim_change(t, know, claim, c, said))
                 .collect(),
         },
         Item::SourceRecorded {
@@ -600,6 +618,9 @@ pub(crate) struct Known {
     pub(crate) lines: Vec<Line>,
     /// The files that do what only a curation proposal may ([`curated_by`], the acceptance's own rule).
     pub(crate) curated: Vec<inklkunn_core::knowledge::check::Refusal>,
+    /// A source link the proposal adds is judged on a wording its claim does not have in the result (K25): the
+    /// submission refuses it and the acceptance would.
+    pub(crate) unjudged: bool,
 }
 
 /// Where the wording a re-judgement moves to is found: the view the proposal is for and the base it was written on. A
@@ -624,6 +645,9 @@ struct Resolver<'a> {
     claims: BTreeMap<String, Vec<Expression>>,
     /// The sources the proposal writes: what each calls itself.
     sources: BTreeMap<String, Identity>,
+    /// The new links whose wording the claim does not have in the result, as (claim, source): found once the lines are
+    /// asked for ([`Resolver::judge`]).
+    unjudged: Vec<(String, String)>,
     /// The pages of the wiki at the base, by page id (`None`: no one page has it).
     base: RefCell<BTreeMap<String, Option<String>>>,
     failure: RefCell<Option<inklkunn_core::read::ReadError>>,
@@ -664,6 +688,7 @@ impl<'a> Resolver<'a> {
             pages,
             claims,
             sources,
+            unjudged: Vec::new(),
             base: RefCell::new(BTreeMap::new()),
             failure: RefCell::new(None),
         }
@@ -791,6 +816,41 @@ impl Subjects for Resolver<'_> {
             date: row.date.clone(),
         })
     }
+
+    fn judged_now(&self, claim: &ClaimId, source: &SourceId) -> bool {
+        !self
+            .unjudged
+            .iter()
+            .any(|(c, s)| c == claim.as_str() && s == source.as_str())
+    }
+}
+
+/// The pages as the proposal leaves them, named by their page id (which is all a claim's place says): the pages it
+/// writes, else the pages of the base. A page id the base gives to no one page, or to two, is no page.
+impl inklkunn_core::knowledge::check::Pages for Resolver<'_> {
+    fn with_id(&self, id: &str) -> inklkunn_core::knowledge::check::PageLookup {
+        use inklkunn_core::knowledge::check::PageLookup;
+        match self.result_text(id) {
+            Some(_) => PageLookup::One(id.to_owned()),
+            None => PageLookup::None,
+        }
+    }
+
+    fn text(&self, path: &str) -> Option<String> {
+        self.result_text(path)
+    }
+}
+
+impl Resolver<'_> {
+    /// Find the links the proposal adds that are judged on a wording their claim does not have in the result (K25), by
+    /// the one rule the submission and the acceptance use ([`inklkunn_core::knowledge::check::unjudged_by`]).
+    fn judge(&mut self, given: &[(String, Option<String>)], was: &dyn Fn(&str) -> Option<String>) {
+        let found = inklkunn_core::knowledge::check::unjudged_by(given, was, &*self);
+        self.unjudged = found
+            .into_iter()
+            .map(|u| (u.claim.to_string(), u.source.to_string()))
+            .collect();
+    }
 }
 
 /// The lines for the knowledge files (`files`: path and new text, `None` for a removal) of a proposal written on
@@ -822,11 +882,17 @@ pub(crate) fn file_lines(
     let curated = inklkunn_core::knowledge::check::curated_by(&given, &was);
     // The subjects and the wording a re-judgement moved to are looked for only when there is a line to name them; a
     // page that cannot be read is the page that says so, never a line that claims the paragraph is not there.
-    let resolver = Resolver::new(ctx, place, files);
+    let mut resolver = Resolver::new(ctx, place, files);
+    resolver.judge(&given, &was);
+    let unjudged = !resolver.unjudged.is_empty();
     let lines = lines(t, &items, &resolver);
     match resolver.failure.into_inner() {
         Some(e) => Err(e),
-        None => Ok(Known { lines, curated }),
+        None => Ok(Known {
+            lines,
+            curated,
+            unjudged,
+        }),
     }
 }
 

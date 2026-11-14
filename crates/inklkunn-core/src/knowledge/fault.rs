@@ -48,11 +48,14 @@ pub enum Rule {
     /// The change sets what only a curation proposal sets: a claim's community status, a source's `last_reviewed`
     /// or `availability` (part 2 D-3: never by a count, a tally or a timer, and never beside a page edit).
     Status,
+    /// A source link the change adds is judged on a wording that none of the claim's paragraphs has in the result
+    /// (part 2 D-3, *a new link*): a digest never names wording that is not in the history.
+    Judged,
 }
 
 impl Rule {
     /// Every rule, in the order the surfaces list them.
-    pub const ALL: [Rule; 17] = [
+    pub const ALL: [Rule; 18] = [
         Rule::Path,
         Rule::NotText,
         Rule::TooLong,
@@ -70,6 +73,7 @@ impl Rule {
         Rule::InUse,
         Rule::Owned,
         Rule::Status,
+        Rule::Judged,
     ];
 
     /// The stable code.
@@ -92,6 +96,7 @@ impl Rule {
             Rule::InUse => "in-use",
             Rule::Owned => "owned-key",
             Rule::Status => "status",
+            Rule::Judged => "judged-on",
         }
     }
 
@@ -125,6 +130,9 @@ impl Rule {
             Rule::Owned => "the change also changes a page key that only the service writes",
             Rule::Status => {
                 "the change sets a community status, a review date or an availability, changes or removes a source link a claim already has, changes who or what a source that was checked is, or where it is found, removes a claim or a source that holds any of these, or replaces or removes a file that cannot be read, outside a curation proposal"
+            }
+            Rule::Judged => {
+                "a source link the change adds is judged on a wording that no paragraph of its claim has in the result"
             }
         }
     }

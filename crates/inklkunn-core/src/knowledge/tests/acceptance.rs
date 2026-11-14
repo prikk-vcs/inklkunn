@@ -131,6 +131,8 @@ fn an_anchor_must_name_a_block_the_proposals_own_result_has() {
     let mut claim = sound_claim(1);
     // The block does not exist in the tip: the same proposal writes it into the page, and that is sound.
     claim.expressions = vec![Expression::new("p1", "fresh").expect("an expression")];
+    // ... and its link is judged on the wording that paragraph has in the result (K25).
+    claim.sources.first_mut().expect("a link").judged_on = digest_of_block("Other. ^fresh");
     let with_block = ONE.replace("Other.", "Other. ^fresh");
     let files = |page_text: &str| {
         vec![
@@ -147,9 +149,16 @@ fn an_anchor_must_name_a_block_the_proposals_own_result_has() {
     let (outcome, _) = accept(&s, &sound_refs);
     assert!(matches!(outcome, Ok(Accepted::Signed(_))), "{outcome:?}");
 
-    // The next: the page says nothing of the block, though the proposal's claim does.
+    // The next: the page says nothing of the block, though the proposal's claim does (a claim with no link: a new link
+    // would be refused at submit, there being no wording to judge it on).
     let s = scene("k2-anchor-2");
-    let broken = files(ONE);
+    let mut bare = claim.clone();
+    bare.sources.clear();
+    let broken = [
+        (claim_path(&bare.id), Some(bare.to_yaml())),
+        (source_path(&source.id), Some(source.to_yaml())),
+        ("pages/One.md".to_owned(), Some(ONE.to_owned())),
+    ];
     let broken_refs: Vec<(&str, Option<&str>)> = broken
         .iter()
         .map(|(p, t)| (p.as_str(), t.as_deref()))

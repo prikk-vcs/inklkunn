@@ -569,6 +569,22 @@ Dependency updates (the architect, 2026-11-14).
   changing an unchecked source's identity or reference, stay a page edit's; so do a checked source's kind, snapshot and
   `superseded_by`. `know.not_curation` and the status rule's sentences (core, `health.rule_status`; English, Japanese,
   glossary) say it.
+- **K25 (handoff 005 corrections, third): a new link is judged on a wording its claim has in the result.** A source link
+  that a proposal adds to a claim must name, in `judged_on`, the wording (the digest of the paragraph, marker and all,
+  which is what attaching writes) that one of the claim's own paragraphs has in the result of the proposal; otherwise a
+  link judged on words nobody had written would read *current* the day a page edit wrote them, with no curation and
+  neither page saying so. One rule for every surface, in any proposal (a curation proposal too): the proposal service at
+  submit and at every revision (`Invalid::KnowledgeUnjudged`, API reason `knowledge-unjudged`; sentence
+  `invalid.knowledge_unjudged`) over the pages as the proposal leaves them (those it writes, moves or takes away, else the
+  base's), and the acceptance (`Rule::Judged`, code `judged-on`, field `sources`; `health.rule_judged`) over its tree; both
+  call `new_links_unjudged`. A page the proposal writes in the same breath, a claim made with its links and a legitimate
+  attach pass; links a claim already has are not asked again. The proposal page's cite line now says *judged on the
+  wording it has now* and says instead *judged on a wording the claim does not have in this proposal's result* for a
+  draft that holds a link which is not (with `know.not_judged`: it cannot be accepted as it is). New public API:
+  `BaseSource::pages_with_id` (a default that reads every page; the read service answers from the title index at the
+  base), `check::{new_links_unjudged, unjudged_by, Unjudged}`, `Rule::Judged` (so `Rule::ALL` is 18),
+  `Invalid::KnowledgeUnjudged`; `knowledge_verdict` takes the pages. One new prikk-dependent test: the attach, the stale
+  link at submit and at acceptance on a real history.
 
 ## [0.2.0] — 2026-11-04
 

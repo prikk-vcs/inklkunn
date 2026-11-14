@@ -541,7 +541,7 @@ async fn attaching_a_source_to_a_paragraph_makes_the_claim_and_the_source_in_the
     );
     assert!(
         body.contains(&format!(
-            "Cites the source <cite><bdi>“A survey of bridges”, dated 1962</bdi></cite> {source_tag}: it supports the claim in part."
+            "Cites the source <cite><bdi>“A survey of bridges”, dated 1962</bdi></cite> {source_tag}: it supports the claim in part, judged on the wording it has now."
         )),
         "{body}"
     );
@@ -583,7 +583,7 @@ async fn challenging_a_paragraph_attaches_a_source_that_challenges() {
     let source_tag = tag("source", &link.source);
     assert!(
         body.contains(&format!(
-            "Cites the source <cite><bdi>“A correction”, dated 1962</bdi></cite> {source_tag}: it challenges the claim in part."
+            "Cites the source <cite><bdi>“A correction”, dated 1962</bdi></cite> {source_tag}: it challenges the claim in part, judged on the wording it has now."
         )),
         "{body}"
     );
@@ -898,6 +898,58 @@ async fn a_status_beside_a_page_edit_is_said_to_be_refused_and_the_change_to_it_
     // The section is there to say so (K5), with no line under it: an empty list is said, not left out.
     assert!(body.contains("they change nothing"), "{body}");
     assert!(!body.contains("Changes the claim"), "{body}");
+}
+
+#[tokio::test]
+async fn a_new_link_is_said_to_be_judged_on_the_wording_it_has_now_only_when_it_is() {
+    let s = scene();
+    let second = SourceId::parse("01931111-0000-7000-8000-000000000002").expect("a source id");
+    let mut source = Source::new(second.clone());
+    source.identity.title = Some("A second history".to_owned());
+    let link = |on: &str| SourceLink {
+        source: second.clone(),
+        relation: Link::Challenges,
+        bearing: Bearing::Partial,
+        note: None,
+        judged_on: block_digest(inklkunn_markup::blocks(on).first().expect("a block")),
+    };
+    let with_link = |on: &str| {
+        let mut more = s.claim.clone();
+        more.sources.push(link(on));
+        more.normalize();
+        vec![
+            (claim_path(&more.id), Some(more.to_yaml())),
+            (source_path(&second), Some(source.to_yaml())),
+        ]
+    };
+    let now = &format!(
+        "Cites the source <cite><bdi>“A second history”</bdi></cite> {}: it challenges the claim in part, judged on the wording it has now.",
+        tag("source", &second)
+    );
+    let unjudged = "judged on a wording the claim does not have in this proposal&#39;s result.";
+    let note = "judged on a wording that no paragraph of that claim has once the proposal is made";
+    // The wording the paragraph has: said so, with no warning.
+    let to = held_unjudged(&s, with_link("It opened in 1950. ^k1"));
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(body.contains(now), "{body}");
+    assert!(!body.contains(unjudged) && !body.contains(note), "{body}");
+    // A wording nobody has written: the line does not say it, and the page says it cannot be accepted as it is.
+    let to = held_unjudged(&s, with_link("It opened in 1951. ^k1"));
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(!body.contains(now), "{body}");
+    assert!(body.contains(unjudged), "{body}");
+    assert!(body.contains(note), "{body}");
+    assert!(body.contains("It cannot be accepted as it is."), "{body}");
+    // The same proposal writing the words the link was judged on is sound again: the paragraph then has them.
+    let mut files = with_link("It opened in 1951. ^k1");
+    files.push((
+        "pages/Bridge.md".to_owned(),
+        Some(BRIDGE.replace("It opened in 1950.", "It opened in 1951.")),
+    ));
+    let to = held_unjudged(&s, files);
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(body.contains(now), "{body}");
+    assert!(!body.contains(note), "{body}");
 }
 
 #[tokio::test]

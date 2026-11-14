@@ -1749,6 +1749,119 @@ fn a_reconfirm_that_does_not_judge_every_wording_again_re_confirms_nothing() {
 }
 
 #[test]
+fn a_new_link_judged_on_a_wording_nobody_has_written_is_refused_at_submit_and_at_acceptance() {
+    use inklkunn_core::knowledge::compose::{Attachment, SourceDraft, attach};
+    use inklkunn_core::knowledge::{
+        Bearing, File, Link, Rule, SourceKind, StatementKind, block_digest, read_file,
+    };
+    let Some(w) = World::new("new-link-wording", LeaseConfig::default()) else {
+        return;
+    };
+    let one = claim_on(&w, "One.");
+    let File::Claim(held) = read_file(&one.claim_file, w.page(&one.claim_file).as_bytes()).unwrap()
+    else {
+        panic!("a claim");
+    };
+    // A second source for the same paragraph, attached the way the page does it (the paragraph has its marker).
+    let page = w.page("pages/Home.md");
+    let start = page.find("One.").unwrap();
+    let attached = attach(
+        &page,
+        &(start..start + "One.".len()),
+        Some(&held),
+        &Attachment {
+            source: SourceDraft {
+                kind: SourceKind::Primary,
+                title: Some("A letter".to_owned()),
+                author: None,
+                date: None,
+                reference: None,
+            },
+            relation: Link::Challenges,
+            bearing: Bearing::Partial,
+            note: None,
+            kind: StatementKind::Observation,
+        },
+    )
+    .unwrap();
+    assert_eq!(attached.page, page, "the paragraph already had its marker");
+    let [(claim_file, claim_text), (source_file, source_text)] = attached.files;
+
+    // P-b: the same claim file, the new link judged on a wording the paragraph does not have (yet).
+    let File::Claim(mut stale) = read_file(&claim_file, claim_text.as_bytes()).unwrap() else {
+        panic!("a claim");
+    };
+    let elsewhere = inklkunn_markup::blocks("Reworded in the future. ^x");
+    let wording = block_digest(elsewhere.first().unwrap());
+    stale
+        .sources
+        .iter_mut()
+        .find(|l| l.relation == Link::Challenges)
+        .unwrap()
+        .judged_on = wording;
+    let stale_text = stale.to_yaml();
+    let blocks = w.history().len();
+    let draft = w
+        .proposals
+        .create(
+            &w.contributor,
+            &w.wiki,
+            None,
+            ProposalEdit {
+                summary: "A second source".to_owned(),
+                files: vec![
+                    FileChange {
+                        path: claim_file.clone(),
+                        text: Some(stale_text.clone()),
+                    },
+                    FileChange {
+                        path: source_file.clone(),
+                        text: Some(source_text.clone()),
+                    },
+                ],
+                ..ProposalEdit::default()
+            },
+        )
+        .unwrap();
+    assert!(matches!(
+        w.proposals.submit(&w.contributor, &w.wiki, &draft.id),
+        Err(inklkunn_core::proposal::ProposalError::Invalid(
+            inklkunn_core::proposal::Invalid::KnowledgeUnjudged
+        ))
+    ));
+    // Reaching the records some other way: refused by the acceptance, before the signer, naming the claim file.
+    let p = w.propose_unjudged(
+        "A second source",
+        &[
+            (claim_file.as_str(), Some(&stale_text)),
+            (source_file.as_str(), Some(&source_text)),
+        ],
+    );
+    match w.accept(&p) {
+        Err(AcceptFailure::KnowledgeInvalid(r)) => assert_eq!(
+            r.iter()
+                .map(|r| (r.file.as_str(), r.rule))
+                .collect::<Vec<_>>(),
+            [(claim_file.as_str(), Rule::Judged)]
+        ),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(w.history().len(), blocks);
+
+    // What `attach` wrote, on the wording the paragraph has: sent and sealed.
+    let sound = w.propose(
+        "A second source",
+        &[
+            (claim_file.as_str(), Some(&claim_text)),
+            (source_file.as_str(), Some(&source_text)),
+        ],
+    );
+    signed(w.accept(&sound).unwrap());
+    assert_eq!(w.history().len(), blocks + 1);
+    assert!(w.reconciled().is_clean());
+}
+
+#[test]
 fn a_reconfirm_judges_on_the_places_the_written_file_has_not_those_the_tip_had() {
     use inklkunn_core::knowledge::{
         AnchorState, CommunityStatus, Expression, File, Standing, anchor_state, read_file,

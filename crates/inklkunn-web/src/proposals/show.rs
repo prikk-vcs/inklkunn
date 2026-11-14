@@ -700,6 +700,10 @@ pub(crate) fn draw(
                 // The acceptance's own rule (K7): the same sentence the submission is refused with.
                 notes.push(t.get(Key::KnowNotCuration));
             }
+            // A new link judged on words its claim does not have (K25): a draft may hold one, and says so.
+            if known.unjudged {
+                notes.push(t.get(Key::KnowNotJudged));
+            }
             (known.lines, notes)
         }
         None => (Vec::new(), Vec::new()),

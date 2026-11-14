@@ -14,13 +14,18 @@
 //! that carries one removed, a page that carries one renamed. The exception is the ruling D8: `kind: redirect` is
 //! ordinary wiki work, so a page may become a redirect, or stop being one, for anyone who may propose.
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use inklkunn_markup::frontmatter;
 use inklkunn_markup::path::{collision_key, is_inside_pages, path_to_title, title_to_path};
 use inklkunn_store::{RevisionContent, WikiRecord};
 
-use super::{Action, Invalid, Principal, ProposalError, ProposalService, Resource, Result};
+use super::{
+    Action, BaseError, BaseSource, Invalid, Principal, ProposalError, ProposalService, Resource,
+    Result,
+};
+use crate::knowledge::check::{PageLookup, Pages};
 
 /// The top-level keys of a page's information block that only an administrator may change.
 pub const OWNED_KEYS: [&str; 3] = ["kind", "visibility", "system"];
@@ -74,14 +79,16 @@ fn is_canonical(path: &str) -> bool {
 
 /// What a proposal's knowledge files (`given`: path and new text, `None` for a removal) come to against the base
 /// (`was`: the text a path had there): refused when they set what only a curation proposal sets and the proposal is
-/// not one ([`Invalid::KnowledgeCurated`]), and refused when a change would have no line on the proposal's page
+/// not one ([`Invalid::KnowledgeCurated`]), refused when a change would have no line on the proposal's page
 /// (`describe` is the page's own, [`crate::knowledge::summary::summarize`]; [`Invalid::KnowledgeNotShown`]): trust
-/// never moves unseen, in a curation proposal least of all.
+/// never moves unseen, in a curation proposal least of all; and refused when a source link it adds is judged on a
+/// wording no paragraph of its claim has in the proposal's result (`pages`, [`Invalid::KnowledgeUnjudged`]).
 pub(crate) fn knowledge_verdict(
     given: &[(String, Option<String>)],
     was: &dyn Fn(&str) -> Option<String>,
     curation: bool,
     describe: crate::knowledge::summary::Describer<'_>,
+    pages: &dyn Pages,
 ) -> std::result::Result<(), Invalid> {
     if !curation && !crate::knowledge::check::curated_by(given, was).is_empty() {
         return Err(Invalid::KnowledgeCurated);
@@ -89,7 +96,119 @@ pub(crate) fn knowledge_verdict(
     if !crate::knowledge::summary::undescribed_by(given, was, describe).is_empty() {
         return Err(Invalid::KnowledgeNotShown);
     }
+    if !crate::knowledge::check::unjudged_by(given, was, pages).is_empty() {
+        return Err(Invalid::KnowledgeUnjudged);
+    }
     Ok(())
+}
+
+/// The pages of a proposal's result, as the service can know them without a tree: the pages it writes, a rename moving
+/// a page, a removal taking one out, and every other page as the base had it (read lazily, once). A read the base could
+/// not answer is kept in `failure`, never taken for a missing page.
+pub(crate) struct ProposedPages<'a> {
+    bases: &'a dyn BaseSource,
+    wiki: &'a WikiRecord,
+    content: &'a RevisionContent,
+    memo: RefCell<BTreeMap<String, Option<String>>>,
+    /// The first read the base could not answer.
+    pub(crate) failure: RefCell<Option<BaseError>>,
+}
+
+impl<'a> ProposedPages<'a> {
+    pub(crate) fn new(
+        bases: &'a dyn BaseSource,
+        wiki: &'a WikiRecord,
+        content: &'a RevisionContent,
+    ) -> ProposedPages<'a> {
+        ProposedPages {
+            bases,
+            wiki,
+            content,
+            memo: RefCell::new(BTreeMap::new()),
+            failure: RefCell::new(None),
+        }
+    }
+
+    fn failed(&self, e: BaseError) {
+        self.failure.borrow_mut().get_or_insert(e);
+    }
+
+    /// The file the proposal writes at `path`: `Some(None)` for a removal, `None` when it does not write it.
+    fn written(&self, path: &str) -> Option<Option<&str>> {
+        self.content
+            .files
+            .iter()
+            .find(|f| f.path == path)
+            .map(|f| f.text.as_deref())
+    }
+
+    fn base_text(&self, path: &str) -> Option<String> {
+        if let Some(found) = self.memo.borrow().get(path) {
+            return found.clone();
+        }
+        let found = match self.bases.page_text(self.wiki, &self.content.base, path) {
+            Ok(text) => text,
+            Err(e) => {
+                self.failed(e);
+                None
+            }
+        };
+        self.memo
+            .borrow_mut()
+            .insert(path.to_owned(), found.clone());
+        found
+    }
+}
+
+impl Pages for ProposedPages<'_> {
+    fn with_id(&self, id: &str) -> PageLookup {
+        let mut at: BTreeSet<String> = BTreeSet::new();
+        // The pages the proposal writes.
+        for file in self.content.files.iter().filter(|f| is_page_path(&f.path)) {
+            if file
+                .text
+                .as_deref()
+                .and_then(crate::knowledge::compose::page_id_of)
+                .as_deref()
+                == Some(id)
+            {
+                at.insert(file.path.clone());
+            }
+        }
+        // The pages the base has with the id, where the proposal leaves them: moved, written over or removed.
+        match self.bases.pages_with_id(self.wiki, &self.content.base, id) {
+            Ok(paths) => {
+                for path in paths {
+                    let to = self
+                        .content
+                        .renames
+                        .iter()
+                        .find(|r| r.from == path)
+                        .map_or(path.as_str(), |r| r.to.as_str());
+                    if self.written(to).is_none() {
+                        at.insert(to.to_owned());
+                    }
+                }
+            }
+            Err(e) => self.failed(e),
+        }
+        let mut found = at.into_iter();
+        match (found.next(), found.next()) {
+            (None, _) => PageLookup::None,
+            (Some(one), None) => PageLookup::One(one),
+            (Some(_), Some(_)) => PageLookup::Several,
+        }
+    }
+
+    fn text(&self, path: &str) -> Option<String> {
+        if let Some(written) = self.written(path) {
+            return written.map(str::to_owned);
+        }
+        match self.content.renames.iter().find(|r| r.to == path) {
+            Some(rename) => self.base_text(&rename.from),
+            None => self.base_text(path),
+        }
+    }
 }
 
 impl ProposalService {
@@ -132,12 +251,19 @@ impl ProposalService {
             before.insert(path, self.bases.page_text(wiki, &content.base, path)?);
         }
         let was = |path: &str| before.get(path).cloned().flatten();
-        Ok(knowledge_verdict(
+        let pages = ProposedPages::new(self.bases.as_ref(), wiki, content);
+        let verdict = knowledge_verdict(
             &given,
             &was,
             crate::knowledge::curation::is_curation(content),
             &crate::knowledge::summary::summarize,
-        )?)
+            &pages,
+        );
+        // A base that could not answer is not a proposal that is unsound.
+        if let Some(e) = pages.failure.take() {
+            return Err(e.into());
+        }
+        Ok(verdict?)
     }
 
     fn judge_paths(&self, content: &RevisionContent, present: &BTreeSet<String>) -> Result<()> {

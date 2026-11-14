@@ -756,3 +756,186 @@ fn a_rollback_plan_cannot_change_an_owned_key_for_someone_who_may_not() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------------------------------- K25
+
+mod wording {
+    use super::*;
+    use crate::knowledge::{
+        AnchorState, Bearing, Claim, ClaimId, Digest, Expression, Link, Source, SourceId,
+        SourceLink, anchor_state, claim_path, source_path,
+    };
+
+    fn page_saying(words: &str) -> String {
+        format!("---\ntitle: T\nid: p1\n---\n\n{words} ^b1\n")
+    }
+
+    /// The wording a page has at `b1`.
+    fn wording_of(page: &str) -> Digest {
+        match anchor_state(page, "b1") {
+            AnchorState::Present(d) => d,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// The claim and source files of a new claim said at `p1#b1`, its one link judged on `on`.
+    fn files_judged_on(on: &Digest) -> Vec<FileChange> {
+        let mut claim = Claim::new(ClaimId::new());
+        claim.expressions = vec![Expression::new("p1", "b1").expect("an expression")];
+        let source = Source::new(SourceId::new());
+        claim.sources = vec![SourceLink {
+            source: source.id.clone(),
+            relation: Link::Supports,
+            bearing: Bearing::Direct,
+            note: None,
+            judged_on: on.clone(),
+        }];
+        vec![
+            change(&claim_path(&claim.id), Some(&claim.to_yaml())),
+            change(&source_path(&source.id), Some(&source.to_yaml())),
+        ]
+    }
+
+    fn submit(e: &Env, edit: ProposalEdit) -> Result<(), ProposalError> {
+        let draft = e
+            .service
+            .create(&e.author.principal, &e.wiki, None, edit)
+            .expect("a draft is kept whatever it holds");
+        e.service
+            .submit(&e.author.principal, &e.wiki, &draft.id)
+            .map(|_| ())
+    }
+
+    #[test]
+    fn a_link_judged_on_a_wording_the_result_has_not_is_not_sent_nor_revised_in() {
+        on_both(|e| {
+            let now = page_saying("It opened in 1950.");
+            let later = page_saying("It opened in 1951.");
+            e.bases.put_page("pages/One.md", &now);
+            // P-b: judged on the wording nobody has written yet.
+            let stale = files_judged_on(&wording_of(&later));
+            assert_eq!(
+                submit(e, proposal(stale.clone(), vec![])),
+                invalid(Invalid::KnowledgeUnjudged)
+            );
+            // On the wording the page has: sent.
+            let sound = files_judged_on(&wording_of(&now));
+            assert_eq!(submit(e, proposal(sound.clone(), vec![])), Ok(()));
+            // At every revision: the same refusal, and the held proposal stays as it was.
+            let held = e
+                .service
+                .create(&e.author.principal, &e.wiki, None, proposal(sound, vec![]))
+                .expect("a draft");
+            let held = e
+                .service
+                .submit(&e.author.principal, &e.wiki, &held.id)
+                .expect("sent");
+            assert_eq!(
+                e.service
+                    .revise(
+                        &e.author.principal,
+                        &e.wiki,
+                        &held.id,
+                        proposal(stale, vec![])
+                    )
+                    .map(|_| ()),
+                invalid(Invalid::KnowledgeUnjudged)
+            );
+            assert_eq!(
+                e.service
+                    .get(&e.author.principal, &e.wiki, &held.id)
+                    .expect("kept")
+                    .state,
+                ProposalState::HeldForReview
+            );
+        });
+    }
+
+    #[test]
+    fn the_wording_may_be_the_one_the_same_proposal_writes_moves_or_takes_away() {
+        on_both(|e| {
+            let now = page_saying("It opened in 1950.");
+            let later = page_saying("It opened in 1951.");
+            e.bases.put_page("pages/One.md", &now);
+            let on_later = files_judged_on(&wording_of(&later));
+            // The proposal writes the words the link was judged on: sound.
+            let mut writes = on_later.clone();
+            writes.push(change("pages/One.md", Some(&later)));
+            assert_eq!(submit(e, proposal(writes, vec![])), Ok(()));
+            // A page the proposal moves keeps its id: a link judged on the wording it has is sound ...
+            let on_now = files_judged_on(&wording_of(&now));
+            assert_eq!(
+                submit(
+                    e,
+                    proposal(on_now.clone(), vec![rename("pages/One.md", "pages/Two.md")])
+                ),
+                Ok(())
+            );
+            // ... and the moved page, reworded where it lands, is the wording of the result.
+            let mut moved = on_later.clone();
+            moved.push(change("pages/Two.md", Some(&later)));
+            assert_eq!(
+                submit(
+                    e,
+                    proposal(moved, vec![rename("pages/One.md", "pages/Two.md")])
+                ),
+                Ok(())
+            );
+            // A page the proposal removes has no wording: nothing is judged on it.
+            let mut removed = on_now.clone();
+            removed.push(change("pages/One.md", None));
+            assert_eq!(
+                submit(e, proposal(removed, vec![])),
+                invalid(Invalid::KnowledgeUnjudged)
+            );
+            // A claim on a page that is new in the same proposal (the paragraph is written with it).
+            let fresh = "---\ntitle: New\nid: p9\n---\n\nBrand new. ^b1\n".to_owned();
+            let mut claim = Claim::new(ClaimId::new());
+            claim.expressions = vec![Expression::new("p9", "b1").expect("an expression")];
+            let source = Source::new(SourceId::new());
+            claim.sources = vec![SourceLink {
+                source: source.id.clone(),
+                relation: Link::Challenges,
+                bearing: Bearing::Partial,
+                note: None,
+                judged_on: wording_of(&fresh),
+            }];
+            let new_page = vec![
+                change("pages/New.md", Some(&fresh)),
+                change(&claim_path(&claim.id), Some(&claim.to_yaml())),
+                change(&source_path(&source.id), Some(&source.to_yaml())),
+            ];
+            assert_eq!(submit(e, proposal(new_page, vec![])), Ok(()));
+        });
+    }
+
+    #[test]
+    fn a_base_that_cannot_be_read_is_not_an_unsound_proposal() {
+        on_both(|e| {
+            let now = page_saying("It opened in 1950.");
+            e.bases.put_page("pages/One.md", &now);
+            let sound = files_judged_on(&wording_of(&now));
+            let draft = e
+                .service
+                .create(&e.author.principal, &e.wiki, None, proposal(sound, vec![]))
+                .expect("a draft");
+            e.bases
+                .fail_ids_with(Some(crate::proposal::BaseError::Unavailable("busy".into())));
+            let refused = e
+                .service
+                .submit(&e.author.principal, &e.wiki, &draft.id)
+                .map(|_| ());
+            e.bases.fail_ids_with(None);
+            assert!(
+                matches!(refused, Err(ProposalError::BaseUnavailable(_))),
+                "{refused:?}"
+            );
+            // ... and once it can, the same draft is sent.
+            assert!(
+                e.service
+                    .submit(&e.author.principal, &e.wiki, &draft.id)
+                    .is_ok()
+            );
+        });
+    }
+}

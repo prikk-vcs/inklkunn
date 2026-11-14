@@ -567,14 +567,29 @@ fn the_proposal_service_sends_no_change_its_page_would_not_describe() {
     let files = [(path, Some(after.to_yaml()))];
     let was = had(old);
     // A curation proposal is sent when the page describes it, and not when it would not.
-    assert_eq!(knowledge_verdict(&files, &was, true, &summarize), Ok(()));
     assert_eq!(
-        knowledge_verdict(&files, &was, true, &blind),
+        knowledge_verdict(
+            &files,
+            &was,
+            true,
+            &summarize,
+            &super::check::Mem(Vec::new())
+        ),
+        Ok(())
+    );
+    assert_eq!(
+        knowledge_verdict(&files, &was, true, &blind, &super::check::Mem(Vec::new())),
         Err(Invalid::KnowledgeNotShown)
     );
     // Outside a curation proposal the same change is curation's, and that is said first.
     assert_eq!(
-        knowledge_verdict(&files, &was, false, &summarize),
+        knowledge_verdict(
+            &files,
+            &was,
+            false,
+            &summarize,
+            &super::check::Mem(Vec::new())
+        ),
         Err(Invalid::KnowledgeCurated)
     );
 }

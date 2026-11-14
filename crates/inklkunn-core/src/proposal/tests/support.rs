@@ -36,6 +36,8 @@ pub(super) fn set_now(t: i64) {
 pub(super) struct Bases {
     n: AtomicU64,
     fail: Mutex<Option<BaseError>>,
+    /// The error `pages_with_id` answers with, while the rest of the base answers (K25).
+    fail_ids: Mutex<Option<BaseError>>,
     /// The pages the repository holds at every base (path and text).
     pages: Mutex<BTreeMap<String, String>>,
 }
@@ -59,6 +61,11 @@ impl Bases {
 
     pub(super) fn fail_with(&self, e: Option<BaseError>) {
         *self.fail.lock().unwrap_or_else(PoisonError::into_inner) = e;
+    }
+
+    /// Make only the lookup of a page by its `id` fail.
+    pub(super) fn fail_ids_with(&self, e: Option<BaseError>) {
+        *self.fail_ids.lock().unwrap_or_else(PoisonError::into_inner) = e;
     }
 }
 
@@ -100,6 +107,25 @@ impl BaseSource for Bases {
             .unwrap_or_else(PoisonError::into_inner)
             .get(path)
             .cloned())
+    }
+
+    fn pages_with_id(&self, _: &WikiRecord, _: &Base, id: &str) -> Result<Vec<String>, BaseError> {
+        if let Some(e) = self
+            .fail_ids
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+        {
+            return Err(e);
+        }
+        Ok(self
+            .pages
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .filter(|(_, text)| crate::knowledge::compose::page_id_of(text).as_deref() == Some(id))
+            .map(|(path, _)| path.clone())
+            .collect())
     }
 }
 
