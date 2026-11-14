@@ -33,6 +33,8 @@ struct State {
     view_files: BTreeMap<u64, BTreeMap<String, Vec<u8>>>,
     fail_views: Option<StorageError>,
     fail_materialize: Option<StorageError>,
+    /// How many times `materialize` was asked, whether it answered or not.
+    materialized: u64,
     fail_read: Option<StorageError>,
     delay: Duration,
     /// The message sealed with each version's block (T5): `history` lists one block per version.
@@ -151,6 +153,11 @@ impl Fake {
 
     pub(crate) fn fail_materialize(&self, e: Option<StorageError>) {
         self.state().fail_materialize = e;
+    }
+
+    /// How many extracts were asked of this double so far.
+    pub(crate) fn materialized(&self) -> u64 {
+        self.state().materialized
     }
 
     pub(crate) fn fail_read(&self, e: Option<StorageError>) {
@@ -473,6 +480,7 @@ impl Storage for Fake {
             })?;
             (files, s.fail_materialize.clone(), s.delay)
         };
+        self.state().materialized += 1;
         std::thread::sleep(delay);
         if let Some(e) = fail {
             return Err(e);

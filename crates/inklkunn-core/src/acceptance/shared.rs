@@ -124,6 +124,16 @@ pub(crate) fn tip_block(
     repo: &Path,
     view: &str,
 ) -> Result<String, TipError> {
+    tip_pair(storage, repo, view).map(|(block, _)| block)
+}
+
+/// [`tip_block`] with the state the block belongs to (`ref_state_id`), from the same read of the log: the pair a
+/// state-keyed index of exactly that block is asked for (handoff 005 corrections, fifth round, K54 U-l).
+pub(crate) fn tip_pair(
+    storage: &dyn Storage,
+    repo: &Path,
+    view: &str,
+) -> Result<(String, String), TipError> {
     let views = storage
         .views(repo)
         .map_err(|e| TipError::Unavailable(e.to_string()))?;
@@ -136,7 +146,7 @@ pub(crate) fn tip_block(
     log.blocks
         .into_iter()
         .next()
-        .map(|b| b.block_id)
+        .map(|b| (b.block_id, b.ref_state_id))
         .ok_or_else(|| TipError::Unavailable("the view's log lists no block".to_owned()))
 }
 

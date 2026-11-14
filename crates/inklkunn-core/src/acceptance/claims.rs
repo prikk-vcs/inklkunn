@@ -163,7 +163,7 @@ impl ProposalAcceptor {
         &self,
         principal: &Principal,
         wiki: &WikiRecord,
-        tip: &str,
+        (tip, tip_state): (&str, &str),
         proposal: &ProposalId,
         curation: bool,
         files: &[PreparedFile],
@@ -207,7 +207,7 @@ impl ProposalAcceptor {
             };
             // The pages are read once, and only when there is a claim to judge.
             if pages.is_none() {
-                pages = Some(self.pages_of(wiki, tip)?);
+                pages = Some(self.pages_of(wiki, tip, tip_state)?);
             }
             let mut now: Vec<Digest> = Vec::new();
             for e in &file.expressions {
@@ -222,19 +222,21 @@ impl ProposalAcceptor {
         Ok(Some(Reconfirmed { change, claims }))
     }
 
-    /// The pages of `tip`, **the block the acceptance prepared on**: where each page id is, at that block. Read from
-    /// an extract of the block itself and never through the read service's held tip (K35): a write that did not go
-    /// through this process, inside the hold, must not make the reconfirm judge an older wording than the one the
-    /// result has.
-    fn pages_of(&self, wiki: &WikiRecord, tip: &str) -> Result<Pages, AcceptFailure> {
-        let entries = self
+    /// The pages of `tip`, **the block the acceptance prepared on** (`state`, the state it belongs to, read with it): where
+    /// each page id is, at that block. Asked of the title index of exactly that state, which the read service keeps (in
+    /// memory and in the derived store) and builds from one extract only when it has none, so an acceptance does not
+    /// extract the whole tree under the wiki's build lock every time (K54 U-l). The pair names the block itself, never
+    /// the read service's held tip (K35): a write that did not go through this process, inside the hold, must not make
+    /// the reconfirm judge an older wording than the one the result has.
+    fn pages_of(&self, wiki: &WikiRecord, tip: &str, state: &str) -> Result<Pages, AcceptFailure> {
+        let index = self
             .parts
             .reads
-            .page_entries_at_block(wiki, tip)
+            .title_index_at_base(wiki, None, state, tip)
             .map_err(|e| AcceptFailure::Unavailable(e.to_string()))?;
         Ok(Pages {
             block: tip.to_owned(),
-            entries,
+            index,
         })
     }
 
@@ -250,7 +252,8 @@ impl ProposalAcceptor {
             return Ok(None);
         };
         let mut found = pages
-            .entries
+            .index
+            .entries()
             .iter()
             .filter(|e| e.page_id.as_deref() == Some(at.page_id.as_str()));
         let (Some(entry), None) = (found.next(), found.next()) else {
@@ -273,7 +276,7 @@ impl ProposalAcceptor {
 /// The pages of one block: the block they are read at and the entries that say where each page id is.
 struct Pages {
     block: String,
-    entries: Vec<inklkunn_store::IndexEntry>,
+    index: std::sync::Arc<crate::read::TitleIndex>,
 }
 
 #[cfg(test)]

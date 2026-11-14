@@ -634,3 +634,76 @@ fn the_reconfirm_steps_proposal_is_judged_on_its_knowledge_files_as_a_submission
     assert_eq!(made.state, ProposalState::HeldForReview);
     assert_eq!((proposals(), notes()), (before + 1, 1));
 }
+
+// ------------------------------------------------------------------------------------ K54 U-l: the reconfirm's pages
+
+#[test]
+fn a_reconfirm_acceptance_asks_the_title_index_of_the_prepared_state_and_does_not_extract_the_tree_again()
+ {
+    use inklkunn_store::ProposalStore;
+    let s = scene("u-l");
+    // The claim's paragraph is reworded, so the claim is kept and waits for a curation proposal to judge it again.
+    let reworded = ONE.replace("Said.", "Said, again.");
+    let p = s.rig.propose(
+        &s.author,
+        "Reword",
+        &[("pages/One.md", Some(reworded.as_str()))],
+    );
+    let change = match s
+        .rig
+        .acceptor()
+        .accept(&s.maintainer, &s.rig.wiki, &p.id, 1)
+    {
+        Ok(Accepted::Signed(signed)) => signed.acceptance,
+        other => panic!("{other:?}"),
+    };
+    // The double repository does not apply what the signer double signs: the tip moves as the acceptance moved it.
+    s.rig.fake.set("pages/One.md", &reworded);
+    let now = digest_of_block("Said, again. ^b1");
+    let mut every = s.claim.clone();
+    every.community_status = CommunityStatus {
+        status: Standing::Contested,
+        proposal: None,
+        judged_on: Some(now.clone()),
+    };
+    every.sources.first_mut().expect("a link").judged_on = now;
+    let path = claim_path(&s.claim.id);
+    let yaml = every.to_yaml();
+    let made = s
+        .rig
+        .proposals
+        .create_reconfirm(
+            &s.author,
+            &s.rig.wiki,
+            None,
+            edit(&[(path.as_str(), Some(yaml.as_str()))]),
+            &change,
+        )
+        .expect("a reconfirm proposal");
+    // The title index of the tip is held (any page read or index build before has put it there).
+    let tip = s.rig.reads.tip(&s.rig.wiki, None).expect("the tip");
+    s.rig
+        .reads
+        .title_index_at_base(&s.rig.wiki, None, &tip.state_id, &tip.block_id)
+        .expect("the index");
+    let before = s.rig.fake.materialized();
+    let outcome = s
+        .rig
+        .acceptor()
+        .accept(&s.maintainer, &s.rig.wiki, &made.id, 1);
+    assert!(matches!(outcome, Ok(Accepted::Signed(_))), "{outcome:?}");
+    assert_eq!(
+        s.rig.fake.materialized() - before,
+        1,
+        "the knowledge check extracts the tree once; the reconfirm reads the held index"
+    );
+    // And it judged on the wording the page has: the claim is re-confirmed.
+    let reviews = s.rig.store.claim_reviews_of(&change).expect("the reviews");
+    assert_eq!(
+        reviews
+            .iter()
+            .map(|r| r.reconfirmed_by.is_some())
+            .collect::<Vec<_>>(),
+        [true]
+    );
+}

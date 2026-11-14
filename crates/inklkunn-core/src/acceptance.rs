@@ -839,10 +839,10 @@ impl ProposalAcceptor {
         }
     }
 
-    /// The view's tip block, read now.
-    fn tip_block(&self, wiki: &WikiRecord, view: &str) -> Result<String, AcceptFailure> {
+    /// The view's tip block, read now, with the state it belongs to.
+    fn tip_block(&self, wiki: &WikiRecord, view: &str) -> Result<(String, String), AcceptFailure> {
         let repo = self.parts.layout.repo_dir(&wiki.id);
-        shared::tip_block(&*self.parts.storage, &repo, view).map_err(|e| match e {
+        shared::tip_pair(&*self.parts.storage, &repo, view).map_err(|e| match e {
             TipError::NoSuchView => {
                 AcceptFailure::Proposal(ProposalError::NoSuchView(view.to_owned()))
             }
@@ -926,7 +926,7 @@ impl ProposalAcceptor {
 
         // 2. The tip, read now; the change, as it is or re-authored.
         let repo = self.parts.layout.repo_dir(&wiki.id);
-        let tip = self.tip_block(wiki, &proposal.view)?;
+        let (tip, tip_state) = self.tip_block(wiki, &proposal.view)?;
         let prepared =
             prepare::prepare(&*self.parts.storage, &repo, &content, &tip).map_err(|e| match e {
                 PrepareError::Storage(e) => AcceptFailure::Unavailable(e.to_string()),
@@ -979,7 +979,8 @@ impl ProposalAcceptor {
         // RFC 005 part 1 D-1 d (K3 b): what the change does to the claims it touches, and which claims of an earlier
         // change a reconfirm curation judges again. Read now, written with the acceptance record.
         let outcomes = self.claim_outcomes(wiki, &proposal.view, &tip, &files)?;
-        let reconfirmed = self.reconfirmed(principal, wiki, &tip, id, curation, &files)?;
+        let reconfirmed =
+            self.reconfirmed(principal, wiki, (&tip, &tip_state), id, curation, &files)?;
 
         // The accepted-bytes quota, on what is about to be written.
         let bytes = prepare::change_bytes(&files, &renames);
