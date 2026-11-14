@@ -1348,6 +1348,17 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   source, the form's fields for both, a correction through the form and through the API that sets no review and no availability, and
   the real history (a curation corrects the unchecked source, then the whole K44 path as before).
 
+- **K58 (handoff 005 corrections, sixth round): the OpenAPI request shapes are what the handler takes.** `CurationLink` made `relation`
+  and `bearing` required beside `remove`, so a client that followed the document could not let a link go, and the handler refused the
+  body the schema allowed. The write bodies' schemas now say what the handlers take: a curation link is one of two shapes (changed:
+  `source`, `relation`, `bearing`; or removed: `source` and `remove: true`, nothing else), every member but `source` of a curation
+  source is optional, ids are `format: uuid`, a page of a proposal is a page that exists (`path`, `text` or `null`) or one that does
+  not (`title`, `text`), and every request schema is closed (`additionalProperties: false`) and carries `examples`. A new test sends
+  every example, and a table of the shapes each handler takes and refuses (about a hundred, for the curation, the proposal, its
+  revision, the comment, the decision, the reason and the empty body), through both the schema (the walk the answers are held to,
+  which now also knows `const`, `format: uuid`, `maxLength` and `additionalProperties: false`) and the handler, and fails where they
+  disagree. No JSON-schema crate was added.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

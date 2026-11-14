@@ -12,11 +12,23 @@ use super::common::{World, block_id, diff_of, op, shown};
 use super::get;
 use super::{across, past};
 
-/// A subset of JSON Schema, enough for the document this project writes.
-struct Checker<'a> {
-    document: &'a Value,
+/// A subset of JSON Schema, enough for the document this project writes: `$ref`, `type`, `enum`, `const`, `minimum`,
+/// `maxLength`, `format: uuid`, `required`, `properties` (a member that is not declared is a problem), `items`,
+/// `maxItems`, `additionalProperties: false` and `oneOf`. No JSON-schema crate is in the lock, so a keyword the document uses and this does not know is
+/// a gap in this walk, and a request body is held to it as an answer is (`write/shapes.rs`).
+pub(super) struct Checker<'a> {
+    pub(super) document: &'a Value,
     /// Members seen, by schema name.
-    seen: BTreeMap<String, BTreeSet<String>>,
+    pub(super) seen: BTreeMap<String, BTreeSet<String>>,
+}
+
+/// The shape of a version-7 id in the format's words: 36 characters, lower-case hexadecimal, hyphens in their places.
+fn is_uuid_shape(text: &str) -> bool {
+    text.len() == 36
+        && text.char_indices().all(|(i, c)| match i {
+            8 | 13 | 18 | 23 => c == '-',
+            _ => c.is_ascii_digit() || ('a'..='f').contains(&c),
+        })
 }
 
 fn kind_of(value: &Value) -> &'static str {
@@ -32,7 +44,22 @@ fn kind_of(value: &Value) -> &'static str {
 }
 
 impl<'a> Checker<'a> {
-    fn check(&mut self, schema: &Value, value: &Value, at: &str, problems: &mut Vec<String>) {
+    /// A checker of values against the schemas of `document`.
+    pub(super) fn new(document: &'a Value) -> Self {
+        Checker {
+            document,
+            seen: BTreeMap::new(),
+        }
+    }
+
+    /// Why `value` is not what `schema` (a schema or a `$ref` to one) describes, as paths and reasons.
+    pub(super) fn check(
+        &mut self,
+        schema: &Value,
+        value: &Value,
+        at: &str,
+        problems: &mut Vec<String>,
+    ) {
         if let Some(reference) = schema.get("$ref").and_then(Value::as_str) {
             let Some(target) = reference
                 .strip_prefix('#')
@@ -98,6 +125,22 @@ impl<'a> Checker<'a> {
         {
             problems.push(format!("{at}: {value} is not one of {words:?}"));
         }
+        if let Some(only) = schema.get("const")
+            && only != value
+        {
+            problems.push(format!("{at}: {value} is not {only}"));
+        }
+        if let Some(text) = value.as_str() {
+            if schema.get("format").and_then(Value::as_str) == Some("uuid") && !is_uuid_shape(text)
+            {
+                problems.push(format!("{at}: not an id"));
+            }
+            if let Some(max) = schema.get("maxLength").and_then(Value::as_u64)
+                && text.chars().count() as u64 > max
+            {
+                problems.push(format!("{at}: longer than {max}"));
+            }
+        }
         if let (Some(min), Some(n)) = (
             schema.get("minimum").and_then(Value::as_i64),
             value.as_i64(),
@@ -116,6 +159,14 @@ impl<'a> Checker<'a> {
                 for r in &required {
                     if !members.contains_key(*r) {
                         problems.push(format!("{at}: required member {r} is missing"));
+                    }
+                }
+                // A schema that says `additionalProperties: false` and declares nothing admits no member.
+                if declared.is_none()
+                    && schema.get("additionalProperties") == Some(&Value::Bool(false))
+                {
+                    for key in members.keys() {
+                        problems.push(format!("{at}: {key} is not declared"));
                     }
                 }
                 if let Some(declared) = declared {
@@ -373,4 +424,32 @@ fn the_checker_can_fail_a_member_nobody_declared_a_wrong_type_and_a_missing_memb
     assert!(!check(json!({"a": "x", "c": 1})).is_empty(), "undeclared");
     assert!(!check(json!({"a": 1})).is_empty(), "type");
     assert!(!check(json!({"a": "x", "b": 0})).is_empty(), "minimum");
+}
+
+#[test]
+fn the_checker_knows_a_constant_an_id_a_length_and_exactly_one_alternative() {
+    let document = json!({"components": {"schemas": {"S": {"oneOf": [
+        {"type": "object", "required": ["id", "go"], "properties": {"id": {"type": "string", "format": "uuid"}, "go": {"const": true}}},
+        {"type": "object", "required": ["id"], "properties": {"id": {"type": "string", "format": "uuid"}, "name": {"type": "string", "maxLength": 3}}},
+    ]}}}});
+    let schema = json!({"$ref": "#/components/schemas/S"});
+    let mut checker = Checker::new(&document);
+    let mut check = |value: Value| {
+        let mut problems = Vec::new();
+        checker.check(&schema, &value, "v", &mut problems);
+        problems
+    };
+    let id = "01930000-0000-7000-8000-000000000001";
+    assert!(check(json!({"id": id, "go": true})).is_empty());
+    assert!(check(json!({"id": id, "name": "abc"})).is_empty());
+    assert!(
+        !check(json!({"id": "nope", "go": true})).is_empty(),
+        "format"
+    );
+    assert!(
+        !check(json!({"id": id, "name": "abcd"})).is_empty(),
+        "maxLength"
+    );
+    assert!(!check(json!({"id": id, "go": false})).is_empty(), "const");
+    assert!(!check(json!({"go": true})).is_empty(), "required");
 }

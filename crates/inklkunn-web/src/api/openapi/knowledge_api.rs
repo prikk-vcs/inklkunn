@@ -9,7 +9,20 @@ use inklkunn_core::knowledge::{
 };
 use serde_json::{Map, Value, json};
 
-use super::shapes::{object, schema_ref};
+use super::shapes::{closed, object, request, schema_ref};
+
+/// The ids the examples of a curation body name (a claim and two sources; any ids of the format would do).
+const EXAMPLE_CLAIM: &str = "01930000-0000-7000-8000-000000000001";
+const EXAMPLE_FIRST: &str = "01931111-0000-7000-8000-000000000001";
+const EXAMPLE_SECOND: &str = "01931111-0000-7000-8000-000000000002";
+
+fn relation_enum() -> Value {
+    json!({"type": "string", "enum": words(Link::ALL, Link::word), "description": "Whether the source supports the claim or challenges it."})
+}
+
+fn bearing_enum() -> Value {
+    json!({"type": "string", "enum": words(Bearing::ALL, Bearing::word), "description": "How directly the source speaks to the claim, never how true either is."})
+}
 
 fn words<T: Copy>(all: &[T], word: impl Fn(T) -> &'static str) -> Vec<&'static str> {
     all.iter().map(|w| word(*w)).collect()
@@ -231,25 +244,43 @@ pub(super) fn schemas() -> Map<String, Value> {
             &[],
         ),
     );
+    // A link is changed or let go, and the two shapes are the alternatives: a schema that marked `relation` and `bearing`
+    // required would forbid letting a link go, and one that marked them optional would allow a body the handler refuses.
+    let source_id = json!({"type": "string", "format": "uuid", "description": "A source the claim cites: a source id."});
     out.insert(
         "CurationLink".to_owned(),
-        object(
-            "How a source the claim cites should bear on it, or that the claim no longer cites it. A link is changed (`relation` and `bearing`) or removed (`remove: true`, and nothing else), not both.",
-            json!({
-                "source": {"type": "string", "description": "A source the claim cites."},
-                "relation": {"type": "string", "enum": words(Link::ALL, Link::word), "description": "Required unless the link is removed."},
-                "bearing": {"type": "string", "enum": words(Bearing::ALL, Bearing::word), "description": "Required unless the link is removed."},
-                "remove": {"type": "boolean", "description": "`true`: the claim no longer cites the source. The source's own file stays, and other claims keep their links to it. Default `false`."},
-            }),
-            &[],
-        ),
+        json!({
+            "description": "How a source the claim cites should bear on it, or that the claim no longer cites it. A link is changed (`relation` and `bearing`, and `remove` is `false` or left out) or removed (`remove: true`, and nothing else), not both.",
+            "oneOf": [
+                closed(json!({
+                    "type": "object",
+                    "description": "A link that stays, and bears on the claim as these say.",
+                    "required": ["source", "relation", "bearing"],
+                    "properties": {
+                        "source": source_id.clone(),
+                        "relation": relation_enum(),
+                        "bearing": bearing_enum(),
+                        "remove": {"const": false, "description": "`false`, or left out."},
+                    },
+                })),
+                closed(json!({
+                    "type": "object",
+                    "description": "A link that goes.",
+                    "required": ["source", "remove"],
+                    "properties": {
+                        "source": source_id.clone(),
+                        "remove": {"const": true, "description": "`true`: the claim no longer cites the source. The source's own file stays, and other claims keep their links to it. Nothing else is given with it."},
+                    },
+                })),
+            ],
+        }),
     );
     out.insert(
         "CurationSource".to_owned(),
-        object(
+        closed(object(
             "What a person checked about a source the claim cites and who and what it is. Every member but `source` may be left out, and a member left out is left as the base has it; an empty text is nothing.",
             json!({
-                "source": {"type": "string", "description": "A source the claim cites."},
+                "source": source_id,
                 "reviewed": {"type": "string", "description": "The day a person last checked it, `YYYY-MM-DD`. Left out: the base's day stays. The empty text clears it."},
                 "availability": {"type": "string", "enum": words(Availability::ALL, Availability::word), "description": "Whether it can be had, as the person who checked says. Left out: the base's stays. `unknown` clears it."},
                 "title": {"type": "string", "description": "Its title. Left out, or the same as the base's: unchanged (it is not cleaned or compared again). The empty text for none."},
@@ -259,26 +290,45 @@ pub(super) fn schemas() -> Map<String, Value> {
                     "type": {"type": "string", "enum": words(ReferenceForm::ALL, ReferenceForm::word)},
                     "value": {"type": "string", "description": "The reference; the empty text for none."},
                 }, "required": ["type", "value"], "additionalProperties": false},
-                "superseded_by": {"type": "string", "description": "The id of the source that replaces it, a source of this wiki (`unknown-successor`). Left out: unchanged. The empty text for none."},
+                "superseded_by": {"description": "The id of the source that replaces it, a source of this wiki (`unknown-successor`) that does not lead back to this one or to a source it passed (`successor-cycle`). Left out: unchanged. The empty text for none.", "oneOf": [
+                    {"type": "string", "format": "uuid"},
+                    {"type": "string", "const": ""},
+                ]},
             }),
             &["reviewed", "availability", "title", "author", "date", "reference", "superseded_by"],
-        ),
+        )),
     );
     out.insert(
         "NewCuration".to_owned(),
-        object(
-            "The body of a curation proposal. A member not listed is `invalid-body`; a member left out is left as the base has it.",
-            json!({
-                "claim": {"type": "string", "description": "The claim's id."},
-                "summary": {"type": "string", "description": "What and why: one line of at most 120 characters. Required to send for review."},
-                "view": {"type": "string", "description": "The view to propose to. Default: the wiki's default view."},
-                "submit": {"type": "boolean", "description": "`true` sends the proposal for review at once; `false` keeps a draft only the proposer sees."},
-                "status": {"type": "string", "enum": words(Standing::ALL, Standing::word), "description": "The community status to propose."},
-                "links": {"type": "array", "maxItems": 256, "items": schema_ref("CurationLink"), "description": "Links to change or remove, each naming a source the claim cites."},
-                "sources": {"type": "array", "maxItems": 256, "items": schema_ref("CurationSource"), "description": "Sources to record a check of, or to correct (checked or not), each naming a source the claim cites."},
-                "confirm": {"type": "boolean", "description": "Judge the sources and the status again on the wording the claim has in the base. Default `false`."},
-            }),
-            &["view", "status", "links", "sources", "confirm"],
+        request(
+            object(
+                "The body of a curation proposal. A member not listed is `invalid-body`; a member left out is left as the base has it.",
+                json!({
+                    "claim": {"type": "string", "format": "uuid", "description": "The claim's id."},
+                    "summary": {"type": "string", "description": "What and why: one line of at most 120 characters. Required to send for review."},
+                    "view": {"type": "string", "description": "The view to propose to. Default: the wiki's default view."},
+                    "submit": {"type": "boolean", "description": "`true` sends the proposal for review at once; `false` keeps a draft only the proposer sees."},
+                    "status": {"type": "string", "enum": words(Standing::ALL, Standing::word), "description": "The community status to propose."},
+                    "links": {"type": "array", "maxItems": 256, "items": schema_ref("CurationLink"), "description": "Links to change or remove, each naming a source the claim cites."},
+                    "sources": {"type": "array", "maxItems": 256, "items": schema_ref("CurationSource"), "description": "Sources to record a check of, or to correct (checked or not), each naming a source the claim cites."},
+                    "confirm": {"type": "boolean", "description": "Judge the sources and the status again on the wording the claim has in the base. Default `false`."},
+                }),
+                &["view", "status", "links", "sources", "confirm"],
+            ),
+            // The ids are those of the examples of the claim and its sources; a wiki that has others answers `not-found`.
+            json!([
+                {"claim": EXAMPLE_CLAIM, "summary": "Accept what the survey says", "submit": true, "status": "accepted"},
+                {"claim": EXAMPLE_CLAIM, "summary": "The second source bears less directly; the first was checked", "submit": false, "view": "main",
+                 "links": [{"source": EXAMPLE_SECOND, "relation": "supports", "bearing": "indirect", "remove": false}],
+                 "sources": [{"source": EXAMPLE_FIRST, "reviewed": "2026-11-01", "availability": "available"}], "confirm": false},
+                {"claim": EXAMPLE_CLAIM, "summary": "The claim no longer cites the second source", "submit": true,
+                 "links": [{"source": EXAMPLE_SECOND, "remove": true}]},
+                {"claim": EXAMPLE_CLAIM, "summary": "Correct the survey's record", "submit": true,
+                 "sources": [{"source": EXAMPLE_FIRST, "title": "The bridge survey, second edition", "author": "Noor Aziz", "date": "2024",
+                              "reference": {"type": "doi", "value": "10.1000/182"}, "superseded_by": EXAMPLE_SECOND}]},
+                {"claim": EXAMPLE_CLAIM, "summary": "Nobody checked the survey after all", "submit": false,
+                 "sources": [{"source": EXAMPLE_FIRST, "reviewed": "", "availability": "unknown", "superseded_by": ""}]},
+            ]),
         ),
     );
     out

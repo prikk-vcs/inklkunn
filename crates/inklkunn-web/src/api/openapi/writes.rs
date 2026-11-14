@@ -3,7 +3,7 @@
 
 use serde_json::{Map, Value, json};
 
-use super::shapes::{object, schema_ref};
+use super::shapes::{closed, object, request, schema_ref};
 
 /// The schemas, by name.
 pub(super) fn schemas() -> Map<String, Value> {
@@ -43,31 +43,46 @@ pub(super) fn schemas() -> Map<String, Value> {
         }),
         &["acceptance"],
     );
-    let file = object(
-        "One page of a proposal. Exactly one of `path` and `title`.",
-        json!({
-            "path": {"type": "string", "description": "The repository path of a page that exists (the `storage_path` of the raw endpoint), inside `pages/`."},
-            "title": {"type": "string", "description": "The title of a page that does not exist yet; its path is made from it by the wiki's rule."},
-            "text": {"type": ["string", "null"], "description": "The page's whole new text, carried as it is; `null` removes the page (only with `path`)."},
-        }),
-        &["path", "title"],
-    );
-    let rename = object(
+    // Exactly one of `path` and `title`, and `text` always: the two shapes are the alternatives.
+    let file = json!({
+        "description": "One page of a proposal: a page that exists, named by its `path`, or a page that does not exist yet, named by its `title`. `text` is always there.",
+        "oneOf": [
+            closed(json!({
+                "type": "object",
+                "description": "A page that exists.",
+                "required": ["path", "text"],
+                "properties": {
+                    "path": {"type": "string", "description": "The repository path of a page that exists (the `storage_path` of the raw endpoint), inside `pages/`."},
+                    "text": {"type": ["string", "null"], "description": "The page's whole new text, carried as it is; `null` removes the page."},
+                },
+            })),
+            closed(json!({
+                "type": "object",
+                "description": "A page that does not exist yet.",
+                "required": ["title", "text"],
+                "properties": {
+                    "title": {"type": "string", "description": "The title of a page that does not exist yet; its path is made from it by the wiki's rule."},
+                    "text": {"type": "string", "description": "The new page's whole text, carried as it is."},
+                },
+            })),
+        ],
+    });
+    let rename = closed(object(
         "A declared rename.",
         json!({
             "from": {"type": "string"},
             "to": {"type": "string"},
         }),
         &[],
-    );
-    let drop = object(
+    ));
+    let drop = closed(object(
         "A paragraph removed on purpose.",
         json!({
             "path": {"type": "string", "description": "The repository path of the page, as in `files`."},
             "marker": {"type": "string", "description": "The `^id` marker of the paragraph on that page, without the caret."},
         }),
         &[],
-    );
+    ));
     let edit_members = json!({
         "summary": {"type": "string", "description": "What and why: one line of at most 120 characters. Required to send for review."},
         "sources": {"type": "array", "maxItems": 20, "items": {"type": "string"}},
@@ -82,53 +97,81 @@ pub(super) fn schemas() -> Map<String, Value> {
         map.insert("view".to_owned(), json!({"type": "string", "description": "The view to propose to. Default: the wiki's default view."}));
         map.insert("submit".to_owned(), json!({"type": "boolean", "description": "`true` sends the proposal for review at once; `false` keeps a draft only the proposer sees."}));
     }
-    let new_proposal = object(
-        "The body that opens a proposal. A member not listed is `invalid-body`.",
-        new_members,
-        &[
-            "view",
-            "sources",
-            "files",
-            "renames",
-            "minor",
-            "automated",
-            "drops",
-        ],
+    let new_proposal = request(
+        object(
+            "The body that opens a proposal. A member not listed is `invalid-body`.",
+            new_members,
+            &[
+                "view",
+                "sources",
+                "files",
+                "renames",
+                "minor",
+                "automated",
+                "drops",
+            ],
+        ),
+        json!([
+            {"summary": "Add a page about the notes", "submit": false, "files": [{"title": "Notes", "text": "The notes begin here.\n"}]},
+            {"summary": "Add two pages", "submit": true, "view": "main", "files": [{"title": "Alpha", "text": "First.\n"}, {"title": "Beta", "text": "Second.\n"}], "sources": ["https://example.org/survey"], "renames": [], "minor": false, "automated": false, "drops": []},
+        ]),
     );
-    let proposal_edit = object(
-        "The body that saves a draft or adds a revision.",
-        edit_members,
-        &["sources", "files", "renames", "minor", "automated", "drops"],
+    let proposal_edit = request(
+        object(
+            "The body that saves a draft or adds a revision.",
+            edit_members,
+            &["sources", "files", "renames", "minor", "automated", "drops"],
+        ),
+        json!([
+            {"summary": "Add a page about the notes", "files": [{"title": "Notes", "text": "The notes begin here, revised.\n"}]},
+            {"summary": "Say why", "sources": ["https://example.org/survey"], "minor": true},
+        ]),
     );
-    let reason = object(
-        "The body of a decline or a withdrawal.",
-        json!({"reason": {"type": "string", "maxLength": 4096, "description": "Required; at most 4096 bytes."}}),
-        &[],
+    let reason = request(
+        object(
+            "The body of a decline or a withdrawal.",
+            json!({"reason": {"type": "string", "maxLength": 4096, "description": "Required; at most 4096 bytes."}}),
+            &[],
+        ),
+        json!([{"reason": "Another proposal says this better"}]),
     );
-    let new_comment = object(
-        "The body of a comment.",
-        json!({
-            "body": {"type": "string", "description": "The comment: required, at most 16384 bytes."},
-            "parent": {"type": "string", "description": "The id of the comment this replies to."},
-            "anchor": {
-                "type": "object",
-                "description": "The part of the revision the comment is about; the server builds the anchor from that revision's own text.",
-                "required": ["page", "ordinal"],
-                "properties": {
-                    "page": {"type": "string", "description": "The page's repository path."},
-                    "ordinal": {"type": "integer", "minimum": 0, "description": "The part's position among the page's top-level blocks (0 for the first)."},
+    let new_comment = request(
+        object(
+            "The body of a comment.",
+            json!({
+                "body": {"type": "string", "description": "The comment: required, at most 16384 bytes."},
+                "parent": {"type": "string", "description": "The id of the comment this replies to."},
+                "anchor": {
+                    "type": "object",
+                    "description": "The part of the revision the comment is about; the server builds the anchor from that revision's own text.",
+                    "required": ["page", "ordinal"],
+                    "properties": {
+                        "page": {"type": "string", "description": "The page's repository path."},
+                        "ordinal": {"type": "integer", "minimum": 0, "description": "The part's position among the page's top-level blocks (0 for the first)."},
+                    },
+                    "additionalProperties": false,
                 },
-            },
-        }),
-        &["parent", "anchor"],
+            }),
+            &["parent", "anchor"],
+        ),
+        json!([
+            {"body": "This reads well."},
+            {"body": "Is this the date the survey gives?", "anchor": {"page": "pages/Home.md", "ordinal": 0}},
+        ]),
     );
-    let new_decision = object(
-        "The body of a decision on the revision `If-Match` names.",
-        json!({
-            "decision": {"type": "string", "enum": ["approve", "request-changes"]},
-            "body": {"type": "string", "description": "What the reviewer says with it; may be left out."},
-        }),
-        &["body"],
+    let new_decision = request(
+        object(
+            "The body of a decision on the revision `If-Match` names.",
+            json!({
+                "decision": {"type": "string", "enum": ["approve", "request-changes"]},
+                "body": {"type": "string", "description": "What the reviewer says with it; may be left out."},
+            }),
+            &["body"],
+        ),
+        json!([
+            {"decision": "approve"},
+            {"decision": "request-changes", "body": "Please name the source."},
+        ]),
     );
     let comment = object(
         "A comment as recorded.",
@@ -168,7 +211,7 @@ pub(super) fn schemas() -> Map<String, Value> {
         ("Decision", decision),
         (
             "Empty",
-            json!({"type": "object", "description": "A body with no member: `{}`.", "additionalProperties": false}),
+            json!({"type": "object", "description": "A body with no member: `{}`.", "additionalProperties": false, "examples": [{}]}),
         ),
     ] {
         out.insert(name.to_owned(), schema);

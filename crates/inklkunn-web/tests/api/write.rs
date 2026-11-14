@@ -17,6 +17,7 @@ use super::common::{self, World, add_person, block_id, page, person, state_id, w
 use super::{Answer, At, get, router};
 
 mod knowledge;
+mod shapes;
 
 const HOME: &str =
     "---\ntitle: Home\n---\n\nFirst paragraph.\n\nSecond paragraph.\n\nThird paragraph.\n";

@@ -18,6 +18,25 @@ fn or_null(name: &str) -> Value {
     json!({"oneOf": [schema_ref(name), {"type": "null"}]})
 }
 
+/// A schema of something a request body holds: a member it does not list is refused (`invalid-body`), as the handler does.
+pub(super) fn closed(mut schema: Value) -> Value {
+    if let Some(map) = schema.as_object_mut() {
+        map.insert("additionalProperties".to_owned(), Value::Bool(false));
+    }
+    schema
+}
+
+/// The schema of a request body: [`closed`], with `examples`, bodies that the schema accepts and the server takes. A
+/// test sends each through the schema and through the handler (`tests/api/write/shapes.rs`), so an example that stops
+/// being true fails the build.
+pub(super) fn request(schema: Value, examples: Value) -> Value {
+    let mut schema = closed(schema);
+    if let Some(map) = schema.as_object_mut() {
+        map.insert("examples".to_owned(), examples);
+    }
+    schema
+}
+
 /// An object schema whose `required` members are all its properties but the ones in `optional`.
 pub(super) fn object(description: &str, properties: Value, optional: &[&str]) -> Value {
     let required: Vec<String> = properties

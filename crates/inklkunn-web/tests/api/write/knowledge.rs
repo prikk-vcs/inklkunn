@@ -18,7 +18,7 @@ use super::{API, id_of, post, principal, problem_type, session, tip, token, urn}
 
 const SAID: &str = "The bridge opened in 1950.";
 
-struct Cast {
+pub(super) struct Cast {
     w: World,
     contributor: AccountId,
     observer: AccountId,
@@ -57,6 +57,18 @@ fn cast_of(sources: &[inklkunn_core::knowledge::Source]) -> Cast {
     );
     add_person(&cast.w, &cast.observer, "Olu Reader", Some(Role::Observer));
     cast
+}
+
+/// Send `body` as it is to the curation endpoint of a wiki of its own (`cast_checked`), as someone who may propose.
+pub(super) async fn send_curation(body: &Value) -> super::super::Answer {
+    let c = cast_checked();
+    post(
+        &c.w,
+        &format!("{API}/proposals/curation"),
+        &[session(&c.contributor), tip()],
+        body.to_string(),
+    )
+    .await
 }
 
 fn curation(body: Value) -> String {
@@ -583,7 +595,7 @@ fn two_pages() -> Cast {
 
 /// [`cast`], with the first source **checked** (a review day and an availability): from then on who and what it is
 /// belongs to curation.
-fn cast_checked() -> Cast {
+pub(super) fn cast_checked() -> Cast {
     cast_checked_titled("The bridge survey")
 }
 
