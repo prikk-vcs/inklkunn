@@ -36,7 +36,8 @@ env:
   PRIKK_SHA256_X86_64: "e998909328e4d1216c0e5ccf4b00141b32c6109498f04ba94a65cc61124ab687"
   PRIKK_SHA256_AARCH64: "9a325df0661c767ace382f0d7550a5a28ca9fd0a73bdf6f7878968133535df0d"
   # The SECOND, test-only prikk (maintenance M25; one value with ci.yml, held by floor-check): never a floor, never in
-  # the image. The tests of what 0.57.0 added need it and self-skip without it; the gates fail if one skipped.
+  # the image. The tests of what 0.57.0 added run on the first prikk 0.57.0 or newer on PATH (the floor's *no verb*
+  # answer on the first prikk on PATH), and print a guarded skip line when there is none; the gates fail on it.
   PRIKK_TEST_VERSION: "0.57.0"
   PRIKK_TEST_SHA256_X86_64: "4e621147c3064c1f456803c67f120df9ea35d93e40554e920c9ea55e69d3f9a8"
   EXPECTED_SKIPS: "313"

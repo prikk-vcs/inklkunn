@@ -1148,8 +1148,15 @@ fn discard_word_fate(result: &Result<RecoveryReport, RecoveryError>) -> Option<S
     let report = match result {
         Ok(report) => report,
         Err(e) if e.steps_done().contains(&TAKEN_BACK) => return None,
-        Err(_) => {
-            return Some("recovery ended in an error before it took the patch back".to_owned());
+        // A step that failed and then an error (M31): the step's own sentence is what is said, as when no error followed.
+        Err(e) => {
+            return Some(match e.failed_step() {
+                Some(failed) if failed.step == "clear-locks" => failed.why.clone(),
+                Some(failed) if failed.step == TAKEN_BACK => {
+                    format!("taking the patch back failed: {}", failed.why)
+                }
+                _ => "recovery ended in an error before it took the patch back".to_owned(),
+            });
         }
     };
     if report.done.iter().any(|d| d.step == TAKEN_BACK) {

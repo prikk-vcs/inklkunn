@@ -151,6 +151,43 @@ fn fixture(tag: &str) -> Option<Fixture> {
         println!("skipping: prikk not on PATH");
         return None;
     };
+    fixture_over(tag, real)
+}
+
+/// The first `prikk` on `PATH` (in any directory) whose version satisfies `wanted`.
+fn prikk_where(wanted: impl Fn((u64, u64, u64)) -> bool) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|d| d.join("prikk"))
+        .filter(|c| c.is_file())
+        .find(|c| inklkunn_prikk::probe_version(c.as_os_str()).is_some_and(&wanted))
+}
+
+/// The fixture over the first prikk 0.57.0 or newer on `PATH`, wherever it stands (maintenance M28): for the tests of
+/// what 0.57.0 added (`uncommit`). Prints the line CI fails on when there is none.
+fn fixture_057(tag: &str) -> Option<Fixture> {
+    let Some(real) = prikk_where(|v| v >= (0, 57, 0)) else {
+        println!("skipping: prikk 0.57.0 or newer not found");
+        return None;
+    };
+    fixture_over(tag, real)
+}
+
+/// The fixture over the **first** prikk on `PATH`, when it is older than 0.57.0 (CI's is the floor): the tests of the
+/// answer *no verb*. A first prikk that has the verb prints the line CI fails on.
+fn fixture_floor(tag: &str) -> Option<Fixture> {
+    let Some(real) = real_prikk() else {
+        println!("skipping: prikk not on PATH");
+        return None;
+    };
+    if inklkunn_prikk::probe_version(real.as_os_str()).is_none_or(|v| v >= (0, 57, 0)) {
+        println!("skipping: no prikk older than 0.57.0 (and at the floor) found");
+        return None;
+    }
+    fixture_over(tag, real)
+}
+
+fn fixture_over(tag: &str, real: PathBuf) -> Option<Fixture> {
     if !Path::new("/dev/shm").is_dir() {
         println!("skipping: no /dev/shm here");
         return None;
@@ -663,12 +700,26 @@ fn a_torn_log_is_discarded_and_the_repository_verifies_again() {
 }
 
 #[test]
-fn a_queued_patch_is_taken_back_only_under_an_act_that_names_its_id_and_the_worktree_is_put_back_after()
- {
-    // Maintenance M3, prikk 0.57.0, ledger PK-43. The state is a sound queued patch nobody accepted.
-    let Some(f) = fixture("take-back") else {
+fn a_prikk_without_the_verb_is_told_so_and_the_queued_patch_stays_whatever_the_act_names() {
+    // Maintenance M3, M28: the first prikk on `PATH` (CI's is the floor) has no `uncommit`.
+    let Some(f) = fixture_floor("take-back-floor") else {
         return;
     };
+    take_back_under_an_act(f, false);
+}
+
+#[test]
+fn on_0_57_0_a_queued_patch_is_taken_back_only_under_an_act_that_names_its_id_and_the_worktree_is_put_back_after()
+ {
+    // Maintenance M3, prikk 0.57.0, ledger PK-43; M28: the first prikk 0.57.0 or newer on `PATH`, whatever stands first.
+    let Some(f) = fixture_057("take-back-057") else {
+        return;
+    };
+    take_back_under_an_act(f, true);
+}
+
+/// The state is a sound queued patch nobody accepted, on a prikk with the verb (`verb`) or without.
+fn take_back_under_an_act(f: Fixture, verb: bool) {
     let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
     f.queue(&p);
     let id = f.queued_patch_id();
@@ -692,6 +743,7 @@ fn a_queued_patch_is_taken_back_only_under_an_act_that_names_its_id_and_the_work
     let right = f.act(vec![RecoveryOp::DiscardQueued { patch: id.clone() }]);
     let Ok(Some(_)) = f.witnesses.uncommit_plan(&f.wiki, &id) else {
         // A prikk before 0.57.0: the act names it and the signer cannot, and says so; the patch stays queued.
+        assert!(!verb, "a prikk that has the verb gave no plan");
         let r = f.leased(|| f.signer.discard_queued(&f.wiki, &right, &id));
         assert!(
             matches!(&r, Err(RecoverError::Unavailable(why)) if why.contains("no `uncommit`")),
@@ -701,6 +753,7 @@ fn a_queued_patch_is_taken_back_only_under_an_act_that_names_its_id_and_the_work
         return;
     };
     // Reading prikk's plan changed nothing.
+    assert!(verb, "a prikk without the verb gave a plan");
     assert_eq!(f.queue_count(), 1);
     let done = f
         .leased(|| f.signer.discard_queued(&f.wiki, &right, &id))

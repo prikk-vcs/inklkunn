@@ -9,7 +9,8 @@
 //!   `issue summary: errors=E, warnings=W, info=I`. The diagnostics must add up to the summary.
 //! * `prikk unlock` prints either `no locks currently held`, or for each lock an absolute path line followed by
 //!   indented `kind:`, `recorded pid:` and `liveness:` lines, and then an advisory paragraph. **The liveness line is
-//!   read and kept, and never used** (ledger PL-8: inside the sandbox's PID namespace it means nothing).
+//!   read and kept, and never used to decide that a lock is clear to take** (ledger PL-8: inside the sandbox's PID
+//!   namespace it means nothing); a positive answer is used for what a plan promises (maintenance M31).
 
 /// The code prikk gives to an object that nothing refers to (`verify` counts the same as `unreached objects`;
 /// prikk 0.54 and later; ledger PL-12). A warning, not damage.
@@ -383,8 +384,18 @@ pub struct HeldLock {
     pub kind: String,
     /// The process id the lock file records.
     pub recorded_pid: u32,
-    /// prikk's own words about whether that process is running: kept for the record, **never used** (ledger PL-8).
+    /// prikk's own words about whether that process is running: kept for the record, **never used to decide that a
+    /// lock is clear to take** (ledger PL-8).
     pub liveness: String,
+}
+
+impl HeldLock {
+    /// Does prikk say the process that took this lock appears to be running? A positive answer is prikk's reliable
+    /// one, and prikk 0.57.0's `unlock --yes` does not clear such a lock (measured, maintenance M10). Used only for what a plan
+    /// promises of a clear (maintenance M31); a negative or unknown answer says nothing.
+    pub fn appears_running(&self) -> bool {
+        self.liveness.starts_with("appears running")
+    }
 }
 
 /// Read the stdout of `prikk unlock` (the listing; it clears nothing).

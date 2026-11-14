@@ -694,6 +694,8 @@ struct Fixture {
     first: ProposalRecord,
     second: ProposalRecord,
     base_blocks: usize,
+    /// The real prikk, whatever stands in front of it.
+    real: PathBuf,
 }
 
 fn fixture(tag: &str) -> Option<Fixture> {
@@ -701,6 +703,42 @@ fn fixture(tag: &str) -> Option<Fixture> {
         println!("skipping: prikk not on PATH");
         return None;
     };
+    fixture_over(tag, real)
+}
+
+/// The first `prikk` on `PATH` (in any directory) whose version satisfies `wanted`.
+fn prikk_where(wanted: impl Fn((u64, u64, u64)) -> bool) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|d| d.join("prikk"))
+        .filter(|c| c.is_file())
+        .find(|c| inklkunn_prikk::probe_version(c.as_os_str()).is_some_and(&wanted))
+}
+
+/// The fixture over the first prikk 0.57.0 or newer on `PATH`, wherever it stands (maintenance M28).
+fn fixture_057(tag: &str) -> Option<Fixture> {
+    let Some(real) = prikk_where(|v| v >= (0, 57, 0)) else {
+        println!("skipping: prikk 0.57.0 or newer not found");
+        return None;
+    };
+    fixture_over(tag, real)
+}
+
+/// The fixture over the **first** prikk on `PATH`, when it is older than 0.57.0 (CI's is the floor): the answer *no
+/// verb*. A first prikk that has the verb prints the line CI fails on.
+fn fixture_floor(tag: &str) -> Option<Fixture> {
+    let Some(real) = real_prikk() else {
+        println!("skipping: prikk not on PATH");
+        return None;
+    };
+    if inklkunn_prikk::probe_version(real.as_os_str()).is_none_or(|v| v >= (0, 57, 0)) {
+        println!("skipping: no prikk older than 0.57.0 (and at the floor) found");
+        return None;
+    }
+    fixture_over(tag, real)
+}
+
+fn fixture_over(tag: &str, real: PathBuf) -> Option<Fixture> {
     if !Path::new("/dev/shm").is_dir() {
         println!("skipping: no /dev/shm here");
         return None;
@@ -847,6 +885,7 @@ fn fixture(tag: &str) -> Option<Fixture> {
         first,
         second,
         base_blocks,
+        real,
     })
 }
 
@@ -1567,16 +1606,30 @@ fn runbook_commands(section: &str, marker: &str) -> Vec<(String, String)> {
 
 #[test]
 fn the_runbooks_way_out_of_an_orphan_queued_patch_is_true_of_the_state_a_commit_kill_leaves() {
-    // Handoff 004, P16. The state is the one the kill matrix's `prikk commit` rows leave when the service's records
-    // of the act are gone (a database restored from a copy older than the repository): a sound patch is queued and
-    // no recorded act describes it. The test follows the runbook's own commands, literally, as far as prikk 0.55
-    // supports them (they only read), and checks each statement the runbook makes about what recovery says.
-    let Some(f) = fixture("runbook") else {
+    // Handoff 004, P16, M28: on the first prikk on `PATH` (CI's is the floor, which has no `uncommit`).
+    let Some(f) = fixture_floor("runbook-floor") else {
         return;
     };
-    let Some(real) = real_prikk() else {
+    the_runbooks_way_out_of_an_orphan_queued_patch(f, false);
+}
+
+#[test]
+fn on_0_57_0_the_runbooks_way_out_of_an_orphan_queued_patch_is_true_of_the_state_a_commit_kill_leaves()
+ {
+    // Handoff 004, P16, maintenance M3 and M28: the kill matrix's take-back row on the first prikk 0.57.0 or newer on
+    // `PATH`, wherever it stands: recovery offers the take-back by the patch's id.
+    let Some(f) = fixture_057("runbook-057") else {
         return;
     };
+    the_runbooks_way_out_of_an_orphan_queued_patch(f, true);
+}
+
+/// The state is the one the kill matrix's `prikk commit` rows leave when the service's records of the act are gone (a
+/// database restored from a copy older than the repository): a sound patch is queued and no recorded act describes it.
+/// The test follows the runbook's own commands, literally, as far as prikk 0.55 supports them (they only read), and
+/// checks each statement the runbook makes about what recovery says; `verb` is whether the prikk has `uncommit`.
+fn the_runbooks_way_out_of_an_orphan_queued_patch(f: Fixture, verb: bool) {
+    let real = f.real.clone();
     let older = f.paths.store.with_extension("older.sqlite");
     std::fs::copy(&f.paths.store, &older).expect("the copy a restore would bring back");
     f.kill_at(Who::Acceptance, At::After("commit", 0));
@@ -1769,6 +1822,10 @@ fn the_runbooks_way_out_of_an_orphan_queued_patch_is_true_of_the_state_a_commit_
     let help = Command::new(&real).arg("--help").output().unwrap();
     let help = String::from_utf8_lossy(&help.stdout).into_owned();
     let has_uncommit = help.contains("uncommit");
+    assert_eq!(
+        has_uncommit, verb,
+        "the caller chose the prikk by whether it has the verb"
+    );
     // A plan that is only shown offers nothing and asks prikk for no preview (M5: the preview takes prikk's lock): with
     // the verb it says that a run shows the preview and the command, without it that nothing can be taken back (M21:
     // whether the verb exists is asked, and takes no lock).

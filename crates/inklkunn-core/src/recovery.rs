@@ -57,9 +57,9 @@ pub mod plan;
 pub mod processes;
 
 pub use plan::{
-    ActRef, ActWitness, Chain, CleanupPending, DiscardInput, DiscardOffer, Ended, LockEntry, Plan,
-    Published, Step, Stop, ViewActWitness, ViewShown, Witness, build, build_with, facts_of,
-    word_unused,
+    ActRef, ActWitness, Chain, CleanupPending, DiscardInput, DiscardOffer, Ended, LockEntry,
+    MarkerError, Plan, Published, Step, Stop, ViewActWitness, ViewShown, Witness, build,
+    build_with, facts_of, word_unused,
 };
 pub use processes::{Foreign, ProcFs, ProcessInfo, ProcessTable};
 
@@ -108,9 +108,22 @@ pub enum RecoveryError {
     AfterSteps {
         /// The steps that finished.
         done: Vec<&'static str>,
+        /// The step that failed before the error, with its own sentence (maintenance M31): a failing step is not in
+        /// `done`, and what it did before it failed (a lock cleared, then the check after it unreadable) is said here
+        /// and not lost.
+        failed: Option<FailedStep>,
         /// The error that ended the run.
         cause: Box<RecoveryError>,
     },
+}
+
+/// A step that failed, and what it said (maintenance M31).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FailedStep {
+    /// The step's name.
+    pub step: &'static str,
+    /// Why it failed, in the step's own sentence (operator text; names no path of the repository).
+    pub why: String,
 }
 
 impl RecoveryError {
@@ -122,13 +135,32 @@ impl RecoveryError {
         }
     }
 
-    /// This error, carrying the steps of `done` when there are any.
-    fn after_steps(self, done: &[StepDone]) -> Self {
-        if done.is_empty() {
+    /// The step that failed before this error, and its sentence, when one did.
+    pub fn failed_step(&self) -> Option<&FailedStep> {
+        match self {
+            RecoveryError::AfterSteps { failed, .. } => failed.as_ref(),
+            _ => None,
+        }
+    }
+
+    /// This error, carrying the steps `report` finished and the step it stopped at, when there are any (M18, M31).
+    fn after_steps(self, report: &RecoveryReport) -> Self {
+        let failed = match &report.outcome {
+            Outcome::Stopped {
+                at: Some(step),
+                why,
+            } => Some(FailedStep {
+                step,
+                why: why.clone(),
+            }),
+            _ => None,
+        };
+        if report.done.is_empty() && failed.is_none() {
             return self;
         }
         RecoveryError::AfterSteps {
-            done: done.iter().map(|d| d.step).collect(),
+            done: report.done.iter().map(|d| d.step).collect(),
+            failed,
             cause: Box::new(self),
         }
     }
@@ -155,15 +187,26 @@ impl std::fmt::Display for RecoveryError {
                 "the audit trail could not be written ({why}); nothing was done"
             ),
             RecoveryError::Store(e) => write!(f, "{e}"),
-            RecoveryError::AfterSteps { done, cause } => {
-                // "nothing was done" is true of an audit failure before any step, and false after one (M22).
+            RecoveryError::AfterSteps {
+                done,
+                failed,
+                cause,
+            } => {
+                // "nothing was done" is true of an audit failure before any step, and false after one (M22); a step
+                // that failed keeps its own sentence beside the error that came after it (M31).
                 match &**cause {
                     RecoveryError::Audit(why) => {
                         write!(f, "the audit trail could not be written ({why})")?;
                     }
                     other => write!(f, "{other}")?,
                 }
-                write!(f, "; steps already done: {}", done.join(", "))
+                if let Some(failed) = failed {
+                    write!(f, "; the step {} had stopped: {}", failed.step, failed.why)?;
+                }
+                if !done.is_empty() {
+                    write!(f, "; steps already done: {}", done.join(", "))?;
+                }
+                Ok(())
             }
         }
     }
@@ -326,15 +369,18 @@ fn witness_error(what: &str, e: impl std::fmt::Display) -> RecoveryError {
     RecoveryError::Witness(format!("{what}: {e}"))
 }
 
-/// The format prikk named (`Some(None)` when it named none: the marker is not a number), when one of the first reads
-/// was refused for a format marker this prikk is not known to refuse (maintenance M17, M20).
+/// What prikk said, when one of the first reads was refused for a format marker this prikk is not known to refuse
+/// (maintenance M17, M20, M33): a format number, or none because the marker is not a number.
 fn format_marker_in<T, U>(
     status: &Result<T, StorageError>,
     doctor: &Result<U, SignerError>,
-) -> Option<Option<u64>> {
+) -> Option<MarkerError> {
     match (status, doctor) {
         (Err(StorageError::FormatMarker { version, .. }), _)
-        | (_, Err(SignerError::FormatMarker { version })) => Some(*version),
+        | (_, Err(SignerError::FormatMarker { version })) => Some(match version {
+            Some(format) => MarkerError::Numbered(*format),
+            None => MarkerError::NotANumber,
+        }),
         _ => None,
     }
 }
@@ -1020,7 +1066,7 @@ impl Recovery {
                 AuditOutcome::Allowed,
                 step.name(),
             )
-            .map_err(|e| e.after_steps(&report.done))?;
+            .map_err(|e| e.after_steps(&report))?;
             match self.run_step(wiki, &token, step, &bases, &mut report.reconciliation) {
                 Ok(detail) => {
                     sealed_something |= matches!(step, Step::EndSealed { .. });
@@ -1040,10 +1086,10 @@ impl Recovery {
                         AuditOutcome::Failed,
                         &format!("{} failed", step.name()),
                     )
-                    .map_err(|e| e.after_steps(&report.done))?;
+                    .map_err(|e| e.after_steps(&report))?;
                     self.trail("recovery", &resource, AuditOutcome::Failed, "stopped")
-                        .map_err(|e| e.after_steps(&report.done))?;
-                    finish(RecoveryEnding::Stopped).map_err(|e| e.after_steps(&report.done))?;
+                        .map_err(|e| e.after_steps(&report))?;
+                    finish(RecoveryEnding::Stopped).map_err(|e| e.after_steps(&report))?;
                     return Ok(report);
                 }
             }
@@ -1087,13 +1133,13 @@ impl Recovery {
                 AuditOutcome::Failed,
                 &format!("stopped: {}", stop.as_str()),
             )
-            .map_err(|e| e.after_steps(&report.done))?;
-            finish(RecoveryEnding::Stopped).map_err(|e| e.after_steps(&report.done))?;
+            .map_err(|e| e.after_steps(&report))?;
+            finish(RecoveryEnding::Stopped).map_err(|e| e.after_steps(&report))?;
             return Ok(report);
         }
         self.trail("recovery", &resource, AuditOutcome::Allowed, "recovered")
-            .map_err(|e| e.after_steps(&report.done))?;
-        finish(RecoveryEnding::Recovered).map_err(|e| e.after_steps(&report.done))?;
+            .map_err(|e| e.after_steps(&report))?;
+        finish(RecoveryEnding::Recovered).map_err(|e| e.after_steps(&report))?;
         drop(scope);
         drop(lease);
         if sealed_something {

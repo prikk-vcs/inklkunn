@@ -1239,6 +1239,28 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   could not carry it as written; `bundle::markdown_text` writes it as U+FFFD explicitly and says so, for a body from any other
   source. The exhaustive alphabet of the fence test gains `\t` and `\0` (177,156 texts). `docs/dependency-policy.md` gets the ledger
   row of `pulldown-cmark` as a dev-dependency of `inklkunn-core` (the owner's decision 4: 210 → 210, deny and audit ok, test-only).
+- **M28 (handoff 010 corrections, fourth round): CI takes a patch back on 0.57.0.** The tests whose subject needs a 0.57.0 verb (the
+  take-back and its worktree restore, the person's confirmation, the stale-lock preview, the kill matrix's take-back row) used to take
+  the first prikk on `PATH` and branch on its version, so in CI (the floor first) they ran only their *no verb* branch and printed no
+  line the guard looks for. Each is now two tests: the 0.57.0 subject runs on the first prikk 0.57.0 or newer on `PATH`
+  (`World::new_057`, `fixture_057`) and prints `skipping: prikk 0.57.0 or newer not found` when there is none; the floor's *no verb*
+  answer is a test of its own on the first prikk on `PATH` (`World::new_floor`, `fixture_floor`), which prints
+  `skipping: no prikk older than 0.57.0 (and at the floor) found` when that one has the verb (CI fails on either line). The comments
+  in `ci.yml` and `release.yml` say so. No test lost a branch; the number of tests that print `skipping: prikk not on PATH` does not
+  change.
+
+- **M31 (handoff 010 corrections, fourth round): the sentences hold in every order.** (1) A step that failed and was followed by an
+  audit failure keeps its own sentence: `RecoveryError::AfterSteps` has a `failed` member (`RecoveryFailedStep`: the step's name and
+  its sentence; `RecoveryError::failed_step()`), set when the run had stopped at a step, so a lock cleared and then a listing that
+  cannot be read is not reported as *nothing was done*; the end event of `--discard-queued-patch` says the step's sentence too. (2)
+  `AfterLocks` promises the clear and the preview only when no held lock is one prikk says **appears running** (`unlock --yes`
+  refuses that holder on 0.57.0); otherwise the plan says the run tries the clear (step 1), stops at it with no preview and takes
+  nothing back, as the run does. Tests: the plan for each liveness, the same plan beside a real run with a stand-in that prints and
+  refuses as 0.57.0 does, and the failed step beside a refusing trail.
+
+- **M33 (handoff 010 corrections, fourth round): `Witness.format_marker` is an enum.** `Option<Option<u64>>` becomes
+  `Option<MarkerError>` with `MarkerError::Numbered(u64)` (prikk named a format) and `MarkerError::NotANumber` (prikk's integrity
+  error about a marker that is no number); `recovery::MarkerError` is public.
 
 ## [0.2.0] — 2026-11-04
 

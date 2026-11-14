@@ -222,10 +222,19 @@ pub struct Witness {
     pub lease_held: bool,
     /// A publication whose cleanup a killed `seal` did not finish, when `doctor` names exactly that (P15).
     pub cleanup_pending: Option<CleanupPending>,
-    /// The format prikk named when it refused to open the repository by a marker this prikk is not known to refuse
-    /// (maintenance M17); `Some(None)` when the marker is not a number prikk reads at all (M20). Then nothing else of
-    /// prikk was read: the fields that come from prikk hold nothing.
-    pub format_marker: Option<Option<u64>>,
+    /// What prikk said when it refused to open the repository by a format marker this prikk is not known to refuse
+    /// (maintenance M17, M20, M33). Then nothing else of prikk was read: the fields that come from prikk hold nothing.
+    pub format_marker: Option<MarkerError>,
+}
+
+/// A format marker prikk will not open the repository by, and that this prikk is not known to refuse.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MarkerError {
+    /// prikk named the format (maintenance M17).
+    Numbered(u64),
+    /// prikk's own integrity error: the marker holds something that is not a format number (`8\r\n`, an empty file;
+    /// maintenance M20).
+    NotANumber,
 }
 
 /// Why recovery will not act: each a fixed word. None names a path.
@@ -831,6 +840,24 @@ fn discard_notes(
                 }
             })
         }
+        // A holder prikk says appears running is one `unlock --yes` does not clear (prikk 0.57.0): the run tries, and stops
+        // at the lock with no preview, as the plan says (M31). A negative or unknown answer promises the clear: the
+        // run makes it (the lease record decides, not prikk's line: PL-8).
+        DiscardOffer::AfterLocks if w.locks.iter().any(HeldLock::appears_running) => {
+            let held: Vec<String> = w
+                .locks
+                .iter()
+                .filter(|l| l.appears_running())
+                .map(|l| format!("{} (recorded pid {})", l.kind, l.recorded_pid))
+                .collect();
+            plan.notes.push(format!(
+                "prikk's preview of taking the queued patch {patch_id} back needs prikk's lock, which a lock held by a process prikk says appears running holds ({}): prikk's `unlock --yes` does not clear such a holder, so the run tries to clear it (step 1) and stops at that step, with no preview, and takes nothing back",
+                held.join(", ")
+            ));
+            given.map(|_| {
+                "a lock held by a process prikk says appears running stands in the way: a run stops at clear-locks, shows no preview, and takes nothing back".to_owned()
+            })
+        }
         DiscardOffer::AfterLocks => {
             let (then, word) = if on_the_worktrees_branch(w, target) {
                 (
@@ -917,7 +944,8 @@ pub enum DiscardOffer {
     /// (maintenance M21).
     InARun,
     /// Not asked yet, because a stale lock is held and the preview needs prikk's lock: the run clears the lock, then
-    /// asks (maintenance M6), and stops with the preview.
+    /// asks (maintenance M6), and stops with the preview. The plan promises the clear only when no holder is one prikk
+    /// says appears running (`unlock --yes` does not clear that one): then it says the run stops at the lock (M31).
     AfterLocks,
     /// Asked, and prikk has no `uncommit` (before 0.57.0).
     NoVerb,
@@ -995,10 +1023,10 @@ fn build_plan(w: &Witness, discard: &DiscardInput, unused: &mut Option<String>) 
     }
     if let Some(format) = w.format_marker {
         wit.push(match format {
-            Some(format) => format!(
+            MarkerError::Numbered(format) => format!(
                 "prikk refuses the repository by its format marker (format {format}), which this prikk is not known to refuse: nothing else of prikk could be read"
             ),
-            None => "prikk refuses the repository because its format marker holds something that is not a format number: nothing else of prikk could be read".to_owned(),
+            MarkerError::NotANumber => "prikk refuses the repository because its format marker holds something that is not a format number: nothing else of prikk could be read".to_owned(),
         });
         plan.stop = Some(Stop::FormatMarker);
         return plan;

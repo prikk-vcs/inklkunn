@@ -125,6 +125,13 @@ if [ "$verb" = uncommit ] && [ -e "$CTL/hold-uncommit" ]; then
   n=0
   while [ ! -e "$CTL/release" ] && [ "$n" -lt 400 ]; do sleep 0.05; n=$((n + 1)); done
 fi
+if [ "$verb" = unlock ] && [ -e "$CTL/appears-running" ]; then
+  if [ "$#" -eq 1 ]; then
+    "{real}" "$@" | sed 's/^  liveness: .*/  liveness: appears running -- do not clear: the process that took the lock is still running (same pid and start time)/'
+    exit 0
+  fi
+  echo "error: precondition not met: the process that took the lock appears running -- refusing to clear its lock. --yes does not clear a lock whose holder appears running." >&2; exit 1
+fi
 if [ "$verb" = unlock ] && [ "$#" -gt 1 ] && [ -e "$CTL/fail-unlock-clear" ]; then echo "error: precondition not met: injected failure of unlock --lock" >&2; exit 1; fi
 if [ "$verb" = unlock ] && [ "$#" -eq 1 ] && [ -e "$CTL/list-fails-after-clear" ] && [ -e "$CTL/unlock-cleared" ]; then echo "error: precondition not met: injected failure of unlock (listing)" >&2; exit 1; fi
 if [ "$verb" = unlock ] && [ "$#" -gt 1 ]; then
@@ -231,6 +238,21 @@ impl World {
             println!("skipping: prikk 0.57.0 or newer not found");
             return None;
         };
+        World::over(tag, lease, &real)
+    }
+
+    /// The same, over the **first** `prikk` on `PATH`, when it is older than 0.57.0 (CI's is the floor): the tests of the
+    /// answer *no verb*. A first prikk that has `uncommit` prints the guarded skip line (CI fails on it: the floor must
+    /// be first), and the subject runs on the 0.57.0 side through [`World::new_057`] instead (maintenance M28).
+    fn new_floor(tag: &str, lease: LeaseConfig) -> Option<World> {
+        let Some(real) = real_prikk() else {
+            println!("skipping: prikk not on PATH");
+            return None;
+        };
+        if inklkunn_prikk::probe_version(real.as_os_str()).is_none_or(|v| v >= (0, 57, 0)) {
+            println!("skipping: no prikk older than 0.57.0 (and at the floor) found");
+            return None;
+        }
         World::over(tag, lease, &real)
     }
 
@@ -1549,13 +1571,26 @@ fn a_planted_queued_patch_that_matches_no_intent_is_reported_and_never_sealed_or
 }
 
 #[test]
-fn a_queued_patch_nobody_describes_is_taken_back_only_when_a_person_types_its_id_and_this_prikk_has_the_verb()
- {
-    // Maintenance M3, prikk 0.57.0, ledger PK-43. The state is the previous test's. `uncommit` came with 0.57.0: with
-    // an older prikk the same questions have the answer "no verb", and nothing is ever taken back.
-    let Some(w) = World::new("take-back", LeaseConfig::default()) else {
+fn a_queued_patch_nobody_describes_is_never_taken_back_by_a_prikk_without_the_verb() {
+    // Maintenance M3, M28. `uncommit` came with 0.57.0: the first prikk on `PATH` (CI's is the floor) answers "no verb",
+    // and nothing is ever taken back. The take-back itself is the next test's, on a prikk that has the verb.
+    let Some(w) = World::new_floor("take-back-floor", LeaseConfig::default()) else {
         return;
     };
+    take_back_by_a_persons_word(w, false);
+}
+
+#[test]
+fn on_0_57_0_a_queued_patch_nobody_describes_is_taken_back_only_when_a_person_types_its_id() {
+    // Maintenance M3, prikk 0.57.0, ledger PK-43; M28: the first prikk 0.57.0 or newer on `PATH`, whatever stands first.
+    let Some(w) = World::new_057("take-back-057", LeaseConfig::default()) else {
+        return;
+    };
+    take_back_by_a_persons_word(w, true);
+}
+
+/// The state is a sound queued patch that no recorded act describes, on a prikk with the verb (`verb`) or without.
+fn take_back_by_a_persons_word(w: World, verb: bool) {
     let planted = "---\ntitle: Home\nid: p-home\n---\n\nPlanted.\n";
     w.plant_queued_patch("pages/Home.md", planted);
     w.flag(RecoveryReason::Interrupted);
@@ -1578,13 +1613,9 @@ fn a_queued_patch_nobody_describes_is_taken_back_only_when_a_person_types_its_id
         .notes
         .iter()
         .any(|n| n.contains("prikk can take the queued patch"));
-    // Whether this machine's prikk has the verb is not for the code under test to say: `uncommit` is 0.57.0's.
-    assert_eq!(
-        has_verb,
-        inklkunn_prikk::parse_version(w.storage.version()).is_some_and(|v| v >= (0, 57, 0)),
-        "{:?}",
-        shown.plan.notes
-    );
+    // Whether the prikk has the verb is not for the code under test to say: `uncommit` is 0.57.0's, and the caller chose
+    // the prikk by it.
+    assert_eq!(has_verb, verb, "{:?}", shown.plan.notes);
     if !has_verb {
         assert!(
             shown
@@ -1735,12 +1766,27 @@ fn showing_the_plan_with_a_persons_word_takes_nothing_back_and_does_not_ask_prik
 }
 
 #[test]
-fn a_plan_shown_never_asks_prikk_for_the_preview_and_a_run_asks_it_under_the_lease() {
-    // Maintenance M5. `uncommit --plan-only` takes prikk's active lock, so asking is writing: `recover --plan` (the
-    // library's `PlanOnly`) must never ask, with or without the verb, and a run asks once, holding the wiki's lease.
-    let Some(w) = World::new("preview-lease", quick(300)) else {
+fn a_plan_shown_never_asks_a_prikk_without_the_verb_for_the_preview() {
+    // Maintenance M5, M28: the first prikk on `PATH` (the floor in CI), which has no verb to ask.
+    let Some(w) = World::new_floor("preview-lease-floor", quick(300)) else {
         return;
     };
+    a_plan_shown_never_asks_for_the_preview_and_a_run_asks_it_under_the_lease(w, false);
+}
+
+#[test]
+fn on_0_57_0_a_plan_shown_never_asks_prikk_for_the_preview_and_a_run_asks_it_under_the_lease() {
+    // Maintenance M5, M28: the first prikk 0.57.0 or newer on `PATH`.
+    let Some(w) = World::new_057("preview-lease-057", quick(300)) else {
+        return;
+    };
+    a_plan_shown_never_asks_for_the_preview_and_a_run_asks_it_under_the_lease(w, true);
+}
+
+/// Maintenance M5. `uncommit --plan-only` takes prikk's active lock, so asking is writing: `recover --plan` (the
+/// library's `PlanOnly`) must never ask, with or without the verb (`verb`), and a run asks once, holding the wiki's
+/// lease.
+fn a_plan_shown_never_asks_for_the_preview_and_a_run_asks_it_under_the_lease(w: World, verb: bool) {
     w.plant_queued_patch(
         "pages/Home.md",
         "---\ntitle: Home\nid: p-home\n---\n\nPlanted.\n",
@@ -1749,7 +1795,6 @@ fn a_plan_shown_never_asks_prikk_for_the_preview_and_a_run_asks_it_under_the_lea
     let id = w.queued_patch_id();
     // Were prikk asked for the preview, it would fail visibly; it is not. (Whether it has the verb is asked, with no
     // patch id, which takes no lock and is not the preview: M21. The stand-in lets that question through.)
-    let verb = inklkunn_prikk::parse_version(w.storage.version()).is_some_and(|v| v >= (0, 57, 0));
     w.control("fail-uncommit", "");
     for _ in 0..2 {
         let shown = w
@@ -1818,14 +1863,29 @@ fn a_plan_shown_never_asks_prikk_for_the_preview_and_a_run_asks_it_under_the_lea
 }
 
 #[test]
-fn a_stale_lock_beside_an_orphan_patch_is_cleared_then_the_stop_comes_with_the_preview_and_the_offer_works_next_run()
- {
-    // Maintenance M6. The lock a killed process left holds prikk's lock, so the preview cannot be read; the plan used
-    // to stop with every step gone, the clearing included, and the next run met the same lock. Now the run clears
-    // it, asks for the preview, and stops with it; the person's word is used by the run after.
-    let Some(w) = World::new("lock-and-orphan", LeaseConfig::default()) else {
+fn a_stale_lock_beside_an_orphan_patch_clears_nothing_on_a_prikk_without_the_verb() {
+    // Maintenance M6, M12, M28: the first prikk on `PATH` (the floor in CI) has no preview to read afterwards.
+    let Some(w) = World::new_floor("lock-and-orphan-floor", LeaseConfig::default()) else {
         return;
     };
+    a_stale_lock_beside_an_orphan_patch(w, false);
+}
+
+#[test]
+fn on_0_57_0_a_stale_lock_beside_an_orphan_patch_is_cleared_then_the_stop_comes_with_the_preview_and_the_offer_works_next_run()
+ {
+    // Maintenance M6, M28: the first prikk 0.57.0 or newer on `PATH`.
+    let Some(w) = World::new_057("lock-and-orphan-057", LeaseConfig::default()) else {
+        return;
+    };
+    a_stale_lock_beside_an_orphan_patch(w, true);
+}
+
+/// Maintenance M6. The lock a killed process left holds prikk's lock, so the preview cannot be read; the plan used to
+/// stop with every step gone, the clearing included, and the next run met the same lock. Now the run clears it, asks
+/// for the preview, and stops with it; the person's word is used by the run after. Without the verb (`verb` false)
+/// nothing is cleared (M12).
+fn a_stale_lock_beside_an_orphan_patch(w: World, verb: bool) {
     w.plant_queued_patch(
         "pages/Home.md",
         "---\ntitle: Home\nid: p-home\n---\n\nPlanted.\n",
@@ -1839,7 +1899,6 @@ fn a_stale_lock_beside_an_orphan_patch_is_cleared_then_the_stop_comes_with_the_p
     w.flag(RecoveryReason::Interrupted);
     let id = w.queued_patch_id();
     let before = w.history();
-    let verb = inklkunn_prikk::parse_version(w.storage.version()).is_some_and(|v| v >= (0, 57, 0));
 
     // Whether prikk has the verb is asked of prikk without a patch id, which takes no lock: it is answered with the
     // lock held, on both sides of 0.57.0 (M12).
@@ -2109,30 +2168,31 @@ fn plan_then_run(w: &World, lock: bool, verb: bool) {
 }
 
 #[test]
-fn a_plan_promises_what_the_run_does_with_the_queued_patch_on_the_prikk_that_runs() {
-    // Maintenance M21 (T-b). The plan used to promise the take-back without asking prikk whether it has the verb (0.55.0
-    // has not: the run said so), and with a stale lock held (0.57.0: the run clears it and stops with the preview).
-    // Run with 0.55.0 first on `PATH` it compares the plan with a prikk that has no `uncommit`; with 0.57.0, without a
-    // lock. The stale lock on 0.57.0 is the next test.
+fn a_plan_promises_what_the_run_does_with_the_queued_patch_on_a_prikk_without_the_verb() {
+    // Maintenance M21 (T-b), M28. The plan used to promise the take-back without asking prikk whether it has the verb
+    // (the floor has not: the run said so). The first prikk on `PATH` (CI's floor), with and without a stale lock.
     for lock in [false, true] {
-        let Some(w) = World::new(
+        let Some(w) = World::new_floor(
             if lock {
-                "promise-lock"
+                "promise-lock-floor"
             } else {
-                "promise-clear"
+                "promise-clear-floor"
             },
             LeaseConfig::default(),
         ) else {
             return;
         };
-        let verb =
-            inklkunn_prikk::parse_version(w.storage.version()).is_some_and(|v| v >= (0, 57, 0));
-        // Only the cases the next test does not cover: the floor with and without a lock, 0.57.0 without one.
-        if verb && lock {
-            continue;
-        }
-        plan_then_run(&w, lock, verb);
+        plan_then_run(&w, lock, false);
     }
+}
+
+#[test]
+fn on_0_57_0_a_plan_without_a_lock_says_a_run_takes_the_patch_back_and_it_does() {
+    // Maintenance M21 (T-b), M28: the first prikk 0.57.0 or newer on `PATH`, nothing in the way.
+    let Some(w) = World::new_057("promise-clear-057", LeaseConfig::default()) else {
+        return;
+    };
+    plan_then_run(&w, false, true);
 }
 
 #[test]
@@ -2142,6 +2202,115 @@ fn on_0_57_0_a_plan_with_a_stale_lock_says_the_run_clears_it_and_stops_with_the_
         return;
     };
     plan_then_run(&w, true, true);
+}
+
+#[test]
+fn on_0_57_0_a_plan_with_a_lock_whose_holder_appears_running_says_the_run_stops_at_the_lock() {
+    // Maintenance M31 (W-f). prikk 0.57.0's `unlock --yes` refuses a holder that appears running (measured, M10; the
+    // stand-in prints that listing and that refusal, because an old-style body reads `unknown` on 0.57.0 whatever its
+    // pid is). The plan promised a clear and a preview; now it says what the run does, and the run does exactly that.
+    let Some(w) = World::new_057("promise-running-057", LeaseConfig::default()) else {
+        return;
+    };
+    w.plant_queued_patch(
+        "pages/Home.md",
+        "---\ntitle: Home\nid: p-home\n---\n\nPlanted.\n",
+    );
+    let lock = plant_lock(
+        &w.repo,
+        "active/default/active.lock",
+        2_147_483_000,
+        "active",
+    );
+    w.flag(RecoveryReason::Interrupted);
+    w.control("appears-running", "");
+    let id = w.queued_patch_id();
+    let word = RecoverOptions {
+        discard_queued_patch: Some(id),
+    };
+    let said = "a lock held by a process prikk says appears running stands in the way: a run stops at clear-locks, shows no preview, and takes nothing back";
+    let planned = w
+        .recovery
+        .recover_with(&w.wiki, RecoveryMode::PlanOnly, &word)
+        .unwrap();
+    assert_eq!(planned.plan.discard_unused.as_deref(), Some(said));
+    let notes = planned.plan.notes.join("\n");
+    assert!(
+        notes.contains("appears running")
+            && notes.contains("stops at that step, with no preview")
+            && !notes.contains("the run clears it first"),
+        "{notes}"
+    );
+    let run = w
+        .recovery
+        .recover_with(&w.wiki, RecoveryMode::Run, &word)
+        .unwrap();
+    assert!(
+        matches!(
+            &run.outcome,
+            RecoveryOutcome::Stopped { at: Some("clear-locks"), why }
+                if why.starts_with("the lock was not cleared: ") && why.contains("appears running")
+        ),
+        "{:#?}",
+        run.lines()
+    );
+    assert!(run.done.is_empty());
+    assert!(Path::new(&lock).exists(), "the lock stays");
+    assert_eq!(w.uncommit_calls(), 0, "no preview was read");
+    assert_eq!(w.queue_count(), 1, "nothing was taken back");
+    assert_eq!(run.plan.discard_unused.as_deref(), Some(said));
+    w.uncontrol("appears-running");
+}
+
+#[test]
+fn a_step_that_failed_keeps_its_sentence_when_the_audit_fails_after_it() {
+    // Maintenance M31 (W-e). The lock is cleared, the listing that checks it fails, and then the trail refuses the
+    // failure's own record: the error used to say *nothing was done*, with the step's sentence lost. Needs the preview
+    // to follow (0.57.0).
+    let Some(w) = World::new_057("failed-step-then-audit", LeaseConfig::default()) else {
+        return;
+    };
+    w.plant_queued_patch(
+        "pages/Home.md",
+        "---\ntitle: Home\nid: p-home\n---\n\nPlanted.\n",
+    );
+    let lock = plant_lock(
+        &w.repo,
+        "active/default/active.lock",
+        2_147_483_000,
+        "active",
+    );
+    w.flag(RecoveryReason::Interrupted);
+    w.control("list-fails-after-clear", &lock);
+    let refusing = recovery_writing_to(
+        &w,
+        Arc::new(TrailThatRefusesFailures {
+            inner: w.store.clone(),
+        }),
+    );
+    let err = refusing
+        .recover_with(&w.wiki, RecoveryMode::Run, &RecoverOptions::default())
+        .unwrap_err();
+    w.uncontrol("list-fails-after-clear");
+    assert!(!Path::new(&lock).exists(), "the lock was cleared");
+    assert!(err.steps_done().is_empty(), "no step finished: {err:?}");
+    let failed = err.failed_step().expect("the error carries the step");
+    assert_eq!(failed.step, "clear-locks");
+    assert!(
+        failed
+            .why
+            .starts_with("1 lock(s) cleared, but the locks could not be listed again to check: "),
+        "{failed:?}"
+    );
+    assert!(matches!(&err, RecoveryError::AfterSteps { cause, .. }
+        if matches!(**cause, RecoveryError::Audit(_))));
+    let said = err.to_string();
+    assert!(
+        said.contains("the audit trail could not be written (")
+            && said.contains("1 lock(s) cleared, but the locks could not be listed again")
+            && !said.contains("nothing was done"),
+        "{said}"
+    );
 }
 
 #[test]
@@ -3867,6 +4036,22 @@ struct TrailThatRefuses {
 impl AuditSink for TrailThatRefuses {
     fn record(&self, event: &AuditEvent) -> inklkunn_store::Result<()> {
         if event.action == self.action {
+            return Err(inklkunn_store::StoreError::Backend(
+                "the trail is full".to_owned(),
+            ));
+        }
+        self.inner.record(event)
+    }
+}
+
+/// A trail that takes every event but the record of a step that failed: the write that fails after a step did.
+struct TrailThatRefusesFailures {
+    inner: Arc<SqliteStore>,
+}
+
+impl AuditSink for TrailThatRefusesFailures {
+    fn record(&self, event: &AuditEvent) -> inklkunn_store::Result<()> {
+        if event.action == "recovery-step" && event.outcome.as_str() == "failed" {
             return Err(inklkunn_store::StoreError::Backend(
                 "the trail is full".to_owned(),
             ));

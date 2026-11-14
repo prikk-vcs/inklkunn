@@ -2012,6 +2012,59 @@ fn a_plan_with_a_stale_lock_held_never_promises_the_take_back_whatever_it_was_gi
 }
 
 #[test]
+fn a_plan_promises_a_clear_only_when_prikk_does_not_say_the_holder_is_running() {
+    // M31 (W-f): prikk 0.57.0's `unlock --yes` does not clear a holder that appears running, so the plan says the run
+    // stops at the lock and why, and never that it clears it and shows the preview. A holder prikk calls not running,
+    // or cannot judge, is the promise it was (the lease record decides: PL-8).
+    let (mut w, id) = orphan();
+    for (liveness, running) in [
+        (
+            "appears running -- do not clear: the process that took the lock is still running",
+            true,
+        ),
+        (
+            "does not appear to be running (not proof it is safe to clear)",
+            false,
+        ),
+        ("unknown: written by an older prikk", false),
+    ] {
+        w.locks = vec![lock("active", 2_147_483_000, liveness)];
+        for offer in [DiscardOffer::InARun, DiscardOffer::AfterLocks] {
+            let said = typed(&w, offer.clone(), &id);
+            let notes = said.notes.join("\n");
+            let word = said.discard_unused.clone().unwrap_or_default();
+            assert_eq!(said.stop, Some(Stop::ForeignQueuedPatch));
+            // The step is the run's attempt either way.
+            assert_eq!(names(&said), ["clear-locks"]);
+            if running {
+                assert!(
+                    notes.contains("appears running")
+                        && notes
+                            .contains("the run tries to clear it (step 1) and stops at that step")
+                        && !notes.contains("the run clears it first")
+                        && !notes.contains("and the command"),
+                    "{offer:?}: {notes}"
+                );
+                assert_eq!(
+                    word,
+                    "a lock held by a process prikk says appears running stands in the way: a run stops at clear-locks, shows no preview, and takes nothing back"
+                );
+                assert!(!word.contains("next run takes the patch back"));
+            } else {
+                assert!(
+                    notes.contains("the run clears it first") && !notes.contains("appears running"),
+                    "{offer:?}: {notes}"
+                );
+                assert!(
+                    word.contains("a run clears it and stops with the preview"),
+                    "{word}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn a_lone_metadata_debris_warning_is_noted_and_in_nobodys_way() {
     // M16 (PK-46): harmless, and the next commit clears it; the plan used to stop at `doctor-trouble` for it.
     let debris = || {
@@ -2090,7 +2143,7 @@ fn a_format_marker_prikk_will_not_open_is_a_stop_of_its_own_and_nothing_else_is_
     // M17: prikk refused the repository by its format marker, and this prikk is not known to refuse that format. Nothing
     // else was read, so whatever the other witnesses would say (a queue, an unfinished act, a lock) is not consulted.
     let mut w = flagged();
-    w.format_marker = Some(Some(9));
+    w.format_marker = Some(MarkerError::Numbered(9));
     let plan = build(&w);
     assert_eq!(plan.stop, Some(Stop::FormatMarker));
     assert!(plan.steps.is_empty(), "{:?}", names(&plan));
@@ -2127,7 +2180,7 @@ fn a_format_marker_that_is_not_a_number_is_said_so_and_the_flags_reason_is_expla
     // a flag whose act is not known (`interrupted`) is said to be that, never left to read as an act that never ended.
     let mut w = flagged();
     w.flag.as_mut().unwrap().reason = inklkunn_store::RecoveryReason::Interrupted;
-    w.format_marker = Some(None);
+    w.format_marker = Some(MarkerError::NotANumber);
     let plan = build(&w);
     assert_eq!(plan.stop, Some(Stop::FormatMarker));
     let lines = plan.lines();

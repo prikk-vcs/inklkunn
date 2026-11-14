@@ -1581,6 +1581,7 @@ fn the_end_event_is_derived_from_the_steps_that_finished_never_from_the_plans_in
     assert_eq!(discard_word_fate(&Ok(stopped_later)), None);
     let errored: Result<RecoveryReport, RecoveryError> = Err(RecoveryError::AfterSteps {
         done: vec!["discard-queued", "restore-worktree"],
+        failed: None,
         cause: Box::new(RecoveryError::Audit("the trail is full".to_owned())),
     });
     assert_eq!(discard_word_fate(&errored), None);
@@ -1602,6 +1603,7 @@ fn the_end_event_is_derived_from_the_steps_that_finished_never_from_the_plans_in
         RecoveryError::Witness("prikk doctor: gone".to_owned()),
         RecoveryError::AfterSteps {
             done: vec!["clear-locks"],
+            failed: None,
             cause: Box::new(RecoveryError::Audit("full".to_owned())),
         },
     ] {
@@ -1610,6 +1612,31 @@ fn the_end_event_is_derived_from_the_steps_that_finished_never_from_the_plans_in
             Some("recovery ended in an error before it took the patch back")
         );
     }
+
+    // M31: a step failed and the trail failed after it. The end event says the step's own sentence, and the error says
+    // it too, with no "nothing was done".
+    let stopped_then_trail: Result<RecoveryReport, RecoveryError> =
+        Err(RecoveryError::AfterSteps {
+            done: Vec::new(),
+            failed: Some(inklkunn_core::RecoveryFailedStep {
+                step: "clear-locks",
+                why: "the lock was cleared, and the check after it could not be read".to_owned(),
+            }),
+            cause: Box::new(RecoveryError::Audit("full".to_owned())),
+        });
+    assert_eq!(
+        discard_word_fate(&stopped_then_trail).as_deref(),
+        Some("the lock was cleared, and the check after it could not be read")
+    );
+    let said = stopped_then_trail
+        .err()
+        .map(|e| e.to_string())
+        .unwrap_or_default();
+    assert!(
+        said.contains("the lock was cleared, and the check after it could not be read")
+            && !said.contains("nothing was done"),
+        "{said}"
+    );
 
     // The lock was not cleared: the plan meant to clear it and stop with the preview, and the step failed. The plan's
     // own reason (the intent) is not what is said.
