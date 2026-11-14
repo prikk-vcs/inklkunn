@@ -1,7 +1,7 @@
 //! The way to the curation form (RFC 005 part 2 D-3; handoff 005 K39).
 //!
 //! The curation form (`…/proposals/curate?claim=<id>`) is the only place a community status, a review day, an
-//! availability, a link's relation, bearing or removal, and what a checked source is can be proposed, so every page that
+//! availability, a link's relation, bearing or removal, and what any source is can be proposed, so every page that
 //! tells a reader about a claim, or that tells them a change needs a curation proposal, leads to it, **for those who may
 //! propose** (an account the authorizer lets propose to the wiki) and for nobody else: a link a reader cannot use is not
 //! offered. And it is offered **only for a refusal the form can then make** (K44): the form never removes a file, so for

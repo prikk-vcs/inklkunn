@@ -3092,7 +3092,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "curate.work_hint",
-        "This source was checked, so who and what it is, where it is found and which source replaces it are changed here, and not in a page edit.",
+        "Who and what this source is, where it is found and which source replaces it are corrected here.",
     ),
     msg("curate.label_superseded", "The source that replaces it"),
     msg(
@@ -3102,10 +3102,6 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "curate.removed_and_changed",
         "A link is either changed or removed, not both. Untick the box, or leave the link as it was.",
-    ),
-    msg(
-        "curate.not_checked",
-        "This source has not been checked, so who and what it is, where it is found and which source replaces it are changed in a page edit. Record when it was checked, or whether it can be had, and they can be changed here.",
     ),
     msg(
         "curate.replaced_by_itself",

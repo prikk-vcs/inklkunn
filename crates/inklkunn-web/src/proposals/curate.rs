@@ -18,7 +18,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use inklkunn_core::Action;
 use inklkunn_core::knowledge::compose::{
-    Curation, LinkEdit, Mistake, SourceEdit, Work, curate, is_checked, page_id_of,
+    Curation, LinkEdit, Mistake, SourceEdit, Work, curate, page_id_of,
 };
 use inklkunn_core::knowledge::marker::words_with_id;
 use inklkunn_core::knowledge::{
@@ -251,14 +251,14 @@ struct Submitted {
     /// The links whose box says the claim lets them go.
     removed: Vec<SourceId>,
     sources: Vec<SourceEdit>,
-    /// What a checked source is, as the form sent it, by source.
+    /// What a source is, as the form sent it, by source.
     works: Vec<(SourceId, WorkText)>,
     confirm: bool,
     summary: String,
     op: Op,
 }
 
-/// What a checked source is, where it is found and what replaces it, as the form carries it: texts, with the successor
+/// What a source is, where it is found and what replaces it, as the form carries it: texts, with the successor
 /// as typed (a text that is no identifier is said so on the form, not taken for an incomplete post).
 #[derive(Clone, PartialEq, Eq)]
 struct WorkText {
@@ -354,7 +354,7 @@ fn read(fields: &HashMap<String, String>) -> Option<Submitted> {
                 work: None,
             });
         }
-        // What a source is: offered for a source whose file could be read, so a form without it says nothing. The texts
+        // What a source is: offered for a source whose file could be read, checked or not (K60), so a form without it says nothing. The texts
         // are kept **as sent** (K59): the core compares each with what the source has and cleans only one that differs,
         // so a title the form carried back with a space at its end is not a change.
         if let Some(title) = one(fields::C_TITLE) {
@@ -420,7 +420,7 @@ struct SourceView {
     availabilities: Vec<OptionView>,
 }
 
-/// The fields of what a checked source is (K44).
+/// The fields of what a source is (K44, K60).
 struct WorkView {
     hint: String,
     title_name: String,
@@ -487,7 +487,7 @@ struct Shown {
     availability: Vec<Availability>,
     /// Which links are to go, by link.
     removed: Vec<bool>,
-    /// What each checked source is, by link; `None` for one that was not checked (the form does not offer it).
+    /// What each source is, by link; `None` for one whose file could not be read (the form does not offer it).
     works: Vec<Option<WorkText>>,
     confirm: bool,
     summary: String,
@@ -523,7 +523,7 @@ impl Shown {
             works: subject
                 .cited
                 .iter()
-                .map(|s| s.as_ref().filter(|s| is_checked(s)).map(WorkText::of))
+                .map(|s| s.as_ref().map(WorkText::of))
                 .collect(),
             confirm: false,
             summary: String::new(),
@@ -910,7 +910,7 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
     }
     let cited: Vec<Source> = subject.cited.iter().flatten().cloned().collect();
     let shown = Shown::sent(&subject, &sub);
-    // What a checked source is, in the core's words (a successor that is no identifier is said so, on the form).
+    // What a source is, in the core's words (a successor that is no identifier is said so, on the form).
     let mut sources = sub.sources.clone();
     let mut mistake = None;
     for (id, text) in &sub.works {

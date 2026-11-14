@@ -1,7 +1,7 @@
 //! The curation proposal over the API (RFC 005 part 2 D-3, D-12; handoff 005 K-T11, K44): a proposal of its own, with no
 //! page text, for a claim's community status, how each source bears on it (or that a link goes), when a person last
-//! checked each source and whether it can be had, and, for a source that was checked, who and what it is, where it is
-//! found and which source replaces it. It is the form's proposal (`proposals::curate`), made by the same core function ([`curate`]) from the claim and
+//! checked each source and whether it can be had, and who and what each source is, where it is found and which source
+//! replaces it (any source the claim cites, checked or not: K60). It is the form's proposal (`proposals::curate`), made by the same core function ([`curate`]) from the claim and
 //! its sources **as the base the caller named has them**, and judged by the same rules at submit, at every revision and at
 //! acceptance; this only reads a JSON body instead of a form. The service is the one write path.
 //!
@@ -284,7 +284,6 @@ fn mistake(req: &Request, m: Mistake) -> Problem {
         Mistake::NoWording => "no-wording",
         Mistake::NotADay => "not-a-day",
         Mistake::RemovedAndChanged => "removed-and-changed",
-        Mistake::NotChecked => "not-checked",
         Mistake::ReplacedByItself => "replaced-by-itself",
         Mistake::UnknownSuccessor => "unknown-successor",
         Mistake::Unwritable => return Problem::new(Code::Failed),

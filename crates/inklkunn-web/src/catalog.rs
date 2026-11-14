@@ -1653,7 +1653,6 @@ keys! {
     CurateLabelSuperseded => "curate.label_superseded",
     CurateSupersededHint => "curate.superseded_hint",
     CurateRemovedAndChanged => "curate.removed_and_changed",
-    CurateNotChecked => "curate.not_checked",
     CurateReplacedByItself => "curate.replaced_by_itself",
     CurateUnknownSuccessor => "curate.unknown_successor",
     KnowNotByForm => "know.not_by_form",

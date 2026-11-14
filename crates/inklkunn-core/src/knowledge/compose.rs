@@ -53,9 +53,6 @@ pub enum Mistake {
     NoWording,
     /// The same link is both changed and removed.
     RemovedAndChanged,
-    /// Who and what a source is, where it is found, or what replaces it is curation's to change **once the source was
-    /// checked**; this source was not, so that is the page edit's.
-    NotChecked,
     /// A source is not replaced by itself.
     ReplacedByItself,
     /// The source that replaces another is not a source of the wiki.
@@ -363,9 +360,10 @@ pub struct LinkEdit {
     pub bearing: Bearing,
 }
 
-/// Who and what a source is, where it is found and which source replaces it, **as it should be** (K44): what only
-/// curation changes once a source was checked (K30, K36). The texts are as a person wrote them; an empty one is
-/// nothing.
+/// Who and what a source is, where it is found and which source replaces it, **as it should be** (K44, K60): what a
+/// curation proposal corrects in any source, checked or not, since no page edit writes an existing source file (and,
+/// once a source was checked, only curation may: K30, K36). The texts are as a person wrote them; an empty one is
+/// nothing. Each part is compared with what the source has and replaced on its own (K59).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Work {
     /// A title.
@@ -403,12 +401,6 @@ impl Work {
     }
 }
 
-/// Was this source checked by a person (it has a review day or an availability)? Only then is who and what it is, where
-/// it is found and which source replaces it curation's (`check::Curated::departure`).
-pub fn is_checked(source: &Source) -> bool {
-    source.availability != Availability::Unknown || source.last_reviewed.is_some()
-}
-
 /// What a person changed about a source.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceEdit {
@@ -419,7 +411,7 @@ pub struct SourceEdit {
     /// Whether it can be had, as the person who checked says.
     pub availability: Availability,
     /// Who and what it is, where it is found and what replaces it, as it should be; `None` leaves them as they are.
-    /// Only for a source that was checked ([`Mistake::NotChecked`]).
+    /// For any source the claim cites (K60).
     pub work: Option<Work>,
 }
 
@@ -512,20 +504,7 @@ pub fn curate(
         let mut source = old.clone();
         source.availability = e.availability;
         if let Some(work) = &e.work {
-            // Who and what an unchecked source is stays the page edit's.
-            let mut changed = old.clone();
-            set_work(&mut changed, work)?;
-            if changed.identity != old.identity
-                || changed.reference != old.reference
-                || changed.superseded_by != old.superseded_by
-            {
-                if !is_checked(old) {
-                    return Err(Mistake::NotChecked);
-                }
-                source.identity = changed.identity;
-                source.reference = changed.reference;
-                source.superseded_by = changed.superseded_by;
-            }
+            set_work(&mut source, work)?;
         }
         let day = e.reviewed.trim();
         let before = old.last_reviewed.as_ref().map(|r| r.date.as_str());

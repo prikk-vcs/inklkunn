@@ -623,50 +623,42 @@ fn source_of(files: &Files) -> inklkunn_core::knowledge::Source {
 }
 
 #[tokio::test]
-async fn the_form_offers_to_let_a_link_go_and_what_a_checked_source_is_only_for_a_checked_source() {
-    let s = scene();
-    let body = open(&s, &claim_uri(&s), &s.writer).await.body();
-    assert!(body.contains("name=\"c0_remove\""), "{body}");
-    assert!(
-        body.contains("The claim no longer cites this source"),
-        "{body}"
-    );
-    for name in [
-        "c0_title",
-        "c0_author",
-        "c0_date",
-        "c0_ref_form",
-        "c0_ref",
-        "c0_superseded_by",
-    ] {
+async fn the_form_offers_to_let_a_link_go_and_what_a_source_is_for_a_source_checked_or_not() {
+    // K60: no page edit writes an existing source file, so the fields are there for a source that was not checked too, and
+    // the form sends nobody to a page edit for them.
+    for (s, what) in [(scene(), "not checked"), (checked_scene(), "checked")] {
+        let body = open(&s, &claim_uri(&s), &s.writer).await.body();
+        assert!(body.contains("name=\"c0_remove\""), "{what}: {body}");
         assert!(
-            !body.contains(&format!("name=\"{name}\"")),
-            "a source that was not checked is the page edit's: {name}"
+            body.contains("The claim no longer cites this source"),
+            "{what}: {body}"
         );
+        for name in [
+            "c0_title",
+            "c0_author",
+            "c0_date",
+            "c0_ref_form",
+            "c0_ref",
+            "c0_superseded_by",
+        ] {
+            assert!(
+                body.contains(&format!("name=\"{name}\"")),
+                "{what}: {name}: {body}"
+            );
+        }
+        // The source's own words are in the fields, and the way to name what replaces it is said.
+        assert!(
+            body.contains("name=\"c0_title\" type=\"text\" value=\"A history of the bridge\""),
+            "{what}: {body}"
+        );
+        assert!(
+            body.contains("The source that replaces it"),
+            "{what}: {body}"
+        );
+        assert!(body.contains("are corrected here"), "{what}: {body}");
+        assert!(!body.contains("page edit"), "{what}: {body}");
+        assert!(!body.contains("<script"));
     }
-    // Checked, the source's own words are in the fields, and the way to name what replaces it is said.
-    let s = checked_scene();
-    let body = open(&s, &claim_uri(&s), &s.writer).await.body();
-    for name in [
-        "c0_title",
-        "c0_author",
-        "c0_date",
-        "c0_ref_form",
-        "c0_ref",
-        "c0_superseded_by",
-    ] {
-        assert!(body.contains(&format!("name=\"{name}\"")), "{name}: {body}");
-    }
-    assert!(
-        body.contains("name=\"c0_title\" type=\"text\" value=\"A history of the bridge\""),
-        "{body}"
-    );
-    assert!(body.contains("The source that replaces it"), "{body}");
-    assert!(
-        body.contains("are changed here, and not in a page edit"),
-        "{body}"
-    );
-    assert!(!body.contains("<script"));
 }
 
 #[tokio::test]
@@ -792,9 +784,10 @@ async fn a_checked_source_is_corrected_in_its_identity_reference_and_successor_a
 }
 
 #[tokio::test]
-async fn what_an_unchecked_source_is_is_not_changed_here_and_what_replaces_a_source_is_a_source_of_the_wiki()
+async fn what_a_source_that_was_not_checked_is_is_corrected_here_and_what_replaces_a_source_is_a_source_of_the_wiki()
  {
-    // A hand-made post that names a title for a source that was not checked: said so, nothing is sent.
+    // K60: a title for a source that was not checked is a correction like any other: its file alone is proposed, and the
+    // correction records no check.
     let s = scene();
     let fields = with(
         unchanged(&s, 1),
@@ -807,9 +800,19 @@ async fn what_an_unchecked_source_is_is_not_changed_here_and_what_replaces_a_sou
             ("c0_superseded_by", ""),
         ],
     );
-    let a = send(&s, FORM, &s.writer, &fields).await;
-    assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(a.body().contains("has not been checked"), "{}", a.body());
+    let made = send(&s, FORM, &s.writer, &fields).await;
+    let files = files_of(&s, &location(&made));
+    assert_eq!(
+        paths(&files),
+        [source_path(&super::claims::source_id()).as_str()]
+    );
+    let corrected = source_of(&files);
+    assert_eq!(corrected.identity.title.as_deref(), Some("Another title"));
+    assert_eq!(
+        (corrected.availability, corrected.last_reviewed),
+        (Availability::Unknown, None)
+    );
+    // That proposal is sent: the checked source below is judged against a fresh scene.
 
     // A checked source: what replaces it is a source the wiki has, named by its identifier, and not itself.
     let s = checked_scene();

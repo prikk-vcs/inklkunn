@@ -797,13 +797,22 @@ async fn what_a_curation_may_not_say_about_a_link_or_a_source_is_refused_in_word
     };
     let one = source_id(1).to_string();
     let two = source_id(2).to_string();
-    // A source that was not checked: who and what it is is a page edit's.
+    // A source that was not checked is corrected like one that was (K60): no page edit writes its file, and the
+    // correction asserts no check. (In a wiki of its own: the proposal it makes is not one of "nothing was made" below.)
+    let apart = cast_checked();
     let a = propose(
-        &c,
-        json!({"sources": [{"source": two, "reviewed": "", "availability": "unknown", "title": "Another"}]}),
+        &apart,
+        json!({"sources": [{"source": two, "title": "Another", "superseded_by": one}]}),
     )
     .await;
-    unacceptable(&a, "not-checked");
+    assert_eq!(a.status, 201, "{}", a.text());
+    let unchecked = source_in(&stored(&apart, &a), 2);
+    assert_eq!(unchecked.identity.title.as_deref(), Some("Another"));
+    assert_eq!(unchecked.superseded_by, Some(source_id(1)));
+    assert_eq!(
+        (unchecked.availability, unchecked.last_reviewed),
+        (inklkunn_core::knowledge::Availability::Unknown, None)
+    );
     // A link changed and let go.
     let a = propose(
         &c,

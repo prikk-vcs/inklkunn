@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use super::*;
 use crate::knowledge::compose::{
     Attachment, Curation, LinkEdit, Mistake, SourceDraft, SourceEdit, Work, attach,
-    clean_reference, clean_text, curate, is_checked, page_id_of, paragraph_id, without_expressions,
+    clean_reference, clean_text, curate, page_id_of, paragraph_id, without_expressions,
 };
 
 const PAGE: &str = "---\ntitle: Bridge\n---\n\nIt opened in 1950.\n\nIt is long.\n";
@@ -693,29 +693,45 @@ fn a_checked_source_has_its_identity_reference_and_successor_set_by_curation() {
 }
 
 #[test]
-fn what_an_unchecked_source_is_stays_the_page_edits_and_the_texts_are_those_of_a_new_source() {
+fn any_source_is_corrected_by_curation_checked_or_not_and_the_texts_are_those_of_a_new_source() {
     let (claim, _) = cited_claim();
     let now = digest_of("new");
-    // Not checked: the same words change nothing; other words are the page edit's.
+    // Not checked (K60): the same words change nothing, and other words are corrected like a checked source's.
     let unchecked = Source::new(source_id(1));
-    assert!(!is_checked(&unchecked));
     let same = worked(&claim, &unchecked, Work::of(&unchecked));
     assert_eq!(
         curate(&claim, std::slice::from_ref(&unchecked), Some(&now), &same),
         Ok(vec![])
     );
-    let other = worked(&claim, &unchecked, corrected(&unchecked));
+    let mut work = corrected(&unchecked);
+    work.superseded_by = Some(source_id(2));
+    let other = worked(&claim, &unchecked, work);
+    let files = curate(&claim, std::slice::from_ref(&unchecked), Some(&now), &other)
+        .expect("an unchecked source is corrected too");
+    let after = written(&files, &unchecked);
     assert_eq!(
-        curate(&claim, std::slice::from_ref(&unchecked), Some(&now), &other),
-        Err(Mistake::NotChecked)
+        (
+            after.identity.title.as_deref(),
+            after.reference.as_ref().map(|r| r.form),
+            after.superseded_by.clone(),
+            after.availability,
+            after.last_reviewed.clone()
+        ),
+        (
+            Some("A history, second edition"),
+            Some(ReferenceForm::Doi),
+            Some(source_id(2)),
+            Availability::Unknown,
+            None
+        ),
+        "the correction asserts no check"
     );
-    // A review day counts as checking, as it does at the acceptance.
+    // A review day does not change that.
     let mut reviewed = Source::new(source_id(1));
     reviewed.last_reviewed = Some(Reviewed {
         date: "2026-11-01".to_owned(),
         proposal: None,
     });
-    assert!(is_checked(&reviewed));
     let edit = worked(&claim, &reviewed, corrected(&reviewed));
     assert_eq!(
         curate(&claim, std::slice::from_ref(&reviewed), Some(&now), &edit)
@@ -724,7 +740,7 @@ fn what_an_unchecked_source_is_stays_the_page_edits_and_the_texts_are_those_of_a
         1
     );
 
-    // A checked source: it still names a work, is not replaced by itself, and keeps the format's bounds.
+    // A source: it still names a work, is not replaced by itself, and keeps the format's bounds.
     let source = checked();
     let refused = |work: Work| {
         curate(

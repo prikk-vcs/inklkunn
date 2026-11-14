@@ -1467,6 +1467,49 @@ fn a_curation_removes_a_link_and_corrects_a_checked_source_through_the_whole_pat
         }
     }
 
+    // 1b. A source that was not checked is corrected by a curation proposal too (K60): the second source's title, with no
+    //     review and no availability set.
+    let corrected_title = Curation {
+        status: Standing::Unknown,
+        links: link_edits(&claim),
+        removed: Vec::new(),
+        sources: vec![SourceEdit {
+            source: two.id.clone(),
+            reviewed: String::new(),
+            availability: Availability::Unknown,
+            work: Some(Work {
+                title: "A later history, corrected".to_owned(),
+                ..Work::of(&two)
+            }),
+        }],
+        confirm: false,
+    };
+    let files = curate(
+        &claim,
+        &[one.clone(), two.clone()],
+        Some(&now),
+        &corrected_title,
+    )
+    .unwrap();
+    let refs: Vec<(&str, Option<&str>)> = files
+        .iter()
+        .map(|(p, t)| (p.as_str(), Some(t.as_str())))
+        .collect();
+    assert_eq!(refs.len(), 1, "the second source alone: {refs:?}");
+    signed(
+        w.accept(&w.propose("Correct the later history", &refs))
+            .unwrap(),
+    );
+    let two = read_source(&second_file);
+    assert_eq!(
+        two.identity.title.as_deref(),
+        Some("A later history, corrected")
+    );
+    assert_eq!(
+        (two.availability, two.last_reviewed.clone()),
+        (Availability::Unknown, None)
+    );
+
     // 2. A curation proposal does both at once: the claim lets the second source go, the first is given its
     //    corrected title and reference and is marked as replaced by the second (whose file stays).
     let blocks = w.history().len();
@@ -1523,7 +1566,7 @@ fn a_curation_removes_a_link_and_corrects_a_checked_source_through_the_whole_pat
     assert!(corrected.last_reviewed.and_then(|r| r.proposal).is_some());
     assert_eq!(
         read_source(&second_file).identity.title.as_deref(),
-        Some("A later history")
+        Some("A later history, corrected")
     );
     w.reads.forget_wiki(&w.wiki);
     let index = w.reads.knowledge_index(&w.wiki, None).unwrap();

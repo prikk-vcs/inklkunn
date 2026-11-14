@@ -1338,6 +1338,16 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   each field, the form for the trailing space and the line break as a browser sends them, the API for `author` alone, `title`
   alone (the review day stays) and the two ways to clear.
 
+- **K60 (handoff 005 corrections, sixth round): curation corrects any source.** No page edit writes an existing source file, so the
+  `not-checked` refusal (K44) left an unchecked source's title, author, date, reference and `superseded_by` correctable nowhere,
+  short of recording a review nobody made. Curation now corrects them as it does a checked source's, in the form (the fields are
+  offered for every source whose file can be read) and in the API; the correction records no check. `Mistake::NotChecked`,
+  `compose::is_checked`, the catalog entry `curate.not_checked` (English, Japanese, glossary) and the API reason `not-checked` go,
+  and `curate.work_hint` and the OpenAPI texts no longer send anyone to a page edit. The page-edit rule of K30 is unchanged: a
+  proposal that is not a curation still may not change a checked source's work. Tests: the core for an unchecked and a reviewed
+  source, the form's fields for both, a correction through the form and through the API that sets no review and no availability, and
+  the real history (a curation corrects the unchecked source, then the whole K44 path as before).
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the
