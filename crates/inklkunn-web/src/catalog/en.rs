@@ -2969,4 +2969,43 @@ pub const CATALOG: &[Entry] = &[
         "What is recorded of whether it can be had goes with it: {availability}.",
     ),
     // knowledge: what leaves with a removal (handoff 005 corrections, third round K27): end
+    msg("health.sources_name", "Sources to review"),
+    msg(
+        "health.sources_desc",
+        "Sources that were last reviewed long ago or never, and sources a person marked as unavailable, each with the claims that rely on it. The wiki checks nothing and fetches nothing: a person looks at the source and says so in a proposal.",
+    ),
+    msg("health.col_source", "Source"),
+    msg("health.col_why", "Why it is listed"),
+    msg("health.col_claims", "Claims that rely on it"),
+    msg(
+        "health.sources_action",
+        "Look at the source, then propose the day you looked and whether it can be had.",
+    ),
+    msg("health.none_sources", "No source needs a look."),
+    msg(
+        "health.sources_unavailable",
+        "A person who checked marked it as unavailable.",
+    ),
+    msg("health.sources_never", "No one has recorded looking at it."),
+    msg("health.sources_last", "Last reviewed on {day}."),
+    msg(
+        "health.sources_overdue",
+        "Last reviewed on {day}, more than {limit} days ago.",
+    ),
+    plural_msg(
+        "health.sources_claims",
+        "{count} claim relies on it:",
+        "{count} claims rely on it:",
+    ),
+    msg("health.sources_cut", "The first {limit} are named."),
+    msg("health.sources_no_claims", "No claim relies on it."),
+    msg("health.sources_claim", "{where} ({how})"),
+    msg(
+        "health.sources_claim_nowhere",
+        "A claim said on no page now, identifier {id}",
+    ),
+    msg(
+        "health.sources_setting",
+        "A source is listed when it was last reviewed more than {days} days ago. The person who runs this server sets the number.",
+    ),
 ];

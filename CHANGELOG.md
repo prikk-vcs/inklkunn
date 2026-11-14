@@ -631,6 +631,23 @@ prikk shimmed off `PATH` (299 self-skips). Everything holds, with three correcti
 whole when `verify` fails (M8); a path not in NFC is **refused** at `commit`, not rewritten; and the `uncommit` cost rule
 needed 9.0 x S (M9). Also measured for the first time: `unlock --yes` refuses a live 0.57 holder and leaves its lock. The notes
 file now says which tree and which binary every figure is about.
+- **K-T9 (handoff 005, freshness; RFC 005 part 2 D-10, KN-8): a health list *Sources to review*.** A source is listed when a
+  person marked it `unavailable`, when no one has recorded a `last_reviewed` for it (*never reviewed*), or when its
+  `last_reviewed` is longer ago than `knowledge.review_after`; a row says which, in words, and names the claims that rely on
+  it, each linked to its claim page and said with how the source bears on it (*supports, directly*), at most 50 beside a source
+  with the whole count kept. Nothing ranks: the rows are in source-id order, and no word, number or colour says how good a
+  source is. **Nothing is fetched**: the list reads the derived knowledge index of the tip and a day, and a test holds the file
+  free of the network, a process and the system clock. The day comes from the read service's injected clock
+  (`ReadService::with_clock`; a test fixes it); the setting is `ReadService::with_review_after_days`, and **a source reviewed
+  exactly the setting's days ago is not yet old** (more than, not at least; a day in the future is not old, a day the index cannot read
+  is *never reviewed*). `knowledge.review_after` is the operator's, for all wikis, in days: `INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS`
+  (default `1096`, three years; 1 to 36,500). The list is the eighth in `-/health`, `-/health/sources-to-review` and the read API's
+  `health?list=sources-to-review` (rows: the source id, `reasons`, `last_reviewed`, `claims`, `claims_total`, action
+  `check-the-source`; the OpenAPI document and its drift tests follow). No store change. New: `knowledge::freshness`,
+  `HealthList::SourcesToReview`, `HealthRows::SourcesToReview`, `ReadService::{with_clock, with_review_after_days,
+  review_after_days, sources_to_review}`. Tests: the boundary of the setting, unavailable without a review, never reviewed, the
+  claims, the cut, paging by a cursor stamped with the day, both languages, existence neutrality, escaping and the ranking words;
+  no prikk-dependent test.
 
 ## [0.2.0] — 2026-11-04
 

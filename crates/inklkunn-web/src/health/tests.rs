@@ -14,7 +14,8 @@ fn every_list_has_its_address_and_the_address_leads_back_to_it() {
             "redirects",
             "wants-help",
             "stale",
-            "knowledge-files"
+            "knowledge-files",
+            "sources-to-review"
         ]
     );
     for kind in Kind::ALL {
@@ -71,6 +72,7 @@ fn what_resolves_a_row_is_one_word_in_the_pages_and_one_code_in_the_api() {
         Resolve::Help,
         Resolve::Review,
         Resolve::KnowledgeFile,
+        Resolve::SourceCheck,
     ];
     let ja = crate::catalog::Lang::from_tag("ja").unwrap();
     for resolve in all {

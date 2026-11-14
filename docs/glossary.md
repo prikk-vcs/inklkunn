@@ -1325,6 +1325,23 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `know.removed_had_link` | under a removed claim, one line for each source it cited; `{source}` is the source's name, set apart, `{relation}` and `{bearing}` how it spoke to the claim | "Its link to the source {source} goes with it: it {relation} the claim {bearing}." | "出典 {source} とのつながりも一緒に削除されます: {relation}（{bearing}）。" |
 | `know.removed_had_reviewed` | under a removed source that was marked as checked; `{day}` is the day | "The day it was last checked goes with it: {day}." | "最後に確認した日も一緒に削除されます：{day}。" |
 | `know.removed_had_availability` | under a removed source; `{availability}` is what was recorded of whether it can be had | "What is recorded of whether it can be had goes with it: {availability}." | "入手できるかどうかの記録も一緒に削除されます：{availability}。" |
+| `health.sources_name` | the name of the list of sources a person should look at again | "Sources to review" | "見直す出典" |
+| `health.sources_desc` | what that list shows | "Sources that were last reviewed long ago or never, and sources a person marked as unavailable, each with the claims that rely on it. The wiki checks nothing and fetches nothing: a person looks at the source and says so in a proposal." | "ずいぶん前に確認されたきり、または一度も確認されていない出典と、確認した人が利用できないと記した出典を、それに拠る主張とともに示します。ウィキは何も確認せず、何も取得しません。人が出典を確かめ、提案でそのことを記します。" |
+| `health.col_source` | the heading of the column with a source's name | "Source" | "出典" |
+| `health.col_why` | the heading of the column that says why a source is listed | "Why it is listed" | "挙げられている理由" |
+| `health.col_claims` | the heading of the column with the claims that rely on a source | "Claims that rely on it" | "それに拠る主張" |
+| `health.sources_action` | in each row of that list: what would resolve it | "Look at the source, then propose the day you looked and whether it can be had." | "出典を確かめたうえで、確かめた日と、利用できるかどうかを提案してください。" |
+| `health.none_sources` | in place of that list when there is no source to list | "No source needs a look." | "見直す必要のある出典はありません。" |
+| `health.sources_unavailable` | a reason in that list: a person who checked marked the source as unavailable | "A person who checked marked it as unavailable." | "確認した人が、利用できないと記しています。" |
+| `health.sources_never` | a reason in that list: no one has recorded looking at the source | "No one has recorded looking at it." | "確認したと記録した人はまだいません。" |
+| `health.sources_last` | under a source in that list that is listed for another reason; `{day}` is the day it was last reviewed, as written | "Last reviewed on {day}." | "最後の確認は {day} です。" |
+| `health.sources_overdue` | a reason in that list; `{day}` is the day it was last reviewed, as written, `{limit}` the number of days after which a review is old | "Last reviewed on {day}, more than {limit} days ago." | "最後の確認は {day} で、{limit} 日を超えて前です。" |
+| `health.sources_claims` | in the cell of the claims that rely on a source; `{count}` is how many | "{count} claim relies on it:" / "{count} claims rely on it:" | "{count} 件の主張がこれに拠っています：" |
+| `health.sources_cut` | after that sentence when more claims rely on the source than are named; `{limit}` is how many are named | "The first {limit} are named." | "先頭の {limit} 件だけを挙げています。" |
+| `health.sources_no_claims` | in the cell of the claims when no claim relies on the source | "No claim relies on it." | "これに拠る主張はありません。" |
+| `health.sources_claim` | the name of a claim that relies on a source; `{where}` is the page it is said on, `{how}` how the source bears on it | "{where} ({how})" | "{where}（{how}）" |
+| `health.sources_claim_nowhere` | the name of a claim that relies on a source and that no page says now; `{id}` is its identifier | "A claim said on no page now, identifier {id}" | "いまどのページにも書かれていない主張、識別子 {id}" |
+| `health.sources_setting` | under that list; `{days}` is the number of days after which a review is old | "A source is listed when it was last reviewed more than {days} days ago. The person who runs this server sets the number." | "最後の確認から {days} 日を超えた出典が挙げられます。この日数は、このサーバーの管理者が定めます。" |
 
 ## 3. Words the interface does not say
 

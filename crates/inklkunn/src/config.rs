@@ -17,6 +17,7 @@
 //! | `INKLKUNN_INDEX_MAX_MIB` | (`serve`) the largest wiki, in MiB of everything it holds (attachments too), the title index is built from; a larger one is "could not be read now" until this is raised. **The build extracts the whole wiki into `<data dir>/wikis/…/scratch` for a moment, so the data directory needs that much free disk.** | `4096` |
 //! | `INKLKUNN_INDEX_MAX_FILES` | (`serve`) the most files the title index is built from | `200000` |
 //! | `INKLKUNN_PAGE_MAX_KIB` | (`serve`) the largest page source read, in KiB | `1024` |
+//! | `INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS` | (`serve`) `knowledge.review_after` (RFC 005 part 2 D-10): how many days after a person last reviewed a source it is listed on the health list *Sources to review*; a source marked unavailable, or never reviewed, is listed whatever this says. The wiki fetches nothing: a person looks at a source and says so in a proposal | `1096` (three years) |
 //! | `INKLKUNN_JOIN` | (`serve`) who may make an account without an invitation: `off` (accounts come only from invitations), `provider` (a first sign-in through the configured OpenID Connect provider makes one; **a public provider makes this open registration**) or `anyone` (also a local account with a password) | `off` |
 //! | `INKLKUNN_OIDC_ISSUER` | (`serve`) the OpenID Connect provider's issuer, an `https` address exactly as the provider publishes it (its discovery document is at `<issuer>/.well-known/openid-configuration`); switches provider sign-in on. Needs `curl`, the system CA bundle, `prlimit` and bubblewrap on the host | none (no provider) |
 //! | `INKLKUNN_OIDC_CLIENT_ID` | (`serve`) the client id registered at the provider; required with the issuer | none |
@@ -279,6 +280,8 @@ pub struct ReadSettings {
     pub index_max_files: u64,
     /// `INKLKUNN_PAGE_MAX_KIB`, default 1024.
     pub page_max_kib: u64,
+    /// `INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS`, default 1096 (`knowledge.review_after`, three years).
+    pub knowledge_review_after_days: u64,
 }
 
 impl Default for ReadSettings {
@@ -288,6 +291,7 @@ impl Default for ReadSettings {
             index_max_mib: 4096,
             index_max_files: 200_000,
             page_max_kib: 1024,
+            knowledge_review_after_days: 1096,
         }
     }
 }
@@ -331,6 +335,12 @@ impl WebSettings {
                 index_max_mib: number("INKLKUNN_INDEX_MAX_MIB", 4096, 1, 1_048_576)?,
                 index_max_files: number("INKLKUNN_INDEX_MAX_FILES", 200_000, 1, 100_000_000)?,
                 page_max_kib: number("INKLKUNN_PAGE_MAX_KIB", 1024, 1, 1_048_576)?,
+                knowledge_review_after_days: number(
+                    "INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS",
+                    1096,
+                    1,
+                    36_500,
+                )?,
             },
             join: match text("INKLKUNN_JOIN")? {
                 None => JoinPolicy::Off,
@@ -370,6 +380,7 @@ pub const KNOWN: &[&str] = &[
     "INKLKUNN_INDEX_MAX_MIB",
     "INKLKUNN_INDEX_MAX_FILES",
     "INKLKUNN_PAGE_MAX_KIB",
+    "INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS",
     "INKLKUNN_TRUSTED_PROXIES",
     "INKLKUNN_JOIN",
     "INKLKUNN_OIDC_ISSUER",

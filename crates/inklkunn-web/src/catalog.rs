@@ -1598,6 +1598,23 @@ keys! {
     KnowRemovedHadReviewed => "know.removed_had_reviewed",
     KnowRemovedHadAvailability => "know.removed_had_availability",
     // knowledge: what leaves with a removal (handoff 005 corrections, third round K27): end
+    HealthSourcesName => "health.sources_name",
+    HealthSourcesDesc => "health.sources_desc",
+    HealthColSource => "health.col_source",
+    HealthColWhy => "health.col_why",
+    HealthColClaims => "health.col_claims",
+    HealthSourcesAction => "health.sources_action",
+    HealthNoneSources => "health.none_sources",
+    HealthSourcesUnavailable => "health.sources_unavailable",
+    HealthSourcesNever => "health.sources_never",
+    HealthSourcesLast => "health.sources_last",
+    HealthSourcesOverdue => "health.sources_overdue",
+    HealthSourcesClaims => "health.sources_claims",
+    HealthSourcesCut => "health.sources_cut",
+    HealthSourcesNoClaims => "health.sources_no_claims",
+    HealthSourcesClaim => "health.sources_claim",
+    HealthSourcesClaimNowhere => "health.sources_claim_nowhere",
+    HealthSourcesSetting => "health.sources_setting",
 }
 
 /// A typed value for a placeholder. Text is HTML-escaped; a link is an escaped label plus an `href` the

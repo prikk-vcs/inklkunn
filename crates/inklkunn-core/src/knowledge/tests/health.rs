@@ -32,8 +32,8 @@ fn listed(w: &World, limit: usize, after: Option<&crate::read::Cursor>) -> crate
 }
 
 #[test]
-fn the_list_is_the_seventh_and_has_its_own_slug() {
-    assert_eq!(HealthList::ALL.len(), 7);
+fn the_list_is_among_the_eight_and_has_its_own_slug() {
+    assert_eq!(HealthList::ALL.len(), 8);
     assert_eq!(HealthList::KnowledgeFiles.slug(), "knowledge-files");
     assert_eq!(
         HealthList::from_slug("knowledge-files"),

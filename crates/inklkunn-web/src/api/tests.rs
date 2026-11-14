@@ -180,7 +180,8 @@ fn a_choice_parameter_documents_its_words_as_an_enum() {
             "redirects",
             "wants-help",
             "stale",
-            "knowledge-files"
+            "knowledge-files",
+            "sources-to-review"
         ]
     );
     for word in &words {

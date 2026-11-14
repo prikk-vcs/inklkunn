@@ -4,6 +4,7 @@
 //! the page it was. No prikk is needed, so these run in both test runs. Every sentence is invented.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+mod freshness;
 mod golden;
 
 #[path = "../common/mod.rs"]

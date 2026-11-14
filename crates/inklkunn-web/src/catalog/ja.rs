@@ -3024,4 +3024,49 @@ pub const CATALOG: &[Entry] = &[
         "入手できるかどうかの記録も一緒に削除されます：{availability}。",
     ),
     // knowledge: what leaves with a removal (handoff 005 corrections, third round K27): end
+    msg("health.sources_name", "見直す出典"),
+    msg(
+        "health.sources_desc",
+        "ずいぶん前に確認されたきり、または一度も確認されていない出典と、確認した人が利用できないと記した出典を、それに拠る主張とともに示します。ウィキは何も確認せず、何も取得しません。人が出典を確かめ、提案でそのことを記します。",
+    ),
+    msg("health.col_source", "出典"),
+    msg("health.col_why", "挙げられている理由"),
+    msg("health.col_claims", "それに拠る主張"),
+    msg(
+        "health.sources_action",
+        "出典を確かめたうえで、確かめた日と、利用できるかどうかを提案してください。",
+    ),
+    msg("health.none_sources", "見直す必要のある出典はありません。"),
+    msg(
+        "health.sources_unavailable",
+        "確認した人が、利用できないと記しています。",
+    ),
+    msg(
+        "health.sources_never",
+        "確認したと記録した人はまだいません。",
+    ),
+    msg("health.sources_last", "最後の確認は {day} です。"),
+    msg(
+        "health.sources_overdue",
+        "最後の確認は {day} で、{limit} 日を超えて前です。",
+    ),
+    plural_msg(
+        "health.sources_claims",
+        "{count} 件の主張がこれに拠っています：",
+        "{count} 件の主張がこれに拠っています：",
+    ),
+    msg(
+        "health.sources_cut",
+        "先頭の {limit} 件だけを挙げています。",
+    ),
+    msg("health.sources_no_claims", "これに拠る主張はありません。"),
+    msg("health.sources_claim", "{where}（{how}）"),
+    msg(
+        "health.sources_claim_nowhere",
+        "いまどのページにも書かれていない主張、識別子 {id}",
+    ),
+    msg(
+        "health.sources_setting",
+        "最後の確認から {days} 日を超えた出典が挙げられます。この日数は、このサーバーの管理者が定めます。",
+    ),
 ];

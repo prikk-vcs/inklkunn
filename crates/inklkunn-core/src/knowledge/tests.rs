@@ -34,6 +34,7 @@ mod compare_views;
 mod compose;
 mod curation;
 mod digest;
+mod freshness;
 mod health;
 mod index;
 mod marker;

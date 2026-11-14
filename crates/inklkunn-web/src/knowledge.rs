@@ -20,4 +20,4 @@ pub(crate) mod others;
 pub(crate) mod paths;
 pub(crate) mod show;
 pub(crate) mod why;
-mod words;
+pub(crate) mod words;

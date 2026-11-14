@@ -11,7 +11,8 @@
 //! structural rules run on, in both languages.
 
 use inklkunn_core::knowledge::{
-    Bearing, Identity, Link, Reference, ReferenceForm, SourceKind, Standing,
+    Availability, Bearing, Expression, Identity, Link, Reference, ReferenceForm, Reviewed,
+    SourceKind, Standing,
 };
 use inklkunn_core::proposal::{NewComment, ProposalEdit};
 use inklkunn_core::{IdentityAuthority, Principal};
@@ -455,7 +456,56 @@ pub(super) const SCENARIOS: &[Scenario] = &[
         uri: "/handbook/-/why/Home",
         headers: &[],
     },
+    // --- the health list Sources to review (K-T9)
+    Scenario {
+        id: "wiki-health-sources-to-review",
+        identity: "wiki-health-sources-to-review",
+        status: 200,
+        warm: &[],
+        setup: to_review,
+        method: "GET",
+        uri: "/handbook/-/health/sources-to-review",
+        headers: &[],
+    },
+    Scenario {
+        id: "wiki-health-sources-to-review-none",
+        identity: "wiki-health-sources-to-review",
+        status: 200,
+        warm: &[],
+        setup: |_| {},
+        method: "GET",
+        uri: "/handbook/-/health/sources-to-review",
+        headers: &[],
+    },
 ];
+
+/// Sources a person should look at again: one marked unavailable that a claim relies on, one never reviewed that no
+/// claim relies on, and one reviewed long ago that two claims rely on, one of them said on a page that is not there.
+fn to_review(w: &World) {
+    let mut unavailable = source(1, SourceKind::Secondary);
+    unavailable.availability = Availability::Unavailable;
+    unavailable.identity.title = Some("The Bridge Survey".to_owned());
+    let never = source(2, SourceKind::Primary);
+    let mut old = source(3, SourceKind::Other);
+    old.last_reviewed = Some(Reviewed {
+        date: "2001-01-01".to_owned(),
+        proposal: None,
+    });
+    let mut first = claim(1, Standing::Contested, Some(PROPOSAL), SAID);
+    first.sources = vec![
+        link(1, Link::Challenges, Bearing::Partial, SAID),
+        link(3, Link::Supports, Bearing::Direct, SAID),
+    ];
+    let mut second = claim(2, Standing::Unknown, None, SAID);
+    second.expressions = vec![Expression::new("page-gone", "b9").unwrap()];
+    second.sources = vec![link(3, Link::Supports, Bearing::Indirect, SAID)];
+    put(
+        w,
+        &home_with(SAID),
+        &[first, second],
+        &[unavailable, never, old],
+    );
+}
 
 // ------------------------------------------------------------------------------------ the setups of the why page
 

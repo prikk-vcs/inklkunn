@@ -480,3 +480,11 @@ exact :: knowledge.rs :: standing :: a placeholder name of a catalog message
 exact :: knowledge.rs :: file :: a placeholder name of a catalog message
 exact :: knowledge.rs :: excerpt :: a placeholder name of a catalog message
 exact :: knowledge.rs :: name :: a placeholder name of a catalog message
+
+# --- the health list Sources to review (RFC 005 part 2 D-10; handoff K-T9)
+exact :: health.rs :: sources-to-review :: a machine-readable value: no sentence a reader sees
+exact :: health.rs :: check-the-source :: the read API's code for what would resolve a row (a stable word of the API; the pages say it in the catalog's words)
+exact :: health.rs :: day :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: health.rs :: where :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: health.rs :: how :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: health.rs :: days :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence

@@ -257,18 +257,22 @@ pub(super) fn schemas() -> Map<String, Value> {
     out.insert(
         "HealthItem".to_owned(),
         object(
-            "One row of a health list. `action` is what would resolve it, as a code: `add-page-or-fix-links` (wanted), `link-to-it` (orphans), `link-from-it` (dead-ends), `retarget-or-remove`, `break-the-loop`, `point-at-final-page` (redirects), `finish-and-unmark` (wants-help), `review` (stale), `fix-or-remove-file` (knowledge-files). The other members depend on the list. For `knowledge-files` the `title` is the file's path in the repository (a storage path, not a page).",
+            "One row of a health list. `action` is what would resolve it, as a code: `add-page-or-fix-links` (wanted), `link-to-it` (orphans), `link-from-it` (dead-ends), `retarget-or-remove`, `break-the-loop`, `point-at-final-page` (redirects), `finish-and-unmark` (wants-help), `review` (stale), `fix-or-remove-file` (knowledge-files), `check-the-source` (sources-to-review). The other members depend on the list. For `knowledge-files` the `title` is the file's path in the repository (a storage path, not a page); for `sources-to-review` it is the source's id.",
             json!({
                 "title": {"type": "string"},
-                "action": {"type": "string", "enum": ["add-page-or-fix-links", "link-to-it", "link-from-it", "retarget-or-remove", "break-the-loop", "point-at-final-page", "finish-and-unmark", "review", "fix-or-remove-file"]},
+                "action": {"type": "string", "enum": ["add-page-or-fix-links", "link-to-it", "link-from-it", "retarget-or-remove", "break-the-loop", "point-at-final-page", "finish-and-unmark", "review", "fix-or-remove-file", "check-the-source"]},
                 "linked_from": {"type": "integer", "description": "`wanted`: how many different pages link to the title."},
                 "target": {"type": "string", "description": "`redirects`: the target as the redirect page wrote it."},
                 "problem": {"type": "string", "enum": ["broken", "loop", "too-long", "double"], "description": "`redirects`: what is wrong."},
                 "mark": {"type": "string", "enum": ["wip", "draft", "stub"], "description": "`wants-help`: how the page is marked."},
                 "last_touched": {"type": ["integer", "null"], "description": "`stale`: when this server first saw the newest change that touched the page, in Unix seconds; `null` when none of the changes looked through touched it."},
+                "reasons": {"type": "array", "items": {"type": "string", "enum": ["unavailable", "never-reviewed", "overdue"]}, "description": "`sources-to-review`: why the source is listed, at least one. `unavailable`: a person who checked marked it so. `never-reviewed`: no one recorded looking at it. `overdue`: the day it was last reviewed is longer ago than the wiki's `knowledge.review_after`. It says what a person recorded, never how good the source is."},
+                "last_reviewed": {"type": ["string", "null"], "description": "`sources-to-review`: the day a person last reviewed the source, as written (`YYYY-MM-DD`); `null` when none did."},
+                "claims": {"type": "array", "maxItems": 50, "items": {"type": "object", "required": ["claim", "relation", "bearing"], "properties": {"claim": {"type": "string"}, "relation": {"type": "string", "enum": ["supports", "challenges"]}, "bearing": {"type": "string", "enum": ["direct", "partial", "indirect"], "description": "How directly the source speaks to the claim, never how true either is."}}}, "description": "`sources-to-review`: the claims that rely on the source, by claim id, at most 50."},
+                "claims_total": {"type": "integer", "minimum": 0, "description": "`sources-to-review`: how many claims rely on the source in all."},
                 "rule": {"type": "string", "enum": ["path", "not-text", "too-long", "syntax", "missing-key", "unknown-key", "wrong-type", "number", "bad-value", "bad-id", "duplicate", "bounds", "reference", "anchor", "in-use", "owned-key"], "description": "`knowledge-files`: the rule the file broke."},
             }),
-            &["linked_from", "target", "problem", "mark", "last_touched", "rule"],
+            &["linked_from", "target", "problem", "mark", "last_touched", "rule", "reasons", "last_reviewed", "claims", "claims_total"],
         ),
     );
     out.insert(
@@ -276,7 +280,7 @@ pub(super) fn schemas() -> Map<String, Value> {
         object(
             "One page of one of the health lists.",
             json!({
-                "list": {"type": "string", "enum": ["wanted", "orphans", "dead-ends", "redirects", "wants-help", "stale", "knowledge-files"]},
+                "list": {"type": "string", "enum": ["wanted", "orphans", "dead-ends", "redirects", "wants-help", "stale", "knowledge-files", "sources-to-review"]},
                 "tip": tip.clone(),
                 "items": {"type": "array", "maxItems": SIZES.1, "items": schema_ref("HealthItem")},
                 "total": {"type": "integer", "minimum": 0, "description": "How many rows the whole list has."},

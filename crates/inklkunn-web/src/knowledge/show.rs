@@ -244,7 +244,7 @@ fn one_line(text: Option<&str>) -> Option<String> {
 /// author or publisher and its date, each as it was written; and the sentences that go after its line. The
 /// identifier is told only of a source that names itself in no way, since nothing else would tell it from
 /// another. Never a score; every text is printed escaped.
-fn source_name(t: T, source: &KnowledgeSourceRow) -> (String, Vec<String>) {
+pub(crate) fn source_name(t: T, source: &KnowledgeSourceRow) -> (String, Vec<String>) {
     let (title, author, date, reference) = (
         one_line(source.title.as_deref()),
         one_line(source.author.as_deref()),

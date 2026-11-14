@@ -4,11 +4,12 @@
 //! can holds the two to the same facts. The repository is an in-memory double.
 
 use axum::http::{Method, StatusCode};
+use inklkunn_core::knowledge::{Availability, Bearing, Link, Reviewed, SourceKind, Standing};
 use inklkunn_store::{AccountId, Visibility};
 use serde_json::{Value, json};
 
 use super::common::{
-    World, block_id, import_message, let_read, page, proposal_message, request, with_accounts,
+    self, World, block_id, import_message, let_read, page, proposal_message, request, with_accounts,
 };
 use super::{Answer, At, JA, get, problem_type, send};
 
@@ -89,6 +90,33 @@ fn pages() -> Vec<(String, String)> {
         ),
         ("knowledge/stray.txt".to_owned(), "x".to_owned()),
     ]
+    .into_iter()
+    .chain(freshness_files())
+    .collect()
+}
+
+/// Sources to review (RFC 005 part 2 D-10): a source a person marked unavailable and one never reviewed, a claim
+/// that relies on both, and one source that needs no look (reviewed on a day that has not come yet).
+fn freshness_files() -> Vec<(String, String)> {
+    let mut unavailable = common::source(3, SourceKind::Secondary);
+    unavailable.availability = Availability::Unavailable;
+    unavailable.last_reviewed = Some(Reviewed {
+        date: "2001-01-01".to_owned(),
+        proposal: None,
+    });
+    let never = common::source(4, SourceKind::Primary);
+    let mut fine = common::source(5, SourceKind::Primary);
+    fine.last_reviewed = Some(Reviewed {
+        date: "2999-12-31".to_owned(),
+        proposal: None,
+    });
+    let mut claim = common::claim(5, Standing::Unknown, None, "Said.");
+    claim.sources = vec![
+        common::link(3, Link::Supports, Bearing::Direct, "Said."),
+        common::link(4, Link::Challenges, Bearing::Partial, "Said."),
+        common::link(5, Link::Supports, Bearing::Indirect, "Said."),
+    ];
+    common::files(&[claim], &[unavailable, never, fine])
 }
 
 pub(super) fn wiki() -> World {
@@ -557,6 +585,60 @@ async fn the_stale_list_of_a_view_is_judged_by_that_views_changes() {
     let draft = ok(&get(&w, &api("health?list=stale&view=draft")).await);
     assert!(last_touched(&draft).is_number(), "{draft}");
     assert_eq!(draft.at("/tip/view"), "draft");
+}
+
+#[tokio::test]
+async fn sources_to_review_names_what_a_person_recorded_and_the_claims_that_rely_on_each() {
+    let w = wiki();
+    let body = ok(&get(&w, &api("health?list=sources-to-review")).await);
+    assert_eq!(body.at("/list"), "sources-to-review");
+    // The source a person marked unavailable and the one never reviewed, by id; the one reviewed on a day that has
+    // not come yet is not listed, however many claims rely on it.
+    assert_eq!(
+        titles(&body),
+        [
+            "01931111-0000-7000-8000-000000000003",
+            "01931111-0000-7000-8000-000000000004"
+        ]
+    );
+    assert_eq!(body.at("/total"), 2);
+    let first = body.at("/items/0");
+    assert_eq!(first.at("/action"), "check-the-source");
+    assert_eq!(first.at("/reasons"), &json!(["unavailable", "overdue"]));
+    assert_eq!(first.at("/last_reviewed"), "2001-01-01");
+    assert_eq!(
+        first.at("/claims"),
+        &json!([{
+            "claim": "01930000-0000-7000-8000-000000000005",
+            "relation": "supports",
+            "bearing": "direct",
+        }])
+    );
+    assert_eq!(first.at("/claims_total"), 1);
+    let second = body.at("/items/1");
+    assert_eq!(second.at("/reasons"), &json!(["never-reviewed"]));
+    assert_eq!(*second.at("/last_reviewed"), Value::Null);
+    assert_eq!(second.at("/claims/0/relation"), "challenges");
+    assert_eq!(second.at("/claims/0/bearing"), "partial");
+    // Walked in pages of one: the cursor follows.
+    let page = ok(&get(&w, &api("health?list=sources-to-review&limit=1")).await);
+    assert_eq!(page.at("/items").as_array().unwrap().len(), 1);
+    let next = page.at("/next_cursor").as_str().unwrap().to_owned();
+    let rest = ok(&get(
+        &w,
+        &api(&format!(
+            "health?list=sources-to-review&limit=1&cursor={next}"
+        )),
+    )
+    .await);
+    assert_eq!(titles(&rest), ["01931111-0000-7000-8000-000000000004"]);
+    // A reader who may not read the wiki is told what any absent wiki is told.
+    assert_eq!(
+        get(&w, "/nowhere/-/api/v1/health?list=sources-to-review")
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
 }
 
 #[tokio::test]

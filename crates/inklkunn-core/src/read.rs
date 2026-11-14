@@ -396,6 +396,10 @@ pub struct ReadService {
     /// What history, change, diff and permalink pages hold (handoff 003 T5): log windows, the operations of
     /// blocks, a few permalink renders.
     history: history::State,
+    /// The clock the freshness list reads the day from, in Unix seconds (RFC 005 part 2 D-10); a test fixes it.
+    clock: fn() -> i64,
+    /// `knowledge.review_after`, in days: a source reviewed longer ago than this is listed for review.
+    review_after_days: u32,
 }
 
 impl ReadService {
@@ -429,7 +433,51 @@ impl ReadService {
             store_failures: AtomicU64::new(0),
             flags: None,
             history: history::State::default(),
+            clock: inklkunn_store::record::now_secs,
+            review_after_days: crate::knowledge::freshness::DEFAULT_REVIEW_AFTER_DAYS,
         }
+    }
+
+    /// The same, reading the day for the freshness list (*Sources to review*) from this clock, in Unix seconds. The
+    /// list reads no other time.
+    #[must_use]
+    pub fn with_clock(mut self, clock: fn() -> i64) -> Self {
+        self.clock = clock;
+        self
+    }
+
+    /// The same, with the wiki's `knowledge.review_after` (RFC 005 part 2 D-10) as this many days: a source whose
+    /// review is older is listed. Between 1 and [`MAX_REVIEW_AFTER_DAYS`](crate::knowledge::freshness::MAX_REVIEW_AFTER_DAYS);
+    /// a value outside it is kept at the nearest bound.
+    #[must_use]
+    pub fn with_review_after_days(mut self, days: u32) -> Self {
+        self.review_after_days = days.clamp(1, crate::knowledge::freshness::MAX_REVIEW_AFTER_DAYS);
+        self
+    }
+
+    /// `knowledge.review_after`, in days.
+    pub fn review_after_days(&self) -> u32 {
+        self.review_after_days
+    }
+
+    /// The sources of the view's tip that want a person's look (RFC 005 part 2 D-10): marked unavailable, never
+    /// reviewed, or reviewed longer ago than `knowledge.review_after`, each with the claims that rely on it. Read
+    /// from the knowledge index of the tip and the injected clock; **nothing is fetched**.
+    pub fn sources_to_review(
+        &self,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+    ) -> Result<crate::knowledge::freshness::SourcesToReview, ReadError> {
+        let index = self.knowledge_index(wiki, view)?;
+        Ok(crate::knowledge::freshness::SourcesToReview {
+            rows: crate::knowledge::freshness::sources_to_review(
+                &index,
+                (self.clock)(),
+                self.review_after_days,
+            ),
+            index,
+            review_after_days: self.review_after_days,
+        })
     }
 
     /// The same, asking these proposal records for the flags (*minor*, *automated*) of the accepted revisions

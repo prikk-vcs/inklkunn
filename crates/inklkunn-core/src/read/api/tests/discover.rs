@@ -202,6 +202,9 @@ fn every_health_list_is_the_graphs_and_is_walked_in_bounded_pages() {
                 HealthRows::Redirects(rows) => rows.iter().map(|r| r.entry.title.clone()).collect(),
                 HealthRows::Stale(rows) => rows.iter().map(|r| r.entry.title.clone()).collect(),
                 HealthRows::KnowledgeFiles(rows) => rows.iter().map(|r| r.path.clone()).collect(),
+                HealthRows::SourcesToReview(rows) => {
+                    rows.iter().map(|r| r.source.id.clone()).collect()
+                }
             };
             assert!(rows.len() <= size);
             titles.extend(rows);
@@ -264,7 +267,7 @@ fn the_words_of_the_lists_are_the_addresses_and_only_those() {
     for list in HealthList::ALL {
         assert_eq!(HealthList::from_slug(list.slug()), Some(list));
     }
-    assert_eq!(HealthList::ALL.len(), 7);
+    assert_eq!(HealthList::ALL.len(), 8);
     for bad in ["", "Wanted", "dead_ends", "other", "wanted "] {
         assert_eq!(HealthList::from_slug(bad), None, "{bad:?}");
     }

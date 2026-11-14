@@ -742,7 +742,8 @@ pub fn assemble(
             },
             None,
         )
-        .with_revision_flags(store.clone()),
+        .with_revision_flags(store.clone())
+        .with_clock(|| NOW),
     );
     let verifier = Arc::new(Verifier::new(storage, store.clone(), layout).with_clock(|| NOW));
     let audit = Arc::new(MemoryAudit::new());

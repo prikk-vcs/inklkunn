@@ -1,0 +1,265 @@
+//! The health list *Sources to review* (RFC 005 part 2 D-10; handoff 005 K-T9), through the real router: which
+//! sources are listed and why, the claims that rely on each, the words in both languages, the setting, existence
+//! neutrality, and that nothing on it ranks. The clock of these tests is fixed (2023-11-14), so the three-year
+//! default puts the limit at 2020-11-13: a source reviewed that day is not yet old, one the day before is. Every
+//! title and every sentence is invented.
+
+use axum::http::{StatusCode, header};
+
+use super::common::{APP, World, claim, get, home_with, link, put, request, source};
+use super::{JA, RANKING_WORDS, claim_uri};
+use inklkunn_core::knowledge::{
+    Availability, Bearing, Identity, Link, Reviewed, SourceKind, Standing,
+};
+use inklkunn_store::Visibility;
+
+const SAID: &str = "The bridge opened in 1950.";
+const LIST: &str = "/handbook/-/health/sources-to-review";
+
+fn reviewed(day: &str) -> Option<Reviewed> {
+    Some(Reviewed {
+        date: day.to_owned(),
+        proposal: None,
+    })
+}
+
+fn rows(body: &str) -> Vec<String> {
+    body.split("<tbody>")
+        .nth(1)
+        .and_then(|b| b.split("</tbody>").next())
+        .unwrap_or("")
+        .split("<tr>")
+        .skip(1)
+        .map(str::to_owned)
+        .collect()
+}
+
+fn handbook(files: &[(&str, &str)]) -> World {
+    World::new("handbook", "The Handbook", files)
+}
+
+/// Six sources, each in one of the states the list tells apart, and two claims that rely on some of them.
+fn planted() -> World {
+    let w = handbook(&[("pages/Home.md", &home_with(SAID))]);
+    let mut unavailable = source(1, SourceKind::Secondary);
+    unavailable.availability = Availability::Unavailable;
+    unavailable.last_reviewed = reviewed("2023-10-01");
+    unavailable.identity = Identity {
+        title: Some("<b>The Bridge Survey</b>".to_owned()),
+        author: Some("The Harbour Authority".to_owned()),
+        date: None,
+    };
+    let mut never = source(2, SourceKind::Primary);
+    never.identity.title = Some("The Ferry Timetable".to_owned());
+    let mut old = source(3, SourceKind::Other);
+    old.last_reviewed = reviewed("2020-11-12");
+    old.identity.title = Some("The Tide Tables".to_owned());
+    let mut limit = source(4, SourceKind::Other);
+    limit.last_reviewed = reviewed("2020-11-13");
+    limit.identity.title = Some("Not Yet Old".to_owned());
+    let mut fine = source(5, SourceKind::Primary);
+    fine.last_reviewed = reviewed("2023-11-01");
+    fine.identity.title = Some("Looked At Lately".to_owned());
+    let mut unknown = source(6, SourceKind::Primary);
+    unknown.availability = Availability::Unknown;
+    unknown.last_reviewed = reviewed("2023-11-01");
+    unknown.identity.title = Some("Unknown But Fresh".to_owned());
+    let mut first = claim(1, Standing::Contested, None, SAID);
+    first.sources = vec![
+        link(1, Link::Supports, Bearing::Direct, SAID),
+        link(3, Link::Challenges, Bearing::Partial, SAID),
+        link(4, Link::Supports, Bearing::Direct, SAID),
+        link(5, Link::Supports, Bearing::Direct, SAID),
+    ];
+    let mut second = claim(2, Standing::Unknown, None, SAID);
+    second.expressions =
+        vec![inklkunn_core::knowledge::Expression::new("page-gone", "b9").expect("an expression")];
+    second.sources = vec![link(3, Link::Supports, Bearing::Indirect, SAID)];
+    put(
+        &w,
+        &home_with(SAID),
+        &[first, second],
+        &[unavailable, never, old, limit, fine, unknown],
+    );
+    w
+}
+
+#[tokio::test]
+async fn the_list_names_each_source_a_person_should_look_at_and_why() {
+    let w = planted();
+    let a = get(&w, LIST).await;
+    assert_eq!(a.status, StatusCode::OK);
+    let body = a.body();
+    let r = rows(&body);
+    // Three rows: unavailable, never reviewed, older than the limit. Not the one reviewed on the limit's own day,
+    // not the fresh ones, whatever claims rely on them.
+    assert_eq!(r.len(), 3, "{body}");
+    assert!(!body.contains("Not Yet Old"), "{body}");
+    assert!(!body.contains("Looked At Lately"), "{body}");
+    assert!(!body.contains("Unknown But Fresh"), "{body}");
+    // By source id: the unavailable source first. Its title is a person's and is printed as letters.
+    let first = r.first().expect("a row");
+    assert!(
+        first.contains("&#60;b&#62;The Bridge Survey&#60;/b&#62;"),
+        "{body}"
+    );
+    assert!(!body.contains("<b>The Bridge Survey"), "{body}");
+    assert!(first.contains("by The Harbour Authority"), "{body}");
+    assert!(
+        first.contains("A person who checked marked it as unavailable."),
+        "{body}"
+    );
+    assert!(first.contains("Last reviewed on 2023-10-01."), "{body}");
+    assert!(first.contains("1 claim relies on it:"), "{body}");
+    assert!(first.contains("(supports, directly)"), "{body}");
+    assert!(
+        first.contains(&format!("href=\"{}\"", claim_uri(1))),
+        "{body}"
+    );
+    let second = r.get(1).expect("a row");
+    assert!(second.contains("The Ferry Timetable"), "{body}");
+    assert!(
+        second.contains("No one has recorded looking at it."),
+        "{body}"
+    );
+    assert!(second.contains("No claim relies on it."), "{body}");
+    let third = r.get(2).expect("a row");
+    assert!(third.contains("The Tide Tables"), "{body}");
+    assert!(
+        third.contains("Last reviewed on 2020-11-12, more than 1096 days ago."),
+        "{body}"
+    );
+    // Both claims that rely on it, each named by the page it is said on or, when no page says it, by its id.
+    assert!(third.contains("2 claims rely on it:"), "{body}");
+    assert!(third.contains("Home (challenges, in part)"), "{body}");
+    assert!(
+        third.contains("A claim said on no page now, identifier 01930000-0000-7000-8000-000000000002 (supports, indirectly)"),
+        "{body}"
+    );
+    assert!(
+        third.contains(&format!("href=\"{}\"", claim_uri(2))),
+        "{body}"
+    );
+    // What would resolve a row, and the setting the list is read under.
+    assert!(
+        body.contains(
+            "Look at the source, then propose the day you looked and whether it can be had."
+        ),
+        "{body}"
+    );
+    assert!(
+        body.contains("A source is listed when it was last reviewed more than 1096 days ago."),
+        "{body}"
+    );
+    // The page links nowhere outside the wiki: the wiki fetches nothing.
+    let main = body.get(body.find("<main").expect("main")..body.find("</main>").expect("main"));
+    let main = main.expect("main");
+    assert!(
+        !main.contains("http://") && !main.contains("https://"),
+        "{main}"
+    );
+}
+
+#[tokio::test]
+async fn the_list_is_the_health_index_s_and_says_so_when_there_is_nothing_to_list() {
+    let w = handbook(&[("pages/Home.md", &home_with(SAID))]);
+    let index = get(&w, "/handbook/-/health").await.body();
+    assert!(
+        index.contains("href=\"/handbook/-/health/sources-to-review\""),
+        "{index}"
+    );
+    assert!(index.contains("Sources to review"), "{index}");
+    let a = get(&w, LIST).await;
+    assert_eq!(a.status, StatusCode::OK);
+    assert!(a.body().contains("No source needs a look."), "{}", a.body());
+    assert!(!a.body().contains("<table"));
+    // Sources that need no look leave the list empty too.
+    let mut fine = source(1, SourceKind::Primary);
+    fine.last_reviewed = reviewed("2023-11-01");
+    put(
+        &w,
+        &home_with(SAID),
+        &[{
+            let mut c = claim(1, Standing::Unknown, None, SAID);
+            c.sources = vec![link(1, Link::Supports, Bearing::Direct, SAID)];
+            c
+        }],
+        &[fine],
+    );
+    assert!(
+        get(&w, LIST)
+            .await
+            .body()
+            .contains("No source needs a look.")
+    );
+}
+
+#[tokio::test]
+async fn the_list_is_said_in_japanese_too() {
+    let w = planted();
+    let a = request(&w, APP, "GET", LIST, JA).await;
+    assert_eq!(a.status, StatusCode::OK);
+    let body = a.body();
+    for says in [
+        "見直す出典",
+        "確認した人が、利用できないと記しています。",
+        "確認したと記録した人はまだいません。",
+        "最後の確認は 2020-11-12 で、1096 日を超えて前です。",
+        "最後の確認から 1096 日を超えた出典が挙げられます。",
+        "出典を確かめたうえで、確かめた日と、利用できるかどうかを提案してください。",
+    ] {
+        assert!(body.contains(says), "{says}: {body}");
+    }
+    assert_eq!(rows(&body).len(), 3);
+}
+
+#[tokio::test]
+async fn a_wiki_that_may_not_be_read_has_no_such_list() {
+    let w = World::with_visibility(
+        "secret",
+        "Secret",
+        Visibility::Restricted,
+        &[("pages/Home.md", &home_with("Hidden."))],
+    );
+    let mut s = source(1, SourceKind::Primary);
+    s.identity.title = Some("Hidden Source".to_owned());
+    put(&w, &home_with("Hidden."), &[], &[s]);
+    let real = get(&w, "/secret/-/health/sources-to-review").await;
+    let absent = get(&w, "/no-such-wiki/-/health/sources-to-review").await;
+    assert_eq!(real.status, StatusCode::NOT_FOUND);
+    assert_eq!(real.status, absent.status);
+    assert_eq!(
+        real.body().replace("secret", "X"),
+        absent.body().replace("no-such-wiki", "X")
+    );
+    assert_eq!(
+        real.headers.get(header::CONTENT_LANGUAGE),
+        absent.headers.get(header::CONTENT_LANGUAGE)
+    );
+    assert!(!real.body().contains("Hidden"));
+}
+
+#[tokio::test]
+async fn nothing_on_the_list_ranks_a_source() {
+    let w = planted();
+    for headers in [&[][..], JA] {
+        let page = request(&w, APP, "GET", LIST, headers).await.body();
+        // What the page says, without the header and the footer.
+        let start = page.find("<main").expect("a main landmark");
+        let end = page.find("</main>").expect("the end of main");
+        let body = page.get(start..end).expect("main").to_owned();
+        let lower = body.to_lowercase();
+        // Only the English page is held to the English words.
+        if headers.is_empty() {
+            for word in RANKING_WORDS {
+                let whole = lower
+                    .split(|c: char| !c.is_ascii_alphabetic())
+                    .any(|w| w == *word);
+                assert!(!whole, "the page says {word:?}: {body}");
+            }
+        }
+        // No number is shown as a rank, no meter or progress element, no colour for a state.
+        assert!(!body.contains("<meter") && !body.contains("<progress"));
+        assert!(!body.contains("style="), "{body}");
+    }
+}

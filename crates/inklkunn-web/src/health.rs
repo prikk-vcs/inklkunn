@@ -1,7 +1,8 @@
 //! The health lists and the backlinks (RFC 003 D-9; requirements RD-5, RD-6; NAV-15): what can be improved in a
 //! wiki, from the link graph of the tip, **each row with what would resolve it**, framed as opportunities and
 //! never as faults. `-/health` names the lists; `-/health/{wanted,orphans,dead-ends,redirects,wants-help,
-//! stale,knowledge-files}` shows one (the last, RFC 005 part 2 D-5, from the knowledge index of the tip); `-/links/<Title>` shows the pages that link to a page, each with the line that makes the
+//! stale,knowledge-files,sources-to-review}` shows one (the last two, RFC 005 part 2 D-5 and D-10, from the knowledge
+//! index of the tip); `-/links/<Title>` shows the pages that link to a page, each with the line that makes the
 //! link.
 //!
 //! The action beside a row is said in words. A wanted title's row links to two things, beside each other: the page
@@ -17,6 +18,7 @@ use axum::response::Response;
 use std::sync::Arc;
 
 use inklkunn_core::knowledge::Rule;
+use inklkunn_core::knowledge::freshness::{LastReview, MAX_RELYING, SourcesToReview};
 use inklkunn_core::knowledge::index::KnowledgeIndex;
 use inklkunn_core::read::{
     Backlink, BacklinkKind, LinkGraph, Lookup, ReadError, RedirectIssueKind,
@@ -25,6 +27,7 @@ use inklkunn_store::WikiRecord;
 
 use crate::catalog::{Key, T};
 use crate::discover::{Subject, resolve};
+use crate::knowledge::{paths as knowledge_paths, show::source_name, words};
 use crate::pages::{Page, PageState, answer};
 use crate::time::utc_minutes;
 use crate::url::encode_title;
@@ -42,10 +45,11 @@ enum Kind {
     WantsHelp,
     Stale,
     KnowledgeFiles,
+    SourcesToReview,
 }
 
 impl Kind {
-    const ALL: [Kind; 7] = [
+    const ALL: [Kind; 8] = [
         Kind::Wanted,
         Kind::Orphans,
         Kind::DeadEnds,
@@ -53,6 +57,7 @@ impl Kind {
         Kind::WantsHelp,
         Kind::Stale,
         Kind::KnowledgeFiles,
+        Kind::SourcesToReview,
     ];
 
     const fn slug(self) -> &'static str {
@@ -64,6 +69,7 @@ impl Kind {
             Kind::WantsHelp => "wants-help",
             Kind::Stale => "stale",
             Kind::KnowledgeFiles => "knowledge-files",
+            Kind::SourcesToReview => "sources-to-review",
         }
     }
 
@@ -80,6 +86,7 @@ impl Kind {
             Kind::WantsHelp => Key::HealthHelpName,
             Kind::Stale => Key::HealthStaleName,
             Kind::KnowledgeFiles => Key::HealthKnowledgeName,
+            Kind::SourcesToReview => Key::HealthSourcesName,
         }
     }
 
@@ -92,6 +99,7 @@ impl Kind {
             Kind::WantsHelp => Key::HealthHelpDesc,
             Kind::Stale => Key::HealthStaleDesc,
             Kind::KnowledgeFiles => Key::HealthKnowledgeDesc,
+            Kind::SourcesToReview => Key::HealthSourcesDesc,
         }
     }
 
@@ -104,6 +112,7 @@ impl Kind {
             Kind::WantsHelp => Key::HealthNoneHelp,
             Kind::Stale => Key::HealthNoneStale,
             Kind::KnowledgeFiles => Key::HealthNoneKnowledge,
+            Kind::SourcesToReview => Key::HealthNoneSources,
         }
     }
 }
@@ -132,6 +141,8 @@ pub(crate) enum Resolve {
     Review,
     /// A knowledge file that cannot be read.
     KnowledgeFile,
+    /// A source a person should look at again.
+    SourceCheck,
 }
 
 impl Resolve {
@@ -147,6 +158,7 @@ impl Resolve {
             Resolve::Help => Key::HealthHelpAction,
             Resolve::Review => Key::HealthStaleAction,
             Resolve::KnowledgeFile => Key::HealthKnowledgeAction,
+            Resolve::SourceCheck => Key::HealthSourcesAction,
         }
     }
 
@@ -162,6 +174,7 @@ impl Resolve {
             Resolve::Help => "finish-and-unmark",
             Resolve::Review => "review",
             Resolve::KnowledgeFile => "fix-or-remove-file",
+            Resolve::SourceCheck => "check-the-source",
         }
     }
 
@@ -427,8 +440,8 @@ fn rows_of(
                 rows,
             )
         }
-        // Its rows come from the knowledge index, not from the link graph: see `knowledge_rows`.
-        Kind::KnowledgeFiles => (Vec::new(), Vec::new()),
+        // Their rows come from the knowledge index, not from the link graph: see `knowledge_rows` and `source_rows`.
+        Kind::KnowledgeFiles | Kind::SourcesToReview => (Vec::new(), Vec::new()),
         Kind::Stale => {
             let rows = stale
                 .map(|s| {
@@ -498,12 +511,138 @@ fn knowledge_rows(page: &Page, index: &KnowledgeIndex) -> (Vec<String>, Vec<Vec<
     )
 }
 
+/// The rows of *Sources to review* (RFC 005 part 2 D-10): the source by the name it has on a claim's page, why it is
+/// listed (a person marked it unavailable; no one recorded looking at it; the last look was long ago), the claims that
+/// rely on it, each linked to its page and said with how the source bears on it, and what would resolve it. Nothing
+/// ranks: the rows are in the source ids' order, and the words say what a person has recorded and nothing about the
+/// source's worth. Every text is a person's and is printed escaped.
+fn source_rows(
+    page: &Page,
+    t: T,
+    wiki: &WikiRecord,
+    list: &SourcesToReview,
+    notes: &mut Vec<String>,
+) -> (Vec<String>, Vec<Vec<Cell>>) {
+    // A claim is named by the page it is said on; two claims on one title are told apart by a count, and a claim
+    // keeps the name it was given wherever else the page names it.
+    let mut named: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut used = std::collections::HashMap::new();
+    let rows = list
+        .rows
+        .iter()
+        .map(|row| {
+            let (name, details) = source_name(t, &row.source);
+            let name = std::iter::once(name)
+                .chain(details)
+                .collect::<Vec<_>>()
+                .join(" ");
+            let mut why = Vec::new();
+            if row.unavailable {
+                why.push(page.get(Key::HealthSourcesUnavailable));
+            }
+            match &row.review {
+                LastReview::Never => why.push(page.get(Key::HealthSourcesNever)),
+                LastReview::On { day, overdue: true } => why.push(
+                    t.msg(Key::HealthSourcesOverdue)
+                        .with("day", day)
+                        .with("limit", list.review_after_days)
+                        .text(),
+                ),
+                LastReview::On {
+                    day,
+                    overdue: false,
+                } => {
+                    why.push(t.msg(Key::HealthSourcesLast).with("day", day).text());
+                }
+            }
+            let links: Vec<(String, String)> = row
+                .claims
+                .iter()
+                .map(|c| {
+                    let said = named
+                        .entry(c.claim.clone())
+                        .or_insert_with(|| {
+                            let title = list
+                                .index
+                                .anchors_of(&c.claim)
+                                .filter(|a| a.state == inklkunn_core::knowledge::index::PRESENT)
+                                .find_map(|a| {
+                                    inklkunn_markup::path::path_to_title(a.page_path.as_deref()?)
+                                });
+                            match title {
+                                Some(title) => crate::knowledge::marks::distinct(&mut used, title),
+                                None => t
+                                    .msg(Key::HealthSourcesClaimNowhere)
+                                    .with("id", &c.claim)
+                                    .text(),
+                            }
+                        })
+                        .clone();
+                    let label = match words::how(&c.relation, &c.bearing) {
+                        Some(how) => t
+                            .msg(Key::HealthSourcesClaim)
+                            .with("where", said)
+                            .with("how", t.get(how))
+                            .text(),
+                        // A phrase for a relation or a bearing this build does not know is not made up.
+                        None => said,
+                    };
+                    (
+                        label,
+                        knowledge_paths::claim(wiki.slug.as_str(), &c.claim, None),
+                    )
+                })
+                .collect();
+            let mut claims = if row.claims_total == 0 {
+                Cell::text(page.get(Key::HealthSourcesNoClaims))
+            } else {
+                let mut text = t
+                    .msg(Key::HealthSourcesClaims)
+                    .n(u64::try_from(row.claims_total).unwrap_or(u64::MAX))
+                    .text();
+                if row.claims_total > row.claims.len() {
+                    text.push(' ');
+                    text.push_str(
+                        &t.msg(Key::HealthSourcesCut)
+                            .with("limit", MAX_RELYING)
+                            .text(),
+                    );
+                }
+                Cell::text(text)
+            };
+            claims.links = links;
+            vec![
+                Cell::text(name),
+                Cell::text(why.join(" ")),
+                claims,
+                Cell::text(page.get(Resolve::SourceCheck.key())),
+            ]
+        })
+        .collect();
+    notes.push(
+        t.msg(Key::HealthSourcesSetting)
+            .with("days", list.review_after_days)
+            .text(),
+    );
+    (
+        vec![
+            page.get(Key::HealthColSource),
+            page.get(Key::HealthColWhy),
+            page.get(Key::HealthColClaims),
+            page.get(Key::HealthColAction),
+        ],
+        rows,
+    )
+}
+
 /// What the page of one list is made from.
 enum Built {
     /// The link graph (and, for the stale list, the changes).
     Links(Arc<LinkGraph>, Option<inklkunn_core::read::StaleList>),
     /// The knowledge index.
     Knowledge(Arc<KnowledgeIndex>),
+    /// The sources that want a look, read from the knowledge index at the clock's day.
+    Sources(Box<SourcesToReview>),
 }
 
 /// `GET /{slug}/-/health/{list}`.
@@ -528,6 +667,11 @@ pub(crate) async fn health_list(
             return Ok(Built::Knowledge(
                 services.read.knowledge_index(&for_work, None)?,
             ));
+        }
+        if kind == Kind::SourcesToReview {
+            return Ok(Built::Sources(Box::new(
+                services.read.sources_to_review(&for_work, None)?,
+            )));
         }
         let graph = services.read.link_graph(&for_work, None)?;
         let stale = if kind == Kind::Stale {
@@ -555,6 +699,7 @@ pub(crate) async fn health_list(
             rows_of(&page, t, &wiki, kind, graph, stale.as_ref(), &mut notes)
         }
         Built::Knowledge(index) => knowledge_rows(&page, index),
+        Built::Sources(list) => source_rows(&page, t, &wiki, list, &mut notes),
     };
     let name = wiki.display_name.as_str();
     let rendered = ListTpl {

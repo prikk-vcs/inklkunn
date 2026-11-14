@@ -139,7 +139,11 @@ fn prepare_with(
             Some(hints),
         )
         // The flags of accepted changes (minor, machine-assisted) are the proposal records' (RFC 004 D-10).
-        .with_revision_flags(store.clone()),
+        .with_revision_flags(store.clone())
+        // `knowledge.review_after` (RFC 005 part 2 D-10): the operator's setting, in days; the config bounds it.
+        .with_review_after_days(
+            u32::try_from(web.read.knowledge_review_after_days).unwrap_or(u32::MAX),
+        ),
     );
     let authorizer = Arc::new(Authorizer::new(
         Arc::new(StoreAuthz::new(store.clone(), store.clone())),

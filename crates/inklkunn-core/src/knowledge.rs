@@ -23,6 +23,8 @@
 //!   (part 2 D-3, handoff K-T5): the files a paragraph and a source come to, the paragraph's `^id` held by a form
 //!   and put back (part 1 D-1 b), what a page holds, and what a revision's knowledge files do, in facts.
 //! - [`touched`]: the claims a change touches and what it does to what they were judged on (part 1 D-1 c).
+//! - [`freshness`]: which sources want a person's look again (part 2 D-10; handoff K-T9): unavailable, never
+//!   reviewed, or reviewed longer ago than the wiki's setting, with the claims that rely on each; no fetch.
 //! - [`curation`]: the curation proposal, the only way a community status, a review date or an availability is
 //!   set, and the stamp that names the proposal that decided.
 
@@ -33,6 +35,7 @@ pub mod compare;
 pub mod compose;
 pub mod curation;
 mod fault;
+pub mod freshness;
 pub mod index;
 pub mod marker;
 pub mod merge;

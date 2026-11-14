@@ -12,6 +12,7 @@ use inklkunn_store::{IndexEntry, WikiRecord};
 
 use super::{ApiError, Cursor, MAX_PAGE_SIZE, Position, change_key, list_stamp};
 use crate::knowledge::Rule;
+use crate::knowledge::freshness::{self, SourceToReview};
 use crate::read::graph::MAX_BACKLINKS;
 use crate::read::{
     Backlink, ChangeFilter, ChangeRow, GraphPage, LinkGraph, Lookup, ReadError, ReadService,
@@ -97,11 +98,14 @@ pub enum HealthList {
     /// Knowledge files (claims and sources) that cannot be read (RFC 005 part 2 D-5): nothing is read from them,
     /// and the pages are served all the same.
     KnowledgeFiles,
+    /// Sources a person should look at again (RFC 005 part 2 D-10): marked unavailable, never reviewed, or reviewed
+    /// longer ago than the wiki's `knowledge.review_after`; each with the claims that rely on it.
+    SourcesToReview,
 }
 
 impl HealthList {
     /// Every list, in the order the pages show them.
-    pub const ALL: [HealthList; 7] = [
+    pub const ALL: [HealthList; 8] = [
         HealthList::Wanted,
         HealthList::Orphans,
         HealthList::DeadEnds,
@@ -109,6 +113,7 @@ impl HealthList {
         HealthList::WantsHelp,
         HealthList::Stale,
         HealthList::KnowledgeFiles,
+        HealthList::SourcesToReview,
     ];
 
     /// The stable word the web address and the API's `list` parameter end with.
@@ -121,6 +126,7 @@ impl HealthList {
             HealthList::WantsHelp => "wants-help",
             HealthList::Stale => "stale",
             HealthList::KnowledgeFiles => "knowledge-files",
+            HealthList::SourcesToReview => "sources-to-review",
         }
     }
 
@@ -147,6 +153,8 @@ pub enum HealthRows {
     Stale(Vec<StalePage>),
     /// Knowledge files that cannot be read, by path.
     KnowledgeFiles(Vec<UnreadableKnowledgeFile>),
+    /// Sources that want a person's look, by source id, each with the claims that rely on it.
+    SourcesToReview(Vec<SourceToReview>),
 }
 
 /// A file under `knowledge/` that cannot be read, and the rule it broke. The path is the repository's, labelled as
@@ -311,6 +319,27 @@ impl ReadService {
                 None,
             ));
         }
+        if list == HealthList::SourcesToReview {
+            // The day is read once: the rows and the cursor's stamp are of the same day.
+            let now = (self.clock)();
+            let index = self.knowledge_index(wiki, view)?;
+            let all = freshness::sources_to_review(&index, now, self.review_after_days);
+            let stamp = list_stamp(
+                &tip.state_id,
+                &format!(
+                    "health:sources-to-review:{}:{}",
+                    now.div_euclid(86_400),
+                    self.review_after_days
+                ),
+            );
+            let (rows, next) = offset_page(&all, &stamp, after, limit)?;
+            return Ok(page(
+                HealthRows::SourcesToReview(rows),
+                all.len(),
+                next,
+                None,
+            ));
+        }
         let graph: Arc<LinkGraph> = self.link_graph(wiki, view)?;
         let stamp = |name: &str| list_stamp(graph.tip(), &format!("health:{name}"));
         let pages =
@@ -336,7 +365,10 @@ impl ReadService {
                 let (rows, next) = offset_page(&all, &stamp("dead-ends"), after, limit)?;
                 (HealthRows::DeadEnds(rows), all.len(), next)
             }
-            HealthList::WantsHelp | HealthList::Stale | HealthList::KnowledgeFiles => {
+            HealthList::WantsHelp
+            | HealthList::Stale
+            | HealthList::KnowledgeFiles
+            | HealthList::SourcesToReview => {
                 let all = pages(graph.wants_help());
                 let (rows, next) = offset_page(&all, &stamp("wants-help"), after, limit)?;
                 (HealthRows::WantsHelp(rows), all.len(), next)

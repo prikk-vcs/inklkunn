@@ -173,7 +173,8 @@ fn the_read_settings_have_the_defaults_the_design_names_and_named_refusals() {
             tip_ttl_secs: 5,
             index_max_mib: 4096,
             index_max_files: 200_000,
-            page_max_kib: 1024
+            page_max_kib: 1024,
+            knowledge_review_after_days: 1096
         }
     );
     assert!(w.trusted_proxies.is_empty());
@@ -187,6 +188,7 @@ fn the_read_settings_have_the_defaults_the_design_names_and_named_refusals() {
         ("INKLKUNN_INDEX_MAX_MIB", "512"),
         ("INKLKUNN_INDEX_MAX_FILES", "1000"),
         ("INKLKUNN_PAGE_MAX_KIB", "256"),
+        ("INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS", "365"),
         ("INKLKUNN_TRUSTED_PROXIES", "10.0.0.0/8, 192.0.2.1 ,"),
     ])
     .unwrap();
@@ -196,7 +198,8 @@ fn the_read_settings_have_the_defaults_the_design_names_and_named_refusals() {
             tip_ttl_secs: 0,
             index_max_mib: 512,
             index_max_files: 1000,
-            page_max_kib: 256
+            page_max_kib: 256,
+            knowledge_review_after_days: 365
         }
     );
     assert_eq!(w.trusted_proxies, ["10.0.0.0/8", "192.0.2.1"]);
@@ -206,6 +209,9 @@ fn the_read_settings_have_the_defaults_the_design_names_and_named_refusals() {
         ("INKLKUNN_INDEX_MAX_MIB", "0"),
         ("INKLKUNN_INDEX_MAX_FILES", "many"),
         ("INKLKUNN_PAGE_MAX_KIB", "0"),
+        ("INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS", "0"),
+        ("INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS", "36501"),
+        ("INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS", "three years"),
     ] {
         let e = with(&[(name, bad)]).unwrap_err().0;
         assert!(e.contains(name), "{name}={bad}: {e}");
@@ -215,6 +221,7 @@ fn the_read_settings_have_the_defaults_the_design_names_and_named_refusals() {
         "INKLKUNN_INDEX_MAX_MIB",
         "INKLKUNN_INDEX_MAX_FILES",
         "INKLKUNN_PAGE_MAX_KIB",
+        "INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS",
         "INKLKUNN_TRUSTED_PROXIES",
     ] {
         assert!(

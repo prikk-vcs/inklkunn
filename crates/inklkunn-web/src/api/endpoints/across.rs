@@ -5,6 +5,7 @@
 use axum::extract::State;
 use axum::http::{HeaderMap, Uri};
 use axum::response::Response;
+use inklkunn_core::knowledge::freshness::LastReview;
 use inklkunn_core::read::{
     BacklinkAnswer, BacklinkKind, ChangeFilter, Cursor, HealthList, HealthRows, RedirectIssueKind,
     Tri,
@@ -176,6 +177,31 @@ pub(super) async fn health(
                             &f.path,
                             Resolve::KnowledgeFile,
                             json!({"rule": f.rule.code()}),
+                        )
+                    })
+                    .collect(),
+                // The source's id stands where a page's title does; what is said of it is the codes of why it is
+                // listed, the day it was last reviewed as written (`null` when none), and the claims that rely
+                // on it, each with the relation and the bearing the claim states. Nothing ranks.
+                HealthRows::SourcesToReview(rows) => rows
+                    .iter()
+                    .map(|r| {
+                        item(
+                            &r.source.id,
+                            Resolve::SourceCheck,
+                            json!({
+                                "reasons": r.reasons(),
+                                "last_reviewed": match &r.review {
+                                    LastReview::Never => None,
+                                    LastReview::On { day, .. } => Some(day.as_str()),
+                                },
+                                "claims": r.claims.iter().map(|c| json!({
+                                    "claim": c.claim,
+                                    "relation": c.relation,
+                                    "bearing": c.bearing,
+                                })).collect::<Vec<_>>(),
+                                "claims_total": r.claims_total,
+                            }),
                         )
                     })
                     .collect(),
