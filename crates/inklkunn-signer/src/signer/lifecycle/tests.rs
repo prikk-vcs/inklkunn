@@ -67,12 +67,52 @@ struct World {
     secret_file: PathBuf,
 }
 
+/// The first `prikk` on `PATH` (any directory, not only the first) that reports 0.57.0 or newer.
+fn real_prikk_at_least_057() -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|d| d.join("prikk"))
+        .filter(|c| c.is_file())
+        .find(|c| inklkunn_prikk::probe_version(c.as_os_str()).is_some_and(|v| v >= (0, 57, 0)))
+}
+
 /// A wiki made through the signer's own entry points, with its first change sealed.
 fn world(tag: &str) -> Option<World> {
     let Some(prikk) = real_prikk() else {
         println!("skipping: prikk not on PATH");
         return None;
     };
+    world_over(tag, prikk)
+}
+
+/// As [`world`], over the **first** `prikk` on `PATH` when it is older than 0.57.0 (CI's is the floor): the tests of
+/// what prikk did before it reported `block_seals`. A first prikk that reports them prints the guarded skip line (CI
+/// fails on it: the floor must be first), and the subject runs on the 0.57.0 side through [`world_057`] (maintenance
+/// M34).
+fn world_floor(tag: &str) -> Option<World> {
+    let Some(prikk) = real_prikk() else {
+        println!("skipping: prikk not on PATH");
+        return None;
+    };
+    if inklkunn_prikk::probe_version(prikk.as_os_str()).is_none_or(|v| v >= (0, 57, 0)) {
+        println!("skipping: no prikk older than 0.57.0 (and at the floor) found");
+        return None;
+    }
+    world_over(tag, prikk)
+}
+
+/// As [`world`], over the first `prikk` on `PATH` that is 0.57.0 or newer (the host's, when the gate runs with the
+/// floor first): the tests of what 0.57.0 reports (`verify --format json`'s `block_seals`, ledger PK-39). With none it
+/// prints the guarded skip line, which CI fails on (maintenance M34).
+fn world_057(tag: &str) -> Option<World> {
+    let Some(prikk) = real_prikk_at_least_057() else {
+        println!("skipping: prikk 0.57.0 or newer not found");
+        return None;
+    };
+    world_over(tag, prikk)
+}
+
+fn world_over(tag: &str, prikk: PathBuf) -> Option<World> {
     let tmp = dir(&std::env::temp_dir(), tag);
     let shm = dir(Path::new("/dev/shm"), tag);
     let root = RootLayout::new(tmp.0.join("wikis"));
@@ -141,7 +181,9 @@ impl World {
             .unwrap()
     }
 
-    /// Does this machine's prikk put `block_seals` in `verify --format json` (0.57.0 and later, ledger PK-39)?
+    /// Does this world's prikk put `block_seals` in `verify --format json` (0.57.0 and later, ledger PK-39)? The tests
+    /// that depend on the answer assert it, so a world built over the wrong prikk fails there rather than testing
+    /// the other side.
     fn prikk_reports_block_seals(&self) -> bool {
         let o = self.prikk(&["verify", "--format", "json"]);
         String::from_utf8_lossy(&o.stdout).contains("\"block_seals\"")
@@ -564,11 +606,9 @@ fn a_second_rotation_does_not_make_what_the_first_keys_sealed_in_between_late() 
     assert_eq!(late.first().unwrap().block_id, w.tip_block());
 }
 
-#[test]
-fn a_retirement_records_the_point_too_and_marks_the_key_retired() {
-    let Some(w) = world("late-retire") else {
-        return;
-    };
+/// Rotate with a retirement and check the record, as every prikk shows it; the late-seal check afterwards is the
+/// subject of the two tests below (one per side of PK-39).
+fn rotate_retiring(w: &World) {
     w.signer
         .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Retire)
         .unwrap();
@@ -581,44 +621,59 @@ fn a_retirement_records_the_point_too_and_marks_the_key_retired() {
     assert_eq!(superseded.first().unwrap().views_recorded, 1);
     // The sealed block, its ref state and its ref update: what `verify` named just after the removal (P2′).
     assert_eq!(superseded.first().unwrap().findings_recorded, 3);
-    // After a retirement prikk cannot verify the old history (ledger PK-34). Up to 0.56.0 it also printed no list of
-    // who sealed what then (ledger PK-39), so the check could not run: it said so and never answered "nothing found"
-    // from nothing. 0.57.0 reports who sealed which block as recorded, failing verification or not, so the check
-    // runs, finds nothing late (the retired key sealed only before its replacement) and sees the removed key.
-    let r = w.signer.late_seal_check(&w.repo);
-    if w.prikk_reports_block_seals() {
-        assert_eq!(
-            r,
-            Ok(LateSealCheck {
-                late: vec![],
-                sees_untrusted_keys: true
-            })
-        );
-    } else {
-        assert!(
-            matches!(&r, Err(SignerError::Refused(why)) if why.contains("publication-trust")),
-            "{r:?}"
-        );
-    }
 }
 
 #[test]
-fn a_block_prikk_cannot_read_makes_the_late_seal_check_unavailable_and_never_clean() {
+fn a_retirement_records_the_point_too_and_marks_the_key_retired() {
+    // After a retirement prikk cannot verify the old history (ledger PK-34). Up to 0.56.0 it also printed no list of
+    // who sealed what then (ledger PK-39), so the check could not run: it said so and never answered "nothing found"
+    // from nothing. (The 0.57.0 side is `on_0_57_0_a_retirement_...` below.)
+    let Some(w) = world_floor("late-retire") else {
+        return;
+    };
+    assert!(!w.prikk_reports_block_seals());
+    rotate_retiring(&w);
+    let r = w.signer.late_seal_check(&w.repo);
+    assert!(
+        matches!(&r, Err(SignerError::Refused(why)) if why.contains("publication-trust")),
+        "{r:?}"
+    );
+}
+
+#[test]
+fn on_0_57_0_a_retirement_records_the_point_too_and_the_late_seal_check_runs_and_sees_the_removed_key()
+ {
+    // 0.57.0 reports who sealed which block as recorded, failing verification or not, so the check runs, finds
+    // nothing late (the retired key sealed only before its replacement) and sees the removed key.
+    let Some(w) = world_057("late-retire-057") else {
+        return;
+    };
+    assert!(w.prikk_reports_block_seals());
+    rotate_retiring(&w);
+    assert_eq!(
+        w.signer.late_seal_check(&w.repo),
+        Ok(LateSealCheck {
+            late: vec![],
+            sees_untrusted_keys: true
+        })
+    );
+}
+
+#[test]
+fn on_0_57_0_a_block_prikk_cannot_read_makes_the_late_seal_check_unavailable_and_never_clean() {
     // Measured on the published 0.57.0 (m3-measurements, section 8): with a block container that cannot be read,
     // `block_seals` is empty while every stage is `evaluated`, and the verdict fails on `item-failure`. A check that
     // read that list would say "no late seals" (and `sees_untrusted_keys: true`) of a repository it could not read.
-    let Some(w) = world("late-unreadable") else {
+    let Some(w) = world_057("late-unreadable-057") else {
         return;
     };
+    assert!(w.prikk_reports_block_seals());
     w.seal_with_current_keys("one\n");
     w.signer
         .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Keep)
         .unwrap();
     w.seal_with_current_keys("two\n");
     assert_eq!(w.signer.seals_by_superseded_keys(&w.repo).unwrap(), vec![]);
-    if !w.prikk_reports_block_seals() {
-        return;
-    }
     std::fs::write(
         w.repo.join(".prikk/containers/block/a.container"),
         b"garbage",
@@ -627,6 +682,31 @@ fn a_block_prikk_cannot_read_makes_the_late_seal_check_unavailable_and_never_cle
     let r = w.signer.late_seal_check(&w.repo);
     assert!(
         matches!(&r, Err(SignerError::Unavailable(why)) if why.contains("may be incomplete")),
+        "{r:?}"
+    );
+}
+
+#[test]
+fn a_block_prikk_cannot_read_is_refused_by_the_late_seal_check_and_never_clean() {
+    // The floor's side of the test below: before 0.57.0 prikk lists no `block_seals`, and a repository with a block it
+    // cannot read fails verification, which the check refuses on; it never answers "no late seals".
+    let Some(w) = world_floor("late-unreadable") else {
+        return;
+    };
+    assert!(!w.prikk_reports_block_seals());
+    w.seal_with_current_keys("one\n");
+    w.signer
+        .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Keep)
+        .unwrap();
+    w.seal_with_current_keys("two\n");
+    std::fs::write(
+        w.repo.join(".prikk/containers/block/a.container"),
+        b"garbage",
+    )
+    .unwrap();
+    let r = w.signer.late_seal_check(&w.repo);
+    assert!(
+        matches!(&r, Err(SignerError::Refused(why)) if why.contains("failed object")),
         "{r:?}"
     );
 }

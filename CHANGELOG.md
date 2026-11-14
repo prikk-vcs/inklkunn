@@ -1464,6 +1464,21 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   and for an empty `superseded_by`, for ids in upper case or of another version (claim, link, source, replacement), and a test of a
   reason counted in bytes (4096 bytes taken, 2049 two-byte characters refused by the handler and not by `maxLength`).
 
+- **M34 (handoff 010 corrections, fifth round): no test of a 0.57.0 subject passes by not reaching it.** The four tests that read
+  `block_seals` branched on the first prikk on `PATH`, so CI (whose first prikk is the floor) ran only their pre-0.57 side, and
+  `a_block_prikk_cannot_read_makes_the_late_seal_check_unavailable_and_never_clean`, whose subject is the measured 0.57.0 case (an
+  unreadable block gives an empty `block_seals`, which must read *Unavailable*, never *no late seals*), returned without a line.
+  They are split as M28 split the take-back: a floor test on the first prikk when it is older than 0.57.0, and an `on_0_57_0_...`
+  test on the first prikk of 0.57.0 or newer on `PATH`, each printing its guarded line (`skipping: no prikk older than 0.57.0 ...` or
+  `skipping: prikk 0.57.0 or newer not found`, the two the with-prikk run fails on) when it cannot run. The signer's lifecycle tests
+  (the retirement's record, the unreadable block; the unreadable block on the floor is refused by the failed verification and never
+  clean) and the command-line tests (a retirement with a late block, `status` after a retirement of a key it cannot see) are the
+  eight; the command-line world now runs, and passes its stand-ins to, the prikk it was built over. A new test of `floor-check`
+  (`tests/guarded_skips.rs`, a function of its own) reads every test source of the workspace and fails on any `return` after a
+  prikk-capability probe (`probe_version`, `prikk_where`, `real_prikk_at_least_057`, `reports_block_seals`, `parse_version`) with no
+  guarded line before it in its block; a second test plants eight failures (Z-a's silent return among them) and four shapes that are right,
+  and the check counts the sources, the probe functions and the guarded returns it saw so that it cannot pass without reading.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the
