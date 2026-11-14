@@ -168,3 +168,32 @@ back M20 – M26 as one request, `010-maintenance-2026-11-corrections-3-review-r
        - The `msrv` job and `cargo +1.89.0 check` keep their explicit toolchain.
        - The Dockerfile's builder is named in the same check if it names a toolchain.
        - Say whether anything else (the measurement tool, the scripts) assumed the default.
+
+## Corrections from the review of 2026-11-14, fourth round (binding; **before 0.3.0**)
+
+M20 – M27 are **Conditionally Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-corrections-3-review-result.md`); M27
+step 1 was pushed alone and CI is green on it. RFC 010 D-3 now names the test-only prikk. Hand back M28 – M33 as one request,
+`010-maintenance-2026-11-corrections-4-review-request.md`.
+
+- **M28 — CI takes a patch back on 0.57.0** (W-a).
+  - Every test whose subject needs a 0.57.0 verb (the take-back, its worktree restore, the confirmation, the kill matrix's take-back row) runs that subject on the first prikk 0.57.0 or newer on `PATH` (`new_057`, `prikk_where`), and prints the guarded skip line when there is none.
+  - The floor's *no verb* answer stays a test of its own on the first prikk on `PATH`.
+  - List every test that branches on the prikk version, and say for each which prikk runs which branch.
+  - The comments in `ci.yml` and `release.yml` say what is true.
+- **M29 — every install of the pin names its components** (W-b).
+  - `supply-chain.yml` and `release.yml` (`:144`, `:314`) install 1.99.1 with `--component rustfmt --component clippy`, as the toolchain file asks.
+  - pin-check requires the file's components on every install of the pin (a planted-failure test).
+  - Say whether any job now downloads anything it did not before.
+- **M30 — tests that fail rather than pass or hang** (W-c, W-d).
+  - K40's counters count units of work: links and anchors read. The quadratic rewrite above must fail.
+  - The follow-up test bounds its wait (a `recv_timeout` long enough for a loaded runner) so a regression fails.
+  - Every CI job gets a `timeout-minutes` (twice its slowest recent run, stated).
+- **M31 — the sentences hold in every order** (W-e, W-f).
+  - The sentence of a step that failed survives a later audit failure: the error carries it, and the steps done.
+  - `AfterLocks` promises a clear only when prikk's liveness says the holder is not running. Otherwise the plan says the run will stop at the lock and why, as the run does.
+  - A test of each.
+- **M32 — the documents** (W-g).
+  - `docs/RELEASING.md` and `docs/dependency-policy.md` describe the test-only prikk, the skip guard and `rust-toolchain.toml`.
+  - `SECURITY.md` and `docs/RECOVERY.md` say that the check after a seal is throttled (at most once a minute), and use one wording for a retirement's end.
+  - `inklkunn-fetch/src/scrub.rs` uses `is_line_or_control`.
+- **M33 — `Witness.format_marker` is an enum** (decision 2): a marker error with a number, and a marker error without one. There is no `Option<Option<_>>`.

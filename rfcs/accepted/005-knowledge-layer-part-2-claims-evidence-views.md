@@ -192,3 +192,10 @@ index (D-1 … D-6) may start earlier if the dev team has room, as they touch no
   status, no review day, no availability, and no source that is checked. Such a bundle is refused whole, by file and rule,
   never stripped: stripping would be a decision, and carrying the state would assert decisions this wiki's people never made.
   Importing curated state with its provenance, and reading back threads and view records, are RFC 007's (M5).
+- **D-3, correcting a source (2026-11-14).** A correction of an existing source's identity (title, author, date), reference
+  or `superseded_by` is made by a curation proposal **whether or not the source is checked**, since no page edit writes an
+  existing source file. On a checked source only curation may make it (K30). A `superseded_by` chain never returns to a
+  source it has passed.
+- **What is not offered in 0.3.0 (2026-11-14).** Removing a claim file or a source file, and replacing a file that cannot be
+  read. Every surface that meets one says so plainly, and names no reviewer or form that cannot act on it. Retiring claims
+  and sources is designed with RFC 006 (moderation, M4).

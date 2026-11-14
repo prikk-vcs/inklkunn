@@ -331,3 +331,49 @@ K43 – K54 as one request, `005-knowledge-layer-corrections-5-review-request.md
     - **V-e:** each drop names its page and block, and so does its refusal. The doc comment says the tip's index. `api.claim_lost` says *claims are said there*. `drop-not-removed` is mutation-checked.
     - **V-f:** provenance reads the index at `page_why`'s tip.
     - **V-g:** the five drift points, with `compare_views` in path order and a test.
+
+## Corrections from the review of 2026-11-14, sixth round (binding; **before 0.3.0**)
+
+K51 is **Changes Requested**; K43 – K50 and K52 – K54 are **Conditionally Approved**
+(`.git-exclude/reviewed/005-knowledge-layer-corrections-5-review-result.md`). Two RFC clarifications were added: *correcting a
+source*, and *what is not offered in 0.3.0*. Hand back K55 – K64 as one request,
+`005-knowledge-layer-corrections-6-review-request.md`. **K55 first.**
+
+- **K55 — an extract is live while its lock is held** (K51 redone; X-a, X-b, X-e).
+  - **The lock.** Each extract has a lock file beside it (`<name>.lock`, created before `materialize`). Its owner holds it with an exclusive `flock` for the extract's whole life, and releases it only after the directory is removed.
+  - **The sweep** removes an extract only after it has taken that lock without waiting. It then removes the directory, and then the lock file.
+  - **Liveness from `/proc` goes.** `flock` on one filesystem holds across PID namespaces, containers and uids, and the signer already relies on it (`inklkunn-signer/src/flock.rs`; share it or move it to the lowest crate that needs it).
+  - **No partial tree.** A held lock means no sweep can remove a live extract, so a half-swept tree is never read. The root check stays.
+  - **`wiki_state`'s extract** goes through the same module, under the operator's `index_max_bytes` and `index_max_files`.
+  - **Docs:** say that the data directory must be on a filesystem where `flock` works between the processes that share it (a local filesystem or a bind mount), as the key store already needs.
+  - **Tests:**
+    - a sweep from another PID namespace (`unshare -Urpf --mount-proc` where it works, with a counted self-skip line where it does not) leaves a live extract and removes a dead one;
+    - the two-`ReadService` test;
+    - an import's extract beside a server's.
+- **K56 — one owned-key rule** (X-c). The knowledge check reads `proposal::files::changed_owned_keys`, which carries D8's redirect exemption, instead of its own comparison. Test: a proposer's redirect page plus a claim, through submit and acceptance.
+- **K57 — the import is judged by the operator's limits throughout** (X-d, X-f).
+  - `plan_folder` takes the `ReadConfig`, and its page checks and `wiki_state` use it.
+  - `wiki import-folder` reads the same configuration file `serve` reads when it is given one (`--config`), so the two cannot differ.
+  - Tests at both edges of a lowered and a raised page cap.
+- **K58 — the OpenAPI request shapes are what the handler takes** (Y-a).
+  - The curation schemas mark exactly the optional members as optional.
+  - A request-shape test sends every documented example body, and the shapes the handler accepts, through both the schema and the handler, and fails where they disagree. The same is done for the other write bodies.
+- **K59 — a curation changes only the fields it names** (Y-b, Y-d, decision 6).
+  - Each identity field (title, author, date, reference, `superseded_by`) is compared and replaced on its own. A field that is not changed is never re-cleaned or rewritten.
+  - In the API, every source member is optional, and left out means unchanged. `reviewed: ""` and `availability: unknown` clear, and say so in OpenAPI.
+  - Tests:
+    - a source with a trailing space and a newline in its title, curated for its status only, keeps its title byte for byte;
+    - an API call with only `author`;
+    - an API call with only `title` keeps the review day.
+- **K60 — curation corrects any source** (Y-c; RFC clarification *correcting a source*).
+  - The `NotChecked` refusal goes: curation corrects an unchecked source's identity, reference and `superseded_by` as it does a checked one's.
+  - The sentences no longer send anyone to a page edit for it (en, ja, glossary, OpenAPI).
+  - The page-edit rule of K30 is unchanged.
+- **K61 — no `superseded_by` cycle** (Y-e). Acceptance's reference rule refuses a chain that returns to a source it passed. The form and the API refuse it by field before a proposal exists. Test: A→B with B→A in one curation, and across two.
+- **K62 — say what is not offered** (Y-f; RFC clarification *what is not offered in 0.3.0*).
+  - `know.not_by_form` and every surface that meets a removal of a claim or source file, or the replacement of an unreadable file, say it is **not offered in this version**. They name no reviewer or form.
+  - The glossary row and the operator notes say the same.
+- **K63 — the numbering costs nothing per page** (Y-g). Cumulative claim counts are kept with the list's memo (per tip, day and setting). A page reads its first number in O(1), and the numbers are those of the list it belongs to.
+- **K64 — small points:**
+  - **X-g:** comment bodies are stored trimmed, so a body never ends in `\n`; assert it, and handle a NUL by refusing it at the comment form, or by naming in the bundle that it is carried as U+FFFD. Add `\t` and `\0` to the exhaustive alphabet.
+  - **Decision 4:** `docs/dependency-policy.md` gets `pulldown-cmark`'s dev-dependency row.

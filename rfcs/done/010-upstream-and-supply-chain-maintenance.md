@@ -48,6 +48,10 @@ and by measurement.**
 - **D-3 — The floor is one checked value per upstream.** `tools/floor-check` fails unless the prikk floor in
   `inklkunn-prikk`, in the CI workflow and in the container recipe is one `X.Y.Z`; the wiki-commons corpus
   copy records its commit, and a test fails if the fixtures and the recorded commit disagree.
+  *Amended 2026-11-14 (maintenance M25):*
+  - CI may also install **one test-only prikk**: a newer release whose tests the floor cannot run (today 0.57.0), with its checksum pinned beside the floor's.
+  - It is never a floor. It is not in the driver's constant or in the container recipe, and it comes after the floor on `PATH`.
+  - The with-prikk run fails if a test that needs it skipped. `floor-check` holds all of this.
 - **D-4 — Supply-chain gates at project events.** `cargo deny check` and `cargo audit` exit 0 at (a) every
   push and pull request, (b) every release's gate job, (c) every re-baseline, (d) every RFC disposition
   checkpoint, where the architect runs both against a freshly fetched advisory database, (e) whenever the
