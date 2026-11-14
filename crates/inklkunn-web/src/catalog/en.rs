@@ -2631,8 +2631,8 @@ pub const CATALOG: &[Entry] = &[
     msg("know.heading", "Claims and sources in this proposal"),
     plural_msg(
         "know.claim_made",
-        "Records the claim “{claim}” ({kind}), said in {count} place. Its community status: {standing}.",
-        "Records the claim “{claim}” ({kind}), said in {count} places. Its community status: {standing}.",
+        "Records the claim {claim} ({kind}), said in {count} place. Its community status: {standing}.",
+        "Records the claim {claim} ({kind}), said in {count} places. Its community status: {standing}.",
     ),
     msg(
         "know.cite",
@@ -2642,9 +2642,9 @@ pub const CATALOG: &[Entry] = &[
         "know.source_recorded",
         "Records the source {source} ({kind}).",
     ),
-    msg("know.claim_changed", "Changes the claim “{claim}”:"),
+    msg("know.claim_changed", "Changes the claim {claim}:"),
     msg("know.source_changed", "Changes the source {source}:"),
-    msg("know.removed_claim", "Removes the claim “{claim}”."),
+    msg("know.removed_claim", "Removes the claim {claim}."),
     msg("know.removed_source", "Removes the source {source}."),
     msg(
         "know.unreadable",
@@ -2669,11 +2669,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.change_related",
-        "A relation to the claim “{other}” is added: {relation}.",
+        "A relation to the claim {other} is added: {relation}.",
     ),
     msg(
         "know.change_unrelated",
-        "A relation to the claim “{other}” is removed: {relation}.",
+        "A relation to the claim {other} is removed: {relation}.",
     ),
     msg(
         "know.change_uncited",
@@ -2908,7 +2908,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.made_related",
-        "It has a relation to the claim “{other}”: {relation}.",
+        "It has a relation to the claim {other}: {relation}.",
     ),
     msg(
         "know.source_made_availability",
@@ -2932,4 +2932,8 @@ pub const CATALOG: &[Entry] = &[
         "A source without a title (identifier {id})",
     ),
     // knowledge: a file that cannot be read is replaced (handoff 005 corrections, second round K16): end
+    msg("know.subject_claim", "“{excerpt}”"),
+    msg("know.subject_claim_id", "“{excerpt}” [claim {id}]"),
+    msg("know.subject_source_id", "{name} [source {id}]"),
+    // knowledge: subjects told apart (handoff 005 corrections, third round K24): end
 ];

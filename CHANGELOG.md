@@ -505,6 +505,21 @@ Dependency updates (the architect, 2026-11-14).
   recovery did not run, or planned the step and did not reach it), and says nothing of the kind when the patch was taken back.
   Tests: the word on a flagged wiki with nothing queued (begin and end events, no "confirmed" anywhere), and the four fates of
   the word as a unit test of the report (`discard_word_fate`).
+- **K24 (handoff 005 corrections, third): no two subjects read alike.** A claim was named by the first 80 characters of a
+  paragraph it is said in and a source by its title, author and date, so two claims said in one paragraph, two paragraphs
+  that begin alike and two sources of one name gave the same line: a curation that flipped a link on one read exactly as one
+  on the other. **Every claim and source a line of the proposal's page names now carries its identifier** (`“It opened in
+  1950.” [claim 0193…0001]`, `<cite>…</cite> [source 0193…0001]`), in `<code>`, shortened by one rule: the first four
+  characters, `…`, and the last four, with as many more of the end as it takes for no two identifiers of the same kind on the
+  page to be shortened alike (the whole identifier when that is what it takes). A page cannot know which other subjects the
+  wiki holds, so the identifier is always there rather than only when the page itself has a pair; a claim named by its
+  identifier already (no paragraph found) and a source with no name at all carry nothing more. The page is read twice to
+  learn the identifiers before it prints them. Catalog: `know.subject_claim`, `know.subject_claim_id`,
+  `know.subject_source_id` (English and Japanese preview, glossary rows); the quotation marks of a claim's name moved from
+  the six messages that named a claim into the subject message, so the words around them read as before. Tests: two claims
+  said in one paragraph, two paragraphs that share their first 80 characters, and two sources of one name, each at the
+  message layer and through the real page (the proposals for A and B differ, each names its own identifier), and the
+  abbreviation rule over identifiers that agree at both ends. No prikk-dependent test is added.
 
 ## [0.2.0] — 2026-11-04
 

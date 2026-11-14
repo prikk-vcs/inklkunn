@@ -625,7 +625,7 @@ async fn a_changed_sources_new_identity_and_reference_are_on_its_lines() {
         (&two, "The second new title", "https://example.org/two"),
     ] {
         assert!(
-            got.contains("Changes the source <cite><bdi>“The old title”</bdi></cite>:"),
+            got.contains("Changes the source <cite><bdi>“The old title”</bdi></cite> [source <code>0193…0040</code>]:"),
             "{got}"
         );
         assert!(
@@ -669,11 +669,11 @@ async fn two_flipped_links_are_told_apart_by_the_sources_they_name() {
     let three = section_of(&s, flipped(3)).await;
     assert_ne!(two, three, "a flipped link says which source it is");
     assert!(
-        two.contains("The source <cite><bdi>“Source number 2”</bdi></cite>, which it cites, now challenges it directly."),
+        two.contains("The source <cite><bdi>“Source number 2”</bdi></cite> [source <code>0193…0002</code>], which it cites, now challenges it directly."),
         "{two}"
     );
     assert!(
-        three.contains("The source <cite><bdi>“Source number 3”</bdi></cite>, which it cites, now challenges it directly."),
+        three.contains("The source <cite><bdi>“Source number 3”</bdi></cite> [source <code>0193…0003</code>], which it cites, now challenges it directly."),
         "{three}"
     );
 }
@@ -740,7 +740,7 @@ async fn a_relation_names_the_other_claim_and_a_replacement_names_the_other_sour
     let got = section_of(&s, vec![(path.clone(), Some(after.to_yaml()))]).await;
     assert!(
         got.contains(
-            "A relation to the claim “<bdi>It opened in 1950.</bdi>” is added: is at odds with."
+            "A relation to the claim “<bdi>It opened in 1950.</bdi>” [claim <code>0193…0002</code>] is added: is at odds with."
         ),
         "{got}"
     );
@@ -750,7 +750,7 @@ async fn a_relation_names_the_other_claim_and_a_replacement_names_the_other_sour
     let got = section_of(&s, vec![(claim_path(&fresh.id), Some(fresh.to_yaml()))]).await;
     assert!(
         got.contains(
-            "It has a relation to the claim “<bdi>It opened in 1950.</bdi>”: is at odds with."
+            "It has a relation to the claim “<bdi>It opened in 1950.</bdi>” [claim <code>0193…0002</code>]: is at odds with."
         ),
         "{got}"
     );
@@ -762,7 +762,127 @@ async fn a_relation_names_the_other_claim_and_a_replacement_names_the_other_sour
     replaced.superseded_by = Some(source_id(2));
     let got = section_of(&s, vec![(source_path(&old.id), Some(replaced.to_yaml()))]).await;
     assert!(
-        got.contains("It is now replaced by the source <cite><bdi>“Source number 2”</bdi></cite>."),
+        got.contains("It is now replaced by the source <cite><bdi>“Source number 2”</bdi></cite> [source <code>0193…0002</code>]."),
         "{got}"
     );
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// K24: no two subjects read alike
+
+/// A claim said in `page`'s paragraph `block`, citing the sources `cites` (each supporting it directly).
+fn claim_citing(n: u8, page: &str, block: &str, cites: &[u8]) -> Claim {
+    let mut claim = Claim::new(claim_id(n));
+    claim
+        .expressions
+        .push(Expression::new(page, block).expect("an expression"));
+    for source in cites {
+        claim.sources.push(SourceLink {
+            source: source_id(*source),
+            relation: Link::Supports,
+            bearing: Bearing::Direct,
+            note: None,
+            judged_on: digest_of("w1"),
+        });
+    }
+    claim.normalize();
+    claim
+}
+
+/// The claim with the link to `source` turned to challenge it: the whole proposal, as the files it writes.
+fn flipped(claim: &Claim, source: u8) -> Vec<(String, Option<String>)> {
+    let mut after = claim.clone();
+    for link in &mut after.sources {
+        if link.source == source_id(source) {
+            link.relation = Link::Challenges;
+        }
+    }
+    vec![(claim_path(&claim.id), Some(after.to_yaml()))]
+}
+
+/// Whether the section tells the claim (or source) `n` by its identifier, abbreviated.
+fn names_by_id(section: &str, kind: &str, id: &str) -> bool {
+    section.contains(&format!("[{kind} <code>{id}</code>]"))
+}
+
+#[tokio::test]
+async fn a_curation_that_flips_a_link_on_one_of_two_claims_said_in_one_paragraph_reads_differently_from_one_on_the_other()
+ {
+    let s = scene();
+    put_sources(&s);
+    let (a, b) = (
+        claim_citing(1, "bridge-page", "k1", &[2]),
+        claim_citing(2, "bridge-page", "k1", &[2]),
+    );
+    for claim in [&a, &b] {
+        s.w.fake.set(&claim_path(&claim.id), &claim.to_yaml());
+    }
+    let on_a = section_of(&s, flipped(&a, 2)).await;
+    let on_b = section_of(&s, flipped(&b, 2)).await;
+    assert_ne!(on_a, on_b, "the two proposals read alike:\n{on_a}");
+    assert!(
+        names_by_id(&on_a, "claim", "0193…0001")
+            && !on_a.contains("[claim <code>0193…0002</code>]"),
+        "{on_a}"
+    );
+    assert!(
+        names_by_id(&on_b, "claim", "0193…0002")
+            && !on_b.contains("[claim <code>0193…0001</code>]"),
+        "{on_b}"
+    );
+    // Both still say what the claim says.
+    assert!(on_a.contains("<bdi>It opened in 1950.</bdi>"), "{on_a}");
+}
+
+#[tokio::test]
+async fn two_paragraphs_that_share_their_first_eighty_characters_do_not_make_two_claims_read_alike()
+{
+    let s = scene();
+    put_sources(&s);
+    let common =
+        "The bridge was opened to traffic in the spring of that year, after a long delay, ";
+    assert!(common.chars().count() >= 80);
+    let page = format!(
+        "---\ntitle: Twins\nid: twins-page\n---\n\n{common}by the council. ^t1\n\n{common}by the guild. ^t2\n"
+    );
+    s.w.fake.set("pages/Twins.md", &page);
+    let (a, b) = (
+        claim_citing(3, "twins-page", "t1", &[2]),
+        claim_citing(4, "twins-page", "t2", &[2]),
+    );
+    for claim in [&a, &b] {
+        s.w.fake.set(&claim_path(&claim.id), &claim.to_yaml());
+    }
+    let on_a = section_of(&s, flipped(&a, 2)).await;
+    let on_b = section_of(&s, flipped(&b, 2)).await;
+    assert_ne!(on_a, on_b, "the two proposals read alike:\n{on_a}");
+    assert!(names_by_id(&on_a, "claim", "0193…0003"), "{on_a}");
+    assert!(names_by_id(&on_b, "claim", "0193…0004"), "{on_b}");
+}
+
+#[tokio::test]
+async fn two_sources_of_one_name_are_told_apart_by_their_identifiers_and_a_source_of_its_own_name_is_not()
+ {
+    let s = scene();
+    put_sources(&s);
+    for n in [5u8, 6] {
+        let mut source = Source::new(source_id(n));
+        source.identity = Identity {
+            title: Some("The same title".to_owned()),
+            author: Some("A. Writer".to_owned()),
+            date: Some("1962".to_owned()),
+        };
+        s.w.fake.set(&source_path(&source.id), &source.to_yaml());
+    }
+    let claim = claim_citing(1, "bridge-page", "k1", &[2, 5, 6]);
+    s.w.fake.set(&claim_path(&claim.id), &claim.to_yaml());
+    let on_five = section_of(&s, flipped(&claim, 5)).await;
+    let on_six = section_of(&s, flipped(&claim, 6)).await;
+    assert_ne!(on_five, on_six, "the two proposals read alike:\n{on_five}");
+    assert!(names_by_id(&on_five, "source", "0193…0005"), "{on_five}");
+    assert!(names_by_id(&on_six, "source", "0193…0006"), "{on_six}");
+    // A source that has a name of its own is told by it and by its identifier too: the page cannot know what else the
+    // wiki holds (K24).
+    let on_two = section_of(&s, flipped(&claim, 2)).await;
+    assert!(names_by_id(&on_two, "source", "0193…0002"), "{on_two}");
 }

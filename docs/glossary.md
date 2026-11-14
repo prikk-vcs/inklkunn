@@ -1198,12 +1198,12 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `propose.claim_drop_legend` | the legend of the box that confirms the removal of a paragraph that has sources attached | "Paragraphs you are removing" | "削除する段落" |
 | `propose.claim_drop` | the box that confirms that removal; `{excerpt}` is how the paragraph begins | "Remove “{excerpt}”. It stops being where its claim is said, and the reviewer will see that." | "「{excerpt}」を削除する。この段落は主張が書かれている場所ではなくなり、レビュアーにもそのことが示されます。" |
 | `know.heading` | the heading of the list of what a proposal does to claims and sources | "Claims and sources in this proposal" | "この提案での主張と出典" |
-| `know.claim_made` | a line of that list: a claim is recorded; `{claim}` is an excerpt of a paragraph it is said in (or its identifier when none is found), `{kind}` what kind of statement, `{count}` in how many places it is said, `{standing}` its community status | "Records the claim “{claim}” ({kind}), said in {count} place. Its community status: {standing}." / "Records the claim “{claim}” ({kind}), said in {count} places. Its community status: {standing}." | "主張「{claim}」を記録します（{kind}）。{count} か所に書かれています。コミュニティでの扱い：{standing}。" |
+| `know.claim_made` | a line of that list: a claim is recorded; `{claim}` is the claim, named by an excerpt of a paragraph it is said in (or its identifier when none is found), (see `know.subject_claim_id`), `{kind}` what kind of statement, `{count}` in how many places it is said, `{standing}` its community status | "Records the claim {claim} ({kind}), said in {count} place. Its community status: {standing}." / "Records the claim {claim} ({kind}), said in {count} places. Its community status: {standing}." | "主張{claim}を記録します（{kind}）。{count} か所に書かれています。コミュニティでの扱い：{standing}。" |
 | `know.cite` | under that line, and for a claim's sources; `{source}` is the source's name, set apart | "Cites the source {source}: it {relation} the claim {bearing}." | "出典 {source} を引用します: {relation}（{bearing}）。" |
 | `know.source_recorded` | a line of that list: a source is recorded; `{source}` is its name (title, author, date), set apart, `{kind}` what kind | "Records the source {source} ({kind})." | "出典 {source} を記録します（{kind}）。" |
-| `know.claim_changed` | a line of that list: a claim that exists is changed, the changes follow; `{claim}` is an excerpt of a paragraph it is said in | "Changes the claim “{claim}”:" | "主張「{claim}」を変更します:" |
+| `know.claim_changed` | a line of that list: a claim that exists is changed, the changes follow; `{claim}` is the claim, named as in `know.claim_made` | "Changes the claim {claim}:" | "主張{claim}を変更します:" |
 | `know.source_changed` | a line of that list: a source that exists is changed, the changes follow; `{source}` is its name as the wiki has it, set apart | "Changes the source {source}:" | "出典 {source} を変更します:" |
-| `know.removed_claim` | a line of that list; `{claim}` is an excerpt of a paragraph it is said in | "Removes the claim “{claim}”." | "主張「{claim}」を削除します。" |
+| `know.removed_claim` | a line of that list; `{claim}` is the claim, named as in `know.claim_made` | "Removes the claim {claim}." | "主張{claim}を削除します。" |
 | `know.removed_source` | a line of that list; `{source}` is its name, set apart | "Removes the source {source}." | "出典 {source} を削除します。" |
 | `know.unreadable` | a line of that list: a file is not in the form the wiki reads; `{file}` is its name, `{reason}` says which rule | "The file {file} in this proposal is not in the form the wiki reads. {reason}" | "この提案のファイル {file} は、ウィキが読める形になっていません。{reason}" |
 | `know.change_kind` | under a changed claim | "The kind of statement becomes {kind}." | "記述の種類が {kind} になります。" |
@@ -1211,8 +1211,8 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `know.change_standing` | under a changed claim: its community status changes | "Its community status changes from {from} to {to}." | "コミュニティでの扱いが「{from}」から「{to}」に変わります。" |
 | `know.change_said` | under a changed claim; `{paragraph}` is an excerpt of the paragraph | "It is said in one more paragraph: “{paragraph}”." | "もう一つの段落にも書かれることになります：「{paragraph}」。" |
 | `know.change_unsaid` | under a changed claim: a paragraph stops being where it is said; `{paragraph}` is an excerpt of it | "It is no longer said in the paragraph “{paragraph}”: the paragraph is removed, or the claim lets it go." | "段落「{paragraph}」には書かれなくなります。段落が削除されるか、主張がその段落から外れます。" |
-| `know.change_related` | under a changed claim; `{other}` is an excerpt of a paragraph the other claim is said in, `{relation}` says how it relates to it | "A relation to the claim “{other}” is added: {relation}." | "主張「{other}」との関係が加わります: {relation}。" |
-| `know.change_unrelated` | under a changed claim | "A relation to the claim “{other}” is removed: {relation}." | "主張「{other}」との関係がなくなります: {relation}。" |
+| `know.change_related` | under a changed claim; `{other}` is the other claim, named as in `know.claim_made`, `{relation}` says how it relates to it | "A relation to the claim {other} is added: {relation}." | "主張{other}との関係が加わります: {relation}。" |
+| `know.change_unrelated` | under a changed claim | "A relation to the claim {other} is removed: {relation}." | "主張{other}との関係がなくなります: {relation}。" |
 | `know.change_uncited` | under a changed claim; `{source}` is the source's name, set apart | "It no longer cites the source {source}." | "出典 {source} を引用しなくなります。" |
 | `know.change_recited` | under a changed claim: how a source it cites speaks to it changes | "The source {source}, which it cites, now {relation} it {bearing}." | "引用している出典 {source} と主張の関係が変わります: {relation}（{bearing}）。" |
 | `know.change_noted` | under a changed claim | "The note on the source {source}, which it cites, changes." | "引用している出典 {source} のメモが変わります。" |
@@ -1307,13 +1307,16 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `know.replaced_unreadable_claim` | a line of a proposal: a claim file the wiki has and cannot read is replaced or removed; `{id}` is its identifier | "Replaces or removes a claim file that cannot be read ({id}). What it held is not known." | "読み取れない主張ファイル（{id}）を置き換えるか削除します。その内容は分かっていません。" |
 | `know.replaced_unreadable_source` | the same, for a source file | "Replaces or removes a source file that cannot be read ({id}). What it held is not known." | "読み取れない出典ファイル（{id}）を置き換えるか削除します。その内容は分かっていません。" |
 | `know.made_lifecycle` | under a recorded claim | "Where it stands in its life: {lifecycle}." | "主張の扱いの段階：{lifecycle}。" |
-| `know.made_related` | under a recorded claim; `{other}` is an excerpt of a paragraph the other claim is said in | "It has a relation to the claim “{other}”: {relation}." | "主張「{other}」との関係があります: {relation}。" |
+| `know.made_related` | under a recorded claim; `{other}` is the other claim, named as in `know.claim_made` | "It has a relation to the claim {other}: {relation}." | "主張{other}との関係があります: {relation}。" |
 | `know.source_made_availability` | under a recorded source | "Whether it can be had: {availability}." | "入手できるかどうか：{availability}。" |
 | `know.source_where` | under a recorded source; `{form}` is how the reference is written, `{reference}` the reference | "Where it is found ({form}): {reference}." | "参照先（{form}）：{reference}。" |
 | `know.source_copy` | under a recorded source | "A copy of it is kept." | "写しが保存されています。" |
 | `know.source_change_unsuperseded` | under a changed source | "It is no longer marked as replaced." | "置き換えられたという印がなくなります。" |
 | `know.source_change_reference_cleared` | under a changed source | "It no longer says where it is found." | "参照先が書かれなくなります。" |
 | `know.source_nameless` | the name of a source that has no title, author or date in the wiki or the proposal, in a line of that list; `{id}` is its identifier | "A source without a title (identifier {id})" | "題名のない出典（識別子 {id}）" |
+| `know.subject_claim` | the name of a claim in a line of that list when it is named by its identifier already (no paragraph it is said in can be found); `{excerpt}` is the identifier | "“{excerpt}”" | "「{excerpt}」" |
+| `know.subject_claim_id` | the name of a claim in a line of that list: `{excerpt}` is the beginning of a paragraph it is said in, `{id}` the start and the end of its identifier, long enough that no two claims on the page share it (two claims can be said in one paragraph, and two paragraphs can begin alike, so the words alone do not tell which claim a line is about) | "“{excerpt}” [claim {id}]" | "「{excerpt}」［主張 {id}］" |
+| `know.subject_source_id` | the name of a source in a line of that list: `{name}` is its name (title, author, date), set apart, `{id}` the start and the end of its identifier as above (two sources can have the same name) | "{name} [source {id}]" | "{name}［出典 {id}］" |
 
 ## 3. Words the interface does not say
 

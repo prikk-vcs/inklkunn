@@ -1585,6 +1585,10 @@ keys! {
     KnowSourceChangeReferenceCleared => "know.source_change_reference_cleared",
     KnowSourceNameless => "know.source_nameless",
     // knowledge: a file that cannot be read is replaced (handoff 005 corrections, second round K16): end
+    KnowSubjectClaim => "know.subject_claim",
+    KnowSubjectClaimId => "know.subject_claim_id",
+    KnowSubjectSourceId => "know.subject_source_id",
+    // knowledge: subjects told apart (handoff 005 corrections, third round K24): end
 }
 
 /// A typed value for a placeholder. Text is HTML-escaped; a link is an escaped label plus an `href` the
@@ -1602,7 +1606,7 @@ pub enum Slot {
         /// Where it goes.
         href: String,
     },
-    /// Markup this module built from escaped parts ([`Rich`]): [`bdi`], [`cite`] or another message's output. It
+    /// Markup this module built from escaped parts ([`Rich`]): [`bdi`], [`cite`], [`code`] or another message's output. It
     /// can be nothing a caller wrote.
     Rich(String),
     /// Text in another language than the sentence's (a language's name in itself): `<span lang="…">`.
@@ -1722,6 +1726,14 @@ pub fn cite(text: &str) -> Rich {
     let mut out = String::from("<cite><bdi>");
     escape_into(&mut out, text);
     out.push_str("</bdi></cite>");
+    Rich(out)
+}
+
+/// `text` as a token to be read exactly (`<code>`, escaped): an identifier, or the short form of one.
+pub fn code(text: &str) -> Rich {
+    let mut out = String::from("<code>");
+    escape_into(&mut out, text);
+    out.push_str("</code>");
     Rich(out)
 }
 

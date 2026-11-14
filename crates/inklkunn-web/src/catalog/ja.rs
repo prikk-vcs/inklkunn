@@ -2697,7 +2697,7 @@ pub const CATALOG: &[Entry] = &[
     msg("know.heading", "この提案での主張と出典"),
     msg(
         "know.claim_made",
-        "主張「{claim}」を記録します（{kind}）。{count} か所に書かれています。コミュニティでの扱い：{standing}。",
+        "主張{claim}を記録します（{kind}）。{count} か所に書かれています。コミュニティでの扱い：{standing}。",
     ),
     msg(
         "know.cite",
@@ -2707,9 +2707,9 @@ pub const CATALOG: &[Entry] = &[
         "know.source_recorded",
         "出典 {source} を記録します（{kind}）。",
     ),
-    msg("know.claim_changed", "主張「{claim}」を変更します:"),
+    msg("know.claim_changed", "主張{claim}を変更します:"),
     msg("know.source_changed", "出典 {source} を変更します:"),
-    msg("know.removed_claim", "主張「{claim}」を削除します。"),
+    msg("know.removed_claim", "主張{claim}を削除します。"),
     msg("know.removed_source", "出典 {source} を削除します。"),
     msg(
         "know.unreadable",
@@ -2734,11 +2734,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.change_related",
-        "主張「{other}」との関係が加わります: {relation}。",
+        "主張{other}との関係が加わります: {relation}。",
     ),
     msg(
         "know.change_unrelated",
-        "主張「{other}」との関係がなくなります: {relation}。",
+        "主張{other}との関係がなくなります: {relation}。",
     ),
     msg(
         "know.change_uncited",
@@ -2969,7 +2969,7 @@ pub const CATALOG: &[Entry] = &[
     msg("know.made_lifecycle", "主張の扱いの段階：{lifecycle}。"),
     msg(
         "know.made_related",
-        "主張「{other}」との関係があります: {relation}。",
+        "主張{other}との関係があります: {relation}。",
     ),
     msg(
         "know.source_made_availability",
@@ -2987,4 +2987,8 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg("know.source_nameless", "題名のない出典（識別子 {id}）"),
     // knowledge: a file that cannot be read is replaced (handoff 005 corrections, second round K16): end
+    msg("know.subject_claim", "「{excerpt}」"),
+    msg("know.subject_claim_id", "「{excerpt}」［主張 {id}］"),
+    msg("know.subject_source_id", "{name}［出典 {id}］"),
+    // knowledge: subjects told apart (handoff 005 corrections, third round K24): end
 ];

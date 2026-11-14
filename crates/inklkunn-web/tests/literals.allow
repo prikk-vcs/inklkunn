@@ -478,3 +478,5 @@ exact :: knowledge.rs :: reference :: a placeholder name of a catalog message
 exact :: knowledge.rs :: claim :: a placeholder name of a catalog message
 exact :: knowledge.rs :: standing :: a placeholder name of a catalog message
 exact :: knowledge.rs :: file :: a placeholder name of a catalog message
+exact :: knowledge.rs :: excerpt :: a placeholder name of a catalog message
+exact :: knowledge.rs :: name :: a placeholder name of a catalog message

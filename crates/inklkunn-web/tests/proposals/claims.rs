@@ -531,24 +531,37 @@ async fn attaching_a_source_to_a_paragraph_makes_the_claim_and_the_source_in_the
     assert!(body.contains("It changes 1 page."), "{body}");
     assert_eq!(body.matches("Page: ").count(), 1, "{body}");
     assert!(!body.contains("lifecycle: proposed"), "{body}");
+    // Each is told by its identifier too, shortened (K24); the service made them.
+    let (claim_tag, source_tag) = (tag("claim", &claim.id), tag("source", &source.id));
     assert!(
-        body.contains(
-            "Records the claim “<bdi>It is long.</bdi>” (an opinion), said in 1 place. Its community status: not decided."
-        ),
+        body.contains(&format!(
+            "Records the claim “<bdi>It is long.</bdi>” {claim_tag} (an opinion), said in 1 place. Its community status: not decided."
+        )),
         "{body}"
     );
     assert!(
-        body.contains(
-            "Cites the source <cite><bdi>“A survey of bridges”, dated 1962</bdi></cite>: it supports the claim in part."
-        ),
+        body.contains(&format!(
+            "Cites the source <cite><bdi>“A survey of bridges”, dated 1962</bdi></cite> {source_tag}: it supports the claim in part."
+        )),
         "{body}"
     );
     assert!(
-        body.contains(
-            "Records the source <cite><bdi>“A survey of bridges”, dated 1962</bdi></cite> (a person&#39;s account)."
-        ),
+        body.contains(&format!(
+            "Records the source <cite><bdi>“A survey of bridges”, dated 1962</bdi></cite> {source_tag} (a person&#39;s account)."
+        )),
         "{body}"
     );
+}
+
+/// How the page tells a lone subject by its identifier (K24): the first four characters, `…`, the last four.
+fn tag(kind: &str, id: &impl std::fmt::Display) -> String {
+    let id = id.to_string();
+    let head: String = id.chars().take(4).collect();
+    let tail: String = id
+        .chars()
+        .skip(id.chars().count().saturating_sub(4))
+        .collect();
+    format!("[{kind} <code>{head}…{tail}</code>]")
 }
 
 #[tokio::test]
@@ -567,10 +580,11 @@ async fn challenging_a_paragraph_attaches_a_source_that_challenges() {
         .expect("a link");
     assert_eq!(link.relation, Link::Challenges);
     let body = open(&s, &to, &s.writer).await.body();
+    let source_tag = tag("source", &link.source);
     assert!(
-        body.contains(
-            "Cites the source <cite><bdi>“A correction”, dated 1962</bdi></cite>: it challenges the claim in part."
-        ),
+        body.contains(&format!(
+            "Cites the source <cite><bdi>“A correction”, dated 1962</bdi></cite> {source_tag}: it challenges the claim in part."
+        )),
         "{body}"
     );
 }
@@ -1139,7 +1153,7 @@ async fn a_curation_that_judges_again_shows_each_re_judgement_with_the_wording_i
     );
     assert!(
         body.contains(
-            "What the source <cite><bdi>“A history of the bridge”</bdi></cite> that it cites was judged on becomes this wording: “<bdi>It opened in 1950.</bdi>”"
+            "What the source <cite><bdi>“A history of the bridge”</bdi></cite> [source <code>0193…0001</code>] that it cites was judged on becomes this wording: “<bdi>It opened in 1950.</bdi>”"
         ),
         "{body}"
     );
