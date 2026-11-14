@@ -1209,6 +1209,13 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   service's held tip (K35's test passes unchanged). `ReadService::page_entries_at_block` goes. Test: with the index held, the
   acceptance asks for one extract (the knowledge check's) and not two.
 
+- **K56 (handoff 005 corrections, sixth round): one owned-key rule.** The knowledge check reads `proposal::files::{front_keys,
+  changed_owned_keys}`, the proposal service's own function with ruling D8's redirect exemption, instead of a comparison of its own:
+  a proposer's page that becomes (or is) a `kind: redirect`, written beside claim and source files, passes acceptance as it passed
+  submit, where it used to be refused as `Owned`, pointing at a key anyone may set. Any other owned key beside it is still refused.
+  Test: a contributor's redirect page (new, and an existing page turned into one) plus a claim and a source, through submit and
+  acceptance; an owned key beside the redirect refused at submit, and for an administrator at acceptance.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

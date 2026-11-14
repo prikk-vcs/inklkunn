@@ -27,7 +27,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use inklkunn_markup::{Value, frontmatter, parse_metadata};
+use inklkunn_markup::parse_metadata;
 use inklkunn_prikk::{Point, Storage, StorageError};
 use inklkunn_signer::PreparedFile;
 use inklkunn_store::WikiRecord;
@@ -39,6 +39,7 @@ use super::{
     anchor_state, claim_path, family_of, is_keep, is_knowledge_path, read_file, source_path,
 };
 use crate::import::shown;
+use crate::proposal::files::{changed_owned_keys, front_keys};
 use crate::read::{ReadError, ReadService, entries_from_tree};
 
 /// The page keys only the service writes (RFC 004 D-2; threat model C-4b), **the proposal service's own list**: one
@@ -778,28 +779,6 @@ fn page_id_of(text: &str) -> Option<String> {
         .filter(|id| !id.is_empty())
 }
 
-/// The owned keys of a page text as JSON text, `None` for a text whose information block is not readable.
-fn owned_keys(text: &str) -> Option<BTreeMap<&'static str, String>> {
-    let (yaml, _, _) = frontmatter::split(text);
-    let Some(yaml) = yaml else {
-        return Some(BTreeMap::new());
-    };
-    let Value::Map(pairs) = frontmatter::parse_yaml(yaml).ok()? else {
-        return Some(BTreeMap::new());
-    };
-    Some(
-        OWNED_PAGE_KEYS
-            .into_iter()
-            .filter_map(|key| {
-                pairs
-                    .iter()
-                    .find(|(k, _)| k == key)
-                    .map(|(_, v)| (key, v.to_json().to_string()))
-            })
-            .collect(),
-    )
-}
-
 fn read_bounded(path: &Path, max: u64) -> Option<String> {
     let meta = std::fs::metadata(path).ok()?;
     if !meta.is_file() || meta.len() > max {
@@ -1025,12 +1004,13 @@ pub(crate) fn judge(
             touched.page_ids.insert(id);
         }
     }
-    // Owned keys: a page the change writes that differs from the tip's in any of them.
+    // Owned keys: a page the change writes that differs from the tip's in any of them, by the proposal service's
+    // own rule (`changed_owned_keys`, with ruling D8's redirect exemption): one rule for every path (K56).
     for (path, new) in owned_candidates {
         let old = read_bounded(&root.join(&path), page_max_bytes);
-        let before = old.as_deref().and_then(owned_keys).unwrap_or_default();
-        if let Some(after) = owned_keys(&new)
-            && before != after
+        let before = old.as_deref().and_then(front_keys).unwrap_or_default();
+        if let Some(after) = front_keys(&new)
+            && !changed_owned_keys(&before, &after).is_empty()
         {
             touched.owned.insert(path);
         }

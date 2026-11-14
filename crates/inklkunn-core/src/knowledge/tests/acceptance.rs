@@ -2,13 +2,14 @@
 //! **before the signer is asked**, with the typed refusal; a wiki with no knowledge layer pays nothing.
 
 use inklkunn_prikk::StorageError;
-use inklkunn_store::{ProposalState, Role};
+use inklkunn_store::{FileChange, ProposalState, Role};
 
 use super::check::sound_claim;
 use super::*;
 use crate::acceptance::testing::{HOME, Rig};
 use crate::acceptance::{AcceptFailure, Accepted, words};
 use crate::authorize::Principal;
+use crate::proposal::ProposalEdit;
 
 /// A page with a block a claim can stand on.
 const ONE: &str = "---\ntitle: One\nid: p1\n---\n\nSaid. ^b1\n\nOther.\n";
@@ -236,6 +237,78 @@ fn an_owned_page_key_cannot_ride_along_with_a_knowledge_change() {
     assert_eq!(
         refusals(outcome),
         [("pages/One.md".to_owned(), Rule::Owned)]
+    );
+}
+
+#[test]
+fn a_proposers_redirect_page_rides_along_with_a_knowledge_change_at_submit_and_at_acceptance() {
+    // One owned-key rule for every path (K56): ruling D8 makes `kind: redirect` ordinary work, and the knowledge
+    // check reads the same function the proposal service does, so what submit let through acceptance does not refuse.
+    let s = scene("k56-redirect");
+    let (_, proposer) = s.rig.person("Piet", Some(Role::Contributor));
+    let claim = sound_claim(1);
+    let source = Source::new(source_id(1));
+    let redirect = "---\ntitle: Alias\nkind: redirect\nredirect: One\n---\n";
+    let turned = ONE.replace("title: One", "title: One\nkind: redirect");
+    for (page, text) in [("pages/Alias.md", redirect), ("pages/One.md", &turned)] {
+        let s = scene(&format!("k56-redirect-{page}"));
+        let (_, proposer) = s.rig.person("Piet", Some(Role::Contributor));
+        let p = s.rig.propose(
+            &proposer,
+            "A redirect and a claim",
+            &[
+                (&claim_path(&claim.id), Some(&claim.to_yaml())),
+                (&source_path(&source.id), Some(&source.to_yaml())),
+                (page, Some(text)),
+            ],
+        );
+        let outcome = s
+            .rig
+            .acceptor()
+            .accept(&s.maintainer, &s.rig.wiki, &p.id, 1);
+        assert!(
+            matches!(outcome, Ok(Accepted::Signed(_))),
+            "{page}: {outcome:?}"
+        );
+    }
+    // Any other owned key beside the redirect is still refused: at submit for a proposer (the proposal service) ...
+    let owned = "---\ntitle: Alias\nkind: redirect\nredirect: One\nvisibility: private\n---\n";
+    let edit = ProposalEdit {
+        summary: "Both".to_owned(),
+        files: vec![
+            FileChange {
+                path: claim_path(&claim.id),
+                text: Some(claim.to_yaml()),
+            },
+            FileChange {
+                path: source_path(&source.id),
+                text: Some(source.to_yaml()),
+            },
+            FileChange {
+                path: "pages/Alias.md".to_owned(),
+                text: Some(owned.to_owned()),
+            },
+        ],
+        ..ProposalEdit::default()
+    };
+    let refused = s.rig.proposals.create(&proposer, &s.rig.wiki, None, edit);
+    assert!(
+        matches!(refused, Err(crate::proposal::ProposalError::OwnedKeys(ref k)) if k == &["visibility"]),
+        "{refused:?}"
+    );
+    // ... and at acceptance for an administrator's (who may set it at submit).
+    let (outcome, calls) = accept(
+        &s,
+        &[
+            (&claim_path(&claim.id), Some(&claim.to_yaml())),
+            (&source_path(&source.id), Some(&source.to_yaml())),
+            ("pages/Alias.md", Some(owned)),
+        ],
+    );
+    assert_eq!(calls, 0);
+    assert_eq!(
+        refusals(outcome),
+        [("pages/Alias.md".to_owned(), Rule::Owned)]
     );
 }
 
