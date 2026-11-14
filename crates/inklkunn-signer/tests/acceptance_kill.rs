@@ -1768,16 +1768,17 @@ fn the_runbooks_way_out_of_an_orphan_queued_patch_is_true_of_the_state_a_commit_
     let help = Command::new(&real).arg("--help").output().unwrap();
     let help = String::from_utf8_lossy(&help.stdout).into_owned();
     let has_uncommit = help.contains("uncommit");
+    // A plan that is only shown offers nothing and asks prikk for nothing, whatever the prikk (M5: the preview takes
+    // prikk's lock): it says that a run shows the preview and the command.
     let offered = recovery
         .recover(&f.wiki, RecoveryMode::PlanOnly)
         .unwrap()
         .plan
         .notes
         .join("\n");
-    assert_eq!(
-        offered.contains("--discard-queued-patch"),
-        has_uncommit,
-        "the plan offers the take-back exactly when this prikk has the verb: {offered}"
+    assert!(
+        offered.contains("`recover --plan` does not ask prikk") && !offered.contains("prikk says"),
+        "{offered}"
     );
 
     // "A recovery that stops leaves the wiki flagged and the repository exactly as it found it; it records the plan
@@ -1790,6 +1791,13 @@ fn the_runbooks_way_out_of_an_orphan_queued_patch_is_true_of_the_state_a_commit_
     );
     assert_eq!(run.plan.stop, Some(Stop::ForeignQueuedPatch));
     assert!(run.done.is_empty());
+    // A run asks prikk for the preview, so it offers the take-back exactly when this prikk has the verb.
+    assert_eq!(
+        run.plan.notes.join("\n").contains("--discard-queued-patch"),
+        has_uncommit,
+        "the run offers the take-back exactly when this prikk has the verb: {:?}",
+        run.plan.notes
+    );
     assert_eq!(log(&s, &f.repo), blocks, "nothing was sealed");
     assert_eq!(s.storage.status(&f.repo).unwrap().queue.count, 1);
     assert!(s.store.recovery_flag(&f.wiki.id).unwrap().is_some());
