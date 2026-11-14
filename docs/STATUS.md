@@ -399,6 +399,13 @@
     - **Maintenance M34 – M37:** the late-seal tests still run only their floor branch in CI, one of them silently; `pin-check`'s parsers miss installs written other ways; CI lifts the runner's user-namespace restriction so the namespace test runs.
     - **Knowledge K65 – K70:** the **export** still decided liveness from `/proc` (K65, first); a changed reference now clears a source's check (RFC amended); the removal sentences no longer contradict *not offered*; standard OpenAPI shapes.
   - Pushed.
+- **2026-11-14 — M34 – M37 and K65 – K70 reviewed** (`0180210`).
+  - **Gates on the pinned 1.99.1:** 3,031 passed on 0.55.0, shimmed off (315), on the host's 0.57.0 and on the release asset's binary.
+  - **K65 Approved:** no liveness from `/proc` remains in the scratch directory, the export included.
+  - **The rest Conditionally Approved:**
+    - **Maintenance M38 – M40.** M35's premise was the architect's error (no YAML crate in the lock), so `pin-check` now refuses any workflow line outside one canonical form, with no new crate. Tests reach prikk capabilities only through one helper that prints the guarded line.
+    - **Knowledge K71 – K75.** The acceptance merge could carry a check of an old reference onto a new one, so the reference rule moves to acceptance. A check of a new reference must be stated, never inferred from a repeated day. The export's partial sweep could delete a user's directory beside the destination.
+  - Pushed.
 
 ## Pending on the owner
 
@@ -421,7 +428,7 @@
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and handoff 003's T1 – T3 are built and
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
-(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **M12 – M19, K32 – K42 and K-T11 reviewed (2026-11-14).** **M20 – M27 and K43 – K54 reviewed (2026-11-14).** **M28 – M33 and K55 – K64 reviewed (2026-11-14).** **The dev team's order now:** **K65 first**, then **K66 – K70** and **M34 – M37**
+(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **M12 – M19, K32 – K42 and K-T11 reviewed (2026-11-14).** **M20 – M27 and K43 – K54 reviewed (2026-11-14).** **M28 – M33 and K55 – K64 reviewed (2026-11-14).** **M34 – M37 and K65 – K70 reviewed (2026-11-14).** **The dev team's order now:** **K71 first**, then **K72 – K75** and **M38 – M40**
 (all before 0.3.0); then 0.3.0's readiness; and, at the next touch of `signer/retirement.rs`,
 `seal_pause`'s operator sentence (Z7 – Z9 review). An assistive-technology pass is arranged before 0.3.0.
 

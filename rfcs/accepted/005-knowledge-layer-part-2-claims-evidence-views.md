@@ -199,6 +199,10 @@ index (D-1 … D-6) may start earlier if the dev team has room, as they touch no
   *Amended 2026-11-14:*
   - **A change of a source's reference** (where it is found) is a change of what was checked. It clears the source's review day and availability, unless the same proposal records a new check.
   - **A correction of its title, author or date** keeps them. The proposal's page says that the review of that day stays and names the other claims that cite the source, so the reviewer who accepts it vouches that it is still the same work.
+  *Amended again 2026-11-14:*
+  - **The rule holds at acceptance.** A source whose reference differs from the tip's may carry a review day or an availability only if this proposal states that check.
+  - **A check of the new reference is stated, never inferred.** It is an explicit statement in the form or the API, dated no earlier than the source's previous review day and not after today (in the earliest timezone).
+  - **A change of white space alone in a reference** is not a change of what was checked, so the check stays.
 - **What is not offered in 0.3.0 (2026-11-14).** Removing a claim file or a source file, and replacing a file that cannot be
   read. Every surface that meets one says so plainly, and names no reviewer or form that cannot act on it. Retiring claims
   and sources is designed with RFC 006 (moderation, M4).

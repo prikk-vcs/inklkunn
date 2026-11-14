@@ -221,3 +221,26 @@ back M34 – M37 as one request, `010-maintenance-2026-11-corrections-5-review-r
   - `binaries` gets `timeout-minutes: 10`.
   - **CI lifts the runner's restriction on unprivileged user namespaces** for the test steps (`sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`, Ubuntu 24.04), so the PID-namespace test of K55 runs. The with-prikk run's guard fails on `skipping: PID namespaces unavailable` as on the 0.57.0 lines.
   - Say whether the bubblewrap self-skips then stop printing in CI, which would make the sandbox tests real there too.
+
+## Corrections from the review of 2026-11-14, sixth round (binding; **before 0.3.0**)
+
+M34, M36 and M37 are **Conditionally Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-corrections-5-review-result.md`).
+**M35's premise was the architect's error** (no YAML crate is in the lock), and it is replaced by M38. Hand back M38 – M40 as one
+request, `010-maintenance-2026-11-corrections-6-review-request.md`.
+
+- **M38 — `pin-check` refuses what it cannot read** (replaces M35; no new crate). The workflows are held to one canonical form, and `pin-check` fails on anything outside it:
+  - `jobs:` is a line of its own, and each job key is `^  [a-z0-9-]+:$`, with no comment or trailing space;
+  - each job has `timeout-minutes: <N>` among its own keys, before its `steps:`;
+  - every line that mentions `rustup` is one of the canonical install forms (`rustup toolchain install <pin> --profile minimal --component rustfmt --component clippy --no-self-update`, or the `msrv` job's form), inside a block `run: |`, never a one-line `run:` and never after `;`, `&&` or `||`.
+
+  The reviewer's six shapes are planted failures, each **refused**. The non-vacuity guards count jobs and installs as the canonical reader finds them.
+- **M39 — a test reaches a prikk capability only through one helper** (Z′-a; replaces the heuristic scanner).
+  - One module per test crate (or one shared test-support module) holds every capability probe: `prikk_where`, `real_prikk_at_least_057`, `reports_block_seals`, `has_uncommit` and the version probes. It returns the binary or a world, and **prints the guarded line itself** when it returns none.
+  - The workspace check fails on any call of a probe name outside those modules, and on any helper there that can return none without printing.
+  - Probe names are found by their definition in those modules, never by a hand-kept list.
+  - The reviewer's nine shapes become planted failures of the new rule where they still compile.
+- **M40 — small points and the bubblewrap guard** (Z′-b, Z′-c, decision 2).
+  - **`scrub`:** it filters the store's `is_line_or_control` set plus the format characters (Cf, as `yaml::is_bidi_or_format` names them) before it measures a piece. It chooses the line to show after flattening. A test for each of the three cases.
+  - **`user_namespace_violations`** checks each job that runs `cargo test`, honouring `if:`.
+  - **The bubblewrap lines:** if the architect's reading of this push's CI log shows them gone, the guard fails on `skipping: bubblewrap cannot confine` and `skipping the confined policy`.
+  - **The serve refusal test** runs everywhere through an injected *cannot confine* answer, so it never depends on the runner.

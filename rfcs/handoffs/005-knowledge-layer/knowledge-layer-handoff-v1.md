@@ -414,3 +414,38 @@ changed reference clears the review). Hand back K65 – K70 as one request, `005
   - `validate` remembers the sources already walked, so a chain costs O(N).
   - The form's hint says that a change of line breaks alone is made through the API.
 - **K70 — `--config` once** (A-e). A second `--config`, or a flag in its place, is a usage error.
+
+## Corrections from the review of 2026-11-14, eighth round (binding; **before 0.3.0**)
+
+K65 is **Approved for the scratch directory**; K66 – K70 are **Conditionally Approved**
+(`.git-exclude/reviewed/005-knowledge-layer-corrections-7-review-result.md`). The clarification *correcting a source* is amended
+again. Hand back K71 – K75 as one request, `005-knowledge-layer-corrections-8-review-request.md`. **K71 first.**
+
+- **K71 — the reference rule holds at acceptance** (D-a, decision 4).
+  - At acceptance, a written source whose reference differs from the **tip's** may carry a review day or an availability only when this proposal states that check (K72). Otherwise it is refused by field (`last_reviewed`), with a sentence saying why.
+  - The merge makes a reference changed on one side and a check changed on the other an overlap, so the re-authoring asks a person.
+  - Tests: the reviewer's two orders, each refused or overlapping, never merged into *checked*; the compose path unchanged.
+- **K72 — a check of a new reference is stated** (D-b, decision 3).
+  - When a curation changes a reference, the form shows a separate, empty *the day you checked the new reference* field, with its availability. The API takes the same as an explicit member (`checked: {day, availability}`, or the name you choose, said in OpenAPI).
+  - The old day is never carried by inference.
+  - The day must be no earlier than the source's previous review day and not after today in UTC+14. A day outside that is refused by field.
+  - A white-space-only change of a reference keeps the check.
+  - The form hint, the API description and the `curate` doc comment say exactly this (en, ja, glossary).
+  - The API test that kept `2023-11-10` is turned around.
+- **K73 — the cited-by line and the stale sentence** (D-c, D-d).
+  - The line says *a claim that cites it* (ja likewise), and lists from the tip's index.
+  - The held-draft `submit_draft` path and `words.rs` choose their sentence through `curate::sentences`, so a removal or unreadable-file refusal says `know.not_by_form`. A test of a held draft whose file became unreadable.
+- **K74 — the export's partial sweep stays inside what the export made** (C-b, C-c).
+  - Beside a destination, a partial is swept only when its lock file already exists and its tail is the three-part `<pid>-<start>-<n>`. A directory with no lock file, or with the two-part tail, is never touched there. The two-part tail is swept only inside the service's scratch directory.
+  - The upgrade note tells operators to remove a 0.2.x `.<dest>.partial-…` by hand.
+  - `build` compares the per-path entries (path and size) from `storage.tree`, not the totals.
+  - A destination name too long for its partial is refused as *the name is too long by N bytes*.
+  - Tests: the reviewer's `~/exports/.notes.partial-2026-11/` stays whole; a swap of two files of equal size is refused.
+- **K75 — small points** (D-e, D-f).
+  - **The test's pattern reader** refuses any escape or class it does not implement. Its `\s` is ECMA-262's set, and the handler's `trim` agrees with it or the schema says the handler's set. `oneOf` and `anyOf` check their sibling keywords.
+  - **White space shown:**
+    - a literal marker character in a value is itself escaped (as `[U+2423]`), so markers cannot be imitated;
+    - the legend names `[U+XXXX]`;
+    - a missing `was` says *none*;
+    - a white-space-only reference change is shown as one.
+  - **The cycle refusal** names a source by its whole id in `<code>` beside its title.
