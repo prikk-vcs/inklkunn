@@ -501,19 +501,23 @@ fn crowded(sources: usize, per_source: usize) -> kix::KnowledgeIndex {
 fn the_list_of_two_thousand_sources_costs_what_it_returns_not_sources_times_links() {
     // 2,000 unreviewed sources, 200,000 links, 200,000 places: a pass over every link for each source is 4 * 10^8
     // comparisons; a map built once is 2 * 10^5 steps. Counted, not timed (maintenance M26: a bound on seconds
-    // fails a busy machine): the list asks the map once for each source it lists and never takes the whole of the
-    // rows, which is what a pass over every link would start with.
+    // fails a busy machine), and counted in units of work (M30): every link and every anchor the index reads,
+    // however it is read, since the rows are behind methods that count (a lookup rewritten as a scan of the links
+    // reads 4 * 10^8 of them, whichever accessor it is written in). The list reads each link it lists once and no
+    // anchor, and never takes the whole of the rows.
     let index = crowded(2_000, 100);
-    assert_eq!(index.work_done(), (0, 0), "a new index has done no work");
+    assert_eq!(index.work_done(), (0, 0, 0), "a new index has done no work");
     let list =
         crate::knowledge::freshness::sources_to_review_kept(&index, NOW, DEFAULT_REVIEW_AFTER_DAYS);
     assert_eq!(list.len(), 2_000);
     assert!(list.iter().all(|r| r.claims_total == 100));
     assert!(list.iter().all(|r| r.claims.len() == MAX_RELYING));
+    let listed: usize = list.iter().map(|r| r.claims_total).sum();
+    assert_eq!(listed, 200_000);
     assert_eq!(
         index.work_done(),
-        (2_000, 0),
-        "one lookup for each source listed, and no pass over the rows"
+        (listed, 0, 0),
+        "each link of the list read once, no anchor, and no pass over the rows"
     );
     // The lookups answer in what they return, in the rows' order.
     let source = index.sources().first().expect("a source").id.clone();
@@ -526,9 +530,19 @@ fn the_list_of_two_thousand_sources_costs_what_it_returns_not_sources_times_link
     sorted.sort_unstable();
     assert_eq!(cited, sorted);
     let claim = index.rows().links.first().expect("a link").claim.clone();
+    // Each lookup reads what it returns: the claims of one source (100 links), a claim's places (1 anchor) and
+    // its links (1 link), and nothing when there is none.
+    let work = |index: &kix::KnowledgeIndex| index.work_done();
+    let before = work(&index);
     assert_eq!(index.anchors_of(&claim).count(), 1);
+    assert_eq!(work(&index), (before.0, before.1 + 1, before.2));
+    let before = work(&index);
     assert_eq!(index.links_of(&claim).count(), 1);
+    assert_eq!(work(&index), (before.0 + 1, before.1, before.2));
+    let before = work(&index);
     assert_eq!(index.anchors_of("no such claim").count(), 0);
+    assert_eq!(index.claims_citing(&source).count(), 100);
+    assert_eq!(work(&index), (before.0 + 100, before.1, before.2));
     // A second ask costs nothing: it is the list that was kept (the same allocation, and no work done to give it).
     let before = index.work_done();
     let same =

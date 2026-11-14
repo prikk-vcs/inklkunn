@@ -31,6 +31,9 @@ use inklkunn_store::{
     KnowledgeRelationRow, KnowledgeRows, KnowledgeSourceRow,
 };
 
+mod counted;
+
+use self::counted::Rows;
 use super::tree::{TreeError, list_tree, read_head};
 use super::{AnchorState, Claim, Digest, File, Rule, Source, anchor_state, read_file};
 
@@ -79,7 +82,7 @@ impl Judgement {
 #[derive(Debug, Clone)]
 pub struct KnowledgeIndex {
     tip: String,
-    rows: KnowledgeRows,
+    rows: Rows,
     claims: HashMap<String, usize>,
     sources: HashMap<String, usize>,
     /// The positions of the rows of `rows.links` by the source they name, by the claim that holds them, and of
@@ -91,20 +94,6 @@ pub struct KnowledgeIndex {
     /// The list of sources to review, computed for one day and setting and kept with the index (K40); clones of
     /// the index share it, since they are of one tip.
     freshness: Arc<Mutex<Option<super::freshness::Memo>>>,
-    /// What the lookups did, for the tests that show a list costs what it returns (K40; counts of work and no clock,
-    /// maintenance M26). Compiled into test builds only.
-    #[cfg(test)]
-    work: Arc<Work>,
-}
-
-/// Counts of work done through the index's accessors (test builds only).
-#[cfg(test)]
-#[derive(Debug, Default)]
-pub(super) struct Work {
-    /// Calls of [`KnowledgeIndex::claims_citing`]: one lookup of the map, whatever it then yields.
-    pub(super) lookups: std::sync::atomic::AtomicUsize,
-    /// Calls of [`KnowledgeIndex::rows`]: the whole of the rows, the way a pass over every link would start.
-    pub(super) whole_reads: std::sync::atomic::AtomicUsize,
 }
 
 impl KnowledgeIndex {
@@ -144,26 +133,20 @@ impl KnowledgeIndex {
         }
         KnowledgeIndex {
             tip: tip.into(),
-            rows,
+            rows: Rows::new(rows),
             claims,
             sources,
             links_by_source,
             links_by_claim,
             anchors_by_claim,
             freshness: Arc::new(Mutex::new(None)),
-            #[cfg(test)]
-            work: Arc::new(Work::default()),
         }
     }
 
-    /// `(lookups, whole reads)` so far (test builds only).
+    /// `(links read, anchors read, whole reads)` so far (test builds only).
     #[cfg(test)]
-    pub(super) fn work_done(&self) -> (usize, usize) {
-        use std::sync::atomic::Ordering::Relaxed;
-        (
-            self.work.lookups.load(Relaxed),
-            self.work.whole_reads.load(Relaxed),
-        )
+    pub(super) fn work_done(&self) -> (usize, usize, usize) {
+        self.rows.work_done()
     }
 
     /// The memo of the freshness list (see [`super::freshness`]).
@@ -178,31 +161,29 @@ impl KnowledgeIndex {
 
     /// The rows as the store keeps them.
     pub fn rows(&self) -> &KnowledgeRows {
-        #[cfg(test)]
-        self.work
-            .whole_reads
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        &self.rows
+        self.rows.whole()
     }
 
     /// Every readable claim, by id.
     pub fn claims(&self) -> &[KnowledgeClaimRow] {
-        &self.rows.claims
+        self.rows.claims()
     }
 
     /// Every readable source, by id.
     pub fn sources(&self) -> &[KnowledgeSourceRow] {
-        &self.rows.sources
+        self.rows.sources()
     }
 
     /// The claim with this id.
     pub fn claim(&self, id: &str) -> Option<&KnowledgeClaimRow> {
-        self.claims.get(id).and_then(|i| self.rows.claims.get(*i))
+        self.claims.get(id).and_then(|i| self.rows.claims().get(*i))
     }
 
     /// The source with this id.
     pub fn source(&self, id: &str) -> Option<&KnowledgeSourceRow> {
-        self.sources.get(id).and_then(|i| self.rows.sources.get(*i))
+        self.sources
+            .get(id)
+            .and_then(|i| self.rows.sources().get(*i))
     }
 
     /// The claim-to-claim relations of a claim.
@@ -210,7 +191,10 @@ impl KnowledgeIndex {
         &'a self,
         claim: &'a str,
     ) -> impl Iterator<Item = &'a KnowledgeRelationRow> {
-        self.rows.relations.iter().filter(move |r| r.claim == claim)
+        self.rows
+            .relations()
+            .iter()
+            .filter(move |r| r.claim == claim)
     }
 
     /// The relations of a claim to its sources.
@@ -219,7 +203,7 @@ impl KnowledgeIndex {
             .get(claim)
             .into_iter()
             .flatten()
-            .filter_map(move |i| self.rows.links.get(*i))
+            .filter_map(move |i| self.rows.link(*i))
     }
 
     /// The claims that rely on a source (cite it, supporting or challenging), by claim id.
@@ -227,15 +211,11 @@ impl KnowledgeIndex {
         &'a self,
         source: &'a str,
     ) -> impl Iterator<Item = &'a KnowledgeLinkRow> {
-        #[cfg(test)]
-        self.work
-            .lookups
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.links_by_source
             .get(source)
             .into_iter()
             .flatten()
-            .filter_map(move |i| self.rows.links.get(*i))
+            .filter_map(move |i| self.rows.link(*i))
     }
 
     /// Where a claim is said.
@@ -247,7 +227,7 @@ impl KnowledgeIndex {
             .get(claim)
             .into_iter()
             .flatten()
-            .filter_map(move |i| self.rows.anchors.get(*i))
+            .filter_map(move |i| self.rows.anchor(*i))
     }
 
     /// The claims said at a block of a page (by the page's id and the block's `^id`).
@@ -257,8 +237,7 @@ impl KnowledgeIndex {
         block: &'a str,
     ) -> impl Iterator<Item = &'a KnowledgeAnchorRow> {
         self.rows
-            .anchors
-            .iter()
+            .anchors()
             .filter(move |a| a.page_id == page_id && a.block == block)
     }
 
@@ -270,14 +249,13 @@ impl KnowledgeIndex {
         page_id: &'a str,
     ) -> impl Iterator<Item = &'a KnowledgeAnchorRow> {
         self.rows
-            .anchors
-            .iter()
+            .anchors()
             .filter(move |a| a.page_id == page_id && a.state == PRESENT)
     }
 
     /// The files under `knowledge/` that cannot be read, by path, each with the rule it broke.
     pub fn invalid(&self) -> &[KnowledgeInvalidRow] {
-        &self.rows.invalid
+        self.rows.invalid()
     }
 }
 

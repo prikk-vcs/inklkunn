@@ -22,6 +22,27 @@ fn wikis(n: usize) -> Vec<WikiRecord> {
         .collect()
 }
 
+/// How long a wait of these tests may last. Long enough for a loaded runner; the point is that it ends: a
+/// regression in which an ask waits for the held job fails the test after this, instead of hanging it for the
+/// job's six hours (maintenance M30).
+const LIMIT: Duration = Duration::from_secs(30);
+
+/// Run `asks` on a thread of its own and return once it has returned. Asks that wait for the work they asked for
+/// (while the job is held, so they cannot return) fail the test here after [`LIMIT`]; the thread is left behind
+/// (a detached thread does not keep the test binary alive).
+fn asked_within_limit(follow_up: &Arc<FollowUp>, asks: impl FnOnce(&FollowUp) + Send + 'static) {
+    let (done_tx, done_rx) = channel::<()>();
+    let follow_up = follow_up.clone();
+    std::thread::spawn(move || {
+        asks(&follow_up);
+        let _ = done_tx.send(());
+    });
+    assert!(
+        done_rx.recv_timeout(LIMIT).is_ok(),
+        "the asks did not return within {LIMIT:?}: an ask waits for the work it asks for"
+    );
+}
+
 fn until(what: &str, mut done: impl FnMut() -> bool) {
     let end = Instant::now() + Duration::from_secs(10);
     while !done() {
@@ -39,26 +60,30 @@ fn a_flood_of_asks_is_bounded_asked_without_waiting_and_run_one_at_a_time() {
     let widest = Arc::new(AtomicUsize::new(0));
     let done = Arc::new(AtomicUsize::new(0));
     let (r, w, d) = (running.clone(), widest.clone(), done.clone());
-    let follow_up = FollowUp::with_runner(move |_job: &Job| {
+    let follow_up = Arc::new(FollowUp::with_runner(move |_job: &Job| {
         let now = r.fetch_add(1, Ordering::SeqCst) + 1;
         w.fetch_max(now, Ordering::SeqCst);
         let _ = started_tx.send(());
         let _ = go_rx.lock().unwrap().recv();
         r.fetch_sub(1, Ordering::SeqCst);
         d.fetch_add(1, Ordering::SeqCst);
-    });
+    }));
     let records = wikis(QUEUE_BOUND * 4);
     // The first job is taken by the worker and held there.
     follow_up.warm_title_index(records.first().unwrap());
-    started_rx.recv_timeout(Duration::from_secs(10)).unwrap();
-    // Many more asks while it is held: none of them waits, and no more than the bound is kept. (No clock,
-    // maintenance M26: the held job cannot finish before the sends below, so an ask that waited for the work would
-    // never return and the test would hang; a bound on how soon the asks return could only fail a busy machine.)
-    for record in records.iter().skip(1) {
-        follow_up.warm_title_index(record);
-        follow_up.enqueue_verification(record);
-    }
-    for _ in 0..(records.len() * 2) {
+    started_rx.recv_timeout(LIMIT).unwrap();
+    // Many more asks while it is held: none of them waits, and no more than the bound is kept. (The held job cannot
+    // finish before the sends below, so an ask that waited for the work could never return: that fails after
+    // LIMIT, with no bound on how soon the asks return, which could only fail a busy machine; maintenance M26,
+    // M30.)
+    let count = records.len();
+    asked_within_limit(&follow_up, move |f| {
+        for record in records.iter().skip(1) {
+            f.warm_title_index(record);
+            f.enqueue_verification(record);
+        }
+    });
+    for _ in 0..(count * 2) {
         let _ = go_tx.send(());
     }
     until("the queue to drain", || {
@@ -85,20 +110,25 @@ fn the_same_job_for_the_same_wiki_is_asked_once_while_it_waits_and_again_after_i
     let go_rx = Mutex::new(go_rx);
     let done = Arc::new(AtomicUsize::new(0));
     let d = done.clone();
-    let follow_up = FollowUp::with_runner(move |_job: &Job| {
+    let follow_up = Arc::new(FollowUp::with_runner(move |_job: &Job| {
         let _ = started_tx.send(());
         let _ = go_rx.lock().unwrap().recv();
         d.fetch_add(1, Ordering::SeqCst);
-    });
+    }));
     let records = wikis(2);
-    let (a, b) = (records.first().unwrap(), records.get(1).unwrap());
+    let (a, b) = (
+        records.first().unwrap().clone(),
+        records.get(1).unwrap().clone(),
+    );
     // `a` is taken and held; `b` waits once however often it is asked; `a` asked again while it runs is a new job.
-    follow_up.warm_title_index(a);
-    started_rx.recv_timeout(Duration::from_secs(10)).unwrap();
-    for _ in 0..10 {
-        follow_up.warm_title_index(b);
-    }
-    follow_up.warm_title_index(a);
+    follow_up.warm_title_index(&a);
+    started_rx.recv_timeout(LIMIT).unwrap();
+    asked_within_limit(&follow_up, move |f| {
+        for _ in 0..10 {
+            f.warm_title_index(&b);
+        }
+        f.warm_title_index(&a);
+    });
     // Plenty of room for every job that might run: only the three that should are there.
     for _ in 0..30 {
         let _ = go_tx.send(());
