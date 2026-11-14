@@ -90,6 +90,122 @@ pub fn moving_toolchains(yaml: &str) -> Vec<String> {
         .collect()
 }
 
+/// Every `rustup default <version>` in a workflow, in order.
+pub fn default_toolchains(yaml: &str) -> Vec<String> {
+    yaml.lines()
+        .filter_map(|l| {
+            let rest = l.trim().strip_prefix("rustup default ")?;
+            rest.split_whitespace().next().map(str::to_owned)
+        })
+        .collect()
+}
+
+/// Every `--component <name>` of a `rustup toolchain install` line, with that install's version, in order.
+pub fn installed_components(yaml: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for l in yaml.lines() {
+        let Some(rest) = l.trim().strip_prefix("rustup toolchain install ") else {
+            continue;
+        };
+        let mut words = rest.split_whitespace();
+        let Some(version) = words.next() else {
+            continue;
+        };
+        while let Some(w) = words.next() {
+            if w == "--component"
+                && let Some(c) = words.next()
+            {
+                out.push((version.to_owned(), c.to_owned()));
+            }
+        }
+    }
+    out
+}
+
+/// `RUST_TOOLCHAIN: "X.Y.Z"` in a workflow's `env:` (the release records the compiler it built with).
+pub fn declared_toolchain_env(yaml: &str) -> Option<String> {
+    yaml.lines()
+        .map(str::trim)
+        .find(|l| l.starts_with("RUST_TOOLCHAIN:"))
+        .and_then(|l| l.split('"').nth(1).map(str::to_owned))
+}
+
+/// `channel = "X.Y.Z"` of a `rust-toolchain.toml`.
+pub fn toolchain_file_channel(toml: &str) -> Option<String> {
+    toml.lines()
+        .map(str::trim)
+        .find(|l| l.starts_with("channel"))
+        .and_then(|l| l.split('"').nth(1).map(str::to_owned))
+}
+
+/// `components = ["a", "b"]` of a `rust-toolchain.toml`, in order.
+pub fn toolchain_file_components(toml: &str) -> Vec<String> {
+    toml.lines()
+        .map(str::trim)
+        .find(|l| l.starts_with("components"))
+        .map(|l| l.split('"').skip(1).step_by(2).map(str::to_owned).collect())
+        .unwrap_or_default()
+}
+
+/// Is `s` an exact `X.Y.Z` version (a channel name such as `stable` is not)?
+pub fn is_exact_version(s: &str) -> bool {
+    is_semver(s)
+}
+
+/// A checkout's `rust-toolchain.toml` beats `rustup default`, so a job that installs the declared minimum
+/// compiler must name it on every `cargo` and `rustc` it runs (`cargo +1.89.0 check`). These are the lines of
+/// such a job that start a `cargo` or `rustc` command without `+<msrv>`. A job is a block under `jobs:` whose
+/// text installs `msrv` with `rustup toolchain install`.
+pub fn msrv_commands_without_the_toolchain(yaml: &str, msrv: &str) -> Vec<(usize, String)> {
+    let mut jobs: Vec<Vec<(usize, &str)>> = Vec::new();
+    let mut in_jobs = false;
+    for (i, line) in yaml.lines().enumerate() {
+        let t = line.trim_start();
+        if t.is_empty() || t.starts_with('#') {
+            continue;
+        }
+        let indent = indent_of(line);
+        if indent == 0 {
+            in_jobs = t == "jobs:";
+            continue;
+        }
+        if !in_jobs {
+            continue;
+        }
+        if indent == 2 && t.ends_with(':') && !t.starts_with('-') {
+            jobs.push(Vec::new());
+        }
+        if let Some(job) = jobs.last_mut() {
+            job.push((i + 1, line));
+        }
+    }
+    let plus = format!("+{msrv} ");
+    let mut out = Vec::new();
+    for job in jobs {
+        let installs = job.iter().any(|(_, l)| {
+            l.trim()
+                .strip_prefix("rustup toolchain install ")
+                .and_then(|r| r.split_whitespace().next())
+                == Some(msrv)
+        });
+        if !installs {
+            continue;
+        }
+        for (n, l) in job {
+            let t = l.trim();
+            let cmd = t.strip_prefix("run:").map_or(t, str::trim);
+            for tool in ["cargo ", "rustc "] {
+                if let Some(rest) = cmd.strip_prefix(tool)
+                    && !rest.starts_with(&plus)
+                {
+                    out.push((n, t.to_owned()));
+                }
+            }
+        }
+    }
+    out
+}
+
 /// `runs-on:` values and matrix `os:` values that name a moving label.
 pub fn moving_runners(yaml: &str) -> Vec<(usize, String)> {
     yaml.lines()

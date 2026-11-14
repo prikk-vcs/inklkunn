@@ -1,0 +1,10 @@
+# The compiler CI and the release build with (maintenance M27): every plain `cargo` in a checkout uses it, so a
+# local `cargo clippy` is the clippy CI runs and not whatever the host's default has moved to. `pin-check` holds
+# `channel` equal to the compiler `ci.yml`, `supply-chain.yml` and `release.yml` install (and to `RUST_TOOLCHAIN`)
+# and `components` to what CI installs. The declared minimum (`rust-version` in Cargo.toml, the `msrv` job) is the
+# one exception and is named explicitly where it is used: `cargo +1.89.0 check ...`; a toolchain file beats
+# `rustup default`, so that job never relies on it.
+[toolchain]
+channel = "1.99.1"
+profile = "minimal"
+components = ["rustfmt", "clippy"]

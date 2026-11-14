@@ -19,6 +19,13 @@ env:
   # (floor-check), and the checksum of the release asset inklkunn measured against (not fetched beside it).
   PRIKK_VERSION: "0.54.0"
   PRIKK_SHA256_X86_64: "e998909328e4d1216c0e5ccf4b00141b32c6109498f04ba94a65cc61124ab687"
+  # A SECOND prikk, test-only and never a floor (maintenance M25): the tests of what prikk 0.57.0 added (the take-back,
+  # the stale-lock preview, the format-marker classifier) need it, and each self-skips without it. It goes on PATH
+  # after the floor, so the floor stays the prikk every other test uses; the with-prikk run fails if one of them
+  # skipped. The checksum is the architect's measurement of the release asset against its `.sha256` (floor-check
+  # holds it equal to release.yml's).
+  PRIKK_TEST_VERSION: "0.57.0"
+  PRIKK_TEST_SHA256_X86_64: "4e621147c3064c1f456803c67f120df9ea35d93e40554e920c9ea55e69d3f9a8"
   # The number of prikk-dependent tests: each prints `skipping: prikk not on PATH` when prikk is shimmed
   # off, and the shimmed run fails unless exactly this many do (a new such test updates this number).
   EXPECTED_SKIPS: "307"
@@ -34,6 +41,15 @@ jobs:
           rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy --no-self-update
           rustup default 1.99.1
           rustc --version && cargo --version
+      - name: Install the test-only prikk (checksum recorded in this file), first, so that it comes after the floor on PATH
+        run: |
+          set -euo pipefail
+          T=x86_64-unknown-linux-gnu
+          curl -fsSL -o "prikk-test-${T}.tar.gz" "https://github.com/prikk-vcs/prikk/releases/download/${PRIKK_TEST_VERSION}/prikk-${T}.tar.gz"
+          echo "${PRIKK_TEST_SHA256_X86_64}  prikk-test-${T}.tar.gz" | sha256sum -c -
+          mkdir -p "$HOME/.local/prikk-test/bin" && tar -xzf "prikk-test-${T}.tar.gz" -C "$HOME/.local/prikk-test/bin" prikk
+          test "$("$HOME/.local/prikk-test/bin/prikk" --version)" = "prikk ${PRIKK_TEST_VERSION}"
+          echo "$HOME/.local/prikk-test/bin" >> "$GITHUB_PATH"
       - name: Install prikk at the floor (checksum recorded in this file) and the sandbox tools
         run: |
           set -euo pipefail
@@ -44,21 +60,35 @@ jobs:
           mkdir -p "$HOME/.local/bin" && tar -xzf "prikk-${T}.tar.gz" -C "$HOME/.local/bin" prikk
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/prikk" --version
+      - name: The floor is the first prikk on PATH and the test-only one is the second
+        run: |
+          set -euo pipefail
+          # (`awk` drops a directory that PATH names twice, as the runner's own `~/.local/bin` entry and ours do.)
+          test "$(type -ap prikk | awk '!seen[$0]++' | sed -n 1p)" = "$HOME/.local/bin/prikk"
+          test "$(type -ap prikk | awk '!seen[$0]++' | sed -n 2p)" = "$HOME/.local/prikk-test/bin/prikk"
+          test "$(prikk --version)" = "prikk ${PRIKK_VERSION}"
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy (-D warnings)
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - name: Test with prikk on PATH (includes the gates)
-        run: cargo test --workspace --locked
+      - name: Test with prikk on PATH (includes the gates; the tests that need prikk 0.57.0 must run, not skip)
+        run: |
+          set -euo pipefail
+          cargo test --workspace --locked -- --nocapture 2>&1 | tee with-prikk.log
+          if grep -n -E 'skipping: (prikk 0\.57\.0 or newer not found|no prikk older than 0\.57\.0)' with-prikk.log; then
+            echo "a test that needs the test-only prikk ${PRIKK_TEST_VERSION} (or the floor beside it) skipped: it is installed above, so it must run" >&2
+            exit 1
+          fi
       - name: Test with prikk shimmed off PATH (every self-skip must be visible, and counted)
         run: |
           set -euo pipefail
           SHIM="$(mktemp -d)"
-          # Everything the build needs stays reachable (compiler, rustdoc for doctests, the system
-          # linker and shell); only prikk's directory is left out, so the driver's self-skip is exercised.
+          # Everything the build needs stays reachable (compiler, rustdoc for doctests, the system linker and
+          # shell); only prikk's two directories (the floor's and the test-only one's) are left out, so the
+          # driver's self-skip is exercised.
           for tool in cargo rustc rustdoc; do ln -s "$(rustup which "$tool")" "$SHIM/$tool"; done
           ln -s "$(command -v rustup)" "$SHIM/rustup"
-          SYSTEM_PATH="$(echo "$PATH" | tr ':' '\n' | grep -v -x "$HOME/.local/bin" | paste -sd:)"
+          SYSTEM_PATH="$(echo "$PATH" | tr ':' '\n' | grep -v -x -e "$HOME/.local/bin" -e "$HOME/.local/prikk-test/bin" | paste -sd:)"
           ! PATH="$SHIM:$SYSTEM_PATH" command -v prikk >/dev/null || { echo "prikk is still on PATH"; exit 1; }
           PATH="$SHIM:$SYSTEM_PATH" cargo test --workspace --locked -- --nocapture 2>&1 | tee shimmed.log
           SKIPS="$(grep -c 'skipping: prikk not on PATH' shimmed.log || true)"
@@ -77,9 +107,10 @@ jobs:
           set -euo pipefail
           rustup toolchain install 1.89.0 --profile minimal --no-self-update
           rustup default 1.89.0
-          rustc --version
+          rustc +1.89.0 --version
       - name: Check the workspace at the declared minimum
-        run: cargo check --workspace --all-targets --locked
+        # `+1.89.0` and not `rustup default`: the checkout's rust-toolchain.toml (the pinned compiler) beats a default.
+        run: cargo +1.89.0 check --workspace --all-targets --locked
 
   supply-chain:
     runs-on: ubuntu-24.04

@@ -59,6 +59,104 @@ fn the_release_asset_checksums_are_recorded_and_agree_everywhere() {
 }
 
 #[test]
+fn the_test_only_prikk_is_one_value_in_both_workflows_and_is_never_a_floor() {
+    let root = workspace_root();
+    let read = |p: &str| fs::read_to_string(root.join(p)).unwrap_or_default();
+    let floor = driver_floor(&read("crates/inklkunn-prikk/src/lib.rs")).expect("MIN_PRIKK_VERSION");
+    let ci = read(".github/workflows/ci.yml");
+    let release = read(".github/workflows/release.yml");
+    let (ci_version, ci_sum) = test_prikk(&ci).expect("ci.yml records the test-only prikk");
+    let (release_version, release_sum) =
+        test_prikk(&release).expect("release.yml records the test-only prikk");
+    assert_eq!(ci_version, release_version, "the test-only version differs");
+    assert_eq!(ci_sum, release_sum, "the test-only checksum differs");
+    // The tests it serves say `0.57.0 or newer`; it is another prikk than the floor, and newer.
+    let parse = |v: &str| -> Vec<u32> { v.split('.').filter_map(|p| p.parse().ok()).collect() };
+    assert!(
+        parse(&ci_version) >= vec![0, 57, 0],
+        "the test-only prikk is older than the 0.57.0 the tests need: {ci_version}"
+    );
+    assert_ne!(
+        ci_version, floor,
+        "the test-only prikk is the floor: it is a second pin"
+    );
+    // It is not read as a floor, and not recorded as a floor's checksum, anywhere.
+    for (name, yaml) in [("ci.yml", &ci), ("release.yml", &release)] {
+        assert!(
+            workflow_floors(yaml).iter().all(|f| *f == floor),
+            "{name}: a PRIKK_VERSION that is not the floor"
+        );
+        assert!(
+            !recorded_checksums(yaml).values().any(|s| *s == ci_sum),
+            "{name}: the test-only checksum is recorded as a floor's"
+        );
+        let v = test_prikk_shape_violations(yaml);
+        assert!(v.is_empty(), "{name}: {v:#?}");
+    }
+    // The image carries the floor only.
+    let docker = read("Dockerfile");
+    assert!(!docker.contains(&ci_version) && !docker.contains(&ci_sum));
+}
+
+#[test]
+fn the_test_only_prikk_shape_rules_catch_planted_failures() {
+    let ok = "env:\n  PRIKK_TEST_VERSION: \"0.57.0\"\n  PRIKK_TEST_SHA256_X86_64: \"4e621147c3064c1f456803c67f120df9ea35d93e40554e920c9ea55e69d3f9a8\"\nsteps:\n  curl \"releases/download/${PRIKK_TEST_VERSION}/prikk\"\n  echo \"${PRIKK_TEST_SHA256_X86_64}  x\" | sha256sum -c -\n  curl \"releases/download/${PRIKK_VERSION}/prikk\"\n  cargo test --workspace --locked -- --nocapture 2>&1 | tee with-prikk.log\n  if grep -n -E 'skipping: (prikk 0\\.57\\.0 or newer not found|no prikk older than 0\\.57\\.0)' with-prikk.log; then\n    echo \"skipped\" >&2\n    exit 1\n  fi\n  SYSTEM_PATH=\"$(echo \"$PATH\" | grep -v -x -e \"$HOME/.local/bin\" -e \"$HOME/.local/prikk-test/bin\")\"\n";
+    assert!(test_prikk_shape_violations(ok).is_empty());
+    assert_eq!(
+        test_prikk(ok),
+        Some((
+            "0.57.0".into(),
+            "4e621147c3064c1f456803c67f120df9ea35d93e40554e920c9ea55e69d3f9a8".into()
+        ))
+    );
+    let broken = |from: &str, to: &str| ok.replacen(from, to, 1);
+    for (what, yaml) in [
+        ("not recorded", broken("PRIKK_TEST_VERSION: \"0.57.0\"", "")),
+        (
+            "a checksum that is not a checksum",
+            broken("4e621147c3064c1f", "zzzzzzzzzzzzzzzz"),
+        ),
+        (
+            "installed after the floor",
+            broken(
+                "releases/download/${PRIKK_TEST_VERSION}/",
+                "releases/download/${SWAP}/",
+            )
+            .replacen(
+                "releases/download/${PRIKK_VERSION}/",
+                "releases/download/${PRIKK_TEST_VERSION}/",
+                1,
+            )
+            .replacen(
+                "releases/download/${SWAP}/",
+                "releases/download/${PRIKK_VERSION}/",
+                1,
+            ),
+        ),
+        ("not checked", broken("sha256sum -c", "cat")),
+        ("output not shown", broken(" --nocapture", "")),
+        (
+            "output not kept",
+            broken("tee with-prikk.log", "tee other.log"),
+        ),
+        (
+            "only one skip line looked for",
+            broken("|no prikk older than 0\\.57\\.0", ""),
+        ),
+        ("a skip does not fail", broken("exit 1", "true")),
+        (
+            "the shim keeps the test-only directory",
+            broken(" -e \"$HOME/.local/prikk-test/bin\"", ""),
+        ),
+    ] {
+        assert!(
+            !test_prikk_shape_violations(&yaml).is_empty(),
+            "{what}: no violation reported"
+        );
+    }
+}
+
+#[test]
 fn floor_extractors_catch_a_planted_mismatch() {
     assert_eq!(
         driver_floor("pub const MIN_PRIKK_VERSION: &str = \"0.54.0\";"),

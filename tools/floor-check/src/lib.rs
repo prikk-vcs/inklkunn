@@ -5,6 +5,13 @@
 //! against a file fetched beside it); and the copied wiki-commons corpus matches the commit it says it
 //! came from. The check lives in `tests/floor.rs`; this module holds the extractors so each can be
 //! exercised on a planted mismatch.
+//!
+//! **A second prikk, test-only (maintenance M25).** The workflows also install one newer release
+//! (`PRIKK_TEST_VERSION`, with its own checksum) so that the tests of what it added run in CI. It is **not** a
+//! floor: nothing but the tests reads it, it is never in the image, it is not the driver's
+//! `MIN_PRIKK_VERSION`, and it goes on `PATH` after the floor so the floor stays the prikk every other test
+//! uses. Its name never starts with `PRIKK_VERSION` or `PRIKK_SHA256_`, so the floor rules above do not read it;
+//! [`test_prikk`] and [`test_prikk_shape_violations`] hold it instead.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -42,6 +49,102 @@ pub fn dockerfile_floor(text: &str) -> Option<String> {
         .map(str::trim)
         .find(|l| l.starts_with("ARG PRIKK_VERSION="))
         .and_then(|l| l.split('=').nth(1).map(str::to_owned))
+}
+
+fn quoted_value(yaml: &str, key: &str) -> Option<String> {
+    yaml.lines()
+        .map(str::trim)
+        .find(|l| l.starts_with(key))
+        .and_then(|l| l.split('"').nth(1).map(str::to_owned))
+}
+
+/// The test-only prikk a workflow records: `PRIKK_TEST_VERSION` and `PRIKK_TEST_SHA256_X86_64` (maintenance M25).
+pub fn test_prikk(yaml: &str) -> Option<(String, String)> {
+    Some((
+        quoted_value(yaml, "PRIKK_TEST_VERSION:")?,
+        quoted_value(yaml, "PRIKK_TEST_SHA256_X86_64:")?,
+    ))
+}
+
+/// What is wrong with the way a workflow uses its test-only prikk (M25); empty when it is installed and
+/// recorded, comes after the floor on `PATH`, is removed with the floor in the shimmed run, and the with-prikk
+/// run fails when a test that needs it skipped.
+pub fn test_prikk_shape_violations(yaml: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    match test_prikk(yaml) {
+        None => {
+            out.push("no PRIKK_TEST_VERSION / PRIKK_TEST_SHA256_X86_64 recorded".to_owned());
+            return out;
+        }
+        Some((_, sum)) => {
+            if sum.len() != 64 || !sum.bytes().all(|b| b.is_ascii_hexdigit()) {
+                out.push(format!(
+                    "the test-only checksum is not 64 hex digits: {sum}"
+                ));
+            }
+        }
+    }
+    // GitHub prepends each `$GITHUB_PATH` entry, so what is installed first is found last: the test-only
+    // prikk's step must come before the floor's.
+    match (
+        yaml.find("releases/download/${PRIKK_TEST_VERSION}/"),
+        yaml.find("releases/download/${PRIKK_VERSION}/"),
+    ) {
+        (Some(test), Some(floor)) if test < floor => {}
+        (Some(_), Some(_)) => {
+            out.push(
+                "the test-only prikk is installed after the floor, so it would come first on PATH"
+                    .to_owned(),
+            );
+        }
+        _ => {
+            out.push("the test-only prikk or the floor is not downloaded from a release".to_owned())
+        }
+    }
+    if !yaml.contains("sha256sum -c") || !yaml.contains("${PRIKK_TEST_SHA256_X86_64}") {
+        out.push("the test-only asset is not checked against its recorded checksum".to_owned());
+    }
+    // The with-prikk run: output is shown (`--nocapture`, or the skip lines are never printed), kept, and a
+    // skip line of either 0.57.0 test fails the job.
+    let lines: Vec<&str> = yaml.lines().collect();
+    match lines.iter().position(|l| l.contains("tee with-prikk.log")) {
+        None => out
+            .push("the with-prikk run does not keep its output (`tee with-prikk.log`)".to_owned()),
+        Some(i) => {
+            if !lines.get(i).is_some_and(|l| l.contains("--nocapture")) {
+                out.push("the with-prikk run is not `--nocapture`: a passing test's skip line is never printed".to_owned());
+            }
+        }
+    }
+    let guard = lines.iter().position(|l| {
+        l.contains("grep")
+            && l.contains("with-prikk.log")
+            && l.contains("prikk 0\\.57\\.0 or newer not found")
+            && l.contains("no prikk older than 0\\.57\\.0")
+    });
+    match guard {
+        None => out.push("no grep of with-prikk.log for both 0.57.0 skip lines".to_owned()),
+        Some(i) => {
+            let fails = lines
+                .iter()
+                .skip(i + 1)
+                .take(3)
+                .any(|l| l.trim() == "exit 1");
+            if !fails {
+                out.push(
+                    "a 0.57.0 skip line found in with-prikk.log does not fail the run".to_owned(),
+                );
+            }
+        }
+    }
+    // The shimmed run removes both directories.
+    let shim = lines.iter().find(|l| l.contains("SYSTEM_PATH=\""));
+    if !shim.is_some_and(|l| {
+        l.contains("\"$HOME/.local/bin\"") && l.contains("\"$HOME/.local/prikk-test/bin\"")
+    }) {
+        out.push("the shimmed run does not remove both prikk directories from PATH".to_owned());
+    }
+    out
 }
 
 /// The recorded release-asset checksums, by target architecture word (`X86_64`, `AARCH64`), from

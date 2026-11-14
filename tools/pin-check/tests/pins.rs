@@ -93,6 +93,134 @@ fn one_compiler_builds_everything_except_the_msrv_job_and_nothing_moves() {
     }
 }
 
+/// The one compiler every build job installs (the declared minimum aside).
+fn build_compiler() -> String {
+    let msrv =
+        declared_msrv(&fs::read_to_string(workspace_root().join("Cargo.toml")).unwrap_or_default())
+            .expect("rust-version declared");
+    let versions: std::collections::BTreeSet<String> = workflows()
+        .iter()
+        .flat_map(|(_, y)| toolchain_versions(y))
+        .filter(|v| *v != msrv)
+        .collect();
+    assert_eq!(versions.len(), 1, "{versions:?}");
+    versions.into_iter().next().expect("one")
+}
+
+#[test]
+fn the_toolchain_file_names_the_compiler_ci_installs_and_the_components_it_installs() {
+    let root = workspace_root();
+    let file = fs::read_to_string(root.join("rust-toolchain.toml")).unwrap_or_default();
+    let channel = toolchain_file_channel(&file).expect("rust-toolchain.toml names a channel");
+    assert!(
+        is_exact_version(&channel),
+        "the channel is not X.Y.Z: {channel}"
+    );
+    assert_eq!(
+        channel,
+        build_compiler(),
+        "rust-toolchain.toml differs from the compiler the workflows install"
+    );
+    let release =
+        fs::read_to_string(root.join(".github/workflows/release.yml")).unwrap_or_default();
+    assert_eq!(
+        declared_toolchain_env(&release).as_deref(),
+        Some(channel.as_str()),
+        "release.yml's RUST_TOOLCHAIN differs from rust-toolchain.toml"
+    );
+    // The components are the ones CI installs for the build compiler, no more and no fewer.
+    let mut installed: Vec<String> = workflows()
+        .iter()
+        .flat_map(|(_, y)| installed_components(y))
+        .filter(|(v, _)| *v == channel)
+        .map(|(_, c)| c)
+        .collect();
+    installed.sort();
+    installed.dedup();
+    let mut named = toolchain_file_components(&file);
+    named.sort();
+    assert!(!named.is_empty(), "rust-toolchain.toml names no components");
+    assert_eq!(
+        named, installed,
+        "rust-toolchain.toml's components differ from what the workflows install"
+    );
+}
+
+#[test]
+fn a_rustup_default_never_names_a_compiler_the_toolchain_file_would_override() {
+    // The checkout's rust-toolchain.toml beats `rustup default`: a default naming anything but the pinned
+    // compiler is a default that does nothing (the msrv job names its compiler on every command instead).
+    let channel = toolchain_file_channel(
+        &fs::read_to_string(workspace_root().join("rust-toolchain.toml")).unwrap_or_default(),
+    )
+    .expect("a channel");
+    let msrv =
+        declared_msrv(&fs::read_to_string(workspace_root().join("Cargo.toml")).unwrap_or_default())
+            .expect("rust-version declared");
+    for (name, yaml) in workflows() {
+        for d in default_toolchains(&yaml) {
+            assert!(d == channel || d == msrv, "{name}: `rustup default {d}`");
+        }
+        // The minimum compiler is named on every cargo and rustc of the job that installs it.
+        assert!(
+            msrv_commands_without_the_toolchain(&yaml, &msrv).is_empty(),
+            "{name}: a command of the msrv job does not name +{msrv}: {:?}",
+            msrv_commands_without_the_toolchain(&yaml, &msrv)
+        );
+    }
+    // Not vacuous: the msrv job exists and is seen.
+    let ci =
+        fs::read_to_string(workspace_root().join(".github/workflows/ci.yml")).unwrap_or_default();
+    assert!(
+        ci.contains(&format!("cargo +{msrv} check")),
+        "the msrv job does not run `cargo +{msrv} check`"
+    );
+}
+
+#[test]
+fn the_toolchain_file_rules_catch_planted_failures() {
+    let file = "[toolchain]\nchannel = \"1.99.1\"\nprofile = \"minimal\"\ncomponents = [\"rustfmt\", \"clippy\"]\n";
+    assert_eq!(toolchain_file_channel(file), Some("1.99.1".into()));
+    assert_eq!(toolchain_file_components(file), vec!["rustfmt", "clippy"]);
+    assert!(is_exact_version("1.99.1"));
+    assert!(!is_exact_version("stable"));
+    assert!(!is_exact_version("1.99"));
+    assert_eq!(
+        installed_components(
+            "  rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy --no-self-update\n  rustup toolchain install 1.89.0 --profile minimal\n"
+        ),
+        vec![
+            ("1.99.1".to_owned(), "rustfmt".to_owned()),
+            ("1.99.1".to_owned(), "clippy".to_owned())
+        ]
+    );
+    assert_eq!(
+        default_toolchains("  rustup default 1.99.1\n  rustup default stable\n"),
+        vec!["1.99.1", "stable"]
+    );
+    assert_eq!(
+        declared_toolchain_env("env:\n  RUST_TOOLCHAIN: \"1.99.1\"\n"),
+        Some("1.99.1".into())
+    );
+    // The msrv job: a bare `cargo` or `rustc` would run the toolchain file's compiler, not 1.89.0.
+    let bare = "jobs:\n  msrv:\n    steps:\n      - name: t\n        run: |\n          rustup toolchain install 1.89.0 --profile minimal\n          rustup default 1.89.0\n          rustc --version\n      - name: c\n        run: cargo check --workspace\n";
+    assert_eq!(
+        msrv_commands_without_the_toolchain(bare, "1.89.0").len(),
+        2,
+        "{:?}",
+        msrv_commands_without_the_toolchain(bare, "1.89.0")
+    );
+    let named = "jobs:\n  msrv:\n    steps:\n      - name: t\n        run: |\n          rustup toolchain install 1.89.0 --profile minimal\n          rustc +1.89.0 --version\n      - name: c\n        run: cargo +1.89.0 check --workspace\n  build:\n    steps:\n      - name: b\n        run: cargo test\n";
+    assert!(
+        msrv_commands_without_the_toolchain(named, "1.89.0").is_empty(),
+        "{:?}",
+        msrv_commands_without_the_toolchain(named, "1.89.0")
+    );
+    // A job that does not install the minimum is not its subject.
+    let other = "jobs:\n  build:\n    steps:\n      - name: b\n        run: |\n          rustup toolchain install 1.99.1 --profile minimal\n          cargo test\n";
+    assert!(msrv_commands_without_the_toolchain(other, "1.89.0").is_empty());
+}
+
 #[test]
 fn the_container_base_is_digested() {
     let d = fs::read_to_string(workspace_root().join("Dockerfile")).unwrap_or_default();

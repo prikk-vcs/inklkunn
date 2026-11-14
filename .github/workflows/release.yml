@@ -1,6 +1,6 @@
 # RFC 010 D-10: a release is a bare-version tag plus attested artifacts. On a tag push the gates run on the
-# tagged commit (the same two test runs as CI, prikk at the floor on PATH and shimmed off), the Linux
-# binaries are built, the container image is built natively per architecture and joined under one tag by a
+# tagged commit (the same two test runs as CI: prikk at the floor on PATH, with the test-only 0.57.0 beside it, and
+# shimmed off), the Linux binaries are built, the container image is built natively per architecture and joined under one tag by a
 # manifest list, the tarballs and the image are attested, the GitHub release is created from the CHANGELOG
 # section, and the crates are published in dependency order. The `rehearsal` dispatch mode exercises every
 # step against a throwaway package (ghcr.io/prikk-vcs/inklkunn-rehearsal) and can never publish anything
@@ -35,6 +35,10 @@ env:
   PRIKK_VERSION: "0.54.0"
   PRIKK_SHA256_X86_64: "e998909328e4d1216c0e5ccf4b00141b32c6109498f04ba94a65cc61124ab687"
   PRIKK_SHA256_AARCH64: "9a325df0661c767ace382f0d7550a5a28ca9fd0a73bdf6f7878968133535df0d"
+  # The SECOND, test-only prikk (maintenance M25; one value with ci.yml, held by floor-check): never a floor, never in
+  # the image. The tests of what 0.57.0 added need it and self-skip without it; the gates fail if one skipped.
+  PRIKK_TEST_VERSION: "0.57.0"
+  PRIKK_TEST_SHA256_X86_64: "4e621147c3064c1f456803c67f120df9ea35d93e40554e920c9ea55e69d3f9a8"
   EXPECTED_SKIPS: "307"
   RUST_TOOLCHAIN: "1.99.1"
 
@@ -62,6 +66,15 @@ jobs:
           .github/release-notes.sh "${GITHUB_REF_NAME}" "${GITHUB_REPOSITORY}" > release-notes.md
           N="$(LC_ALL=C wc -c < release-notes.md)"
           test "$N" -le 100000 || { echo "the release notes are $N bytes; a GitHub release body holds at most 125,000 characters" >&2; exit 1; }
+      - name: Install the test-only prikk (checksum recorded in this file), first, so that it comes after the floor on PATH
+        run: |
+          set -euo pipefail
+          T=x86_64-unknown-linux-gnu
+          curl -fsSL -o "prikk-test-${T}.tar.gz" "https://github.com/prikk-vcs/prikk/releases/download/${PRIKK_TEST_VERSION}/prikk-${T}.tar.gz"
+          echo "${PRIKK_TEST_SHA256_X86_64}  prikk-test-${T}.tar.gz" | sha256sum -c -
+          mkdir -p "$HOME/.local/prikk-test/bin" && tar -xzf "prikk-test-${T}.tar.gz" -C "$HOME/.local/prikk-test/bin" prikk
+          test "$("$HOME/.local/prikk-test/bin/prikk" --version)" = "prikk ${PRIKK_TEST_VERSION}"
+          echo "$HOME/.local/prikk-test/bin" >> "$GITHUB_PATH"
       - name: Install prikk at the floor (checksum recorded in this file) and the sandbox tools
         run: |
           set -euo pipefail
@@ -72,6 +85,13 @@ jobs:
           mkdir -p "$HOME/.local/bin" && tar -xzf "prikk-${T}.tar.gz" -C "$HOME/.local/bin" prikk
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/prikk" --version
+      - name: The floor is the first prikk on PATH and the test-only one is the second
+        run: |
+          set -euo pipefail
+          # (`awk` drops a directory that PATH names twice, as the runner's own `~/.local/bin` entry and ours do.)
+          test "$(type -ap prikk | awk '!seen[$0]++' | sed -n 1p)" = "$HOME/.local/bin/prikk"
+          test "$(type -ap prikk | awk '!seen[$0]++' | sed -n 2p)" = "$HOME/.local/prikk-test/bin/prikk"
+          test "$(prikk --version)" = "prikk ${PRIKK_VERSION}"
       - name: Install cargo-deny and cargo-audit (pinned)
         run: cargo install cargo-deny@0.20.2 cargo-audit@0.22.2 --locked
       - name: Gates, with prikk on PATH
@@ -79,7 +99,12 @@ jobs:
           set -euo pipefail
           cargo fmt --all --check
           cargo clippy --workspace --all-targets --locked -- -D warnings
-          cargo test --workspace --locked
+          cargo test --workspace --locked -- --nocapture 2>&1 | tee with-prikk.log
+          # The tests that need prikk 0.57.0 (or the floor beside it) must have run: both are installed above.
+          if grep -n -E 'skipping: (prikk 0\.57\.0 or newer not found|no prikk older than 0\.57\.0)' with-prikk.log; then
+            echo "a test that needs the test-only prikk ${PRIKK_TEST_VERSION} (or the floor beside it) skipped" >&2
+            exit 1
+          fi
           cargo deny check
           cargo audit
           RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
@@ -89,7 +114,7 @@ jobs:
           SHIM="$(mktemp -d)"
           for tool in cargo rustc rustdoc; do ln -s "$(rustup which "$tool")" "$SHIM/$tool"; done
           ln -s "$(command -v rustup)" "$SHIM/rustup"
-          SYSTEM_PATH="$(echo "$PATH" | tr ':' '\n' | grep -v -x "$HOME/.local/bin" | paste -sd:)"
+          SYSTEM_PATH="$(echo "$PATH" | tr ':' '\n' | grep -v -x -e "$HOME/.local/bin" -e "$HOME/.local/prikk-test/bin" | paste -sd:)"
           ! PATH="$SHIM:$SYSTEM_PATH" command -v prikk >/dev/null || { echo "prikk is still on PATH"; exit 1; }
           PATH="$SHIM:$SYSTEM_PATH" cargo test --workspace --locked -- --nocapture 2>&1 | tee shimmed.log
           SKIPS="$(grep -c 'skipping: prikk not on PATH' shimmed.log || true)"
