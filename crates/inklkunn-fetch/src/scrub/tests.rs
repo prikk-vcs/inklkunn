@@ -88,6 +88,94 @@ fn the_scrub_copy_of_the_line_or_control_rule_is_the_stores_over_every_code_poin
 }
 
 #[test]
+fn a_format_character_inside_a_secret_does_not_hide_it() {
+    // Z′-b 1. A zero-width space is category Cf, not Cc: the filter let it stand, so `s3cr3t<ZWSP>T0ken` was neither
+    // the secret `s3cr3tT0ken` nor found. Format characters are dropped from the text and from the secret alike.
+    let out = scrub(
+        "bad s3cr3t\u{200B}T0ken here\n".as_bytes(),
+        &["s3cr3t\u{200B}T0ken"],
+    );
+    assert_eq!(out, "bad [redacted] here");
+    // In the text only, in the secret only, and with a direction override or a byte-order mark.
+    let out = scrub("bad s3cr3t\u{200B}T0ken here".as_bytes(), &["s3cr3tT0ken"]);
+    assert_eq!(out, "bad [redacted] here");
+    let out = scrub(b"bad s3cr3tT0ken here", &["s3cr3t\u{200B}T0ken"]);
+    assert_eq!(out, "bad [redacted] here");
+    for fmt in ['\u{202E}', '\u{FEFF}', '\u{2060}', '\u{AD}', '\u{E0041}'] {
+        let line = format!("bad s3cr3t{fmt}T0ken here");
+        let out = scrub(line.as_bytes(), &["s3cr3tT0ken"]);
+        assert_eq!(out, "bad [redacted] here", "U+{:04X}", fmt as u32);
+    }
+    // And the excerpt itself shows none.
+    let out = scrub("a\u{200B}b\u{202E}c\u{FEFF}d".as_bytes(), &[]);
+    assert_eq!(out, "abcd");
+}
+
+#[test]
+fn the_format_characters_cover_what_the_knowledge_files_refuse() {
+    // This crate cannot depend on the signer (a runtime edge), which holds the set the knowledge files refuse
+    // (`is_direction_or_format`); the signer is a dev-dependency for this test. Every character it names is dropped.
+    let mut named = 0_u32;
+    for code in 0..=0x0010_FFFF_u32 {
+        let Some(c) = char::from_u32(code) else {
+            continue;
+        };
+        if inklkunn_signer::recover::text::is_direction_or_format(c) {
+            named += 1;
+            assert!(
+                is_dropped(c),
+                "U+{code:04X} is refused by the knowledge files but kept here"
+            );
+        }
+    }
+    assert_eq!(
+        named,
+        5 + 4 + 2 + 1,
+        "the signer's set changed: look at this one"
+    );
+}
+
+#[test]
+fn a_piece_is_measured_after_the_controls_are_dropped() {
+    // Z′-b 2. `o<control><control>r` is four characters long and two once flattened. Measured before, it was the
+    // needle `or` and blanked the ordinary text `example.org`.
+    let out = scrub(b"lookup of example.org failed", &["o\x01\x01r"]);
+    assert_eq!(out, "lookup of example.org failed");
+    let out = scrub(
+        b"lookup of example.org failed",
+        &["o\x01\x01r", "k=o\x01\x01r", "o\u{200B}\u{200B}r"],
+    );
+    assert_eq!(out, "lookup of example.org failed");
+    // A short secret that is short as given is still hunted whole (as before); only a remnant is not.
+    let out = scrub(b"the pin is 99 here", &["99"]);
+    assert_eq!(out, "the pin is [redacted] here");
+    // A long enough remnant is hunted: four characters are left.
+    let out = scrub(b"bad abcd here", &["ab\x01cd"]);
+    assert_eq!(out, "bad [redacted] here");
+}
+
+#[test]
+fn a_secret_split_by_a_newline_is_hidden_on_the_line_that_is_shown() {
+    // Z′-b 3. The first line was chosen before flattening, so `token=abcd` showed half of `token=abcdefgh1234`. The
+    // text is flattened as a whole, the secret found across the break, and each line's part hidden.
+    let stderr = b"failed: token=abcd\nefgh1234 rejected\n";
+    let out = scrub(stderr, &["token=abcdefgh1234"]);
+    assert_eq!(out, "failed: [redacted]");
+    assert!(!out.contains("abcd"));
+    // A piece alone (the part after `=`) is found across the break too.
+    let out = scrub(stderr, &["abcdefgh1234"]);
+    assert_eq!(out, "failed: token=[redacted]");
+    // The second half, when the first line says nothing, is the line that is shown, and it is hidden as well.
+    let out = scrub(b"\n  \nabcd\nefgh1234 rejected\n", &["abcdefgh1234"]);
+    assert_eq!(out, "[redacted]");
+    let out = scrub(b"error\nabcd\nefgh1234 rejected\n", &["abcdefgh1234"]);
+    assert_eq!(out, "error");
+    // Still one line: the lines after the first are not shown.
+    let out = scrub(b"first\nsecond\n", &["unrelated-secret"]);
+    assert_eq!(out, "first");
+}
+
+#[test]
 fn the_length_is_bounded_after_redaction() {
     let long = "x".repeat(1000);
     assert_eq!(scrub(long.as_bytes(), &[]).chars().count(), MAX_EXCERPT);

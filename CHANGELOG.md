@@ -1521,6 +1521,25 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   (one missing, one extra), two files of other sizes with the same total, a listed file the extraction lacks, an extracted file the tip
   does not list and a listing without sizes are each refused by `build`; a name too long is refused with its bytes, and a name cut by
   them can be claimed while one six bytes longer cannot. No prikk-dependent test is added or removed.
+- **M40 (handoff 010 corrections, sixth round), `scrub`, the bubblewrap probe's reason and the serve refusal test.**
+  - `scrub` (the excerpt of `curl`'s standard error in an error text) now drops the **format characters** (Unicode category Cf: a
+    zero-width space, a direction override, a soft hyphen, a byte-order mark, a tag) as well as controls and line separators, from
+    the text and from every secret alike, so `s3cr3t<U+200B>T0ken` is the secret `s3cr3tT0ken` and is redacted. It **measures a
+    piece after flattening**: a secret `o<control><control>r` is no longer the two-character needle `or` that blanked `example.org`
+    (a piece, or a whole secret that flattening shortened, with fewer than four characters left is not hunted; a short secret as
+    given still is). It **flattens the whole text before it chooses the line**, so a secret split by `\n` is found across the break
+    and hidden on the line that is shown (it showed its first half). The set of format characters is
+    `inklkunn_prikk::sandbox::is_format_character` (new, public, additive: the lowest crate that needs it; `inklkunn-fetch` already
+    depends on it), held to the 170 code points of the category by a test; `inklkunn-fetch` has the signer as a dev-dependency for
+    one test that holds the set to cover `is_direction_or_format`. Tests: one for each of the reviewer's three cases.
+  - `probe_bwrap`'s error, and so every skip line that prints it (`skipping: ...; running unconfined`, `skipping the confined
+    policy: ...`, the driver tests' and the fetcher's), now carries **bubblewrap's own reason**: the first line of its standard
+    error (cleaned like `scrub`, at most 200 characters), or its exit status when it said nothing. The next CI run shows why
+    bubblewrap cannot confine on the runner. Tests with a stand-in `bwrap` that fails with a given standard error.
+  - The serve refusal test (`without_the_dev_flag_a_host_that_cannot_confine_prikk_refuses_to_start`) runs on every host through an
+    injected *cannot confine* answer (`Settings::sandbox_probed`, `prepare_probing`), so it no longer prints a skip line where
+    bubblewrap works; a second test shows the decision follows the answer both ways, and a third, where the real bubblewrap works,
+    shows the injected refusal still holds. No change to the skip count; the bubblewrap lines do not join the CI guard yet.
 
 ## [0.2.0] — 2026-11-04
 

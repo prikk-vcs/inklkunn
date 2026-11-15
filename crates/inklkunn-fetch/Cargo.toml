@@ -24,6 +24,9 @@ inklkunn-fetch = { path = ".", version = "0.2.0", features = ["test-knobs"] }
 # code point. A dev-dependency is not a runtime edge, which is all the boundary gate reads: the crate still depends on
 # the driver alone.
 inklkunn-store = { path = "../inklkunn-store", version = "0.2.0" }
+# For one test only (maintenance M40): the format characters scrub drops cover the set the knowledge files refuse
+# (`is_direction_or_format`). The same kind of edge as the store's: a dev-dependency, not a runtime one.
+inklkunn-signer = { path = "../inklkunn-signer", version = "0.2.0" }
 
 [lints]
 workspace = true
