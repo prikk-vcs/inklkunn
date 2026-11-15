@@ -52,6 +52,10 @@ use inklkunn_store::{
     WikiStore,
 };
 
+/// Every question this crate asks of the prikk on `PATH`: the only place a test reaches a capability (maintenance M39).
+#[path = "support/prikk_probes.rs"]
+mod prikk_probes;
+
 const MAIN: &str = "heads/main";
 
 /// The `i`-th of a list that must have it (tests may not index).
@@ -70,25 +74,6 @@ fn real_prikk() -> Option<PathBuf> {
             .map(|d| d.join("prikk"))
             .find(|c| c.is_file())
     })
-}
-
-/// The first `prikk` on `PATH` (any directory, not only the first) that reports 0.57.0 or newer.
-fn real_prikk_at_least_057() -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|d| d.join("prikk"))
-        .filter(|c| c.is_file())
-        .find(|c| {
-            // The driver asks the binary for its version (the core crate may not spawn a process itself).
-            PrikkCli::open(
-                c,
-                Sandbox::Unconfined,
-                Admission::new(1 << 30, 64 << 20, Duration::from_millis(200)),
-            )
-            .ok()
-            .and_then(|p| inklkunn_prikk::parse_version(p.version()))
-            .is_some_and(|v| v >= (0, 57, 0))
-        })
 }
 
 struct Dir(PathBuf);
@@ -232,12 +217,10 @@ impl World {
     }
 
     /// The same, over the first prikk on `PATH` that is 0.57.0 or newer (the host's, when the gate runs with 0.55.0
-    /// first): for the tests that need `uncommit` and what 0.57.0 does with a held lock.
+    /// first): for the tests that need `uncommit` and what 0.57.0 does with a held lock. The probe prints the guarded
+    /// line when there is none (`prikk_probes`).
     fn new_057(tag: &str, lease: LeaseConfig) -> Option<World> {
-        let Some(real) = real_prikk_at_least_057() else {
-            println!("skipping: prikk 0.57.0 or newer not found");
-            return None;
-        };
+        let real = prikk_probes::prikk_057()?;
         World::over(tag, lease, &real)
     }
 
@@ -245,14 +228,7 @@ impl World {
     /// answer *no verb*. A first prikk that has `uncommit` prints the guarded skip line (CI fails on it: the floor must
     /// be first), and the subject runs on the 0.57.0 side through [`World::new_057`] instead (maintenance M28).
     fn new_floor(tag: &str, lease: LeaseConfig) -> Option<World> {
-        let Some(real) = real_prikk() else {
-            println!("skipping: prikk not on PATH");
-            return None;
-        };
-        if inklkunn_prikk::probe_version(real.as_os_str()).is_none_or(|v| v >= (0, 57, 0)) {
-            println!("skipping: no prikk older than 0.57.0 (and at the floor) found");
-            return None;
-        }
+        let real = prikk_probes::prikk_floor()?;
         World::over(tag, lease, &real)
     }
 
@@ -1908,10 +1884,7 @@ fn a_stale_lock_beside_an_orphan_patch(w: World, verb: bool) {
 
     // Whether prikk has the verb is asked of prikk without a patch id, which takes no lock: it is answered with the
     // lock held, on both sides of 0.57.0 (M12).
-    assert_eq!(
-        w.recovery_witnesses().has_uncommit(&w.wiki.id).unwrap(),
-        verb
-    );
+    w.assert_has_verb(verb);
 
     // A plan shown: with the verb the clearing is the one step and the stop follows; without it the stop clears
     // nothing (M12: no preview can follow). Nothing is asked for the preview and nothing is done.
@@ -2053,7 +2026,7 @@ fn on_0_57_0_a_held_stale_lock_makes_the_preview_refuse_and_the_run_that_clears_
     let id = w.queued_patch_id();
     let witnesses = w.recovery_witnesses();
     // The question whether the verb exists is answered while the lock is held; the preview itself is refused.
-    assert!(witnesses.has_uncommit(&w.wiki.id).unwrap());
+    w.assert_has_verb(true);
     let refused = witnesses.uncommit_plan(&w.wiki.id, &id);
     assert!(
         refused.is_err(),

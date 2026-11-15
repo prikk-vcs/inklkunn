@@ -8,6 +8,8 @@ use std::process::Command;
 use inklkunn_prikk::sandbox::Sandbox;
 use inklkunn_store::RootLayout;
 
+mod prikk_probes;
+
 use super::*;
 use crate::RepositoryBootstrap;
 use crate::accept::{AcceptanceLedger, AcceptanceToken, ExpectedMessage, LedgerError};
@@ -67,15 +69,6 @@ struct World {
     secret_file: PathBuf,
 }
 
-/// The first `prikk` on `PATH` (any directory, not only the first) that reports 0.57.0 or newer.
-fn real_prikk_at_least_057() -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|d| d.join("prikk"))
-        .filter(|c| c.is_file())
-        .find(|c| inklkunn_prikk::probe_version(c.as_os_str()).is_some_and(|v| v >= (0, 57, 0)))
-}
-
 /// A wiki made through the signer's own entry points, with its first change sealed.
 fn world(tag: &str) -> Option<World> {
     let Some(prikk) = real_prikk() else {
@@ -90,26 +83,20 @@ fn world(tag: &str) -> Option<World> {
 /// fails on it: the floor must be first), and the subject runs on the 0.57.0 side through [`world_057`] (maintenance
 /// M34).
 fn world_floor(tag: &str) -> Option<World> {
-    let Some(prikk) = real_prikk() else {
-        println!("skipping: prikk not on PATH");
-        return None;
-    };
-    if inklkunn_prikk::probe_version(prikk.as_os_str()).is_none_or(|v| v >= (0, 57, 0)) {
-        println!("skipping: no prikk older than 0.57.0 (and at the floor) found");
-        return None;
-    }
-    world_over(tag, prikk)
+    let prikk = prikk_probes::prikk_floor()?;
+    let w = world_over(tag, prikk)?;
+    prikk_probes::assert_reports_block_seals(&w.prikk, &w.repo, false);
+    Some(w)
 }
 
 /// As [`world`], over the first `prikk` on `PATH` that is 0.57.0 or newer (the host's, when the gate runs with the
 /// floor first): the tests of what 0.57.0 reports (`verify --format json`'s `block_seals`, ledger PK-39). With none it
 /// prints the guarded skip line, which CI fails on (maintenance M34).
 fn world_057(tag: &str) -> Option<World> {
-    let Some(prikk) = real_prikk_at_least_057() else {
-        println!("skipping: prikk 0.57.0 or newer not found");
-        return None;
-    };
-    world_over(tag, prikk)
+    let prikk = prikk_probes::prikk_057()?;
+    let w = world_over(tag, prikk)?;
+    prikk_probes::assert_reports_block_seals(&w.prikk, &w.repo, true);
+    Some(w)
 }
 
 fn world_over(tag: &str, prikk: PathBuf) -> Option<World> {
@@ -179,14 +166,6 @@ impl World {
             .current_dir(&self.repo)
             .output()
             .unwrap()
-    }
-
-    /// Does this world's prikk put `block_seals` in `verify --format json` (0.57.0 and later, ledger PK-39)? The tests
-    /// that depend on the answer assert it, so a world built over the wrong prikk fails there rather than testing
-    /// the other side.
-    fn prikk_reports_block_seals(&self) -> bool {
-        let o = self.prikk(&["verify", "--format", "json"]);
-        String::from_utf8_lossy(&o.stdout).contains("\"block_seals\"")
     }
 
     fn verify(&self) -> (bool, String) {
@@ -631,7 +610,6 @@ fn a_retirement_records_the_point_too_and_marks_the_key_retired() {
     let Some(w) = world_floor("late-retire") else {
         return;
     };
-    assert!(!w.prikk_reports_block_seals());
     rotate_retiring(&w);
     let r = w.signer.late_seal_check(&w.repo);
     assert!(
@@ -648,7 +626,6 @@ fn on_0_57_0_a_retirement_records_the_point_too_and_the_late_seal_check_runs_and
     let Some(w) = world_057("late-retire-057") else {
         return;
     };
-    assert!(w.prikk_reports_block_seals());
     rotate_retiring(&w);
     assert_eq!(
         w.signer.late_seal_check(&w.repo),
@@ -667,7 +644,6 @@ fn on_0_57_0_a_block_prikk_cannot_read_makes_the_late_seal_check_unavailable_and
     let Some(w) = world_057("late-unreadable-057") else {
         return;
     };
-    assert!(w.prikk_reports_block_seals());
     w.seal_with_current_keys("one\n");
     w.signer
         .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Keep)
@@ -693,7 +669,6 @@ fn a_block_prikk_cannot_read_is_refused_by_the_late_seal_check_and_never_clean()
     let Some(w) = world_floor("late-unreadable") else {
         return;
     };
-    assert!(!w.prikk_reports_block_seals());
     w.seal_with_current_keys("one\n");
     w.signer
         .rotate_keys(&crate::KeyAuthority::for_tests(), &w.repo, OldKey::Keep)

@@ -1540,6 +1540,28 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
     injected *cannot confine* answer (`Settings::sandbox_probed`, `prepare_probing`), so it no longer prints a skip line where
     bubblewrap works; a second test shows the decision follows the answer both ways, and a third, where the real bubblewrap works,
     shows the injected refusal still holds. No change to the skip count; the bubblewrap lines do not join the CI guard yet.
+- **M39 (handoff 010 corrections, sixth round): a test reaches a prikk capability only through one module of its crate.** M34's
+  scanner looked for the keyword `return` after five probe names and missed eight of the reviewer's nine shapes (a branch with no
+  `return`, an `if let`, a `match` with an empty arm, `continue`, a helper using `?`, probes such as `at_least_057`, `world_057`,
+  `fixture_057`, `new_057` that were not on its list, a guarded string that was never printed). It is replaced by a rule a
+  scanner can check completely. Each test crate has one module, a file named `prikk_probes.rs`: `inklkunn-core`'s
+  `tests/support/prikk_probes.rs` (mounted by `tests/recovery.rs`), `inklkunn-signer`'s `tests/support/prikk_probes.rs` (mounted by
+  `acceptance_kill.rs`, `format_marker.rs` and `recover.rs`) and `src/signer/lifecycle/tests/prikk_probes.rs` (its unit tests), and
+  `inklkunn`'s `src/keys/tests/prikk_probes.rs`. What a module makes public is a function that returns a binary (an `Option`) and
+  **prints the guarded line itself** on every path that returns none, or one that asserts; what decides (`prikk_where`,
+  `real_prikk_at_least_057`, `at_least_057`, `reports_block_seals`, `has_uncommit`, the calls of `probe_version` and
+  `parse_version`) is private to the module. The worlds and fixtures take their binary from the module and assert the side they
+  name where it matters (`assert_reports_block_seals`, `assert_has_verb`), so the shared subjects of the paired floor and
+  `on_0_57_0_...` tests are handed that side (`retire_with_a_late_block(&w, lists_who_sealed)`) instead of asking prikk again.
+  `tools/floor-check/tests/guarded_skips.rs` is now structural: it finds the probes by their definition in the modules (and the
+  driver's free functions a module calls by path), fails on any use of one in another test source of the workspace (a call, a
+  function passed as a value, a second definition), and fails on a public function of a module that returns anything but an
+  `Option` or nothing, or that can return none without a `println!` of a guarded line at the level of its own block before each
+  `None` and `return`, that uses `?`, or whose last expression is not `Some(..)`. Tests: the reviewer's shapes and the rest as
+  planted failures, thirteen shapes of a module that fail, and the shapes that are right; the check counts the modules, the entries,
+  the asserts, the printed exits and the probes it found so that it cannot pass without reading. One other test-side change:
+  the signer's `VersionOnly` stand-in waits for its script to be runnable by running it, not through `probe_version`. No new test
+  that needs prikk, so no change to the skip count.
 
 ## [0.2.0] — 2026-11-04
 

@@ -25,6 +25,9 @@
 //! when prikk is not on `PATH`.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+#[path = "support/prikk_probes.rs"]
+mod prikk_probes;
+
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -706,35 +709,17 @@ fn fixture(tag: &str) -> Option<Fixture> {
     fixture_over(tag, real)
 }
 
-/// The first `prikk` on `PATH` (in any directory) whose version satisfies `wanted`.
-fn prikk_where(wanted: impl Fn((u64, u64, u64)) -> bool) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|d| d.join("prikk"))
-        .filter(|c| c.is_file())
-        .find(|c| inklkunn_prikk::probe_version(c.as_os_str()).is_some_and(&wanted))
-}
-
-/// The fixture over the first prikk 0.57.0 or newer on `PATH`, wherever it stands (maintenance M28).
+/// The fixture over the first prikk 0.57.0 or newer on `PATH`, wherever it stands (maintenance M28): the kill matrix's take-back row. Prints the
+/// line CI fails on when there is none.
 fn fixture_057(tag: &str) -> Option<Fixture> {
-    let Some(real) = prikk_where(|v| v >= (0, 57, 0)) else {
-        println!("skipping: prikk 0.57.0 or newer not found");
-        return None;
-    };
+    let real = prikk_probes::prikk_057()?;
     fixture_over(tag, real)
 }
 
-/// The fixture over the **first** prikk on `PATH`, when it is older than 0.57.0 (CI's is the floor): the answer *no
-/// verb*. A first prikk that has the verb prints the line CI fails on.
+/// The fixture over the **first** prikk on `PATH`, when it is older than 0.57.0 (CI's is the floor): the tests of the
+/// answer *no verb*. A first prikk that has the verb prints the line CI fails on.
 fn fixture_floor(tag: &str) -> Option<Fixture> {
-    let Some(real) = real_prikk() else {
-        println!("skipping: prikk not on PATH");
-        return None;
-    };
-    if inklkunn_prikk::probe_version(real.as_os_str()).is_none_or(|v| v >= (0, 57, 0)) {
-        println!("skipping: no prikk older than 0.57.0 (and at the floor) found");
-        return None;
-    }
+    let real = prikk_probes::prikk_floor()?;
     fixture_over(tag, real)
 }
 

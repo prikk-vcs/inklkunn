@@ -106,6 +106,10 @@ fn times_are_printed_as_utc_rfc_3339() {
 
 // ---- the commands against a real prikk, a real key store and a real SQLite store, in this process ----
 
+/// Every question these tests ask of the prikk on `PATH`: the only place a test reaches a capability (maintenance
+/// M39).
+mod prikk_probes;
+
 mod world {
     #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -123,6 +127,7 @@ mod world {
         AuditLog, DisplayName, NewWiki, RootLayout, Slug, SqliteStore, WikiRecord, WikiStore,
     };
 
+    use super::prikk_probes;
     use crate::cli;
     use crate::config::Settings;
 
@@ -156,92 +161,52 @@ mod world {
         pub real_prikk: PathBuf,
     }
 
-    /// Which `prikk` on `PATH` a world runs over.
-    #[derive(Clone, Copy)]
-    enum Pick {
-        /// The first one (CI's is the floor).
-        First,
-        /// The first one, when it is older than 0.57.0 (maintenance M34).
-        Floor,
-        /// The first one that is 0.57.0 or newer, wherever it is on `PATH` (maintenance M34).
-        AtLeast057,
-    }
-
-    fn at_least_057(binary: &Path) -> bool {
-        inklkunn_prikk::probe_version(binary.as_os_str()).is_some_and(|v| v >= (0, 57, 0))
-    }
-
-    /// The `prikk` a world runs over, or `None` after printing the line that says why. The two guarded lines are the
-    /// ones CI fails on: a test of a 0.57.0 subject never returns without one.
-    fn pick(which: Pick) -> Option<PathBuf> {
-        let found: Vec<PathBuf> = std::env::var_os("PATH")
-            .map(|p| {
-                std::env::split_paths(&p)
-                    .map(|d| d.join("prikk"))
-                    .filter(|c| c.is_file())
-                    .collect()
-            })
-            .unwrap_or_default();
-        match which {
-            Pick::AtLeast057 => {
-                let new = found.into_iter().find(|c| at_least_057(c));
-                if new.is_none() {
-                    println!("skipping: prikk 0.57.0 or newer not found");
-                }
-                new
-            }
-            Pick::First | Pick::Floor => {
-                let Some(first) = found.into_iter().next() else {
-                    println!("skipping: prikk not on PATH");
-                    return None;
-                };
-                if matches!(which, Pick::Floor) && at_least_057(&first) {
-                    println!("skipping: no prikk older than 0.57.0 (and at the floor) found");
-                    return None;
-                }
-                Some(first)
-            }
-        }
-    }
-
     /// A deployment with one wiki, `handbook`, created through the product's own path with the production key
     /// derivation (the commands open the key store the same way).
     pub fn world(tag: &str) -> Option<World> {
-        build(tag, false, Pick::First)
+        Some(build(tag, false, prikk_probes::prikk_first()?))
     }
 
     /// As [`world`], over the first `prikk` on `PATH` when it is older than 0.57.0: the tests of what prikk did before
     /// it reported `block_seals`. A first prikk that reports them prints the guarded skip line, and the subject runs
-    /// on the 0.57.0 side ([`world_057`]).
+    /// on the 0.57.0 side ([`world_057`]). The world asserts that its prikk does not report them.
     pub fn world_floor(tag: &str) -> Option<World> {
-        build(tag, false, Pick::Floor)
+        let w = build(tag, false, prikk_probes::prikk_floor()?);
+        prikk_probes::assert_reports_block_seals(w.storage.version(), false);
+        Some(w)
     }
 
     /// As [`world`], over the first `prikk` on `PATH` that is 0.57.0 or newer: the tests of what 0.57.0 reports
-    /// (ledger PK-39). With none it prints the guarded skip line, which CI fails on.
+    /// (ledger PK-39). With none it prints the guarded skip line, which CI fails on. The world asserts that its prikk
+    /// reports `block_seals`.
     pub fn world_057(tag: &str) -> Option<World> {
-        build(tag, false, Pick::AtLeast057)
+        let w = build(tag, false, prikk_probes::prikk_057()?);
+        prikk_probes::assert_reports_block_seals(w.storage.version(), true);
+        Some(w)
     }
 
     /// As [`world`], over a `prikk` that copies the seeds of the first keys when it first sees them (a leak), into
     /// `<data dir>/loot`: what a thief of the first maintainer key holds. It also cannot run `verify` once a key was
     /// removed from trust while the file `<data dir>/ctl/verify-dies` exists.
     pub fn leaky_world(tag: &str) -> Option<World> {
-        build(tag, true, Pick::First)
+        Some(build(tag, true, prikk_probes::prikk_first()?))
     }
 
     /// [`leaky_world`] over the floor, as [`world_floor`].
     pub fn leaky_world_floor(tag: &str) -> Option<World> {
-        build(tag, true, Pick::Floor)
+        let w = build(tag, true, prikk_probes::prikk_floor()?);
+        prikk_probes::assert_reports_block_seals(w.storage.version(), false);
+        Some(w)
     }
 
     /// [`leaky_world`] over a prikk that reports `block_seals`, as [`world_057`].
     pub fn leaky_world_057(tag: &str) -> Option<World> {
-        build(tag, true, Pick::AtLeast057)
+        let w = build(tag, true, prikk_probes::prikk_057()?);
+        prikk_probes::assert_reports_block_seals(w.storage.version(), true);
+        Some(w)
     }
 
-    fn build(tag: &str, leaky: bool, which: Pick) -> Option<World> {
-        let real = pick(which)?;
+    fn build(tag: &str, leaky: bool, real: PathBuf) -> World {
         let tmp = dir(&std::env::temp_dir(), tag);
         let shm = dir(Path::new("/dev/shm"), tag);
         let data_dir = tmp.0.join("data");
@@ -311,7 +276,7 @@ mod world {
         )
         .expect("a wiki");
         let record = store.get(&created.record.id).unwrap();
-        Some(World {
+        World {
             _tmp: tmp,
             _shm: shm,
             settings,
@@ -319,7 +284,7 @@ mod world {
             record,
             storage,
             real_prikk: real,
-        })
+        }
     }
 
     impl World {
@@ -372,12 +337,6 @@ mod world {
                 String::from_utf8(out).unwrap(),
                 String::from_utf8(err).unwrap(),
             )
-        }
-
-        /// Does this machine's prikk report who sealed each block as recorded (`verify --format json`'s `block_seals`, 0.57.0
-        /// and later, ledger PK-39)? Then the late-seal check sees a key that was removed from trust; before, it did not.
-        pub fn reports_block_seals(&self) -> bool {
-            inklkunn_prikk::parse_version(self.storage.version()).is_some_and(|v| v >= (0, 57, 0))
         }
 
         pub fn verifies(&self) -> bool {
@@ -1367,8 +1326,7 @@ fn retire_with_a_late_block_leaves_the_retirement_unfinished_names_it_and_status
     let Some(w) = world::leaky_world_floor("z1-cli") else {
         return;
     };
-    assert!(!w.reports_block_seals());
-    retire_with_a_late_block(&w);
+    retire_with_a_late_block(&w, false);
 }
 
 #[test]
@@ -1378,13 +1336,12 @@ fn on_0_57_0_retire_with_a_late_block_leaves_the_retirement_unfinished_and_statu
     let Some(w) = world::leaky_world_057("z1-cli-057") else {
         return;
     };
-    assert!(w.reports_block_seals());
-    retire_with_a_late_block(&w);
+    retire_with_a_late_block(&w, true);
 }
 
-/// The subject of the two tests above; the branches on `reports_block_seals` are the two sides of ledger PK-39, and
-/// each test builds its world over a prikk that has the side it asserts.
-fn retire_with_a_late_block(w: &world::World) {
+/// The subject of the two tests above; the branches on `lists_who_sealed` are the two sides of ledger PK-39, and
+/// each test builds its world over a prikk that has the side it names (the world asserts it).
+fn retire_with_a_late_block(w: &world::World, lists_who_sealed: bool) {
     let (author, maintainer) = w.recorded_ids();
     let (author, k1) = (author.unwrap(), maintainer.unwrap());
     let (status, out, err) = w.cli("wiki keys rotate handbook --confirm handbook");
@@ -1426,7 +1383,7 @@ fn retire_with_a_late_block(w: &world::World) {
     // trust, so that check alone would have said 0.
     let (status, out, err) = w.cli("wiki keys status handbook");
     assert_eq!(status, 1, "{out}{err}");
-    if w.reports_block_seals() {
+    if lists_who_sealed {
         // 0.57.0 shows the check the key it removed (ledger PK-39): the forged block is a late seal in its own right,
         // and that is what the exit says; the retirement stays unfinished and `UNFINISHED` below says so all the same.
         assert!(
@@ -1450,7 +1407,7 @@ fn retire_with_a_late_block(w: &world::World) {
     // ... and, where prikk lists who sealed a block only for the keys it trusts (0.55.0, 0.56.0), does not say that nothing
     // was sealed after the rotation: the check cannot see a key that is out of trust. Where prikk reports the seals as
     // recorded (0.57.0, ledger PK-39) it sees the key, and shows the very block the thief sealed.
-    if w.reports_block_seals() {
+    if lists_who_sealed {
         assert!(
             out.contains(&format!(
                 "WARNING: block {forged} was sealed by the superseded maintainer key {k1}"
@@ -1683,8 +1640,7 @@ fn status_does_not_say_that_no_block_was_sealed_after_the_rotation_of_a_key_it_c
     let Some(w) = world::world_floor("z-b") else {
         return;
     };
-    assert!(!w.reports_block_seals());
-    status_after_a_retirement_of_a_key_it_cannot_see(&w);
+    status_after_a_retirement_of_a_key_it_cannot_see(&w, false);
 }
 
 #[test]
@@ -1692,13 +1648,12 @@ fn on_0_57_0_status_sees_a_retired_key_and_says_nothing_was_sealed_after_its_rot
     let Some(w) = world::world_057("z-b-057") else {
         return;
     };
-    assert!(w.reports_block_seals());
-    status_after_a_retirement_of_a_key_it_cannot_see(&w);
+    status_after_a_retirement_of_a_key_it_cannot_see(&w, true);
 }
 
 /// The subject of the two tests above (ledger PK-39: each test builds its world over a prikk that has the side it
 /// asserts).
-fn status_after_a_retirement_of_a_key_it_cannot_see(w: &world::World) {
+fn status_after_a_retirement_of_a_key_it_cannot_see(w: &world::World, lists_who_sealed: bool) {
     let k1 = w.recorded_ids().1.unwrap();
     let (status, _, err) = w.cli("wiki keys rotate handbook --confirm handbook");
     assert_eq!(status, 0, "{err}");
@@ -1708,7 +1663,7 @@ fn status_after_a_retirement_of_a_key_it_cannot_see(w: &world::World) {
     assert_eq!(status, 0, "{out}");
     let (status, out, err) = w.cli("wiki keys status handbook");
     assert_eq!(status, 0, "{out}{err}");
-    if w.reports_block_seals() {
+    if lists_who_sealed {
         // 0.57.0 reports the seals as recorded: the check sees the retired key and finds nothing after its rotation.
         assert!(
             out.contains("no block was sealed by a superseded key after its rotation")

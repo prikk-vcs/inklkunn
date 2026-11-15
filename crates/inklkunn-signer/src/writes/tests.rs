@@ -818,7 +818,11 @@ impl VersionOnly {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
         // A script just written can be refused with `ETXTBSY` while a sibling test forks.
         for _ in 0..100 {
-            if inklkunn_prikk::probe_version(path.as_os_str()).is_some() {
+            if std::process::Command::new(&path)
+                .arg("--version")
+                .output()
+                .is_ok()
+            {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(10));

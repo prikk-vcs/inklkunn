@@ -8,23 +8,15 @@
 //! first) and says so when the one it needs is not there.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+#[path = "support/prikk_probes.rs"]
+mod prikk_probes;
+
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use inklkunn_prikk::{Admission, PrikkCli, Sandbox, Storage, StorageError, probe_version};
+use inklkunn_prikk::{Admission, PrikkCli, Sandbox, Storage, StorageError};
 use inklkunn_signer::{SignerError, Witnesses};
 use inklkunn_store::{RootLayout, WikiId};
-
-type Version = (u64, u64, u64);
-
-/// The first `prikk` on `PATH` (in any directory) whose version satisfies `wanted`.
-fn prikk_where(wanted: impl Fn(Version) -> bool) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|d| d.join("prikk"))
-        .filter(|c| c.is_file())
-        .find(|c| probe_version(c.as_os_str()).is_some_and(&wanted))
-}
 
 struct Tmp(PathBuf);
 
@@ -92,8 +84,7 @@ impl Repo {
 #[test]
 fn a_marker_prikk_0_57_0_will_not_read_is_a_damaged_or_unknown_marker_for_the_driver_and_the_signer()
  {
-    let Some(new) = prikk_where(|v| v >= (0, 57, 0)) else {
-        println!("skipping: prikk 0.57.0 or newer not found");
+    let Some(new) = prikk_probes::prikk_057() else {
         return;
     };
     let repo = made_by(&new, "new");
@@ -139,12 +130,10 @@ fn a_marker_prikk_0_57_0_will_not_read_is_a_damaged_or_unknown_marker_for_the_dr
 #[test]
 fn a_format_8_repository_read_by_a_prikk_older_than_0_57_0_is_the_operators_mismatch_for_the_driver_and_the_signer()
  {
-    let Some(new) = prikk_where(|v| v >= (0, 57, 0)) else {
-        println!("skipping: prikk 0.57.0 or newer not found");
+    let Some(new) = prikk_probes::prikk_057() else {
         return;
     };
-    let Some(old) = prikk_where(|v| ((0, 54, 0)..(0, 57, 0)).contains(&v)) else {
-        println!("skipping: no prikk older than 0.57.0 (and at the floor) found");
+    let Some(old) = prikk_probes::prikk_older_than_057() else {
         return;
     };
     let repo = made_by(&new, "old");
@@ -232,8 +221,7 @@ fn unreadable_markers_are_damaged_markers(maker: &Path, reader: &Path, tag: &str
 #[test]
 fn a_marker_prikk_0_57_0_cannot_read_as_a_number_is_a_damaged_marker_for_the_driver_and_the_signer()
 {
-    let Some(new) = prikk_where(|v| v >= (0, 57, 0)) else {
-        println!("skipping: prikk 0.57.0 or newer not found");
+    let Some(new) = prikk_probes::prikk_057() else {
         return;
     };
     unreadable_markers_are_damaged_markers(&new, &new, "unreadable-new");
@@ -242,8 +230,7 @@ fn a_marker_prikk_0_57_0_cannot_read_as_a_number_is_a_damaged_marker_for_the_dri
 #[test]
 fn a_marker_an_older_prikk_cannot_read_as_a_number_is_a_damaged_marker_for_the_driver_and_the_signer()
  {
-    let Some(old) = prikk_where(|v| ((0, 54, 0)..(0, 57, 0)).contains(&v)) else {
-        println!("skipping: no prikk older than 0.57.0 (and at the floor) found");
+    let Some(old) = prikk_probes::prikk_older_than_057() else {
         return;
     };
     unreadable_markers_are_damaged_markers(&old, &old, "unreadable-old");
