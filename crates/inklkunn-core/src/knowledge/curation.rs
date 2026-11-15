@@ -116,8 +116,14 @@ pub fn stamp(
                     Some(File::Source(s)) => s.last_reviewed.clone(),
                     _ => None,
                 };
+                // A check stated beside a new reference is this proposal's even on the date the old one had (K72): the
+                // file names no proposal for it, where one carried over from the tip's names the tip's own.
+                let stated_elsewhere = review_is_unnamed(&source)
+                    && matches!(&was, Some(File::Source(s))
+                        if super::Reference::is_elsewhere(s.reference.as_ref(), source.reference.as_ref()));
                 if let Some(review) = &mut source.last_reviewed {
-                    let same_day = was_review.as_ref().map(|r| &r.date) == Some(&review.date);
+                    let same_day = was_review.as_ref().map(|r| &r.date) == Some(&review.date)
+                        && !stated_elsewhere;
                     review.proposal = if same_day {
                         was_review.and_then(|r| r.proposal)
                     } else {
@@ -129,4 +135,12 @@ pub fn stamp(
         }
     }
     Ok(())
+}
+
+/// Does the review of `source` name no proposal yet (a check a curation has just written; the acceptance names it)?
+fn review_is_unnamed(source: &Source) -> bool {
+    source
+        .last_reviewed
+        .as_ref()
+        .is_some_and(|r| r.proposal.is_none())
 }

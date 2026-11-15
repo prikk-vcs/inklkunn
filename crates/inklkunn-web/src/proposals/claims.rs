@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
 use inklkunn_core::knowledge::compose::{
-    Attachment, Mistake, SourceDraft, attach, clean_reference, clean_text, page_id_of,
+    Attachment, CheckFault, Mistake, SourceDraft, attach, clean_reference, clean_text, page_id_of,
     paragraph_id, without_expressions,
 };
 use inklkunn_core::knowledge::marker::{
@@ -152,8 +152,22 @@ pub(crate) fn mistake_text(t: T, m: Mistake) -> String {
         Mistake::ReplacedByItself => t.get(Key::CurateReplacedByItself),
         Mistake::UnknownSuccessor => t.get(Key::CurateUnknownSuccessor),
         Mistake::SuccessorCycle => t.get(Key::CurateSuccessorCycle),
+        // The surfaces that make a curation name the source (`check_text`); this is the sentence for one that does not.
+        Mistake::Check(_, why) => check_text(t, why, &t.get(Key::CurateSourceUntitled), None),
         Mistake::Unwritable => t.get(Key::AttachUnwritable),
     }
+}
+
+/// The words for a refused check of a new reference (K72), said for the source (`title`, as the form's legend gives it);
+/// `previous` is the day the old reference was last checked, for the one that is earlier than it.
+pub(crate) fn check_text(t: T, why: CheckFault, title: &str, previous: Option<&str>) -> String {
+    let (key, day) = match why {
+        CheckFault::NoDay => (Key::CurateCheckNoDay, ""),
+        CheckFault::NotADay => (Key::CurateCheckNotADay, ""),
+        CheckFault::BeforeReview => (Key::CurateCheckBeforeReview, previous.unwrap_or("")),
+        CheckFault::NoNewReference => (Key::CurateCheckNoNewReference, ""),
+    };
+    t.msg(key).with("title", title).with("day", day).text()
 }
 
 /// Why a source could not be attached.

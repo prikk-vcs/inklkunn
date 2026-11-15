@@ -455,7 +455,13 @@ fn source_changes(before: &Source, after: &Source) -> Vec<SourceChange> {
     }
     // The day; the proposal that said so is the service's own (stamped at acceptance).
     let day = |r: &Option<Reviewed>| r.as_ref().map(|r| r.date.clone());
-    if day(last_reviewed) != day(&after.last_reviewed) {
+    // A check stated beside a new reference on the very date the old one had (K72) is not one that stays: the file names
+    // no proposal for it, where a check carried from the base names the base's own.
+    let restated = moved
+        && last_reviewed.is_some()
+        && *last_reviewed != after.last_reviewed
+        && day(last_reviewed) == day(&after.last_reviewed);
+    if restated || day(last_reviewed) != day(&after.last_reviewed) {
         out.push(SourceChange::Reviewed(day(&after.last_reviewed)));
     }
     if *availability != after.availability {
@@ -466,6 +472,7 @@ fn source_changes(before: &Source, after: &Source) -> Vec<SourceChange> {
     }
     // Another work under the same check: said last, as what the reviewer is asked to vouch for.
     if (renamed || moved)
+        && !restated
         && let Some(kept) =
             day(last_reviewed).filter(|d| Some(d) == day(&after.last_reviewed).as_ref())
     {

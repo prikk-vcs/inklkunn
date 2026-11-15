@@ -3092,7 +3092,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "curate.work_hint",
-        "Who and what this source is, where it is found and which source replaces it are corrected here. A new place to find it clears the day it was last checked and whether it can be had, unless you set them again above. A field shows a text without its line breaks, so a change of line breaks alone cannot be made here: make it through the API.",
+        "Who and what this source is, where it is found and which source replaces it are corrected here. A new place to find it ends the check of the old one: the day it was last checked and whether it can be had, above, are not carried to the new place, and the new place has no check until you give the day you checked it, below. A change of white space alone in where it is found keeps the check. A field shows a text without its line breaks, so a change of line breaks alone cannot be made here: make it through the API.",
     ),
     msg("curate.label_superseded", "The source that replaces it"),
     msg(
@@ -3156,5 +3156,37 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "invalid.knowledge_check_unstated",
         "A source in this proposal is found somewhere else than it is now, and still carries the day it was last checked or whether it can be had, which were for its old place. A check of the new place is stated in the proposal, never taken from the old one. It is not sent.",
+    ),
+    msg(
+        "curate.label_checked_day",
+        "The day you checked the new reference (year-month-day)",
+    ),
+    msg(
+        "curate.checked_day_hint",
+        "Only with a new place to find it, above. The day you looked at the new place. It cannot be earlier than the day the old place was last checked, or a day that has not come. It is never taken from the day above.",
+    ),
+    msg(
+        "curate.label_checked_availability",
+        "Whether it can be had at the new reference",
+    ),
+    msg(
+        "curate.checked_availability_hint",
+        "As the person who looked at the new place says. It needs the day you checked it, above.",
+    ),
+    msg(
+        "curate.check_no_day",
+        "Source: {title}. An answer about the new reference needs the day you checked it. Give the day, or leave the answer as not known.",
+    ),
+    msg(
+        "curate.check_not_a_day",
+        "Source: {title}. The day you checked the new reference has to be written year, month, day, like 2026-11-04.",
+    ),
+    msg(
+        "curate.check_before_review",
+        "Source: {title}. The day you checked the new reference cannot be earlier than {day}, the day the old reference was last checked.",
+    ),
+    msg(
+        "curate.check_no_new_reference",
+        "Source: {title}. The day you checked the new reference goes with a change of where the source is found. Change that, or leave the day and the answer empty.",
     ),
 ];

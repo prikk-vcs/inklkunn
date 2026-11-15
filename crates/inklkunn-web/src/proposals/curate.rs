@@ -20,7 +20,7 @@ use axum::response::Response;
 use inklkunn_core::Action;
 use inklkunn_core::knowledge::check::SuccessorWalk;
 use inklkunn_core::knowledge::compose::{
-    Curation, LinkEdit, Mistake, SourceEdit, Work, curate, page_id_of,
+    Checked, Curation, LinkEdit, Mistake, SourceEdit, Work, curate, page_id_of,
 };
 use inklkunn_core::knowledge::marker::words_with_id;
 use inklkunn_core::knowledge::{
@@ -80,30 +80,64 @@ impl Loaded {
     }
 
     /// The edits that would record, as the day a person looked at a source, a day that has not come (after the
-    /// current date in UTC+14 by the service's clock, K49), each with its place among `edits`. A day left as the base
-    /// has it is not a new record, and a text that is no day is `Mistake::NotADay`'s business, not this one's.
+    /// current date in UTC+14 by the service's clock, K49), each with its place among `edits`: the day of the source
+    /// (`reviewed`; a day left as the base has it is not a new record) and the day stated for a new reference
+    /// (`checked.day`, K72). A text that is no day is `Mistake::NotADay`'s business, not this one's.
     pub(crate) fn days_not_come(
         &self,
         read: &inklkunn_core::read::ReadService,
         edits: &[SourceEdit],
     ) -> Vec<DayNotCome> {
-        edits
-            .iter()
-            .enumerate()
-            .filter_map(|(at, e)| {
-                let source = self.cited.iter().flatten().find(|s| s.id == e.source)?;
-                let kept = source.last_reviewed.as_ref().map(|r| r.date.as_str());
-                (!e.reviewed.is_empty()
-                    && kept != Some(e.reviewed.as_str())
-                    && read.day_has_not_come(&e.reviewed))
-                .then(|| DayNotCome {
-                    at,
-                    source: e.source.clone(),
-                    title: source.identity.title.clone(),
-                    day: e.reviewed.clone(),
-                })
-            })
-            .collect()
+        let mut out = Vec::new();
+        for (at, e) in edits.iter().enumerate() {
+            let Some(source) = self.cited.iter().flatten().find(|s| s.id == e.source) else {
+                continue;
+            };
+            let kept = source.last_reviewed.as_ref().map(|r| r.date.as_str());
+            let stated = e.checked.as_ref().map(|c| c.day.trim());
+            for (member, day) in [
+                (
+                    "reviewed",
+                    Some(e.reviewed.as_str()).filter(|d| kept != Some(*d)),
+                ),
+                ("checked.day", stated),
+            ] {
+                if let Some(day) = day.filter(|d| !d.is_empty() && read.day_has_not_come(d)) {
+                    out.push(DayNotCome {
+                        at,
+                        member,
+                        source: e.source.clone(),
+                        title: source.identity.title.clone(),
+                        day: day.to_owned(),
+                    });
+                }
+            }
+        }
+        out
+    }
+}
+
+impl Loaded {
+    /// The refusal of the check of a new reference that the core made for the `at`-th source of `edits` (K72), in the
+    /// person's words: the source (as the form's own legend names it), so that the person finds the field, and, for a day
+    /// that is too early, the day of the check it cannot come before.
+    pub(crate) fn check_refused_text(
+        &self,
+        t: crate::catalog::T,
+        edits: &[SourceEdit],
+        at: usize,
+        why: inklkunn_core::knowledge::compose::CheckFault,
+    ) -> String {
+        let source = edits
+            .get(at)
+            .and_then(|e| self.cited.iter().flatten().find(|s| s.id == e.source));
+        let title = source
+            .and_then(|s| s.identity.title.clone())
+            .unwrap_or_else(|| t.get(Key::CurateSourceUntitled));
+        let previous = source
+            .and_then(|s| s.last_reviewed.as_ref())
+            .map(|r| r.date.as_str());
+        super::claims::check_text(t, why, &title, previous)
     }
 }
 
@@ -130,6 +164,8 @@ impl Loaded {
 pub(crate) struct DayNotCome {
     /// Its place among the edits of the body.
     pub(crate) at: usize,
+    /// The member of the source the day was given in: `reviewed`, or `checked.day` for a new reference (K72).
+    pub(crate) member: &'static str,
     /// The source.
     pub(crate) source: SourceId,
     /// The source's title, when it has one.
@@ -454,6 +490,15 @@ fn read(fields: &HashMap<String, String>) -> Option<Submitted> {
                 reviewed: one(fields::C_REVIEWED).unwrap_or("").trim().to_owned(),
                 availability: Availability::from_word(availability)?,
                 work: None,
+                // The check of a new reference is its own pair of fields, empty unless the reference changes (K72).
+                checked: Some(Checked {
+                    day: one(fields::C_CHECKED_DAY).unwrap_or("").trim().to_owned(),
+                    availability: match one(fields::C_CHECKED_AVAILABILITY) {
+                        Some(word) => Availability::from_word(word)?,
+                        None => Availability::Unknown,
+                    },
+                })
+                .filter(Checked::is_stated),
             });
         }
         // What a source is: offered for a source whose file could be read, checked or not (K60), so a form without it says nothing. The texts
@@ -546,6 +591,15 @@ struct WorkView {
     superseded_label: String,
     superseded_hint: String,
     superseded: String,
+    /// The check of a new reference (K72): its own pair of fields, empty as the form opens.
+    checked_day_name: String,
+    checked_day_label: String,
+    checked_day_hint: String,
+    checked_day: String,
+    checked_availability_name: String,
+    checked_availability_label: String,
+    checked_availability_hint: String,
+    checked_availabilities: Vec<OptionView>,
 }
 
 #[derive(Template)]
@@ -587,6 +641,9 @@ struct Shown {
     links: Vec<(Link, Bearing)>,
     reviewed: Vec<String>,
     availability: Vec<Availability>,
+    /// The check of a new reference a person stated, by link (K72): empty, and not known, as the form opens.
+    checked_day: Vec<String>,
+    checked_availability: Vec<Availability>,
     /// Which links are to go, by link.
     removed: Vec<bool>,
     /// What each source is, by link; `None` for one whose file could not be read (the form does not offer it).
@@ -621,6 +678,9 @@ impl Shown {
                 .iter()
                 .map(|s| s.as_ref().map_or(Availability::Unknown, |s| s.availability))
                 .collect(),
+            // Empty, as the form opens: a check of a new reference is stated, never filled in from the old one (K72).
+            checked_day: vec![String::new(); subject.claim.sources.len()],
+            checked_availability: vec![Availability::Unknown; subject.claim.sources.len()],
             removed: vec![false; subject.claim.sources.len()],
             works: subject
                 .cited
@@ -653,6 +713,14 @@ impl Shown {
                 }
                 if let Some(slot) = shown.availability.get_mut(i) {
                     *slot = e.availability;
+                }
+                if let Some(check) = &e.checked {
+                    if let Some(slot) = shown.checked_day.get_mut(i) {
+                        slot.clone_from(&check.day);
+                    }
+                    if let Some(slot) = shown.checked_availability.get_mut(i) {
+                        *slot = check.availability;
+                    }
                 }
             }
         }
@@ -790,6 +858,24 @@ fn render(
                     superseded_label: t.get(Key::CurateLabelSuperseded),
                     superseded_hint: t.get(Key::CurateSupersededHint),
                     superseded: w.superseded.clone(),
+                    checked_day_name: name(fields::C_CHECKED_DAY),
+                    checked_day_label: t.get(Key::CurateLabelCheckedDay),
+                    checked_day_hint: t.get(Key::CurateCheckedDayHint),
+                    checked_day: shown.checked_day.get(i).cloned().unwrap_or_default(),
+                    checked_availability_name: name(fields::C_CHECKED_AVAILABILITY),
+                    checked_availability_label: t.get(Key::CurateLabelCheckedAvailability),
+                    checked_availability_hint: t.get(Key::CurateCheckedAvailabilityHint),
+                    checked_availabilities: options(
+                        Availability::ALL,
+                        Availability::word,
+                        availability_word,
+                        shown
+                            .checked_availability
+                            .get(i)
+                            .copied()
+                            .unwrap_or(Availability::Unknown),
+                        label,
+                    ),
                 }),
             reviewed_name: name(fields::C_REVIEWED),
             reviewed_label: t.get(Key::CurateLabelReviewed),
@@ -1074,8 +1160,12 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
     let files = match missing.map_or_else(|| curate(&subject.claim, &cited, now, &edit), Err) {
         Ok(files) => files,
         Err(m) => {
+            let said = match m {
+                Mistake::Check(at, why) => subject.check_refused_text(t, &edit.sources, at, why),
+                other => mistake_text(t, other),
+            };
             return draw(
-                vec![plain(&mistake_text(t, m))],
+                vec![plain(&said)],
                 Vec::new(),
                 StatusCode::UNPROCESSABLE_ENTITY,
             );

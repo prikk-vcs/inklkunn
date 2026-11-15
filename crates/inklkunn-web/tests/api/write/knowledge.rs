@@ -602,6 +602,11 @@ pub(super) fn cast_checked() -> Cast {
 /// [`cast_checked`], the first source titled exactly `title` (a space at its end or a line break in it, as an import or
 /// older data may leave it).
 fn cast_checked_titled(title: &str) -> Cast {
+    cast_checked_with(title, "2026-11-01")
+}
+
+/// [`cast_checked_titled`], the first source last checked on `day`.
+fn cast_checked_with(title: &str, day: &str) -> Cast {
     let mut c = claim(1, Standing::Unknown, None, SAID);
     c.sources = vec![
         link(1, Link::Supports, Bearing::Direct, SAID),
@@ -610,9 +615,10 @@ fn cast_checked_titled(title: &str) -> Cast {
     let mut first = source(1, SourceKind::Primary);
     first.identity.title = Some(title.to_owned());
     first.availability = inklkunn_core::knowledge::Availability::Available;
+    // Checked by a proposal, as a check made through the service is (the acceptance names it).
     first.last_reviewed = Some(inklkunn_core::knowledge::Reviewed {
-        date: "2026-11-01".to_owned(),
-        proposal: None,
+        date: day.to_owned(),
+        proposal: Some("01930000-0000-7000-8000-00000000aaaa".to_owned()),
     });
     let mut all = files(&[c], &[first, source(2, SourceKind::Secondary)]);
     all.push(("pages/Home.md".to_owned(), home_with(SAID)));
@@ -1104,10 +1110,11 @@ async fn a_curation_changes_only_the_members_it_names_and_an_empty_day_or_unknow
 }
 
 #[tokio::test]
-async fn a_changed_reference_clears_the_check_unless_the_body_records_a_new_one_and_a_correction_keeps_it()
- {
+async fn a_changed_reference_ends_the_check_and_the_new_one_has_only_the_check_the_body_states() {
     use inklkunn_core::knowledge::Availability;
-    // K66. The source of `cast_checked` was checked on 2026-11-01 and is available.
+    // K66, K72. The wiki's clock is 2023-11-14T22:13Z (2023-11-15 at UTC+14); the source of this cast was checked on
+    // 2023-11-01 and is available. The day and the answer of the source (`reviewed`, `availability`) are the old
+    // reference's: beside a new `reference` they are not read, and the check of the new one is `checked`.
     let one = source_id(1).to_string();
     let doi = json!({"type": "doi", "value": "10.1000/182"});
     let cases = [
@@ -1118,18 +1125,19 @@ async fn a_changed_reference_clears_the_check_unless_the_body_records_a_new_one_
         ),
         (
             "the check repeated beside it",
-            json!({"source": one, "reference": doi, "reviewed": "2026-11-01", "availability": "available"}),
+            json!({"source": one, "reference": doi, "reviewed": "2023-11-01", "availability": "available"}),
             (None, Availability::Unknown),
         ),
         (
-            "a new day",
+            // K72: this was a new check by inference; it is the old reference's day and is not read.
+            "a new day in the old member",
             json!({"source": one, "reference": doi, "reviewed": "2023-11-10"}),
-            (Some("2023-11-10"), Availability::Available),
+            (None, Availability::Unknown),
         ),
         (
-            "a new availability",
+            "a new availability in the old member",
             json!({"source": one, "reference": doi, "availability": "unavailable"}),
-            (None, Availability::Unavailable),
+            (None, Availability::Unknown),
         ),
         (
             "the day cleared",
@@ -1137,18 +1145,38 @@ async fn a_changed_reference_clears_the_check_unless_the_body_records_a_new_one_
             (None, Availability::Unknown),
         ),
         (
+            "the check of the new reference, stated",
+            json!({"source": one, "reference": doi, "checked": {"day": "2023-11-10", "availability": "unavailable"}}),
+            (Some("2023-11-10"), Availability::Unavailable),
+        ),
+        (
+            "the check of the new reference, on the very date of the old one",
+            json!({"source": one, "reference": doi, "checked": {"day": "2023-11-01", "availability": "available"}}),
+            (Some("2023-11-01"), Availability::Available),
+        ),
+        (
+            "a day of the new reference and no answer",
+            json!({"source": one, "reference": doi, "checked": {"day": "2023-11-12", "availability": "unknown"}}),
+            (Some("2023-11-12"), Availability::Unknown),
+        ),
+        (
+            "a check that states nothing",
+            json!({"source": one, "reference": doi, "checked": {"day": " ", "availability": "unknown"}}),
+            (None, Availability::Unknown),
+        ),
+        (
             "a title, an author and a date only",
             json!({"source": one, "title": "The bridge, revised", "author": "Noor Aziz", "date": "2024"}),
-            (Some("2026-11-01"), Availability::Available),
+            (Some("2023-11-01"), Availability::Available),
         ),
         (
             "what replaces it only",
             json!({"source": one, "superseded_by": source_id(2).to_string()}),
-            (Some("2026-11-01"), Availability::Available),
+            (Some("2023-11-01"), Availability::Available),
         ),
     ];
     for (what, edit, (day, availability)) in cases {
-        let c = cast_checked();
+        let c = cast_checked_with("The bridge survey", "2023-11-01");
         let a = propose(&c, json!({"sources": [edit]})).await;
         assert_eq!(a.status, 201, "{what}: {}", a.text());
         let written = source_in(&stored(&c, &a), 1);
@@ -1162,7 +1190,7 @@ async fn a_changed_reference_clears_the_check_unless_the_body_records_a_new_one_
         );
     }
     // A day that is no day is refused as before, beside a changed reference.
-    let c = cast_checked();
+    let c = cast_checked_with("The bridge survey", "2023-11-01");
     let a = propose(
         &c,
         json!({"sources": [{"source": one, "reference": doi, "reviewed": "yesterday"}]}),
@@ -1170,6 +1198,93 @@ async fn a_changed_reference_clears_the_check_unless_the_body_records_a_new_one_
     .await;
     assert_eq!(a.status, 422, "{}", a.text());
     assert_eq!(a.json().at("/reason"), "not-a-day", "{}", a.text());
+}
+
+#[tokio::test]
+async fn a_check_of_a_new_reference_is_refused_at_its_member_and_names_its_source() {
+    // K72. The source was last checked on 2023-11-01; the wiki's clock is 2023-11-14T22:13Z.
+    let one = source_id(1).to_string();
+    let doi = json!({"type": "doi", "value": "10.1000/182"});
+    let c = cast_checked_with("The bridge survey", "2023-11-01");
+    let checked = |day: &str, availability: &str| json!({"day": day, "availability": availability});
+    let cases = [
+        (
+            "a day earlier than the old check (this was kept as the new check)",
+            json!({"source": one, "reference": doi, "checked": checked("2023-10-31", "available")}),
+            "check-before-review",
+            "sources[0].checked.day",
+        ),
+        (
+            "an answer with no day",
+            json!({"source": one, "reference": doi, "checked": checked("", "available")}),
+            "check-no-day",
+            "sources[0].checked.day",
+        ),
+        (
+            "a day that is no day",
+            json!({"source": one, "reference": doi, "checked": checked("yesterday", "available")}),
+            "check-not-a-day",
+            "sources[0].checked.day",
+        ),
+        (
+            "a check and no new reference",
+            json!({"source": one, "checked": checked("2023-11-10", "available")}),
+            "check-no-new-reference",
+            "sources[0].checked",
+        ),
+        (
+            "a check and a reference that is the one it has (none)",
+            json!({"source": one, "reference": {"type": "url", "value": ""}, "checked": checked("2023-11-10", "available")}),
+            "check-no-new-reference",
+            "sources[0].checked",
+        ),
+        (
+            "a day that has not come in any timezone",
+            json!({"source": one, "reference": doi, "checked": checked("2023-11-16", "available")}),
+            "day-not-come",
+            "sources[0].checked.day",
+        ),
+    ];
+    for (what, edit, reason, member) in cases {
+        let a = propose(&c, json!({"sources": [edit]})).await;
+        assert_eq!(a.status, 422, "{what}: {}", a.text());
+        assert_eq!(a.json().at("/reason"), reason, "{what}: {}", a.text());
+        assert_eq!(a.json().at("/member"), member, "{what}: {}", a.text());
+        assert_eq!(a.json().at("/source"), &json!(one), "{what}: {}", a.text());
+    }
+    // The sentence names the source.
+    let a = propose(
+        &c,
+        json!({"sources": [{"source": one, "reference": doi, "checked": checked("2023-10-31", "available")}]}),
+    )
+    .await;
+    let detail = a
+        .json()
+        .at("/detail")
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    assert!(detail.contains("The bridge survey"), "{detail}");
+    assert!(detail.contains("2023-11-01"), "{detail}");
+    // A check that is not shaped as the schema says is an invalid body at its member.
+    let a = propose(
+        &c,
+        json!({"sources": [{"source": one, "reference": doi, "checked": {"day": "2023-11-10"}}]}),
+    )
+    .await;
+    assert_eq!(a.status, 400, "{}", a.text());
+    // Nothing was made by any of them.
+    assert!(
+        c.w.services
+            .proposals
+            .list(
+                &principal(&c.contributor),
+                &c.w.wiki,
+                &inklkunn_store::ProposalFilter::default(),
+            )
+            .map(|l| l.is_empty())
+            .unwrap_or(false)
+    );
 }
 
 #[tokio::test]

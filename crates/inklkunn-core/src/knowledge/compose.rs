@@ -59,6 +59,8 @@ pub enum Mistake {
     UnknownSuccessor,
     /// The sources that replace one another return to a source they passed (K61).
     SuccessorCycle,
+    /// The check of a new reference was refused (K72): the place of its source among the edit's sources, and why.
+    Check(usize, CheckFault),
     /// What was made does not read back (a defect, not the person's doing).
     Unwritable,
 }
@@ -408,13 +410,51 @@ impl Work {
 pub struct SourceEdit {
     /// The source (one the claim cites).
     pub source: SourceId,
-    /// The day a person last checked it, written `YYYY-MM-DD`; empty for none.
+    /// The day a person last checked it, written `YYYY-MM-DD`; empty for none. **Of the reference the source has**: beside
+    /// a changed reference it is not read (K72), and the check of the new one is [`SourceEdit::checked`].
     pub reviewed: String,
-    /// Whether it can be had, as the person who checked says.
+    /// Whether it can be had, as the person who checked says. Of the reference the source has, like `reviewed`.
     pub availability: Availability,
     /// Who and what it is, where it is found and what replaces it, as it should be; `None` leaves them as they are.
     /// For any source the claim cites (K60).
     pub work: Option<Work>,
+    /// **The check of a new reference, stated** (K72): the day a person looked at the place the source is found at now
+    /// and whether it can be had there. `None` states none. Given only with a reference that is another place than the
+    /// source's now ([`CheckFault::NoNewReference`] otherwise).
+    pub checked: Option<Checked>,
+}
+
+/// A check of a new reference, as a person states it (K72): never inferred from the check of the old one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Checked {
+    /// The day a person looked at the new place, written `YYYY-MM-DD`; empty for none (then the availability is
+    /// `unknown`, or the check is refused for lack of a day).
+    pub day: String,
+    /// Whether it can be had at the new place, as the person who looked says.
+    pub availability: Availability,
+}
+
+impl Checked {
+    /// Does this state a check at all? An empty day beside an answer of *not known* states nothing, which is what the
+    /// form's empty field sends.
+    pub fn is_stated(&self) -> bool {
+        !self.day.trim().is_empty() || self.availability != Availability::Unknown
+    }
+}
+
+/// Why the check of a new reference was refused (K72): each is about one source, which [`Mistake::Check`] places among the
+/// edit's sources.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckFault {
+    /// An answer about the new reference without the day it was looked at.
+    NoDay,
+    /// The day is not written `YYYY-MM-DD`.
+    NotADay,
+    /// The day is earlier than the day the source was last checked before: a check of the new place cannot come before
+    /// the check of the old one.
+    BeforeReview,
+    /// A check of a new reference was given, and the reference is not another place than the source's now.
+    NoNewReference,
 }
 
 /// The curation proposal's form, read: **no page text**.
@@ -439,9 +479,17 @@ pub struct Curation {
 /// returned. The standing's `proposal`, and a source's `last_reviewed` proposal, are left for the acceptance to
 /// name (it is the proposal that decides; [`super::curation`]).
 ///
-/// **A changed reference clears the check** (K66): a source whose reference changes loses its `last_reviewed` and its
-/// `availability` unless the edit records a new day or another availability. A correction of title, author or date keeps
-/// them (the proposal's page says so, and the reviewer who accepts it vouches that it is still the same work).
+/// **A changed reference ends the check, and a check of the new one is stated** (K66, K72): a source found at another
+/// place than it is now loses its `last_reviewed` and its `availability`, **whatever the edit's `reviewed` and
+/// `availability` hold** (they are of the old reference, and are not read beside a new one), and has a check only if the
+/// same edit states one in [`SourceEdit::checked`]: the day a person looked at the new place, no earlier than the day the
+/// source was last checked before ([`CheckFault::BeforeReview`]) and written `YYYY-MM-DD`, with whether it can be had
+/// there. The old day is never carried to the new reference by inference, not even when it is the same date. A day that
+/// has not come is the surface's to refuse (it holds the clock; [`crate::knowledge::freshness::day_has_not_come`]). A
+/// check is given only with a changed reference ([`CheckFault::NoNewReference`]). A change of white space alone in a
+/// reference is not another place ([`Reference::is_elsewhere`]): the check stays. A correction of title, author or date
+/// keeps the check too (the proposal's page says so, and the reviewer who accepts it vouches that it is still the same
+/// work).
 pub fn curate(
     claim: &Claim,
     cited: &[Source],
@@ -502,7 +550,7 @@ pub fn curate(
         Claim::parse(claim.id.clone(), &text).map_err(|_| Mistake::Unwritable)?;
         out.push((claim_path(&claim.id), text));
     }
-    for e in &edit.sources {
+    for (at, e) in edit.sources.iter().enumerate() {
         let old = cited
             .iter()
             .find(|s| s.id == e.source)
@@ -514,7 +562,6 @@ pub fn curate(
         }
         let day = e.reviewed.trim();
         let before = old.last_reviewed.as_ref().map(|r| r.date.as_str());
-        let mut new_day = false;
         if day.is_empty() {
             source.last_reviewed = None;
         } else if before != Some(day) {
@@ -525,19 +572,33 @@ pub fn curate(
                 date: day.to_owned(),
                 proposal: None,
             });
-            new_day = true;
         }
-        // A source found elsewhere is another work than the one a person checked (K66): the check does not go with a
-        // changed reference, unless the same proposal records one. A new day is a new check, and the availability it
-        // posts is that check's; an availability posted without a day is recorded and the old day, which was for the old
-        // reference, is not kept.
-        if source.reference != old.reference {
-            if !new_day {
-                source.last_reviewed = None;
+        let stated = e.checked.as_ref().filter(|c| c.is_stated());
+        if Reference::is_elsewhere(old.reference.as_ref(), source.reference.as_ref()) {
+            // A source found elsewhere is another work than the one a person checked (K66, K72): the check of the old
+            // reference ends, and what the day and the answer of the old reference say is not read. The new reference has
+            // no check but the one the edit **states**, and the old day is never carried to it by inference.
+            source.last_reviewed = None;
+            source.availability = Availability::Unknown;
+            if let Some(check) = stated {
+                let day = check.day.trim();
+                if day.is_empty() {
+                    return Err(Mistake::Check(at, CheckFault::NoDay));
+                }
+                if !is_day(day) {
+                    return Err(Mistake::Check(at, CheckFault::NotADay));
+                }
+                if before.is_some_and(|previous| day < previous) {
+                    return Err(Mistake::Check(at, CheckFault::BeforeReview));
+                }
+                source.last_reviewed = Some(super::Reviewed {
+                    date: day.to_owned(),
+                    proposal: None,
+                });
+                source.availability = check.availability;
             }
-            if !new_day && e.availability == old.availability {
-                source.availability = Availability::Unknown;
-            }
+        } else if stated.is_some() {
+            return Err(Mistake::Check(at, CheckFault::NoNewReference));
         }
         if source != *old {
             let text = source.to_yaml();

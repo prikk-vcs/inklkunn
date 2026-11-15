@@ -513,3 +513,6 @@ exact :: thread.rs :: comment :: a placeholder name of a catalog message (the li
 exact :: curate.rs :: day :: a placeholder name of a catalog message (the day a source was said to be looked at, K49)
 exact :: knowledge.rs :: was :: a placeholder name of a catalog message (K66)
 exact :: knowledge.rs :: now :: a placeholder name of a catalog message (K66)
+exact :: claims.rs :: day :: a placeholder name of a catalog message (the day the old reference was last checked, K72)
+exact :: curate.rs :: reviewed :: the name of a member of a source in the write API's body (`sources[i].reviewed`), named in a refusal; data, not a sentence (K72)
+exact :: curate.rs :: checked.day :: the name of a member of a source in the write API's body (`sources[i].checked.day`), named in a refusal; data, not a sentence (K72)

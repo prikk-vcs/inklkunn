@@ -4,8 +4,8 @@ use std::collections::BTreeSet;
 
 use super::*;
 use crate::knowledge::compose::{
-    Attachment, Curation, LinkEdit, Mistake, SourceDraft, SourceEdit, Work, attach,
-    clean_reference, clean_text, curate, page_id_of, paragraph_id, without_expressions,
+    Attachment, CheckFault, Checked, Curation, LinkEdit, Mistake, SourceDraft, SourceEdit, Work,
+    attach, clean_reference, clean_text, curate, page_id_of, paragraph_id, without_expressions,
 };
 
 const PAGE: &str = "---\ntitle: Bridge\n---\n\nIt opened in 1950.\n\nIt is long.\n";
@@ -325,6 +325,7 @@ fn unchanged(claim: &Claim, source: &Source) -> Curation {
         removed: Vec::new(),
         sources: vec![SourceEdit {
             source: source.id.clone(),
+            checked: None,
             reviewed: String::new(),
             availability: source.availability,
             work: None,
@@ -807,8 +808,9 @@ fn keeping(claim: &Claim, source: &Source, work: Work) -> Curation {
 }
 
 #[test]
-fn a_changed_reference_clears_the_check_unless_the_same_edit_records_a_new_one() {
-    // K66. The form sends the day and the availability the source has; they are not a new record.
+fn a_changed_reference_ends_the_check_and_the_new_one_has_only_the_check_the_edit_states() {
+    // K66, K72. The form sends the day and the availability the source has; they are the old reference's, and are not
+    // read beside a new one. The check of the new reference is stated apart (`checked`), and never inferred.
     let (claim, _) = cited_claim();
     let now = digest_of("new");
     let source = looked_at();
@@ -824,54 +826,119 @@ fn a_changed_reference_clears_the_check_unless_the_same_edit_records_a_new_one()
         work.reference = "10.1000/182".to_owned();
         work
     };
+    let none = (None, Availability::Unknown);
+    let state = |edit: &mut Curation, day: &str, availability: Availability| {
+        edit.sources.first_mut().expect("a source").checked = Some(Checked {
+            day: day.to_owned(),
+            availability,
+        });
+    };
+    let stated = |source: &Source| {
+        (
+            source.last_reviewed.as_ref().map(|r| r.date.clone()),
+            source.availability,
+        )
+    };
 
-    // Another reference, the same day and availability: both go.
+    // Another reference, the same day and availability: both go, and nothing replaces them.
     let moved = after(&keeping(&claim, &source, elsewhere(Work::of(&source))));
-    assert_eq!(
-        (moved.last_reviewed.clone(), moved.availability),
-        (None, Availability::Unknown)
-    );
+    assert_eq!(stated(&moved), none);
     // The same value as another form is another reference; the reference taken away is one too.
     let mut form = Work::of(&source);
     form.reference_form = ReferenceForm::Citation;
-    let formed = after(&keeping(&claim, &source, form));
-    assert_eq!(
-        (formed.last_reviewed, formed.availability),
-        (None, Availability::Unknown)
-    );
-    let mut none = Work::of(&source);
-    none.reference.clear();
-    let bare = after(&keeping(&claim, &source, none));
-    assert_eq!(
-        (bare.last_reviewed, bare.availability),
-        (None, Availability::Unknown)
-    );
+    assert_eq!(stated(&after(&keeping(&claim, &source, form))), none);
+    let mut bare = Work::of(&source);
+    bare.reference.clear();
+    assert_eq!(stated(&after(&keeping(&claim, &source, bare))), none);
 
-    // A new day is a new check, and the availability beside it is that check's.
+    // A new day or another answer in the old fields, beside a new reference, is not a check of the new one (it is not
+    // read); the old reviewed day is not carried either (K72).
     let mut edit = keeping(&claim, &source, elsewhere(Work::of(&source)));
-    edit.sources.first_mut().expect("a source").reviewed = "2026-11-10".to_owned();
-    let again = after(&edit);
-    assert_eq!(
-        (
-            again.last_reviewed.as_ref().map(|r| r.date.as_str()),
-            again.availability
-        ),
-        (Some("2026-11-10"), Availability::Available)
-    );
-    // A new availability without a new day is recorded, and the old day, which was for the old reference, is not kept.
+    {
+        let one = edit.sources.first_mut().expect("a source");
+        one.reviewed = "2026-11-10".to_owned();
+        one.availability = Availability::Unavailable;
+    }
+    assert_eq!(stated(&after(&edit)), none);
+
+    // The check of the new reference, stated: its day and its answer, and nothing of the old one.
     let mut edit = keeping(&claim, &source, elsewhere(Work::of(&source)));
-    edit.sources.first_mut().expect("a source").availability = Availability::Unavailable;
-    let said = after(&edit);
+    state(&mut edit, "2026-11-10", Availability::Unavailable);
     assert_eq!(
-        (said.last_reviewed, said.availability),
-        (None, Availability::Unavailable)
+        stated(&after(&edit)),
+        (Some("2026-11-10".to_owned()), Availability::Unavailable)
     );
-    // A day that is none is refused as before.
+    // Written without the proposal that states it: the acceptance names it (the day may be the old one's own).
+    assert_eq!(after(&edit).last_reviewed.map(|r| r.proposal), Some(None));
+    // On the very date the old check had, and with the answer the old check had: a check all the same, and stated.
+    let mut edit = keeping(&claim, &source, elsewhere(Work::of(&source)));
+    state(&mut edit, "2026-11-01", Availability::Available);
+    assert_eq!(
+        stated(&after(&edit)),
+        (Some("2026-11-01".to_owned()), Availability::Available)
+    );
+    // A day and no answer is a check of the day alone.
+    let mut edit = keeping(&claim, &source, elsewhere(Work::of(&source)));
+    state(&mut edit, "2026-11-12", Availability::Unknown);
+    assert_eq!(
+        stated(&after(&edit)),
+        (Some("2026-11-12".to_owned()), Availability::Unknown)
+    );
+    // An empty day beside an answer of not known states nothing (the form's empty fields).
+    let mut edit = keeping(&claim, &source, elsewhere(Work::of(&source)));
+    state(&mut edit, "  ", Availability::Unknown);
+    assert_eq!(stated(&after(&edit)), none);
+
+    // Refused, and for which source and why: an earlier day than the old check, an answer with no day, a text that is no
+    // day, and a check with no new reference.
+    let refused = |edit: &Curation| curate(&claim, cited, Some(&now), edit);
+    let mut edit = keeping(&claim, &source, elsewhere(Work::of(&source)));
+    state(&mut edit, "2026-10-31", Availability::Available);
+    assert_eq!(
+        refused(&edit),
+        Err(Mistake::Check(0, CheckFault::BeforeReview))
+    );
+    state(&mut edit, "", Availability::Available);
+    assert_eq!(refused(&edit), Err(Mistake::Check(0, CheckFault::NoDay)));
+    state(&mut edit, "yesterday", Availability::Available);
+    assert_eq!(refused(&edit), Err(Mistake::Check(0, CheckFault::NotADay)));
+    let mut edit = keeping(&claim, &source, Work::of(&source));
+    state(&mut edit, "2026-11-10", Availability::Available);
+    assert_eq!(
+        refused(&edit),
+        Err(Mistake::Check(0, CheckFault::NoNewReference))
+    );
+    // The old field's day that is none is refused as before.
     let mut edit = keeping(&claim, &source, elsewhere(Work::of(&source)));
     edit.sources.first_mut().expect("a source").reviewed = "yesterday".to_owned();
+    assert_eq!(refused(&edit), Err(Mistake::NotADay));
+
+    // A change of white space alone in a reference is not another place: the check stays, and a check of the new one
+    // is not asked for.
+    let mut spaced = looked_at();
+    spaced.reference = Some(Reference {
+        form: ReferenceForm::Citation,
+        value: "Smith 1962, p. 4".to_owned(),
+    });
+    let spaced_cited = std::slice::from_ref(&spaced);
+    let mut respelled = Work::of(&spaced);
+    respelled.reference = "Smith  1962,  p. 4".to_owned();
+    let edit = keeping(&claim, &spaced, respelled);
+    let files = curate(&claim, spaced_cited, Some(&now), &edit).expect("curated");
+    let kept = written(&files, &spaced);
     assert_eq!(
-        curate(&claim, cited, Some(&now), &edit),
-        Err(Mistake::NotADay)
+        kept.reference.as_ref().map(|r| r.value.as_str()),
+        Some("Smith  1962,  p. 4")
+    );
+    assert_eq!(
+        (kept.last_reviewed.clone(), kept.availability),
+        (spaced.last_reviewed.clone(), Availability::Available)
+    );
+    let mut edit = keeping(&claim, &spaced, Work::of(&spaced));
+    state(&mut edit, "2026-11-10", Availability::Available);
+    assert_eq!(
+        curate(&claim, spaced_cited, Some(&now), &edit),
+        Err(Mistake::Check(0, CheckFault::NoNewReference))
     );
 
     // A correction of the title, the author or the date keeps both.

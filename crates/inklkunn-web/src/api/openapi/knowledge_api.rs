@@ -290,21 +290,25 @@ pub(super) fn schemas() -> Map<String, Value> {
             "What a person checked about a source the claim cites and who and what it is. Every member but `source` may be left out, and a member left out is left as the base has it; an empty text is nothing.",
             json!({
                 "source": source_id,
-                "reviewed": {"type": "string", "description": "The day a person last checked it, `YYYY-MM-DD`. Left out: the base's day stays. The empty text clears it."},
-                "availability": {"type": "string", "enum": words(Availability::ALL, Availability::word), "description": "Whether it can be had, as the person who checked says. Left out: the base's stays. `unknown` clears it."},
+                "reviewed": {"type": "string", "description": "The day a person last checked it, at the reference it has, `YYYY-MM-DD`. Left out: the base's day stays. The empty text clears it. **Beside a new `reference` it is not read**: it is the old reference's, and the check of the new one is `checked`."},
+                "availability": {"type": "string", "enum": words(Availability::ALL, Availability::word), "description": "Whether it can be had at the reference it has, as the person who checked says. Left out: the base's stays. `unknown` clears it. **Beside a new `reference` it is not read**, like `reviewed`."},
                 "title": {"type": "string", "description": "Its title. Left out, or the same as the base's: unchanged (it is not cleaned or compared again). The empty text for none."},
                 "author": {"type": "string", "description": "Its author or publisher. Left out: unchanged. The empty text for none."},
                 "date": {"type": "string", "description": "Its date, as written. Left out: unchanged. The empty text for none."},
-                "reference": {"type": "object", "description": "Where it is found. Left out: unchanged. A source needs a title or a reference.", "properties": {
+                "reference": {"type": "object", "description": "Where it is found. Left out: unchanged. A source needs a title or a reference. **Another place ends the check of the old one** (its `reviewed` day and `availability`); the new place has a check only if `checked` states one. A change of white space alone is not another place, and the check stays.", "properties": {
                     "type": {"type": "string", "enum": words(ReferenceForm::ALL, ReferenceForm::word)},
                     "value": {"type": "string", "description": "The reference; the empty text for none."},
                 }, "required": ["type", "value"], "additionalProperties": false},
+                "checked": {"type": "object", "description": "**The check of a new `reference`, stated** (never inferred from the old one): the day a person looked at the new place and whether it can be had there. Given only with a `reference` that is another place than the source has (`check-no-new-reference`, member `sources[i].checked`). `day` is `YYYY-MM-DD`, no earlier than the day the source was last checked before (`check-before-review`) and not after the current date in UTC+14 (`day-not-come`), naming the member `sources[i].checked.day`; an `availability` other than `unknown` needs a `day` (`check-no-day`), and a `day` must be a day (`check-not-a-day`). An empty `day` with `unknown` states nothing. Left out: the new place has no check.", "properties": {
+                    "day": {"type": "string", "description": "The day a person looked at the new place, `YYYY-MM-DD`."},
+                    "availability": {"type": "string", "enum": words(Availability::ALL, Availability::word), "description": "Whether it can be had at the new place, as the person who looked says."},
+                }, "required": ["day", "availability"], "additionalProperties": false},
                 "superseded_by": {"description": "The id of the source that replaces it, a source of this wiki (`unknown-successor`) that does not lead back to this one or to a source it passed (`successor-cycle`). White space around it is ignored. Left out: unchanged. The empty text, or white space only, for none.", "anyOf": [
                     {"type": "string", "pattern": ID_PATTERN_PADDED},
                     {"type": "string", "pattern": NO_ID_PATTERN},
                 ]},
             }),
-            &["reviewed", "availability", "title", "author", "date", "reference", "superseded_by"],
+            &["reviewed", "availability", "title", "author", "date", "reference", "checked", "superseded_by"],
         )),
     );
     out.insert(
@@ -335,6 +339,9 @@ pub(super) fn schemas() -> Map<String, Value> {
                 {"claim": EXAMPLE_CLAIM, "summary": "Correct the survey's record", "submit": true,
                  "sources": [{"source": EXAMPLE_FIRST, "title": "The bridge survey, second edition", "author": "Noor Aziz", "date": "2024",
                               "reference": {"type": "doi", "value": "10.1000/182"}, "superseded_by": EXAMPLE_SECOND}]},
+                {"claim": EXAMPLE_CLAIM, "summary": "The second source is found at a DOI now, and was looked at there", "submit": true,
+                 "sources": [{"source": EXAMPLE_SECOND, "reference": {"type": "doi", "value": "10.1000/182"},
+                              "checked": {"day": "2023-11-10", "availability": "available"}}]},
                 {"claim": EXAMPLE_CLAIM, "summary": "Nobody checked the survey after all", "submit": false,
                  "sources": [{"source": EXAMPLE_FIRST, "reviewed": "", "availability": "unknown", "superseded_by": ""}]},
             ]),

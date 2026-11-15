@@ -79,6 +79,18 @@
 <p id="{{ w.ref_name }}-hint" class="note">{{ w.ref_hint }}</p>
 </div>
 <div class="field">
+<label for="{{ w.checked_day_name }}">{{ w.checked_day_label }}</label>
+<input id="{{ w.checked_day_name }}" name="{{ w.checked_day_name }}" type="text" value="{{ w.checked_day }}" aria-describedby="{{ w.checked_day_name }}-hint">
+<p id="{{ w.checked_day_name }}-hint" class="note">{{ w.checked_day_hint }}</p>
+</div>
+<div class="field">
+<label for="{{ w.checked_availability_name }}">{{ w.checked_availability_label }}</label>
+<select id="{{ w.checked_availability_name }}" name="{{ w.checked_availability_name }}" aria-describedby="{{ w.checked_availability_name }}-hint">
+{% for o in w.checked_availabilities %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
+{% endfor %}</select>
+<p id="{{ w.checked_availability_name }}-hint" class="note">{{ w.checked_availability_hint }}</p>
+</div>
+<div class="field">
 <label for="{{ w.superseded_name }}">{{ w.superseded_label }}</label>
 <input id="{{ w.superseded_name }}" name="{{ w.superseded_name }}" type="text" value="{{ w.superseded }}" aria-describedby="{{ w.superseded_name }}-hint">
 <p id="{{ w.superseded_name }}-hint" class="note">{{ w.superseded_hint }}</p>

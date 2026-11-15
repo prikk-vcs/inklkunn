@@ -110,6 +110,7 @@ fn the_checks_of_a_curation_share_one_read_of_each_source() {
         removed: Vec::new(),
         sources: vec![SourceEdit {
             source: id(1),
+            checked: None,
             reviewed: String::new(),
             availability: Availability::Unknown,
             work: Some(Work {

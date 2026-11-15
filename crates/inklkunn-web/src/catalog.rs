@@ -1667,6 +1667,14 @@ keys! {
     KnowSourceCitedByMore => "know.source_cited_by_more",
     CurateSuccessorCycleAt => "curate.successor_cycle_at",
     InvalidKnowledgeCheckUnstated => "invalid.knowledge_check_unstated",
+    CurateLabelCheckedDay => "curate.label_checked_day",
+    CurateCheckedDayHint => "curate.checked_day_hint",
+    CurateLabelCheckedAvailability => "curate.label_checked_availability",
+    CurateCheckedAvailabilityHint => "curate.checked_availability_hint",
+    CurateCheckNoDay => "curate.check_no_day",
+    CurateCheckNotADay => "curate.check_not_a_day",
+    CurateCheckBeforeReview => "curate.check_before_review",
+    CurateCheckNoNewReference => "curate.check_no_new_reference",
     // knowledge: a changed reference clears the check; the cycle names its source (handoff 005 corrections, seventh round K66, K69): end
 }
 

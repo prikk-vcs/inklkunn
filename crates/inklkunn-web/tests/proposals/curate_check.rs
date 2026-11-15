@@ -79,6 +79,30 @@ fn elsewhere() -> [(&'static str, &'static str); 2] {
     [("c0_ref_form", "doi"), ("c0_ref", "10.1000/182")]
 }
 
+/// [`checked_scene`], the source last checked on `day` (the tests' clock is 2023-11-14T22:13Z, so a source checked before it
+/// can have a new reference checked on a day that has come).
+fn checked_scene_on(day: &str) -> Scene {
+    let s = scene();
+    let mut source = checked_source();
+    // Checked by a proposal, as a check made through the service is: the acceptance names it.
+    source.last_reviewed = Some(inklkunn_core::knowledge::Reviewed {
+        date: day.to_owned(),
+        proposal: Some("01930000-0000-7000-8000-00000000aaaa".to_owned()),
+    });
+    let mut later = Source::new(later_id());
+    later.identity.title = Some("A later history".to_owned());
+    s.w.fake.set_files(&[
+        (source_path(&source.id).as_str(), source.to_yaml().as_str()),
+        (source_path(&later.id).as_str(), later.to_yaml().as_str()),
+    ]);
+    s
+}
+
+/// What the form of [`checked_scene_on`] sends when nothing is changed.
+fn unchanged_on(s: &Scene, day: &str) -> Vec<(&'static str, String)> {
+    with(checked_unchanged(s), &[("c0_reviewed", day)])
+}
+
 type Case<'a> = (
     &'a str,
     &'a [(&'static str, &'a str)],
@@ -87,37 +111,64 @@ type Case<'a> = (
 );
 
 #[tokio::test]
-async fn a_changed_reference_clears_the_day_and_the_availability_unless_the_form_records_new_ones()
-{
-    // The form sends the day and the availability the source has (K66): they are not a new record.
-    let source_file = source_path(&super::claims::source_id());
-    let cases: [Case; 4] = [
+async fn a_changed_reference_ends_the_check_and_the_new_one_has_only_the_check_the_form_states() {
+    // K66, K72. The form sends the day and the availability the source has: they are the old reference's, and are not
+    // read beside a new one. The check of the new reference is its own pair of fields, empty as the form opens.
+    let cases: [Case; 7] = [
         ("nothing new", &[], None, Availability::Unknown),
         (
-            "a new day",
+            "a new day in the old field",
             &[("c0_reviewed", "2023-11-10")],
-            Some("2023-11-10"),
-            Availability::Available,
+            None,
+            Availability::Unknown,
         ),
         (
-            "a new availability",
+            "a new answer in the old field",
             &[("c0_availability", "unavailable")],
             None,
-            Availability::Unavailable,
+            Availability::Unknown,
         ),
         (
-            "both",
+            "the check of the new reference",
             &[
-                ("c0_reviewed", "2023-11-10"),
-                ("c0_availability", "unavailable"),
+                ("c0_checked_day", "2023-11-10"),
+                ("c0_checked_availability", "unavailable"),
             ],
             Some("2023-11-10"),
             Availability::Unavailable,
         ),
+        (
+            "the check of the new reference, on the very date of the old one",
+            &[
+                ("c0_checked_day", "2023-11-01"),
+                ("c0_checked_availability", "available"),
+            ],
+            Some("2023-11-01"),
+            Availability::Available,
+        ),
+        (
+            "a day of the new reference, no answer",
+            &[
+                ("c0_checked_day", "2023-11-12"),
+                ("c0_checked_availability", "unknown"),
+            ],
+            Some("2023-11-12"),
+            Availability::Unknown,
+        ),
+        (
+            "empty fields for the new reference",
+            &[
+                ("c0_checked_day", "  "),
+                ("c0_checked_availability", "unknown"),
+            ],
+            None,
+            Availability::Unknown,
+        ),
     ];
+    let source_file = source_path(&super::claims::source_id());
     for (what, more, day, availability) in cases {
-        let s = checked_scene();
-        let fields = with(with(checked_unchanged(&s), &elsewhere()), more);
+        let s = checked_scene_on("2023-11-01");
+        let fields = with(with(unchanged_on(&s, "2023-11-01"), &elsewhere()), more);
         let files = files_of(&s, &location(&send(&s, FORM, &s.writer, &fields).await));
         assert_eq!(paths(&files), [source_file.as_str()], "{what}");
         let source = source_of(&files);
@@ -135,6 +186,29 @@ async fn a_changed_reference_clears_the_day_and_the_availability_unless_the_form
             "{what}"
         );
     }
+    // The form opens with the fields for the new reference empty, whatever the source's own check is, and they are
+    // there for every source whose file can be read.
+    let s = checked_scene_on("2023-11-01");
+    let body = open(&s, &claim_uri(&s), &s.writer).await.body();
+    assert!(
+        body.contains("The day you checked the new reference"),
+        "{body}"
+    );
+    assert!(
+        body.contains("name=\"c0_checked_day\" type=\"text\" value=\"\""),
+        "{body}"
+    );
+    assert!(
+        body.contains("Whether it can be had at the new reference"),
+        "{body}"
+    );
+    assert!(body.contains("name=\"c0_checked_availability\""), "{body}");
+    assert!(
+        body.contains("value=\"2023-11-01\""),
+        "the old field shows the old check: {body}"
+    );
+    let ja = page_ja(&s, &claim_uri(&s)).await;
+    assert!(ja.contains("新しい参照先を確認した日"), "{ja}");
     // Shown before it is sent, in both languages, as the check that goes.
     let s = checked_scene();
     let shown = with(
@@ -151,12 +225,91 @@ async fn a_changed_reference_clears_the_day_and_the_availability_unless_the_form
     let ja = send_ja(&s, FORM, &shown).await;
     assert!(ja.contains("確認済みの印がなくなります。"), "{ja}");
     // The form says so beside the fields, in both languages.
-    let hint =
-        "A new place to find it clears the day it was last checked and whether it can be had";
+    let hint = "A new place to find it ends the check of the old one: the day it was last checked and whether it can be had, above, are not carried to the new place";
     let body = open(&s, &claim_uri(&s), &s.writer).await.body();
     assert!(body.contains(hint), "{body}");
     let ja = page_ja(&s, &claim_uri(&s)).await;
     assert!(ja.contains("見つかる場所を変えると"), "{ja}");
+}
+
+#[tokio::test]
+async fn a_check_of_a_new_reference_that_is_not_one_is_refused_on_the_form_naming_the_source_and_nothing_is_made()
+ {
+    // K72. The source was last checked on 2023-11-01; the clock is 2023-11-14T22:13Z.
+    let s = checked_scene_on("2023-11-01");
+    let base = |more: &[(&'static str, &str)]| with(unchanged_on(&s, "2023-11-01"), more);
+    let moved = |more: &[(&'static str, &str)]| with(base(&elsewhere()), more);
+    let source = "Source: A history of the bridge.";
+    let cases = [
+        (
+            "a day earlier than the old check",
+            moved(&[
+                ("c0_checked_day", "2023-10-31"),
+                ("c0_checked_availability", "available"),
+            ]),
+            "cannot be earlier than 2023-11-01, the day the old reference was last checked",
+            "value=\"2023-10-31\"",
+        ),
+        (
+            "an answer with no day",
+            moved(&[("c0_checked_availability", "available")]),
+            "needs the day you checked it. Give the day, or leave the answer as not known.",
+            "<option value=\"available\" selected>",
+        ),
+        (
+            "a day that is no day",
+            moved(&[
+                ("c0_checked_day", "yesterday"),
+                ("c0_checked_availability", "available"),
+            ]),
+            "has to be written year, month, day, like 2026-11-04",
+            "value=\"yesterday\"",
+        ),
+        (
+            "a day that has not come",
+            moved(&[
+                ("c0_checked_day", "2023-11-16"),
+                ("c0_checked_availability", "available"),
+            ]),
+            "The day 2023-11-16 has not come yet in any timezone",
+            "value=\"2023-11-16\"",
+        ),
+        (
+            "a check and no new reference",
+            base(&[
+                ("c0_checked_day", "2023-11-10"),
+                ("c0_checked_availability", "available"),
+            ]),
+            "goes with a change of where the source is found. Change that, or leave the day and the answer empty.",
+            "value=\"2023-11-10\"",
+        ),
+    ];
+    for (what, fields, said, kept) in cases {
+        let a = send(&s, FORM, &s.writer, &fields).await;
+        assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY, "{what}");
+        let body = a.body();
+        assert!(body.contains(source), "{what}: {body}");
+        assert!(body.contains(said), "{what}: {body}");
+        // What the person sent is still in the fields.
+        assert!(body.contains(kept), "{what}: {body}");
+    }
+    // In Japanese too, with the day it cannot come before.
+    let ja = send_ja(
+        &s,
+        FORM,
+        &moved(&[
+            ("c0_checked_day", "2023-10-31"),
+            ("c0_checked_availability", "available"),
+        ]),
+    )
+    .await;
+    assert!(ja.contains("2023-11-01"), "{ja}");
+    assert!(ja.contains("より前にはできません"), "{ja}");
+    // Nothing was made by any of them.
+    assert_eq!(
+        inklkunn_store::ProposalStore::open_count(&*s.w.store, &s.w.wiki.id, &s.writer).unwrap(),
+        0
+    );
 }
 
 #[tokio::test]

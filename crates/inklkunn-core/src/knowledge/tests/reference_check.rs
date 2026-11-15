@@ -10,7 +10,7 @@ use crate::acceptance::testing::Rig;
 use crate::acceptance::{AcceptFailure, Accepted};
 use crate::authorize::Principal;
 use crate::knowledge::check::{Curated, Refusal, Touched, UNSTATED_CHECK, carried_by, validate};
-use crate::knowledge::compose::{Curation, LinkEdit, SourceEdit, Work, curate};
+use crate::knowledge::compose::{Checked, Curation, LinkEdit, SourceEdit, Work, curate};
 use crate::merge::{MergeOutcome, Overlap, PageText, Place, merge};
 use crate::proposal::Invalid;
 use inklkunn_store::{ProposalState, Role};
@@ -58,6 +58,7 @@ fn edit(
         removed: Vec::new(),
         sources: vec![SourceEdit {
             source: source.id.clone(),
+            checked: None,
             reviewed: reviewed.to_owned(),
             availability,
             work,
@@ -153,15 +154,12 @@ fn a_move_that_states_its_own_check_is_taken_with_what_the_other_side_changed_el
     let base = at_a();
     let base_text = base.to_yaml();
     // P2 states the check of B itself.
-    let stated = curated(
-        &base,
-        &edit(
-            &base,
-            "2026-11-10",
-            Availability::Available,
-            Some(doi_b(&base)),
-        ),
-    );
+    let mut states = edit(&base, "", Availability::Unknown, Some(doi_b(&base)));
+    states.sources.first_mut().expect("a source").checked = Some(Checked {
+        day: "2026-11-10".to_owned(),
+        availability: Availability::Available,
+    });
+    let stated = curated(&base, &states);
     // The tip only retitled the source.
     let mut retitled = base.clone();
     retitled.identity.title = Some("A history, revised".to_owned());
@@ -565,5 +563,107 @@ fn the_same_rule_refuses_it_when_it_is_sent_and_at_every_revision() {
     assert_eq!(
         as_invalid(service.submit(&s.author, &s.rig.wiki, &draft.id)),
         Ok(())
+    );
+}
+
+// ------------------------------------------------------------------------------------ a check stated on the old date
+
+/// A source checked on 2026-10-31, by a proposal, and available, at address A.
+fn checked_at_a() -> Source {
+    let mut source = at_a();
+    source.last_reviewed = Some(Reviewed {
+        date: "2026-10-31".to_owned(),
+        proposal: Some("01930000-0000-7000-8000-00000000aaaa".to_owned()),
+    });
+    source.availability = Availability::Available;
+    source
+}
+
+/// The curation that finds the source at a DOI now and states a check of it on `day`, as available.
+fn moved_and_checked_on(source: &Source, day: &str) -> String {
+    let mut edit = edit(source, "", Availability::Unknown, Some(doi_b(source)));
+    edit.sources.first_mut().expect("a source").checked = Some(Checked {
+        day: day.to_owned(),
+        availability: Availability::Available,
+    });
+    curated(source, &edit)
+}
+
+#[test]
+fn a_check_stated_on_the_date_the_old_one_had_is_named_by_the_accepting_proposal_and_a_kept_one_is_refused()
+ {
+    let tip = checked_at_a();
+    let s = scene("k72-same-day", &tip);
+    let path = source_path(&tip.id);
+    // The check of the new reference, on the very date the old one had: stated, so it is this proposal's.
+    let stated = moved_and_checked_on(&tip, "2026-10-31");
+    let p = s.rig.propose(
+        &s.author,
+        "A new place, looked at",
+        &[(&path, Some(&stated))],
+    );
+    let outcome = accept(&s, &p);
+    assert!(matches!(outcome, Ok(Accepted::Signed(_))), "{outcome:?}");
+    let call = s.rig.double.calls().into_iter().next().expect("asked");
+    let written = call
+        .change
+        .files
+        .iter()
+        .find(|f| f.path.to_string_lossy() == path)
+        .and_then(|f| f.content.clone())
+        .expect("the source file");
+    let written = parsed(std::str::from_utf8(&written).expect("text"));
+    let review = written.last_reviewed.expect("a check");
+    assert_eq!(review.date, "2026-10-31");
+    assert_eq!(review.proposal.as_deref(), Some(p.id.as_str()));
+    assert_eq!(written.reference, doi_reference());
+
+    // The tip's own check kept on the new reference is the old one, carried: refused (K71), the same date or not.
+    let s = scene("k72-same-day-kept", &tip);
+    let mut kept = tip.clone();
+    kept.reference = doi_reference();
+    let p = s
+        .rig
+        .propose_unjudged(&s.author, "A new place", &[(&path, Some(&kept.to_yaml()))]);
+    assert!(matches!(
+        accept(&s, &p),
+        Err(AcceptFailure::KnowledgeInvalid(_))
+    ));
+}
+
+#[test]
+fn the_page_says_a_check_stated_on_the_old_date_is_a_check_and_not_that_the_review_stays() {
+    use crate::knowledge::summary::{Item, SourceChange, summarize};
+    let tip = checked_at_a();
+    let path = source_path(&tip.id);
+    let was = tip.to_yaml();
+    let before = |p: &str| (p == path).then(|| was.clone());
+    let changes = |text: String| match summarize(&[(path.clone(), Some(text))], &before).as_slice()
+    {
+        [Item::SourceChanged { changes, .. }] => changes.clone(),
+        other => panic!("{other:?}"),
+    };
+    let stated = changes(moved_and_checked_on(&tip, "2026-10-31"));
+    assert!(
+        stated
+            .iter()
+            .any(|c| matches!(c, SourceChange::Reviewed(Some(d)) if d == "2026-10-31")),
+        "{stated:?}"
+    );
+    assert!(
+        !stated
+            .iter()
+            .any(|c| matches!(c, SourceChange::ReviewStays(_))),
+        "{stated:?}"
+    );
+    // A check carried (the base's own) still says that the review stays.
+    let mut kept = tip.clone();
+    kept.reference = doi_reference();
+    let carried = changes(kept.to_yaml());
+    assert!(
+        carried
+            .iter()
+            .any(|c| matches!(c, SourceChange::ReviewStays(_))),
+        "{carried:?}"
     );
 }

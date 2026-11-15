@@ -1602,6 +1602,33 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   and the revision refusing it; each of the four hooks (the merge's two halves, the validator's, the submit's) was mutated and the tests
   failed. No prikk-dependent test is added.
 
+- **K72 (handoff 005 corrections, eighth round): a check of a new reference is stated, never inferred.** K66 took any review day
+  other than the old one, even an earlier one, for the check of a changed reference (an API test kept `2023-11-10` as the check of a
+  reference introduced over a 2026-11-01 check), cleared silently a check made today over an old check of today, and the hints said
+  what the code did not. Now a curation that changes a reference (another place: white space alone is not) **ends the check of the old
+  one**, whatever `reviewed` and `availability` hold beside it (they are the old reference's and are not read), and the new
+  reference has a check only if the edit states one: in the form, two separate fields that open **empty**, *the day you checked the new
+  reference* and *whether it can be had at the new reference* (`c<i>_checked_day`, `c<i>_checked_availability`, with their hints);
+  in the API, the member `checked: {day, availability}` of a source (in OpenAPI's `CurationSource`, closed; core:
+  `SourceEdit::checked`, `compose::{Checked, CheckFault}`, `Mistake::Check(at, why)`). The day is written `YYYY-MM-DD`, **no earlier
+  than the source's previous review day** (the same date is allowed) and **not after today in UTC+14** (`freshness::day_has_not_come`,
+  as `day-not-come` naming `sources[i].checked.day`); an answer needs its day; a check with no new reference is refused; each is
+  refused by field and names its source: API reasons `check-before-review`, `check-no-day`, `check-not-a-day`,
+  `check-no-new-reference` (members `sources[i].checked.day` or `sources[i].checked`), and the form's problems say the same with the
+  source's title (`curate.check_*`, en and ja, with their glossary rows). An empty day with *not known* states nothing. A check
+  stated on the date the old one had is told from one that was carried by the proposal it names: the file names none until the
+  acceptance does, where the base's own check names its own (`curation::stamp`), and the proposal's page says *the day it was last
+  checked becomes D*, not that the review stays. A change of white space alone in a reference keeps the check
+  (`Reference::is_elsewhere`; K71's rule and the merge use it too). `curate`'s doc comment, the form hint (`curate.work_hint`, en and
+  ja, glossary row rewritten), the OpenAPI member descriptions and the endpoint's description say exactly this. The API test that kept
+  `2023-11-10` is turned around (the day beside a new reference is not read; the same day in `checked` is before the old check and is
+  refused); the form's likewise. Tests: the compose rule (states, refusals, white space, an empty check), the same through the API
+  (cases, the refused members, the sentence naming the source) and the form (the cases, the fields opening empty, the five refusals
+  in both languages, nothing made), the acceptance naming a same-date check and refusing the carried one, the page's line, and three
+  rows of the request-schema walk for `checked`. One limit, by design: a base whose review names no proposal (hand-written data) cannot
+  tell a same-date restatement from a carried check, and refuses it as carried; the day after is stated as ever. No prikk-dependent
+  test is added.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

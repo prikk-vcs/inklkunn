@@ -1214,6 +1214,7 @@ fn a_source_is_attached_and_a_status_curated_through_the_whole_path_on_a_real_hi
         removed: Vec::new(),
         sources: vec![SourceEdit {
             source: source.id.clone(),
+            checked: None,
             reviewed: "2026-11-04".to_owned(),
             availability: Availability::Available,
             work: None,
@@ -1420,6 +1421,7 @@ fn a_curation_removes_a_link_and_corrects_a_checked_source_through_the_whole_pat
         removed: Vec::new(),
         sources: vec![SourceEdit {
             source: one.id.clone(),
+            checked: None,
             reviewed: "2026-11-04".to_owned(),
             availability: Availability::Available,
             work: None,
@@ -1475,6 +1477,7 @@ fn a_curation_removes_a_link_and_corrects_a_checked_source_through_the_whole_pat
         removed: Vec::new(),
         sources: vec![SourceEdit {
             source: two.id.clone(),
+            checked: None,
             reviewed: String::new(),
             availability: Availability::Unknown,
             work: Some(Work {
@@ -1519,6 +1522,7 @@ fn a_curation_removes_a_link_and_corrects_a_checked_source_through_the_whole_pat
         removed: vec![two.id.clone()],
         sources: vec![SourceEdit {
             source: one.id.clone(),
+            checked: None,
             reviewed: "2026-11-04".to_owned(),
             availability: Availability::Available,
             work: Some(Work {
@@ -1673,6 +1677,7 @@ fn two_curations_that_would_make_two_sources_replace_each_other_are_refused_at_t
             removed: Vec::new(),
             sources: vec![SourceEdit {
                 source: source.id.clone(),
+                checked: None,
                 reviewed: String::new(),
                 availability: Availability::Unknown,
                 work: Some(Work {

@@ -13,7 +13,9 @@ use axum::body::Body;
 use axum::extract::State;
 use axum::http::{HeaderMap, Uri};
 use axum::response::Response;
-use inklkunn_core::knowledge::compose::{Curation, LinkEdit, Mistake, SourceEdit, Work, curate};
+use inklkunn_core::knowledge::compose::{
+    CheckFault, Checked, Curation, LinkEdit, Mistake, SourceEdit, Work, curate,
+};
 use inklkunn_core::knowledge::{
     Availability, Bearing, ClaimId, Link, ReferenceForm, SourceId, Standing,
 };
@@ -190,8 +192,26 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
                 })
                 .transpose()?,
         };
+        // The check of a new reference, stated (K72): both members, or none.
+        let checked = match source.object("checked")? {
+            None => None,
+            Some(mut checked) => {
+                let day = checked.text("day")?;
+                let availability = word(
+                    &mut checked,
+                    "availability",
+                    Availability::from_word,
+                    &format!("{at}.checked.availability"),
+                )?;
+                checked.end()?;
+                Some(Checked {
+                    day: day.trim().to_owned(),
+                    availability,
+                })
+            }
+        };
         source.end()?;
-        named.push((id, reviewed, availability, work));
+        named.push((id, reviewed, availability, work, checked));
     }
     let confirm = fields.opt_flag("confirm")?;
     fields.end()?;
@@ -220,7 +240,7 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
     .ok_or_else(|| Problem::new(Code::NotFound))?;
     // The members of a source that say who and what it is are left as the base has them when they are left out.
     let cited = subject.cited();
-    for (id, reviewed, availability, work) in named {
+    for (id, reviewed, availability, work, checked) in named {
         let old = cited.iter().find(|s| s.id == id);
         sources.push(SourceEdit {
             reviewed: reviewed.unwrap_or_else(|| {
@@ -231,6 +251,7 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
             availability: availability
                 .unwrap_or_else(|| old.map_or(Availability::Unknown, |s| s.availability)),
             work: old.and_then(|old| work.over(Work::of(old))),
+            checked,
             source: id,
         });
     }
@@ -248,7 +269,7 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
     {
         return Err(req
             .unacceptable_with("day-not-come", day.text(req.t))
-            .named("member", format!("sources[{}].reviewed", day.at))
+            .named("member", format!("sources[{}].{}", day.at, day.member))
             .member("source", serde_json::json!(day.source.to_string())));
     }
     // A source that replaces another is a source the wiki has, as the base has it. Each source is read once (K69).
@@ -259,8 +280,10 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
     {
         return Err(mistake(req, Mistake::UnknownSuccessor));
     }
-    let files =
-        curate(subject.claim(), &cited, subject.digest(), &edit).map_err(|m| mistake(req, m))?;
+    let files = curate(subject.claim(), &cited, subject.digest(), &edit).map_err(|m| match m {
+        Mistake::Check(at, why) => check_refused(req, &subject, &edit, at, why),
+        other => mistake(req, other),
+    })?;
     // The sources that replace one another do not come back to one they passed, as the acceptance judges the result (K61):
     // the member is the source whose successor does.
     if let Some(returning) =
@@ -321,6 +344,35 @@ fn mistake(req: &Request, m: Mistake) -> Problem {
         _ => "not-curatable",
     };
     req.unacceptable_with(reason, mistake_text(req.t, m))
+}
+
+/// A check of a new reference that the core refused (K72), as the problem the form's words say: the reason, the sentence
+/// naming the source, and the member (`sources[i].checked.day`, or `sources[i].checked` for a check given without a new
+/// reference) and the `source` it is about.
+fn check_refused(
+    req: &Request,
+    subject: &crate::proposals::curate::Loaded,
+    edit: &Curation,
+    at: usize,
+    why: CheckFault,
+) -> Problem {
+    let (reason, member) = match why {
+        CheckFault::NoDay => ("check-no-day", "checked.day"),
+        CheckFault::NotADay => ("check-not-a-day", "checked.day"),
+        CheckFault::BeforeReview => ("check-before-review", "checked.day"),
+        CheckFault::NoNewReference => ("check-no-new-reference", "checked"),
+    };
+    let edited = edit.sources.get(at);
+    let problem = req
+        .unacceptable_with(
+            reason,
+            subject.check_refused_text(req.t, &edit.sources, at, why),
+        )
+        .named("member", format!("sources[{at}].{member}"));
+    match edited {
+        Some(e) => problem.member("source", serde_json::json!(e.source.to_string())),
+        None => problem,
+    }
 }
 
 /// The members of a source that say who and what it is, where it is found and what replaces it, as a body gave them: a

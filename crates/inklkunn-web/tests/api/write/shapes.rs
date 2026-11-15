@@ -266,6 +266,22 @@ fn curation_shapes() -> Vec<Shape> {
             source(json!({"source": one, "reference": {"type": "doi", "value": "10.1000/182"}})),
         ),
         yes(
+            "a source with a reference and the check of the new one",
+            source(json!({
+                "source": one,
+                "reference": {"type": "doi", "value": "10.1000/182"},
+                "checked": {"day": "2026-11-02", "availability": "available"},
+            })),
+        ),
+        yes(
+            "a source with a reference and a check that states nothing",
+            source(json!({
+                "source": one,
+                "reference": {"type": "doi", "value": "10.1000/182"},
+                "checked": {"day": "", "availability": "unknown"},
+            })),
+        ),
+        yes(
             "a source that nothing replaces",
             source(json!({"source": one, "superseded_by": ""})),
         ),
@@ -382,6 +398,26 @@ fn curation_shapes() -> Vec<Shape> {
         no(
             "a reference with a member nobody knows",
             source(json!({"source": one, "reference": {"type": "doi", "value": "1", "note": "x"}})),
+        ),
+        no(
+            "a check with no day",
+            source(json!({"source": one, "checked": {"availability": "available"}})),
+        ),
+        no(
+            "a check with no answer",
+            source(json!({"source": one, "checked": {"day": "2026-11-02"}})),
+        ),
+        no(
+            "a check with an answer nobody knows",
+            source(
+                json!({"source": one, "checked": {"day": "2026-11-02", "availability": "maybe"}}),
+            ),
+        ),
+        no(
+            "a check with a member nobody knows",
+            source(
+                json!({"source": one, "checked": {"day": "2026-11-02", "availability": "available", "note": "x"}}),
+            ),
         ),
         no(
             "a source replaced by no id",

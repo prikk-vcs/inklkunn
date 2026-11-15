@@ -82,6 +82,10 @@ pub(crate) const C_DATE: &str = "date";
 pub(crate) const C_REF_FORM: &str = "ref_form";
 pub(crate) const C_REF: &str = "ref";
 pub(crate) const C_SUPERSEDED: &str = "superseded_by";
+/// The day a person checked the new reference of a source, and whether it can be had there (K72): empty unless the
+/// reference changes.
+pub(crate) const C_CHECKED_DAY: &str = "checked_day";
+pub(crate) const C_CHECKED_AVAILABILITY: &str = "checked_availability";
 
 // --- query parameters of the entry points
 pub(crate) const Q_PAGE: &str = "page";
