@@ -439,6 +439,20 @@ pub struct Reference {
     pub value: String,
 }
 
+impl Reference {
+    /// Is a source found at `now` found somewhere else than one found at `was` (K71, K72)? A reference that differs by
+    /// white space alone (the same form, the same value once every run of white space is one space and none is left at
+    /// its ends) is the same place: a check of it stays.
+    pub fn is_elsewhere(was: Option<&Reference>, now: Option<&Reference>) -> bool {
+        let squashed = |r: &Reference| r.value.split_whitespace().collect::<Vec<_>>().join(" ");
+        match (was, now) {
+            (None, None) => false,
+            (Some(was), Some(now)) => was.form != now.form || squashed(was) != squashed(now),
+            _ => true,
+        }
+    }
+}
+
 /// A copy of a source kept for the day it cannot be had.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Snapshot {

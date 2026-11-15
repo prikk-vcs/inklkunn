@@ -61,6 +61,9 @@ pub struct Refusal {
     pub line: Option<usize>,
     /// The change takes the file away (K44): no curation form makes a removal, and none is offered in this version.
     pub removes: bool,
+    /// The change moves a source to another reference and leaves the check of the old one on it (K71): the field is
+    /// `last_reviewed`, and the sentence is [`UNSTATED_CHECK`].
+    pub carries: bool,
 }
 
 impl Refusal {
@@ -72,6 +75,7 @@ impl Refusal {
             field: fault.field,
             line: fault.line,
             removes: false,
+            carries: false,
         }
     }
 
@@ -87,6 +91,14 @@ impl Refusal {
         }
     }
 
+    /// A refusal of the source file at `path`, which leaves the check of another reference on a new one (K71).
+    fn carried(path: &str) -> Refusal {
+        Refusal {
+            carries: true,
+            ..Refusal::rule(path, Rule::Status, "last_reviewed")
+        }
+    }
+
     /// Can a curation proposal made with the curation form do what this refusal says only curation may (K44)? It
     /// changes what a claim or a source file holds, and takes a link away; it never takes a file away, nor replaces a
     /// file that cannot be read (what it held is not known). Those are not offered in this version (K62).
@@ -98,7 +110,9 @@ impl Refusal {
     /// be read, is **not offered in this version** and says so (K67): the rule's sentence ([`Rule::sentence`]) is for
     /// what a curation proposal can do.
     pub fn sentence(&self) -> &'static str {
-        if self.curation_form_can_make() {
+        if self.carries {
+            UNSTATED_CHECK
+        } else if self.curation_form_can_make() {
             self.rule.sentence()
         } else {
             NOT_OFFERED
@@ -109,6 +123,10 @@ impl Refusal {
 /// What is said of the removal of a claim or a source file, and of the replacement of a file that cannot be read
 /// (K67): the web's `know.not_by_form` in English, without its capital and its full stop.
 pub const NOT_OFFERED: &str = "removing a claim or a source file, or replacing a file that cannot be read, is not offered in this version";
+
+/// What is said of a source that is found elsewhere now and still carries the check of its old reference (K71): the web's
+/// `invalid.knowledge_check_unstated` in English, without its capital and its full stop.
+pub const UNSTATED_CHECK: &str = "the source is found elsewhere now and still carries the day or the answer of the check of its old reference; a check of the new reference is stated by the proposal, never inferred";
 
 impl std::fmt::Display for Refusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -304,6 +322,44 @@ impl Curated {
         }
     }
 
+    /// Does `self` (what a change leaves of a source) move it to another reference than `was` (what the tip had) and
+    /// leave on it the day or the answer of the check of the old one (K71)? The check of a reference is for that
+    /// reference: it goes with the new one **only when the same change states it**, with a day other than the tip's
+    /// (the proposal that stated it is named in the day, so a day restated on the tip's own day is told from one that was
+    /// kept) or an answer other than the tip's. A day that is gone is a check that is not carried. A claim carries
+    /// nothing of the kind.
+    ///
+    /// **The rule holds at acceptance, the one place every path passes**: the compose path never makes such a source (a
+    /// changed reference clears the check unless a new one is stated), and the merge makes it an overlap
+    /// ([`crate::knowledge::merge`]); this refuses a source file made any other way.
+    pub fn carries_unstated_check(&self, was: &Curated) -> bool {
+        let (
+            Curated::Source {
+                availability: now_answer,
+                reviewed: now_day,
+                reference: now_reference,
+                ..
+            },
+            Curated::Source {
+                availability: was_answer,
+                reviewed: was_day,
+                reference: was_reference,
+                ..
+            },
+        ) = (self, was)
+        else {
+            return false;
+        };
+        if !Reference::is_elsewhere(was_reference.as_ref(), now_reference.as_ref()) {
+            return false;
+        }
+        let day_stated = now_day.is_some() && now_day != was_day;
+        let day_carried = now_day.is_some() && !day_stated;
+        let answer_carried =
+            !day_stated && *now_answer != Availability::Unknown && now_answer == was_answer;
+        day_carried || answer_carried
+    }
+
     /// Is taking this away, outside a curation proposal, refused? **When it would take anything curated with it**
     /// (handoff 005 corrections, second round, K16): a claim file whose curated content is not what a fresh claim's is
     /// (a status that was decided, or an un-decided record, **or a source link**: the link is curation's to change
@@ -394,6 +450,35 @@ pub fn curated_by(
                     out.push(Refusal::rule(path, Rule::Status, field));
                 }
             }
+        }
+    }
+    out
+}
+
+/// The source files a revision writes (`files`: path, and the new text or `None` for a removal) that are found elsewhere
+/// than at `before` (the text a path had at the proposal's base) and still carry the check of the old reference (K71,
+/// [`Curated::carries_unstated_check`]): **the acceptance's rule, without a tree**, what the proposal service asks at
+/// submit and at every revision and what the proposal page says. A file that does not read is not judged here (the
+/// acceptance refuses it by its own rule). In path order.
+pub fn carried_by(
+    files: &[(String, Option<String>)],
+    before: &dyn Fn(&str) -> Option<String>,
+) -> Vec<Refusal> {
+    let mut sorted: Vec<&(String, Option<String>)> = files.iter().collect();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut out = Vec::new();
+    for (path, text) in sorted {
+        if family_of(path) != Some(super::Family::Source) {
+            continue;
+        }
+        let Some(Ok(now)) = text.as_ref().map(|t| read_file(path, t.as_bytes())) else {
+            continue;
+        };
+        let Some(was) = before(path).and_then(|t| read_file(path, t.as_bytes()).ok()) else {
+            continue;
+        };
+        if Curated::of(&now).carries_unstated_check(&Curated::of(&was)) {
+            out.push(Refusal::carried(path));
         }
     }
     out
@@ -589,6 +674,12 @@ pub fn validate(
                     && let Some(field) = Curated::of(file).departure(&was)
                 {
                     out.insert(Refusal::rule(path, Rule::Status, field));
+                }
+                // A source found elsewhere does not carry the check of its old reference (K71): the check of a new
+                // reference is stated by the proposal that moves it. Outside a curation proposal the departure above
+                // says it already: a source that carries a check was checked, and its reference is curation's.
+                if touched.curation && Curated::of(file).carries_unstated_check(&was) {
+                    out.insert(Refusal::carried(path));
                 }
                 // Every judgement the change sets or changes names a wording the claim has in the result (K25, K33), in
                 // any proposal: a link's, and the status's.

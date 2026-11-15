@@ -83,7 +83,9 @@ fn is_canonical(path: &str) -> bool {
 /// (`describe` is the page's own, [`crate::knowledge::summary::summarize`]; [`Invalid::KnowledgeNotShown`]): trust
 /// never moves unseen, in a curation proposal least of all; and refused when a source link it adds is judged on a
 /// wording no paragraph of its claim has in the proposal's result (`pages`, [`Invalid::KnowledgeUnjudged`]), or a
-/// claim's status is (K33, [`Invalid::KnowledgeStatusUnjudged`]): a link first.
+/// claim's status is (K33, [`Invalid::KnowledgeStatusUnjudged`]): a link first. A source file that moves a source to
+/// another reference and leaves the check of the old one on it is refused too (K71,
+/// [`Invalid::KnowledgeCheckUnstated`]).
 pub(crate) fn knowledge_verdict(
     given: &[(String, Option<String>)],
     was: &dyn Fn(&str) -> Option<String>,
@@ -93,6 +95,10 @@ pub(crate) fn knowledge_verdict(
 ) -> std::result::Result<(), Invalid> {
     if !curation && !crate::knowledge::check::curated_by(given, was).is_empty() {
         return Err(Invalid::KnowledgeCurated);
+    }
+    // A source found elsewhere carries no check of its old reference, in any proposal (K71).
+    if !crate::knowledge::check::carried_by(given, was).is_empty() {
+        return Err(Invalid::KnowledgeCheckUnstated);
     }
     if !crate::knowledge::summary::undescribed_by(given, was, describe).is_empty() {
         return Err(Invalid::KnowledgeNotShown);

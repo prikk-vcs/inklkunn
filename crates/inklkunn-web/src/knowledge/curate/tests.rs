@@ -14,6 +14,7 @@ fn refusal(removes: bool, field: &'static str) -> Refusal {
         field,
         line: None,
         removes,
+        carries: false,
     }
 }
 

@@ -48,6 +48,7 @@ pub(crate) const fn invalid_word(why: Invalid) -> &'static str {
         Invalid::KnowledgeNotShown => "knowledge-not-shown",
         Invalid::KnowledgeUnjudged => "knowledge-unjudged",
         Invalid::KnowledgeStatusUnjudged => "knowledge-status-unjudged",
+        Invalid::KnowledgeCheckUnstated => "knowledge-check-unstated",
     }
 }
 

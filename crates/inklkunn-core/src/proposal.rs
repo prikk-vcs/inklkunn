@@ -281,6 +281,10 @@ pub enum Invalid {
     /// A claim file sets or changes its community status's `judged_on` to a wording that no paragraph of the claim has
     /// once the proposal is made: the same rule, named by the field (K33).
     KnowledgeStatusUnjudged,
+    /// A source file is found elsewhere than at the base and still carries the day or the answer of the check of its old
+    /// reference: the acceptance would refuse it, since a check of a new reference is stated by the proposal and never
+    /// inferred (RFC 005 part 2 D-3, *correcting a source*; handoff 005 corrections, eighth round, K71).
+    KnowledgeCheckUnstated,
 }
 
 /// Why a call to the service was refused. Every variant is one plain fact (RFC 004 D-6: failure is honest).

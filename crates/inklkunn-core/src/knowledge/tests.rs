@@ -40,6 +40,7 @@ mod index;
 mod marker;
 mod merge;
 mod onpage;
+mod reference_check;
 mod refusals;
 mod roundtrip;
 mod status;

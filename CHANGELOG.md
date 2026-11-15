@@ -1582,6 +1582,25 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   the legend names `[U+XXXX]`; a spelling that is nothing says *(none)* (in Japanese, *（なし）*) and is no empty `<bdi>`. A
   white-space-only change of a reference is told as that by `summary.rs` (tested: one line, no *review stays*, no changed
   reference). The cycle refusal names the source by its title and by its whole id in `<code>`.
+- **K71 (handoff 005 corrections, eighth round): the reference rule holds at acceptance, and in the merge.** K66 cleared the check of
+  a source whose reference the `compose` path changed, and nothing else: the merge took `reference`, `last_reviewed` and
+  `availability` as independent values, so a source unchecked at address A, moved to a DOI B by one accepted proposal, and checked
+  at A by another made on the old base, merged cleanly to *B, checked, available* when the second was re-authored at the tip (and the
+  same in the other order): a check of one place shown on another. Now (1) at acceptance a written source whose reference is
+  elsewhere than the tip's (white space alone is not elsewhere) may carry a review day or an availability only if this proposal
+  states that check: a day other than the tip's (the tip's day carries the proposal that set it, so a day restated on the same date
+  is told from one kept) or an availability other than the tip's; otherwise it is refused by the field `last_reviewed`, in a
+  curation and in any other proposal (`Curated::carries_unstated_check`, `Refusal::carries`, whose sentence is
+  `check::UNSTATED_CHECK`); (2) the submit and every revision refuse the same (`check::carried_by`, `Invalid::KnowledgeCheckUnstated`,
+  API reason `knowledge-check-unstated`, `invalid.knowledge_check_unstated`, en and ja, with its glossary row); (3) the merge makes a
+  reference moved on one side and a check changed on the other an overlap (key `reference`, with the reference and the check of each
+  side), whichever side did which and whatever the values, so the re-authoring asks a person; a move that states its own check is taken,
+  and so is a check beside a white-space respelling. `compose` is unchanged. Public API: `Reference::is_elsewhere`,
+  `check::{carried_by, UNSTATED_CHECK}`, the field `Refusal::carries`, `Invalid::KnowledgeCheckUnstated`. Tests (`reference_check.rs`):
+  the reviewer's two orders as a merge and through the acceptance (the signer is not asked, both texts recorded), the rule's truth table,
+  the validator and the tree-free rule, the acceptance refusing a hand-made source and accepting it with the check stated, the submit
+  and the revision refusing it; each of the four hooks (the merge's two halves, the validator's, the submit's) was mutated and the tests
+  failed. No prikk-dependent test is added.
 
 ## [0.2.0] — 2026-11-04
 

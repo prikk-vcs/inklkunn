@@ -3153,4 +3153,8 @@ pub const CATALOG: &[Entry] = &[
         "curate.successor_cycle_at",
         "Source: {title} ({id}). The sources that replace one another must not come back to one already named. Name a source for \"The source that replaces it\" that does not lead back to this one.",
     ),
+    msg(
+        "invalid.knowledge_check_unstated",
+        "A source in this proposal is found somewhere else than it is now, and still carries the day it was last checked or whether it can be had, which were for its old place. A check of the new place is stated in the proposal, never taken from the old one. It is not sent.",
+    ),
 ];

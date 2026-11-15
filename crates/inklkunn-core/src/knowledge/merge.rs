@@ -260,6 +260,32 @@ fn source(base: &Source, theirs: &Source, ours: &Source) -> Merged<Source> {
             None => format!("date: {}\n", r.date),
         })
     };
+    // A check is of a reference (K71): a reference moved on one side and a check changed on the other cannot be taken
+    // together, since the check would then stand on a place it was not made at. It is an overlap, so the person who
+    // re-authors the change is asked, and is the one who states a check of the new place. Whichever side did which, and
+    // whatever the values: the same verdict.
+    let checked = |s: &Source| (s.last_reviewed.clone(), s.availability);
+    let moved =
+        |s: &Source| super::Reference::is_elsewhere(base.reference.as_ref(), s.reference.as_ref());
+    let rechecked = |s: &Source| checked(s) != checked(base);
+    if (moved(theirs) && !moved(ours) && rechecked(ours))
+        || (moved(ours) && !moved(theirs) && rechecked(theirs))
+    {
+        let shown = |s: &Source| {
+            let mut out = reference(&s.reference).unwrap_or_default();
+            if let Some(day) = reviewed(&s.last_reviewed) {
+                out.push_str(&format!("last_reviewed:\n{day}"));
+            }
+            out.push_str(&format!("availability: {}\n", s.availability.word()));
+            Some(out)
+        };
+        return Err(Box::new(Clash {
+            key: "reference".to_owned(),
+            base: shown(base),
+            theirs: shown(theirs),
+            ours: shown(ours),
+        }));
+    }
     Ok(Source {
         id: base.id.clone(),
         kind: scalar("kind", [&base.kind, &theirs.kind, &ours.kind], |k| {

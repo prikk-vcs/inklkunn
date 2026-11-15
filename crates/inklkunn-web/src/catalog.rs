@@ -1666,6 +1666,7 @@ keys! {
     KnowSourceCitedBy => "know.source_cited_by",
     KnowSourceCitedByMore => "know.source_cited_by_more",
     CurateSuccessorCycleAt => "curate.successor_cycle_at",
+    InvalidKnowledgeCheckUnstated => "invalid.knowledge_check_unstated",
     // knowledge: a changed reference clears the check; the cycle names its source (handoff 005 corrections, seventh round K66, K69): end
 }
 

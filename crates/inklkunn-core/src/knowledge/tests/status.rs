@@ -310,9 +310,20 @@ fn what_a_checked_source_is_and_where_it_is_found_is_curation_and_before_the_che
         let expected: Vec<(String, &str)> = want.map(|f| (path.clone(), f)).into_iter().collect();
         assert_eq!(by_submission, expected, "submission: {why}");
         assert_eq!(by_acceptance, expected, "acceptance: {why}");
-        // A curation proposal may.
+        // A curation proposal may, except that a source found elsewhere does not keep the check of its old reference
+        // unless the proposal states one (K71).
         touched.curation = true;
-        assert!(validate(&files, &touched, &One, &One).is_empty(), "{why}");
+        let moved = Curated::of(&File::Source(Box::new(after.clone())))
+            .carries_unstated_check(&Curated::of(&File::Source(Box::new(before.clone()))));
+        let by_curation: Vec<_> = validate(&files, &touched, &One, &One)
+            .iter()
+            .map(|r| (r.file.clone(), r.field))
+            .collect();
+        let carried: Vec<(String, &str)> = moved
+            .then(|| (path.clone(), "last_reviewed"))
+            .into_iter()
+            .collect();
+        assert_eq!(by_curation, carried, "curation: {why}");
     };
     // A source checked by its review day or by its availability.
     for (checked, how) in [
