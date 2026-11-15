@@ -1562,6 +1562,26 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   the asserts, the printed exits and the probes it found so that it cannot pass without reading. One other test-side change:
   the signer's `VersionOnly` stand-in waits for its script to be runnable by running it, not through `probe_version`. No new test
   that needs prikk, so no change to the skip count.
+- **K73 (handoff 005 corrections, eighth round): the cited-by line and the sentence of a held draft.** The line under a source whose
+  check stays said *another claim that cites it* and listed from the base's index, so a claim that began citing the source after the
+  proposal was made went unnamed to the reviewer who accepts at the tip. It says *a claim that cites it* (in Japanese likewise) and
+  lists from the view's tip. The write API's send of a held draft (`POST …/proposals/{id}/submission`) explained a refusal for a
+  claim file removed, or a file replaced that cannot be read, with `know.not_curation` (*only a curation proposal may do this*), where
+  the pages say `know.not_by_form` (not offered in this version): it now reads the draft's files and chooses its sentences through
+  `curate::sentences`, as the pages do, and `words.rs`'s sentence for the refusal is chosen through the same function. Tests: a held
+  draft that removes a claim and one that writes over a claim file that cannot be read, sent through the API in both languages; the
+  proposal page names a claim that began citing the source after the base and not one that stopped.
+
+- **K75 (handoff 005 corrections, eighth round): small points.** The test's pattern reader (`tests/api/shapes.rs`) refuses any
+  escape or class it does not implement (`\d`, `\w`, `\S`, `\b`, `\u…`, `[^…]`, an out-of-order range or repetition, a bare `]`) and
+  no longer reads them as the letters they spell; it implements `\s` as ECMA-262's set (the byte order mark and the line terminators
+  are in it, U+0085 is not), also inside a class. `oneOf` and `anyOf` no longer return before the sibling keywords (`type`, `enum`,
+  `pattern`, `required`) are checked. The handler of `superseded_by` trims with that set and not with `str::trim` (which takes
+  U+0085 and not U+FEFF), so the schema and the handler take the same text: rows for both in the shapes table. White space shown (a
+  proposal's page): a mark or a `[` the text holds is written by its code point (`[U+2423]`, `[U+005B]`), so no text imitates a mark;
+  the legend names `[U+XXXX]`; a spelling that is nothing says *(none)* (in Japanese, *（なし）*) and is no empty `<bdi>`. A
+  white-space-only change of a reference is told as that by `summary.rs` (tested: one line, no *review stays*, no changed
+  reference). The cycle refusal names the source by its title and by its whole id in `<code>`.
 
 ## [0.2.0] — 2026-11-04
 

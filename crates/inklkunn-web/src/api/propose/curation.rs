@@ -59,6 +59,26 @@ pub(crate) async fn create(
     .await
 }
 
+/// Is `c` white space as the document's patterns say it (`\s`, ECMA-262's: K75)? The handler of a source's replacement
+/// trims with this and not with `str::trim`, whose set differs (it takes U+0085 and not U+FEFF): a client that follows the
+/// schema is taken exactly where the schema takes it.
+fn is_pattern_space(c: char) -> bool {
+    matches!(
+        c,
+        '\u{9}'..='\u{d}'
+            | ' '
+            | '\u{a0}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200a}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202f}'
+            | '\u{205f}'
+            | '\u{3000}'
+            | '\u{feff}'
+    )
+}
+
 /// A word of the format, from a member of the body: any other is `invalid-body` at that member.
 fn word<T>(
     fields: &mut Fields,
@@ -159,7 +179,7 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
             superseded_by: source
                 .opt_text("superseded_by")?
                 .map(|text| {
-                    let text = text.trim();
+                    let text = text.trim_matches(is_pattern_space);
                     if text.is_empty() {
                         Ok(None)
                     } else {

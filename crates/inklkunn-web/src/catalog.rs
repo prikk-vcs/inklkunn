@@ -1661,6 +1661,7 @@ keys! {
     KnowSourceSpacingAuthor => "know.source_spacing_author",
     KnowSourceSpacingDate => "know.source_spacing_date",
     KnowSourceSpacingReference => "know.source_spacing_reference",
+    KnowSourceSpacingNone => "know.source_spacing_none",
     KnowSourceReviewStays => "know.source_review_stays",
     KnowSourceCitedBy => "know.source_cited_by",
     KnowSourceCitedByMore => "know.source_cited_by_more",
@@ -1803,6 +1804,13 @@ pub fn cite(text: &str) -> Rich {
     let mut out = String::from("<cite><bdi>");
     escape_into(&mut out, text);
     out.push_str("</bdi></cite>");
+    Rich(out)
+}
+
+/// `text` as words, escaped: a line of a list whose other lines hold markup (a problem that names a token in `<code>`).
+pub fn plain(text: &str) -> Rich {
+    let mut out = String::new();
+    escape_into(&mut out, text);
     Rich(out)
 }
 

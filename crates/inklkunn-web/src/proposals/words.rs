@@ -143,8 +143,10 @@ pub(crate) fn invalid_text(t: T, why: Invalid) -> String {
         | Invalid::BadBase
         | Invalid::BadAnchor
         | Invalid::SupersedeSelf => t.get(Key::InvalidIncomplete),
-        // The one sentence the proposal page's warning uses too (K7).
-        Invalid::KnowledgeCurated => t.get(Key::KnowNotCuration),
+        // The sentence the proposal page's warning uses too (K7), chosen as the pages choose it (K73): a surface that knows
+        // the files says which of what only curation may do and what no form makes the change is (`refusal_of`, the
+        // submit path); one that does not knows no removal and says the rule's.
+        Invalid::KnowledgeCurated => crate::knowledge::curate::sentences(t, &[]).join(" "),
         Invalid::KnowledgeNotShown => t.get(Key::InvalidKnowledgeNotShown),
         Invalid::KnowledgeUnjudged => t.get(Key::InvalidKnowledgeUnjudged),
         Invalid::KnowledgeStatusUnjudged => t.get(Key::InvalidKnowledgeStatusUnjudged),

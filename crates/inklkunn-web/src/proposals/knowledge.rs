@@ -71,8 +71,9 @@ pub(crate) trait Subjects {
     fn claim_href(&self, claim: &ClaimId) -> Option<String>;
     /// The address of the line of `source` on the page of `claim`: a source has no page of its own.
     fn cited_href(&self, claim: &ClaimId, source: &SourceId) -> Option<String>;
-    /// The claims that cite `source` at the proposal's base and that the proposal does not write, in id order (K66): those
-    /// whose standing rests on a source the proposal changes without their page showing it.
+    /// The claims that cite `source` at **the view's tip** (K73: the reviewer accepts at the tip, and a claim that began
+    /// citing the source after the base is one the check reaches) and that the proposal does not write, in id order
+    /// (K66): those whose standing rests on a source the proposal changes without their page showing it.
     fn citing(&self, source: &SourceId) -> Vec<ClaimId>;
 }
 
@@ -364,18 +365,37 @@ fn relation_line(t: T, know: &dyn Subjects, key: Key, relation: &Relation) -> Ri
 /// The most claims a *cited by* line names; the rest are counted.
 const CITING_LINES: usize = 5;
 
+/// The marks [`visible`] puts for a space, a tab and a line break.
+const SPACE_MARK: char = '\u{2423}';
+const TAB_MARK: char = '\u{21e5}';
+const BREAK_MARK: char = '\u{21b5}';
+
 /// A text with its white space made visible (K66): a space, a tab and a line break each a mark, any other white space its
-/// code point. The two spellings of a name that differ in nothing else then read differently.
+/// code point. The two spellings of a name that differ in nothing else then read differently. **A mark the text holds
+/// itself is written by its code point too** (K75), and so is the `[` that opens one, so that no text can imitate a mark:
+/// what shows `␣` or `[U+00A0]` is always the white space, never the characters.
 fn visible(text: &str) -> String {
     text.chars()
         .map(|c| match c {
-            ' ' => "\u{2423}".to_owned(),
-            '\t' => "\u{21e5}".to_owned(),
-            '\n' => "\u{21b5}".to_owned(),
-            c if c.is_whitespace() => format!("[U+{:04X}]", u32::from(c)),
+            ' ' => SPACE_MARK.to_string(),
+            '\t' => TAB_MARK.to_string(),
+            '\n' => BREAK_MARK.to_string(),
+            c if c.is_whitespace() || matches!(c, SPACE_MARK | TAB_MARK | BREAK_MARK | '[') => {
+                format!("[U+{:04X}]", u32::from(c))
+            }
             c => c.to_string(),
         })
         .collect()
+}
+
+/// A spelling for the white-space line: the text with its white space shown, or *none* where there is no text (the
+/// part had none, or has none now: K75) and not an empty `<bdi>`.
+fn spelling(t: T, text: &str) -> Rich {
+    if text.is_empty() {
+        t.msg(Key::KnowSourceSpacingNone).html()
+    } else {
+        bdi(&visible(text))
+    }
 }
 
 /// The lines for one change to a source: one, except for the check that stays, which also names the other claims that rely
@@ -411,8 +431,8 @@ fn source_change(t: T, know: &dyn Subjects, change: &SourceChange) -> Rich {
                 Spelled::Date => Key::KnowSourceSpacingDate,
                 Spelled::Reference => Key::KnowSourceSpacingReference,
             })
-            .rich("was", bdi(&visible(was)))
-            .rich("now", bdi(&visible(now)))
+            .rich("was", spelling(t, was))
+            .rich("now", spelling(t, now))
             .html(),
         // Said by `source_change_lines`, which also names the claims.
         SourceChange::ReviewStays(day) => t.msg(Key::KnowSourceReviewStays).with("day", day).html(),
@@ -987,7 +1007,7 @@ impl Subjects for Resolver<'_> {
     }
 
     fn citing(&self, source: &SourceId) -> Vec<ClaimId> {
-        let Some(index) = self.index() else {
+        let Some(index) = self.tip_index() else {
             return Vec::new();
         };
         let mut claims: Vec<ClaimId> = index

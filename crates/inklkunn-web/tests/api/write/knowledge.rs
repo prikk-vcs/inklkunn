@@ -1190,3 +1190,116 @@ async fn a_change_of_line_breaks_alone_is_made_through_the_api() {
         "the title is not the reference: the check stays"
     );
 }
+
+/// A draft the wiki's form made and holds, with these files (a path and a new text, `None` for a removal).
+fn held_draft(c: &Cast, files: Vec<(String, Option<String>)>) -> ProposalId {
+    c.w.services
+        .proposals
+        .create(
+            &principal(&c.contributor),
+            &c.w.wiki,
+            None,
+            inklkunn_core::proposal::ProposalEdit {
+                summary: "A held change".to_owned(),
+                files: files
+                    .into_iter()
+                    .map(|(path, text)| inklkunn_store::FileChange { path, text })
+                    .collect(),
+                ..Default::default()
+            },
+        )
+        .expect("a draft")
+        .id
+}
+
+/// Send the draft `id` for review through the API, as its author, in the language the cookie names.
+async fn submit_held(c: &Cast, id: &ProposalId, lang: &str) -> super::super::Answer {
+    post(
+        &c.w,
+        &format!("{API}/proposals/{id}/submission"),
+        &[
+            session(&c.contributor),
+            super::quoted(&format!("{id}-r0")),
+            ("cookie", format!("inklkunn_lang={lang}")),
+        ],
+        "{}".to_owned(),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn sending_a_held_draft_that_removes_a_claim_or_replaces_a_file_that_cannot_be_read_says_it_is_not_offered()
+ {
+    // K73: the pages say a removal, or the replacement of a file that cannot be read, is not offered in this version; the
+    // API's refusal of a held draft says the same, and not that only a curation proposal may do it.
+    let curation = "only a curation proposal may do";
+    let not_offered = "is not offered in this version";
+    let claim = claim_path(&claim_id(1));
+
+    // A claim with source links, removed.
+    let c = cast();
+    let id = held_draft(&c, vec![(claim.clone(), None), page_edit()]);
+    let a = submit_held(&c, &id, "en").await;
+    assert_eq!(a.status, 422, "{}", a.text());
+    assert_eq!(a.json().at("/reason"), "knowledge-curated");
+    let detail = a.json().at("/detail").as_str().unwrap().to_owned();
+    assert!(detail.contains(not_offered), "{detail}");
+    assert!(!detail.contains(curation), "{detail}");
+    let ja = submit_held(&c, &id, "ja").await;
+    let detail_ja = ja.json().at("/detail").as_str().unwrap().to_owned();
+    assert!(detail_ja.contains("提供されていません"), "{detail_ja}");
+    assert!(
+        !detail_ja.contains("キュレーション提案だけです"),
+        "{detail_ja}"
+    );
+
+    // A claim file the wiki has and cannot read, written over with one that reads.
+    let c = cast();
+    c.w.fake.set(&claim, "kind: observation\nsecret: words\n");
+    let over = claim_in(&c).to_yaml();
+    let id = held_draft(&c, vec![(claim.clone(), Some(over)), page_edit()]);
+    let a = submit_held(&c, &id, "en").await;
+    assert_eq!(a.status, 422, "{}", a.text());
+    assert_eq!(a.json().at("/reason"), "knowledge-curated");
+    let detail = a.json().at("/detail").as_str().unwrap().to_owned();
+    assert!(detail.contains(not_offered), "{detail}");
+    assert!(!detail.contains(curation), "{detail}");
+    assert!(!detail.contains("secret"), "{detail}");
+
+    // What a curation form can make, held beside it, keeps the rule's sentence (and the removal gets its own).
+    let c = cast();
+    let mut decided = claim_in(&c);
+    decided.community_status.status = Standing::Accepted;
+    let id = held_draft(
+        &c,
+        vec![
+            (claim.clone(), Some(decided.to_yaml())),
+            (source_path(&source_id(2)), None),
+            page_edit(),
+        ],
+    );
+    let a = submit_held(&c, &id, "en").await;
+    assert_eq!(a.status, 422, "{}", a.text());
+    let detail = a.json().at("/detail").as_str().unwrap().to_owned();
+    assert!(detail.contains(curation), "{detail}");
+    assert_eq!(detail.matches(curation).count(), 1, "{detail}");
+}
+
+/// A change to a page that says no claim, which makes the proposal a page edit: a change of a claim or a source beside it is
+/// not a curation proposal's.
+fn page_edit() -> (String, Option<String>) {
+    (
+        "pages/Home.md".to_owned(),
+        Some(home_with(SAID).replace("Plain words, no claim.", "Plain words, changed.")),
+    )
+}
+
+/// The claim [`cast`] records, as its base has it.
+fn claim_in(_: &Cast) -> inklkunn_core::knowledge::Claim {
+    let mut c = claim(1, Standing::Unknown, None, SAID);
+    c.sources = vec![
+        link(1, Link::Supports, Bearing::Direct, SAID),
+        link(2, Link::Challenges, Bearing::Partial, SAID),
+    ];
+    c
+}

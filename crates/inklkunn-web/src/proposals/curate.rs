@@ -43,7 +43,7 @@ use super::{
     Ctx, fields, fields_of, from_this_site, needs_account, notice_page, paths, refused, see, serve,
     words,
 };
-use crate::catalog::Key;
+use crate::catalog::{Key, Rich, code, plain};
 use crate::csrf::Decided;
 use crate::discover::Subject;
 use crate::pages::{Page, PageState, answer};
@@ -109,8 +109,9 @@ impl Loaded {
 
 impl Loaded {
     /// The refusal for the source whose chain of replacing sources returns, in the person's words: the source (as the form's
-    /// own legend names it), so that the person finds the field (K69).
-    pub(crate) fn successor_cycle_text(&self, t: crate::catalog::T, source: &SourceId) -> String {
+    /// own legend names it), so that the person finds the field (K69), and its whole id in `<code>` (K75): two sources
+    /// may share a title, and one may have none.
+    pub(crate) fn successor_cycle_text(&self, t: crate::catalog::T, source: &SourceId) -> Rich {
         let title = self
             .cited
             .iter()
@@ -120,7 +121,8 @@ impl Loaded {
             .unwrap_or_else(|| t.get(Key::CurateSourceUntitled));
         t.msg(Key::CurateSuccessorCycleAt)
             .with("title", title)
-            .text()
+            .rich("id", code(source.as_str()))
+            .html()
     }
 }
 
@@ -553,7 +555,7 @@ struct CurateTpl<'a> {
     shell: &'a Shell,
     title: String,
     heading: String,
-    problems: Vec<String>,
+    problems: Vec<Rich>,
     intro: String,
     wording: String,
     action: String,
@@ -682,7 +684,7 @@ fn render(
     page: &Page,
     ctx: &Ctx,
     draw: &Draw<'_>,
-    problems: Vec<String>,
+    problems: Vec<Rich>,
     changes: Vec<Line>,
     status: StatusCode,
 ) -> Response {
@@ -1036,7 +1038,7 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
     let now = subject.wording.as_ref().map(|(_, d)| d);
     let view_name = short(full_view.as_deref())
         .filter(|_| full_view.as_deref() != Some(ctx.wiki.default_view.as_str()));
-    let draw = |problems: Vec<String>, changes: Vec<Line>, status: StatusCode| {
+    let draw = |problems: Vec<Rich>, changes: Vec<Line>, status: StatusCode| {
         render(
             page,
             ctx,
@@ -1055,7 +1057,7 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
     let not_come = subject.days_not_come(&ctx.services.read, &edit.sources);
     if !not_come.is_empty() {
         return draw(
-            not_come.iter().map(|d| d.text(t)).collect(),
+            not_come.iter().map(|d| plain(&d.text(t))).collect(),
             Vec::new(),
             StatusCode::UNPROCESSABLE_ENTITY,
         );
@@ -1073,7 +1075,7 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
         Ok(files) => files,
         Err(m) => {
             return draw(
-                vec![mistake_text(t, m)],
+                vec![plain(&mistake_text(t, m))],
                 Vec::new(),
                 StatusCode::UNPROCESSABLE_ENTITY,
             );
@@ -1121,7 +1123,11 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
         problems.push(t.get(Key::CurateNothing));
     }
     if !problems.is_empty() {
-        return draw(problems, changes, StatusCode::UNPROCESSABLE_ENTITY);
+        return draw(
+            problems.iter().map(|p| plain(p)).collect(),
+            changes,
+            StatusCode::UNPROCESSABLE_ENTITY,
+        );
     }
     let proposed = ProposalEdit {
         summary: sub.summary.clone(),
@@ -1140,7 +1146,7 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
     match service.create_and_submit(&ctx.principal, &ctx.wiki, full_view.as_deref(), proposed) {
         Ok(made) => see(&paths::proposal(ctx.slug(), made.id.as_str())),
         Err(ProposalError::Invalid(why)) => draw(
-            vec![words::invalid_text(t, why)],
+            vec![plain(&words::invalid_text(t, why))],
             changes,
             StatusCode::UNPROCESSABLE_ENTITY,
         ),

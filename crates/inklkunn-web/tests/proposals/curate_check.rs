@@ -180,13 +180,13 @@ async fn a_correction_of_the_title_keeps_the_check_and_the_proposal_says_the_rev
     let body = send(&s, FORM, &s.writer, &shown).await.body();
     assert!(body.contains(stays), "{body}");
     assert!(
-        body.contains("Another claim that cites it, and that this proposal does not change:"),
+        body.contains("A claim that cites it, and that this proposal does not change:"),
         "{body}"
     );
     assert!(body.contains(&other), "{body}");
     let ja = send_ja(&s, FORM, &shown).await;
     assert!(ja.contains(stays_ja), "{ja}");
-    assert!(ja.contains("この提案では変更されない別の主張"), "{ja}");
+    assert!(ja.contains("この提案では変更されない主張"), "{ja}");
     // Sent: the day and the availability stay in the file, and the proposal's page says the same.
     let made = location(&send(&s, FORM, &s.writer, &fields).await);
     let files = files_of(&s, &made);
@@ -215,6 +215,40 @@ async fn a_correction_of_the_title_keeps_the_check_and_the_proposal_says_the_rev
         body.contains("It is no longer marked as checked."),
         "{body}"
     );
+}
+
+#[tokio::test]
+async fn the_cited_by_line_lists_the_claims_that_cite_the_source_at_the_tip_and_not_at_the_base() {
+    // K73: the reviewer accepts at the tip. A claim that began citing the source after the proposal was made is named; one
+    // that stopped is not.
+    let s = shared_scene();
+    let fields = with(
+        checked_unchanged(&s),
+        &[("c0_title", "A history of the bridge, second edition")],
+    );
+    let made = location(&send(&s, FORM, &s.writer, &fields).await);
+    let kept = other_claim_id();
+    let began = inklkunn_core::knowledge::ClaimId::parse("01930000-0000-7000-8000-000000000003")
+        .expect("a claim id");
+    let mut third = s.claim.clone();
+    third.id = began.clone();
+    let mut stopped = s.claim.clone();
+    stopped.id = kept.clone();
+    stopped.sources.clear();
+    s.w.fake.set_files(&[
+        (claim_path(&began).as_str(), third.to_yaml().as_str()),
+        (claim_path(&kept).as_str(), stopped.to_yaml().as_str()),
+    ]);
+    let page = open(&s, &made, &s.writer).await.body();
+    assert!(
+        page.contains("A claim that cites it, and that this proposal does not change:"),
+        "{page}"
+    );
+    assert!(page.contains(&began.to_string()), "{page}");
+    assert!(!page.contains(&kept.to_string()), "{page}");
+    let ja = page_ja(&s, &made).await;
+    assert!(ja.contains(&began.to_string()), "{ja}");
+    assert!(!ja.contains(&kept.to_string()), "{ja}");
 }
 
 #[tokio::test]
@@ -304,18 +338,22 @@ async fn the_cycle_refusal_names_the_source_whose_chain_returns_in_a_form_of_sev
     assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
     let body = a.body();
     assert!(
-        body.contains(
-            "Source: A later history. The sources that replace one another must not come back"
-        ),
+        body.contains(&format!(
+            "Source: A later history (<code>{}</code>). The sources that replace one another must not come back",
+            later_id()
+        )),
         "{body}"
     );
     assert!(
-        !body.contains("Source: A history of the bridge. The sources"),
+        !body.contains("Source: A history of the bridge ("),
         "the other source is not named: {body}"
     );
     let ja = send_ja(&s, FORM, &fields).await;
     assert!(
-        ja.contains("出典: A later history。置き換えの連なりが"),
+        ja.contains(&format!(
+            "出典: A later history（<code>{}</code>）。置き換えの連なりが",
+            later_id()
+        )),
         "{ja}"
     );
 }

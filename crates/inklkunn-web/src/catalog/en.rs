@@ -3121,27 +3121,28 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.source_spacing_title",
-        "Only the white space in its title changes (␣ is a space, ⇥ a tab, ↵ a line break): {was} becomes {now}.",
+        "Only the white space in its title changes (␣ is a space, ⇥ a tab, ↵ a line break, [U+XXXX] a character by its code point: other white space, and any of these marks or a [ that the text itself holds): {was} becomes {now}.",
     ),
     msg(
         "know.source_spacing_author",
-        "Only the white space in its author or publisher changes (␣ is a space, ⇥ a tab, ↵ a line break): {was} becomes {now}.",
+        "Only the white space in its author or publisher changes (␣ is a space, ⇥ a tab, ↵ a line break, [U+XXXX] a character by its code point: other white space, and any of these marks or a [ that the text itself holds): {was} becomes {now}.",
     ),
     msg(
         "know.source_spacing_date",
-        "Only the white space in its date changes (␣ is a space, ⇥ a tab, ↵ a line break): {was} becomes {now}.",
+        "Only the white space in its date changes (␣ is a space, ⇥ a tab, ↵ a line break, [U+XXXX] a character by its code point: other white space, and any of these marks or a [ that the text itself holds): {was} becomes {now}.",
     ),
     msg(
         "know.source_spacing_reference",
-        "Only the white space in where it is found changes (␣ is a space, ⇥ a tab, ↵ a line break): {was} becomes {now}.",
+        "Only the white space in where it is found changes (␣ is a space, ⇥ a tab, ↵ a line break, [U+XXXX] a character by its code point: other white space, and any of these marks or a [ that the text itself holds): {was} becomes {now}.",
     ),
+    msg("know.source_spacing_none", "(none)"),
     msg(
         "know.source_review_stays",
         "The review of {day} stays: accept only if this is still the same work.",
     ),
     msg(
         "know.source_cited_by",
-        "Another claim that cites it, and that this proposal does not change: {claim}",
+        "A claim that cites it, and that this proposal does not change: {claim}",
     ),
     plural_msg(
         "know.source_cited_by_more",
@@ -3150,6 +3151,6 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "curate.successor_cycle_at",
-        "Source: {title}. The sources that replace one another must not come back to one already named. Name a source for \"The source that replaces it\" that does not lead back to this one.",
+        "Source: {title} ({id}). The sources that replace one another must not come back to one already named. Name a source for \"The source that replaces it\" that does not lead back to this one.",
     ),
 ];

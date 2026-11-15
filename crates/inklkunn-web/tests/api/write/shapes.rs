@@ -396,6 +396,30 @@ fn curation_shapes() -> Vec<Shape> {
             "a source that white space says nothing replaces",
             source(json!({"source": one, "superseded_by": " \n"})),
         ),
+        // The white space is the pattern's, ECMA-262's `\s` (K75), not Rust's: the byte order mark is in it and the next-line
+        // character is not, and the handler and the schema say the same of each.
+        yes(
+            "a source replaced by an id with a byte order mark and a no-break space around it",
+            source(
+                json!({"source": one, "superseded_by": format!("\u{feff}\u{a0}{two}\u{3000}\u{2028}")}),
+            ),
+        ),
+        yes(
+            "a source that a byte order mark says nothing replaces",
+            source(json!({"source": one, "superseded_by": "\u{feff}"})),
+        ),
+        no(
+            "a source replaced by an id with a next-line character around it",
+            source(json!({"source": one, "superseded_by": format!("\u{85}{two}")})),
+        ),
+        no(
+            "a source that a next-line character says nothing replaces",
+            source(json!({"source": one, "superseded_by": "\u{85}"})),
+        ),
+        no(
+            "a source replaced by an id with a zero-width space around it",
+            source(json!({"source": one, "superseded_by": format!("{two}\u{200b}")})),
+        ),
         no(
             "a source replaced by an id with white space inside it",
             source(json!({"source": one, "superseded_by": two.to_string().replacen('-', " ", 1)})),

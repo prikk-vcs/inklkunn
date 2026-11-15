@@ -310,6 +310,36 @@ fn a_change_of_white_space_alone_is_told_with_both_spellings_and_leaves_the_revi
             now: "https://example.org/ history".to_owned(),
         }]
     );
+    // K75: the reference told as white space alone is not a reference that moved, so the check is not said to stay *for
+    // another work*: beside a title that says something else, the line that says the review stays is there once, and the
+    // reference is told as white space.
+    let mut both_changed = places.clone();
+    both_changed.identity.title = Some("Another".to_owned());
+    let changes = source_changes_of(&base, &both_changed);
+    assert_eq!(
+        changes
+            .iter()
+            .filter(|c| matches!(c, SourceChange::ReviewStays(_)))
+            .count(),
+        1,
+        "{changes:?}"
+    );
+    assert!(
+        changes.iter().any(|c| matches!(
+            c,
+            SourceChange::WhiteSpace {
+                part: Spelled::Reference,
+                ..
+            }
+        )),
+        "{changes:?}"
+    );
+    assert!(
+        !changes
+            .iter()
+            .any(|c| matches!(c, SourceChange::Reference(_))),
+        "{changes:?}"
+    );
     let mut blank = before.clone();
     blank.identity.author = Some("  ".to_owned());
     assert_eq!(

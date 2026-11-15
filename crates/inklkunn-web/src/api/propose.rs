@@ -11,6 +11,7 @@ use axum::body::Body;
 use axum::extract::State;
 use axum::http::{HeaderMap, Uri};
 use axum::response::Response;
+use inklkunn_core::proposal::{Invalid, ProposalError};
 use inklkunn_store::{Base, ProposalId};
 
 use super::describe;
@@ -230,11 +231,20 @@ pub(crate) async fn submit_draft(
             fields.end()?;
             let id = req.proposal()?;
             req.based_on(&id)?;
-            let record = req
-                .services
-                .proposals
+            let service = &req.services.proposals;
+            let record = service
                 .submit(&req.principal, &req.wiki, &id)
-                .map_err(|error| req.refusal(error))?;
+                .map_err(|error| {
+                    // The draft may hold what no form makes (a claim file removed, a file replaced that cannot be read now):
+                    // the refusal says which of what only curation may do the change is (K73). It is still the draft.
+                    let held = matches!(error, ProposalError::Invalid(Invalid::KnowledgeCurated))
+                        .then(|| service.draft(&req.principal, &req.wiki, &id).ok())
+                        .flatten();
+                    match held {
+                        Some(held) => req.refusal_of(error, &held.files, &held.base.block_id),
+                        None => req.refusal(error),
+                    }
+                })?;
             answer::reply(&record, 1, req.account())
         },
     )

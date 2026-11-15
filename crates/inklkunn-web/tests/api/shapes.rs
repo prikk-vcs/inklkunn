@@ -37,15 +37,94 @@ struct Repeated {
     max: usize,
 }
 
+/// ECMA-262's `\s`: a white space character (tab, vertical tab, form feed, space, no-break space, the byte order mark and
+/// any other space separator) or a line terminator. Not Rust's `char::is_whitespace`, which takes U+0085 and not U+FEFF:
+/// the document's patterns are a client's to read in the language of its schema.
+pub(super) fn is_ecma_space(c: char) -> bool {
+    matches!(
+        c,
+        '\u{9}'..='\u{d}'
+            | ' '
+            | '\u{a0}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200a}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202f}'
+            | '\u{205f}'
+            | '\u{3000}'
+            | '\u{feff}'
+    )
+}
+
 impl Repeated {
     fn takes(&self, c: char) -> bool {
-        (self.space && c.is_whitespace()) || self.ranges.iter().any(|(a, b)| (*a..=*b).contains(&c))
+        (self.space && is_ecma_space(c)) || self.ranges.iter().any(|(a, b)| (*a..=*b).contains(&c))
+    }
+}
+
+/// The characters a backslash may escape to stand for themselves: the ones a pattern gives a meaning. Every other escape
+/// (`\d`, `\w`, `\S`, `\b`, `\n`, `A`, `\1` ...) is a class or a character this walk does not implement.
+fn is_syntax(c: char) -> bool {
+    "^$\\.*+?()[]{}|/-".contains(c)
+}
+
+type Chars<'a> = std::iter::Peekable<std::str::Chars<'a>>;
+
+/// One member of a class: a character, an escaped syntax character, or `\s` (`None`, taken into `item`).
+fn class_member(
+    pattern: &str,
+    chars: &mut Chars<'_>,
+    item: &mut Repeated,
+) -> Result<Option<char>, String> {
+    match chars.next().ok_or("an unclosed class")? {
+        '\\' => match chars.next().ok_or("a dangling escape")? {
+            's' => {
+                item.space = true;
+                Ok(None)
+            }
+            other if is_syntax(other) => Ok(Some(other)),
+            other => Err(format!("{pattern}: \\{other} is beyond this walk")),
+        },
+        other => Ok(Some(other)),
+    }
+}
+
+/// The class whose `[` was read: its members and ranges go into `item`.
+fn parse_class(pattern: &str, chars: &mut Chars<'_>, item: &mut Repeated) -> Result<(), String> {
+    if chars.peek() == Some(&'^') {
+        return Err(format!("{pattern}: a negated class is beyond this walk"));
+    }
+    loop {
+        if chars.peek() == Some(&']') {
+            chars.next();
+            return Ok(());
+        }
+        let Some(a) = class_member(pattern, chars, item)? else {
+            continue;
+        };
+        // A range, unless the `-` is the last character of the class (a hyphen of its own).
+        let mut ahead = chars.clone();
+        if ahead.next() == Some('-') && ahead.peek() != Some(&']') {
+            chars.next();
+            let Some(b) = class_member(pattern, chars, item)? else {
+                return Err(format!("{pattern}: a range ends in a class"));
+            };
+            if b < a {
+                return Err(format!("{pattern}: {a}-{b} is out of order"));
+            }
+            item.ranges.push((a, b));
+        } else {
+            item.ranges.push((a, a));
+        }
     }
 }
 
 /// Parse the subset of regular expressions the document's patterns use: `^` and `$` at the ends, literal characters,
-/// `\s`, an escaped character, classes such as `[0-9a-f-]` and the repetitions `{n}`, `{m,n}`, `*`, `+` and `?`. Anything
-/// else is an error: this walk does not guess at a pattern it cannot read.
+/// `\s` (ECMA-262's, [`is_ecma_space`]), a syntax character escaped, classes such as `[0-9a-f-]` (with `\s` and escaped
+/// syntax characters inside) and the repetitions `{n}`, `{m,n}`, `*`, `+` and `?`. **Anything else is an error**: this walk
+/// does not guess at a pattern it cannot read, and a class or an escape it does not implement (`\d`, `\w`, `\S`, `\u...`,
+/// `[^...]`) is never taken for the letters it spells.
 fn parse_pattern(pattern: &str) -> Result<Vec<Repeated>, String> {
     let body = pattern
         .strip_prefix('^')
@@ -61,30 +140,13 @@ fn parse_pattern(pattern: &str) -> Result<Vec<Repeated>, String> {
             max: 1,
         };
         match c {
-            '[' => loop {
-                let a = chars.next().ok_or("an unclosed class")?;
-                if a == ']' {
-                    break;
-                }
-                if chars.peek() == Some(&'-') {
-                    chars.next();
-                    match chars.next().ok_or("an unclosed class")? {
-                        ']' => {
-                            item.ranges.push((a, a));
-                            item.ranges.push(('-', '-'));
-                            break;
-                        }
-                        b => item.ranges.push((a, b)),
-                    }
-                } else {
-                    item.ranges.push((a, a));
-                }
-            },
+            '[' => parse_class(pattern, &mut chars, &mut item)?,
             '\\' => match chars.next().ok_or("a dangling escape")? {
                 's' => item.space = true,
-                other => item.ranges.push((other, other)),
+                other if is_syntax(other) => item.ranges.push((other, other)),
+                other => return Err(format!("{pattern}: \\{other} is beyond this walk")),
             },
-            '(' | ')' | '|' | '.' | '^' | '$' | '{' | '}' | '*' | '+' | '?' => {
+            '(' | ')' | '|' | '.' | '^' | '$' | '{' | '}' | '*' | '+' | '?' | ']' => {
                 return Err(format!("{pattern}: {c} is beyond this walk"));
             }
             other => item.ranges.push((other, other)),
@@ -109,6 +171,9 @@ fn parse_pattern(pattern: &str) -> Result<Vec<Repeated>, String> {
                 item.max = hi
                     .parse()
                     .map_err(|_| format!("{pattern}: {{{spelled}}}"))?;
+                if item.min > item.max {
+                    return Err(format!("{pattern}: {{{spelled}}} is out of order"));
+                }
                 out.push(item);
                 continue;
             }
@@ -217,7 +282,8 @@ impl<'a> Checker<'a> {
         at: &str,
         problems: &mut Vec<String>,
     ) {
-        // `oneOf`: exactly one alternative holds; `anyOf`: at least one does.
+        // `oneOf`: exactly one alternative holds; `anyOf`: at least one does. **The keywords beside them are checked too**
+        // (K75): a schema with a `type`, an `enum` or a `pattern` and alternatives holds a value to all of it.
         for (keyword, exactly_one) in [("oneOf", true), ("anyOf", false)] {
             let Some(variants) = schema.get(keyword).and_then(Value::as_array) else {
                 continue;
@@ -242,7 +308,6 @@ impl<'a> Checker<'a> {
                     "{at}: {matching} variants of {keyword} match {value}"
                 ));
             }
-            return;
         }
         let actual = kind_of(value);
         if let Some(types) = schema.get("type") {
@@ -619,6 +684,20 @@ fn the_checker_reads_a_pattern_and_refuses_one_it_cannot_read() {
         ("^a+b?$", "aab", true),
         ("^a+b?$", "b", false),
         ("^a*a$", "aaaa", true),
+        // `\s` is ECMA-262's (K75): the byte order mark and the line terminators are in it, U+0085 and U+180E are not.
+        ("^\\s$", "\u{feff}", true),
+        ("^\\s$", "\u{2028}", true),
+        ("^\\s$", "\u{3000}", true),
+        ("^\\s$", "\u{a0}", true),
+        ("^\\s$", "\u{85}", false),
+        ("^\\s$", "\u{180e}", false),
+        ("^\\s$", "\u{200b}", false),
+        // A class takes `\s` and an escaped syntax character, and a hyphen at its end is its own.
+        ("^[\\s-]+$", " -\t", true),
+        ("^[\\s-]+$", "a", false),
+        ("^[\\]\\\\]+$", "]\\", true),
+        ("^\\.\\*$", ".*", true),
+        ("^\\.\\*$", "ab", false),
     ] {
         assert_eq!(
             pattern_matches(pattern, text),
@@ -628,6 +707,29 @@ fn the_checker_reads_a_pattern_and_refuses_one_it_cannot_read() {
     }
     for pattern in ["a|b", "^(a)$", "^a.b$", "abc", "^[a-$"] {
         assert!(pattern_matches(pattern, "a").is_err(), "{pattern}");
+    }
+    // K75: an escape or a class this walk does not implement is refused, never read as the letters it spells.
+    for pattern in [
+        "^\\d$",
+        "^\\D$",
+        "^\\w+$",
+        "^\\W$",
+        "^\\S$",
+        "^\\b$",
+        "^\\n$",
+        "^\\u0041$",
+        "^\\x41$",
+        "^\\1$",
+        "^[^a]$",
+        "^[\\d]$",
+        "^[a-\\s]$",
+        "^[z-a]$",
+        "^a{3,2}$",
+        "^a]$",
+        "^a*?$",
+    ] {
+        assert!(pattern_matches(pattern, "a").is_err(), "{pattern}");
+        assert!(pattern_matches(pattern, "d").is_err(), "{pattern}");
     }
     let document = json!({"components": {"schemas": {"S": {
         "type": "string",
@@ -706,4 +808,46 @@ fn any_of_holds_when_one_alternative_does_and_one_of_when_exactly_one_does() {
     assert!(check(&any, json!("y")));
     assert!(check(&one, json!("y")));
     assert!(!check(&any, json!(1)), "neither");
+}
+
+#[test]
+fn the_keywords_beside_any_of_and_one_of_hold_the_value_too() {
+    // K75: alternatives do not stand in for the schema's own `type`, `enum`, `pattern` and members.
+    let document = json!({"components": {"schemas": {
+        "Typed": {"type": "string", "anyOf": [{"const": 1}, {"const": "x"}]},
+        "Listed": {"enum": ["x", "y"], "oneOf": [{"type": "string"}, {"type": "integer"}]},
+        "Shaped": {"type": "string", "pattern": "^a+$", "anyOf": [{"type": "string"}]},
+        "Needing": {"type": "object", "required": ["a"], "oneOf": [{"type": "object"}, {"type": "string"}]},
+    }}});
+    let mut checker = Checker::new(&document);
+    let mut ok = |name: &str, value: Value| {
+        let schema = json!({"$ref": format!("#/components/schemas/{name}")});
+        let mut problems = Vec::new();
+        checker.check(&schema, &value, "v", &mut problems);
+        problems.is_empty()
+    };
+    assert!(ok("Typed", json!("x")));
+    assert!(
+        !ok("Typed", json!(1)),
+        "an alternative holds, the type does not"
+    );
+    assert!(ok("Listed", json!("y")));
+    assert!(
+        !ok("Listed", json!("z")),
+        "an alternative holds, the enum does not"
+    );
+    assert!(
+        !ok("Listed", json!(3)),
+        "an alternative holds, the enum does not"
+    );
+    assert!(ok("Shaped", json!("aa")));
+    assert!(
+        !ok("Shaped", json!("b")),
+        "an alternative holds, the pattern does not"
+    );
+    assert!(ok("Needing", json!({"a": 1})));
+    assert!(
+        !ok("Needing", json!({"b": 1})),
+        "an alternative holds, a member is missing"
+    );
 }

@@ -182,12 +182,32 @@ fn the_source_whose_chain_returns_is_the_one_named() {
 #[test]
 fn the_refusal_for_a_returning_chain_names_the_source_as_the_legend_does() {
     let t = crate::catalog::T::new(crate::catalog::EN);
-    let subject = subject();
-    let text = subject.successor_cycle_text(t, &id(1));
-    assert!(text.starts_with("Source: Source 1."), "{text}");
-    let nameless = subject.successor_cycle_text(t, &id(8));
+    let loaded = subject();
+    // The whole id stands beside the title in `<code>` (K75): two sources may share a title, and one may have none.
+    let text = loaded.successor_cycle_text(t, &id(1));
     assert!(
-        nameless.starts_with("Source: a source without a title."),
+        text.as_str()
+            .starts_with(&format!("Source: Source 1 (<code>{}</code>).", id(1))),
+        "{text}"
+    );
+    let nameless = loaded.successor_cycle_text(t, &id(8));
+    assert!(
+        nameless.as_str().starts_with(&format!(
+            "Source: a source without a title (<code>{}</code>).",
+            id(8)
+        )),
         "{nameless}"
+    );
+    // A title that is markup is words, never markup.
+    let mut markup = subject();
+    markup.cited = vec![Some({
+        let mut s = source(1, None);
+        s.identity.title = Some("<b>x</b>".to_owned());
+        s
+    })];
+    let text = markup.successor_cycle_text(t, &id(1));
+    assert!(
+        text.as_str().contains("&lt;b&gt;x&lt;/b&gt; (<code>"),
+        "{text}"
     );
 }

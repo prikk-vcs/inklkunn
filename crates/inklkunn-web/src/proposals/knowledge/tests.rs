@@ -1451,9 +1451,7 @@ fn the_review_that_stays_says_so_and_names_the_claims_that_rely_on_the_source_in
     );
     for (line, n) in said.iter().skip(1).zip([2, 3]) {
         assert!(
-            line.starts_with(
-                "Another claim that cites it, and that this proposal does not change: "
-            ),
+            line.starts_with("A claim that cites it, and that this proposal does not change: "),
             "{line}"
         );
         assert!(
@@ -1475,7 +1473,7 @@ fn the_review_that_stays_says_so_and_names_the_claims_that_rely_on_the_source_in
     assert!(
         ja.get(1).is_some_and(|m| m
             .as_str()
-            .starts_with("この出典を引用していて、この提案では変更されない別の主張: ")),
+            .starts_with("この出典を引用していて、この提案では変更されない主張: ")),
         "{ja:?}"
     );
     // Beyond five, the rest are counted.
@@ -1511,7 +1509,7 @@ fn a_change_of_white_space_alone_is_told_with_both_spellings_and_every_space_tab
     assert_eq!(
         more.first().map(|m| m.as_str()),
         Some(
-            "Only the white space in its title changes (␣ is a space, ⇥ a tab, ↵ a line break): <bdi>A␣history</bdi> becomes <bdi>␣A[U+00A0]history⇥[U+000D]↵</bdi>."
+            "Only the white space in its title changes (␣ is a space, ⇥ a tab, ↵ a line break, [U+XXXX] a character by its code point: other white space, and any of these marks or a [ that the text itself holds): <bdi>A␣history</bdi> becomes <bdi>␣A[U+00A0]history⇥[U+000D]↵</bdi>."
         )
     );
     let ja = lines(japanese(), std::slice::from_ref(&item), &know)
@@ -1526,6 +1524,30 @@ fn a_change_of_white_space_alone_is_told_with_both_spellings_and_every_space_tab
     // The same words with no white space to show read as one spelling.
     assert_eq!(visible("A history"), "A␣history");
     assert_ne!(visible("A history"), visible("A  history"));
+    // A mark the text holds itself is written by its code point, as is the bracket that opens one (K75): no text reads
+    // like the white space it is not.
+    assert_eq!(visible("A\u{2423}B"), "A[U+2423]B");
+    assert_eq!(visible("a\u{21e5}b\u{21b5}"), "a[U+21E5]b[U+21B5]");
+    assert_eq!(visible("[U+00A0]"), "[U+005B]U+00A0]");
+    assert_ne!(visible("[U+00A0]"), visible("\u{a0}"));
+    assert_ne!(visible("\u{2423}"), visible(" "));
+    // A spelling that is nothing says so, in both languages, and is not an empty `<bdi>`.
+    let blank = changed(vec![SourceChange::WhiteSpace {
+        part: Spelled::Author,
+        was: String::new(),
+        now: "  ".to_owned(),
+    }]);
+    let en = lines(T::new(EN), std::slice::from_ref(&blank), &know)
+        .remove(0)
+        .more;
+    let en = en.first().map(|m| m.as_str()).unwrap_or_default();
+    assert!(en.ends_with(": (none) becomes <bdi>␣␣</bdi>."), "{en}");
+    assert!(!en.contains("<bdi></bdi>"), "{en}");
+    let ja = lines(japanese(), std::slice::from_ref(&blank), &know)
+        .remove(0)
+        .more;
+    let ja = ja.first().map(|m| m.as_str()).unwrap_or_default();
+    assert!(ja.contains("（なし） が <bdi>␣␣</bdi> になります"), "{ja}");
     // Each part of a name, and where it is found, has its own sentence.
     for (part, words) in [
         (Spelled::Author, "its author or publisher"),

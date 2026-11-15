@@ -59,6 +59,41 @@ impl Request {
             .said("explanation", words::invalid_text(self.t, why))
     }
 
+    /// [`Request::refusal`] for the refusal of a proposal whose files are `files`, written on `block` (K73): what only a
+    /// curation proposal may do is told as the pages tell it (`curate::sentences`), so that a removal, or the replacement
+    /// of a file that cannot be read, is told to be not offered in this version and never to be something only a curation
+    /// proposal may do. Any other refusal is [`Request::refusal`]'s.
+    pub(crate) fn refusal_of(
+        &self,
+        error: ProposalError,
+        files: &[inklkunn_store::FileChange],
+        block: &str,
+    ) -> Problem {
+        if !matches!(error, ProposalError::Invalid(Invalid::KnowledgeCurated)) {
+            return self.refusal(error);
+        }
+        let given: Vec<(String, Option<String>)> = files
+            .iter()
+            .filter(|f| inklkunn_core::knowledge::family_of(&f.path).is_some())
+            .map(|f| (f.path.clone(), f.text.clone()))
+            .collect();
+        // A base that cannot be read now is the service's to say; here it only chooses the words, so it is no file.
+        let was = |path: &str| {
+            self.services
+                .read
+                .source_at(&self.wiki, block, path)
+                .ok()
+                .flatten()
+        };
+        let refused = inklkunn_core::knowledge::check::curated_by(&given, &was);
+        Problem::new(Code::Unacceptable)
+            .named("reason", invalid_word(Invalid::KnowledgeCurated))
+            .said(
+                "explanation",
+                crate::knowledge::curate::sentences(self.t, &refused).join(" "),
+            )
+    }
+
     /// A refusal of a page the API checks before the service does (the same words, a word of its own).
     pub(crate) fn unacceptable_with(&self, reason: &'static str, explanation: String) -> Problem {
         Problem::new(Code::Unacceptable)
