@@ -29,13 +29,15 @@
 //! must not exist: a failed export leaves nothing. The extraction directory in the wiki's scratch directory is
 //! removed whatever happened. Both directories (the extraction, and `.<name>.partial-*` beside the destination) are
 //! held by a lock file for as long as the export lives ([`crate::read::scratch`]), and an export begins by sweeping
-//! what a killed one left there: only a directory whose lock is free, never one decided dead from `/proc` (K65).
+//! what a killed one left there: only a directory whose lock is free, never one decided dead from `/proc` (K65). Beside
+//! the destination, which is a person's directory, only a partial whose lock file already exists is swept (K74).
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::Write as _;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
+use inklkunn_prikk::storage::Entry;
 use inklkunn_prikk::{ExtractBounds, Materialized, Point, Storage, StorageError};
 use inklkunn_signer::message::{Actor, Message};
 use inklkunn_store::{
@@ -46,7 +48,7 @@ use sha2::{Digest, Sha256};
 
 use crate::bundle::{self, ExportFacts, ManifestFacts, markdown_text, yaml_quote};
 use crate::knowledge::ClaimId;
-use crate::read::scratch::{Extract, Partial};
+use crate::read::scratch::{Extract, Partial, partial_name_too_long_by};
 
 /// How many blocks of history an export reads (`log --limit`). A history longer than this is refused rather than
 /// cut short: an export that silently lacks its oldest changes would be a lie about the wiki.
@@ -588,6 +590,13 @@ fn export_bundle_inner(
         .file_name()
         .and_then(|n| n.to_str())
         .ok_or_else(|| ExportError::Destination("its name is not UTF-8".to_owned()))?;
+    // The bundle is built in `.<name>.partial-<tail>` beside the destination, with a lock file beside that: a name the file
+    // system could not hold is said so, with the bytes to cut, before anything is read or made.
+    if let Some(over) = partial_name_too_long_by(name) {
+        return Err(ExportError::Destination(format!(
+            "the name is too long by {over} bytes"
+        )));
+    }
     let repo = layout.repo_dir(&record.id);
     let view = record.default_view.as_str();
     // One tip, by its block id.
@@ -595,6 +604,7 @@ fn export_bundle_inner(
         .tree(&repo, &Point::View(view.to_owned()), None)
         .map_err(ExportError::Storage)?;
     let tip = tree.target_block_id;
+    let listed = tree.entries;
     // One extraction of it, in the wiki's scratch directory: claimed by a lock, which holds until the extraction is
     // removed (at the end of this function, whatever happened), so no other process's sweep takes it from under the
     // export, and a killed export's is swept by the next one.
@@ -633,6 +643,7 @@ fn export_bundle_inner(
         &tip,
         &extraction.root(),
         &extracted,
+        &listed,
         &partial.path(),
         inklkunn_version,
         now,
@@ -700,19 +711,42 @@ fn build(
     tip: &str,
     extracted: &Path,
     report: &Materialized,
+    listed: &[Entry],
     partial: &Path,
     inklkunn_version: &str,
     now: i64,
     records: Option<&KnowledgeRecords>,
 ) -> Result<Exported, ExportError> {
-    // The bundle is of the files prikk said it extracted: a tree with a file missing (or one more) is not that tree,
-    // and a bundle of it, with checksums that match what it holds, would be a false statement about the wiki.
+    // The bundle is of the files the tip has: a tree with a file missing (or one more, or one of other bytes) is not that
+    // tree, and a bundle of it, with checksums that match what it holds, would be a false statement about the wiki. The
+    // witness is the listing of the tip's files, path by path with their sizes (the totals alone pass a missing file and an
+    // extra one of the same size), and prikk's own report of the extraction, which must agree in its totals.
     let files = files_under(extracted)?;
+    let mut held: BTreeMap<&str, u64> = BTreeMap::new();
     let mut bytes = 0_u64;
     for rel in &files {
-        bytes += std::fs::symlink_metadata(extracted.join(rel))
+        let len = std::fs::symlink_metadata(extracted.join(rel))
             .map_err(|e| io("an extracted file could not be examined", &e))?
             .len();
+        bytes += len;
+        held.insert(rel.as_str(), len);
+    }
+    let mut expected: BTreeMap<&str, Option<u64>> = BTreeMap::new();
+    for entry in listed.iter().filter(|e| e.kind == "file") {
+        expected.insert(entry.path.as_str(), entry.size);
+    }
+    let differs = |path: &str| -> String {
+        format!(
+            "the extraction does not hold the files the tip lists (`{path}` is missing, extra or of other bytes); nothing was written"
+        )
+    };
+    for (path, len) in &held {
+        if expected.get(path) != Some(&Some(*len)) {
+            return Err(ExportError::Io(differs(path)));
+        }
+    }
+    if let Some(path) = expected.keys().find(|path| !held.contains_key(*path)) {
+        return Err(ExportError::Io(differs(path)));
     }
     if files.len() as u64 != report.file_count || bytes != report.total_bytes {
         return Err(ExportError::Io(format!(

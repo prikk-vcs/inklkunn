@@ -13,7 +13,7 @@ use inklkunn_core::export::{
     KnowledgeRecords, claim_discussions, export_bundle, export_bundle_with, knowledge_records,
 };
 use inklkunn_prikk::storage::{
-    Change, Diff, FileMeta, History, HistoryBlock, Materialized, Tree, Verification, Views,
+    Change, Diff, Entry, FileMeta, History, HistoryBlock, Materialized, Tree, Verification, Views,
 };
 use inklkunn_prikk::{ExtractBounds, Point, Storage, StorageError};
 use inklkunn_store::{
@@ -74,7 +74,17 @@ impl Storage for Stand {
             point: point.to_string(),
             target_block_id: TIP.to_owned(),
             prefix: None,
-            entries: Vec::new(),
+            entries: self
+                .files
+                .iter()
+                .map(|(path, text)| Entry {
+                    path: path.clone(),
+                    kind: "file".to_owned(),
+                    encoding: None,
+                    mode: None,
+                    size: Some(text.len() as u64),
+                })
+                .collect(),
         })
     }
     fn stat(&self, _: &Path, _: &Point, _: &str) -> Result<FileMeta, StorageError> {
@@ -564,6 +574,35 @@ fn a_wiki_with_no_thread_and_no_view_carries_the_extension_only_for_its_knowledg
         "{bare_manifest}"
     );
     assert!(bundle_manifest::violations(&bare_manifest).is_empty());
+}
+
+/// K74 (the review's C-b): the export sweeps what a killed export left beside its destination, and only that. A directory
+/// the export did not make, named like a partial bundle of the old build (`.notes.partial-2026-11/`, a person's files in it)
+/// is whole after `export notes`, as is one with the new build's tail and no lock file.
+#[test]
+fn an_export_leaves_a_directory_beside_its_destination_that_it_did_not_make_whole() {
+    let r = rig("beside");
+    let parent = r.out.parent().expect("a parent").to_path_buf();
+    let dest = parent.join("notes");
+    let theirs = [
+        parent.join(".notes.partial-2026-11"),
+        parent.join(".notes.partial-2026-11-05"),
+        parent.join(".notes.partial-4294967000-7"),
+    ];
+    for dir in &theirs {
+        std::fs::create_dir_all(dir.join("papers")).expect("their directory");
+        std::fs::write(dir.join("papers/thesis.txt"), "my files").expect("their file");
+    }
+    let stand = repository();
+    export_bundle(&stand, &r.layout, &r.wiki, &dest, "0.0.0", 1).unwrap_or_else(|e| panic!("{e}"));
+    assert!(dest.join("wiki-bundle.yaml").is_file());
+    for dir in &theirs {
+        assert_eq!(
+            std::fs::read_to_string(dir.join("papers/thesis.txt")).unwrap_or_default(),
+            "my files",
+            "{dir:?} was removed by the export"
+        );
+    }
 }
 
 #[test]

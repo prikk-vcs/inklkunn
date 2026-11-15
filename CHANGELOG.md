@@ -1397,7 +1397,7 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   Then look in each wiki's scratch directory, `<INKLKUNN_DATA_DIR>/wikis/<xx>/<wiki id>.scratch/` (`<xx>` is the first two characters of
   the id), and delete any `import-<pid>-<nanos>` directory there: a crashed 0.2.0 `wiki import-folder` left a whole copy of the wiki in
   one, and nothing sweeps that name any more; likewise any `export-<pid>-<nanos>` there, the same for a crashed 0.2.0 export (a
-  `.<name>.partial-<pid>-<nanos>` directory beside an export's destination is swept by the next export to that destination). Tests: a
+  `.<name>.partial-<pid>-<nanos>` directory beside an export's destination is no longer swept: remove it by hand, see K74). Tests: a
   sweep as PID 1 of a fresh PID namespace beside an export, at the two moments it is exposed (its extraction just made, its bundle
   being built), leaves both whole and the bundle has every page (`inklkunn-signer/tests/extract_pid_namespace.rs`, which prints
   `skipping: PID namespaces unavailable` where there is no namespace); a `build` given a tree with a file missing, one more, or the
@@ -1500,6 +1500,27 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   the state the kill left: a person types the patch's id, the run takes the patch back (`discard-queued`, `restore-worktree`,
   `verify`, `reconcile`, `clear-flag`), the queue is empty, no block was made or taken away, the page in the worktree is the tip's
   again and the repository verifies. No new test, so no change to the skip count.
+
+- **K74 (handoff 005 corrections, eighth round): the export's partial sweep stays inside what the export made (review C-b, C-c).**
+  Beside a destination, which a person chose, the sweep took the lock of any `.<name>.partial-<digits>-<digits>` it found, made the
+  lock file if there was none, and removed the directory: `~/exports/.notes.partial-2026-11/` holding a person's files was removed
+  by `wiki export … ~/exports/notes`. Now a partial is swept there **only when its lock file already exists and its name ends in
+  the three-part tail** `<pid>-<start time>-<n>`; a directory with no lock file, or with the earlier build's two-part `<pid>-<n>`
+  tail, is never touched there, and no lock file is made beside it. The two-part tail is swept only inside the service's own scratch
+  directory (`index-<pid>-<n>`, where every such name was made by an extract). **Upgrading from 0.2.x:** a crashed 0.2.x export left
+  a `.<name>.partial-<pid>-<nanos>` directory beside its destination, and nothing sweeps that name any more (this corrects the
+  K65 note above, which said the next export removes it): remove it by hand. `build` now compares the files it bundles with the
+  tip's listing (`storage.tree`) path by path with their sizes, and refuses a difference, a file listed without a size included, with
+  nothing written; the totals alone passed a missing file together with an extra one of the same size (prikk's report of the
+  extraction must still agree in its totals). A destination whose partial bundle's name, or its lock file's, the file system could not
+  hold (a name of about 215 bytes and up) is refused before anything is read as *the name is too long by N bytes* (`partial_name_too_long_by`;
+  N can be up to five bytes more than the claim needs: the measure reserves six digits for the claim count), where it used to fail as
+  *the destination's directory could not be used*. Tests: the reviewer's `.notes.partial-2026-11/` and a three-part name with no lock
+  file are whole after `export notes` and after sweeps and claims (`export_discussions.rs`, `read/tests/scratch.rs`; with the old
+  rule restored they fail, as does the roundtrip's sweep test, which now also keeps both names); a swap of two files of equal size
+  (one missing, one extra), two files of other sizes with the same total, a listed file the extraction lacks, an extracted file the tip
+  does not list and a listing without sizes are each refused by `build`; a name too long is refused with its bytes, and a name cut by
+  them can be claimed while one six bytes longer cannot. No prikk-dependent test is added or removed.
 
 ## [0.2.0] — 2026-11-04
 

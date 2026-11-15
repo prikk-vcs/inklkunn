@@ -804,6 +804,9 @@ fn an_export_begins_by_sweeping_what_a_killed_one_left_and_touches_nothing_else(
         scratch.join("tip-index"),
         out.0.join(format!(".other.partial-{dead}-1-0")),
         out.0.join(format!(".bundle.partial-{dead}")),
+        // No lock file: not an export's, whatever the name (K74).
+        out.0.join(format!(".bundle.partial-{dead}-1-1")),
+        out.0.join(".bundle.partial-2026-11"),
         out.0.join("bundle-notes"),
     ];
     for dir in &kept {

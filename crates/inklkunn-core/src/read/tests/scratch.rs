@@ -469,15 +469,19 @@ fn a_partial_bundle_is_held_by_a_lock_file_and_swept_only_when_the_lock_is_free(
     let w = World::pages(&[("Home", &[], "x\n")]);
     let parent = scratch_of(&w);
     let dest = "bundle";
-    // Left by processes that are gone: a free lock (this process's own pid among them: only the lock says), a lock file
-    // alone, and the earlier build's name without a lock file.
+    // Left by processes that are gone: a free lock (this process's own pid among them: only the lock says) and a lock file
+    // alone.
     let gone = plant(
         &parent,
         &format!(".{dest}.partial-{}-5-0", std::process::id()),
     );
     let lock_only = parent.join(format!(".{dest}.partial-{NO_SUCH_PID}-5-1.lock"));
     drop(try_exclusive(&lock_only).expect("lock file"));
+    // Beside a destination, a directory with no lock file is not a claim's whatever its name (K74): the earlier build's
+    // two-part tail and the current three-part one alike, and the earlier build's even with a lock file beside it.
     let no_lock = plant_directory(&parent, &format!(".{dest}.partial-{NO_SUCH_PID}-7"));
+    let no_lock_three = plant_directory(&parent, &format!(".{dest}.partial-{NO_SUCH_PID}-7-1"));
+    let two_part_locked = plant(&parent, &format!(".{dest}.partial-{NO_SUCH_PID}-8"));
     // Not this destination's partial bundles: left alone.
     let other = plant(&parent, &format!(".other.partial-{NO_SUCH_PID}-5-0"));
     let not_a_tail = plant(&parent, &format!(".{dest}.partial-{NO_SUCH_PID}"));
@@ -510,14 +514,21 @@ fn a_partial_bundle_is_held_by_a_lock_file_and_swept_only_when_the_lock_is_free(
         100,
         "a held partial bundle is whole after a second claim and a sweep"
     );
-    for removed in [&gone, &no_lock, &lock_only] {
+    for removed in [&gone, &lock_only] {
         assert!(!removed.exists(), "{removed:?} was not held and stayed");
     }
     assert!(
         !PathBuf::from(format!("{}.lock", gone.display())).exists(),
         "a lock file goes with its directory"
     );
-    for kept in [&other, &not_a_tail, &a_file] {
+    for kept in [
+        &other,
+        &not_a_tail,
+        &a_file,
+        &no_lock,
+        &no_lock_three,
+        &two_part_locked,
+    ] {
         assert!(kept.exists(), "{kept:?} is not this destination's and went");
     }
     // The export moves the bundle away: nothing is left of the claim but its lock file, and that goes with the value.
@@ -526,4 +537,60 @@ fn a_partial_bundle_is_held_by_a_lock_file_and_swept_only_when_the_lock_is_free(
     drop(held);
     assert!(!lock.exists(), "the lock file goes after the directory");
     assert!(moved.join("pages/P99.md").exists(), "and the bundle stays");
+}
+
+/// K74 (the review's C-b): beside a destination, which a person chose, a sweep removes a directory only when an export made
+/// it: its lock file is there and its name has the current three-part tail. A person's `.notes.partial-2026-11/` holding
+/// their files is whole after any number of sweeps and claims, and no lock file is made beside it.
+#[test]
+fn a_directory_beside_a_destination_that_an_export_did_not_make_is_never_swept() {
+    let w = World::pages(&[("Home", &[], "x\n")]);
+    let parent = scratch_of(&w);
+    let dest = "notes";
+    let theirs = plant_directory(&parent, &format!(".{dest}.partial-2026-11"));
+    let theirs_dated = plant_directory(&parent, &format!(".{dest}.partial-2026-11-05"));
+    for _ in 0..3 {
+        sweep_partials(&parent, dest);
+        drop(Partial::begin(&parent, dest).expect("a claim"));
+    }
+    for kept in [&theirs, &theirs_dated] {
+        assert!(
+            kept.join("pages/Junk.md").is_file(),
+            "{kept:?}: a person's directory was swept"
+        );
+    }
+    assert!(
+        !parent
+            .join(format!(".{dest}.partial-2026-11.lock"))
+            .exists()
+            && !parent
+                .join(format!(".{dest}.partial-2026-11-05.lock"))
+                .exists(),
+        "and no lock file was made beside it"
+    );
+}
+
+/// K74 (the review's C-c): a name the file system cannot hold for the partial bundle (and its lock file) is measured: cut
+/// what is said and the claim works; a name six bytes longer than that cannot be claimed whatever the count of claims the
+/// process has made (the measure reserves six digits for it, and the count has at least one).
+#[test]
+fn the_longest_destination_name_is_measured_to_the_byte() {
+    use super::super::scratch::partial_name_too_long_by;
+    let w = World::pages(&[("Home", &[], "x\n")]);
+    let parent = scratch_of(&w);
+    assert_eq!(partial_name_too_long_by("bundle"), None);
+    let long = "n".repeat(240);
+    let over = partial_name_too_long_by(&long).expect("too long");
+    assert!(over > 0 && over < 100, "{over}");
+    let fits = &long[..long.len() - over];
+    assert_eq!(partial_name_too_long_by(fits), None);
+    let claim = Partial::begin(&parent, fits).expect("the longest name that fits");
+    std::fs::create_dir(claim.path()).expect("the directory of the longest name");
+    drop(claim);
+    let six_over = "n".repeat(fits.len() + 6);
+    assert_eq!(partial_name_too_long_by(&six_over), Some(6));
+    assert!(
+        Partial::begin(&parent, &six_over).is_err(),
+        "a name that is too long by the reservation cannot be claimed"
+    );
 }

@@ -3,7 +3,7 @@
 //! trip are `tests/export_roundtrip.rs`, against a real prikk.
 
 use inklkunn_prikk::storage::{
-    Change, Diff, FileMeta, History, Materialized, Tree, Verification, Views,
+    Change, Diff, Entry, FileMeta, History, Materialized, Tree, Verification, Views,
 };
 
 use std::os::unix::fs::PermissionsExt as _;
@@ -178,10 +178,26 @@ fn reported(files: u64, bytes: u64) -> Materialized {
     }
 }
 
-/// K65: the bundle is of the files prikk reported extracting. A tree with a file gone (a sweep, a crash, a full disk) would
-/// give a bundle with checksums that match what it holds and a success, and so a false statement about the wiki.
+/// The tip's listing of these files: `(path, size)`.
+fn listing(files: &[(&str, u64)]) -> Vec<Entry> {
+    files
+        .iter()
+        .map(|(path, size)| Entry {
+            path: (*path).to_owned(),
+            kind: "file".to_owned(),
+            encoding: None,
+            mode: None,
+            size: Some(*size),
+        })
+        .collect()
+}
+
+/// K65, K74: the bundle is of the files the tip lists, path by path with their sizes, and of the number and bytes prikk
+/// reported extracting. A tree with a file gone (a sweep, a crash, a full disk) would give a bundle with checksums that match
+/// what it holds and a success, and so a false statement about the wiki; and totals alone pass a missing file together with
+/// an extra one of the same size.
 #[test]
-fn a_tree_that_is_not_the_one_prikk_reported_is_refused_and_nothing_is_written() {
+fn a_tree_that_is_not_the_one_the_tip_lists_is_refused_and_nothing_is_written() {
     let tmp = std::env::temp_dir().join(format!("inklkunn-export-report-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     let extracted = tmp.join("extracted");
@@ -189,7 +205,7 @@ fn a_tree_that_is_not_the_one_prikk_reported_is_refused_and_nothing_is_written()
     std::fs::write(extracted.join("pages/A.md"), "aaa").unwrap();
     std::fs::write(extracted.join("pages/B.md"), "bb").unwrap();
     let partial = tmp.join("partial");
-    let build_with = |report: &Materialized| {
+    let build_with = |report: &Materialized, listed: &[Entry]| {
         build(
             &Unreachable,
             Path::new("/repo"),
@@ -198,28 +214,94 @@ fn a_tree_that_is_not_the_one_prikk_reported_is_refused_and_nothing_is_written()
             "tip",
             &extracted,
             report,
+            listed,
             &partial,
             "0.0.0",
             1,
             None,
         )
     };
+    let whole = listing(&[("pages/A.md", 3), ("pages/B.md", 2)]);
     for (what, report) in [
         ("a file missing", reported(3, 5)),
         ("a file more", reported(1, 5)),
         ("the bytes of one short", reported(2, 7)),
         ("the bytes of one over", reported(2, 4)),
     ] {
-        let err = build_with(&report).unwrap_err();
+        let err = build_with(&report, &whole).unwrap_err();
         assert!(
             matches!(&err, ExportError::Io(why) if why.contains("nothing was written")),
             "{what}: {err}"
         );
         assert!(!partial.exists(), "{what}: the bundle's directory was made");
     }
-    // The tree prikk reported goes through the check (and on to the history, which this storage refuses).
-    let err = build_with(&reported(2, 5)).unwrap_err();
+    // The totals agree with the report in every one of these; the paths and the sizes do not agree with the tip's.
+    let mut with_one_more = whole.clone();
+    with_one_more.extend(listing(&[("pages/Z.md", 0)]));
+    let mut without_sizes = whole.clone();
+    without_sizes.iter_mut().for_each(|e| e.size = None);
+    for (what, listed) in [
+        (
+            "a swap of two files of equal size (one missing, one extra)",
+            listing(&[("pages/A.md", 3), ("pages/C.md", 2)]),
+        ),
+        (
+            "two files of other sizes with the same total",
+            listing(&[("pages/A.md", 2), ("pages/B.md", 3)]),
+        ),
+        ("a listed file the extraction lacks", with_one_more),
+        (
+            "an extracted file the tip does not list",
+            listing(&[("pages/A.md", 3)]),
+        ),
+        ("files listed without a size", without_sizes),
+    ] {
+        let err = build_with(&reported(2, 5), &listed).unwrap_err();
+        assert!(
+            matches!(&err, ExportError::Io(why) if why.contains("nothing was written") && why.contains("the tip lists")),
+            "{what}: {err}"
+        );
+        assert!(!partial.exists(), "{what}: the bundle's directory was made");
+    }
+    // The tree the tip lists goes through the check (and on to the history, which this storage refuses). A directory in the
+    // listing is not a file.
+    let mut with_dir = whole.clone();
+    with_dir.push(Entry {
+        path: "pages".to_owned(),
+        kind: "dir".to_owned(),
+        encoding: None,
+        mode: None,
+        size: None,
+    });
+    let err = build_with(&reported(2, 5), &with_dir).unwrap_err();
     assert!(matches!(err, ExportError::Storage(_)), "{err}");
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// K74 (the review's C-c): a destination whose partial bundle's name (and lock file's) the file system could not hold is
+/// refused before anything is read, with the bytes to cut, and not as an opaque failure of the destination's directory.
+#[test]
+fn a_destination_name_too_long_for_its_partial_bundle_is_refused_with_the_bytes_to_cut() {
+    let tmp = std::env::temp_dir().join(format!("inklkunn-export-long-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    let layout = RootLayout::new(tmp.join("root"));
+    let name = "n".repeat(230);
+    let over = crate::read::scratch::partial_name_too_long_by(&name).expect("too long");
+    let err = export_bundle(
+        &Unreachable,
+        &layout,
+        &record(),
+        &tmp.join(&name),
+        "0.0.0",
+        1,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(&err, ExportError::Destination(why) if *why == format!("the name is too long by {over} bytes")),
+        "{err}"
+    );
+    assert!(std::fs::read_dir(&tmp).unwrap().next().is_none());
     let _ = std::fs::remove_dir_all(&tmp);
 }
 

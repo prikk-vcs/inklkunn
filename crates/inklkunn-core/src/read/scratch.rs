@@ -17,6 +17,13 @@
 //! it the same way ([`Partial`]): a lock file beside it, taken before the directory is made, swept only when its lock can
 //! be taken. The export's extraction is an [`Extract`] like the others.
 //!
+//! **What a sweep may touch depends on where it looks (K74).** The scratch directory is the service's: everything of the
+//! shape `index-<pid>-<start time>-<n>` (and the earlier build's `index-<pid>-<n>`) in it was made by an extract, so a
+//! directory with no lock file is a leftover and goes. A destination's directory is a person's: beside it a sweep removes a
+//! partial bundle only when its **lock file already exists** and its tail is the three-part `<pid>-<start time>-<n>`. A
+//! directory with no lock file, or with the earlier build's two-part tail, is never touched there, whatever its name
+//! (`~/exports/.notes.partial-2026-11/` is a person's); a 0.2.x partial is removed by hand (the CHANGELOG says so).
+//!
 //! **Supported filesystems.** The data directory (and the directory an export is written to) must be on a local
 //! filesystem, or a bind mount of one, where `flock` is one lock for every process that has the file open. A network
 //! filesystem (NFS, SMB, anything mounted with `local_lock`) is **not supported**: there `flock` may be per process, or
@@ -57,11 +64,22 @@ fn unique_tail() -> String {
     )
 }
 
-/// Is `tail` the tail of a name: `<pid>-<start time>-<n>`, or the earlier build's `<pid>-<n>`, digits only?
-fn is_tail(tail: &str) -> bool {
+/// Is `tail` made of `parts` numbers (digits only) joined by `-`?
+fn is_tail_of(tail: &str, parts: &[usize]) -> bool {
     let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
-    let parts: Vec<&str> = tail.split('-').collect();
-    matches!(parts.len(), 2 | 3) && parts.iter().all(|p| digits(p))
+    let split: Vec<&str> = tail.split('-').collect();
+    parts.contains(&split.len()) && split.iter().all(|p| digits(p))
+}
+
+/// Is `tail` the tail of an extract's name: `<pid>-<start time>-<n>`, or the earlier build's `<pid>-<n>`?
+fn is_tail(tail: &str) -> bool {
+    is_tail_of(tail, &[2, 3])
+}
+
+/// Is `tail` the tail of a partial bundle's name: `<pid>-<start time>-<n>`? The earlier build's two-part tail is not: a
+/// name of that shape beside a destination may be a person's (K74).
+fn is_partial_tail(tail: &str) -> bool {
+    is_tail_of(tail, &[3])
 }
 
 /// Is `name` the name of an extract (`index-<tail>`), and nothing else? Only these are ever removed from a scratch
@@ -73,6 +91,28 @@ fn is_extract_name(name: &str) -> bool {
 /// The prefix of the partial bundles of the export whose destination is called `dest`.
 fn partial_prefix(dest: &str) -> String {
     format!(".{dest}.partial-")
+}
+
+/// The longest name a directory entry may have (`NAME_MAX` on Linux).
+const NAME_MAX: usize = 255;
+
+/// The digits of the claim count that [`partial_name_too_long_by`] reserves: a process makes far fewer than a million
+/// claims, and a count that varied the answer from one call to the next would make a limit that cannot be tested.
+const RESERVED_COUNT_DIGITS: usize = 6;
+
+/// By how many bytes the partial bundle of an export to a destination called `dest` would have a name (or a lock file's name)
+/// too long for the file system, or `None` when it fits: what the person must cut from `dest` (K74). The tail is the one
+/// this process would make, with room for a count of six digits, so a name that is not refused can
+/// always be claimed, and the number can be up to five bytes more than the claim needs.
+pub fn partial_name_too_long_by(dest: &str) -> Option<usize> {
+    let digits = |n: u64| n.to_string().len();
+    let tail = digits(u64::from(std::process::id()))
+        + 1
+        + digits(start_time())
+        + 1
+        + digits(CLAIMS.load(Ordering::Relaxed)).max(RESERVED_COUNT_DIGITS);
+    let longest = partial_prefix(dest).len() + tail + LOCK_SUFFIX.len();
+    longest.checked_sub(NAME_MAX).filter(|over| *over > 0)
 }
 
 fn lock_of(dir: &Path, name: &str) -> PathBuf {
@@ -192,41 +232,63 @@ impl Partial {
 
 /// Remove the extracts in `scratch` that no process holds: those whose lock can be taken without waiting. Only names of
 /// exactly the shape `index-<pid>-<start time>-<n>` (and of the earlier build's) are looked at, nothing is followed, and an
-/// extract whose lock is held, by this process or another, is not touched.
+/// extract whose lock is held, by this process or another, is not touched. The scratch directory is the service's own, so
+/// an extract with no lock file (the earlier build's) is a leftover and goes.
 pub fn sweep_leftovers(scratch: &Path) {
-    sweep(scratch, is_extract_name);
+    sweep(scratch, Where::Scratch, is_extract_name);
 }
 
 /// Remove the partial bundles in `parent` of destinations called `dest` that no process holds, as [`sweep_leftovers`]
-/// does for extracts: only names `.<dest>.partial-<pid>-<start time>-<n>` (or the earlier build's `<pid>-<n>`).
+/// does for extracts, but more narrowly, because `parent` is a person's directory and not the service's (K74): only a
+/// partial whose lock file **already exists** and whose name is `.<dest>.partial-<pid>-<start time>-<n>` is looked at. A
+/// directory with no lock file, or with the earlier build's `<pid>-<n>` tail, is never touched.
 pub fn sweep_partials(parent: &Path, dest: &str) {
     let prefix = partial_prefix(dest);
-    sweep(parent, |name| {
-        name.strip_prefix(prefix.as_str()).is_some_and(is_tail)
+    sweep(parent, Where::BesideDestination, |name| {
+        name.strip_prefix(prefix.as_str())
+            .is_some_and(is_partial_tail)
     });
 }
 
-fn sweep(dir: &Path, is_ours: impl Fn(&str) -> bool) {
+/// Whose directory a sweep looks in.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Where {
+    /// The service's scratch directory: whatever has the shape of an extract's name was made by one.
+    Scratch,
+    /// A directory a person chose, beside an export's destination: only a claim whose lock file exists is ours.
+    BesideDestination,
+}
+
+fn sweep(dir: &Path, place: Where, is_ours: impl Fn(&str) -> bool) {
     let Ok(listing) = std::fs::read_dir(dir) else {
         return;
     };
-    // A claim is its directory, its lock file or both (a crash between the two leaves either).
+    // In the scratch directory a claim is its directory, its lock file or both (a crash between the two leaves either).
+    // Beside a destination it is a lock file: the directory alone may be anyone's.
     let names: BTreeSet<String> = listing
         .flatten()
         .filter_map(|item| item.file_name().into_string().ok())
-        .map(|file| {
-            file.strip_suffix(LOCK_SUFFIX)
-                .map_or(file.clone(), str::to_owned)
+        .filter_map(|file| match file.strip_suffix(LOCK_SUFFIX) {
+            Some(name) => Some(name.to_owned()),
+            None => (place == Where::Scratch).then_some(file),
         })
         .filter(|name| is_ours(name))
         .collect();
     for name in names {
-        sweep_one(dir, &name);
+        sweep_one(dir, place, &name);
     }
 }
 
-fn sweep_one(dir: &Path, name: &str) {
+fn sweep_one(dir: &Path, place: Where, name: &str) {
     let path = lock_of(dir, name);
+    // Beside a destination the lock file must be there already: opening it would otherwise make one, take it, and call the
+    // directory a leftover. (A file that goes between this look and the open is made by the open and held; it was a
+    // finished claim's, whose directory is gone, so nothing is removed on its account but the empty lock file.)
+    if place == Where::BesideDestination
+        && !std::fs::symlink_metadata(&path).is_ok_and(|m| m.is_file())
+    {
+        return;
+    }
     // Without waiting: busy means someone is using the directory. A lock file that cannot be opened (a link, a
     // directory) is not ours.
     let Ok(Acquired::Held(lock)) = try_exclusive(&path) else {

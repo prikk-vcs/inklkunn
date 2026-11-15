@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use inklkunn_core::export::export_bundle;
 use inklkunn_core::read::scratch::{Extract, sweep_leftovers, sweep_partials};
 use inklkunn_prikk::storage::{
-    Change, Diff, FileMeta, History, HistoryBlock, Materialized, Tree, Verification, Views,
+    Change, Diff, Entry, FileMeta, History, HistoryBlock, Materialized, Tree, Verification, Views,
 };
 use inklkunn_prikk::{ExtractBounds, Point, Storage, StorageError};
 use inklkunn_signer::flock::{Acquired, try_exclusive};
@@ -205,7 +205,17 @@ impl Storage for Stand<'_> {
             point: point.to_string(),
             target_block_id: TIP.to_owned(),
             prefix: None,
-            entries: Vec::new(),
+            entries: self
+                .files
+                .iter()
+                .map(|(path, text)| Entry {
+                    path: path.clone(),
+                    kind: "file".to_owned(),
+                    encoding: None,
+                    mode: None,
+                    size: Some(text.len() as u64),
+                })
+                .collect(),
         })
     }
     fn stat(&self, _: &Path, _: &Point, _: &str) -> Result<FileMeta, StorageError> {
