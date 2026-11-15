@@ -3323,3 +3323,24 @@ Follow-ups from the review of 2026-10-31 (handoff 003, S2 – S4).
   `renameat2(RENAME_NOREPLACE)` instead of a `mkdir` and a `rename`: an existing destination, an empty directory included,
   is refused by the kernel in the same step, so the race with a process that makes the destination meanwhile is closed, not
   narrowed.
+
+- **M38 (handoff 010 corrections, sixth round): `pin-check` refuses what it cannot read.** M35's YAML parser is not built: no
+  YAML crate is in the lock, and none is added. Instead the three workflows are held to one canonical form that
+  `pin_check::read_workflow` reads whole, and every line outside it is a refusal with its line number. `jobs:` is a line of its
+  own, once (not `jobs: # all`, not `"jobs":`, not flow style); each job key is `^  [a-z0-9-]+:$` (no comment, quote or
+  trailing space), and a job whose key is refused is read as no job, so the next job's timeout is never credited to the one
+  before it; each job has `steps:` and one `timeout-minutes: <N>` among its own keys before it; every line that mentions
+  `rustup` (in any case) is, whole, the pin's install with the components `rust-toolchain.toml` names, the minimum's install,
+  `rustup default <pin or minimum>` or one of the two lines of the shimmed run, inside a block `run: |` of a job: a one-line
+  `run:`, `rustup install`, `set -e; rustup toolchain install …`, `… && …`, `… || …`, a continued command, a trailing comment,
+  `RUSTUP_TOOLCHAIN` and a `run: |-` block are all refused. `jobs_without_timeout` is now the reader's. The reviewer's shapes
+  are planted failures, each refused; the guards count what the reader finds in the real workflows (at least 10 jobs, 6
+  installs of the pin, 1 of the minimum) and hold that its install count equals the count of lines that start `rustup toolchain
+  install`. The three workflows were already canonical and are unchanged. No new test that needs prikk.
+- **M40 (handoff 010 corrections, sixth round), `user_namespace_violations`.** The rule compared the lift of the runner's
+  user-namespace restriction with the first `cargo test` anywhere in the file and ignored `if:`. It now reads the jobs and checks
+  each step that runs `cargo test`: a step of the same job before it (or an earlier line of the same step) must lift the
+  restriction, and every `if:` in force on that lift (its job's and its own) must also hold on the test step, so a lift guarded by
+  a condition the test does not share does not count. A lift in another job does not count, and the message names the job that is
+  wrong. Planted failures: no lift, a lift after the test, the restriction set instead of lifted, a lift made optional with
+  `|| true`, a lift under a condition the test lacks, a lift in another job, one job of two without a lift, no test at all.

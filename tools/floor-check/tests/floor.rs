@@ -173,19 +173,124 @@ fn both_workflows_lift_the_user_namespace_restriction_before_their_tests() {
 #[test]
 fn the_user_namespace_rule_catches_planted_failures() {
     let lift = "sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0";
-    let ok = format!("      - name: x\n        run: {lift}\n      - run: cargo test --workspace\n");
+    let job = |name: &str, head: &str, steps: &str| {
+        format!("  {name}:\n    runs-on: ubuntu-24.04\n{head}    steps:\n{steps}")
+    };
+    let lift_step = format!("      - name: x\n        run: {lift}\n");
+    let test_step = "      - run: cargo test --workspace\n";
+    let ok = format!(
+        "jobs:\n{}",
+        job("a", "", &format!("{lift_step}{test_step}"))
+    );
     assert!(user_namespace_violations(&ok).is_empty());
+    // A lift and a test on one step, the lift first, is a lift; the test first is not.
+    let one_step = format!(
+        "jobs:\n{}",
+        job(
+            "a",
+            "",
+            &format!("      - name: t\n        run: |\n          {lift}\n          cargo test\n")
+        )
+    );
+    assert!(user_namespace_violations(&one_step).is_empty());
+    assert!(
+        !user_namespace_violations(&one_step.replace(
+            &format!("          {lift}\n          cargo test\n"),
+            &format!("          cargo test\n          {lift}\n")
+        ))
+        .is_empty(),
+        "a lift after the test on the same step"
+    );
+    // The same guard on both is shared; a job-level guard is shared by its steps.
+    let both_guarded = format!(
+        "jobs:\n{}",
+        job(
+            "a",
+            "",
+            &format!(
+                "      - name: x\n        if: github.event_name == 'push'\n        run: {lift}\n      - if: ${{{{ github.event_name == 'push' }}}}\n        run: cargo test\n"
+            )
+        )
+    );
+    assert!(
+        user_namespace_violations(&both_guarded).is_empty(),
+        "{:?}",
+        user_namespace_violations(&both_guarded)
+    );
+    let job_guarded = format!(
+        "jobs:\n{}",
+        job(
+            "a",
+            "    if: github.event_name == 'push'\n",
+            &format!("{lift_step}{test_step}")
+        )
+    );
+    assert!(user_namespace_violations(&job_guarded).is_empty());
+    // A lift under an `if:` that the test does not share is no lift (the job-level and the step-level kind).
+    let lift_guarded = format!(
+        "jobs:\n{}",
+        job(
+            "a",
+            "",
+            &format!(
+                "      - name: x\n        if: inputs.mode == 'rehearsal'\n        run: {lift}\n{test_step}"
+            )
+        )
+    );
+    // An unconditional lift covers a test that runs only under a condition.
+    let test_guarded_more = format!(
+        "jobs:\n{}",
+        job(
+            "a",
+            "",
+            &format!(
+                "{lift_step}      - if: inputs.mode == 'rehearsal'\n        run: cargo test\n"
+            )
+        )
+    );
+    assert!(user_namespace_violations(&test_guarded_more).is_empty());
+    // The lift of ANOTHER job does not count: it is the first job that lifts, the second that tests.
+    let other_job = format!(
+        "jobs:\n{}{}",
+        job("a", "", &lift_step),
+        job("b", "", test_step)
+    );
+    // The second job's own lift passes, the first job's test without one does not: one violation, and it
+    // names the job that is wrong.
+    let one_of_two = format!(
+        "jobs:\n{}{}",
+        job("a", "", test_step),
+        job("b", "", &format!("{lift_step}{test_step}"))
+    );
+    let v = user_namespace_violations(&one_of_two);
+    assert!(v.len() == 1 && v.iter().all(|m| m.contains("`a`")), "{v:?}");
     for (what, yaml) in [
         ("no lift", ok.replace(lift, "true")),
         (
             "lifted too late",
-            format!("      - run: cargo test --workspace\n      - run: {lift}\n"),
+            format!(
+                "jobs:\n{}",
+                job("a", "", &format!("{test_step}{lift_step}"))
+            ),
         ),
         (
             "the restriction set instead of lifted",
             ok.replace("userns=0", "userns=1"),
         ),
-        ("no test at all", format!("      - run: {lift}\n")),
+        (
+            "the lift made optional",
+            ok.replace(lift, &format!("{lift} || true")),
+        ),
+        (
+            "no test at all",
+            format!("jobs:\n{}", job("a", "", &lift_step)),
+        ),
+        (
+            "a lift under a condition the test does not share",
+            lift_guarded,
+        ),
+        ("a lift in another job", other_job),
+        ("one job of two without a lift", one_of_two),
     ] {
         assert!(
             !user_namespace_violations(&yaml).is_empty(),

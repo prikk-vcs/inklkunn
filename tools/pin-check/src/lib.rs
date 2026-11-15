@@ -187,46 +187,6 @@ pub fn installs_missing_components(
         .collect()
 }
 
-/// Jobs under `jobs:` with no `timeout-minutes:` of their own (a positive number of minutes). A job without
-/// one runs for up to six hours when a test hangs (maintenance M30).
-pub fn jobs_without_timeout(yaml: &str) -> Vec<(usize, String)> {
-    let mut jobs: Vec<(usize, String, bool)> = Vec::new();
-    let mut in_jobs = false;
-    for (i, line) in yaml.lines().enumerate() {
-        let t = line.trim_start();
-        if t.is_empty() || t.starts_with('#') {
-            continue;
-        }
-        let indent = indent_of(line);
-        if indent == 0 {
-            in_jobs = t == "jobs:";
-            continue;
-        }
-        if !in_jobs {
-            continue;
-        }
-        if indent == 2 && t.ends_with(':') && !t.starts_with('-') {
-            jobs.push((i + 1, t.trim_end_matches(':').to_owned(), false));
-        } else if indent == 4
-            && let Some(rest) = t.strip_prefix("timeout-minutes:")
-            && let Some(job) = jobs.last_mut()
-            && rest
-                .split('#')
-                .next()
-                .unwrap_or("")
-                .trim()
-                .parse::<u32>()
-                .is_ok_and(|n| n > 0)
-        {
-            job.2 = true;
-        }
-    }
-    jobs.into_iter()
-        .filter(|(_, _, has)| !has)
-        .map(|(n, name, _)| (n, name))
-        .collect()
-}
-
 /// `RUST_TOOLCHAIN: "X.Y.Z"` in a workflow's `env:` (the release records the compiler it built with).
 pub fn declared_toolchain_env(yaml: &str) -> Option<String> {
     yaml.lines()
@@ -616,4 +576,265 @@ pub fn rehearsal_violations(release_yaml: &str) -> Vec<String> {
 
 fn first(step: &str) -> String {
     step.lines().next().unwrap_or("").trim().to_owned()
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// The canonical form (maintenance M38). No YAML parser is in the lock and none is added: the workflows are
+// held to ONE form that these line rules read completely, and anything outside it is REFUSED, not skipped.
+// A rule that must understand every shape of YAML can miss one; a form that refuses every other shape cannot.
+// ---------------------------------------------------------------------------------------------------------
+
+/// A job of a workflow, as the canonical reader found it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JobRead {
+    /// The job key's line (1-based).
+    pub line: usize,
+    /// The job key, without its colon.
+    pub name: String,
+    /// `timeout-minutes: <N>` among the job's own keys, before its `steps:`, if it has one.
+    pub timeout: Option<u32>,
+}
+
+/// A canonical `rustup toolchain install` the reader found, inside a `run: |` block of a job.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallRead {
+    /// The line (1-based).
+    pub line: usize,
+    /// The job it stands in.
+    pub job: String,
+    /// The version it installs: the pin or the declared minimum.
+    pub version: String,
+}
+
+/// What the canonical reader made of a workflow.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Reading {
+    /// Every job in the canonical form, in order.
+    pub jobs: Vec<JobRead>,
+    /// Every canonical install, in order.
+    pub installs: Vec<InstallRead>,
+    /// Everything outside the canonical form, one sentence each, with its line. Empty when the workflow is
+    /// canonical.
+    pub refusals: Vec<String>,
+}
+
+/// The only `rustup toolchain install` lines allowed, as whole lines with the version they install: the
+/// pin's, with the components `rust-toolchain.toml` names, and the declared minimum's, without any.
+fn canonical_installs(pin: &str, components: &[String], msrv: &str) -> [(String, String); 2] {
+    let comps: String = components
+        .iter()
+        .map(|c| format!(" --component {c}"))
+        .collect();
+    [
+        (
+            format!("rustup toolchain install {pin} --profile minimal{comps} --no-self-update"),
+            pin.to_owned(),
+        ),
+        (
+            format!("rustup toolchain install {msrv} --profile minimal --no-self-update"),
+            msrv.to_owned(),
+        ),
+    ]
+}
+
+/// The other lines that mention `rustup` and are allowed, as whole lines: the default toolchain (the pin or
+/// the declared minimum) and the two lines that put `rustup` and the compiler on the shimmed run's `PATH`.
+fn canonical_other_rustup(pin: &str, msrv: &str) -> Vec<String> {
+    vec![
+        format!("rustup default {pin}"),
+        format!("rustup default {msrv}"),
+        "for tool in cargo rustc rustdoc; do ln -s \"$(rustup which \"$tool\")\" \"$SHIM/$tool\"; done"
+            .to_owned(),
+        "ln -s \"$(command -v rustup)\" \"$SHIM/rustup\"".to_owned(),
+    ]
+}
+
+fn mentions_rustup(line: &str) -> bool {
+    line.to_ascii_lowercase().contains("rustup")
+}
+
+/// Is `raw` (an unstripped line) a job key in the canonical form `^  [a-z0-9-]+:$`?
+fn is_canonical_job_key(raw: &str) -> bool {
+    raw.strip_prefix("  ")
+        .and_then(|r| r.strip_suffix(':'))
+        .is_some_and(|name| {
+            !name.is_empty()
+                && name
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        })
+}
+
+/// `timeout-minutes: <N>` (a positive number, one trailing ` # comment` read), else `None`.
+fn timeout_value(trimmed: &str) -> Option<u32> {
+    trimmed
+        .strip_prefix("timeout-minutes:")?
+        .split(" #")
+        .next()
+        .unwrap_or("")
+        .trim()
+        .parse::<u32>()
+        .ok()
+        .filter(|n| *n > 0)
+}
+
+/// The job being read.
+struct OpenJob {
+    line: usize,
+    name: String,
+    steps_seen: bool,
+    timeouts_seen: usize,
+    timeout: Option<u32>,
+}
+
+fn close_job(r: &mut Reading, job: Option<OpenJob>) {
+    let Some(j) = job else {
+        return;
+    };
+    if !j.steps_seen {
+        r.refusals.push(format!(
+            "line {}: job `{}` has no `steps:` among its own keys",
+            j.line, j.name
+        ));
+    }
+    if j.timeout.is_none() {
+        r.refusals.push(format!(
+            "line {}: job `{}` has no `timeout-minutes: <N>` among its own keys before `steps:`",
+            j.line, j.name
+        ));
+    }
+    r.jobs.push(JobRead {
+        line: j.line,
+        name: j.name,
+        timeout: j.timeout,
+    });
+}
+
+/// Read a workflow in its canonical form, and record every way it is not (maintenance M38). The form:
+/// - `jobs:` is a line of its own, once, at the left edge;
+/// - each job key is `^  [a-z0-9-]+:$`, with no comment, quote or trailing space, and no line stands at an
+///   odd indent among the job keys;
+/// - each job has `steps:` and, among its own keys (indent 4) **before** `steps:`, one `timeout-minutes: <N>`;
+/// - every line that mentions `rustup` (in any case; comment lines apart) is, whole, one of the canonical
+///   install forms for `pin` (with `components`) or `msrv`, `rustup default <pin or msrv>`, or one of the two
+///   shim lines of the shimmed run, and stands inside a block `run: |` of a job: never in a one-line `run:`,
+///   never after `;`, `&&` or `||`, never continued over lines.
+///
+/// Nothing is skipped: a line the reader cannot place is a refusal, and a job whose key is refused is read
+/// as no job, so its lines credit nothing to the job before it or after it.
+pub fn read_workflow(yaml: &str, pin: &str, components: &[String], msrv: &str) -> Reading {
+    let installs = canonical_installs(pin, components, msrv);
+    let others = canonical_other_rustup(pin, msrv);
+    let mut r = Reading::default();
+    let mut jobs_lines = 0;
+    let mut in_jobs = false;
+    let mut job: Option<OpenJob> = None;
+    // The indent of the key of the `run: |` block being read, if any.
+    let mut block: Option<usize> = None;
+    for (i, raw) in yaml.lines().enumerate() {
+        let n = i + 1;
+        let t = raw.trim();
+        let indent = indent_of(raw);
+        if raw.get(..indent).is_some_and(|lead| lead.contains('\t')) {
+            r.refusals
+                .push(format!("line {n}: a tab in the indentation"));
+            continue;
+        }
+        if t.is_empty() || t.starts_with('#') {
+            continue;
+        }
+        // Inside a block scalar: its lines are the block's, until a line at or left of the key.
+        if let Some(k) = block {
+            if indent > k {
+                if mentions_rustup(t) {
+                    let install = installs.iter().find(|(text, _)| text == t);
+                    match (install, &job) {
+                        (Some((_, version)), Some(j)) => r.installs.push(InstallRead {
+                            line: n,
+                            job: j.name.clone(),
+                            version: version.clone(),
+                        }),
+                        (None, Some(_)) if others.iter().any(|o| o == t) => {}
+                        _ => r.refusals.push(format!(
+                            "line {n}: `{t}` mentions rustup and is not a canonical form inside a job"
+                        )),
+                    }
+                }
+                continue;
+            }
+            block = None;
+        }
+        if indent == 0 {
+            close_job(&mut r, job.take());
+            in_jobs = false;
+            let key = raw.split(':').next().unwrap_or("");
+            if key.trim().trim_matches(['"', '\'']).trim() == "jobs" {
+                if raw == "jobs:" {
+                    jobs_lines += 1;
+                    in_jobs = true;
+                } else {
+                    r.refusals.push(format!(
+                        "line {n}: `jobs:` is not a line of its own (`{raw}`)"
+                    ));
+                }
+            }
+        } else if in_jobs && indent < 4 {
+            close_job(&mut r, job.take());
+            if is_canonical_job_key(raw) {
+                job = Some(OpenJob {
+                    line: n,
+                    name: t.trim_end_matches(':').to_owned(),
+                    steps_seen: false,
+                    timeouts_seen: 0,
+                    timeout: None,
+                });
+            } else {
+                r.refusals.push(format!(
+                    "line {n}: `{raw}` is not a canonical job key (`  [a-z0-9-]+:` and nothing after the colon)"
+                ));
+            }
+        } else if in_jobs
+            && indent == 4
+            && let Some(j) = job.as_mut()
+        {
+            if t == "steps:" {
+                j.steps_seen = true;
+            } else if t.starts_with("timeout-minutes:") {
+                j.timeouts_seen += 1;
+                match timeout_value(t) {
+                    Some(v) if !j.steps_seen && j.timeouts_seen == 1 => j.timeout = Some(v),
+                    _ => r.refusals.push(format!(
+                        "line {n}: `{t}` is not one `timeout-minutes: <N>` (a positive number) before `steps:`"
+                    )),
+                }
+            }
+        }
+        // `run: |` opens a block; a `run:` of any other shape that mentions rustup is refused here.
+        if t == "run: |" || t == "- run: |" {
+            block = Some(indent + if t.starts_with("- ") { 2 } else { 0 });
+        } else if mentions_rustup(t) {
+            r.refusals.push(format!(
+                "line {n}: `{t}` mentions rustup outside a block `run: |`"
+            ));
+        }
+    }
+    close_job(&mut r, job.take());
+    match jobs_lines {
+        1 => {}
+        0 => r.refusals.push("no `jobs:` line of its own".to_owned()),
+        _ => r.refusals.push("more than one `jobs:` line".to_owned()),
+    }
+    r
+}
+
+/// Jobs with no `timeout-minutes: <N>` of their own before their `steps:` (a job without one runs for up to
+/// six hours when a test hangs, maintenance M30), as the canonical reader finds them: a job whose key is
+/// refused is no job and credits nothing to the job before it.
+pub fn jobs_without_timeout(yaml: &str) -> Vec<(usize, String)> {
+    read_workflow(yaml, "0.0.0", &[], "0.0.0")
+        .jobs
+        .into_iter()
+        .filter(|j| j.timeout.is_none())
+        .map(|j| (j.line, j.name))
+        .collect()
 }

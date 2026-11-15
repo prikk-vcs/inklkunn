@@ -154,23 +154,155 @@ pub fn test_prikk_shape_violations(yaml: &str) -> Vec<String> {
 /// The line that lifts the runner's restriction on unprivileged user namespaces (Ubuntu 24.04's AppArmor).
 const LIFT_USERNS: &str = "sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0";
 
-/// What is wrong with how a workflow makes user namespaces available to its tests (maintenance M37): the
-/// PID-namespace test of the extract locks and the bubblewrap tests need them, and the runner forbids them
-/// until the restriction is lifted. Empty when a `run:` line lifts it before the first `cargo test`.
-pub fn user_namespace_violations(yaml: &str) -> Vec<String> {
-    let lines: Vec<&str> = yaml.lines().map(str::trim).collect();
-    let lifts = lines
-        .iter()
-        .position(|l| l.strip_prefix("run:").unwrap_or(l).trim() == LIFT_USERNS);
-    let first_test = lines.iter().position(|l| l.contains("cargo test"));
-    match (lifts, first_test) {
-        (None, _) => vec![format!("no line `{LIFT_USERNS}`")],
-        (Some(_), None) => vec!["the workflow runs no `cargo test`".to_owned()],
-        (Some(lift), Some(test)) if lift < test => Vec::new(),
-        (Some(_), Some(_)) => vec![
-            "the restriction on user namespaces is lifted after the first `cargo test`".to_owned(),
-        ],
+/// One step of a job: its command lines (comments left out) and the `if:` expressions in force on it, the
+/// job's first and then its own, whitespace-normalized and without `${{ }}`.
+struct JobStep {
+    lines: Vec<String>,
+    guards: Vec<String>,
+}
+
+fn guard_of(line: &str) -> Option<String> {
+    let t = line.trim_start();
+    let v = t
+        .strip_prefix("- if:")
+        .or_else(|| t.strip_prefix("if:"))?
+        .trim();
+    let v = v
+        .strip_prefix("${{")
+        .and_then(|r| r.strip_suffix("}}"))
+        .unwrap_or(v)
+        .trim();
+    Some(v.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
+fn indent_of(line: &str) -> usize {
+    line.len() - line.trim_start().len()
+}
+
+/// The jobs of a workflow as `(name, steps)`, read line by line: a job is a key at indent 2 under `jobs:`, its
+/// `if:` a key at indent 4, its steps the `- ` items under its `steps:`. Reading what the canonical form that
+/// `pin-check` enforces allows is enough here; that gate refuses what this cannot read.
+fn jobs_with_steps(yaml: &str) -> Vec<(String, Vec<JobStep>)> {
+    let mut jobs: Vec<(String, Option<String>, Vec<JobStep>)> = Vec::new();
+    let mut in_jobs = false;
+    let mut in_steps = false;
+    let mut step_indent: Option<usize> = None;
+    for line in yaml.lines() {
+        let t = line.trim();
+        if t.is_empty() || t.starts_with('#') {
+            continue;
+        }
+        let indent = indent_of(line);
+        if indent == 0 {
+            in_jobs = t == "jobs:";
+            in_steps = false;
+            continue;
+        }
+        if !in_jobs {
+            continue;
+        }
+        if indent == 2 && t.ends_with(':') && !t.starts_with('-') {
+            jobs.push((t.trim_end_matches(':').to_owned(), None, Vec::new()));
+            in_steps = false;
+            step_indent = None;
+            continue;
+        }
+        let Some((_, job_guard, steps)) = jobs.last_mut() else {
+            continue;
+        };
+        if indent == 4 {
+            in_steps = t == "steps:";
+            step_indent = None;
+            if let Some(g) = guard_of(line) {
+                *job_guard = Some(g);
+            }
+            continue;
+        }
+        if !in_steps {
+            continue;
+        }
+        let si = *step_indent.get_or_insert(indent);
+        if indent == si && t.starts_with("- ") {
+            steps.push(JobStep {
+                lines: Vec::new(),
+                guards: Vec::new(),
+            });
+        }
+        if let Some(cur) = steps.last_mut() {
+            cur.lines.push(t.to_owned());
+            if (indent == si || indent == si + 2)
+                && let Some(g) = guard_of(line)
+            {
+                cur.guards.push(g);
+            }
+        }
     }
+    // The job's `if:` may stand before or after its steps: it holds on every step either way.
+    jobs.into_iter()
+        .map(|(name, job_guard, mut steps)| {
+            if let Some(g) = job_guard {
+                for s in &mut steps {
+                    s.guards.insert(0, g.clone());
+                }
+            }
+            (name, steps)
+        })
+        .collect()
+}
+
+fn lifts(step_line: &str) -> bool {
+    let l = step_line.strip_prefix("- ").unwrap_or(step_line);
+    l.strip_prefix("run:").unwrap_or(l).trim() == LIFT_USERNS
+}
+
+/// What is wrong with how a workflow makes user namespaces available to its tests (maintenance M37, M40): the
+/// PID-namespace test of the extract locks and the bubblewrap tests need them, and the runner forbids them
+/// until the restriction is lifted. Checked **per job**: every step of a job that runs `cargo test` needs a
+/// step of the same job before it (or an earlier line of the same step) that lifts the restriction, and every
+/// `if:` in force on the lift (its job's and its own) must hold on the test step too, so a lift guarded by a
+/// condition the test does not share is no lift. Empty when every job that runs `cargo test` does so.
+pub fn user_namespace_violations(yaml: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut any_test = false;
+    for (job, steps) in jobs_with_steps(yaml) {
+        for (i, step) in steps.iter().enumerate() {
+            let Some(test_line) = step.lines.iter().position(|l| l.contains("cargo test")) else {
+                continue;
+            };
+            any_test = true;
+            let mut lifts_before: Vec<&Vec<String>> = steps
+                .iter()
+                .take(i)
+                .filter(|s| s.lines.iter().any(|l| lifts(l)))
+                .map(|s| &s.guards)
+                .collect();
+            if step.lines.iter().take(test_line).any(|l| lifts(l)) {
+                lifts_before.push(&step.guards);
+            }
+            if lifts_before.is_empty() {
+                let after = steps
+                    .iter()
+                    .skip(i)
+                    .any(|s| s.lines.iter().any(|l| lifts(l)));
+                out.push(if after {
+                    format!("job `{job}`: the restriction on user namespaces is lifted after a `cargo test` step")
+                } else {
+                    format!("job `{job}` runs `cargo test` and has no step `{LIFT_USERNS}`")
+                });
+            } else if !lifts_before
+                .iter()
+                .any(|g| g.iter().all(|e| step.guards.contains(e)))
+            {
+                out.push(format!(
+                    "job `{job}`: every lift of the restriction before a `cargo test` step is guarded by an `if:` that the test step does not share"
+                ));
+            }
+        }
+    }
+    if !any_test {
+        out.push("the workflow runs no `cargo test`".to_owned());
+    }
+    out
 }
 
 /// The recorded release-asset checksums, by target architecture word (`X86_64`, `AARCH64`), from

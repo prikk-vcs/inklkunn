@@ -233,6 +233,297 @@ fn a_job_without_a_timeout_is_caught() {
     assert!(jobs_without_timeout(ok).is_empty());
 }
 
+/// The pin, the components `rust-toolchain.toml` names and the declared minimum: what the canonical form is
+/// written in terms of.
+fn canonical_terms() -> (String, Vec<String>, String) {
+    let root = workspace_root();
+    let file = fs::read_to_string(root.join("rust-toolchain.toml")).unwrap_or_default();
+    (
+        toolchain_file_channel(&file).expect("a channel"),
+        toolchain_file_components(&file),
+        declared_msrv(&fs::read_to_string(root.join("Cargo.toml")).unwrap_or_default())
+            .expect("rust-version declared"),
+    )
+}
+
+#[test]
+fn the_workflows_are_in_the_one_canonical_form_and_the_reader_sees_them() {
+    // M38: pin-check refuses what it cannot read. Every workflow is read in the canonical form; one line
+    // outside it fails here, with its line.
+    let (pin, components, msrv) = canonical_terms();
+    assert_eq!(components, vec!["rustfmt", "clippy"]);
+    let (mut jobs, mut pin_installs, mut msrv_installs) = (0, 0, 0);
+    for (name, yaml) in workflows() {
+        let r = read_workflow(&yaml, &pin, &components, &msrv);
+        assert!(
+            r.refusals.is_empty(),
+            "{name} is outside the canonical form:\n{:#?}",
+            r.refusals
+        );
+        jobs += r.jobs.len();
+        pin_installs += r.installs.iter().filter(|i| i.version == pin).count();
+        msrv_installs += r.installs.iter().filter(|i| i.version == msrv).count();
+        // Every job that installs a compiler is a job the reader saw.
+        for i in &r.installs {
+            assert!(r.jobs.iter().any(|j| j.name == i.job), "{name}: {i:?}");
+        }
+        // And the reader's count is not short of the text's: each canonical install is a line that starts
+        // `rustup toolchain install`, and no other line of the file does.
+        let textual = yaml
+            .lines()
+            .filter(|l| l.trim().starts_with("rustup toolchain install "))
+            .count();
+        assert_eq!(textual, r.installs.len(), "{name}");
+    }
+    // Not vacuous: ci.yml has 3 jobs, release.yml 6 and supply-chain.yml 1; the pin is installed by ci.yml's
+    // `build` and `supply-chain`, release.yml's `gates`, `binaries` and `crates` and supply-chain.yml's
+    // `checkpoint`; the declared minimum by ci.yml's `msrv`.
+    assert!(jobs >= 10, "the reader saw {jobs} jobs");
+    assert!(
+        pin_installs >= 6,
+        "the reader saw {pin_installs} installs of the pin"
+    );
+    assert!(
+        msrv_installs >= 1,
+        "the reader saw {msrv_installs} installs of the minimum"
+    );
+    // Every job the reader saw has a timeout of its own.
+    for (name, yaml) in workflows() {
+        let r = read_workflow(&yaml, &pin, &components, &msrv);
+        assert!(
+            r.jobs.iter().all(|j| j.timeout.is_some()),
+            "{name}: {:?}",
+            r.jobs
+        );
+    }
+}
+
+#[test]
+fn the_canonical_form_refuses_every_shape_the_reviewer_found_and_reads_its_own() {
+    let comps = vec!["rustfmt".to_owned(), "clippy".to_owned()];
+    let install = "rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy --no-self-update";
+    let msrv_install = "rustup toolchain install 1.89.0 --profile minimal --no-self-update";
+    let read = |y: &str| read_workflow(y, "1.99.1", &comps, "1.89.0");
+    // A canonical workflow is read whole: two jobs, two installs, nothing refused.
+    let good = format!(
+        "name: x\non:\n  push:\n    branches: [main]\njobs:\n  build:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 10\n    steps:\n      - name: t\n        run: |\n          set -euo pipefail\n          {install}\n          rustup default 1.99.1\n  msrv-check:\n    timeout-minutes: 5\n    steps:\n      - run: |\n          {msrv_install}\n"
+    );
+    let r = read(&good);
+    assert!(r.refusals.is_empty(), "{:#?}", r.refusals);
+    assert_eq!(r.jobs.len(), 2);
+    assert_eq!(
+        r.installs
+            .iter()
+            .map(|i| (i.job.as_str(), i.version.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("build", "1.99.1"), ("msrv-check", "1.89.0")]
+    );
+    let job = |body: &str| format!("jobs:\n  a:\n    timeout-minutes: 5\n    steps:\n{body}");
+    let refused = |what: &str, y: String| {
+        let r = read(&y);
+        assert!(!r.refusals.is_empty(), "{what}: not refused:\n{y}");
+    };
+    // The reviewer's shapes, each a refusal.
+    refused("a one-line run", job(&format!("      - run: {install}\n")));
+    refused(
+        "a one-line run without the dash",
+        job(&format!("      - name: t\n        run: {install}\n")),
+    );
+    refused(
+        "`rustup install`",
+        job("      - run: |\n          rustup install 1.99.1\n"),
+    );
+    refused(
+        "after `;`",
+        job(&format!("      - run: |\n          set -e; {install}\n")),
+    );
+    refused(
+        "after `&&`",
+        job(&format!("      - run: |\n          true && {install}\n")),
+    );
+    refused(
+        "after `||`",
+        job(&format!("      - run: |\n          false || {install}\n")),
+    );
+    refused(
+        "a job key with a comment",
+        good.replace("  build:\n", "  build: # main\n"),
+    );
+    refused(
+        "a job key with a trailing space",
+        good.replace("  build:\n", "  build: \n"),
+    );
+    refused(
+        "`jobs:` with a comment",
+        good.replace("jobs:\n", "jobs: # all\n"),
+    );
+    refused(
+        "`jobs:` in flow style",
+        good.replace("jobs:\n", "jobs: {}\n"),
+    );
+    refused("a quoted `jobs`", good.replace("jobs:\n", "\"jobs\":\n"));
+    // A following job's timeout must not be credited to a job without one: here the first job's key has a
+    // comment, so it is no job and `b`'s timeout is `b`'s alone, and the refusal names the key.
+    let credited = "jobs:\n  a: # first\n    steps:\n      - run: true\n  b:\n    timeout-minutes: 5\n    steps:\n      - run: true\n";
+    let r = read(credited);
+    assert!(
+        r.refusals
+            .iter()
+            .any(|m| m.contains("not a canonical job key")),
+        "{:#?}",
+        r.refusals
+    );
+    assert_eq!(r.jobs.len(), 1, "{:?}", r.jobs);
+    assert_eq!(r.jobs.first().map(|j| j.name.as_str()), Some("b"));
+    // And in the canonical shape the job without one is named, `b`'s is not credited to it.
+    let bare_then_timed = "jobs:\n  a:\n    steps:\n      - run: true\n  b:\n    timeout-minutes: 5\n    steps:\n      - run: true\n";
+    assert_eq!(
+        jobs_without_timeout(bare_then_timed),
+        vec![(2, "a".to_owned())]
+    );
+    assert!(
+        read(bare_then_timed)
+            .refusals
+            .iter()
+            .any(|m| m.contains("job `a` has no `timeout-minutes"))
+    );
+    // Other shapes of the same family.
+    refused(
+        "a quoted job key",
+        good.replace("  build:\n", "  \"build\":\n"),
+    );
+    refused(
+        "an upper-case job key",
+        good.replace("  build:\n", "  Build:\n"),
+    );
+    refused(
+        "a job key at one space",
+        good.replace("  build:\n", " build:\n"),
+    );
+    refused(
+        "a job key with a space before its colon",
+        good.replace("  build:\n", "  build :\n"),
+    );
+    refused(
+        "a tab in the indentation",
+        good.replace("    runs-on", "\truns-on"),
+    );
+    refused(
+        "a timeout after `steps:`",
+        "jobs:\n  a:\n    steps:\n      - run: true\n    timeout-minutes: 5\n".to_owned(),
+    );
+    refused(
+        "a timeout that is not a number",
+        job("      - run: true\n")
+            .replace("timeout-minutes: 5", "timeout-minutes: ${{ inputs.t }}"),
+    );
+    refused(
+        "a timeout of zero",
+        job("      - run: true\n").replace("timeout-minutes: 5", "timeout-minutes: 0"),
+    );
+    refused(
+        "two timeouts",
+        job("      - run: true\n").replace(
+            "    timeout-minutes: 5\n",
+            "    timeout-minutes: 5\n    timeout-minutes: 6\n",
+        ),
+    );
+    refused(
+        "a timeout on a step only",
+        "jobs:\n  a:\n    steps:\n      - run: true\n        timeout-minutes: 5\n".to_owned(),
+    );
+    refused(
+        "a job without steps",
+        "jobs:\n  a:\n    timeout-minutes: 5\n".to_owned(),
+    );
+    refused("no jobs at all", "name: x\n".to_owned());
+    refused(
+        "two `jobs:`",
+        format!("{good}jobs:\n  c:\n    timeout-minutes: 5\n    steps:\n      - run: true\n"),
+    );
+    // A rustup line that is not one of the forms, in a block: another version, another flag, a continued
+    // command, a variable that overrides the toolchain, the pin's install without its components.
+    for (what, line) in [
+        (
+            "another version",
+            "rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy --no-self-update",
+        ),
+        (
+            "a channel",
+            "rustup toolchain install stable --profile minimal --component rustfmt --component clippy --no-self-update",
+        ),
+        (
+            "no components",
+            "rustup toolchain install 1.99.1 --profile minimal --no-self-update",
+        ),
+        (
+            "a continued command",
+            "rustup toolchain install 1.99.1 --profile minimal \\",
+        ),
+        ("a trailing comment", "rustup default 1.99.1 # now"),
+        ("`rustup default` of a channel", "rustup default stable"),
+        ("`rustup override`", "rustup override set nightly"),
+        (
+            "the environment override",
+            "export RUSTUP_TOOLCHAIN=nightly",
+        ),
+        ("`rustup update`", "rustup update"),
+    ] {
+        refused(what, job(&format!("      - run: |\n          {line}\n")));
+    }
+    // A rustup line in a `run: |-` block, a folded block, an `env:` value or a name is outside a block `run: |`.
+    refused(
+        "`run: |-`",
+        job(&format!("      - run: |-\n          {install}\n")),
+    );
+    refused(
+        "a folded block",
+        job(&format!("      - run: >\n          {install}\n")),
+    );
+    refused(
+        "a plain multi-line scalar",
+        job(&format!("      - run:\n          {install}\n")),
+    );
+    refused(
+        "an env value",
+        job("      - env:\n          X: rustup toolchain install 1.99.1\n        run: true\n"),
+    );
+    refused("an install outside any job", format!("{install}\n{good}"));
+    // The same install is read when it is in a canonical block, in either list form.
+    let ok_block = job(&format!("      - run: |\n          {install}\n"));
+    assert!(
+        read(&ok_block).refusals.is_empty(),
+        "{:?}",
+        read(&ok_block).refusals
+    );
+    assert_eq!(read(&ok_block).installs.len(), 1);
+    let ok_named = job(&format!(
+        "      - name: t\n        run: |\n          {install}\n"
+    ));
+    assert_eq!(read(&ok_named).installs.len(), 1);
+    // The shimmed run's two lines are canonical, exactly.
+    let shim = job(
+        "      - run: |\n          for tool in cargo rustc rustdoc; do ln -s \"$(rustup which \"$tool\")\" \"$SHIM/$tool\"; done\n          ln -s \"$(command -v rustup)\" \"$SHIM/rustup\"\n",
+    );
+    assert!(
+        read(&shim).refusals.is_empty(),
+        "{:?}",
+        read(&shim).refusals
+    );
+    refused(
+        "a shim line with more",
+        job("      - run: |\n          ln -s \"$(command -v rustup)\" \"$SHIM/rustup\" && true\n"),
+    );
+    // A comment that mentions rustup is not a command; a trailing comment on a command is.
+    assert!(
+        read(&job(
+            "      # rustup default is not what we use\n      - run: true\n"
+        ))
+        .refusals
+        .is_empty()
+    );
+}
+
 #[test]
 fn a_rustup_default_never_names_a_compiler_the_toolchain_file_would_override() {
     // The checkout's rust-toolchain.toml beats `rustup default`: a default naming anything but the pinned
