@@ -359,3 +359,162 @@ fn a_run_can_be_given_input_and_a_child_that_never_reads_it_is_not_an_error() {
     let r = run_command(cat, None, Some(Duration::from_secs(10)), 1000).expect("runs");
     assert_eq!(r.stdout, b"end\n");
 }
+
+/// `probe_bwrap` over a stand-in `bwrap` that prints `stderr` and exits with `code`, retrying while the kernel says
+/// the script just written is still open in a concurrently forked child (`ETXTBSY`).
+fn probe_stand_in(tag: &str, stderr: &[u8], code: i32) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = Tmp::new(tag);
+    let said = tmp.0.join("said");
+    std::fs::write(&said, stderr).expect("stderr file");
+    let script = tmp.0.join("bwrap");
+    std::fs::write(
+        &script,
+        format!("#!/bin/sh\ncat '{}' >&2\nexit {code}\n", said.display()),
+    )
+    .expect("script");
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    for _ in 0..50 {
+        match probe_bwrap(script.as_os_str()) {
+            Err(e) if e.contains("busy") => std::thread::sleep(Duration::from_millis(40)),
+            other => return other,
+        }
+    }
+    probe_bwrap(script.as_os_str())
+}
+
+#[test]
+fn a_bwrap_that_cannot_confine_says_why_in_its_own_first_line() {
+    let e = probe_stand_in(
+        "why",
+        b"bwrap: setting up uid map: Permission denied\nsecond line\n",
+        1,
+    )
+    .unwrap_err();
+    assert!(e.contains("cannot confine a process here"), "{e}");
+    assert!(
+        e.ends_with(": bwrap: setting up uid map: Permission denied"),
+        "{e}"
+    );
+    assert!(!e.contains("second line"), "{e}");
+    // Blank lines before it are not the line.
+    let e = probe_stand_in(
+        "blank",
+        b"\n  \nbwrap: No permissions to create new namespace\n",
+        1,
+    )
+    .unwrap_err();
+    assert!(
+        e.ends_with(": bwrap: No permissions to create new namespace"),
+        "{e}"
+    );
+}
+
+#[test]
+fn the_reason_is_cleaned_and_bounded() {
+    let e = probe_stand_in(
+        "clean",
+        "bwrap:\u{1b}[31m\u{200b} no\u{2028}\u{202e} way\r\n".as_bytes(),
+        1,
+    )
+    .unwrap_err();
+    assert!(e.ends_with(": bwrap:[31m no way"), "{e:?}");
+    let long = format!("bwrap: {}\n", "x".repeat(1000));
+    let e = probe_stand_in("long", long.as_bytes(), 1).unwrap_err();
+    let said = e.split_once("): ").expect("a reason").1;
+    assert!(said.starts_with("bwrap: xxx"), "{e}");
+    assert_eq!(said.chars().count(), 200, "{e}");
+    // Bytes that are not UTF-8 are read lossily, never a failure.
+    let e = probe_stand_in("bytes", &[0xff, b'n', b'o', b'\n'], 1).unwrap_err();
+    assert!(e.ends_with("no"), "{e:?}");
+}
+
+#[test]
+fn a_bwrap_that_says_nothing_is_reported_by_its_exit_status() {
+    let e = probe_stand_in("silent", b"", 3).unwrap_err();
+    assert!(e.contains("cannot confine a process here"), "{e}");
+    assert!(
+        e.contains("exit status: 3") && e.contains("said nothing"),
+        "{e}"
+    );
+    // A reason made only of characters that are dropped is no reason.
+    let e = probe_stand_in("invisible", "\u{200b}\u{7}\n".as_bytes(), 2).unwrap_err();
+    assert!(e.contains("said nothing"), "{e}");
+}
+
+#[test]
+fn a_bwrap_that_works_and_one_that_is_missing_are_told_apart() {
+    assert!(probe_stand_in("fine", b"", 0).is_ok());
+    let e = probe_bwrap(std::ffi::OsStr::new("/nonexistent/bwrap")).unwrap_err();
+    assert!(e.contains("could not run"), "{e}");
+}
+
+#[test]
+fn the_format_character_set_is_the_category_cf_of_unicode_16() {
+    // `char` has no general-category table in the standard library; the category (Unicode 16.0) has 170 code
+    // points, and the set holds exactly those. The boundaries of each range are pinned by name.
+    let count = (0..=0x0010_FFFF_u32)
+        .filter_map(char::from_u32)
+        .filter(|c| is_format_character(*c))
+        .count();
+    assert_eq!(count, 170);
+    for yes in [
+        '\u{ad}',
+        '\u{600}',
+        '\u{605}',
+        '\u{61c}',
+        '\u{6dd}',
+        '\u{70f}',
+        '\u{890}',
+        '\u{891}',
+        '\u{8e2}',
+        '\u{180e}',
+        '\u{200b}',
+        '\u{200c}',
+        '\u{200d}',
+        '\u{200e}',
+        '\u{200f}',
+        '\u{202a}',
+        '\u{202e}',
+        '\u{2060}',
+        '\u{2064}',
+        '\u{2066}',
+        '\u{2069}',
+        '\u{206f}',
+        '\u{feff}',
+        '\u{fff9}',
+        '\u{fffb}',
+        '\u{110bd}',
+        '\u{110cd}',
+        '\u{13430}',
+        '\u{1343f}',
+        '\u{1bca0}',
+        '\u{1bca3}',
+        '\u{1d173}',
+        '\u{1d17a}',
+        '\u{e0001}',
+        '\u{e0020}',
+        '\u{e007f}',
+    ] {
+        assert!(is_format_character(yes), "U+{:04X}", yes as u32);
+    }
+    for no in [
+        ' ',
+        'a',
+        '\u{3042}',
+        '\u{ac}',
+        '\u{ae}',
+        '\u{606}',
+        '\u{2028}',
+        '\u{2029}',
+        '\u{205f}',
+        '\u{2065}',
+        '\u{fefe}',
+        '\u{ff00}',
+        '\u{e0000}',
+        '\u{e0002}',
+        '\u{e0080}',
+    ] {
+        assert!(!is_format_character(no), "U+{:04X}", no as u32);
+    }
+}

@@ -42,11 +42,15 @@ fn prikk_on_path() -> bool {
 
 /// Both policies when bubblewrap works (GitHub's runners cannot confine and take the unconfined one).
 fn policies() -> Vec<Sandbox> {
-    if probe_bwrap(std::ffi::OsStr::new("bwrap")).is_ok() {
+    let probe = probe_bwrap(std::ffi::OsStr::new("bwrap"));
+    if probe.is_ok() {
         println!("policies: confined (bubblewrap) and unconfined");
         vec![Sandbox::default(), Sandbox::Unconfined]
     } else {
-        println!("skipping: bubblewrap cannot confine a process here; running unconfined");
+        println!(
+            "skipping: {}; running unconfined",
+            probe.err().unwrap_or_default()
+        );
         vec![Sandbox::Unconfined]
     }
 }

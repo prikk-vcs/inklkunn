@@ -66,10 +66,14 @@ async fn the_paragraphs_of_a_real_page_are_followed_back_through_a_real_history(
         return;
     }
     let mut policies = vec![Sandbox::Unconfined];
-    if probe_bwrap(std::ffi::OsStr::new("bwrap")).is_ok() {
+    let probe = probe_bwrap(std::ffi::OsStr::new("bwrap"));
+    if probe.is_ok() {
         policies.push(Sandbox::default());
     } else {
-        println!("skipping the confined policy: bubblewrap cannot confine a process here");
+        println!(
+            "skipping the confined policy: {}",
+            probe.err().unwrap_or_default()
+        );
     }
     for sandbox in policies {
         let dir = TempDir::new("real-why");

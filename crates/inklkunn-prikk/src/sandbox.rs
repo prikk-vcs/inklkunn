@@ -594,7 +594,69 @@ pub fn probe_prlimit(binary: &OsStr) -> Result<(), String> {
     }
 }
 
-/// A minimal confined `true` runs: the check for `bwrap` (and for user namespaces being permitted) at start.
+/// The most characters of bubblewrap's own words a probe's reason carries.
+const MAX_REASON: usize = 200;
+
+/// Is `c` a format character (Unicode general category Cf, Unicode 16.0): a zero-width space or joiner, a direction
+/// mark or override, a soft hyphen, a word joiner, a byte-order mark, a tag? None of them is seen, and each can make a
+/// line read as another or split a word so that a search for it fails. **The set for text that is shown as one line
+/// and must not hide a secret:** [`probe_bwrap`]'s reason here, and `inklkunn-fetch`'s scrub of `curl`'s standard
+/// error (that crate depends on this one, so it reuses the set). The standard library has no general-category
+/// table, so the set is written out; a test holds it to the 170 code points of the category.
+pub fn is_format_character(c: char) -> bool {
+    matches!(
+        c,
+        '\u{ad}'
+            | '\u{600}'..='\u{605}'
+            | '\u{61c}'
+            | '\u{6dd}'
+            | '\u{70f}'
+            | '\u{890}'..='\u{891}'
+            | '\u{8e2}'
+            | '\u{180e}'
+            | '\u{200b}'..='\u{200f}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2060}'..='\u{2064}'
+            | '\u{2066}'..='\u{206f}'
+            | '\u{feff}'
+            | '\u{fff9}'..='\u{fffb}'
+            | '\u{110bd}'
+            | '\u{110cd}'
+            | '\u{13430}'..='\u{1343f}'
+            | '\u{1bca0}'..='\u{1bca3}'
+            | '\u{1d173}'..='\u{1d17a}'
+            | '\u{e0001}'
+            | '\u{e0020}'..='\u{e007f}'
+    )
+}
+
+/// The first line of a program's standard error that says anything, for an error text: control characters, the line
+/// separators U+2028 and U+2029 and format characters dropped, white space trimmed, at most [`MAX_REASON`]
+/// characters. Only the first line: the rest of a tool's output is not a reason and may be long.
+fn first_line_of(stderr: &[u8]) -> String {
+    let text = String::from_utf8_lossy(stderr);
+    text.lines()
+        .map(|l| {
+            let kept: String = l
+                .chars()
+                .filter(|c| {
+                    !(c.is_control()
+                        || matches!(c, '\u{2028}' | '\u{2029}')
+                        || is_format_character(*c))
+                })
+                .collect();
+            kept.trim().to_owned()
+        })
+        .find(|l| !l.is_empty())
+        .unwrap_or_default()
+        .chars()
+        .take(MAX_REASON)
+        .collect()
+}
+
+/// A minimal confined `true` runs: the check for `bwrap` (and for user namespaces being permitted) at start. When it
+/// does not, the error carries bubblewrap's own reason, the first line of its standard error (cleaned, at most 200
+/// characters), or its exit status when it said nothing, so a refusal and a test's skip line say *why*.
 pub fn probe_bwrap(binary: &OsStr) -> Result<(), String> {
     match Command::new(binary)
         .env_clear()
@@ -633,11 +695,18 @@ pub fn probe_bwrap(binary: &OsStr) -> Result<(), String> {
         .output()
     {
         Ok(o) if o.status.success() => Ok(()),
-        Ok(o) => Err(format!(
-            "`{}` cannot confine a process here: {}",
-            binary.to_string_lossy(),
-            String::from_utf8_lossy(&o.stderr).trim()
-        )),
+        Ok(o) => {
+            let reason = first_line_of(&o.stderr);
+            let name = binary.to_string_lossy();
+            Err(if reason.is_empty() {
+                format!(
+                    "bubblewrap cannot confine a process here (`{name}`): it exited with {} and said nothing",
+                    o.status
+                )
+            } else {
+                format!("bubblewrap cannot confine a process here (`{name}`): {reason}")
+            })
+        }
         Err(e) => Err(format!("`{}` could not run: {e}", binary.to_string_lossy())),
     }
 }

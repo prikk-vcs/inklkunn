@@ -138,11 +138,22 @@ impl Settings {
     /// How prikk is confined. Bubblewrap unless `--dev-unconfined`, and bubblewrap must work here: a host
     /// that cannot make the confinement refuses to run prikk at all rather than run it unconfined.
     pub fn sandbox(&self) -> Result<Sandbox, ConfigError> {
+        self.sandbox_probed(&probe_bwrap)
+    }
+
+    /// [`Settings::sandbox`], with the question "can this `bwrap` confine a process here?" put to `probe` instead of
+    /// to the host: the production answer is [`probe_bwrap`], a test's is whatever it wants to show (so the refusal
+    /// of a host that cannot confine is shown on every host, and no test depends on what the runner allows). Under
+    /// `--dev-unconfined` the probe is not asked.
+    pub fn sandbox_probed(
+        &self,
+        probe: &dyn Fn(&OsStr) -> Result<(), String>,
+    ) -> Result<Sandbox, ConfigError> {
         if self.dev_unconfined {
             return Ok(Sandbox::Unconfined);
         }
         let bwrap = BwrapConfig::default();
-        probe_bwrap(&bwrap.bwrap).map_err(|why| {
+        probe(&bwrap.bwrap).map_err(|why| {
             ConfigError(format!(
                 "bubblewrap cannot confine prikk here ({why}); install bubblewrap and allow user namespaces, \
                  or, for development only, start with --dev-unconfined"

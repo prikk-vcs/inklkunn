@@ -28,13 +28,14 @@ use support::*;
 /// `true` when the real vector can run; otherwise prints the skip line.
 fn available() -> bool {
     let curl = inklkunn_prikk::sandbox::resolve_binary(std::ffi::OsStr::new("curl"));
-    if probe_bwrap(std::ffi::OsStr::new(BWRAP)).is_ok()
-        && curl.is_file()
-        && CurlFetcher::new().probe().is_ok()
-    {
+    let bwrap = probe_bwrap(std::ffi::OsStr::new(BWRAP));
+    if bwrap.is_ok() && curl.is_file() && CurlFetcher::new().probe().is_ok() {
         return true;
     }
-    println!("skipping: bwrap or curl not available");
+    match bwrap {
+        Err(why) => println!("skipping: bwrap or curl not available ({why})"),
+        Ok(()) => println!("skipping: bwrap or curl not available"),
+    }
     false
 }
 

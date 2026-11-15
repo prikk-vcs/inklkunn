@@ -1,6 +1,7 @@
 //! `inklkunn [--dev-unconfined] serve [--config FILE]`: check everything, then serve. A server that cannot
 //! do its job says so at start, naming the setting or the tool, before it opens a socket.
 
+use std::ffi::OsStr;
 use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,7 +10,7 @@ use inklkunn_auth::{AuthConfig, Authenticator, ProxyPolicy};
 use inklkunn_core::proposal::{ProposalService, QuotaConfig};
 use inklkunn_core::read::ReadService;
 use inklkunn_core::{Authorizer, IdentityAuthority, Inbox, Notifier, StoreAuthz, Verifier};
-use inklkunn_prikk::sandbox::Sandbox;
+use inklkunn_prikk::sandbox::{Sandbox, probe_bwrap};
 use inklkunn_prikk::{Admission, PrikkCli, SizeHints, Storage};
 use inklkunn_store::{AuditSink, RootLayout, SqliteStore};
 use inklkunn_web::serve::{Shutdown, run_blocking};
@@ -69,9 +70,21 @@ fn prepare_with(
     authority: IdentityAuthority,
     log: Arc<dyn Fn(&str) + Send + Sync>,
 ) -> Result<Prepared, String> {
+    prepare_probing(settings, web, authority, log, &probe_bwrap)
+}
+
+/// [`prepare_with`], with the question "can bubblewrap confine a process here?" put to `probe` (the host's answer in
+/// production; a test's own, so the refusal of a host that cannot confine is shown on every host).
+fn prepare_probing(
+    settings: &Settings,
+    web: &WebSettings,
+    authority: IdentityAuthority,
+    log: Arc<dyn Fn(&str) + Send + Sync>,
+    probe: &dyn Fn(&OsStr) -> Result<(), String>,
+) -> Result<Prepared, String> {
     let config = WebConfig::new(&web.bind, &web.app_origin, &web.content_origin)
         .map_err(|e| e.to_string())?;
-    let sandbox = settings.sandbox().map_err(refusal)?;
+    let sandbox = settings.sandbox_probed(probe).map_err(refusal)?;
     let confined = !matches!(sandbox, Sandbox::Unconfined);
     let admission = Admission::new(
         web.admission_budget_mib << 20,

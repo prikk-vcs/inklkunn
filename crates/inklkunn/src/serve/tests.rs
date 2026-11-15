@@ -97,15 +97,15 @@ fn a_refusal_names_the_setting_before_anything_is_opened() {
 
 #[test]
 fn without_the_dev_flag_a_host_that_cannot_confine_prikk_refuses_to_start() {
-    if inklkunn_prikk::sandbox::probe_bwrap(std::ffi::OsStr::new("bwrap")).is_ok() {
-        println!("skipping: bubblewrap works here, so the refusal cannot be shown");
-        return;
-    }
+    // The host's answer is injected (bubblewrap's own words, as `probe_bwrap` reports them), so this runs on every
+    // host and never depends on what the runner allows (maintenance M40).
     let d = dir("unconfined");
-    let e = prepare(
+    let e = prepare_probing(
         &settings(&d.0, false),
         &web("127.0.0.1:1", "http://localhost:1", "http://localhost:2"),
         IdentityAuthority::for_tests(),
+        Arc::new(|_| {}),
+        &|_| Err(CANNOT_CONFINE.to_owned()),
     )
     .err()
     .unwrap();
@@ -113,6 +113,62 @@ fn without_the_dev_flag_a_host_that_cannot_confine_prikk_refuses_to_start() {
         e.contains("bubblewrap cannot confine prikk") && e.contains("--dev-unconfined"),
         "{e}"
     );
+    // The reason bubblewrap gave is in the refusal.
+    assert!(e.contains("No permissions to create new namespace"), "{e}");
+    assert!(
+        !d.0.join("store.sqlite").exists(),
+        "nothing was created by a refused start"
+    );
+}
+
+/// What `probe_bwrap` says when bubblewrap cannot make the namespaces.
+const CANNOT_CONFINE: &str = "bubblewrap cannot confine a process here (`bwrap`): bwrap: No permissions to create new namespace";
+
+#[test]
+fn the_sandbox_decision_follows_the_answer_it_is_given_not_the_host() {
+    // Both answers, on any host: a host that can confine is refused when the answer says it cannot, and one that
+    // cannot is let through when the answer says it can. The dev flag never asks.
+    let d = dir("answer");
+    let strict = settings(&d.0, false);
+    let refused = strict
+        .sandbox_probed(&|_| Err(CANNOT_CONFINE.to_owned()))
+        .unwrap_err();
+    assert!(refused.0.contains("--dev-unconfined"), "{refused}");
+    assert!(
+        matches!(strict.sandbox_probed(&|_| Ok(())), Ok(Sandbox::Bwrap(_))),
+        "an answer of yes gives the confined policy"
+    );
+    let dev = settings(&d.0, true);
+    assert!(matches!(
+        dev.sandbox_probed(&|_| panic!("the dev flag does not ask the host")),
+        Ok(Sandbox::Unconfined)
+    ));
+}
+
+#[test]
+fn a_host_where_the_real_bwrap_works_still_refuses_when_the_answer_is_that_it_cannot() {
+    // The proof that the refusal test above is not the host's doing: where the real bubblewrap confines, the real
+    // probe lets the start through to the confined policy, and the injected answer still refuses it.
+    let probe = inklkunn_prikk::sandbox::probe_bwrap(std::ffi::OsStr::new("bwrap"));
+    if let Err(why) = &probe {
+        println!(
+            "skipping: the real bubblewrap does not confine here, so this half is not shown ({why})"
+        );
+        return;
+    }
+    let d = dir("realworks");
+    let s = settings(&d.0, false);
+    assert!(matches!(s.sandbox(), Ok(Sandbox::Bwrap(_))));
+    let e = prepare_probing(
+        &s,
+        &web("127.0.0.1:1", "http://localhost:1", "http://localhost:2"),
+        IdentityAuthority::for_tests(),
+        Arc::new(|_| {}),
+        &|_| Err(CANNOT_CONFINE.to_owned()),
+    )
+    .err()
+    .unwrap();
+    assert!(e.contains("bubblewrap cannot confine prikk"), "{e}");
 }
 
 #[test]

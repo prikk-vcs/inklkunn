@@ -287,10 +287,14 @@ fn fixture(tag: &str, sandbox: Sandbox, use_standin: bool) -> Option<Fixture> {
 }
 
 fn policies() -> Vec<Sandbox> {
-    if probe_bwrap(std::ffi::OsStr::new("bwrap")).is_ok() {
+    let probe = probe_bwrap(std::ffi::OsStr::new("bwrap"));
+    if probe.is_ok() {
         vec![Sandbox::default(), Sandbox::Unconfined]
     } else {
-        println!("skipping: bubblewrap cannot confine a process here; running unconfined");
+        println!(
+            "skipping: {}; running unconfined",
+            probe.err().unwrap_or_default()
+        );
         vec![Sandbox::Unconfined]
     }
 }

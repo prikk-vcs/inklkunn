@@ -115,10 +115,14 @@ fn no_ceiling_in_a_sweep_turns_a_memory_limit_into_a_failed_verification() {
     let repo = generate(&tmp.0);
 
     let mut policies = vec![("unconfined", Sandbox::Unconfined)];
-    if probe_bwrap(std::ffi::OsStr::new("bwrap")).is_ok() {
+    let probe = probe_bwrap(std::ffi::OsStr::new("bwrap"));
+    if probe.is_ok() {
         policies.push(("confined", Sandbox::default()));
     } else {
-        println!("skipping the confined policy: bubblewrap cannot confine a process here");
+        println!(
+            "skipping the confined policy: {}",
+            probe.err().unwrap_or_default()
+        );
     }
     for (name, sandbox) in policies {
         let unconfined = PrikkCli::open(

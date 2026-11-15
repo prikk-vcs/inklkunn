@@ -68,10 +68,14 @@ async fn a_real_repository_is_browsed_and_verified_through_the_whole_path() {
         return;
     }
     let mut policies = vec![Sandbox::Unconfined];
-    if probe_bwrap(std::ffi::OsStr::new("bwrap")).is_ok() {
+    let probe = probe_bwrap(std::ffi::OsStr::new("bwrap"));
+    if probe.is_ok() {
         policies.push(Sandbox::default());
     } else {
-        println!("skipping the confined policy: bubblewrap cannot confine a process here");
+        println!(
+            "skipping the confined policy: {}",
+            probe.err().unwrap_or_default()
+        );
     }
     for sandbox in policies {
         let dir = TempDir::new("real");

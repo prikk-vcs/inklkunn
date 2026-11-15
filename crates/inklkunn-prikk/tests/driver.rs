@@ -16,7 +16,6 @@ use inklkunn_prikk::{
 };
 
 const SKIP_PRIKK: &str = "skipping: prikk not on PATH";
-const SKIP_BWRAP: &str = "skipping: bubblewrap cannot confine a process here";
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -26,8 +25,15 @@ fn prikk_on_path() -> bool {
         .unwrap_or(false)
 }
 
+/// Can bubblewrap confine a process here? When it cannot, prints the skip line with bubblewrap's own reason.
 fn bwrap_ok() -> bool {
-    probe_bwrap(std::ffi::OsStr::new("bwrap")).is_ok()
+    match probe_bwrap(std::ffi::OsStr::new("bwrap")) {
+        Ok(()) => true,
+        Err(why) => {
+            println!("skipping: {why}");
+            false
+        }
+    }
 }
 
 /// A fresh directory under the system temp dir; removed when dropped.
@@ -97,7 +103,6 @@ fn policies() -> Vec<Sandbox> {
         println!("policies: confined (bubblewrap) and unconfined");
         vec![Sandbox::default(), Sandbox::Unconfined]
     } else {
-        println!("{SKIP_BWRAP}");
         vec![Sandbox::Unconfined]
     }
 }
@@ -839,8 +844,6 @@ fn a_too_small_ceiling_is_unavailable_never_a_verdict() {
             }
         }
         assert!(hits >= 1, "no ceiling fired in the confined policy");
-    } else {
-        println!("{SKIP_BWRAP}");
     }
 }
 
