@@ -266,6 +266,8 @@ async fn a_day_that_has_not_come_in_any_timezone_is_refused_at_its_member_before
         .unwrap_or("")
         .to_owned();
     assert!(detail.contains("2023-11-16"), "{detail}");
+    // It names the source by its whole id too (K80), as the other sentences of a check do.
+    assert!(detail.contains(&source_id(1).to_string()), "{detail}");
     // A day far ahead is the same.
     assert_eq!(propose(&c, reviewed(1, "2999-01-01")).await.status, 422);
     // Nothing was made.
@@ -1276,6 +1278,35 @@ async fn the_old_fields_beside_a_changed_reference_are_refused_by_their_member_a
         .to_owned();
     assert!(detail.contains("The bridge survey"), "{detail}");
     assert!(detail.contains("new reference"), "{detail}");
+    // Its whole id (two sources may share a title), and that the old value stays as the base has it, since the move clears
+    // it (K80), for the day and for the answer alike.
+    for (what, edit) in [
+        (
+            "the day",
+            json!({"source": one, "reference": doi, "reviewed": "2023-11-10"}),
+        ),
+        (
+            "the answer",
+            json!({"source": one, "reference": doi, "availability": "unavailable"}),
+        ),
+    ] {
+        let a = propose(&c, json!({"sources": [edit]})).await;
+        let detail = a
+            .json()
+            .at("/detail")
+            .as_str()
+            .unwrap_or_default()
+            .to_owned();
+        assert!(
+            detail.contains(&format!("The bridge survey ({one}).")),
+            "{what}: {detail}"
+        );
+        assert!(
+            detail.contains("as the base of the proposal has it"),
+            "{what}: {detail}"
+        );
+        assert!(detail.contains("clears"), "{what}: {detail}");
+    }
     // Nothing was made by any of them.
     assert!(
         c.w.services

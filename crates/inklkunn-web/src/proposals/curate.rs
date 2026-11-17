@@ -202,8 +202,18 @@ pub(crate) struct DayNotCome {
 }
 
 impl DayNotCome {
-    /// The refusal in the person's words: the source (as the form's own legend names it) and the day.
+    /// The refusal in the person's words: the source (as the form's own legend names it, and by its whole id, K80: two
+    /// sources may share a title, and one may have none) and the day. The API's problem.
     pub(crate) fn text(&self, t: crate::catalog::T) -> String {
+        self.msg(t).with("id", self.source.as_str()).text()
+    }
+
+    /// [`DayNotCome::text`] as markup, the whole id in `<code>` as the other refusals of the form have it: the form's.
+    pub(crate) fn html(&self, t: crate::catalog::T) -> Rich {
+        self.msg(t).rich("id", code(self.source.as_str())).html()
+    }
+
+    fn msg(&self, t: crate::catalog::T) -> crate::catalog::Msg {
         let title = self
             .title
             .clone()
@@ -211,7 +221,6 @@ impl DayNotCome {
         t.msg(Key::CurateDayNotCome)
             .with("title", title)
             .with("day", &self.day)
-            .text()
     }
 }
 
@@ -1173,7 +1182,7 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
     let not_come = subject.days_not_come(&ctx.services.read, &edit.sources);
     if !not_come.is_empty() {
         return draw(
-            not_come.iter().map(|d| plain(&d.text(t))).collect(),
+            not_come.iter().map(|d| d.html(t)).collect(),
             Vec::new(),
             StatusCode::UNPROCESSABLE_ENTITY,
         );

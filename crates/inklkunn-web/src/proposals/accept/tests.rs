@@ -87,6 +87,26 @@ fn a_knowledge_file_refused_before_the_signer_is_a_page_of_its_own_and_the_log_n
     assert!(lines.first().unwrap().contains("knowledge/stray.txt"));
 }
 
+/// K80 (the review's H-c): the sentences of a carried check say the source carries a day or an answer **this proposal does
+/// not state**, and name the way to state one: `checked` in a curation, the proposal's own id in `last_reviewed.proposal`.
+#[test]
+fn the_sentences_of_a_carried_check_say_what_is_not_stated_and_name_the_way_to_state_one() {
+    for t in [T::new(EN), T::new(Lang::from_def(&JA_DEF))] {
+        for key in [Key::InvalidKnowledgeCheckUnstated, Key::KnowCheckUnstated] {
+            let text = t.get(key);
+            assert!(text.contains("`checked`"), "{text}");
+            assert!(text.contains("`last_reviewed.proposal`"), "{text}");
+        }
+    }
+    let english = T::new(EN);
+    for key in [Key::InvalidKnowledgeCheckUnstated, Key::KnowCheckUnstated] {
+        let text = english.get(key);
+        assert!(text.contains("that this proposal does not state"), "{text}");
+        // It is not said to be the old reference's alone: a day naming no proposal, or another, is refused too.
+        assert!(!text.contains("which were for its old place"), "{text}");
+    }
+}
+
 fn carried_refusal() -> Refusal {
     Refusal {
         carries: true,

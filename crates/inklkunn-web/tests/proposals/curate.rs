@@ -543,9 +543,10 @@ async fn a_day_that_has_not_come_in_any_timezone_is_refused_on_the_form_and_noth
     let a = send(&s, FORM, &s.writer, &not_come).await;
     assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
     assert!(
-        a.body().contains(
-            "Source: A history of the bridge. The day 2023-11-16 has not come yet in any timezone"
-        ),
+        a.body().contains(&format!(
+            "Source: A history of the bridge (<code>{}</code>). The day 2023-11-16 has not come yet in any timezone",
+            super::claims::source_id()
+        )),
         "{}",
         a.body()
     );

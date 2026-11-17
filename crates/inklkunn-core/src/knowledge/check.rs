@@ -136,9 +136,9 @@ impl Refusal {
 /// (K67): the web's `know.not_by_form` in English, without its capital and its full stop.
 pub const NOT_OFFERED: &str = "removing a claim or a source file, or replacing a file that cannot be read, is not offered in this version";
 
-/// What is said of a source that is found elsewhere now and still carries the check of its old reference (K71): the web's
-/// `invalid.knowledge_check_unstated` in English, without its capital and its full stop.
-pub const UNSTATED_CHECK: &str = "the source is found elsewhere now and still carries the day or the answer of the check of its old reference; a check of the new reference is stated by the proposal, never inferred";
+/// What is said of a source that is found elsewhere now and carries a day or an answer that the proposal does not state
+/// (K71, K80): the web's `invalid.knowledge_check_unstated` in short, without its capital and its full stop.
+pub const UNSTATED_CHECK: &str = "the source is found elsewhere now and carries a day or an answer of a check that this proposal does not state; a check of the new reference is stated by the proposal (`checked` in a curation, its own id in `last_reviewed.proposal` in files), never inferred";
 
 /// Who states the checks of a curation proposal, and when it is (K77): the proposal's own id, which a check of a new
 /// reference names to be that proposal's, and the clock (Unix seconds), which says what day has not come.

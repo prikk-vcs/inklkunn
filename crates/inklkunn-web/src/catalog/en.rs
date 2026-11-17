@@ -2621,7 +2621,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "curate.day_not_come",
-        "Source: {title}. The day {day} has not come yet in any timezone, so no one can have looked on it. Write the day it was looked at, or leave the date empty.",
+        "Source: {title} ({id}). The day {day} has not come yet in any timezone, so no one can have looked on it. Write the day it was looked at, or leave the date empty.",
     ),
     msg(
         "propose.claim_held_one",
@@ -3155,7 +3155,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "invalid.knowledge_check_unstated",
-        "A source in this proposal is found somewhere else than it is now, and still carries the day it was last checked or whether it can be had, which were for its old place. A check of the new place is stated in the proposal, never taken from the old one. It is not sent.",
+        "A source in this proposal is found somewhere else than it is now, and carries a day it was last checked, or whether it can be had, that this proposal does not state. A check of the new place is stated by the proposal and never taken from the old one: in a curation, with `checked` (the day and the answer for the new reference); in files written by hand, with a day that names this proposal's own id in `last_reviewed.proposal`. It is not sent.",
     ),
     msg(
         "curate.label_checked_day",
@@ -3191,7 +3191,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.check_unstated",
-        "A source in this proposal is found somewhere else than it was at the base of the proposal, and still carries the day it was last checked or whether it can be had, which were for its old place. A check of the new place is stated in the proposal, never taken from the old one. It cannot be accepted as it is.",
+        "A source in this proposal is found somewhere else than it was at the base of the proposal, and carries a day it was last checked, or whether it can be had, that this proposal does not state. A check of the new place is stated by the proposal and never taken from the old one: in a curation, with `checked` (the day and the answer for the new reference); in files written by hand, with a day that names this proposal's own id in `last_reviewed.proposal`. It cannot be accepted as it is.",
     ),
     msg(
         "outcome_note.knowledge_kept",
@@ -3199,11 +3199,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "curate.check_old_day",
-        "Source: {title}. Where it is found is changed, so the day it was last checked, which is for the old place, stays as it is. Give the day you checked the new place in the field for the new reference instead.",
+        "Source: {title} ({id}). Where it is found is changed, and that clears the day it was last checked, which is for the old place. Leave that day as the base of the proposal has it (put it back if you cleared or changed it), and give the day you checked the new place in the field for the new reference.",
     ),
     msg(
         "curate.check_old_answer",
-        "Source: {title}. Where it is found is changed, so whether it can be had, which is for the old place, stays as it is. Give what you found at the new place in the field for the new reference instead.",
+        "Source: {title} ({id}). Where it is found is changed, and that clears whether it can be had, which is for the old place. Leave that answer as the base of the proposal has it (put it back if you changed it), and give what you found at the new place in the field for the new reference.",
     ),
     msg(
         "know.check_before_review",

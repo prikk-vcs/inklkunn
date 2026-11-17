@@ -293,13 +293,8 @@ async fn a_check_of_a_new_reference_that_is_not_one_is_refused_on_the_form_namin
         let a = send(&s, FORM, &s.writer, &fields).await;
         assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY, "{what}");
         let body = a.body();
-        // A day that has not come is K49's sentence, which names the source by its title (its own refusal, not a check's).
-        let named = if what == "a day that has not come" {
-            "Source: A history of the bridge."
-        } else {
-            source.as_str()
-        };
-        assert!(body.contains(named), "{what}: {body}");
+        // Every one names the source by its title and its whole id, a day that has not come too (K80).
+        assert!(body.contains(source.as_str()), "{what}: {body}");
         assert!(body.contains(said), "{what}: {body}");
         // What the person sent is still in the fields.
         assert!(body.contains(kept), "{what}: {body}");
@@ -340,8 +335,14 @@ async fn the_old_fields_beside_a_new_reference_are_refused_on_the_form_by_their_
     let moved = |more: &[(&'static str, &str)]| {
         with(with(unchanged_on(&s, "2023-11-01"), &elsewhere()), more)
     };
-    let day = "so the day it was last checked, which is for the old place, stays as it is. Give the day you checked the new place in the field for the new reference instead.";
-    let answer = "so whether it can be had, which is for the old place, stays as it is. Give what you found at the new place in the field for the new reference instead.";
+    // The old value must stay as the base has it (the move clears it), and the check of the new place goes in its own field (K80).
+    let day = "and that clears the day it was last checked, which is for the old place. Leave that day as the base of the proposal has it (put it back if you cleared or changed it), and give the day you checked the new place in the field for the new reference.";
+    let answer = "and that clears whether it can be had, which is for the old place. Leave that answer as the base of the proposal has it (put it back if you changed it), and give what you found at the new place in the field for the new reference.";
+    // The source by its title and its whole id in `<code>`, as the other checks do (K80).
+    let source = format!(
+        "Source: A history of the bridge (<code>{}</code>).",
+        super::claims::source_id()
+    );
     let cases = [
         (
             "a valid new day",
@@ -378,10 +379,7 @@ async fn the_old_fields_beside_a_new_reference_are_refused_on_the_form_by_their_
         let a = send(&s, FORM, &s.writer, &fields).await;
         assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY, "{what}");
         let body = a.body();
-        assert!(
-            body.contains("Source: A history of the bridge."),
-            "{what}: {body}"
-        );
+        assert!(body.contains(source.as_str()), "{what}: {body}");
         assert!(body.contains(said), "{what}: {body}");
         assert!(body.contains(kept), "{what}: {body}");
     }
@@ -395,7 +393,7 @@ async fn the_old_fields_beside_a_new_reference_are_refused_on_the_form_by_their_
     // In Japanese too.
     let ja = send_ja(&s, FORM, &moved(&[("c0_reviewed", "2023-11-10")])).await;
     assert!(
-        ja.contains("古い場所について最後に確認した日はそのままになります"),
+        ja.contains("古い場所について最後に確認した日は消えます。その日は、提案の基にした時点のままにしてください"),
         "{ja}"
     );
     // What the base has, sent back, is not a change: the move goes through and clears the check.
@@ -661,10 +659,13 @@ async fn a_draft_that_moves_a_source_and_leaves_its_check_says_so_on_its_page_be
         }
         vec![(source_path(&source.id), Some(source.to_yaml()))]
     };
-    let note = "still carries the day it was last checked or whether it can be had, which were for its old place";
+    let note = "carries a day it was last checked, or whether it can be had, that this proposal does not state";
     let to = super::claims::held_unjudged(&s, moved(true));
     let body = open(&s, &to, &s.writer).await.body();
     assert!(body.contains(note), "{body}");
+    // It names the way to state one (K80).
+    assert!(body.contains("`checked`"), "{body}");
+    assert!(body.contains("`last_reviewed.proposal`"), "{body}");
     assert!(body.contains("It cannot be accepted as it is."), "{body}");
     // A move that clears the check says nothing of the kind.
     let to = super::claims::held_unjudged(&s, moved(false));

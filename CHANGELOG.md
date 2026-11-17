@@ -1828,6 +1828,21 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   them before the rule's key. Test: the K78 test (`knowledge_paragraphs`) gains both bounds in both languages; mutated (the bound
   branch off), it failed. No prikk-dependent test is added.
 
+- **K80 (handoff 005 corrections, tenth round): the check sentences name the source and say what is true (review H-b, H-c).** (1)
+  `curate.day_not_come` (K49) names the source by its whole id beside the title (`{id}`; in `<code>` on the form, as words in the
+  API's problem), as the other `curate.check_*` do: two sources may share a title, and one may have none. (2) `curate.check_old_day`
+  and `curate.check_old_answer` (K76) carry `{id}` and no longer say the old value "stays as it is", which read as *kept* while the
+  move clears it: they say the move clears it, that the old value **must stay as the base has it** (put it back if it was cleared or
+  changed), and that the check of the new place goes in the field for the new reference. (3) `invalid.knowledge_check_unstated` and
+  `know.check_unstated` say the source carries a day or an answer **that this proposal does not state** (a new day naming no
+  proposal, or another, is refused too, not only the old reference's) and name the way: `checked` in a curation, the proposal's own
+  id in `last_reviewed.proposal` in files written by hand; the core's `check::UNSTATED_CHECK` (the log's sentence) and the OpenAPI
+  descriptions of `createProposal` and `reviseProposal` say the same. Glossary rows are updated in the same order. Tests: the form
+  and the API name the whole id for every check refusal, the old-field sentences say the base's value stays, the carried-check
+  sentences name `checked` and `last_reviewed.proposal` in both languages (the form's and the draft's page), and a unit test of
+  `DayNotCome` in both forms. Mutated (`{id}` of the day-not-come sentence left empty), the API test and the unit test failed. No
+  prikk-dependent test is added.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

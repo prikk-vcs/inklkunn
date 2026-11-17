@@ -231,3 +231,35 @@ fn the_refusal_for_a_returning_chain_names_the_source_as_the_legend_does() {
         "{text}"
     );
 }
+
+#[test]
+fn the_refusal_of_a_day_that_has_not_come_names_the_source_by_its_whole_id_as_the_other_checks_do()
+{
+    // K80: two sources may share a title, and one may have none.
+    let not_come = |title: Option<&str>| DayNotCome {
+        at: 0,
+        member: "checked.day",
+        source: id(1),
+        title: title.map(str::to_owned),
+        day: "2999-01-01".to_owned(),
+    };
+    for lang in [
+        crate::catalog::EN,
+        crate::catalog::Lang::from_def(&crate::catalog::JA_DEF),
+    ] {
+        let t = crate::catalog::T::new(lang);
+        // The form's: the id in `<code>`; the API's: the id as words.
+        let html = not_come(Some("Survey")).html(t);
+        assert!(
+            html.as_str().contains(&format!("<code>{}</code>", id(1))),
+            "{html}"
+        );
+        let text = not_come(Some("Survey")).text(t);
+        assert!(text.contains(&id(1).to_string()), "{text}");
+        assert!(!text.contains("<code>"), "{text}");
+        assert!(text.contains("2999-01-01"), "{text}");
+        // A source without a title is told by its id alone.
+        let nameless = not_come(None).text(t);
+        assert!(nameless.contains(&id(1).to_string()), "{nameless}");
+    }
+}
