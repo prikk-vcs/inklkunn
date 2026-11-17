@@ -270,3 +270,11 @@ also states these gates' threat model: **accidents, not deliberate evasion**. Ha
   - The serve proof asserts, where bwrap fails, that `sandbox()` refuses and carries bubblewrap's reason.
   - Fetch's parity test uses a constant list of the 12 direction characters, so the dev-dependency on the signer goes.
   - The doc comments of `is_direction_or_format` and `is_format_character` say why the two sets differ (ZWNJ and ZWJ in knowledge text).
+- **M43 — first: the sandboxes take their layout from the host** (IS-19; read by the architect from CI run 43985682946, `bwrap: execvp /usr/bin/true: No such file or directory`).
+  - **One function** builds the root layout for every bubblewrap use: the probe, prikk's sandbox and curl's vector. For each of `/bin`, `/sbin`, `/lib`, `/lib64` and `/lib32`, the host's own entry is read: a symlink is recreated with **its own target**, a real directory is bound read-only, and an absent one is left out. Nothing assumes Arch's or Debian's layout.
+  - **Tests:**
+    - the layout for a planted Arch-style and a planted Debian-style root;
+    - CI's confined tests running on Ubuntu, with no bubblewrap skip line. The bubblewrap lines then join the guard: `skipping: bubblewrap cannot confine` and `skipping the confined policy`.
+  - **The release workflow runs the built image once before it publishes:** `docker run` with the user-namespace setting the docs give, and a command that confines prikk, for example `wiki create` on a scratch volume, or a probe subcommand. It fails if the image cannot confine.
+  - **`docs/` and the image's README** say what a host needs for confinement, measured in that run.
+  - **For 0.2.1** (the owner's decision): the same change applies on `release/0.2`. Say whether it cherry-picks clean.

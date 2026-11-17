@@ -420,6 +420,10 @@
 
 ## Pending on the owner
 
+- **Decide on a 0.2.1 for IS-19:** on Debian and Ubuntu hosts, and in our own image, 0.2.0 cannot run prikk confined, so it starts only unconfined under the development flag.
+  - The fix (M43) is small and local to three files plus tests.
+  - The architect recommends a 0.2.1 once M43 is reviewed and the image is shown to run confined in CI, with a CHANGELOG note telling operators who started with the development flag to drop it.
+
 - **Review the Japanese catalog** (DR-7; the owner is the reviewer): 842 messages, every one listed with where it appears in
   `docs/glossary.md`; until your sign-off Japanese stays a preview that only a reader's own choice turns on.
 
@@ -465,6 +469,7 @@ conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done a
 | IS-16 | **Rotation cannot both remove the old maintainer key and keep the history verifying** (PK-34; prikk's `remove` is revocation) | dev team, handoff 002 T7 (reproduced by the architect, 2026-10-29) | **Resolved by DR-10 (owner, 2026-10-29, after prikk confirmed the design):** rotation keeps the old key trusted, retirement is an explicit, named act (`docs/KEYS.md`); the rotation records its point and a later seal under the old key is reported (corrections handoff C11, before 0.1.0); threat model RR-8 carries the rest as a waiting dependency with no date |
 | IS-17 | **Two processes creating a key store at once: the loser is told the directory "is not a key store (or its header was removed)"**, because the other's temporary header file makes the directory non-empty; a crash's leftover temporary file blocks creation for good | CI runs 40795756404 and 40796294165 (two of the first three on the pushed tree, 2026-10-29), reproduced by the architect 1 in 300 on one CPU | **Resolved 2026-10-29** by correction C4 (`e8a00cc`: creation under an exclusive lock, leftovers swept, a deterministic test), reviewed and approved |
 | IS-18 | **A restricted wiki's raw source cannot be reached when the content origin has its own host**: the session cookie does not cross hosts | dev team, handoff 003 T6 (deviation 6), 2026-10-29 | an open design decision for sign-in (RFC 006 / M2): a signed, short-lived address for the content origin is the candidate. Not a 0.1.0 matter (every visitor is anonymous; only public wikis are readable) |
+| IS-19 | **The sandboxes cannot run a dynamically linked binary on Debian or Ubuntu.** The bubblewrap probe, prikk's sandbox (`inklkunn-prikk/src/sandbox.rs:361`) and curl's vector (`inklkunn-fetch/src/vector.rs:56`) all make `/lib64` a link to `usr/lib`, which is Arch's layout. On Debian and Ubuntu the loader `/lib64/ld-linux-x86-64.so.2` lives under `usr/lib64`, and prikk and curl are both dynamically linked with that loader. CI run 43985682946 (Ubuntu 24.04, with user namespaces allowed) shows the probe's own reason: `bwrap: execvp /usr/bin/true: No such file or directory`. So on those hosts, **and in inklkunn's own Debian bookworm image**, nothing runs confined. The server then refuses to start unless it runs unconfined under the development flag. 0.1.0 and 0.2.0 have the same layout. The release workflow never runs the image, and the confined tests have only ever run on an Arch host | the architect, reading CI for M40, 2026-11-17 | **open; maintenance M43, first.** The layout is taken from the host. **A 0.2.1 is the owner's decision** (Pending on the owner) |
 
 ## Process lessons (keep)
 
