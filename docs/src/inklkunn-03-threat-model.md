@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | inklkunn Threat Model (security): what inklkunn must defend, against whom, and how, so that the design and the tests can be checked against it. A first-class release deliverable (project rules): updated by any release that touches identity, signing, the prikk boundary, rendering or inbound content; re-verified by the others. |
-| Version | **v0.2, 2026-10-31** (RFC 004: the write path, the lease, the intent journal and recovery; C-1g – C-1k, additions to C-3, C-7, C-9 and C-12, RR-9 – RR-11). Earlier: v0.1, amended 2026-10-29 (C-1d and RR-8: key rotation on prikk as it is, the owner's DR-10 ruling after prikk confirmed it). **Section 7's tests re-verified** at the end of handoff 003 (M1; the record is §7.1) and **at the end of handoff 004 (M2; §7.2)** |
+| Version | **v0.3, 2026-11-18** (0.3.0: RFC 005 part 2, the knowledge layer: A-KNOWLEDGE, T-17 and C-17a – C-17j, INV-11; the November 2026 maintenance: T-18 and C-18a – C-18e, INV-12, the sandbox's host layout (IS-19) and the container settings; RR-12 – RR-14; §7 items for both). Earlier: v0.2, 2026-10-31 (RFC 004: the write path, the lease, the intent journal and recovery; C-1g – C-1k, additions to C-3, C-7, C-9 and C-12, RR-9 – RR-11). Earlier: v0.1, amended 2026-10-29 (C-1d and RR-8: key rotation on prikk as it is, the owner's DR-10 ruling after prikk confirmed it). **Section 7's tests re-verified** at the end of handoff 003 (M1; the record is §7.1) and **at the end of handoff 004 (M2; §7.2)** |
 | Date | 2026-10-27 |
 | Basis | Requirements v0.1 (SEC/PRV/ID/GV/INT), the external design v0.1 (BD/WEB/API/AUTH/PK/FL/CT/OP), the rulings DR-2 and DR-4, prikk's trust and threat model, planeter's threat model v0.4 (the house precedent and the neighbour whose guarantees inklkunn must not weaken), wiki-commons chapter 14, the requirements register items 7, 8, 14, 17. |
 | ID scheme | `A-` asset · `TB-` trust boundary · `T-` threat · `C-` control · `INV-` security invariant · `RR-` residual risk · `ASSUME-` assumption |
@@ -40,6 +40,11 @@ build graph.**
 - **A-RECORD** — the service store: review state, audit log; and the derived cache, whose corruption could
   mislead a page.
 - **A-HOST**, **A-AVAILABILITY**, **A-SUPPLY** — as for any service.
+- **A-KNOWLEDGE** — the claims and sources beside the pages, their community status, the record of when a source was
+  last checked and by which proposal, the alternative views and the claims' threads (RFC 005 part 2). Their value is a
+  reader's trust in the answers to *what supports this?* and *do people disagree?*. A forged status, a check carried
+  onto a source it was never made for, or a thread shown to someone who may not read it misleads exactly where the
+  product promises not to.
 - **A-COMMUNITY** — the social system's health: a wiki captured by a faction or buried in spam is as lost as
   a corrupted one (register item 7, 12 of the main transcript).
 
@@ -49,14 +54,15 @@ build graph.**
 |---|---|---|
 | **TB-1** | anonymous internet → inklkunn | untrusted in: every byte attacker-controlled |
 | **TB-2** | authenticated principal → inklkunn | semi-trusted, scoped by `authorize()`; an account may be hostile or stolen |
-| **TB-3** | proposed and pasted content → rendering and, on acceptance, the repository | untrusted text that becomes a file: path, frontmatter, body, attachment |
+| **TB-3** | proposed and pasted content → rendering and, on acceptance, the repository | untrusted text that becomes a file: path, frontmatter, body, attachment, and (0.3.0) a claim or source file under `knowledge/` |
 | **TB-4** | inklkunn → prikk subprocess | inklkunn drives; prikk verifies; the process is a containment boundary for a parser fault |
 | **TB-5** | web and API tier → the signer | **the key boundary**: one narrow call in, a sealed result out; no key material crosses it |
 | **TB-6** | inklkunn → external services (OpenID Connect, interwiki checks, link previews, webhooks) | every user-influenced URL is an SSRF vector |
 | **TB-7** | inklkunn → the viewer's browser | rendered content in a privileged origin: the XSS boundary |
 | **TB-8** | operator ↔ inklkunn | trusted; the operator supplies the key-store secret |
 | **TB-9** | planeter ↔ inklkunn | semi-trusted peer: identity assertions in, read-only hosting out |
-| **TB-10** | imported bundles and archives → inklkunn | untrusted archives: traversal, bombs, hostile frontmatter |
+| **TB-10** | imported bundles and archives → inklkunn | untrusted archives: traversal, bombs, hostile frontmatter, and (0.3.0) knowledge files that claim a status or a check |
+| **TB-11** | the host and the container runtime ↔ inklkunn's sandboxes | the host's root layout is read to build every sandbox; a container's own settings decide whether bubblewrap can confine at all, and what the server keeps around it |
 
 ## 3. Threats and controls (T-…, C-…)
 
@@ -285,6 +291,117 @@ A forged identity assertion from a fake planeter; planeter's guarantees weakened
 - **C-16b** inklkunn never gives planeter a key, never writes to a planeter-hosted software repository, and
   planeter never writes to a wiki repository (MD-1, MD-5).
 
+### T-17 — Hostile or misleading knowledge (RFC 005 part 2; TB-3, TB-10)
+Claims and sources are text from strangers that a reader is invited to trust. The ways they mislead:
+- **Status without a decision:** a status, a review day or a link set outside a curation proposal, or by an import.
+- **Check laundering:** a source's *last checked* day, or its *can be had* answer, carried onto a new reference that
+  nobody checked, by moving the reference and keeping the old day.
+- **A relation lost or invented** when two proposals merge.
+- **A malformed file** that half-reads.
+- **Spoofed text:** direction controls that make a reference or an identifier read as something else.
+- **A reference or archive address** used as a link to a hostile site, a tracker, or an internal address.
+- **A copy of a source** kept against its licence.
+- **Views and threads:** a view made by anyone, a view called *canonical*, a thread that leaks a restricted wiki or
+  changes a claim.
+- **The provenance walk** (*Why is this here?*) or the knowledge index used to exhaust the server.
+
+(A-KNOWLEDGE, A-COMMUNITY, A-CONTENT, A-AVAILABILITY.)
+
+- **C-17a — Knowledge changes only through accepted proposals** (D-3).
+  - Every claim and source file is written by an acceptance, like a page.
+  - Community status, a source's review day and its *can be had* answer change only through a **curation proposal**.
+  - A page-edit proposal, an import and every system act that touches them are refused by name.
+- **C-17b — A check is stated, never inferred or carried** (D-3; the clarification *correcting a source*; K72 – K77).
+  - When a source's reference moves (white space alone is not a move), its old check is cleared.
+  - A check of the new place counts only when **this** proposal states it: `last_reviewed.proposal` names the proposal
+    itself. One rule decides it at submit, at every revision and at acceptance.
+  - Acceptance also holds the bounds: not before the previous review day, not after today in UTC+14, and an answer
+    only with such a day.
+  - An old `reviewed` or `availability` sent beside a move is refused by its field, never dropped.
+  - Imports are judged as the service (no curation), so they cannot move a checked source or state a check.
+- **C-17c — Validation before the signer is asked; never half-read** (D-5).
+  - The YAML subset of C-4b, the schema, whole identifiers, and references to claims, sources and blocks that exist.
+  - A refusal names the file and the rule.
+  - A repository that holds invalid knowledge files (planted, or from before a rule) still serves its pages, lists the
+    files in the health list, and reads none of them.
+- **C-17d — Text is data, escaped, and cannot impersonate.**
+  - Every field is printed escaped.
+  - The twelve bidirectional controls are refused in knowledge text (the signer's `is_direction_or_format`).
+    Display scrubs all of Cf. The two sets differ on purpose, so that ZWNJ, ZWJ and the other format characters
+    that real text needs stay writable.
+  - Identifiers are shown whole, in `<code>`, wherever two sources could share a title.
+  - **A reference and an archive address are shown as text, never as a link, and never fetched.** No crawler, no link
+    check, no preview: the knowledge layer adds no fetch site, so T-8 is unchanged.
+  - A snapshot kept as an attachment is served like any attachment, from the content origin (C-6c).
+- **C-17e — The knowledge files merge and never resolve** (D-4).
+  - Key by key; an overlap stops with both texts, as C-1i does for pages.
+  - A relation is never lost, and a check is never carried across a reference that moved on either side.
+- **C-17f — Views** (D-9; the owner's ruling of 2026-10-31).
+  - Creating an alternative view needs a reviewer or above. The creation is recorded as an act before prikk is asked,
+    and a killed creation flags the wiki (C-1h, C-1j).
+  - *Compare views* shows differences in words; *canonical* appears nowhere a reader sees.
+- **C-17g — Threads** (D-11).
+  - Append-only records (the store refuses an update, a delete and a replacing insert, by trigger), read under the
+    claim page's own `authorize()` (C-7a).
+  - Notifications never carry content the recipient could not read (C-7b).
+  - A thread never changes a claim; only a curation proposal does.
+  - Exported as one JSON line per comment, the body a fenced text block, so no Markdown reader of the bundle sees a
+    construct in it.
+- **C-17h — Derived, bounded, rebuildable** (D-6, D-8).
+  - The knowledge index is built from the same `extract` as the title index, bounded the same way
+    (`INKLKUNN_INDEX_MAX_MIB`, the file count), never authoritative (INV-5), and rebuilt with the derived store cleared.
+  - *Why is this here?* walks the history within the history page's bounds, says so beyond them, and labels a chain
+    traced by matching text.
+- **C-17i — No word or number says *true*** (D-7; INV-6). The retired-words test holds both languages. *Verified* stays
+  prikk's word for the history alone. *Bearing* describes how a source speaks to a claim, not how good either is.
+- **C-17j — Scratch and export paths take nothing that is not theirs** (K74; TB-4).
+  - Scratch extracts are held by `flock` on a lock file beside each, with an inode check.
+  - An export's leftover partial beside its destination is swept only when its own lock file exists and its name has
+    the three-part tail. A user's directory that looks like one is left alone.
+  - Network filesystems stay unsupported (RR-10).
+
+### T-18 — The sandbox and the container (TB-4, TB-11; IS-19)
+prikk and `curl` run in bubblewrap so that a parser fault, or a hostile response, stays contained (C-9a, RR-3). Three
+ways that containment can fail or weaken:
+- **The sandbox does not fit the host,** so nothing runs confined and the operator reaches for the development flag.
+  This was IS-19: 0.1.0 and 0.2.0 laid out `/lib64` as Arch does, and could not confine on Debian or Ubuntu.
+- **The layout itself exposes the host:** a link followed into a bind, or a host path outside the system directories.
+- **A container weakens around the server:** the settings bubblewrap needs inside a container take away the
+  container's own layers.
+
+(A-HOST, A-KEYS, A-AVAILABILITY.)
+
+- **C-18a — One layout, taken from the host, failing closed.**
+  - `sandbox::root_layout` builds the root of every sandbox: the probe, prikk's, and curl's vector. It binds `/usr`
+    read-only. For `/bin`, `/sbin`, `/lib`, `/lib64` and `/lib32` it reads the host's entry **without following it**: a
+    link is recreated with its own target, so one that leads outside the bound tree dangles; a real directory is bound
+    read-only; an absent one is left out.
+  - Nothing else of the host is added: no home, no `/etc`, no repository but the call's own.
+  - A host where the loader is elsewhere (NixOS, for example) fails closed, with bubblewrap's reason.
+- **C-18b — The program bound is the program run.** prikk's binary and `curl` are bound at, and run as, the file their
+  path resolves to (`bind_target`). bubblewrap already followed a bind's source, so the content is the same file; a
+  link inside a mounted tree is no longer refused as a destination.
+- **C-18c — Confined or refused.**
+  - The server and every command probe bubblewrap at start, and refuse to run prikk when it cannot confine. The
+    refusal carries bubblewrap's own first line.
+  - There is no fallback but `--dev-unconfined` (an argument, never an environment variable), which prints a banner.
+  - A memory ceiling hit, in prikk or in bubblewrap's own loader, is *unavailable*, never a verdict and never a missing
+    prerequisite (C-9a; M48).
+- **C-18d — The container's settings are stated with their cost, and the hardening is run** (SECURITY.md, *What a host
+  needs for confinement*).
+  - In a container, bubblewrap needs `seccomp=unconfined`, `apparmor=unconfined` and `systempaths=unconfined` (docker's
+    names). These take away the runtime's layers for the **whole** container: the server meets the kernel's whole
+    system-call surface. Bubblewrap around prikk and `curl` is then the confinement inside the container (RR-12).
+  - What can be added back is measured and run, not assumed: `--cap-drop ALL`, `--security-opt no-new-privileges` (the
+    image's setuid programs gain nothing), and `--read-only` with `--tmpfs /tmp`.
+  - The alternative, running on the host, needs only user namespaces.
+- **C-18e — The release proves it before it publishes.**
+  - CI runs the confined tests on Ubuntu with no bubblewrap skip line allowed. A guarded skip fails the run, and so does
+    a missing bubblewrap.
+  - The release workflow runs the built image once, under docker with the settings and the hardening of C-18d, and
+    publishes only if `wiki create` succeeds. That command cannot succeed unless prikk is confined. The rehearsal of
+    2026-11-17 (run 44103325108) did it on Debian 12, amd64 and arm64.
+
 ## 4. Security invariants (INV-…) — a change that breaks one is a security bug
 
 - **INV-1 — No history without an authorized acceptance.** Every sealed change names a recorded proposal and
@@ -303,6 +420,12 @@ A forged identity assertion from a fake planeter; planeter's guarantees weakened
 - **INV-9 — The supply chain is pinned, minimized and audited; every crate forbids unsafe code.**
 - **INV-10 — Attribution survives either store:** the signed message and the service records agree, and
   disagreement is reported.
+- **INV-11 — No knowledge without a decision.**
+  - A claim or source changes only through an accepted proposal.
+  - Its status and its checks change only through a curation proposal that states them itself.
+  - Nothing the knowledge layer shows is fetched, and no reference is a link.
+- **INV-12 — Confined or refused.** prikk and `curl` run inside bubblewrap on every supported host layout. Otherwise
+  the server refuses to run them, unless an operator passed the development flag and the banner says so.
 
 ## 5. Residual risks and assumptions (RR-…, ASSUME-…)
 
@@ -360,6 +483,24 @@ A forged identity assertion from a fake planeter; planeter's guarantees weakened
   back. Until the sign-in pages and the real `Identify` are served (handoff `serve-sign-in-and-accept`, U1 – U4, U6)
   every visitor is anonymous and `Accept` is refused for want of an account; this model is re-verified when they are
   (U6).
+- **RR-12 — A container that runs bubblewrap gives up its own layers.**
+  - With `seccomp=unconfined`, `apparmor=unconfined` and `systempaths=unconfined`, a compromise of the server process
+    meets the kernel's whole system-call surface, including the creation of user namespaces, which is a common entry
+    for kernel exploits.
+  - The hardening of C-18d takes back capabilities, new privileges and a writable root, but not the system-call
+    filter.
+  - An operator who cannot accept this runs the server on the host, where bubblewrap needs only user namespaces.
+    SECURITY.md says so.
+- **RR-13 — Knowledge is a social record, not a proof.**
+  - inklkunn records who stated a claim, a source and a check, and what the community decided. It cannot know whether
+    a source says what a claim says, or whether a check was honest.
+  - Citation laundering and source flooding are bounded by attribution, review and the curation rules (T-14, C-17a,
+    C-17b), not prevented.
+  - A snapshot kept as an attachment *only where its licence allows* is the reviewer's judgement; no code reads a
+    licence (T-15 covers its removal).
+- **RR-14 — A restricted wiki's raw source is not served when the content origin has its own host** (IS-18). The
+  session cookie does not cross hosts, so the raw source answers *not found* to its own members. This fails closed: a
+  loss of availability, not of confidentiality. The page itself reads, and a way across is designed with RFC 006.
 - **ASSUME-1** The operator and the host are trusted; inklkunn defends against network actors and malicious
   users, not a hostile operator.
 - **ASSUME-2** prikk's offline `verify` is correct and is the arbiter of history integrity.
@@ -368,24 +509,26 @@ A forged identity assertion from a fake planeter; planeter's guarantees weakened
 
 ## 6. Controls × threats
 
-| Control ↓ / Threat → | T-1 | T-2 | T-3 | T-4 | T-5 | T-6 | T-7 | T-8 | T-9 | T-10 | T-11 | T-12 | T-13 | T-14 | T-15 | T-16 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| C-1 signer boundary, bound seals, keys at rest, witness, labels | ● | | | | | | | | | ○ | | ○ | | | | ○ |
-| C-2 authentication | | ● | ○ | | | | | | | | | | | | | |
-| C-3 default-deny authz, scopes, constitution | | ○ | ● | | | | ○ | | | | | | | ○ | | |
-| C-4 title→path, frontmatter subset, bounds, no execution | | | | ● | ○ | | | | ○ | | | | | | | |
-| C-5 import handling | | | | ○ | ● | | | | ○ | | | | | | | |
-| C-6 CSP, sanitizer, content origin | | ○ | | | | ● | ○ | | | | | | | | | |
-| C-7 confidentiality | | | ○ | | | | ● | | | | | | | | ○ | |
-| C-8 egress guard | | | | | | | | ● | | | | | | | | |
-| C-9 budgets, quotas, metering | | | | ○ | ○ | | | | ● | | | | ○ | ○ | | |
-| C-10 source of truth, reconciliation, rebuild | ○ | | | | | | | | | ● | | ○ | | | | |
-| C-11 supply chain | | | | | | | | | | | ● | | ○ | | | |
-| C-12 attribution, audit | ○ | | | | | | | | | | | ● | | ○ | | |
-| C-13 AI outside authority, content as data | | | | | | | | | | | | | ● | ○ | | |
-| C-14 visibility, friction, tombstones, constitution, metrics | | | ○ | | | | | | | | | | ○ | ● | ○ | |
-| C-15 suppression, procedure, pseudonymity | | | | | | | ○ | | | | | | | | ● | |
-| C-16 verified assertions, no key sharing | ○ | | | | | | | | | | | | | | | ● |
+| Control ↓ / Threat → | T-1 | T-2 | T-3 | T-4 | T-5 | T-6 | T-7 | T-8 | T-9 | T-10 | T-11 | T-12 | T-13 | T-14 | T-15 | T-16 | T-17 | T-18 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| C-1 signer boundary, bound seals, keys at rest, witness, labels | ● | | | | | | | | | ○ | | ○ | | | | ○ | ○ | |
+| C-2 authentication | | ● | ○ | | | | | | | | | | | | | | | |
+| C-3 default-deny authz, scopes, constitution | | ○ | ● | | | | ○ | | | | | | | ○ | | | ○ | |
+| C-4 title→path, frontmatter subset, bounds, no execution | | | | ● | ○ | | | | ○ | | | | | | | | ○ | |
+| C-5 import handling | | | | ○ | ● | | | | ○ | | | | | | | | ○ | |
+| C-6 CSP, sanitizer, content origin | | ○ | | | | ● | ○ | | | | | | | | | | ○ | |
+| C-7 confidentiality | | | ○ | | | | ● | | | | | | | | ○ | | ○ | |
+| C-8 egress guard | | | | | | | | ● | | | | | | | | | | |
+| C-9 budgets, quotas, metering | | | | ○ | ○ | | | | ● | | | | ○ | ○ | | | ○ | ○ |
+| C-10 source of truth, reconciliation, rebuild | ○ | | | | | | | | | ● | | ○ | | | | | ○ | |
+| C-11 supply chain | | | | | | | | | | | ● | | ○ | | | | | ○ |
+| C-12 attribution, audit | ○ | | | | | | | | | | | ● | | ○ | | | ○ | |
+| C-13 AI outside authority, content as data | | | | | | | | | | | | | ● | ○ | | | | |
+| C-14 visibility, friction, tombstones, constitution, metrics | | | ○ | | | | | | | | | | ○ | ● | ○ | | ○ | |
+| C-15 suppression, procedure, pseudonymity | | | | | | | ○ | | | | | | | | ● | | | |
+| C-16 verified assertions, no key sharing | ○ | | | | | | | | | | | | | | | ● | | |
+| C-17 knowledge by proposal, stated checks, validation, text as data, merge, views, threads, bounds | | | | | | | | | | | | | | | | | ● | |
+| C-18 host layout, bound program, confined or refused, container cost, release proof | | | | ○ | ○ | | | | ○ | | ○ | | | | | | | ● |
 
 (● primary, ○ contributing.)
 
@@ -396,6 +539,21 @@ INV-1 and INV-10 (the reconciliation, with a planted unrecorded seal and a plant
 INV-4 (the route enumeration test); INV-3 (the title-to-path fuzz, a hostile bundle fixture, an SSRF fixture
 per fetch site); INV-5 and INV-6 (the cache-cleared rebuild; a stale badge never served; an open proposal
 never rendered as the record).
+
+**Added by v0.3 (0.3.0):**
+- **INV-11:** each path that could change a claim or a source without an accepted proposal, or a status or a check
+  without a curation proposal that states it, is refused (a test per path: a page edit, an import, a system act, the
+  generic write API; a check carried across a moved reference, at submit and at acceptance).
+- **C-17c:** a repository with planted invalid knowledge files serves its pages and lists the files.
+- **C-17d:** a reference and an archive address are text, never `href`; a bidirectional control in knowledge text
+  is refused.
+- **C-17g:** a restricted wiki's thread through every route answers as an absent wiki does (the route enumeration).
+- **C-17i:** the retired-words test in both languages.
+- **INV-12, C-18a:** `root_layout` for planted Arch-style, Debian-style and mixed roots; the probe and prikk's sandbox
+  tied to it; the real probe; CI's confined tests on Ubuntu with no guarded skip.
+- **C-18e:** the release workflow's image step.
+
+The record for these is §7.4, written at 0.3.0's readiness and re-verified by the architect.
 
 ### 7.1 Verification record (2026-10-29, handoff 003 T9)
 
@@ -468,6 +626,11 @@ off the pages (a text area is sent with CR LF, as a browser sends it).
 Also re-run: the structural, catalog, glossary, retired-words and stylesheet tests on every page state in both
 languages; the sanitizer tests; the supply-chain gates (`cargo deny check`, `cargo audit`).
 
-*End of Threat Model v0.2. Its headline is RR-1, stated so no one discovers it after depending on it: inklkunn
+### 7.4 Verification record (0.3.0; to be written at readiness R-5, re-verified at R-6)
+
+*Not yet written.* The dev team fills it in the shape of §7.1 – §7.3: one row per item added by v0.3, with the tests
+that carry it and what they do not cover. The architect's review re-verifies it on the candidate.
+
+*End of Threat Model v0.3. Its headline is RR-1, stated so no one discovers it after depending on it: inklkunn
 holds its wikis' signing keys by the owner's ruling, and everything in this model is built to make that
 custody bounded, detectable, attributable and recoverable rather than invisible.*

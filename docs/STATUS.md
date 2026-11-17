@@ -470,6 +470,18 @@
 
   The architect writes threat model v0.3 (R-1).
 
+- **2026-11-18 — threat model v0.3 written (0.3.0's R-1).** `docs/src/inklkunn-03-threat-model.md` covers what 0.3.0 adds.
+  - **The knowledge layer** as inbound content (A-KNOWLEDGE, T-17, C-17a – C-17j, INV-11):
+    - knowledge changes only through accepted proposals;
+    - a check is stated by its own proposal, never carried across a moved reference;
+    - validation before the signer, never half-read;
+    - references and archive addresses are text, never links, never fetched (no new fetch site);
+    - bidirectional controls are refused;
+    - the merge never resolves, views need a reviewer, threads are append-only and authorized, and the walks are bounded.
+  - **The sandbox and the container** (TB-11, T-18, C-18a – C-18e, INV-12): the host's own layout, failing closed; the program bound is the program run; confined or refused; the container settings and their cost; the release's proof.
+  - **New residual risks:** RR-12 (a container that runs bubblewrap gives up its own system-call filter), RR-13 (knowledge is a social record, not a proof; a snapshot's licence is the reviewer's judgement), RR-14 (IS-18 fails closed).
+  - §7 names the tests for each. Its record (§7.4) is the dev team's at R-5, re-verified by the architect at R-6.
+
 ## Pending on the owner
 
 - **Authorize the 0.3.0 cut** when the architect brings the candidate (target 2026-11-23; the plan itself was authorized 2026-11-18).
