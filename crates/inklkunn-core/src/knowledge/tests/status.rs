@@ -313,9 +313,11 @@ fn what_a_checked_source_is_and_where_it_is_found_is_curation_and_before_the_che
         // A curation proposal may, except that a source found elsewhere does not keep the check of its old reference
         // unless the proposal states one (K71).
         touched.curation = true;
-        // The expectation is this table's own, not the rule's (F-e.1): every case here whose reference differs keeps the
-        // check of the old one and states none, and no other case changes the reference.
-        let moved = want == Some("reference");
+        // The expectation is this table's own, not the rule's (F-e.1): none of these cases names this proposal in a
+        // review day, so one whose reference differs and whose source carries any check (a day, or an answer) carries it
+        // unstated; one with no check carries nothing, and one with the same reference is not a move at all.
+        let moved = after.reference != before.reference
+            && (after.last_reviewed.is_some() || after.availability != Availability::Unknown);
         let by_curation: Vec<_> = validate(&files, &touched, &One, &One)
             .iter()
             .map(|r| (r.file.clone(), r.field))
