@@ -301,6 +301,21 @@ fn only_the_driver_the_signer_and_the_fetcher_spawn_a_process() {
             );
             continue;
         }
+        // The upgrade test (0.3.0 readiness, R-3) runs the 0.2.0 release binary of inklkunn itself, as a process, to make
+        // the data directory this tree opens: the one test file outside these crates that spawns, and only a program it
+        // found on `PATH` (`c`) or was handed (`bin`), never prikk, a shell or a computed name.
+        if src == root.join("crates/inklkunn/src/serve/writes_on/tests/upgrade.rs") {
+            let hits: Vec<_> = command_new_arguments(&text)
+                .into_iter()
+                .filter(|(_, arg)| !matches!(arg.as_str(), "c" | "bin"))
+                .collect();
+            assert!(
+                hits.is_empty(),
+                "SPAWN violation (R-3): {} spawns something other than the 0.2.0 binary it found: {hits:?}",
+                src.display()
+            );
+            continue;
+        }
         let allowed = src.starts_with(root.join("crates/inklkunn-prikk"))
             || src.starts_with(root.join("crates/inklkunn-signer"));
         if allowed {
