@@ -201,12 +201,14 @@ What the probe needs:
   bubblewrap use user namespaces, not capabilities), **`--security-opt no-new-privileges`** (the setuid programs gain
   nothing) and **`--read-only`** with **`--tmpfs /tmp`** (the root is read-only; the server writes to the data volume,
   to the seed directory (`/dev/shm`, which the runtimes mount as a tmpfs) and, if you keep the secret file there, to
-  `/tmp`). The release workflow's run of the image is made with all of them. **Measured** under podman 6.2 with the
-  image built from this repository's `Dockerfile` (on Debian 13 with bubblewrap 0.12, not the Debian 12 the release
-  builds on): `wiki create` succeeds with each of them alone and with all of them together, and in the container the
-  effective and bounding capability sets are empty, `NoNewPrivs` is 1 and `/usr` is read-only; `serve` starts under all
-  of them and says `prikk … (confined by bubblewrap)`. Podman's `--read-only` already gives `/tmp` a tmpfs; docker's does
-  not, hence the explicit `--tmpfs /tmp`. Docker's own run of them is what the release workflow's image step measures.
+  `/tmp`). The release workflow's run of the image is made with all of them.
+  **Measured under podman 6.2** with the image built from this repository's `Dockerfile` (on Debian 13 with bubblewrap
+  0.12, not the Debian 12 the release builds on): `wiki create` succeeds with each of them alone and with all of them
+  together, and in the container the effective and bounding capability sets are empty, `NoNewPrivs` is 1 and `/usr` is
+  read-only; `serve` starts under all of them and says `prikk … (confined by bubblewrap)`. Podman's `--read-only`
+  already gives `/tmp` a tmpfs; docker's does not, hence the explicit `--tmpfs /tmp`. **Measured under docker** in the
+  release rehearsal of 2026-11-17 (workflow run 44103325108): the release's own image on Debian 12, amd64 and arm64, ran
+  `wiki create` confined with the three settings and all four additions.
 - **The data directory's filesystem** must support `flock` between the processes that share it (see `INKLKUNN_DATA_DIR`).
 
 ### When the server cannot sign
