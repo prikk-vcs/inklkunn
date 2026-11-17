@@ -661,6 +661,108 @@ fn a_debian_style_root_gets_its_loader_directory_not_arch_s() {
     );
 }
 
+/// Two planted roots whose layouts differ in every entry that matters (Arch's, whose `/lib64` is `usr/lib`, and Debian's), so
+/// that a list written out in the code agrees with at most one of them, whatever the host's own root is.
+fn two_planted_roots(tag: &str) -> [Tmp; 2] {
+    [
+        planted_root(
+            &format!("{tag}-arch"),
+            &[
+                ("bin", Some("usr/bin")),
+                ("sbin", Some("usr/bin")),
+                ("lib", Some("usr/lib")),
+                ("lib64", Some("usr/lib")),
+            ],
+        ),
+        planted_root(
+            &format!("{tag}-debian"),
+            &[
+                ("bin", Some("usr/bin")),
+                ("sbin", Some("usr/sbin")),
+                ("lib", Some("usr/lib")),
+                ("lib64", Some("usr/lib64")),
+                ("lib32", Some("usr/lib32")),
+            ],
+        ),
+    ]
+}
+
+fn has_run(args: &[String], run: &[String]) -> bool {
+    args.windows(run.len()).any(|w| w == run)
+}
+
+#[test]
+fn prikks_sandbox_lays_out_its_root_as_root_layout_does_for_the_root_it_is_given() {
+    // The sandbox's layout is [`root_layout`]'s, whatever the root (G-c): a call site that wrote a list out would agree
+    // with one of the two planted roots at most.
+    let mounts = Mounts::read(Path::new("/repo"), None);
+    let config = BwrapConfig::default();
+    for root in two_planted_roots("command") {
+        let a = args_of(&config.command_in(&root.0, OsStr::new("/opt/prikk"), &mounts, &["tree"]));
+        let layout = layout_of(&root.0);
+        assert!(has_run(&a, &layout), "{layout:?} in {a:?}");
+        assert_eq!(a.first().map(String::as_str), Some("--ro-bind"), "{a:?}");
+    }
+    // And the production command asks the host's own root.
+    let a = args_of(&config.command(OsStr::new("/opt/prikk"), &mounts, &["tree"]));
+    let layout = layout_of(Path::new("/"));
+    assert!(has_run(&a, &layout), "{layout:?} in {a:?}");
+}
+
+/// The arguments a stand-in `bwrap` was given by `probe_bwrap_in(root, ..)`: the stand-in writes one per line and
+/// succeeds, retrying while the kernel says the script just written is still open in a concurrently forked child.
+fn probe_args(tag: &str, root: &Path) -> Vec<String> {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = Tmp::new(tag);
+    let seen = tmp.0.join("seen");
+    let script = tmp.0.join("bwrap");
+    std::fs::write(
+        &script,
+        format!("#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\n", seen.display()),
+    )
+    .expect("script");
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    for _ in 0..50 {
+        match probe_bwrap_in(root, script.as_os_str()) {
+            Err(e) if e.contains("busy") => std::thread::sleep(Duration::from_millis(40)),
+            other => {
+                other.expect("the stand-in succeeds");
+                break;
+            }
+        }
+    }
+    std::fs::read_to_string(&seen)
+        .expect("the stand-in recorded its arguments")
+        .lines()
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn the_probe_lays_out_its_root_as_root_layout_does_for_the_root_it_is_given() {
+    for root in two_planted_roots("probe") {
+        let a = probe_args("probe-args", &root.0);
+        let layout = layout_of(&root.0);
+        assert!(has_run(&a, &layout), "{layout:?} in {a:?}");
+        assert_eq!(a.first().map(String::as_str), Some("--ro-bind"), "{a:?}");
+    }
+    // The probe's flags are the sandbox's: the same namespaces, the same exit with its parent.
+    let a = probe_args("probe-flags", Path::new("/"));
+    let mounts = Mounts::read(Path::new("/repo"), None);
+    let c = args_of(&BwrapConfig::default().command(OsStr::new("/opt/prikk"), &mounts, &[]));
+    for flag in [
+        "--unshare-all",
+        "--die-with-parent",
+        "--new-session",
+        "--clearenv",
+    ] {
+        assert!(a.iter().any(|x| x == flag), "{flag} in {a:?}");
+        assert!(c.iter().any(|x| x == flag), "{flag} in {c:?}");
+    }
+    // The probe asks the host's own root, as production does.
+    assert!(has_run(&a, &layout_of(Path::new("/"))), "{a:?}");
+}
+
 #[test]
 fn an_absent_entry_is_left_out_a_real_directory_is_bound_and_a_link_keeps_its_own_target() {
     // An arm64 Debian has no /lib64; an old root that is not merged has real directories; a link may be absolute.

@@ -1793,6 +1793,16 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   prints the guarded line and fails only on bubblewrap's own `execvp … No such file or directory`, the loader not found
   (IS-19). That half was not mutation-checked on a host without bubblewrap (this host has it). No prikk-dependent test is added.
 
+- **M45 (handoff 010 corrections, eighth round): prikk's sandbox and the probe are tied to `root_layout`.** Only the vector had a
+  test that its layout is the driver's, so with `BwrapConfig::command` or `probe_bwrap` reverted to a list written out, every test
+  stayed green on a host whose root happens to equal the list. Both now take the root as a private argument
+  (`BwrapConfig::command_in(root, ..)`, `probe_bwrap_in(root, ..)`; `command` and `probe_bwrap` pass the real root, `/`, so no
+  public item changes) and two tests plant an Arch-style root (`/lib64` is `usr/lib`) and a Debian-style one (`usr/lib64`, `usr/sbin`,
+  `/lib32`), so that a list written out agrees with one of them at most, **on any host**: the sandbox's command is asserted to
+  open with `root_layout(root)`'s arguments, and the probe's through a stand-in `bwrap` that records what it was given; the
+  probe's flags are asserted to be the sandbox's and both calls to ask the host's own root. Each call site was changed to
+  `root_layout(Path::new("/"))` and its test failed. No prikk-dependent test is added.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

@@ -351,12 +351,24 @@ impl Sandbox {
 
 impl BwrapConfig {
     fn command(&self, prikk_binary: &OsStr, mounts: &Mounts, args: &[&str]) -> Command {
+        self.command_in(Path::new("/"), prikk_binary, mounts, args)
+    }
+
+    /// [`BwrapConfig::command`] over the root `root` (the real root, `/`, in production; a test plants one, so that the layout is
+    /// the one [`root_layout`] reads from it).
+    fn command_in(
+        &self,
+        root: &Path,
+        prikk_binary: &OsStr,
+        mounts: &Mounts,
+        args: &[&str],
+    ) -> Command {
         let prikk = bind_target(&resolve_binary(prikk_binary));
         let repo = mounts.repo.as_path();
         let mut c = Command::new(&self.bwrap);
         c.env_clear().env("PATH", "/usr/bin:/bin");
         // A read-only view of the system, laid out as the host's own root is (see [`root_layout`]).
-        c.args(root_layout(Path::new("/")));
+        c.args(root_layout(root));
         // The prikk binary itself, wherever it lives: the file it leads to, as a link is no mount point.
         c.arg("--ro-bind").arg(&prikk).arg(&prikk);
         c.arg("--proc").arg("/proc");
@@ -689,10 +701,16 @@ fn first_line_of(stderr: &[u8]) -> String {
 /// begins `bubblewrap cannot confine a process here`**, a `bwrap` that is not there included (the fragment CI's with-prikk
 /// run fails on, so a missing bubblewrap is never a silent skip).
 pub fn probe_bwrap(binary: &OsStr) -> Result<(), String> {
+    probe_bwrap_in(Path::new("/"), binary)
+}
+
+/// [`probe_bwrap`] over the root `root` (the real root, `/`, in production; a test plants one and a stand-in `bwrap` that
+/// records what it was given, so that the layout is the one [`root_layout`] reads from it).
+fn probe_bwrap_in(root: &Path, binary: &OsStr) -> Result<(), String> {
     match Command::new(binary)
         .env_clear()
         .env("PATH", "/usr/bin:/bin")
-        .args(root_layout(Path::new("/")))
+        .args(root_layout(root))
         .args(["--proc", "/proc", "--dev", "/dev"])
         .args([
             "--unshare-all",
