@@ -1180,4 +1180,4 @@ fn record_key_ids(
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

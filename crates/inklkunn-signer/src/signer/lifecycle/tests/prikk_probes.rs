@@ -26,6 +26,16 @@ fn first_prikk_on_path() -> Option<PathBuf> {
         .find(|c| c.is_file())
 }
 
+/// The first `prikk` on `PATH`, in whatever version: the tests of what holds on any prikk. With none it prints the line
+/// the shimmed run counts (`EXPECTED_SKIPS`).
+pub fn prikk_first() -> Option<PathBuf> {
+    let Some(first) = first_prikk_on_path() else {
+        println!("skipping: prikk not on PATH");
+        return None;
+    };
+    Some(first)
+}
+
 /// The first prikk 0.57.0 or newer on `PATH`, wherever it stands (the host's, when the gate runs with the floor
 /// first): the tests of what 0.57.0 reports (`verify --format json`'s `block_seals`, ledger PK-39). With none it prints
 /// the line CI fails on (maintenance M34).

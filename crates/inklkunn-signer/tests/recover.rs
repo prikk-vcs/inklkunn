@@ -36,14 +36,6 @@ fn nth<T>(items: &[T], i: usize) -> &T {
     items.get(i).expect("an element")
 }
 
-fn real_prikk() -> Option<PathBuf> {
-    std::env::var_os("PATH").and_then(|p| {
-        std::env::split_paths(&p)
-            .map(|d| d.join("prikk"))
-            .find(|c| c.is_file())
-    })
-}
-
 struct Dir(PathBuf);
 
 impl Drop for Dir {
@@ -150,10 +142,7 @@ struct Fixture {
 }
 
 fn fixture(tag: &str) -> Option<Fixture> {
-    let Some(real) = real_prikk() else {
-        println!("skipping: prikk not on PATH");
-        return None;
-    };
+    let real = prikk_probes::prikk_first()?;
     fixture_over(tag, real)
 }
 

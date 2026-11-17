@@ -40,14 +40,6 @@ impl Drop for Dir {
     }
 }
 
-fn real_prikk() -> Option<PathBuf> {
-    std::env::var_os("PATH").and_then(|p| {
-        std::env::split_paths(&p)
-            .map(|d| d.join("prikk"))
-            .find(|c| c.is_file())
-    })
-}
-
 fn dir(base: &Path, tag: &str) -> Dir {
     let p = base.join(format!("inklkunn-lc-{}-{tag}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
@@ -71,10 +63,7 @@ struct World {
 
 /// A wiki made through the signer's own entry points, with its first change sealed.
 fn world(tag: &str) -> Option<World> {
-    let Some(prikk) = real_prikk() else {
-        println!("skipping: prikk not on PATH");
-        return None;
-    };
+    let prikk = prikk_probes::prikk_first()?;
     world_over(tag, prikk)
 }
 
@@ -255,8 +244,7 @@ impl World {
 
 #[test]
 fn keys_are_created_for_an_initialised_repository_that_has_none_and_only_once() {
-    let Some(prikk) = real_prikk() else {
-        println!("skipping: prikk not on PATH");
+    let Some(prikk) = prikk_probes::prikk_first() else {
         return;
     };
     let tmp = dir(&std::env::temp_dir(), "create");

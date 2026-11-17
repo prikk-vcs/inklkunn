@@ -1628,6 +1628,25 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   rows of the request-schema walk for `checked`. One limit, by design: a base whose review names no proposal (hand-written data) cannot
   tell a same-date restatement from a carried check, and refuses it as carried; the day after is stated as ever. No prikk-dependent
   test is added.
+- **M41 (handoff 010 corrections, seventh round), the probe modules (review result E-b).** The real tree already broke M39's first
+  rule: `inklkunn-core`'s module asked `super::real_prikk()`, a probe defined in the test file that mounted it, and so did
+  `recovery.rs`, `views.rs`, `acceptance.rs` and `view_recovery.rs`; the signer's integration and unit tests and the command-line
+  crate's admin and server tests each defined their own copy. Now each of the four `prikk_probes.rs` has the entry
+  **`prikk_first`** (the first `prikk` on `PATH`, in whatever version; it prints `skipping: prikk not on PATH` when there is none),
+  and every one of those copies is gone: the callers use the module (the core tests `views.rs`, `acceptance.rs` and
+  `view_recovery.rs` and the signer tests `import_kind.rs`, `maintenance.rs`, `creation_kill.rs` and `accept.rs` now mount it; the
+  command-line crate's admin and server tests reach the keys tests' module, which is `pub(crate)` for that). To let every core test
+  file mount the core module, its two `World` methods became `assert_has_verb(&witnesses, &wiki_id, expected)`, a free function
+  (the module no longer names the test file's `World`). `tools/floor-check/tests/guarded_skips.rs` enforces two more rules on an
+  entry: it returns **only** `Option<PathBuf>` or an `Option` of a world type the crate's test sources define (a `struct` or `enum`;
+  no `Option<bool>`, version, tuple or alias of one), and its **last expression is exactly `Some(<binding>)`** (a name in the
+  parentheses and nothing after them, so `Some(p).filter(..)`, `Some(p.unwrap())` and `Some(p).or(None)` are refused). Planted
+  failures for each, with the right shapes (`Option<std::path::PathBuf>`, a world defined in the module or in a sibling test source,
+  and not one defined in another crate). `accept.rs` no longer prints `skipping: prikk not on PATH` at each of its 46 call sites:
+  its fixture now asks the module, which prints it once; the shimmed run's count of the line is unchanged (315). The first bullet
+  of M41 (the with-prikk run also failing on that line) is a workflow edit and is not here. `prikk_on_path()` of the
+  command-line tests and `inklkunn-core`'s other test files, which only ask whether `prikk` exists, are not changed. No
+  prikk-dependent test is added or removed.
 
 - **M43 (handoff 010 corrections, seventh round; IS-19, first): the sandboxes take their root layout from the host.**
   **0.1.0 and 0.2.0 could not confine anything on Debian or Ubuntu, nor in the project's own image:** the bubblewrap probe, prikk's

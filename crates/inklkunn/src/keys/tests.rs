@@ -107,8 +107,8 @@ fn times_are_printed_as_utc_rfc_3339() {
 // ---- the commands against a real prikk, a real key store and a real SQLite store, in this process ----
 
 /// Every question these tests ask of the prikk on `PATH`: the only place a test reaches a capability (maintenance
-/// M39).
-mod prikk_probes;
+/// M39). The other tests of this crate (the admin commands, the server) ask through it too.
+pub(crate) mod prikk_probes;
 
 mod world {
     #![allow(clippy::expect_used, clippy::unwrap_used)]

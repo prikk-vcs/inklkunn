@@ -22,6 +22,10 @@ use inklkunn_signer::{
 };
 use inklkunn_store::{RootLayout, WikiId};
 
+/// Every question these tests ask of the prikk on `PATH`: the only place a test reaches a capability (maintenance M39).
+#[path = "support/prikk_probes.rs"]
+mod prikk_probes;
+
 const SECRET: &str = "an operator secret for the creation kill tests, long enough";
 
 struct Dir(PathBuf);
@@ -38,14 +42,6 @@ fn dir_under(base: &Path, tag: &str) -> Dir {
     std::fs::create_dir_all(&p).expect("dir");
     std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o700)).expect("private");
     Dir(p)
-}
-
-fn real_prikk() -> Option<PathBuf> {
-    std::env::var_os("PATH").and_then(|p| {
-        std::env::split_paths(&p)
-            .map(|d| d.join("prikk"))
-            .find(|c| c.is_file())
-    })
 }
 
 struct NoLedger;
@@ -188,8 +184,7 @@ fn a_sigkill_inside_any_prikk_call_of_a_creation_leaves_nothing_the_sweep_cannot
     if std::env::var_os("INKLKUNN_CK_CHILD").is_some() {
         return; // the child runs `child_creates_a_wiki_and_blocks`, not this test
     }
-    let Some(real) = real_prikk() else {
-        println!("skipping: prikk not on PATH");
+    let Some(real) = prikk_probes::prikk_first() else {
         return;
     };
     for (verb, n) in POINTS {

@@ -30,20 +30,16 @@ use inklkunn_store::{
     Slug, SqliteStore, SystemActId, SystemActKind,
 };
 
+/// Every question this crate asks of the prikk on `PATH`: the only place a test reaches a capability (maintenance M39).
+#[path = "support/prikk_probes.rs"]
+mod prikk_probes;
+
 const MAIN: &str = "heads/main";
 
 /// The process's one identity authority (it can be claimed once, and a test binary is one process).
 fn authority() -> &'static IdentityAuthority {
     static AUTHORITY: std::sync::OnceLock<IdentityAuthority> = std::sync::OnceLock::new();
     AUTHORITY.get_or_init(|| IdentityAuthority::claim().expect("claimed once"))
-}
-
-fn real_prikk() -> Option<PathBuf> {
-    std::env::var_os("PATH").and_then(|p| {
-        std::env::split_paths(&p)
-            .map(|d| d.join("prikk"))
-            .find(|c| c.is_file())
-    })
 }
 
 struct Dir(PathBuf);
@@ -113,10 +109,7 @@ struct World {
 impl World {
     /// A wiki whose history is: the creation, and one import of `pages/Home.md` and `pages/Other.md`.
     fn new(tag: &str, lease: LeaseConfig) -> Option<World> {
-        let Some(real) = real_prikk() else {
-            println!("skipping: prikk not on PATH");
-            return None;
-        };
+        let real = prikk_probes::prikk_first()?;
         if !Path::new("/dev/shm").is_dir() {
             println!("skipping: no /dev/shm here");
             return None;

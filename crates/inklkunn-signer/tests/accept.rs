@@ -24,6 +24,10 @@ use inklkunn_signer::{
 };
 use inklkunn_store::{AccountId, DisplayName, ProposalId, RootLayout, WikiId};
 
+/// Every question these tests ask of the prikk on `PATH`: the only place a test reaches a capability (maintenance M39).
+#[path = "support/prikk_probes.rs"]
+mod prikk_probes;
+
 static NULL: serde_json::Value = serde_json::Value::Null;
 
 /// A field of a JSON value, `null` when absent (no indexing that could panic).
@@ -32,14 +36,6 @@ fn field<'a>(v: &'a serde_json::Value, key: &str) -> &'a serde_json::Value {
 }
 
 const SECRET: &str = "an operator secret for the integration tests, long enough";
-
-fn real_prikk() -> Option<PathBuf> {
-    std::env::var_os("PATH").and_then(|p| {
-        std::env::split_paths(&p)
-            .map(|d| d.join("prikk"))
-            .find(|c| c.is_file())
-    })
-}
 
 /// A directory removed when dropped (including one a test left unwritable).
 struct Dir(PathBuf);
@@ -212,7 +208,7 @@ fn shm_base() -> Option<PathBuf> {
 /// Build a wiki: keys, repository, one sealed first change. `use_standin` puts the stand-in prikk (and so
 /// the unconfined policy) in front of the real one.
 fn fixture(tag: &str, sandbox: Sandbox, use_standin: bool) -> Option<Fixture> {
-    let real = real_prikk()?;
+    let real = prikk_probes::prikk_first()?;
     let shm_base = shm_base()?;
     let tmp = dir_under(&std::env::temp_dir(), tag);
     let shm = dir_under(&shm_base, tag);
@@ -471,7 +467,6 @@ const MAIN: &str = "heads/main";
 fn an_accepted_proposal_is_committed_sealed_attributed_and_verified_and_leaves_no_seed() {
     for (n, sandbox) in policies().into_iter().enumerate() {
         let Some(f) = fixture(&format!("happy-{n}"), sandbox.clone(), false) else {
-            println!("skipping: prikk not on PATH");
             return;
         };
         let p = f.prepare(
@@ -523,7 +518,6 @@ fn an_accepted_proposal_is_committed_sealed_attributed_and_verified_and_leaves_n
 #[test]
 fn renames_edits_and_removals_land_as_one_change_with_the_rename_declared() {
     let Some(f) = fixture("mixed", Sandbox::Unconfined, false) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     let p = f.prepare(
@@ -587,7 +581,6 @@ fn renames_edits_and_removals_land_as_one_change_with_the_rename_declared() {
 #[test]
 fn a_token_that_is_not_pending_for_this_wiki_and_view_is_refused_before_anything_happens() {
     let Some(f) = fixture("notpending", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     let p = f.prepare(MAIN, vec![file("pages/X.md", Some("x\n"))], vec![]);
@@ -639,7 +632,6 @@ fn a_token_that_is_not_pending_for_this_wiki_and_view_is_refused_before_anything
 #[test]
 fn a_message_that_names_another_proposal_acceptor_base_or_kind_is_refused() {
     let Some(f) = fixture("mismatch", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     let p = f.prepare(MAIN, vec![file("pages/X.md", Some("x\n"))], vec![]);
@@ -750,7 +742,6 @@ fn a_message_that_names_another_proposal_acceptor_base_or_kind_is_refused() {
 #[test]
 fn a_change_that_breaks_a_rule_is_refused_whole_and_touches_nothing() {
     let Some(f) = fixture("rules", Sandbox::Unconfined, false) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     let before = f.history_len(MAIN);
@@ -823,7 +814,6 @@ fn a_change_that_breaks_a_rule_is_refused_whole_and_touches_nothing() {
 #[test]
 fn a_prikk_refusal_at_commit_puts_the_worktree_back_exactly() {
     let Some(f) = fixture("restore", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     // Rename + edit + remove + a new directory, then prikk refuses the commit.
@@ -883,7 +873,6 @@ fn a_prikk_refusal_at_commit_puts_the_worktree_back_exactly() {
 #[test]
 fn a_failure_after_commit_is_queued_leaves_one_queued_patch_and_blocks_the_next_acceptance() {
     let Some(f) = fixture("incomplete", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
@@ -923,7 +912,6 @@ fn a_commit_that_fails_after_its_patch_is_durable_is_queued_and_its_files_are_le
     // durable first. Putting the files back then would leave a queued patch no worktree matches: recovery could
     // neither seal it nor restore anything. The stand-in runs the real commit and then fails.
     let Some(f) = fixture("ambiguous-commit", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
@@ -950,7 +938,6 @@ fn a_commit_that_fails_after_its_patch_is_durable_is_queued_and_its_files_are_le
 #[test]
 fn a_commit_error_with_nothing_queued_is_undone_and_one_with_an_unreadable_state_is_not() {
     let Some(f) = fixture("commit-state", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     // Nothing queued after the error: undone, as for any failure before the commit (the existing restore test
@@ -984,7 +971,6 @@ fn a_commit_error_with_nothing_queued_is_undone_and_one_with_an_unreadable_state
 #[test]
 fn a_dirty_worktree_blocks_an_acceptance_instead_of_riding_along() {
     let Some(f) = fixture("dirty", Sandbox::Unconfined, false) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     std::fs::write(f.repo.join("pages/Stray.md"), "left behind by a crash\n").unwrap();
@@ -1007,7 +993,6 @@ fn a_dirty_worktree_blocks_an_acceptance_instead_of_riding_along() {
 #[test]
 fn a_verification_that_fails_after_the_seal_is_sealed_but_unconfirmed_not_success() {
     let Some(f) = fixture("verify", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     std::fs::write(
@@ -1037,7 +1022,6 @@ fn a_verification_that_fails_after_the_seal_is_sealed_but_unconfirmed_not_succes
 #[test]
 fn a_verification_that_cannot_run_after_the_seal_is_also_sealed_and_unconfirmed() {
     let Some(f) = fixture("verify-down", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     f.control("fail-verify");
@@ -1060,7 +1044,6 @@ fn a_verification_that_cannot_run_after_the_seal_is_also_sealed_and_unconfirmed(
 #[test]
 fn a_newest_block_that_is_not_the_change_just_written_is_not_claimed_as_ours() {
     let Some(f) = fixture("notours", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     // After our seal, `log` answers with a newest block carrying another message: something else sealed in
@@ -1100,7 +1083,6 @@ fn a_call_stopped_by_its_memory_ceiling_before_the_commit_is_the_ceiling_with_no
         // `worktree-status` is the precondition read; `commit` dies after the files were written.
         for verb in ["status", "worktree-status", "commit"] {
             let Some(f) = fixture("ceiling-pre", Sandbox::Unconfined, true) else {
-                println!("skipping: prikk not on PATH");
                 return;
             };
             let before = f.history_len(MAIN);
@@ -1132,7 +1114,6 @@ fn a_call_stopped_by_its_memory_ceiling_before_the_commit_is_the_ceiling_with_no
 fn a_seal_stopped_by_its_memory_ceiling_is_queued_with_the_ceiling_named() {
     for shape in DEATHS {
         let Some(f) = fixture("ceiling-seal", Sandbox::Unconfined, true) else {
-            println!("skipping: prikk not on PATH");
             return;
         };
         f.die("seal", shape);
@@ -1159,7 +1140,6 @@ fn a_check_after_the_seal_stopped_by_its_memory_ceiling_is_unconfirmed_and_never
     for shape in DEATHS {
         for verb in ["log", "verify"] {
             let Some(f) = fixture("ceiling-post", Sandbox::Unconfined, true) else {
-                println!("skipping: prikk not on PATH");
                 return;
             };
             let before = f.history_len(MAIN);
@@ -1195,7 +1175,6 @@ fn a_check_after_the_seal_stopped_by_its_memory_ceiling_is_unconfirmed_and_never
 fn a_wiki_with_a_300_mib_attachment_accepts_that_attachment_and_the_change_after_it() {
     for (n, sandbox) in policies().into_iter().enumerate() {
         let Some(f) = fixture(&format!("attachment-{n}"), sandbox.clone(), false) else {
-            println!("skipping: prikk not on PATH");
             return;
         };
         let mut big = vec![0_u8; 300 << 20];
@@ -1250,7 +1229,6 @@ fn a_wiki_with_a_300_mib_attachment_accepts_that_attachment_and_the_change_after
 #[test]
 fn a_change_altered_after_the_record_is_refused_before_anything_is_written() {
     let Some(f) = fixture("digest", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     let p = f.prepare(
@@ -1319,7 +1297,6 @@ fn a_change_altered_after_the_record_is_refused_before_anything_is_written() {
 #[test]
 fn a_worktree_that_cannot_be_put_back_after_a_failed_commit_is_said_to_be_dirty() {
     let Some(f) = fixture("dirty-restore", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     // The first `worktree-status` (the precondition) answers; the commit fails; the second (the check that
@@ -1335,7 +1312,6 @@ fn a_worktree_that_cannot_be_put_back_after_a_failed_commit_is_said_to_be_dirty(
 #[test]
 fn a_seed_directory_that_cannot_be_removed_after_a_good_acceptance_is_reported_with_the_block() {
     let Some(f) = fixture("lockseeds", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     f.control("lockseeds-seal");
@@ -1358,7 +1334,6 @@ fn a_seed_directory_that_cannot_be_removed_after_a_good_acceptance_is_reported_w
 #[test]
 fn the_guard_answers_before_the_signer_so_much_as_tries_to_make_a_seed_directory() {
     let Some(f) = fixture("guard-first", Sandbox::Unconfined, false) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     use std::os::unix::fs::PermissionsExt;
@@ -1381,7 +1356,6 @@ fn the_guard_answers_before_the_signer_so_much_as_tries_to_make_a_seed_directory
 #[test]
 fn each_write_verb_sees_only_the_seed_it_signs_with_and_a_verb_that_signs_nothing_sees_none() {
     let Some(f) = fixture("verb-visibility", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     for verb in ["init", "trust", "mv", "branch", "commit", "seal"] {
@@ -1461,7 +1435,6 @@ fn each_write_verb_sees_only_the_seed_it_signs_with_and_a_verb_that_signs_nothin
 #[test]
 fn the_seeds_exist_only_while_prikk_runs_and_are_where_the_signer_says() {
     let Some(f) = fixture("seedlife", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     f.control("probe-commit");
@@ -1517,7 +1490,6 @@ fn the_seeds_exist_only_while_prikk_runs_and_are_where_the_signer_says() {
 #[test]
 fn no_error_text_ever_carries_a_seed_the_secret_or_the_seed_directory() {
     let Some(f) = fixture("grep", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     f.control("probe-commit");
@@ -1575,7 +1547,6 @@ fn a_killed_server_leaves_a_state_recovery_can_complete_and_the_next_start_sweep
         return; // the child runs `child_accepts_and_blocks_in_seal`, not this test
     }
     let Some(f) = fixture("killed", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
@@ -1792,7 +1763,6 @@ fn child_accepts_and_blocks_in_seal() {
 fn a_view_is_created_only_for_a_recorded_act_and_acceptances_can_target_it() {
     for (n, sandbox) in policies().into_iter().enumerate() {
         let Some(f) = fixture(&format!("view-{n}"), sandbox.clone(), false) else {
-            println!("skipping: prikk not on PATH");
             return;
         };
         let act = ViewCreationAct::new("act-1");
@@ -1902,7 +1872,6 @@ fn a_view_is_created_only_for_a_recorded_act_and_acceptances_can_target_it() {
 #[test]
 fn the_unguarded_entry_creates_only_the_first_change_of_a_new_wiki() {
     let Some(f) = fixture("bootstrap", Sandbox::Unconfined, false) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     let system = Message::system(
@@ -1956,7 +1925,6 @@ fn the_unguarded_entry_creates_only_the_first_change_of_a_new_wiki() {
 #[test]
 fn opening_the_signer_checks_the_secret_and_the_tmpfs() {
     let Some(f) = fixture("open", Sandbox::Unconfined, false) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     let pre = Fixtureless {
@@ -2002,7 +1970,6 @@ fn after_a_retirement_writes_continue_and_the_repository_still_fails_its_verific
     // when prikk keeps a retired key's history verifiable the canary below fails and the runbook and the ledger
     // row are due a change.
     let Some(f) = fixture("retired", Sandbox::Unconfined, false) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     f.signer
@@ -2077,7 +2044,6 @@ fn after_a_retirement_writes_continue_and_the_repository_still_fails_its_verific
 #[test]
 fn a_repository_that_verifies_or_whose_key_was_only_rotated_has_nothing_to_excuse() {
     let Some(f) = fixture("not-retired", Sandbox::Unconfined, false) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     assert_eq!(
@@ -2226,7 +2192,6 @@ fn a_second_failure_planted_after_a_retirement_still_stops_the_wiki() {
     // is not trusted and is no retired key of this wiki fails publication trust too, and is not excused; the
     // acceptance is sealed but not confirmed, as before.
     let Some(f) = fixture("retired-plus", Sandbox::Unconfined, false) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     f.signer
@@ -2311,7 +2276,6 @@ fn a_branch_published_from_an_old_block_after_a_retirement_is_not_excused() {
     // a ref state and a ref update. Counting them against the ref states the retirement made excused them; the
     // retirement's own record does not hold them.
     let Some(f) = fixture("retired-branch", Sandbox::Unconfined, false) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     retire_the_maintainer_key(&f);
@@ -2335,7 +2299,6 @@ fn a_rollback_after_a_retirement_is_not_excused() {
     // P2′: a rollback sealed after the retirement by a key that is not trusted moves heads/main, adding a block, a
     // ref state and a ref update the retirement did not record.
     let Some(f) = fixture("retired-rollback", Sandbox::Unconfined, false) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     retire_the_maintainer_key(&f);
@@ -2357,7 +2320,6 @@ fn a_block_sealed_by_a_third_key_before_the_rotation_is_not_excused() {
     // second. When the first key is later taken out of trust by hand, its blocks lose their signature too, sit
     // before both recorded points, and are not in the second key's record.
     let Some(f) = fixture("retired-third", Sandbox::Unconfined, false) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     f.signer
@@ -2393,7 +2355,6 @@ fn a_block_sealed_after_a_retirement_by_the_retired_key_itself_is_not_excused() 
     // Not by position and not by key: the record holds the ids that failed when the key was removed, so a later
     // seal under the same key id, however it was made, names a block the record does not hold.
     let Some(f) = fixture("retired-late", Sandbox::Unconfined, false) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     retire_the_maintainer_key(&f);
@@ -2409,7 +2370,6 @@ fn a_retirement_is_refused_while_verify_fails_and_nothing_changes() {
     // P2′: `verify` runs before the key leaves the trust store, and a repository that does not verify is not retired
     // from: the old key stays trusted, the key record does not change, and the error says what to do.
     let Some(f) = fixture("retire-refused", Sandbox::Unconfined, false) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     plant_a_block_sealed_by_an_untrusted_key(&f);
@@ -2449,7 +2409,6 @@ fn a_retirement_is_refused_while_verify_fails_and_nothing_changes() {
 #[test]
 fn a_second_retirement_starts_from_what_the_first_recorded_and_the_two_add_up() {
     let Some(f) = fixture("retired-twice", Sandbox::Unconfined, false) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     retire_the_maintainer_key(&f);
@@ -2483,7 +2442,6 @@ fn two_acceptances_at_once_on_one_wiki_never_interleave() {
     // every acceptance, Q7), so the second is refused when it gets its turn, having written nothing. Each block
     // carries only its own change.
     let Some(f) = fixture("concurrent", Sandbox::Unconfined, false) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     let before = f.history_len(MAIN);
@@ -2586,7 +2544,6 @@ impl Drop for OtherProcess {
 #[test]
 fn a_wiki_written_by_another_process_is_busy_by_name_and_free_again_when_its_holder_dies() {
     let Some(f) = fixture("busy", Sandbox::Unconfined, false) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     let Some(other) = OtherProcess::holding(&f.root.lock_file(&f.wiki)) else {
@@ -2664,7 +2621,6 @@ fn a_wiki_written_by_another_process_is_busy_by_name_and_free_again_when_its_hol
 #[test]
 fn the_lock_file_is_beside_the_repository_and_never_inside_it() {
     let Some(f) = fixture("lockplace", Sandbox::Unconfined, false) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     let p = f.prepare(MAIN, vec![file("pages/Edit.md", Some("edited\n"))], vec![]);
@@ -2709,7 +2665,6 @@ fn retire_without_the_record(f: &Fixture) -> inklkunn_signer::Rotation {
 fn a_retirement_that_ended_without_its_record_excuses_nothing_and_finishing_it_lets_writes_continue()
  {
     let Some(f) = fixture("retire-unrecorded", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     retire_without_the_record(&f);
@@ -2811,7 +2766,6 @@ fn a_kill_at_each_point_of_a_retirement_pauses_every_acceptance_before_anything_
     let command_of = inklkunn_signer::finish_retirement_command;
     for point in ["record", "untrust"] {
         let Some(f) = fixture(&format!("w1-{point}"), Sandbox::Unconfined, true) else {
-            println!("skipping: prikk not on PATH");
             return;
         };
         retirement_stopped_at(&f, point);
@@ -2890,7 +2844,6 @@ fn a_kill_before_the_first_record_leaves_nothing_unfinished_and_the_acceptance_i
     // the rotation, so the trust list being unreadable after the new key was adopted is a rotation that happened and a
     // retirement that was not begun: the second point, below.)
     let Some(f) = fixture("w1-before", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     // trust calls: adopt the new key (0: fails)
@@ -2924,7 +2877,6 @@ fn a_retirement_that_could_not_be_begun_after_the_rotation_pauses_nothing() {
     // retirement. The old key is trusted, nothing is unfinished, the acceptance is not paused, and the outcome names
     // the command that retires the key later.
     let Some(f) = fixture("x1-not-begun", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     // trust calls: adopt the new key (0), read the list (1: fails)
@@ -2969,7 +2921,6 @@ fn the_pause_is_the_key_records_and_giving_the_retirement_up_lets_writes_continu
     // W1 and W3: while the state is set nothing is sealed; abandoning clears it, the old key is trusted again, and the
     // held acceptance goes through (the wiki verifies, so it is confirmed).
     let Some(f) = fixture("w1-abandon", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     retire_without_the_record(&f);
@@ -3002,7 +2953,6 @@ fn a_key_record_that_cannot_be_read_refuses_an_acceptance_before_anything_else_i
     // X4: the pause fails closed. The refusal is the pause's own sentence for an unreadable record, so it was reached
     // before the ledger was read and before any seed was asked for (either would have failed in other words).
     let Some(f) = fixture("x4-accept", Sandbox::Unconfined, true) else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     let before = f.history_len(MAIN);

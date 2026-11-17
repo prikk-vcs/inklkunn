@@ -20,6 +20,10 @@ use inklkunn_signer::{
 };
 use inklkunn_store::{RootLayout, WikiId};
 
+/// Every question these tests ask of the prikk on `PATH`: the only place a test reaches a capability (maintenance M39).
+#[path = "support/prikk_probes.rs"]
+mod prikk_probes;
+
 struct Dir(PathBuf);
 
 impl Drop for Dir {
@@ -34,14 +38,6 @@ fn dir_under(base: &Path, tag: &str) -> Dir {
     std::fs::create_dir_all(&p).unwrap();
     std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o700)).unwrap();
     Dir(p)
-}
-
-fn real_prikk() -> Option<PathBuf> {
-    std::env::var_os("PATH").and_then(|p| {
-        std::env::split_paths(&p)
-            .map(|d| d.join("prikk"))
-            .find(|c| c.is_file())
-    })
 }
 
 #[derive(Default)]
@@ -66,8 +62,7 @@ fn prikk_in(prikk: &Path, repo: &Path, args: &[&str]) -> std::process::Output {
 
 #[test]
 fn an_import_under_the_system_principal_verifies_with_prikk_itself_and_says_what_it_is() {
-    let Some(prikk) = real_prikk() else {
-        println!("skipping: prikk not on PATH");
+    let Some(prikk) = prikk_probes::prikk_first() else {
         return;
     };
     let tmp = dir_under(&std::env::temp_dir(), "import");

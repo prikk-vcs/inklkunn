@@ -43,18 +43,6 @@ fn dir(base: &Path, tag: &str) -> Dir {
     Dir(p)
 }
 
-fn real_prikk() -> Option<PathBuf> {
-    let found = std::env::var_os("PATH").and_then(|p| {
-        std::env::split_paths(&p)
-            .map(|d| d.join("prikk"))
-            .find(|c| c.is_file())
-    });
-    if found.is_none() {
-        println!("skipping: prikk not on PATH");
-    }
-    found
-}
-
 fn until(what: &str, mut done: impl FnMut() -> bool) {
     let end = Instant::now() + Duration::from_secs(60);
     while !done() {
@@ -101,7 +89,7 @@ struct World {
 
 impl World {
     fn new(tag: &str) -> Option<World> {
-        let real = real_prikk()?;
+        let real = crate::keys::tests::prikk_probes::prikk_first()?;
         let tmp = dir(&std::env::temp_dir(), tag);
         let shm = dir(Path::new("/dev/shm"), tag);
         let data_dir = tmp.0.join("data");

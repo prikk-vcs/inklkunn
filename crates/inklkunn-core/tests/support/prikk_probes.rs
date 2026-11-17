@@ -6,12 +6,23 @@
 //! or asserts and returns nothing. What decides is private: no test of the crate can branch on it. The workspace check
 //! `tools/floor-check/tests/guarded_skips.rs` reads this file: a probe is found by its definition here, a call of one
 //! outside this module fails it, and a public function that can return none without printing fails it.
+// Each test file of the crate mounts this module and uses some of it.
+#![allow(dead_code)]
+
 use std::path::PathBuf;
 use std::time::Duration;
 
+use inklkunn_core::Witnesses;
 use inklkunn_prikk::{Admission, PrikkCli, Sandbox};
+use inklkunn_store::WikiId;
 
-use super::World;
+/// The first `prikk` on `PATH` (the first directory that has one), in whatever version.
+fn first_prikk_on_path() -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|d| d.join("prikk"))
+        .find(|c| c.is_file())
+}
 
 /// The first `prikk` on `PATH` (any directory, not only the first) that reports 0.57.0 or newer.
 fn real_prikk_at_least_057() -> Option<PathBuf> {
@@ -32,6 +43,16 @@ fn real_prikk_at_least_057() -> Option<PathBuf> {
         })
 }
 
+/// The first `prikk` on `PATH`, in whatever version: the tests of what holds on any prikk. With none it prints the line
+/// the shimmed run counts (`EXPECTED_SKIPS`).
+pub fn prikk_first() -> Option<PathBuf> {
+    let Some(first) = first_prikk_on_path() else {
+        println!("skipping: prikk not on PATH");
+        return None;
+    };
+    Some(first)
+}
+
 /// The first prikk 0.57.0 or newer on `PATH`, wherever it stands (the host's, when the gate runs with 0.55.0 first): for
 /// the tests that need `uncommit` and what 0.57.0 does with a held lock. With none it prints the line CI fails on.
 pub fn prikk_057() -> Option<PathBuf> {
@@ -46,7 +67,7 @@ pub fn prikk_057() -> Option<PathBuf> {
 /// verb*. A first prikk that has `uncommit` prints the guarded line (CI fails on it: the floor must be first), and the
 /// subject runs on the 0.57.0 side through [`prikk_057`] instead (maintenance M28).
 pub fn prikk_floor() -> Option<PathBuf> {
-    let Some(first) = super::real_prikk() else {
+    let Some(first) = first_prikk_on_path() else {
         println!("skipping: prikk not on PATH");
         return None;
     };
@@ -57,18 +78,14 @@ pub fn prikk_floor() -> Option<PathBuf> {
     Some(first)
 }
 
-impl World {
-    /// Does this world's prikk have the verb `uncommit` (0.57.0 and later)? Asked of prikk without a patch id, which
-    /// takes no lock.
-    fn has_uncommit(&self) -> bool {
-        self.recovery_witnesses()
-            .has_uncommit(&self.wiki.id)
-            .unwrap()
-    }
+/// Does the prikk behind `witnesses` have the verb `uncommit` (0.57.0 and later)? Asked of prikk without a patch id,
+/// which takes no lock.
+fn has_uncommit(witnesses: &Witnesses, wiki: &WikiId) -> bool {
+    witnesses.has_uncommit(wiki).unwrap()
+}
 
-    /// Asserts whether this world's prikk has the verb `uncommit` (a world made over [`prikk_057`] has it, one made
-    /// over [`prikk_floor`] has not: this says so where the subject depends on it).
-    pub fn assert_has_verb(&self, expected: bool) {
-        assert_eq!(self.has_uncommit(), expected);
-    }
+/// Asserts whether the prikk behind `witnesses` has the verb `uncommit` (a world made over [`prikk_057`] has it, one
+/// made over [`prikk_floor`] has not: this says so where the subject depends on it).
+pub fn assert_has_verb(witnesses: &Witnesses, wiki: &WikiId, expected: bool) {
+    assert_eq!(has_uncommit(witnesses, wiki), expected);
 }

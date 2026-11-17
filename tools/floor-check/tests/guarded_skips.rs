@@ -8,9 +8,11 @@
 //! 1. **One module per test crate** (or one shared test-support module) is a file named `prikk_probes.rs`. It holds
 //!    every question asked of the prikk on `PATH`: which binary, which version, what it reports, whether it has a
 //!    verb.
-//! 2. **What a probe module offers is public, and nothing else is.** A `pub fn` returns a binary (an `Option`) and
-//!    **prints the guarded line itself** on every path that returns none, or it asserts and returns nothing. A `pub fn`
-//!    that returns anything else (a `bool`, a version, a `Result`) is an answer a test could branch on, and fails.
+//! 2. **What a probe module offers is public, and nothing else is.** A `pub fn` (an *entry*) returns a binary,
+//!    `Option<PathBuf>`, or a world a test builds over one, `Option<` a type the crate's test sources define `>`, and
+//!    **prints the guarded line itself** on every path that returns none; or it asserts and returns nothing. A `pub fn`
+//!    that returns anything else (a `bool`, a version, a tuple, a `Result`, an `Option<bool>`) is an answer a test could
+//!    branch on, and fails.
 //!    Every other function of the module is a probe, found here by its **definition**: no list is kept by hand.
 //!    The free functions of `inklkunn_prikk` that the module calls by path (`probe_version`, `parse_version`) are
 //!    probes of every crate in the workspace.
@@ -20,7 +22,9 @@
 //! 4. **A public `Option` function can return none only after printing.** Its body has no `?`; each `None` and each
 //!    `return` has a `println!` of one of the lines CI fails on at the level of its own block before it (a line in a
 //!    comment, in a string that is not printed, in another block or after the exit does not count); and its last
-//!    expression is `Some(..)`, so a probe's own `Option` cannot leave through the tail.
+//!    expression is exactly `Some(<binding>)`, so neither a probe's own `Option` nor `Some(p).filter(..)` can leave
+//!    through the tail (maintenance M41). The one entry every module has, `prikk_first`, is the first `prikk` on `PATH`
+//!    in whatever version: a test reads `PATH` for it nowhere else.
 //!
 //! The with-prikk run in CI fails on `skipping: prikk 0.57.0 or newer not found` and on `skipping: no prikk older than
 //! 0.57.0`. The reviewer's nine shapes (`if w.reports_block_seals() { subject(&w); }`, `if let Some(p) =
@@ -224,6 +228,57 @@ fn word_positions(code: &[char], word: &str) -> Vec<usize> {
         }
     }
     out
+}
+
+/// The names of the structs and enums defined in `code` (a world type an entry may return).
+fn defined_types(code: &[char]) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for keyword in ["struct", "enum"] {
+        for p in word_positions(code, keyword) {
+            let mut k = p + keyword.len();
+            if !code.get(k).is_some_and(|c| c.is_whitespace()) {
+                continue;
+            }
+            while code.get(k).is_some_and(|c| c.is_whitespace()) {
+                k += 1;
+            }
+            let start = k;
+            while is_ident(code.get(k).copied()) {
+                k += 1;
+            }
+            let name: String = code.get(start..k).unwrap_or_default().iter().collect();
+            if name.chars().next().is_some_and(char::is_uppercase) {
+                out.insert(name);
+            }
+        }
+    }
+    out
+}
+
+/// Is `ret` what an entry may return: `Option<PathBuf>`, or an `Option` of a type in `worlds`?
+fn is_entry_type(ret: &str, worlds: &BTreeSet<String>) -> bool {
+    let compact: String = ret.chars().filter(|c| !c.is_whitespace()).collect();
+    let Some(inner) = compact
+        .strip_prefix("Option<")
+        .and_then(|r| r.strip_suffix('>'))
+    else {
+        return false;
+    };
+    matches!(inner, "PathBuf" | "std::path::PathBuf") || worlds.contains(inner)
+}
+
+/// Is `last` exactly `Some(<binding>)`: one name in the parentheses, nothing after them?
+fn is_some_of_a_binding(last: &str) -> bool {
+    last.strip_prefix("Some(")
+        .and_then(|r| r.strip_suffix(')'))
+        .map(str::trim)
+        .is_some_and(|inner| {
+            inner
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_lowercase() || c == '_')
+                && inner.chars().all(|c| c.is_alphanumeric() || c == '_')
+        })
 }
 
 /// A function: where its `fn` stands, where its name ends, its body's `{` and the offset after its `}`.
@@ -439,7 +494,7 @@ struct ModuleFacts {
     problems: Vec<String>,
 }
 
-fn analyse_module(label: &str, src: &str) -> ModuleFacts {
+fn analyse_module(label: &str, src: &str, worlds: &BTreeSet<String>) -> ModuleFacts {
     let v = views(src);
     let funcs = functions(&v.code);
     let mut facts = ModuleFacts::default();
@@ -482,10 +537,11 @@ fn analyse_module(label: &str, src: &str) -> ModuleFacts {
             facts.asserts += 1;
             continue;
         };
-        if !ret.starts_with("Option<") {
+        if !is_entry_type(&ret, worlds) {
             facts.problems.push(format!(
                 "{label}:{line}: `pub fn {name}` returns `{ret}`, an answer a test could branch on (a public function of a \
-                 probe module returns an `Option` after printing the guarded line, or returns nothing)"
+                 probe module returns `Option<PathBuf>` or an `Option` of a world type the crate's tests define, after \
+                 printing the guarded line, or returns nothing)"
             ));
             continue;
         }
@@ -513,11 +569,11 @@ fn analyse_module(label: &str, src: &str) -> ModuleFacts {
             }
         }
         let last = tail(&v.code, f);
-        if !last.starts_with("Some(") {
+        if !is_some_of_a_binding(&last) {
             let shown: String = last.chars().take(40).collect();
             facts.problems.push(format!(
                 "{label}:{line}: `{name}` ends in `{shown}`; the last expression of a function that returns an `Option` \
-                 must be `Some(..)`"
+                 must be `Some(<binding>)`, exactly"
             ));
         }
     }
@@ -568,8 +624,23 @@ fn check(sources: &[Source]) -> Report {
     // 1. The probe modules: by package, the probes they define; everywhere, the product's functions they call.
     let mut probes: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut with_module: BTreeSet<String> = BTreeSet::new();
+    // The types the test sources of each package define: the worlds an entry may return an `Option` of.
+    let mut worlds: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for s in sources.iter().filter(|s| is_test_source(&s.path)) {
+        worlds
+            .entry(package_of(&s.path))
+            .or_default()
+            .extend(defined_types(&views(&s.text).code));
+    }
     for s in sources.iter().filter(|s| is_probe_module(&s.path)) {
-        let facts = analyse_module(&s.path, &s.text);
+        let facts = analyse_module(
+            &s.path,
+            &s.text,
+            &worlds
+                .get(&package_of(&s.path))
+                .cloned()
+                .unwrap_or_default(),
+        );
         report.modules += 1;
         report.entries += facts.entries;
         report.asserts += facts.asserts;
@@ -681,7 +752,7 @@ fn a_prikk_capability_is_reached_only_through_the_probe_module_of_each_test_crat
         report.modules
     );
     assert!(
-        report.entries >= 9,
+        report.entries >= 13,
         "only {} public probe functions that return a binary were found",
         report.entries
     );
@@ -822,7 +893,7 @@ fn the_shapes_that_are_right_pass() {
     // Each exit of an entry is a `return` and a `None`, both after a printed line.
     assert_eq!(report.printed_exits, 6);
     // The probes are what the module defines and does not make public, whatever their names.
-    let facts = analyse_module(MODULE_PATH, RIGHT_MODULE);
+    let facts = analyse_module(MODULE_PATH, RIGHT_MODULE, &BTreeSet::new());
     assert_eq!(
         facts.probes,
         [
@@ -1008,12 +1079,49 @@ fn a_public_function_that_can_return_none_without_printing_is_a_planted_failure(
         (
             "a probe's own option as the last expression",
             "pub fn e() -> Option<PathBuf> {\n prikk_where(|v| v >= (0, 57, 0))\n}\n",
-            "must be `Some(..)`",
+            "must be `Some(<binding>)`",
         ),
         (
             "an option held in a variable",
             "pub fn e() -> Option<PathBuf> {\n let p = prikk_where(|v| v >= (0, 57, 0));\n p\n}\n",
-            "must be `Some(..)`",
+            "must be `Some(<binding>)`",
+        ),
+        // M41 (E-b): the tail is `Some(<binding>)`, exactly.
+        (
+            "`Some(p).filter(..)` as the tail",
+            "pub fn e() -> Option<PathBuf> {\n let Some(p) = raw() else {\n println!(\"skipping: prikk not on PATH\");\n return None;\n };\n Some(p).filter(|c| c.is_file())\n}\n",
+            "must be `Some(<binding>)`",
+        ),
+        (
+            "`Some(p.unwrap())` as the tail",
+            "pub fn e() -> Option<PathBuf> {\n let p = raw();\n Some(p.unwrap())\n}\n",
+            "must be `Some(<binding>)`",
+        ),
+        (
+            "`Some(p)` followed by a method call",
+            "pub fn e() -> Option<PathBuf> {\n let p = raw();\n Some(p).or(None)\n}\n",
+            "must be `Some(<binding>)`",
+        ),
+        // M41 (E-b): an entry returns a binary or a world, never another answer.
+        (
+            "a public `Option<bool>`",
+            "pub fn e() -> Option<bool> {\n let answer = raw();\n Some(answer)\n}\n",
+            "returns `Option<bool>`",
+        ),
+        (
+            "a public `Option` of a version",
+            "pub fn e() -> Option<(u64, u64, u64)> {\n let v = raw();\n Some(v)\n}\n",
+            "returns `Option<(u64, u64, u64)>`",
+        ),
+        (
+            "a public `Option` of a type alias of a version",
+            "type Version = (u64, u64, u64);\npub fn e() -> Option<Version> {\n let v = raw();\n Some(v)\n}\n",
+            "returns `Option<Version>`",
+        ),
+        (
+            "a public `Option` of a type no test source of the crate defines",
+            "pub fn e() -> Option<World> {\n let w = raw();\n Some(w)\n}\n",
+            "returns `Option<World>`",
         ),
         (
             "a match whose arm is none",
@@ -1053,11 +1161,48 @@ fn a_public_function_that_can_return_none_without_printing_is_a_planted_failure(
     let right = [
         "pub fn e() -> Option<PathBuf> {\n let Some(p) = raw() else {\n println!(\"skipping: prikk 0.57.0 or newer not found\");\n return None;\n };\n Some(p)\n}\n",
         "pub fn e() -> Option<PathBuf> {\n if bad() {\n println!(\"skipping: no prikk older than 0.57.0 (and at the floor) found\");\n return None;\n }\n Some(p)\n}\n",
-        "pub fn e() -> Option<PathBuf> {\n let first = raw();\n if first.is_none() {\n println!(\"skipping: prikk not on PATH\");\n return None;\n }\n Some(first.unwrap())\n}\n",
+        "pub fn e() -> Option<PathBuf> {\n let first = raw();\n if first.is_none() {\n println!(\"skipping: prikk not on PATH\");\n return None;\n }\n let found = first.unwrap();\n Some(found)\n}\n",
+        "pub fn e() -> Option<std::path::PathBuf> {\n let found = raw();\n Some(found)\n}\n",
         "pub fn assert_it(w: &World) {\n assert!(raw(w));\n}\n",
     ];
     for module in right {
         let report = run(&[("crates/p/tests/support/prikk_probes.rs", module)]);
         assert_eq!(report.violations, Vec::<String>::new(), "{module}");
     }
+}
+
+#[test]
+fn an_entry_may_return_a_world_the_crates_tests_define() {
+    // The world is defined in the module itself, or in another test source of the same crate: an `Option` of it is an
+    // entry, whatever else it is called.
+    let module = "pub fn world(tag: &str) -> Option<World> {\n let Some(p) = raw() else {\n println!(\"skipping: prikk not on PATH\");\n return None;\n };\n let w = World::over(tag, p);\n Some(w)\n}\n";
+    let own = format!("pub struct World;\n{module}");
+    for files in [
+        vec![("crates/p/tests/support/prikk_probes.rs", own.as_str())],
+        vec![
+            ("crates/p/tests/support/prikk_probes.rs", module),
+            ("crates/p/tests/a.rs", "struct World {\n tmp: Dir,\n}\n"),
+        ],
+        vec![
+            ("crates/p/tests/support/prikk_probes.rs", module),
+            ("crates/p/tests/a.rs", "enum World {\n Old,\n New,\n}\n"),
+        ],
+    ] {
+        let report = run(&files);
+        assert_eq!(report.violations, Vec::<String>::new(), "{files:?}");
+        assert_eq!(report.entries, 1);
+    }
+    // A world another crate defines is not this crate's.
+    let report = run(&[
+        ("crates/p/tests/support/prikk_probes.rs", module),
+        ("crates/q/tests/a.rs", "struct World;\n"),
+    ]);
+    assert!(
+        report
+            .violations
+            .iter()
+            .any(|v| v.contains("returns `Option<World>`")),
+        "{:?}",
+        report.violations
+    );
 }

@@ -14,20 +14,16 @@ use inklkunn_prikk::sandbox::probe_bwrap;
 use inklkunn_signer::Maintenance;
 use inklkunn_store::{RootLayout, WikiId};
 
+/// Every question these tests ask of the prikk on `PATH`: the only place a test reaches a capability (maintenance M39).
+#[path = "support/prikk_probes.rs"]
+mod prikk_probes;
+
 struct Dir(PathBuf);
 
 impl Drop for Dir {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
-}
-
-fn real_prikk() -> Option<PathBuf> {
-    std::env::var_os("PATH").and_then(|p| {
-        std::env::split_paths(&p)
-            .map(|d| d.join("prikk"))
-            .find(|c| c.is_file())
-    })
 }
 
 fn run(prikk: &Path, repo: &Path, env: &[(&str, String)], args: &[&str]) -> std::process::Output {
@@ -147,8 +143,7 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
 #[test]
 fn an_archive_export_is_verified_by_prikk_itself_holds_no_seed_and_changes_nothing_but_prikks_caches()
  {
-    let Some(prikk) = real_prikk() else {
-        println!("skipping: prikk not on PATH");
+    let Some(prikk) = prikk_probes::prikk_first() else {
         return;
     };
     for (n, sandbox) in policies().into_iter().enumerate() {
@@ -208,8 +203,7 @@ fn an_archive_export_is_verified_by_prikk_itself_holds_no_seed_and_changes_nothi
 
 #[test]
 fn the_checkpoint_refresh_brings_back_the_record_extract_needs() {
-    let Some(prikk) = real_prikk() else {
-        println!("skipping: prikk not on PATH");
+    let Some(prikk) = prikk_probes::prikk_first() else {
         return;
     };
     for (n, sandbox) in policies().into_iter().enumerate() {

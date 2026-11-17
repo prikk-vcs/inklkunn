@@ -262,18 +262,6 @@ mod world {
 
     const SECRET: &str = "an operator secret for the admin tests, long enough to be accepted";
 
-    pub fn real_prikk() -> Option<PathBuf> {
-        let found = std::env::var_os("PATH").and_then(|p| {
-            std::env::split_paths(&p)
-                .map(|d| d.join("prikk"))
-                .find(|c| c.is_file())
-        });
-        if found.is_none() {
-            println!("skipping: prikk not on PATH");
-        }
-        found
-    }
-
     /// A stand-in `prikk` that runs the real one and, for `key generate --out <path>`, keeps a copy of the seed
     /// the real one wrote, so that a test can look for it everywhere. `fail_verify` makes `verify` fail.
     pub fn spy(dir: &Path, real: &Path, capture: &Path, fail_verify: bool) -> PathBuf {
@@ -317,7 +305,7 @@ exec "$REAL" "$@"
 
     /// A deployment with no wiki yet, whose prikk is the spy.
     pub fn world(tag: &str) -> Option<World> {
-        let real = real_prikk()?;
+        let real = crate::keys::tests::prikk_probes::prikk_first()?;
         let tmp = dir(&std::env::temp_dir(), tag);
         let shm = dir(Path::new("/dev/shm"), tag);
         let data_dir = tmp.0.join("data");

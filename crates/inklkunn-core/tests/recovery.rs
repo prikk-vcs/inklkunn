@@ -68,14 +68,6 @@ fn authority() -> &'static IdentityAuthority {
     AUTHORITY.get_or_init(|| IdentityAuthority::claim().expect("claimed once"))
 }
 
-fn real_prikk() -> Option<PathBuf> {
-    std::env::var_os("PATH").and_then(|p| {
-        std::env::split_paths(&p)
-            .map(|d| d.join("prikk"))
-            .find(|c| c.is_file())
-    })
-}
-
 struct Dir(PathBuf);
 
 impl Drop for Dir {
@@ -209,10 +201,7 @@ struct World {
 
 impl World {
     fn new(tag: &str, lease: LeaseConfig) -> Option<World> {
-        let Some(real) = real_prikk() else {
-            println!("skipping: prikk not on PATH");
-            return None;
-        };
+        let real = prikk_probes::prikk_first()?;
         World::over(tag, lease, &real)
     }
 
@@ -1884,7 +1873,7 @@ fn a_stale_lock_beside_an_orphan_patch(w: World, verb: bool) {
 
     // Whether prikk has the verb is asked of prikk without a patch id, which takes no lock: it is answered with the
     // lock held, on both sides of 0.57.0 (M12).
-    w.assert_has_verb(verb);
+    prikk_probes::assert_has_verb(&w.recovery_witnesses(), &w.wiki.id, verb);
 
     // A plan shown: with the verb the clearing is the one step and the stop follows; without it the stop clears
     // nothing (M12: no preview can follow). Nothing is asked for the preview and nothing is done.
@@ -2026,7 +2015,7 @@ fn on_0_57_0_a_held_stale_lock_makes_the_preview_refuse_and_the_run_that_clears_
     let id = w.queued_patch_id();
     let witnesses = w.recovery_witnesses();
     // The question whether the verb exists is answered while the lock is held; the preview itself is refused.
-    w.assert_has_verb(true);
+    prikk_probes::assert_has_verb(&w.recovery_witnesses(), &w.wiki.id, true);
     let refused = witnesses.uncommit_plan(&w.wiki.id, &id);
     assert!(
         refused.is_err(),
