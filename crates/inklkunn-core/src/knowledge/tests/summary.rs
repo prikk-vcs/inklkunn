@@ -755,16 +755,16 @@ fn the_proposal_service_sends_no_change_its_page_would_not_describe() {
     let was = had(old);
     // A curation proposal is sent when the page describes it, and not when it would not.
     assert_eq!(
-        knowledge_verdict(&files, &was, true, &summarize, &pages),
+        knowledge_verdict(&files, &was, PROPOSAL, true, &summarize, &pages),
         Ok(())
     );
     assert_eq!(
-        knowledge_verdict(&files, &was, true, &blind, &pages),
+        knowledge_verdict(&files, &was, PROPOSAL, true, &blind, &pages),
         Err(Invalid::KnowledgeNotShown)
     );
     // Outside a curation proposal the same change is curation's, and that is said first.
     assert_eq!(
-        knowledge_verdict(&files, &was, false, &summarize, &pages),
+        knowledge_verdict(&files, &was, PROPOSAL, false, &summarize, &pages),
         Err(Invalid::KnowledgeCurated)
     );
 }

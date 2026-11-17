@@ -498,6 +498,18 @@ impl Rig {
         summary: &str,
         files: &[(&str, Option<&str>)],
     ) -> ProposalRecord {
+        self.propose_named(ProposalId::new(), author, summary, files)
+    }
+
+    /// [`Rig::propose`] for the proposal `id`, chosen beforehand: what a curation's files name when they state a check of a
+    /// new reference (K77).
+    pub(crate) fn propose_named(
+        &self,
+        id: ProposalId,
+        author: &Principal,
+        summary: &str,
+        files: &[(&str, Option<&str>)],
+    ) -> ProposalRecord {
         let edit = ProposalEdit {
             summary: summary.to_owned(),
             files: files
@@ -511,7 +523,7 @@ impl Rig {
         };
         let draft = self
             .proposals
-            .create(author, &self.wiki, None, edit)
+            .create_named(id, author, &self.wiki, None, edit)
             .unwrap_or_else(|e| panic!("create: {e}"));
         self.proposals
             .submit(author, &self.wiki, &draft.id)
@@ -523,6 +535,17 @@ impl Rig {
     /// against when a record reaches it some other way (an older proposal, a store written by hand).
     pub(crate) fn propose_unjudged(
         &self,
+        author: &Principal,
+        summary: &str,
+        files: &[(&str, Option<&str>)],
+    ) -> ProposalRecord {
+        self.propose_unjudged_named(ProposalId::new(), author, summary, files)
+    }
+
+    /// [`Rig::propose_unjudged`] for the proposal `id`, chosen beforehand (K77).
+    pub(crate) fn propose_unjudged_named(
+        &self,
+        id: ProposalId,
         author: &Principal,
         summary: &str,
         files: &[(&str, Option<&str>)],
@@ -552,7 +575,7 @@ impl Rig {
         };
         let now = 1_000;
         let record = ProposalRecord {
-            id: ProposalId::new(),
+            id,
             wiki: self.wiki.id.clone(),
             view: self.wiki.default_view.clone(),
             state: ProposalState::Draft,

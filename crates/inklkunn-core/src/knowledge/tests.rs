@@ -14,6 +14,12 @@ pub(crate) fn source_id(n: u8) -> SourceId {
     SourceId::parse(&format!("01931111-0000-7000-8000-0000000000{n:02x}")).expect("a source id")
 }
 
+/// A proposal's id, for a check that names it (K77).
+pub(crate) const PROPOSAL: &str = "01930000-0000-7000-8000-00000000fffe";
+
+/// Another proposal's.
+pub(crate) const OTHER_PROPOSAL: &str = "01930000-0000-7000-8000-00000000fffd";
+
 pub(crate) fn digest_of(text: &str) -> Digest {
     // A real digest of some text: the tests need valid ones, not particular ones.
     let body = format!("{text} ^x");

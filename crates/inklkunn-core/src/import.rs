@@ -1326,7 +1326,7 @@ pub fn judge_knowledge(
         &crate::knowledge::check::Written {
             files: &files,
             renames: &[],
-            curation: false,
+            curation: None,
             by_service: true,
         },
     )

@@ -1734,6 +1734,32 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   base's values accepted). Each refusal and the form's `days_not_come` leave-out were mutated and the tests failed. No
   prikk-dependent test is added.
 
+- **K77 (handoff 005 corrections, ninth round): one rule for what a proposal *states*.** The submit and the acceptance decided
+  differently whether a check on a moved source was the proposal's own. The acceptance compared the whole review record, proposal
+  id included; the submit's `carried_by` compared texts. So the tip's date with *another* proposal's id passed the submit, was
+  re-stamped to the tip's id by `curation::stamp` and refused at the acceptance; the same carried date with `proposal:` left out
+  passed everywhere (and the page said *becomes D*); the same date stated explicitly over a review that names no proposal was
+  refused as carried; and the acceptance did not hold K72's bounds. Now there is **one rule**, `Curated::unstated_check(was,
+  proposal, now)` (`carries_unstated_check` is its carrying alone): a source found at another reference than the tip's has a check
+  **only when this proposal states it, by naming itself in the day** (`last_reviewed.proposal`, whatever the date is: the tip's own
+  date included); a day that names another proposal or none, and an answer without such a day, are the old reference's, carried.
+  Where a clock is given (the acceptance's own) a stated check also holds K72's bounds: **not before the previous review day, not
+  after today in UTC+14** (`freshness::day_has_not_come`), refused with a sentence of its own (`DayBound`, `Refusal::bound`; an
+  answer needs a stated day, so an answer alone is carried). The rule is asked at submit and every revision with the proposal's own
+  id (`carried_by(files, before, proposal)`, `ProposalService::judge_knowledge`) and at acceptance (`check::Stating`, the
+  accepting proposal's id and the service's clock, in `Written::curation`, `Touched::{proposal, now}`); `stamp` leaves a moved
+  source's review as the file says (it never names it by the date). The compose path writes the check naming the proposal
+  (`Curation::proposal`; a curation made for none cannot state one: `Mistake::Unwritable`), and so the proposal is named **before
+  it is made**: the curation form and the API choose its id (`ProposalId::new()`) and make it with the new
+  `ProposalService::create_named` and `create_and_submit_named` (the plain `create` and `create_and_submit` are as they were); a
+  client of the generic write API that states a check by hand reads the id of its draft and writes it into the day. Tests: the
+  rule's table (the tip's date with another id, no `proposal:` at all, the same date stated over a review that names no proposal,
+  each bound with and without a clock, a source not found elsewhere, a claim), the validator and the tree-free rule, the submit
+  and the revision, the acceptance on the double (the carried cases refused with the signer not asked, the stated cases and
+  each bound, a same-date check over a review with no proposal id accepted) and the same on a real history (a curation states
+  the check on the old date, is accepted and names itself; a hand-made carried one is refused), through the form and the API
+  (the stated check names the proposal made). Each hook was mutated and the tests failed. One prikk-dependent test is added.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

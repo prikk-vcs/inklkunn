@@ -337,6 +337,17 @@ impl World {
     }
 
     fn propose(&self, summary: &str, files: &[(&str, Option<&str>)]) -> ProposalRecord {
+        self.propose_named(inklkunn_store::ProposalId::new(), summary, files)
+    }
+
+    /// [`World::propose`] for the proposal `id`, chosen beforehand: what a curation's files name when they state a check of
+    /// a new reference (K77).
+    fn propose_named(
+        &self,
+        id: inklkunn_store::ProposalId,
+        summary: &str,
+        files: &[(&str, Option<&str>)],
+    ) -> ProposalRecord {
         let edit = ProposalEdit {
             summary: summary.to_owned(),
             files: files
@@ -350,7 +361,7 @@ impl World {
         };
         let draft = self
             .proposals
-            .create(&self.contributor, &self.wiki, None, edit)
+            .create_named(id, &self.contributor, &self.wiki, None, edit)
             .unwrap_or_else(|e| panic!("create: {e}"));
         self.proposals
             .submit(&self.contributor, &self.wiki, &draft.id)
@@ -1213,6 +1224,7 @@ fn a_source_is_attached_and_a_status_curated_through_the_whole_path_on_a_real_hi
             work: None,
         }],
         confirm: false,
+        proposal: None,
     };
     let files = curate(&claim, std::slice::from_ref(&source), Some(&now), &edit).unwrap();
     let refs: Vec<(&str, Option<&str>)> = files
@@ -1420,6 +1432,7 @@ fn a_curation_removes_a_link_and_corrects_a_checked_source_through_the_whole_pat
             work: None,
         }],
         confirm: false,
+        proposal: None,
     };
     let files = curate(&claim, &[one.clone(), two.clone()], Some(&now), &checking).unwrap();
     let refs: Vec<(&str, Option<&str>)> = files
@@ -1479,6 +1492,7 @@ fn a_curation_removes_a_link_and_corrects_a_checked_source_through_the_whole_pat
             }),
         }],
         confirm: false,
+        proposal: None,
     };
     let files = curate(
         &claim,
@@ -1528,6 +1542,7 @@ fn a_curation_removes_a_link_and_corrects_a_checked_source_through_the_whole_pat
             }),
         }],
         confirm: false,
+        proposal: None,
     };
     let files = curate(&claim, &[one.clone(), two.clone()], Some(&now), &edit).unwrap();
     let refs: Vec<(&str, Option<&str>)> = files
@@ -1573,6 +1588,195 @@ fn a_curation_removes_a_link_and_corrects_a_checked_source_through_the_whole_pat
     let index = w.reads.knowledge_index(&w.wiki, None).unwrap();
     assert!(index.invalid().is_empty(), "{:?}", index.invalid());
     assert!(w.reconciled().is_clean());
+}
+
+/// K77 (handoff 005 corrections, ninth round): a check of a new reference is stated by the proposal that moves the reference,
+/// and the day names that proposal, **whatever its date is**. The curation states it on the very date of the old check and
+/// is accepted on a real history (the review names the proposal); a source file made by hand that carries the tip's own
+/// day and the tip's own proposal's id on another reference is refused, and nothing is written.
+#[test]
+fn a_check_stated_by_the_proposal_that_moves_a_reference_is_accepted_and_a_carried_one_is_refused_on_a_real_history()
+ {
+    use inklkunn_core::knowledge::compose::{
+        Attachment, Checked, Curation, LinkEdit, SourceDraft, SourceEdit, Work, attach, curate,
+    };
+    use inklkunn_core::knowledge::{
+        AnchorState, Availability, Bearing, Claim, File, Link, ReferenceForm, Rule, Source,
+        SourceKind, Standing, StatementKind, anchor_state, read_file,
+    };
+    let Some(w) = World::new("knowledge-stated-check", LeaseConfig::default()) else {
+        return;
+    };
+    let read_claim = |path: &str| -> Claim {
+        let File::Claim(claim) = read_file(path, w.page(path).as_bytes()).unwrap() else {
+            panic!("a claim");
+        };
+        *claim
+    };
+    let read_source = |path: &str| -> Source {
+        let File::Source(source) = read_file(path, w.page(path).as_bytes()).unwrap() else {
+            panic!("a source");
+        };
+        *source
+    };
+    let start = HOME.find("One.").unwrap();
+    let attached = attach(
+        HOME,
+        &(start..start + 4),
+        None,
+        &Attachment {
+            source: SourceDraft {
+                kind: SourceKind::Secondary,
+                title: Some("A history".to_owned()),
+                author: None,
+                date: None,
+                reference: None,
+            },
+            relation: Link::Supports,
+            bearing: Bearing::Direct,
+            note: None,
+            kind: StatementKind::Observation,
+        },
+    )
+    .unwrap();
+    let [(claim_file, claim_text), (source_file, source_text)] = attached.files.clone();
+    let p = w.propose(
+        "A source",
+        &[
+            ("pages/Home.md", Some(&attached.page)),
+            (claim_file.as_str(), Some(&claim_text)),
+            (source_file.as_str(), Some(&source_text)),
+        ],
+    );
+    signed(w.accept(&p).unwrap());
+    let AnchorState::Present(now) = anchor_state(&w.page("pages/Home.md"), &attached.block) else {
+        panic!("present");
+    };
+    let edit = |source: &Source, work: Option<Work>, checked, proposal| {
+        let claim = read_claim(&claim_file);
+        Curation {
+            status: Standing::Unknown,
+            links: claim
+                .sources
+                .iter()
+                .map(|l| LinkEdit {
+                    source: l.source.clone(),
+                    relation: l.relation,
+                    bearing: l.bearing,
+                })
+                .collect(),
+            removed: Vec::new(),
+            sources: vec![SourceEdit {
+                source: source.id.clone(),
+                checked,
+                reviewed: source
+                    .last_reviewed
+                    .as_ref()
+                    .map(|r| r.date.clone())
+                    .unwrap_or_default(),
+                availability: source.availability,
+                work,
+            }],
+            confirm: false,
+            proposal,
+        }
+    };
+
+    // 1. The source is checked on 2026-11-04 (the reference it has): the acceptance names the proposal.
+    let source = read_source(&source_file);
+    let mut first = edit(&source, None, None, None);
+    first.sources.first_mut().unwrap().reviewed = "2026-11-04".to_owned();
+    first.sources.first_mut().unwrap().availability = Availability::Available;
+    let files = curate(
+        &read_claim(&claim_file),
+        std::slice::from_ref(&source),
+        Some(&now),
+        &first,
+    )
+    .unwrap();
+    let refs: Vec<(&str, Option<&str>)> = files
+        .iter()
+        .map(|(p, t)| (p.as_str(), Some(t.as_str())))
+        .collect();
+    let checked = w.propose("Checked", &refs);
+    signed(w.accept(&checked).unwrap());
+    let source = read_source(&source_file);
+    assert_eq!(
+        source.last_reviewed.as_ref().map(|r| r.proposal.as_deref()),
+        Some(Some(checked.id.as_str()))
+    );
+
+    // 2. A curation finds it at a DOI and states the check of that place on the very date of the old one: it names itself.
+    let id = inklkunn_store::ProposalId::new();
+    let moved = Work {
+        reference_form: ReferenceForm::Doi,
+        reference: "10.1000/182".to_owned(),
+        ..Work::of(&source)
+    };
+    let states = edit(
+        &source,
+        Some(moved),
+        Some(Checked {
+            day: "2026-11-04".to_owned(),
+            availability: Availability::Available,
+        }),
+        Some(id.clone()),
+    );
+    let files = curate(
+        &read_claim(&claim_file),
+        std::slice::from_ref(&source),
+        Some(&now),
+        &states,
+    )
+    .unwrap();
+    let refs: Vec<(&str, Option<&str>)> = files
+        .iter()
+        .map(|(p, t)| (p.as_str(), Some(t.as_str())))
+        .collect();
+    let blocks = w.history().len();
+    let looked = w.propose_named(id.clone(), "A new place, looked at", &refs);
+    assert_eq!(looked.id, id);
+    signed(w.accept(&looked).unwrap());
+    assert_eq!(w.history().len(), blocks + 1);
+    let after = read_source(&source_file);
+    assert_eq!(
+        after.reference.as_ref().map(|r| (r.form, r.value.as_str())),
+        Some((ReferenceForm::Doi, "10.1000/182"))
+    );
+    assert_eq!(
+        after
+            .last_reviewed
+            .as_ref()
+            .map(|r| (r.date.as_str(), r.proposal.as_deref())),
+        Some(("2026-11-04", Some(id.as_str()))),
+        "the check of the new place is this proposal's, on the old date"
+    );
+    assert_eq!(after.availability, Availability::Available);
+
+    // 3. A file made by hand that moves it again and keeps the tip's own check, its day and the proposal it names, is
+    //    the old reference's check carried: refused before the signer is asked, whatever the date is.
+    let mut carried = after.clone();
+    carried.reference = Some(inklkunn_core::knowledge::Reference {
+        form: ReferenceForm::Citation,
+        value: "Smith 1962, p. 4".to_owned(),
+    });
+    let blocks = w.history().len();
+    let p = w.propose_unjudged(
+        "Another place",
+        &[(source_file.as_str(), Some(&carried.to_yaml()))],
+    );
+    match w.accept(&p) {
+        Err(AcceptFailure::KnowledgeInvalid(r)) => {
+            assert!(
+                r.iter()
+                    .any(|r| r.carries && r.field == "last_reviewed" && r.rule == Rule::Status),
+                "{r:?}"
+            );
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(w.history().len(), blocks, "nothing was written");
+    assert_eq!(w.state(&p), ProposalState::HeldForReview);
 }
 
 /// K61 (handoff 005 corrections, sixth round): no chain of replacing sources returns to a source it passed. Two curation
@@ -1679,6 +1883,7 @@ fn two_curations_that_would_make_two_sources_replace_each_other_are_refused_at_t
                 }),
             }],
             confirm: false,
+            proposal: None,
         };
         curate(&claim, &[one.clone(), two.clone()], Some(&now), &edit).unwrap()
     };
@@ -1895,6 +2100,7 @@ fn a_reconfirm_proposal_is_recorded_as_re_confirming_its_change_when_its_accepta
             removed: Vec::new(),
             sources: Vec::new(),
             confirm: true,
+            proposal: None,
         };
         curate(&claim, &[], Some(&now), &edit)
             .unwrap()

@@ -236,12 +236,15 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
             source: id,
         });
     }
+    // The proposal is named before it is made: the check of a new reference is written naming it (K77).
+    let proposal = inklkunn_store::ProposalId::new();
     let edit = Curation {
         status: status.unwrap_or(subject.claim().community_status.status),
         links,
         removed,
         sources,
         confirm,
+        proposal: Some(proposal.clone()),
     };
     // A day that has not come is refused at its member, before anything is made (K49).
     if let Some(day) = subject
@@ -298,12 +301,12 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
     // counts against the caller and that they would have to go and find.
     let (record, revision) = if submit {
         let sent = service
-            .create_and_submit(&req.principal, &req.wiki, full.as_deref(), edit)
+            .create_and_submit_named(proposal, &req.principal, &req.wiki, full.as_deref(), edit)
             .map_err(|error| req.refusal(error))?;
         (sent, 1)
     } else {
         let draft = service
-            .create(&req.principal, &req.wiki, full.as_deref(), edit)
+            .create_named(proposal, &req.principal, &req.wiki, full.as_deref(), edit)
             .map_err(|error| req.refusal(error))?;
         (draft, 0)
     };

@@ -48,8 +48,9 @@ fn at_tip(
 
 /// Name `proposal` as the decision of what a curation proposal sets, in the claim and source files it writes: a
 /// standing that differs from the tip's (its status, or the wording it was judged on) is decided by this proposal;
-/// one that does not is left as the tip had it, whatever the file says; and a source's review date likewise. The
-/// files are written back canonically. A file that does not read is left for the validator to refuse.
+/// one that does not is left as the tip had it, whatever the file says; and a source's review date likewise (except that a
+/// source found at another place is left as the file says, K77). The files are written back canonically. A file that does
+/// not read is left for the validator to refuse.
 pub fn stamp(
     storage: &dyn Storage,
     repo: &Path,
@@ -112,18 +113,20 @@ pub fn stamp(
                 let Ok(mut source) = Source::parse(id, text) else {
                     continue;
                 };
-                let was_review = match &was {
-                    Some(File::Source(s)) => s.last_reviewed.clone(),
+                let was_source = match &was {
+                    Some(File::Source(s)) => Some(s),
                     _ => None,
                 };
-                // A check stated beside a new reference is this proposal's even on the date the old one had (K72): the
-                // file names no proposal for it, where one carried over from the tip's names the tip's own.
-                let stated_elsewhere = review_is_unnamed(&source)
-                    && matches!(&was, Some(File::Source(s))
-                        if super::Reference::is_elsewhere(s.reference.as_ref(), source.reference.as_ref()));
-                if let Some(review) = &mut source.last_reviewed {
-                    let same_day = was_review.as_ref().map(|r| &r.date) == Some(&review.date)
-                        && !stated_elsewhere;
+                // A source found at another place than the tip's is left as the file says (K77): its check is this
+                // proposal's own when the day names the proposal (the compose path writes it so), and the acceptance's
+                // rule ([`super::check::Curated::unstated_check`]) refuses a day that names any other; it is never
+                // named by inference from the date.
+                let moved = was_source.is_some_and(|s| {
+                    super::Reference::is_elsewhere(s.reference.as_ref(), source.reference.as_ref())
+                });
+                if !moved && let Some(review) = &mut source.last_reviewed {
+                    let was_review = was_source.and_then(|s| s.last_reviewed.clone());
+                    let same_day = was_review.as_ref().map(|r| &r.date) == Some(&review.date);
                     review.proposal = if same_day {
                         was_review.and_then(|r| r.proposal)
                     } else {
@@ -135,12 +138,4 @@ pub fn stamp(
         }
     }
     Ok(())
-}
-
-/// Does the review of `source` name no proposal yet (a check a curation has just written; the acceptance names it)?
-fn review_is_unnamed(source: &Source) -> bool {
-    source
-        .last_reviewed
-        .as_ref()
-        .is_some_and(|r| r.proposal.is_none())
 }

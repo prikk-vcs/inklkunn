@@ -331,6 +331,7 @@ fn unchanged(claim: &Claim, source: &Source) -> Curation {
             work: None,
         }],
         confirm: false,
+        proposal: inklkunn_store::ProposalId::parse(super::PROPOSAL),
     }
 }
 
@@ -821,6 +822,7 @@ fn a_changed_reference_ends_the_check_and_the_new_one_has_only_the_check_the_edi
             &source,
         )
     };
+    let refused = |edit: &Curation| curate(&claim, cited, Some(&now), edit);
     let elsewhere = |mut work: Work| {
         work.reference_form = ReferenceForm::Doi;
         work.reference = "10.1000/182".to_owned();
@@ -914,8 +916,23 @@ fn a_changed_reference_ends_the_check_and_the_new_one_has_only_the_check_the_edi
         stated(&after(&edit)),
         (Some("2026-11-10".to_owned()), Availability::Unavailable)
     );
-    // Written without the proposal that states it: the acceptance names it (the day may be the old one's own).
-    assert_eq!(after(&edit).last_reviewed.map(|r| r.proposal), Some(None));
+    // Written naming the proposal that states it (K77): that is how it is told from a day carried over, even on the old
+    // one's own date.
+    assert_eq!(
+        after(&edit)
+            .last_reviewed
+            .and_then(|r| r.proposal)
+            .as_deref(),
+        Some(super::PROPOSAL)
+    );
+    // A curation that is made for no proposal cannot state one: it is a defect of the caller, not a person's mistake.
+    let mut nameless = edit.clone();
+    nameless.proposal = None;
+    assert_eq!(refused(&nameless), Err(Mistake::Unwritable));
+    // A day that is not moved is written without one: the acceptance names it.
+    let mut plain = keeping(&claim, &source, Work::of(&source));
+    plain.sources.first_mut().expect("a source").reviewed = "2026-11-10".to_owned();
+    assert_eq!(after(&plain).last_reviewed.map(|r| r.proposal), Some(None));
     // On the very date the old check had, and with the answer the old check had: a check all the same, and stated.
     let mut edit = keeping(&claim, &source, elsewhere(Work::of(&source)));
     state(&mut edit, "2026-11-01", Availability::Available);
@@ -937,7 +954,6 @@ fn a_changed_reference_ends_the_check_and_the_new_one_has_only_the_check_the_edi
 
     // Refused, and for which source and why: an earlier day than the old check, an answer with no day, a text that is no
     // day, and a check with no new reference.
-    let refused = |edit: &Curation| curate(&claim, cited, Some(&now), edit);
     let mut edit = keeping(&claim, &source, elsewhere(Work::of(&source)));
     state(&mut edit, "2026-10-31", Availability::Available);
     assert_eq!(

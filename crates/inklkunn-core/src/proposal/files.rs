@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use inklkunn_markup::frontmatter;
 use inklkunn_markup::path::{collision_key, is_inside_pages, path_to_title, title_to_path};
-use inklkunn_store::{RevisionContent, WikiRecord};
+use inklkunn_store::{ProposalId, RevisionContent, WikiRecord};
 
 use super::{
     Action, BaseError, BaseSource, Invalid, Principal, ProposalError, ProposalService, Resource,
@@ -85,10 +85,12 @@ fn is_canonical(path: &str) -> bool {
 /// wording no paragraph of its claim has in the proposal's result (`pages`, [`Invalid::KnowledgeUnjudged`]), or a
 /// claim's status is (K33, [`Invalid::KnowledgeStatusUnjudged`]): a link first. A source file that moves a source to
 /// another reference and leaves the check of the old one on it is refused too (K71,
-/// [`Invalid::KnowledgeCheckUnstated`]).
+/// [`Invalid::KnowledgeCheckUnstated`]): a check is the proposal's only when the day names the proposal itself
+/// (`proposal`, K77).
 pub(crate) fn knowledge_verdict(
     given: &[(String, Option<String>)],
     was: &dyn Fn(&str) -> Option<String>,
+    proposal: &str,
     curation: bool,
     describe: crate::knowledge::summary::Describer<'_>,
     pages: &dyn Pages,
@@ -97,7 +99,7 @@ pub(crate) fn knowledge_verdict(
         return Err(Invalid::KnowledgeCurated);
     }
     // A source found elsewhere carries no check of its old reference, in any proposal (K71).
-    if !crate::knowledge::check::carried_by(given, was).is_empty() {
+    if !crate::knowledge::check::carried_by(given, was, proposal).is_empty() {
         return Err(Invalid::KnowledgeCheckUnstated);
     }
     if !crate::knowledge::summary::undescribed_by(given, was, describe).is_empty() {
@@ -249,6 +251,7 @@ impl ProposalService {
     pub(super) fn judge_knowledge(
         &self,
         wiki: &WikiRecord,
+        id: &ProposalId,
         content: &RevisionContent,
     ) -> Result<()> {
         let given: Vec<(String, Option<String>)> = content
@@ -269,6 +272,7 @@ impl ProposalService {
         let verdict = knowledge_verdict(
             &given,
             &was,
+            id.as_str(),
             crate::knowledge::curation::is_curation(content),
             &crate::knowledge::summary::summarize,
             &pages,

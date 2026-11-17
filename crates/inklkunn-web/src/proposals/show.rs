@@ -686,7 +686,7 @@ pub(crate) fn draw(
                 base: &content.base,
                 renames: &content.renames,
             };
-            let known = match file_lines(ctx, t, &place, &content.files) {
+            let known = match file_lines(ctx, t, &place, &content.files, &record.id.to_string()) {
                 Ok(found) => found,
                 Err(e) => return crate::proposals::new::read_failure(page, ctx, e),
             };

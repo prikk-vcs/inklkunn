@@ -113,7 +113,13 @@ pub(crate) async fn edit_form(
             base: &existing.content.base,
             renames: &existing.content.renames,
         };
-        let carried = match file_lines(&ctx, page.t(), &place, &existing.content.files) {
+        let carried = match file_lines(
+            &ctx,
+            page.t(),
+            &place,
+            &existing.content.files,
+            &existing.record.id.to_string(),
+        ) {
             Ok(known) => known.lines,
             Err(e) => return read_failure(page, &ctx, e),
         };
@@ -579,7 +585,7 @@ fn post(
         base: &base,
         renames: &sub.renames,
     };
-    let (carried_lines, carried_curated) = match file_lines(ctx, t, &place, &files(true)) {
+    let (carried_lines, carried_curated) = match file_lines(ctx, t, &place, &files(true), "") {
         Ok(found) => (found.lines, found.curated),
         Err(e) => return read_failure(page, ctx, e),
     };

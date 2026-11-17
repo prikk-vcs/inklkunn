@@ -114,6 +114,7 @@ fn a_link_judged_on_a_wording_nobody_has_written_is_refused_on_every_surface() {
         crate::proposal::files::knowledge_verdict(
             &written(&claim),
             &was,
+            PROPOSAL,
             false,
             &crate::knowledge::summary::summarize,
             &w1
@@ -128,6 +129,7 @@ fn a_link_judged_on_a_wording_nobody_has_written_is_refused_on_every_surface() {
         crate::proposal::files::knowledge_verdict(
             &written(&claim),
             &was,
+            PROPOSAL,
             false,
             &crate::knowledge::summary::summarize,
             &w2

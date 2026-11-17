@@ -221,6 +221,7 @@ fn a_review_date_is_named_by_the_proposal_that_set_it_and_only_a_curation_may_se
             work: None,
         }],
         confirm: false,
+        proposal: None,
     };
     let files =
         curate(&s.claim, std::slice::from_ref(&s.source), Some(&now), &edit).expect("curated");

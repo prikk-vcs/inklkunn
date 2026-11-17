@@ -64,6 +64,9 @@ pub struct Refusal {
     /// The change moves a source to another reference and leaves the check of the old one on it (K71): the field is
     /// `last_reviewed`, and the sentence is [`UNSTATED_CHECK`].
     pub carries: bool,
+    /// The change moves a source to another reference and states a check of it whose day is out of the bounds (K77): the
+    /// field is `last_reviewed`, and the sentence is [`DayBound::sentence`]'s.
+    pub bound: Option<DayBound>,
 }
 
 impl Refusal {
@@ -76,6 +79,7 @@ impl Refusal {
             line: fault.line,
             removes: false,
             carries: false,
+            bound: None,
         }
     }
 
@@ -91,10 +95,16 @@ impl Refusal {
         }
     }
 
-    /// A refusal of the source file at `path`, which leaves the check of another reference on a new one (K71).
-    fn carried(path: &str) -> Refusal {
+    /// A refusal of the source file at `path`, which moves it to another reference and does not state its check as the
+    /// proposal's (K71, K77): `why` says in which way.
+    fn unstated(path: &str, why: Unstated) -> Refusal {
+        let (carries, bound) = match why {
+            Unstated::Carried => (true, None),
+            Unstated::Day(bound) => (false, Some(bound)),
+        };
         Refusal {
-            carries: true,
+            carries,
+            bound,
             ..Refusal::rule(path, Rule::Status, "last_reviewed")
         }
     }
@@ -112,6 +122,8 @@ impl Refusal {
     pub fn sentence(&self) -> &'static str {
         if self.carries {
             UNSTATED_CHECK
+        } else if let Some(bound) = self.bound {
+            bound.sentence()
         } else if self.curation_form_can_make() {
             self.rule.sentence()
         } else {
@@ -127,6 +139,49 @@ pub const NOT_OFFERED: &str = "removing a claim or a source file, or replacing a
 /// What is said of a source that is found elsewhere now and still carries the check of its old reference (K71): the web's
 /// `invalid.knowledge_check_unstated` in English, without its capital and its full stop.
 pub const UNSTATED_CHECK: &str = "the source is found elsewhere now and still carries the day or the answer of the check of its old reference; a check of the new reference is stated by the proposal, never inferred";
+
+/// Who states the checks of a curation proposal, and when it is (K77): the proposal's own id, which a check of a new
+/// reference names to be that proposal's, and the clock (Unix seconds), which says what day has not come.
+#[derive(Debug, Clone, Copy)]
+pub struct Stating<'a> {
+    /// The id of the proposal.
+    pub proposal: &'a str,
+    /// Now, in Unix seconds.
+    pub now: i64,
+}
+
+/// How a check that a proposal states for a new reference is out of the bounds of a check (K72, K77).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DayBound {
+    /// Earlier than the day the source was last checked at the old reference.
+    BeforeReview,
+    /// A day that has not come yet in any timezone.
+    NotCome,
+}
+
+impl DayBound {
+    /// The refusal as an English sentence, for operators and logs.
+    pub fn sentence(self) -> &'static str {
+        match self {
+            DayBound::BeforeReview => {
+                "the day of the check of the new reference is earlier than the day the source was last checked at its old reference"
+            }
+            DayBound::NotCome => {
+                "the day of the check of the new reference has not come yet in any timezone"
+            }
+        }
+    }
+}
+
+/// In which way a source found elsewhere than at the tip breaks the rule of a stated check (K71, K77).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unstated {
+    /// It carries a day or an answer that **this proposal does not state**: the day does not name this proposal, or there is
+    /// an answer and no such day.
+    Carried,
+    /// It states a check, and the day is out of bounds.
+    Day(DayBound),
+}
 
 impl std::fmt::Display for Refusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -322,42 +377,67 @@ impl Curated {
         }
     }
 
-    /// Does `self` (what a change leaves of a source) move it to another reference than `was` (what the tip had) and
-    /// leave on it the day or the answer of the check of the old one (K71)? The check of a reference is for that
-    /// reference: it goes with the new one **only when the same change states it**, with a day other than the tip's
-    /// (the proposal that stated it is named in the day, so a day restated on the tip's own day is told from one that was
-    /// kept) or an answer other than the tip's. A day that is gone is a check that is not carried. A claim carries
-    /// nothing of the kind.
+    /// **The one rule for a check beside a new reference** (K71, K72, K77): does `self` (what a change leaves of a source)
+    /// move it to another reference than `was` (what the tip had) without the proposal `proposal` **stating** the check it
+    /// carries? The check of a reference is for that reference: it goes with the new one only when **this proposal
+    /// stamps it**, that is, when the day names this proposal (the compose path writes the proposal's own id as
+    /// `last_reviewed.proposal`, [`crate::knowledge::compose::curate`]); a day that names another proposal (the tip's own, or any
+    /// other), a day that names none, and an answer with no such day are the old reference's, carried, and whatever their
+    /// date is. A day that is gone is a check that is not carried. A claim carries nothing of the kind.
     ///
-    /// **The rule holds at acceptance, the one place every path passes**: the compose path never makes such a source (a
-    /// changed reference clears the check unless a new one is stated), and the merge makes it an overlap
-    /// ([`crate::knowledge::merge`]); this refuses a source file made any other way.
-    pub fn carries_unstated_check(&self, was: &Curated) -> bool {
+    /// A check that is stated is held to K72's bounds when `now` (Unix seconds) is given, as the acceptance gives it: not
+    /// before the day the source was last checked at the tip, and not after today in UTC+14
+    /// ([`super::freshness::day_has_not_come`]). A surface that has no clock asks the rule of carrying alone.
+    ///
+    /// **The rule holds at acceptance, the one place every path passes**, and at submit and every revision: the compose
+    /// path never makes such a source (a changed reference clears the check unless a new one is stated, and the stated one
+    /// names the proposal), and the merge makes it an overlap ([`crate::knowledge::merge`]); this refuses a source file made
+    /// any other way.
+    pub fn unstated_check(
+        &self,
+        was: &Curated,
+        proposal: &str,
+        now: Option<i64>,
+    ) -> Option<Unstated> {
         let (
             Curated::Source {
-                availability: now_answer,
-                reviewed: now_day,
+                availability: answer,
+                reviewed: day,
                 reference: now_reference,
                 ..
             },
             Curated::Source {
-                availability: was_answer,
                 reviewed: was_day,
                 reference: was_reference,
                 ..
             },
         ) = (self, was)
         else {
-            return false;
+            return None;
         };
         if !Reference::is_elsewhere(was_reference.as_ref(), now_reference.as_ref()) {
-            return false;
+            return None;
         }
-        let day_stated = now_day.is_some() && now_day != was_day;
-        let day_carried = now_day.is_some() && !day_stated;
-        let answer_carried =
-            !day_stated && *now_answer != Availability::Unknown && now_answer == was_answer;
-        day_carried || answer_carried
+        let stated = day
+            .as_ref()
+            .filter(|r| r.proposal.as_deref() == Some(proposal));
+        let Some(stated) = stated else {
+            return (day.is_some() || *answer != Availability::Unknown)
+                .then_some(Unstated::Carried);
+        };
+        if was_day.as_ref().is_some_and(|was| stated.date < was.date) {
+            return Some(Unstated::Day(DayBound::BeforeReview));
+        }
+        if now.is_some_and(|now| super::freshness::day_has_not_come(&stated.date, now)) {
+            return Some(Unstated::Day(DayBound::NotCome));
+        }
+        None
+    }
+
+    /// Does `self` carry the check of the old reference without the proposal `proposal` stating it
+    /// ([`Curated::unstated_check`], the carrying alone)?
+    pub fn carries_unstated_check(&self, was: &Curated, proposal: &str) -> bool {
+        self.unstated_check(was, proposal, None) == Some(Unstated::Carried)
     }
 
     /// Is taking this away, outside a curation proposal, refused? **When it would take anything curated with it**
@@ -457,12 +537,14 @@ pub fn curated_by(
 
 /// The source files a revision writes (`files`: path, and the new text or `None` for a removal) that are found elsewhere
 /// than at `before` (the text a path had at the proposal's base) and still carry the check of the old reference (K71,
-/// [`Curated::carries_unstated_check`]): **the acceptance's rule, without a tree**, what the proposal service asks at
-/// submit and at every revision and what the proposal page says. A file that does not read is not judged here (the
-/// acceptance refuses it by its own rule). In path order.
+/// [`Curated::unstated_check`]) **without the proposal `proposal` stating it** (K77): **the acceptance's rule, without a
+/// tree**, what the proposal service asks at submit and at every revision (with the proposal's own id) and what the
+/// proposal page says. A file that does not read is not judged here (the acceptance refuses it by its own rule). In path
+/// order.
 pub fn carried_by(
     files: &[(String, Option<String>)],
     before: &dyn Fn(&str) -> Option<String>,
+    proposal: &str,
 ) -> Vec<Refusal> {
     let mut sorted: Vec<&(String, Option<String>)> = files.iter().collect();
     sorted.sort_by(|a, b| a.0.cmp(&b.0));
@@ -477,8 +559,8 @@ pub fn carried_by(
         let Some(was) = before(path).and_then(|t| read_file(path, t.as_bytes()).ok()) else {
             continue;
         };
-        if Curated::of(&now).carries_unstated_check(&Curated::of(&was)) {
-            out.push(Refusal::carried(path));
+        if Curated::of(&now).carries_unstated_check(&Curated::of(&was), proposal) {
+            out.push(Refusal::unstated(path, Unstated::Carried));
         }
     }
     out
@@ -620,6 +702,11 @@ pub struct Touched {
     /// The change is a curation proposal (its files are knowledge files and nothing else,
     /// [`super::curation::is_curation`]); only then may it set what only curation sets. **Not by default.**
     pub curation: bool,
+    /// The curation proposal's own id: a check of a new reference is stated by it when the day names it (K77). Empty by
+    /// default, so that nothing is stated.
+    pub proposal: String,
+    /// Now, in Unix seconds: the day a stated check may not come after (K77).
+    pub now: i64,
 }
 
 /// Judge a change. `files` is every knowledge file of the view as the change would leave it (path, first bytes),
@@ -676,10 +763,14 @@ pub fn validate(
                     out.insert(Refusal::rule(path, Rule::Status, field));
                 }
                 // A source found elsewhere does not carry the check of its old reference (K71): the check of a new
-                // reference is stated by the proposal that moves it. Outside a curation proposal the departure above
-                // says it already: a source that carries a check was checked, and its reference is curation's.
-                if touched.curation && Curated::of(file).carries_unstated_check(&was) {
-                    out.insert(Refusal::carried(path));
+                // reference is stated by the proposal that moves it, **by naming itself in the day** (K77), and holds
+                // K72's bounds. Outside a curation proposal the departure above says it already: a source that carries
+                // a check was checked, and its reference is curation's.
+                if touched.curation
+                    && let Some(why) =
+                        Curated::of(file).unstated_check(&was, &touched.proposal, Some(touched.now))
+                {
+                    out.insert(Refusal::unstated(path, why));
                 }
                 // Every judgement the change sets or changes names a wording the claim has in the result (K25, K33), in
                 // any proposal: a link's, and the status's.
@@ -968,8 +1059,8 @@ pub struct Written<'a> {
     pub files: &'a [PreparedFile],
     /// The renames.
     pub renames: &'a [(PathBuf, PathBuf)],
-    /// The proposal is a curation proposal ([`super::curation::is_curation`]).
-    pub curation: bool,
+    /// The proposal is a curation proposal ([`super::curation::is_curation`]): who states its checks, and when it is.
+    pub curation: Option<Stating<'a>>,
     /// The change is the service's own writing (an import, RFC 005 part 2 D-12): the keys only the service writes are
     /// its to write, so that rule, which holds a *proposer* off them, is not applied. The page rules of an import
     /// are the import plan's; every knowledge rule applies as it does to an acceptance (K52).
@@ -1039,7 +1130,7 @@ pub(crate) fn judge(
     page_max_bytes: u64,
     files: &[PreparedFile],
     renames: &[(PathBuf, PathBuf)],
-    curation: bool,
+    curation: Option<Stating<'_>>,
     by_service: bool,
 ) -> Result<Vec<Refusal>, CheckError> {
     let path_text = |p: &Path| p.to_string_lossy().into_owned();
@@ -1050,7 +1141,9 @@ pub(crate) fn judge(
         .map(|f| (f.path, f.bytes))
         .collect();
     let mut touched = Touched {
-        curation,
+        curation: curation.is_some(),
+        proposal: curation.map(|c| c.proposal.to_owned()).unwrap_or_default(),
+        now: curation.map_or(0, |c| c.now),
         ..Touched::default()
     };
     // What the tip had of what only curation sets, for the files the change writes or moves.

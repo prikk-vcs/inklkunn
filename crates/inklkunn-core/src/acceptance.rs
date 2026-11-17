@@ -816,7 +816,7 @@ impl ProposalAcceptor {
         tip: &str,
         files: &[PreparedFile],
         renames: &[(PathBuf, PathBuf)],
-        curation: bool,
+        curation: Option<crate::knowledge::check::Stating<'_>>,
     ) -> Result<(), AcceptFailure> {
         let refusals = crate::knowledge::check::check_change(
             &self.parts.reads,
@@ -970,7 +970,12 @@ impl ProposalAcceptor {
             )
             .map_err(|e| AcceptFailure::Unavailable(e.to_string()))?;
         }
-        self.check_knowledge(wiki, &repo, &tip, &files, &renames, curation)?;
+        // A curation proposal states its checks by naming itself (K77), and holds them to the day it is now.
+        let stating = curation.then(|| crate::knowledge::check::Stating {
+            proposal: id.as_str(),
+            now: (self.clock)(),
+        });
+        self.check_knowledge(wiki, &repo, &tip, &files, &renames, stating)?;
         self.observe(AcceptStep::Prepared);
         // CM-5: the blocks the proposal's comments are about carry their ids into the history.
         let comments = self.parts.proposals.comments(principal, wiki, id)?;

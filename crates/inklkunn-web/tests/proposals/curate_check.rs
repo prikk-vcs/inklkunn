@@ -158,7 +158,8 @@ async fn a_changed_reference_ends_the_check_and_the_new_one_has_only_the_check_t
     for (what, more, day, availability) in cases {
         let s = checked_scene_on("2023-11-01");
         let fields = with(with(unchanged_on(&s, "2023-11-01"), &elsewhere()), more);
-        let files = files_of(&s, &location(&send(&s, FORM, &s.writer, &fields).await));
+        let address = location(&send(&s, FORM, &s.writer, &fields).await);
+        let files = files_of(&s, &address);
         assert_eq!(paths(&files), [source_file.as_str()], "{what}");
         let source = source_of(&files);
         assert_eq!(
@@ -169,6 +170,17 @@ async fn a_changed_reference_ends_the_check_and_the_new_one_has_only_the_check_t
             (day, availability),
             "{what}"
         );
+        // The check of the new reference names the proposal that states it, on whatever date (K77); nothing else does.
+        let named = source
+            .last_reviewed
+            .as_ref()
+            .and_then(|r| r.proposal.as_deref());
+        let made = address
+            .rsplit('/')
+            .next()
+            .and_then(|last| last.split('?').next())
+            .expect("the proposal's id");
+        assert_eq!(named, day.map(|_| made), "{what}");
         assert_eq!(
             source.reference.as_ref().map(|r| r.value.as_str()),
             Some("10.1000/182"),

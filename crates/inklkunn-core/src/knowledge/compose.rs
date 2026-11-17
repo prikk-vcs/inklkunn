@@ -15,6 +15,7 @@ use std::collections::BTreeSet;
 use std::ops::Range;
 
 use inklkunn_markup::{BlockKind, blocks, frontmatter, parse_metadata};
+use inklkunn_store::ProposalId;
 
 use super::yaml::{MAX_LINKS, MAX_TEXT_CHARS, is_day};
 use super::{
@@ -493,12 +494,19 @@ pub struct Curation {
     /// Judge the sources and the standing again on the wording the claim has now (the re-confirmation, as a
     /// proposal of its own).
     pub confirm: bool,
+    /// The proposal these files are made for (K77): a check of a new reference is **stated by this proposal**, and the day of
+    /// it names it (`last_reviewed.proposal`), which is how the one rule ([`super::check::Curated::unstated_check`]) tells it
+    /// from the old reference's check that a file carries. `None` for a curation that states none (the reconfirm step has
+    /// no source); a check stated without it is `Mistake::Unwritable`, not a person's doing.
+    pub proposal: Option<ProposalId>,
 }
 
 /// The files a curation changes: a claim and the sources it cites, as they are (`claim`, `cited`) and the
 /// digest of the wording the claim has now (`now`, `None` when it is said nowhere). Only a file that differs is
-/// returned. The standing's `proposal`, and a source's `last_reviewed` proposal, are left for the acceptance to
-/// name (it is the proposal that decides; [`super::curation`]).
+/// returned. The standing's `proposal`, and the `last_reviewed` proposal of a day set beside the reference the source
+/// has, are left for the acceptance to name (it is the proposal that decides; [`super::curation`]). **The check of a new
+/// reference is written naming the proposal** ([`Curation::proposal`], K77): that is how it is told from a check carried
+/// over from the old reference.
 ///
 /// **A changed reference ends the check, and a check of the new one is stated** (K66, K72, K76): a source found at another
 /// place than it is now loses its `last_reviewed` and its `availability`, and has a check only if the same edit states
@@ -506,8 +514,8 @@ pub struct Curation {
 /// checked before ([`CheckFault::BeforeReview`]) and written `YYYY-MM-DD`, with whether it can be had there. The edit's
 /// `reviewed` and `availability` are of the old reference, so beside a new one they are **only the base's own**: a
 /// different one is refused by its field ([`CheckFault::OldDay`], [`CheckFault::OldAnswer`]) before anything is parsed,
-/// a valid new day, a day that is no day and a day that has not come alike, and never dropped unseen. The old day is never carried to the new reference by inference, not even when it is the same date. A day that
-/// has not come is the surface's to refuse (it holds the clock; [`crate::knowledge::freshness::day_has_not_come`]). A
+/// a valid new day, a day that is no day and a day that has not come alike, and never dropped unseen. The old day is
+/// never carried to the new reference by inference, not even when it is the same date. A day that has not come is the surface's to refuse (it holds the clock; [`crate::knowledge::freshness::day_has_not_come`]). A
 /// check is given only with a changed reference ([`CheckFault::NoNewReference`]). A change of white space alone in a
 /// reference is not another place ([`Reference::is_elsewhere`]): the check stays. A correction of title, author or date
 /// keeps the check too (the proposal's page says so, and the reviewer who accepts it vouches that it is still the same
@@ -609,9 +617,11 @@ pub fn curate(
                 if before.is_some_and(|previous| day < previous) {
                     return Err(Mistake::Check(at, CheckFault::BeforeReview));
                 }
+                // The proposal states it, and the day says so (K77).
+                let proposal = edit.proposal.as_ref().ok_or(Mistake::Unwritable)?;
                 source.last_reviewed = Some(super::Reviewed {
                     date: day.to_owned(),
-                    proposal: None,
+                    proposal: Some(proposal.as_str().to_owned()),
                 });
                 source.availability = check.availability;
             }

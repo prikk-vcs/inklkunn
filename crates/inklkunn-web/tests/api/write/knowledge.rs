@@ -1161,6 +1161,11 @@ async fn a_changed_reference_ends_the_check_and_the_new_one_has_only_the_check_t
     ];
     for (what, edit, (day, availability)) in cases {
         let c = cast_checked_with("The bridge survey", "2023-11-01");
+        let stated = edit
+            .get("checked")
+            .and_then(|c| c.get("day"))
+            .and_then(|d| d.as_str())
+            .is_some_and(|d| !d.trim().is_empty());
         let a = propose(&c, json!({"sources": [edit]})).await;
         assert_eq!(a.status, 201, "{what}: {}", a.text());
         let written = source_in(&stored(&c, &a), 1);
@@ -1172,6 +1177,18 @@ async fn a_changed_reference_ends_the_check_and_the_new_one_has_only_the_check_t
             (day, availability),
             "{what}"
         );
+        // The check of the new reference names the proposal that states it, on whatever date (K77).
+        if stated {
+            let made: ProposalId = id_of(&a.json());
+            assert_eq!(
+                written
+                    .last_reviewed
+                    .as_ref()
+                    .and_then(|r| r.proposal.as_deref()),
+                Some(made.as_str()),
+                "{what}"
+            );
+        }
     }
     // A day that is no day, beside a reference the source has, is refused as before.
     let c = cast_checked_with("The bridge survey", "2023-11-01");

@@ -9,7 +9,9 @@ use super::*;
 use crate::acceptance::testing::Rig;
 use crate::acceptance::{AcceptFailure, Accepted};
 use crate::authorize::Principal;
-use crate::knowledge::check::{Curated, Refusal, Touched, UNSTATED_CHECK, carried_by, validate};
+use crate::knowledge::check::{
+    Curated, DayBound, Refusal, Touched, UNSTATED_CHECK, carried_by, validate,
+};
 use crate::knowledge::compose::{Checked, Curation, LinkEdit, SourceEdit, Work, curate};
 use crate::merge::{MergeOutcome, Overlap, PageText, Place, merge};
 use crate::proposal::Invalid;
@@ -64,6 +66,7 @@ fn edit(
             work,
         }],
         confirm: false,
+        proposal: inklkunn_store::ProposalId::parse(PROPOSAL),
     }
 }
 
@@ -242,8 +245,15 @@ fn a_check_changed_on_both_sides_without_a_move_is_still_judged_by_its_own_keys(
     assert!(merged.last_reviewed.is_some());
 }
 
+/// 2026-11-17T12:00:00Z: the day the tests' rule is asked on.
+const NOON: i64 = 1_794_916_800;
+
+/// A third proposal's id.
+const THIRD: &str = "01930000-0000-7000-8000-00000000fffc";
+
 #[test]
-fn only_a_check_the_proposal_states_goes_with_a_changed_reference() {
+fn only_a_check_this_proposal_states_goes_with_a_changed_reference() {
+    use crate::knowledge::check::{DayBound, Unstated};
     let day = |d: &str, proposal: Option<&str>| {
         Some(Reviewed {
             date: d.to_owned(),
@@ -268,45 +278,201 @@ fn only_a_check_the_proposal_states_goes_with_a_changed_reference() {
         s.availability = availability;
         Curated::of(&File::Source(Box::new(s)))
     };
-    let checked = tip(day("2026-10-31", Some("p0")), Availability::Available);
-    // The day kept, or the answer kept, on another reference: carried.
-    assert!(
-        after(day("2026-10-31", Some("p0")), Availability::Available, true)
-            .carries_unstated_check(&checked)
+    let ask = |now: &Curated, was: &Curated| now.unstated_check(was, PROPOSAL, Some(NOON));
+    let checked = tip(
+        day("2026-10-31", Some(OTHER_PROPOSAL)),
+        Availability::Available,
     );
-    assert!(
-        after(day("2026-10-31", Some("p0")), Availability::Unknown, true)
-            .carries_unstated_check(&checked)
-    );
-    assert!(after(None, Availability::Available, true).carries_unstated_check(&checked));
+    // The day kept, or the answer kept, on another reference: carried, whatever the date is.
+    for (what, now) in [
+        (
+            "the tip's own day and proposal",
+            after(
+                day("2026-10-31", Some(OTHER_PROPOSAL)),
+                Availability::Available,
+                true,
+            ),
+        ),
+        (
+            "the day and no answer",
+            after(
+                day("2026-10-31", Some(OTHER_PROPOSAL)),
+                Availability::Unknown,
+                true,
+            ),
+        ),
+        (
+            "an answer and no day",
+            after(None, Availability::Available, true),
+        ),
+        (
+            "the tip's date with ANOTHER proposal's id",
+            after(
+                day("2026-10-31", Some(THIRD)),
+                Availability::Available,
+                true,
+            ),
+        ),
+        (
+            "another day with another proposal's id",
+            after(
+                day("2026-11-10", Some(THIRD)),
+                Availability::Available,
+                true,
+            ),
+        ),
+        (
+            "the tip's date and no `proposal:` at all",
+            after(day("2026-10-31", None), Availability::Available, true),
+        ),
+        (
+            "another day and no `proposal:` at all",
+            after(day("2026-11-10", None), Availability::Unknown, true),
+        ),
+        (
+            "an answer other than the tip's, with no day",
+            after(None, Availability::Unavailable, true),
+        ),
+    ] {
+        assert_eq!(ask(&now, &checked), Some(Unstated::Carried), "{what}");
+    }
     // Nothing kept: not carried. A day that is gone is a check that is not carried.
-    assert!(!after(None, Availability::Unknown, true).carries_unstated_check(&checked));
-    // A check the proposal states: another day (even an earlier one is a statement; whether it is a good one is for the
-    // day's own rule), the same day with the proposal not yet named, another answer.
-    assert!(
-        !after(day("2026-11-10", None), Availability::Available, true)
-            .carries_unstated_check(&checked)
+    assert_eq!(
+        ask(&after(None, Availability::Unknown, true), &checked),
+        None
     );
-    assert!(
-        !after(day("2026-10-31", None), Availability::Available, true)
-            .carries_unstated_check(&checked)
+    // A check this proposal states: the day names it, and the date is whatever the bounds allow, the tip's own included.
+    for (what, now) in [
+        (
+            "another day",
+            after(
+                day("2026-11-10", Some(PROPOSAL)),
+                Availability::Available,
+                true,
+            ),
+        ),
+        (
+            "the tip's own date",
+            after(
+                day("2026-10-31", Some(PROPOSAL)),
+                Availability::Available,
+                true,
+            ),
+        ),
+        (
+            "a day and no answer",
+            after(
+                day("2026-11-10", Some(PROPOSAL)),
+                Availability::Unknown,
+                true,
+            ),
+        ),
+        (
+            "today",
+            after(
+                day("2026-11-17", Some(PROPOSAL)),
+                Availability::Available,
+                true,
+            ),
+        ),
+        (
+            "tomorrow, which has come in UTC+14",
+            after(
+                day("2026-11-18", Some(PROPOSAL)),
+                Availability::Available,
+                true,
+            ),
+        ),
+    ] {
+        assert_eq!(ask(&now, &checked), None, "{what}");
+    }
+    // The bounds of K72, asked where a clock is given: not before the previous review day, not after today in UTC+14.
+    assert_eq!(
+        ask(
+            &after(
+                day("2026-10-30", Some(PROPOSAL)),
+                Availability::Available,
+                true
+            ),
+            &checked
+        ),
+        Some(Unstated::Day(DayBound::BeforeReview))
     );
-    assert!(!after(None, Availability::Unavailable, true).carries_unstated_check(&checked));
-    // The same reference keeps its check, whatever else changes.
-    assert!(
-        !after(
-            day("2026-10-31", Some("p0")),
-            Availability::Available,
-            false
-        )
-        .carries_unstated_check(&checked)
+    assert_eq!(
+        ask(
+            &after(
+                day("2026-11-19", Some(PROPOSAL)),
+                Availability::Available,
+                true
+            ),
+            &checked
+        ),
+        Some(Unstated::Day(DayBound::NotCome))
+    );
+    // Without a clock only the carrying is asked; and a source with no previous review takes any day that has come.
+    let late = after(
+        day("2026-11-19", Some(PROPOSAL)),
+        Availability::Available,
+        true,
+    );
+    assert_eq!(late.unstated_check(&checked, PROPOSAL, None), None);
+    assert!(!late.carries_unstated_check(&checked, PROPOSAL));
+    let other = after(
+        day("2026-11-10", Some(OTHER_PROPOSAL)),
+        Availability::Available,
+        true,
+    );
+    assert!(other.carries_unstated_check(&checked, PROPOSAL));
+    let first = tip(None, Availability::Unknown);
+    assert_eq!(
+        ask(
+            &after(
+                day("2001-01-01", Some(PROPOSAL)),
+                Availability::Available,
+                true
+            ),
+            &first
+        ),
+        None
+    );
+    // A review with no proposal id at the tip, and the same date stated explicitly: stated. The same record (what a carried
+    // check is) is carried: the two are told apart by the proposal the day names.
+    let anonymous = tip(day("2026-10-31", None), Availability::Available);
+    assert_eq!(
+        ask(
+            &after(
+                day("2026-10-31", Some(PROPOSAL)),
+                Availability::Available,
+                true
+            ),
+            &anonymous
+        ),
+        None
+    );
+    assert_eq!(
+        ask(
+            &after(day("2026-10-31", None), Availability::Available, true),
+            &anonymous
+        ),
+        Some(Unstated::Carried)
+    );
+    // The same reference keeps its check, whatever else changes, and whatever proposal the day names.
+    assert_eq!(
+        ask(
+            &after(
+                day("2026-10-31", Some(OTHER_PROPOSAL)),
+                Availability::Available,
+                false
+            ),
+            &checked
+        ),
+        None
     );
     // A source that was not checked and is found elsewhere carries nothing.
-    let unchecked = tip(None, Availability::Unknown);
-    assert!(!after(None, Availability::Unknown, true).carries_unstated_check(&unchecked));
+    assert_eq!(ask(&after(None, Availability::Unknown, true), &first), None);
     // A claim carries nothing of the kind.
     let claim = Curated::of(&File::Claim(Box::new(claim())));
-    assert!(!claim.carries_unstated_check(&claim));
+    assert_eq!(ask(&claim, &claim), None);
 }
 
 fn refusals_of(base: &Source, now: &Source) -> Vec<Refusal> {
@@ -316,6 +482,8 @@ fn refusals_of(base: &Source, now: &Source) -> Vec<Refusal> {
         written: [path.clone()].into(),
         curated_before: [(path, Curated::of(&File::Source(Box::new(base.clone()))))].into(),
         curation: true,
+        proposal: PROPOSAL.to_owned(),
+        now: NOON,
         ..Touched::default()
     };
     validate(&files, &touched, &Mem(Vec::new()), &Mem(Vec::new()))
@@ -337,13 +505,59 @@ fn the_validator_refuses_a_source_found_elsewhere_that_carries_the_old_check_by_
     assert_eq!((one.rule, one.field), (Rule::Status, "last_reviewed"));
     assert_eq!(one.sentence(), UNSTATED_CHECK);
     assert!(one.curation_form_can_make(), "a form states a check");
-    // Stated: another day.
-    let mut stated = carried.clone();
-    stated.last_reviewed = Some(Reviewed {
-        date: "2026-11-10".to_owned(),
-        proposal: None,
-    });
-    assert!(refusals_of(&tip, &stated).is_empty());
+    // Stated: the day names this proposal, whatever the date is (K77).
+    for date in ["2026-11-10", "2026-10-31"] {
+        let mut stated = carried.clone();
+        stated.last_reviewed = Some(Reviewed {
+            date: date.to_owned(),
+            proposal: Some(PROPOSAL.to_owned()),
+        });
+        assert!(refusals_of(&tip, &stated).is_empty(), "{date}");
+    }
+    // Not stated: another day or the tip's own, naming another proposal or none.
+    for (date, proposal) in [
+        ("2026-11-10", None),
+        ("2026-10-31", None),
+        ("2026-11-10", Some(OTHER_PROPOSAL)),
+        ("2026-10-31", Some(OTHER_PROPOSAL)),
+    ] {
+        let mut named = carried.clone();
+        named.last_reviewed = Some(Reviewed {
+            date: date.to_owned(),
+            proposal: proposal.map(str::to_owned),
+        });
+        let got = refusals_of(&tip, &named);
+        assert_eq!(
+            got.iter().map(|r| (r.field, r.carries)).collect::<Vec<_>>(),
+            [("last_reviewed", true)],
+            "{date} {proposal:?}"
+        );
+    }
+    // Stated, and out of the bounds of K72: one refusal for each, with its own sentence.
+    for (date, bound) in [
+        ("2026-10-30", DayBound::BeforeReview),
+        ("2026-11-19", DayBound::NotCome),
+    ] {
+        let mut out = carried.clone();
+        out.last_reviewed = Some(Reviewed {
+            date: date.to_owned(),
+            proposal: Some(PROPOSAL.to_owned()),
+        });
+        let got = refusals_of(&tip, &out);
+        assert_eq!(got.len(), 1, "{date}: {got:?}");
+        let one = got.first().expect("one");
+        assert_eq!(
+            (one.rule, one.field, one.carries, one.bound),
+            (Rule::Status, "last_reviewed", false, Some(bound)),
+            "{date}"
+        );
+        assert_eq!(one.sentence(), bound.sentence());
+        assert_ne!(one.sentence(), UNSTATED_CHECK);
+    }
+    // An answer is only with a day that is stated: there is none.
+    let mut answer_only = carried.clone();
+    answer_only.last_reviewed = None;
+    assert_eq!(refusals_of(&tip, &answer_only).len(), 1);
     // Not carried: the check is gone.
     let mut cleared = carried.clone();
     cleared.last_reviewed = None;
@@ -383,16 +597,38 @@ fn the_tree_free_rule_is_the_validators() {
     let path = source_path(&tip.id);
     let was = tip.to_yaml();
     let before = |p: &str| (p == path).then(|| was.clone());
-    let got = carried_by(&[(path.clone(), Some(carried.to_yaml()))], &before);
+    let got = carried_by(
+        &[(path.clone(), Some(carried.to_yaml()))],
+        &before,
+        PROPOSAL,
+    );
     assert_eq!(got.len(), 1);
     assert_eq!(got.first().map(|r| r.field), Some("last_reviewed"));
+    // The check this proposal states (the day names it) is not carried: the proposal's own id decides, so the same file is
+    // carried when it is asked for another proposal.
+    let mut stated = carried.clone();
+    stated.last_reviewed = Some(Reviewed {
+        date: "2026-10-31".to_owned(),
+        proposal: Some(PROPOSAL.to_owned()),
+    });
+    let given = [(path.clone(), Some(stated.to_yaml()))];
+    assert!(carried_by(&given, &before, PROPOSAL).is_empty());
+    assert_eq!(carried_by(&given, &before, OTHER_PROPOSAL).len(), 1);
     // A removal, a source the base lacks and a file that does not read are not this rule's.
-    assert!(carried_by(&[(path.clone(), None)], &before).is_empty());
-    assert!(carried_by(&[(path.clone(), Some(carried.to_yaml()))], &|_| None).is_empty());
+    assert!(carried_by(&[(path.clone(), None)], &before, PROPOSAL).is_empty());
+    assert!(
+        carried_by(
+            &[(path.clone(), Some(carried.to_yaml()))],
+            &|_| None,
+            PROPOSAL
+        )
+        .is_empty()
+    );
     assert!(
         carried_by(
             &[(path.clone(), Some("not: [a source".to_owned()))],
-            &before
+            &before,
+            PROPOSAL
         )
         .is_empty()
     );
@@ -462,49 +698,166 @@ fn the_reviewers_two_orders_stop_the_acceptance_with_both_texts_and_never_write_
     }
 }
 
+/// The proposal the tests' curations are made for.
+fn proposal_id() -> inklkunn_store::ProposalId {
+    inklkunn_store::ProposalId::parse(PROPOSAL).expect("a proposal id")
+}
+
+/// `source` with the check of the review `day` (naming `proposal`, or none) at address B, as a file.
+fn at_b_checked(source: &Source, day: &str, proposal: Option<&str>) -> String {
+    let mut moved = source.clone();
+    moved.reference = doi_reference();
+    moved.last_reviewed = Some(Reviewed {
+        date: day.to_owned(),
+        proposal: proposal.map(str::to_owned),
+    });
+    moved.to_yaml()
+}
+
 #[test]
-fn a_source_moved_with_the_old_check_left_on_it_is_refused_before_the_signer_is_asked() {
+fn a_source_moved_with_a_check_that_this_proposal_does_not_state_is_refused_before_the_signer_is_asked()
+ {
     let mut tip = at_a();
     tip.last_reviewed = Some(Reviewed {
         date: "2026-10-31".to_owned(),
         proposal: Some("01930000-0000-7000-8000-00000000aaaa".to_owned()),
     });
     tip.availability = Availability::Available;
-    let s = scene("k71-carried", &tip);
     let path = source_path(&tip.id);
     let mut carried = tip.clone();
     carried.reference = doi_reference();
-    // Made by hand (a script, a client of the generic write API): the form never writes it.
-    let p = s.rig.propose_unjudged(
+    // Made by hand (a script, a client of the generic write API): the form never writes it. Not this proposal's check:
+    // the old one carried; the tip's own date with ANOTHER proposal's id; the same, or another day, with no `proposal:`
+    // at all (K77).
+    let refused = [
+        ("the old check carried", carried.to_yaml()),
+        (
+            "the tip's date, another proposal's id",
+            at_b_checked(&tip, "2026-10-31", Some(OTHER_PROPOSAL)),
+        ),
+        (
+            "another day, another proposal's id",
+            at_b_checked(&tip, "2026-11-10", Some(OTHER_PROPOSAL)),
+        ),
+        (
+            "the tip's date, no proposal at all",
+            at_b_checked(&tip, "2026-10-31", None),
+        ),
+        (
+            "another day, no proposal at all",
+            at_b_checked(&tip, "2026-11-10", None),
+        ),
+    ];
+    for (at, (what, text)) in refused.iter().enumerate() {
+        let s = scene(&format!("k71-carried-{at}"), &tip);
+        let p = s.rig.propose_unjudged_named(
+            proposal_id(),
+            &s.author,
+            "A change of a source",
+            &[(&path, Some(text))],
+        );
+        let Err(AcceptFailure::KnowledgeInvalid(refusals)) = accept(&s, &p) else {
+            panic!("{what}: expected the knowledge refusal");
+        };
+        assert!(
+            refusals
+                .iter()
+                .any(|r| r.carries && r.field == "last_reviewed" && r.rule == Rule::Status),
+            "{what}: {refusals:?}"
+        );
+        assert_eq!(
+            s.rig.double.calls().len(),
+            0,
+            "{what}: the signer was not asked"
+        );
+        assert_eq!(s.rig.state(&p.id), ProposalState::HeldForReview, "{what}");
+    }
+
+    // The same proposal with the check of the new reference stated (the day names the proposal), on another day or on the
+    // tip's own, is accepted.
+    for (at, day) in ["2026-11-10", "2026-10-31"].into_iter().enumerate() {
+        let s = scene(&format!("k71-stated-{at}"), &tip);
+        let p = s.rig.propose_unjudged_named(
+            proposal_id(),
+            &s.author,
+            "A change of a source, checked",
+            &[(&path, Some(&at_b_checked(&tip, day, Some(PROPOSAL))))],
+        );
+        let outcome = accept(&s, &p);
+        assert!(
+            matches!(outcome, Ok(Accepted::Signed(_))),
+            "{day}: {outcome:?}"
+        );
+    }
+}
+
+#[test]
+fn a_stated_check_holds_the_bounds_of_a_check_at_the_acceptance() {
+    // K77 (K72's bounds, at the one place every path passes): not before the day the source was last checked, not after
+    // today in UTC+14, an answer only with a day.
+    let tip = checked_at_a();
+    let path = source_path(&tip.id);
+    for (what, day, bound) in [
+        (
+            "the day before the previous review",
+            "2026-10-30",
+            DayBound::BeforeReview,
+        ),
+        ("a day that has not come", "2999-01-01", DayBound::NotCome),
+    ] {
+        let s = scene(&format!("k77-bound-{day}"), &tip);
+        let p = s.rig.propose_unjudged_named(
+            proposal_id(),
+            &s.author,
+            "A change of a source, checked",
+            &[(&path, Some(&at_b_checked(&tip, day, Some(PROPOSAL))))],
+        );
+        let Err(AcceptFailure::KnowledgeInvalid(refusals)) = accept(&s, &p) else {
+            panic!("{what}: expected the knowledge refusal");
+        };
+        assert_eq!(refusals.len(), 1, "{what}: {refusals:?}");
+        let one = refusals.first().expect("one");
+        assert_eq!(
+            (one.rule, one.field, one.carries, one.bound),
+            (Rule::Status, "last_reviewed", false, Some(bound)),
+            "{what}"
+        );
+        assert_eq!(
+            s.rig.double.calls().len(),
+            0,
+            "{what}: the signer was not asked"
+        );
+    }
+    // The bounds are inclusive: the previous review day itself is a check (the same date is a statement), and so is today.
+    for (at, day) in ["2026-10-31", "2026-11-17"].into_iter().enumerate() {
+        let s = scene(&format!("k77-bound-ok-{at}"), &tip);
+        let p = s.rig.propose_unjudged_named(
+            proposal_id(),
+            &s.author,
+            "A change of a source, checked",
+            &[(&path, Some(&at_b_checked(&tip, day, Some(PROPOSAL))))],
+        );
+        let outcome = accept(&s, &p);
+        assert!(
+            matches!(outcome, Ok(Accepted::Signed(_))),
+            "{day}: {outcome:?}"
+        );
+    }
+    // An answer needs a day this proposal states: there is none, so it is the old one's, carried.
+    let s = scene("k77-answer-only", &tip);
+    let mut answer = tip.clone();
+    answer.reference = doi_reference();
+    answer.last_reviewed = None;
+    let p = s.rig.propose_unjudged_named(
+        proposal_id(),
         &s.author,
-        "A change of a source",
-        &[(&path, Some(&carried.to_yaml()))],
+        "An answer and no day",
+        &[(&path, Some(&answer.to_yaml()))],
     );
     let Err(AcceptFailure::KnowledgeInvalid(refusals)) = accept(&s, &p) else {
         panic!("expected the knowledge refusal");
     };
-    assert!(
-        refusals
-            .iter()
-            .any(|r| r.carries && r.field == "last_reviewed" && r.rule == Rule::Status),
-        "{refusals:?}"
-    );
-    assert_eq!(s.rig.double.calls().len(), 0, "the signer was not asked");
-    assert_eq!(s.rig.state(&p.id), ProposalState::HeldForReview);
-
-    // The same proposal with the check of the new reference stated (another day) is accepted.
-    let mut stated = carried.clone();
-    stated.last_reviewed = Some(Reviewed {
-        date: "2026-11-10".to_owned(),
-        proposal: None,
-    });
-    let p = s.rig.propose_unjudged(
-        &s.author,
-        "A change of a source, checked",
-        &[(&path, Some(&stated.to_yaml()))],
-    );
-    let outcome = accept(&s, &p);
-    assert!(matches!(outcome, Ok(Accepted::Signed(_))), "{outcome:?}");
+    assert!(refusals.iter().any(|r| r.carries), "{refusals:?}");
 }
 
 #[test]
@@ -551,17 +904,66 @@ fn the_same_rule_refuses_it_when_it_is_sent_and_at_every_revision() {
         as_invalid(service.revise(&s.author, &s.rig.wiki, &held.id, given(&carried.to_yaml()))),
         Err(Invalid::KnowledgeCheckUnstated)
     );
-    // The check stated: sent.
-    let mut stated = carried.clone();
-    stated.last_reviewed = Some(Reviewed {
-        date: "2026-11-10".to_owned(),
-        proposal: None,
-    });
+    // The tip's date with another proposal's id, and a check naming none, are not this proposal's either (K77), at a
+    // submission and at a revision.
+    for (what, text) in [
+        (
+            "the tip's date, another proposal's id",
+            at_b_checked(&tip, "2026-10-31", Some(OTHER_PROPOSAL)),
+        ),
+        (
+            "the tip's date, no proposal",
+            at_b_checked(&tip, "2026-10-31", None),
+        ),
+        (
+            "another day, no proposal",
+            at_b_checked(&tip, "2026-11-10", None),
+        ),
+    ] {
+        let draft = service
+            .create(&s.author, &s.rig.wiki, None, given(&text))
+            .expect("a draft");
+        assert_eq!(
+            as_invalid(service.submit(&s.author, &s.rig.wiki, &draft.id)),
+            Err(Invalid::KnowledgeCheckUnstated),
+            "{what}"
+        );
+        assert_eq!(
+            as_invalid(service.revise(&s.author, &s.rig.wiki, &held.id, given(&text))),
+            Err(Invalid::KnowledgeCheckUnstated),
+            "{what}"
+        );
+    }
+    // The check stated: the day names the proposal, which the draft's author knows once it is made, and sends it.
     let draft = service
-        .create(&s.author, &s.rig.wiki, None, given(&stated.to_yaml()))
+        .create(&s.author, &s.rig.wiki, None, given(&carried.to_yaml()))
         .expect("a draft");
+    let stated = at_b_checked(&tip, "2026-11-10", Some(draft.id.as_str()));
+    service
+        .save_draft(&s.author, &s.rig.wiki, &draft.id, given(&stated))
+        .expect("the draft, with its own id in the check");
     assert_eq!(
         as_invalid(service.submit(&s.author, &s.rig.wiki, &draft.id)),
+        Ok(())
+    );
+    // The same text is not the check of another proposal: a revision of the held one refuses it, naming the draft's id.
+    assert_eq!(
+        as_invalid(service.revise(&s.author, &s.rig.wiki, &held.id, given(&stated))),
+        Err(Invalid::KnowledgeCheckUnstated)
+    );
+    // And a proposal named beforehand (what the curation form and the API do) sends the check that names it.
+    let named = service
+        .create_named(
+            proposal_id(),
+            &s.author,
+            &s.rig.wiki,
+            None,
+            given(&at_b_checked(&tip, "2026-11-10", Some(PROPOSAL))),
+        )
+        .expect("a draft");
+    assert_eq!(named.id, proposal_id());
+    assert_eq!(
+        as_invalid(service.submit(&s.author, &s.rig.wiki, &named.id)),
         Ok(())
     );
 }
@@ -602,7 +1004,8 @@ fn a_check_stated_on_the_date_the_old_one_had_is_named_by_the_accepting_proposal
     let path = source_path(&tip.id);
     // The check of the new reference, on the very date the old one had: stated, so it is this proposal's.
     let stated = moved_and_checked_on(&tip, "2026-10-31");
-    let p = s.rig.propose(
+    let p = s.rig.propose_named(
+        proposal_id(),
         &s.author,
         "A new place, looked at",
         &[(&path, Some(&stated))],
@@ -633,6 +1036,72 @@ fn a_check_stated_on_the_date_the_old_one_had_is_named_by_the_accepting_proposal
     assert!(matches!(
         accept(&s, &p),
         Err(AcceptFailure::KnowledgeInvalid(_))
+    ));
+}
+
+#[test]
+fn a_same_date_check_over_a_review_that_names_no_proposal_is_accepted_when_it_is_stated_and_refused_when_it_is_carried()
+ {
+    // K77, ruling 2. The tip's review names no proposal (hand-written data): the date alone cannot tell a restatement from
+    // a carried check, so the proposal that states it names itself, and only that is a check.
+    let mut tip = at_a();
+    tip.last_reviewed = Some(Reviewed {
+        date: "2026-10-31".to_owned(),
+        proposal: None,
+    });
+    tip.availability = Availability::Available;
+    let path = source_path(&tip.id);
+    let s = scene("k77-anonymous-stated", &tip);
+    // Through the compose path: the curation states a check of the new reference on the very date of the old one.
+    let stated = moved_and_checked_on(&tip, "2026-10-31");
+    assert_eq!(
+        parsed(&stated)
+            .last_reviewed
+            .and_then(|r| r.proposal)
+            .as_deref(),
+        Some(PROPOSAL),
+        "the compose path names the proposal"
+    );
+    let p = s.rig.propose_named(
+        proposal_id(),
+        &s.author,
+        "A new place, looked at",
+        &[(&path, Some(&stated))],
+    );
+    let outcome = accept(&s, &p);
+    assert!(matches!(outcome, Ok(Accepted::Signed(_))), "{outcome:?}");
+    // The same file as the old check carried (the same record, no proposal): refused when it is sent and at the acceptance.
+    let s = scene("k77-anonymous-carried", &tip);
+    let carried = at_b_checked(&tip, "2026-10-31", None);
+    let held = s
+        .rig
+        .propose_unjudged(&s.author, "A new place", &[(&path, Some(&carried))]);
+    assert!(matches!(
+        accept(&s, &held),
+        Err(AcceptFailure::KnowledgeInvalid(_))
+    ));
+    let draft = s
+        .rig
+        .proposals
+        .create(
+            &s.author,
+            &s.rig.wiki,
+            None,
+            crate::proposal::ProposalEdit {
+                summary: "A new place".to_owned(),
+                files: vec![inklkunn_store::FileChange {
+                    path: path.clone(),
+                    text: Some(carried),
+                }],
+                ..crate::proposal::ProposalEdit::default()
+            },
+        )
+        .expect("a draft");
+    assert!(matches!(
+        s.rig.proposals.submit(&s.author, &s.rig.wiki, &draft.id),
+        Err(crate::proposal::ProposalError::Invalid(
+            Invalid::KnowledgeCheckUnstated
+        ))
     ));
 }
 

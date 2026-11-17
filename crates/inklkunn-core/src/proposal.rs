@@ -808,6 +808,32 @@ impl ProposalService {
         self.create_as(principal, wiki, view, edit, Origin::Sent)
     }
 
+    /// [`ProposalService::create`] for the proposal `id`, **which the caller chose** (a fresh [`ProposalId`], never one used
+    /// before: the store refuses it). A curation states the check of a new reference by naming the proposal it is for
+    /// (K77), so its files are made after the id is known and before the proposal is.
+    pub fn create_named(
+        &self,
+        id: ProposalId,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+        edit: ProposalEdit,
+    ) -> Result<ProposalRecord> {
+        self.create_with_id(id, principal, wiki, view, edit, Origin::Plain)
+    }
+
+    /// [`ProposalService::create_and_submit`] for the proposal `id`, which the caller chose ([`ProposalService::create_named`]).
+    pub fn create_and_submit_named(
+        &self,
+        id: ProposalId,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+        edit: ProposalEdit,
+    ) -> Result<ProposalRecord> {
+        self.create_with_id(id, principal, wiki, view, edit, Origin::Sent)
+    }
+
     /// [`ProposalService::create`] for the curation proposal of the **reconfirm step** (RFC 005 part 2 D-3; handoff 005
     /// K11): the note of the change it re-confirms (`change`, the acceptance that put it in the history) is written in
     /// the same step as the proposal, so that the curation proposal's acceptance can record which change it
@@ -916,12 +942,25 @@ impl ProposalService {
         edit: ProposalEdit,
         origin: Origin<'_>,
     ) -> Result<ProposalRecord> {
+        self.create_with_id(ProposalId::new(), principal, wiki, view, edit, origin)
+    }
+
+    /// [`ProposalService::create_as`] for the proposal `id`, which the caller chose (a fresh one: the store refuses an id it
+    /// has).
+    fn create_with_id(
+        &self,
+        id: ProposalId,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+        edit: ProposalEdit,
+        origin: Origin<'_>,
+    ) -> Result<ProposalRecord> {
         let author = account_of(principal)?;
         self.allow_pages(principal, wiki, &edit.touched())?;
         let view = view.unwrap_or(&wiki.default_view).to_owned();
         let base = Self::base_of(&edit, || Ok(self.bases.base(wiki, &view)?))?;
         let content = self.content_of(&edit, base);
-        let id = ProposalId::new();
         let held = matches!(origin, Origin::Reconfirm(_) | Origin::Sent);
         if held {
             self.allow(
@@ -929,7 +968,7 @@ impl ProposalService {
                 Action::Propose,
                 &Self::proposal_resource(wiki, &id),
             )?;
-            self.judge_submission(principal, wiki, &edit.summary, &edit.sources, &content)?;
+            self.judge_submission(principal, wiki, &id, &edit.summary, &edit.sources, &content)?;
         } else {
             validate(&edit.summary, &edit.sources, &content, Finish::Draft)?;
             self.judge_files(principal, wiki, &content)?;
@@ -1063,7 +1102,7 @@ impl ProposalService {
             .ok_or(ProposalError::Changed)?;
         let touched = touched_by(&draft);
         self.allow_pages(principal, wiki, &touched)?;
-        self.judge_submission(principal, wiki, &p.summary, &p.sources, &draft)?;
+        self.judge_submission(principal, wiki, id, &p.summary, &p.sources, &draft)?;
         // The wiki-wide hourly limit counts what is *sent*, so it is asked here and not when a draft is opened;
         // in one critical section with the change, so that two sends cannot both find room for the last one.
         let _admission = self
@@ -1083,13 +1122,14 @@ impl ProposalService {
         &self,
         principal: &Principal,
         wiki: &WikiRecord,
+        id: &ProposalId,
         summary: &str,
         sources: &[String],
         content: &RevisionContent,
     ) -> Result<()> {
         validate(summary, sources, content, Finish::Submit)?;
         self.judge_files(principal, wiki, content)?;
-        self.judge_knowledge(wiki, content)
+        self.judge_knowledge(wiki, id, content)
     }
 
     /// The wiki-wide hourly limit on what is sent for review; the caller holds the admission lock. Reviewers and the
@@ -1131,7 +1171,7 @@ impl ProposalService {
         let content = self.content_of(&edit, base);
         validate(&edit.summary, &edit.sources, &content, Finish::Submit)?;
         self.judge_files(principal, wiki, &content)?;
-        self.judge_knowledge(wiki, &content)?;
+        self.judge_knowledge(wiki, id, &content)?;
         let now = (self.clock)();
         let change = ProposalChange {
             transition: ProposalTransition {

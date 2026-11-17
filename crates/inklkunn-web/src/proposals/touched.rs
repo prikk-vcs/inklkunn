@@ -464,6 +464,8 @@ fn judge_again(page: &Page, ctx: &Ctx, id: &inklkunn_store::ProposalId) -> Respo
             removed: Vec::new(),
             sources: Vec::new(),
             confirm: true,
+            // No source is edited, so no check is stated.
+            proposal: None,
         };
         // A claim said nowhere now has no wording to judge on; it is left as it is.
         let Ok(written) = curate(claim, &[], loaded.digest(), &edit) else {

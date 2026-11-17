@@ -429,11 +429,11 @@ fn what_a_checked_source_is_and_where_it_is_found_is_curation_and_before_the_che
     let was = |p: &str| held.get(p).cloned();
     let given = vec![(path, Some(other.to_yaml()))];
     assert_eq!(
-        crate::proposal::files::knowledge_verdict(&given, &was, false, &summarize, &One),
+        crate::proposal::files::knowledge_verdict(&given, &was, PROPOSAL, false, &summarize, &One),
         Err(crate::proposal::Invalid::KnowledgeCurated)
     );
     assert_eq!(
-        crate::proposal::files::knowledge_verdict(&given, &was, true, &summarize, &One),
+        crate::proposal::files::knowledge_verdict(&given, &was, PROPOSAL, true, &summarize, &One),
         Ok(())
     );
 }
@@ -898,11 +898,13 @@ fn a_challenge_is_not_laundered_out_by_removing_its_claim_and_writing_another_on
     // The proposal service says so at submit: with a page beside it the proposal is not a curation proposal.
     let was = |p: &str| held.get(p).cloned();
     assert_eq!(
-        crate::proposal::files::knowledge_verdict(&written, &was, false, &summarize, &One),
+        crate::proposal::files::knowledge_verdict(
+            &written, &was, PROPOSAL, false, &summarize, &One
+        ),
         Err(crate::proposal::Invalid::KnowledgeCurated)
     );
     assert_eq!(
-        crate::proposal::files::knowledge_verdict(&written, &was, true, &summarize, &One),
+        crate::proposal::files::knowledge_verdict(&written, &was, PROPOSAL, true, &summarize, &One),
         Ok(())
     );
 }
@@ -949,15 +951,15 @@ fn a_file_the_base_has_and_cannot_read_is_not_replaced_or_removed_by_any_other_p
     // The service refuses it at submit outside a curation proposal and sends it as one.
     use crate::proposal::{Invalid, files::knowledge_verdict};
     assert_eq!(
-        knowledge_verdict(&over, &was, false, &summarize, &One),
+        knowledge_verdict(&over, &was, PROPOSAL, false, &summarize, &One),
         Err(Invalid::KnowledgeCurated)
     );
     assert_eq!(
-        knowledge_verdict(&over, &was, true, &summarize, &One),
+        knowledge_verdict(&over, &was, PROPOSAL, true, &summarize, &One),
         Ok(())
     );
     assert_eq!(
-        knowledge_verdict(&gone(path), &was, false, &summarize, &One),
+        knowledge_verdict(&gone(path), &was, PROPOSAL, false, &summarize, &One),
         Err(Invalid::KnowledgeCurated)
     );
 }
@@ -1068,7 +1070,11 @@ fn the_tree_the_acceptance_reads_names_a_tip_file_it_cannot_read_and_curation_ma
         content: Some(now.to_yaml().into_bytes()),
     }];
     let judged = |files: &[PreparedFile], curation: bool| {
-        judge(&root, 1000, 1 << 20, files, &[], curation, false)
+        let stating = curation.then_some(crate::knowledge::check::Stating {
+            proposal: PROPOSAL,
+            now: 0,
+        });
+        judge(&root, 1000, 1 << 20, files, &[], stating, false)
             .expect("judged")
             .iter()
             .map(|r| (r.file.clone(), r.rule, r.field))

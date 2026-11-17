@@ -141,6 +141,7 @@ fn the_checks_of_a_curation_share_one_read_of_each_source() {
             }),
         }],
         confirm: false,
+        proposal: None,
     };
     assert!(!unknown_successor_with(&reads, &subject, &edit).unwrap());
     let files = [written(&source(1, Some(2)))];

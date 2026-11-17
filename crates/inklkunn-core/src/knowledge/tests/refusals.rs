@@ -368,6 +368,7 @@ fn a_refusal_of_a_removal_or_an_unreadable_file_says_it_is_not_offered_and_not_w
         line: None,
         removes,
         carries: false,
+        bound: None,
     };
     // What a curation proposal can make keeps the rule's sentence.
     let made = said(false, "community_status");

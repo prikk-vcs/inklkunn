@@ -403,7 +403,7 @@ impl SystemActs {
                 &crate::knowledge::check::Written {
                     files: &request.files,
                     renames: &request.renames,
-                    curation: false,
+                    curation: None,
                     by_service: true,
                 },
             )

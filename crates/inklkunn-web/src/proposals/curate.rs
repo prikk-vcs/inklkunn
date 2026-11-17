@@ -1141,12 +1141,15 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
             Err(m) => mistake = Some(m),
         }
     }
+    // The proposal is named before it is made: the check of a new reference is written naming it (K77).
+    let proposal = inklkunn_store::ProposalId::new();
     let edit = Curation {
         status: sub.status,
         links: sub.links.clone(),
         removed: sub.removed.clone(),
         sources,
         confirm: sub.confirm,
+        proposal: Some(proposal.clone()),
     };
     let now = subject.wording.as_ref().map(|(_, d)| d);
     let view_name = short(full_view.as_deref())
@@ -1220,7 +1223,7 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
             base: &sub.base,
             renames: &[],
         };
-        match file_lines(ctx, t, &place, &given) {
+        match file_lines(ctx, t, &place, &given, &proposal.to_string()) {
             Ok(known) => known.lines,
             Err(e) => return read_failure(page, ctx, e),
         }
@@ -1256,7 +1259,13 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
     };
     let service = &ctx.services.proposals;
     // Made and sent in one step (K38): a refusal leaves nothing, never an unsent draft that counts against its author.
-    match service.create_and_submit(&ctx.principal, &ctx.wiki, full_view.as_deref(), proposed) {
+    match service.create_and_submit_named(
+        proposal,
+        &ctx.principal,
+        &ctx.wiki,
+        full_view.as_deref(),
+        proposed,
+    ) {
         Ok(made) => see(&paths::proposal(ctx.slug(), made.id.as_str())),
         Err(ProposalError::Invalid(why)) => draw(
             vec![plain(&words::invalid_text(t, why))],

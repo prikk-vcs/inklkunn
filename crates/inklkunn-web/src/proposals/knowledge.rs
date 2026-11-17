@@ -1069,12 +1069,14 @@ impl Resolver<'_> {
 
 /// The lines for the knowledge files (`files`: path and new text, `None` for a removal) of a proposal written on
 /// `place`: each file is compared with the text the base had. The pages among `files` and the claims and sources it
-/// writes name the subjects of the lines before the wiki does.
+/// writes name the subjects of the lines before the wiki does. `proposal` is the id the proposal has (or will have: a
+/// check of a moved reference is stated only by the proposal that names it, K77); empty where none is named yet.
 pub(crate) fn file_lines(
     ctx: &super::Ctx,
     t: T,
     place: &Place<'_>,
     files: &[inklkunn_store::FileChange],
+    proposal: &str,
 ) -> Result<Known, inklkunn_core::read::ReadError> {
     let mut before: std::collections::BTreeMap<String, Option<String>> =
         std::collections::BTreeMap::new();
@@ -1094,7 +1096,7 @@ pub(crate) fn file_lines(
     let was = |path: &str| before.get(path).cloned().flatten();
     let items = inklkunn_core::knowledge::summary::summarize(&given, &was);
     let curated = inklkunn_core::knowledge::check::curated_by(&given, &was);
-    let carried = !inklkunn_core::knowledge::check::carried_by(&given, &was).is_empty();
+    let carried = !inklkunn_core::knowledge::check::carried_by(&given, &was, proposal).is_empty();
     // The subjects and the wording a re-judgement moved to are looked for only when there is a line to name them; a
     // page that cannot be read is the page that says so, never a line that claims the paragraph is not there.
     let content = RevisionContent {
