@@ -464,9 +464,15 @@
     - the review, the candidate and its rehearsal.
   - **Target cut 2026-11-23,** on the owner's authorization.
 
+- **2026-11-18 — the owner authorized 0.3.0's plan** (*"Authorized."*), with its two proposals:
+  - **the Japanese catalog is not a gate** (without the sign-off it ships as a preview);
+  - **the test by a person using assistive technology moves to before 1.0 or the first public deployment,** whichever comes first (the about page keeps saying it has not been done).
+
+  The architect writes threat model v0.3 (R-1).
+
 ## Pending on the owner
 
-- **Authorize 0.3.0's plan** (`docs/releases/0.3.0-plan.md`): scope frozen at M3 as built; exit criteria; the order of work; a target cut of 2026-11-23. Two proposals in it are yours to confirm: the Japanese catalog is not a gate (it ships as a preview without your sign-off), and the assistive-technology test by a person moves to *before 1.0 or the first public deployment*.
+- **Authorize the 0.3.0 cut** when the architect brings the candidate (target 2026-11-23; the plan itself was authorized 2026-11-18).
 
 - **Review the Japanese catalog** (DR-7; the owner is the reviewer): 842 messages, every one listed with where it appears in
   `docs/glossary.md`; until your sign-off Japanese stays a preview that only a reader's own choice turns on.
@@ -487,7 +493,7 @@
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and handoff 003's T1 – T3 are built and
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
-(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **M12 – M19, K32 – K42 and K-T11 reviewed (2026-11-14).** **M20 – M27 and K43 – K54 reviewed (2026-11-14).** **M28 – M33 and K55 – K64 reviewed (2026-11-14).** **M34 – M37 and K65 – K70 reviewed (2026-11-14).** **M38 – M40 and K71 – K75 reviewed (2026-11-17).** **M41 – M43 and K76 – K78 reviewed (2026-11-17).** **M44 – M46 and K79 – K81 Approved (2026-11-17); both packages' correction rounds end.** **M48 Approved (2026-11-17); `main` is green.** **M47 and K82 Approved (2026-11-17).** **M49 Approved, and the release rehearsal is green (2026-11-17).** **The November 2026 maintenance package is complete (2026-11-18).** **0.3.0's plan written (2026-11-18; scope frozen; the owner authorizes): `docs/releases/0.3.0-plan.md`.** **The dev team's order now:** 0.3.0's readiness R-2 – R-5 (the knowledge handoff's last section), then the candidate
+(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **M12 – M19, K32 – K42 and K-T11 reviewed (2026-11-14).** **M20 – M27 and K43 – K54 reviewed (2026-11-14).** **M28 – M33 and K55 – K64 reviewed (2026-11-14).** **M34 – M37 and K65 – K70 reviewed (2026-11-14).** **M38 – M40 and K71 – K75 reviewed (2026-11-17).** **M41 – M43 and K76 – K78 reviewed (2026-11-17).** **M44 – M46 and K79 – K81 Approved (2026-11-17); both packages' correction rounds end.** **M48 Approved (2026-11-17); `main` is green.** **M47 and K82 Approved (2026-11-17).** **M49 Approved, and the release rehearsal is green (2026-11-17).** **The November 2026 maintenance package is complete (2026-11-18).** **0.3.0's plan authorized by the owner (2026-11-18; scope frozen): `docs/releases/0.3.0-plan.md`.** **The dev team's order now:** 0.3.0's readiness R-2 – R-5 (the knowledge handoff's last section), then the candidate
 (all before 0.3.0); and, at the next touch of `signer/retirement.rs`,
 `seal_pause`'s operator sentence (Z7 – Z9 review). An assistive-technology pass is arranged before 0.3.0.
 
