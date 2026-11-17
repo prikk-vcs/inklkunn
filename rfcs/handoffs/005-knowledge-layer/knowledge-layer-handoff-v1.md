@@ -509,3 +509,39 @@ correction rounds end. What remains goes into 0.3.0's readiness, with no separat
   - The Japanese sentences of a carried check (`invalid.knowledge_check_unstated`, `know.check_unstated` and their glossary
     rows) say 「…提案の中で示します」 or an equally grammatical form, not 「提案が示してください」.
   - `submitDraft`'s description points to the way to state a check, as `createProposal`'s and `reviseProposal`'s do.
+
+## 0.3.0 readiness (2026-11-18; binding)
+
+The release plan is `docs/releases/0.3.0-plan.md`; it is the owner's to authorize, and these tasks prepare the cut, not the
+decision. **0.3.0's scope is frozen: no feature is added.** A defect found here is fixed here; anything else is recorded
+for 0.4.0. Hand back R-2 – R-5 as one request, `0.3.0-readiness-review-request.md`, by the plan's target of 2026-11-20.
+
+- **R-2 — the end-to-end proof on a real prikk,** in the shape of 0.2.0's U6 (`crates/inklkunn/src/serve/writes_on/`):
+  - Real binary, sockets, store and key store.
+  - The steps: a contributor proposes a claim with a source through the forms; a reviewer accepts it; an anonymous
+    reader sees the claim and its source; *Why is this here?* answers for that sentence and for an ordinary one; a
+    reviewer creates a view, a change lands in it, and *compare views* shows the difference in wording, status and
+    sources; *Sources to review* lists the source after its `review_after`; a thread is written and is in the export;
+    the exported bundle validates against wiki-commons' schema with the extension declared.
+  - Each assertion names the RFC 005 part 2 acceptance criterion it carries, and is killed by at least one mutation.
+- **R-3 — the upgrade from 0.2.0.**
+  - A data directory made by the **0.2.0 release binary** holds a wiki, two accounts, a key store, an accepted change
+    and an open proposal. The candidate opens it: the store migrates 15 → 18; the wiki serves; both accounts sign in;
+    the signer opens; the open proposal can be accepted.
+  - Make it a test that runs where the 0.2.0 binary is present (a guarded skip line otherwise). Run it once by hand on
+    the candidate, and say where the binary came from (the release asset, checksum checked).
+  - Show D-7 against 0.2.0's own output: a page with no claims renders as 0.2.0 rendered it except the one *Why is this
+    here?* link.
+- **R-4 — the 0.3.0 CHANGELOG section's lead,** for a reader, above the detailed entries:
+  - what 0.3.0 adds;
+  - what is not offered yet (the plan's table, in plain words);
+  - the operator notes: IS-19 (0.1.0 and 0.2.0 could not confine on Debian or Ubuntu; drop `--dev-unconfined`), the
+    container settings and the hardening options (SECURITY.md's section), the store migration.
+
+  `.github/release-notes.sh` must keep the body under GitHub's limit, checked as at 0.2.0. Also `seal_pause`'s operator
+  sentence (the Z7 – Z9 review's note).
+- **R-5 — `docs/releases/0.3.0-readiness.md`,** in 0.2.0's form: what is green, with numbers; what a person did and
+  what only a tool did; what is deferred and why; the risks. Bring the threat model's §7 record up to v0.3 once the
+  architect's v0.3 lands (R-1), as at 0.2.0.
+- **R-7 (after the architect's review) — the candidate:** the workspace version and the CHANGELOG heading become
+  0.3.0, and nothing else changes.
