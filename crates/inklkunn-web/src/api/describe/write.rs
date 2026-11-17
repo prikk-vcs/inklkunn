@@ -90,7 +90,7 @@ pub(crate) const SUBMIT_DRAFT: Doc = Doc {
     operation_id: "submitDraft",
     tag: "proposals",
     summary: "Send a draft for review",
-    description: "The draft's working copy becomes revision 1 and the proposal is held for review. Only the author. The body is `{}`. Scope `propose`.",
+    description: "The draft's working copy becomes revision 1 and the proposal is held for review. Only the author. The body is `{}`. Scope `propose`. A draft that moves a source to another `reference` and leaves a `last_reviewed` day or an `availability` answer this proposal does not state is `unacceptable` (`knowledge-check-unstated`): a check of the new place is stated as `createProposal` says (`checked` in a curation; the proposal's own id in `last_reviewed.proposal` in a hand-written file).",
     query: &[],
     answer: Answer::Schema("Proposal"),
     write: Some(Write {
