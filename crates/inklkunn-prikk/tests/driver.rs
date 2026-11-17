@@ -808,6 +808,73 @@ esac"#,
 }
 
 #[test]
+fn bubblewraps_own_loader_hitting_the_ceiling_is_the_ceiling_and_a_missing_library_is_not() {
+    // M48 (CI run 44077152844): on Debian and Ubuntu bwrap links `libpcre2-8`, and under a small ceiling its
+    // own loader dies with this line and exit 127. It is the ceiling, not a broken bubblewrap. The same exit
+    // with a loader that cannot *find* the library (the IS-19 shape) is a missing prerequisite.
+    let tmp = TempDir::new("loader-ceiling");
+    let repo = tmp.0.join("repo");
+    fs::create_dir_all(repo.join(".prikk")).unwrap();
+    let fake = shim(
+        &tmp.0,
+        "case \"$1\" in --version) echo 'prikk 0.54.0' ;; esac",
+    );
+    let prlimit = shim_named(
+        &tmp.0,
+        "prlimit",
+        "case \"$1\" in --version) exit 0 ;; *) shift; shift; exec \"$@\" ;; esac",
+    );
+    let open = |line: &str| {
+        let bwrap = shim_named(
+            &tmp.0,
+            "bwrap",
+            &format!("case \"$*\" in *true*) exit 0 ;; *) echo '{line}' >&2; exit 127 ;; esac"),
+        );
+        let sandbox = Sandbox::Bwrap(BwrapConfig {
+            bwrap: bwrap.into_os_string(),
+            prlimit: prlimit.clone().into_os_string(),
+        });
+        (0..50)
+            .find_map(|_| {
+                match PrikkCli::open(fake.as_os_str().to_owned(), sandbox.clone(), gate()) {
+                    Err(StorageError::Unavailable {
+                        reason: Unavailable::Spawn(m),
+                        ..
+                    }) if m.contains("Text file busy") => {
+                        std::thread::sleep(Duration::from_millis(10));
+                        None
+                    }
+                    other => Some(other),
+                }
+            })
+            .expect("opened")
+            .expect("a confined driver over the shims")
+    };
+    let hit = open(
+        "bwrap: error while loading shared libraries: libpcre2-8.so.0: failed to map segment from shared object",
+    );
+    let r = retry(|| hit.clone().with_fixed_ceiling(96 << 10).views(&repo));
+    assert!(
+        matches!(
+            r,
+            Err(StorageError::Unavailable {
+                verb: "branch",
+                reason: Unavailable::CeilingExceeded { bytes }
+            }) if bytes == 96 << 10
+        ),
+        "{r:?}"
+    );
+    let missing = open(
+        "bwrap: error while loading shared libraries: libpcre2-8.so.0: cannot open shared object file: No such file or directory",
+    );
+    let r = retry(|| missing.clone().with_fixed_ceiling(96 << 10).views(&repo));
+    assert!(
+        matches!(&r, Err(StorageError::Unavailable { verb: "branch", reason: Unavailable::Prerequisite(m) }) if m.starts_with("bwrap:")),
+        "{r:?}"
+    );
+}
+
+#[test]
 fn a_too_small_ceiling_is_unavailable_never_a_verdict() {
     if !prikk_on_path() {
         println!("{SKIP_PRIKK}");

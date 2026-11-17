@@ -408,6 +408,13 @@ fn every_way_a_call_dies_of_its_memory_ceiling_is_read_as_the_ceiling_and_a_refu
             "the loader cannot map",
             run_of(exited(127), "cannot map zero-fill pages"),
         ),
+        (
+            "the loader cannot map a library's segment (CI's exact line, Debian and Ubuntu)",
+            run_of(
+                exited(127),
+                "bwrap: error while loading shared libraries: libpcre2-8.so.0: failed to map segment from shared object",
+            ),
+        ),
         ("bwrap is out of memory", run_of(exited(1), "Out of memory")),
     ] {
         assert!(run.died_of_ceiling(), "{what}");
@@ -423,6 +430,17 @@ fn every_way_a_call_dies_of_its_memory_ceiling_is_read_as_the_ceiling_and_a_refu
             run_of(exited(127), "sh: prikk: not found"),
         ),
         ("a plain failure", run_of(exited(2), "")),
+        (
+            "a loader that cannot find a library is a missing prerequisite, not a ceiling",
+            run_of(
+                exited(127),
+                "bwrap: error while loading shared libraries: libpcre2-8.so.0: cannot open shared object file: No such file or directory",
+            ),
+        ),
+        (
+            "the same segment sentence with no exit 127 is not the loader's",
+            run_of(exited(1), "error: failed to map segment from shared object"),
+        ),
     ] {
         assert!(!run.died_of_ceiling(), "{what}");
     }

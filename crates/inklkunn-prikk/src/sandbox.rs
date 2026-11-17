@@ -71,12 +71,21 @@ impl Run {
     ///
     /// How a process dies under `RLIMIT_DATA` depends on where the first refused allocation lands: Rust's
     /// allocator aborts ("memory allocation of … failed", SIGABRT, 134); the dynamic loader exits 127 with
-    /// "Cannot allocate memory", "cannot allocate TLS" or "cannot map zero-fill pages"; glibc's early TLS setup
+    /// "Cannot allocate memory", "cannot allocate TLS", "cannot map zero-fill pages" or, when it is a library's
+    /// segment that cannot be mapped, "failed to map segment from shared object" (it names whichever library
+    /// came first: on Debian and Ubuntu bwrap's own `libpcre2-8`, CI run 44077152844); glibc's early TLS setup
     /// can fault (SIGSEGV) before any message, which is what GitHub's runners showed and what bwrap reports as
     /// exit 139 (a death by signal inside the sandbox is exit 128 + n); bwrap itself, short of memory while
     /// setting the namespace up, says only "Out of memory" and exits 1 (ledger PK-9). prikk itself never dies
     /// by a signal and the server's own kill is `timed_out`, so under a ceiling *any* death by signal is read
     /// as the ceiling.
+    ///
+    /// The loader rule is a list of its memory sentences, not "any exit 127 under a ceiling": a loader that
+    /// cannot *find* a library (`cannot open shared object file`, the IS-19 shape) fails the same way with no
+    /// ceiling involved, and reading that as the ceiling would send an operator to raise a limit when the
+    /// host's libraries are what is missing. Measured here on glibc under ceilings from 16 KiB to 2 MiB
+    /// (bwrap, curl, git, python): the loader's only memory sentences were "cannot map zero-fill pages" and
+    /// "failed to map segment from shared object".
     ///
     /// This is the one classifier: the read driver and the signer's write verbs both use it.
     pub fn died_of_ceiling(&self) -> bool {
@@ -89,7 +98,8 @@ impl Run {
         let loader_failed = self.status.code() == Some(127)
             && (stderr.contains("Cannot allocate memory")
                 || stderr.contains("cannot allocate")
-                || stderr.contains("cannot map"));
+                || stderr.contains("cannot map")
+                || stderr.contains("failed to map segment"));
         let sandbox_oom = self.status.code() == Some(1) && stderr.starts_with("Out of memory");
         by_signal || alloc_failed || loader_failed || sandbox_oom
     }
