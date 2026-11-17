@@ -174,20 +174,52 @@ const LIFT_USERNS: &str = "sudo sysctl -w kernel.apparmor_restrict_unprivileged_
 struct JobStep {
     lines: Vec<String>,
     guards: Vec<String>,
+    /// Is the step `continue-on-error` (any value but `false`)? Its failure then stops nothing.
+    optional: bool,
 }
 
-fn guard_of(line: &str) -> Option<String> {
+/// Is `v` the indicator of a block scalar (`>`, `>-`, `|`, `|+`, `>2`), which is not part of the text?
+fn is_block_indicator(v: &str) -> bool {
+    let v = v.split(" #").next().unwrap_or("").trim();
+    v.starts_with(['>', '|'])
+        && v.chars()
+            .skip(1)
+            .all(|c| matches!(c, '+' | '-' | '0'..='9'))
+}
+
+/// The `if:` on `lines[at]`, if it is one: its **whole** value (a folded `if: >-` or a plain value continued on
+/// the lines below it, comment lines left out), normalized and without `${{ }}`, and the number of lines after
+/// `at` that belong to it. The first line alone would make two folded guards equal (maintenance M42).
+fn guard_at(lines: &[&str], at: usize) -> Option<(String, usize)> {
+    let line = lines.get(at)?;
     let t = line.trim_start();
-    let v = t
-        .strip_prefix("- if:")
-        .or_else(|| t.strip_prefix("if:"))?
-        .trim();
+    let (key_indent, rest) = match t.strip_prefix("- if:") {
+        Some(rest) => (indent_of(line) + 2, rest),
+        None => (indent_of(line), t.strip_prefix("if:")?),
+    };
+    let mut value = rest.trim().to_owned();
+    if is_block_indicator(&value) {
+        value.clear();
+    }
+    let mut used = 0;
+    for l in lines.iter().skip(at + 1) {
+        let lt = l.trim();
+        if !lt.is_empty() && indent_of(l) <= key_indent {
+            break;
+        }
+        used += 1;
+        if !lt.is_empty() && !lt.starts_with('#') {
+            value.push(' ');
+            value.push_str(lt);
+        }
+    }
+    let v = value.trim();
     let v = v
         .strip_prefix("${{")
         .and_then(|r| r.strip_suffix("}}"))
         .unwrap_or(v)
         .trim();
-    Some(v.split_whitespace().collect::<Vec<_>>().join(" "))
+    Some((v.split_whitespace().collect::<Vec<_>>().join(" "), used))
 }
 
 fn indent_of(line: &str) -> usize {
@@ -198,11 +230,15 @@ fn indent_of(line: &str) -> usize {
 /// `if:` a key at indent 4, its steps the `- ` items under its `steps:`. Reading what the canonical form that
 /// `pin-check` enforces allows is enough here; that gate refuses what this cannot read.
 fn jobs_with_steps(yaml: &str) -> Vec<(String, Vec<JobStep>)> {
+    let lines: Vec<&str> = yaml.lines().collect();
     let mut jobs: Vec<(String, Option<String>, Vec<JobStep>)> = Vec::new();
     let mut in_jobs = false;
     let mut in_steps = false;
     let mut step_indent: Option<usize> = None;
-    for line in yaml.lines() {
+    let mut at = 0;
+    while let Some(&line) = lines.get(at) {
+        let here = at;
+        at += 1;
         let t = line.trim();
         if t.is_empty() || t.starts_with('#') {
             continue;
@@ -228,8 +264,9 @@ fn jobs_with_steps(yaml: &str) -> Vec<(String, Vec<JobStep>)> {
         if indent == 4 {
             in_steps = t == "steps:";
             step_indent = None;
-            if let Some(g) = guard_of(line) {
+            if let Some((g, used)) = guard_at(&lines, here) {
                 *job_guard = Some(g);
+                at += used;
             }
             continue;
         }
@@ -241,14 +278,22 @@ fn jobs_with_steps(yaml: &str) -> Vec<(String, Vec<JobStep>)> {
             steps.push(JobStep {
                 lines: Vec::new(),
                 guards: Vec::new(),
+                optional: false,
             });
         }
         if let Some(cur) = steps.last_mut() {
             cur.lines.push(t.to_owned());
-            if (indent == si || indent == si + 2)
-                && let Some(g) = guard_of(line)
-            {
-                cur.guards.push(g);
+            if indent == si || indent == si + 2 {
+                if let Some((g, used)) = guard_at(&lines, here) {
+                    cur.guards.push(g);
+                    at += used;
+                } else if let Some(v) = t
+                    .strip_prefix("- ")
+                    .unwrap_or(t)
+                    .strip_prefix("continue-on-error:")
+                {
+                    cur.optional = v.split(" #").next().unwrap_or("").trim() != "false";
+                }
             }
         }
     }
@@ -270,29 +315,42 @@ fn lifts(step_line: &str) -> bool {
     l.strip_prefix("run:").unwrap_or(l).trim() == LIFT_USERNS
 }
 
-/// What is wrong with how a workflow makes user namespaces available to its tests (maintenance M37, M40): the
+/// Does this command line run the tests: `cargo test`, or `cargo +<toolchain> test`?
+fn runs_tests(line: &str) -> bool {
+    let words: Vec<&str> = line.split_whitespace().collect();
+    words.windows(2).any(|w| w == ["cargo", "test"])
+        || words.windows(3).any(|w| {
+            w.first() == Some(&"cargo")
+                && w.get(1).is_some_and(|p| p.starts_with('+'))
+                && w.get(2) == Some(&"test")
+        })
+}
+
+/// What is wrong with how a workflow makes user namespaces available to its tests (maintenance M37, M40, M42): the
 /// PID-namespace test of the extract locks and the bubblewrap tests need them, and the runner forbids them
-/// until the restriction is lifted. Checked **per job**: every step of a job that runs `cargo test` needs a
-/// step of the same job before it (or an earlier line of the same step) that lifts the restriction, and every
-/// `if:` in force on the lift (its job's and its own) must hold on the test step too, so a lift guarded by a
+/// until the restriction is lifted. Checked **per job**: every step of a job that runs `cargo test` (or
+/// `cargo +<toolchain> test`) needs a step of the same job before it (or an earlier line of the same step) that
+/// lifts the restriction, a lift that is not `continue-on-error`, and every `if:` in force on the lift (its job's
+/// and its own, each read whole, folded lines included) must hold on the test step too, so a lift guarded by a
 /// condition the test does not share is no lift. Empty when every job that runs `cargo test` does so.
 pub fn user_namespace_violations(yaml: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut any_test = false;
     for (job, steps) in jobs_with_steps(yaml) {
         for (i, step) in steps.iter().enumerate() {
-            let Some(test_line) = step.lines.iter().position(|l| l.contains("cargo test")) else {
+            let Some(test_line) = step.lines.iter().position(|l| runs_tests(l)) else {
                 continue;
             };
             any_test = true;
-            let mut lifts_before: Vec<&Vec<String>> = steps
+            // Every lift before the test: (its guards, is it optional).
+            let mut lifts_before: Vec<(&Vec<String>, bool)> = steps
                 .iter()
                 .take(i)
                 .filter(|s| s.lines.iter().any(|l| lifts(l)))
-                .map(|s| &s.guards)
+                .map(|s| (&s.guards, s.optional))
                 .collect();
             if step.lines.iter().take(test_line).any(|l| lifts(l)) {
-                lifts_before.push(&step.guards);
+                lifts_before.push((&step.guards, step.optional));
             }
             if lifts_before.is_empty() {
                 let after = steps
@@ -304,9 +362,16 @@ pub fn user_namespace_violations(yaml: &str) -> Vec<String> {
                 } else {
                     format!("job `{job}` runs `cargo test` and has no step `{LIFT_USERNS}`")
                 });
+                continue;
+            }
+            lifts_before.retain(|(_, optional)| !optional);
+            if lifts_before.is_empty() {
+                out.push(format!(
+                    "job `{job}`: every lift of the restriction before a `cargo test` step is `continue-on-error`, so a failed lift stops nothing"
+                ));
             } else if !lifts_before
                 .iter()
-                .any(|g| g.iter().all(|e| step.guards.contains(e)))
+                .any(|(g, _)| g.iter().all(|e| step.guards.contains(e)))
             {
                 out.push(format!(
                     "job `{job}`: every lift of the restriction before a `cargo test` step is guarded by an `if:` that the test step does not share"

@@ -146,19 +146,26 @@ fn the_sandbox_decision_follows_the_answer_it_is_given_not_the_host() {
 }
 
 #[test]
-fn a_host_where_the_real_bwrap_works_still_refuses_when_the_answer_is_that_it_cannot() {
-    // The proof that the refusal test above is not the host's doing: where the real bubblewrap confines, the real
-    // probe lets the start through to the confined policy, and the injected answer still refuses it.
+fn the_real_probe_decides_the_real_start_and_an_injected_answer_refuses_on_any_host() {
+    // The proof that the refusal test above is not the host's doing, in both halves, and neither half is skipped:
+    // where the real bubblewrap confines, the real probe lets the start through to the confined policy; where it does
+    // not, the real start is refused and carries bubblewrap's own reason (M42). On either host the injected answer
+    // still refuses the start.
     let probe = inklkunn_prikk::sandbox::probe_bwrap(std::ffi::OsStr::new("bwrap"));
-    if let Err(why) = &probe {
-        println!(
-            "skipping: the real bubblewrap does not confine here, so this half is not shown ({why})"
-        );
-        return;
-    }
-    let d = dir("realworks");
+    let d = dir("realprobe");
     let s = settings(&d.0, false);
-    assert!(matches!(s.sandbox(), Ok(Sandbox::Bwrap(_))));
+    match &probe {
+        Ok(()) => assert!(matches!(s.sandbox(), Ok(Sandbox::Bwrap(_)))),
+        Err(why) => {
+            assert!(!why.is_empty(), "bubblewrap's reason is empty");
+            let refused = s.sandbox().unwrap_err();
+            assert!(
+                refused.0.contains("bubblewrap cannot confine prikk") && refused.0.contains(why),
+                "the refusal does not carry bubblewrap's reason `{why}`: {refused}"
+            );
+            assert!(refused.0.contains("--dev-unconfined"), "{refused}");
+        }
+    }
     let e = prepare_probing(
         &s,
         &web("127.0.0.1:1", "http://localhost:1", "http://localhost:2"),

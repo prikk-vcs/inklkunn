@@ -599,6 +599,77 @@ fn the_toolchain_file_rules_catch_planted_failures() {
     assert!(msrv_commands_without_the_toolchain(other, "1.89.0").is_empty());
 }
 
+/// Maintenance M42 (review result E-c): `cargo +X` and `rustc +X` name a compiler without a `rustup` line, so the
+/// canonical reader never sees it. They are allowed in the `msrv` job and only there, and only with the minimum.
+#[test]
+fn a_plus_toolchain_stands_only_in_the_msrv_job_and_names_only_the_minimum() {
+    let msrv =
+        declared_msrv(&fs::read_to_string(workspace_root().join("Cargo.toml")).unwrap_or_default())
+            .expect("rust-version declared");
+    for (name, yaml) in workflows() {
+        let found = plus_toolchains_outside_the_minimum(&yaml, &msrv);
+        assert!(
+            found.is_empty(),
+            "{name}: a `+<toolchain>` outside the msrv job, or one that is not +{msrv}: {found:?}"
+        );
+    }
+    // Not vacuous: the real msrv job names the minimum, and the rule reads its lines.
+    let ci =
+        fs::read_to_string(workspace_root().join(".github/workflows/ci.yml")).unwrap_or_default();
+    assert!(ci.contains(&format!("cargo +{msrv} check")));
+    let planted = ci.replace(&format!("cargo +{msrv} check"), "cargo +nightly check");
+    assert_eq!(
+        plus_toolchains_outside_the_minimum(&planted, &msrv).len(),
+        1
+    );
+
+    let wrong = [
+        (
+            "`cargo +nightly fmt` in the build job",
+            "jobs:\n  build:\n    steps:\n      - name: f\n        run: cargo +nightly fmt --all\n",
+            1,
+        ),
+        (
+            "`rustc +1.99.1` in a job that is not the msrv job (the pin is the toolchain file's, not a `+X`)",
+            "jobs:\n  build:\n    steps:\n      - name: v\n        run: |\n          rustc +1.99.1 --version\n",
+            1,
+        ),
+        (
+            "the minimum itself, outside the msrv job",
+            "jobs:\n  gates:\n    steps:\n      - name: c\n        run: cargo +1.89.0 check\n",
+            1,
+        ),
+        (
+            "another compiler in the msrv job",
+            "jobs:\n  msrv:\n    steps:\n      - name: c\n        run: cargo +1.88.0 check\n      - name: d\n        run: cargo +nightly doc\n",
+            2,
+        ),
+        (
+            "after `&&`, in a block",
+            "jobs:\n  build:\n    steps:\n      - name: a\n        run: |\n          cd x && cargo +beta test\n",
+            1,
+        ),
+        (
+            "in a release job",
+            "jobs:\n  binaries:\n    steps:\n      - name: b\n        run: cargo +stable build --release --locked\n",
+            1,
+        ),
+    ];
+    for (what, yaml, count) in wrong {
+        let found = plus_toolchains_outside_the_minimum(yaml, "1.89.0");
+        assert_eq!(found.len(), count, "{what}: {found:?}");
+    }
+    let right = [
+        "jobs:\n  msrv:\n    steps:\n      - name: t\n        run: |\n          rustc +1.89.0 --version\n      - name: c\n        run: cargo +1.89.0 check --workspace\n",
+        // No `+` after the command, a comment, and a `+` that is not a toolchain.
+        "jobs:\n  build:\n    steps:\n      - name: b\n        run: cargo test --workspace # not cargo +nightly\n      # cargo +nightly fmt\n      - name: c\n        run: echo 1 + 2\n",
+    ];
+    for yaml in right {
+        let found = plus_toolchains_outside_the_minimum(yaml, "1.89.0");
+        assert!(found.is_empty(), "{yaml}: {found:?}");
+    }
+}
+
 #[test]
 fn the_container_base_is_digested() {
     let d = fs::read_to_string(workspace_root().join("Dockerfile")).unwrap_or_default();

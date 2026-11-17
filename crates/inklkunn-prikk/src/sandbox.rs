@@ -625,6 +625,13 @@ const MAX_REASON: usize = 200;
 /// and must not hide a secret:** [`probe_bwrap`]'s reason here, and `inklkunn-fetch`'s scrub of `curl`'s standard
 /// error (that crate depends on this one, so it reuses the set). The standard library has no general-category
 /// table, so the set is written out; a test holds it to the 170 code points of the category.
+///
+/// **This set is wider than the signer's `is_direction_or_format`, on purpose.** That one is what the knowledge files
+/// *refuse* to hold (twelve direction characters), and it must not be widened to Cf: Cf holds the zero-width
+/// non-joiner and joiner (U+200C, U+200D), which Persian and Indic text and emoji sequences need, the soft hyphen, the
+/// Arabic number signs and the tag characters, and refusing them would refuse legitimate knowledge text. Here nothing is
+/// refused: the characters are dropped **for display only**, from a line shown to a person and from what is compared
+/// with a secret, where the text is somebody else's and not kept.
 pub fn is_format_character(c: char) -> bool {
     matches!(
         c,

@@ -821,7 +821,6 @@ version = "0.2.0"
 dependencies = [
  "inklkunn-fetch",
  "inklkunn-prikk",
- "inklkunn-signer",
  "inklkunn-store",
 ]
 

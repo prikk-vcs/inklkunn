@@ -222,31 +222,10 @@ pub fn is_exact_version(s: &str) -> bool {
 /// such a job that start a `cargo` or `rustc` command without `+<msrv>`. A job is a block under `jobs:` whose
 /// text installs `msrv` with `rustup toolchain install`.
 pub fn msrv_commands_without_the_toolchain(yaml: &str, msrv: &str) -> Vec<(usize, String)> {
-    let mut jobs: Vec<Vec<(usize, &str)>> = Vec::new();
-    let mut in_jobs = false;
-    for (i, line) in yaml.lines().enumerate() {
-        let t = line.trim_start();
-        if t.is_empty() || t.starts_with('#') {
-            continue;
-        }
-        let indent = indent_of(line);
-        if indent == 0 {
-            in_jobs = t == "jobs:";
-            continue;
-        }
-        if !in_jobs {
-            continue;
-        }
-        if indent == 2 && t.ends_with(':') && !t.starts_with('-') {
-            jobs.push(Vec::new());
-        }
-        if let Some(job) = jobs.last_mut() {
-            job.push((i + 1, line));
-        }
-    }
+    let jobs = job_blocks(yaml);
     let plus = format!("+{msrv} ");
     let mut out = Vec::new();
-    for job in jobs {
+    for (_, job) in jobs {
         let installs = job.iter().any(|(_, l)| {
             l.trim()
                 .strip_prefix("rustup toolchain install ")
@@ -265,6 +244,70 @@ pub fn msrv_commands_without_the_toolchain(yaml: &str, msrv: &str) -> Vec<(usize
                 {
                     out.push((n, t.to_owned()));
                 }
+            }
+        }
+    }
+    out
+}
+
+/// The jobs of a workflow: each job key (a line at indent 2 under `jobs:`) with the lines of its block (1-based
+/// numbers; blank and comment-only lines left out).
+fn job_blocks(yaml: &str) -> Vec<(String, Vec<(usize, &str)>)> {
+    let mut jobs: Vec<(String, Vec<(usize, &str)>)> = Vec::new();
+    let mut in_jobs = false;
+    for (i, line) in yaml.lines().enumerate() {
+        let t = line.trim_start();
+        if t.is_empty() || t.starts_with('#') {
+            continue;
+        }
+        let indent = indent_of(line);
+        if indent == 0 {
+            in_jobs = t == "jobs:";
+            continue;
+        }
+        if !in_jobs {
+            continue;
+        }
+        if indent == 2 && t.ends_with(':') && !t.starts_with('-') {
+            jobs.push((t.trim_end_matches(':').to_owned(), Vec::new()));
+        }
+        if let Some((_, job)) = jobs.last_mut() {
+            job.push((i + 1, line));
+        }
+    }
+    jobs
+}
+
+/// The compiler a `cargo` or `rustc` command names with `+<toolchain>` on a line, in order (`cargo +nightly fmt`
+/// names `nightly`). A trailing ` # comment` is not read. The command is the word `cargo` or `rustc` followed by a
+/// word that starts with `+`.
+fn plus_toolchains(line: &str) -> Vec<String> {
+    let code = line.split(" #").next().unwrap_or("");
+    let words: Vec<&str> = code
+        .split(|c: char| c.is_whitespace() || matches!(c, ';' | '&' | '|' | '(' | ')' | '"' | '\''))
+        .filter(|w| !w.is_empty())
+        .collect();
+    words
+        .windows(2)
+        .filter(|w| matches!(w.first(), Some(&"cargo" | &"rustc")))
+        .filter_map(|w| w.get(1)?.strip_prefix('+'))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// A `+<toolchain>` on a `cargo` or `rustc` command is allowed in the `msrv` job and only there, and there only
+/// with the declared minimum (maintenance M42, review result E-c): anywhere else it would install and use a second
+/// compiler that `rustup` never shows in the workflow (rustup 1.28 and later install what a `+X` names), and the
+/// canonical reader of M38 sees no `rustup` line to refuse. These are the lines that break it, with the line's text.
+pub fn plus_toolchains_outside_the_minimum(yaml: &str, msrv: &str) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    for (name, job) in job_blocks(yaml) {
+        for (n, l) in job {
+            let wrong = plus_toolchains(l)
+                .iter()
+                .any(|x| name != "msrv" || x != msrv);
+            if wrong {
+                out.push((n, l.trim().to_owned()));
             }
         }
     }

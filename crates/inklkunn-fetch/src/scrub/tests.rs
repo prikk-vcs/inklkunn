@@ -113,26 +113,22 @@ fn a_format_character_inside_a_secret_does_not_hide_it() {
 
 #[test]
 fn the_format_characters_cover_what_the_knowledge_files_refuse() {
-    // This crate cannot depend on the signer (a runtime edge), which holds the set the knowledge files refuse
-    // (`is_direction_or_format`); the signer is a dev-dependency for this test. Every character it names is dropped.
-    let mut named = 0_u32;
-    for code in 0..=0x0010_FFFF_u32 {
-        let Some(c) = char::from_u32(code) else {
-            continue;
-        };
-        if inklkunn_signer::recover::text::is_direction_or_format(c) {
-            named += 1;
-            assert!(
-                is_dropped(c),
-                "U+{code:04X} is refused by the knowledge files but kept here"
-            );
-        }
+    // The twelve direction characters the knowledge files refuse (the signer's `is_direction_or_format`, the one
+    // definition: U+202A - U+202E, U+2066 - U+2069, U+200E, U+200F and the Arabic letter mark U+061C), as a constant
+    // list. This crate cannot depend on the signer, a key-material crate, even for a test (and a test that asked it
+    // would show only that twelve characters are in Cf, which they are by definition); the list is the contract the
+    // two sides keep, and a change to the signer's set is a change here by review. Every one is dropped.
+    const DIRECTION: [char; 12] = [
+        '\u{202A}', '\u{202B}', '\u{202C}', '\u{202D}', '\u{202E}', '\u{2066}', '\u{2067}',
+        '\u{2068}', '\u{2069}', '\u{200E}', '\u{200F}', '\u{061C}',
+    ];
+    for c in DIRECTION {
+        assert!(
+            is_dropped(c),
+            "U+{:04X} is refused by the knowledge files but kept here",
+            c as u32
+        );
     }
-    assert_eq!(
-        named,
-        5 + 4 + 2 + 1,
-        "the signer's set changed: look at this one"
-    );
 }
 
 #[test]

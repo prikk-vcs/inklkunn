@@ -280,7 +280,99 @@ fn the_user_namespace_rule_catches_planted_failures() {
     );
     let v = user_namespace_violations(&one_of_two);
     assert!(v.len() == 1 && v.iter().all(|m| m.contains("`a`")), "{v:?}");
+    // M42 (E-d 1): a folded `if: >-` is read whole. Two guards of one first line are not one guard; the same
+    // folded guard on the lift and the test is shared.
+    let folded = |lift_if: &str, test_if: &str| {
+        format!(
+            "jobs:\n{}",
+            job(
+                "a",
+                "",
+                &format!(
+                    "      - name: x\n        if: >-\n          {lift_if}\n        run: {lift}\n      - name: t\n        if: >-\n          {test_if}\n        run: cargo test\n"
+                )
+            )
+        )
+    };
+    let same = folded("github.event_name == 'push'", "github.event_name == 'push'");
+    assert!(
+        user_namespace_violations(&same).is_empty(),
+        "{:?}",
+        user_namespace_violations(&same)
+    );
+    // The same words over two lines are the same guard (white space does not matter).
+    let two_lines = format!(
+        "jobs:\n{}",
+        job(
+            "a",
+            "",
+            &format!(
+                "      - name: x\n        if: >-\n          github.event_name == 'push' ||\n          inputs.mode == 'rehearsal'\n        run: {lift}\n      - name: t\n        if: github.event_name == 'push' || inputs.mode == 'rehearsal'\n        run: cargo test\n"
+            )
+        )
+    );
+    assert!(
+        user_namespace_violations(&two_lines).is_empty(),
+        "{:?}",
+        user_namespace_violations(&two_lines)
+    );
+    // A lift that fails without failing the job is no lift; `false` is the default and is fine.
+    let optional = |value: &str| {
+        format!(
+            "jobs:\n{}",
+            job(
+                "a",
+                "",
+                &format!(
+                    "      - name: x\n        continue-on-error: {value}\n        run: {lift}\n{test_step}"
+                )
+            )
+        )
+    };
+    assert!(user_namespace_violations(&optional("false")).is_empty());
+    // A test that is `cargo +<toolchain> test` is a test: the job that has one needs a lift too.
+    let plus_test = format!(
+        "jobs:\n{}{}",
+        job("a", "", &format!("{lift_step}{test_step}")),
+        job("b", "", "      - run: cargo +1.99.1 test --workspace\n")
+    );
+    let v = user_namespace_violations(&plus_test);
+    assert!(v.len() == 1 && v.iter().all(|m| m.contains("`b`")), "{v:?}");
+    assert!(
+        user_namespace_violations(&format!(
+            "jobs:\n{}",
+            job(
+                "a",
+                "",
+                &format!("{lift_step}      - run: cargo +1.99.1 test --workspace\n")
+            )
+        ))
+        .is_empty()
+    );
     for (what, yaml) in [
+        (
+            "folded guards that share a first line only",
+            folded(
+                "github.event_name == 'push'",
+                "github.event_name == 'push' || inputs.mode == 'rehearsal'",
+            ),
+        ),
+        (
+            "folded guards whose first line is the same indicator and whose text differs",
+            folded("github.event_name == 'push'", "inputs.mode == 'rehearsal'"),
+        ),
+        ("a lift with continue-on-error", optional("true")),
+        (
+            "a lift with a continue-on-error that is an expression",
+            optional("${{ github.event_name == 'push' }}"),
+        ),
+        (
+            "`cargo +1.99.1 test` with no lift",
+            format!(
+                "jobs:\n{}",
+                job("a", "", "      - run: cargo +1.99.1 test --workspace\n")
+            ),
+        ),
         ("no lift", ok.replace(lift, "true")),
         (
             "lifted too late",

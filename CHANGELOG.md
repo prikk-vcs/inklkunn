@@ -1647,6 +1647,25 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   of M41 (the with-prikk run also failing on that line) is a workflow edit and is not here. `prikk_on_path()` of the
   command-line tests and `inklkunn-core`'s other test files, which only ask whether `prikk` exists, are not changed. No
   prikk-dependent test is added or removed.
+- **M42 (handoff 010 corrections, seventh round), small points (review result E-c, E-d; decision 1).**
+  - `pin-check` refuses a `+<toolchain>` on a `cargo` or `rustc` command anywhere but the `msrv` job, and there any other than
+    the declared minimum (`plus_toolchains_outside_the_minimum`): a `cargo +nightly fmt` step would have installed and used a second
+    compiler with no `rustup` line in sight (rustup 1.28 and later install what a `+X` names), so the canonical reader never saw
+    it. Planted failures: `cargo +nightly fmt` in the build job, `rustc +1.99.1`, the minimum itself outside its job, another
+    compiler inside it, one after `&&`, one in a release job.
+  - `user_namespace_violations` compares the **whole** `if:` value, folded lines included (a folded `if: >-` of two different
+    conditions had compared equal by its first line), refuses a lift that is `continue-on-error` (anything but `false`), and sees
+    `cargo +<toolchain> test` as a test. Planted failures for each, and the same text on two lines or folded is one guard.
+  - The serve proof (`the_real_probe_decides_the_real_start_and_an_injected_answer_refuses_on_any_host`, was `a_host_where_the_real_bwrap_works_still_refuses_...`)
+    no longer skips where the real bubblewrap cannot confine: there it asserts that `Settings::sandbox()` refuses and carries
+    bubblewrap's own reason; where it can, it asserts the confined policy; the injected refusal is shown on both.
+  - `inklkunn-fetch` no longer has `inklkunn-signer` (a key-material crate) as a dev-dependency (`Cargo.toml` and the one
+    `Cargo.lock` edge line): the parity test names the twelve direction characters as a constant list, since a test that asked the
+    signer would show only that twelve characters are in Cf.
+  - The doc comments of `is_direction_or_format` (signer) and `is_format_character` (prikk's sandbox) say why the two sets differ:
+    the knowledge files must not refuse the zero-width non-joiner and joiner (Persian, Indic text, emoji sequences), the soft
+    hyphen, the Arabic number signs or the tags, which are in Cf; Cf is dropped for display only. No prikk-dependent test is added
+    or removed; two tests are added (pin-check's and the world-type one of the guarded-skip check).
 
 - **M43 (handoff 010 corrections, seventh round; IS-19, first): the sandboxes take their root layout from the host.**
   **0.1.0 and 0.2.0 could not confine anything on Debian or Ubuntu, nor in the project's own image:** the bubblewrap probe, prikk's

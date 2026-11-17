@@ -24,8 +24,8 @@ fn is_line_or_control(c: char) -> bool {
 /// Is `c` dropped from the excerpt and from every secret before they are compared: a control, a line separator, or a
 /// format character (a zero-width space inside a token is not seen, and the token is still the token)? The format
 /// characters are the driver's one set, [`is_format_character`] (Unicode category Cf), which a test holds to cover
-/// the set the knowledge files refuse (`inklkunn_signer::recover::text::is_direction_or_format`; this crate cannot
-/// depend on the signer, so the signer is a dev-dependency for that test).
+/// the twelve direction characters the knowledge files refuse (`inklkunn_signer::recover::text::
+/// is_direction_or_format`; this crate cannot depend on the signer, so the test names them as a constant list).
 fn is_dropped(c: char) -> bool {
     is_line_or_control(c) || is_format_character(c)
 }

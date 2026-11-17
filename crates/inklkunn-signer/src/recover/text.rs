@@ -662,6 +662,13 @@ pub fn parse_uncommit_plan(stdout: &str, patch_id: &str) -> Result<UncommitPlan,
 /// U+202E, U+2066 - U+2069, U+200E, U+200F and the Arabic letter mark U+061C)? **The one definition**: the knowledge
 /// files refuse these in every text they hold (handoff 005 corrections K14, K23), and a line of prikk's text that is
 /// shown to a person has them replaced (maintenance M7), so neither can make a line read as another.
+///
+/// **This set is narrower than Unicode's format category (Cf), on purpose.** What a knowledge file refuses must not
+/// include the zero-width non-joiner and joiner (U+200C, U+200D), which Persian and Indic text and emoji sequences
+/// need, nor the soft hyphen, the Arabic number signs or the tag characters: refusing them would refuse legitimate
+/// knowledge text (review of 2026-11-17, ruling 1). `inklkunn_prikk::sandbox::is_format_character` is the whole of Cf;
+/// it is used where text is only *shown* or compared with a secret, and drops those characters for display, refusing
+/// nothing.
 pub fn is_direction_or_format(c: char) -> bool {
     matches!(
         c,
