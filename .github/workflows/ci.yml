@@ -76,12 +76,14 @@ jobs:
         run: cargo fmt --all --check
       - name: Clippy (-D warnings)
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - name: Test with prikk on PATH (includes the gates; the tests that need prikk 0.57.0 must run, not skip)
+      - name: Test with prikk on PATH (includes the gates; every test must run, none may skip)
         run: |
           set -euo pipefail
           cargo test --workspace --locked -- --nocapture 2>&1 | tee with-prikk.log
-          if grep -n -E 'skipping: (prikk 0\.57\.0 or newer not found|no prikk older than 0\.57\.0|PID namespaces unavailable)' with-prikk.log; then
-            echo "a test that needs the test-only prikk ${PRIKK_TEST_VERSION} (or the floor beside it) or the PID-namespace test skipped: all are installed or lifted above, so they must run" >&2
+          # Bubblewrap works here (installed and lifted above, and the sandboxes take the host's own root layout, IS-19), so
+          # a confined test must run too.
+          if grep -n -E 'skipping(: (prikk 0\.57\.0 or newer not found|no prikk older than 0\.57\.0|PID namespaces unavailable|bubblewrap cannot confine|bwrap or curl not available)| the confined policy)' with-prikk.log; then
+            echo "a test skipped that must run here: the test-only prikk ${PRIKK_TEST_VERSION} (or the floor beside it), prikk itself, the PID-namespace test and bubblewrap are all installed or lifted above (a bubblewrap line carries bubblewrap's own reason)" >&2
             exit 1
           fi
       - name: Test with prikk shimmed off PATH (every self-skip must be visible, and counted)

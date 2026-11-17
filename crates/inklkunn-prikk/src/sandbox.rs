@@ -355,16 +355,8 @@ impl BwrapConfig {
         let repo = mounts.repo.as_path();
         let mut c = Command::new(&self.bwrap);
         c.env_clear().env("PATH", "/usr/bin:/bin");
-        // A read-only view of the system, with the usr-merge symlinks a dynamically linked binary needs.
-        c.arg("--ro-bind").arg("/usr").arg("/usr");
-        for (target, link) in [
-            ("usr/lib", "/lib"),
-            ("usr/lib", "/lib64"),
-            ("usr/bin", "/bin"),
-            ("usr/bin", "/sbin"),
-        ] {
-            c.arg("--symlink").arg(target).arg(link);
-        }
+        // A read-only view of the system, laid out as the host's own root is (see [`root_layout`]).
+        c.args(root_layout(Path::new("/")));
         // The prikk binary itself, wherever it lives.
         c.arg("--ro-bind").arg(&prikk).arg(&prikk);
         c.arg("--proc").arg("/proc");
@@ -594,6 +586,36 @@ pub fn probe_prlimit(binary: &OsStr) -> Result<(), String> {
     }
 }
 
+/// The entries of the root directory that a dynamically linked program finds its loader and libraries through, in the
+/// order they are laid out.
+const ROOT_ENTRIES: [&str; 5] = ["bin", "sbin", "lib", "lib64", "lib32"];
+
+/// The bubblewrap arguments that lay out the sandbox's root from the host's own, **the one place every bubblewrap use
+/// takes its layout from** (the probe, prikk's sandbox, `curl`'s vector; IS-19). `/usr` is bound read-only; then, for
+/// each of `/bin`, `/sbin`, `/lib`, `/lib64` and `/lib32`, the host's own entry under `root` (the real root, `/`, in
+/// production; a planted one in a test) is read: a symbolic link is recreated with **its own target** (so a host whose
+/// `/lib64` is `usr/lib64` gets that, and one whose is `usr/lib` gets that), a real directory is bound read-only, and
+/// an entry that is absent (or neither) is left out. Nothing here assumes one distribution's layout: the loader a
+/// binary names, such as `/lib64/ld-linux-x86-64.so.2`, is found where the host finds it.
+pub fn root_layout(root: &Path) -> Vec<OsString> {
+    let mut args: Vec<OsString> = vec!["--ro-bind".into(), root.join("usr").into(), "/usr".into()];
+    for name in ROOT_ENTRIES {
+        let host = root.join(name);
+        let inside = Path::new("/").join(name);
+        let Ok(meta) = std::fs::symlink_metadata(&host) else {
+            continue;
+        };
+        if meta.file_type().is_symlink() {
+            if let Ok(target) = std::fs::read_link(&host) {
+                args.extend(["--symlink".into(), target.into(), inside.into()]);
+            }
+        } else if meta.is_dir() {
+            args.extend(["--ro-bind".into(), host.into(), inside.into()]);
+        }
+    }
+    args
+}
+
 /// The most characters of bubblewrap's own words a probe's reason carries.
 const MAX_REASON: usize = 200;
 
@@ -661,26 +683,8 @@ pub fn probe_bwrap(binary: &OsStr) -> Result<(), String> {
     match Command::new(binary)
         .env_clear()
         .env("PATH", "/usr/bin:/bin")
-        .args([
-            "--ro-bind",
-            "/usr",
-            "/usr",
-            "--symlink",
-            "usr/lib",
-            "/lib",
-            "--symlink",
-            "usr/lib",
-            "/lib64",
-        ])
-        .args([
-            "--symlink",
-            "usr/bin",
-            "/bin",
-            "--proc",
-            "/proc",
-            "--dev",
-            "/dev",
-        ])
+        .args(root_layout(Path::new("/")))
+        .args(["--proc", "/proc", "--dev", "/dev"])
         .args([
             "--unshare-all",
             "--die-with-parent",

@@ -4,7 +4,7 @@
 //!
 //! - `--unshare-all --share-net`: every namespace is new except the network, which `curl` needs. (Nothing
 //!   else of the host's is reachable through it: the filesystem below is the whole filesystem.)
-//! - **Mounts**: `/usr` read-only (with the usr-merge symlinks a dynamically linked program needs), the
+//! - **Mounts**: `/usr` read-only (with the host's own `/bin`, `/lib` and `/lib64` entries, from the driver's `root_layout`), the
 //!   `curl` binary read-only (wherever it lives), the system CA bundle read-only at a fixed path, `/proc`
 //!   and `/dev` minimal, and a fresh `tmpfs` for `/tmp`. **No repository, no key directory, no seed, no
 //!   data directory, no home.**
@@ -21,6 +21,8 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+use inklkunn_prikk::sandbox::root_layout;
 
 /// Where the CA bundle sits inside the vector.
 pub(crate) const VECTOR_CA_PATH: &str = "/etc/ssl/certs/ca-certificates.crt";
@@ -50,16 +52,9 @@ pub(crate) fn bwrap_command(
 ) -> Command {
     let mut c = Command::new(bwrap);
     c.env_clear().env("PATH", "/usr/bin:/bin");
-    // A read-only view of the system, with the usr-merge symlinks.
-    c.arg("--ro-bind").arg("/usr").arg("/usr");
-    for (target, link) in [
-        ("usr/lib", "/lib"),
-        ("usr/lib", "/lib64"),
-        ("usr/bin", "/bin"),
-        ("usr/bin", "/sbin"),
-    ] {
-        c.arg("--symlink").arg(target).arg(link);
-    }
+    // A read-only view of the system, laid out as the host's own root is (the driver's one function, so that every
+    // bubblewrap use has the same layout).
+    c.args(root_layout(Path::new("/")));
     c.arg("--proc").arg("/proc");
     c.arg("--dev").arg("/dev");
     // The fresh /tmp comes before the binds that may live under it (a stand-in curl in a test).

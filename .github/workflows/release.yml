@@ -104,9 +104,10 @@ jobs:
           cargo fmt --all --check
           cargo clippy --workspace --all-targets --locked -- -D warnings
           cargo test --workspace --locked -- --nocapture 2>&1 | tee with-prikk.log
-          # The tests that need prikk 0.57.0 (or the floor beside it) must have run: both are installed above.
-          if grep -n -E 'skipping: (prikk 0\.57\.0 or newer not found|no prikk older than 0\.57\.0|PID namespaces unavailable)' with-prikk.log; then
-            echo "a test that needs the test-only prikk ${PRIKK_TEST_VERSION} (or the floor beside it) or the PID-namespace test skipped" >&2
+          # Every test must have run: the test-only prikk and the floor are installed above, and bubblewrap works (installed
+          # and lifted above, and the sandboxes take the host's own root layout, IS-19), so a confined test runs too.
+          if grep -n -E 'skipping(: (prikk 0\.57\.0 or newer not found|no prikk older than 0\.57\.0|PID namespaces unavailable|bubblewrap cannot confine|bwrap or curl not available)| the confined policy)' with-prikk.log; then
+            echo "a test skipped that must run here: the test-only prikk ${PRIKK_TEST_VERSION} (or the floor beside it), prikk itself, the PID-namespace test and bubblewrap are all installed or lifted above (a bubblewrap line carries bubblewrap's own reason)" >&2
             exit 1
           fi
           cargo deny check
@@ -226,13 +227,34 @@ jobs:
           ACTOR: ${{ github.actor }}
           TOKEN: ${{ github.token }}
         run: echo "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
-      - name: Build and push the image (tag push)
-        if: github.event_name == 'push'
+      - name: Build the image (one local tag; the two push steps below tag it)
         run: |
           set -euo pipefail
           docker build --build-arg "PRIKK_VERSION=${PRIKK_VERSION}" --build-arg "TARGETARCH=${ARCH}" \
             --build-arg "PRIKK_SHA256_X86_64=${PRIKK_SHA256_X86_64}" --build-arg "PRIKK_SHA256_AARCH64=${PRIKK_SHA256_AARCH64}" \
-            -t "ghcr.io/prikk-vcs/inklkunn:${GITHUB_REF_NAME}-${ARCH}" .
+            -t "inklkunn-built:${ARCH}" .
+      - name: Allow unprivileged user namespaces (the runner's AppArmor forbids them; bubblewrap in the image needs them)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: The built image confines prikk (IS-19; before anything is pushed)
+        # `wiki create` on a scratch volume is a command that cannot succeed unless bubblewrap confines prikk in the image: it
+        # probes bubblewrap first and refuses to run prikk unconfined (there is no `--dev-unconfined` here). The three
+        # `--security-opt` settings are what docker needs to let bubblewrap make its namespaces and mount `/proc` in a
+        # container (docs: SECURITY.md, "What a host needs for confinement"). Any failure fails the job, with bubblewrap's reason.
+        run: |
+          set -euo pipefail
+          OUT="$(docker run --rm \
+            --security-opt seccomp=unconfined --security-opt apparmor=unconfined --security-opt systempaths=unconfined \
+            -v "inklkunn-confine-check-${ARCH}:/var/lib/inklkunn" \
+            -e INKLKUNN_DATA_DIR=/var/lib/inklkunn/data -e INKLKUNN_SECRET_FILE=/tmp/secret \
+            --entrypoint /bin/sh "inklkunn-built:${ARCH}" -c \
+            'set -eu; head -c 32 /dev/urandom | od -An -tx1 | tr -d " \n" > /tmp/secret; chmod 600 /tmp/secret; exec /usr/local/bin/inklkunn wiki create confine-check --name "Confine check"' 2>&1)" || { echo "$OUT" >&2; echo "the built image could not confine prikk (bubblewrap's reason is above)" >&2; exit 1; }
+          echo "$OUT"
+          echo "$OUT" | grep -q '^created wiki confine-check ' || { echo "the built image did not create the wiki" >&2; exit 1; }
+      - name: Push the image (tag push)
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          docker tag "inklkunn-built:${ARCH}" "ghcr.io/prikk-vcs/inklkunn:${GITHUB_REF_NAME}-${ARCH}"
           docker push "ghcr.io/prikk-vcs/inklkunn:${GITHUB_REF_NAME}-${ARCH}"
           docker buildx imagetools inspect "ghcr.io/prikk-vcs/inklkunn:${GITHUB_REF_NAME}-${ARCH}" --format '{{json .Manifest.Digest}}' | tr -d '"' > image-digest.txt
           echo "digest=$(cat image-digest.txt)" >> "$GITHUB_OUTPUT"
@@ -244,13 +266,11 @@ jobs:
           subject-name: ghcr.io/prikk-vcs/inklkunn
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
-      - name: "Build and push the image (rehearsal: the throwaway package only)"
+      - name: "Push the image (rehearsal: the throwaway package only)"
         if: inputs.mode == 'rehearsal'
         run: |
           set -euo pipefail
-          docker build --build-arg "PRIKK_VERSION=${PRIKK_VERSION}" --build-arg "TARGETARCH=${ARCH}" \
-            --build-arg "PRIKK_SHA256_X86_64=${PRIKK_SHA256_X86_64}" --build-arg "PRIKK_SHA256_AARCH64=${PRIKK_SHA256_AARCH64}" \
-            -t "ghcr.io/prikk-vcs/inklkunn-rehearsal:rehearsal-${ARCH}" .
+          docker tag "inklkunn-built:${ARCH}" "ghcr.io/prikk-vcs/inklkunn-rehearsal:rehearsal-${ARCH}"
           docker push "ghcr.io/prikk-vcs/inklkunn-rehearsal:rehearsal-${ARCH}"
 
   manifest:

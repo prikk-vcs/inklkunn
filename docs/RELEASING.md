@@ -92,7 +92,9 @@ and is named explicitly on every command (`cargo +1.89.0 check ...`), because a 
 prikk beside it) and shimmed off**, deny, audit, pin-check, floor-check) → the binaries (Linux x86_64 and aarch64, `--locked`, the pinned
 toolchain) with a build-info file naming the commit, the toolchain and the prikk floor → the container image
 per architecture (`…:X.Y.Z-amd64`, `…:X.Y.Z-arm64`, from a digest-pinned base, carrying prikk at the floor
-checked against the recorded checksum, bubblewrap and prlimit) → provenance attestations for the tarballs and
+checked against the recorded checksum, bubblewrap and prlimit; **each image is run once before it is pushed**, with the
+settings SECURITY.md gives for confinement, and the job fails unless `wiki create` on a scratch volume succeeds, which it
+cannot unless prikk is confined in the image (IS-19)) → provenance attestations for the tarballs and
 for each image digest → a manifest list under `ghcr.io/prikk-vcs/inklkunn:X.Y.Z` → the GitHub release with the
 `CHANGELOG.md` section and the checksums → `cargo publish` of the crates in dependency order (after the
 release run is green).

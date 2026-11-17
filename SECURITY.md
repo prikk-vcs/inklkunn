@@ -155,7 +155,31 @@ signer checks, and what it does not:
 - **The seed directory**: absolute, on a tmpfs or ramfs, owned by the user the server runs as, and not writable by
   group or others; the server makes it mode 0700 itself and refuses a directory it cannot do that to.
 - **bubblewrap** must work on the host: every prikk call the signer makes is confined (`--dev-unconfined` is for
-  development and prints a banner).
+  development and prints a banner). See *What a host needs for confinement* below.
+
+**What a host needs for confinement.** The server and every command refuse to run prikk at all, unless started with
+`--dev-unconfined`, when a probe (a confined `/usr/bin/true`) fails, and the refusal carries bubblewrap's own first line.
+What the probe needs:
+
+- **`bwrap` and `prlimit` (util-linux) on `PATH`**, and the host's usual `/usr` with its loader. **The sandboxes lay out
+  their root from the host's own** (`/bin`, `/sbin`, `/lib`, `/lib64` and `/lib32`: a link is recreated with its own
+  target, a real directory is bound read-only, an absent entry is left out), so Arch's `/lib64 -> usr/lib` and Debian's and
+  Ubuntu's `/lib64 -> usr/lib64` both work. **Releases 0.1.0 and 0.2.0 assumed Arch's layout, and on Debian and Ubuntu
+  (and in their image) could not confine anything** (`bwrap: execvp /usr/bin/true: No such file or directory`; IS-19):
+  there, 0.2.0 starts only under `--dev-unconfined`.
+- **Unprivileged user namespaces.** The kernel must allow them (`user.max_user_namespaces` above 0, and on a kernel that
+  has the switch `kernel.unprivileged_userns_clone=1`). **On Ubuntu 24.04 and later, AppArmor restricts them by default:**
+  `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` (persist it in `/etc/sysctl.d/`) or give `bwrap` an
+  AppArmor profile; CI does the former. A host that refuses says `bwrap: setting up uid map: Permission denied` or
+  `No permissions to create new namespace`.
+- **In a container**, the container runtime's own defaults get in the way, because bubblewrap makes namespaces and
+  mounts `/proc` itself. Run the image with `--security-opt seccomp=unconfined --security-opt apparmor=unconfined
+  --security-opt systempaths=unconfined` (docker's names; podman's is `--security-opt seccomp=unconfined --security-opt
+  unmask=ALL`), as the user the image sets (`inklkunn`, uid 10001), on a host that allows user namespaces as above. Without
+  them the probe says `bwrap: Can't mount proc on /proc: Operation not permitted` (measured under podman) or
+  `No permissions to create new namespace`. The release workflow runs the built image once, with these settings,
+  before it pushes it: `wiki create` on a scratch volume, which cannot succeed unless prikk is confined.
+- **The data directory's filesystem** must support `flock` between the processes that share it (see `INKLKUNN_DATA_DIR`).
 
 **A server started without the means to sign still serves.** If the secret file is not there, or the key store does
 not open (a wrong secret, a key directory open to others, no keys made yet, a seed directory that is not on a

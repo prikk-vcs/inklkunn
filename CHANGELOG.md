@@ -1629,6 +1629,25 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   tell a same-date restatement from a carried check, and refuses it as carried; the day after is stated as ever. No prikk-dependent
   test is added.
 
+- **M43 (handoff 010 corrections, seventh round; IS-19, first): the sandboxes take their root layout from the host.**
+  **0.1.0 and 0.2.0 could not confine anything on Debian or Ubuntu, nor in the project's own image:** the bubblewrap probe, prikk's
+  sandbox and `curl`'s vector all made `/lib64` a link to `usr/lib` (Arch's layout), but there the loader
+  `/lib64/ld-linux-x86-64.so.2` lives under `usr/lib64`, so a dynamically linked program was `bwrap: execvp /usr/bin/true: No such
+  file or directory` and the server started only under `--dev-unconfined` (found by CI on Ubuntu 24.04; the confined tests had only
+  ever run on an Arch host). **One function, `inklkunn_prikk::sandbox::root_layout(root)`, now builds the layout for every
+  bubblewrap use:** `/usr` read-only; then for each of `/bin`, `/sbin`, `/lib`, `/lib64` and `/lib32` the host's own entry is read: a
+  link is recreated with its own target, a real directory is bound read-only, an absent entry is left out. Nothing assumes a
+  distribution's layout (the one new public function; the signature takes the root so a test can plant one). Tests: a planted Arch-style,
+  a Debian-style (`/lib64 -> usr/lib64`, `/sbin -> usr/sbin`) and a mixed root (an absent entry, a real directory, an absolute link), a
+  file where an entry is expected, the vector holding exactly the driver's layout, and the real probe on the host (it may skip only for
+  a reason bubblewrap gives, never `No such file or directory`). **CI's confined tests now run on Ubuntu with no bubblewrap skip:** the
+  with-prikk guard in `ci.yml` and `release.yml` and floor-check's shape test also fail on `skipping: bubblewrap cannot confine`,
+  `skipping the confined policy` and the real vector's `skipping: bwrap or curl not available` (the line the fetch crate's own confined tests print). **The release workflow runs the
+  built image once before it pushes it** (`wiki create` on a scratch volume, with the container settings SECURITY.md now gives under
+  *What a host needs for confinement*; the job fails with bubblewrap's reason if the image cannot confine). For operators who started
+  0.2.0 on Debian or Ubuntu with `--dev-unconfined` for this reason: drop the flag once a release with this change is installed and
+  the server starts confined. No prikk-dependent test is added or removed (the new tests are bubblewrap's, not prikk's).
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

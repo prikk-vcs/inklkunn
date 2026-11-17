@@ -449,6 +449,145 @@ fn a_bwrap_that_works_and_one_that_is_missing_are_told_apart() {
     assert!(e.contains("could not run"), "{e}");
 }
 
+/// A root with `usr/bin` and the given entries planted: `(name, Some(target))` is a symbolic link, `(name, None)` a real
+/// directory.
+fn planted_root(tag: &str, entries: &[(&str, Option<&str>)]) -> Tmp {
+    let tmp = Tmp::new(tag);
+    std::fs::create_dir_all(tmp.0.join("usr/bin")).expect("usr");
+    for (name, target) in entries {
+        match target {
+            Some(t) => std::os::unix::fs::symlink(t, tmp.0.join(name)).expect("link"),
+            None => std::fs::create_dir_all(tmp.0.join(name)).expect("directory"),
+        }
+    }
+    tmp
+}
+
+fn layout_of(root: &Path) -> Vec<String> {
+    root_layout(root)
+        .iter()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect()
+}
+
+#[test]
+fn an_arch_style_root_gets_its_links_to_usr_lib_and_usr_bin() {
+    let root = planted_root(
+        "arch",
+        &[
+            ("bin", Some("usr/bin")),
+            ("sbin", Some("usr/bin")),
+            ("lib", Some("usr/lib")),
+            ("lib64", Some("usr/lib")),
+        ],
+    );
+    let usr = root.0.join("usr").to_string_lossy().into_owned();
+    assert_eq!(
+        layout_of(&root.0),
+        [
+            "--ro-bind",
+            &usr,
+            "/usr",
+            "--symlink",
+            "usr/bin",
+            "/bin",
+            "--symlink",
+            "usr/bin",
+            "/sbin",
+            "--symlink",
+            "usr/lib",
+            "/lib",
+            "--symlink",
+            "usr/lib",
+            "/lib64",
+        ]
+    );
+}
+
+#[test]
+fn a_debian_style_root_gets_its_loader_directory_not_arch_s() {
+    // IS-19: the loader `/lib64/ld-linux-x86-64.so.2` is under `usr/lib64` here, and `/sbin` is `usr/sbin`.
+    let root = planted_root(
+        "debian",
+        &[
+            ("bin", Some("usr/bin")),
+            ("sbin", Some("usr/sbin")),
+            ("lib", Some("usr/lib")),
+            ("lib64", Some("usr/lib64")),
+        ],
+    );
+    let a = layout_of(&root.0);
+    for link in [
+        ["--symlink", "usr/lib64", "/lib64"],
+        ["--symlink", "usr/sbin", "/sbin"],
+        ["--symlink", "usr/lib", "/lib"],
+        ["--symlink", "usr/bin", "/bin"],
+    ] {
+        assert!(a.windows(3).any(|w| w == link), "{link:?} in {a:?}");
+    }
+    assert!(
+        !a.windows(3)
+            .any(|w| w == ["--symlink", "usr/lib", "/lib64"]),
+        "Arch's /lib64 must not be assumed: {a:?}"
+    );
+}
+
+#[test]
+fn an_absent_entry_is_left_out_a_real_directory_is_bound_and_a_link_keeps_its_own_target() {
+    // An arm64 Debian has no /lib64; an old root that is not merged has real directories; a link may be absolute.
+    let root = planted_root(
+        "mixed",
+        &[
+            ("bin", None),
+            ("lib", Some("/usr/lib")),
+            ("lib32", Some("usr/lib32")),
+        ],
+    );
+    let bin = root.0.join("bin").to_string_lossy().into_owned();
+    let usr = root.0.join("usr").to_string_lossy().into_owned();
+    assert_eq!(
+        layout_of(&root.0),
+        [
+            "--ro-bind",
+            &usr,
+            "/usr",
+            "--ro-bind",
+            &bin,
+            "/bin",
+            "--symlink",
+            "/usr/lib",
+            "/lib",
+            "--symlink",
+            "usr/lib32",
+            "/lib32",
+        ]
+    );
+}
+
+#[test]
+fn a_file_where_an_entry_is_expected_is_left_out() {
+    let root = planted_root("file", &[]);
+    std::fs::write(root.0.join("lib64"), b"not a directory").expect("file");
+    assert_eq!(layout_of(&root.0).len(), 3, "only /usr");
+}
+
+#[test]
+fn the_real_root_confines_a_dynamically_linked_program_or_says_why_not() {
+    // On this host the layout is the host's own: the probe runs `/usr/bin/true` (dynamically linked, through the loader
+    // the host's /lib64 leads to) in the sandbox the layout builds. A host that cannot make a namespace says so in
+    // bubblewrap's words; the layout's own failure (IS-19) is `No such file or directory` for the program.
+    match probe_bwrap(std::ffi::OsStr::new(BWRAP)) {
+        Ok(()) => {}
+        Err(why) => {
+            println!("skipping: {why}");
+            assert!(
+                !why.contains("No such file or directory"),
+                "the layout cannot find the loader: {why}"
+            );
+        }
+    }
+}
+
 #[test]
 fn the_format_character_set_is_the_category_cf_of_unicode_16() {
     // `char` has no general-category table in the standard library; the category (Unicode 16.0) has 170 code

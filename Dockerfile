@@ -5,8 +5,9 @@
 # the memory ceiling) and, for OpenID Connect sign-in, curl with the system CA bundle (ca-certificates): the
 # server runs curl only inside its own bubblewrap vector, under prlimit, at the addresses its egress guard
 # pinned (handoff 002 C8, F3); it never fetches anything else. The prikk download happens in a separate stage,
-# so nothing is downloaded by the runtime image. Running it: bubblewrap needs user namespaces (see
-# docs/RELEASING.md).
+# so nothing is downloaded by the runtime image. Running it: bubblewrap needs user namespaces and, in a container, the
+# three `--security-opt` settings that SECURITY.md gives under "What a host needs for confinement"; the release
+# workflow runs this image once with them before it pushes it (IS-19).
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS fetch
 
 ARG TARGETARCH

@@ -66,6 +66,19 @@ pub fn test_prikk(yaml: &str) -> Option<(String, String)> {
     ))
 }
 
+/// The parts of the skip lines the with-prikk run's `grep` must name, each as written in the workflow's pattern (a
+/// regular expression, so the dots are escaped): the two 0.57.0 lines (M25), the PID-namespace one, and the
+/// confined tests' lines (`bubblewrap cannot confine` carries bubblewrap's own reason; `the confined policy`; `bwrap or
+/// curl not available` is the real vector's; M43).
+pub const WITH_PRIKK_GUARDED: [&str; 6] = [
+    "prikk 0\\.57\\.0 or newer not found",
+    "no prikk older than 0\\.57\\.0",
+    "PID namespaces unavailable",
+    "bubblewrap cannot confine",
+    "the confined policy",
+    "bwrap or curl not available",
+];
+
 /// What is wrong with the way a workflow uses its test-only prikk (M25); empty when it is installed and
 /// recorded, comes after the floor on `PATH`, is removed with the floor in the shimmed run, and the with-prikk
 /// run fails when a test that needs it skipped.
@@ -119,13 +132,13 @@ pub fn test_prikk_shape_violations(yaml: &str) -> Vec<String> {
     let guard = lines.iter().position(|l| {
         l.contains("grep")
             && l.contains("with-prikk.log")
-            && l.contains("prikk 0\\.57\\.0 or newer not found")
-            && l.contains("no prikk older than 0\\.57\\.0")
-            && l.contains("PID namespaces unavailable")
+            && WITH_PRIKK_GUARDED
+                .iter()
+                .all(|fragment| l.contains(fragment))
     });
     match guard {
         None => out.push(
-            "no grep of with-prikk.log for both 0.57.0 skip lines and the PID-namespace one"
+            "no grep of with-prikk.log for every skip line the with-prikk run must not print (both 0.57.0 lines, the PID-namespace one, and the bubblewrap ones)"
                 .to_owned(),
         ),
         Some(i) => {

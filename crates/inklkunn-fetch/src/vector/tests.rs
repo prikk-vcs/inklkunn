@@ -44,6 +44,19 @@ fn the_network_is_shared_and_everything_else_is_not() {
 }
 
 #[test]
+fn the_system_view_is_the_hosts_own_layout_the_driver_builds() {
+    // IS-19: no entry of the root is written here; the driver's one function reads the host's, so a host whose `/lib64`
+    // is `usr/lib64` is not given Arch's.
+    let a = args_of(&command());
+    let layout: Vec<String> = root_layout(Path::new("/"))
+        .iter()
+        .map(|x| x.to_string_lossy().into_owned())
+        .collect();
+    let layout: Vec<&str> = layout.iter().map(String::as_str).collect();
+    assert!(has_sequence(&a, &layout), "{layout:?} in {a:?}");
+}
+
+#[test]
 fn only_the_system_curl_the_ca_bundle_and_scratch_are_mounted() {
     let a = args_of(&command());
     assert!(has_sequence(&a, &["--ro-bind", "/usr", "/usr"]));
