@@ -26,8 +26,10 @@
 //!    through the tail (maintenance M41). The one entry every module has, `prikk_first`, is the first `prikk` on `PATH`
 //!    in whatever version: a test reads `PATH` for it nowhere else.
 //!
-//! The with-prikk run in CI fails on `skipping: prikk 0.57.0 or newer not found` and on `skipping: no prikk older than
-//! 0.57.0`. The reviewer's nine shapes (`if w.reports_block_seals() { subject(&w); }`, `if let Some(p) =
+//! The with-prikk run in CI fails on every skip line `WITH_PRIKK_GUARDED` names (`src/lib.rs`): `skipping: prikk 0.57.0
+//! or newer not found`, `skipping: no prikk older than 0.57.0`, `skipping: PID namespaces unavailable`, `skipping: prikk
+//! not on PATH`, `skipping: bubblewrap cannot confine` (which carries bubblewrap's own reason, and is also what a
+//! missing `bwrap` says), `skipping: bwrap or curl not available` and `skipping: the confined policy`. The reviewer's nine shapes (`if w.reports_block_seals() { subject(&w); }`, `if let Some(p) =
 //! prikk_where(..) { .. }`, a `match` with an empty arm, `continue` in a loop, a helper using `?` whose caller's
 //! `let .. else { return; }` names no probe, probe names outside the old list such as `at_least_057(`, `world_057(`,
 //! `fixture_057(` and `new_057(`, and a guarded string that is never printed) are planted failures below. It lives in

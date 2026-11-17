@@ -4,10 +4,10 @@
 //!
 //! - `--unshare-all --share-net`: every namespace is new except the network, which `curl` needs. (Nothing
 //!   else of the host's is reachable through it: the filesystem below is the whole filesystem.)
-//! - **Mounts**: `/usr` read-only (with the host's own `/bin`, `/lib` and `/lib64` entries, from the driver's `root_layout`), the
-//!   `curl` binary read-only (wherever it lives), the system CA bundle read-only at a fixed path, `/proc`
-//!   and `/dev` minimal, and a fresh `tmpfs` for `/tmp`. **No repository, no key directory, no seed, no
-//!   data directory, no home.**
+//! - **Mounts**: `/usr` read-only (with the host's own `/bin`, `/sbin`, `/lib`, `/lib64` and `/lib32` entries, from the
+//!   driver's `root_layout`), the `curl` binary read-only (the file it leads to, wherever it lives), the system CA bundle
+//!   read-only at a fixed path, `/proc` and `/dev` minimal, and a fresh `tmpfs` for `/tmp`. **No repository, no key
+//!   directory, no seed, no data directory, no home.**
 //! - The environment is cleared: no `HOME` (so no `.curlrc`, no `.netrc`), no `http_proxy`, no
 //!   `SSL_CERT_*`, no `CURL_*`. Only `PATH` is set.
 //! - `--die-with-parent`, `--new-session`, `--cap-drop ALL`.

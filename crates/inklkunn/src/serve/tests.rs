@@ -146,6 +146,43 @@ fn the_sandbox_decision_follows_the_answer_it_is_given_not_the_host() {
 }
 
 #[test]
+fn a_refusal_for_a_program_bubblewrap_cannot_find_names_the_loader_not_user_namespaces() {
+    // IS-19's shape: bubblewrap made its namespaces and found no program (the host's loader or libraries are not where the
+    // sandbox lays them out), so advising user namespaces would send the operator the wrong way (M46).
+    let d = dir("loader");
+    let strict = settings(&d.0, false);
+    let loader = strict
+        .sandbox_probed(&|_| {
+            Err("bubblewrap cannot confine a process here (`bwrap`): bwrap: execvp /usr/bin/true: No such file or directory".to_owned())
+        })
+        .unwrap_err()
+        .0;
+    assert!(loader.contains("execvp /usr/bin/true"), "{loader}");
+    assert!(loader.contains("loader and libraries"), "{loader}");
+    assert!(
+        loader.contains("What a host needs for confinement"),
+        "{loader}"
+    );
+    assert!(!loader.contains("user namespaces"), "{loader}");
+    assert!(loader.contains("--dev-unconfined"), "{loader}");
+    // A refusal of the namespaces keeps its advice, and a missing `bwrap` (no `execvp`) is not a loader's.
+    for why in [
+        CANNOT_CONFINE,
+        "bubblewrap cannot confine a process here (`bwrap` could not run: No such file or directory (os error 2))",
+    ] {
+        let e = strict
+            .sandbox_probed(&|_| Err(why.to_owned()))
+            .unwrap_err()
+            .0;
+        assert!(
+            e.contains("install bubblewrap and allow user namespaces"),
+            "{e}"
+        );
+        assert!(!e.contains("loader"), "{e}");
+    }
+}
+
+#[test]
 fn the_real_probe_decides_the_real_start_and_an_injected_answer_refuses_on_any_host() {
     // The proof that the refusal test above is not the host's doing, in both halves, and neither half is skipped:
     // where the real bubblewrap confines, the real probe lets the start through to the confined policy; where it does

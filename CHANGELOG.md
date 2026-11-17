@@ -1803,6 +1803,24 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   probe's flags are asserted to be the sandbox's and both calls to ask the host's own root. Each call site was changed to
   `root_layout(Path::new("/"))` and its test failed. No prikk-dependent test is added.
 
+- **M46 (handoff 010 corrections, eighth round): what an operator reads.** SECURITY.md's container paragraph now says what the
+  three settings take away (docker's seccomp filter, its AppArmor profile, the masks over `/proc` and `/sys`), that the server and
+  everything it starts in the container lose those layers with them, that bubblewrap's sandbox around prikk and `curl` is then the
+  confinement inside the container (what stays is the container's own isolation from the host), what an operator who cannot
+  accept that does, and that the docker names are the ones the release workflow runs with while only podman's have been
+  measured by hand, docker's by the maintainers' rehearsal before a candidate. The release notes' runtime-prerequisites line
+  links to *What a host needs for confinement* at the release's tag, and the image carries an
+  `org.opencontainers.image.documentation` label with that URL (`DOCUMENTATION_URL`, a build argument the release workflow passes;
+  the Dockerfile's default is the page on `main`). Small points: the vector's module doc names all five root entries (`/bin`,
+  `/sbin`, `/lib`, `/lib64`, `/lib32`) and says curl is bound as the file it leads to; the module docs of the four
+  `prikk_probes.rs` and of `guarded_skips.rs` name the guard as it is (`WITH_PRIKK_GUARDED`, seven fragments) and no longer say
+  CI fails only on the two 0.57.0 lines; the with-prikk step's name in `ci.yml` (and the comment in `release.yml`) says what the
+  guard holds and no longer *every test must run, none may skip* (the `/dev/shm`, `flock`, tmpfs and root-mode skips are not
+  guarded); the refusal of `serve` and the commands for bubblewrap's own `execvp … No such file or directory` advises on the
+  host's loader and libraries (SECURITY.md, *What a host needs for confinement*), not on user namespaces, which are not what
+  failed (`loader_not_found`; the test checks both advices on every host). Mutated: the advice's test fails without the branch.
+  No prikk-dependent test is added.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

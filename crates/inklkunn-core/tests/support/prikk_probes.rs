@@ -2,8 +2,9 @@
 //!
 //! A test reaches a prikk capability only through this module. What is public here either returns a binary
 //! and prints the **guarded line** itself when it returns none (the with-prikk run in CI fails on
-//! `skipping: prikk 0.57.0 or newer not found` and on `skipping: no prikk older than 0.57.0 (and at the floor) found`),
-//! or asserts and returns nothing. What decides is private: no test of the crate can branch on it. The workspace check
+//! every skip line the guard names, `WITH_PRIKK_GUARDED` in `tools/floor-check`, among them
+//! `skipping: prikk 0.57.0 or newer not found`, `skipping: no prikk older than 0.57.0 (and at the floor) found` and
+//! `skipping: prikk not on PATH`), or asserts and returns nothing. What decides is private: no test of the crate can branch on it. The workspace check
 //! `tools/floor-check/tests/guarded_skips.rs` reads this file: a probe is found by its definition here, a call of one
 //! outside this module fails it, and a public function that can return none without printing fails it.
 // Each test file of the crate mounts this module and uses some of it.

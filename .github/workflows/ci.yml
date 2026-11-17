@@ -76,7 +76,7 @@ jobs:
         run: cargo fmt --all --check
       - name: Clippy (-D warnings)
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - name: Test with prikk on PATH (includes the gates; every test must run, none may skip)
+      - name: Test with prikk on PATH (includes the gates; fails on a skip line for prikk, the test-only prikk, PID namespaces or bubblewrap)
         run: |
           set -euo pipefail
           cargo test --workspace --locked --no-fail-fast -- --nocapture 2>&1 | tee with-prikk.log

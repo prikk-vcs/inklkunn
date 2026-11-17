@@ -104,7 +104,8 @@ jobs:
           cargo fmt --all --check
           cargo clippy --workspace --all-targets --locked -- -D warnings
           cargo test --workspace --locked --no-fail-fast -- --nocapture 2>&1 | tee with-prikk.log
-          # Every test must have run: the test-only prikk and the floor are installed above, prikk is always on PATH here
+          # None of the guarded skip lines may appear (the others, such as `/dev/shm`, `flock` and root-mode skips, are
+          # host properties and not guarded): the test-only prikk and the floor are installed above, prikk is always on PATH here
           # (so `prikk not on PATH` can only be a silent skip), and bubblewrap works (installed and lifted above, and the
           # sandboxes take the host's own root layout, IS-19), so a confined test runs too.
           if grep -n -E 'skipping(: (prikk 0\.57\.0 or newer not found|no prikk older than 0\.57\.0|PID namespaces unavailable|prikk not on PATH|bubblewrap cannot confine|bwrap or curl not available)| the confined policy)' with-prikk.log; then
@@ -233,6 +234,7 @@ jobs:
           set -euo pipefail
           docker build --build-arg "PRIKK_VERSION=${PRIKK_VERSION}" --build-arg "TARGETARCH=${ARCH}" \
             --build-arg "PRIKK_SHA256_X86_64=${PRIKK_SHA256_X86_64}" --build-arg "PRIKK_SHA256_AARCH64=${PRIKK_SHA256_AARCH64}" \
+            --build-arg "DOCUMENTATION_URL=https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/SECURITY.md" \
             -t "inklkunn-built:${ARCH}" .
       - name: Allow unprivileged user namespaces (the runner's AppArmor forbids them; bubblewrap in the image needs them)
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
@@ -324,7 +326,7 @@ jobs:
         run: |
           set -euo pipefail
           .github/release-notes.sh "${GITHUB_REF_NAME}" "${GITHUB_REPOSITORY}" > release-notes.md
-          printf '\n---\n**Runtime prerequisites:** Linux with glibc >= 2.35, prikk >= %s, bubblewrap, prlimit (util-linux) on the host, or the container image `ghcr.io/prikk-vcs/inklkunn:%s` (amd64 and arm64).\n' "$PRIKK_VERSION" "$GITHUB_REF_NAME" >> release-notes.md
+          printf '\n---\n**Runtime prerequisites:** Linux with glibc >= 2.35, prikk >= %s, bubblewrap, prlimit (util-linux) on the host, or the container image `ghcr.io/prikk-vcs/inklkunn:%s` (amd64 and arm64). What the host (or the container) must allow for bubblewrap to confine prikk: [SECURITY.md, *What a host needs for confinement*](https://github.com/%s/blob/%s/SECURITY.md).\n' "$PRIKK_VERSION" "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" >> release-notes.md
       - name: Create the GitHub release (tag push)
         if: github.event_name == 'push'
         env:

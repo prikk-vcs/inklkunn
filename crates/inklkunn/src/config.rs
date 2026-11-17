@@ -154,13 +154,27 @@ impl Settings {
         }
         let bwrap = BwrapConfig::default();
         probe(&bwrap.bwrap).map_err(|why| {
+            // bubblewrap's own `execvp <program>: No such file or directory` is not a refusal of namespaces: it ran, made
+            // them, and found no program to start, so the advice is about the host's loader and libraries.
+            let advice = if loader_not_found(&why) {
+                "the host's dynamic loader and libraries are not where the sandbox looks for them (SECURITY.md, \
+                 \"What a host needs for confinement\")"
+            } else {
+                "install bubblewrap and allow user namespaces"
+            };
             ConfigError(format!(
-                "bubblewrap cannot confine prikk here ({why}); install bubblewrap and allow user namespaces, \
+                "bubblewrap cannot confine prikk here ({why}); {advice}, \
                  or, for development only, start with --dev-unconfined"
             ))
         })?;
         Ok(Sandbox::Bwrap(bwrap))
     }
+}
+
+/// Is this reason bubblewrap's own `execvp <program>: No such file or directory`: the sandbox was made and the program it
+/// starts, or the loader that program names, was not in it (IS-19)?
+fn loader_not_found(why: &str) -> bool {
+    why.contains("execvp") && why.contains("No such file or directory")
 }
 
 /// The settings `serve` adds: where it listens and what its two origins are.
