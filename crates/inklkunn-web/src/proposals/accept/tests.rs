@@ -2,7 +2,7 @@
 
 use std::sync::Mutex;
 
-use inklkunn_core::knowledge::check::Refusal;
+use inklkunn_core::knowledge::check::{DayBound, Refusal};
 use inklkunn_core::knowledge::{Fault, Rule};
 
 use super::*;
@@ -118,6 +118,28 @@ fn a_refused_acceptance_says_each_rules_own_sentence_and_the_file_note_only_for_
         assert_eq!(
             knowledge_paragraphs(t, &[carried_refusal()]),
             [t.get(Key::KnowCheckUnstated), kept.clone()]
+        );
+        // A stated check whose day is out of the bounds: the sentence of that bound (K79), never the rule's.
+        for (bound, key) in [
+            (DayBound::BeforeReview, Key::KnowCheckBeforeReview),
+            (DayBound::NotCome, Key::KnowCheckNotCome),
+        ] {
+            let bounded = Refusal {
+                bound: Some(bound),
+                ..Refusal::of(
+                    "knowledge/sources/x.yaml",
+                    Fault::at(Rule::Status, "last_reviewed"),
+                )
+            };
+            assert_eq!(
+                knowledge_paragraphs(t, &[bounded]),
+                [t.get(key), kept.clone()]
+            );
+            assert_ne!(t.get(key), t.get(Key::HealthRuleStatus));
+        }
+        assert_ne!(
+            t.get(Key::KnowCheckBeforeReview),
+            t.get(Key::KnowCheckNotCome)
         );
         // A removal is not offered.
         let removal = Refusal {

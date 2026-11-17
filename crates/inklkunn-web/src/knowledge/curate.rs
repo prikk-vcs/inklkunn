@@ -7,7 +7,7 @@
 //! offered. And it is offered **only for a refusal the form can then make** (K44): the form never removes a file, so for
 //! a removal, or a file that cannot be read, the page says what can be done instead ([`beyond_the_form`]).
 
-use inklkunn_core::knowledge::check::Refusal;
+use inklkunn_core::knowledge::check::{DayBound, Refusal};
 use inklkunn_core::knowledge::index::KnowledgeIndex;
 use inklkunn_core::knowledge::{ClaimId, Family, Rule, family_of};
 use inklkunn_core::read::ReadError;
@@ -141,12 +141,18 @@ pub(crate) fn sentences(t: T, refused: &[Refusal]) -> Vec<String> {
     out
 }
 
-/// The catalog sentence that is a refusal's own (K78): the one the core's [`Refusal::sentence`] says in English for the
-/// log. A source found elsewhere that carries the check of its old reference says so, a removal (or the replacement of a
-/// file that cannot be read) says it is not offered, and any other says the rule it broke.
+/// The catalog sentence that is a refusal's own (K78, K79): the one the core's [`Refusal::sentence`] says in English for the
+/// log. A source found elsewhere that carries the check of its old reference says so, one whose stated check has a day out
+/// of the bounds says which bound, a removal (or the replacement of a file that cannot be read) says it is not offered,
+/// and any other says the rule it broke.
 pub(crate) fn sentence_key(refusal: &Refusal) -> Key {
     if refusal.carries {
         Key::KnowCheckUnstated
+    } else if let Some(bound) = refusal.bound {
+        match bound {
+            DayBound::BeforeReview => Key::KnowCheckBeforeReview,
+            DayBound::NotCome => Key::KnowCheckNotCome,
+        }
     } else if !refusal.curation_form_can_make() {
         Key::KnowNotByForm
     } else {

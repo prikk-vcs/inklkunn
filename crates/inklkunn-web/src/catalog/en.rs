@@ -3205,4 +3205,12 @@ pub const CATALOG: &[Entry] = &[
         "curate.check_old_answer",
         "Source: {title}. Where it is found is changed, so whether it can be had, which is for the old place, stays as it is. Give what you found at the new place in the field for the new reference instead.",
     ),
+    msg(
+        "know.check_before_review",
+        "A source in this proposal is found somewhere else than it was at the base of the proposal, and the day the proposal states for the check of the new place is earlier than the day the old place was last checked. It cannot be accepted as it is.",
+    ),
+    msg(
+        "know.check_not_come",
+        "A source in this proposal is found somewhere else than it was at the base of the proposal, and the day the proposal states for the check of the new place has not come yet in any timezone. It cannot be accepted as it is.",
+    ),
 ];

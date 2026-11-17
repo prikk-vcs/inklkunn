@@ -1681,6 +1681,9 @@ keys! {
     CurateCheckOldDay => "curate.check_old_day",
     CurateCheckOldAnswer => "curate.check_old_answer",
     // knowledge: the old fields beside a moved reference are refused (handoff 005 corrections, ninth round K76): end
+    KnowCheckBeforeReview => "know.check_before_review",
+    KnowCheckNotCome => "know.check_not_come",
+    // knowledge: a bound refusal at acceptance says its own sentence (handoff 005 corrections, tenth round K79): end
 }
 
 /// A typed value for a placeholder. Text is HTML-escaped; a link is an escaped label plus an `href` the

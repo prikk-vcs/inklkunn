@@ -1820,6 +1820,13 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   host's loader and libraries (SECURITY.md, *What a host needs for confinement*), not on user namespaces, which are not what
   failed (`loader_not_found`; the test checks both advices on every host). Mutated: the advice's test fails without the branch.
   No prikk-dependent test is added.
+- **K79 (handoff 005 corrections, tenth round): a bound refusal at acceptance says its own sentence (review H-a).** A refusal of a
+  stated check whose day is out of K77's bounds (`Refusal::bound`) is a `Rule::Status` refusal, and `sentence_key` never looked at
+  the bound, so the page of an acceptance told the reviewer of a curation proposal the rule's sentence (*outside a curation
+  proposal*), which is false, while the true one was only in the log. Two catalog entries (en, ja, with glossary rows):
+  `know.check_before_review` and `know.check_not_come`; `sentence_key` routes `DayBound::BeforeReview` and `DayBound::NotCome` to
+  them before the rule's key. Test: the K78 test (`knowledge_paragraphs`) gains both bounds in both languages; mutated (the bound
+  branch off), it failed. No prikk-dependent test is added.
 
 ## [0.2.0] — 2026-11-04
 
