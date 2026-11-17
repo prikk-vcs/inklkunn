@@ -499,3 +499,13 @@ Hand back K79 – K81 as one request, `005-knowledge-layer-corrections-10-review
   - `submit.rs:588` passes the existing proposal's id on a revision.
   - The `status.rs` table compares references as the rule does (white space ignored) and gains one respelling case.
   - `mistake_text`'s `"-"` fallback says why it is unreachable.
+
+## Carried into 0.3.0's readiness (2026-11-17; binding, reviewed with the readiness package)
+
+K79 – K81 are **Approved** (`.git-exclude/reviewed/005-knowledge-layer-corrections-10-review-result.md`), and part 2's
+correction rounds end. What remains goes into 0.3.0's readiness, with no separate request:
+
+- **K82 — two one-line points** (L-a, L-b).
+  - The Japanese sentences of a carried check (`invalid.knowledge_check_unstated`, `know.check_unstated` and their glossary
+    rows) say 「…提案の中で示します」 or an equally grammatical form, not 「提案が示してください」.
+  - `submitDraft`'s description points to the way to state a check, as `createProposal`'s and `reviseProposal`'s do.

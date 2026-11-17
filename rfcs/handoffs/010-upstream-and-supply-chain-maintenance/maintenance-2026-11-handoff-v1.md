@@ -313,3 +313,36 @@ own commit, and is pushed alone by the architect** (main's CI is red, run 440651
     - the with-prikk step's name says what the guard holds, not *none may skip*;
     - `config.rs:158`'s advice for a refusal that is bubblewrap's `execvp … No such file or directory` names the host's
       loader and libraries (see SECURITY.md), not user namespaces.
+
+## Carried into 0.3.0's readiness (2026-11-17; binding, reviewed with the readiness package)
+
+M44 – M46 are **Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-corrections-8-review-result.md`), and this
+package's correction rounds end, **except M48, which comes first** (main's CI is red, run 44077152844). M48 goes on its own commit
+with a short request, `010-maintenance-2026-11-corrections-9-review-request.md`; the architect checks it and pushes it
+alone. The rest goes into 0.3.0's readiness, with no separate request.
+
+- **M48 — first: a ceiling hit in bubblewrap's own loader is a ceiling hit** (J-0).
+  - `died_of_ceiling` reads glibc's `failed to map segment from shared object` (exit 127, under a ceiling) as the loader
+    failing for memory, as it already does *cannot map*. On Debian and Ubuntu, bwrap's `libpcre2-8` is then what fails to
+    load.
+  - A unit test uses CI's exact line: `bwrap: error while loading shared libraries: libpcre2-8.so.0: failed to map segment
+    from shared object`. With no ceiling set, the same line stays a prerequisite.
+  - Say whether another loader sentence under a ceiling can still fall through to the `bwrap:` rule. If one can, make the
+    rule *a ceiling was set and the loader (exit 127) failed* rather than a list of phrases. Name the cost of doing so.
+
+- **M47 — small points and the container paragraph** (J-a – J-f; decisions 4, 5).
+  - **The confined link test's comment** says the failure it really gives (`execvp …`), or the test plants the link
+    inside a tree bound before it, so that it shows the production shape.
+  - **SECURITY.md:**
+    - The section becomes a heading, `### What a host needs for confinement`. The release-notes link, the image label and
+      `config.rs`'s advice carry its anchor.
+    - The container paragraph says that `seccomp=unconfined` opens the whole system-call surface to the server.
+    - It names what can be added back, as measured by the architect's rehearsal: `--cap-drop ALL`,
+      `--security-opt no-new-privileges`, `--read-only`. If they work, the release step runs with them too, so what is
+      documented is what is tested.
+    - The *operator who cannot accept that* sentence is rewritten, and the note to maintainers is dropped.
+    - Podman's settings get `apparmor=unconfined`, or say they were measured on a host without AppArmor.
+  - **The start refusal** says *bubblewrap cannot confine* once.
+  - **The Dockerfile's** `ARG DOCUMENTATION_URL` and `LABEL` move after the package layer.
+  - **The shimmed run** is `--no-fail-fast` too, and floor-check holds it.
+  - **The vector's `bwrap_command` doc** says its paths are absolute and resolved.
