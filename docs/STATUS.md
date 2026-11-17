@@ -442,6 +442,13 @@
 
 - **2026-11-17 — M48 Approved** (`e8c0cca`, pushed alone). **CI run 44085162839 is green.** On Ubuntu, 3,095 tests passed with prikk on `PATH` and 3,095 with it shimmed off (316 self-skips). No guarded skip line was printed, and 12 test binaries ran prikk confined. A ceiling hit in bubblewrap's own loader is now read as the ceiling. The rule stays a list of the loader's memory sentences, because a library that cannot be *found* also exits 127 and must stay a missing prerequisite.
 
+- **2026-11-17 — readiness items M47 and K82 Approved** (`a7ce80c`).
+  - SECURITY.md's confinement section is now a heading, with its anchor in the release notes, the image label and the start refusal's advice.
+  - The container paragraph says plainly that `seccomp=unconfined` opens the whole system-call surface to the server.
+  - The Japanese carried-check sentences are grammatical (for your DR-7 review too).
+  - **M49 (small) is what only a measurement settles.** It decides whether a container can add back `--cap-drop ALL`, `no-new-privileges` and `--read-only` beside the three settings bubblewrap needs: measured under podman by the dev team, then by the architect's rehearsal, and documented only as run. The signing paragraph also gets its own heading.
+  - **Gates:** 3,095 passed on 0.55.0, shimmed off (316), on the host's 0.57.0 and on the release asset's binary. Pushed.
+
 ## Pending on the owner
 
 - **Decide on a 0.2.1 for IS-19:** on Debian and Ubuntu hosts, and in our own image, 0.2.0 cannot run prikk confined, so it starts only unconfined under the development flag.
@@ -468,7 +475,7 @@
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and handoff 003's T1 – T3 are built and
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
-(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **M12 – M19, K32 – K42 and K-T11 reviewed (2026-11-14).** **M20 – M27 and K43 – K54 reviewed (2026-11-14).** **M28 – M33 and K55 – K64 reviewed (2026-11-14).** **M34 – M37 and K65 – K70 reviewed (2026-11-14).** **M38 – M40 and K71 – K75 reviewed (2026-11-17).** **M41 – M43 and K76 – K78 reviewed (2026-11-17).** **M44 – M46 and K79 – K81 Approved (2026-11-17); both packages' correction rounds end.** **M48 Approved (2026-11-17); `main` is green.** **The dev team's order now:** 0.3.0's readiness, carrying **M47** and **K82**
+(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **M12 – M19, K32 – K42 and K-T11 reviewed (2026-11-14).** **M20 – M27 and K43 – K54 reviewed (2026-11-14).** **M28 – M33 and K55 – K64 reviewed (2026-11-14).** **M34 – M37 and K65 – K70 reviewed (2026-11-14).** **M38 – M40 and K71 – K75 reviewed (2026-11-17).** **M41 – M43 and K76 – K78 reviewed (2026-11-17).** **M44 – M46 and K79 – K81 Approved (2026-11-17); both packages' correction rounds end.** **M48 Approved (2026-11-17); `main` is green.** **M47 and K82 Approved (2026-11-17).** **The dev team's order now:** 0.3.0's readiness, with **M49** (the container's add-backs, measured under podman and then by the architect's rehearsal)
 (all before 0.3.0); and, at the next touch of `signer/retirement.rs`,
 `seal_pause`'s operator sentence (Z7 – Z9 review). An assistive-technology pass is arranged before 0.3.0.
 

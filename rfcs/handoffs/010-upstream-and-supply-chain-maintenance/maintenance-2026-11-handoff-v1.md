@@ -346,3 +346,17 @@ alone. The rest goes into 0.3.0's readiness, with no separate request.
   - **The Dockerfile's** `ARG DOCUMENTATION_URL` and `LABEL` move after the package layer.
   - **The shimmed run** is `--no-fail-fast` too, and floor-check holds it.
   - **The vector's `bwrap_command` doc** says its paths are absolute and resolved.
+
+## Readiness: M49 (2026-11-17; binding, before 0.3.0)
+
+M47 is **Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-corrections-10-review-result.md`). What only a
+measurement settles remains:
+
+- **M49 — measure the container's add-backs, then run what is documented.**
+  - **Measure first under podman,** and say what each addition did: `--cap-drop ALL`, `--security-opt no-new-privileges`
+    and `--read-only`, with `--tmpfs /tmp` for the scratch secret.
+  - **Add them to the release step's `docker run`.** The architect's rehearsal then measures docker's.
+  - **Whichever works** is named in SECURITY.md's container paragraph as what an operator adds, and stays in the step.
+    **Whichever fails** is dropped from both, with bubblewrap's reason recorded.
+  - **SECURITY.md:** the paragraph *A server started without the means to sign still serves* gets its own heading,
+    `### When the server cannot sign`, in place.
