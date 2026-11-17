@@ -5,6 +5,62 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
 
 ## [Unreleased]
 
+**M3 — claims and views.** A page can now say where its statements come from. A *claim* is one statement on a page, kept
+as a small file beside the page, with the *sources* it rests on; claims and sources are made and changed only by
+proposals, through a form, and a reviewer accepts them like any other change. A reader sees, on the page, a quiet *Sources
+and views* link at a claim's paragraph and *Why is this here?* among the page's tools. A claim's page names its sources
+and how directly each speaks to it, what its status is (accepted, contested, unresolved, not decided) and the proposal
+that decided it, and its own thread of discussion. *Why is this here?* shows, for each paragraph, the change that last
+changed it and the one that first wrote it, with the proposals and reviews behind them. A *view* is a named line of the
+wiki (an experiment or an interpretation) that a reviewer creates and that changes can land in; the claim page compares
+views side by side (wording, status, sources). *Sources to review* lists the sources whose review date has passed. Nothing
+is scored, ranked or called true or false. The wiki's export carries the claims, sources, views and threads under a
+declared extension, and the API (OpenAPI 3.1) reaches all of it.
+
+**Not offered yet.** You cannot remove or retire a claim or a source, or replace a file that cannot be read (planned with
+governance, the next cycle); there is no way to attach an existing source to another claim, so you add it again as a new
+source (a duplicate file, never a wrong one); importing a bundle does not read threads and views back, though export
+writes them (a later release); a restricted wiki's raw source is "not found" if the content origin has a host of its own
+(governance, the next cycle); paths with non-ASCII letters stay percent-encoded until prikk ships them natively. Japanese
+is a labelled preview; no person who uses assistive technology has tested the site yet (the about page says so; it is
+planned before 1.0 or the first public deployment).
+
+**Before you upgrade or deploy.**
+- **The data migrates itself at the first start, and only forward.** The store's schema goes from 15 to 18 in one
+  transaction (a failure rolls it back), and the knowledge index is built again when it is next asked for. There is
+  nothing to run. **Back up the data directory first**: 0.2.0 refuses a store that 0.3.0 has opened, so going back means
+  restoring.
+- **If you ran 0.1.0 or 0.2.0 on Debian or Ubuntu, or in the project's image, they could not confine prikk there**
+  (bubblewrap failed with `execvp /usr/bin/true: No such file or directory`), so you started them with `--dev-unconfined`.
+  0.3.0 takes the host's own file layout, and **you should drop `--dev-unconfined`**: the server then starts confined. The
+  release now runs the built image confined before it publishes it.
+- **In a container**, bubblewrap needs `--security-opt seccomp=unconfined`, `apparmor=unconfined` and
+  `systempaths=unconfined` (podman: `seccomp=unconfined` and `unmask=ALL`). They lift the runtime's own layers, so
+  bubblewrap's sandbox is then the confinement inside the container; add back `--cap-drop ALL`, `--security-opt
+  no-new-privileges`, `--read-only` with `--tmpfs /tmp`. What each setting gives up and what each addition takes back is
+  in SECURITY.md, *What a host needs for confinement*. Where that cost is not acceptable, run the server on the host: it
+  needs only user namespaces (on Ubuntu 24.04 and later, `kernel.apparmor_restrict_unprivileged_userns=0`).
+- Everything that held for 0.2.0 holds: behind TLS, `INKLKUNN_TRUSTED_PROXIES` declared, the secret file readable by the
+  service's user only (SECURITY.md). Runtime: prikk 0.54.0 or later, bubblewrap and prlimit on the host (curl for OpenID
+  Connect), or the container image.
+
+The entries below are in the order the work landed.
+
+- **R-4 (0.3.0 readiness): the lead above, the release body's limit, and `seal_pause`'s sentence.** The lead is what the
+  GitHub release shows (with a link to this whole section), as at 0.2.0, whose section alone was longer than a release body
+  may be. `.github/release-notes.sh` now **refuses a body over 100,000 bytes itself** (GitHub's limit is 125,000 characters;
+  `release.yml`'s gates job keeps its own check), so a section that lacks the line *The entries below are in the order the
+  work landed* fails with the reason where it is run, not only at the cut. A new test in `tools/floor-check`
+  (`release_notes.rs`) runs the script on the newest section of this file, whatever its heading (*Unreleased* today, the
+  release's own after the cut): it needs that line, fits the limit, holds none of the entries and ends with the link; a
+  second test plants a 120,000-byte section and shows the refusal, the cut at the line, and the error for a missing tag.
+  **`Signer::seal_pause`'s sentence** (the review of Z7 – Z9, ruling 2) named only `finish-retirement`, so an operator who
+  had decided to give the retirement up was not told that `abandon-retirement` is a way out too; it now says the person
+  who runs the wiki *finishes it with* the one command *or gives it up with* the other, like the sentence the editors see.
+  The lifecycle test of the pause sentence holds both commands. Mutation-checked: the sentence returned to naming one
+  command fails it; the script's limit raised, and the lead's closing line removed from this file, each fail the new tests.
+  No prikk-dependent test is added or removed (the existing signer test already skips as before).
+
 - **K-T6 (handoff 005; RFC 005 part 2 D-7): what a reader sees of the knowledge layer.** A paragraph that holds a claim
   carries one quiet link, *Sources and views*, at its end (named by the paragraph it is on, so every link's name is
   distinct; a paragraph with several claims has one link for each); the sanitized body is only cut at the paragraph's
