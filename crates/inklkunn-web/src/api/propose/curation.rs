@@ -342,6 +342,9 @@ fn check_refused(
         CheckFault::NotADay => ("check-not-a-day", "checked.day"),
         CheckFault::BeforeReview => ("check-before-review", "checked.day"),
         CheckFault::NoNewReference => ("check-no-new-reference", "checked"),
+        // The member is the old field that was changed; the reason says the way is `checked` (K76).
+        CheckFault::OldDay => ("reviewed-needs-checked", "reviewed"),
+        CheckFault::OldAnswer => ("availability-needs-checked", "availability"),
     };
     let edited = edit.sources.get(at);
     let problem = req

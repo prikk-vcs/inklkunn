@@ -1715,6 +1715,25 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   their ids in the form (en, ja) and the API, the form's trim, `]`, `(none)` and `（なし）`, the unclosed brace, the export message,
   the reserve; each was mutated, seen to fail and restored. No prikk-dependent test is added.
 
+- **K76 (handoff 005 corrections, ninth round): the old fields beside a move are refused, not dropped.** K72 said that beside a
+  changed reference `reviewed` and `availability` "are not read", but the day was still parsed before the move was seen: `reviewed:
+  "yesterday"` was refused (`not-a-day`), a future day was refused (`day-not-come`), and a valid new day, which is what a client
+  following K66's text sends, was **discarded with a 2xx**, the check gone without a word. Now, when a curation moves a reference
+  (`SourceEdit::moves_reference`; white space alone is not a move), a `reviewed` or an `availability` that **differs from the
+  base's** is refused by its field before anything is parsed, whatever it holds: a valid new day, a day that is no day, a day that
+  has not come, the day cleared and another answer alike (`CheckFault::OldDay`, `CheckFault::OldAnswer`; the form's
+  `days_not_come` leaves the `reviewed` of a moved source to it). What the base has, sent back, is no change, so the form (which
+  opens with the base's values) and a client that leaves the members out are not refused. API reasons `reviewed-needs-checked` and
+  `availability-needs-checked` name the member (`sources[i].reviewed`, `sources[i].availability`) and the `source`, and say that the
+  check of the new place is `checked`; the form's problems (`curate.check_old_day`, `curate.check_old_answer`, en and ja, with
+  their glossary rows) name the source and the field for the new reference. `curate`'s doc comment, the form's hint
+  (`curate.work_hint`, en and ja, row rewritten), the OpenAPI member descriptions and the endpoint's description say exactly this.
+  The tests that kept the old fields as "not read" are turned around: the compose rule (a valid new day, a day that is no day, a
+  future day, the day cleared, another answer, a day with a check stated beside it, and the base's own values accepted), the same
+  through the API (seven cases, the members, the sentence, nothing made) and the form (five cases, the preview, Japanese, the
+  base's values accepted). Each refusal and the form's `days_not_come` leave-out were mutated and the tests failed. No
+  prikk-dependent test is added.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

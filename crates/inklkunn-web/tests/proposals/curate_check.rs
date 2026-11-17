@@ -112,22 +112,11 @@ type Case<'a> = (
 
 #[tokio::test]
 async fn a_changed_reference_ends_the_check_and_the_new_one_has_only_the_check_the_form_states() {
-    // K66, K72. The form sends the day and the availability the source has: they are the old reference's, and are not
-    // read beside a new one. The check of the new reference is its own pair of fields, empty as the form opens.
-    let cases: [Case; 7] = [
+    // K66, K72, K76. The form sends the day and the availability the source has: they are the old reference's, and stay
+    // as they are beside a new one (a change is refused, below). The check of the new reference is its own pair of fields,
+    // empty as the form opens.
+    let cases: [Case; 5] = [
         ("nothing new", &[], None, Availability::Unknown),
-        (
-            "a new day in the old field",
-            &[("c0_reviewed", "2023-11-10")],
-            None,
-            Availability::Unknown,
-        ),
-        (
-            "a new answer in the old field",
-            &[("c0_availability", "unavailable")],
-            None,
-            Availability::Unknown,
-        ),
         (
             "the check of the new reference",
             &[
@@ -225,7 +214,7 @@ async fn a_changed_reference_ends_the_check_and_the_new_one_has_only_the_check_t
     let ja = send_ja(&s, FORM, &shown).await;
     assert!(ja.contains("確認済みの印がなくなります。"), "{ja}");
     // The form says so beside the fields, in both languages.
-    let hint = "A new place to find it ends the check of the old one: the day it was last checked and whether it can be had, above, are not carried to the new place";
+    let hint = "A new place to find it ends the check of the old one: the day it was last checked and whether it can be had, above, stay as they are, are not carried to the new place";
     let body = open(&s, &claim_uri(&s), &s.writer).await.body();
     assert!(body.contains(hint), "{body}");
     let ja = page_ja(&s, &claim_uri(&s)).await;
@@ -326,6 +315,88 @@ async fn a_check_of_a_new_reference_that_is_not_one_is_refused_on_the_form_namin
     assert_eq!(
         inklkunn_store::ProposalStore::open_count(&*s.w.store, &s.w.wiki.id, &s.writer).unwrap(),
         0
+    );
+}
+
+#[tokio::test]
+async fn the_old_fields_beside_a_new_reference_are_refused_on_the_form_by_their_field_and_nothing_is_made()
+ {
+    // K76. The source was last checked on 2023-11-01 and is available; the clock is 2023-11-14T22:13Z. The form sends the
+    // base's day and answer unless a person changes them, and beside a new reference a change is refused: a valid new
+    // day, a day that is no day and a day that has not come are refused the same way, never discarded with a sent proposal.
+    let s = checked_scene_on("2023-11-01");
+    let moved = |more: &[(&'static str, &str)]| {
+        with(with(unchanged_on(&s, "2023-11-01"), &elsewhere()), more)
+    };
+    let day = "so the day it was last checked, which is for the old place, stays as it is. Give the day you checked the new place in the field for the new reference instead.";
+    let answer = "so whether it can be had, which is for the old place, stays as it is. Give what you found at the new place in the field for the new reference instead.";
+    let cases = [
+        (
+            "a valid new day",
+            moved(&[("c0_reviewed", "2023-11-10")]),
+            day,
+            "value=\"2023-11-10\"",
+        ),
+        (
+            "a day that is no day",
+            moved(&[("c0_reviewed", "yesterday")]),
+            day,
+            "value=\"yesterday\"",
+        ),
+        (
+            "a day that has not come",
+            moved(&[("c0_reviewed", "2023-11-16")]),
+            day,
+            "value=\"2023-11-16\"",
+        ),
+        (
+            "the day cleared",
+            moved(&[("c0_reviewed", "")]),
+            day,
+            "name=\"c0_reviewed\" type=\"text\" value=\"\"",
+        ),
+        (
+            "another answer",
+            moved(&[("c0_availability", "unavailable")]),
+            answer,
+            "<option value=\"unavailable\" selected>",
+        ),
+    ];
+    for (what, fields, said, kept) in cases {
+        let a = send(&s, FORM, &s.writer, &fields).await;
+        assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY, "{what}");
+        let body = a.body();
+        assert!(
+            body.contains("Source: A history of the bridge."),
+            "{what}: {body}"
+        );
+        assert!(body.contains(said), "{what}: {body}");
+        assert!(body.contains(kept), "{what}: {body}");
+    }
+    // The same in the preview of the changes: the refusal comes before anything is shown.
+    let shown = with(
+        moved(&[("c0_reviewed", "2023-11-10")]),
+        &[("op", "changes"), ("summary", "")],
+    );
+    let a = send(&s, FORM, &s.writer, &shown).await;
+    assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
+    // In Japanese too.
+    let ja = send_ja(&s, FORM, &moved(&[("c0_reviewed", "2023-11-10")])).await;
+    assert!(
+        ja.contains("古い場所について最後に確認した日はそのままになります"),
+        "{ja}"
+    );
+    // What the base has, sent back, is not a change: the move goes through and clears the check.
+    let files = files_of(&s, &location(&send(&s, FORM, &s.writer, &moved(&[])).await));
+    let source = source_of(&files);
+    assert_eq!(
+        (source.last_reviewed, source.availability),
+        (None, Availability::Unknown)
+    );
+    // Nothing else was made: the one proposal above is the only one.
+    assert_eq!(
+        inklkunn_store::ProposalStore::open_count(&*s.w.store, &s.w.wiki.id, &s.writer).unwrap(),
+        1
     );
 }
 

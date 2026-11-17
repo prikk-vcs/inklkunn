@@ -1114,7 +1114,7 @@ async fn a_changed_reference_ends_the_check_and_the_new_one_has_only_the_check_t
     use inklkunn_core::knowledge::Availability;
     // K66, K72. The wiki's clock is 2023-11-14T22:13Z (2023-11-15 at UTC+14); the source of this cast was checked on
     // 2023-11-01 and is available. The day and the answer of the source (`reviewed`, `availability`) are the old
-    // reference's: beside a new `reference` they are not read, and the check of the new one is `checked`.
+    // reference's: beside a new `reference` they may only be the base's own (K76), and the check of the new one is `checked`.
     let one = source_id(1).to_string();
     let doi = json!({"type": "doi", "value": "10.1000/182"});
     let cases = [
@@ -1126,22 +1126,6 @@ async fn a_changed_reference_ends_the_check_and_the_new_one_has_only_the_check_t
         (
             "the check repeated beside it",
             json!({"source": one, "reference": doi, "reviewed": "2023-11-01", "availability": "available"}),
-            (None, Availability::Unknown),
-        ),
-        (
-            // K72: this was a new check by inference; it is the old reference's day and is not read.
-            "a new day in the old member",
-            json!({"source": one, "reference": doi, "reviewed": "2023-11-10"}),
-            (None, Availability::Unknown),
-        ),
-        (
-            "a new availability in the old member",
-            json!({"source": one, "reference": doi, "availability": "unavailable"}),
-            (None, Availability::Unknown),
-        ),
-        (
-            "the day cleared",
-            json!({"source": one, "reference": doi, "reviewed": ""}),
             (None, Availability::Unknown),
         ),
         (
@@ -1189,15 +1173,104 @@ async fn a_changed_reference_ends_the_check_and_the_new_one_has_only_the_check_t
             "{what}"
         );
     }
-    // A day that is no day is refused as before, beside a changed reference.
+    // A day that is no day, beside a reference the source has, is refused as before.
     let c = cast_checked_with("The bridge survey", "2023-11-01");
     let a = propose(
         &c,
-        json!({"sources": [{"source": one, "reference": doi, "reviewed": "yesterday"}]}),
+        json!({"sources": [{"source": one, "reviewed": "yesterday"}]}),
     )
     .await;
     assert_eq!(a.status, 422, "{}", a.text());
     assert_eq!(a.json().at("/reason"), "not-a-day", "{}", a.text());
+}
+
+#[tokio::test]
+async fn the_old_fields_beside_a_changed_reference_are_refused_by_their_member_and_never_dropped() {
+    // K76. The source was checked on 2023-11-01 and is available; the wiki's clock is 2023-11-14T22:13Z. `reviewed` and
+    // `availability` are the old reference's: beside a new `reference` they may only be what the base has. A valid new
+    // day, a day that is no day, a day that has not come, the day cleared and another answer are refused alike (never made
+    // into a proposal that has lost the check without a word), naming the way, `checked`.
+    let one = source_id(1).to_string();
+    let doi = json!({"type": "doi", "value": "10.1000/182"});
+    let c = cast_checked_with("The bridge survey", "2023-11-01");
+    let cases = [
+        (
+            "a valid new day",
+            json!({"source": one, "reference": doi, "reviewed": "2023-11-10"}),
+            "reviewed-needs-checked",
+            "sources[0].reviewed",
+        ),
+        (
+            "a day that is no day",
+            json!({"source": one, "reference": doi, "reviewed": "yesterday"}),
+            "reviewed-needs-checked",
+            "sources[0].reviewed",
+        ),
+        (
+            "a day that has not come in any timezone",
+            json!({"source": one, "reference": doi, "reviewed": "2023-11-16"}),
+            "reviewed-needs-checked",
+            "sources[0].reviewed",
+        ),
+        (
+            "the day cleared",
+            json!({"source": one, "reference": doi, "reviewed": ""}),
+            "reviewed-needs-checked",
+            "sources[0].reviewed",
+        ),
+        (
+            "another answer",
+            json!({"source": one, "reference": doi, "availability": "unavailable"}),
+            "availability-needs-checked",
+            "sources[0].availability",
+        ),
+        (
+            "the answer cleared",
+            json!({"source": one, "reference": doi, "availability": "unknown"}),
+            "availability-needs-checked",
+            "sources[0].availability",
+        ),
+        (
+            "a new day beside a check that is stated",
+            json!({"source": one, "reference": doi, "reviewed": "2023-11-10",
+                   "checked": {"day": "2023-11-12", "availability": "available"}}),
+            "reviewed-needs-checked",
+            "sources[0].reviewed",
+        ),
+    ];
+    for (what, edit, reason, member) in cases {
+        let a = propose(&c, json!({"sources": [edit]})).await;
+        assert_eq!(a.status, 422, "{what}: {}", a.text());
+        assert_eq!(a.json().at("/reason"), reason, "{what}: {}", a.text());
+        assert_eq!(a.json().at("/member"), member, "{what}: {}", a.text());
+        assert_eq!(a.json().at("/source"), &json!(one), "{what}: {}", a.text());
+    }
+    // The sentence names the source and says where the check of the new place goes.
+    let a = propose(
+        &c,
+        json!({"sources": [{"source": one, "reference": doi, "reviewed": "2023-11-10"}]}),
+    )
+    .await;
+    let detail = a
+        .json()
+        .at("/detail")
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    assert!(detail.contains("The bridge survey"), "{detail}");
+    assert!(detail.contains("new reference"), "{detail}");
+    // Nothing was made by any of them.
+    assert!(
+        c.w.services
+            .proposals
+            .list(
+                &principal(&c.contributor),
+                &c.w.wiki,
+                &inklkunn_store::ProposalFilter::default(),
+            )
+            .map(|l| l.is_empty())
+            .unwrap_or(false)
+    );
 }
 
 #[tokio::test]

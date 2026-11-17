@@ -167,6 +167,8 @@ fn check_msg(t: T, why: CheckFault, title: &str, previous: Option<&str>) -> Msg 
         CheckFault::NotADay => (Key::CurateCheckNotADay, ""),
         CheckFault::BeforeReview => (Key::CurateCheckBeforeReview, previous.unwrap_or("")),
         CheckFault::NoNewReference => (Key::CurateCheckNoNewReference, ""),
+        CheckFault::OldDay => (Key::CurateCheckOldDay, ""),
+        CheckFault::OldAnswer => (Key::CurateCheckOldAnswer, ""),
     };
     t.msg(key).with("title", title).with("day", day)
 }

@@ -82,7 +82,9 @@ impl Loaded {
     /// The edits that would record, as the day a person looked at a source, a day that has not come (after the
     /// current date in UTC+14 by the service's clock, K49), each with its place among `edits`: the day of the source
     /// (`reviewed`; a day left as the base has it is not a new record) and the day stated for a new reference
-    /// (`checked.day`, K72). A text that is no day is `Mistake::NotADay`'s business, not this one's.
+    /// (`checked.day`, K72). A text that is no day is `Mistake::NotADay`'s business, not this one's, and so is the
+    /// `reviewed` of a source found at another place (K76): beside a new reference it is the base's own or it is refused
+    /// by its field, whatever day it holds.
     pub(crate) fn days_not_come(
         &self,
         read: &inklkunn_core::read::ReadService,
@@ -95,10 +97,11 @@ impl Loaded {
             };
             let kept = source.last_reviewed.as_ref().map(|r| r.date.as_str());
             let stated = e.checked.as_ref().map(|c| c.day.trim());
+            let moved = e.moves_reference(source);
             for (member, day) in [
                 (
                     "reviewed",
-                    Some(e.reviewed.as_str()).filter(|d| kept != Some(*d)),
+                    Some(e.reviewed.as_str()).filter(|d| !moved && kept != Some(*d)),
                 ),
                 ("checked.day", stated),
             ] {

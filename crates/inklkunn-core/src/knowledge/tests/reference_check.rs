@@ -581,7 +581,12 @@ fn checked_at_a() -> Source {
 
 /// The curation that finds the source at a DOI now and states a check of it on `day`, as available.
 fn moved_and_checked_on(source: &Source, day: &str) -> String {
-    let mut edit = edit(source, "", Availability::Unknown, Some(doi_b(source)));
+    // The form sends the day and the answer the source has: they are the old reference's, and stay as they are (K76).
+    let had = source
+        .last_reviewed
+        .as_ref()
+        .map_or("", |r| r.date.as_str());
+    let mut edit = edit(source, had, source.availability, Some(doi_b(source)));
     edit.sources.first_mut().expect("a source").checked = Some(Checked {
         day: day.to_owned(),
         availability: Availability::Available,

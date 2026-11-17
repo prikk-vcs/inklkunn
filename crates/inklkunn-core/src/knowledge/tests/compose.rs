@@ -729,7 +729,7 @@ fn any_source_is_corrected_by_curation_checked_or_not_and_the_texts_are_those_of
         date: "2026-11-01".to_owned(),
         proposal: None,
     });
-    let edit = worked(&claim, &reviewed, corrected(&reviewed));
+    let edit = keeping(&claim, &reviewed, corrected(&reviewed));
     assert_eq!(
         curate(&claim, std::slice::from_ref(&reviewed), Some(&now), &edit)
             .expect("curated")
@@ -851,15 +851,61 @@ fn a_changed_reference_ends_the_check_and_the_new_one_has_only_the_check_the_edi
     bare.reference.clear();
     assert_eq!(stated(&after(&keeping(&claim, &source, bare))), none);
 
-    // A new day or another answer in the old fields, beside a new reference, is not a check of the new one (it is not
-    // read); the old reviewed day is not carried either (K72).
-    let mut edit = keeping(&claim, &source, elsewhere(Work::of(&source)));
-    {
+    // A new day or another answer in the old fields, beside a new reference, is refused by its field and never read as
+    // the check of the new one, nor dropped (K76): a valid new day, a day that is no day, a day that has not come, the
+    // day cleared, another answer. The same with or without a check stated beside.
+    let old_field = |reviewed: &str, availability: Availability| {
+        let mut edit = keeping(&claim, &source, elsewhere(Work::of(&source)));
         let one = edit.sources.first_mut().expect("a source");
-        one.reviewed = "2026-11-10".to_owned();
-        one.availability = Availability::Unavailable;
+        one.reviewed = reviewed.to_owned();
+        one.availability = availability;
+        edit
+    };
+    for (what, reviewed) in [
+        ("a new day", "2026-11-10"),
+        ("a day that is no day", "yesterday"),
+        ("a day that has not come", "2999-01-01"),
+        ("the day cleared", ""),
+    ] {
+        assert_eq!(
+            curate(
+                &claim,
+                cited,
+                Some(&now),
+                &old_field(reviewed, Availability::Available)
+            ),
+            Err(Mistake::Check(0, CheckFault::OldDay)),
+            "{what}"
+        );
     }
-    assert_eq!(stated(&after(&edit)), none);
+    assert_eq!(
+        curate(
+            &claim,
+            cited,
+            Some(&now),
+            &old_field("2026-11-01", Availability::Unavailable)
+        ),
+        Err(Mistake::Check(0, CheckFault::OldAnswer))
+    );
+    let mut both = old_field("2026-11-10", Availability::Unavailable);
+    state(&mut both, "2026-11-12", Availability::Available);
+    assert_eq!(
+        curate(&claim, cited, Some(&now), &both),
+        Err(Mistake::Check(0, CheckFault::OldDay)),
+        "the day is read first, and a check stated beside does not excuse it"
+    );
+    // The base's own values are not a change: a form that sends them back is not refused.
+    assert_eq!(
+        stated(&after(&old_field("2026-11-01", Availability::Available))),
+        none
+    );
+    // Without a new reference the fields mean what they did: a new day is a new check of the same place.
+    let mut same = keeping(&claim, &source, Work::of(&source));
+    same.sources.first_mut().expect("a source").reviewed = "2026-11-10".to_owned();
+    assert_eq!(
+        stated(&after(&same)),
+        (Some("2026-11-10".to_owned()), Availability::Available)
+    );
 
     // The check of the new reference, stated: its day and its answer, and nothing of the old one.
     let mut edit = keeping(&claim, &source, elsewhere(Work::of(&source)));
@@ -908,8 +954,8 @@ fn a_changed_reference_ends_the_check_and_the_new_one_has_only_the_check_the_edi
         refused(&edit),
         Err(Mistake::Check(0, CheckFault::NoNewReference))
     );
-    // The old field's day that is none is refused as before.
-    let mut edit = keeping(&claim, &source, elsewhere(Work::of(&source)));
+    // A day that is no day beside the reference the source has is refused as ever.
+    let mut edit = keeping(&claim, &source, Work::of(&source));
     edit.sources.first_mut().expect("a source").reviewed = "yesterday".to_owned();
     assert_eq!(refused(&edit), Err(Mistake::NotADay));
 

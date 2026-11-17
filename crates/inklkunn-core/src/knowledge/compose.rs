@@ -424,6 +424,21 @@ pub struct SourceEdit {
     pub checked: Option<Checked>,
 }
 
+impl SourceEdit {
+    /// Does this edit find `old` (the source as the base has it) at another place (K76)? The one question [`curate`] asks
+    /// before it reads `reviewed` and `availability`, and the surfaces ask before they judge `reviewed` as a day a person
+    /// looked: beside a new reference it is not one. A reference that does not read is not a move here (the edit is
+    /// refused for it by [`curate`]).
+    pub fn moves_reference(&self, old: &Source) -> bool {
+        let Some(work) = &self.work else {
+            return false;
+        };
+        let mut moved = old.clone();
+        set_work(&mut moved, work).is_ok()
+            && Reference::is_elsewhere(old.reference.as_ref(), moved.reference.as_ref())
+    }
+}
+
 /// A check of a new reference, as a person states it (K72): never inferred from the check of the old one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Checked {
@@ -455,6 +470,12 @@ pub enum CheckFault {
     BeforeReview,
     /// A check of a new reference was given, and the reference is not another place than the source's now.
     NoNewReference,
+    /// A `reviewed` day other than the base's beside a new reference (K76): the day belongs to the old reference. The new
+    /// one's day is [`SourceEdit::checked`]'s.
+    OldDay,
+    /// An `availability` other than the base's beside a new reference (K76): the answer belongs to the old reference. The
+    /// new one's answer is [`SourceEdit::checked`]'s.
+    OldAnswer,
 }
 
 /// The curation proposal's form, read: **no page text**.
@@ -479,12 +500,13 @@ pub struct Curation {
 /// returned. The standing's `proposal`, and a source's `last_reviewed` proposal, are left for the acceptance to
 /// name (it is the proposal that decides; [`super::curation`]).
 ///
-/// **A changed reference ends the check, and a check of the new one is stated** (K66, K72): a source found at another
-/// place than it is now loses its `last_reviewed` and its `availability`, **whatever the edit's `reviewed` and
-/// `availability` hold** (they are of the old reference, and are not read beside a new one), and has a check only if the
-/// same edit states one in [`SourceEdit::checked`]: the day a person looked at the new place, no earlier than the day the
-/// source was last checked before ([`CheckFault::BeforeReview`]) and written `YYYY-MM-DD`, with whether it can be had
-/// there. The old day is never carried to the new reference by inference, not even when it is the same date. A day that
+/// **A changed reference ends the check, and a check of the new one is stated** (K66, K72, K76): a source found at another
+/// place than it is now loses its `last_reviewed` and its `availability`, and has a check only if the same edit states
+/// one in [`SourceEdit::checked`]: the day a person looked at the new place, no earlier than the day the source was last
+/// checked before ([`CheckFault::BeforeReview`]) and written `YYYY-MM-DD`, with whether it can be had there. The edit's
+/// `reviewed` and `availability` are of the old reference, so beside a new one they are **only the base's own**: a
+/// different one is refused by its field ([`CheckFault::OldDay`], [`CheckFault::OldAnswer`]) before anything is parsed,
+/// a valid new day, a day that is no day and a day that has not come alike, and never dropped unseen. The old day is never carried to the new reference by inference, not even when it is the same date. A day that
 /// has not come is the surface's to refuse (it holds the clock; [`crate::knowledge::freshness::day_has_not_come`]). A
 /// check is given only with a changed reference ([`CheckFault::NoNewReference`]). A change of white space alone in a
 /// reference is not another place ([`Reference::is_elsewhere`]): the check stays. A correction of title, author or date
@@ -556,28 +578,24 @@ pub fn curate(
             .find(|s| s.id == e.source)
             .ok_or(Mistake::UnknownSource)?;
         let mut source = old.clone();
-        source.availability = e.availability;
         if let Some(work) = &e.work {
             set_work(&mut source, work)?;
         }
         let day = e.reviewed.trim();
         let before = old.last_reviewed.as_ref().map(|r| r.date.as_str());
-        if day.is_empty() {
-            source.last_reviewed = None;
-        } else if before != Some(day) {
-            if !is_day(day) {
-                return Err(Mistake::NotADay);
-            }
-            source.last_reviewed = Some(super::Reviewed {
-                date: day.to_owned(),
-                proposal: None,
-            });
-        }
         let stated = e.checked.as_ref().filter(|c| c.is_stated());
         if Reference::is_elsewhere(old.reference.as_ref(), source.reference.as_ref()) {
             // A source found elsewhere is another work than the one a person checked (K66, K72): the check of the old
-            // reference ends, and what the day and the answer of the old reference say is not read. The new reference has
-            // no check but the one the edit **states**, and the old day is never carried to it by inference.
+            // reference ends. `reviewed` and `availability` are of the old reference, so beside a new one they may only be
+            // as the base has them (K76): a different one is refused **by its field, before anything is parsed**, never
+            // read and never dropped unseen. The new reference has no check but the one the edit **states**, and the old
+            // day is never carried to it by inference.
+            if day != before.unwrap_or("") {
+                return Err(Mistake::Check(at, CheckFault::OldDay));
+            }
+            if e.availability != old.availability {
+                return Err(Mistake::Check(at, CheckFault::OldAnswer));
+            }
             source.last_reviewed = None;
             source.availability = Availability::Unknown;
             if let Some(check) = stated {
@@ -597,8 +615,22 @@ pub fn curate(
                 });
                 source.availability = check.availability;
             }
-        } else if stated.is_some() {
-            return Err(Mistake::Check(at, CheckFault::NoNewReference));
+        } else {
+            source.availability = e.availability;
+            if day.is_empty() {
+                source.last_reviewed = None;
+            } else if before != Some(day) {
+                if !is_day(day) {
+                    return Err(Mistake::NotADay);
+                }
+                source.last_reviewed = Some(super::Reviewed {
+                    date: day.to_owned(),
+                    proposal: None,
+                });
+            }
+            if stated.is_some() {
+                return Err(Mistake::Check(at, CheckFault::NoNewReference));
+            }
         }
         if source != *old {
             let text = source.to_yaml();

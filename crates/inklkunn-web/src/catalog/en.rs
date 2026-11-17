@@ -3092,7 +3092,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "curate.work_hint",
-        "Who and what this source is, where it is found and which source replaces it are corrected here. A new place to find it ends the check of the old one: the day it was last checked and whether it can be had, above, are not carried to the new place, and the new place has no check until you give the day you checked it, below. A change of white space alone in where it is found keeps the check. A field shows a text without its line breaks, so a change of line breaks alone cannot be made here: make it through the API.",
+        "Who and what this source is, where it is found and which source replaces it are corrected here. A new place to find it ends the check of the old one: the day it was last checked and whether it can be had, above, stay as they are, are not carried to the new place and are refused if you change them, and the new place has no check until you give the day you checked it, below. A change of white space alone in where it is found keeps the check. A field shows a text without its line breaks, so a change of line breaks alone cannot be made here: make it through the API.",
     ),
     msg("curate.label_superseded", "The source that replaces it"),
     msg(
@@ -3196,5 +3196,13 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "outcome_note.knowledge_kept",
         "Nothing was changed, and the proposal is still held for review.",
+    ),
+    msg(
+        "curate.check_old_day",
+        "Source: {title}. Where it is found is changed, so the day it was last checked, which is for the old place, stays as it is. Give the day you checked the new place in the field for the new reference instead.",
+    ),
+    msg(
+        "curate.check_old_answer",
+        "Source: {title}. Where it is found is changed, so whether it can be had, which is for the old place, stays as it is. Give what you found at the new place in the field for the new reference instead.",
     ),
 ];

@@ -1678,6 +1678,9 @@ keys! {
     KnowCheckUnstated => "know.check_unstated",
     OutcomeNoteKnowledgeKept => "outcome_note.knowledge_kept",
     // knowledge: a changed reference clears the check; the cycle names its source (handoff 005 corrections, seventh round K66, K69): end
+    CurateCheckOldDay => "curate.check_old_day",
+    CurateCheckOldAnswer => "curate.check_old_answer",
+    // knowledge: the old fields beside a moved reference are refused (handoff 005 corrections, ninth round K76): end
 }
 
 /// A typed value for a placeholder. Text is HTML-escaped; a link is an escaped label plus an `href` the
