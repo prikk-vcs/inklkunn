@@ -1648,6 +1648,13 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   0.2.0 on Debian or Ubuntu with `--dev-unconfined` for this reason: drop the flag once a release with this change is installed and
   the server starts confined. No prikk-dependent test is added or removed (the new tests are bubblewrap's, not prikk's).
 
+- **M41, first point (handoff 010 corrections, seventh round): the with-prikk run also fails on `skipping: prikk not on PATH`.**
+  Prikk is always on `PATH` in that run (the floor is installed and checked first), so the line there can only be a silent skip, and
+  the guarded-skip check lets a probe answer *no 0.57.0* with it. The `grep` in `ci.yml` and `release.yml` and floor-check's shape
+  rule (`WITH_PRIKK_GUARDED`, with a planted failure) name it; the shimmed run still counts it, against `EXPECTED_SKIPS`, unchanged.
+  Measured: the whole workspace on a host with prikk 0.55.0 first on `PATH` prints none of the guarded lines. No prikk-dependent
+  test is added or removed.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

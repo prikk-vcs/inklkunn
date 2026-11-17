@@ -67,13 +67,15 @@ pub fn test_prikk(yaml: &str) -> Option<(String, String)> {
 }
 
 /// The parts of the skip lines the with-prikk run's `grep` must name, each as written in the workflow's pattern (a
-/// regular expression, so the dots are escaped): the two 0.57.0 lines (M25), the PID-namespace one, and the
+/// regular expression, so the dots are escaped): the two 0.57.0 lines (M25), the PID-namespace one,
+/// `prikk not on PATH` (prikk is always on `PATH` in that run, so the line can only be a silent skip; M41) and the
 /// confined tests' lines (`bubblewrap cannot confine` carries bubblewrap's own reason; `the confined policy`; `bwrap or
 /// curl not available` is the real vector's; M43).
-pub const WITH_PRIKK_GUARDED: [&str; 6] = [
+pub const WITH_PRIKK_GUARDED: [&str; 7] = [
     "prikk 0\\.57\\.0 or newer not found",
     "no prikk older than 0\\.57\\.0",
     "PID namespaces unavailable",
+    "prikk not on PATH",
     "bubblewrap cannot confine",
     "the confined policy",
     "bwrap or curl not available",
@@ -138,7 +140,7 @@ pub fn test_prikk_shape_violations(yaml: &str) -> Vec<String> {
     });
     match guard {
         None => out.push(
-            "no grep of with-prikk.log for every skip line the with-prikk run must not print (both 0.57.0 lines, the PID-namespace one, and the bubblewrap ones)"
+            "no grep of with-prikk.log for every skip line the with-prikk run must not print (both 0.57.0 lines, the PID-namespace one, `prikk not on PATH`, and the bubblewrap ones)"
                 .to_owned(),
         ),
         Some(i) => {
