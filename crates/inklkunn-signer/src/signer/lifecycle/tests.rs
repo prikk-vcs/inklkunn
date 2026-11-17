@@ -1508,6 +1508,12 @@ fn a_retirement_is_paused_not_hidden_the_signer_names_the_command_while_the_stat
         sentence.contains(&finish_retirement_command(&w.wiki)),
         "{sentence}"
     );
+    // Both ways out are named (the Z7 - Z9 review's note): finishing and giving up.
+    assert!(
+        sentence.contains(&abandon_retirement_command(&w.wiki)),
+        "{sentence}"
+    );
+    assert!(sentence.contains("finishes it with") && sentence.contains("gives it up with"));
     assert!(sentence.contains(&rotation.previous_maintainer_key_id));
     assert!(sentence.contains("nothing was written"));
     // One sentence: no line break, one full stop at the end.

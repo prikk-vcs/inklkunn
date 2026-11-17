@@ -1232,8 +1232,9 @@ impl Signer {
         };
         Ok(key.map(|key| {
             format!(
-                "a change to this wiki's keys is not finished (the retirement of key {key} was begun), so nothing new is sealed until the person who runs this wiki runs `{}`; nothing was written",
-                finish_retirement_command(wiki)
+                "a change to this wiki's keys is not finished (the retirement of key {key} was begun), so nothing new is sealed until the person who runs this wiki finishes it with `{}` or gives it up with `{}`; nothing was written",
+                finish_retirement_command(wiki),
+                abandon_retirement_command(wiki)
             )
         }))
     }
