@@ -449,3 +449,33 @@ again. Hand back K71 – K75 as one request, `005-knowledge-layer-corrections-8-
     - a missing `was` says *none*;
     - a white-space-only reference change is shown as one.
   - **The cycle refusal** names a source by its whole id in `<code>` beside its title.
+
+## Corrections from the review of 2026-11-17 (binding; **before 0.3.0**)
+
+K71 is **Approved for the merge**; K72 – K75 are **Conditionally Approved**
+(`.git-exclude/reviewed/005-knowledge-layer-corrections-8-review-result.md`). Hand back K76 – K78 as one request,
+`005-knowledge-layer-corrections-9-review-request.md`.
+
+- **K76 — the old fields beside a move are refused** (F-a, decision 1).
+  - When a curation moves a reference, a `reviewed` or `availability` that differs from the base's is refused by field, before anything is parsed, with a sentence and an API reason naming `checked` as the way.
+  - The form keeps the base's values in those fields and refuses only a change.
+  - Tests: a valid new day, an invalid one and a future one beside a move are each refused, never discarded with a 2xx.
+- **K77 — one rule for *stated*** (F-b, decision 2).
+  - A check on a source whose reference differs from the tip's is stated **only when this proposal stamps it**: the compose path writes `last_reviewed.proposal` as this proposal, and an availability answer only with such a day.
+  - One function decides, at submit and every revision (with the proposal's own id) and at acceptance.
+  - Acceptance also holds K72's bounds: not before the previous review day, not after today in UTC+14, and an answer only with a day.
+  - Tests:
+    - the tip's date with another proposal id;
+    - no `proposal:` at all;
+    - an explicit same-date check over a review with no proposal id (accepted);
+    - each bound at acceptance.
+- **K78 — the sentences and small points** (F-c, F-d, F-e).
+  - **The acceptance outcome** shows the refusal's own sentence (the rule's, from the catalog) for every `KnowledgeInvalid`, never the file-format note for a rule refusal. The proposal page warns, through `carried_by`, before a reviewer accepts.
+  - **The check refusals** name the source by its whole id in `<code>` beside its title. `check_no_new_reference` says that a change of white space alone does not move the reference.
+  - **Small points:**
+    - `status.rs:316` gets an independent expectation;
+    - K74's message says *path or size*;
+    - the form trims `superseded_by` with the ECMA set;
+    - `visible()` escapes `]` too, and a literal `(none)` is shown so that it cannot pass for the marker;
+    - the pattern reader refuses an unclosed `{`;
+    - one mutation test for the 6-digit reserve.

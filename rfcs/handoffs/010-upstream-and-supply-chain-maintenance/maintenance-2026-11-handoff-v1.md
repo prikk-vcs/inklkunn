@@ -249,3 +249,24 @@ request, `010-maintenance-2026-11-corrections-6-review-request.md`.
 
     So `probe_bwrap`'s skip line carries bubblewrap's own reason, the first line of its stderr (scrubbed, at most 200 characters). The next CI run then shows the cause. Name it in the request, and whether a further runner step (for example Ubuntu 24.04's `bwrap-userns-restrict` AppArmor profile) is needed and safe. The guard joins once a run shows the lines gone.
   - **The serve refusal test** runs everywhere through an injected *cannot confine* answer, so it never depends on the runner.
+
+## Corrections from the review of 2026-11-17 (binding; **before 0.3.0**)
+
+M38 – M40 are **Conditionally Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-corrections-6-review-result.md`), which
+also states these gates' threat model: **accidents, not deliberate evasion**. Hand back M41 – M42 as one request,
+`010-maintenance-2026-11-corrections-7-review-request.md`.
+
+- **M41 — the guarded-skip rule, closed for honest edits** (E-a, E-b).
+  - The with-prikk run in `ci.yml` and `release.yml` also fails on `skipping: prikk not on PATH`, since prikk is always on `PATH` there.
+  - `real_prikk` moves into each `prikk_probes.rs`, as the entry `prikk_first`, and its callers use it.
+  - Entries return only `Option<PathBuf>` or `Option<` a world type defined in that test file `>`. No `bool` or other answer is allowed.
+  - An entry's tail must be exactly `Some(<binding>)`.
+- **M42 — small points** (E-c, E-d; decision 1).
+  - `pin-check` refuses any `cargo +X` or `rustc +X` outside the `msrv` job, and any `+X` there other than the MSRV.
+  - `user_namespace_violations`:
+    - compares the whole `if:` value, folded lines included;
+    - refuses a lift with `continue-on-error`;
+    - sees `cargo +<pin> test` as a test.
+  - The serve proof asserts, where bwrap fails, that `sandbox()` refuses and carries bubblewrap's reason.
+  - Fetch's parity test uses a constant list of the 12 direction characters, so the dev-dependency on the signer goes.
+  - The doc comments of `is_direction_or_format` and `is_format_character` say why the two sets differ (ZWNJ and ZWJ in knowledge text).
