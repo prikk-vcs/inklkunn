@@ -77,6 +77,8 @@ for the test of the floor's *no verb* answer) when it is not there; the with-pri
 appears, so in CI no such test passes by skipping. Moving the test-only prikk is a one-value change in `ci.yml`
 and `release.yml` (version and checksum), checked by `floor-check`; moving the floor is a decision (RFC 010 D-3).
 
+**The release the upgrade test starts from.** The upgrade test (0.3.0 readiness, R-3) has the **0.2.0 release binary of inklkunn** make a data directory and this tree open it, so CI and the release gates install that binary too (`UPGRADE_FROM_VERSION`, `UPGRADE_FROM_SHA256_X86_64` in `ci.yml` and `release.yml`: the checksum of the release asset, checked before it is unpacked, held equal in both by `floor-check`). It is on `PATH` in a directory of its own and only that test looks for it; it prints `skipping: inklkunn 0.2.0 not found` when it is not there, and the with-prikk run fails if that line appears. A release after 0.3.0 moves it, if the owner wants the upgrade shown from a later release, by changing the version and the checksum in both workflows and the version the test looks for (a release's `inklkunn --version` names its commit).
+
 **The compiler.** `rust-toolchain.toml` pins the compiler (`channel = "X.Y.Z"`, today 1.99.1, with `rustfmt` and
 `clippy`), so a plain `cargo` in a checkout is the compiler CI and the release build with. `pin-check` holds the
 file equal to the compiler `ci.yml`, `supply-chain.yml` and `release.yml` install and to `RUST_TOOLCHAIN`, and

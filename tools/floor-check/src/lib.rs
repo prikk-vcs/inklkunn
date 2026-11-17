@@ -12,6 +12,13 @@
 //! `MIN_PRIKK_VERSION`, and it goes on `PATH` after the floor so the floor stays the prikk every other test
 //! uses. Its name never starts with `PRIKK_VERSION` or `PRIKK_SHA256_`, so the floor rules above do not read it;
 //! [`test_prikk`] and [`test_prikk_shape_violations`] hold it instead.
+//!
+//! **The release the upgrade test starts from (0.3.0 readiness, R-3).** The workflows also install one earlier
+//! *inklkunn* release (`UPGRADE_FROM_VERSION`, with the checksum of its release asset, `UPGRADE_FROM_SHA256_X86_64`):
+//! the upgrade test has that binary make a data directory and this tree open it. It is a pinned release asset like
+//! the test-only prikk (recorded checksum, checked before it is unpacked), it is on `PATH` for that one test, and
+//! the test prints a guarded skip line when it is not found. [`upgrade_from`] and [`upgrade_from_shape_violations`]
+//! hold it.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -70,8 +77,9 @@ pub fn test_prikk(yaml: &str) -> Option<(String, String)> {
 /// regular expression, so the dots are escaped): the two 0.57.0 lines (M25), the PID-namespace one,
 /// `prikk not on PATH` (prikk is always on `PATH` in that run, so the line can only be a silent skip; M41) and the
 /// confined tests' lines (`bubblewrap cannot confine` carries bubblewrap's own reason; `the confined policy`; `bwrap or
-/// curl not available` is the real vector's; M43).
-pub const WITH_PRIKK_GUARDED: [&str; 7] = [
+/// curl not available` is the real vector's; M43), and the upgrade test's (`inklkunn 0.2.0 not found`: the release the
+/// workflow installs for it is not on `PATH`; R-3).
+pub const WITH_PRIKK_GUARDED: [&str; 8] = [
     "prikk 0\\.57\\.0 or newer not found",
     "no prikk older than 0\\.57\\.0",
     "PID namespaces unavailable",
@@ -79,6 +87,7 @@ pub const WITH_PRIKK_GUARDED: [&str; 7] = [
     "bubblewrap cannot confine",
     "the confined policy",
     "bwrap or curl not available",
+    "inklkunn 0\\.2\\.0 not found",
 ];
 
 /// What is wrong with the way a workflow uses its test-only prikk (M25); empty when it is installed and
@@ -150,7 +159,7 @@ pub fn test_prikk_shape_violations(yaml: &str) -> Vec<String> {
     });
     match guard {
         None => out.push(
-            "no grep of with-prikk.log for every skip line the with-prikk run must not print (both 0.57.0 lines, the PID-namespace one, `prikk not on PATH`, and the bubblewrap ones)"
+            "no grep of with-prikk.log for every skip line the with-prikk run must not print (both 0.57.0 lines, the PID-namespace one, `prikk not on PATH`, the bubblewrap ones, and the upgrade test's)"
                 .to_owned(),
         ),
         Some(i) => {
@@ -172,6 +181,72 @@ pub fn test_prikk_shape_violations(yaml: &str) -> Vec<String> {
         l.contains("\"$HOME/.local/bin\"") && l.contains("\"$HOME/.local/prikk-test/bin\"")
     }) {
         out.push("the shimmed run does not remove both prikk directories from PATH".to_owned());
+    }
+    out
+}
+
+/// The earlier inklkunn release a workflow installs for the upgrade test: `UPGRADE_FROM_VERSION` and
+/// `UPGRADE_FROM_SHA256_X86_64` (0.3.0 readiness, R-3).
+pub fn upgrade_from(yaml: &str) -> Option<(String, String)> {
+    Some((
+        quoted_value(yaml, "UPGRADE_FROM_VERSION:")?,
+        quoted_value(yaml, "UPGRADE_FROM_SHA256_X86_64:")?,
+    ))
+}
+
+/// What is wrong with the way a workflow installs the release the upgrade test starts from (R-3); empty when its
+/// version and checksum are recorded, the asset is downloaded from this project's own release of that version and
+/// checked against the recorded checksum before it is unpacked, and it is put on `PATH`, where the test looks.
+pub fn upgrade_from_shape_violations(yaml: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    match upgrade_from(yaml) {
+        None => {
+            out.push("no UPGRADE_FROM_VERSION / UPGRADE_FROM_SHA256_X86_64 recorded".to_owned());
+            return out;
+        }
+        Some((_, sum)) => {
+            if sum.len() != 64 || !sum.bytes().all(|b| b.is_ascii_hexdigit()) {
+                out.push(format!(
+                    "the upgrade-from checksum is not 64 hex digits: {sum}"
+                ));
+            }
+        }
+    }
+    let lines: Vec<&str> = yaml.lines().collect();
+    let download = lines.iter().position(|l| {
+        l.contains("curl")
+            && l.contains(
+                "github.com/prikk-vcs/inklkunn/releases/download/${UPGRADE_FROM_VERSION}/",
+            )
+    });
+    let Some(download) = download else {
+        out.push(
+            "the upgrade-from asset is not downloaded from this project's release of that version"
+                .to_owned(),
+        );
+        return out;
+    };
+    // The check comes after the download and before the unpacking.
+    let check = lines
+        .iter()
+        .position(|l| l.contains("sha256sum -c") && l.contains("${UPGRADE_FROM_SHA256_X86_64}"));
+    let unpack = lines
+        .iter()
+        .skip(download)
+        .position(|l| l.contains("tar -xzf"))
+        .map(|i| i + download);
+    match (check, unpack) {
+        (Some(c), Some(u)) if download < c && c < u => {}
+        _ => out.push(
+            "the upgrade-from asset is not checked against its recorded checksum between its download and its unpacking"
+                .to_owned(),
+        ),
+    }
+    if !lines
+        .iter()
+        .any(|l| l.contains(">> \"$GITHUB_PATH\"") && l.contains("inklkunn-old/bin"))
+    {
+        out.push("the upgrade-from binary's directory is not added to PATH".to_owned());
     }
     out
 }
