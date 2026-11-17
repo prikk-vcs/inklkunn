@@ -1782,6 +1782,17 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   bubblewrap's own words, and prints `skipping: <bubblewrap's reason>` where bubblewrap cannot confine); the fetcher's `curl_path`.
   Each call site was reverted and its test failed. No prikk-dependent test is added.
 
+- **M44, the rest (handoff 010 corrections, eighth round): a missing bubblewrap is a guarded skip, never a silent one.** The
+  probe's spawn error read `` `bwrap` could not run: … ``, which matches no fragment of the with-prikk run's guard, so dropping
+  `bubblewrap` from CI's packages would have made the confined half of about twelve test files skip without a word. It now reads
+  `bubblewrap cannot confine a process here (`bwrap` could not run: …)`, as every other error of `probe_bwrap` does (the doc says
+  so), so every `skipping: {why}` line for it carries the guard's `bubblewrap cannot confine`. A planted test
+  (`every_way_the_probe_fails_gives_a_line_the_with_prikk_guard_catches`: a missing binary, a refusal and a silent exit) holds the
+  line; it failed with the old wording. The real-probe test (`the_real_root_confines_a_dynamically_linked_program_or_says_why_not`)
+  skipped on the old wording's `No such file or directory` and so failed on any host without bubblewrap (`os error 2`); it now
+  prints the guarded line and fails only on bubblewrap's own `execvp … No such file or directory`, the loader not found
+  (IS-19). That half was not mutation-checked on a host without bubblewrap (this host has it). No prikk-dependent test is added.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

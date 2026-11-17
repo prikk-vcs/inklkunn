@@ -561,6 +561,23 @@ fn a_bwrap_that_works_and_one_that_is_missing_are_told_apart() {
     assert!(e.contains("could not run"), "{e}");
 }
 
+#[test]
+fn every_way_the_probe_fails_gives_a_line_the_with_prikk_guard_catches() {
+    // CI's with-prikk run fails on `skipping: ... bubblewrap cannot confine ...` (`WITH_PRIKK_GUARDED`), and every test
+    // that skips for a host that cannot confine prints `skipping: <the probe's reason>`: a `bwrap` that is missing (the
+    // runner's package dropped) and one that says no are both in that line.
+    let missing = probe_bwrap(std::ffi::OsStr::new("/nonexistent/bwrap")).unwrap_err();
+    let refused = probe_stand_in("guarded-refused", b"bwrap: no\n", 1).unwrap_err();
+    let silent = probe_stand_in("guarded-silent", b"", 1).unwrap_err();
+    for why in [missing, refused, silent] {
+        let line = format!("skipping: {why}; running unconfined");
+        assert!(
+            line.contains("skipping: bubblewrap cannot confine a process here"),
+            "{line}"
+        );
+    }
+}
+
 /// A root with `usr/bin` and the given entries planted: `(name, Some(target))` is a symbolic link, `(name, None)` a real
 /// directory.
 fn planted_root(tag: &str, entries: &[(&str, Option<&str>)]) -> Tmp {
@@ -686,14 +703,15 @@ fn a_file_where_an_entry_is_expected_is_left_out() {
 #[test]
 fn the_real_root_confines_a_dynamically_linked_program_or_says_why_not() {
     // On this host the layout is the host's own: the probe runs `/usr/bin/true` (dynamically linked, through the loader
-    // the host's /lib64 leads to) in the sandbox the layout builds. A host that cannot make a namespace says so in
-    // bubblewrap's words; the layout's own failure (IS-19) is `No such file or directory` for the program.
+    // the host's /lib64 leads to) in the sandbox the layout builds. A host that cannot confine says so in the guarded
+    // line (a `bwrap` that is not there included: a packager's `cargo test` without bubblewrap skips, it is not red);
+    // the layout's own failure (IS-19) is bubblewrap's `execvp <program>: No such file or directory`, and only that fails.
     match probe_bwrap(std::ffi::OsStr::new(BWRAP)) {
         Ok(()) => {}
         Err(why) => {
             println!("skipping: {why}");
             assert!(
-                !why.contains("No such file or directory"),
+                !(why.contains("execvp") && why.contains("No such file or directory")),
                 "the layout cannot find the loader: {why}"
             );
         }

@@ -685,7 +685,9 @@ fn first_line_of(stderr: &[u8]) -> String {
 
 /// A minimal confined `true` runs: the check for `bwrap` (and for user namespaces being permitted) at start. When it
 /// does not, the error carries bubblewrap's own reason, the first line of its standard error (cleaned, at most 200
-/// characters), or its exit status when it said nothing, so a refusal and a test's skip line say *why*.
+/// characters), or its exit status when it said nothing, so a refusal and a test's skip line say *why*. **Every error
+/// begins `bubblewrap cannot confine a process here`**, a `bwrap` that is not there included (the fragment CI's with-prikk
+/// run fails on, so a missing bubblewrap is never a silent skip).
 pub fn probe_bwrap(binary: &OsStr) -> Result<(), String> {
     match Command::new(binary)
         .env_clear()
@@ -718,7 +720,13 @@ pub fn probe_bwrap(binary: &OsStr) -> Result<(), String> {
                 format!("bubblewrap cannot confine a process here (`{name}`): {reason}")
             })
         }
-        Err(e) => Err(format!("`{}` could not run: {e}", binary.to_string_lossy())),
+        // A `bwrap` that cannot even be started cannot confine either: the line says so in the same words, so that every
+        // test's skip line for it carries the fragment CI's with-prikk run fails on (dropping bubblewrap from the
+        // runner's packages must be a red run, not a silent skip).
+        Err(e) => Err(format!(
+            "bubblewrap cannot confine a process here (`{}` could not run: {e})",
+            binary.to_string_lossy()
+        )),
     }
 }
 
