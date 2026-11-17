@@ -158,12 +158,18 @@ impl Settings {
             // them, and found no program to start, so the advice is about the host's loader and libraries.
             let advice = if loader_not_found(&why) {
                 "the host's dynamic loader and libraries are not where the sandbox looks for them (SECURITY.md, \
-                 \"What a host needs for confinement\")"
+                 \"What a host needs for confinement\": #what-a-host-needs-for-confinement)"
             } else {
                 "install bubblewrap and allow user namespaces"
             };
+            // The probe's own reason already says `bubblewrap cannot confine a process here (…)`: say it once.
+            let said = if why.contains("bubblewrap cannot confine") {
+                why
+            } else {
+                format!("bubblewrap cannot confine prikk here ({why})")
+            };
             ConfigError(format!(
-                "bubblewrap cannot confine prikk here ({why}); {advice}, \
+                "{said}; {advice}, \
                  or, for development only, start with --dev-unconfined"
             ))
         })?;

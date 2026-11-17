@@ -97,7 +97,7 @@ jobs:
           ln -s "$(command -v rustup)" "$SHIM/rustup"
           SYSTEM_PATH="$(echo "$PATH" | tr ':' '\n' | grep -v -x -e "$HOME/.local/bin" -e "$HOME/.local/prikk-test/bin" | paste -sd:)"
           ! PATH="$SHIM:$SYSTEM_PATH" command -v prikk >/dev/null || { echo "prikk is still on PATH"; exit 1; }
-          PATH="$SHIM:$SYSTEM_PATH" cargo test --workspace --locked -- --nocapture 2>&1 | tee shimmed.log
+          PATH="$SHIM:$SYSTEM_PATH" cargo test --workspace --locked --no-fail-fast -- --nocapture 2>&1 | tee shimmed.log
           SKIPS="$(grep -c 'skipping: prikk not on PATH' shimmed.log || true)"
           test "$SKIPS" = "$EXPECTED_SKIPS" || { echo "expected $EXPECTED_SKIPS self-skip lines, saw $SKIPS (update EXPECTED_SKIPS when a prikk-dependent test is added or removed)"; exit 1; }
       - name: Rustdoc (-D warnings)

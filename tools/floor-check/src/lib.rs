@@ -135,6 +135,12 @@ pub fn test_prikk_shape_violations(yaml: &str) -> Vec<String> {
             }
         }
     }
+    // The shimmed run counts its self-skips, so one red in it must not hide the crates after it either.
+    if let Some(l) = lines.iter().find(|l| l.contains("tee shimmed.log"))
+        && !l.contains("--no-fail-fast")
+    {
+        out.push("the shimmed run is not `--no-fail-fast`: the first failing test binary stops the tests of every crate after it, and the self-skips are then counted over a part of the workspace".to_owned());
+    }
     let guard = lines.iter().position(|l| {
         l.contains("grep")
             && l.contains("with-prikk.log")

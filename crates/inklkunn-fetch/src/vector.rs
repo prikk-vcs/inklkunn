@@ -43,7 +43,9 @@ pub(crate) fn find_ca_bundle() -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
-/// `bwrap … -- <curl> <args>`: the confined command. `curl` and `ca_bundle` are absolute host paths.
+/// `bwrap … -- <curl> <args>`: the confined command. `curl` and `ca_bundle` are absolute host paths, **and resolved**:
+/// links are followed by the caller (`sandbox::bind_target` for curl, `find_ca_bundle` for the bundle), because bubblewrap
+/// cannot bind a link inside a tree already mounted.
 pub(crate) fn bwrap_command(
     bwrap: &OsStr,
     curl: &Path,

@@ -36,17 +36,17 @@ RUN set -eu; \
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
 
 ARG TARGETARCH
-# What a person who finds this image needs to run it: SECURITY.md, "What a host needs for confinement". The release workflow
-# passes the page of the release's own tag.
-ARG DOCUMENTATION_URL=https://github.com/prikk-vcs/inklkunn/blob/main/SECURITY.md
-LABEL org.opencontainers.image.documentation="${DOCUMENTATION_URL}"
-
 RUN apt-get update \
  && apt-get install -y --no-install-recommends bubblewrap ca-certificates curl \
  && rm -rf /var/lib/apt/lists/* \
  && prlimit --version \
  && curl --version \
  && test -s /etc/ssl/certs/ca-certificates.crt
+
+# What a person who finds this image needs to run it: SECURITY.md, "What a host needs for confinement". The release workflow
+# passes the page of the release's own tag. Declared after the package layer, so a new tag does not rebuild it.
+ARG DOCUMENTATION_URL=https://github.com/prikk-vcs/inklkunn/blob/main/SECURITY.md#what-a-host-needs-for-confinement
+LABEL org.opencontainers.image.documentation="${DOCUMENTATION_URL}"
 
 COPY --from=fetch /out/prikk /usr/local/bin/prikk
 COPY ctx/${TARGETARCH}/inklkunn /usr/local/bin/inklkunn

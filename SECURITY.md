@@ -157,7 +157,9 @@ signer checks, and what it does not:
 - **bubblewrap** must work on the host: every prikk call the signer makes is confined (`--dev-unconfined` is for
   development and prints a banner). See *What a host needs for confinement* below.
 
-**What a host needs for confinement.** The server and every command refuse to run prikk at all, unless started with
+### What a host needs for confinement
+
+The server and every command refuse to run prikk at all, unless started with
 `--dev-unconfined`, when a probe (a confined `/usr/bin/true`) fails, and the refusal carries bubblewrap's own first line.
 What the probe needs:
 
@@ -174,24 +176,26 @@ What the probe needs:
   `No permissions to create new namespace`.
 - **In a container**, the container runtime's own defaults get in the way, because bubblewrap makes namespaces and
   mounts `/proc` itself. Run the image with `--security-opt seccomp=unconfined --security-opt apparmor=unconfined
-  --security-opt systempaths=unconfined` (docker's names; podman's is `--security-opt seccomp=unconfined --security-opt
-  unmask=ALL`), as the user the image sets (`inklkunn`, uid 10001), on a host that allows user namespaces as above. Without
-  them the probe says `bwrap: Can't mount proc on /proc: Operation not permitted` (measured under podman) or
-  `No permissions to create new namespace`. The release workflow runs the built image once, with these settings,
-  before it pushes it: `wiki create` on a scratch volume, which cannot succeed unless prikk is confined.
+  --security-opt systempaths=unconfined` (docker's names), as the user the image sets (`inklkunn`, uid 10001), on a
+  host that allows user namespaces as above. Podman's names are `--security-opt seccomp=unconfined --security-opt
+  unmask=ALL`, **measured on a host without AppArmor**: on Debian or Ubuntu podman's default AppArmor profile may refuse
+  the mounts too, and `--security-opt apparmor=unconfined` is then needed as well. Without these settings the probe says
+  `bwrap: Can't mount proc on /proc: Operation not permitted` (measured under podman) or `No permissions to create new
+  namespace`. The release workflow runs the built image once, with the docker names, before it pushes it: `wiki create`
+  on a scratch volume, which cannot succeed unless prikk is confined. Only podman's names have been measured by hand;
+  docker's are the ones that run is made with.
   **What the three settings take away.** Each lifts a layer the container runtime puts around every process in the
-  container: `seccomp=unconfined` drops docker's default seccomp filter (the one that refuses the namespace and mount
-  system calls bubblewrap makes), `apparmor=unconfined` drops its default AppArmor profile (the one that refuses
-  bubblewrap's mounts), and `systempaths=unconfined` drops the masks and read-only remounts over parts of `/proc` and
-  `/sys` (the ones that refuse bubblewrap's own `/proc`). **With them lifted the server and everything it starts in
-  the container lose those layers**, not only bubblewrap's children, so **bubblewrap's sandbox around prikk and around
-  `curl` is then the confinement inside the container**; what stays is the container's own isolation from the host
-  (its namespaces and cgroups, its capability set, and the unprivileged user). An operator who cannot accept that runs
-  on the host instead, where only user namespaces are needed (no seccomp, AppArmor or `/proc` setting of the container
-  is involved), and does not give the container more than these three settings and the volumes it names. **The docker
-  names above are the ones the release workflow runs the image with**; only podman's have been measured by hand so far,
-  and docker's are measured by that rehearsal of the release, which the maintainers run before a release candidate is
-  tagged. This paragraph is reworded from what the rehearsal shows.
+  container: `seccomp=unconfined` drops docker's default seccomp filter, **which opens the whole system-call surface to
+  the server** (it is network-facing), not only the namespace and mount calls bubblewrap makes; `apparmor=unconfined`
+  drops its default AppArmor profile (the one that refuses bubblewrap's mounts); and `systempaths=unconfined` drops the
+  masks and read-only remounts over parts of `/proc` and `/sys` (the ones that refuse bubblewrap's own `/proc`).
+  **With them lifted the server and everything it starts in the container lose those layers**, not only bubblewrap's
+  children, so **bubblewrap's sandbox around prikk and around `curl` is then the confinement inside the container**;
+  what stays is the container's own isolation from the host (its namespaces and cgroups, its capability set, and the
+  unprivileged user). The image carries setuid programs (`su`, `mount`), which that user can still run. An operator who
+  cannot accept this runs the server on the host instead, where only user namespaces are needed (none of the container's
+  seccomp, AppArmor or `/proc` settings is involved). An operator who runs the container gives it these three settings and
+  the volumes it names, and nothing more: no added capabilities, no `--privileged`.
 - **The data directory's filesystem** must support `flock` between the processes that share it (see `INKLKUNN_DATA_DIR`).
 
 **A server started without the means to sign still serves.** If the secret file is not there, or the key store does

@@ -235,7 +235,10 @@ fn a_prikk_that_is_a_link_is_bound_and_run_as_the_file_it_leads_to() {
 #[test]
 fn a_prikk_that_is_a_link_inside_a_mounted_tree_runs_confined() {
     // The same on the real bubblewrap: the link lies in the repository, which the sandbox mounts, and leads outside it.
-    // (Bound as itself it cannot be: bubblewrap says `Can't mount on symlink destination`.)
+    // Reverted to bind the link as itself, this run fails with bubblewrap's `execvp …: No such file or directory`
+    // (the prikk bind comes before the repository's, so the link is not yet inside a mounted tree and the bind
+    // makes a link that leads nowhere). The production shape, a link inside a tree bound before it (`/usr`),
+    // where bubblewrap says `Can't mount on symlink destination`, is held at the argument level by the test above.
     if let Err(why) = probe_bwrap(std::ffi::OsStr::new(BWRAP)) {
         println!("skipping: {why}");
         return;

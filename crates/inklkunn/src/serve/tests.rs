@@ -110,7 +110,7 @@ fn without_the_dev_flag_a_host_that_cannot_confine_prikk_refuses_to_start() {
     .err()
     .unwrap();
     assert!(
-        e.contains("bubblewrap cannot confine prikk") && e.contains("--dev-unconfined"),
+        e.contains("bubblewrap cannot confine") && e.contains("--dev-unconfined"),
         "{e}"
     );
     // The reason bubblewrap gave is in the refusal.
@@ -165,6 +165,24 @@ fn a_refusal_for_a_program_bubblewrap_cannot_find_names_the_loader_not_user_name
     );
     assert!(!loader.contains("user namespaces"), "{loader}");
     assert!(loader.contains("--dev-unconfined"), "{loader}");
+    // The refusal says *bubblewrap cannot confine* once; a reason that does not say it gets the sentence put before it.
+    let once = strict
+        .sandbox_probed(&|_| Err(CANNOT_CONFINE.to_owned()))
+        .unwrap_err()
+        .0;
+    assert_eq!(
+        once.matches("bubblewrap cannot confine").count(),
+        1,
+        "{once}"
+    );
+    let plain = strict
+        .sandbox_probed(&|_| Err("a probe's own words".to_owned()))
+        .unwrap_err()
+        .0;
+    assert!(
+        plain.starts_with("bubblewrap cannot confine prikk here (a probe's own words);"),
+        "{plain}"
+    );
     // A refusal of the namespaces keeps its advice, and a missing `bwrap` (no `execvp`) is not a loader's.
     for why in [
         CANNOT_CONFINE,
@@ -197,7 +215,7 @@ fn the_real_probe_decides_the_real_start_and_an_injected_answer_refuses_on_any_h
             assert!(!why.is_empty(), "bubblewrap's reason is empty");
             let refused = s.sandbox().unwrap_err();
             assert!(
-                refused.0.contains("bubblewrap cannot confine prikk") && refused.0.contains(why),
+                refused.0.contains("bubblewrap cannot confine") && refused.0.contains(why),
                 "the refusal does not carry bubblewrap's reason `{why}`: {refused}"
             );
             assert!(refused.0.contains("--dev-unconfined"), "{refused}");
@@ -212,7 +230,7 @@ fn the_real_probe_decides_the_real_start_and_an_injected_answer_refuses_on_any_h
     )
     .err()
     .unwrap();
-    assert!(e.contains("bubblewrap cannot confine prikk"), "{e}");
+    assert!(e.contains("bubblewrap cannot confine"), "{e}");
 }
 
 #[test]
