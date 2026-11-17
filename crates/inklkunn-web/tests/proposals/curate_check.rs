@@ -239,7 +239,11 @@ async fn a_check_of_a_new_reference_that_is_not_one_is_refused_on_the_form_namin
     let s = checked_scene_on("2023-11-01");
     let base = |more: &[(&'static str, &str)]| with(unchanged_on(&s, "2023-11-01"), more);
     let moved = |more: &[(&'static str, &str)]| with(base(&elsewhere()), more);
-    let source = "Source: A history of the bridge.";
+    // The source by its title and its whole id in `<code>` (K78): two sources may share a title.
+    let source = format!(
+        "Source: A history of the bridge (<code>{}</code>).",
+        super::claims::source_id()
+    );
     let cases = [
         (
             "a day earlier than the old check",
@@ -280,7 +284,7 @@ async fn a_check_of_a_new_reference_that_is_not_one_is_refused_on_the_form_namin
                 ("c0_checked_day", "2023-11-10"),
                 ("c0_checked_availability", "available"),
             ]),
-            "goes with a change of where the source is found. Change that, or leave the day and the answer empty.",
+            "goes with a change of where the source is found; a change of white space alone does not move the reference. Change where it is found, or leave the day and the answer empty.",
             "value=\"2023-11-10\"",
         ),
     ];
@@ -288,7 +292,13 @@ async fn a_check_of_a_new_reference_that_is_not_one_is_refused_on_the_form_namin
         let a = send(&s, FORM, &s.writer, &fields).await;
         assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY, "{what}");
         let body = a.body();
-        assert!(body.contains(source), "{what}: {body}");
+        // A day that has not come is K49's sentence, which names the source by its title (its own refusal, not a check's).
+        let named = if what == "a day that has not come" {
+            "Source: A history of the bridge."
+        } else {
+            source.as_str()
+        };
+        assert!(body.contains(named), "{what}: {body}");
         assert!(body.contains(said), "{what}: {body}");
         // What the person sent is still in the fields.
         assert!(body.contains(kept), "{what}: {body}");
@@ -305,6 +315,13 @@ async fn a_check_of_a_new_reference_that_is_not_one_is_refused_on_the_form_namin
     .await;
     assert!(ja.contains("2023-11-01"), "{ja}");
     assert!(ja.contains("より前にはできません"), "{ja}");
+    assert!(
+        ja.contains(&format!(
+            "出典: A history of the bridge（<code>{}</code>）。",
+            super::claims::source_id()
+        )),
+        "{ja}"
+    );
     // Nothing was made by any of them.
     assert_eq!(
         inklkunn_store::ProposalStore::open_count(&*s.w.store, &s.w.wiki.id, &s.writer).unwrap(),
@@ -537,4 +554,37 @@ async fn a_change_of_line_breaks_alone_cannot_be_made_in_the_form_and_the_form_s
         ja.contains("改行だけの変更はここではできません。API で行ってください。"),
         "{ja}"
     );
+}
+
+#[tokio::test]
+async fn a_draft_that_moves_a_source_and_leaves_its_check_says_so_on_its_page_before_it_is_accepted()
+ {
+    // K78 (the review's F-c): the rule the submission and the acceptance have (K71) is said on the page of a draft that holds
+    // such a file. The page is not the rule: it only warns, and says it cannot be accepted as it is.
+    let s = checked_scene_on("2023-11-01");
+    let moved = |check_kept: bool| {
+        let mut source = checked_source();
+        source.last_reviewed = Some(inklkunn_core::knowledge::Reviewed {
+            date: "2023-11-01".to_owned(),
+            proposal: Some("01930000-0000-7000-8000-00000000aaaa".to_owned()),
+        });
+        source.reference = Some(inklkunn_core::knowledge::Reference {
+            form: inklkunn_core::knowledge::ReferenceForm::Doi,
+            value: "10.1000/182".to_owned(),
+        });
+        if !check_kept {
+            source.last_reviewed = None;
+            source.availability = Availability::Unknown;
+        }
+        vec![(source_path(&source.id), Some(source.to_yaml()))]
+    };
+    let note = "still carries the day it was last checked or whether it can be had, which were for its old place";
+    let to = super::claims::held_unjudged(&s, moved(true));
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(body.contains(note), "{body}");
+    assert!(body.contains("It cannot be accepted as it is."), "{body}");
+    // A move that clears the check says nothing of the kind.
+    let to = super::claims::held_unjudged(&s, moved(false));
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(!body.contains(note), "{body}");
 }

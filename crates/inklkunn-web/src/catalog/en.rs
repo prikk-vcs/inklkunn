@@ -3121,19 +3121,19 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.source_spacing_title",
-        "Only the white space in its title changes (␣ is a space, ⇥ a tab, ↵ a line break, [U+XXXX] a character by its code point: other white space, and any of these marks or a [ that the text itself holds): {was} becomes {now}.",
+        "Only the white space in its title changes (␣ is a space, ⇥ a tab, ↵ a line break, [U+XXXX] a character by its code point: other white space, and any of these marks, a [ or a ] that the text itself holds): {was} becomes {now}.",
     ),
     msg(
         "know.source_spacing_author",
-        "Only the white space in its author or publisher changes (␣ is a space, ⇥ a tab, ↵ a line break, [U+XXXX] a character by its code point: other white space, and any of these marks or a [ that the text itself holds): {was} becomes {now}.",
+        "Only the white space in its author or publisher changes (␣ is a space, ⇥ a tab, ↵ a line break, [U+XXXX] a character by its code point: other white space, and any of these marks, a [ or a ] that the text itself holds): {was} becomes {now}.",
     ),
     msg(
         "know.source_spacing_date",
-        "Only the white space in its date changes (␣ is a space, ⇥ a tab, ↵ a line break, [U+XXXX] a character by its code point: other white space, and any of these marks or a [ that the text itself holds): {was} becomes {now}.",
+        "Only the white space in its date changes (␣ is a space, ⇥ a tab, ↵ a line break, [U+XXXX] a character by its code point: other white space, and any of these marks, a [ or a ] that the text itself holds): {was} becomes {now}.",
     ),
     msg(
         "know.source_spacing_reference",
-        "Only the white space in where it is found changes (␣ is a space, ⇥ a tab, ↵ a line break, [U+XXXX] a character by its code point: other white space, and any of these marks or a [ that the text itself holds): {was} becomes {now}.",
+        "Only the white space in where it is found changes (␣ is a space, ⇥ a tab, ↵ a line break, [U+XXXX] a character by its code point: other white space, and any of these marks, a [ or a ] that the text itself holds): {was} becomes {now}.",
     ),
     msg("know.source_spacing_none", "(none)"),
     msg(
@@ -3175,18 +3175,26 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "curate.check_no_day",
-        "Source: {title}. An answer about the new reference needs the day you checked it. Give the day, or leave the answer as not known.",
+        "Source: {title} ({id}). An answer about the new reference needs the day you checked it. Give the day, or leave the answer as not known.",
     ),
     msg(
         "curate.check_not_a_day",
-        "Source: {title}. The day you checked the new reference has to be written year, month, day, like 2026-11-04.",
+        "Source: {title} ({id}). The day you checked the new reference has to be written year, month, day, like 2026-11-04.",
     ),
     msg(
         "curate.check_before_review",
-        "Source: {title}. The day you checked the new reference cannot be earlier than {day}, the day the old reference was last checked.",
+        "Source: {title} ({id}). The day you checked the new reference cannot be earlier than {day}, the day the old reference was last checked.",
     ),
     msg(
         "curate.check_no_new_reference",
-        "Source: {title}. The day you checked the new reference goes with a change of where the source is found. Change that, or leave the day and the answer empty.",
+        "Source: {title} ({id}). The day you checked the new reference goes with a change of where the source is found; a change of white space alone does not move the reference. Change where it is found, or leave the day and the answer empty.",
+    ),
+    msg(
+        "know.check_unstated",
+        "A source in this proposal is found somewhere else than it was at the base of the proposal, and still carries the day it was last checked or whether it can be had, which were for its old place. A check of the new place is stated in the proposal, never taken from the old one. It cannot be accepted as it is.",
+    ),
+    msg(
+        "outcome_note.knowledge_kept",
+        "Nothing was changed, and the proposal is still held for review.",
     ),
 ];

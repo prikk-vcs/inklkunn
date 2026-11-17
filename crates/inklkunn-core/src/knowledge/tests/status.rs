@@ -313,8 +313,9 @@ fn what_a_checked_source_is_and_where_it_is_found_is_curation_and_before_the_che
         // A curation proposal may, except that a source found elsewhere does not keep the check of its old reference
         // unless the proposal states one (K71).
         touched.curation = true;
-        let moved = Curated::of(&File::Source(Box::new(after.clone())))
-            .carries_unstated_check(&Curated::of(&File::Source(Box::new(before.clone()))));
+        // The expectation is this table's own, not the rule's (F-e.1): every case here whose reference differs keeps the
+        // check of the old one and states none, and no other case changes the reference.
+        let moved = want == Some("reference");
         let by_curation: Vec<_> = validate(&files, &touched, &One, &One)
             .iter()
             .map(|r| (r.file.clone(), r.field))

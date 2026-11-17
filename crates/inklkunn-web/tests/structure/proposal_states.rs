@@ -738,7 +738,23 @@ fn outcome(name: &str) -> AcceptOutcome {
         "recovery" => AcceptOutcome::NeedsRecovery,
         "unchanged-refused" => AcceptOutcome::Unchanged(Unchanged::Refused),
         "too-large" => AcceptOutcome::Unchanged(Unchanged::TooLarge),
-        "knowledge-invalid" => AcceptOutcome::Unchanged(Unchanged::KnowledgeInvalid),
+        "knowledge-invalid" => {
+            use inklkunn_core::knowledge::check::Refusal;
+            use inklkunn_core::knowledge::{Fault, Rule};
+            // A file that is not in the form the wiki reads, and a source found elsewhere that carries the check of its old
+            // reference (K78): each says its own sentence.
+            let carried = Refusal {
+                carries: true,
+                ..Refusal::of(
+                    "knowledge/sources/x.yaml",
+                    Fault::at(Rule::Status, "last_reviewed"),
+                )
+            };
+            AcceptOutcome::Unchanged(Unchanged::KnowledgeInvalid(vec![
+                Refusal::of("knowledge/stray.txt", Fault::whole(Rule::Path)),
+                carried,
+            ]))
+        }
         "retirement-unfinished" => AcceptOutcome::Unchanged(Unchanged::RetirementUnfinished),
         "unavailable" => AcceptOutcome::Unavailable,
         "in-progress" => AcceptOutcome::InProgress,

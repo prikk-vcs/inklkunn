@@ -118,9 +118,29 @@ impl Loaded {
 }
 
 impl Loaded {
+    /// What names the source of the `at`-th edit in a refused check of a new reference (K72, K78): its title (as the form's
+    /// own legend names it, so that the person finds the field), its whole id, and the day of the check the new one cannot
+    /// come before.
+    fn check_subject(
+        &self,
+        t: crate::catalog::T,
+        edits: &[SourceEdit],
+        at: usize,
+    ) -> (String, String, Option<String>) {
+        let edit = edits.get(at);
+        let source = edit.and_then(|e| self.cited.iter().flatten().find(|s| s.id == e.source));
+        let title = source
+            .and_then(|s| s.identity.title.clone())
+            .unwrap_or_else(|| t.get(Key::CurateSourceUntitled));
+        let id = edit.map_or_else(|| "-".to_owned(), |e| e.source.to_string());
+        let previous = source
+            .and_then(|s| s.last_reviewed.as_ref())
+            .map(|r| r.date.clone());
+        (title, id, previous)
+    }
+
     /// The refusal of the check of a new reference that the core made for the `at`-th source of `edits` (K72), in the
-    /// person's words: the source (as the form's own legend names it), so that the person finds the field, and, for a day
-    /// that is too early, the day of the check it cannot come before.
+    /// person's words as text (the API's).
     pub(crate) fn check_refused_text(
         &self,
         t: crate::catalog::T,
@@ -128,16 +148,20 @@ impl Loaded {
         at: usize,
         why: inklkunn_core::knowledge::compose::CheckFault,
     ) -> String {
-        let source = edits
-            .get(at)
-            .and_then(|e| self.cited.iter().flatten().find(|s| s.id == e.source));
-        let title = source
-            .and_then(|s| s.identity.title.clone())
-            .unwrap_or_else(|| t.get(Key::CurateSourceUntitled));
-        let previous = source
-            .and_then(|s| s.last_reviewed.as_ref())
-            .map(|r| r.date.as_str());
-        super::claims::check_text(t, why, &title, previous)
+        let (title, id, previous) = self.check_subject(t, edits, at);
+        super::claims::check_text(t, why, &title, &id, previous.as_deref())
+    }
+
+    /// The same as markup, the whole id in `<code>` (the form's).
+    pub(crate) fn check_refused_html(
+        &self,
+        t: crate::catalog::T,
+        edits: &[SourceEdit],
+        at: usize,
+        why: inklkunn_core::knowledge::compose::CheckFault,
+    ) -> Rich {
+        let (title, id, previous) = self.check_subject(t, edits, at);
+        super::claims::check_html(t, why, &title, &id, previous.as_deref())
     }
 }
 
@@ -427,7 +451,7 @@ impl WorkText {
 
     /// The core's words for it: the successor, if typed, must be an identifier.
     fn work(&self) -> Result<Work, Mistake> {
-        let superseded = self.superseded.trim();
+        let superseded = self.superseded.trim_matches(fields::is_pattern_space);
         Ok(Work {
             title: self.title.clone(),
             author: self.author.clone(),
@@ -1161,14 +1185,10 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
         Ok(files) => files,
         Err(m) => {
             let said = match m {
-                Mistake::Check(at, why) => subject.check_refused_text(t, &edit.sources, at, why),
-                other => mistake_text(t, other),
+                Mistake::Check(at, why) => subject.check_refused_html(t, &edit.sources, at, why),
+                other => plain(&mistake_text(t, other)),
             };
-            return draw(
-                vec![plain(&said)],
-                Vec::new(),
-                StatusCode::UNPROCESSABLE_ENTITY,
-            );
+            return draw(vec![said], Vec::new(), StatusCode::UNPROCESSABLE_ENTITY);
         }
     };
     // The sources that replace one another do not come back to one they passed, as the acceptance judges the result (K61).

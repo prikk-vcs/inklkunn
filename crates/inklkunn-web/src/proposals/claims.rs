@@ -23,7 +23,7 @@ use inklkunn_store::FileChange;
 use super::Ctx;
 use super::form::AttachInput;
 use super::parts::{Selection, excerpt};
-use crate::catalog::{Key, T};
+use crate::catalog::{Key, Msg, Rich, T, code};
 
 /// What the form knows about the claims on one page: the `^id`s of the paragraphs that are a claim's.
 pub(super) struct Known {
@@ -153,21 +153,46 @@ pub(crate) fn mistake_text(t: T, m: Mistake) -> String {
         Mistake::UnknownSuccessor => t.get(Key::CurateUnknownSuccessor),
         Mistake::SuccessorCycle => t.get(Key::CurateSuccessorCycle),
         // The surfaces that make a curation name the source (`check_text`); this is the sentence for one that does not.
-        Mistake::Check(_, why) => check_text(t, why, &t.get(Key::CurateSourceUntitled), None),
+        Mistake::Check(_, why) => check_text(t, why, &t.get(Key::CurateSourceUntitled), "-", None),
         Mistake::Unwritable => t.get(Key::AttachUnwritable),
     }
 }
 
-/// The words for a refused check of a new reference (K72), said for the source (`title`, as the form's legend gives it);
-/// `previous` is the day the old reference was last checked, for the one that is earlier than it.
-pub(crate) fn check_text(t: T, why: CheckFault, title: &str, previous: Option<&str>) -> String {
+/// The words for a refused check of a new reference (K72), said for the source (`title`, as the form's legend gives it, and its
+/// whole `id`: two sources may share a title, and one may have none, K78); `previous` is the day the old reference was last
+/// checked, for the one that is earlier than it.
+fn check_msg(t: T, why: CheckFault, title: &str, previous: Option<&str>) -> Msg {
     let (key, day) = match why {
         CheckFault::NoDay => (Key::CurateCheckNoDay, ""),
         CheckFault::NotADay => (Key::CurateCheckNotADay, ""),
         CheckFault::BeforeReview => (Key::CurateCheckBeforeReview, previous.unwrap_or("")),
         CheckFault::NoNewReference => (Key::CurateCheckNoNewReference, ""),
     };
-    t.msg(key).with("title", title).with("day", day).text()
+    t.msg(key).with("title", title).with("day", day)
+}
+
+/// [`check_msg`] as text, the id as words: the API's problem (its `source` member names the id too).
+pub(crate) fn check_text(
+    t: T,
+    why: CheckFault,
+    title: &str,
+    id: &str,
+    previous: Option<&str>,
+) -> String {
+    check_msg(t, why, title, previous).with("id", id).text()
+}
+
+/// [`check_msg`] as markup, the whole id in `<code>` beside the title as the cycle refusal has it (K75): the form's.
+pub(crate) fn check_html(
+    t: T,
+    why: CheckFault,
+    title: &str,
+    id: &str,
+    previous: Option<&str>,
+) -> Rich {
+    check_msg(t, why, title, previous)
+        .rich("id", code(id))
+        .html()
 }
 
 /// Why a source could not be attached.

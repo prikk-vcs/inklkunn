@@ -1693,6 +1693,28 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   Measured: the whole workspace on a host with prikk 0.55.0 first on `PATH` prints none of the guarded lines. No prikk-dependent
   test is added or removed.
 
+- **K78 (handoff 005 corrections, ninth round): the sentences and small points (review F-c, F-d, F-e).** (1) The acceptance outcome
+  says the refusal's own sentence: `Unchanged::KnowledgeInvalid` carries the refusals, and the page says each one's sentence from the
+  catalog once (the rule's, `health.rule_*`; a source found elsewhere that carries the check of its old reference, the new
+  `know.check_unstated`; a removal, `know.not_by_form`), never `outcome_note.knowledge_invalid` for a rule refusal. That note stays,
+  after the sentences, only when a file is not in the form the wiki reads (the twelve rules about a file's form); any other refusal ends
+  with the new `outcome_note.knowledge_kept` (nothing was changed, the proposal is held). The proposal's page warns through
+  `check::carried_by` with the same `know.check_unstated` before a reviewer accepts (a draft may hold such a file; the submission
+  refuses it), so `carried_by`'s doc is true: the page calls it. (2) The check refusals name the source by its whole id in `<code>`
+  beside its title, as the cycle refusal does (the four `curate.check_*` messages carry `{id}`; the API's sentence has it as words), and
+  `curate.check_no_new_reference` says that a change of white space alone does not move the reference; a day that has not come is
+  K49's own sentence and is unchanged. (3) Small points: the core test of a checked source's departure takes its expectation from its
+  own table, not from `carries_unstated_check`; K74's message says *path or size*; the form trims `superseded_by` with the ECMA-262
+  `\s` set the API uses (`fields::is_pattern_space`, one place); the white-space line escapes `]` as it does `[` (`Smith [1962]` shows
+  its characters) and a text that is the marker's own words (`(none)`, `（なし）`) has its first character written by its code point
+  so that it cannot pass for the marker (the four legends say `[` and `]`); the test's pattern reader refuses an unclosed `{`; one test
+  measures the six digits `partial_name_too_long_by` reserves against the name a claim really makes (a reserve of 5 or of 7 fails
+  it). Public API: `Unchanged::KnowledgeInvalid(Vec<Refusal>)` (and `Unchanged` is no longer `Copy`). Tests: the acceptance's
+  paragraphs in both languages (a status rule, a carried check, a removal, a rule about a file's form, a dangling reference), the
+  page's note for a draft that moves a source and leaves its check (and none when the check is cleared), the check refusals with
+  their ids in the form (en, ja) and the API, the form's trim, `]`, `(none)` and `（なし）`, the unclosed brace, the export message,
+  the reserve; each was mutated, seen to fail and restored. No prikk-dependent test is added.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

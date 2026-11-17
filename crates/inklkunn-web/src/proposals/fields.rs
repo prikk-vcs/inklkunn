@@ -108,3 +108,25 @@ pub(crate) const REASON: &str = "reason";
 // --- element ids a page's fragments point at
 pub(crate) const ID_COMMENT: &str = "comment";
 pub(crate) const ID_THREAD: &str = "thread";
+
+// --- white space, as the document's patterns say it
+/// Is `c` white space as the document's patterns say it (`\s`, ECMA-262's: K75)? The form and the API handler of a source's
+/// replacement trim with this and not with `str::trim`, whose set differs (it takes U+0085 and not U+FEFF): a client that
+/// follows the schema is taken exactly where the schema takes it, and a person who types the same text in the form is
+/// taken the same way (K78).
+pub(crate) fn is_pattern_space(c: char) -> bool {
+    matches!(
+        c,
+        '\u{9}'..='\u{d}'
+            | ' '
+            | '\u{a0}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200a}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202f}'
+            | '\u{205f}'
+            | '\u{3000}'
+            | '\u{feff}'
+    )
+}

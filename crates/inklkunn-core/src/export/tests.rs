@@ -261,6 +261,12 @@ fn a_tree_that_is_not_the_one_the_tip_lists_is_refused_and_nothing_is_written() 
             matches!(&err, ExportError::Io(why) if why.contains("nothing was written") && why.contains("the tip lists")),
             "{what}: {err}"
         );
+        // What is compared is the path and the size (K78), and the message says so, not that other bytes were found.
+        assert!(
+            err.to_string()
+                .contains("missing, extra or of another size"),
+            "{what}: {err}"
+        );
         assert!(!partial.exists(), "{what}: the bundle's directory was made");
     }
     // The tree the tip lists goes through the check (and on to the history, which this storage refuses). A directory in the

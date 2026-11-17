@@ -719,6 +719,11 @@ pub(crate) fn draw(
             if known.unjudged {
                 notes.push(t.get(Key::KnowNotJudged));
             }
+            // A source moved to another reference that still carries the check of the old one (K71, K78): the rule the
+            // submission and the acceptance have, said before a reviewer accepts.
+            if known.carried {
+                notes.push(t.get(Key::KnowCheckUnstated));
+            }
             (known.lines, notes, offered)
         }
         None => (Vec::new(), Vec::new(), Default::default()),

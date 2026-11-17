@@ -1509,7 +1509,7 @@ fn a_change_of_white_space_alone_is_told_with_both_spellings_and_every_space_tab
     assert_eq!(
         more.first().map(|m| m.as_str()),
         Some(
-            "Only the white space in its title changes (␣ is a space, ⇥ a tab, ↵ a line break, [U+XXXX] a character by its code point: other white space, and any of these marks or a [ that the text itself holds): <bdi>A␣history</bdi> becomes <bdi>␣A[U+00A0]history⇥[U+000D]↵</bdi>."
+            "Only the white space in its title changes (␣ is a space, ⇥ a tab, ↵ a line break, [U+XXXX] a character by its code point: other white space, and any of these marks, a [ or a ] that the text itself holds): <bdi>A␣history</bdi> becomes <bdi>␣A[U+00A0]history⇥[U+000D]↵</bdi>."
         )
     );
     let ja = lines(japanese(), std::slice::from_ref(&item), &know)
@@ -1528,7 +1528,9 @@ fn a_change_of_white_space_alone_is_told_with_both_spellings_and_every_space_tab
     // like the white space it is not.
     assert_eq!(visible("A\u{2423}B"), "A[U+2423]B");
     assert_eq!(visible("a\u{21e5}b\u{21b5}"), "a[U+21E5]b[U+21B5]");
-    assert_eq!(visible("[U+00A0]"), "[U+005B]U+00A0]");
+    assert_eq!(visible("[U+00A0]"), "[U+005B]U+00A0[U+005D]");
+    // The bracket that closes one too (K78): `Smith [1962]` shows the characters it has.
+    assert_eq!(visible("Smith [1962]"), "Smith␣[U+005B]1962[U+005D]");
     assert_ne!(visible("[U+00A0]"), visible("\u{a0}"));
     assert_ne!(visible("\u{2423}"), visible(" "));
     // A spelling that is nothing says so, in both languages, and is not an empty `<bdi>`.
@@ -1548,6 +1550,28 @@ fn a_change_of_white_space_alone_is_told_with_both_spellings_and_every_space_tab
         .more;
     let ja = ja.first().map(|m| m.as_str()).unwrap_or_default();
     assert!(ja.contains("（なし） が <bdi>␣␣</bdi> になります"), "{ja}");
+    // A text that is the marker's own words cannot pass for the marker (K78): its first character is written by its code
+    // point, in both languages, and the marker itself is unchanged.
+    for (t, marker, escaped) in [
+        (T::new(EN), "(none)", "<bdi>[U+0028]none)</bdi>"),
+        (japanese(), "（なし）", "<bdi>[U+FF08]なし）</bdi>"),
+    ] {
+        let literal = changed(vec![SourceChange::WhiteSpace {
+            part: Spelled::Title,
+            was: marker.to_owned(),
+            now: String::new(),
+        }]);
+        let line = lines(t, std::slice::from_ref(&literal), &know)
+            .remove(0)
+            .more;
+        let line = line.first().map(|m| m.as_str()).unwrap_or_default();
+        assert!(line.contains(escaped), "{line}");
+        assert!(!line.contains(&format!("<bdi>{marker}</bdi>")), "{line}");
+        assert!(
+            line.contains(&format!(" {marker}")),
+            "the real marker stays: {line}"
+        );
+    }
     // Each part of a name, and where it is found, has its own sentence.
     for (part, words) in [
         (Spelled::Author, "its author or publisher"),

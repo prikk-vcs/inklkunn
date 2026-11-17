@@ -9,7 +9,7 @@
 
 use inklkunn_core::knowledge::check::Refusal;
 use inklkunn_core::knowledge::index::KnowledgeIndex;
-use inklkunn_core::knowledge::{ClaimId, Family, family_of};
+use inklkunn_core::knowledge::{ClaimId, Family, Rule, family_of};
 use inklkunn_core::read::ReadError;
 use inklkunn_core::{Action, Principal, Resource};
 use inklkunn_store::WikiRecord;
@@ -139,6 +139,41 @@ pub(crate) fn sentences(t: T, refused: &[Refusal]) -> Vec<String> {
         out.push(t.get(Key::KnowNotByForm));
     }
     out
+}
+
+/// The catalog sentence that is a refusal's own (K78): the one the core's [`Refusal::sentence`] says in English for the
+/// log. A source found elsewhere that carries the check of its old reference says so, a removal (or the replacement of a
+/// file that cannot be read) says it is not offered, and any other says the rule it broke.
+pub(crate) fn sentence_key(refusal: &Refusal) -> Key {
+    if refusal.carries {
+        Key::KnowCheckUnstated
+    } else if !refusal.curation_form_can_make() {
+        Key::KnowNotByForm
+    } else {
+        crate::health::rule_key(refusal.rule)
+    }
+}
+
+/// Is this refusal about a file that is not in the form the wiki reads (and nothing else)? Only such a refusal is told
+/// by `outcome_note.knowledge_invalid`; every other says its own sentence ([`sentence_key`]).
+pub(crate) fn is_form_refusal(refusal: &Refusal) -> bool {
+    !refusal.carries
+        && refusal.curation_form_can_make()
+        && matches!(
+            refusal.rule,
+            Rule::Path
+                | Rule::NotText
+                | Rule::TooLong
+                | Rule::Syntax
+                | Rule::Missing
+                | Rule::Unknown
+                | Rule::Type
+                | Rule::Number
+                | Rule::Value
+                | Rule::Id
+                | Rule::Duplicate
+                | Rule::Bounds
+        )
 }
 
 /// The claims whose curation form a refusal leads to: the claim a refused file is, and the claims that cite a source a

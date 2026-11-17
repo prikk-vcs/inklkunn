@@ -1265,6 +1265,11 @@ async fn a_check_of_a_new_reference_is_refused_at_its_member_and_names_its_sourc
         .unwrap_or_default()
         .to_owned();
     assert!(detail.contains("The bridge survey"), "{detail}");
+    // And its whole id, as words (K78): two sources may share a title.
+    assert!(
+        detail.contains(&format!("The bridge survey ({one}).")),
+        "{detail}"
+    );
     assert!(detail.contains("2023-11-01"), "{detail}");
     // A check that is not shaped as the schema says is an invalid body at its member.
     let a = propose(

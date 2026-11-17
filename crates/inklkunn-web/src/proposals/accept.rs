@@ -18,6 +18,7 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::Response;
 use inklkunn_core::acceptance::{Reconciled, words as accept_words};
+use inklkunn_core::knowledge::check::Refusal;
 use inklkunn_core::proposal::{ProposalError, QuotaRefusal};
 use inklkunn_core::{AcceptFailure, Accepted, Action};
 use inklkunn_store::{ProposalId, WikiRecord};
@@ -26,27 +27,50 @@ use super::{
     Ctx, Stop, fields, fields_of, from_this_site, needs_account, notice_page, parse_id, paths,
     refused, serve, words,
 };
-use crate::catalog::Key;
+use crate::catalog::{Key, T};
 use crate::csrf::Decided;
+use crate::knowledge::curate::{is_form_refusal, sentence_key};
 use crate::pages::{Page, PageState};
 use crate::wiki::{Choice, generic_not_found, notice, services_of, with_retry_after};
 
 type Fields = super::urlencoded::Raw;
 type Ids = Result<Path<(String, String)>, PathRejection>;
 
+/// What a refused acceptance of knowledge files says (K78): **each refusal's own sentence** (the rule's, from the catalog,
+/// once however many files break it), and then, when a file is not in the form the wiki reads, the note that says so; else
+/// that nothing was changed. The file-format note is never said of a refusal that is about a rule.
+pub(crate) fn knowledge_paragraphs(t: T, refusals: &[Refusal]) -> Vec<String> {
+    let mut keys: Vec<Key> = Vec::new();
+    for refusal in refusals {
+        let key = sentence_key(refusal);
+        if !keys.contains(&key) {
+            keys.push(key);
+        }
+    }
+    let mut out: Vec<String> = keys.into_iter().map(|key| t.get(key)).collect();
+    out.push(t.get(if refusals.iter().any(is_form_refusal) {
+        Key::OutcomeNoteKnowledgeInvalid
+    } else {
+        Key::OutcomeNoteKnowledgeKept
+    }));
+    out
+}
+
 /// The longest a visitor is told to wait before asking again, in seconds.
 const LONGEST_WAIT: u64 = 3600;
 
 /// Why an acceptance that did not reach the history left the repository as it was, in the fixed words of the
 /// acceptance ([`accept_words`]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Unchanged {
     /// The history refused the prepared change.
     Refused,
     /// The change needs more memory than one signing may use.
     TooLarge,
     /// A claim or source file in the proposal is not acceptable (RFC 005 part 2 D-5): refused before the signer was asked.
-    KnowledgeInvalid,
+    /// Each file is named with the rule it breaks (and never with what it said): the page says each rule's own sentence
+    /// (K78).
+    KnowledgeInvalid(Vec<Refusal>),
     /// The signer was busy.
     Busy,
     /// A change to the wiki's keys (a key retirement) was begun and is not finished: the signer seals nothing new until
@@ -159,11 +183,11 @@ pub(crate) fn outcome_of(
         }
         Err(AcceptFailure::Overlap { .. }) => AcceptOutcome::Overlap,
         Err(AcceptFailure::NothingToChange) => AcceptOutcome::NothingToChange,
-        Err(failure @ AcceptFailure::KnowledgeInvalid(_)) => {
+        Err(ref failure @ AcceptFailure::KnowledgeInvalid(ref refusals)) => {
             log(&format!(
                 "an acceptance was refused before signing: {failure}"
             ));
-            AcceptOutcome::Unchanged(Unchanged::KnowledgeInvalid)
+            AcceptOutcome::Unchanged(Unchanged::KnowledgeInvalid(refusals.clone()))
         }
         Err(AcceptFailure::Failed {
             acceptance,
@@ -254,10 +278,10 @@ pub fn render_accept_outcome(
             Key::OutcomeUnchangedRefused,
             vec![t.get(Key::OutcomeNoteUnchangedRefused)],
         ),
-        AcceptOutcome::Unchanged(Unchanged::KnowledgeInvalid) => (
+        AcceptOutcome::Unchanged(Unchanged::KnowledgeInvalid(refusals)) => (
             StatusCode::UNPROCESSABLE_ENTITY,
             Key::OutcomeKnowledgeInvalid,
-            vec![t.get(Key::OutcomeNoteKnowledgeInvalid)],
+            knowledge_paragraphs(t, refusals),
         ),
         AcceptOutcome::Unchanged(Unchanged::TooLarge) => (
             StatusCode::PAYLOAD_TOO_LARGE,

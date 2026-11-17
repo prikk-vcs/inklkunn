@@ -1675,6 +1675,8 @@ keys! {
     CurateCheckNotADay => "curate.check_not_a_day",
     CurateCheckBeforeReview => "curate.check_before_review",
     CurateCheckNoNewReference => "curate.check_no_new_reference",
+    KnowCheckUnstated => "know.check_unstated",
+    OutcomeNoteKnowledgeKept => "outcome_note.knowledge_kept",
     // knowledge: a changed reference clears the check; the cycle names its source (handoff 005 corrections, seventh round K66, K69): end
 }
 

@@ -158,11 +158,16 @@ fn parse_pattern(pattern: &str) -> Result<Vec<Repeated>, String> {
             Some('{') => {
                 chars.next();
                 let mut spelled = String::new();
+                let mut closed = false;
                 for d in chars.by_ref() {
                     if d == '}' {
+                        closed = true;
                         break;
                     }
                     spelled.push(d);
+                }
+                if !closed {
+                    return Err(format!("{pattern}: {{{spelled} is never closed"));
                 }
                 let (lo, hi) = spelled.split_once(',').unwrap_or((&spelled, &spelled));
                 item.min = lo
@@ -725,6 +730,10 @@ fn the_checker_reads_a_pattern_and_refuses_one_it_cannot_read() {
         "^[a-\\s]$",
         "^[z-a]$",
         "^a{3,2}$",
+        // K78: a repetition that is never closed is refused, not read to the end of the pattern.
+        "^a{3$",
+        "^a{3,$",
+        "^a{$",
         "^a]$",
         "^a*?$",
     ] {

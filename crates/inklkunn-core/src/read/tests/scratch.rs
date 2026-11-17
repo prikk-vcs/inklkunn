@@ -594,3 +594,35 @@ fn the_longest_destination_name_is_measured_to_the_byte() {
         "a name that is too long by the reservation cannot be claimed"
     );
 }
+
+/// K78 (the review's F-e, ruling 8): the six digits the measure reserves for the claim count are measured against the
+/// names a claim really makes, so that a changed reserve fails here and not only on a person's long destination. At the
+/// longest name that fits, the lock file's name is as long as the file system allows less the digits the count of this
+/// claim does not use of the six reserved.
+#[test]
+fn the_six_digit_reserve_is_what_the_longest_claim_leaves_unused() {
+    use super::super::scratch::partial_name_too_long_by;
+    let w = World::pages(&[("Home", &[], "x\n")]);
+    let parent = scratch_of(&w);
+    let long = "n".repeat(240);
+    let over = partial_name_too_long_by(&long).expect("too long");
+    let fits = &long[..long.len() - over];
+    let claim = Partial::begin(&parent, fits).expect("the longest name that fits");
+    let prefix = format!(".{fits}.partial-");
+    let lock = entries(&parent)
+        .into_iter()
+        .find(|name| name.starts_with(&prefix) && name.ends_with(".lock"))
+        .expect("the lock file of the claim");
+    let count = lock
+        .strip_suffix(".lock")
+        .and_then(|name| name.rsplit('-').next())
+        .expect("a count in the tail");
+    assert!(count.chars().all(|c| c.is_ascii_digit()), "{lock}");
+    assert!(count.len() <= 6, "{lock}");
+    assert_eq!(
+        lock.len() + (6 - count.len()),
+        255,
+        "the measure reserves exactly six digits for the count: {lock}"
+    );
+    drop(claim);
+}

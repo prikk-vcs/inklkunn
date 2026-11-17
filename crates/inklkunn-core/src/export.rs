@@ -717,7 +717,7 @@ fn build(
     now: i64,
     records: Option<&KnowledgeRecords>,
 ) -> Result<Exported, ExportError> {
-    // The bundle is of the files the tip has: a tree with a file missing (or one more, or one of other bytes) is not that
+    // The bundle is of the files the tip has: a tree with a file missing (or one more, or one of another size) is not that
     // tree, and a bundle of it, with checksums that match what it holds, would be a false statement about the wiki. The
     // witness is the listing of the tip's files, path by path with their sizes (the totals alone pass a missing file and an
     // extra one of the same size), and prikk's own report of the extraction, which must agree in its totals.
@@ -737,7 +737,7 @@ fn build(
     }
     let differs = |path: &str| -> String {
         format!(
-            "the extraction does not hold the files the tip lists (`{path}` is missing, extra or of other bytes); nothing was written"
+            "the extraction does not hold the files the tip lists (`{path}` is missing, extra or of another size); nothing was written"
         )
     };
     for (path, len) in &held {

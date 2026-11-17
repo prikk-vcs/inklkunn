@@ -6,6 +6,7 @@ use inklkunn_core::knowledge::check::Refusal;
 use inklkunn_core::knowledge::{Fault, Rule};
 
 use super::*;
+use crate::catalog::{EN, JA_DEF, Lang};
 
 #[test]
 fn a_retirement_that_is_not_finished_is_a_page_of_its_own_and_the_log_keeps_the_command() {
@@ -79,9 +80,71 @@ fn a_knowledge_file_refused_before_the_signer_is_a_page_of_its_own_and_the_log_n
     let outcome = outcome_of(Err(AcceptFailure::KnowledgeInvalid(vec![refusal])), &log);
     assert!(matches!(
         outcome,
-        AcceptOutcome::Unchanged(Unchanged::KnowledgeInvalid)
+        AcceptOutcome::Unchanged(Unchanged::KnowledgeInvalid(_))
     ));
     let lines = logged.lock().unwrap();
     assert_eq!(lines.len(), 1);
     assert!(lines.first().unwrap().contains("knowledge/stray.txt"));
+}
+
+fn carried_refusal() -> Refusal {
+    Refusal {
+        carries: true,
+        ..Refusal::of(
+            "knowledge/sources/x.yaml",
+            Fault::at(Rule::Status, "last_reviewed"),
+        )
+    }
+}
+
+/// K78 (the review's F-c): the page of an acceptance that a knowledge rule refused says that rule's own sentence, never the
+/// note about a file that is not in the form the wiki reads; the note stays for such a file.
+#[test]
+fn a_refused_acceptance_says_each_rules_own_sentence_and_the_file_note_only_for_a_file_that_is_not_in_the_form()
+ {
+    for t in [T::new(EN), T::new(Lang::from_def(&JA_DEF))] {
+        let form_note = t.get(Key::OutcomeNoteKnowledgeInvalid);
+        let kept = t.get(Key::OutcomeNoteKnowledgeKept);
+        // A rule about what a proposal may set: its sentence once, and nothing about the form of a file.
+        let status = Refusal::of(
+            "knowledge/claims/x.yaml",
+            Fault::at(Rule::Status, "community_status"),
+        );
+        assert_eq!(
+            knowledge_paragraphs(t, &[status.clone(), status]),
+            [t.get(Key::HealthRuleStatus), kept.clone()]
+        );
+        // A source that carries the check of its old reference: the sentence of that refusal.
+        assert_eq!(
+            knowledge_paragraphs(t, &[carried_refusal()]),
+            [t.get(Key::KnowCheckUnstated), kept.clone()]
+        );
+        // A removal is not offered.
+        let removal = Refusal {
+            removes: true,
+            ..Refusal::of(
+                "knowledge/claims/x.yaml",
+                Fault::at(Rule::Status, "community_status"),
+            )
+        };
+        assert_eq!(
+            knowledge_paragraphs(t, &[removal]),
+            [t.get(Key::KnowNotByForm), kept]
+        );
+        // A file that is not in the form the wiki reads keeps the note that says so, after the sentences.
+        let syntax = Refusal::of("knowledge/claims/y.yaml", Fault::whole(Rule::Syntax));
+        assert_eq!(
+            knowledge_paragraphs(t, &[syntax, carried_refusal()]),
+            [
+                t.get(Key::HealthRuleSyntax),
+                t.get(Key::KnowCheckUnstated),
+                form_note.clone()
+            ]
+        );
+        // And the file note is said of no rule refusal.
+        let dangling = Refusal::of("knowledge/claims/z.yaml", Fault::whole(Rule::Reference));
+        for other in [carried_refusal(), dangling] {
+            assert!(!knowledge_paragraphs(t, &[other]).contains(&form_note));
+        }
+    }
 }

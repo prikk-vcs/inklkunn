@@ -36,6 +36,24 @@ fn subject() -> Loaded {
     }
 }
 
+/// K78 (the review's F-e.3): the form takes the text of a source's replacement with the white space the API takes (`\s`,
+/// ECMA-262's), and not `str::trim`'s: U+FEFF is trimmed, and U+0085 is not.
+#[test]
+fn the_form_trims_the_replacement_with_the_set_the_api_uses() {
+    let work = |superseded: &str| {
+        let mut text = WorkText::of(&source(1, None));
+        text.superseded = superseded.to_owned();
+        text.work().map(|w| w.superseded_by)
+    };
+    let wanted = id(2).to_string();
+    assert_eq!(work(&format!("\u{feff} {wanted}\u{3000}")), Ok(Some(id(2))));
+    assert_eq!(work("\u{feff}\t"), Ok(None));
+    assert_eq!(
+        work(&format!("\u{85}{wanted}")),
+        Err(Mistake::UnknownSuccessor)
+    );
+}
+
 /// The text of the file a curation would write for `s`.
 fn written(s: &Source) -> (String, String) {
     (source_path(&s.id), s.to_yaml())

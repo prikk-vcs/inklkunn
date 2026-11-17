@@ -372,30 +372,43 @@ const BREAK_MARK: char = '\u{21b5}';
 
 /// A text with its white space made visible (K66): a space, a tab and a line break each a mark, any other white space its
 /// code point. The two spellings of a name that differ in nothing else then read differently. **A mark the text holds
-/// itself is written by its code point too** (K75), and so is the `[` that opens one, so that no text can imitate a mark:
-/// what shows `␣` or `[U+00A0]` is always the white space, never the characters.
+/// itself is written by its code point too** (K75), and so are the `[` that opens one and the `]` that closes it (K78), so
+/// that no text can imitate a mark: what shows `␣` or `[U+00A0]` is always the white space, never the characters.
 fn visible(text: &str) -> String {
     text.chars()
         .map(|c| match c {
             ' ' => SPACE_MARK.to_string(),
             '\t' => TAB_MARK.to_string(),
             '\n' => BREAK_MARK.to_string(),
-            c if c.is_whitespace() || matches!(c, SPACE_MARK | TAB_MARK | BREAK_MARK | '[') => {
-                format!("[U+{:04X}]", u32::from(c))
+            c if c.is_whitespace()
+                || matches!(c, SPACE_MARK | TAB_MARK | BREAK_MARK | '[' | ']') =>
+            {
+                code_point(c)
             }
             c => c.to_string(),
         })
         .collect()
 }
 
+/// A character by its code point, as the white-space line writes one it cannot show.
+fn code_point(c: char) -> String {
+    format!("[U+{:04X}]", u32::from(c))
+}
+
 /// A spelling for the white-space line: the text with its white space shown, or *none* where there is no text (the
-/// part had none, or has none now: K75) and not an empty `<bdi>`.
+/// part had none, or has none now: K75) and not an empty `<bdi>`. A text that is the marker's own words (`(none)`) has
+/// its first character written by its code point (K78), so that it cannot pass for the marker.
 fn spelling(t: T, text: &str) -> Rich {
     if text.is_empty() {
-        t.msg(Key::KnowSourceSpacingNone).html()
-    } else {
-        bdi(&visible(text))
+        return t.msg(Key::KnowSourceSpacingNone).html();
     }
+    let shown = visible(text);
+    if shown == t.get(Key::KnowSourceSpacingNone) {
+        let mut chars = shown.chars();
+        let first = chars.next().map(code_point).unwrap_or_default();
+        return bdi(&[first.as_str(), chars.as_str()].concat());
+    }
+    bdi(&shown)
 }
 
 /// The lines for one change to a source: one, except for the check that stays, which also names the other claims that rely
@@ -703,6 +716,10 @@ pub(crate) struct Known {
     /// A source link the proposal adds is judged on a wording its claim does not have in the result (K25): the
     /// submission refuses it and the acceptance would.
     pub(crate) unjudged: bool,
+    /// A source file moves a source to another reference and leaves on it the check of the old one (K71,
+    /// [`inklkunn_core::knowledge::check::carried_by`]): the submission refuses it, a draft may hold one, and the page says
+    /// so before a reviewer accepts (K78).
+    pub(crate) carried: bool,
 }
 
 /// Where the wording a link or a status was judged on is found: the view the proposal is for, the base it was written
@@ -1077,6 +1094,7 @@ pub(crate) fn file_lines(
     let was = |path: &str| before.get(path).cloned().flatten();
     let items = inklkunn_core::knowledge::summary::summarize(&given, &was);
     let curated = inklkunn_core::knowledge::check::curated_by(&given, &was);
+    let carried = !inklkunn_core::knowledge::check::carried_by(&given, &was).is_empty();
     // The subjects and the wording a re-judgement moved to are looked for only when there is a line to name them; a
     // page that cannot be read is the page that says so, never a line that claims the paragraph is not there.
     let content = RevisionContent {
@@ -1103,6 +1121,7 @@ pub(crate) fn file_lines(
             lines,
             curated,
             unjudged,
+            carried,
         }),
     }
 }
