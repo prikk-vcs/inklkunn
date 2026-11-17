@@ -364,11 +364,12 @@ fn the_probe_reports_a_sandbox_that_cannot_confine() {
 
 // ---- the memory ceiling (handoff 002's F3) ----
 
-/// A stand-in `curl` that answers with the data-segment limit it was started under, in bytes.
+/// A stand-in `curl` that answers with the data-segment limit it was started under, in bytes. It reads
+/// `/proc/self/limits` with shell builtins only (no `awk`: on Ubuntu a link into `/etc/alternatives`, which no sandbox mounts).
 fn reports_its_limit(d: &Dir) -> std::path::PathBuf {
     d.script(
         "curl",
-        r#"awk '/Max data size/ {printf "%s", $4}' /proc/self/limits; printf '\n200'"#,
+        r#"while read -r a b c d rest; do [ "$a $b $c" = "Max data size" ] && printf '%s' "$d"; done < /proc/self/limits; printf '\n200'"#,
     )
 }
 

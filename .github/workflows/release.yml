@@ -103,7 +103,7 @@ jobs:
           set -euo pipefail
           cargo fmt --all --check
           cargo clippy --workspace --all-targets --locked -- -D warnings
-          cargo test --workspace --locked -- --nocapture 2>&1 | tee with-prikk.log
+          cargo test --workspace --locked --no-fail-fast -- --nocapture 2>&1 | tee with-prikk.log
           # Every test must have run: the test-only prikk and the floor are installed above, prikk is always on PATH here
           # (so `prikk not on PATH` can only be a silent skip), and bubblewrap works (installed and lifted above, and the
           # sandboxes take the host's own root layout, IS-19), so a confined test runs too.

@@ -1760,6 +1760,15 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   the check on the old date, is accepted and names itself; a hand-made carried one is refused), through the form and the API
   (the stated check names the proposal made). Each hook was mutated and the tests failed. One prikk-dependent test is added.
 
+- **M44, first point (handoff 010 corrections, eighth round): main green on Ubuntu.** CI run 44065172543 ran prikk and the real
+  vector confined on Ubuntu, and stopped at one red: the stand-in `curl` of `the_real_vector_runs_under_the_configured_ceiling`
+  (and `standin.rs`'s twin) read `/proc/self/limits` with `awk`, which on Ubuntu is `/usr/bin/awk -> /etc/alternatives/awk` and no
+  sandbox mounts `/etc`, so it read `""` for the ceiling. Both stand-ins now read the file with the shell's own builtins
+  (`while read -r a b c d rest; do ...; done < /proc/self/limits`), so they need no program but the shell. The with-prikk
+  `cargo test` step of `ci.yml` and `release.yml` is now `--no-fail-fast`, so one red never hides the tests of the crates after
+  it, and `floor-check` holds it (`test_prikk_shape_violations`: the with-prikk run's line must say `--no-fail-fast`; a planted
+  test removes it). No prikk-dependent test is added or removed.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the

@@ -210,10 +210,12 @@ fn the_real_vector_runs_under_the_configured_ceiling() {
         return;
     }
     // Inside bubblewrap, what a child of the vector sees is the ceiling `prlimit` set in front of `bwrap`.
+    // The stand-in reads the limit with the shell's own builtins: a program such as `awk` is, on Ubuntu, a link into
+    // `/etc/alternatives`, and no sandbox mounts `/etc` (the sandbox takes the host's `/usr` and its system links only).
     let d = Dir::new("real-ceiling");
     let curl = d.script(
         "curl",
-        r#"awk '/Max data size/ {printf "%s", $4}' /proc/self/limits; printf '\n200'"#,
+        r#"while read -r a b c d rest; do [ "$a $b $c" = "Max data size" ] && printf '%s' "$d"; done < /proc/self/limits; printf '\n200'"#,
     );
     let ca = d.raw_script("ca.pem", "x", 0o644);
     for bytes in [300u64 << 20, 1 << 30] {

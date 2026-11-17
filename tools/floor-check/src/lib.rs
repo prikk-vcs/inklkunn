@@ -129,6 +129,10 @@ pub fn test_prikk_shape_violations(yaml: &str) -> Vec<String> {
             if !lines.get(i).is_some_and(|l| l.contains("--nocapture")) {
                 out.push("the with-prikk run is not `--nocapture`: a passing test's skip line is never printed".to_owned());
             }
+            // One red must not hide the rest of the workspace (CI run 44065172543 stopped after one crate's failure).
+            if !lines.get(i).is_some_and(|l| l.contains("--no-fail-fast")) {
+                out.push("the with-prikk run is not `--no-fail-fast`: the first failing test binary stops the tests of every crate after it".to_owned());
+            }
         }
     }
     let guard = lines.iter().position(|l| {
